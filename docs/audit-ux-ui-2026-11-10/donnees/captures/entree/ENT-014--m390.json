@@ -1,0 +1,118 @@
+{
+ "id": "ENT-014",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Formulaire « Créer un compte » — bas de l'écran, bouton d'envoi",
+ "note": "",
+ "prisLe": "2026-11-10T19:30:06.657Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-014--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 58256,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le bouton n'apparaît qu'après défilement.",
+   "x": 0.5,
+   "y": 0.97,
+   "w": 0.785,
+   "h": 0.06,
+   "sel": "#authSubmitBtn",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les trois règles du mot de passe sont dites avant l'envoi.",
+   "x": 0.33,
+   "y": 0.761,
+   "w": 0.444,
+   "h": 0.052,
+   "sel": "#authPwdSuggest",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 15,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 146,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "span#authCguLink",
+     "texte": "conditions générales",
+     "w": 115,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 5,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 20,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

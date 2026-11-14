@@ -1,0 +1,204 @@
+{
+ "id": "PRO-014",
+ "domaine": "profils",
+ "scenario": "modifier-refus",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Pseudo déjà pris — toast, la modale reste ouverte",
+ "note": "",
+ "prisLe": "2026-11-10T18:20:03.040Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Mon profil principal",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-014--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 57946,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Refus annoncé, saisie conservée",
+   "x": 0.5,
+   "y": 0.87,
+   "w": 0.849,
+   "h": 0.046,
+   "sel": ".toast",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le champ n'est pas marqué",
+   "x": 0.5,
+   "y": -0.07,
+   "w": 0.908,
+   "h": 0.058,
+   "sel": "#editUsername",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "input#editIsPrivate",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Instagram URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Tiktok URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Facebook URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Youtube URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Twitter URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Linkedin URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Snapchat URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Autre URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Annuler",
+     "w": 86.8,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "Sauvegarder",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 9,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Instagram URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Tiktok URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Facebook URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Youtube URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Twitter URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Linkedin URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Snapchat URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Autre URL"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:61249/index.html#",
+   "Audio failed: http://127.0.0.1:61249/index.html#",
+   "Audio failed: http://127.0.0.1:61249/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

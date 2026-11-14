@@ -1,0 +1,125 @@
+{
+ "id": "MSG-027",
+ "domaine": "msg-liste",
+ "scenario": "exemples",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Paramètres d'une conversation d'exemple : 14 actions, dont « Bloquer » sans nom",
+ "note": "",
+ "prisLe": "2026-11-10T17:43:22.011Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-027--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41180,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Bloquer » : le nom manque",
+   "x": 0.5,
+   "y": 0.834,
+   "w": 1,
+   "h": 0.066,
+   "sel": "#convSettingsContent .csetting-item:nth-last-child(3)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Signaler, bloquer, archiver… un personnage fictif",
+   "x": 0.5,
+   "y": 0.9,
+   "w": 1,
+   "h": 0.066,
+   "sel": "#convSettingsContent .csetting-item:nth-last-child(2)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 17,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#convSettingsContent > div.csetting-item > div.csetting-label",
+     "texte": "Bloquer",
+     "ratio": 3.48,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f7f5fc",
+     "px": 14
+    },
+    {
+     "el": "div#convSettingsContent > div.csetting-item > div.csetting-label",
+     "texte": "Signaler",
+     "ratio": 3.48,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f7f5fc",
+     "px": 14
+    },
+    {
+     "el": "div#convSettingsContent > div.csetting-item > div.csetting-label",
+     "texte": "Supprimer la conversation",
+     "ratio": 3.48,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f7f5fc",
+     "px": 14
+    }
+   ],
+   "nbSousSeuil": 3
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

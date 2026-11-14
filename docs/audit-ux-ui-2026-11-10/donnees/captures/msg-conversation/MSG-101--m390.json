@@ -1,0 +1,237 @@
+{
+ "id": "MSG-101",
+ "domaine": "msg-conversation",
+ "scenario": "fil-1a1",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "En-tête d'une conversation 1:1",
+ "note": "",
+ "prisLe": "2026-11-10T18:02:01.765Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-101--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28240,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-101--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 120,
+    "octets": 4546
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Sous-titre figé « Voir le profil », 11 px violet.",
+   "x": 0.564,
+   "y": 0.047,
+   "w": 0.574,
+   "h": 0.018,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "34 × 34 px (zone 38 × 46), sans nom accessible (title seul).",
+   "x": 0.921,
+   "y": 0.035,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": "#convFpHead button[title=\"Paramètres\"]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "36 × 36 px (zone 40 × 48).",
+   "x": 0.082,
+   "y": 0.035,
+   "w": 0.092,
+   "h": 0.043,
+   "sel": "#convFpHead .conv-fp-back",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Fontaine Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "a > div > div > div",
+     "texte": "Position",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "45.7485, 4.8467",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfcfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-101--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29150,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-101--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 122,
+    "octets": 4252
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Passions de l'interlocutrice, en gris : le contexte de l'échange.",
+   "x": 0.559,
+   "y": 0.049,
+   "w": 0.564,
+   "h": 0.019,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 × 44 px, nommé « Paramètres de la conversation ».",
+   "x": 0.918,
+   "y": 0.036,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead button[title=\"Paramètres\"]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "44 × 44 px.",
+   "x": 0.082,
+   "y": 0.036,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead .conv-fp-back",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

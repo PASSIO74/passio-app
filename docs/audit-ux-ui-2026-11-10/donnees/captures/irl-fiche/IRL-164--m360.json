@@ -1,0 +1,97 @@
+{
+ "id": "IRL-164",
+ "domaine": "irl-fiche",
+ "scenario": "creer",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Modifier l'activité — l'ANCIEN formulaire",
+ "note": "« Modifier l'événement » : en-têtes « PHOTO DE COUVERTURE / INFOS PRINCIPALES », couverture de 140 px, description en bas — la réorganisation UI-6A0 ne s'applique pas à l'édition.",
+ "prisLe": "2026-11-10T18:06:25.370Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Modifier l'événement",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-164--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 34642,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Créer : « Créer une activité » (UI-6A0) ; modifier : « Modifier l'événement », autre mise en page.",
+   "x": 0.5,
+   "y": -0.917,
+   "w": 0.9,
+   "h": 0.033,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "input#evVenue",
+     "texte": "Café du Coin, Parc, Studio…",
+     "w": 241,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 10,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#evPlacePicked > span",
+     "texte": "Position précise enregistrée",
+     "ratio": 3.3,
+     "seuil": 4.5,
+     "couleur": "#16a34a",
+     "fond": "#ffffff",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

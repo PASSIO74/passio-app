@@ -1,0 +1,187 @@
+{
+ "id": "MSG-194",
+ "domaine": "msg-conversation",
+ "scenario": "variantes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Discussion d'une activité",
+ "note": "",
+ "prisLe": "2026-11-10T18:14:06.473Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-194--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 32070,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-194--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 120,
+    "octets": 6400
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Rien n'ouvre la fiche de l'activité (date, lieu) ; le titre est coupé.",
+   "x": 0.515,
+   "y": 0.035,
+   "w": 0.477,
+   "h": 0.043,
+   "sel": "#convFpHead .conv-fp-head-info",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "📍 Bœuf acoustique au parc de Gerland 👥 3 membres",
+     "w": 186,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:49915/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-info > div.conv-fp-name",
+    "texte": "📍 Bœuf acoustique au parc de Gerland",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-194--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33008,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-194--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 122,
+    "octets": 7626
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le sous-titre ouvre la fiche de l'activité (corail : passage au réel).",
+   "x": 0.497,
+   "y": 0.049,
+   "w": 0.441,
+   "h": 0.019,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

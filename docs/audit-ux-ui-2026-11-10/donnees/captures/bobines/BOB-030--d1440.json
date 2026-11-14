@@ -1,0 +1,262 @@
+{
+ "id": "BOB-030",
+ "domaine": "bobines",
+ "scenario": "stories",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story d'un compte suivi (texte) — en-tête, progression, fermeture",
+ "note": "Story réelle du faux serveur. La plus RÉCENTE des deux stories de Léa passe en premier (aucun `createdAt` repris de Supabase).",
+ "prisLe": "2026-11-10T19:19:52.024Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#story"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-030--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 15650,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et barres de progression",
+    "fichier": "captures/bobines/BOB-030--d1440--avant-zoom-entete.webp",
+    "largeur": 464,
+    "hauteur": 84,
+    "octets": 2156
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ni heure ni passion : `#storyTime` vide",
+   "x": 0.411,
+   "y": 0.071,
+   "w": 0.053,
+   "h": 0.019,
+   "sel": "#storyAuthor",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Piste des barres presque invisible (violet 18 % sur noir)",
+   "x": 0.5,
+   "y": 0.039,
+   "w": 0.292,
+   "h": 0.003,
+   "sel": "#storyProgressRow",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » flotte au milieu de l'en-tête",
+   "x": 0.529,
+   "y": 0.071,
+   "w": 0.023,
+   "h": 0.031,
+   "sel": "#storyReportBtn",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "✕ de 32 px (zone 44 px par pseudo-élément), sans nom accessible",
+   "x": 0.632,
+   "y": 0.071,
+   "w": 0.022,
+   "h": 0.036,
+   "sel": ".story-viewer-close",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "Une question posée… et aucun moyen d'y répondre",
+   "x": 0.5,
+   "y": 0.5,
+   "w": 0.25,
+   "h": 0.711,
+   "sel": "#storyCard",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "button#storyReportBtn",
+     "texte": "Signaler cette story",
+     "w": 33.1,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 9
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-prev",
+    "html": "<div class=\"story-viewer-tap story-tap-prev\" onclick=\"storyPrev()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   },
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-next",
+    "html": "<div class=\"story-viewer-tap story-tap-next\" onclick=\"storyNext()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-030--d1440--apres.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 18068,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et barres de progression",
+    "fichier": "captures/bobines/BOB-030--d1440--apres-zoom-entete.webp",
+    "largeur": 464,
+    "hauteur": 96,
+    "octets": 3274
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Quand, et dans quelle passion",
+   "x": 0.428,
+   "y": 0.087,
+   "w": 0.087,
+   "h": 0.017,
+   "sel": "[data-mq=\"temps\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Piste blanche à 35 % : on voit combien il en reste",
+   "x": 0.5,
+   "y": 0.039,
+   "w": 0.292,
+   "h": 0.003,
+   "sel": "#storyProgressRow",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » rangé à côté de ✕, 44 px",
+   "x": 0.59,
+   "y": 0.078,
+   "w": 0.031,
+   "h": 0.049,
+   "sel": "#storyReportBtn",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Répondre ouvre la conversation existante avec Léa",
+   "x": 0.5,
+   "y": 0.931,
+   "w": 0.275,
+   "h": 0.053,
+   "sel": "[data-mq=\"repondre\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,140 @@
+{
+ "id": "TRA-013",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Contenu & feed",
+ "note": "",
+ "prisLe": "2026-11-10T19:53:24.379Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Contenu & feed",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-013--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 24546,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Afficher contenu sensible » : enregistré, lu nulle part",
+   "x": 0.921,
+   "y": 0.761,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#contentSensitive",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Langue » : Français / English / Español — l'application reste en français",
+   "x": 0.5,
+   "y": 0.864,
+   "w": 0.908,
+   "h": 0.053,
+   "sel": "#contentLang",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 7,
+   "sous44": [
+    {
+     "el": "input#contentAutoplay",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#contentDataEco",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#contentSensitive",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Sauvegarder",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "select#contentLang",
+    "placeholder": ""
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-013--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 23746,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Restent les deux réglages branchés ; le titre dit ce qu'ils règlent (plus de « feed »)",
+   "x": 0.921,
+   "y": 0.874,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#contentDataEco",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

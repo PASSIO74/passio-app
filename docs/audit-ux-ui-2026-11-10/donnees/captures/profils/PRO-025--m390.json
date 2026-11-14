@@ -1,0 +1,150 @@
+{
+ "id": "PRO-025",
+ "domaine": "profils",
+ "scenario": "visite-etats",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Profil visité — compte privé, « Demande envoyée » ; « 1 abonné » = ma propre demande",
+ "note": "",
+ "prisLe": "2026-11-10T19:20:43.672Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-025--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33920,
+  "zooms": [
+   {
+    "nom": "compteur",
+    "titre": "1 abonné",
+    "fichier": "captures/profils/PRO-025--m390--avant-zoom-compteur.webp",
+    "largeur": 740,
+    "hauteur": 116,
+    "octets": 3010
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ma demande non acceptée compte « 1 abonné »",
+   "x": 0.5,
+   "y": 0.411,
+   "w": 0.306,
+   "h": 0.055,
+   "sel": "#modalContent .main-profile-stat:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Contour : demande en vol",
+   "x": 0.732,
+   "y": 0.5,
+   "w": 0.444,
+   "h": 0.046,
+   "sel": "#visitedProfileActions [id^=followBtn_]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.profile-dots-btn.on-cover",
+     "texte": "Options du profil",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedProfileActions > button.btn.primary",
+     "texte": "Message",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000f006",
+     "texte": "Demande envoyée — appuie pour l'annuler",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-025--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 34032,
+  "zooms": [
+   {
+    "nom": "compteur",
+    "titre": "1 abonné",
+    "fichier": "captures/profils/PRO-025--m390--apres-zoom-compteur.webp",
+    "largeur": 740,
+    "hauteur": 116,
+    "octets": 3122
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Seuls les abonnés acceptés",
+   "x": 0.5,
+   "y": 0.411,
+   "w": 0.306,
+   "h": 0.055,
+   "sel": "#modalContent .main-profile-stat:nth-child(2)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:53609/index.html#",
+   "Audio failed: http://127.0.0.1:53609/index.html#",
+   "Audio failed: http://127.0.0.1:53609/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

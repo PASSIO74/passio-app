@@ -1,0 +1,135 @@
+{
+ "id": "PRO-017",
+ "domaine": "profils",
+ "scenario": "recadreur",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Couverture changée DEPUIS « Modifier » : le recadreur s'ouvre sous la modale",
+ "note": "",
+ "prisLe": "2026-11-10T19:16:36.879Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Mon profil principal",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-017--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 57194,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Photo choisie… rien ne bouge",
+   "x": 0.362,
+   "y": 0.323,
+   "w": 0.624,
+   "h": 0.1,
+   "sel": "#editCoverPreview",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Recadreur caché derrière (z-index 6000 < 10001)",
+   "x": 0.5,
+   "y": 0.173,
+   "w": 0.122,
+   "h": 0.006,
+   "sel": ".modal-handle",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div#modalContent > div.field > div > button.btn.ghost",
+     "texte": "Changer",
+     "w": 91.4,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "input#editIsPrivate",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-017--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 31916,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le recadreur passe devant la modale",
+   "x": 0.5,
+   "y": 0.433,
+   "w": 0.867,
+   "h": 0.325,
+   "sel": "#pcropView",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Valider rouvre « Modifier » avec la saisie",
+   "x": 0.724,
+   "y": 0.713,
+   "w": 0.419,
+   "h": 0.066,
+   "sel": "#pcropOk",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

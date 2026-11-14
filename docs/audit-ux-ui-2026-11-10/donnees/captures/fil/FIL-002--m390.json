@@ -1,0 +1,292 @@
+{
+ "id": "FIL-002",
+ "domaine": "fil",
+ "scenario": "fil-cartes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Carte de publication — photo, barre d'actions, pastille de réactions",
+ "note": "",
+ "prisLe": "2026-11-10T17:37:29.166Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-002--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 51070,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Barre d'actions",
+    "fichier": "captures/fil/FIL-002--m390--avant-zoom-actions.webp",
+    "largeur": 680,
+    "hauteur": 116,
+    "octets": 2154
+   },
+   {
+    "nom": "entete",
+    "titre": "En-tête de carte",
+    "fichier": "captures/fil/FIL-002--m390--avant-zoom-entete.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 5992
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 🤍 5 » : cœur gris alors que le serveur dit que j'ai déjà aimé ; nom accessible = l'emoji",
+   "x": 0.143,
+   "y": 0.569,
+   "w": 0.116,
+   "h": 0.031,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-action=\"like\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« 💬 34 » en 12,5 px ; la discussion titrera « (37) »",
+   "x": 0.278,
+   "y": 0.569,
+   "w": 0.134,
+   "h": 0.031,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-cmtcount]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » de 30 px, intitulé « Signaler ou bloquer »",
+   "x": 0.732,
+   "y": 0.134,
+   "w": 0.077,
+   "h": 0.036,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .post-menu-btn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 31,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip",
+     "texte": "🔥 3",
+     "w": 30.5,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 16
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:64475/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:64475/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-002--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 51740,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Barre d'actions",
+    "fichier": "captures/fil/FIL-002--m390--apres-zoom-actions.webp",
+    "largeur": 680,
+    "hauteur": 142,
+    "octets": 2892
+   },
+   {
+    "nom": "entete",
+    "titre": "En-tête de carte",
+    "fichier": "captures/fil/FIL-002--m390--apres-zoom-entete.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 5992
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Icône SVG pleine et violette : mon j'aime lu du serveur est affiché ; nom « J'aime — 5 »",
+   "x": 0.151,
+   "y": 0.577,
+   "w": 0.133,
+   "h": 0.052,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-action=\"like\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Compteurs en 13,5 px, encre pleine, cibles de 44 px",
+   "x": 0.304,
+   "y": 0.577,
+   "w": 0.152,
+   "h": 0.052,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-cmtcount]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » porté à 44 px",
+   "x": 0.732,
+   "y": 0.134,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .post-menu-btn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,184 @@
+{
+ "id": "SOC-001",
+ "domaine": "socle",
+ "scenario": "ecrans-principaux",
+ "vue": "m430",
+ "gabarit": "Mobile grand 430×932",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil (Découvrir) — écran principal, haut de page",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:24.815Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#feed"
+ },
+ "avant": {
+  "fichier": "captures/socle/SOC-001--m430--avant.webp",
+  "largeur": 860,
+  "hauteur": 1864,
+  "octets": 73430,
+  "zooms": [
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure",
+    "fichier": "captures/socle/SOC-001--m430--avant-zoom-barre.webp",
+    "largeur": 860,
+    "hauteur": 128,
+    "octets": 5192
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Explorer : 40 × 44 px, collé à Notifications (41 × 44 px).",
+   "x": 0.742,
+   "y": 0.034,
+   "w": 0.079,
+   "h": 0.036,
+   "sel": ".topbar-right .topbar-bell",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Zone « Mon profil » : 36 px de haut.",
+   "x": 0.235,
+   "y": 0.034,
+   "w": 0.406,
+   "h": 0.039,
+   "sel": ".topbar-left",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 430,
+   "h": 932
+  },
+  "cibles": {
+   "total": 36,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 217.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Malik Benali",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Malik Benali 🏋️ Sport · 55 min",
+     "w": 187.7,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 430,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/socle/SOC-001--m430--apres.webp",
+  "largeur": 860,
+  "hauteur": 1864,
+  "octets": 73500,
+  "zooms": [
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure",
+    "fichier": "captures/socle/SOC-001--m430--apres-zoom-barre.webp",
+    "largeur": 860,
+    "hauteur": 128,
+    "octets": 5150
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Chaque icône a une zone de 44 × 44 px, séparée de sa voisine.",
+   "x": 0.684,
+   "y": 0.034,
+   "w": 0.102,
+   "h": 0.047,
+   "sel": ".topbar-right .topbar-bell",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Zone « Mon profil » portée à 44 px de haut.",
+   "x": 0.235,
+   "y": 0.034,
+   "w": 0.406,
+   "h": 0.047,
+   "sel": ".topbar-left",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

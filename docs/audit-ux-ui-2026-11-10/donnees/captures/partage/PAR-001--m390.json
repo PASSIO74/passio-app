@@ -1,0 +1,171 @@
+{
+ "id": "PAR-001",
+ "domaine": "partage",
+ "scenario": "publication",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil — bouton « Partager » de la carte d'une publication",
+ "note": "",
+ "prisLe": "2026-11-10T17:44:11.447Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-001--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48834,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Rangée d'actions de la carte",
+    "fichier": "captures/partage/PAR-001--m390--avant-zoom-actions.webp",
+    "largeur": 680,
+    "hauteur": 116,
+    "octets": 1612
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Icône seule, 44 × 31 px",
+   "x": 0.517,
+   "y": 0.693,
+   "w": 0.113,
+   "h": 0.037,
+   "sel": "#screen-feed .post[data-postid=\"pa_lea_1\"] .post-action[aria-label=\"Partager\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "w": 45.3,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "💬 0",
+     "w": 45.3,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-001--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 44120,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Rangée d'actions de la carte",
+    "fichier": "captures/partage/PAR-001--m390--apres-zoom-actions.webp",
+    "largeur": 680,
+    "hauteur": 142,
+    "octets": 1694
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Cible portée à 44 × 44 px, icône inchangée",
+   "x": 0.517,
+   "y": 0.716,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#screen-feed .post[data-postid=\"pa_lea_1\"] .post-action[aria-label=\"Partager\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

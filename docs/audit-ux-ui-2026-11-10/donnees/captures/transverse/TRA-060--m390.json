@@ -1,0 +1,111 @@
+{
+ "id": "TRA-060",
+ "domaine": "transverse",
+ "scenario": "hors-ligne",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Bandeau distant (message de l'équipe) au-dessus de la barre",
+ "note": "Bandeau posé par le cache des réglages distants (simulé : le module est inerte en local, réactivé par window.PASSIO_REGLAGES_DISTANTS).",
+ "prisLe": "2026-11-10T20:01:38.375Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-060--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 69656,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Fixé en haut (z-index 10050) : il recouvre la barre (cloche, réglages)",
+   "x": 0.5,
+   "y": 0.036,
+   "w": 1,
+   "h": 0.071,
+   "sel": "#passioBandeauDistant",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 29,
+   "sous44": [
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 18,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-060--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 65824,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le bandeau POUSSE l'écran au lieu de le recouvrir ; lavis violet, texte encre",
+   "x": 0.5,
+   "y": 0.036,
+   "w": 1,
+   "h": 0.071,
+   "sel": "#passioBandeauDistant",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

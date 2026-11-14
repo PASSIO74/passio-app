@@ -1,0 +1,89 @@
+{
+ "id": "ENT-003",
+ "domaine": "entree",
+ "scenario": "choix-passions",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Panneau « Qu'est-ce qui te passionne ? » — ouvert depuis la carte",
+ "note": "",
+ "prisLe": "2026-11-10T19:35:31.123Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Qu'est-ce qui te passionne ?",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-003--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 37958,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Recherche dans les 5 001 passions, champ en 16 px.",
+   "x": 0.5,
+   "y": 0.329,
+   "w": 0.9,
+   "h": 0.077,
+   "sel": "#frSearch",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le bouton dit ce qui manque (« Choisis au moins une passion »).",
+   "x": 0.5,
+   "y": 0.838,
+   "w": 0.9,
+   "h": 0.075,
+   "sel": "#frValider",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

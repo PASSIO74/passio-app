@@ -1,0 +1,150 @@
+{
+ "id": "PRO-022",
+ "domaine": "profils",
+ "scenario": "profil-visite",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Profil visité — menu « ⋯ » (Partager · Signaler · Bloquer)",
+ "note": "",
+ "prisLe": "2026-11-10T19:16:55.490Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-022--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52990,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Bloquer : agit au premier appui",
+   "x": 0.587,
+   "y": 0.192,
+   "w": 0.503,
+   "h": 0.045,
+   "sel": "#profileDotsMenu .danger",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 22,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.profile-dots-btn.on-cover",
+     "texte": "Options du profil",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedProfileActions > button.btn.primary",
+     "texte": "Message",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 173.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Partager le profil",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Signaler",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item.danger",
+     "texte": "Bloquer",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 23,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item.danger",
+     "texte": "Bloquer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 13.5
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62869/index.html#",
+   "Audio failed: http://127.0.0.1:62869/index.html#",
+   "Audio failed: http://127.0.0.1:62869/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

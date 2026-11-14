@@ -1,0 +1,91 @@
+{
+ "id": "PRO-047",
+ "domaine": "profils",
+ "scenario": "plafond-arme",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fenêtre de limite des passions — plafond ARMÉ (état conditionnel, pas la règle en vigueur)",
+ "note": "",
+ "prisLe": "2026-11-10T19:26:25.344Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-047--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37188,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "N'apparaît qu'avec PASSIO_PLAFOND_PASSIONS",
+   "x": null,
+   "y": null,
+   "w": null,
+   "h": null,
+   "sel": "#modalContent .modal-title, #modalContent h2, #modalContent h3",
+   "trouve": false
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "J'ai compris",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:64101/index.html#",
+   "Audio failed: http://127.0.0.1:64101/index.html#",
+   "Audio failed: http://127.0.0.1:64101/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

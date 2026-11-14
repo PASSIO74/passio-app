@@ -1,0 +1,154 @@
+{
+ "id": "PCS-006",
+ "domaine": "parcours",
+ "scenario": "coeur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Étape 6 — « Retour » depuis la conversation : le contexte d'origine est perdu",
+ "note": "On venait du profil de Tom, ouvert depuis le fil. « Retour » mène à la liste des messages : le profil et le fil ont disparu, il faut revenir au fil par la barre basse.",
+ "prisLe": "2026-11-10T17:34:51.805Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/parcours/PCS-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 78594,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "On atterrit dans « Messages », pas là d'où l'on venait.",
+   "x": 0.178,
+   "y": 0.121,
+   "w": 0.273,
+   "h": 0.036,
+   "sel": "#screen-messages h1, #screen-messages .section-title, #screen-messages .v6a-titre",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les conversations d'exemple restent mêlées à la vraie conversation.",
+   "x": 0.5,
+   "y": 0.404,
+   "w": 0.918,
+   "h": 0.1,
+   "sel": "#screen-messages .msg-card >> nth=1",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 29,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Musique · Cuisine · Toi : Salut Tom ! Je viendrais bien, il reste de l",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse \ud83c",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Photo · Mardi 19h, atelier rue Vauban. Apporte un négatif que tu aimes",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Littérature · Justement je viens de finir. Book club mensuel chez moi ",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/parcours/PCS-006--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 54782,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Retour » ramène au profil d'où la conversation a été ouverte (lui-même posé sur le fil, à la même position).",
+   "x": 0.732,
+   "y": 0.523,
+   "w": 0.444,
+   "h": 0.046,
+   "sel": "#modalContent [id^='followBtn_']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

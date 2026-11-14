@@ -1,0 +1,148 @@
+{
+ "id": "FIL-080",
+ "domaine": "fil",
+ "scenario": "visiteur",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Fil d'un visiteur — carte de bienvenue puis « Exemples PASSIO »",
+ "note": "",
+ "prisLe": "2026-11-10T17:43:32.939Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-080--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 61922,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Carte de bienvenue : une action principale claire",
+   "x": 0.5,
+   "y": 0.582,
+   "w": 0.867,
+   "h": 0.292,
+   "sel": ".fr-welcome",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Pas encore de publication de ta communauté » + « Publier la première » : un visiteur n'a ni communauté ni compte",
+   "x": 0.5,
+   "y": 0.895,
+   "w": 0.833,
+   "h": 0.277,
+   "sel": ".feed-exemples-sep",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Le premier contenu n'apparaît qu'à 670 px sur 844",
+   "x": 0.5,
+   "y": 1.57,
+   "w": 0.911,
+   "h": 1.042,
+   "sel": "#feedList .post",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 25,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-080--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 57582,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Pour un visiteur : une ligne, aucun second bouton violet en concurrence avec « Choisir mes passions »",
+   "x": 0.5,
+   "y": 0.816,
+   "w": 0.833,
+   "h": 0.12,
+   "sel": ".feed-exemples-sep",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le premier contenu remonte d'environ 110 px",
+   "x": 0.5,
+   "y": 1.413,
+   "w": 0.911,
+   "h": 1.042,
+   "sel": "#feedList .post",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

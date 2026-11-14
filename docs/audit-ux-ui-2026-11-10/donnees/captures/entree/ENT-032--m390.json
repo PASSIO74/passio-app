@@ -1,0 +1,97 @@
+{
+ "id": "ENT-032",
+ "domaine": "entree",
+ "scenario": "compte-navigation",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille « Créer » — six choix",
+ "note": "",
+ "prisLe": "2026-11-10T19:32:57.077Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-032--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 54704,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Croix, fond et Échap la ferment ; le retour système, non (il navigue dessous).",
+   "x": 0.915,
+   "y": 0.64,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": "#v2CreateSheet .v2-sheet-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Publication » ici, « Créer un post » sur le profil, « Publier une Passio » dans le fil.",
+   "x": 0.265,
+   "y": 0.726,
+   "w": 0.449,
+   "h": 0.108,
+   "sel": "#v2CreateSheet [data-v2-create=\"post\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 7,
+   "sous44": [
+    {
+     "el": "div#v2CreateSheet > div.v2-sheet > div.v2-sheet-head > button.v2-sheet-close",
+     "texte": "Fermer",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,174 @@
+{
+ "id": "PCS-001",
+ "domaine": "parcours",
+ "scenario": "coeur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Étape 1 — Découvrir : la publication de Tom annonce une activité (fil à l'ouverture)",
+ "note": "La publication porte la pastille « Rencontrer » et un `event_id`, mais sa porte « Voir l'activité » n'est pas peinte : l'activité arrive du serveur après le premier rendu du fil et la carte n'est pas repeinte.",
+ "prisLe": "2026-11-10T17:34:39.840Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/parcours/PCS-001--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 72758,
+  "zooms": [
+   {
+    "nom": "pied-carte",
+    "titre": "Pied de la carte : aucune porte vers l'activité",
+    "fichier": "captures/parcours/PCS-001--m390--avant-zoom-pied-carte.webp",
+    "largeur": 716,
+    "hauteur": 864,
+    "octets": 25794
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La pastille « Rencontrer » annonce un rendez-vous…",
+   "x": 0.818,
+   "y": 0.368,
+   "w": 0.196,
+   "h": 0.029,
+   "sel": "#feedList .post .post-mood-tag",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "…mais aucune porte ne mène à l'activité pendant la première minute (mesuré : absente à 5, 20 et 40 s, présente à 60 s).",
+   "x": 0.5,
+   "y": 0.791,
+   "w": 0.831,
+   "h": 0.05,
+   "sel": "#feedList .post .post-actions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 34,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Tom Girard",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Tom Girard 🎸 Musique · 4 min",
+     "w": 147.7,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 20,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/parcours/PCS-001--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 69116,
+  "zooms": [
+   {
+    "nom": "pied-carte",
+    "titre": "Pied de la carte : aucune porte vers l'activité",
+    "fichier": "captures/parcours/PCS-001--m390--apres-zoom-pied-carte.webp",
+    "largeur": 716,
+    "hauteur": 950,
+    "octets": 27632
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Voir l'activité » est là dès que l'activité est connue (repeint de la carte à l'arrivée des activités), sans attendre le rafraîchissement d'une minute.",
+   "x": 0.751,
+   "y": 0.842,
+   "w": 0.257,
+   "h": 0.052,
+   "sel": "#feedList .post .v3-tempt",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,148 @@
+{
+ "id": "IRL-010",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-liste",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rencontrer — compte connecté : vraies activités et exemples mêlés, distance sans position",
+ "note": "Aucune position accordée (la demande reste sans réponse dans le banc, comme une invite ignorée).",
+ "prisLe": "2026-11-10T18:12:57.880Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-010--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 44376,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« environ 391 km » : distance depuis Paris, position inconnue",
+   "x": 0.625,
+   "y": 1.365,
+   "w": 0.589,
+   "h": 0.027,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_09\"] .v4a2-ou",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Pastille 📍 au lieu de l'emoji de la passion",
+   "x": 0.189,
+   "y": 1.345,
+   "w": 0.217,
+   "h": 0.122,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_09\"] .v4a2-visuel",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Preuve sociale (personnes suivies)",
+   "x": 0.5,
+   "y": 1.54,
+   "w": 0.839,
+   "h": 0.059,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_09\"] .event-social-proof",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 16,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-010--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 46766,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Ville seule tant qu'aucune référence n'existe",
+   "x": 0.625,
+   "y": 1.449,
+   "w": 0.589,
+   "h": 0.027,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_09\"] .v4a2-ou",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Une porte visible vers « Où ? » (sélecteur existant)",
+   "x": 0.5,
+   "y": 0.434,
+   "w": 0.911,
+   "h": 0.069,
+   "sel": "#maqLieu",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

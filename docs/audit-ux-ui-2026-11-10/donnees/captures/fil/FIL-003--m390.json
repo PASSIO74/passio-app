@@ -1,0 +1,274 @@
+{
+ "id": "FIL-003",
+ "domaine": "fil",
+ "scenario": "fil-cartes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Carte — aperçu de deux commentaires et porte « Trouver une activité »",
+ "note": "",
+ "prisLe": "2026-11-10T17:37:30.910Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-003--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 66382,
+  "zooms": [
+   {
+    "nom": "apercu",
+    "titre": "Aperçu des commentaires",
+    "fichier": "captures/fil/FIL-003--m390--avant-zoom-apercu.webp",
+    "largeur": 680,
+    "hauteur": 230,
+    "octets": 7586
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 🤍 0 » alors que ce commentaire a 2 j'aime (l'aperçu ne lit pas les interactions) ; icônes 💬 😊 sans libellé",
+   "x": 0.523,
+   "y": 0.215,
+   "w": 0.682,
+   "h": 0.014,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .comment .comment-actions",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Porte vers l'IRL, discrète, 44 px",
+   "x": 0.706,
+   "y": 0.385,
+   "w": 0.348,
+   "h": 0.052,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .v3-tempt",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 39,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "🤍 5",
+     "w": 45.3,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "💬 34",
+     "w": 52.4,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "Partager",
+     "w": 44,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip",
+     "texte": "🔥 3",
+     "w": 30.5,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Camille Audit",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Camille Audit 🎸 Musique · 15 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 20
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 22,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:64475/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:64475/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-003--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 69692,
+  "zooms": [
+   {
+    "nom": "apercu",
+    "titre": "Aperçu des commentaires",
+    "fichier": "captures/fil/FIL-003--m390--apres-zoom-apercu.webp",
+    "largeur": 680,
+    "hauteur": 200,
+    "octets": 6868
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Aperçu en lecture seule : les actions (et leurs compteurs justes) vivent dans la discussion, ouverte d'un toucher",
+   "x": 0.5,
+   "y": 0.166,
+   "w": 0.831,
+   "h": 0.1,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .comment",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

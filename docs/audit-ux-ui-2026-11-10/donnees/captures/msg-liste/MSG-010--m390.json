@@ -1,0 +1,175 @@
+{
+ "id": "MSG-010",
+ "domaine": "msg-liste",
+ "scenario": "groupes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Nouveau groupe — formulaire",
+ "note": "",
+ "prisLe": "2026-11-10T17:39:58.030Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-010--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 38062,
+  "zooms": [
+   {
+    "nom": "membres",
+    "titre": "Membres à inviter",
+    "fichier": "captures/msg-liste/MSG-010--m390--avant-zoom-membres.webp",
+    "largeur": 732,
+    "hauteur": 464,
+    "octets": 11156
+   },
+   {
+    "nom": "passions",
+    "titre": "Passions du groupe",
+    "fichier": "captures/msg-liste/MSG-010--m390--avant-zoom-passions.webp",
+    "largeur": 740,
+    "hauteur": 96,
+    "octets": 1754
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Dix personnages d'exemple, aucune vraie personne, aucune recherche",
+   "x": 0.5,
+   "y": 0.775,
+   "w": 0.908,
+   "h": 0.261,
+   "sel": ".group-user-list",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Passion obligatoire, case de 32 px de haut",
+   "x": 0.5,
+   "y": 0.577,
+   "w": 0.908,
+   "h": 0.038,
+   "sel": ".group-passion-grid",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#modalContent > div.group-passion-grid > div.group-passion-option",
+     "texte": "🎸 Musique",
+     "w": 114,
+     "h": 32,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Créer le groupe",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-010--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47472,
+  "zooms": [
+   {
+    "nom": "membres",
+    "titre": "Membres à inviter",
+    "fichier": "captures/msg-liste/MSG-010--m390--apres-zoom-membres.webp",
+    "largeur": 732,
+    "hauteur": 460,
+    "octets": 12158
+   },
+   {
+    "nom": "passions",
+    "titre": "Passions du groupe",
+    "fichier": "captures/msg-liste/MSG-010--m390--apres-zoom-passions.webp",
+    "largeur": 740,
+    "hauteur": 120,
+    "octets": 2136
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "On cherche de vraies personnes",
+   "x": 0.5,
+   "y": 0.611,
+   "w": 0.908,
+   "h": 0.058,
+   "sel": ".mq-rech",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Proposées d'abord : celles à qui j'ai déjà écrit",
+   "x": 0.5,
+   "y": 0.779,
+   "w": 0.908,
+   "h": 0.258,
+   "sel": ".group-user-list",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Passion facultative (règle métier à trancher), case de 44 px",
+   "x": 0.5,
+   "y": 0.507,
+   "w": 0.908,
+   "h": 0.052,
+   "sel": ".group-passion-grid",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

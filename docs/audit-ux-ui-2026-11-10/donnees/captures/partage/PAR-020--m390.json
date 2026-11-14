@@ -1,0 +1,196 @@
+{
+ "id": "PAR-020",
+ "domaine": "partage",
+ "scenario": "activite",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche d'activité — porte « Partager » du haut",
+ "note": "",
+ "prisLe": "2026-11-10T17:52:15.577Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_par_lea"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-020--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48694,
+  "zooms": [
+   {
+    "nom": "haut",
+    "titre": "Bouton du coin haut droit",
+    "fichier": "captures/partage/PAR-020--m390--avant-zoom-haut.webp",
+    "largeur": 142,
+    "hauteur": 146,
+    "octets": 802
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Flèche courbe : pas l'icône de partage du reste de l'app",
+   "x": 0.912,
+   "y": 0.043,
+   "w": 0.115,
+   "h": 0.053,
+   "sel": "#eventDetailShareBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Atelier",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Atelier lutherie : régler son chevalet",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.soon",
+     "texte": "Dans 3 jours",
+     "ratio": 1.68,
+     "seuil": 4.5,
+     "couleur": "#f59e0b",
+     "fond": "#eee0e1",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 9
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-020--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48950,
+  "zooms": [
+   {
+    "nom": "haut",
+    "titre": "Bouton du coin haut droit",
+    "fichier": "captures/partage/PAR-020--m390--apres-zoom-haut.webp",
+    "largeur": 142,
+    "hauteur": 146,
+    "octets": 1170
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même icône à nœuds que partout (shareIconSvg)",
+   "x": 0.912,
+   "y": 0.043,
+   "w": 0.115,
+   "h": 0.053,
+   "sel": "#eventDetailShareBtn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,217 @@
+{
+ "id": "PRO-021",
+ "domaine": "profils",
+ "scenario": "profil-visite",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Profil visité — Léa (publique, suivie, me suit)",
+ "note": "",
+ "prisLe": "2026-11-10T19:18:40.903Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-021--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 40676,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Message / ✓ Suivi",
+    "fichier": "captures/profils/PRO-021--t768--avant-zoom-actions.webp",
+    "largeur": 1116,
+    "hauteur": 77,
+    "octets": 3256
+   },
+   {
+    "nom": "filtres",
+    "titre": "« Posts » … « Audio / podcast »",
+    "fichier": "captures/profils/PRO-021--t768--avant-zoom-filtres.webp",
+    "largeur": 1116,
+    "hauteur": 111,
+    "octets": 3490
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Deux boutons « pleins », 39 px, texte 12 px",
+   "x": 0.5,
+   "y": 0.498,
+   "w": 0.953,
+   "h": 0.038,
+   "sel": "#visitedProfileActions",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« posts » ici, « passions » chez moi",
+   "x": 0.5,
+   "y": 0.424,
+   "w": 0.958,
+   "h": 0.045,
+   "sel": "#modalContent .main-profile-stats",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Posts », « Audio / podcast » ≠ « Tout », « Audio »",
+   "x": 0.5,
+   "y": 0.728,
+   "w": 0.953,
+   "h": 0.061,
+   "sel": "#visitedTabs",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.profile-dots-btn.on-cover",
+     "texte": "Options du profil",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedProfileActions > button.btn.primary",
+     "texte": "Message",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 241,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-body",
+     "texte": "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'ach",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-021--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 41480,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Message / ✓ Suivi",
+    "fichier": "captures/profils/PRO-021--t768--apres-zoom-actions.webp",
+    "largeur": 1116,
+    "hauteur": 84,
+    "octets": 3862
+   },
+   {
+    "nom": "filtres",
+    "titre": "« Posts » … « Audio / podcast »",
+    "fichier": "captures/profils/PRO-021--t768--apres-zoom-filtres.webp",
+    "largeur": 1116,
+    "hauteur": 111,
+    "octets": 3984
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« ✓ Suivi » en contour : un état, pas l'action principale",
+   "x": 0.741,
+   "y": 0.501,
+   "w": 0.471,
+   "h": 0.043,
+   "sel": "#visitedProfileActions [id^=followBtn_]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« publications »",
+   "x": 0.5,
+   "y": 0.424,
+   "w": 0.958,
+   "h": 0.045,
+   "sel": "#modalContent .main-profile-stats",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Mêmes mots que mon profil, « Tout » coché",
+   "x": 0.5,
+   "y": 0.733,
+   "w": 0.953,
+   "h": 0.061,
+   "sel": "#visitedTabs",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62869/index.html#",
+   "Audio failed: http://127.0.0.1:62869/index.html#",
+   "Audio failed: http://127.0.0.1:62869/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

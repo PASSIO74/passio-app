@@ -1,0 +1,185 @@
+{
+ "id": "MSG-030",
+ "domaine": "msg-liste",
+ "scenario": "archives",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — une conversation épinglée (geste réel), une archivée encore non lue (simulé)",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:32.973Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-030--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 66428,
+  "zooms": [
+   {
+    "nom": "bandeau",
+    "titre": "Bandeau « Archivées »",
+    "fichier": "captures/msg-liste/MSG-030--m390--avant-zoom-bandeau.webp",
+    "largeur": 740,
+    "hauteur": 108,
+    "octets": 1820
+   },
+   {
+    "nom": "onglet",
+    "titre": "Onglet Messages",
+    "fichier": "captures/msg-liste/MSG-030--m390--avant-zoom-onglet.webp",
+    "largeur": 188,
+    "hauteur": 146,
+    "octets": 2430
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Archivées (1) » : rien ne dit qu'elle contient 2 non-lus",
+   "x": 0.5,
+   "y": 0.268,
+   "w": 0.918,
+   "h": 0.05,
+   "sel": "#archivedToggleRow button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "L'onglet compte 8 ; la liste visible n'en montre que 6",
+   "x": 0.731,
+   "y": 0.937,
+   "w": 0.041,
+   "h": 0.019,
+   "sel": ".nav-msg-badge",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 18,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#archivedToggleRow > button.btn.ghost",
+     "texte": "Archivées (1)",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 9,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Bonjour Camille, je vous confirme la répétition ouverte de samedi : no",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Rendez-vous 14 h devant la grille, on entre ensemble.",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-030--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 67536,
+  "zooms": [
+   {
+    "nom": "bandeau",
+    "titre": "Bandeau « Archivées »",
+    "fichier": "captures/msg-liste/MSG-030--m390--apres-zoom-bandeau.webp",
+    "largeur": 740,
+    "hauteur": 120,
+    "octets": 3732
+   },
+   {
+    "nom": "onglet",
+    "titre": "Onglet Messages",
+    "fichier": "captures/msg-liste/MSG-030--m390--apres-zoom-onglet.webp",
+    "largeur": 188,
+    "hauteur": 146,
+    "octets": 2430
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La rangée « Archivées » porte ses non-lus : le compte de l'onglet se retrouve",
+   "x": 0.5,
+   "y": 0.274,
+   "w": 0.918,
+   "h": 0.057,
+   "sel": "#archivedToggleRow .mq-arch",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

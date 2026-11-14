@@ -1,0 +1,129 @@
+{
+ "id": "IRL-040",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-filtre",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Vue Filtre — haut (Quand ? · Où ? · Distance)",
+ "note": "",
+ "prisLe": "2026-11-10T18:01:50.880Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-040--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 40082,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Aucune position » … alors que les distances partent de Paris",
+   "x": 0.804,
+   "y": 0.745,
+   "w": 0.231,
+   "h": 0.069,
+   "sel": "#v4a5Panneau button:has-text('Modifier')",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#v4a5Dist > button.v4a5-case",
+     "texte": "5 km",
+     "w": 76,
+     "h": 7,
+     "enLigne": false
+    },
+    {
+     "el": "div#v4a5Dist > button.v4a5-case",
+     "texte": "10 km",
+     "w": 65,
+     "h": 7,
+     "enLigne": false
+    },
+    {
+     "el": "div#v4a5Dist > button.v4a5-case",
+     "texte": "25 km",
+     "w": 65,
+     "h": 7,
+     "enLigne": false
+    },
+    {
+     "el": "div#v4a5Dist > button.v4a5-case",
+     "texte": "50 km",
+     "w": 76,
+     "h": 7,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

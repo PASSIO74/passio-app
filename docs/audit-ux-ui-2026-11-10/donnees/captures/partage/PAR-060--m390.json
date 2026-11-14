@@ -1,0 +1,67 @@
+{
+ "id": "PAR-060",
+ "domaine": "partage",
+ "scenario": "apercu",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Page d'aperçu servie aux robots (/p/<id>) — telle qu'un humain pris pour un robot la voit",
+ "note": "HTML rendu par la vraie fonction netlify/edge-functions/apercu.js exécutée dans Node, `fetch` remplacé par un faux PostgREST (aucun réseau). Un navigateur reçoit normalement un 302.",
+ "prisLe": "2026-11-10T17:50:45.425Z",
+ "ecran": {
+  "ecran": null,
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "Léa Fontaine · Musique",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-060--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 17590,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Page nue : trois lignes et un lien de taille de texte",
+   "x": 0.179,
+   "y": 0.131,
+   "w": 0.318,
+   "h": 0.02,
+   "sel": "a",
+   "trouve": true
+  }
+ ],
+ "mesures": null,
+ "apres": {
+  "fichier": "captures/partage/PAR-060--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 19922,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même page, sans script : un style en ligne suffit à rendre le lien évident (CSP à élargir à `style-src 'unsafe-inline'`)",
+   "x": 0.5,
+   "y": 0.177,
+   "w": 0.918,
+   "h": 0.061,
+   "sel": "a",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

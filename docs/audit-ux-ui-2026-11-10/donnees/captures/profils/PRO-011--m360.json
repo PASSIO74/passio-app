@@ -1,0 +1,163 @@
+{
+ "id": "PRO-011",
+ "domaine": "profils",
+ "scenario": "modifier",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Mon profil principal » — haut de la modale",
+ "note": "",
+ "prisLe": "2026-11-10T18:19:34.688Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Mon profil principal",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-011--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 61566,
+  "zooms": [
+   {
+    "nom": "libelles",
+    "titre": "Deux styles de libellés",
+    "fichier": "captures/profils/PRO-011--m360--avant-zoom-libelles.webp",
+    "largeur": 664,
+    "hauteur": 186,
+    "octets": 9280
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Titre hérité du multi-profil",
+   "x": 0.5,
+   "y": 0.214,
+   "w": 0.9,
+   "h": 0.033,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Libellé 16 px casse normale…",
+   "x": 0.249,
+   "y": 0.257,
+   "w": 0.397,
+   "h": 0.033,
+   "sel": "#modalContent .field > span",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "… puis 11 px capitales",
+   "x": 0.5,
+   "y": 0.385,
+   "w": 0.9,
+   "h": 0.023,
+   "sel": "#modalContent label.field > span",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div#modalContent > div.field > div > button.btn.ghost",
+     "texte": "Changer",
+     "w": 91.4,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "input#editIsPrivate",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-011--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 60546,
+  "zooms": [
+   {
+    "nom": "libelles",
+    "titre": "Deux styles de libellés",
+    "fichier": "captures/profils/PRO-011--m360--apres-zoom-libelles.webp",
+    "largeur": 664,
+    "hauteur": 186,
+    "octets": 8466
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Modifier mon profil »",
+   "x": 0.5,
+   "y": 0.214,
+   "w": 0.9,
+   "h": 0.033,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Un seul style de libellé",
+   "x": 0.259,
+   "y": 0.26,
+   "w": 0.418,
+   "h": 0.023,
+   "sel": "#modalContent .field > span",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

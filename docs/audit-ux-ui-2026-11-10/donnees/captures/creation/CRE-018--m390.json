@@ -1,0 +1,94 @@
+{
+ "id": "CRE-018",
+ "domaine": "creation",
+ "scenario": "bobine",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Bobine — capture, caméra indisponible (repli galerie)",
+ "note": "Pas de caméra dans le banc : branche `me-no-cam`.",
+ "prisLe": "2026-11-10T18:18:16.977Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-018--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 19236,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ne dit pas pourquoi la caméra ne s'ouvre pas",
+   "x": 0.5,
+   "y": 0.5,
+   "w": 1,
+   "h": 1,
+   "sel": "#mePlaceholder",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#meBackBtn",
+     "texte": "Fermer",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mePlaceholder > button.btn.primary",
+     "texte": "Choisir un média",
+     "w": 141.1,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 3,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

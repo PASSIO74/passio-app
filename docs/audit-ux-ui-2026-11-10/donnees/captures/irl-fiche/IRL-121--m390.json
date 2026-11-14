@@ -1,0 +1,206 @@
+{
+ "id": "IRL-121",
+ "domaine": "irl-fiche",
+ "scenario": "complet",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Après « Rejoindre la liste d'attente » — état « Sur liste d'attente »",
+ "note": "Toasts : « C'est complet — tu es sur liste d'attente » puis « Liste d'attente ». Le pied dit « Sur liste d'attente » sans dire ce qui se passera (inscription automatique, notification) — la feuille à trois états, elle, le disait.",
+ "prisLe": "2026-11-10T17:59:17.040Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_if_complete"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-121--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 49674,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "État liste d'attente",
+    "fichier": "captures/irl-fiche/IRL-121--m390--avant-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 266,
+    "octets": 8038
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Un état sans conséquence annoncée : que va-t-il se passer, comment serai-je prévenu·e ?",
+   "x": 0.5,
+   "y": 0.891,
+   "w": 0.918,
+   "h": 0.057,
+   "sel": "#eventDetailCta .v4b-rsvp-etat",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🏋️ Sport · Sport & activité",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Initiation escalade en salle",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.normal",
+     "texte": "Dans 4 jours",
+     "ratio": 1.76,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#d5e5eb",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 9
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-121--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47244,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "État liste d'attente",
+    "fichier": "captures/irl-fiche/IRL-121--m390--apres-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 322,
+    "octets": 10890
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La conséquence est dite là où l'on regarde (texte déjà présent dans la feuille à 3 états, app-07:4025). Aucune position affichée : la base ne la montre plus aux tiers (C-04).",
+   "x": 0.5,
+   "y": 0.874,
+   "w": 0.918,
+   "h": 0.09,
+   "sel": "#eventDetailCta .v4b-rsvp-etat",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le retrait nomme ce qu'il retire.",
+   "x": 0.5,
+   "y": 0.95,
+   "w": 0.4,
+   "h": 0.052,
+   "sel": "#eventDetailCta .v4b-rsvp-retirer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

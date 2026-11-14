@@ -1,0 +1,201 @@
+{
+ "id": "MSG-021",
+ "domaine": "msg-liste",
+ "scenario": "parametres",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paramètres d'une conversation 1:1 — haut du panneau",
+ "note": "",
+ "prisLe": "2026-11-10T17:46:05.830Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-021--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 39706,
+  "zooms": [
+   {
+    "nom": "items",
+    "titre": "Entrées",
+    "fichier": "captures/msg-liste/MSG-021--m390--avant-zoom-items.webp",
+    "largeur": 780,
+    "hauteur": 128,
+    "octets": 1912
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Paramètres » : de quelle conversation ?",
+   "x": 0.5,
+   "y": 0.036,
+   "w": 1,
+   "h": 0.071,
+   "sel": "#convSettingsPanel .conv-fp-head",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Couper les notifications » : sans effet mesuré (son, cloche et badge continuent)",
+   "x": 0.5,
+   "y": 0.207,
+   "w": 1,
+   "h": 0.066,
+   "sel": "#convSettingsContent .csetting-item:nth-of-type(3)",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Accusés de lecture » : réglage de TOUT le compte, rangé ici",
+   "x": 0.5,
+   "y": 0.539,
+   "w": 1,
+   "h": 0.066,
+   "sel": "#convSettingsContent .csetting-item:nth-of-type(8)",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Effacer les messages » en gris : paraît inactif, efface tout",
+   "x": 0.5,
+   "y": 0.775,
+   "w": 1,
+   "h": 0.066,
+   "sel": "#convSettingsContent .csetting-item:nth-of-type(12)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#convSettingsContent > div.csetting-item > div.csetting-label",
+     "texte": "Bloquer Malik Benali",
+     "ratio": 3.48,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f7f5fc",
+     "px": 14
+    },
+    {
+     "el": "div#convSettingsContent > div.csetting-item > div.csetting-label",
+     "texte": "Signaler",
+     "ratio": 3.48,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f7f5fc",
+     "px": 14
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-021--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 44904,
+  "zooms": [
+   {
+    "nom": "items",
+    "titre": "Entrées",
+    "fichier": "captures/msg-liste/MSG-021--m390--apres-zoom-items.webp",
+    "largeur": 780,
+    "hauteur": 114,
+    "octets": 1950
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le panneau porte le nom de la conversation",
+   "x": 0.5,
+   "y": 0.036,
+   "w": 1,
+   "h": 0.071,
+   "sel": "#convSettingsPanel .conv-fp-head",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Chaque réglage dit son effet",
+   "x": 0.5,
+   "y": 0.205,
+   "w": 1,
+   "h": 0.078,
+   "sel": "#convSettingsContent .csetting-item:nth-of-type(3)",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Icônes fonctionnelles en SVG, plus d'emoji",
+   "x": 0.5,
+   "y": 0.137,
+   "w": 1,
+   "h": 0.058,
+   "sel": "#convSettingsContent .csetting-item:nth-of-type(2)",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Quatre groupes ; « Accusés de lecture » rejoint Options › Confidentialité",
+   "x": 0.5,
+   "y": 0.437,
+   "w": 1,
+   "h": 0.037,
+   "sel": "#convSettingsContent .csetting-section:nth-of-type(7)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

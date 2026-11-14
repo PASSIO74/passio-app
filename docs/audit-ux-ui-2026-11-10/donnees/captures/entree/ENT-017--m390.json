@@ -1,0 +1,94 @@
+{
+ "id": "ENT-017",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Année de naissance de moins de 18 ans — refus",
+ "note": "",
+ "prisLe": "2026-11-10T19:30:16.226Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-017--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 57298,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« PASSIO est réservé aux 18 ans et plus. Si tu t'es trompé d'année, corrige-la. »",
+   "x": 0.5,
+   "y": -0.065,
+   "w": 0.785,
+   "h": 0.059,
+   "sel": "#authMsg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "input#authConsent",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 10,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 5,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 17,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

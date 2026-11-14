@@ -1,0 +1,137 @@
+{
+ "id": "PAR-042",
+ "domaine": "partage",
+ "scenario": "visiteur-publication",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — après « Créer mon compte » : le formulaire est ouvert DERRIÈRE la publication",
+ "note": "`#onboarding.active` (z-index 50) est sous `#postDetailPage` (z-index 200) : `ecran.onboarding` vaut vrai dans la fiche, et l'écran n'a pas changé.",
+ "prisLe": "2026-11-10T17:42:22.803Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#post"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-042--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27944,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Écran inchangé : le formulaire d'inscription est dessous",
+   "x": 0.5,
+   "y": 0.45,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "div#postDetailPage > div > button",
+     "texte": "Fermer la publication",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#postDetailContent > div > div",
+     "texte": "Commentaires (0)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#postDetailComments > div",
+     "texte": "Aucun commentaire — sois le premier 💬",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-042--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 56930,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le formulaire paraît (la page du contenu se referme, sa cible est mémorisée) ; l'annonce d'abonnement est lisible",
+   "x": 0.5,
+   "y": 0.693,
+   "w": 0.785,
+   "h": 0.123,
+   "sel": "#authInvite",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

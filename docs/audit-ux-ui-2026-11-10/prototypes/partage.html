@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="fr" class="proto-page passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototype — Partager, recevoir un lien, s'inscrire (audit UX/UI PASSIO)</title>
+  <link rel="stylesheet" href="kit/passio-styles.css">
+  <link rel="stylesheet" href="kit/kit.css">
+  <style>
+    /* LA PROPOSITION : uniquement ce qui change par rapport à l'application. */
+    /* Cadre des écrans maquettés (en-têtes simplifiés). */
+    .pp-tete { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #fff; border-bottom: 1px solid var(--border); font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 17px; color: var(--text); }
+    .pp-tete .pp-retour { min-width: 44px; min-height: 44px; margin: -10px -6px -10px -12px; border: none; background: none; font-size: 22px; color: var(--text); cursor: pointer; }
+    .pp-tete .pp-marque { color: var(--accent); letter-spacing: .08em; }
+    .pp-corps { padding: 14px 16px 120px; }
+    .proto-telephone .post { margin: 0 0 14px; }
+    .proto-telephone .post-media img { width: 100%; display: block; border-radius: 14px; }
+    /* PAR-C18 : toutes les cibles de partage à 44 px. */
+    .proto-telephone .post-actions .post-action { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+    /* PAR-C07 : la feuille de partage unifiée. */
+    .proto-telephone [data-couche].proto-ouverte { display: block; }
+    .proto-telephone .modal-backdrop { position: absolute; }
+    .proto-telephone .modal .modal-close { width: 44px; height: 44px; top: 8px; right: 8px; }
+    .pp-apercu { display: flex; gap: 12px; align-items: center; background: var(--accent-tile, #f3effe); border: 1px solid var(--accent-tile-line, #e2d9fb); border-radius: 18px; padding: 10px 12px; margin: 4px 0 6px; }
+    .pp-apercu img, .pp-apercu .pp-vig { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 12px; object-fit: cover; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+    .pp-apercu b { display: block; font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 14px; color: var(--text); line-height: 1.25; }
+    .pp-apercu span { display: block; font-size: 13px; color: #4b4763; line-height: 1.35; margin-top: 2px; }
+    .pp-qui { font-size: 13px; line-height: 1.4; color: #4b4763; margin: 0 2px 10px; }
+    .pp-ligne { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 12px; background: #fff; border: 1px solid var(--border); border-radius: 16px; margin-top: 8px; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
+    .pp-ligne:focus-visible, .pp-btn:focus-visible, .pp-retour:focus-visible, .post-action:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .pp-ligne i { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 12px; background: var(--accent-tile, #f3effe); color: var(--accent); display: flex; align-items: center; justify-content: center; font-style: normal; }
+    .pp-ligne b { display: block; font-weight: 700; font-size: 15px; }
+    .pp-ligne small { display: block; font-size: 13px; color: #4b4763; margin-top: 1px; }
+    .pp-ligne.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .pp-ligne.principal i { background: rgba(255,255,255,.18); color: #fff; }
+    .pp-ligne.principal small { color: #fff; }
+    /* PAR-C03 / PAR-C04 : la confirmation vit DANS la feuille. */
+    .pp-ok { display: none; gap: 10px; align-items: center; background: #e8f6ee; border: 1px solid #b9e2c9; color: #0f5c3d; border-radius: 14px; padding: 10px 12px; font-size: 14px; font-weight: 700; margin-top: 10px; }
+    body[data-ok="1"] .pp-ok { display: flex; }
+    body:not([data-objet="activite"]) [data-pp="inviter"] { display: none; }
+    /* PAR-C06 : l'originale citée dans la carte du repartage. */
+    .pp-cite { display: flex; gap: 12px; align-items: center; width: 100%; border: 1px solid var(--accent-tile-line, #e2d9fb); border-radius: 16px; padding: 10px; margin-top: 10px; background: var(--accent-tile, #f3effe); text-align: left; font: inherit; color: var(--text); cursor: pointer; min-height: 64px; }
+    .pp-cite img { width: 72px; height: 72px; border-radius: 12px; object-fit: cover; }
+    .pp-cite b { display: block; font-size: 14px; font-weight: 800; } .pp-cite span { display: block; font-size: 14px; color: #4b4763; line-height: 1.35; margin-top: 2px; } .pp-cite em { display: block; font-style: normal; font-weight: 700; font-size: 13px; color: var(--accent); margin-top: 4px; }
+    body:not([data-republie="1"]) #ppRepartage { display: none; }
+    /* Bobine et activité (écrans de départ simplifiés). */
+    .pp-bobine { flex: 1; position: relative; background: linear-gradient(180deg, #7c3aed, #3b0f8a); color: #fff; }
+    .pp-bobine .pp-legende { position: absolute; left: 16px; right: 90px; bottom: 28px; font-size: 15px; line-height: 1.4; }
+    .pp-bobine .pp-rail { position: absolute; right: 12px; bottom: 28px; display: grid; gap: 14px; justify-items: center; }
+    .pp-bobine .pp-rail button { width: 52px; min-height: 60px; border: none; background: none; color: #fff; font: 700 11px/1.2 system-ui, sans-serif; cursor: pointer; display: grid; gap: 4px; justify-items: center; }
+    .pp-bobine .pp-rail button span { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; }
+    .pp-couv { height: 190px; background: url(medias/couverture-evenement.jpg) center/cover; position: relative; }
+    .pp-couv .pp-rond { position: absolute; top: 12px; width: 44px; height: 44px; border-radius: 50%; border: none; background: rgba(23,21,43,.6); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; }
+    .pp-carte { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 14px 16px; margin-bottom: 12px; }
+    .pp-carte h2 { font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 19px; margin: 0 0 6px; color: var(--text); }
+    .pp-carte p { margin: 0; font-size: 15px; color: #4b4763; line-height: 1.45; }
+    .pp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; border-radius: 16px; border: 1px solid var(--border); background: #fff; color: var(--text); font: 700 15px/1 system-ui, sans-serif; cursor: pointer; }
+    .pp-btn.plein { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .pp-btn.irl { background: #c23a22; border-color: #c23a22; color: #fff; }  /* corail assombri (AA) : passage au réel */
+    /* PAR-C20 : l'invitation reste à l'écran. */
+    .pp-bandeau { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); padding: 12px 16px 16px; display: flex; gap: 12px; align-items: center; box-shadow: 0 -8px 24px rgba(24,18,48,.08); }
+    .pp-bandeau b { display: block; font-family: var(--v2-titre, Manrope, sans-serif); font-size: 15px; color: var(--text); } .pp-bandeau span { font-size: 13px; color: #4b4763; }
+    .pp-bandeau .pp-btn { width: auto; padding: 0 16px; white-space: nowrap; }
+    /* PAR-C01 : le formulaire est un ÉCRAN, il remplace le contenu au lieu de s'ouvrir dessous. */
+    .pp-champ { display: block; margin-top: 12px; font-size: 13px; font-weight: 700; color: #4b4763; }
+    .pp-champ input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font-size: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); }
+    .pp-invite { background: var(--accent-tile, #f3effe); border: 1px solid var(--accent-tile-line, #e2d9fb); border-radius: 16px; padding: 12px 14px; font-size: 15px; line-height: 1.45; color: var(--text); }
+    .pp-invite button { min-height: 44px; border: none; background: none; color: var(--accent); font: 700 15px/1 system-ui, sans-serif; text-decoration: underline; cursor: pointer; padding: 0 4px; }
+    /* PAR-C02 : le rappel parle du contenu rouvert. */
+    .pp-rappel { background: #e8f6ee; border: 1px solid #b9e2c9; color: #0f5c3d; border-radius: 14px; padding: 10px 12px; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+    body[data-aime="1"] #ppCoeur { color: #c23a22; font-weight: 800; }
+  </style>
+</head>
+<body data-objet="post">
+  <aside class="proto-notes">
+    <span class="proto-surtitre">Prototype · proposition</span>
+    <h1>Partager, recevoir un lien, s'inscrire</h1>
+    <p>Une seule feuille de partage pour une publication, une bobine et une activité ; puis ce que voit la personne qui reçoit le lien sans compte, jusqu'à son retour sur le contenu après l'inscription.</p>
+    <p class="proto-avis">Maquette interactive : rien n'est envoyé, rien n'est enregistré. Données fictives.</p>
+    <ol class="proto-etapes"></ol>
+    <div class="proto-commandes">
+      <button type="button" data-proto="precedent">Étape précédente</button>
+      <button type="button" class="principal" data-proto="suivant">Commencer le parcours</button>
+      <button type="button" data-proto="zones" aria-pressed="false">Montrer les zones cliquables</button>
+      <button type="button" data-proto="recommencer">Recommencer</button>
+    </div>
+    <p class="proto-legende">Flèches ← → : étape précédente / suivante. Le cadre corail désigne l'élément dont parle l'étape. On peut aussi cliquer librement dans le téléphone.</p>
+    <a class="proto-retour" href="../galerie/index.html#/prototypes">← Retour à la galerie</a>
+  </aside>
+  <div class="proto-scene">
+    <span class="proto-etiquette">Après · maquette interactive</span>
+    <div class="proto-telephone">
+
+      <!-- ÉCRAN : le fil (carte extraite de l'application, gestionnaires retirés) -->
+      <section data-ecran="fil">
+        <div class="pp-tete"><span class="pp-marque">PASSIO</span><span style="margin-left:auto;font-size:13px;font-weight:600;color:#4b4763;">Découvrir</span></div>
+        <div class="proto-defile"><div class="pp-corps">
+          <article class="post" id="ppRepartage">
+            <div class="post-header">
+              <div class="avatar" style="background:#6D32F4;">🎧</div>
+              <div class="post-author"><div class="post-author-name">Camille Audit</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · à l'instant</div></div>
+            </div>
+            <div style="font-size:13px;color:#4b4763;">a republié une publication</div>
+            <button type="button" class="pp-cite" id="ppCite" data-aller="publication"><img alt="" src="medias/photo-atelier.jpg"><span style="margin:0"><b>Léa Fontaine · Musique</b><span>Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</span><em>Voir la publication ›</em></span></button>
+          </article>
+          <article class="post">
+            <div class="post-header">
+              <div class="avatar" style="background:#8b5cf6;">🎸</div>
+              <div class="post-author"><div class="post-author-name">Léa Fontaine</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 12 min</div></div>
+              <span class="post-mood-tag" data-mood="creation">Idées</span>
+            </div>
+            <div class="post-body">Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</div>
+            <div class="post-media"><img alt="Guitare sur un établi" src="medias/photo-atelier.jpg"></div>
+            <div class="post-actions">
+              <button type="button" class="post-action" aria-label="Aimer">🤍 0</button>
+              <button type="button" class="post-action" aria-label="Commenter">💬 0</button>
+              <button type="button" class="post-action" id="ppPartagerPost" aria-label="Partager" data-action="partager" data-objet="post">
+                <svg class="share-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.7" x2="15.4" y2="6.3"></line><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"></line></svg>
+              </button>
+            </div>
+          </article>
+          <div class="pp-carte"><p>Autres portes de la même feuille :</p>
+            <button type="button" class="pp-btn" style="margin-top:10px" data-aller="bobine">Voir une bobine</button>
+            <button type="button" class="pp-btn" style="margin-top:8px" data-aller="activite">Voir une activité</button>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- ÉCRAN : une bobine -->
+      <section data-ecran="bobine">
+        <div class="pp-bobine">
+          <button type="button" class="pp-retour" data-aller="fil" aria-label="Fermer les bobines" style="position:absolute;top:10px;right:10px;min-width:44px;min-height:44px;border:none;border-radius:50%;background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer;">×</button>
+          <div class="pp-legende"><b>Léa Fontaine</b> · 🎸 Musique<br>Trente secondes d'arpèges.</div>
+          <div class="pp-rail">
+            <button type="button" aria-label="Aimer"><span>♡</span>0</button>
+            <button type="button" id="ppPartagerBobine" data-action="partager" data-objet="bobine"><span><svg class="share-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.7" x2="15.4" y2="6.3"></line><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"></line></svg></span>Partager</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ÉCRAN : une activité -->
+      <section data-ecran="activite">
+        <div class="pp-couv">
+          <button type="button" class="pp-rond" style="left:12px" data-aller="fil" aria-label="Retour">←</button>
+          <button type="button" class="pp-rond" style="right:12px" id="ppPartagerActivite" aria-label="Partager ou inviter" data-action="partager" data-objet="activite"><svg class="share-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.7" x2="15.4" y2="6.3"></line><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"></line></svg></button>
+        </div>
+        <div class="proto-defile"><div class="pp-corps">
+          <div class="pp-carte"><h2>Atelier lutherie : régler son chevalet</h2><p>Vendredi 13 novembre · 18:00<br>Atelier des Cordes, Lyon · 2 participants · 10 places</p></div>
+          <div class="pp-carte"><p>Deux heures pour apprendre à régler la hauteur des cordes. Apporte ta guitare, les outils sont sur place.</p></div>
+          <button type="button" class="pp-btn" data-action="partager" data-objet="activite">Partager ou inviter</button>
+          <button type="button" class="pp-btn irl" style="margin-top:10px">Je participe</button>
+        </div></div>
+      </section>
+
+      <!-- ÉCRAN : le visiteur arrive par le lien d'une publication -->
+      <section data-ecran="visiteur">
+        <div class="pp-tete"><button type="button" class="pp-retour" aria-label="Fermer la publication" data-aller="fil">←</button>Publication</div>
+        <div class="proto-defile"><div class="pp-corps">
+          <article class="post">
+            <div class="post-header"><div class="avatar" style="background:#8b5cf6;">🎸</div><div class="post-author"><div class="post-author-name">Léa Fontaine</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 12 min</div></div></div>
+            <div class="post-body">Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</div>
+            <div class="post-media"><img alt="Guitare sur un établi" src="medias/photo-atelier.jpg"></div>
+            <div class="post-actions">
+              <button type="button" class="post-action" id="ppCoeurVisiteur" aria-label="Aimer" data-ouvrir="gate">🤍 0</button>
+              <button type="button" class="post-action" aria-label="Commenter" data-ouvrir="gate">💬 0</button>
+            </div>
+          </article>
+        </div></div>
+        <div class="pp-bandeau" id="ppBandeau"><div style="flex:1;min-width:0"><b>Camille Audit t'invite sur PASSIO</b><span>Le réseau des passions : publier, découvrir, se retrouver en vrai.</span></div><button type="button" class="pp-btn plein" data-aller="inscription">Créer mon compte</button></div>
+      </section>
+
+      <!-- ÉCRAN : l'inscription (remplace le contenu, ne s'ouvre plus dessous) -->
+      <section data-ecran="inscription">
+        <div class="pp-tete"><button type="button" class="pp-retour" aria-label="Revenir à la publication" data-aller="visiteur">←</button>Créer mon compte</div>
+        <div class="proto-defile"><div class="pp-corps">
+          <div class="pp-rappel" style="background:#fff;border-color:var(--border);color:#17152B;font-weight:600;" id="ppPourquoi">Pour aimer la publication de Léa Fontaine. Tu y reviendras juste après.</div>
+          <div class="pp-invite" id="ppAnnonce">👋 Camille Audit t'invite sur PASSIO. En créant ton compte, tu suivras automatiquement Camille Audit. <button type="button">Ne pas suivre</button></div>
+          <label class="pp-champ">Adresse e-mail<input type="email" readonly value="exemple@passio-maquette.test" autocomplete="off"></label>
+          <label class="pp-champ">Nom d'utilisateur<input type="text" readonly value="Nouvelle venue"></label>
+          <button type="button" class="pp-btn plein" style="margin-top:18px" id="ppCreer" data-aller="retour">Créer mon compte (maquette)</button>
+          <button type="button" class="pp-btn" style="margin-top:8px" data-aller="visiteur">Continuer à explorer</button>
+        </div></div>
+      </section>
+
+      <!-- ÉCRAN : retour sur le contenu visé, compte créé -->
+      <section data-ecran="retour">
+        <div class="pp-tete"><button type="button" class="pp-retour" aria-label="Fermer la publication" data-aller="fil">←</button>Publication</div>
+        <div class="proto-defile"><div class="pp-corps">
+          <div class="pp-rappel" role="status" id="ppRappel">✓ Compte créé. Tu suis Camille Audit. Tu peux maintenant aimer cette publication.</div>
+          <article class="post">
+            <div class="post-header"><div class="avatar" style="background:#8b5cf6;">🎸</div><div class="post-author"><div class="post-author-name">Léa Fontaine</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 12 min</div></div></div>
+            <div class="post-body">Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</div>
+            <div class="post-media"><img alt="Guitare sur un établi" src="medias/photo-atelier.jpg"></div>
+            <div class="post-actions"><button type="button" class="post-action" id="ppCoeur" aria-label="Aimer" data-action="aimer">🤍 0</button><button type="button" class="post-action" aria-label="Commenter">💬 0</button></div>
+          </article>
+        </div></div>
+      </section>
+
+      <!-- ÉCRAN : la publication ouverte depuis la carte citée -->
+      <section data-ecran="publication">
+        <div class="pp-tete"><button type="button" class="pp-retour" aria-label="Fermer la publication" data-aller="fil">←</button>Publication</div>
+        <div class="proto-defile"><div class="pp-corps">
+          <article class="post">
+            <div class="post-header"><div class="avatar" style="background:#8b5cf6;">🎸</div><div class="post-author"><div class="post-author-name">Léa Fontaine</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 12 min</div></div></div>
+            <div class="post-body">Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</div>
+            <div class="post-media"><img alt="Guitare sur un établi" src="medias/photo-atelier.jpg"></div>
+          </article>
+        </div></div>
+      </section>
+
+      <!-- ÉCRAN : lien vers un contenu supprimé ou privé -->
+      <section data-ecran="mort">
+        <div class="pp-tete"><span class="pp-marque">PASSIO</span></div>
+        <div class="proto-defile"><div class="pp-corps">
+          <div class="pp-carte" id="ppMort"><h2>Cette publication n'est pas visible</h2><p>Elle a été supprimée, ou son auteur réserve ses publications à ses abonnés.</p>
+            <button type="button" class="pp-btn plein" style="margin-top:14px" data-aller="fil">Découvrir ce qui se partage sur PASSIO</button>
+            <button type="button" class="pp-btn" style="margin-top:8px" data-aller="inscription">Créer un compte</button>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- COUCHE : la feuille de partage unifiée -->
+      <div data-couche="partage">
+        <div class="modal-backdrop active" data-fermer="partage">
+          <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ppTitre" data-action="rien">
+            <button type="button" class="modal-close" aria-label="Fermer" data-fermer="partage">×</button>
+            <div class="modal-handle"></div>
+            <div class="modal-title" id="ppTitre">Partager</div>
+            <div class="pp-apercu" id="ppApercu"><div class="pp-vig" id="ppVig"></div><div><b id="ppApTitre"></b><span id="ppApTexte"></span></div></div>
+            <div class="pp-qui" id="ppQui"></div>
+            <button type="button" class="pp-ligne principal" id="ppEnvoyer" data-action="confirmer" data-message="Feuille du téléphone ouverte (maquette)"><i><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.7" x2="15.4" y2="6.3"/><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"/></svg></i><span><b>Envoyer à quelqu'un</b><small>WhatsApp, SMS, e-mail… par ton téléphone</small></span></button>
+            <button type="button" class="pp-ligne" id="ppCopier" data-action="confirmer" data-message="Lien copié — colle-le dans ta conversation"><i><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></i><span><b>Copier le lien</b><small id="ppLien"></small></span></button>
+            <button type="button" class="pp-ligne" data-pp="inviter" id="ppInviter" data-action="confirmer" data-message="Choisis qui inviter parmi tes abonnements (maquette)"><i><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M18 8v6M15 11h6"/></svg></i><span><b>Inviter mes abonnements</b><small>Une notification PASSIO, personne par personne</small></span></button>
+            <button type="button" class="pp-ligne" id="ppRepublier" data-action="republier"><i><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3"/><path d="M17 17H6l3 3"/><path d="M18 7v4"/><path d="M6 17v-4"/></svg></i><span><b>Republier dans mon fil</b><small>Tes abonnés la verront, avec un lien vers l'originale</small></span></button>
+            <div class="pp-ok" role="status" id="ppOk">✓ <span id="ppOkTexte"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COUCHE : la fenêtre « Crée ton compte pour… » (gabarit de l'application) -->
+      <div data-couche="gate">
+        <div class="modal-backdrop active" data-fermer="gate">
+          <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ppGateTitre" data-action="rien">
+            <button type="button" class="modal-close" aria-label="Fermer" data-fermer="gate">×</button>
+            <div class="modal-handle"></div>
+            <div class="modal-title" id="ppGateTitre">Crée ton compte pour aimer cette publication</div>
+            <div class="modal-subtitle" style="font-size:14px;color:#4b4763;">Tu reviendras sur cette publication juste après.</div>
+            <button type="button" class="pp-btn plein" id="ppGateCreer" data-aller="inscription">Créer mon compte</button>
+            <button type="button" class="pp-btn" style="margin-top:8px" data-aller="inscription">J'ai déjà un compte</button>
+            <button type="button" class="pp-btn" style="margin-top:8px" data-fermer="gate">Continuer à explorer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/json" id="proto-parcours">[
+    { "titre": "Le fil : un bouton de partage à 44 px", "note": "Même icône qu'aujourd'hui, cible agrandie (31 px de haut aujourd'hui). Touche-la.", "ecran": "fil", "cible": "#ppPartagerPost", "etat": { "ok": "0", "republie": "0", "objet": "post" }, "refs": "PAR-C18" },
+    { "titre": "Une seule feuille : ce qui part, à qui", "note": "Aperçu avec l'auteur et la vignette, une phrase sur ce que verra la personne et sur le lien qui porte ton nom, puis trois actions aux mêmes mots partout. L'envoi d'une publication à une personne de PASSIO n'existe pas dans l'application : il n'est pas ajouté ici.", "ecran": "fil", "couches": ["partage"], "cible": "#ppApercu", "etat": { "ok": "0", "objet": "post" }, "refs": "PAR-C07 · PAR-C09 · PAR-C10 · PAR-C11" },
+    { "titre": "La confirmation se voit", "note": "« Copier le lien » répond dans la feuille (aujourd'hui le toast passe dessous). Si la copie est refusée, le lien resterait affiché ici, sélectionnable.", "ecran": "fil", "couches": ["partage"], "cible": "#ppOk", "etat": { "ok": "1", "objet": "post" }, "refs": "PAR-C03 · PAR-C04 · PAR-C19" },
+    { "titre": "Republier : l'originale reste visible et ouvrable", "note": "La carte cite la publication de Léa (photo, auteur, extrait) et y mène, au lieu d'un texte seul.", "ecran": "fil", "cible": "#ppCite", "etat": { "republie": "1", "ok": "0" }, "refs": "PAR-C06" },
+    { "titre": "La même feuille depuis une bobine", "note": "Plus de liste de six réseaux : la feuille du téléphone. Le lien passe par la même fabrique que les publications (aperçu, invitation).", "ecran": "bobine", "couches": ["partage"], "cible": "#ppEnvoyer", "etat": { "objet": "bobine", "ok": "0" }, "refs": "PAR-C07 · PAR-C08 · PAR-C15" },
+    { "titre": "La même feuille depuis une activité", "note": "Date complète, heure et lieu dans l'aperçu ; « Inviter mes abonnements » rejoint la feuille au lieu d'être sous les commentaires. Une seule icône de partage.", "ecran": "activite", "couches": ["partage"], "cible": "#ppInviter", "etat": { "objet": "activite", "ok": "0" }, "refs": "PAR-C12 · PAR-C13 · PAR-C10" },
+    { "titre": "La personne qui reçoit le lien, sans compte", "note": "Elle arrive sur la publication, comme aujourd'hui. Nouveau : l'invitation et ce qu'est PASSIO restent à l'écran (aujourd'hui un toast de 6 s).", "ecran": "visiteur", "cible": "#ppBandeau", "refs": "PAR-C20" },
+    { "titre": "Elle veut aimer : la fenêtre, puis le formulaire — visible", "note": "Aujourd'hui « Créer mon compte » ouvre le formulaire DERRIÈRE la publication. Ici le formulaire remplace l'écran, rappelle pourquoi, et garde l'annonce d'abonnement avec « Ne pas suivre ».", "ecran": "inscription", "cible": "#ppAnnonce", "refs": "PAR-C01" },
+    { "titre": "Après l'inscription : retour sur la publication", "note": "Le contenu visé est rouvert et le rappel parle de ce qui est à l'écran. Aucune action n'est rejouée : c'est elle qui touche le cœur.", "ecran": "retour", "cible": "#ppCoeur", "etat": { "aime": "0" }, "refs": "PAR-C02" },
+    { "titre": "Lien vers un contenu supprimé ou privé", "note": "Un état d'arrivée qui reste (aujourd'hui : 8 s de silence puis un toast de 3 s), le même texte pour les deux cas — rien n'est révélé —, et une suite.", "ecran": "mort", "cible": "#ppMort", "refs": "PAR-C05" }
+  ]</script>
+  <script src="kit/kit.js"></script>
+  <script>
+    (function () {
+      var OBJETS = {
+        post: { img: "medias/photo-atelier.jpg", titre: "Léa Fontaine · Musique", texte: "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.", qui: "La personne verra cette publication, même sans compte. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/p/pa_lea_1" },
+        bobine: { emoji: "🎬", titre: "Bobine de Léa Fontaine · Musique", texte: "Trente secondes d'arpèges.", qui: "La personne verra cette bobine, même sans compte. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/p/pa_lea_2" },
+        activite: { emoji: "🎸", titre: "Atelier lutherie : régler son chevalet", texte: "Vendredi 13 novembre · 18:00 · Atelier des Cordes, Lyon", qui: "La personne verra l'activité et pourra s'y inscrire en créant son compte. Le lien porte ton nom.", lien: "passio-app.netlify.app/e/ev_par_lea" }
+      };
+      function peindre(objet) {
+        var o = OBJETS[objet] || OBJETS.post;
+        document.body.dataset.objet = objet;
+        var v = document.getElementById("ppVig");
+        v.textContent = ""; v.style.backgroundImage = "";
+        if (o.img) { v.style.background = "url(" + o.img + ") center/cover"; } else { v.style.background = "#fff"; v.textContent = o.emoji; }
+        document.getElementById("ppApTitre").textContent = o.titre;
+        document.getElementById("ppApTexte").textContent = o.texte;
+        document.getElementById("ppQui").textContent = o.qui;
+        document.getElementById("ppLien").textContent = o.lien;
+      }
+      PROTO.actions.rien = function (el, ev) { ev.stopPropagation(); };
+      PROTO.actions.partager = function (el) { document.body.dataset.ok = "0"; peindre(el.getAttribute("data-objet")); PROTO.couche("partage", true); };
+      PROTO.actions.confirmer = function (el, ev) { ev.stopPropagation(); document.getElementById("ppOkTexte").textContent = el.getAttribute("data-message"); document.body.dataset.ok = "1"; };
+      PROTO.actions.republier = function (el, ev) { ev.stopPropagation(); document.body.dataset.republie = "1"; PROTO.fermerCouches(); PROTO.ecran("fil"); var c = document.getElementById("ppRepartage"); if (c.scrollIntoView) c.scrollIntoView({ block: "start" }); };
+      PROTO.actions.aimer = function (el) { var on = document.body.dataset.aime === "1"; document.body.dataset.aime = on ? "0" : "1"; el.textContent = on ? "🤍 0" : "❤️ 1"; };
+      PROTO.surEtape = function (e) {
+        var o = (e.etat && e.etat.objet) || document.body.dataset.objet || "post";
+        peindre(o);
+        if (e.etat && e.etat.ok === "1") document.getElementById("ppOkTexte").textContent = "Lien copié — colle-le dans ta conversation";
+        if (e.etat && e.etat.aime === "0") document.getElementById("ppCoeur").textContent = "🤍 0";
+      };
+      // Un clic sur le fond de la feuille la ferme ; un clic DANS la feuille ne la ferme pas.
+      document.querySelectorAll(".proto-telephone .modal").forEach(function (m) { m.addEventListener("click", function (ev) { if (!ev.target.closest("[data-fermer],[data-aller],[data-action='republier']")) ev.stopPropagation(); if (ev.target.closest("[data-action='confirmer']")) PROTO.actions.confirmer(ev.target.closest("[data-action='confirmer']"), ev); }); });
+      peindre("post");
+    })();
+  </script>
+</body>
+</html>

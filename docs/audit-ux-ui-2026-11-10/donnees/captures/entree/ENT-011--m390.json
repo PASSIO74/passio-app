@@ -1,0 +1,157 @@
+{
+ "id": "ENT-011",
+ "domaine": "entree",
+ "scenario": "visiteur-destinations",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "La loupe : écran « Explorer par passion »",
+ "note": "",
+ "prisLe": "2026-11-10T19:48:01.056Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-011--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 56454,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La loupe s'appelle « Explorer » (nom accessible et infobulle).",
+   "x": 0.715,
+   "y": 0.037,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": ".app-topbar .topbar-right .topbar-bell",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Titre « Explorer par passion » ; le Fil a aussi une envie « Explorer ».",
+   "x": 0.5,
+   "y": 0.138,
+   "w": 0.821,
+   "h": 0.032,
+   "sel": "#exPanel_search .explorer-hero h3",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 20,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 218.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 16,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-011--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53904,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La loupe s'appelle « Rechercher », partout.",
+   "x": 0.715,
+   "y": 0.037,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": ".app-topbar [aria-label=\"Rechercher\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "L'écran porte le nom de son geste : un seul « Explorer » reste dans l'application, ou aucun.",
+   "x": 0.5,
+   "y": 0.138,
+   "w": 0.821,
+   "h": 0.032,
+   "sel": "#exPanel_search .explorer-hero h3",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

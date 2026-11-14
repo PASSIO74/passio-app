@@ -1,0 +1,235 @@
+{
+ "id": "IRL-110",
+ "domaine": "irl-fiche",
+ "scenario": "participer",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Juste après « Je participe » — ce qui se trouve sous le doigt",
+ "note": "Mesuré : 400 ms après l'appui, l'élément sous le point d'appui (180, 596) est `v4b-rsvp-retirer` — le lien « Retirer ma participation » a pris la place exacte du bouton. Aucun toast ; une notification interne « Tu rejoins … » est ajoutée au centre de notifications. Ligne serveur : [\"going\"].",
+ "prisLe": "2026-11-10T17:55:32.710Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#event-ev_if_payante"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-110--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 46502,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied de fiche après inscription",
+    "fichier": "captures/irl-fiche/IRL-110--m360--avant-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 266,
+    "octets": 4656
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Retirer ma participation » occupe la place du bouton qu'on vient de toucher : un second appui désinscrit.",
+   "x": 0.5,
+   "y": 0.934,
+   "w": 0.433,
+   "h": 0.069,
+   "sel": "#eventDetailCta .v4b-rsvp-retirer",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "État « ✓ Je participe » : rien ne confirme ni ne propose la suite (PCS-C03).",
+   "x": 0.5,
+   "y": 0.856,
+   "w": 0.911,
+   "h": 0.075,
+   "sel": "#eventDetailCta .v4b-rsvp-etat",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-organizer",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 241,
+     "h": 35,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Cours",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Masterclass de musique de chambre : interpréter le",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.normal",
+     "texte": "Dans 8 jours",
+     "ratio": 1.76,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#d5e5eb",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailCta > div.v4b-rsvp > button.v4b-rsvp-retirer",
+     "texte": "Retirer ma participation",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 8
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-110--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 48788,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied de fiche proposé",
+    "fichier": "captures/irl-fiche/IRL-110--m360--apres-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 564,
+    "octets": 21582
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Confirmation explicite, datée, `role=status`.",
+   "x": 0.5,
+   "y": 0.648,
+   "w": 0.911,
+   "h": 0.128,
+   "sel": ".audit-if-ok",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "L'étape suivante du passage au réel occupe la place du bouton touché : un second appui ouvre la discussion au lieu de désinscrire.",
+   "x": 0.5,
+   "y": 0.763,
+   "w": 0.911,
+   "h": 0.075,
+   "sel": ".audit-if-suite .plein",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Calendrier, itinéraire, inviter : fonctions existantes remontées depuis « Autres actions ».",
+   "x": 0.191,
+   "y": 0.847,
+   "w": 0.293,
+   "h": 0.075,
+   "sel": ".audit-if-suite button:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Le retrait reste disponible, à l'écart, du point de vue de la personne.",
+   "x": 0.5,
+   "y": 0.934,
+   "w": 0.387,
+   "h": 0.069,
+   "sel": "#eventDetailCta .v4b-rsvp-retirer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

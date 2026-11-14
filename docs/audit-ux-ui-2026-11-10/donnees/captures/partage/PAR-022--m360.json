@@ -1,0 +1,189 @@
+{
+ "id": "PAR-022",
+ "domaine": "partage",
+ "scenario": "activite",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille « Partager cet événement »",
+ "note": "",
+ "prisLe": "2026-11-10T17:48:31.042Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": "Partager cet événement",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-022--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 20422,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille",
+    "fichier": "captures/partage/PAR-022--m360--avant-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 488,
+    "octets": 18446
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« événement » ; ailleurs « activité », « rencontre »",
+   "x": 0.5,
+   "y": 0.665,
+   "w": 0.9,
+   "h": 0.035,
+   "sel": ".modal .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ni l'heure ni le lieu",
+   "x": 0.5,
+   "y": 0.741,
+   "w": 0.9,
+   "h": 0.098,
+   "sel": ".modal .modal-title + div",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#_shareEvInFeedBtn",
+     "texte": "Partager dans mon feed",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#_shareEvOutBtn",
+     "texte": "Partager en dehors",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-022--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 50406,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille unifiée",
+    "fichier": "captures/partage/PAR-022--m360--apres-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 1040,
+    "octets": 49848
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Aperçu de CE qui part : auteur, passion, extrait, vignette",
+   "x": 0.5,
+   "y": 0.36,
+   "w": 0.9,
+   "h": 0.147,
+   "sel": "[data-mq='apercu']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ce que verra la personne, et que le lien porte ton nom",
+   "x": 0.5,
+   "y": 0.472,
+   "w": 0.889,
+   "h": 0.057,
+   "sel": "[data-mq='qui']",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Action principale unique ; mêmes mots et même ordre sur toutes les portes",
+   "x": 0.5,
+   "y": 0.573,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='dehors']",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Copier le lien » toujours présent, lien lisible",
+   "x": 0.5,
+   "y": 0.688,
+   "w": 0.9,
+   "h": 0.091,
+   "sel": "[data-mq='copier']",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "« Republier dans mon fil » : un seul mot (fil), plus « feed »",
+   "x": 0.5,
+   "y": 0.917,
+   "w": 0.9,
+   "h": 0.091,
+   "sel": "[data-mq='fil']",
+   "trouve": true
+  },
+  {
+   "n": 6,
+   "texte": "L'invitation interne rejoint la même feuille",
+   "x": 0.5,
+   "y": 0.802,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='inviter']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

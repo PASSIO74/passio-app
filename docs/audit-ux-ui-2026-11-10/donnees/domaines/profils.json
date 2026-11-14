@@ -1,0 +1,1507 @@
+{
+ "domaine": "profils",
+ "groupe": "Profils et passions",
+ "titre": "Profils et passions — mon profil, profil visité, Mes passions",
+ "resume": "Le profil porte bien la promesse « une personne, plusieurs passions » : couverture 3:2, avatar, bio multiligne, rail des passions, page « Mes passions » avec archivage sans perte, demandes d'abonnement traitées dans la cloche. Deux défauts graves touchent la confiance : un enregistrement refusé par le serveur s'annonce « Profil mis à jour » (y compris le passage en compte privé), et changer la couverture depuis la modale d'édition ouvre le recadreur SOUS la modale. Les demandes d'abonnement en attente sont comptées et listées comme abonnés, « Bloquer » agit sans confirmation et le profil d'un compte bloqué ne le dit pas. Le filtre « Tout » reste coché quand on choisit « Photos », si bien que rien ne se filtre. Le reste relève de la cohérence : mon profil et le profil visité n'emploient pas les mêmes mots, des textes renvoient à un bouton « Toutes » disparu, l'aide parle d'un plafond levé. Pour Découvrir/Rencontrer, les listes d'abonnés gagneraient à montrer les visages et les passions et à garder leur place au retour.",
+ "aConserver": [
+  "Même gabarit visuel pour mon profil et le profil visité (couverture 3:2, avatar chevauchant).",
+  "État vide guidé « Publie ta première création » avec un seul bouton vers le Studio.",
+  "Bouton Suivre à trois états (Suivre / Demande envoyée en contour / ✓ Suivi) et nom accessible qui dit ce que fera l'appui.",
+  "Bloc « Demande envoyée » d'un compte privé, repeint à chaque geste.",
+  "Archivage d'une passion confirmé, sans perte de contenu, avec archives repliables et « Réactiver ».",
+  "Demande d'abonnement : Accepter / Refuser dans la cloche, verdict persistant.",
+  "Recherche du référentiel tolérante et « Demander l'ajout » quand rien ne correspond.",
+  "Recadreur : cercle pour l'avatar, 3:2 pour la couverture, glisser et pincer."
+ ],
+ "registre": [
+  {
+   "id": "PRO-001",
+   "surface": "Mon profil",
+   "composant": "En-tête, compteurs, rail des passions",
+   "etat": "compte rempli (3 passions, 7 publications)",
+   "role": "connecté · propriétaire",
+   "geste": "Barre basse → Profil",
+   "observation": "observe",
+   "preuve": "capture PRO-001 ; rendu js/app-06-reels-partage.js:1034 (renderMainProfile), rail app-06:2436 ; pastille de compte app-02 passionTileHTML (overflow:hidden sur la vignette photo) — vues : m390",
+   "problemes": [
+    "PRO-C21",
+    "PRO-C16"
+   ],
+   "proposition": "Pastille du nombre de publications posée dans la vignette, entière.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Couverture 3:2, avatar et bio multiligne lisibles ; la pastille de compte est rognée (compteurs 40 px : SOC-C01, déjà établi)."
+  },
+  {
+   "id": "PRO-002",
+   "surface": "Mon profil",
+   "composant": "Publications — filtre « Tout »",
+   "etat": "liste de cartes",
+   "role": "connecté · propriétaire",
+   "geste": "Profil → défiler",
+   "observation": "observe",
+   "preuve": "capture PRO-002 — vues : m390",
+   "problemes": [
+    "PRO-C08"
+   ],
+   "proposition": "Garder ; aligner les mots avec le profil visité.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "La liste par défaut montre tout, dans l'ordre ; seul le vocabulaire diverge du profil visité (PRO-C08)."
+  },
+  {
+   "id": "PRO-003",
+   "surface": "Mon profil",
+   "composant": "Filtres de type (Tout · Photos · Vidéos · Bobines · Audio)",
+   "etat": "« Photos » touché avec « Tout » coché",
+   "role": "connecté · propriétaire",
+   "geste": "Toucher « Photos »",
+   "observation": "observe",
+   "preuve": "capture PRO-003 ; app-06:1245 (PROFILE_TAB_PRED, posts = tout), switchProfileTab app-06:1497 (multi-sélection) — vues : m390",
+   "problemes": [
+    "PRO-C04"
+   ],
+   "proposition": "Choix unique : « Photos » remplace « Tout » et affiche la grille.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le geste le plus attendu ne filtre rien."
+  },
+  {
+   "id": "PRO-004",
+   "surface": "Mon profil",
+   "composant": "État vide filtré",
+   "etat": "bulle Cuisine + Vidéos",
+   "role": "connecté · propriétaire",
+   "geste": "Rail → Cuisine, puis Vidéos à la place de Tout",
+   "observation": "observe",
+   "preuve": "capture PRO-004 ; texte app-06:1458 — vues : m390",
+   "problemes": [
+    "PRO-C11"
+   ],
+   "proposition": "Nommer le geste de sortie réel (retoucher la bulle).",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le texte renvoie à « Toutes », bouton inexistant."
+  },
+  {
+   "id": "PRO-005",
+   "surface": "Mon profil",
+   "composant": "État vide d'un compte neuf",
+   "etat": "aucune publication, initiales",
+   "role": "connecté · propriétaire",
+   "geste": "Profil (compte neuf)",
+   "observation": "observe",
+   "preuve": "capture PRO-005 (m390, m360) ; guidedEmpty app-06:1455 — vues : m360, m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Initiales lisibles, état vide guidé vers le Studio avec un seul bouton."
+  },
+  {
+   "id": "PRO-006",
+   "surface": "Mon profil",
+   "composant": "Onglet Activité",
+   "etat": "une activité rejointe",
+   "role": "connecté · propriétaire",
+   "geste": "Profil → Activité",
+   "observation": "observe",
+   "preuve": "capture PRO-006 ; _myProfileEventsHTML app-06:1341 (titre 12,5 px, date 10,5 px) — vues : m390",
+   "problemes": [
+    "PRO-C23"
+   ],
+   "proposition": "Agrandir la date (≥ 12 px).",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Utile (retrouver ce qui arrive) mais textes très petits."
+  },
+  {
+   "id": "PRO-007",
+   "surface": "Mon profil",
+   "composant": "Crayon « Modifier le profil » → menu",
+   "etat": "menu ouvert",
+   "role": "connecté · propriétaire",
+   "geste": "Toucher le crayon",
+   "observation": "observe",
+   "preuve": "capture PRO-007 ; openMainProfileMenu app-06:1856 — vues : m390",
+   "problemes": [
+    "PRO-C16"
+   ],
+   "proposition": "Icône « ⋯ » (options) au lieu du crayon.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "L'icône promet l'édition, le bouton ouvre six options."
+  },
+  {
+   "id": "PRO-008",
+   "surface": "Liste « Abonnés »",
+   "composant": "Modale de personnes",
+   "etat": "22 lignes",
+   "role": "connecté · propriétaire",
+   "geste": "Toucher « Abonnés »",
+   "observation": "observe",
+   "preuve": "capture PRO-008 ; openFollowersList app-06:1210 (select sans avatar_url ni status) — vues : m390",
+   "problemes": [
+    "PRO-C09",
+    "PRO-C05"
+   ],
+   "proposition": "Photo et passions de chaque personne ; seules les relations acceptées.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Liste anonymisée par des emojis ; inclut une demande en attente."
+  },
+  {
+   "id": "PRO-009",
+   "surface": "Liste « Abonnés »",
+   "composant": "Compte privé",
+   "etat": "une demande en attente (Nora)",
+   "role": "connecté · propriétaire privé",
+   "geste": "Toucher « Abonnés »",
+   "observation": "observe",
+   "preuve": "capture PRO-009 ; faux serveur : follows Nora→moi status pending — vues : m390",
+   "problemes": [
+    "PRO-C05"
+   ],
+   "proposition": "Demandes à part, non comptées, renvoi aux notifications.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Une personne non acceptée apparaît comme abonnée."
+  },
+  {
+   "id": "PRO-010",
+   "surface": "Liste « Abonnements »",
+   "composant": "Modale de personnes",
+   "etat": "3 lignes",
+   "role": "connecté · propriétaire",
+   "geste": "Toucher « Abonnements »",
+   "observation": "observe",
+   "preuve": "capture PRO-010 ; openFollowingList app-06:1200 (state.user.following) — vues : m390",
+   "problemes": [
+    "PRO-C09"
+   ],
+   "proposition": "Même ligne que « Abonnés ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Rendu différent de la liste jumelle (passions ici, pas là)."
+  },
+  {
+   "id": "PRO-011",
+   "surface": "Modifier le profil",
+   "composant": "Haut de la modale",
+   "etat": "ouverte",
+   "role": "connecté · propriétaire",
+   "geste": "Crayon → Modifier le profil",
+   "observation": "observe",
+   "preuve": "capture PRO-011 (m390, m360) ; openEditMainProfile app-06:1916 — vues : m360, m390",
+   "problemes": [
+    "PRO-C14"
+   ],
+   "proposition": "Titre « Modifier mon profil », un seul style de libellé.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Titre hérité du multi-profil, deux styles de libellés."
+  },
+  {
+   "id": "PRO-012",
+   "surface": "Modifier le profil",
+   "composant": "Réseaux sociaux et enregistrement",
+   "etat": "bas de la modale",
+   "role": "connecté · propriétaire",
+   "geste": "Défiler la modale",
+   "observation": "observe",
+   "preuve": "capture PRO-012 (m390, m360) ; modale de 1 096 px de haut (sonde profils-05) — vues : m360, m390",
+   "problemes": [
+    "PRO-C15"
+   ],
+   "proposition": "Réseaux vides repliés, noms de marque justes, barre d'enregistrement collante.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Huit champs toujours affichés repoussent Sauvegarder à 1 100 px."
+  },
+  {
+   "id": "PRO-013",
+   "surface": "Modifier le profil",
+   "composant": "Pseudo",
+   "etat": "vidé puis enregistré",
+   "role": "connecté · propriétaire",
+   "geste": "Vider le pseudo → Sauvegarder",
+   "observation": "observe",
+   "preuve": "capture PRO-013 ; saveMainProfile app-06:2041 n'appelle pas nomCompteValide (app-02:6253) ; faux serveur : username = \"\" ; « Admin » aussi accepté (sonde profils-05) — vues : m390",
+   "problemes": [
+    "PRO-C03"
+   ],
+   "proposition": "Erreur sous le champ, rien n'est envoyé.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Pseudo vide ou réservé accepté avec « Profil mis à jour »."
+  },
+  {
+   "id": "PRO-014",
+   "surface": "Modifier le profil",
+   "composant": "Pseudo déjà pris",
+   "etat": "refus",
+   "role": "connecté · propriétaire",
+   "geste": "Saisir « Léa Fontaine » → Sauvegarder",
+   "observation": "observe",
+   "preuve": "capture PRO-014 ; supaUsernameTaken ; toast sous la modale (fait transverse PAR-C03 / IRL-C65 / MSG-C85) — vues : m390",
+   "problemes": [
+    "PRO-C03"
+   ],
+   "proposition": "Erreur sous le champ plutôt qu'en toast.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "La saisie est gardée (bien) mais le refus passe par un toast peint sous la modale."
+  },
+  {
+   "id": "PRO-015",
+   "surface": "Modifier le profil",
+   "composant": "Enregistrement refusé par le serveur",
+   "etat": "« Compte privé » coché, PATCH profiles 500",
+   "role": "connecté · propriétaire",
+   "geste": "Cocher Compte privé → Sauvegarder (panne simulée)",
+   "observation": "simule",
+   "preuve": "capture PRO-015 ; panne programmée du faux serveur ; saveMainProfile app-06:2099-2113 ignore le retour de supaSavePublicProfile (app-08:3994, rend false) ; base : is_private=false, état local isPrivate=true — vues : m390",
+   "problemes": [
+    "PRO-C01"
+   ],
+   "proposition": "Dire le refus et l'état réel, garder la saisie, « Réessayer ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Succès annoncé alors que le compte reste public."
+  },
+  {
+   "id": "PRO-016",
+   "surface": "Recadreur",
+   "composant": "Photo de profil",
+   "etat": "image choisie",
+   "role": "connecté · propriétaire",
+   "geste": "Crayon → Photo de profil → fichier",
+   "observation": "observe",
+   "preuve": "sonde profils-07 (filechooser réel) ; passioOpenCropper app-06:1551 ; curseur 16 px, boutons 166 × 42 — vues : m360, m390",
+   "problemes": [
+    "PRO-C23"
+   ],
+   "proposition": "Curseur plus haut ; sinon garder.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Cercle, grille, zoom, Annuler/Valider clairs ; seul le curseur est petit. Capture de livrable non produite (arrêt pour limite d'usage)."
+  },
+  {
+   "id": "PRO-017",
+   "surface": "Recadreur",
+   "composant": "Couverture depuis « Modifier le profil »",
+   "etat": "image choisie",
+   "role": "connecté · propriétaire",
+   "geste": "Modifier → Changer (couverture) → fichier",
+   "observation": "observe",
+   "preuve": "sonde profils-07 : recadreur z-index 6000, modale 10001, elementFromPoint au centre = #editBio — vues : m360, m390",
+   "problemes": [
+    "PRO-C02"
+   ],
+   "proposition": "Recadreur au-dessus de la modale.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le geste paraît sans effet. Capture de livrable non produite (scénario « recadreur » prêt)."
+  },
+  {
+   "id": "PRO-018",
+   "surface": "Recadreur",
+   "composant": "Réapparition après fermeture",
+   "etat": "modale fermée",
+   "role": "connecté · propriétaire",
+   "geste": "Fermer la modale",
+   "observation": "observe",
+   "preuve": "sonde profils-07 : après closeModal, le recadreur oublié est au premier plan — vues : m390",
+   "problemes": [
+    "PRO-C02"
+   ],
+   "proposition": "Disparaît avec la correction de PRO-C02.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Conséquence directe de PRO-C02."
+  },
+  {
+   "id": "PRO-019",
+   "surface": "Recadreur",
+   "composant": "Fichier non-image",
+   "etat": "vidéo choisie",
+   "role": "connecté · propriétaire",
+   "geste": "Photo de couverture → boucle.webm",
+   "observation": "observe",
+   "preuve": "sonde profils-07 : aucun recadreur, aucun toast ; img.onerror → reject → catch muet (app-06:1611, 1689) — vues : m390",
+   "problemes": [
+    "PRO-C18"
+   ],
+   "proposition": "Message « Ce fichier n'est pas une image ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Échec silencieux."
+  },
+  {
+   "id": "PRO-020",
+   "surface": "Photo de profil / couverture",
+   "composant": "Échec d'envoi",
+   "etat": "Storage refusé",
+   "role": "connecté · propriétaire",
+   "geste": "—",
+   "observation": "code",
+   "preuve": "d'après le code : toast « mise à jour » AVANT l'envoi (app-06:1686, 1707), échec avalé dans _syncProfilePhoto (app-06:1542) ; la panne REST du banc n'atteint pas Storage",
+   "problemes": [
+    "PRO-C18"
+   ],
+   "proposition": "Annoncer après l'envoi ; dire l'échec.",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "Non reproduit sur le banc."
+  },
+  {
+   "id": "PRO-021",
+   "surface": "Profil visité",
+   "composant": "Léa — publique, suivie, me suit",
+   "etat": "contenu normal",
+   "role": "connecté · visiteur suivi",
+   "geste": "Abonnés → Léa",
+   "observation": "observe",
+   "preuve": "sonde profils-03 (vrai geste) ; openUserProfile app-04:4287 ; boutons 173 × 39, 12 px ; ⋯ et × 34 px ; deux « × » superposés — vues : d1440, m360, m390, t768",
+   "problemes": [
+    "PRO-C08",
+    "PRO-C17",
+    "PRO-C04",
+    "PRO-C23"
+   ],
+   "proposition": "Suivi en contour, 44 px, mêmes mots que mon profil.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Même gabarit que mon profil (bien) mais mots, filtres et hiérarchie divergent. Captures prêtes (scénario « profil-visite »), non produites."
+  },
+  {
+   "id": "PRO-022",
+   "surface": "Profil visité",
+   "composant": "Menu « ⋯ »",
+   "etat": "ouvert",
+   "role": "connecté · visiteur",
+   "geste": "⋯ sur la couverture",
+   "observation": "observe",
+   "preuve": "sonde profils-03 ; openVisitedProfileMenu app-04:4673 — vues : m390",
+   "problemes": [
+    "PRO-C06"
+   ],
+   "proposition": "Garder le menu ; confirmer Bloquer.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Le menu passe bien devant la modale ; « Bloquer » agit sans confirmation."
+  },
+  {
+   "id": "PRO-023",
+   "surface": "Profil visité",
+   "composant": "Onglet Activité",
+   "etat": "Léa organise un atelier",
+   "role": "connecté · visiteur",
+   "geste": "Activité",
+   "observation": "code",
+   "preuve": "d'après le code : _renderVisitedEvents app-04:4748 (organisées seulement) ; scénario prêt, non exécuté",
+   "problemes": [],
+   "proposition": "—",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "Non ouvert dans le navigateur."
+  },
+  {
+   "id": "PRO-024",
+   "surface": "Profil visité",
+   "composant": "Tom — me suit, non suivi, sans publication",
+   "etat": "vide",
+   "role": "connecté · visiteur",
+   "geste": "Abonnés → Tom",
+   "observation": "observe",
+   "preuve": "sonde profils-03 : « Suivre », « Aucune publication — Rien à afficher pour cette sélection » — vues : m390",
+   "problemes": [
+    "PRO-C08"
+   ],
+   "proposition": "État vide sans parler de « sélection » quand aucun filtre n'est posé.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Le texte évoque un filtre absent ; rien ne dit qu'il me suit."
+  },
+  {
+   "id": "PRO-025",
+   "surface": "Profil visité",
+   "composant": "Compte privé, demande envoyée",
+   "etat": "Sacha",
+   "role": "connecté · demandeur",
+   "geste": "openUserProfile (simulé)",
+   "observation": "simule",
+   "preuve": "sonde profils-03 : « 1 ABONNÉS » = ma propre demande pending ; requêtes app-04:4519 sans filtre status — vues : m390",
+   "problemes": [
+    "PRO-C05"
+   ],
+   "proposition": "Ne compter que les abonnés acceptés.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le compteur dit faux ; le bloc « Demande envoyée » est juste."
+  },
+  {
+   "id": "PRO-026",
+   "surface": "Profil visité",
+   "composant": "Compte privé, demande annulée",
+   "etat": "après 2e appui",
+   "role": "connecté · visiteur",
+   "geste": "Toucher « Demande envoyée »",
+   "observation": "code",
+   "preuve": "d'après le code : toggleFollowUser app-04:5015 (toast « Demande annulée — appuie sur « Suivre » pour la renvoyer »), _majBlocPriveVisite — vues : m390",
+   "problemes": [],
+   "proposition": "—",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Retour clair, aide accessible qui annonce le geste (app-02:2326)."
+  },
+  {
+   "id": "PRO-027",
+   "surface": "Profil visité",
+   "composant": "Nom très long, bio 3 paragraphes",
+   "etat": "contenu long",
+   "role": "connecté · visiteur suivi",
+   "geste": "Abonnements → Marie-Charlotte",
+   "observation": "observe",
+   "preuve": "sonde profils-03 : nom sur deux lignes, bio entière (pre-line) — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Pas de débordement ni de coupure."
+  },
+  {
+   "id": "PRO-028",
+   "surface": "Profil visité",
+   "composant": "Nora — sans publication",
+   "etat": "vide",
+   "role": "connecté · visiteur",
+   "geste": "Abonnés → Nora",
+   "observation": "observe",
+   "preuve": "sonde profils-03 : « 1 ABONNEMENTS » = sa demande en attente vers moi — vues : m390",
+   "problemes": [
+    "PRO-C05"
+   ],
+   "proposition": "Voir PRO-C05.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Compteur gonflé par une demande."
+  },
+  {
+   "id": "PRO-029",
+   "surface": "Profil visité",
+   "composant": "Compte que j'ai bloqué",
+   "etat": "Tom bloqué",
+   "role": "connecté · bloqueur",
+   "geste": "Abonnés → Tom",
+   "observation": "observe",
+   "preuve": "sonde profils-06 : Message et Suivre affichés, seul le menu dit « Débloquer » — vues : m390",
+   "problemes": [
+    "PRO-C07"
+   ],
+   "proposition": "Bandeau « Tu as bloqué ce compte » + Débloquer.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Aucun signal de l'état."
+  },
+  {
+   "id": "PRO-030",
+   "surface": "Profil visité",
+   "composant": "Compte qui m'a bloquée",
+   "etat": "Inès",
+   "role": "connecté · bloqué",
+   "geste": "Abonnés → Inès",
+   "observation": "observe",
+   "preuve": "sonde profils-06 : profil et publication visibles, Suivre/Message proposés (faux serveur, policies recopiées) — vues : m390",
+   "problemes": [
+    "PRO-C20"
+   ],
+   "proposition": "À trancher côté règle.",
+   "visuel": "avant",
+   "verdict": "a-verifier",
+   "justification": "Dépend de la règle métier de visibilité."
+  },
+  {
+   "id": "PRO-031",
+   "surface": "Profil visité",
+   "composant": "Bloquer",
+   "etat": "effet immédiat",
+   "role": "connecté · visiteur",
+   "geste": "⋯ → Bloquer",
+   "observation": "observe",
+   "preuve": "sonde profils-06 : aucune modale, toast « 🚫 Malik Benali bloqué », ligne blocks écrite ; blockUser app-04:5147 retire aussi l'abonnement — vues : m390",
+   "problemes": [
+    "PRO-C06"
+   ],
+   "proposition": "Confirmation qui dit les conséquences.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Geste lourd sans confirmation."
+  },
+  {
+   "id": "PRO-032",
+   "surface": "Signaler ce compte",
+   "composant": "Motif",
+   "etat": "modale",
+   "role": "connecté · visiteur",
+   "geste": "⋯ → Signaler",
+   "observation": "observe",
+   "preuve": "sonde profils-08 : classe modal-fullscreen héritée du profil visité, profil remplacé — vues : m390",
+   "problemes": [
+    "PRO-C22"
+   ],
+   "proposition": "Feuille basse ordinaire ; retour au profil après Annuler.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Écran plein presque vide ; le profil est perdu."
+  },
+  {
+   "id": "PRO-033",
+   "surface": "Navigation",
+   "composant": "Retour depuis un profil ouvert d'une liste",
+   "etat": "modale fermée",
+   "role": "connecté · propriétaire",
+   "geste": "Abonnés → Léa → ×",
+   "observation": "observe",
+   "preuve": "capture PRO-033 ; _personRowHTML : closeModal();openUserProfile (openModal n'empile pas) — vues : m390",
+   "problemes": [
+    "PRO-C10"
+   ],
+   "proposition": "Revenir à la liste.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Parcourir ses abonnés oblige à rouvrir la liste à chaque fois."
+  },
+  {
+   "id": "PRO-034",
+   "surface": "Notifications",
+   "composant": "Demande d'abonnement",
+   "etat": "Accepter / Refuser",
+   "role": "connecté · propriétaire privé",
+   "geste": "Cloche",
+   "observation": "observe",
+   "preuve": "capture PRO-034 ; _notifDemandeAbonnementHtml app-08:2299 — vues : m390",
+   "problemes": [],
+   "proposition": "Garder ; y renvoyer depuis « Abonnés » (PRO-C05).",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Deux actions claires, la ligne ouvre le profil."
+  },
+  {
+   "id": "PRO-035",
+   "surface": "Notifications",
+   "composant": "Demande acceptée",
+   "etat": "verdict",
+   "role": "connecté · propriétaire privé",
+   "geste": "Accepter",
+   "observation": "observe",
+   "preuve": "capture PRO-035 ; faux serveur : status accepted — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Le verdict remplace les boutons, persistant (app-08:8678)."
+  },
+  {
+   "id": "PRO-036",
+   "surface": "Mes passions",
+   "composant": "Page",
+   "etat": "3 passions",
+   "role": "connecté · propriétaire",
+   "geste": "Toucher « Passions »",
+   "observation": "observe",
+   "preuve": "sonde profils-04 ; openPassionManager app-06:2613 ; badge photo 20 × 20 — vues : d1440, m360, m390, t768",
+   "problemes": [
+    "PRO-C13",
+    "PRO-C23"
+   ],
+   "proposition": "Un titre, un emoji par carte, badge 28 px.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Bonne page de gestion, en-tête redondant. Captures prêtes, non produites."
+  },
+  {
+   "id": "PRO-037",
+   "surface": "Mes passions",
+   "composant": "Aide",
+   "etat": "ouverte",
+   "role": "connecté · propriétaire",
+   "geste": "?",
+   "observation": "observe",
+   "preuve": "sonde profils-04 ; openPassionsAide app-06:2646 (phrase « place et changement » inconditionnelle, l.2664) — vues : m360, m390",
+   "problemes": [
+    "PRO-C12"
+   ],
+   "proposition": "Texte de la règle en vigueur.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Phrase héritée du plafond levé."
+  },
+  {
+   "id": "PRO-038",
+   "surface": "Mes passions",
+   "composant": "Menu d'une carte",
+   "etat": "ouvert",
+   "role": "connecté · propriétaire",
+   "geste": "⋯ d'une carte",
+   "observation": "observe",
+   "preuve": "sonde profils-04 ; openPassionProfileMenu app-06:1891 — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Quatre entrées claires, archivage en dernier."
+  },
+  {
+   "id": "PRO-039",
+   "surface": "Mes passions",
+   "composant": "Modifier une passion",
+   "etat": "modale",
+   "role": "connecté · propriétaire",
+   "geste": "⋯ → Modifier cette passion",
+   "observation": "observe",
+   "preuve": "sonde profils-04/08 ; openEditPassionProfile app-06:3513 : « Bio de ce profil », titre « ✏️ 🎸 Musique » — vues : m360, m390",
+   "problemes": [
+    "PRO-C14"
+   ],
+   "proposition": "« Modifier « Musique » », « Ce que tu partages ici ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Vocabulaire « profil » pour une passion."
+  },
+  {
+   "id": "PRO-040",
+   "surface": "Mes passions",
+   "composant": "Confirmation d'archivage",
+   "etat": "modale",
+   "role": "connecté · propriétaire",
+   "geste": "⋯ → Archiver",
+   "observation": "observe",
+   "preuve": "sonde profils-04 ; confirmArchivePassion app-06:2732 (« Toutes ») — vues : m390",
+   "problemes": [
+    "PRO-C11"
+   ],
+   "proposition": "« restent sur ton profil ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Rassurant, mais cite un bouton inexistant."
+  },
+  {
+   "id": "PRO-041",
+   "surface": "Mes passions",
+   "composant": "Archives repliables",
+   "etat": "1 archivée",
+   "role": "connecté · propriétaire",
+   "geste": "Archiver",
+   "observation": "observe",
+   "preuve": "sonde profils-04 : « Réactiver » 83 × 34 — vues : m390",
+   "problemes": [
+    "PRO-C23"
+   ],
+   "proposition": "Réactiver 44 px.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Clair, cible basse."
+  },
+  {
+   "id": "PRO-042",
+   "surface": "Mes passions",
+   "composant": "Dernière passion",
+   "etat": "refus",
+   "role": "connecté · propriétaire",
+   "geste": "Archiver l'unique passion",
+   "observation": "code",
+   "preuve": "d'après le code : toast « Tu dois garder au moins une passion active » (app-06:2700) ; scénario prêt — vues : m390",
+   "problemes": [],
+   "proposition": "—",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Refus avant la confirmation, explicite."
+  },
+  {
+   "id": "PRO-043",
+   "surface": "Ajouter une passion",
+   "composant": "Sélecteur — idées",
+   "etat": "ouvert",
+   "role": "connecté · propriétaire",
+   "geste": "Ajouter une passion",
+   "observation": "observe",
+   "preuve": "sonde profils-04 : Musique et Photo (déjà miennes) proposées, Piano 🎸, placeholder tronqué — vues : m360, m390",
+   "problemes": [
+    "PRO-C19"
+   ],
+   "proposition": "Marquer « Déjà ajoutée ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Idées sans tenir compte de ce que j'ai."
+  },
+  {
+   "id": "PRO-044",
+   "surface": "Ajouter une passion",
+   "composant": "Recherche",
+   "etat": "« céramique raku »",
+   "role": "connecté · propriétaire",
+   "geste": "Saisir",
+   "observation": "observe",
+   "preuve": "sonde profils-04 : un résultat « Raku », effacer 44 px — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Recherche tolérante, résultat direct."
+  },
+  {
+   "id": "PRO-045",
+   "surface": "Ajouter une passion",
+   "composant": "Aucun résultat",
+   "etat": "« zzqxw »",
+   "role": "connecté · propriétaire",
+   "geste": "Saisir",
+   "observation": "observe",
+   "preuve": "sonde profils-04 : « Demander l'ajout de « zzqxw » » (passion-selector.js:299) — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Sortie utile au lieu d'un cul-de-sac."
+  },
+  {
+   "id": "PRO-046",
+   "surface": "Créer sa passion",
+   "composant": "Porte suspendue",
+   "etat": "passionsPersoSuspendues() = true",
+   "role": "connecté · propriétaire",
+   "geste": "—",
+   "observation": "code",
+   "preuve": "d'après le code app-02:6855-6870 ; la tuile est masquée, la modale explique — vues : m390",
+   "problemes": [],
+   "proposition": "—",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Porte masquée, garde expliquée."
+  },
+  {
+   "id": "PRO-047",
+   "surface": "Fenêtre de limite",
+   "composant": "openPassionPaywall",
+   "etat": "plafond armé seulement",
+   "role": "connecté · propriétaire",
+   "geste": "—",
+   "observation": "code",
+   "preuve": "d'après le code app-06:4365 ; n'apparaît qu'avec PASSIO_PLAFOND_PASSIONS=true (état conditionnel, pas la règle en vigueur) ; scénario « plafond-arme » prêt — vues : m390",
+   "problemes": [],
+   "proposition": "—",
+   "visuel": "avant",
+   "verdict": "a-verifier",
+   "justification": "Non rendu."
+  },
+  {
+   "id": "PRO-048",
+   "surface": "Mon profil",
+   "composant": "Aide « second profil »",
+   "etat": "une seule passion",
+   "role": "connecté · nouveau",
+   "geste": "Profil (aides visibles)",
+   "observation": "observe",
+   "preuve": "capture PRO-048 — vues : m390",
+   "problemes": [],
+   "proposition": "Aucune.",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Une bulle, une fois, qui désigne la vraie porte."
+  },
+  {
+   "id": "PRO-049",
+   "surface": "Mon profil",
+   "composant": "Compteur « Abonnés » d'un compte privé",
+   "etat": "8 = 7 + 1 demande",
+   "role": "connecté · propriétaire privé",
+   "geste": "Profil",
+   "observation": "observe",
+   "preuve": "capture PRO-049 ; loadFollowersCount app-06:1144 sans filtre status — vues : m390",
+   "problemes": [
+    "PRO-C05"
+   ],
+   "proposition": "Ne compter que les acceptés.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Compteur faux."
+  }
+ ],
+ "constats": [
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": true,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C01",
+   "titre": "Un enregistrement du profil refusé par le serveur s'annonce « Profil mis à jour » — confidentialité comprise",
+   "emplacement": "Modifier le profil › Sauvegarder — saveMainProfile (js/app-06-reels-partage.js:2099-2113)",
+   "surfaces": [
+    "PRO-015"
+   ],
+   "nature": "fonctionnel",
+   "preuve": "Panne programmée PATCH profiles 500 : toast « Profil mis à jour », état local isPrivate=true et pseudo changé, ligne serveur inchangée (is_private=false). supaSavePublicProfile rend false (app-08:4026) mais son retour n'est pas lu ; le catch est vide.",
+   "probleme": "La personne croit son compte privé (et son pseudo changé) alors que rien n'est écrit.",
+   "declencheur": "Réseau instable, session expirée, refus RLS ou contrainte serveur (pseudo).",
+   "consequence": "Publications visibles de tous alors qu'on les croit réservées ; écran et serveur divergent jusqu'au prochain démarrage.",
+   "proposition": "Lire le verdict : en cas d'échec, garder la modale ouverte, dire « Rien n'a été enregistré — ton compte est toujours public », proposer « Réessayer », ne pas écrire l'état local avant le succès.",
+   "visuels": [
+    "PRO-015"
+   ],
+   "priorite": "P1",
+   "gravite": 4,
+   "risqueRegression": "Faux clients des suites qui rendent true ; garde `privacyChoisi`. Verrous : suites confidentialité du profil.",
+   "critereAcceptation": "PATCH profiles refusé : aucun toast de succès, message d'échec visible, state.user.general inchangé, modale ouverte avec la saisie.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C02",
+   "titre": "Changer la couverture depuis « Modifier le profil » : le recadreur s'ouvre sous la modale",
+   "emplacement": "Modifier › Photo de couverture › Changer — passioOpenCropper z-index 6000 (app-06:1563) sous #modalBackdrop 10001",
+   "surfaces": [
+    "PRO-017",
+    "PRO-018"
+   ],
+   "nature": "fonctionnel",
+   "preuve": "Sonde profils-07 (vrai filechooser) : recadreur présent, modale active, elementFromPoint au centre = #editBio ; après fermeture de la modale le recadreur réapparaît.",
+   "probleme": "Après le choix de la photo, rien ne bouge ; le recadreur est caché.",
+   "declencheur": "Seule porte de la couverture dans la modale d'édition.",
+   "consequence": "Changement de couverture impossible par ce chemin ; recadreur fantôme ensuite.",
+   "proposition": "Placer le recadreur au-dessus des modales (z-index > 10001) ou fermer la modale avant de l'ouvrir (le brouillon existe déjà).",
+   "visuels": [],
+   "priorite": "P1",
+   "gravite": 3,
+   "risqueRegression": "Ordre des couches avec le menu ⋯ (10002) et les toasts. Verrous : recadrage, couverture.",
+   "critereAcceptation": "Depuis la modale, après choix d'une image, elementFromPoint au centre de l'écran rend #pcropImg ; Valider rouvre la modale avec la saisie.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "PRO-C01.",
+   "sensible": true,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C03",
+   "titre": "Le pseudo n'est pas validé à l'enregistrement (vide, « Admin » acceptés)",
+   "emplacement": "Modifier › Pseudo — saveMainProfile (app-06:2042) ; règle nomCompteValide (app-02:6253)",
+   "surfaces": [
+    "PRO-013",
+    "PRO-014"
+   ],
+   "nature": "fonctionnel",
+   "preuve": "Pseudo vidé : « Profil mis à jour », PATCH username=\"\" ; « Admin » : même chose (sonde profils-05). En production la contrainte profiles_username_forme refuserait — échec alors masqué par PRO-C01. « Déjà pris » passe par un toast, peint sous la modale (fait transverse PAR-C03 / IRL-C65 / MSG-C85).",
+   "probleme": "Aucune règle de pseudo à l'édition, alors qu'elle existe à l'inscription.",
+   "declencheur": "Vider ou raccourcir son pseudo, choisir un mot réservé.",
+   "consequence": "Pseudo vide en base (banc) ou divergence silencieuse écran/serveur (production).",
+   "proposition": "Appliquer nomCompteValide avant l'envoi ; erreur sous le champ (2 à 40 caractères, mots réservés, déjà pris), modale ouverte.",
+   "visuels": [
+    "PRO-013"
+   ],
+   "priorite": "P2",
+   "gravite": 3,
+   "risqueRegression": "Comptes existants dont le pseudo ne respecte pas la règle : ne bloquer que la saisie modifiée.",
+   "critereAcceptation": "Pseudo vide, d'un caractère ou réservé : aucune requête PATCH, message sous #editUsername.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C04",
+   "titre": "« Tout » reste coché : toucher « Photos » ne filtre rien",
+   "emplacement": "Mon profil › filtres de type — switchProfileTab (app-06:1497), PROFILE_TAB_PRED.posts = tout",
+   "surfaces": [
+    "PRO-003",
+    "PRO-021"
+   ],
+   "nature": "friction",
+   "preuve": "Capture PRO-003 : Tout + Photos cochés, la liste garde textes et vidéos (union). Le profil visité part de « rien coché » : même geste, effet différent.",
+   "probleme": "Le filtre le plus attendu semble cassé.",
+   "declencheur": "Premier usage des filtres.",
+   "consequence": "On croit qu'il n'y a pas de photo ou que le filtre ne marche pas.",
+   "proposition": "Choix unique avec « Tout » comme neutre (comme le rail) sur les deux profils.",
+   "visuels": [
+    "PRO-003"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "risqueRegression": "État persistant contentTabIds ; tests des sous-filtres.",
+   "critereAcceptation": "Depuis « Tout », toucher « Photos » décoche « Tout » et n'affiche que la grille des photos ; idem sur le profil visité.",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": true,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C05",
+   "titre": "Une demande d'abonnement en attente est comptée et listée comme abonnement accepté",
+   "emplacement": "loadFollowersCount (app-06:1144), openFollowersList (app-06:1210), compteurs du profil visité (app-04:4519)",
+   "surfaces": [
+    "PRO-009",
+    "PRO-049",
+    "PRO-008",
+    "PRO-025",
+    "PRO-028"
+   ],
+   "nature": "fonctionnel",
+   "preuve": "Compte privé : « 8 abonnés » = 7 acceptés + Nora en attente, Nora dans la liste ; profil de Sacha (privé) : « 1 abonné » = ma propre demande ; Nora : « 1 abonnement » = sa demande. Aucune requête ne filtre status=accepted ; la policy follows ouvre les lignes pending aux deux intéressés.",
+   "probleme": "Les compteurs et la liste mélangent demandes et abonnés.",
+   "declencheur": "Compte privé recevant une demande ; visite d'un compte privé après avoir demandé.",
+   "consequence": "On croit qu'une personne non acceptée voit déjà ses publications ; les demandes ne sont pas repérables hors de la cloche.",
+   "proposition": "Filtrer status=accepted partout ; dans « Abonnés » d'un compte privé, une ligne « N demandes en attente » qui renvoie aux notifications.",
+   "visuels": [
+    "PRO-009",
+    "PRO-049"
+   ],
+   "priorite": "P2",
+   "gravite": 3,
+   "risqueRegression": "Bases sans colonne status (repli _followsSansStatut).",
+   "critereAcceptation": "Avec une demande pending, « Abonnés » vaut le nombre de lignes accepted et la personne n'est pas listée ; profil visité privé : ma demande ne compte pas.",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": true,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C06",
+   "titre": "« Bloquer » agit au premier appui, sans confirmation, et retire l'abonnement en silence",
+   "emplacement": "Profil visité › ⋯ › Bloquer — openVisitedProfileMenu (app-04:4680), blockUser (app-04:5147)",
+   "surfaces": [
+    "PRO-031",
+    "PRO-022"
+   ],
+   "nature": "friction",
+   "preuve": "Sonde profils-06 : aucune modale, toast « 🚫 Malik Benali bloqué », ligne blocks écrite, Malik retiré des abonnements.",
+   "probleme": "Action lourde, irréversible en un geste, sans annoncer ses effets.",
+   "declencheur": "Appui involontaire dans un menu de trois lignes de 38 px.",
+   "consequence": "Blocage et désabonnement non voulus ; l'autre perd la conversation.",
+   "proposition": "Feuille de confirmation : conséquences (ne peut plus te suivre, t'écrire, voir tes publications ; tu ne le suis plus ; il n'est pas prévenu), bouton « Bloquer » rouge.",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 3,
+   "risqueRegression": "Verrou d'écriture ROB-04 ; tests de modération.",
+   "critereAcceptation": "Toucher « Bloquer » ouvre une confirmation ; aucune ligne blocks avant « Bloquer » confirmé.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": true,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C07",
+   "titre": "Le profil d'un compte que j'ai bloqué ne dit pas qu'il est bloqué",
+   "emplacement": "openUserProfile (app-04:4596-4620)",
+   "surfaces": [
+    "PRO-029"
+   ],
+   "nature": "clarte",
+   "preuve": "Sonde profils-06 : Tom bloqué → Message et Suivre affichés normalement ; seul le menu ⋯ montre « Débloquer ».",
+   "probleme": "Rien ne rappelle l'état de blocage.",
+   "declencheur": "Rouvrir le profil d'une personne bloquée (liste, lien, commentaire).",
+   "consequence": "Message ou Suivre tentés puis refusés ; on oublie qu'on a bloqué.",
+   "proposition": "Remplacer les actions par un bandeau « Tu as bloqué ce compte » et un bouton « Débloquer ».",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 2,
+   "risqueRegression": "Faible.",
+   "critereAcceptation": "Profil d'un compte bloqué : bandeau visible, pas de bouton Message ni Suivre.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "jugement",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C08",
+   "titre": "Mon profil et le profil visité ne disent pas les mêmes choses",
+   "emplacement": "Compteurs (« posts » vs « passions »), filtres (« Posts » vs « Tout », « Audio / podcast » vs « Audio »), état vide « Rien à afficher pour cette sélection » sans filtre",
+   "surfaces": [
+    "PRO-021",
+    "PRO-024",
+    "PRO-002"
+   ],
+   "nature": "clarte",
+   "preuve": "Sonde profils-03 : POSTS · ABONNÉS · ABONNEMENTS chez l'autre, ABONNÉS · PASSIONS · ABONNEMENTS chez moi ; compteurs du profil visité non cliquables ; « Créer un post » sur mon état vide.",
+   "probleme": "Deux écrans jumeaux, deux vocabulaires (et l'anglicisme « post »).",
+   "declencheur": "Passer de son profil à celui d'un autre.",
+   "consequence": "Moins de repères ; impression de produit inachevé.",
+   "proposition": "« publications » partout ; mêmes libellés de filtres ; état vide sans « sélection » quand rien n'est filtré.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Tests de libellés.",
+   "critereAcceptation": "Aucune occurrence visible de « posts » / « Posts » / « Audio / podcast » sur les deux profils.",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-06-reels-partage.js",
+    "index.html"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C09",
+   "titre": "Listes Abonnés / Abonnements : emoji au lieu des photos, rendus différents, double « × »",
+   "emplacement": "_personRowHTML / openFollowersList (app-06:1184-1232)",
+   "surfaces": [
+    "PRO-008",
+    "PRO-010"
+   ],
+   "nature": "polish",
+   "preuve": "Capture PRO-008 : Léa (avatar_url renseigné) montrée en emoji ; « Abonnés » sans passions, « Abonnements » avec ; deux éléments « Fermer » superposés (bouton d'openModal + span) ; lignes en div sans rôle.",
+   "probleme": "On reconnaît mal les personnes.",
+   "declencheur": "Parcourir ses abonnés.",
+   "consequence": "Découverte entre passionnés moins efficace ; lecteur d'écran : deux « Fermer », lignes non annoncées.",
+   "proposition": "Charger avatar_url et passions ; même ligne dans les deux listes ; une seule fermeture ; rôle bouton.",
+   "visuels": [
+    "PRO-008"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Faible.",
+   "critereAcceptation": "Une ligne d'abonné montre la photo si avatar_url existe et ses passions ; un seul élément « Fermer » dans la modale.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "moyen",
+   "effort": "M",
+   "id": "PRO-C10",
+   "titre": "Fermer un profil ouvert depuis une liste ramène au profil, pas à la liste",
+   "emplacement": "_personRowHTML : closeModal();openUserProfile (app-06:1185)",
+   "surfaces": [
+    "PRO-033"
+   ],
+   "nature": "friction",
+   "preuve": "Capture PRO-033 : Abonnés → Léa → × : retour sur mon profil, la liste a disparu.",
+   "probleme": "Parcourir ses abonnés un par un oblige à rouvrir la liste.",
+   "declencheur": "Visiter plusieurs abonnés.",
+   "consequence": "Trois gestes de plus par personne.",
+   "proposition": "Mémoriser la liste d'origine et la rouvrir à la fermeture du profil (ou empiler la modale).",
+   "visuels": [
+    "PRO-033"
+   ],
+   "priorite": "P3",
+   "gravite": 2,
+   "risqueRegression": "Historique et bouton retour Android (openModal pose une entrée).",
+   "critereAcceptation": "Abonnés → profil → × : la liste « Abonnés » est de nouveau affichée, à la même position.",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C11",
+   "titre": "« Toutes » est cité deux fois alors qu'aucun bouton ne porte ce nom",
+   "emplacement": "État vide filtré (app-06:1458) ; confirmation d'archivage (app-06:2732)",
+   "surfaces": [
+    "PRO-004",
+    "PRO-040"
+   ],
+   "nature": "clarte",
+   "preuve": "Capture PRO-004 : « Touche « Toutes » pour revoir… » ; le rail n'a que des bulles. Le profil visité a déjà corrigé ce texte (app-04:4863).",
+   "probleme": "Consigne impossible à suivre.",
+   "declencheur": "Filtre qui vide l'écran ; archivage.",
+   "consequence": "On cherche un bouton absent.",
+   "proposition": "« Touche de nouveau la bulle X » ; « restent sur ton profil ».",
+   "visuels": [
+    "PRO-004"
+   ],
+   "priorite": "P3",
+   "gravite": 2,
+   "risqueRegression": "Tests de textes d'archivage.",
+   "critereAcceptation": "Aucun texte de Profil ou de Mes passions ne mentionne « Toutes ».",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C12",
+   "titre": "L'aide des passions parle de « place » et de « changement » alors que le plafond est levé",
+   "emplacement": "openPassionsAide (app-06:2664-2666)",
+   "surfaces": [
+    "PRO-037"
+   ],
+   "nature": "clarte",
+   "preuve": "Sonde profils-04 : « tu peux la réactiver quand une place et un changement sont disponibles », phrase non conditionnée à plafondPassionsActif().",
+   "probleme": "Règle obsolète présentée comme actuelle.",
+   "declencheur": "Ouvrir l'aide de « Mes passions ».",
+   "consequence": "Peur d'archiver ; doute sur la gratuité.",
+   "proposition": "Conditionner la fin de phrase au plafond actif ; sinon « tu peux la réactiver quand tu veux ».",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Faible.",
+   "critereAcceptation": "Plafond levé : l'aide ne contient ni « place » ni « changement ».",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "jugement",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C13",
+   "titre": "« Mes passions » : en-tête redondant, trois emojis par carte, badge photo de 20 px",
+   "emplacement": "#passionsResume + titre « Passions actives » ; .v8-passion-card",
+   "surfaces": [
+    "PRO-036"
+   ],
+   "nature": "polish",
+   "preuve": "Sonde profils-04 : « 3 passions actives » (icône de personnes) puis titre « Passions actives » 26 px ; carte « 🎸 » + badge 📷 + « 🎸 Musique » ; badge 20 × 20.",
+   "probleme": "La même information deux fois, emojis répétés.",
+   "declencheur": "Ouvrir la page.",
+   "consequence": "Page plus chargée qu'elle ne devrait.",
+   "proposition": "Un compteur dans le titre de rubrique, un seul emoji (avatar), badge 28 px avec zone de 44 px.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Tests de l'en-tête (_rendrePagePassionsEntete).",
+   "critereAcceptation": "Une seule mention du nombre de passions actives ; badge ≥ 44 px de zone tactile.",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "styles.css"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C14",
+   "titre": "Vocabulaire hérité du multi-profil : « Mon profil principal », « Bio de ce profil »",
+   "emplacement": "openEditMainProfile (app-06:1943), openEditPassionProfile (app-06:3513)",
+   "surfaces": [
+    "PRO-011",
+    "PRO-039"
+   ],
+   "nature": "clarte",
+   "preuve": "Captures PRO-011 : titre « Mon profil principal », libellés 16 px casse normale puis 11 px capitales ; sonde profils-08 : « ✏️ 🎸 Musique », « Bio de ce profil ».",
+   "probleme": "Laisse croire à plusieurs profils (contraire d'ADR-011).",
+   "declencheur": "Éditer son profil ou une passion.",
+   "consequence": "Confusion personne / passion.",
+   "proposition": "« Modifier mon profil », « Modifier « Musique » », « Ce que tu partages ici » ; un seul style de libellé.",
+   "visuels": [
+    "PRO-011"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Tests de libellés de modales.",
+   "critereAcceptation": "Aucune occurrence de « profil principal » ni « de ce profil » ; libellés de champs d'un seul style.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "jugement",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C15",
+   "titre": "« Modifier le profil » : 1 096 px de haut, huit champs de réseaux, Sauvegarder tout en bas",
+   "emplacement": "openEditMainProfile (app-06:1979-2001)",
+   "surfaces": [
+    "PRO-012"
+   ],
+   "nature": "friction",
+   "preuve": "Capture PRO-012 : 8 champs URL toujours affichés (39 px de haut), « Tiktok », « Youtube », « Linkedin », « Twitter » ; texte de confidentialité 11 px de six lignes.",
+   "probleme": "Long à parcourir pour une modification de bio.",
+   "declencheur": "Toute édition.",
+   "consequence": "Défilement, risque d'abandon ; marques mal écrites.",
+   "proposition": "N'afficher que les réseaux remplis + « Ajouter un réseau » ; barre d'enregistrement collante ; noms de marque corrects.",
+   "visuels": [
+    "PRO-012"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "risqueRegression": "Conservation du brouillon (editCoverFromModal).",
+   "critereAcceptation": "À 390 px, « Sauvegarder » visible sans défiler ; un réseau vide n'occupe pas de champ.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "jugement",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C16",
+   "titre": "Le crayon « Modifier le profil » ouvre un menu de six options",
+   "emplacement": "#v6bModifier (ui-v6b-profil.js) → openMainProfileMenu",
+   "surfaces": [
+    "PRO-007",
+    "PRO-001"
+   ],
+   "nature": "clarte",
+   "preuve": "Capture PRO-007 : crayon → Modifier, Photo de profil, Photo de couverture, Gérer mes passions, Apparence & thème, Inviter des amis.",
+   "probleme": "L'icône promet une chose, le bouton en propose six.",
+   "declencheur": "Chercher « Mes passions » ou l'invitation.",
+   "consequence": "Ces entrées restent introuvables pour qui ne pense pas « éditer ».",
+   "proposition": "Icône « ⋯ » (convention des autres profils et cartes) et nom « Options du profil ».",
+   "visuels": [
+    "PRO-007"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Ancre de l'aide « second profil » (#v6bModifier).",
+   "critereAcceptation": "Le bouton porte l'icône ⋯ et un nom accessible « Options du profil ».",
+   "fichiers": [
+    "js/ui-v6b-profil.js",
+    "styles.css"
+   ]
+  },
+  {
+   "type": "jugement",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C17",
+   "titre": "Profil visité : deux boutons « pleins », 39 px de haut, texte de 12 px",
+   "emplacement": "#visitedProfileActions (app-04:4617-4620)",
+   "surfaces": [
+    "PRO-021"
+   ],
+   "nature": "accessibilite",
+   "preuve": "Sonde profils-03 : Message (dégradé) et « ✓ Suivi » (violet plein) 173 × 39 ; ⋯ et × 34 × 34.",
+   "probleme": "Un état (« Suivi ») est plus fort que l'action ; cibles basses.",
+   "declencheur": "Visiter un profil suivi.",
+   "consequence": "Hiérarchie confuse ; appuis manqués.",
+   "proposition": "« ✓ Suivi » en contour, Message seule action pleine ; 44 px, 14 px.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "_peindreBoutonsSuivi peint le style inline des trois états.",
+   "critereAcceptation": "Boutons ≥ 44 px ; état « suivi » non plein.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C18",
+   "titre": "Photo : un fichier refusé ou un envoi raté ne dit rien",
+   "emplacement": "_readAndCrop / changeCoverPhoto / changeAvatarPhoto / _syncProfilePhoto (app-06:1511-1710)",
+   "surfaces": [
+    "PRO-019",
+    "PRO-020"
+   ],
+   "nature": "fonctionnel",
+   "preuve": "Sonde profils-07 : vidéo choisie → aucun recadreur, aucun message. D'après le code : toast « mise à jour » avant l'envoi, échec avalé (console.warn).",
+   "probleme": "Échecs silencieux.",
+   "declencheur": "Fichier non image, réseau coupé.",
+   "consequence": "Photo perdue sans le savoir.",
+   "proposition": "Message « Ce fichier n'est pas une image » ; annoncer le succès après l'envoi, sinon dire l'échec.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 2,
+   "risqueRegression": "Faible.",
+   "critereAcceptation": "Fichier non image : message visible ; Storage refusé : pas de toast de succès.",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C19",
+   "titre": "« Ajouter une passion » propose des passions que j'ai déjà",
+   "emplacement": "Sélecteur js/passion-selector.js (idées)",
+   "surfaces": [
+    "PRO-043"
+   ],
+   "nature": "polish",
+   "preuve": "Sonde profils-04 : Musique et Photo (miennes) dans « Quelques idées » ; « Musculation » et « Musculation et fitness » ; Piano en 🎸 ; exemple de saisie tronqué.",
+   "probleme": "Idées sans tenir compte du compte.",
+   "declencheur": "Ajouter une passion.",
+   "consequence": "Bruit, doute sur ce qui est ajouté.",
+   "proposition": "Exclure ou marquer « Déjà ajoutée » ; dédoublonner les idées.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Faible.",
+   "critereAcceptation": "Aucune passion vivante du compte n'est proposée comme idée actionnable.",
+   "fichiers": [
+    "js/passion-selector.js"
+   ]
+  },
+  {
+   "type": "hypothese",
+   "dependances": "Décision produit sur la visibilité réciproque.",
+   "sensible": true,
+   "risqueTechnique": "moyen",
+   "effort": "M",
+   "id": "PRO-C20",
+   "titre": "Le profil d'une personne qui m'a bloquée reste visible avec Suivre et Message",
+   "emplacement": "openUserProfile (app-04:4287)",
+   "surfaces": [
+    "PRO-030"
+   ],
+   "nature": "clarte",
+   "preuve": "Sonde profils-06 (faux serveur, policies recopiées) : profil et publication d'Inès visibles, Suivre proposé ; d'après le code, Suivre sera refusé (« Impossible de suivre … pour le moment »).",
+   "probleme": "Proposition d'actions vouées à l'échec, message trompeur « pour le moment ».",
+   "declencheur": "Ouvrir le profil de quelqu'un qui m'a bloqué.",
+   "consequence": "Insistance involontaire envers quelqu'un qui a choisi de couper le lien.",
+   "proposition": "À trancher côté règle métier (ce qu'un compte bloqué voit) ; au minimum un message de refus neutre.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 2,
+   "risqueRegression": "Ne jamais révéler explicitement « X t'a bloqué ».",
+   "critereAcceptation": "Règle décidée et appliquée ; aucun bouton menant à un refus certain.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C21",
+   "titre": "La pastille du nombre de publications est rognée sur le rail des passions",
+   "emplacement": "#v9ProfilePassions .profile-tile-count (passionTileHTML, app-02 : vignette en overflow:hidden, pastille à top/right -5 px)",
+   "surfaces": [
+    "PRO-001"
+   ],
+   "nature": "polish",
+   "preuve": "Capture PRO-001, gros plan « rail » : « 4 », « 2 », « 1 » coupés à moitié.",
+   "probleme": "Chiffre illisible.",
+   "declencheur": "Toute vignette avec photo.",
+   "consequence": "Information perdue.",
+   "proposition": "Poser la pastille dans la vignette (top/right 1 px) ou hors du conteneur rogné.",
+   "visuels": [
+    "PRO-001"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Même composant au Fil (règle propre en styles.css:9805).",
+   "critereAcceptation": "La pastille est entièrement visible à 360 et 390 px.",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "styles.css"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C22",
+   "titre": "« Signaler ce compte » hérite du plein écran du profil et le remplace",
+   "emplacement": "reportUser → _demanderMotifSignalement, classe .modal-fullscreen laissée par openUserProfile",
+   "surfaces": [
+    "PRO-032"
+   ],
+   "nature": "polish",
+   "preuve": "Sonde profils-08 : modale plein écran presque vide, poignée en haut, « Envoyer le signalement » sur deux lignes ; le profil est perdu.",
+   "probleme": "Mise en page incohérente ; pas de retour au profil.",
+   "declencheur": "Signaler depuis un profil.",
+   "consequence": "Désorientation dans un geste déjà délicat.",
+   "proposition": "Retirer .modal-fullscreen à l'ouverture d'une autre modale ; revenir au profil après Annuler.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "risqueRegression": "Autres modales ouvertes depuis le profil visité.",
+   "critereAcceptation": "La modale de signalement s'affiche en feuille basse ; Annuler ramène au profil.",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "type": "observation",
+   "dependances": "Aucune.",
+   "sensible": false,
+   "risqueTechnique": "faible",
+   "effort": "S",
+   "id": "PRO-C23",
+   "titre": "Petites cibles et petits textes du domaine",
+   "emplacement": "Réactiver 83 × 34 ; badge photo de passion 20 × 20 ; ⋯ et × du profil visité 34 × 34 ; curseur du recadreur 16 px ; dates d'activité 10,5 px",
+   "surfaces": [
+    "PRO-041",
+    "PRO-036",
+    "PRO-021",
+    "PRO-016",
+    "PRO-006"
+   ],
+   "nature": "accessibilite",
+   "preuve": "Sondes profils-03, 04, 07 ; capture PRO-006. Les compteurs du profil (40 px) sont déjà établis : SOC-C01.",
+   "probleme": "Cibles sous 44 px, textes sous 12 px.",
+   "declencheur": "Usage à une main.",
+   "consequence": "Appuis manqués, lecture difficile.",
+   "proposition": "Zones tactiles de 44 px (marge ou pseudo-élément), dates ≥ 12 px.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 2,
+   "risqueRegression": "Mise en page des cartes à 320 px.",
+   "critereAcceptation": "elementFromPoint rend la même commande sur 44 × 44 px pour chacune ; aucun texte < 12 px.",
+   "fichiers": [
+    "styles.css",
+    "js/app-06-reels-partage.js",
+    "js/app-04-comments-shop.js"
+   ]
+  }
+ ]
+}

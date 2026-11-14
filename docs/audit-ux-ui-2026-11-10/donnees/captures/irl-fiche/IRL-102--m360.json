@@ -1,0 +1,120 @@
+{
+ "id": "IRL-102",
+ "domaine": "irl-fiche",
+ "scenario": "fiche-avenir",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche — infos pratiques, participants, discussion",
+ "note": "Adresse et lien Google Maps (sur le banc l'adresse est lisible par tous : la RPC adresses_activites n'existe pas sur le faux serveur, le repli lit la colonne). Participants avec « +N », bouton « Discussion des participants · réservée à celles et ceux qui viennent ».",
+ "prisLe": "2026-11-10T17:54:27.668Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#event-ev_if_avenir"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-102--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 34070,
+  "zooms": [
+   {
+    "nom": "discussion",
+    "titre": "Bouton de discussion avant inscription",
+    "fichier": "captures/irl-fiche/IRL-102--m360--avant-zoom-discussion.webp",
+    "largeur": 688,
+    "hauteur": 164,
+    "octets": 3158
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div.event-detail-info-row > div > div > a.event-detail-info-link",
+     "texte": "Voir sur Google Maps →",
+     "w": 133.1,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "div.event-detail-info-row > div > div.event-detail-info-value > a",
+     "texte": "tom.girard@exemple.test",
+     "w": 154.1,
+     "h": 17,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 19,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Participants (3 / 8 max)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > span",
+     "texte": "5 places disponibles",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 3
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

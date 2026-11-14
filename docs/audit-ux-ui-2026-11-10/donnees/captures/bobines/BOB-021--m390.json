@@ -1,0 +1,50 @@
+{
+ "id": "BOB-021",
+ "domaine": "bobines",
+ "scenario": "commentaires",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau « Commentaires » — clavier ouvert (simulé, 300 px)",
+ "note": "Clavier virtuel simulé : fenêtre réduite de 300 px. Le panneau garde 70 % de la nouvelle hauteur.",
+ "prisLe": "2026-11-10T19:21:21.322Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-021--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1088,
+  "octets": 36482,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le champ reste visible au-dessus du clavier",
+   "x": 0.441,
+   "y": 0.931,
+   "w": 0.8,
+   "h": 0.079,
+   "sel": "#reelCommentInput",
+   "trouve": true
+  }
+ ],
+ "mesures": null,
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

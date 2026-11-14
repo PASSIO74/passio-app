@@ -1,0 +1,249 @@
+{
+ "id": "PRO-012",
+ "domaine": "profils",
+ "scenario": "modifier",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Mon profil principal » — bas : huit champs de réseaux, puis Sauvegarder",
+ "note": "",
+ "prisLe": "2026-11-10T18:18:58.361Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Mon profil principal",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 57870,
+  "zooms": [
+   {
+    "nom": "reseaux",
+    "titre": "Huit champs toujours affichés",
+    "fichier": "captures/profils/PRO-012--m390--avant-zoom-reseaux.webp",
+    "largeur": 760,
+    "hauteur": 238,
+    "octets": 7750
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Tiktok URL », « Youtube », « Linkedin », « Twitter »",
+   "x": 0.541,
+   "y": 0.461,
+   "w": 0.826,
+   "h": 0.046,
+   "sel": "#modalContent .rs-link-input[data-platform='tiktok']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Sauvegarder à 1 100 px du haut",
+   "x": 0.622,
+   "y": 0.947,
+   "w": 0.665,
+   "h": 0.05,
+   "sel": "#modalContent .btn.primary",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "input#editIsPrivate",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Instagram URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Tiktok URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Facebook URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Youtube URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Twitter URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Linkedin URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Snapchat URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Autre URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Annuler",
+     "w": 86.8,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "Sauvegarder",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 9,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Instagram URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Tiktok URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Facebook URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Youtube URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Twitter URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Linkedin URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Snapchat URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Autre URL"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-012--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 76054,
+  "zooms": [
+   {
+    "nom": "reseaux",
+    "titre": "Huit champs toujours affichés",
+    "fichier": "captures/profils/PRO-012--m390--apres-zoom-reseaux.webp",
+    "largeur": 760,
+    "hauteur": 238,
+    "octets": 11336
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Réseaux vides repliés, noms de marque justes",
+   "x": 0.5,
+   "y": 0.781,
+   "w": 0.908,
+   "h": 0.052,
+   "sel": "#mqAjoutReseau",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Barre d'enregistrement toujours visible",
+   "x": 0.622,
+   "y": 0.942,
+   "w": 0.665,
+   "h": 0.05,
+   "sel": "#modalContent .btn.primary",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

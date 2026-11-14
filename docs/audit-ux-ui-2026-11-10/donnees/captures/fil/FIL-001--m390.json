@@ -1,0 +1,232 @@
+{
+ "id": "FIL-001",
+ "domaine": "fil",
+ "scenario": "fil-tete",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil — haut de page (rail des passions, envies, stories, première carte)",
+ "note": "",
+ "prisLe": "2026-11-10T17:44:03.964Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-001--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 75642,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Rail des passions, envies et stories",
+    "fichier": "captures/fil/FIL-001--m390--avant-zoom-entete.webp",
+    "largeur": 740,
+    "hauteur": 164,
+    "octets": 14540
+   },
+   {
+    "nom": "envies",
+    "titre": "Rangée des envies",
+    "fichier": "captures/fil/FIL-001--m390--avant-zoom-envies.webp",
+    "largeur": 740,
+    "hauteur": 112,
+    "octets": 3264
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Rail : « Suivis » + les passions du compte, toutes cochées (lavis violet)",
+   "x": 0.5,
+   "y": 0.136,
+   "w": 0.918,
+   "h": 0.083,
+   "sel": "#profileStrip",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Envies en 11 px, sans état « tout » visible : rien ne dit que ce sont des filtres",
+   "x": 0.5,
+   "y": 0.206,
+   "w": 0.918,
+   "h": 0.052,
+   "sel": "#feedIntentSelector",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Stories : libellés en 9,5 px",
+   "x": 0.5,
+   "y": 0.28,
+   "w": 0.938,
+   "h": 0.077,
+   "sel": "#storiesRowFeed",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Le premier contenu commence à 273 px (390×844) — presque la moitié d'un écran 320×568",
+   "x": 0.5,
+   "y": 0.734,
+   "w": 0.918,
+   "h": 0.821,
+   "sel": "#feedList .post",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 36,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip",
+     "texte": "🔥 3",
+     "w": 30.5,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 22,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:60881/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-001--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 77540,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Rail des passions, envies et stories",
+    "fichier": "captures/fil/FIL-001--m390--apres-zoom-entete.webp",
+    "largeur": 740,
+    "hauteur": 164,
+    "octets": 14764
+   },
+   {
+    "nom": "envies",
+    "titre": "Rangée des envies",
+    "fichier": "captures/fil/FIL-001--m390--apres-zoom-envies.webp",
+    "largeur": 740,
+    "hauteur": 96,
+    "octets": 4430
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les envies se lisent comme des filtres : libellé « Filtrer », pastilles bordées, 13 px",
+   "x": 0.5,
+   "y": 0.202,
+   "w": 0.918,
+   "h": 0.043,
+   "sel": "#feedIntentSelector",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Libellés des stories à 11 px ; masqués sous 660 px de haut pour remonter le contenu",
+   "x": 0.5,
+   "y": 0.271,
+   "w": 0.938,
+   "h": 0.077,
+   "sel": "#storiesRowFeed",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

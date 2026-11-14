@@ -1,0 +1,90 @@
+{
+ "id": "IRL-161",
+ "domaine": "irl-fiche",
+ "scenario": "creer",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Créer une activité — bas du formulaire (Plus d'options, Aperçu, Publier)",
+ "note": "",
+ "prisLe": "2026-11-10T18:06:06.341Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Créer une activité",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-161--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37760,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "div#modalContent > details.v6a0-options > summary",
+     "texte": "Plus d'options",
+     "w": 241,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div.v6a0-actions > button.btn.ghost",
+     "texte": "Aperçu",
+     "w": 82.4,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div.v6a0-actions > button.btn.primary",
+     "texte": "Publier l'activité",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 13,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

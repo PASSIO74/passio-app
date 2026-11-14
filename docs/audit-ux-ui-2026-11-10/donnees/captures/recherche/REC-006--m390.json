@@ -1,0 +1,182 @@
+{
+ "id": "REC-006",
+ "domaine": "recherche",
+ "scenario": "saisie",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Résultats « gui » : passions puis personnes",
+ "note": "",
+ "prisLe": "2026-11-10T19:32:51.344Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 63236,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau des résultats",
+    "fichier": "captures/recherche/REC-006--m390--avant-zoom-panneau.webp",
+    "largeur": 648,
+    "hauteur": 728,
+    "octets": 26136
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Six passions d'abord : les personnes sont sous le pli d'un panneau de 360 px qui défile à part.",
+   "x": 0.5,
+   "y": 0.348,
+   "w": 0.815,
+   "h": 0.07,
+   "sel": "#exploreSearchResults > div:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Utilisateurs » ici, « personnes » ou « membres » ailleurs.",
+   "x": 0.5,
+   "y": 0.297,
+   "w": 0.815,
+   "h": 0.032,
+   "sel": "#exploreSearchResults > div:nth-child(1)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 218.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#exploreSearchResults > div",
+     "texte": "🎸 Guitare douze cordes Explorer →",
+     "w": 241,
+     "h": 37,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 17,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-006--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 61212,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau des résultats",
+    "fichier": "captures/recherche/REC-006--m390--apres-zoom-panneau.webp",
+    "largeur": 648,
+    "hauteur": 850,
+    "octets": 28596
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Trois passions, puis « Voir 3 autres passions » : les personnes remontent sous le doigt.",
+   "x": 0.5,
+   "y": 0.546,
+   "w": 0.815,
+   "h": 0.052,
+   "sel": "#maqPlus",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Une croix efface la recherche et ferme le panneau.",
+   "x": 0.69,
+   "y": 0.231,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#maqEffacer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

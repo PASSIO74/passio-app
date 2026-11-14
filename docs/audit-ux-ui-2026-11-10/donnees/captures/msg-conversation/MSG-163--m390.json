@@ -1,0 +1,173 @@
+{
+ "id": "MSG-163",
+ "domaine": "msg-conversation",
+ "scenario": "echecs-pieces",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "GIF et position en échec d'envoi : affichés comme envoyés",
+ "note": "SIMULÉ : le faux serveur répond 500 aux insertions. Aucune des deux lignes n'existe en base, aucune n'est en file ; les bulles portent « ✓ ».",
+ "prisLe": "2026-11-10T19:05:31.101Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-163--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42220,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "GIF refusé par le serveur : « ✓ », aucun signe d'échec.",
+   "x": 0.897,
+   "y": 0.733,
+   "w": 0.104,
+   "h": 0.018,
+   "sel": "#convFpThread .conv-bubble-wrap:nth-last-child(2) .conv-bubble-time",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Position refusée : idem. Les deux disparaîtront à la prochaine relecture du fil.",
+   "x": 0.882,
+   "y": 0.873,
+   "w": 0.133,
+   "h": 0.018,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble-time",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > a",
+     "texte": "📍 Ma position : https://maps.google.com/?q=45.74850,4.84670",
+     "w": 177,
+     "h": 20,
+     "enLigne": true
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54912/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-163--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48432,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même verdict que le texte : échec visible, relance, file hors ligne.",
+   "x": 0.711,
+   "y": 0.701,
+   "w": 0.446,
+   "h": 0.052,
+   "sel": ".maq-echec",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
