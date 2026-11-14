@@ -13158,8 +13158,6 @@ button, a, label, select, summary,
 .v4a5-pied-vide { pointer-events: auto; background: #f6f5fa; border-radius: 12px; padding: 6px 8px; }
 
 /* LOT-26 (audit UX/UI du 2026-11-10) — FIL-C27 : la publication d'un compte privé le dit. */
-.post-prive { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; }
-.post-prive svg { flex-shrink: 0; }
 
 /* LOT-27 (audit UX/UI du 2026-11-10, MSG-C13) : la ligne dit COMBIEN de non-lus
    (pastille chiffrée de 20 px, au lieu d'un point de 9 px dont le nombre était
