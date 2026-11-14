@@ -33,6 +33,10 @@ test("① FIL-C02 : j'aime, commenter et réagir ont une icône, un nom et un é
   expect(apres.n).toBe(avant.n + 1);
   expect(apres.label).toBe("Tu aimes — " + apres.n + " j'aime");
   expect(apres.svg, "le repeint garde l'icône").toBe(true);
+  // Aimé = cœur ROUGE plein (retour de Benjamin, 2026-11-14 : le violet ne se
+  // lisait pas comme « aimé »), même rouge que le ❤️ d'un commentaire.
+  await expect(like).toHaveCSS("color", "rgb(239, 68, 68)");
+  expect(await like.locator("svg.pa-ico").getAttribute("fill")).toBe("currentColor");
   const cmt = carte.locator(".post-action[data-cmtcount]");
   await expect(cmt).toHaveAttribute("aria-label", /^Commenter — \d+ commentaires?$/);
   expect(await cmt.evaluate((el) => !!el.querySelector("svg.pa-ico") && !/💬/u.test(el.textContent))).toBe(true);
