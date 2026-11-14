@@ -240,8 +240,14 @@ test.describe("la recherche", () => {
     // valeur. Un sélecteur qui n'écrirait pas dedans publierait sous la
     // mauvaise passion, en silence.
     await bootOnboarded(page, null, 1, { query: APERCU });
+    // 2026-11-14 : le Studio ne propose QUE les passions du profil — « photo »
+    // doit donc y être avant d'ouvrir le sélecteur.
+    await page.evaluate(async () => { await PassioPassions.charger(); ajouterPassionAuCompte("photo", ""); });
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(900);
+    // Ajouter « photo » l'a rendue courante : on repart de « musique » pour
+    // distinguer « le sélecteur a écrit » de « c'était déjà là ».
+    await page.evaluate(() => { document.getElementById("postPassion").value = "musique"; });
     // ⚠️ On passe par le chemin RÉEL de l'écran. Sous le lot UI-6, le champ de
     // passion est REPLIÉ derrière un résumé « Publier dans : … · Changer » :
     // tester `#studioPassionBtn` directement testerait un bouton qu'aucun
@@ -405,8 +411,11 @@ test.describe("le modèle et les garde-fous", () => {
     expect(plancher.historique).toBe(true);
     expect(plancher.inventee, "un identifiant inventé est devenu publiable").toBe(false);
 
+    // 2026-11-14 : le Studio ne propose QUE les passions du profil.
+    await page.evaluate(async () => { await PassioPassions.charger(); ajouterPassionAuCompte("moto-enduro", ""); });
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(500);
+    await page.evaluate(() => { document.getElementById("postPassion").value = "musique"; });
     // ⚠️ IDENTIFIANT NU, jamais `window.estPassionCanonique` : c'est le binding
     // global que `PassioFlatUI.passionPubliable` résout, et un stub posé à côté
     // laisserait le test vert-aveugle (piège déjà payé sur `supa` et `MY_UID`).

@@ -6165,7 +6165,7 @@ function shareUserProfile(userId, name) {
   // sans rien montrer de ce qui part.
   ouvrirFeuillePartage({
     quoi: "profil", titre: name || "Profil PASSIO", url: url,
-    message: "Découvre " + (name || "ce profil") + " sur PASSIO",
+    message: "Viens voir " + (name || "ce profil") + " sur PASSIO 👇",
     voit: "La personne qui reçoit le lien voit ce profil et ses publications publiques.",
     idEnvoyer: "_shareUserOutBtn",
   });

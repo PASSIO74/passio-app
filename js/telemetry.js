@@ -1252,7 +1252,11 @@
     // identifiant de lien stable (à insérer dans l'URL via tagUrl) qui permettra
     // d'apparier, côté pilotage, la CRÉATION à une ÉVENTUELLE ouverture confirmée.
     linkCreate: function (kind, target) {
-      var id = "lk_" + uid16();
+      // 10 caractères [a-z0-9] (3,6·10^15 tirages) : assez pour corréler, et
+      // assez court pour le lien compact `?s=` (app-02, 2026-11-14).
+      var id = "lk_";
+      var abc = "0123456789abcdefghijklmnopqrstuvwxyz";
+      for (var k = 0; k < 10; k++) id += abc[(Math.random() * abc.length) | 0];
       track("link", "link_create", {
         correlation_id: id, severity: "info", status: "ok", message: "Lien créé",
         meta: {

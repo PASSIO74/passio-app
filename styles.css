@@ -13829,3 +13829,7 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .story-feuille-ligne { display: flex; align-items: center; gap: 10px; }
 .story-feuille-nom { flex: 1; min-width: 0; min-height: 44px; text-align: left; background: none; border: none; color: var(--text); font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .story-act-coeur { font-size: 18px; }
+
+/* Studio : aucune passion sur le profil -> sortie vers « Gérer mes passions » (2026-11-14) */
+.psel-vide-profil { padding: 8px 0; }
+.psel-vide-profil .btn { margin-top: 12px; }

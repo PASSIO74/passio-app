@@ -2744,6 +2744,9 @@ const reelsState = {
   viewedSinceOpen: 0,
   pausePrompted: false,
   observer: null,
+  // Son ACTIVÉ par défaut (demande de Benjamin, 2026-11-14) : c'est à
+  // l'utilisateur de le couper (bouton 🔊 de chaque bobine), pas de l'activer.
+  soundOn: true,
 };
 
 // Vidéos seed embarquées, bucket Google public, garanti hotlinkable et lecture H.264
@@ -3547,29 +3550,49 @@ function playReelAt(idx) {
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
     if (i === idx) {
-      lancerVideoPublique(vid, false);
+      lancerVideoPublique(vid, false).then((ok) => {
+        // Un navigateur peut refuser la lecture SONORE hors geste (iOS en
+        // défilement, Chrome sans interaction préalable). Plutôt qu'une bobine
+        // figée, on relance sans son pour CETTE vidéo seulement : le choix
+        // global reste « son activé », et 🔇 affiché invite à toucher.
+        if (ok || vid.muted || !vid.paused || !vid.hasAttribute("src")) return;
+        if (reelsState.current !== idx || !reelsState.open) return;
+        if (typeof videoPubliqueAutoplay === "function" && !videoPubliqueAutoplay()) return;
+        vid.muted = true; vid.defaultMuted = true;
+        _syncReelSoundBtns();
+        lancerVideoPublique(vid, false);
+      });
     }
     else arreterVideoPublique(vid);
   });
+  _syncReelSoundBtns();
 }
 
 // Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
 // son sur une bobine l'active pour les suivantes, mémorisé pour la session.
 function toggleReelsSound(ev) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-  reelsState.soundOn = !reelsState.soundOn;
-  _syncReelSoundBtns();
   const items = document.querySelectorAll("#reelsList .reel-item");
   const cur = items[reelsState.current];
   const vid = cur && cur.querySelector("video");
+  // On bascule ce que l'utilisateur ENTEND : une vidéo relancée sans son
+  // (lecture sonore refusée par le navigateur) affiche 🔇 alors que le choix
+  // global est « son activé » — la toucher doit allumer le son, pas l'éteindre.
+  reelsState.soundOn = vid ? !!vid.muted : !reelsState.soundOn;
   if (vid) {
     vid.muted = !reelsState.soundOn; vid.defaultMuted = vid.muted;
     if (vid.paused) lancerVideoPublique(vid, true);
   }
+  _syncReelSoundBtns();
 }
 function _syncReelSoundBtns() {
-  document.querySelectorAll("#reelsList .reel-sound-btn").forEach((b) => {
-    b.textContent = reelsState.soundOn ? "🔊" : "🔇";
+  document.querySelectorAll("#reelsList .reel-item").forEach((it) => {
+    const b = it.querySelector(".reel-sound-btn");
+    if (!b) return;
+    const vid = it.querySelector("video");
+    const on = vid ? !vid.muted : !!reelsState.soundOn;
+    b.textContent = on ? "🔊" : "🔇";
+    b.setAttribute("aria-label", on ? "Couper le son" : "Activer le son");
   });
 }
 
@@ -4012,7 +4035,7 @@ function openReelShareModal(postId) {
     quoi: "bobine", auteur: author.name || "Passionné", extrait: extrait,
     vignette: reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || "",
     url: url,
-    message: "Une bobine de " + (author.name || "Passionné") + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    message: "Regarde la bobine de " + (author.name || "Passionné") + " sur PASSIO 🎬",
     republier: function () { shareReelInFeed(postId); },
   });
 }
