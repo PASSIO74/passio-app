@@ -2553,6 +2553,31 @@ function normaliserTexteMultiligne(s) {
 }
 window.normaliserTexteMultiligne = normaliserTexteMultiligne;
 
+// Biographie en PARAGRAPHES — le SEUL rendu des deux `.main-profile-bio` (mon
+// profil, app-06, et le profil visité, app-04) depuis le 2026-11-14.
+// Rapporté par Benjamin (capture de son profil) : « Benjamin ladame⏎⏎Annecy⏎⏎
+// 37 ans » peignait deux lignes BLANCHES de 19,5 px chacune — 98 px pour trois
+// lignes de texte, la moitié de l'écart vide. La ligne vide reste de la mise en
+// forme (décision du 2026-09-03 : « je dois pouvoir éditer comme j'ai envie ») :
+// elle n'est NI retirée de la donnée NI de l'affichage, elle devient un ÉCART
+// de paragraphe (6 px, `.bio-sep + .bio-para`) au lieu d'une ligne entière.
+// ⚠️ Un saut SIMPLE reste un « \n » dans le nœud texte, rendu par le `pre-line`
+// hérité de `.main-profile-bio` : couper chaque ligne en bloc casserait le
+// verrou `biographie-multiligne` (le `textContent` doit garder ses « \n »).
+// ⚠️ Le séparateur « \n\n » RESTE dans le DOM (`<span hidden>`) : `textContent`
+// rend la biographie à l'octet près — et le copier-coller garde ses paragraphes.
+// ⚠️ Normalisée AUSSI à l'affichage : la bio d'un AUTRE compte n'est jamais
+// garantie normalisée (la base en accepte 1 000 caractères) — trois sauts ou
+// plus n'étirent plus la carte. Chaque morceau passe par `escapeHtml`.
+function bioEnParagraphesHtml(texte) {
+  var t = normaliserTexteMultiligne(texte);
+  if (!t) return "";
+  return t.split(/\n\n/).map(function (p, i) {
+    return (i ? '<span class="bio-sep" hidden>\n\n</span>' : "")
+      + '<span class="bio-para">' + escapeHtml(p) + '</span>';
+  }).join("");
+}
+
 // Tronque une chaîne à `max` unités UTF-16 SANS couper une paire de substitution.
 // slice(0,max) brut peut laisser un demi-surrogate (high sans low) quand la coupe
 // tombe au milieu d'un emoji (😍 = 2 unités, 👨‍👩‍👧 = plusieurs) → caractère « ￿ ».

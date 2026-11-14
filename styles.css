@@ -10356,16 +10356,28 @@ body.ctx-locked #appMain { overflow: hidden; }
      écrans. La quatrième est la borne de SURVIE : elle garde 488 px pour tout
      le reste, donc sur un très petit écran c'est la photo qui cède, jamais les
      commandes. Les quatre sont des `min()` : aucune ne peut agrandir. */
-  --couverture-profil: min(
+  /* ⚠️ 2026-11-14 : LE CORPS DE LA CARTE EST MESURÉ, PLUS SUPPOSÉ.
+     La formule comptait 145 px fixes pour le corps (pseudo, bio d'une ligne,
+     statistiques). Une bio réelle (98 px chez Benjamin) et le bouton
+     « Partager mon profil » (LOT-12, après la formule) en faisaient 249 : la
+     formule voyait 104 px qui n'existaient pas, saturait à 36 px trois fois, et
+     les onglets passaient SOUS la barre du bas — la régression exacte de « tout
+     doit tenir sur une page » (2026-09-10). `--corps-carte-profil` est posé par
+     `_suivreCorpsCarteProfil` (app-06, un ResizeObserver, jamais de rAF) ; 145 px
+     reste le repli avant la première mesure.
+     La borne de survie (4e terme) suit la même mesure, avec un PLANCHER de
+     140 px : l'avatar (116 + 14 de garde) doit toujours tenir sur la photo. */
+  --couverture-profil: max(140px, min(
     calc((min(100vw, 440px) - 32px) / 1.5),
     calc(var(--app-vh, 100svh) * 0.34),
     420px,
-    calc(var(--app-vh, 100svh) - 488px)
-  );
-  /* Le tiers de ce qui reste une fois la couverture posée et les 470 px
-     incompressibles retirés (haut de page 80, corps de la carte 145, rail 65,
-     onglets 52, rangée de formats 56, barre 62, talon 10). */
-  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 470px - var(--couverture-profil)) / 3), 36px);
+    calc(var(--app-vh, 100svh) - 349px - var(--corps-carte-profil, 145px))
+  ));
+  /* Le tiers de ce qui reste une fois la couverture et le corps de la carte
+     posés, et les 331 px incompressibles retirés (haut de page 80, rail 65,
+     onglets 52, rangée de formats 56, barre 66 — mesurée, `--v2-nav-height` —,
+     bordures de la carte 2, talon 10). */
+  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 331px - var(--corps-carte-profil, 145px) - var(--couverture-profil)) / 3), 36px);
 }
 #screen-profiles .main-profile-cover { max-height: var(--couverture-profil); }
 #screen-profiles .main-profile-card { margin-bottom: 0; }
@@ -13351,6 +13363,126 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .v8-switch-go { min-height: 44px; }
 #pcropZoom { min-height: 44px; }
 
+/* ═══ PROFIL-ERGONOMIE:DEBUT ════════════════════════════════════════════════
+   « Améliore la page de profil, je ne la trouve pas ergonomique et pratique »
+   (Benjamin, 2026-11-14, capture de son profil à l'appui). Fiche :
+   docs/lots-ui/31-PROFIL-ERGONOMIE-2026-11-14.md. Verrou :
+   tests/e2e/profil-ergonomie.spec.js.
+   ⚠️ Toutes les règles de MISE EN PAGE sont bornées à `#screen-profiles` (ou à
+   un identifiant de mon profil) : les classes `.main-profile-*`, `.profile-strip`
+   et `.v7-tabs` servent AUSSI le profil visité et le Fil. Seule exception,
+   voulue : les paragraphes de biographie, communs aux deux profils.
+   ⚠️ Posé AVANT le bloc ORDINATEUR-PLEINE-PAGE, qui reste le dernier. */
+
+/* ① La biographie en paragraphes (`bioEnParagraphesHtml`, app-02) : une ligne
+   vide devient un écart de 6 px au lieu d'une ligne blanche de 19,5 px. Les
+   sauts SIMPLES restent rendus par le `pre-line` hérité de `.main-profile-bio`.
+   Le séparateur porte `hidden` : il n'est pas peint, mais il reste dans le
+   `textContent`, et la règle adjacente le traverse. */
+.main-profile-bio .bio-para { display: block; }
+.main-profile-bio .bio-sep + .bio-para { margin-top: 6px; }
+/* La bio d'un AUTRE compte n'ouvre rien (aucun rôle, aucun clic) : le curseur
+   « main » de la règle de base y promettait un geste qui n'existe pas. */
+.main-profile-bio:not([role="button"]) { cursor: auto; }
+/* ② « Partager mon profil » à droite de l'avatar, sur la photo (index.html) :
+   il ne coûte plus aucune hauteur à la carte. Il s'aligne sur le bord BAS de
+   l'avatar (`.main-profile-avatar-wrap` : flex, `align-items: flex-end`,
+   `space-between`) — la rangée garde ses 116 px, le pseudo ne bouge pas.
+   ⚠️ CIBLE 44 px, PILULE VISIBLE 34 px : même patron que le crayon d'UI-6B — la
+   boîte du bouton garde 44 px (verrou lot12-partage ⑤, mesuré sur la BOÎTE),
+   un `::before` en `inset: 5px 0` peint la pilule. Blanche à texte sombre : lisible
+   sur n'importe quelle photo comme sur le dégradé par défaut, quel que soit le
+   thème. `position: relative` : la couverture est positionnée, un bouton qui ne
+   l'est pas serait peint SOUS elle. */
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: auto;
+  height: 44px;
+  min-height: 44px;
+  margin: 0 0 0 12px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 22px;
+  background: none;
+  box-shadow: none;
+  color: #1f1147;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  gap: 6px;
+}
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager::before {
+  content: "";
+  position: absolute;
+  inset: 5px 0;
+  z-index: -1;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 10px rgba(15, 8, 40, 0.25);
+}
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager:hover::before { background: #fff; }
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+/* ③ Le rail des passions VA JUSQU'AUX BORDS DE L'ÉCRAN, et il dit qu'il défile.
+   Capture de Benjamin : 7 passions, 4 bulles visibles, coupées PILE dans la
+   marge de la 5e — rien ne disait qu'il y en avait trois autres. Le rail
+   s'étend sous la gouttière de `#appMain` (16 px de chaque côté) en gardant son
+   padding de 16 px : à 390 px, la 5e vignette dépasse d'environ 28 px du bord —
+   l'indice universel d'une rangée qui coulisse, sans chiffre (« supprime les
+   chiffres sur les onglets de passion », 2026-11-13) ni flèche.
+   ⚠️ Ce qui ne change pas : la largeur FIXE et égale des bulles (jamais
+   `flex: 1 1 0`), le centrage par marges `auto` quand la rangée tient (jamais
+   `justify-content: center`), le départ à 0 du bord intérieur quand elle
+   déborde, la position de défilement (`ecrireRailCoulissant`). Le pas reste de
+   82 px (74 + 8 au lieu de 72 + 10).
+   ⚠️ Le libellé gagne 6 px (64 → 70) : « Course à pied » (66 px à 10 px)
+   s'écrit en entier au lieu de « Course à p… ». Toujours 10 px, jamais moins.
+   ⚠️ Borné à l'IDENTIFIANT : le Fil (`#profileStrip`) et le profil visité
+   (`#visitedPassions`) partagent `.profile-strip`. */
+#screen-profiles #v9ProfilePassions.v9-profile-strip {
+  margin-left: -16px;
+  margin-right: -16px;
+  gap: 8px;
+}
+#screen-profiles #v9ProfilePassions .profile-tile { width: 74px; padding: 2px 2px 2px; }
+#screen-profiles #v9ProfilePassions .profile-tile-label { max-width: 70px; }
+/* ④ Les onglets « Publications | Activité » RESTENT À PORTÉE quand on défile.
+   Une fois dans ses publications, il fallait remonter tout le profil pour
+   passer à « Activité ». `position: sticky` : aucun écouteur de défilement,
+   aucun rAF, aucune classe basculée (UI-6B et UI-7 observent `class`) — la
+   barre reste dans le flux, et à `scrollTop` 0 rien ne bouge (les verrous de
+   géométrie mesurent là). Jamais `fixed` dans `#appMain` (WebKit).
+   ⚠️ `top: -16px` : le collage se fait au bord du CONTENU de `#appMain`, sous
+   son `padding-top` de 16 px ; sans ce décalage, les publications défileraient
+   visibles dans la bande de 16 px au-dessus de la barre. Sur ordinateur le
+   padding vaut 28 px : la règle correspondante vit dans le bloc
+   ORDINATEUR-PLEINE-PAGE.
+   ⚠️ Fond opaque déjà posé (`--bg-card`) ; `z-index: 6` passe au-dessus des
+   enfants positionnés des cartes de publication, très en dessous des feuilles
+   (1200), du lecteur de bobines (9999), des fenêtres (10001) et du menu ⋯
+   (10002). Sous la page « Mes passions », la règle `!important` qui masque les
+   frères de `#passionManager` l'emporte. Le défilement vers une section garde
+   la barre au-dessus de sa cible (`scroll-margin-top`). */
+:root.passio-ui-7 #screen-profiles #v7ProfileTabs {
+  position: sticky;
+  top: -16px;
+  z-index: 6;
+  box-shadow: 0 6px 16px -10px rgba(15, 8, 40, 0.35);
+}
+:root.passio-ui-7 #screen-profiles #myPosts,
+:root.passio-ui-7 #screen-profiles .v7-pan { scroll-margin-top: 60px; }
+/* ═══ PROFIL-ERGONOMIE:FIN ═══ */
+
 /* ═══ ORDINATEUR-PLEINE-PAGE:DEBUT ═══════════════════════════════════════════
    Demande de Benjamin du 2026-11-14 : « pour l'utilisation sur ordinateur, fais
    en sorte que cela ressemble à un vrai site qui prend toute la page ».
@@ -13577,5 +13709,8 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
     max-width: 560px;
     scrollbar-width: thin;
   }
+  /* ── Profil : la barre d'onglets collée se pose au ras de l'en-tête ─────────
+     (bloc PROFIL-ERGONOMIE, ④) : ici `#appMain` a 28 px de padding haut, pas 16. */
+  :root.passio-ui-7 #screen-profiles #v7ProfileTabs { top: -28px; }
 }
 /* ═══ ORDINATEUR-PLEINE-PAGE:FIN ═══ */

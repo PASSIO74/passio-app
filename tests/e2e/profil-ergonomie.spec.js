@@ -1,0 +1,334 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// PROFIL — ERGONOMIE (2026-11-14)
+// « Améliore la page de profil, je ne la trouve pas ergonomique et pratique »
+// (Benjamin, capture de SON profil à l'appui). Fiche :
+// docs/lots-ui/31-PROFIL-ERGONOMIE-2026-11-14.md.
+//
+// Mesuré sur son état réel (bio « Benjamin ladame⏎⏎Annecy⏎⏎37 ans », 7 passions,
+// le bouton « Partager mon profil ») à 390 × 844 : la carte d'identité faisait
+// 487 px, les onglets « Publications | Activité » passaient SOUS la barre du bas,
+// aucune publication n'était visible sans défiler. La cause : la répartition
+// `--espace-profil` (« tout doit tenir sur une page », 2026-09-10) comptait un
+// corps de carte FIXE de 145 px — la bio réelle et le bouton Partager en
+// faisaient 249. Le verrou ① ter de `profil-entete-passions` restait vert : sa
+// fixture n'a pas de bio.
+//
+//   ① tout tient sur une page, avec SA bio et SES passions (844, 765, 693, 667)
+//   ② la bio en paragraphes : une ligne vide = un écart, pas une ligne blanche —
+//      sur mon profil ET sur le profil visité ; texte intact à l'octet près
+//   ③ « Partager » à droite de l'avatar : 44 px, sur la photo, aucune hauteur
+//   ④ le rail des passions va jusqu'au bord et laisse voir une 5e bulle entamée
+//   ⑤ les onglets restent à portée quand on défile ; changer d'onglet ramène au
+//      début de la section
+//   ⑥ Entrée sur la bio ouvre l'éditeur UNE fois (il s'ouvrait deux fois)
+//   ⑦ ordinateur (1440 × 900) : la barre collée au ras de l'en-tête
+//   ⑧ coupure du lot UI-7 : rien de collant, rien ne casse
+//
+// Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
+// ═══════════════════════════════════════════════════════════════════════════
+const { test, expect } = require("@playwright/test");
+const { bootOnboarded, onboardedState } = require("./app-helper");
+
+const BIO_BENJAMIN = "Benjamin ladame\n\nAnnecy\n\n37 ans";
+const SEPT = ["musique", "sport", "cuisine", "photo", "voyage", "danse", "art"];
+
+function etatBenjamin(nbPosts = 0) {
+  const st = onboardedState(1);
+  st.user.profiles = SEPT.map((p, i) => ({
+    id: "pp_" + i, name: "Ben", passion: p, emoji: "✨", bio: "", color: "#7c3aed", createdAt: i + 1,
+  }));
+  st.user.general = { username: "Ben test 1 sur portable", bio: BIO_BENJAMIN };
+  st.user.following = ["a", "b", "c", "d", "e"];
+  const t = Date.now();
+  st.userPosts = Array.from({ length: nbPosts }, (_, i) => ({
+    id: "up_erg_" + i, profileId: "pp_0", passion: "musique", type: "text",
+    text: "Publication " + (i + 1) + " — un texte de test assez long pour faire une carte.",
+    createdAt: t - i * 3600e3, likes: 0, comments: [],
+  }));
+  return st;
+}
+
+async function ouvrirProfil(page, opts = {}) {
+  await bootOnboarded(page, null, 1, { state: etatBenjamin(opts.posts || 0), ...(opts.boot || {}) });
+  await page.evaluate(() => {
+    window.supaSaveUserState = async () => {};
+    window.supaSavePublicProfile = async () => {};
+    window.supaUpsertProfile = async () => {};
+    goTo("profiles");
+  });
+  await page.waitForTimeout(700);
+}
+
+function mesurerPage() {
+  const b = (s) => {
+    const e = document.querySelector(s);
+    if (!e || !e.offsetParent) return null;
+    const r = e.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, h: r.height };
+  };
+  const nav = document.getElementById("appNavV2");
+  return {
+    carte: b("#mainProfileCard"),
+    couverture: b("#mainProfileCover"),
+    pseudo: b("#mainProfileUsername"),
+    avatar: b("#mainProfileAvatar"),
+    partager: b("#mainProfileCard .main-profile-partager"),
+    rail: b("#v9ProfilePassions"),
+    onglets: b("#v7ProfileTabs"),
+    formats: b("#screen-profiles .v7-subfilters"),
+    barre: nav && nav.offsetParent ? nav.getBoundingClientRect().top : null,
+    zone: document.getElementById("appMain").clientHeight,
+  };
+}
+
+// ── ① ────────────────────────────────────────────────────────────────────────
+for (const [w, h] of [[390, 844], [390, 765], [390, 693], [375, 667]]) {
+  test(`① ${w}×${h} — avec SA bio et SES 7 passions, tout tient sur une page (carte, rail, onglets, formats)`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await ouvrirProfil(page);
+    const m = await page.evaluate(mesurerPage);
+    expect(m.barre, "la barre du bas est là").not.toBeNull();
+    expect(m.onglets, "les onglets sont peints").not.toBeNull();
+    expect(m.formats, "la rangée de formats est peinte").not.toBeNull();
+    // Avant : formats jusqu'à 848 pour une barre à 778 (844), onglets à moitié
+    // sous la barre à 765 — la capture de Benjamin.
+    expect(m.onglets.bottom, "les onglets sont au-dessus de la barre du bas").toBeLessThanOrEqual(m.barre);
+    expect(m.formats.bottom, "la rangée de formats aussi : « tout doit tenir sur une page »").toBeLessThanOrEqual(m.barre);
+    // Contre-mesure du 2026-08-31 (« le grand carré prend trop de place »),
+    // cette fois AVEC une vraie bio.
+    expect(m.carte.h / m.zone, "la carte d'identité reste sous les deux tiers").toBeLessThan(0.66);
+    // Les trois nombres liés de l'avatar et la couverture jusqu'au pseudo.
+    expect(m.avatar.top, "l'avatar tient sur la photo").toBeGreaterThanOrEqual(m.couverture.top - 1);
+    expect(m.pseudo.top - m.couverture.bottom, "le pseudo juste sous la photo").toBeGreaterThanOrEqual(0);
+    expect(m.pseudo.top - m.couverture.bottom).toBeLessThanOrEqual(12);
+  });
+}
+
+test("① bis — une bio qui s'allonge est MESURÉE : la répartition suit, rien ne passe sous la barre", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ouvrirProfil(page);
+  const avant = await page.evaluate(() => getComputedStyle(document.getElementById("screen-profiles")).getPropertyValue("--corps-carte-profil").trim());
+  await page.evaluate(() => {
+    state.user.general.bio = "Une ligne\nDeux\nTrois\nQuatre\nCinq\nSix";
+    renderMainProfile();
+  });
+  await page.waitForTimeout(300);
+  const apres = await page.evaluate(() => getComputedStyle(document.getElementById("screen-profiles")).getPropertyValue("--corps-carte-profil").trim());
+  expect(avant, "le corps de la carte est mesuré, pas supposé").toMatch(/^\d+px$/);
+  expect(parseFloat(apres), "six lignes de bio : le corps mesuré grandit").toBeGreaterThan(parseFloat(avant) + 40);
+  const m = await page.evaluate(mesurerPage);
+  expect(m.formats.bottom, "et la rangée de formats reste au-dessus de la barre").toBeLessThanOrEqual(m.barre);
+});
+
+// ── ② ────────────────────────────────────────────────────────────────────────
+test("② la bio en paragraphes : une ligne vide devient un écart, le texte reste intact", async ({ page }) => {
+  await ouvrirProfil(page);
+  const r = await page.evaluate(() => {
+    const el = document.getElementById("mainProfileBio");
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    const paras = [...el.querySelectorAll(".bio-para")];
+    const ecarts = paras.slice(1).map((p, i) => p.getBoundingClientRect().top - paras[i].getBoundingClientRect().bottom);
+    return {
+      lignes: el.getBoundingClientRect().height / lh,
+      texte: el.textContent,
+      ws: getComputedStyle(el).whiteSpace,
+      paras: paras.map((p) => p.textContent),
+      ecarts,
+      lh,
+    };
+  });
+  expect(r.texte, "textContent = la bio à l'octet près (copier-coller, verrou biographie ④)").toBe("Benjamin ladame\n\nAnnecy\n\n37 ans");
+  expect(r.ws, "pre-line conservé (sauts simples)").toMatch(/pre-line|pre-wrap/);
+  expect(r.paras).toEqual(["Benjamin ladame", "Annecy", "37 ans"]);
+  // Avant : 5 lignes pleines (98 px), dont deux blanches.
+  expect(r.lignes, "trois lignes de texte + deux petits écarts, plus deux lignes blanches").toBeLessThan(4);
+  expect(r.lignes).toBeGreaterThanOrEqual(3);
+  for (const e of r.ecarts) {
+    expect(e, "la séparation reste VISIBLE (mise en forme voulue)").toBeGreaterThanOrEqual(4);
+    expect(e, "mais ce n'est plus une ligne entière").toBeLessThan(r.lh);
+  }
+});
+
+test("② bis — le profil VISITÉ rend la bio de la même façon, échappée", async ({ page }) => {
+  await ouvrirProfil(page);
+  const r = await page.evaluate(async () => {
+    state.seed.users.push({ id: "u_bio_erg", name: "Camille", profileEmoji: "🎨", avatar: "#7c3aed", bio: "Peintre<img src=x onerror=window.__xssBio=1>\n\n\n\nLyon\nAtelier ouvert", passions: [] });
+    await openUserProfile("u_bio_erg", "seed");
+    await new Promise((ok) => setTimeout(ok, 300));
+    const el = document.querySelector("#modalContent .main-profile-bio");
+    if (!el) return null;
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    return {
+      paras: [...el.querySelectorAll(".bio-para")].map((p) => p.textContent),
+      images: el.querySelectorAll("img").length,
+      lignes: el.getBoundingClientRect().height / lh,
+      curseur: getComputedStyle(el).cursor,
+    };
+  });
+  expect(r, "la bio du profil visité est peinte").not.toBeNull();
+  // Quatre sauts d'affilée (bio d'un autre compte, jamais garantie normalisée)
+  // ne font qu'UN écart ; le saut simple reste un saut.
+  expect(r.paras).toEqual(["Peintre<img src=x onerror=window.__xssBio=1>", "Lyon\nAtelier ouvert"]);
+  expect(r.images, "aucune balise injectée").toBe(0);
+  expect(await page.evaluate(() => window.__xssBio), "aucun script exécuté").toBeUndefined();
+  expect(r.lignes, "3 lignes de texte et un écart, pas 6 lignes").toBeLessThan(4);
+  expect(r.curseur, "la bio d'autrui n'ouvre rien : pas de curseur « main »").not.toBe("pointer");
+});
+
+// ── ③ ────────────────────────────────────────────────────────────────────────
+for (const w of [390, 320]) {
+  test(`③ ${w} px — « Partager » à droite de l'avatar, sur la photo, sans rangée à lui`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 760 });
+    await ouvrirProfil(page);
+    const m = await page.evaluate(mesurerPage);
+    expect(m.partager, "visible dans la carte d'identité").not.toBeNull();
+    expect(m.partager.h, "cible de 44 px").toBeGreaterThanOrEqual(44);
+    expect(m.partager.bottom, "posé sur la photo, pas sous les statistiques").toBeLessThanOrEqual(m.couverture.bottom);
+    expect(m.partager.left, "à droite de l'avatar, sans le chevaucher").toBeGreaterThanOrEqual(m.avatar.right);
+    expect(m.partager.right, "dans la carte, même à 320 px").toBeLessThanOrEqual(m.carte.right);
+    const r = await page.evaluate(() => {
+      const b = document.querySelector("#mainProfileCard .main-profile-partager");
+      const rc = b.getBoundingClientRect();
+      const cible = document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2);
+      return { touche: !!(cible && cible.closest(".main-profile-partager")), nom: b.getAttribute("aria-label"), visible: b.textContent.trim() };
+    });
+    expect(r.touche, "rien ne le recouvre (la couverture est positionnée)").toBe(true);
+    expect(r.nom, "le nom accessible garde le geste entier").toBe("Partager mon profil");
+    expect(r.nom, "et contient le libellé visible (WCAG 2.5.3)").toContain(r.visible);
+  });
+}
+
+test("③ bis — le bouton Partager appelle partagerMonProfil, une fois", async ({ page }) => {
+  await ouvrirProfil(page);
+  await page.evaluate(() => { window.__partages = 0; window.partagerMonProfil = () => { window.__partages++; }; });
+  await page.locator("#mainProfileCard .main-profile-partager").click();
+  expect(await page.evaluate(() => window.__partages)).toBe(1);
+  // Le crayon d'UI-6B reste le point d'édition (décision du 2026-08-29), seul
+  // au coin haut droit : aucun bouton « Modifier » n'a été ajouté.
+  await expect(page.locator("#v6bModifier")).toBeVisible();
+  expect(await page.locator("#mainProfileCard button:visible", { hasText: /^Modifier/ }).count()).toBe(0);
+});
+
+// ── ④ ────────────────────────────────────────────────────────────────────────
+test("④ sept passions : le rail va jusqu'au bord et laisse voir une 5e bulle ENTAMÉE", async ({ page }) => {
+  await ouvrirProfil(page);
+  const r = await page.evaluate(() => {
+    const rail = document.getElementById("v9ProfilePassions");
+    rail.scrollLeft = 0;
+    const vign = [...rail.querySelectorAll(".profile-tile .profile-tile-avatar")].map((a) => a.getBoundingClientRect());
+    const rr = rail.getBoundingClientRect();
+    const st = getComputedStyle(rail);
+    const tuiles = [...rail.querySelectorAll(".profile-tile")];
+    return {
+      n: vign.length,
+      larg: innerWidth,
+      railG: rr.left, railD: rr.right,
+      entieres: vign.filter((v) => v.left >= rr.left && v.right <= rr.right).length,
+      entamee: vign.some((v) => v.left < rr.right - 8 && v.right > rr.right),
+      premiere: tuiles[0].getBoundingClientRect().left - (rr.left + parseFloat(st.paddingLeft)),
+      largeurs: tuiles.map((t) => Math.round(t.getBoundingClientRect().width)),
+      libelleMax: parseFloat(getComputedStyle(rail.querySelector(".profile-tile-label")).maxWidth),
+    };
+  });
+  expect(r.n).toBe(7);
+  expect(r.railG, "le rail part du bord gauche de l'écran").toBeLessThanOrEqual(1);
+  expect(r.railD, "et va jusqu'au bord droit").toBeGreaterThanOrEqual(r.larg - 1);
+  expect(r.railD).toBeLessThanOrEqual(r.larg + 1);
+  expect(r.entieres, "quatre bulles entières").toBe(4);
+  // Avant : la coupure tombait pile dans la marge de la 5e — aucune vignette
+  // entamée, rien ne disait qu'il y en avait trois autres.
+  expect(r.entamee, "une vignette dépasse du bord : la rangée se fait défiler").toBe(true);
+  expect(r.premiere, "au débordement la rangée part de son vrai début").toBe(0);
+  expect(new Set(r.largeurs).size, "toutes les bulles ont la même largeur").toBe(1);
+  expect(r.libelleMax, "« Course à pied » tient en entier (10 px, 66 px)").toBeGreaterThanOrEqual(70);
+});
+
+// ── ⑤ ────────────────────────────────────────────────────────────────────────
+test("⑤ les onglets restent à portée en défilant ; « Activité » ramène au début de la section", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 765 });
+  await ouvrirProfil(page, { posts: 8 });
+  const depart = await page.evaluate(() => document.getElementById("v7ProfileTabs").getBoundingClientRect().top);
+  await page.evaluate(() => { document.getElementById("appMain").scrollTop = 1400; });
+  await page.waitForTimeout(250);
+  const colle = await page.evaluate(() => {
+    const b = document.getElementById("v7ProfileTabs").getBoundingClientRect();
+    const main = document.getElementById("appMain").getBoundingClientRect();
+    const act = document.querySelector('[data-v7-tab="activites"]').getBoundingClientRect();
+    const cible = document.elementFromPoint(act.left + act.width / 2, act.top + act.height / 2);
+    return {
+      top: b.top, mainTop: main.top, defile: document.getElementById("appMain").scrollTop,
+      touche: !!(cible && cible.closest('[data-v7-tab="activites"]')),
+    };
+  });
+  expect(colle.defile, "on a bien défilé dans les publications").toBeGreaterThan(400);
+  expect(depart, "au repos, la barre est à sa place dans la page").toBeGreaterThan(colle.mainTop + 200);
+  // Avant : la barre partait avec la page.
+  expect(Math.abs(colle.top - colle.mainTop), "la barre est collée en haut de la zone de contenu").toBeLessThanOrEqual(1);
+  expect(colle.touche, "« Activité » est touchable, rien ne le recouvre").toBe(true);
+  await page.locator('[data-v7-tab="activites"]').click();
+  await page.waitForTimeout(250);
+  const apres = await page.evaluate(() => {
+    const b = document.getElementById("v7ProfileTabs").getBoundingClientRect();
+    const p = document.getElementById("v7Pan-activites");
+    return { visible: !p.hidden, panTop: p.getBoundingClientRect().top, barBas: b.bottom };
+  });
+  expect(apres.visible).toBe(true);
+  expect(apres.panTop, "le début de « Activité » n'est pas caché sous la barre").toBeGreaterThanOrEqual(apres.barBas - 1);
+  expect(apres.panTop - apres.barBas, "il est juste sous elle").toBeLessThanOrEqual(80);
+});
+
+// ── ⑥ ────────────────────────────────────────────────────────────────────────
+test("⑥ Entrée sur la bio ouvre l'éditeur UNE fois", async ({ page }) => {
+  await ouvrirProfil(page);
+  await page.evaluate(() => {
+    window.__editions = 0;
+    const orig = window.openEditMainProfile;
+    window.openEditMainProfile = function () { window.__editions++; return orig.apply(this, arguments); };
+  });
+  await page.locator("#mainProfileBio").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  // Avant : le `onkeydown` en ligne ET le délégué clavier d'app-08 → 2.
+  expect(await page.evaluate(() => window.__editions)).toBe(1);
+});
+
+// ── ⑦ ────────────────────────────────────────────────────────────────────────
+test("⑦ ordinateur 1440 × 900 : la barre collée au ras de l'en-tête, Partager dans la carte", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await ouvrirProfil(page, { posts: 8 });
+  const m = await page.evaluate(mesurerPage);
+  expect(m.partager.bottom).toBeLessThanOrEqual(m.couverture.bottom);
+  expect(m.partager.right).toBeLessThanOrEqual(m.carte.right);
+  await page.evaluate(() => { document.getElementById("appMain").scrollTop = 1400; });
+  await page.waitForTimeout(250);
+  const r = await page.evaluate(() => ({
+    top: document.getElementById("v7ProfileTabs").getBoundingClientRect().top,
+    mainTop: document.getElementById("appMain").getBoundingClientRect().top,
+    debord: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  expect(Math.abs(r.top - r.mainTop), "padding de 28 px compensé").toBeLessThanOrEqual(1);
+  expect(r.debord).toBeLessThanOrEqual(1);
+});
+
+// ── ⑧ ────────────────────────────────────────────────────────────────────────
+test("⑧ coupure du lot UI-7 : pas de barre collante, le profil reste entier", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await bootOnboarded(page, errors, 1, { state: etatBenjamin(3) });
+  await page.evaluate(() => {
+    goTo("profiles");
+    localStorage.setItem("passio_ui_7", "0");
+    PassioUIV7.apply();
+  });
+  await page.waitForTimeout(600);
+  const r = await page.evaluate(() => ({
+    barre: !!document.getElementById("v7ProfileTabs"),
+    posts: !!document.getElementById("myPosts"),
+    bio: document.getElementById("mainProfileBio").textContent,
+    partager: !!document.querySelector("#mainProfileCard .main-profile-partager"),
+  }));
+  expect(r.barre, "sans le lot UI-7, aucune barre d'onglets").toBe(false);
+  expect(r.posts).toBe(true);
+  expect(r.bio).toBe(BIO_BENJAMIN);
+  expect(r.partager).toBe(true);
+  expect(errors.js, "aucune erreur JS").toEqual([]);
+});

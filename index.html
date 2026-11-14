@@ -681,6 +681,18 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
+            <!-- « Partager mon profil » — LOT-12 (audit UX/UI du 2026-11-10, PAR-C14) :
+                 inviter quelqu'un était la 6e entrée d'un menu et le 7e bouton de
+                 « Support ». Visible.
+                 ⚠️ 2026-11-14 (« la page de profil n'est pas ergonomique ») : il
+                 quitte la rangée pleine largeur sous les statistiques (56 px de haut,
+                 c'est elle qui faisait passer les onglets sous la barre du bas) pour
+                 la place LIBRE à droite de l'avatar, sur la photo, à hauteur de son
+                 bord bas. Même commande, même classe (verrou lot12-partage ⑤), aucun
+                 pixel de hauteur. `renderMainProfile` réécrit l'AVATAR, jamais cette
+                 rangée : le bouton survit aux rendus. Libellé court pour tenir à
+                 320 px ; le nom accessible garde le geste entier. -->
+            <button type="button" class="btn secondary main-profile-partager" onclick="partagerMonProfil()" aria-label="Partager mon profil" title="Partager mon profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v6.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V12"/></svg><span>Partager</span></button>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <!-- ⚠️ 2026-08-31 : plus AUCUNE pastille sous le pseudo. ADR-009 avait
@@ -692,9 +704,11 @@
                « Ajoute une biographie… » : une invitation explicite qui, jusqu'ici,
                ne réagissait à aucun tap — le clic mort exact que ce projet traque.
                Le seul moteur reste `openEditMainProfile`, celui du crayon. -->
+          <!-- ⚠️ AUCUN `onkeydown` ICI (retiré le 2026-11-14) : le délégué clavier
+               d'app-08 active déjà tout `[role="button"]` à Entrée/Espace, et il ne
+               lit pas `defaultPrevented` — Entrée ouvrait l'éditeur DEUX fois. -->
           <div class="main-profile-bio" id="mainProfileBio" role="button" tabindex="0"
                onclick="openEditMainProfile()"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMainProfile();}"
                title="Modifier ta biographie">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
           <div class="main-profile-stats">
@@ -703,9 +717,6 @@
             <div class="main-profile-stat" onclick="ouvrirGestionPassions()" style="cursor:pointer;"><span id="mainStatPassions">0</span><span>passions</span></div>
             <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
           </div>
-          <!-- LOT-12 (audit UX/UI du 2026-11-10, PAR-C14) : inviter quelqu'un était la
-               6e entrée d'un menu et le 7e bouton de « Support ». Visible, ici. -->
-          <button type="button" class="btn secondary block main-profile-partager" onclick="partagerMonProfil()">Partager mon profil</button>
         </div>
       </div>
 

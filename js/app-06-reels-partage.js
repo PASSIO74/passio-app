@@ -1017,7 +1017,42 @@ function _profileInitials(name) {
   return ini.toUpperCase();
 }
 
+// ── La hauteur RÉELLE du corps de la carte, pour la répartition du haut de page
+// (2026-11-14). `--espace-profil` (styles.css, bloc `#screen-profiles`) répartit
+// la place libre entre la carte, le rail et les onglets pour que « tout tienne sur
+// une page » (Benjamin, 2026-09-10). Il comptait un corps FIXE de 145 px ; une bio
+// réelle et le bouton « Partager » en faisaient 249, et les onglets passaient sous
+// la barre du bas. On MESURE donc le corps et on le pose en variable CSS.
+// ⚠️ ResizeObserver, jamais de rAF ni d'écouteur de défilement. ⚠️ Une `style`
+// sur l'écran, jamais une CLASSE : UI-6B et UI-7 observent l'attribut `class` de
+// l'écran et de ses descendants. ⚠️ Écran masqué = hauteur 0 : on garde la
+// dernière mesure. La variable ne change pas la hauteur du corps (elle ne règle
+// que des marges SOUS la carte et la couverture AU-DESSUS) : aucune boucle.
+// ⚠️ PAS `corps.offsetHeight` : la marge négative de l'avatar (−130 px) traverse
+// le corps, dont la boîte REMONTE dans la photo (mesuré : 300 px pour 170 sous la
+// couverture). Ce qui compte est ce qui dépasse SOUS la photo : bas du corps −
+// bas de la couverture, indépendant de la hauteur de la couverture elle-même.
+var _corpsCarteProfilObs = null;
+var _corpsCarteProfilPx = 0;
+function _suivreCorpsCarteProfil() {
+  if (_corpsCarteProfilObs || typeof ResizeObserver !== "function") return;
+  var corps = document.querySelector("#mainProfileCard .main-profile-body");
+  var couverture = document.getElementById("mainProfileCover");
+  var ecran = document.getElementById("screen-profiles");
+  if (!corps || !couverture || !ecran) return;
+  try {
+    _corpsCarteProfilObs = new ResizeObserver(function () {
+      var h = Math.round(corps.getBoundingClientRect().bottom - couverture.getBoundingClientRect().bottom);
+      if (!(h > 0) || h === _corpsCarteProfilPx) return;
+      _corpsCarteProfilPx = h;
+      ecran.style.setProperty("--corps-carte-profil", h + "px");
+    });
+    _corpsCarteProfilObs.observe(corps);
+  } catch (e) { _corpsCarteProfilObs = null; }
+}
+
 function renderMainProfile() {
+  _suivreCorpsCarteProfil();
   var g = state.user.general || {};
   var cur = currentProfile();
   var avatarEl = document.getElementById("mainProfileAvatar");
@@ -1070,9 +1105,13 @@ function renderMainProfile() {
   // RSVP : le remettre ferait revenir la rangée partout, sans qu'aucun test de
   // rendu ne s'en émeuve. L'identité complète reste centralisée (ADR-011 §3) et
   // s'affiche sur les surfaces denses, où rien ne la double.
-  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
-  bioEl.textContent = g.bio || "";
-  bioEl.style.display = g.bio ? "" : "none";
+  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder).
+  // En paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) : une ligne vide
+  // devient un écart de 6 px au lieu d'une ligne blanche entière. Contenu ÉCHAPPÉ
+  // morceau par morceau ; `textContent` rend la bio à l'octet près.
+  var _bioHtml = bioEnParagraphesHtml(g.bio);
+  bioEl.innerHTML = _bioHtml;
+  bioEl.style.display = _bioHtml ? "" : "none";
 
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var links = g.rsLinks || [];
