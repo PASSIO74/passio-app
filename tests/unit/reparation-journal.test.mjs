@@ -611,119 +611,396 @@ test("⑫ les exceptions du scan des secrets (`.gitleaksignore`, `.gitleaks.toml
   const m = /\n\s*case "\$\{fichier\}" in\n(?:\s*#[^\n]*\n)*\s*([^\n]+)\)\n/.exec(etape.run);
   assert.ok(m, "le motif des chemins interdits se lit");
   const script = 'for fichier in "$@"; do case "${fichier}" in ' + m[1] + ') echo "INTERDIT ${fichier}" ;; *) echo "permis ${fichier}" ;; esac; done';
-  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".gitattributes", "js/.gitattributes", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
+  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".gitleaks.json", ".gitleaks.yaml", ".gitleaks.toml/x", ".gitattributes", "js/.gitattributes", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
   const r = spawnSync("bash", ["--noprofile", "--norc", "-c", script, "garde", ...fichiers], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.stdout.trim().split("\n").map((x) => x.trim()), [
-    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .gitattributes", "INTERDIT js/.gitattributes", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
+    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .gitleaks.json", "INTERDIT .gitleaks.yaml", "INTERDIT .gitleaks.toml/x", "INTERDIT .gitattributes", "INTERDIT js/.gitattributes", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
     "permis js/app-01.js", "permis docs/journal/x.md",
   ]);
 });
 
-test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d'un gros diff — sous pipefail, `grep -q` s'arrêtait au premier, `git` mourait de SIGPIPE en écrivant la suite, et le `if` ne voyait rien", () => {
-  // La garde RÉELLE (marche « Publier la branche produite par Claude ») est extraite et jouée par bash -eo pipefail,
-  // comme GitHub lance un `run:`, dans un dépôt jetable.
+test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu — contenu, nom, auteur, message —, borné par son commit de DÉPART ; un jeton au début d'un gros diff, un binaire, un marqueur, une panne d'outil : refus", () => {
+  // Les gardes RÉELLES (marche « Publier la branche produite par Claude », entre les marqueurs GARDES DE PUBLICATION)
+  // sont extraites et jouées par bash -eo pipefail, comme GitHub lance un `run:`, dans des dépôts jetables.
   const etape = WF.jobs.claude.steps.find((x) => x.name === "Publier la branche produite par Claude");
   assert.ok(etape && typeof etape.run === "string", "la marche de publication existe");
-  const debut = etape.run.indexOf("# ── Ce qui part dans un dépôt public ne porte aucun jeton");
-  const fin = etape.run.indexOf("# ── Audits du dépôt", debut);
-  assert.ok(debut >= 0 && fin > debut, "la garde des jetons se lit");
+  const debut = etape.run.indexOf("# ── GARDES DE PUBLICATION:DEBUT");
+  const fin = etape.run.indexOf("# ── GARDES DE PUBLICATION:FIN", debut);
+  assert.ok(debut >= 0 && fin > debut, "les gardes se lisent entre leurs marqueurs");
   const garde = etape.run.slice(debut, fin);
   const depot = fs.mkdtempSync(path.join(os.tmpdir(), "publication-")).split("\\").join("/");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "publication-temp-")).split("\\").join("/");
   const script = temp + "/garde-publication.sh";
+  const faux = temp + "/faux-bin";
+  fs.mkdirSync(faux);
   try {
     const git = (...a) => execFileSync("git", ["-C", depot, ...a], { encoding: "utf8" });
     git("init", "-q"); git("config", "user.email", "banc@exemple.invalid"); git("config", "user.name", "banc"); git("config", "core.autocrlf", "false");
     fs.writeFileSync(depot + "/a.txt", "base\n"); git("add", "a.txt"); git("commit", "-qm", "base");
     const base = git("rev-parse", "HEAD").trim();
-    // Un jeton FORGÉ à l'exécution : écrit en clair, il ferait rougir le scan des secrets du dépôt lui-même.
+    // Jeton et marqueur FORGÉS à l'exécution : écrits en clair, ils feraient rougir le scan des secrets de ce dépôt.
     const JETON = "gh" + "p_" + "A".repeat(36);
-    const jouerGarde = (contenu) => {
-      git("checkout", "-q", "--detach", base);
-      fs.writeFileSync(depot + "/b.txt", contenu); git("add", "b.txt"); git("commit", "-qm", "travail produit");
-      const tip = git("rev-parse", "HEAD").trim();
-      fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tip + "\n" + garde + "\necho PUBLIE\n");
-      const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp }, maxBuffer: 64 * 1024 * 1024 });
+    const PERMIS = "gitleaks" + ":allow";
+    const jouer = ({ tip, depart = base, socle = base, chemin = null }) => {
+      fs.writeFileSync(script, "set -euo pipefail\nbase=" + socle + "\ntip=" + tip + "\nDEPART=" + depart + "\n" + garde + "\necho PUBLIE\n");
+      const env = { ...process.env, RUNNER_TEMP: temp };
+      if (chemin) env.PATH = chemin.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + path.delimiter + process.env.PATH;
+      const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
       return { code: r.status, sortie: (r.stdout || "") + (r.stderr || "") };
     };
+    // Une suite de commits posée sur `depuis` : [{ fichiers: { nom: contenu|null }, message, auteur }].
+    const commits = (depuis, suite) => {
+      git("checkout", "-q", "--detach", depuis);
+      for (const c of suite) {
+        for (const [nom, contenu] of Object.entries(c.fichiers || {})) {
+          if (contenu === null) git("rm", "-q", nom);
+          else { fs.mkdirSync(path.dirname(depot + "/" + nom), { recursive: true }); fs.writeFileSync(depot + "/" + nom, contenu); git("add", "--", nom); }
+        }
+        git("commit", "-q", "--allow-empty", "-m", c.message || "travail produit", ...(c.auteur ? ["--author=" + c.auteur] : []));
+      }
+      return git("rev-parse", "HEAD").trim();
+    };
+    const refus = (r, titre, nom) => {
+      assert.equal(r.code, 1, nom + " : refus attendu\n" + r.sortie.slice(-600));
+      assert.match(r.sortie, new RegExp("::error title=" + titre + "::"), nom);
+      assert.ok(!r.sortie.includes("PUBLIE"), nom);
+      assert.ok(!r.sortie.includes(JETON), nom + " : le jeton n'est jamais recopié dans le journal du run (dépôt public)");
+      assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt") && !fs.existsSync(temp + "/passio-noms-publies.txt"), nom + " : rien n'est laissé derrière le refus");
+    };
     const gros = (tete) => tete + Array.from({ length: 60000 }, (_, i) => "ligne ordinaire numéro " + i + " du travail produit").join("\n") + "\n";
-    // Le jeton TÔT dans un diff de 3 Mo : bien plus que le tampon d'un tube après lui.
-    const tot = jouerGarde(gros(JETON + "\n"));
-    assert.equal(tot.code, 1, "jeton au début d'un gros diff : refus attendu\n" + tot.sortie.slice(-600));
-    assert.match(tot.sortie, /::error title=Jeton dans le travail produit::/);
-    assert.ok(!tot.sortie.includes("PUBLIE"));
-    assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt"), "le refus d'un jeton efface le travail lu, qui le porte");
-    assert.ok(!tot.sortie.includes(JETON), "le refus ne recopie pas le jeton dans le journal du run (dépôt public)");
-    // Un petit diff avec un jeton : refus ; un gros diff sans jeton : publié.
-    assert.equal(jouerGarde("x\n" + JETON + "\n").code, 1);
-    const propre = jouerGarde(gros("rien de secret\n"));
+    const J = "Jeton dans le travail produit", E = "Exception du scan des secrets", I = "Chemin interdit";
+
+    // Le jeton TÔT dans un diff de 3 Mo : bien plus que le tampon d'un tube après lui (SIGPIPE, prouvé sur le runner).
+    refus(jouer({ tip: commits(base, [{ fichiers: { "b.txt": gros(JETON + "\n") } }]) }), J, "gros diff");
+    // Un gros diff propre : publié, et les noms s'affichent APRÈS les gardes.
+    const propre = jouer({ tip: commits(base, [{ fichiers: { "b.txt": gros("rien de secret\n") } }]) });
     assert.equal(propre.code, 0, propre.sortie.slice(-600));
-    assert.match(propre.sortie, /PUBLIE/);
-    // Le marqueur d'exception du scan des secrets (PERMIS), AJOUTÉ par l'agent, tairait une trouvaille neuve : refus (relecture de #866). Écrit
-    // à l'exécution, lui aussi : en clair, il passerait pour une vraie exception dans ce fichier même.
-    const PERMIS = "gitleaks" + ":allow";
-    const permis = jouerGarde("const cle = 'x'; // " + PERMIS + "\n");
-    assert.equal(permis.code, 1, permis.sortie.slice(-600));
-    assert.match(permis.sortie, /::error title=Exception du scan des secrets::/);
-    assert.ok(!permis.sortie.includes("PUBLIE"));
-    // Une ligne de contenu qui commence par « ++ » n'est pas un en-tête de fichier : elle est lue aussi.
-    assert.equal(jouerGarde("++compteur; // " + PERMIS + "\n").code, 1, "une ligne « ++… » ajoutée");
-    // Le RETIRER passe : seul l'ajout tait une trouvaille.
-    git("checkout", "-q", "--detach", base);
-    fs.writeFileSync(depot + "/c.txt", "ligne // " + PERMIS + "\n"); git("add", "c.txt"); git("commit", "-qm", "exception d'avant");
-    const avecException = git("rev-parse", "HEAD").trim();
-    fs.writeFileSync(depot + "/c.txt", "ligne\n"); git("add", "c.txt"); git("commit", "-qm", "exception retirée");
-    const retiree = git("rev-parse", "HEAD").trim();
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + avecException + "\ntip=" + retiree + "\n" + garde + "\necho PUBLIE\n");
-    const retrait = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.equal(retrait.status, 0, (retrait.stdout || "") + (retrait.stderr || ""));
-    // Un `git` qui échoue (une révision inconnue) ARRÊTE la marche : jamais « rien trouvé, publié ».
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + "0".repeat(40) + "\n" + garde + "\necho PUBLIE\n");
-    const casse = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.notEqual(casse.status, 0);
-    assert.ok(!(casse.stdout || "").includes("PUBLIE"), "un diff illisible n'est pas un diff propre");
-    // Relecture de #875 — la garde des jetons JOUÉE SEULE (sans celle du marqueur, dont le `git diff` arrêtait aussi la
-    // marche) : un `git` en échec l'arrête elle-même. Mutation : `|| true` sur sa lecture → « PUBLIE » → rougit.
-    const gardeJetons = garde.slice(0, garde.indexOf("# ── Les exceptions du scan des secrets"));
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + "0".repeat(40) + "\n" + gardeJetons + "\necho PUBLIE\n");
-    const casseSeule = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.notEqual(casseSeule.status, 0, "la lecture des jetons en échec arrête la marche à elle seule");
-    assert.ok(!(casseSeule.stdout || "").includes("PUBLIE"));
-    // Un jeton dans un MESSAGE de commit, pas dans le diff : refus. Mutation : `git log` retiré de la lecture → rougit.
-    git("checkout", "-q", "--detach", base);
-    fs.writeFileSync(depot + "/d.txt", "rien\n"); git("add", "d.txt"); git("commit", "-qm", "message qui recopie " + JETON);
-    const tipMessage = git("rev-parse", "HEAD").trim();
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipMessage + "\n" + garde + "\necho PUBLIE\n");
-    const message = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.equal(message.status, 1, "un jeton dans un message de commit : refus\n" + (message.stdout || "") + (message.stderr || ""));
-    // Ce que git tient pour BINAIRE (relecture de #875) : un octet nul, un `.gitattributes` `-diff` commité, ou laissé
-    // NON commité dans l'arbre — sans `--text`, le diff ne disait que « Binary files differ », et le jeton partait.
-    assert.equal(jouerGarde("\u0000binaire\n" + JETON + "\n").code, 1, "un fichier avec un octet nul");
-    git("checkout", "-q", "--detach", base);
-    fs.writeFileSync(depot + "/.gitattributes", "b.txt -diff\n"); fs.writeFileSync(depot + "/b.txt", JETON + "\n");
-    git("add", ".gitattributes", "b.txt"); git("commit", "-qm", "un attribut commité");
-    const tipAttribut = git("rev-parse", "HEAD").trim();
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipAttribut + "\n" + garde + "\necho PUBLIE\n");
-    const attribut = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.equal(attribut.status, 1, "un `.gitattributes -diff` commité ne cache pas le jeton\n" + (attribut.stdout || "") + (attribut.stderr || ""));
-    git("checkout", "-q", "--detach", base);
-    fs.writeFileSync(depot + "/b.txt", JETON + "\n"); git("add", "b.txt"); git("commit", "-qm", "jeton");
-    const tipArbre = git("rev-parse", "HEAD").trim();
+    assert.match(propre.sortie, /Fichiers produits \(1 commit\(s\)\) :\s*b\.txt[\s\S]*PUBLIE/);
+    // Relecture à trois lentilles de #875 — ce qui est POUSSÉ, pas seulement l'état final :
+    refus(jouer({ tip: commits(base, [{ fichiers: { "b.txt": JETON + "\n" } }, { fichiers: { "b.txt": "corrigé\n" } }]) }), J, "jeton ajouté puis retiré");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "e.js": "x(); // " + PERMIS + "\n" } }, { fichiers: { "e.js": "x();\n" } }]) }), E, "marqueur posé puis retiré");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "d.txt": "rien\n" }, auteur: JETON + " <x@exemple.invalid>" }]) }), J, "jeton dans l'auteur");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "d.txt": "rien\n" }, message: "message qui recopie " + JETON }]) }), J, "jeton dans un message");
+    refus(jouer({ tip: commits(base, [{ fichiers: { ["docs/" + JETON + ".md"]: "x\n" } }]) }), J, "jeton dans un nom de fichier");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/audit.js": "touché\n" } }, { fichiers: { "scripts/audit.js": null, "a.txt": "autre\n" } }]) }), I, "chemin interdit touché puis rétabli (avec un vrai changement à côté)");
+    // Les familles ajoutées : jeton de rafraîchissement GitHub, clé secrète Supabase.
+    for (const autre of ["gh" + "r_" + "B".repeat(36), "sb" + "_secret_" + "C".repeat(30)]) assert.equal(jouer({ tip: commits(base, [{ fichiers: { "f.txt": autre + "\n" } }]) }).code, 1, autre.slice(0, 10));
+    // Ce que git tient pour BINAIRE : un octet nul, un `.gitattributes -diff` commité, ou laissé NON commité dans l'arbre.
+    refus(jouer({ tip: commits(base, [{ fichiers: { "b.txt": "\u0000binaire\n" + JETON + "\n" } }]) }), J, "octet nul");
+    refus(jouer({ tip: commits(base, [{ fichiers: { ".gitattributes": "b.txt -diff\n", "b.txt": JETON + "\n" } }]) }), J, "`.gitattributes -diff` commité");
+    refus(jouer({ tip: commits(base, [{ fichiers: { ".gitattributes": "*.js -diff\n", "e.js": "x(); // " + PERMIS + "\n" } }]) }), E, "marqueur derrière `-diff`");
+    const tipArbre = commits(base, [{ fichiers: { "h.txt": JETON + "\n" } }]);
     fs.writeFileSync(depot + "/.gitattributes", "* -diff\n");
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipArbre + "\n" + garde + "\necho PUBLIE\n");
-    const arbre = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    const arbre = jouer({ tip: tipArbre });
     fs.rmSync(depot + "/.gitattributes", { force: true });
-    assert.equal(arbre.status, 1, "un `.gitattributes` laissé NON commité dans l'arbre ne cache pas le jeton\n" + (arbre.stdout || "") + (arbre.stderr || ""));
-    // Le marqueur derrière un attribut `-diff` aussi.
-    git("checkout", "-q", "--detach", base);
-    fs.writeFileSync(depot + "/.gitattributes", "*.js -diff\n"); fs.writeFileSync(depot + "/e.js", "x(); // " + PERMIS + "\n");
-    git("add", ".gitattributes", "e.js"); git("commit", "-qm", "marqueur caché");
-    const tipMarqueur = git("rev-parse", "HEAD").trim();
-    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipMarqueur + "\n" + garde + "\necho PUBLIE\n");
-    const marqueur = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
-    assert.equal(marqueur.status, 1, "un marqueur derrière `-diff` est vu\n" + (marqueur.stdout || "") + (marqueur.stderr || ""));
-    // Un refus n'oublie pas derrière lui le fichier qui porte le jeton.
-    assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt"), "le travail lu est effacé après un refus");
+    refus(arbre, J, "`.gitattributes` laissé NON commité");
+    // Le marqueur : ajouté (même sur une ligne « ++… »), refusé ; retiré, publié.
+    refus(jouer({ tip: commits(base, [{ fichiers: { "k.js": "++compteur; // " + PERMIS + "\n" } }]) }), E, "ligne « ++… »");
+    const avecException = commits(base, [{ fichiers: { "c.txt": "ligne // " + PERMIS + "\n" } }]);
+    const retrait = jouer({ tip: commits(avecException, [{ fichiers: { "c.txt": "ligne\n" } }]), depart: avecException, socle: avecException });
+    assert.equal(retrait.code, 0, retrait.sortie.slice(-600));
+    // MAIN A BOUGÉ PENDANT LE RUN : le départ de l'agent n'est plus main. Main retire un marqueur et touche un script ;
+    // l'agent, parti d'avant, ne touche qu'un fichier ordinaire → publié, sans refus à tort (BASE-RELUE).
+    const ancien = commits(base, [{ fichiers: { "m.js": "y(); // " + PERMIS + "\n", "scripts/audit.js": "v1\n" } }]);
+    const mainNeuf = commits(ancien, [{ fichiers: { "m.js": "y();\n", "scripts/audit.js": "v2\n" } }]);
+    const agent = commits(ancien, [{ fichiers: { "a.txt": "corrigé par l'agent\n" } }]);
+    const bouge = jouer({ tip: agent, depart: ancien, socle: mainNeuf });
+    assert.equal(bouge.code, 0, "main a bougé pendant le run : aucun refus à tort\n" + bouge.sortie.slice(-600));
+    assert.match(bouge.sortie, /Fichiers produits \(1 commit\(s\)\) :\s*a\.txt/);
+    // MAIN A BOUGÉ, et les commits de l'agent s'annulent : le diff net se mesure depuis le DÉPART, pas depuis la base relue.
+    refus(jouer({ tip: commits(ancien, [{ fichiers: { "t2.txt": "x\n" } }, { fichiers: { "t2.txt": null } }]), depart: ancien, socle: mainNeuf }), "Aucun changement", "main a bougé et les commits de l'agent s'annulent");
+    // Aucun commit, ou un aller-retour sans effet : rien à publier — un REFUS (code 1, rien de publié), pas un message.
+    refus(jouer({ tip: base }), "Aucun changement", "aucun commit");
+    // Une PANNE d'outil (code 2) n'est pas « rien trouvé » : refus, pour grep comme pour awk.
+    for (const [outil, titre] of [["grep", "Garde illisible::La recherche des jetons"], ["awk", "Garde illisible::La recherche des exceptions"]]) {
+      fs.writeFileSync(faux + "/" + outil, "#!/usr/bin/env bash\nexit 2\n"); fs.chmodSync(faux + "/" + outil, 0o755);
+      const panne = jouer({ tip: commits(base, [{ fichiers: { "p.txt": "propre\n" } }]), chemin: faux });
+      fs.rmSync(faux + "/" + outil);
+      assert.equal(panne.code, 1, outil + " en panne : refus\n" + panne.sortie.slice(-400));
+      assert.match(panne.sortie, new RegExp("::error title=" + titre), outil);
+    }
+    // Un jeton COUPÉ par un retour chariot dans un message : les retours chariot sont retirés avant la recherche.
+    refus(jouer({ tip: commits(base, [{ fichiers: { "r.txt": "x\n" }, message: "Cause : " + JETON.slice(0, 12) + "\r" + JETON.slice(12) }]) }), J, "jeton coupé par un retour chariot");
+    // Un `.GitAttributes` (casse changée) compte comme un `.gitattributes` : les chemins interdits sont lus sans casse.
+    refus(jouer({ tip: commits(base, [{ fichiers: { ".GitAttributes": "* -diff\n", "s.txt": "x\n" } }]) }), I, "`.GitAttributes`");
+    // Des commits qui s'annulent : rien à publier, même avec des commits d'avance.
+    refus(jouer({ tip: commits(base, [{ fichiers: { "t.txt": "x\n" } }, { fichiers: { "t.txt": null } }]) }), "Aucun changement", "commits qui s'annulent");
+    // Relecture de la suite de #875 — des FUSIONS. Sans `-m`, `git log` n'imprime ni patch ni nom pour une fusion : une
+    // fusion qui ajoute seule un chemin interdit passait la liste des noms (régression sur #875, qui lisait le diff des
+    // extrémités). Deux fusions qui ajoutent puis retirent : ni les commits ordinaires ni les extrémités ne le montrent,
+    // seul `-m` le lit — pour chacune des trois gardes.
+    const fusion = (a, b, fichiers) => {
+      git("checkout", "-q", "--detach", a);
+      git("merge", "-q", "--no-ff", "--no-commit", b);
+      for (const [nom, contenu] of Object.entries(fichiers)) {
+        if (contenu === null) git("rm", "-q", nom);
+        else { fs.mkdirSync(path.dirname(depot + "/" + nom), { recursive: true }); fs.writeFileSync(depot + "/" + nom, contenu); git("add", "--", nom); }
+      }
+      git("commit", "-q", "-m", "fusion");
+      return git("rev-parse", "HEAD").trim();
+    };
+    const brancheA = commits(base, [{ fichiers: { "x.txt": "x\n" } }]);
+    const brancheB = commits(base, [{ fichiers: { "y.txt": "y\n" } }]);
+    refus(jouer({ tip: fusion(brancheA, brancheB, { "scripts/piege.js": "piège\n" }) }), I, "une fusion ajoute seule un chemin interdit");
+    for (const [nom, contenu, titre] of [["scripts/piege.js", "piège\n", I], ["z.txt", JETON + "\n", J], ["z.js", "z(); // " + PERMIS + "\n", E]]) {
+      const m1 = fusion(brancheA, brancheB, { [nom]: contenu });
+      const brancheC = commits(base, [{ fichiers: { "v.txt": "v\n" } }]);
+      refus(jouer({ tip: fusion(m1, brancheC, { [nom]: null }) }), titre, "deux fusions ajoutent puis retirent " + nom);
+    }
+    // Le COMMITTER est lu comme l'auteur (`--format=raw`).
+    git("checkout", "-q", "--detach", base); fs.writeFileSync(depot + "/cm.txt", "x\n"); git("add", "--", "cm.txt");
+    execFileSync("git", ["-C", depot, "commit", "-q", "-m", "travail"], { env: { ...process.env, GIT_COMMITTER_NAME: JETON } });
+    refus(jouer({ tip: git("rev-parse", "HEAD").trim() }), J, "jeton dans le committer");
+    // Un RENOMMAGE qui sort un fichier d'un chemin interdit touche ce chemin (`--no-renames`), et un nom NON ASCII se lit
+    // tel quel (`-z`), pas cité entre guillemets.
+    const avecScript = commits(base, [{ fichiers: { "scripts/audit.js": "v\n" } }]);
+    refus(jouer({ tip: commits(avecScript, [{ fichiers: { "scripts/audit.js": null, "js/audit.js": "v\n" } }]), depart: avecScript, socle: avecScript }), I, "renommage d'un chemin interdit");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/évité.js": "x\n" } }]) }), I, "chemin interdit non ASCII");
+    // … et touché puis rétabli : seule la lecture commit par commit le voit, et elle doit le lire tel quel (`-z`).
+    refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/évité.js": "x\n" } }, { fichiers: { "scripts/évité.js": null, "a.txt": "autre\n" } }]) }), I, "chemin interdit non ASCII touché puis rétabli");
+    // Des NOMS que le poste ne sait pas écrire (caractère de contrôle, « : ») : posés par la plomberie de git, sans
+    // passer par l'arbre de travail.
+    const nomBrut = (depuis, nom, contenu) => {
+      const g = (args, input) => execFileSync("git", ["-C", depot, ...args], { encoding: "utf8", input });
+      const blob = g(["hash-object", "-w", "--stdin"], contenu).trim();
+      const arbre = g(["mktree", "-z"], g(["ls-tree", "-z", depuis + "^{tree}"]) + "100644 blob " + blob + "\t" + nom + "\0").trim();
+      return g(["commit-tree", arbre, "-p", depuis, "-m", "nom posé par la plomberie"]).trim();
+    };
+    // Un jeton COUPÉ par un caractère de contrôle dans un NOM : git le cite échappé dans le patch ; les noms sont aussi
+    // cherchés sans leurs caractères de contrôle.
+    for (const [sep, quoi] of [["\r", "retour chariot"], ["\n", "saut de ligne"], ["\t", "tabulation"], ["\x7f", "DEL"], ["\u0085", "NEL (contrôle C1)"], ["\u009b", "CSI (contrôle C1)"]]) {
+      refus(jouer({ tip: nomBrut(base, JETON.slice(0, 14) + sep + JETON.slice(14) + ".md", "x\n") }), J, "jeton coupé par un " + quoi + " dans un nom");
+    }
+    // Les noms s'affichent INERTES : un nom qui commence par « :: » ou qui contient « ##[ » ne forge aucune commande du
+    // runner — ils s'impriment entre `::stop-commands::<clé>` et `::<clé>::`, clé tirée au hasard.
+    const forge = jouer({ tip: nomBrut(commits(base, [{ fichiers: { "docs/x##[warning]forgé.md": "x\n" } }]), "::warning title=forgé::par un nom", "x\n") });
+    assert.equal(forge.code, 0, forge.sortie.slice(-600));
+    const lignes = forge.sortie.split(/\r?\n/);
+    const arret = lignes.findIndex((l) => /^::stop-commands::[0-9a-f]{32}$/.test(l));
+    assert.ok(arret >= 0, "la lecture des commandes est suspendue avant les noms\n" + forge.sortie.slice(-600));
+    const cle = lignes[arret].slice("::stop-commands::".length);
+    const reprise = lignes.indexOf("::" + cle + "::");
+    assert.ok(reprise > arret, "elle reprend après les noms, avec la même clé");
+    for (const nom of ["docs/x##[warning]forgé.md", "::warning title=forgé::par un nom"]) {
+      const i = lignes.indexOf(nom);
+      assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + forge.sortie.slice(-600));
+    }
+    // Le refus « Chemin interdit » imprime les noms SANS leurs caractères de contrôle : un retour chariot y couperait la
+    // ligne de l'annotation, et la suite deviendrait une commande du runner (relecture de #903).
+    const interditForge = jouer({ tip: nomBrut(base, ".gitleaks\r::notice title=forgé::par un nom interdit", "x\n") });
+    refus(interditForge, I, "nom interdit porteur d'un retour chariot");
+    assert.ok(!interditForge.sortie.split(/\r\n|\r|\n/).some((l) => l.replace(/^[\t ]+/, "").startsWith("::notice")), "aucune commande forgée par un nom interdit\n" + interditForge.sortie.slice(-400));
+    // … ni un contrôle C1 (NEL, CSI) : la ligne du refus n'en porte aucun.
+    const interditC1 = jouer({ tip: nomBrut(base, ".gitleaks\u0085x\u009by", "x\n") });
+    refus(interditC1, I, "nom interdit porteur de contrôles C1");
+    const ligneRefus = interditC1.sortie.split(/\r?\n/).find((l) => l.startsWith("::error title=Chemin interdit::")) || "";
+    assert.ok(ligneRefus.includes(".gitleaksxy"), "le nom s'affiche, sans ses contrôles : " + JSON.stringify(ligneRefus));
+    assert.ok(!/[\u0080-\u009f]/.test(ligneRefus), "aucun contrôle C1 dans la ligne du refus");
+    // Un `od` en échec : le refus annoncé (« Garde illisible »), rien de publié, rien de laissé derrière.
+    fs.writeFileSync(faux + "/od", "#!/usr/bin/env bash\nexit 1\n"); fs.chmodSync(faux + "/od", 0o755);
+    const sansCle = jouer({ tip: commits(base, [{ fichiers: { "oc.txt": "x\n" } }]), chemin: faux });
+    fs.rmSync(faux + "/od");
+    refus(sansCle, "Garde illisible", "od en échec");
+    assert.ok(sansCle.sortie.includes("La clé d'arrêt des commandes n'a pas pu être tirée"), sansCle.sortie.slice(-400));
+    // La clé est TIRÉE à chaque passage (une constante, lisible dans le workflow public, laisserait un nom forger la
+    // reprise puis une commande) : deux passages, deux clés.
+    const autre = jouer({ tip: commits(base, [{ fichiers: { "k2.txt": "x\n" } }]) });
+    const cle2 = (autre.sortie.match(/^::stop-commands::([0-9a-f]{32})$/m) || [])[1];
+    assert.ok(cle2 && cle2 !== cle, "deux passages, deux clés : " + cle + " / " + cle2);
+    // Une PANNE de `git diff --quiet` n'est pas « aucun changement » ni « des changements » : refus dit, pour chacune
+    // des deux comparaisons (le travail contre son départ, puis contre main relu).
+    const vraiGitDiff = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
+    const tipPanneDiff = commits(base, [{ fichiers: { "pd.txt": "propre\n" } }]);
+    for (const [cible, message] of [["DEPART", "Le diff du travail produit n'a pas pu être lu"], ["MAIN", "Le travail produit n'a pas pu être comparé à main"]]) {
+      // `diff --quiet <visée> …` échoue ; tout le reste est le vrai git. Pour MAIN, la base relue est un commit à part.
+      const socleMain = cible === "MAIN" ? commits(base, [{ fichiers: { "mn.txt": "main a bougé\n" } }]) : base;
+      const vise = cible === "DEPART" ? base : socleMain;
+      fs.writeFileSync(faux + "/git", "#!/usr/bin/env bash\nq=0; v=0\nfor a in \"$@\"; do [ \"$a\" = \"--quiet\" ] && q=1; [ \"$a\" = \"" + vise + "\" ] && v=1; done\n[ $q = 1 ] && [ $v = 1 ] && exit 128\nexec \"" + vraiGitDiff + "\" \"$@\"\n");
+      fs.chmodSync(faux + "/git", 0o755);
+      const r = jouer({ tip: tipPanneDiff, depart: base, socle: socleMain, chemin: faux });
+      fs.rmSync(faux + "/git");
+      refus(r, "Garde illisible", "git diff --quiet en panne (" + cible + ")");
+      assert.ok(r.sortie.includes(message), cible + " : " + r.sortie.slice(-400));
+    }
+    // MAIN A REÇU LE MÊME CHANGEMENT pendant le run : le travail est identique à main relu — rien à publier.
+    // Le commit de main porte un message PROPRE : sinon, dans la même seconde, il serait le même objet que celui de
+    // l'agent, et le refus viendrait de « aucun commit », pas de la comparaison à main (vérification de 1b580d52).
+    const memeChangement = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" }, message: "le correctif de l'agent" }]);
+    const mainAvecLeMeme = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" }, message: "main reçoit le même correctif" }]);
+    assert.notEqual(memeChangement, mainAvecLeMeme, "prémisse : deux commits distincts");
+    assert.throws(() => git("merge-base", "--is-ancestor", memeChangement, mainAvecLeMeme), "prémisse : le commit de l'agent n'est pas dans main");
+    const meme = jouer({ tip: memeChangement, depart: base, socle: mainAvecLeMeme });
+    refus(meme, "Aucun changement", "main a reçu le même changement");
+    assert.match(meme.sortie, /1 commit\(s\) d'avance/, "le refus vient de la comparaison à main, pas d'un « aucun commit »");
+    // Un `git` EN ÉCHEC pendant la lecture des jetons arrête la marche (`set -e`) : rien n'est publié. (L'exercice de
+    // #875 « la lecture des jetons jouée seule » ne mordait pas : il coupait la garde sur un titre absent du workflow.)
+    const vraiGit = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
+    fs.writeFileSync(faux + "/git", "#!/usr/bin/env bash\nfor a in \"$@\"; do [ \"$a\" = \"--format=raw\" ] && exit 128; done\nexec \"" + vraiGit + "\" \"$@\"\n");
+    fs.chmodSync(faux + "/git", 0o755);
+    const enPanne = jouer({ tip: commits(base, [{ fichiers: { "gp.txt": "propre\n" } }]), chemin: faux });
+    fs.rmSync(faux + "/git");
+    assert.notEqual(enPanne.code, 0, "git en échec : la marche s'arrête\n" + enPanne.sortie.slice(-400));
+    assert.ok(!enPanne.sortie.includes("PUBLIE"), "git en échec : rien n'est publié");
+    // LE CLONE SUPERFICIEL du job (fetch-depth 1), et main qui avance pendant le run : sans la borne DEPART, le commit de
+    // départ entrerait dans la lecture comme une RACINE — tout l'arbre en ajouts, et un marqueur déjà présent ailleurs
+    // (comme js/emoji-misc.js) ferait refuser un travail propre (relecture de #875, F-04).
+    const origine = fs.mkdtempSync(path.join(os.tmpdir(), "publication-origine-")).split("\\").join("/");
+    const source = fs.mkdtempSync(path.join(os.tmpdir(), "publication-source-")).split("\\").join("/");
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), "publication-clone-")).split("\\").join("/");
+    try {
+      const g = (rep, ...a) => execFileSync("git", ["-C", rep, ...a], { encoding: "utf8" });
+      const ident = (rep) => { g(rep, "config", "user.email", "banc@exemple.invalid"); g(rep, "config", "user.name", "banc"); g(rep, "config", "core.autocrlf", "false"); };
+      g(origine, "init", "-q", "--bare", "-b", "main");
+      g(source, "init", "-q", "-b", "main"); ident(source);
+      fs.writeFileSync(source + "/vieux.js", "z(); // " + PERMIS + "\n"); fs.writeFileSync(source + "/a.txt", "base\n");
+      g(source, "add", "-A"); g(source, "commit", "-qm", "main d'avant"); g(source, "push", "-q", "file:///" + origine, "main");
+      execFileSync("git", ["clone", "-q", "-c", "core.autocrlf=false", "--depth", "1", "file:///" + origine, clone], { encoding: "utf8" }); ident(clone);
+      const departClone = g(clone, "rev-parse", "HEAD").trim();
+      fs.writeFileSync(clone + "/a.txt", "corrigé par l'agent\n"); g(clone, "commit", "-qam", "correctif");
+      const tipClone = g(clone, "rev-parse", "HEAD").trim();
+      fs.mkdirSync(source + "/scripts"); fs.writeFileSync(source + "/scripts/audit.js", "neuf\n");
+      g(source, "add", "-A"); g(source, "commit", "-qm", "main avance"); g(source, "push", "-q", "file:///" + origine, "main");
+      g(clone, "fetch", "-q", "--depth=1", "origin", "main");
+      const baseClone = g(clone, "rev-parse", "FETCH_HEAD").trim();
+      assert.notEqual(baseClone, departClone, "prémisse : main a bougé pendant le run");
+      fs.writeFileSync(script, "set -euo pipefail\nbase=" + baseClone + "\ntip=" + tipClone + "\nDEPART=" + departClone + "\n" + garde + "\necho PUBLIE\n");
+      const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: clone, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+      assert.equal(r.status, 0, "clone superficiel, main a bougé : le travail propre part\n" + (r.stdout || "") + (r.stderr || ""));
+      assert.match(r.stdout || "", /Fichiers produits \(1 commit\(s\)\) :\s*a\.txt\s/);
+    } finally { for (const d of [origine, source, clone]) fs.rmSync(d, { recursive: true, force: true }); }
+
+    // Un départ qui n'a pas été noté : refus, jamais une lecture sans borne.
+    assert.match(jouer({ tip: commits(base, [{ fichiers: { "q.txt": "x\n" } }]), depart: "" }).sortie, /::error title=Départ illisible::/);
   } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("⑭ la fiche du résultat ne fait tourner AUCUN code de l'arbre de l'agent : le détecteur vient du commit de DÉPART, et `node` part d'un environnement vide — sans le jeton du job", () => {
+  // Relecture à trois lentilles de #875 : sentinelle-detecter.mjs (interdit à l'agent) importe supabase/functions/_shared/*.js
+  // (permis à l'agent) ; importé depuis l'arbre de l'agent, son code tournait avec GH_TOKEN dans l'environnement.
+  const etape = WF.jobs.claude.steps.find((x) => x.name === "Signaler le résultat sur l'issue");
+  assert.ok(etape && typeof etape.run === "string", "la marche existe");
+  const debut = etape.run.indexOf("# ── FICHE DE CONFIANCE:DEBUT");
+  const fin = etape.run.indexOf("# ── FICHE DE CONFIANCE:FIN", debut);
+  assert.ok(debut >= 0 && fin > debut, "le bloc de la fiche se lit entre ses marqueurs");
+  const bloc = etape.run.slice(debut, fin);
+  const depot = fs.mkdtempSync(path.join(os.tmpdir(), "fiche-")).split("\\").join("/");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fiche-temp-")).split("\\").join("/");
+  try {
+    const git = (...a) => execFileSync("git", ["-C", depot, ...a], { encoding: "utf8" });
+    git("init", "-q"); git("config", "user.email", "banc@exemple.invalid"); git("config", "user.name", "banc"); git("config", "core.autocrlf", "false");
+    // Le DÉPART : le vrai détecteur et les vrais modules qu'il importe, plus une SONDE qui note ce que `node` voit.
+    for (const rel of ["scripts/sentinelle-detecter.mjs", "supabase/functions/_shared/contrats-actions.js", "supabase/functions/_shared/parcours.js"]) {
+      fs.mkdirSync(path.dirname(depot + "/" + rel), { recursive: true });
+      fs.copyFileSync(path.join(RACINE, rel), depot + "/" + rel);
+    }
+    fs.appendFileSync(depot + "/supabase/functions/_shared/parcours.js", "\n(await import(\"node:fs\")).writeFileSync(process.env.RUNNER_TEMP + \"/env-vu.txt\", String(process.env.GH_TOKEN));\n");
+    git("add", "-A"); git("commit", "-qm", "départ");
+    const depart = git("rev-parse", "HEAD").trim();
+    // La branche de l'agent : un module partagé qui exécuterait son code s'il était importé depuis son arbre.
+    git("checkout", "-q", "-b", "claude/issue-7-1");
+    fs.appendFileSync(depot + "/supabase/functions/_shared/parcours.js", "\n(await import(\"node:fs\")).writeFileSync(process.env.RUNNER_TEMP + \"/execute-par-l-agent.txt\", String(process.env.GH_TOKEN));\n");
+    git("add", "-A"); git("commit", "-qm", "Correctif\n\nCause: un défaut\nCorrectif: une ligne\nVerrou: un test\nLeçon: lire le code");
+    const script = temp + "/fiche.sh";
+    fs.writeFileSync(script, "set -euo pipefail\n" + bloc + "\n");
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
+      env: { ...process.env, RUNNER_TEMP: temp, DEPART: depart, BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
+    assert.equal(r.status, 0, (r.stdout || "") + (r.stderr || ""));
+    assert.ok(!fs.existsSync(temp + "/execute-par-l-agent.txt"), "le code de l'agent ne s'est PAS exécuté");
+    assert.equal(fs.readFileSync(temp + "/env-vu.txt", "utf8"), "undefined", "le `node` de la fiche ne voit pas le jeton du job");
+    const fiche = fs.readFileSync(temp + "/fiche.md", "utf8");
+    assert.match(fiche, /### Fiche \(message de commit\)/);
+    assert.match(fiche, /Cause: un défaut/);
+    assert.ok(!fs.existsSync(temp + "/arbre-de-confiance"), "l'arbre de confiance est retiré après usage");
+    // Un OBJET DE REMPLACEMENT posé sur le départ ne change pas l'arbre de confiance (`--no-replace-objects`) : le
+    // détecteur qui s'exécute est celui du départ, jamais celui d'un commit substitué (relecture de #903).
+    git("checkout", "-q", "--detach", depart);
+    fs.appendFileSync(depot + "/scripts/sentinelle-detecter.mjs", "\n(await import(\"node:fs\")).writeFileSync(process.env.RUNNER_TEMP + \"/remplacement.txt\", \"x\");\n");
+    git("commit", "-qam", "détecteur substitué");
+    const substitue = git("rev-parse", "HEAD").trim();
+    git("checkout", "-q", "claude/issue-7-1");
+    git("replace", depart, substitue);
+    try {
+      fs.rmSync(temp + "/fiche.md", { force: true });
+      const r3 = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: temp, DEPART: depart, BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
+      assert.equal(r3.status, 0, (r3.stdout || "") + (r3.stderr || ""));
+      assert.ok(!fs.existsSync(temp + "/remplacement.txt"), "le détecteur d'un commit substitué ne s'exécute pas");
+      assert.match(fs.readFileSync(temp + "/fiche.md", "utf8"), /### Fiche \(message de commit\)/);
+    } finally { git("replace", "-d", depart); }
+    // Un départ non noté, ou un départ qui ne s'extrait pas : la fiche de repli et un avertissement, la marche CONTINUE
+    // (sinon « Signaler l'échec » annoncerait « Rien n'a été modifié » alors que la branche est poussée — relecture de la
+    // suite de #875) ; et jamais un import depuis l'arbre de l'agent.
+    for (const [nom, valeur, titre] of [["départ vide", "", "Départ illisible"], ["départ introuvable", "f".repeat(40), "Fiche non produite"]]) {
+      fs.rmSync(temp + "/fiche.md", { force: true });
+      const r2 = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: temp, DEPART: valeur, BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
+      const sortie = (r2.stdout || "") + (r2.stderr || "");
+      assert.equal(r2.status, 0, nom + " : la marche continue\n" + sortie.slice(-600));
+      assert.match(sortie, new RegExp("::warning title=" + titre + "::"), nom);
+      assert.match(fs.readFileSync(temp + "/fiche.md", "utf8"), /fiche illisible : erreur du workflow, non bloquante/, nom + " : la fiche de repli");
+      assert.ok(!fs.existsSync(temp + "/execute-par-l-agent.txt"), nom + " : le code de l'agent ne s'est PAS exécuté");
+      assert.ok(!fs.existsSync(temp + "/arbre-de-confiance"), nom + " : rien n'est laissé derrière");
+    }
+  } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("⑮ le commit de départ est noté AVANT l'agent, rien ne déplace HEAD entre les deux, et la publication comme la fiche lisent CE sha", () => {
+  // Relecture de la suite de #875 : ⑬ et ⑭ reçoivent DEPART à la main ; c'est ici que se vérifie sa place. Notée après
+  // l'agent, la borne partirait d'un commit de l'agent, et ses premiers commits sortiraient de la lecture.
+  const pas = WF.jobs.claude.steps;
+  const iDepart = pas.findIndex((x) => x.id === "depart");
+  const iAgent = pas.findIndex((x) => x.id === "claude");
+  assert.ok(iDepart >= 0 && iAgent > iDepart, "la marche « Noter le commit de départ » précède l'agent");
+  assert.match(pas[iDepart].run, /sha="\$\(git rev-parse HEAD\)"/, "elle note HEAD, et rien d'autre");
+  // Entre les deux, aucune marche n'appelle git du tout (relecture de #903 : un verbe cherché juste après `git` laissait
+  // passer `git -c … checkout`) ; une marche qui en aurait besoin se discute ici, pas en douce.
+  for (const p of pas.slice(iDepart + 1, iAgent)) {
+    assert.ok(!/actions\/checkout/.test(p.uses || ""), "aucun second checkout avant l'agent : " + p.name);
+    const lignesCode = String(p.run || "").split("\n").filter((l) => !/^\s*#/.test(l));
+    assert.ok(!lignesCode.some((l) => /\bgit\b/.test(l)), "aucune marche n'appelle git avant l'agent : " + p.name);
+  }
+  for (const nom of ["Publier la branche produite par Claude", "Signaler le résultat sur l'issue"]) {
+    const p = pas.find((x) => x.name === nom);
+    assert.ok(p, nom);
+    assert.equal(p.env && p.env.DEPART, "${{ steps.depart.outputs.sha }}", nom + " lit le départ noté");
+  }
+});
+
+test("⑯ la marche « Preuve d'exécution réelle » affiche les noms INERTES, elle aussi : ni « :: » ni « ##[ » ne forgent de commande du runner dans le journal public", () => {
+  // Relecture de #903 : la publication imprimait ses noms entre `::stop-commands::` et la reprise, mais la preuve, dans
+  // le MÊME job et le même journal public, les imprimait tels quels. Le bloc réel est extrait et joué par bash.
+  const etape = WF.jobs.claude.steps.find((x) => x.name === "Preuve d'exécution réelle");
+  assert.ok(etape && typeof etape.run === "string", "la marche existe");
+  const debut = etape.run.indexOf("# ── NOMS INERTES (preuve):DEBUT");
+  const fin = etape.run.indexOf("# ── NOMS INERTES (preuve):FIN", debut);
+  assert.ok(debut >= 0 && fin > debut, "le bloc se lit entre ses marqueurs");
+  const bloc = etape.run.slice(debut, fin);
+  const NOMS = ["js/ordinaire.js", "::warning title=forgé::par un nom", "docs/x##[warning]forgé.md"];
+  const jouerBloc = () => {
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", 'fichiers="${FICHIERS}"\n' + bloc], { encoding: "utf8", env: { ...process.env, FICHIERS: NOMS.join("\n") } });
+    assert.equal(r.status, 0, (r.stdout || "") + (r.stderr || ""));
+    const lignes = (r.stdout || "").split(/\r?\n/);
+    const arret = lignes.findIndex((l) => /^::stop-commands::[0-9a-f]{32}$/.test(l));
+    assert.ok(arret >= 0, "la lecture des commandes est suspendue avant les noms\n" + r.stdout);
+    const cle = lignes[arret].slice("::stop-commands::".length);
+    const reprise = lignes.indexOf("::" + cle + "::");
+    assert.ok(reprise > arret, "elle reprend après, avec la même clé");
+    for (const nom of NOMS) {
+      const i = lignes.indexOf(nom);
+      assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + r.stdout);
+    }
+    return cle;
+  };
+  assert.notEqual(jouerBloc(), jouerBloc(), "la clé est tirée à chaque passage");
+  // Un `od` en échec : cette marche tourne APRÈS la poussée — elle ne s'arrête pas, la liste se tait (relecture de #903).
+  const faux = fs.mkdtempSync(path.join(os.tmpdir(), "preuve-od-")).split("\\").join("/");
+  fs.writeFileSync(faux + "/od", "#!/usr/bin/env bash\nexit 1\n"); fs.chmodSync(faux + "/od", 0o755);
+  try {
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", 'fichiers="${FICHIERS}"\n' + bloc], { encoding: "utf8",
+      env: { ...process.env, FICHIERS: NOMS.join("\n"), PATH: faux.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + path.delimiter + process.env.PATH } });
+    assert.equal(r.status, 0, "od en échec : la marche continue\n" + (r.stdout || "") + (r.stderr || ""));
+    assert.match(r.stdout || "", /liste non affichée/);
+    for (const nom of NOMS) assert.ok(!(r.stdout || "").split(/\r?\n/).includes(nom), "aucun nom affiché sans la suspension : " + nom);
+  } finally { fs.rmSync(faux, { recursive: true, force: true }); }
 });
