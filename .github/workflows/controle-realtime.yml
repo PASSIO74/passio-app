@@ -67,12 +67,15 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: '22' }
 
-      - name: Installer le client Supabase
+      - name: Installer le client Supabase (lockfile du dépôt)
         # Épinglé : une version flottante est un déploiement que personne n'a
         # décidé (même règle que `js/vendor/`, lot du 2026-09-11).
-        # `npm install <paquet>@<version>` fige le paquet, pas ses dépendances : sans `--ignore-scripts`, leurs
-        # scripts tourneraient avant la clé de production de l étape suivante (E-07).
-        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock @supabase/supabase-js@2.58.0
+        # LE PAQUET ET SES DÉPENDANCES viennent du lockfile racine (2026-11-14, E-07) : ce code tourne
+        # à l'étape suivante avec la clé `service_role`. `npm install <paquet>@<version>` figeait le
+        # paquet, pas ses dépendances (ws, node-fetch…) ; `@supabase/supabase-js` est désormais une
+        # devDependency EXACTE de package.json. `--ignore-scripts` : aucun script d'installation de tiers.
+        # Verrou : tests/unit/outils-ci-figes.test.mjs.
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Contrôler
         env:

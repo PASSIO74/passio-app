@@ -663,11 +663,12 @@ jobs:
       # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
       # `npm ci` et non `npm install` : `dashboard/package-lock.json` est versionné,
       # donc l'arbre installé doit être celui qu'il fixe. `npm install` laissait
-      # l'arbre dériver vers des versions jamais relues.
+      # l'arbre dériver vers des versions jamais relues. `--ignore-scripts` (2026-11-14, E-07) : aucun
+      # script d'installation de tiers sur le runner ; aucun paquet de ce lockfile n'en a besoin sur Linux.
       - name: Tests centre de pilotage / Sentinel
         working-directory: dashboard
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm test
 
   test-prod:
@@ -1164,30 +1165,51 @@ jobs:
           EMPREINTE_TESTEE: ${{ needs.gates-artefact.outputs.empreinte }}
         run: node scripts/empreinte-dist.js dist --attendue "$EMPREINTE_TESTEE"
 
-      - name: Installer netlify-cli (sans le jeton dans l'environnement)
+      - name: Installer netlify-cli depuis son lockfile (sans le jeton dans l'environnement)
         run: |
-          # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
-          # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
-          # exigeant `@netlify/config@^25.2.5`, une version JAMAIS PUBLIÉE
-          # (la dernière est 25.2.4). Comme netlify-cli demande
-          # `@netlify/build: ^36.3.4`, npm résout vers 36.4.8 et l'installation
-          # échoue en ETARGET — sur TOUTES les versions de netlify-cli, la
-          # dernière comprise. Le run 2522 sur `main` (13:29) passait encore ;
-          # le 2523 (15:12) non : rien n'a changé dans le dépôt, le graphe npm
-          # amont s'est cassé sous nos pieds, et il emportait AUSSI le
-          # déploiement de production.
-          # On installe donc dans un dossier jetable avec un `overrides` qui
-          # fige `@netlify/build` à 36.4.7, la dernière version dont le graphe
-          # se résout. La version de netlify-cli, elle, ne bouge pas.
-          # Quand Netlify aura publié `@netlify/config@25.2.5`, ce contournement
-          # deviendra inutile — il ne sera pas nuisible pour autant.
+          # ⚠️ LA CLI QUI ENVOIE dist/ VIENT DE SON LOCKFILE, JAMAIS DE « LA DERNIÈRE » PUBLIÉE
+          # (2026-11-14, même règle que les outils de minification : E-07). `npm install
+          # netlify-cli@27.1.2` figeait la CLI, pas ses ~1 120 dépendances : le 14/11 à 11:29 UTC,
+          # le déploiement de production a rougi en E404 sur une dépendance publiée UNE MINUTE plus
+          # tôt (run 43588829557). Une version malveillante fraîche serait entrée aussi vite — et
+          # cette CLI tourne à l'étape suivante avec NETLIFY_AUTH_TOKEN, après « Artefact identique ».
+          # `.github/netlify-cli/` fige l'arbre entier, chaque archive vérifiée par son empreinte
+          # sha512 ; `--ignore-scripts` : aucun script d'installation de tiers ne s'exécute.
+          # Jamais `npx --yes netlify-cli@…` ni `npm install` ici : audit-workflows les refuse.
+          # Monter la version, régénérer le lockfile, l'`overrides` du 9/09 : .github/netlify-cli/README.md.
+          # Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
           RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
           mkdir -p "$RUNNER_NETLIFY"
-          cat > "$RUNNER_NETLIFY/package.json" <<'JSON'
-          { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
-          JSON
-          npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
+          cp "$GITHUB_WORKSPACE/.github/netlify-cli/package.json" "$GITHUB_WORKSPACE/.github/netlify-cli/package-lock.json" "$RUNNER_NETLIFY/"
+          npm ci --prefix "$RUNNER_NETLIFY" --ignore-scripts --no-audit --no-fund
+
+      - name: Installer Deno, version et empreinte figées (sans le jeton dans l'environnement)
+        run: |
+          # ⚠️ LA CLI EXÉCUTE DENO, AVEC LE JETON DANS SON ENVIRONNEMENT : c'est lui qui regroupe les
+          # fonctions de bord envoyées en production (2026-11-14). Sans Deno sur le PATH,
+          # @netlify/edge-bundler téléchargeait à CHAQUE déploiement le dernier Deno publié
+          # (dl.deno.land/release-latest.txt), sans vérifier d'empreinte. On pose ici un Deno de version
+          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (toute plage
+          # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
+          # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
+          # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
+          # Monter la version : .github/netlify-cli/README.md. Verrou : tests/unit/outils-ci-figes.test.mjs.
+          set -euo pipefail
+          DENO_VERSION="2.9.8"
+          DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
+          DENO_BIN_DIR="${RUNNER_TEMP:-/tmp}/deno"
+          mkdir -p "$DENO_BIN_DIR"
+          curl --fail --silent --show-error --location --retry 3 --max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          echo "${DENO_ZIP_SHA256}  ${DENO_BIN_DIR}/deno.zip" | sha256sum --check --strict -
+          unzip -q -o "$DENO_BIN_DIR/deno.zip" deno -d "$DENO_BIN_DIR"
+          rm -f "$DENO_BIN_DIR/deno.zip"
+          "$DENO_BIN_DIR/deno" --version
+          echo "$DENO_BIN_DIR" >> "$GITHUB_PATH"
+          CONFIG_NETLIFY="${XDG_CONFIG_HOME:-$HOME/.config}/netlify"
+          mkdir -p "$CONFIG_NETLIFY"
+          : > "$CONFIG_NETLIFY/deno-cli"
+          : > "$CONFIG_NETLIFY/deno-cli-v1"
 
       - name: Deploy to Netlify
         env:
@@ -1332,30 +1354,51 @@ jobs:
           # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
-      - name: Installer netlify-cli (sans le jeton dans l'environnement)
+      - name: Installer netlify-cli depuis son lockfile (sans le jeton dans l'environnement)
         run: |
-          # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
-          # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
-          # exigeant `@netlify/config@^25.2.5`, une version JAMAIS PUBLIÉE
-          # (la dernière est 25.2.4). Comme netlify-cli demande
-          # `@netlify/build: ^36.3.4`, npm résout vers 36.4.8 et l'installation
-          # échoue en ETARGET — sur TOUTES les versions de netlify-cli, la
-          # dernière comprise. Le run 2522 sur `main` (13:29) passait encore ;
-          # le 2523 (15:12) non : rien n'a changé dans le dépôt, le graphe npm
-          # amont s'est cassé sous nos pieds, et il emportait AUSSI le
-          # déploiement de production.
-          # On installe donc dans un dossier jetable avec un `overrides` qui
-          # fige `@netlify/build` à 36.4.7, la dernière version dont le graphe
-          # se résout. La version de netlify-cli, elle, ne bouge pas.
-          # Quand Netlify aura publié `@netlify/config@25.2.5`, ce contournement
-          # deviendra inutile — il ne sera pas nuisible pour autant.
+          # ⚠️ LA CLI QUI ENVOIE dist/ VIENT DE SON LOCKFILE, JAMAIS DE « LA DERNIÈRE » PUBLIÉE
+          # (2026-11-14, même règle que les outils de minification : E-07). `npm install
+          # netlify-cli@27.1.2` figeait la CLI, pas ses ~1 120 dépendances : le 14/11 à 11:29 UTC,
+          # le déploiement de production a rougi en E404 sur une dépendance publiée UNE MINUTE plus
+          # tôt (run 43588829557). Une version malveillante fraîche serait entrée aussi vite — et
+          # cette CLI tourne à l'étape suivante avec NETLIFY_AUTH_TOKEN, après « Artefact identique ».
+          # `.github/netlify-cli/` fige l'arbre entier, chaque archive vérifiée par son empreinte
+          # sha512 ; `--ignore-scripts` : aucun script d'installation de tiers ne s'exécute.
+          # Jamais `npx --yes netlify-cli@…` ni `npm install` ici : audit-workflows les refuse.
+          # Monter la version, régénérer le lockfile, l'`overrides` du 9/09 : .github/netlify-cli/README.md.
+          # Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
           RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
           mkdir -p "$RUNNER_NETLIFY"
-          cat > "$RUNNER_NETLIFY/package.json" <<'JSON'
-          { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
-          JSON
-          npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
+          cp "$GITHUB_WORKSPACE/.github/netlify-cli/package.json" "$GITHUB_WORKSPACE/.github/netlify-cli/package-lock.json" "$RUNNER_NETLIFY/"
+          npm ci --prefix "$RUNNER_NETLIFY" --ignore-scripts --no-audit --no-fund
+
+      - name: Installer Deno, version et empreinte figées (sans le jeton dans l'environnement)
+        run: |
+          # ⚠️ LA CLI EXÉCUTE DENO, AVEC LE JETON DANS SON ENVIRONNEMENT : c'est lui qui regroupe les
+          # fonctions de bord envoyées en production (2026-11-14). Sans Deno sur le PATH,
+          # @netlify/edge-bundler téléchargeait à CHAQUE déploiement le dernier Deno publié
+          # (dl.deno.land/release-latest.txt), sans vérifier d'empreinte. On pose ici un Deno de version
+          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (toute plage
+          # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
+          # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
+          # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
+          # Monter la version : .github/netlify-cli/README.md. Verrou : tests/unit/outils-ci-figes.test.mjs.
+          set -euo pipefail
+          DENO_VERSION="2.9.8"
+          DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
+          DENO_BIN_DIR="${RUNNER_TEMP:-/tmp}/deno"
+          mkdir -p "$DENO_BIN_DIR"
+          curl --fail --silent --show-error --location --retry 3 --max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          echo "${DENO_ZIP_SHA256}  ${DENO_BIN_DIR}/deno.zip" | sha256sum --check --strict -
+          unzip -q -o "$DENO_BIN_DIR/deno.zip" deno -d "$DENO_BIN_DIR"
+          rm -f "$DENO_BIN_DIR/deno.zip"
+          "$DENO_BIN_DIR/deno" --version
+          echo "$DENO_BIN_DIR" >> "$GITHUB_PATH"
+          CONFIG_NETLIFY="${XDG_CONFIG_HOME:-$HOME/.config}/netlify"
+          mkdir -p "$CONFIG_NETLIFY"
+          : > "$CONFIG_NETLIFY/deno-cli"
+          : > "$CONFIG_NETLIFY/deno-cli-v1"
 
       - name: Deploy preview Netlify
         env:

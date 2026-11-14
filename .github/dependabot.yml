@@ -26,3 +26,12 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 0
+  # La CLI qui envoie dist/ en production (deploy.yml, `npm ci` sur ce lockfile depuis le 2026-11-14) : même règle.
+  - package-ecosystem: npm
+    directory: /.github/netlify-cli
+    schedule:
+      interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0
