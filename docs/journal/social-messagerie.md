@@ -18,6 +18,7 @@
 - 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 - 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
+- 🔁 LE BOUTON « SUIVRE » DU PROFIL VISITÉ RESTAIT FIGÉ — identifiant en double (2026-11-14)
 - 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
 - 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
 - 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
@@ -943,3 +944,21 @@ Demande de Benjamin, capture à l'appui : « supprime les noms des passions dess
 - **Second temps, même jour** (« supprime également à ces endroits ») : retirée aussi des listes de personnes (`_personRowHTML`, app-06), de la recherche Explorer (`_exSearchLancer`, app-07) et des notifications (`_notifIdentiteHtml` supprimée, app-08). Plus AUCUN appelant applicatif de `identitePassionsHTML` ; la fonction et `identitePassionsTexte` restent dans app-02 (les tests calculent l'identité avec). Verrou : `profil-entete-passions.spec.js` « listes de personnes, recherche Explorer, notifications », réinjection faite (ancien code → 1 ligne trouvée, rouge).
 - **Ce qui reste, délibérément** : les en-têtes de profil. Les passions d'un GROUPE (fiche du groupe) sont son sujet, pas une ligne sous un pseudo : intactes.
 - Verrous : `ui-v6a-messages.spec.js` (« aucune passion sur une carte », « elle ne revient pas au rendu suivant »), `ui-v6a-boucle.spec.js`, `profil-entete-passions.spec.js` (« un commentaire ne porte AUCUNE passion sous le pseudo »). Chacun pose sa prémisse : l'auteur A une passion à afficher.
+
+## 🔁 LE BOUTON « SUIVRE » DU PROFIL VISITÉ RESTAIT FIGÉ — identifiant en double (2026-11-14)
+
+Rapporté par Benjamin (deux captures Android) : sur le profil visité, le toast disait « Tu suis
+ben test ordi ! » puis « Tu ne suis plus ben test ordi », le compteur d'abonnés passait 3 → 4 → 3,
+et le bouton restait « Demande envoyée » quoi qu'il arrive.
+
+- **Cause** : « Créateurs à suivre » (app-06) émet le même `id="followBtn_<uid>"` que le bouton du
+  profil visité, et le précède dans le document. `_boutonsSuivi` prenait `getElementById` (le
+  PREMIER, caché) ; le bouton du profil ne portait pas de `data-follow-uid` — il n'était donc
+  jamais repeint. L'état, l'écriture et le compteur étaient justes ; seul le bouton mentait.
+- **Correctif** : `_boutonsSuivi` retient TOUS les porteurs de l'identifiant (`[id^="followBtn_"]`
+  comparé par égalité, pas de sélecteur construit), et le bouton du profil visité porte aussi
+  `data-follow-uid`.
+- **Règle** : un identifiant HTML n'est pas unique dans cette appli (écrans et modales coexistent) ;
+  pour retrouver les boutons d'un compte, jamais `getElementById`.
+- **Verrou** : `tests/e2e/suivi-bouton-profil-visite-doublon.spec.js` (3) — un homonyme caché AVANT
+  le bouton visible ; rouge sans le correctif (3/3), vert avec.
