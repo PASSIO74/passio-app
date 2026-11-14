@@ -13495,9 +13495,18 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   top: -16px;
   z-index: 6;
   box-shadow: 0 6px 16px -10px rgba(15, 8, 40, 0.35);
+  /* Fond OPAQUE dans tous les thèmes : en « Sombre », `--bg-card` vaut
+     rgba(30,27,75,.92) (app-05) et les publications transparaissaient sous la
+     barre collée. La couche du dessus garde le jeton ; la sous-couche (la même
+     teinte, pleine) ne se voit qu'à travers une carte translucide. */
+  background: linear-gradient(var(--bg-card), var(--bg-card)), #1e1b4b;
 }
 :root.passio-ui-7 #screen-profiles #myPosts,
 :root.passio-ui-7 #screen-profiles .v7-pan { scroll-margin-top: 60px; }
+/* ⑤ La couverture de MON profil n'ouvre rien (aucun gestionnaire, mesuré) : le
+   curseur « main » de la règle de base promettait un geste qui n'existe pas. Le
+   crayon et « Partager », eux, gardent le leur. */
+#screen-profiles .main-profile-cover { cursor: default; }
 /* ═══ PROFIL-ERGONOMIE:FIN ═══ */
 
 /* ═══ ORDINATEUR-PLEINE-PAGE:DEBUT ═══════════════════════════════════════════

@@ -29,7 +29,8 @@ Son état réel, relu en base (canal ①, lecture seule) : pseudo « Ben test 1 
 4. **Le rail va jusqu'aux bords de l'écran** (`margin-inline: -16px`, padding 16 conservé) : à 390 px la 5e vignette dépasse de ~28 px — l'indice d'une rangée qui coulisse, sans chiffre ni flèche. Bulle 74 px, écart 8 (pas inchangé : 82), libellé jusqu'à 70 px : « Course à pied » s'écrit en entier.
 5. **Onglets collants** — `#v7ProfileTabs` en `position: sticky`, `top: -16px` (−28 px sur ordinateur, dans le bloc ORDINATEUR) : la barre se colle au ras de l'en-tête. Au toucher d'un AUTRE onglet, si le panneau commence sous la barre collée, `recadrerSousBarre` (ui-v7-lot) le ramène juste dessous ; re-toucher l'onglet actif ne bouge rien (la barre est sous le pouce en permanence : un tap involontaire ne doit pas faire perdre la lecture). `scroll-margin-top: 60px` sur `#myPosts` et les panneaux.
 6. **Entrée sur la bio** : l'`onkeydown` en ligne est retiré (index.html), le délégué d'app-08 suffit.
-7. Le curseur « main » de la bio d'AUTRUI (aucun clic) est retiré.
+7. Le curseur « main » de la bio d'AUTRUI et de MA couverture (aucun clic, mesuré) est retiré ; le groupe des formats s'annonce « Filtrer par format de contenu » (il disait « multi-sélection », faux depuis LOT-16).
+8. La barre collante a un fond OPAQUE dans tous les thèmes (en « Sombre », `--bg-card` est translucide à 92 % : les publications transparaissaient).
 
 ## Mesures (après), état de Benjamin
 
@@ -62,6 +63,10 @@ Son état réel, relu en base (canal ①, lecture seule) : pseudo « Ben test 1 
 ## Verrous
 
 `tests/e2e/profil-ergonomie.spec.js` (17) — ① tout tient sur une page avec sa bio et ses passions (844, 765, 693, 667), ① ter en PWA iPhone (zones sûres) et ① bis la mesure suit une bio qui s'allonge ; ② bio en paragraphes, ② bis profil visité échappé ; ③ « Partager » sur la photo (390, 320) et ③ bis son geste, sans bouton « Modifier » ; ④ rail jusqu'au bord, 5e bulle entamée ; ⑤ onglets collants et recadrage, ⑤ bis re-toucher l'onglet actif ne remonte rien ; ⑥ Entrée = une ouverture ; ⑦ ordinateur ; ⑧ coupure d'UI-7. **Contre-épreuve sur le code d'avant : 13 rouges sur 15** (③ bis et ⑧ sont des cas de non-régression, verts par nature) ; ① ter et ⑤ bis, ajoutés après l'audit, sont rouges sur le premier commit du lot.
+
+## Contre-vérification par trois conceptions indépendantes
+
+Un atelier de conception (cartographie en cinq lectures, puis propositions « risque minimal », « pratique au quotidien », « le contenu d'abord ») a été mené en parallèle de l'implémentation, sans la voir au départ. La proposition « pratique » converge sur le diagnostic et les cinq gestes (bio, Partager sur la photo, mesure du corps, collant, rail au bord). Repris d'elle : le fond opaque en Sombre, le libellé des formats, le curseur de la couverture. **Non repris, avec la raison** : une réserve d'« aperçu » (64 px) pour montrer la 1re publication à 844 px — elle aurait resserré les écarts de 36 à ~11 px, à rebours de « descends les onglets de contenu jusqu'en bas, espace tout le reste » (2026-09-10) ; une coupure de lot dédiée (aucune décision ne l'exige, le lot ORDINATEUR n'en a pas) ; des libellés de bulle sur deux lignes (le libellé gagne 6 px à la place, sans changer la hauteur du rail) ; « re-toucher l'onglet actif = remonter » (l'audit a tranché pour garder la position de lecture).
 
 ## Audit du diff (`audit-passio`) et ce qu'il a changé
 
