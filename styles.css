@@ -13448,7 +13448,7 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 :root.passio-ui-7 #screen-profiles .v7-pan { scroll-margin-top: 60px; }
 /* ⑤ La couverture de MON profil n'ouvre rien (aucun gestionnaire, mesuré) : le
    curseur « main » de la règle de base promettait un geste qui n'existe pas. Le
-   crayon et « Partager », eux, gardent le leur. */
+   crayon, lui, garde le sien. */
 #screen-profiles .main-profile-cover { cursor: default; }
 /* ⑥ LE CONTENU D'ABORD (relu par l'arbitrage des conceptions, sur le compte
    réel de Benjamin : 0 publication).

@@ -1418,6 +1418,11 @@ function _myProfileEventsHTML() {
 function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
+  // La rangée de formats peut REVENIR ici (un média arrivé après l'entrée sur
+  // l'écran), jamais disparaître : seul `renderProfilesScreen` la masque.
+  try { _majRangeeFormats(true); } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("profil_formats_montrer " + (e && e.message)); } catch (x) {}
+  }
 
   // ⚠️ AUCUNE PASSION COCHÉE = AUCUN FILTRE, donc TOUT s'affiche.
   //
@@ -1540,14 +1545,26 @@ function renderProfileContent() {
 // (sinon plus de chemin vers « Tout »).
 // ⚠️ Un ATTRIBUT, pas une classe : UI-6B et UI-7 observent `class`. Le masquage
 // vit en CSS sous `:root.passio-ui-7` — sans UI-7, la rangée reste peinte.
-function _majRangeeFormats() {
+// ⚠️ `seulementMontrer` (revue adversariale du 2026-11-14, CYC-01) : l'état du
+// serveur peut arriver APRÈS l'entrée sur le profil (`_applyUserState` →
+// `renderEverything`, qui ne repeint pas cet écran). Le premier toucher d'une
+// bulle repeint alors la liste — un média y apparaît — sans que la rangée
+// revienne. `renderProfileContent` appelle donc ce calcul en mode « montrer
+// seulement » : un rendu de la liste peut FAIRE APPARAÎTRE la rangée, jamais la
+// cacher sous le doigt.
+// ⚠️ « Un format choisi » = n'importe quelle clé autre que `posts` dans la
+// sélection (CYC-02) : une ancienne multi-sélection `["posts","photos"]`
+// d'avant LOT-16 garde la rangée, et son « Photos » coché reste visible.
+function _majRangeeFormats(seulementMontrer) {
   var rangee = document.querySelector("#screen-profiles .profile-tabs");
   if (!rangee) return;
   var mine = (state.userPosts || []).filter(function (p) { return p && p.type !== "vlog"; });
   var utile = PROFILE_TAB_KEYS.some(function (k) {
     return k !== "posts" && mine.some(PROFILE_TAB_PRED[k]);
   });
-  var v = (utile || _activeProfileTab() !== "posts") ? "1" : "0";
+  var formatChoisi = [..._profileTabSel()].some(function (k) { return k !== "posts"; });
+  var v = (utile || formatChoisi) ? "1" : "0";
+  if (seulementMontrer && v === "0") return;
   if (rangee.getAttribute("data-formats") !== v) rangee.setAttribute("data-formats", v);
 }
 

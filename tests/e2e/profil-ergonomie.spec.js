@@ -432,6 +432,32 @@ test("⑪ la rangée ne disparaît jamais sous le doigt, et revient au premier m
   expect(await peinte(), "une photo publiée : la rangée revient").toBe(true);
 });
 
+test("⑪ bis — un média arrivé APRÈS l'entrée (état du serveur) : le premier rendu de la liste fait revenir la rangée ; une ancienne multi-sélection la garde", async ({ page }) => {
+  await ouvrirProfil(page);
+  const peinte = () => page.evaluate(() => !!document.querySelector("#screen-profiles .profile-tabs").offsetParent);
+  expect(await peinte(), "0 média : masquée").toBe(false);
+  // Hydratation tardive : l'état reçoit une photo SANS repeindre l'écran
+  // (`renderEverything` ne repeint pas le profil), puis on touche une bulle
+  // (`setProfilePassion` ne repeint que la liste).
+  await page.evaluate(() => {
+    state.userPosts.push({ id: "up_erg_p11", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
+    renderProfileContent();
+  });
+  expect(await page.evaluate(() => !!document.querySelector("#myPosts img")), "la liste montre la photo").toBe(true);
+  expect(await peinte(), "et la rangée revient avec elle").toBe(true);
+  // Un rendu de la liste ne la cache JAMAIS, même redevenue inutile.
+  await page.evaluate(() => { state.userPosts = state.userPosts.filter((p) => p.id !== "up_erg_p11"); renderProfileContent(); });
+  expect(await peinte(), "jamais masquée sous le doigt").toBe(true);
+  // Ancienne multi-sélection d'avant LOT-16 : « Photos » coché doit rester visible.
+  await page.evaluate(() => {
+    window.profileTabSelection = new Set(["posts", "photos"]);
+    _persistProfileTabs();
+    goTo("feed"); goTo("profiles");
+  });
+  await page.waitForTimeout(300);
+  expect(await peinte(), "[\"posts\",\"photos\"] : la rangée reste peinte").toBe(true);
+});
+
 test("⑫ l'état vide est compact : icône à gauche, bouton pleine largeur de 44 px, texte ≥ 12 px", async ({ page }) => {
   await ouvrirProfil(page);
   const r = await page.evaluate(() => {

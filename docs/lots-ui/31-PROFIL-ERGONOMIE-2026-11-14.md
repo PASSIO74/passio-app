@@ -52,7 +52,7 @@ L'arbitre a relu le compte RÉEL de Benjamin (canal ①, agrégat) : **0 publica
 | 390 × 693 | 80 → 426 (0,62) | 503 → 555 | 617 | 627 |
 | 375 × 667 | 80 → 400 (0,60) | 477 → 529 | 591 | 601 |
 
-À 320 × 568 (iPhone SE de 1re génération), la couverture tombe à son plancher de 140 px et la rangée de formats déborde encore (comme avant) : c'est l'avatar qui fixe le plancher.
+À 320 × 568 (iPhone SE de 1re génération), la couverture tombe à son plancher de 140 px et ce sont les ONGLETS eux-mêmes qui passent ~14 px sous la barre (comme avant le lot, mesuré identique sur becddff) : c'est l'avatar qui fixe le plancher. Les onglets restent collants dès qu'on défile.
 
 ## Ce qui ne change pas — et pourquoi
 
@@ -73,7 +73,7 @@ L'arbitre a relu le compte RÉEL de Benjamin (canal ①, agrégat) : **0 publica
 
 ## Verrous
 
-`tests/e2e/profil-ergonomie.spec.js` (26) — ① tout tient sur une page avec sa bio et ses passions (844, 765, 693, 667), ① ter en PWA iPhone (zones sûres) et ① bis la mesure suit une bio qui s'allonge ; ② bio en paragraphes, ② bis profil visité échappé ; ③ plus de bouton « Partager » ni de `partagerMonProfil`, « Inviter des amis » toujours au menu du crayon, aucun bouton « Modifier » ; ④ rail jusqu'au bord, 5e bulle entamée ; ⑤ onglets collants et recadrage, ⑤ bis re-toucher l'onglet actif ne remonte rien ; ⑥ Entrée = une ouverture ; ⑦ ordinateur ; ⑧ coupure d'UI-7 ; ⑨–⑮ le contenu d'abord (0 publication à 844, 765, 667 ; que des textes ; la rangée ne disparaît pas sous le doigt et revient au premier média ; état vide compact ; « Activité » ; libellé du profil visité ; coupure). Les cas ① passent désormais AVEC une photo : c'est là que la rangée de formats existe et que le verrou du 2026-09-10 a un objet. **Contre-épreuve sur le code d'avant : 13 rouges sur 15** (③ bis — remplacé depuis par l'absence du bouton — et ⑧ étaient des cas de non-régression, verts par nature) ; ① ter et ⑤ bis, ajoutés après l'audit, sont rouges sur le premier commit du lot ; ⑨ à ⑭ sont rouges sur df3df2c (8 sur 8), ⑮ (non-régression) vert.
+`tests/e2e/profil-ergonomie.spec.js` (25) — ① tout tient sur une page avec sa bio et ses passions (844, 765, 693, 667), ① ter en PWA iPhone (zones sûres) et ① bis la mesure suit une bio qui s'allonge ; ② bio en paragraphes, ② bis profil visité échappé ; ③ plus de bouton « Partager » ni de `partagerMonProfil`, « Inviter des amis » toujours au menu du crayon, aucun bouton « Modifier » ; ④ rail jusqu'au bord, 5e bulle entamée ; ⑤ onglets collants et recadrage, ⑤ bis re-toucher l'onglet actif ne remonte rien ; ⑥ Entrée = une ouverture ; ⑦ ordinateur ; ⑧ coupure d'UI-7 ; ⑨–⑮ le contenu d'abord (0 publication à 844, 765, 667 ; que des textes ; la rangée ne disparaît pas sous le doigt et revient au premier média ; état vide compact ; « Activité » ; libellé du profil visité ; coupure). Les cas ① passent désormais AVEC une photo : c'est là que la rangée de formats existe et que le verrou du 2026-09-10 a un objet. **Contre-épreuve sur le code d'avant : 13 rouges sur 15** (③ bis — remplacé depuis par l'absence du bouton — et ⑧ étaient des cas de non-régression, verts par nature) ; ① ter et ⑤ bis, ajoutés après l'audit, sont rouges sur le premier commit du lot ; ⑨ à ⑭ sont rouges sur df3df2c (8 sur 8), ⑮ (non-régression) vert.
 
 ## Contre-vérification par trois conceptions indépendantes
 
@@ -84,3 +84,14 @@ Un atelier de conception (cartographie en cinq lectures, puis propositions « ri
 Aucun P0–P2 (XSS, globals, cible déplacée, observateurs, coupures 6B/7/8, page « Mes passions », écran masqué : vérifiés). Corrigés : re-toucher l'onglet actif remontait la page (P3) ; les zones sûres de l'iPhone manquaient à la formule (P3, antérieur au lot) ; échec du `ResizeObserver` journalisé ; bio du profil visité calculée une fois ; (anneau de focus et libellé du bouton Partager, devenus sans objet avec son retrait).
 
 **Laissé, avec sa raison** : la suite n'est pas au socle WebKit de la CI (`SUITES_WEBKIT`) — `playwright.config.js` est un chemin critique sous contre-revue humaine, et WebKit n'est pas installé dans l'environnement du lot. Le collage (`top` négatif dans un conteneur défilant) est standard sous WebKit, mais non prouvé ici : à inscrire au socle lors de la prochaine contre-revue de la configuration.
+
+## Revue adversariale du complément (« le contenu d'abord » et retrait du bouton)
+
+Trois relecteurs indépendants (cycle de vie, rendu mesuré à cinq tailles et en Sombre, cibles supprimées), chaque constat P0–P3 contre-vérifié : **aucun P0–P3**. Corrigés parmi les P4 :
+
+- **Un média arrivé APRÈS l'entrée sur l'écran** (état du serveur hydraté par `renderEverything`, qui ne repeint pas le profil) laissait la rangée masquée alors que la liste, repeinte au premier toucher d'une bulle, montrait la photo. `renderProfileContent` appelle désormais `_majRangeeFormats(true)` : un rendu de la liste peut faire APPARAÎTRE la rangée, jamais la cacher sous le doigt. Verrou ⑪ bis.
+- **Une ancienne multi-sélection** `["posts","photos"]` (d'avant LOT-16) masquait la rangée avec « Photos » coché dedans : la condition lit maintenant toute clé autre que `posts`. Verrou ⑪ bis.
+- Un commentaire CSS citait encore le bouton supprimé ; le nombre de cas de la fiche était faux.
+
+Laissés, avec leur raison : le bouton « Créer une publication » de l'état vide dépasse de ~11 px au-dessus de la barre à 0 publication (indice qu'il y a une suite, et « Créer » est aussi au centre de la barre) ; à la coupure d'UI-7 suivie d'un aller-retour d'écran puis d'un rétablissement, le rail se replace sous les panneaux — défaut PRÉEXISTANT d'UI-7 (`rendreLesNoeuds`), mesuré identique avant le lot, hors périmètre.
+
