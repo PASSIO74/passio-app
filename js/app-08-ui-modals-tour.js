@@ -2190,7 +2190,7 @@ function playCurrentStory() {
   // Animate current bar
   const bar = document.getElementById("sp-" + storyItemIdx);
   if (bar) {
-    let ecoule = 0, dernierTour = Date.now();
+    let ecoule = 0, dernierTour = Date.now(), derniereT = 0, vueEntiere = false;
     storyTimer = setInterval(() => {
       const maintenant = Date.now(), pas = maintenant - dernierTour;
       dernierTour = maintenant;
@@ -2200,15 +2200,20 @@ function playCurrentStory() {
       // met la story en pause ; elle reprend à la fermeture.
       if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause
           || document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
-      ecoule += pas;
       // Une story VIDÉO dure le temps de sa vidéo (bornée à 60 s), et sa barre
-      // suit la lecture réelle — jamais coupée à 4,5 s au milieu d'une phrase.
+      // suit la LECTURE réelle : ni l'attente des métadonnées ni un temps de mise
+      // en mémoire ne comptent (réseau lent), et la fin se lit au retour en
+      // arrière de la boucle, jamais à l'horloge.
       let p;
-      if (storyVideo && isFinite(storyVideo.duration) && storyVideo.duration > 0) {
+      if (storyVideo) {
+        if (storyVideo.readyState < 3 || !isFinite(storyVideo.duration) || !(storyVideo.duration > 0)) return;
         const d = Math.min(60, storyVideo.duration);
-        p = Math.min(100, (Math.min(storyVideo.currentTime, d) / d) * 100);
-        if (storyVideo.currentTime >= d - 0.15 || (storyVideo.loop && ecoule >= d * 1000 + 400)) p = 100;
+        const t = storyVideo.currentTime;
+        if (t + 0.5 < derniereT) vueEntiere = true;
+        derniereT = t;
+        p = vueEntiere || t >= d - 0.15 ? 100 : Math.min(100, (t / d) * 100);
       } else {
+        ecoule += pas;
         p = Math.min(100, (ecoule / STORY_DURATION) * 100);
       }
       bar.style.width = p + "%";
@@ -2224,8 +2229,14 @@ function playCurrentStory() {
 // relâchement ne navigue pas ; un toucher bref avance ou recule. Clavier : Échap
 // ferme, ← → naviguent, Espace met en pause.
 const STORY_MAINTIEN_MS = 300;
+// Un commentaire en cours de saisie ne se perd pas d'un toucher sur la story.
+function _storyBrouillonEnCours() {
+  var champSaisi = document.querySelector("#storyReplyBar .story-reply-input");
+  return !!(champSaisi && champSaisi.value && champSaisi.value.trim());
+}
 function storyTap(sens) {
   if (window._storyClicIgnore) { window._storyClicIgnore = false; return; }
+  if (_storyBrouillonEnCours()) return;
   if (sens === "prev") storyPrev(); else storyNext();
 }
 (function _brancherMaintienStory() {
@@ -2274,7 +2285,9 @@ function storyTap(sens) {
     // le PROCHAIN toucher.
     if (window._storyClicIgnore) setTimeout(function () { window._storyClicIgnore = false; }, 400);
     debut = 0;
-    window._storyEnPause = false;
+    var brouillon = _storyBrouillonEnCours();
+    if (!brouillon) window._storyEnPause = false;
+    if (brouillon) return;
     if (!glisse || annule || !v || !v.classList.contains("active")) return;
     if (dy > SEUIL_FERMER && dy > Math.abs(dx)) { closeStoryViewer(); return; }
     if (Math.abs(dx) > SEUIL_AUTEUR && Math.abs(dx) > Math.abs(dy)) storyGroupeVoisin(dx < 0 ? +1 : -1);
@@ -2391,6 +2404,7 @@ function storyPrev() {
 // Rendu DOM, aucun onclick inline (identifiants d'autrui — règle MSG-02).
 var STORY_REACTIONS = ["😂", "😮", "😍", "😢", "👏", "🔥"];
 var STORY_COEUR_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.4 2.4h1.8c.8-1.2 2.3-2.4 4.4-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>';
+var STORY_BULLE_SVG = '<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.6L3 20.5l1.4-4.9A8.5 8.5 0 1 1 20.5 11.5z"/></svg>';
 var STORY_PARTAGE_SVG = '<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M22 3 9.2 13.6"/><path d="M22 3 15 21l-4.2-7.8L3 9z"/></svg>';
 
 function _storyAimee(id) {
@@ -2406,20 +2420,36 @@ function _storyExtrait(s) {
 // compte bloqué → refus, recherche du fil en panne → on ne devine pas (un fil
 // existe peut-être, en créer un second le doublerait chez l'autre). Sans fil,
 // un BROUILLON local que `_sendTextToSupa` matérialise au premier envoi
-// (`_materialiserConv`, LOT-43). Rend vrai si le message est parti en envoi.
+// (`_materialiserConv`, LOT-43).
+// Rend "envoye" (parti au serveur), "file" (hors ligne : en file, partira au
+// retour du réseau) ou false (rien n'est parti) — l'écran ne dit « envoyé »
+// que dans le premier cas (relecture audit-passio du 2026-11-14).
 async function _envoyerALAuteurStory(s, nom, texte) {
   try {
     if (!s || !s.authorId || !texte) return false;
     if (window.requireAuthentication && !requireAuthentication("message")) return false;
+    // AUTH-06 : l'identité qui ÉCRIT est celle du geste, capturée AVANT tout
+    // `await` réseau ; `_sendTextToSupa` refuse si le compte a changé entre-temps.
+    var moi = (typeof MY_UID !== "undefined") ? MY_UID : null;
     var auteur = s.authorId;
     if (typeof isBlocked === "function" && isBlocked(auteur)) { toast("Compte bloqué — débloque-le pour lui écrire", "warning"); return false; }
-    var convs = getConversations();
-    var c = convs.find(function (x) { return x && !x.isGroup && x.userId === auteur; });
-    if (!c) {
+    var trouver = function () {
+      var l = getConversations().filter(function (x) { return x && !x.isGroup && x.userId === auteur; });
+      return l.find(function (x) { return !x._brouillon; }) || l[0] || null;
+    };
+    var c = trouver();
+    // Un BROUILLON local peut être périmé : l'autre a pu ouvrir le fil depuis.
+    // Comme `startDirectMessage`, on demande à la base avant de le matérialiser
+    // — sinon un second fil naissait chez l'autre (LOT-43).
+    if (!c || c._brouillon) {
       var r = (typeof supa !== "undefined" && supa && window._supaReal) ? await _chercherConvDirecte(auteur) : { id: null, absenceProuvee: true };
       if (!r.id && !r.absenceProuvee) { toast("Pas envoyé — vérifie ta connexion et réessaie.", "warning"); return false; }
-      convs = getConversations();
-      c = convs.find(function (x) { return x && !x.isGroup && x.userId === auteur; });
+      var convs = getConversations();
+      c = trouver();
+      if (c && c._brouillon && r.id) {
+        var deja = convs.find(function (x) { return x && x.id === r.id; });
+        if (deja) c = deja; else { c.id = r.id; delete c._brouillon; }
+      }
       if (!c) {
         var uLoc = (typeof userById === "function" && userById(auteur)) || {};
         c = { id: r.id || ("conv_" + uid()), userId: auteur, userName: nom || s.authorName || "Passionné", userEmoji: s.authorEmoji || uLoc.profileEmoji || "✨", userColor: s.authorColor || uLoc.avatar || "#8b5cf6", userPhoto: uLoc.photoUrl || null, passion: null, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
@@ -2435,8 +2465,9 @@ async function _envoyerALAuteurStory(s, nom, texte) {
     c.lastAt = Date.now();
     saveConversations();
     try { renderMessages(); } catch (_r) {}
-    _sendTextToSupa(c.id, msgId, _withSenderMeta(texte));
-    return true;
+    var enLigne = !(navigator && navigator.onLine === false) && !!window._supaReal;
+    _sendTextToSupa(c.id, msgId, _withSenderMeta(texte), moi);
+    return enLigne ? "envoye" : "file";
   } catch (e) {
     try { diagLog("story_envoi " + (e && e.message)); } catch (_) {}
     toast("Pas envoyé — réessaie.", "warning");
@@ -2460,6 +2491,9 @@ function _storyEclosion(contenu) {
 
 function storyBasculerJaime(s, nom, reel) {
   if (!s || !s.id || !state.user) return;
+  // Sur un compte réel, le j'aime engage le compte : la porte AVANT de basculer
+  // (sinon le cœur restait rouge et l'auteur n'était jamais prévenu).
+  if (reel && !_storyAimee(s.id) && window.requireAuthentication && !requireAuthentication("message")) return;
   if (!Array.isArray(state.user.likedStories)) state.user.likedStories = [];
   var l = state.user.likedStories;
   var i = l.indexOf(s.id);
@@ -2477,12 +2511,24 @@ function storyBasculerJaime(s, nom, reel) {
   // refaire ne l'inonde pas.
   if (!reel) return;
   if (!Array.isArray(state.user.storyLikesPrevenus)) state.user.storyLikesPrevenus = [];
-  if (state.user.storyLikesPrevenus.indexOf(s.id) > -1) return;
-  state.user.storyLikesPrevenus.push(s.id);
-  if (state.user.storyLikesPrevenus.length > 600) state.user.storyLikesPrevenus = state.user.storyLikesPrevenus.slice(-500);
-  try { saveState(); } catch (e) {}
+  if (state.user.storyLikesPrevenus.indexOf(s.id) > -1 || window._storyLikeEnVol === s.id) return;
+  window._storyLikeEnVol = s.id;
   var ex = _storyExtrait(s);
-  _envoyerALAuteurStory(s, nom, "❤️ J'ai aimé ta story" + (ex ? " « " + ex + " »" : ""));
+  // « Prévenu » n'est noté que si le message est parti (ou en file) : un envoi
+  // refusé laisse le prochain j'aime retenter.
+  Promise.resolve(_envoyerALAuteurStory(s, nom, "❤️ J'ai aimé ta story" + (ex ? " « " + ex + " »" : ""))).then(function (ok) {
+    window._storyLikeEnVol = null;
+    if (!ok) return;
+    var lp = state.user.storyLikesPrevenus;
+    if (lp.indexOf(s.id) < 0) lp.push(s.id);
+    if (lp.length > 600) state.user.storyLikesPrevenus = lp.slice(-500);
+    try { saveState(); } catch (e) {}
+  });
+}
+
+function _storyAnnoncerEnvoi(verdict, phrase) {
+  if (verdict === "envoye") toast(phrase, "success");
+  else if (verdict === "file") toast("Hors ligne — ça partira au retour du réseau", "info");
 }
 
 function storyReagir(s, nom, emoji) {
@@ -2490,7 +2536,7 @@ function storyReagir(s, nom, emoji) {
   _storyEclosion(emoji);
   var ex = _storyExtrait(s);
   Promise.resolve(_envoyerALAuteurStory(s, nom, emoji + " Réaction à ta story" + (ex ? " « " + ex + " »" : ""))).then(function (ok) {
-    if (ok) toast("Réaction envoyée à " + (nom || "l'auteur"), "success");
+    if (ok) _storyAnnoncerEnvoi(ok, "Réaction envoyée à " + (nom || "l'auteur"));
   });
   try { if (window.tel && tel.action) tel.action("story_reaction", {}); } catch (_t) {}
 }
@@ -2534,8 +2580,8 @@ function _barreReponseStory(s, nom, reel) {
       champ.type = "text";
       champ.maxLength = 500;
       champ.className = "story-reply-input";
-      champ.placeholder = "Répondre à " + (nom || "cette personne") + "…";
-      champ.setAttribute("aria-label", "Répondre à " + (nom || "cette personne"));
+      champ.placeholder = "Commenter la story de " + (nom || "cette personne") + "…";
+      champ.setAttribute("aria-label", "Commenter la story de " + (nom || "cette personne"));
       champ.setAttribute("enterkeyhint", "send");
       champ.setAttribute("autocomplete", "off");
       var envoyer = document.createElement("button");
@@ -2582,7 +2628,7 @@ function _barreReponseStory(s, nom, reel) {
         var texte = champ.value.trim();
         if (!texte) { champ.focus(); return; }
         var ex = _storyExtrait(s);
-        var message = "↩️ Ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
+        var message = "💬 Commentaire sur ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
         envoyer.disabled = true;
         Promise.resolve(_envoyerALAuteurStory(s, nom, message)).then(function (ok) {
           envoyer.disabled = false;
@@ -2592,7 +2638,7 @@ function _barreReponseStory(s, nom, reel) {
           try { champ.blur(); } catch (_) {}
           ecrit(false);
           window._storyEnPause = false;
-          toast("Message envoyé à " + (nom || "l'auteur"), "success");
+          _storyAnnoncerEnvoi(ok, "Commentaire envoyé à " + (nom || "l'auteur"));
         });
         try { if (window.tel && tel.action) tel.action("story_reponse", {}); } catch (_t) {}
       });
@@ -2610,7 +2656,22 @@ function _barreReponseStory(s, nom, reel) {
       barre.appendChild(espace);
     }
 
+    // 💬 Commenter (2026-11-14, demande de Benjamin) : le commentaire va à
+    // l'auteur, dans son fil direct, comme une réponse Instagram. Un commentaire
+    // PUBLIC sous la story demanderait une table et sa RLS (migration à part).
     if (!mienne) {
+      var bulle = document.createElement("button");
+      bulle.type = "button";
+      bulle.id = "storyCommentBtn";
+      bulle.className = "story-action-btn story-comment-btn";
+      bulle.setAttribute("aria-label", "Commenter");
+      bulle.innerHTML = STORY_BULLE_SVG;
+      bulle.addEventListener("click", function () {
+        var champCom = document.querySelector("#storyReplyBar .story-reply-input");
+        if (champCom) { champCom.focus(); return; }
+        toast("Story d'exemple — commente la story d'un vrai membre", "info");
+      });
+      barre.appendChild(bulle);
       var coeur = document.createElement("button");
       coeur.type = "button";
       coeur.id = "storyLikeBtn";

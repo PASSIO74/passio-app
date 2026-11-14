@@ -86,6 +86,22 @@ test("② réaction rapide : un message vers l'auteur, la story reste ouverte", 
   expect(await actif(page)).toBe(true);
 });
 
+test("②bis 💬 Commenter : le bouton ouvre le champ, le commentaire part à l'auteur", async ({ page }) => {
+  await banc(page);
+  await page.evaluate(() => window.__ouvrir("reels"));
+  await page.locator("#storyCommentBtn").click();
+  const champ = page.locator("#storyReplyBar .story-reply-input");
+  await expect(champ).toBeFocused();
+  await champ.fill("Magnifique parcours");
+  await champ.press("Enter");
+  await page.waitForTimeout(300);
+  const envois = await page.evaluate(() => window.__envois.map((e) => JSON.parse(e.contenu).text));
+  expect(envois).toHaveLength(1);
+  expect(envois[0]).toContain("Commentaire sur ta story");
+  expect(envois[0]).toContain("Magnifique parcours");
+  expect(await actif(page)).toBe(true);
+});
+
 test("③ story d'exemple : ❤️ local et partager, ni champ ni message", async ({ page }) => {
   await banc(page);
   await page.evaluate(() => window.__ouvrir("exemple"));
@@ -142,4 +158,29 @@ test("⑥ gestes : balayer à gauche change d'auteur, vers le bas ferme", async 
   await page.mouse.up();
   await page.waitForTimeout(200);
   expect(await actif(page), "balayer vers le bas ferme").toBe(false);
+});
+
+test("⑦ un brouillon local périmé : le message va au fil que la base connaît, jamais à un second fil", async ({ page }) => {
+  await banc(page);
+  const r = await page.evaluate(async (lea) => {
+    conversationsState = [{ id: "conv_brouillon_perime", userId: lea, userName: "Léa", messages: [], isGroup: false, _brouillon: true, lastAt: Date.now() }];
+    window._supaReal = true;
+    window._chercherConvDirecte = async () => ({ id: "conv_en_base", absenceProuvee: false });
+    window.__ouvrir("reels");
+    const v = await _envoyerALAuteurStory(storyGroups[0].stories[0], "Léa", "Coucou");
+    return { v, vers: window.__envois.map((e) => e.convId), brouillons: getConversations().filter((c) => c._brouillon).length };
+  }, LEA);
+  expect(r.v).toBeTruthy();
+  expect(r.vers).toEqual(["conv_en_base"]);
+  expect(r.brouillons).toBe(0);
+});
+
+test("⑧ un commentaire en cours de saisie ne se perd pas d'un toucher sur la story", async ({ page }) => {
+  await banc(page);
+  await page.evaluate(() => window.__ouvrir("reels"));
+  await page.locator("#storyReplyBar .story-reply-input").fill("Je tape un commentaire");
+  await page.locator("#storyCard .story-tap-next").click();
+  await page.waitForTimeout(200);
+  const r = await page.evaluate(() => ({ i: storyItemIdx, g: storyGroupIdx, texte: document.querySelector("#storyReplyBar .story-reply-input").value }));
+  expect(r).toEqual({ i: 0, g: 0, texte: "Je tape un commentaire" });
 });

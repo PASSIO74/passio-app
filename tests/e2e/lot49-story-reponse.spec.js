@@ -35,7 +35,7 @@ test("① répondre à la story d'un compte réel : le message part SANS quitter
   await page.evaluate((lea) => window.__story(lea), LEA);
   const champ = page.locator("#storyReplyBar .story-reply-input");
   await expect(champ).toBeVisible();
-  await expect(champ).toHaveAttribute("placeholder", "Répondre à Léa…");
+  await expect(champ).toHaveAttribute("placeholder", "Commenter la story de Léa…");
   await champ.fill("Moi ! Samedi matin ?");
   await page.locator("#storyReplyBar .story-reply-send").click();
   await page.waitForTimeout(500);

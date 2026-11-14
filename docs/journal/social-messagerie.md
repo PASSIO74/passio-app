@@ -985,3 +985,13 @@ notification) : à ouvrir comme un lot à part, avec sa contre-revue.
 
 Verrous : `tests/e2e/story-instagram.spec.js` (6), `tests/e2e/lot49-story-reponse.spec.js` (① réécrit :
 la réponse part sans quitter la story).
+
+**Suite le même jour — « Commenter »** (Benjamin) : bouton 💬 `#storyCommentBtn` et champ « Commenter la
+story de X… » ; le commentaire part à l'auteur dans son fil direct (« 💬 Commentaire sur ta story « … » »).
+Un commentaire PUBLIC sous la story demanderait une table et sa RLS : migration à part.
+**Relecture audit-passio, six corrections** : un brouillon local périmé passe par la base avant d'être
+matérialisé (sinon second fil chez l'autre, LOT-43) ; l'écran ne dit « envoyé » que si c'est parti
+(`"envoye"` / `"file"` hors ligne / `false`) ; la durée d'une vidéo se lit à sa LECTURE (ni attente de
+métadonnées ni mémoire tampon ; fin = retour en arrière de la boucle) ; l'auteur d'écriture est capturé
+avant l'`await` (AUTH-06) ; « prévenu » n'est noté qu'après un envoi accepté et la porte de compte passe
+AVANT le cœur ; un commentaire en cours de saisie bloque toucher et reprise. Verrous ⑦ ⑧.
