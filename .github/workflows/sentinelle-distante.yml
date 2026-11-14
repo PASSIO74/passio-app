@@ -80,7 +80,9 @@ jobs:
 
       - name: Installer les dépendances
         if: steps.gate.outputs.active == 'true'
-        run: npm ci
+        # `--ignore-scripts` (2026-11-14, E-07) : aucun script d'installation de tiers avant le canari, qui
+        # reçoit la clé service_role du staging. Aucun paquet du lockfile n'en a besoin sur Linux.
+        run: npm ci --ignore-scripts
 
       - name: Audits statiques
         id: audits
