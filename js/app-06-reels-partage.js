@@ -915,8 +915,8 @@ window.addEventListener("passio:app-ready", function () {
 // ③ Le partage part du CLIC (`partagerOuCopier`, synchrone). `link_create` et
 //    `link_share` sont émis au geste ; le type `beta` est gardé pour la
 //    continuité du pilotage, la cible nomme la porte.
-// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ de mon profil, le
-// séparateur « Exemples PASSIO » du fil (compte seulement).
+// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ (crayon) de mon profil,
+// le séparateur « Exemples PASSIO » du fil (compte seulement).
 // ═══════════════════════════════════════════════════════════════════════════
 var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
 
@@ -925,14 +925,11 @@ function lienInvitationAmis() {
   return location.origin + location.pathname;
 }
 
-// LOT-12 (PAR-C14) : le bouton visible du profil. Un vrai compte envoie le lien de
-// SON profil (feuille unique) ; sans compte, l'invitation générale.
-function partagerMonProfil() {
-  var compte = (typeof _uidEstUnCompte === "function") && _uidEstUnCompte();
-  if (!compte) { inviterDesAmis("profil"); return; }
-  var g = (state.user && state.user.general) || {};
-  shareUserProfile(MY_UID, g.username || state.user.name || "Mon profil");
-}
+// ⚠️ `partagerMonProfil` (LOT-12, PAR-C14 : le bouton « Partager mon profil » de
+// la carte d'identité) a été RETIRÉE le 2026-11-14 avec son unique appelant, sur
+// demande de Benjamin (« il sert à rien »). Le lien de mon profil part toujours
+// par « Inviter des amis » (menu du crayon), qui envoie `lienPartageDe("user",
+// MY_UID)` pour un vrai compte.
 
 function inviterDesAmis(porte) {
   var brut = lienInvitationAmis();
@@ -1017,7 +1014,46 @@ function _profileInitials(name) {
   return ini.toUpperCase();
 }
 
+// ── La hauteur RÉELLE du corps de la carte, pour la répartition du haut de page
+// (2026-11-14). `--espace-profil` (styles.css, bloc `#screen-profiles`) répartit
+// la place libre entre la carte, le rail et les onglets pour que « tout tienne sur
+// une page » (Benjamin, 2026-09-10). Il comptait un corps FIXE de 145 px ; une bio
+// réelle et le bouton « Partager » en faisaient 249, et les onglets passaient sous
+// la barre du bas. On MESURE donc le corps et on le pose en variable CSS.
+// ⚠️ ResizeObserver, jamais de rAF ni d'écouteur de défilement. ⚠️ Une `style`
+// sur l'écran, jamais une CLASSE : UI-6B et UI-7 observent l'attribut `class` de
+// l'écran et de ses descendants. ⚠️ Écran masqué = hauteur 0 : on garde la
+// dernière mesure. La variable ne change pas la hauteur du corps (elle ne règle
+// que des marges SOUS la carte et la couverture AU-DESSUS) : aucune boucle.
+// ⚠️ PAS `corps.offsetHeight` : la marge négative de l'avatar (−130 px) traverse
+// le corps, dont la boîte REMONTE dans la photo (mesuré : 300 px pour 170 sous la
+// couverture). Ce qui compte est ce qui dépasse SOUS la photo : bas du corps −
+// bas de la couverture, indépendant de la hauteur de la couverture elle-même.
+var _corpsCarteProfilObs = null;
+var _corpsCarteProfilPx = 0;
+function _suivreCorpsCarteProfil() {
+  if (_corpsCarteProfilObs || typeof ResizeObserver !== "function") return;
+  var corps = document.querySelector("#mainProfileCard .main-profile-body");
+  var couverture = document.getElementById("mainProfileCover");
+  var ecran = document.getElementById("screen-profiles");
+  if (!corps || !couverture || !ecran) return;
+  try {
+    _corpsCarteProfilObs = new ResizeObserver(function () {
+      var h = Math.round(corps.getBoundingClientRect().bottom - couverture.getBoundingClientRect().bottom);
+      if (!(h > 0) || h === _corpsCarteProfilPx) return;
+      _corpsCarteProfilPx = h;
+      ecran.style.setProperty("--corps-carte-profil", h + "px");
+    });
+    _corpsCarteProfilObs.observe(corps);
+  } catch (e) {
+    // Repli : la formule garde son corps supposé de 145 px. Journalisé, jamais muet.
+    _corpsCarteProfilObs = null;
+    try { if (typeof diagLog === "function") diagLog("profil_corps_mesure " + (e && e.message)); } catch (x) {}
+  }
+}
+
 function renderMainProfile() {
+  _suivreCorpsCarteProfil();
   var g = state.user.general || {};
   var cur = currentProfile();
   var avatarEl = document.getElementById("mainProfileAvatar");
@@ -1070,9 +1106,13 @@ function renderMainProfile() {
   // RSVP : le remettre ferait revenir la rangée partout, sans qu'aucun test de
   // rendu ne s'en émeuve. L'identité complète reste centralisée (ADR-011 §3) et
   // s'affiche sur les surfaces denses, où rien ne la double.
-  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
-  bioEl.textContent = g.bio || "";
-  bioEl.style.display = g.bio ? "" : "none";
+  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder).
+  // En paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) : une ligne vide
+  // devient un écart de 6 px au lieu d'une ligne blanche entière. Contenu ÉCHAPPÉ
+  // morceau par morceau ; `textContent` rend la bio à l'octet près.
+  var _bioHtml = bioEnParagraphesHtml(g.bio);
+  bioEl.innerHTML = _bioHtml;
+  bioEl.style.display = _bioHtml ? "" : "none";
 
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var links = g.rsLinks || [];
@@ -1378,6 +1418,11 @@ function _myProfileEventsHTML() {
 function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
+  // La rangée de formats peut REVENIR ici (un média arrivé après l'entrée sur
+  // l'écran), jamais disparaître : seul `renderProfilesScreen` la masque.
+  try { _majRangeeFormats(true); } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("profil_formats_montrer " + (e && e.message)); } catch (x) {}
+  }
 
   // ⚠️ AUCUNE PASSION COCHÉE = AUCUN FILTRE, donc TOUT s'affiche.
   //
@@ -1485,6 +1530,42 @@ function renderProfileContent() {
       ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("")
       : guidedEmpty("🎨","Publie ta première création","Montre ton processus, pas juste le résultat.");
   }
+}
+
+// ── La rangée de formats ne se peint que si elle peut montrer quelque chose
+// (2026-11-14, fiche 31 « le contenu d'abord »). Un compte sans photo, vidéo,
+// bobine ni audio — tout compte neuf, et celui de Benjamin (0 publication) —
+// voyait cinq filtres qui ne menaient qu'à des états vides, posés sur la
+// dernière place visible de l'écran, pendant que « Publie ta première
+// création » restait sous la barre du bas. Ils reviennent dès le premier média.
+// ⚠️ Calculé sur TOUTES mes publications, jamais sur la passion filtrée ; et
+// SEULEMENT depuis `renderProfilesScreen` (entrée sur l'écran, suppression,
+// retour du Studio…), jamais au toucher d'un format ou d'une bulle : la rangée
+// ne disparaît jamais sous le doigt. Un format déjà choisi la garde peinte
+// (sinon plus de chemin vers « Tout »).
+// ⚠️ Un ATTRIBUT, pas une classe : UI-6B et UI-7 observent `class`. Le masquage
+// vit en CSS sous `:root.passio-ui-7` — sans UI-7, la rangée reste peinte.
+// ⚠️ `seulementMontrer` (revue adversariale du 2026-11-14, CYC-01) : l'état du
+// serveur peut arriver APRÈS l'entrée sur le profil (`_applyUserState` →
+// `renderEverything`, qui ne repeint pas cet écran). Le premier toucher d'une
+// bulle repeint alors la liste — un média y apparaît — sans que la rangée
+// revienne. `renderProfileContent` appelle donc ce calcul en mode « montrer
+// seulement » : un rendu de la liste peut FAIRE APPARAÎTRE la rangée, jamais la
+// cacher sous le doigt.
+// ⚠️ « Un format choisi » = n'importe quelle clé autre que `posts` dans la
+// sélection (CYC-02) : une ancienne multi-sélection `["posts","photos"]`
+// d'avant LOT-16 garde la rangée, et son « Photos » coché reste visible.
+function _majRangeeFormats(seulementMontrer) {
+  var rangee = document.querySelector("#screen-profiles .profile-tabs");
+  if (!rangee) return;
+  var mine = (state.userPosts || []).filter(function (p) { return p && p.type !== "vlog"; });
+  var utile = PROFILE_TAB_KEYS.some(function (k) {
+    return k !== "posts" && mine.some(PROFILE_TAB_PRED[k]);
+  });
+  var formatChoisi = [..._profileTabSel()].some(function (k) { return k !== "posts"; });
+  var v = (utile || formatChoisi) ? "1" : "0";
+  if (seulementMontrer && v === "0") return;
+  if (rangee.getAttribute("data-formats") !== v) rangee.setAttribute("data-formats", v);
 }
 
 // Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
@@ -3451,6 +3532,10 @@ function renderProfilesScreen() {
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
+  // La rangée de formats ne se peint que si elle filtre quelque chose (fiche 31).
+  try { _majRangeeFormats(); } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("profil_formats " + (e && e.message)); } catch (x) {}
+  }
 
   // Aide §8 « premier retour Profil » : montrer comment créer un second profil
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui

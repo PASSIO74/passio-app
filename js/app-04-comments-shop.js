@@ -5101,7 +5101,7 @@ async function openUserProfile(authorId, source) {
   // compte visité côté client (`_profileCache` ne porte pas `is_private`).
   window._visited = { authorId: authorId, isPrivate: !!user.isPrivate, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
 
-  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection).
+  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (choix unique depuis LOT-16).
   var _VTAB_SVGS = {
     posts:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>',
     photos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg>',
@@ -5118,7 +5118,7 @@ async function openUserProfile(authorId, source) {
   // ⚠️ 2026-08-31 : plus de ligne d'aide au-dessus des sous-filtres (mon profil
   // l'a perdue le même jour). Les icônes portent déjà leur libellé.
   var tabsHTML = canSeeContent
-    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
+    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par format de contenu">'
       + ((typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","audio"]).map(function(k) {
           return '<button class="profile-tab" data-vtab="' + escapeHtml(k) + '" aria-pressed="false" onclick="switchVisitedTab(\'' + escapeJsArg(k) + '\')" title="' + escapeHtml(_VTAB_TITLES[k]) + '" aria-label="' + escapeHtml(_VTAB_TITLES[k]) + '">' + _VTAB_SVGS[k] + '<span class="profile-tab-lbl">' + escapeHtml(_VTAB_TITLES[k]) + '</span></button>';
         }).join("")
@@ -5157,6 +5157,11 @@ async function openUserProfile(authorId, source) {
     ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
+  // La bio d'autrui en paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) :
+  // normalisée À L'AFFICHAGE (jamais garantie en base) et ÉCHAPPÉE morceau par
+  // morceau. Calculée une fois : le gabarit teste puis peint la même valeur.
+  var _bioVisiteHtml = bioEnParagraphesHtml(user.bio);
+
   // LOT-16 (PRO-C07) : un compte que J'AI bloqué le dit, à la place des actions.
   var _bloqueParMoi = (typeof isBlocked === "function") && isBlocked(authorId);
   // LOT-16 (PRO-C09) : la croix vient d'`openModal` ; la seconde (un span) est retirée.
@@ -5178,7 +5183,7 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user, 352) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
+        ' + (_bioVisiteHtml ? '<div class="main-profile-bio">' + _bioVisiteHtml + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
           <div class="main-profile-stat"><span>' + postCount + '</span><span>publication' + (postCount > 1 ? "s" : "") + '</span></div>\

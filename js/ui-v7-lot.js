@@ -193,7 +193,14 @@
       b.setAttribute("aria-selected", p.cle === ongletActif ? "true" : "false");
       b.setAttribute("aria-controls", "v7Pan-" + p.cle);
       b.textContent = p.libelle;
-      b.addEventListener("click", function () { choisirOnglet(p.cle); });
+      b.addEventListener("click", function () {
+        // Recadrer seulement si l'onglet CHANGE : re-toucher l'onglet actif (la
+        // barre collante est sous le pouce en permanence) ne doit pas faire
+        // perdre la position de lecture.
+        var change = ongletActif !== p.cle;
+        choisirOnglet(p.cle);
+        if (change) recadrerSousBarre(p.cle);
+      });
       barre.appendChild(b);
 
       var pan = document.createElement("div");
@@ -278,6 +285,26 @@
       pans[j].hidden = pans[j].getAttribute("data-v7-pan") !== cle;
     }
     track("ui_v7_profil_onglet", { tab: cle });
+  }
+
+  // ⚠️ LA BARRE EST COLLANTE (2026-11-14, bloc PROFIL-ERGONOMIE de styles.css) :
+  // on peut donc changer d'onglet en plein milieu de ses publications. Le
+  // panneau qui apparaît commence alors AU-DESSUS de l'écran — on verrait le
+  // milieu, ou le vide, d'une liste plus courte. Au TOUCHER seulement (pas sur
+  // `selectProfileTab`, dont l'appelant défile lui-même), on ramène le début
+  // du panneau juste sous la barre. Rien ne bouge quand le panneau est déjà
+  // sous elle (cas ordinaire, haut de page). Aucun écouteur de défilement.
+  function recadrerSousBarre(cle) {
+    try {
+      var barre = el(BARRE_ID);
+      var pan = el("v7Pan-" + cle);
+      var defileur = document.getElementById("appMain");
+      if (!barre || !pan || !defileur || pan.hidden) return;
+      var bas = barre.getBoundingClientRect().bottom;
+      var haut = pan.getBoundingClientRect().top;
+      if (haut >= bas) return;
+      defileur.scrollTop = Math.max(0, defileur.scrollTop - (bas - haut) - 8);
+    } catch (e) { fail("recadrage_onglet", e); }
   }
 
   function retirerProfil() {

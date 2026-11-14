@@ -681,6 +681,11 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
+            <!-- ⚠️ PLUS DE BOUTON « Partager mon profil » (retiré le 2026-11-14 sur
+                 demande de Benjamin : « supprime "partager profil", il sert à
+                 rien »). Il venait de LOT-12 (PAR-C14) ; `partagerMonProfil` et ses
+                 styles sont partis avec lui. Le lien de MON profil reste à un geste :
+                 crayon → « Inviter des amis » (`inviterDesAmis`, app-06). -->
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <!-- ⚠️ 2026-08-31 : plus AUCUNE pastille sous le pseudo. ADR-009 avait
@@ -692,9 +697,11 @@
                « Ajoute une biographie… » : une invitation explicite qui, jusqu'ici,
                ne réagissait à aucun tap — le clic mort exact que ce projet traque.
                Le seul moteur reste `openEditMainProfile`, celui du crayon. -->
+          <!-- ⚠️ AUCUN `onkeydown` ICI (retiré le 2026-11-14) : le délégué clavier
+               d'app-08 active déjà tout `[role="button"]` à Entrée/Espace, et il ne
+               lit pas `defaultPrevented` — Entrée ouvrait l'éditeur DEUX fois. -->
           <div class="main-profile-bio" id="mainProfileBio" role="button" tabindex="0"
                onclick="openEditMainProfile()"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMainProfile();}"
                title="Modifier ta biographie">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
           <div class="main-profile-stats">
@@ -703,9 +710,6 @@
             <div class="main-profile-stat" onclick="ouvrirGestionPassions()" style="cursor:pointer;"><span id="mainStatPassions">0</span><span>passions</span></div>
             <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
           </div>
-          <!-- LOT-12 (audit UX/UI du 2026-11-10, PAR-C14) : inviter quelqu'un était la
-               6e entrée d'un menu et le 7e bouton de « Support ». Visible, ici. -->
-          <button type="button" class="btn secondary block main-profile-partager" onclick="partagerMonProfil()">Partager mon profil</button>
         </div>
       </div>
 
@@ -843,7 +847,7 @@
       </div>
 
       <!-- ONGLETS CONTENU -->
-      <div class="profile-tabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">
+      <div class="profile-tabs" role="group" aria-label="Filtrer par format de contenu">
         <button class="profile-tab active" data-tab="posts" aria-pressed="true" onclick="switchProfileTab('posts',this)" title="Tout" aria-label="Tout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span class="profile-tab-lbl">Tout</span>
         </button>
