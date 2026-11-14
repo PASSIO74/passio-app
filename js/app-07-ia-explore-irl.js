@@ -2123,12 +2123,13 @@ document.addEventListener("keydown", (e) => {
 
 // Barre de passions (refondue le 2026-07-22) : en PRINCIPAL, les passions de mes
 // profils — c'est mon écran, il doit ressembler à mes centres d'intérêt. Les
-// autres passions restent atteignables (les événements des autres ne doivent
-// jamais être inatteignables, c'était le bug du 2026-07-21) mais via un petit
-// panneau « + Autres passions » à cocher : une passion cochée vient s'ajouter à
-// la barre principale, où elle se comporte exactement comme les miennes.
-// ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
-// la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+// autres passions restent atteignables par « Chercher »
+// (`ouvrirRecherchePassionIRL`) : une passion choisie là devient un filtre, et
+// une passion filtrée a toujours sa tuile dans la barre.
+// ⚠️ La tuile « Autres » et son panneau à cocher sont RETIRÉS (2026-11-14,
+// demande de Benjamin : « il y a déjà Chercher ») — deux portes pour le même
+// besoin. `state.user.irlExtraPassions` n'est plus lu : une passion cochée
+// autrefois ne garde pas de tuile, faute de porte pour la retirer.
 // ⚠️ « Mes passions » doit dire la MÊME chose sur Rencontrer et sur le Fil.
 // Mesuré avant correctif, juste après avoir archivé « Cuisine » :
 //   renderProfileStrip (Fil)  → ["musique"]
@@ -2148,29 +2149,6 @@ function _irlMyPassions() {
     : (state.user.profiles || []);
   return [...new Set(source.map(p => p.passion).filter(Boolean))];
 }
-function _irlExtraPassions() {
-  if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
-  return state.user.irlExtraPassions;
-}
-function toggleIrlExtraPassion(pid) {
-  const extra = _irlExtraPassions();
-  const i = extra.indexOf(pid);
-  if (i > -1) {
-    extra.splice(i, 1);
-    // Retirer la tuile doit aussi retirer son filtre, sinon on filtre sur une
-    // passion qui n'est plus affichée (donc plus décochable).
-    if (irlPassionFilters) irlPassionFilters.delete(pid);
-  } else {
-    extra.push(pid);
-  }
-  saveState();
-  renderIRL();
-}
-function toggleIrlExtraPanel() {
-  window._irlExtraOpen = !window._irlExtraOpen;
-  renderIrlPassionTiles();
-}
-
 // ⚠️ FONCTION GLOBALE : `audit:handlers` exige qu'un `onclick` inline désigne
 // une fonction globale EXISTANTE. Elle ne fait que déléguer.
 function ouvrirRecherchePassionIRL() {
@@ -2193,10 +2171,9 @@ function renderIrlPassionTiles() {
 
   const mine = _irlMyPassions();
   const mineSet = new Set(mine);
-  const extra = _irlExtraPassions().filter(pid => !mineSet.has(pid));
-  // Une passion filtrée reste toujours affichée, même si elle n'est ni mienne ni
-  // cochée (sinon la tuile active disparaît et le filtre devient indécochable).
-  const shown = [...new Set(mine.concat(extra, [...irlPassionFilters]))];
+  // Une passion filtrée reste toujours affichée, même si elle n'est pas mienne
+  // (sinon la tuile active disparaît et le filtre devient indécochable).
+  const shown = [...new Set(mine.concat([...irlPassionFilters]))];
 
   const tileHtml = (pid) => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
@@ -2210,14 +2187,6 @@ function renderIrlPassionTiles() {
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
   };
-
-  // Panneau « autres passions » : tout ce qui a au moins un événement et qui
-  // n'est pas déjà dans la barre.
-  const others = Object.keys(counts)
-    .filter(pid => !mineSet.has(pid) && extra.indexOf(pid) === -1)
-    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
-  const open = !!window._irlExtraOpen;
-  const nExtra = extra.length;
 
   // ── Lot flat_passions_v1 : chercher une passion précise ──────────────────
   // ⚠️ Posée DANS le rendu : `renderIrlPassionTiles` réécrit `#irlPassionRow`
@@ -2239,32 +2208,7 @@ function renderIrlPassionTiles() {
   row.innerHTML = `
     <div class="msg-filter-tiles">${chercheTile}
       ${shown.map(tileHtml).join("")}
-      <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
-        aria-expanded="${escapeHtml(open)}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
-        <span class="msg-tile-icon">＋</span>
-        <span class="msg-tile-label">Autres</span>
-        ${nExtra > 0 ? `<span class="msg-tile-badge">${nExtra}</span>` : ""}
-      </button>
-    </div>
-    ${open ? `<div class="irl-extra-panel" id="irlExtraPanel">
-      <div class="irl-extra-title">Ajouter des passions à ma barre</div>
-      <div class="irl-extra-list">
-        ${extra.map(pid => _irlExtraChipHtml(pid, counts, true)).join("")}
-        ${others.map(pid => _irlExtraChipHtml(pid, counts, false)).join("")}
-        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des activités pour le moment.</span>' : ""}
-      </div>
-    </div>` : ""}`;
-}
-
-function _irlExtraChipHtml(pid, counts, checked) {
-  const p = passionById(pid) || { label: pid, emoji: "✨" };
-  const cnt = counts[pid] || 0;
-  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${escapeHtml(checked)}"
-      onclick="toggleIrlExtraPassion('${escapeJsArg(pid)}')">
-    <span class="irl-extra-box" aria-hidden="true">${checked ? "✓" : ""}</span>
-    <span>${p.emoji} ${escapeHtml(p.label)}</span>
-    ${cnt > 0 ? `<b>${cnt}</b>` : ""}
-  </button>`;
+    </div>`;
 }
 
 var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
