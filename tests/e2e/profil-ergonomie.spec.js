@@ -24,6 +24,9 @@
 //   ⑥ Entrée sur la bio ouvre l'éditeur UNE fois (il s'ouvrait deux fois)
 //   ⑦ ordinateur (1440 × 900) : la barre collée au ras de l'en-tête
 //   ⑧ coupure du lot UI-7 : rien de collant, rien ne casse
+//   ⑨–⑮ le contenu d'abord (0 publication, comme le compte réel de Benjamin) :
+//      formats masqués tant qu'ils ne filtrent rien, état vide compact,
+//      « Activité » sans titre redondant, libellé du profil visité, coupure
 //
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -33,7 +36,7 @@ const { bootOnboarded, onboardedState } = require("./app-helper");
 const BIO_BENJAMIN = "Benjamin ladame\n\nAnnecy\n\n37 ans";
 const SEPT = ["musique", "sport", "cuisine", "photo", "voyage", "danse", "art"];
 
-function etatBenjamin(nbPosts = 0) {
+function etatBenjamin(nbPosts = 0, media = false) {
   const st = onboardedState(1);
   st.user.profiles = SEPT.map((p, i) => ({
     id: "pp_" + i, name: "Ben", passion: p, emoji: "✨", bio: "", color: "#7c3aed", createdAt: i + 1,
@@ -46,11 +49,13 @@ function etatBenjamin(nbPosts = 0) {
     text: "Publication " + (i + 1) + " — un texte de test assez long pour faire une carte.",
     createdAt: t - i * 3600e3, likes: 0, comments: [],
   }));
+  // Une photo : c'est elle qui fait exister la rangée de formats (⑨ et suivants).
+  if (media) st.userPosts.push({ id: "up_erg_photo", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "Photo", createdAt: t - 99 * 3600e3, likes: 0, comments: [] });
   return st;
 }
 
 async function ouvrirProfil(page, opts = {}) {
-  await bootOnboarded(page, null, 1, { state: etatBenjamin(opts.posts || 0), ...(opts.boot || {}) });
+  await bootOnboarded(page, null, 1, { state: etatBenjamin(opts.posts || 0, !!opts.media), ...(opts.boot || {}) });
   await page.evaluate(() => {
     window.supaSaveUserState = async () => {};
     window.supaSavePublicProfile = async () => {};
@@ -86,7 +91,9 @@ function mesurerPage() {
 for (const [w, h] of [[390, 844], [390, 765], [390, 693], [375, 667]]) {
   test(`① ${w}×${h} — avec SA bio et SES 7 passions, tout tient sur une page (carte, rail, onglets, formats)`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
-    await ouvrirProfil(page);
+    // Avec une photo : la rangée de formats existe (sans média, elle cède sa
+    // place au contenu — cas ⑨).
+    await ouvrirProfil(page, { media: true });
     const m = await page.evaluate(mesurerPage);
     expect(m.barre, "la barre du bas est là").not.toBeNull();
     expect(m.onglets, "les onglets sont peints").not.toBeNull();
@@ -111,7 +118,7 @@ test("① ter — iPhone en PWA (encoche 47 px, barre d'accueil 34 px) : tout ti
   await page.setViewportSize({ width: 390, height: 844 });
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34, left: 0, right: 0 } });
-  await ouvrirProfil(page);
+  await ouvrirProfil(page, { media: true });
   const m = await page.evaluate(mesurerPage);
   // Avant la prise en compte des zones sûres : formats à 812 pour une barre à 744.
   expect(m.onglets.bottom, "onglets au-dessus de la barre (zone sûre comprise)").toBeLessThanOrEqual(m.barre);
@@ -121,7 +128,7 @@ test("① ter — iPhone en PWA (encoche 47 px, barre d'accueil 34 px) : tout ti
 
 test("① bis — une bio qui s'allonge est MESURÉE : la répartition suit, rien ne passe sous la barre", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await ouvrirProfil(page);
+  await ouvrirProfil(page, { media: true });
   const avant = await page.evaluate(() => getComputedStyle(document.getElementById("screen-profiles")).getPropertyValue("--corps-carte-profil").trim());
   await page.evaluate(() => {
     state.user.general.bio = "Une ligne\nDeux\nTrois\nQuatre\nCinq\nSix";
@@ -359,4 +366,152 @@ test("⑧ coupure du lot UI-7 : pas de barre collante, le profil reste entier", 
   expect(r.bio).toBe(BIO_BENJAMIN);
   expect(r.partager).toBe(true);
   expect(errors.js, "aucune erreur JS").toEqual([]);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE CONTENU D'ABORD — relu sur le compte RÉEL de Benjamin : 0 publication.
+// Sur son écran, la rangée Tout · Photos · Vidéos · Bobines · Audio ne filtrait
+// rien et occupait la dernière place visible ; « Publie ta première création »
+// restait sous la barre du bas.
+// ═══════════════════════════════════════════════════════════════════════════
+function mesurerContenu() {
+  const r = (e) => (e && e.offsetParent ? e.getBoundingClientRect() : null);
+  const rangee = document.querySelector("#screen-profiles .profile-tabs");
+  const vide = document.querySelector("#myPosts > .empty");
+  const nav = document.getElementById("appNavV2");
+  return {
+    rangeePeinte: !!(rangee && rangee.offsetParent),
+    libelles: [...document.querySelectorAll("#screen-profiles .profile-tab-lbl")].map((l) => l.textContent),
+    onglets: r(document.getElementById("v7ProfileTabs")),
+    titre: r(vide && vide.querySelector(".empty-title")),
+    texte: r(vide && vide.querySelector(".empty-text")),
+    vide: r(vide),
+    premierPost: r(document.querySelector("#myPosts .post")),
+    barre: nav && nav.offsetParent ? nav.getBoundingClientRect().top : innerHeight,
+    espace: parseFloat(getComputedStyle(document.getElementById("v9ProfilePassions")).marginTop),
+  };
+}
+
+for (const [w, h] of [[390, 844], [390, 765], [375, 667]]) {
+  test(`⑨ ${w}×${h} — 0 publication : les formats cèdent leur place, l'invitation à publier est À L'ÉCRAN`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await ouvrirProfil(page);
+    const m = await page.evaluate(mesurerContenu);
+    // Avant : rangée peinte, état vide à 779 (844) / 701 (765) — sous la barre.
+    expect(m.rangeePeinte, "cinq filtres qui ne mènent qu'à des états vides : masqués").toBe(false);
+    expect(m.libelles, "mais la rangée reste dans le DOM, intacte").toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Audio"]);
+    expect(m.titre.bottom, "« Publie ta première création » au-dessus de la barre").toBeLessThanOrEqual(m.barre);
+    expect(m.texte.bottom, "et sa phrase aussi").toBeLessThanOrEqual(m.barre);
+    expect(Math.abs((m.vide.top - m.onglets.bottom) - m.espace), "le contenu commence à UN espace des onglets").toBeLessThanOrEqual(1.5);
+    // Rien au-dessus des onglets ne bouge : la formule est la même qu'avec une photo.
+    // (L'état déjà enregistré n'est pas remplacé par un second démarrage : on
+    // publie la photo dans l'état en place.)
+    await page.evaluate(() => {
+      state.userPosts.push({ id: "up_erg_p9", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
+      renderProfilesScreen();
+    });
+    await page.waitForTimeout(200);
+    const avecPhoto = await page.evaluate(mesurerContenu);
+    expect(avecPhoto.rangeePeinte, "avec une photo, la rangée revient").toBe(true);
+    expect(Math.abs(avecPhoto.onglets.bottom - m.onglets.bottom), "onglets au même endroit dans les deux cas").toBeLessThanOrEqual(1);
+  });
+}
+
+test("⑩ que des textes : la 1re publication remonte à la place des formats", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ouvrirProfil(page, { posts: 8 });
+  const m = await page.evaluate(mesurerContenu);
+  expect(m.rangeePeinte).toBe(false);
+  expect(m.premierPost.top, "l'en-tête de la 1re publication se voit").toBeLessThanOrEqual(m.barre - 48);
+});
+
+test("⑪ la rangée ne disparaît jamais sous le doigt, et revient au premier média", async ({ page }) => {
+  await ouvrirProfil(page);
+  const peinte = () => page.evaluate(() => !!document.querySelector("#screen-profiles .profile-tabs").offsetParent);
+  // Un format déjà choisi garde la rangée (sinon plus de chemin vers « Tout »).
+  await page.evaluate(() => {
+    window.profileTabSelection = new Set(["photos"]);
+    _persistProfileTabs();
+    goTo("feed"); goTo("profiles");
+  });
+  await page.waitForTimeout(300);
+  expect(await peinte(), "« Photos » choisi : la rangée reste").toBe(true);
+  await page.locator('#screen-profiles .profile-tab[data-tab="posts"]').click();
+  await page.waitForTimeout(200);
+  expect(await peinte(), "toucher « Tout » ne la fait pas disparaître sous le doigt").toBe(true);
+  await page.evaluate(() => { goTo("feed"); goTo("profiles"); });
+  await page.waitForTimeout(300);
+  expect(await peinte(), "à la prochaine entrée, sans média : masquée").toBe(false);
+  await page.evaluate(() => {
+    state.userPosts.push({ id: "up_erg_p2", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
+    renderProfilesScreen();
+  });
+  expect(await peinte(), "une photo publiée : la rangée revient").toBe(true);
+});
+
+test("⑫ l'état vide est compact : icône à gauche, bouton pleine largeur de 44 px, texte ≥ 12 px", async ({ page }) => {
+  await ouvrirProfil(page);
+  const r = await page.evaluate(() => {
+    const v = document.querySelector("#myPosts > .empty");
+    const b = v.querySelector(".btn").getBoundingClientRect();
+    return {
+      h: v.getBoundingClientRect().height,
+      icone: v.querySelector(".empty-icon").getBoundingClientRect().right,
+      titre: v.querySelector(".empty-title").getBoundingClientRect().left,
+      boutonH: b.height, boutonW: b.width, videW: v.getBoundingClientRect().width,
+      texte: parseFloat(getComputedStyle(v.querySelector(".empty-text")).fontSize),
+      libelle: v.querySelector(".btn").textContent.trim(),
+    };
+  });
+  expect(r.h, "avant : 168 px").toBeLessThanOrEqual(120);
+  expect(r.icone, "icône à gauche du titre").toBeLessThan(r.titre);
+  expect(r.boutonH).toBeGreaterThanOrEqual(44);
+  expect(r.boutonW / r.videW).toBeGreaterThanOrEqual(0.9);
+  expect(r.texte, "plancher de 12 px (LOT-53)").toBeGreaterThanOrEqual(12);
+  expect(r.libelle).toBe("Créer une publication");
+});
+
+test("⑬ « Activité » : le titre qui répète l'onglet n'est plus peint, le contenu remonte", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 765 });
+  await ouvrirProfil(page);
+  await page.locator('[data-v7-tab="activites"]').click();
+  await page.waitForTimeout(250);
+  const r = await page.evaluate(() => {
+    const t = [...document.querySelectorAll("#v7Pan-activites .section-title")].find((e) => /Mes activités/.test(e.textContent));
+    const ev = document.getElementById("profileEvents").getBoundingClientRect();
+    return {
+      texte: t && t.textContent,
+      hauteur: t ? t.getBoundingClientRect().height : -1,
+      ecart: ev.top - document.getElementById("v7ProfileTabs").getBoundingClientRect().bottom,
+      espace: parseFloat(getComputedStyle(document.getElementById("v9ProfilePassions")).marginTop),
+    };
+  });
+  expect(r.texte, "le titre reste dans le DOM (UI-7 le retrouve par son texte, un lecteur d'écran le lit)").toBe("Mes activités");
+  expect(r.hauteur, "mais il n'est plus peint").toBeLessThanOrEqual(1);
+  // Avant : 62 px entre les onglets et le contenu (titre + sa marge de 18 px).
+  expect(r.ecart, "le contenu est à un espace des onglets").toBeLessThanOrEqual(r.espace + 2);
+});
+
+test("⑭ profil visité : les formats s'annoncent en choix unique, plus « multi-sélection »", async ({ page }) => {
+  await ouvrirProfil(page);
+  const label = await page.evaluate(async () => {
+    state.seed.users.push({ id: "u_fmt_erg", name: "Camille", profileEmoji: "🎨", avatar: "#7c3aed", bio: "", passions: [] });
+    await openUserProfile("u_fmt_erg", "seed");
+    await new Promise((ok) => setTimeout(ok, 300));
+    const t = document.querySelector("#modalContent #visitedTabs");
+    return t ? t.getAttribute("aria-label") : null;
+  });
+  expect(label).toBe("Filtrer par format de contenu");
+});
+
+test("⑮ coupure du lot UI-7 : la rangée de formats et « Mes activités » reviennent, même sans média", async ({ page }) => {
+  await ouvrirProfil(page);
+  await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
+  await page.waitForTimeout(300);
+  const r = await page.evaluate(() => ({
+    rangee: !!document.querySelector("#screen-profiles .profile-tabs").offsetParent,
+    titre: [...document.querySelectorAll("#screen-profiles .section-title")].some((t) => /Mes activités/.test(t.textContent) && t.getBoundingClientRect().height > 1),
+  }));
+  expect(r.rangee).toBe(true);
+  expect(r.titre).toBe(true);
 });

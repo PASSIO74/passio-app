@@ -1530,6 +1530,30 @@ function renderProfileContent() {
   }
 }
 
+// ── La rangée de formats ne se peint que si elle peut montrer quelque chose
+// (2026-11-14, fiche 31 « le contenu d'abord »). Un compte sans photo, vidéo,
+// bobine ni audio — tout compte neuf, et celui de Benjamin (0 publication) —
+// voyait cinq filtres qui ne menaient qu'à des états vides, posés sur la
+// dernière place visible de l'écran, pendant que « Publie ta première
+// création » restait sous la barre du bas. Ils reviennent dès le premier média.
+// ⚠️ Calculé sur TOUTES mes publications, jamais sur la passion filtrée ; et
+// SEULEMENT depuis `renderProfilesScreen` (entrée sur l'écran, suppression,
+// retour du Studio…), jamais au toucher d'un format ou d'une bulle : la rangée
+// ne disparaît jamais sous le doigt. Un format déjà choisi la garde peinte
+// (sinon plus de chemin vers « Tout »).
+// ⚠️ Un ATTRIBUT, pas une classe : UI-6B et UI-7 observent `class`. Le masquage
+// vit en CSS sous `:root.passio-ui-7` — sans UI-7, la rangée reste peinte.
+function _majRangeeFormats() {
+  var rangee = document.querySelector("#screen-profiles .profile-tabs");
+  if (!rangee) return;
+  var mine = (state.userPosts || []).filter(function (p) { return p && p.type !== "vlog"; });
+  var utile = PROFILE_TAB_KEYS.some(function (k) {
+    return k !== "posts" && mine.some(PROFILE_TAB_PRED[k]);
+  });
+  var v = (utile || _activeProfileTab() !== "posts") ? "1" : "0";
+  if (rangee.getAttribute("data-formats") !== v) rangee.setAttribute("data-formats", v);
+}
+
 // Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
 function switchProfileTab(tab, btn) {
   if (PROFILE_TAB_KEYS.indexOf(tab) === -1) return;
@@ -3494,6 +3518,10 @@ function renderProfilesScreen() {
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
+  // La rangée de formats ne se peint que si elle filtre quelque chose (fiche 31).
+  try { _majRangeeFormats(); } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("profil_formats " + (e && e.message)); } catch (x) {}
+  }
 
   // Aide §8 « premier retour Profil » : montrer comment créer un second profil
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui

@@ -13507,6 +13507,50 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
    curseur « main » de la règle de base promettait un geste qui n'existe pas. Le
    crayon et « Partager », eux, gardent le leur. */
 #screen-profiles .main-profile-cover { cursor: default; }
+/* ⑥ LE CONTENU D'ABORD (relu par l'arbitrage des conceptions, sur le compte
+   réel de Benjamin : 0 publication).
+   — La rangée de formats ne se peint que si elle filtre quelque chose
+     (`data-formats`, posé par `_majRangeeFormats`, app-06) ; le contenu prend sa
+     place, à un `--espace-profil` des onglets : la formule ne change pas, et rien
+     au-dessus des onglets ne bouge. Avec un média, la rangée revient, en bas de
+     page comme décidé le 2026-09-10.
+   — L'état vide de MON profil est compact (icône à gauche, bouton pleine
+     largeur dessous) : 168 → 110 px, et son texte remonte à 12 px (plancher de
+     LOT-53). Le texte « Créer une publication » ne change pas.
+   — Dans « Activité », le titre « Mes activités » répète l'onglet : masqué à
+     l'ÉCRAN seulement — il reste dans le DOM avec son texte (UI-7 le retrouve
+     par `titreContenant`, et un lecteur d'écran le lit). Le panneau prend le
+     même rythme que « Publications ».
+   ⚠️ Tout est sous `:root.passio-ui-7` : sans UI-7, l'écran d'avant revient. */
+:root.passio-ui-7 #screen-profiles .v7-subfilters[data-formats="0"] { display: none; }
+:root.passio-ui-7 #screen-profiles .v7-subfilters[data-formats="0"] + #myPosts { margin-top: var(--espace-profil); }
+:root.passio-ui-7 #screen-profiles #myPosts > .empty {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+}
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-icon {
+  grid-row: 1 / span 2;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  margin: 0;
+}
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-title { align-self: end; margin: 0; }
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-text { align-self: start; margin: 2px 0 0; max-width: none; font-size: 12px; }
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .btn { grid-column: 1 / -1; margin-top: 8px; min-height: 44px; }
+:root.passio-ui-7 #screen-profiles #v7Pan-activites > .section-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+:root.passio-ui-7 #screen-profiles #v7Pan-activites { padding-top: var(--espace-profil); }
 /* ═══ PROFIL-ERGONOMIE:FIN ═══ */
 
 /* ═══ ORDINATEUR-PLEINE-PAGE:DEBUT ═══════════════════════════════════════════
