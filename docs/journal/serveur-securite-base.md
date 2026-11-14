@@ -1903,3 +1903,21 @@ par pg_cron, et personne d'autre ne peut l'appeler. Chaque catégorie est borné
 
 Le verdict compare des IDENTIFIANTS, pas des comptes : une ligne arrivée pendant la migration aurait faussé un
 compte, ou masqué une perte.
+
+## 📸 STORIES : J'AIME, « VU PAR », COMMENTAIRES PUBLICS — `migration_story_interactions_2026-11-14.sql` (**NON appliquée** à l'écriture, 2026-11-14)
+
+Demande de Benjamin : « la même chose qu'Instagram » — l'auteur voit le nombre de j'aime et « Vu par »,
+les commentaires sont visibles de tous ceux qui voient la story.
+- `story_likes (story_id, user_id)` : lu par le j'aimeur et par l'auteur de la story, personne d'autre.
+- `story_comments` : lus par quiconque voit la story (`story_visible`, copie de la policy de `stories` +
+  blocage dans les deux sens, et un commentaire d'un compte bloqué n'est pas lu) ; effacés par leur auteur
+  ou par l'auteur de la story ; aucun UPDATE ; 1 à 500 caractères ; débit et ligne bornés.
+- `story_views` : policy AJOUTÉE `story_views_select_auteur_story` (l'auteur lit qui a vu) ; la policy
+  propre est gardée.
+- Deux fonctions SECURITY DEFINER (`story_visible`, `story_est_a_moi`), EXECUTE retiré à `public`/`anon`.
+- Tables NON publiées en temps réel ; `on delete cascade` sur `stories(id)` et `profiles(id)` (exceptions
+  déclarées dans `scripts/audit-tables-compte.js`, PR #930).
+**Aucun prérequis client** : le client servi (PR #930) détecte 42P01 / PGRST205 et garde son repli
+(message direct). **Après application** : vérifier par le canal ① (`pg_policies`, simulation de rôles
+étranger / abonné / auteur / bloqué, `SET LOCAL role` et `SELECT` dans le MÊME appel), puis régénérer
+`migrations/SCHEMA_PROD_REFERENCE.sql`.
