@@ -516,7 +516,6 @@
              autre compte » pour un compte connecté. Sans lui, le parcours de
              première visite n'offrait AUCUN chemin vers un compte existant. -->
         <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">Se connecter avec un autre compte</button>
-        <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">Voir l'onboarding</button>
         <!-- ENT-C06 : la destruction du compte vit dans « Compte », loin de la déconnexion.
              🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales). -->
         <button class="btn ghost dev-panel-danger" id="settingsDeleteAccount" onclick="event.stopPropagation();toggleDevPanel();openDeleteAccountConfirm()">Supprimer mon compte</button>

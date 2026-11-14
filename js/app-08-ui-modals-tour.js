@@ -10741,22 +10741,6 @@ function attachMsgPhoto(input) {
 // toggleProfileFilter et selectAllProfiles définis plus haut
 
 
-function resetOnboarding() {
-  toggleDevPanel();
-  state.onboarded = false;
-  state.landingSeen = false;
-  saveState();
-  // Cacher l'app, montrer l'onboarding
-  // 🔧 FIX AUDIT 2026-06-10 : #appShell n'existe pas (TypeError qui
-  // interrompait le reset) — l'élément est .app-shell, sans état "active".
-  document.body.classList.remove("screen-feed-active");
-  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  document.getElementById("onboarding").classList.add("active");
-  document.getElementById("landing").classList.remove("active");
-  onbStepIdx = 0;
-  showOnbStep(onbSteps[0]);
-}
-
 function exitLandingAsAuth(mode) {
   document.getElementById("landing").classList.remove("active");
   state.landingSeen = true;
