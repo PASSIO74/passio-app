@@ -1128,7 +1128,7 @@
   const LIBELLES_COUPURES = {
     passio_invitations_v1: "Invitations", passio_invite_apres_creation_v1: "Inviter après avoir organisé",
     passio_liens_courts_v1: "Liens de partage courts", passio_irl_proposal_v1: "Proposer une activité",
-    passio_rappels_push_v1: "Rappels d'activité (push)",
+    passio_rappels_push_v1: "Rappels d'activité (push)", passio_recap_semaine: "Récap de la semaine",
     passio_feed_rank: "Classement du fil", passio_feed_irl_bridge_v1: "Activités dans le fil",
     passio_feed_intents_v1: "Intentions du fil", passio_feed_window_v1: "Fenêtre du fil",
     passio_first_run_experience_v1: "Première visite guidée", flat_passions_v1: "Référentiel des passions plat",

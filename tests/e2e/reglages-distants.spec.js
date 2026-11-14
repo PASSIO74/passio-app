@@ -86,20 +86,20 @@ test("② délestage 2 → ×4 sur les filets et le repos du temps réel ; levé
 });
 
 test("③ coupures : liste blanche seulement, et on ne lève que ce qu'on a posé", async ({ page }) => {
-  const serveur = await preparer(page, { local: { passio_liens_courts_v1: "0" } });
+  const serveur = await preparer(page, { local: { passio_recap_semaine: "0" } });
   const etat = () => page.evaluate(() => ({
-    invit: localStorage.getItem("passio_invitations_v1"), liens: localStorage.getItem("passio_liens_courts_v1"),
+    invit: localStorage.getItem("passio_invitations_v1"), recap: localStorage.getItem("passio_recap_semaine"),
     state: localStorage.getItem("passio_mvp_state_v1") === "0", posees: JSON.parse(localStorage.getItem("passio_coupures_distantes_v1") || "[]"),
   }));
   servir(serveur, [{ cle: "coupures", valeur: { cles: ["passio_invitations_v1", "passio_mvp_state_v1"] } }]);
   await page.evaluate(() => PassioReglages.rafraichir(true));
-  expect(await etat(), "une clé de données invalide toute la ligne").toEqual({ invit: null, liens: "0", state: false, posees: [] });
-  servir(serveur, [{ cle: "coupures", valeur: { cles: ["passio_invitations_v1", "passio_liens_courts_v1"] } }]);
+  expect(await etat(), "une clé de données invalide toute la ligne").toEqual({ invit: null, recap: "0", state: false, posees: [] });
+  servir(serveur, [{ cle: "coupures", valeur: { cles: ["passio_invitations_v1", "passio_recap_semaine"] } }]);
   await page.evaluate(() => PassioReglages.rafraichir(true));
-  expect(await etat(), "le \"0\" déjà posé par l'appareil n'est pas à nous").toEqual({ invit: "0", liens: "0", state: false, posees: ["passio_invitations_v1"] });
+  expect(await etat(), "le \"0\" déjà posé par l'appareil n'est pas à nous").toEqual({ invit: "0", recap: "0", state: false, posees: ["passio_invitations_v1"] });
   servir(serveur, [{ cle: "coupures", valeur: { cles: [] } }]);
   await page.evaluate(() => PassioReglages.rafraichir(true));
-  expect(await etat()).toEqual({ invit: null, liens: "0", state: false, posees: [] });
+  expect(await etat()).toEqual({ invit: null, recap: "0", state: false, posees: [] });
 });
 
 test("④ le cache s'applique AVANT l'app ; un délestage trop vieux n'est pas repris", async ({ page }) => {
@@ -142,11 +142,11 @@ test("⑥ inerte en local sans demande explicite : aucune lecture, aucun délest
 });
 
 test("⑦ la coupure du module rend les coupures qu'il avait posées", async ({ page }) => {
-  await preparer(page, { coupe: true, posees: ["passio_invitations_v1"], local: { passio_invitations_v1: "0", passio_liens_courts_v1: "0" } });
+  await preparer(page, { coupe: true, posees: ["passio_invitations_v1"], local: { passio_invitations_v1: "0", passio_recap_semaine: "0" } });
   expect(await page.evaluate(() => ({
-    invit: localStorage.getItem("passio_invitations_v1"), liens: localStorage.getItem("passio_liens_courts_v1"),
+    invit: localStorage.getItem("passio_invitations_v1"), recap: localStorage.getItem("passio_recap_semaine"),
     posees: localStorage.getItem("passio_coupures_distantes_v1"), actif: PassioReglages.actif(),
-  }))).toEqual({ invit: null, liens: "0", posees: null, actif: false });
+  }))).toEqual({ invit: null, recap: "0", posees: null, actif: false });
 });
 
 test("⑧ table retirée (404) : les réglages lus la veille sont rendus, rien ne reste coupé", async ({ page }) => {
