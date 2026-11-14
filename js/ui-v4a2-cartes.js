@@ -20,6 +20,10 @@
 //   ⑤ les participants AGRÉGÉS · les places restantes ;
 //   ⑥ la preuve sociale historique, quand elle existe (personnes suivies) ;
 //   ⑦ « Détails » et « Je viens » / « Inscrit ✓ ».
+//   ⑧ depuis le 2026-11-14 (demande de Benjamin) : aimer, commenter, partager.
+//      Ce module n'en construit RIEN : `styles.css` cesse de recouvrir la barre
+//      sociale historique (`.post-actions`), dont les nœuds et les moteurs
+//      (`toggleEventLike`, `openCommentSheet`, `shareEvent`) sont inchangés.
 //
 // ── Ce qui n'est PAS fait ici, et pourquoi ────────────────────────────────
 //   • aucune vue « Liste / Carte » : c'est le sous-lot suivant (UI-4A3) ;

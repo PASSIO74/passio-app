@@ -3276,8 +3276,8 @@ function renderIRL() {
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
+        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}"${attrsLikePost(evLiked, evLikeCount)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${contenuLikePost(evLiked, evLikeCount)}</span>
+        <span class="post-action" data-evc="${escapeHtml(e.id)}"${attrsCommentairesPost(_eventCmtBadge(e.id))} onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">${contenuCommentairesPost(_eventCmtBadge(e.id))}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(e.id)}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(e.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(e.id)}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
@@ -3315,7 +3315,8 @@ async function _loadEventReactions(ids) {
       if (_prev && _prev.gifs && _prev.gifs.length && (!d.gifs || !d.gifs.length)) d.gifs = _prev.gifs;
       window._eventLikes[id] = d;
       var lk = document.querySelector('[data-evlike="' + id + '"]');
-      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+      // Tous les exemplaires (carte de la liste ET fiche), icônes de LOT-8.
+      _peindreLikeEvenement(id, d, lk);
       if (typeof _patchEventReactChip === "function") _patchEventReactChip(id);
     });
   } catch (e) {}
@@ -3380,8 +3381,7 @@ function _peindreLikeEvenement(id, cur, el) {
   var _els = document.querySelectorAll('[data-evlike="' + CSS.escape(String(id)) + '"]');
   if (!_els.length && el) _els = [el];
   [].forEach.call(_els, function (n) {
-    n.classList.toggle("liked", cur.liked);
-    n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
+    peindreLikePost(n, !!cur.liked, cur.likes || 0);
   });
 }
 
@@ -3680,7 +3680,7 @@ async function _loadEventCommentCounts(ids) {
     if (typeof _persistEventComments === "function") _persistEventComments();
     ids.forEach(function(id){
       var el = document.querySelector('[data-evc="' + CSS.escape(String(id)) + '"]');
-      if (el) el.textContent = "💬 " + _eventCmtBadge(id);
+      if (el) peindreCommentairesPost(el, _eventCmtBadge(id));
     });
   } catch (e) {}
 }
@@ -4791,7 +4791,7 @@ function openEventDetails(id) {
          handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
          personne ». -->
     <div class="post-actions" style="margin-top:18px;">
-      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
+      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}"${attrsLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${contenuLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
       <!-- LOT-12 (PAR-C12) : deux portes de partage sur la fiche — l'icône du haut et celle-ci.
            IRL-C67 proposait de n'en garder qu'une : la décision de LOT-12, déjà livrée, l'emporte. -->
@@ -5787,7 +5787,7 @@ async function addEventComment(eventId) {
     window._eventCommentCounts = window._eventCommentCounts || {};
     window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
     var _badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
-    if (_badge) _badge.textContent = "💬 " + _eventCmtBadge(eventId);
+    if (_badge) peindreCommentairesPost(_badge, _eventCmtBadge(eventId));
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
@@ -5823,7 +5823,7 @@ function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
   try {
     if (window._eventCommentCounts && window._eventCommentCounts[eventId] > 0) window._eventCommentCounts[eventId]--;
     var badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
-    if (badge) badge.textContent = "💬 " + _eventCmtBadge(eventId);
+    if (badge) peindreCommentairesPost(badge, _eventCmtBadge(eventId));
   } catch (e) {}
   try { _renderEventComments(eventId); } catch (e) {}
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
