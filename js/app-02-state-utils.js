@@ -4024,6 +4024,23 @@ function goTo(screen) {
   // qu'on ne peut pas quitter est une application bloquée.
   try { if (typeof closePost === "function") closePost(); } catch (e) {}
   try { if (typeof closeEventDetail === "function") closeEventDetail(); } catch (e) {}
+  // ⚠️ ET LA CONVERSATION, SUR ORDINATEUR (2026-11-14, disposition pleine page).
+  // À partir de 1024 px la conversation n'occupe plus que la zone de contenu :
+  // le menu latéral reste visible et cliquable à côté d'elle. Sans ceci, un clic
+  // sur « Découvrir » changeait l'écran DESSOUS et la conversation restait
+  // affichée — le défaut des deux pages de détail ci-dessus, sur une troisième
+  // surface. Sur téléphone la conversation recouvre la barre d'onglets : rien ne
+  // change. `_convOrigine` est vidé AVANT : on va où le clic le demande, pas d'où
+  // la conversation venait (sinon `closeConversation` relancerait un `goTo`).
+  try {
+    var _convOuverte = document.getElementById("conv-fullpage");
+    if (_convOuverte && _convOuverte.classList.contains("active")
+        && typeof closeConversation === "function"
+        && window.matchMedia && window.matchMedia("(min-width: 1024px)").matches) {
+      window._convOrigine = null;
+      closeConversation();
+    }
+  } catch (e) {}
 
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
