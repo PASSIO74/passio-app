@@ -1,0 +1,96 @@
+# BANC TEMPORAIRE — à retirer : il ne vit que sur la branche banc/outils-ci-linux, jamais dans la PR.
+# Joue sur un vrai runner Linux, SANS AUCUN SECRET, les étapes réelles de deploy.yml qui installent
+# netlify-cli (npm ci sur son lockfile) et Deno (version et empreinte), puis un build hors ligne qui
+# regroupe les fonctions de bord avec ce Deno ; et prouve que sans lui le build échoue au lieu de télécharger.
+name: Banc temporaire — outils de la CI figés
+
+on:
+  push:
+    branches: [banc/outils-ci-linux]
+
+permissions:
+  contents: read
+
+jobs:
+  banc:
+    name: Installer et éprouver sur Linux, sans aucun secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Image du runner
+        run: |
+          node --version
+          npm --version
+          command -v deno || echo "aucun deno sur l'image"
+
+      - name: Étape réelle de deploy.yml — Installer netlify-cli depuis son lockfile
+        run: |
+          set -euo pipefail
+          node --input-type=module -e 'import { parse } from "./tests/unit/lib/yaml-mini.mjs"; import fs from "node:fs"; const s = parse(fs.readFileSync(".github/workflows/deploy.yml", "utf8")).jobs.deploy.steps.find((x) => String(x.name || "").startsWith("Installer netlify-cli")); fs.writeFileSync(process.env.RUNNER_TEMP + "/etape-netlify.sh", s.run);'
+          bash -e "$RUNNER_TEMP/etape-netlify.sh" 2>&1 | tee "$RUNNER_TEMP/npm-ci.log"
+          grep -E "added [0-9]+ packages" "$RUNNER_TEMP/npm-ci.log" || true
+
+      - name: Étape réelle de deploy.yml — Installer Deno, version et empreinte figées
+        run: |
+          set -euo pipefail
+          node --input-type=module -e 'import { parse } from "./tests/unit/lib/yaml-mini.mjs"; import fs from "node:fs"; const s = parse(fs.readFileSync(".github/workflows/deploy.yml", "utf8")).jobs.deploy.steps.find((x) => String(x.name || "").startsWith("Installer Deno")); fs.writeFileSync(process.env.RUNNER_TEMP + "/etape-deno.sh", s.run);'
+          bash -e "$RUNNER_TEMP/etape-deno.sh"
+
+      - name: La CLI installée regroupe les fonctions de bord avec le Deno figé, sans rien télécharger
+        run: |
+          set -euo pipefail
+          command -v deno
+          deno --version
+          NETLIFY_BIN="${RUNNER_TEMP}/netlify-cli/node_modules/.bin/netlify"
+          "$NETLIFY_BIN" --version
+          node scripts/build.js dist/index.html
+          cp manifest.json _headers icon-192.png icon-512.png dist/
+          "$NETLIFY_BIN" build --offline --context production
+          ls -la .netlify/edge-functions-dist/
+          head -c 3000 .netlify/edge-functions-dist/manifest.json; echo
+          CONFIG_NETLIFY="${XDG_CONFIG_HOME:-$HOME/.config}/netlify"
+          ls -la "$CONFIG_NETLIFY"
+          test -f "$CONFIG_NETLIFY/deno-cli"
+          test -f "$CONFIG_NETLIFY/deno-cli-v1"
+          echo "OK : les pièges sont restés des fichiers, aucun Deno téléchargé"
+
+      - name: Sans le Deno figé sur le PATH, le build ÉCHOUE au lieu de télécharger
+        run: |
+          set -uo pipefail
+          SANS_DENO="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -x "${RUNNER_TEMP}/deno" | paste -sd: -)" || SANS_DENO=""
+          [ -n "$SANS_DENO" ] || { echo "::error::PATH vide"; exit 1; }
+          rm -rf .netlify/edge-functions-dist
+          if PATH="$SANS_DENO" command -v deno; then echo "::error::un deno reste sur le PATH"; exit 1; fi
+          if PATH="$SANS_DENO" "${RUNNER_TEMP}/netlify-cli/node_modules/.bin/netlify" build --offline --context production > "$RUNNER_TEMP/sans-deno.log" 2>&1; then
+            cat "$RUNNER_TEMP/sans-deno.log"
+            echo "::error::le build a RÉUSSI sans Deno sur le PATH : un Deno a été pris ailleurs"
+            exit 1
+          fi
+          grep -n -i -E "deno|eexist|enotdir|error" "$RUNNER_TEMP/sans-deno.log" | head -n 25 || true
+          # La cause doit être le piège : edge-bundler n'a pas pu créer son dossier de téléchargement.
+          if ! grep -E "EEXIST|ENOTDIR" "$RUNNER_TEMP/sans-deno.log" > /dev/null; then echo "::error::le build a échoué pour une autre raison que le piège"; exit 1; fi
+          CONFIG_NETLIFY="${XDG_CONFIG_HOME:-$HOME/.config}/netlify"
+          test -f "$CONFIG_NETLIFY/deno-cli"
+          test -f "$CONFIG_NETLIFY/deno-cli-v1"
+          echo "OK : sans le Deno figé, le build échoue, et rien n'a été téléchargé"
+
+      - name: Contrôle Realtime — supabase-js depuis le lockfile racine
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund 2>&1 | tail -n 3
+          node --input-type=module -e 'const m = await import("@supabase/supabase-js"); console.log("createClient :", typeof m.createClient);'
+          node -p 'require("@supabase/supabase-js/package.json").version'
+
+      - name: Bancs et gate sur Linux
+        run: |
+          set -euo pipefail
+          node --test tests/unit/outils-ci-figes.test.mjs tests/unit/audit-workflows.test.mjs
+          node scripts/audit-workflows.js
