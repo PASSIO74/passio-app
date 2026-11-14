@@ -8518,10 +8518,20 @@ function setFeedIntents(liste) {
 // étiquette posée par l'auteur. Son prédicat reprend donc exactement les deux
 // signaux que `rankFeedPostsForIntent` utilise déjà pour le bonus « discover » :
 // auteur que je ne suis pas, ou passion que je n'ai pas cochée.
+//
+// ⚠️ MA PROPRE PUBLICATION N'EST JAMAIS UNE DÉCOUVERTE (2026-11-14). Je ne me
+// « suis » pas moi-même : l'auteur tombait donc toujours « hors suivis », et
+// tout ce que je publiais remontait sous « Explorer ». Vu sur la capture de
+// Benjamin : sa propre activité « Rénovation marquise » en tête d'Explorer.
+// On juge l'AUTEUR, jamais le tableau où la publication est rangée :
+// `state.userPosts` sert aussi de réserve à des cartes d'autrui (suites de tests,
+// copies optimistes), et `_estMonPost` les aurait toutes exclues.
 function feedPostMatchesIntent(p, intent) {
   if (!p) return false;
   if (intent === "discover") {
     try {
+      var moi = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
+      if (p.authorId && (p.authorId === "me" || (moi && p.authorId === moi))) return false;
       var suivis = (state.user && state.user.following) || [];
       var horsSuivis = !!p.authorId && suivis.indexOf(p.authorId) === -1;
       var horsPassions = !!p.passion && !_activeFeedPassions.has(p.passion);
