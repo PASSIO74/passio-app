@@ -245,7 +245,11 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   const partagee = page.locator('article.post[data-postid="p_share"]');
   const apercuHistorique = partagee.locator(".post-vlog-card");
   await expect(apercuHistorique).toHaveCount(1);
-  await expect(apercuHistorique).toBeHidden();
+  // 2026-11-14 (Benjamin) : la sous-carte est devenue la MISE EN AVANT de
+  // l'activité — visible, avec le bloc date corail, sans second bouton « Voir ».
+  await expect(apercuHistorique).toBeVisible();
+  await expect(apercuHistorique.locator(".post-activite-tuile")).toBeVisible();
+  await expect(apercuHistorique.locator(".btn")).toHaveCount(0);
   await expect(partagee.locator("[data-v3-activity]")).toBeVisible();
 
   // ① Aucun des libellés écartés par Benjamin n'apparaît dans le fil.
@@ -271,7 +275,7 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   await page.evaluate(() => { window.PASSIO_UI_3 = false; window.PassioUIV3.apply(); });
   await expect(apercuHistorique).toBeVisible();
   await expect(partagee.locator("[data-v3-activity]")).toHaveCount(0);
-  expect(await apercuHistorique.innerText()).toContain("Voir");
+  await expect(apercuHistorique.locator(".post-activite-tuile")).toBeVisible();
 
   expect(errors.js, "exceptions JS").toEqual([]);
 });

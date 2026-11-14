@@ -26,6 +26,7 @@
 - 🌀 LA BOUCLE DU BAS DU FIL — LE ROUGE CI « Received: 12 » ÉTAIT UN DÉFAUT DU FENÊTRAGE, RÉVÉLÉ PAR CHROMIUM 158 (2026-11-07)
 - 📡 UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE — le séparateur du fil dit l'échec de lecture (2026-11-09)
 - 🧷 « MA PASSION ET MON POST ONT DISPARU À LA RÉOUVERTURE » — L'APPAREIL PERDAIT CE QUE LA BASE GARDAIT (2026-11-14)
+- 📍 UNE ACTIVITÉ PARTAGÉE SE MET EN AVANT : PHOTO + BLOC DATE CORAIL, PAREIL AU FIL ET AU PROFIL (2026-11-14)
 
 ---
 
@@ -1123,3 +1124,12 @@ l'utilisateur (supprimer, archiver).
 Verrou : `tests/e2e/publications-passions-persistantes.spec.js` (4) — ①③④ rouges sans le
 correctif (réinjection faite).
 
+## 📍 UNE ACTIVITÉ PARTAGÉE SE MET EN AVANT : PHOTO + BLOC DATE CORAIL, PAREIL AU FIL ET AU PROFIL (2026-11-14)
+
+Demande de Benjamin, captures à l'appui : dans le fil, une activité partagée n'était que trois lignes de texte et un lien ; sur le profil, la sous-carte historique sortait en violet (« ce n'est pas bon »).
+- UNE fabrique, `carteActiviteFilHTML(p)` (app-02) : photo de l'activité (si elle en a une), titre, puis le rectangle de la fiche — tuile corail jour/mois, « Samedi 14 novembre · 18:00 », ville. Le fil et le profil la peignent tous deux.
+- La règle CSS d'UI-3B qui MASQUAIT `.post-vlog-card` sur une carte décorée est retirée : la sous-carte est la mise en avant. Elle n'a plus de bouton « Voir » ; le lien « Voir l'activité » du bas reste la porte nommée, la carte entière ouvre aussi la fiche.
+- Le texte stocké (« 📍 A partagé une activité » + titre + passion · ville · date) n'est pas modifié ; seule sa première ligne est peinte (`texteActivitePartagee`), la carte porte le reste.
+- La photo vient de l'activité chargée (`coverUrl`), sinon de `sharedReelData.coverUrl`, écrit désormais au partage (URL http seulement, jamais de base64). Une carte ancienne dont l'activité n'est pas chargée s'affiche sans photo.
+- Les styles `.post-activite*` ne sont ancrés à AUCUN drapeau : la carte est la même sous kill switch.
+Verrou : `tests/e2e/ui-v3b-activite.spec.js` (« un seul CTA »).

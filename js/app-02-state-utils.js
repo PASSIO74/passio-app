@@ -10915,6 +10915,67 @@ function postAimeParMoi(p) {
   } catch (e) { return false; }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LA CARTE D'UNE ACTIVITÉ PARTAGÉE (2026-11-14, demande de Benjamin)
+// « Quand on partage une activité sur le feed, il faut mieux la mettre en
+// avant : la photo de l'activité + le rectangle orange date / heure / lieu » —
+// et, le même soir, « sur le profil tu l'affiches en violet, ce n'est pas bon ».
+// UNE seule fabrique, donc : le fil et le profil peignent la même carte, celle
+// du bloc « Le rendez-vous » de la fiche (tuile corail, date, heure, lieu).
+// ⚠️ La photo et l'heure viennent de l'activité VIVANTE quand elle est chargée,
+// du bloc `sharedReelData` sinon (une activité pas encore lue ne doit pas
+// vider la carte). Tout est échappé : le titre et la ville sont d'autrui.
+// ⚠️ La classe `.post-vlog-card` RESTE sur le nœud (suites e2e, kill switch).
+// ═══════════════════════════════════════════════════════════════════════════
+function carteActiviteFilHTML(p) {
+  const se = (p && p.sharedReelData) || {};
+  let ev = null;
+  try {
+    if (typeof _findCanonicalEvent === "function") ev = _findCanonicalEvent(se.id);
+    if (!ev && typeof allEvents === "function") ev = allEvents().find(function (e) { return e && e.id === se.id; }) || null;
+  } catch (e) { ev = null; }
+  const titre = (ev && ev.title) || se.title || "Activité";
+  const ville = (ev && ev.city) || se.city || "";
+  const date = (ev && ev.date) || se.date || null;
+  let photo = (ev && ev.coverUrl) || se.coverUrl || "";
+  if (/^data:/.test(String(photo))) photo = (ev && ev.coverUrl) ? photo : "";
+  let jour = "📍", mois = "", quand = "";
+  const d = date ? new Date(date) : null;
+  if (d && !isNaN(d.getTime())) {
+    jour = String(d.getDate());
+    mois = d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
+    quand = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    let heure = "";
+    try { if (ev && typeof _eventTimeLabel === "function") heure = _eventTimeLabel(ev); } catch (e) { heure = ""; }
+    if (!heure) heure = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    quand += " · " + heure;
+  }
+  const img = photo
+    ? `<img class="post-activite-photo" src="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
+    : "";
+  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
+      <div class="post-activite-titre">${escapeHtml(titre)}</div>
+      <div class="post-activite-rdv">
+        <div class="post-activite-tuile" aria-hidden="true"><span class="post-activite-jour">${escapeHtml(jour)}</span><span class="post-activite-mois">${escapeHtml(mois)}</span></div>
+        <div class="post-activite-corps">
+          ${quand ? `<div class="post-activite-quand">${escapeHtml(quand)}</div>` : ""}
+          ${ville ? `<div class="post-activite-ou">${escapeHtml(ville)}</div>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Le texte stocké d'un partage d'activité répète le titre, la passion, la ville
+// et la date (il reste lisible par un client qui n'a pas la carte). La carte
+// les porte déjà : seule la première ligne est peinte.
+function texteActivitePartagee(p) {
+  const t = String((p && p.text) || "");
+  if (p && p.sharedReelData && p.sharedReelData.kind === "event" && /^📍 A partagé une activité/.test(t)) {
+    return t.split("\n")[0];
+  }
+  return t;
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -10962,23 +11023,7 @@ function renderPostHTML(p) {
   // Événement IRL partagé dans le feed (shareEventInFeed, app-07) → carte
   // compacte cliquable vers la fiche. Porté par sharedReelData.kind==="event".
   if (p.sharedReelData && p.sharedReelData.kind === "event") {
-    const se = p.sharedReelData;
-    const sd = (typeof fmtEventDate === "function" && se.date) ? fmtEventDate(se.date) : null;
-    const sp = passionById(se.passion) || { label: "", emoji: "📍" };
-    media = `<div class="post-vlog-card" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')" style="cursor:pointer;">
-      <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;">
-        <div class="event-date-block" style="flex-shrink:0;">
-          <div class="event-date-day">${sd ? escapeHtml(sd.day) : "📍"}</div>
-          <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ACTIVITÉ IRL</span>
-          <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Activité")}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
-        </div>
-        <span class="btn small primary" style="flex-shrink:0;pointer-events:none;">Voir</span>
-      </div>
-    </div>`;
+    media = carteActiviteFilHTML(p);
   }
   const shouldCover = p.type === "photo" || (p.cover && p.type !== "vlog");
   if (shouldCover) {
@@ -11077,7 +11122,7 @@ function renderPostHTML(p) {
   // repeint : la citation le remplace.
   const _citee = carteCiteeHTML(p);
   // Tronquer le texte long avec un "Lire la suite"
-  const fullText = _citee ? "" : (p.text || "");
+  const fullText = _citee ? "" : texteActivitePartagee(p);
   const truncated = fullText.length > 220;
   const displayText = truncated ? fullText.slice(0, 220) + "…" : fullText;
   // Le HTML historique reste littéralement identique quand le flag est OFF.
