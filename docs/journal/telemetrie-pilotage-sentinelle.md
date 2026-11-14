@@ -709,7 +709,7 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
 - **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
 - **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
 - **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
-- **Toute installation hors lockfile, un `npm ci` sans `--ignore-scripts`, un `npm-shrinkwrap.json` ou un `.npmrc` suivis, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales (`npx --yes`, `npm install --no-save`) ; il lit désormais la sous-commande de chaque commande (fiche « LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE »).
+- **Sont refusés par le gate** : dans les scripts `run:`, les installations npm et npx hors lockfile qu'il reconnaît (lues comme npm 11.13), pnpm, yarn et bun, un `npm ci` ou `npm rebuild` sans `--ignore-scripts` effectif, une interpolation d'événement ; un `npm-shrinkwrap.json`, un `.npmrc` ou un `.netlify/` suivis ; `version: latest` ; une action sans SHA ; et, dans le job de l'agent, `git log`, `git diff`, `git show` et un jeton personnel. Ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales d'installation (`npx --yes`, `npm install --no-save`). Ses limites sont dites dans son en-tête et dans la fiche « LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE ».
 - **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
 
 ## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
@@ -1566,81 +1566,99 @@ job. Le détecteur vient désormais d'un arbre extrait du départ (`git worktree
 ## 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 
 **Ce qui s'est passé.** Le 14/11 à 11:29 UTC, le déploiement de `958fcd9f` a échoué sur « Installer netlify-cli »
-(run 43588829557) : npm E404 sur `fast-json-stringify-7.3.6.tgz`, publiée à 11:27:40. Les métadonnées du registre
-listaient la version, mais son archive n'était pas encore servie ; elle l'a été une heure plus tard, et le job relancé
-est passé. Rien n'avait changé dans le dépôt. Ce n'était pas la première fois. Le 9/09, `@netlify/build` 36.4.8 exigeait
-`@netlify/config` 25.2.5, publiée deux minutes après elle (15:13:49 UTC) : l'ETARGET de ce jour-là, d'où vient
-l'`overrides`, était déjà une version fraîche entrée dans le job. Le commentaire de `deploy.yml` la disait « jamais
-publiée ».
+(run 43588829557, tentative 1) : npm E404 sur `fast-json-stringify-7.3.6.tgz`, publiée à 11:27:40. Les métadonnées du
+registre listaient la version, mais son archive n'était pas encore servie. Relancé quatre minutes plus tard (tentative 2,
+11:33 UTC), le job est passé. Rien n'avait changé dans le dépôt.
+
+Ce n'était pas la première fois. Le 9/09, `@netlify/build` 36.4.8, publiée à 15:11:46 UTC, exigeait `@netlify/config`
+25.2.5, publiée deux minutes plus tard. Seul un aperçu de PR est tombé en ETARGET (run 34368516164, 76 s avant la
+publication) ; les déploiements de production du jour sont restés verts. L'`overrides` vient de là, et c'était déjà une
+version fraîche entrée dans le job. Le commentaire de `deploy.yml` disait cette version « jamais publiée ».
 
 **Le défaut derrière la panne.** `npm install netlify-cli@27.1.2` fige la CLI, pas ses ~1 120 dépendances : toute
 version publiée la minute d'avant entre dans le job de déploiement, une version malveillante aussi. Or cette CLI tourne
-avec `NETLIFY_AUTH_TOKEN`, APRÈS le contrôle « Artefact identique » : elle pourrait réécrire `dist/` sans qu'aucun test
-ne le voie. Installer « sans le jeton dans l'environnement » protégeait l'installation, pas l'exécution.
+avec `NETLIFY_AUTH_TOKEN` dans l'étape d'envoi, en production APRÈS le contrôle « Artefact identique » : elle pourrait
+réécrire `dist/` sans qu'aucun test ne le voie. Installer « sans le jeton dans l'environnement » protégeait
+l'installation, pas l'exécution.
 
 La relecture du plan a trouvé pire, dans le code d'`@netlify/edge-bundler` 16.0.4. La CLI exécute Deno pour regrouper
 les fonctions de bord, avec le jeton dans son environnement (`extendEnv`) et `--allow-all`. Comme le runner n'a pas de
 Deno, edge-bundler téléchargeait à CHAQUE déploiement le dernier publié (`dl.deno.land/release-latest.txt`), sans
 vérifier d'empreinte. Et c'est ce Deno qui produit le paquet des fonctions de bord envoyé en production.
 
-Même défaut dans `controle-realtime.yml`, avec la clé `service_role`. Lancé dans le projet,
-`npm install --no-package-lock @supabase/supabase-js@2.58.0` installait tout l'arbre racine hors lockfile (« added 72
-packages » le 12/09), pas seulement le sous-arbre de supabase.
+Même défaut dans `controle-realtime.yml`, avec la clé `service_role`. Sa dernière forme,
+`npm install --no-package-lock @supabase/supabase-js@2.58.0` (écrite le 7/11), n'a jamais tourné : ce contrôle se lance
+à la demande, et ses six runs datent du 12/09. Elle aurait installé tout l'arbre racine hors lockfile. Les runs du 12/09
+(`npm install --no-save …`, « added 72 packages ») lisaient encore le lockfile racine, sauf pour le sous-arbre de
+supabase.
 
 Restaient deux `npm ci` sans `--ignore-scripts` : les tests du pilotage dans `deploy.yml`, et `sentinelle-distante.yml`.
 Rien n'y tourne aujourd'hui, puisque seul `fsevents`, propre à macOS, a un script dans ces lockfiles. Mais rien ne
 l'empêchait demain.
 
-**Ce qui change.**
+**Ce qui change (#920).**
 - `.github/netlify-cli/` : `package.json` (netlify-cli 27.1.2 exacte, `overrides` @netlify/build 36.4.7) et
   `package-lock.json`. Les jobs `deploy` et `preview` les copient (par leur nom, jamais le dossier) dans
-  `$RUNNER_TEMP/netlify-cli`, puis lancent `npm ci --ignore-scripts`. Sous `.github/`, le dossier est critique pour la
-  gouvernance et interdit à l'agent de réparation. Son README dit d'où viennent les versions et comment les monter.
+  `$RUNNER_TEMP/netlify-cli`, puis lancent `npm ci --ignore-scripts`. Ils suppriment aussi tout `.netlify/` de
+  l'espace de travail avant la CLI. Sous `.github/`, le dossier est critique pour la gouvernance et interdit à l'agent
+  de réparation. Son README dit d'où viennent les versions et comment les monter.
 - Le lockfile reproduit la résolution du déploiement de production du 7/11 (run 42364454758) :
   `--before=2026-11-07T10:49:27Z`, l'instant de son `npm install`. Chaque version a été relue sur le registre ;
-  aucune n'est postérieure, la plus récente est `import-in-the-middle` 3.6.0 du 6/11. Non prouvé : l'identité à
-  l'octet avec l'arbre de ce run, dont le journal ne liste pas les versions.
-- Deno 2.9.8, le Deno que les déploiements téléchargeaient depuis le 21/10, est pris dans la release GitHub avec son
-  empreinte sha256, que GitHub (`digest`) et le `.sha256sum` de Deno attestent tous deux. Il est posé sur le PATH, où
-  edge-bundler le prend. Un FICHIER à la place de `~/.config/netlify/deno-cli` et `deno-cli-v1` rend tout
-  téléchargement impossible : si ce Deno n'était pas retenu, le déploiement échouerait avant l'envoi.
+  aucune n'est postérieure, la plus récente est `import-in-the-middle` 3.6.0 du 6/11. Sur le runner, `npm ci` ajoute
+  1 120 paquets, autant que ce run. Non prouvé : l'identité à l'octet, son journal ne listant pas les versions.
+- Deno 2.9.8, celui que désigne `dl.deno.land/release-latest.txt` depuis le 21/10, est pris dans la release GitHub.
+  Son empreinte sha256 est attestée deux fois : par GitHub (`digest`) et par le `.sha256sum` de Deno. Il est posé sur
+  le PATH, où edge-bundler le prend quand sa plage principale l'accepte. Un FICHIER à la place de
+  `~/.config/netlify/deno-cli` et `deno-cli-v1` rend tout téléchargement impossible. Si ce Deno n'était pas retenu,
+  l'envoi échouerait au lieu d'exécuter un Deno non vérifié. C'est aussi le sort du pont hérité (Deno 1.x, qui ne prend
+  jamais le PATH) : une fonction de bord à « import assertions » ferait échouer l'envoi.
 - `controle-realtime.yml` : `npm ci --ignore-scripts`, avec `@supabase/supabase-js` en devDependency EXACTE à la
   racine (le lockfile racine gagne 15 entrées, même date `--before`, diff purement additif).
 - `--ignore-scripts` sur les deux `npm ci` qui ne l'avaient pas.
-- `scripts/audit-workflows.js` lit désormais chaque COMMANDE comme le shell la lit : la sous-commande de npm (options
-  intercalées comprises), les lignes continuées par « \ », les actions composites de `.github/actions/`. Il refuse :
+- `scripts/audit-workflows.js` ne lit plus que le shell des scripts `run:` (un `name:` n'est pas une commande). Il le
+  découpe comme le shell : guillemets, `$( … )`, accents graves, groupes, commentaires, lignes continuées, scalaires
+  repliés. Il lit chaque commande npm comme npm 11.13 la lit : sous-commande, alias, abréviations, options qui prennent
+  une valeur, valeur EFFECTIVE de `--ignore-scripts`. Les actions composites de `.github/actions/` et celles des
+  `uses: ./…` passent par les mêmes règles. Il refuse :
   - `npm install` et ses alias, `update`, `dedupe`, `audit fix`, `init` et `create` ;
-  - `npx` et `npm exec` qui téléchargent (`--yes`, `-y`, `--package`, `outil@version`) ;
-  - `npm ci` sans `--ignore-scripts` ;
-  - tout `npm-shrinkwrap.json` ou `.npmrc` suivi par git, et tout fichier suivi sous `.netlify/` : la CLI y prend des
+  - `npm ci`, `npm install-ci-test` et `npm rebuild` sans `--ignore-scripts` effectif ;
+  - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné ou hors du registre ;
+  - pnpm, yarn, bun, bunx et pnpx ;
+  - tout `npm-shrinkwrap.json`, `.npmrc` ou fichier sous `.netlify/` suivi par git. La CLI prend dans `.netlify/` des
     fonctions « internes », les regroupe et exécute leur code avec le jeton, hors du contrôle d'empreinte de `dist/`.
-    Les jobs `deploy` et `preview` suppriment aussi ce dossier avant d'installer la CLI (relecture finale du 14/11 :
-    rien n'y est versionné, mais rien ne l'empêchait, ni la gouvernance ni l'interdit de l'agent).
+    Rien n'y est versionné, mais rien ne l'empêchait, ni la gouvernance ni l'interdit de l'agent.
 
-  Avant, il ne voyait que deux formes littérales. Rejouée sur les workflows de `main`, la règle refuse exactement les
-  cinq sites corrigés ici.
-- Dependabot surveille `/.github/netlify-cli`, en mises à jour de sécurité seulement, avec un délai de 7 jours.
+  Avant, il ne voyait que deux formes littérales, et lisait toutes les lignes, noms d'étapes compris. Rejouée sur les
+  workflows de `main`, la nouvelle lecture refuse exactement les cinq sites corrigés ici. Ce n'est pas un analyseur de
+  shell complet : un `npx <outil>` sans version passe (voir « Reste ouvert »), et le corps d'un here-doc est lu comme du
+  shell.
+- Dependabot surveille `/.github/netlify-cli`, en mises à jour de sécurité seulement. Son délai de 7 jours ne vaut que
+  pour les mises à jour de version, coupées ici (comme pour `/` et `/dashboard`) : une PR de sécurité arrive sans délai,
+  et la date des versions qu'elle apporte se relit à la main.
 - Verrou : `tests/unit/outils-ci-figes.test.mjs`, dans `npm run verif`. Il tient trois choses :
-  - les lockfiles (archive CANONIQUE de chaque entrée, sha512, `inBundle` déclaré par le parent, effet de
-    l'`overrides`, binaires Linux, plage de Deno de chaque copie d'edge-bundler) ;
-  - les étapes réelles jouées contre de faux outils (une archive Deno à la mauvaise empreinte rougit sans rien poser
-    sur le PATH ; l'étape d'envoi exécute la CLI installée) ;
-  - 34 réinjections.
+  - les lockfiles : archive CANONIQUE de chaque entrée, sha512, `inBundle` déclaré par le parent, effet de
+    l'`overrides`, binaires Linux, plage principale de Deno de chaque copie d'edge-bundler ;
+  - les étapes réelles, jouées contre de faux outils : une archive Deno à la mauvaise empreinte rougit sans rien poser
+    sur le PATH, un `.netlify/` disparaît avant la CLI, et l'envoi exécute la CLI installée ;
+  - 35 réinjections, dont une CLI lancée par `npx` sans version, que la gate ne voit pas. La gate, elle, a ses propres
+    tests : un dépôt git réel pour les fichiers suivis, une action citée par `uses: ./…`.
 
 **Pièges.**
-- ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile, et `npm ci` ne le compare pas.** Un `overrides` changé sans
-  régénérer passerait. Le banc lit donc son EFFET : chaque copie du paquet forcé doit porter la version forcée.
+- ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile.** `npm ci` refuse (EUSAGE) un `overrides` que le lockfile
+  contredit, mais seulement au déploiement. Le banc le voit dès `npm run verif`, en lisant son EFFET : chaque copie du
+  paquet forcé doit porter la version forcée. Un `overrides` RETIRÉ passe sans bruit, sans effet sur l'arbre installé.
 - ⚠️ **`npm ci` ne compare que les versions, pas les adresses.** Une entrée qui pointerait vers l'archive d'UN AUTRE
   paquet du même registre, avec l'empreinte de cette archive, passerait « registre npm + sha512 ». Le banc exige donc
   l'archive canonique : `registry.npmjs.org/<nom>/-/<nom>-<version>.tgz`, le nom étant celui de l'entrée.
 - ⚠️ **L'archive de Deno sur `dl.deno.land` n'est pas celle de la release GitHub.** C'est le même binaire, suivi de
   19 octets qui marquent le canal « lts » : deux empreintes différentes pour la même version. Il faut en choisir une
   source et s'y tenir.
-- ⚠️ **npm 10 (celui du runner) réécrit sans les champs `libc` qu'écrit npm 11** (celui du poste, et du lockfile
-  racine). Ajouter 15 paquets à la racine avec npm 10 supprimait 48 lignes. Il faut régénérer avec npm 11 : le runner
-  ignore ces champs, et installe aussi les variantes musl de sharp et libvips, sans effet sur les empreintes.
-- ⚠️ **`npm ci --dry-run --os=linux` ne filtre pas les plateformes** : il annonce « added 1179 ». Il ne dit rien du
-  nombre réellement installé sur le runner.
+- ⚠️ **npm 10 (celui du runner) RÉÉCRIT le lockfile sans les champs `libc` qu'écrit npm 11** (celui du poste, et du
+  lockfile racine). Ajouter 15 paquets à la racine avec npm 10 supprimait 48 lignes (16 champs × 3). Il faut donc
+  régénérer avec npm 11. À la LECTURE, npm 10.9.9 les applique : 1 120 paquets sur le runner, autant que le 7/11.
+- ⚠️ **`npm ci --dry-run --os=linux` dépend de la version de npm.** Sous npm 10.9.9, il annonçait « added 1179 », sans
+  filtrer. Sous npm 11.13, il filtre, et `--os=linux --cpu=x64 --libc=glibc` prévoit exactement le compte du runner
+  (1 120).
 - Le paquet `inBundle` (`napi-wasm`, livré dans `@parcel/watcher-wasm`) n'a ni `resolved` ni `integrity` : il est
   couvert par l'empreinte de l'archive de son parent, qui le déclare dans `bundleDependencies`.
 
@@ -1648,11 +1666,12 @@ l'empêchait demain.
 - **Pas de `npm audit` hebdomadaire sur l'arbre de la CLI.** Un arbre de 1 120 paquets a presque toujours un avis
   ouvert : le job serait rouge en permanence, donc ignoré. Les alertes Dependabot font ce travail, à condition que le
   graphe de dépendances de GitHub lise ce lockfile. C'est à vérifier après la fusion, par `dependencyGraphManifests`.
-- **Pas de `--no-build` sur `netlify deploy`, malgré ce chemin ouvert.** Par défaut la CLI lance un build, qui
-  installerait hors lockfile, scripts compris, les plugins et extensions réglés dans l'interface Netlify. Aucun ne
-  l'est aujourd'hui, et `netlify.toml` n'en déclare pas. `--no-build` changerait la façon dont la CLI traite
-  `netlify.toml`, en-têtes de sécurité compris, sans épreuve : ce chemin reste ouvert, et il dépend de la
-  configuration Netlify.
+- **Pas de `--no-build` sur `netlify deploy` dans ce lot.** Par défaut, la CLI lance un build. Il exécuterait avec le
+  jeton une commande réglée dans l'interface Netlify, ou détectée depuis le dépôt : un `vite` dans les dépendances donne
+  `vite build`, qui réécrirait `dist/` après « Artefact identique ». Il installerait aussi hors lockfile les extensions
+  recommandées d'un framework détecté. Rien de cela ne tourne aujourd'hui : le journal de production ne montre ni
+  commande ni extension. `--no-build` fermerait ce chemin, mais il change la façon dont la CLI traite `netlify.toml`,
+  en-têtes de sécurité compris : il faut d'abord l'éprouver sur un aperçu. Suite à faire.
 
 **Reste ouvert.**
 - **Les avis de sécurité de l'arbre figé.** `npm audit` relève 23 avis, dont 10 élevés et aucun critique. Ils étaient déjà
@@ -1660,8 +1679,9 @@ l'empêchait demain.
   ^37.7.6 : il faut donc retirer l'`overrides`, et c'est une PR à part.
 - **Les PR Dependabot de ce dossier.** Elles tournent sans les secrets du dépôt : leur aperçu échoue par construction,
   et elles ignorent l'`overrides`. Elles ne se fusionnent jamais telles quelles (README).
-- `npx <outil>` SANS `--yes` installe aussi la dernière version en CI, quand l'outil n'est pas dans le lockfile : npm
-  suppose `--yes` hors terminal. Les `npx playwright` actuels viennent du lockfile, mais la gate ne le prouve pas.
+- **`npx <outil>` SANS `--yes` ni version** installe la dernière version en CI quand l'outil n'est pas dans le lockfile :
+  npm suppose `--yes` hors terminal. Les `npx playwright` actuels viennent du lockfile installé juste avant, mais la gate
+  ne le prouve pas. Pour la CLI Netlify, le banc refuse toute exécution autre que `"$NETLIFY_BIN"`.
 - edge-bundler récupère encore, à chaque déploiement, sans version ni empreinte, `https://edge.netlify.com` : les
   types (`deno cache -r`) et `bootstrap/globals/types.ts`, importé par son extracteur de configuration. Deno ne les
   exécute pas (import de types, retiré à l'émission sans `verbatimModuleSyntax`).
@@ -1672,12 +1692,6 @@ l'empêchait demain.
   un sceptique avec le vrai extracteur et un faux Deno. Ce défaut est antérieur et ne dépend pas de ce lot. La parade
   est de déclarer ces routes dans `netlify.toml` (`[[edge_functions]]`), qui ne dépend d'aucune extraction : suite à
   faire.
-- **Le build lancé par `netlify deploy`.** Une commande réglée dans l'interface Netlify, ou détectée depuis le dépôt (un
-  `vite` dans les dépendances donne `vite build`), tournerait avec le jeton et réécrirait `dist/` après « Artefact
-  identique ». Les extensions recommandées d'un framework détecté seraient installées hors lockfile. Rien ne tourne
-  aujourd'hui : le journal de production ne montre ni commande ni extension. La parade solide est `--no-build`. Elle
-  demande une vérification à part, car elle change la façon dont la CLI traite `netlify.toml`, en-têtes de
-  sécurité compris.
 - **Node et Chromium.** `setup-node` installe le dernier correctif de Node 22, qui exécute la CLI avec le jeton et
   le contrôle Realtime avec `service_role`. `npx playwright install` vérifie l'archive de Chromium par sa seule
   taille (sentinelle-distante, clé du staging). Ce n'est figé que par la version majeure ou la révision. Le risque

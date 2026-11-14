@@ -1,8 +1,8 @@
 # netlify-cli et Deno, figés : ce qui tourne avec le jeton de déploiement
 
 Les jobs `deploy` (production) et `preview` de `deploy.yml` exécutent la CLI Netlify avec
-`NETLIFY_AUTH_TOKEN`, après le contrôle « Artefact identique ». Pour regrouper les fonctions de bord,
-cette CLI exécute Deno, avec le même jeton dans son environnement. Rien de cela ne vient plus de
+`NETLIFY_AUTH_TOKEN`, dans leur étape d'envoi (en production, après le contrôle « Artefact identique »).
+Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jeton dans son environnement. Rien de cela ne vient plus de
 « la dernière » version publiée :
 
 - **netlify-cli et ses dépendances.** `package.json` et `package-lock.json` de ce dossier sont copiés
@@ -11,27 +11,34 @@ cette CLI exécute Deno, avec le même jeton dans son environnement. Rien de cel
   archive par son empreinte sha512.
 - **Deno.** L'étape « Installer Deno » de `deploy.yml` prend l'archive d'une version exacte dans la
   release GitHub de `denoland/deno`, vérifie son empreinte sha256, puis pose Deno sur le PATH :
-  `@netlify/edge-bundler` prend un Deno du PATH quand sa plage l'accepte. Elle rend aussi impossible
-  tout téléchargement par edge-bundler, en posant un fichier là où il créerait ses dossiers. Si ce Deno
-  n'était pas retenu, le déploiement échouerait avant l'envoi, au lieu d'exécuter un Deno non vérifié.
+  `@netlify/edge-bundler` prend un Deno du PATH quand sa plage principale l'accepte. Elle rend aussi
+  impossible tout téléchargement par edge-bundler, en posant un fichier là où il créerait ses dossiers. Si
+  ce Deno n'était pas retenu, le déploiement échouerait avant l'envoi, au lieu d'exécuter un Deno non
+  vérifié. C'est aussi le sort du pont hérité d'edge-bundler (Deno 1.x, `deno-cli-v1`, qui ne prend
+  jamais le PATH) : une fonction de bord à « import assertions » ferait échouer l'envoi.
 
 Les verrous :
 
 - `tests/unit/outils-ci-figes.test.mjs` (dans `npm run verif`) : lockfile, étapes, plages de Deno, et
-  34 réinjections ;
-- `scripts/audit-workflows.js` : il refuse toute installation hors lockfile dans un workflow, un
-  `npm ci` sans `--ignore-scripts`, et tout `npm-shrinkwrap.json`, `.npmrc` ou `.netlify/` suivi.
+  35 réinjections ;
+- `scripts/audit-workflows.js` : dans les scripts `run:`, il refuse les installations npm et npx hors
+  lockfile qu'il reconnaît (lues comme npm 11.13 les lit), pnpm, yarn et bun, et un `npm ci` ou
+  `npm rebuild` sans `--ignore-scripts` effectif. Il refuse aussi tout `npm-shrinkwrap.json`, `.npmrc`
+  ou `.netlify/` suivi. Il ne voit pas un `npx <outil>` sans version : le banc, lui, refuse toute
+  exécution de la CLI autrement que par `"$NETLIFY_BIN"`.
 
 ## Pourquoi
 
 - **Le 2026-09-09.** `@netlify/build@36.4.8`, publiée à 15:11:46 UTC, exigeait `@netlify/config@^25.2.5`,
-  publiée deux minutes plus tard (15:13:49) : dans l'intervalle, l'installation tombait en ETARGET sur
-  toutes les versions de netlify-cli, et le déploiement de production avec elle. C'était déjà une version
-  fraîche entrée dans le job, comme le 14/11. D'où l'`overrides` (`@netlify/build` 36.4.7) : il ne sert
+  publiée deux minutes plus tard (15:13:49) : dans l'intervalle, l'installation de netlify-cli tombait
+  en ETARGET. Seul un aperçu de PR a échoué (run 34368516164, 76 s avant la publication) ; les
+  déploiements de production du jour sont restés verts. C'était déjà une version fraîche entrée dans le
+  job, comme le 14/11. D'où l'`overrides` (`@netlify/build` 36.4.7) : il ne sert
   plus qu'à garder l'arbre éprouvé en production depuis le 9/09. Le retirer, c'est régénérer, donc
   éprouver un nouvel arbre.
-- **Le 2026-11-14 à 11:29 UTC** (run 43588829557). Le déploiement de production a échoué en E404 sur
-  `fast-json-stringify` 7.3.6, publiée une minute plus tôt et pas encore servie par le CDN. Une version
+- **Le 2026-11-14 à 11:29 UTC** (run 43588829557, tentative 1). Le déploiement de production a échoué
+  en E404 sur `fast-json-stringify` 7.3.6, publiée une minute plus tôt et pas encore servie par le CDN ;
+  relancé quatre minutes plus tard, il est passé. Une version
   malveillante fraîche serait entrée aussi vite, et elle aurait pu réécrire `dist/` après le contrôle.
   Sa relecture a montré que la CLI téléchargeait en plus, à chaque déploiement, le dernier Deno publié
   (`dl.deno.land/release-latest.txt`), sans vérifier d'empreinte.
@@ -48,13 +55,14 @@ lançait ce même `npm install netlify-cli@27.1.2`, avec le même `overrides`. S
 
 - **Vérifié.** La date de chaque version de ce lockfile a été relue sur le registre : aucune n'est
   postérieure à cet instant. La plus récente est `import-in-the-middle@3.6.0`, du 2026-11-06 à 19:43 UTC.
-  Tout a donc au moins 7 jours, le délai de Dependabot.
+  Tout avait donc au moins 7 jours au figeage, la règle que suit le dépôt.
 - **Non prouvé.** L'arbre n'est pas forcément identique, octet pour octet, à celui de ce run : son
   journal ne liste pas les versions installées.
-- **Le runner exécute npm 10.** Il ignore les champs `libc` qu'écrit npm 11, et installe aussi les
-  variantes musl de sharp et libvips. Cela ne change rien aux empreintes.
+- **Le runner exécute npm 10.9.9.** Il lit les champs `libc` qu'écrit npm 11 : « added 1120 packages »
+  sur le runner, autant que le 7/11. Mais il les retire s'il RÉÉCRIT le lockfile : régénérer avec npm 11.
 
-**Deno 2.9.8**, publié le 2026-10-21, est le Deno que les déploiements téléchargeaient depuis.
+**Deno 2.9.8**, publié le 2026-10-21, est celui que désigne `dl.deno.land/release-latest.txt` (relu le
+14/11) : celui que les déploiements téléchargeaient depuis sa sortie.
 Son empreinte vient de la release GitHub, où elle est attestée deux fois : le `digest` que GitHub
 calcule pour l'asset, et le fichier `.sha256sum` que Deno y publie.
 
@@ -118,3 +126,5 @@ Ce dossier est sous `.github/` :
 - toute modification y est « critique » pour la gouvernance et demande une contre-revue ;
 - l'agent de réparation n'a pas le droit d'y toucher ;
 - Dependabot y signale les avis et n'y propose que des correctifs de sécurité (`.github/dependabot.yml`).
+  Son délai de 7 jours ne vaut que pour les mises à jour de version, coupées ici : une PR de sécurité arrive
+  sans délai, et la date des versions qu'elle apporte se relit à la main, comme au figeage.
