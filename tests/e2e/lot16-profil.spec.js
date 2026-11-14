@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LOT-16 (audit UX/UI du 2026-11-10) — LE PROFIL
-//   ① PRO-C04 : un seul filtre de format à la fois, « Tout » neutre (deux profils).
+//   ① PRO-C04 : formats en MULTI-SÉLECTION (union), « Tout » exclusif (deux profils).
 //   ② PRO-C07 / C08 / C09 / C17 : profil visité — « publications », une seule
 //      croix, actions de 44 px, « ✓ Suivi » moins fort que Message, bandeau
 //      « Tu as bloqué ce compte ».
@@ -14,25 +14,58 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-test("① PRO-C04 : un seul filtre de format à la fois, « Tout » neutre", async ({ page }) => {
+test("① PRO-C04 : formats en multi-sélection, « Tout » exclusif", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(() => {
     goTo("profiles");
     switchProfileTab("posts");
     switchProfileTab("photos");
     const apresPhotos = [...profileTabSelection];
-    switchProfileTab("photos");
+    switchProfileTab("videos");
+    const apresVideos = [...profileTabSelection].sort();
+    switchProfileTab("photos"); switchProfileTab("videos");
     const apresRetouche = [...profileTabSelection];
-    window._visited = { authorId: "u_lea", posts: [], passionSel: new Set(), tabSel: new Set(), locked: false };
+    switchProfileTab("bobines"); switchProfileTab("posts");
+    const apresTout = [...profileTabSelection];
+    window._visited = { authorId: "u_lea", posts: [
+      { id: "a", type: "photo", image: "x.jpg" }, { id: "b", type: "video" },
+      { id: "c", type: "text" }, { id: "d", isReel: true, type: "video" },
+    ], passionSel: new Set(), tabSel: new Set(), locked: false };
     switchVisitedTab("photos"); switchVisitedTab("videos");
-    const visite = [...window._visited.tabSel];
+    const visite = [...window._visited.tabSel].sort();
+    switchVisitedTab("photos");
+    const visiteRetouche = [...window._visited.tabSel];
     switchVisitedTab("posts");
-    return { apresPhotos, apresRetouche, visite, visiteTout: [...window._visited.tabSel] };
+    return { apresPhotos, apresVideos, apresRetouche, apresTout, visite, visiteRetouche, visiteTout: [...window._visited.tabSel] };
   });
   expect(r.apresPhotos, "« Photos » remplace « Tout »").toEqual(["photos"]);
-  expect(r.apresRetouche, "retoucher l'actif rend « Tout »").toEqual(["posts"]);
-  expect(r.visite).toEqual(["videos"]);
+  expect(r.apresVideos, "« Vidéos » S'AJOUTE à « Photos »").toEqual(["photos", "videos"]);
+  expect(r.apresRetouche, "tout décoché rend « Tout »").toEqual(["posts"]);
+  expect(r.apresTout, "« Tout » retire les formats").toEqual(["posts"]);
+  expect(r.visite, "profil visité : deux formats à la fois").toEqual(["photos", "videos"]);
+  expect(r.visiteRetouche).toEqual(["videos"]);
   expect(r.visiteTout).toEqual([]);
+});
+
+test("① bis : profil visité — photos + vidéos affichées ensemble, onglets pressés", async ({ page }) => {
+  await bootOnboarded(page);
+  await page.evaluate(() => { state.user.following = ["u_lea"]; return openUserProfile("u_lea"); });
+  await page.waitForTimeout(500);
+  const r = await page.evaluate(() => {
+    const v = window._visited;
+    v.posts = [
+      { id: "vp_a", author: "u_lea", type: "photo", image: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", text: "photo", likes: 0, comments: [] },
+      { id: "vp_b", author: "u_lea", type: "video", video: "", text: "video", likes: 0, comments: [] },
+      { id: "vp_c", author: "u_lea", type: "text", text: "texte", likes: 0, comments: [] },
+    ];
+    switchVisitedTab("photos"); switchVisitedTab("videos");
+    const presses = [...document.querySelectorAll("#visitedTabs .profile-tab[aria-pressed=true]")].map(b => b.dataset.vtab).sort();
+    const html = document.getElementById("visitedContent").innerHTML;
+    return { presses, a: html.includes("vp_a"), b: html.includes("vp_b"), c: html.includes("vp_c") };
+  });
+  expect(r.presses).toEqual(["photos", "videos"]);
+  expect(r.a && r.b, "les deux formats sont affichés").toBe(true);
+  expect(r.c, "le texte seul est filtré").toBe(false);
 });
 
 test("② PRO-C07 / C08 / C09 / C17 : le profil visité", async ({ page }) => {

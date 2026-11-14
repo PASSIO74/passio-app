@@ -5101,7 +5101,7 @@ async function openUserProfile(authorId, source) {
   // compte visité côté client (`_profileCache` ne porte pas `is_private`).
   window._visited = { authorId: authorId, isPrivate: !!user.isPrivate, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
 
-  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (choix unique depuis LOT-16).
+  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection, « Tout » exclusif — 2026-11-14).
   var _VTAB_SVGS = {
     posts:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>',
     photos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg>',
@@ -5114,7 +5114,7 @@ async function openUserProfile(authorId, source) {
     // visité tirent désormais du MÊME référentiel (`PROFILE_TAB_KEYS`, app-06).
     audio:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>'
   };
-  var _VTAB_TITLES = { posts: "Publications", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
+  var _VTAB_TITLES = { posts: "Tout", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
   // ⚠️ 2026-08-31 : plus de ligne d'aide au-dessus des sous-filtres (mon profil
   // l'a perdue le même jour). Les icônes portent déjà leur libellé.
   var tabsHTML = canSeeContent
@@ -5383,10 +5383,12 @@ function toggleVisitedPassion(pid) {
 
 function switchVisitedTab(tab) {
   var v = window._visited; if (!v) return;
-  // LOT-16 (PRO-C04) : même règle que mon profil — un seul filtre de format à la
-  // fois ; « Tout » (ou retoucher l'actif) les retire tous.
-  var dejaSeul = v.tabSel.size === 1 && v.tabSel.has(tab);
-  v.tabSel = new Set(dejaSeul || tab === "posts" ? [] : [tab]);
+  // Multi-sélection des FORMATS (2026-11-14, demande de Benjamin : « je ne peux
+  // pas sélectionner photo, vidéo… en même temps »). Même règle que mon profil :
+  // chaque format se coche/décoche indépendamment, l'affichage est leur UNION ;
+  // « Tout » est EXCLUSIF — il vide la sélection, et cocher un format le retire
+  // (sinon Tout ∪ Photos ne filtrerait rien : le défaut PRO-C04 du LOT-16).
+  v.tabSel = _basculerFormat(v.tabSel, tab, "");
   _syncVisitedUI();
   _renderVisitedContent();
 }
@@ -5411,7 +5413,9 @@ function _syncVisitedUI() {
     if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
-    var on = v.tabSel.has(b.getAttribute("data-vtab"));
+    var k = b.getAttribute("data-vtab");
+    // Rien de coché = « Tout » : l'onglet le dit.
+    var on = k === "posts" ? v.tabSel.size === 0 : v.tabSel.has(k);
     b.classList.toggle("active", on);
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
