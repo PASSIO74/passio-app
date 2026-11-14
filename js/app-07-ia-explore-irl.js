@@ -2571,14 +2571,14 @@ function irlLieuReference() {
   // LOT-25 (IRL-C04) : après un REFUS, le point est le repli Paris — jamais
   // « Position actuelle », que l'écran affichait pour un point qu'il n'a pas.
   if (irlUserLocation && typeof irlUserLocationError !== "undefined" && irlUserLocationError) {
-    return { nom: "Choisir une ville", sub: "Aucune position (repli : Paris)" };
+    return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
   }
   if (irlUserLocation) {
     var el = document.getElementById("irlUserCityName");
     var n = (el && el.textContent && el.textContent !== "…") ? el.textContent : "Ma position";
     return { nom: n, sub: "Position actuelle" };
   }
-  return { nom: "Choisir une ville", sub: "Aucune position" };
+  return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
 }
 
 // Résumé lisible du filtre de date. UN SEUL constructeur : `_syncIrlDateBtn`
@@ -3171,30 +3171,11 @@ function _scheduleIrlMapUpdate() {
   }, 60);
 }
 
-// LOT-25 (audit UX/UI du 2026-11-10, IRL-C03) : la seule porte vers « ma
-// position » était enfouie à trois gestes, dans le panneau Filtre — et les
-// distances se calculaient en silence depuis Paris. Tant qu'aucune référence
-// réelle n'existe (ni ville choisie, ni position), une ligne en TÊTE de la
-// liste l'offre ; elle disparaît dès qu'une référence existe. Posée DANS
-// `#eventList` (repeinte à chaque rendu) : le commutateur Liste / Carte et la
-// carte restent ses voisins immédiats (verrou ui-v4a3-vue).
-function _peindreInvitationVille(list) {
-  try {
-    if (!list) return;
-    var ancien = document.getElementById("irlVilleInvite");
-    if (ancien) ancien.remove();
-    // Le repli Paris d'un refus n'est pas une référence (IRL-C04).
-    var aReference = _irlAReferenceReelle();
-    if (aReference || irlShowPast) return;
-    var b = document.createElement("button");
-    b.type = "button";
-    b.id = "irlVilleInvite";
-    b.className = "irl-ville-invite";
-    b.textContent = "📍 Choisis ta ville pour voir les distances";
-    b.addEventListener("click", function () { if (typeof openIrlCitySelector === "function") openIrlCitySelector(); });
-    list.insertBefore(b, list.firstChild);
-  } catch (e) { try { diagLog("invitation ville : " + (e && e.message)); } catch (_) {} }
-}
+// LOT-25 (IRL-C03) puis 2026-11-14 : l'invitation « Choisis ta ville pour
+// voir les distances » vivait en tête de la liste ; Benjamin la veut DANS le
+// filtre, pas au-dessus des activités. Elle est désormais le sous-titre de la
+// carte « Où ? » de la page Filtre (`irlLieuReference`), qui ouvre déjà le
+// sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
@@ -3265,7 +3246,6 @@ function renderIRL() {
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
-    _peindreInvitationVille(list);
     return;
   }
 
@@ -3363,7 +3343,6 @@ function renderIRL() {
   }).join("") + (rest > 0
     ? `<button class="btn ghost block" style="margin-top:10px;" onclick="_showMoreIrlEvents()">Afficher plus (${rest} restant${rest > 1 ? "s" : ""})</button>`
     : "");
-  _peindreInvitationVille(list);
 
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
