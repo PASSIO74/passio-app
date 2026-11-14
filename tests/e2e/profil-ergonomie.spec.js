@@ -13,13 +13,14 @@
 // faisaient 249. Le verrou ① ter de `profil-entete-passions` restait vert : sa
 // fixture n'a pas de bio.
 //
-//   ① tout tient sur une page, avec SA bio et SES passions (844, 765, 693, 667)
+//   ① tout tient sur une page, avec SA bio et SES passions (844, 765, 693, 667),
+//      ① ter aussi en PWA iPhone (zones sûres), ① bis quand la bio s'allonge
 //   ② la bio en paragraphes : une ligne vide = un écart, pas une ligne blanche —
 //      sur mon profil ET sur le profil visité ; texte intact à l'octet près
 //   ③ « Partager » à droite de l'avatar : 44 px, sur la photo, aucune hauteur
 //   ④ le rail des passions va jusqu'au bord et laisse voir une 5e bulle entamée
 //   ⑤ les onglets restent à portée quand on défile ; changer d'onglet ramène au
-//      début de la section
+//      début de la section — ⑤ bis : re-toucher l'onglet actif ne remonte rien
 //   ⑥ Entrée sur la bio ouvre l'éditeur UNE fois (il s'ouvrait deux fois)
 //   ⑦ ordinateur (1440 × 900) : la barre collée au ras de l'en-tête
 //   ⑧ coupure du lot UI-7 : rien de collant, rien ne casse
@@ -103,6 +104,20 @@ for (const [w, h] of [[390, 844], [390, 765], [390, 693], [375, 667]]) {
     expect(m.pseudo.top - m.couverture.bottom).toBeLessThanOrEqual(12);
   });
 }
+
+test("① ter — iPhone en PWA (encoche 47 px, barre d'accueil 34 px) : tout tient encore", async ({ page, browserName }) => {
+  // Les zones sûres ne s'émulent que par le protocole de Chromium.
+  test.skip(browserName !== "chromium", "émulation des zones sûres : Chromium seulement");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34, left: 0, right: 0 } });
+  await ouvrirProfil(page);
+  const m = await page.evaluate(mesurerPage);
+  // Avant la prise en compte des zones sûres : formats à 812 pour une barre à 744.
+  expect(m.onglets.bottom, "onglets au-dessus de la barre (zone sûre comprise)").toBeLessThanOrEqual(m.barre);
+  expect(m.formats.bottom, "formats aussi").toBeLessThanOrEqual(m.barre);
+  expect(m.avatar.top, "l'avatar tient toujours sur la photo").toBeGreaterThanOrEqual(m.couverture.top - 1);
+});
 
 test("① bis — une bio qui s'allonge est MESURÉE : la répartition suit, rien ne passe sous la barre", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -275,6 +290,19 @@ test("⑤ les onglets restent à portée en défilant ; « Activité » ramène 
   expect(apres.visible).toBe(true);
   expect(apres.panTop, "le début de « Activité » n'est pas caché sous la barre").toBeGreaterThanOrEqual(apres.barBas - 1);
   expect(apres.panTop - apres.barBas, "il est juste sous elle").toBeLessThanOrEqual(80);
+});
+
+test("⑤ bis — re-toucher l'onglet DÉJÀ actif ne fait pas perdre la position de lecture", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 765 });
+  await ouvrirProfil(page, { posts: 8 });
+  await page.evaluate(() => { document.getElementById("appMain").scrollTop = 1200; });
+  await page.waitForTimeout(250);
+  const avant = await page.evaluate(() => document.getElementById("appMain").scrollTop);
+  await page.locator('[data-v7-tab="publications"]').click();
+  await page.waitForTimeout(250);
+  const apres = await page.evaluate(() => document.getElementById("appMain").scrollTop);
+  expect(avant, "on est bien au milieu des publications").toBeGreaterThan(400);
+  expect(Math.abs(apres - avant), "la barre collante est sous le pouce : un tap involontaire ne remonte rien").toBeLessThanOrEqual(1);
 });
 
 // ── ⑥ ────────────────────────────────────────────────────────────────────────

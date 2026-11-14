@@ -2565,10 +2565,13 @@ window.normaliserTexteMultiligne = normaliserTexteMultiligne;
 // hérité de `.main-profile-bio` : couper chaque ligne en bloc casserait le
 // verrou `biographie-multiligne` (le `textContent` doit garder ses « \n »).
 // ⚠️ Le séparateur « \n\n » RESTE dans le DOM (`<span hidden>`) : `textContent`
-// rend la biographie à l'octet près — et le copier-coller garde ses paragraphes.
+// rend la biographie NORMALISÉE à l'octet près (la sienne l'est déjà à
+// l'enregistrement, `saveMainProfile`). Au copier-coller, ce sont les blocs qui
+// produisent les sauts de ligne (un nœud `hidden` n'est pas copié).
 // ⚠️ Normalisée AUSSI à l'affichage : la bio d'un AUTRE compte n'est jamais
 // garantie normalisée (la base en accepte 1 000 caractères) — trois sauts ou
-// plus n'étirent plus la carte. Chaque morceau passe par `escapeHtml`.
+// plus n'étirent plus la carte ; son `textContent` peut donc différer de la base
+// (CRLF, espaces de fin). Chaque morceau passe par `escapeHtml`.
 function bioEnParagraphesHtml(texte) {
   var t = normaliserTexteMultiligne(texte);
   if (!t) return "";

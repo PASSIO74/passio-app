@@ -1048,7 +1048,11 @@ function _suivreCorpsCarteProfil() {
       ecran.style.setProperty("--corps-carte-profil", h + "px");
     });
     _corpsCarteProfilObs.observe(corps);
-  } catch (e) { _corpsCarteProfilObs = null; }
+  } catch (e) {
+    // Repli : la formule garde son corps supposé de 145 px. Journalisé, jamais muet.
+    _corpsCarteProfilObs = null;
+    try { if (typeof diagLog === "function") diagLog("profil_corps_mesure " + (e && e.message)); } catch (x) {}
+  }
 }
 
 function renderMainProfile() {

@@ -10371,13 +10371,17 @@ body.ctx-locked #appMain { overflow: hidden; }
     calc((min(100vw, 440px) - 32px) / 1.5),
     calc(var(--app-vh, 100svh) * 0.34),
     420px,
-    calc(var(--app-vh, 100svh) - 349px - var(--corps-carte-profil, 145px))
+    calc(var(--app-vh, 100svh) - 349px - var(--corps-carte-profil, 145px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
   ));
   /* Le tiers de ce qui reste une fois la couverture et le corps de la carte
      posés, et les 331 px incompressibles retirés (haut de page 80, rail 65,
      onglets 52, rangée de formats 56, barre 66 — mesurée, `--v2-nav-height` —,
-     bordures de la carte 2, talon 10). */
-  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 331px - var(--corps-carte-profil, 145px) - var(--couverture-profil)) / 3), 36px);
+     bordures de la carte 2, talon 10) — PLUS les zones sûres de l'iPhone :
+     `--app-vh` vaut `innerHeight`, la page est en `viewport-fit=cover`, et
+     `.app-shell` porte `env(safe-area-inset-top)` en haut, la barre du bas
+     `env(safe-area-inset-bottom)` en plus de ses 66 px. Sans elles, une PWA
+     installée (47 + 34 px) remettait les formats 68 px sous la barre. */
+  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 331px - var(--corps-carte-profil, 145px) - var(--couverture-profil) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 3), 36px);
 }
 #screen-profiles .main-profile-cover { max-height: var(--couverture-profil); }
 #screen-profiles .main-profile-card { margin-bottom: 0; }
@@ -12639,7 +12643,9 @@ button, a, label, select, summary,
 .studio-souvenir { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; margin-bottom: 8px; border-radius: 12px; background: #fff4ef; border: 1px solid #f6c5b5; color: #8a2f1c; font-size: 13px; font-weight: 600; }
 .studio-souvenir-texte { flex: 1; min-width: 0; }
 .studio-souvenir-retirer { width: 44px; height: 44px; flex: 0 0 44px; border: none; background: transparent; color: inherit; font-size: 20px; cursor: pointer; }
-/* PAR-C14 : « Partager mon profil », visible sous l'identité. */
+/* PAR-C14 : « Partager mon profil », visible. Ce socle (44 px) vaut partout ; depuis le
+   2026-11-14 le bouton vit à droite de l'avatar et le bloc PROFIL-ERGONOMIE ② le
+   met en forme (sa marge haute d'ici n'y s'applique plus). */
 .main-profile-partager { min-height: 44px; margin-top: 12px; }
 /* PAR-C20 : l'invitation reste visible, en bas, au-dessus de la barre d'onglets. */
 .invitation-bandeau {
@@ -13429,9 +13435,20 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   flex: 0 0 auto;
   color: var(--accent);
 }
+/* Anneau de focus DOUBLE (accent + blanc) : un anneau blanc seul disparaît sur
+   une couverture claire. */
 #screen-profiles .main-profile-avatar-wrap .main-profile-partager:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
+  box-shadow: 0 0 0 5px #fff;
+}
+/* Taille de texte « Très grand » (configurateur, `!important`) à 320 px : le
+   libellé cède avant de sortir de la carte, l'icône reste. */
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager { flex: 0 1 auto; min-width: 0; }
+#screen-profiles .main-profile-avatar-wrap .main-profile-partager span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* ③ Le rail des passions VA JUSQU'AUX BORDS DE L'ÉCRAN, et il dit qu'il défile.
    Capture de Benjamin : 7 passions, 4 bulles visibles, coupées PILE dans la

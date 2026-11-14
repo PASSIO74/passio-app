@@ -5157,6 +5157,11 @@ async function openUserProfile(authorId, source) {
     ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
+  // La bio d'autrui en paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) :
+  // normalisée À L'AFFICHAGE (jamais garantie en base) et ÉCHAPPÉE morceau par
+  // morceau. Calculée une fois : le gabarit teste puis peint la même valeur.
+  var _bioVisiteHtml = bioEnParagraphesHtml(user.bio);
+
   // LOT-16 (PRO-C07) : un compte que J'AI bloqué le dit, à la place des actions.
   var _bloqueParMoi = (typeof isBlocked === "function") && isBlocked(authorId);
   // LOT-16 (PRO-C09) : la croix vient d'`openModal` ; la seconde (un span) est retirée.
@@ -5178,7 +5183,7 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user, 352) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + (bioEnParagraphesHtml(user.bio) ? '<div class="main-profile-bio">' + bioEnParagraphesHtml(user.bio) + '</div>' : '') + '\
+        ' + (_bioVisiteHtml ? '<div class="main-profile-bio">' + _bioVisiteHtml + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
           <div class="main-profile-stat"><span>' + postCount + '</span><span>publication' + (postCount > 1 ? "s" : "") + '</span></div>\

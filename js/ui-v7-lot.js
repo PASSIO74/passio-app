@@ -193,7 +193,14 @@
       b.setAttribute("aria-selected", p.cle === ongletActif ? "true" : "false");
       b.setAttribute("aria-controls", "v7Pan-" + p.cle);
       b.textContent = p.libelle;
-      b.addEventListener("click", function () { choisirOnglet(p.cle); recadrerSousBarre(p.cle); });
+      b.addEventListener("click", function () {
+        // Recadrer seulement si l'onglet CHANGE : re-toucher l'onglet actif (la
+        // barre collante est sous le pouce en permanence) ne doit pas faire
+        // perdre la position de lecture.
+        var change = ongletActif !== p.cle;
+        choisirOnglet(p.cle);
+        if (change) recadrerSousBarre(p.cle);
+      });
       barre.appendChild(b);
 
       var pan = document.createElement("div");
