@@ -1825,9 +1825,33 @@ function _applyUserState(data) {
     // avoir été écrit AVANT une suppression faite ici, et la recopie brute de
     // ses clés ressusciterait le contenu au rafraîchissement suivant.
     const suppressionsLocales = Array.isArray(state.deletedPostIds) ? state.deletedPostIds.slice() : [];
+    // ⚠️ MES PUBLICATIONS NE SE REMPLACENT PAS NON PLUS, ELLES S'UNISSENT
+    // (2026-11-14). La recopie brute ci-dessous remplaçait `userPosts` par celui
+    // du blob serveur : un blob écrit AVANT la dernière publication (ou par un
+    // rejeu de file périmé) rendait `[]`, et le post publié sur cet appareil
+    // disparaissait du profil à la réouverture — alors qu'il était bien en base.
+    // On garde donc les publications locales absentes du blob, mais SEULEMENT
+    // celles du compte courant (`authorId === MY_UID`) : un état local laissé par
+    // un autre compte ne doit jamais se greffer sur celui-ci.
+    const postsLocauxAGarder = (function () {
+      try {
+        if (typeof MY_UID === "undefined" || !MY_UID || !RE_UID_COMPTE.test(MY_UID)) return [];
+        return (Array.isArray(state.userPosts) ? state.userPosts : [])
+          .filter(function (p) { return p && p.id && p.authorId === MY_UID; });
+      } catch (_e) { return []; }
+    })();
     Object.keys(data).forEach((k) => { if (k !== "seed" && k !== "supabasePosts") state[k] = data[k]; });
     state.seed = keepSeed;
     state.supabasePosts = keepSupa;
+    if (!Array.isArray(state.userPosts)) state.userPosts = [];
+    if (postsLocauxAGarder.length) {
+      const idsServeur = new Set(state.userPosts.map(function (p) { return p && p.id; }));
+      const ajouts = postsLocauxAGarder.filter(function (p) { return !idsServeur.has(p.id); });
+      if (ajouts.length) {
+        state.userPosts = ajouts.concat(state.userPosts)
+          .sort(function (a, b) { return (Number(b && b.createdAt) || 0) - (Number(a && a.createdAt) || 0); });
+      }
+    }
     if (!Array.isArray(state.deletedPostIds)) state.deletedPostIds = [];
     fusionnerPostsSupprimes(suppressionsLocales);
     // Le blob peut porter des `userPosts` antérieurs à une suppression (la
@@ -2120,6 +2144,28 @@ async function supaLoadUserState() {
           // réinjecte QUE s'il n'en a aucune — sinon une restauration serveur
           // serait annulée par un vieil état local.
           if (merged.archived === undefined && lp.archived !== undefined) merged.archived = lp.archived;
+          // ⚠️ MAIS UN GESTE DATÉ PLUS RÉCENT QUE CELUI DU SERVEUR GAGNE
+          // (2026-11-14). Sans date, la règle ci-dessus donnait TOUJOURS raison
+          // au serveur : une passion réactivée ici (restauration, ou choisie au
+          // Studio pour y publier) dont l'envoi n'avait pas abouti était
+          // RE-ARCHIVÉE à la réouverture par un blob du 1er septembre —
+          // « ma passion Course à pied a disparu ». On ne compare que des gestes
+          // DATÉS des deux côtés : une restauration locale (`restoredAt`) contre
+          // l'archivage serveur, un archivage local contre une restauration
+          // serveur datée. Un archivage sans date (`archivedAt: 0`, posé par une
+          // fusion) ne gagne jamais.
+          try {
+            const _dLoc = Number(lp.restoredAt) || 0;
+            if (lp.archived === false && sp.archived === true && _dLoc > (Number(sp.archivedAt) || 0)) {
+              merged.archived = false;
+              delete merged.archivedAt;
+              merged.restoredAt = _dLoc;
+            } else if (lp.archived === true && !sp.archived && Number(sp.restoredAt) > 0
+                       && (Number(lp.archivedAt) || 0) > Number(sp.restoredAt)) {
+              merged.archived = true;
+              merged.archivedAt = Number(lp.archivedAt);
+            }
+          } catch (_e) {}
           return merged;
         });
         // Dédup final : s'il reste deux profils pour la même passion (ne devrait
@@ -2136,6 +2182,12 @@ async function supaLoadUserState() {
       }
       // Restaure le profil actif local, et garantit qu'il est VIVANT.
       restaurerPassionActiveApresFusion(localCurrentId);
+      // Une passion où j'ai publié APRÈS l'avoir archivée revient (app-06,
+      // 2026-11-14). Différé : l'appareil doit d'abord être autorisé à écrire.
+      setTimeout(function () {
+        try { if (typeof reactiverPassionsPubliees === "function") reactiverPassionsPubliees(); }
+        catch (_e) { if (typeof diagLog === "function") diagLog("reactiver_passions_fusion " + (_e && _e.message)); }
+      }, 0);
       state._stateSyncedAt = data.updated_at;
       // ⚠️ L'état du compte est là : l'appareil peut de nouveau écrire.
       _restaurationConfirmee();
