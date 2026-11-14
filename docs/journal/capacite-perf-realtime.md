@@ -2013,6 +2013,17 @@ client. **La contre-revue est le seul contrôle humain de cette PR** : rien de c
   attend que leur nombre ne bouge plus pendant 1,5 s. Deux défauts PRODUIT, révélés et non traités ici :
   une relecture partie avant un « je viens » écrase son compteur optimiste (une minute au plus), et le
   démarrage relit DEUX fois stories, activités et notifications.
+- ⚠️ **LA MÊME COURSE A FAIT ÉCHOUER LE DÉPLOIEMENT DE `main` LE 2026-11-14** (run 43642166416, tranche
+  1/6, rouge aux trois essais) : `audit-2026-11-memo-rpc-absente` ① comptait les appels
+  `participants_compte` SANS attendre le bloc différé, et sa relecture forcée en ajoutait un —
+  « heure de pose dans le futur : la RPC est retentée », 4 appels au lieu de 3. Le mémo d'une heure ne
+  couvre PAS ce créneau : la première relance le lève, la suivante repart donc en requête ; les deux
+  seules mesures exposées d'une suite sont celles qui suivent une levée. L'attente est désormais une
+  SEULE copie, dans le banc partagé (`attendreDemarrageDiffere`, `audit-2026-11-parcours-faux-serveur.js`),
+  appelée par les deux suites — **toute suite de ce banc qui compte des requêtes l'appelle juste après
+  `ouvrirCompte`**. Aucune gate mécanique ne l'exige encore : elle appartiendrait à
+  `scripts/audit-tests-isolation.js` (une suite qui requiert ce banc et appelle `srv.requetes(` doit
+  appeler l'attente), chemin qu'un agent de la chaîne ne peut pas modifier.
 
 **Appliquée le 2026-11-09, sur l'ordre de Benjamin** (« Fait la contre revue toi même »). Les deux
 contre-revues sont des auto-revues du mainteneur unique : la revue 5832416134 sur `648e2a58`, puis la revue

@@ -19,6 +19,7 @@
 // tables étant lisible par le test, pas seulement l'écran.
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
+const { expect } = require("@playwright/test");
 const { bootOnboarded, onboardedState } = require("./app-helper");
 
 const PIXEL_PNG = Buffer.from(
@@ -686,4 +687,42 @@ async function ouvrirCompte(context, serveur, uid, opts = {}) {
 
 const toasts = (page) => page.evaluate(() => (window.__toasts || []).map((t) => t.msg));
 
-module.exports = { FauxServeur, ouvrirCompte, toasts, jwtPour, REF };
+/**
+ * LE BLOC DIFFÉRÉ DU DÉMARRAGE PASSE AVANT TOUTE MESURE (2026-11-09 ; sorti ici
+ * le 2026-11-14 après le déploiement en échec de `main`).
+ *
+ * `supaInit` programme, à 2 s, une relecture FORCÉE des activités
+ * (`rafraichirEvenements(true)`, app-08) : un `supaLoadEvents` de plus, donc une
+ * lecture `event_attendees` et un appel `participants_compte` de plus, qu'aucune
+ * suite n'a demandés. Une suite qui COMPTE des requêtes mesure sinon son chemin
+ * PLUS ce minuteur — exactement la classe d'isolation de `audit-tests-isolation`
+ * (« un test mesure quelque chose qu'il ne possède pas »). Vécu deux fois :
+ * `audit-2026-11-participants-compte` (l'activité remplacée par une lecture
+ * d'avant le geste), puis `audit-2026-11-memo-rpc-absente` le 2026-11-14 —
+ * « heure de pose dans le futur : la RPC est retentée », 4 appels au lieu de 3,
+ * rouge aux trois essais, déploiement de production bloqué.
+ *
+ * ⚠️ ET IL Y EN A DEUX : `supaInit` tourne au démarrage PUIS sur
+ * `onAuthStateChange`, et chaque passage programme son bloc — mesuré au journal
+ * de ce faux serveur : deux lectures de `stories` à ~0,5 s d'écart. Attendre la
+ * première seulement DÉPLACE la course au lieu de la fermer. On attend donc que
+ * leur nombre ne bouge plus pendant 1,5 s. Signal sans ambiguïté : la lecture
+ * des `stories`, que ce bloc SEUL lance (app-08) ; `_evenementsLectureEnVol` est
+ * posé dans le même tour, on attend qu'il retombe.
+ *
+ * ⚠️ UNE SEULE COPIE, ici : deux attentes côte à côte finissent par diverger, et
+ * c'est la seconde qu'on oublie. Toute suite de ce banc qui compte des requêtes
+ * l'appelle juste après `ouvrirCompte`.
+ */
+async function attendreDemarrageDiffere(page, serveur, uid) {
+  const lectures = () => serveur.requetes((e) => e.table === "stories" && e.m === "GET" && e.me === uid).length;
+  await expect.poll(lectures, { message: "le bloc différé du démarrage est passé", timeout: 20000 }).toBeGreaterThan(0);
+  let vu = lectures(), depuis = Date.now();
+  while (Date.now() - depuis < 1500) {
+    await page.waitForTimeout(250);
+    if (lectures() !== vu) { vu = lectures(); depuis = Date.now(); }
+  }
+  await page.waitForFunction(() => !_evenementsLectureEnVol, null, { timeout: 15000 });
+}
+
+module.exports = { FauxServeur, ouvrirCompte, toasts, jwtPour, REF, attendreDemarrageDiffere };

@@ -36,7 +36,7 @@
 // désormais des cas ordinaires — chacun rougit si l'on retire son correctif.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { FauxServeur, ouvrirCompte } = require("./audit-2026-11-parcours-faux-serveur");
+const { FauxServeur, ouvrirCompte, attendreDemarrageDiffere } = require("./audit-2026-11-parcours-faux-serveur");
 
 const ORGA = "aaaaaaaa-0000-4000-8000-000000000041";
 const V = "bbbbbbbb-0000-4000-8000-000000000042";      // le compte qui regarde : un tiers
@@ -96,16 +96,11 @@ function peupler(srv) {
 // ce faux serveur : deux lectures de stories à ~0,5 s d'écart. Attendre la
 // première seulement déplaçait la course (« c » rougissait alors sur le
 // compteur). On attend donc que leur nombre ne bouge plus pendant 1,5 s.
-async function demarrageTermine(page, srv, uid) {
-  const lectures = () => srv.requetes((e) => e.table === "stories" && e.m === "GET" && e.me === uid).length;
-  await expect.poll(lectures, { message: "le bloc différé du démarrage est passé", timeout: 20000 }).toBeGreaterThan(0);
-  let vu = lectures(), depuis = Date.now();
-  while (Date.now() - depuis < 1500) {
-    await page.waitForTimeout(250);
-    if (lectures() !== vu) { vu = lectures(); depuis = Date.now(); }
-  }
-  await page.waitForFunction(() => !_evenementsLectureEnVol, null, { timeout: 15000 });
-}
+// ⚠️ L'ATTENTE VIT DANS LE BANC PARTAGÉ depuis le 2026-11-14
+// (`attendreDemarrageDiffere`) : la même course a rendu `main` rouge dans
+// `audit-2026-11-memo-rpc-absente`, et deux copies de cette attente auraient
+// divergé. Ici, le nom local et ses deux appelants ne changent pas.
+const demarrageTermine = (page, srv, uid) => attendreDemarrageDiffere(page, srv, uid);
 
 async function ouvrirV(browser, srv) {
   const ctx = await browser.newContext();

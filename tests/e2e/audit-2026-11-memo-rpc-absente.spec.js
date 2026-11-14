@@ -29,7 +29,7 @@
 // (`brancher` route tout `*.supabase.co` et le WebSocket temps réel).
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { FauxServeur, ouvrirCompte, jwtPour } = require("./audit-2026-11-parcours-faux-serveur");
+const { FauxServeur, ouvrirCompte, jwtPour, attendreDemarrageDiffere } = require("./audit-2026-11-parcours-faux-serveur");
 
 const ORGA = "aaaaaaaa-0000-4000-8000-000000000081";
 const V = "bbbbbbbb-0000-4000-8000-000000000082";
@@ -57,11 +57,19 @@ const compteRpc = (srv, nom) => srv.requetes((r) => r.rpc && r.table === nom && 
 // « La migration passe » pendant que la page vit : les trois volets d'un coup.
 const migrer = (srv) => srv.migrerParticipants();
 
+// ⚠️ CETTE SUITE COMPTE DES REQUÊTES : le bloc différé du démarrage doit être
+// PASSÉ avant la première mesure (`attendreDemarrageDiffere`, banc partagé). Sa
+// relecture forcée des activités, à 2 s, appelle `participants_compte` elle
+// aussi — tombée entre la pose d'une heure dans le futur et le comptage, elle
+// faisait 4 appels là où le scénario n'en demande qu'un (déploiement de `main`
+// en échec le 2026-11-14, rouge aux trois essais). Le mémo ne couvre pas ce
+// créneau : la première relance le LÈVE, la suivante repart donc en requête.
 async function ouvrirV(browser, srv) {
   const ctx = await browser.newContext();
   const v = await ouvrirCompte(ctx, srv, V, { nom: "vic_memo" });
   expect(v.identite.uid, "prémisse : la page tourne sous V").toBe(V);
   expect(v.identite.reel, "prémisse : SDK réel").toBe(true);
+  await attendreDemarrageDiffere(v.page, srv, V);
   return { ctx, page: v.page, errors: v.errors };
 }
 
