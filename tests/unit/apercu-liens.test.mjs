@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  analyserChemin, destination, lireJetonPartage, estRobotApercu, texteBorne, echapper, imageSure,
+  analyserChemin, destination, estRobotApercu, texteBorne, echapper, imageSure,
   apercuPublication, apercuProfil, apercuActivite, pageApercu, dateActivite,
   TITRE_GENERIQUE,
 } from "../../netlify/lib/apercu-coeur.js";
@@ -111,22 +111,6 @@ test("② bis l'invitant (`inv`) passe s'il est un uuid de compte, et rien d'aut
   // Un compte de démonstration, un pseudo, une injection d'en-tête : jetés.
   for (const mauvais of ["u_lea", "lea", UUID + "x", UUID + "%0D%0ASet-Cookie:x", "%22%3E"]) {
     assert.equal(destination(p, "?plk=ok&inv=" + mauvais), "/?plk=ok#post-pa1", mauvais);
-  }
-});
-
-test("② ter le jeton compact `?s=` redonne l'invitant et le suivi, et rien d'autre", () => {
-  const e = analyserChemin("/e/ev1");
-  const INV = "812aee2b-214f-4949-931e-842599b6d68b";
-  const B64 = "gSruKyFPSUmTHoQlmbbWiw";
-  assert.deepEqual(lireJetonPartage(B64 + "ab12cd34ef"), { plk: "lk_ab12cd34ef", inv: INV });
-  assert.equal(destination(e, "?s=" + B64 + "ab12cd34ef"), "/?plk=lk_ab12cd34ef&inv=" + INV + "#irl-event-ev1");
-  assert.equal(destination(e, "?s=" + B64), "/?inv=" + INV + "#irl-event-ev1");
-  assert.equal(destination(e, "?s=ab12cd34ef"), "/?plk=lk_ab12cd34ef#irl-event-ev1");
-  // La forme longue l'emporte (un lien déjà envoyé reste lu tel quel).
-  assert.equal(destination(e, "?plk=ok&s=ab12cd34ef"), "/?plk=ok#irl-event-ev1");
-  // Longueur, alphabet ou injection hors forme : rien.
-  for (const mauvais of ["", "abc", B64 + "AB12CD34EF", B64 + "x", "%0D%0ASet-Cookie:x", "a".repeat(33), B64.slice(0, 21) + "!"]) {
-    assert.equal(destination(e, "?s=" + mauvais), "/#irl-event-ev1", mauvais);
   }
 });
 

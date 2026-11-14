@@ -370,18 +370,7 @@ self.addEventListener("fetch", e => {
     const lien = /^\/([pue])\/([A-Za-z0-9_-]{1,100})\/?$/.exec(url.pathname);
     const hash = lien ? { p: "#post-", u: "#user-", e: "#irl-event-" }[lien[1]] + lien[2] : "";
     // L'invitation (`inv`, un uuid de compte) suit le lien, comme le fait la fonction en ligne.
-    // Forme compacte `?s=` (2026-11-14) : les 22 premiers caractères d'un jeton
-    // de 22 ou 32 sont l'uuid en base64url (même décodage que la fonction).
-    let inv = url.searchParams.get("inv");
-    const jeton = url.searchParams.get("s") || "";
-    if (!inv && /^[A-Za-z0-9_-]{22}([a-z0-9]{10})?$/.test(jeton)) {
-      try {
-        const bin = atob(jeton.slice(0, 22).replace(/-/g, "+").replace(/_/g, "/") + "==");
-        let h = "";
-        for (let i = 0; i < bin.length; i++) h += bin.charCodeAt(i).toString(16).padStart(2, "0");
-        inv = h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
-      } catch (err) { inv = null; }
-    }
+    const inv = url.searchParams.get("inv");
     const q = inv && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv) ? "?inv=" + inv.toLowerCase() : "";
     e.respondWith(fetch(e.request).catch(() => Response.redirect(self.location.origin + "/" + q + hash, 302)));
     return;
