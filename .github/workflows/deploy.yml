@@ -90,6 +90,9 @@ jobs:
   governance:
     name: Gouvernance critique
     runs-on: ubuntu-latest
+    # Chaque job a sa borne (bornes-ci ⑥, P1-9) : sans elle, GitHub attend 360 min, et un job figé tient la file de
+    # déploiement. Pire sain mesuré sur 800 runs (21/09 → 14/11) : 0,3 min ; il relit l'index 6 × 10 s sur un push.
+    timeout-minutes: 10
     # `issues: write` (A6, 2026-09-18) : le refus d'un correctif de la sentinelle
     # est ÉCRIT sur l'issue d'origine, qui passe `humain`. Toujours sans
     # checkout : la garde n'exécute jamais ce qu'elle police.
@@ -377,6 +380,10 @@ jobs:
   audits:
     name: Audits statiques et bancs serveur
     runs-on: ubuntu-latest
+    # Pire sain sur 800 runs (21/09 → 14/11) : 6,9 min (bornes-ci ⑥). Ce job GRANDIT : chaque banc tests/sql/*.test.sh
+    # y entre sans toucher ce fichier (41 le 19/10, 63 le 13/11) — à remesurer quand son pire passe 10 min. Le run du
+    # 08/11 resté 48 min (« The hosted runner lost communication ») est exactement ce que cette borne coupe.
+    timeout-minutes: 30 # audits (bornes-ci ⑥)
     # Aucun secret, aucun accès à la prod, aucun navigateur : ~40 s. Ce job n'a
     # aucune raison d'attendre quoi que ce soit, ni d'être attendu par les tests.
     steps:
@@ -1057,6 +1064,7 @@ jobs:
     if: always()
     needs: [audits, test-prod, test-local, gates-artefact, test-webkit]
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # pire sur 800 runs (21/09 → 14/11) : 0,3 min (bornes-ci ⑥)
     steps:
       - name: Agréger le verdict des cinq jobs
         env:
@@ -1089,6 +1097,7 @@ jobs:
     if: github.event_name == 'push'
     needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit]
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # pire sur 800 runs (21/09 → 14/11) : 5,0 min, Netlify et ses fonctions de bord (bornes-ci ⑥)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1210,6 +1219,7 @@ jobs:
     if: always() && github.event_name == 'push'
     needs: [deploy]
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # pire sur 800 runs (21/09 → 14/11), relances comprises : 0,3 min (bornes-ci ⑥)
     permissions:
       contents: read
       pull-requests: read
@@ -1304,6 +1314,7 @@ jobs:
     # secondes, et l'aperçu part comme prévu vers 2 minutes.
     needs: [governance, audits]
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # pire sur 800 runs (21/09 → 14/11) : 2,8 min (bornes-ci ⑥)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
