@@ -60,6 +60,38 @@ test("② PAR-C10 / C11 : le message nomme l'auteur ; un lien qui porte mon nom 
   expect(r.signe).toContain("Le lien porte ton nom");
 });
 
+// 2026-11-14 : le texte sous l'aperçu WhatsApp portait `?inv=<uuid>&plk=lk_…`,
+// 90 caractères illisibles. Le lien COURT part en `?s=<jeton>` (l'Edge Function
+// le redéploie, `lireJetonPartage`) ; le lien profond en hash reste intact.
+test("②bis le lien court part compact (`?s=`), un lien hors forme reste intact", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const U = "812aee2b-214f-4949-931e-842599b6d68b";
+    const court = "https://passio-app.netlify.app/e/xyjpckie8mwgbh3yr";
+    window.__envoye = null;
+    const avant = navigator.share;
+    try { Object.defineProperty(navigator, "share", { configurable: true, value: (d) => { window.__envoye = d; return Promise.resolve(); } }); } catch (e) {}
+    partagerOuCopier({ title: "x", text: "t", url: court + "?inv=" + U + "&plk=lk_ab12cd34ef" });
+    try { Object.defineProperty(navigator, "share", { configurable: true, value: avant }); } catch (e) {}
+    return {
+      deux: compacterLienPartage(court + "?inv=" + U + "&plk=lk_ab12cd34ef"),
+      inv: compacterLienPartage(court + "?inv=" + U),
+      plk: compacterLienPartage(court + "?plk=lk_ab12cd34ef"),
+      hash: compacterLienPartage("http://localhost:8080/?inv=" + U + "&plk=lk_ab12cd34ef#irl-event-x"),
+      ancien: compacterLienPartage(court + "?plk=lk_mwgax2oy-7csh5nj96tgdf3jg"),
+      autre: compacterLienPartage(court + "?inv=" + U + "&utm=x"),
+      envoye: window.__envoye && window.__envoye.url,
+    };
+  });
+  expect(r.deux).toBe("https://passio-app.netlify.app/e/xyjpckie8mwgbh3yr?s=gSruKyFPSUmTHoQlmbbWiwab12cd34ef");
+  expect(r.inv).toBe("https://passio-app.netlify.app/e/xyjpckie8mwgbh3yr?s=gSruKyFPSUmTHoQlmbbWiw");
+  expect(r.plk).toBe("https://passio-app.netlify.app/e/xyjpckie8mwgbh3yr?s=ab12cd34ef");
+  expect(r.hash, "le lien profond (local) garde ses paramètres").toContain("?inv=");
+  expect(r.ancien, "un suivi hors forme n'est jamais perdu").toContain("plk=lk_mwgax2oy");
+  expect(r.autre, "un paramètre inconnu laisse le lien intact").toContain("utm=x");
+  expect(r.envoye, "la feuille du téléphone reçoit la forme compacte").toBe(r.deux);
+});
+
 test("③ PAR-C13 : inviter mes abonnements — un seul ×, 44 px, 5 s pour annuler, déjà invités, sortie lien", async ({ page }) => {
   await bootOnboarded(page);
   const AMI = "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaa01";
