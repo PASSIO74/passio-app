@@ -5484,7 +5484,8 @@ function shareEvent(id) {
   ouvrirFeuillePartage({
     quoi: "activité", titre: ev.title || "Activité", extrait: quand + (ev.city ? " · " + ev.city : ""),
     url: url,
-    message: (ev.title || "Une activité") + " — " + quand + (ev.city ? " · " + ev.city : "") + ". Sur PASSIO 👇",
+    // Texte court et engageant (2026-11-14) : l'aperçu montre déjà titre et photo.
+    message: "Ça te dit ? " + (ev.title || "Une activité") + ", " + quand + (ev.city ? " à " + ev.city : "") + " 👇",
     voit: "La personne qui reçoit le lien voit l'activité et peut s'y inscrire, même sans compte.",
     idEnvoyer: "_shareEvOutBtn", idRepublier: "_shareEvInFeedBtn",
     republier: function () { shareEventInFeed(id); },
@@ -7691,8 +7692,8 @@ function inviterActivite(ev, quand) {
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
   const canal = navigator.share ? "native" : "clipboard";
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", ev.id, canal) : rawUrl;
-  const texte = "Je t'invite : " + (ev.title || "une activité")
-    + (quand ? " — " + quand : "") + (ev.city ? " · " + ev.city : "") + ". Rejoins-moi sur PASSIO 👇";
+  const texte = "Je t'invite ! " + (ev.title || "Une activité")
+    + (quand ? ", " + quand : "") + (ev.city ? " à " + ev.city : "") + ". Tu viens ? 👇";
   try { if (window.tel && tel.action) tel.action("activite_invite_partagee", { v: 1, canal: canal }); } catch (e) {}
   partagerOuCopier({ title: ev.title || "PASSIO", text: texte, url: url }, "Lien d'invitation copié — colle-le dans ta conversation");
   closeModal();

@@ -18,6 +18,7 @@
 - 📈 ENTONNOIR DES LIENS — LA MARCHE « COMPTE CRÉÉ » (2026-10-04)
 - 🪧 L'AFFICHE DE LA RENCONTRE — un QR imprimable, suivi jusqu'à l'inscription (2026-11-01)
 - 💌 « INVITER DES AMIS » — la porte contournait la boucle d'invitation (2026-11-09)
+- ✂️ LIEN COMPACT ET MESSAGE COURT — le texte sous l'aperçu WhatsApp était illisible (2026-11-14)
 
 ---
 
@@ -291,3 +292,22 @@ rouge : lien sans `?inv=` (①③④), ancien texte (①②), ancien `shareBeta`
 retirée (③), bouton du séparateur retiré (④) ou offert au visiteur (④), lien de profil pour un
 visiteur (②).
 
+---
+
+## ✂️ LIEN COMPACT ET MESSAGE COURT — le texte sous l'aperçu WhatsApp était illisible (2026-11-14)
+
+Capture de Benjamin : sous l'aperçu (photo + titre), WhatsApp affichait le message suivi de
+`https://passio-app.netlify.app/e/<id>?inv=<uuid 36>&plk=lk_<25>` — 150 caractères dont 90 de bruit.
+① **Le lien court part en `?s=<jeton>`** : `compacterLienPartage(url)` (app-02) appliquée aux DEUX puits,
+`ouvrirFeuillePartage` (après le calcul de `signe`, qui lit encore `inv=`) et `partagerOuCopier`. Jeton =
+l'uuid de l'invitant en base64url (22) + le suivi sans son `lk_` (10) ; longueurs 32, 22 ou 10, rien d'autre.
+② **L'application ne voit rien changer** : l'Edge Function (`lireJetonPartage`, `destination`) et le service
+worker hors ligne redéploient `?plk=…&inv=…` vers le lien profond ; les formes longues restent lues (liens
+déjà envoyés). Un morceau hors forme invalide le jeton ENTIER.
+③ `tel.linkCreate` fabrique désormais `lk_` + 10 caractères `[a-z0-9]` (au lieu de `uid16()`, 25).
+④ **Seule la forme courte `/[pue]/<id>` est compactée** ; en local (hash), avec un paramètre inconnu ou un
+suivi à l'ancien format, le lien reste INTACT — on ne perd jamais une donnée pour gagner des caractères.
+⑤ Messages raccourcis (l'aperçu montre déjà titre et photo) : « Ça te dit ? <titre>, <quand> à <ville> 👇 »,
+« Je t'invite ! … Tu viens ? 👇 », « Viens voir <nom> sur PASSIO 👇 », « Regarde ce qu'a partagé <auteur> sur
+PASSIO 👀 » (l'extrait n'est plus recopié — PAR-C10 tient : l'auteur reste nommé), « Regarde la bobine de… 🎬 ».
+Verrous : `apercu-liens.test.mjs` ② ter et `lot12-partage.spec.js` ②bis.

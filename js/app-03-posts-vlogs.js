@@ -18,13 +18,14 @@ function sharePost(id) {
   // `#post-<id>` est lu par `_ouvrirLienPartage` (app-06).
   const rawUrl = (typeof lienPartagePublication === "function") ? lienPartagePublication(id) : "https://passio-app.netlify.app";
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "post", id, navigator.share ? "native" : "clipboard") : rawUrl;
-  // LOT-12 (PAR-C10) : « Une publication de Léa sur PASSIO : “…” » — plus le texte
-  // de Léa collé sans son nom, comme si l'expéditeur l'avait écrit.
+  // LOT-12 (PAR-C10) : le message NOMME l'auteur — jamais le texte de Léa collé
+  // sans son nom, comme si l'expéditeur l'avait écrit. Depuis le 2026-11-14, il
+  // ne recopie plus l'extrait : l'aperçu du lien le montre déjà.
   ouvrirFeuillePartage({
     quoi: "publication", titre: "", auteur: auteur, extrait: extrait,
     vignette: post.image || post.photo || post.poster || post.coverPhotoUrl || "",
     url: url,
-    message: "Une publication de " + auteur + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    message: "Regarde ce qu'a partagé " + auteur + " sur PASSIO 👀",
     idEnvoyer: "_shareOutBtn", idRepublier: "_shareInFeedBtn",
     republier: function () { sharePostInFeed(id); },
   });
