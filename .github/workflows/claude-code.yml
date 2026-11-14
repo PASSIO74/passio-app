@@ -1302,7 +1302,7 @@ jobs:
             rm -f "${noms}"
             # Les noms, sans leurs caractères de contrôle : un retour chariot y couperait la ligne de l'annotation, et la
             # suite deviendrait une commande du runner (relecture de #903).
-            affiches="$(printf '%s' "${interdits}" | tr -d '\001-\037\177')"
+            affiches="$(printf '%s' "${interdits}" | tr -d '\001-\037\177' | LC_ALL=C sed -e 's/\xc2[\x80-\x9f]//g')"
             echo "::error title=Chemin interdit::Claude a modifié des fichiers qui le contrôlent : ${affiches}. Refus de publier. Ces chemins se changent à la main, avec contre-revue."
             exit 1
           fi

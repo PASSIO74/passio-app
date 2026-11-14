@@ -791,6 +791,12 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
     const interditForge = jouer({ tip: nomBrut(base, ".gitleaks\r::notice title=forgé::par un nom interdit", "x\n") });
     refus(interditForge, I, "nom interdit porteur d'un retour chariot");
     assert.ok(!interditForge.sortie.split(/\r\n|\r|\n/).some((l) => l.replace(/^[\t ]+/, "").startsWith("::notice")), "aucune commande forgée par un nom interdit\n" + interditForge.sortie.slice(-400));
+    // … ni un contrôle C1 (NEL, CSI) : la ligne du refus n'en porte aucun.
+    const interditC1 = jouer({ tip: nomBrut(base, ".gitleaks\u0085x\u009by", "x\n") });
+    refus(interditC1, I, "nom interdit porteur de contrôles C1");
+    const ligneRefus = interditC1.sortie.split(/\r?\n/).find((l) => l.startsWith("::error title=Chemin interdit::")) || "";
+    assert.ok(ligneRefus.includes(".gitleaksxy"), "le nom s'affiche, sans ses contrôles : " + JSON.stringify(ligneRefus));
+    assert.ok(!/[\u0080-\u009f]/.test(ligneRefus), "aucun contrôle C1 dans la ligne du refus");
     // Un `od` en échec : le refus annoncé (« Garde illisible »), rien de publié, rien de laissé derrière.
     fs.writeFileSync(faux + "/od", "#!/usr/bin/env bash\nexit 1\n"); fs.chmodSync(faux + "/od", 0o755);
     const sansCle = jouer({ tip: commits(base, [{ fichiers: { "oc.txt": "x\n" } }]), chemin: faux });
@@ -818,9 +824,15 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
       assert.ok(r.sortie.includes(message), cible + " : " + r.sortie.slice(-400));
     }
     // MAIN A REÇU LE MÊME CHANGEMENT pendant le run : le travail est identique à main relu — rien à publier.
-    const memeChangement = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" } }]);
-    const mainAvecLeMeme = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" } }, { message: "un commit vide de plus" }]);
-    refus(jouer({ tip: memeChangement, depart: base, socle: mainAvecLeMeme }), "Aucun changement", "main a reçu le même changement");
+    // Le commit de main porte un message PROPRE : sinon, dans la même seconde, il serait le même objet que celui de
+    // l'agent, et le refus viendrait de « aucun commit », pas de la comparaison à main (vérification de 1b580d52).
+    const memeChangement = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" }, message: "le correctif de l'agent" }]);
+    const mainAvecLeMeme = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" }, message: "main reçoit le même correctif" }]);
+    assert.notEqual(memeChangement, mainAvecLeMeme, "prémisse : deux commits distincts");
+    assert.throws(() => git("merge-base", "--is-ancestor", memeChangement, mainAvecLeMeme), "prémisse : le commit de l'agent n'est pas dans main");
+    const meme = jouer({ tip: memeChangement, depart: base, socle: mainAvecLeMeme });
+    refus(meme, "Aucun changement", "main a reçu le même changement");
+    assert.match(meme.sortie, /1 commit\(s\) d'avance/, "le refus vient de la comparaison à main, pas d'un « aucun commit »");
     // Un `git` EN ÉCHEC pendant la lecture des jetons arrête la marche (`set -e`) : rien n'est publié. (L'exercice de
     // #875 « la lecture des jetons jouée seule » ne mordait pas : il coupait la garde sur un titre absent du workflow.)
     const vraiGit = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
