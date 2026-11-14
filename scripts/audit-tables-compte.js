@@ -68,14 +68,6 @@ const EXCEPTIONS = {
   // du message signalé. La purger avec le compte de son AUTEUR rendrait à
   // celui-ci le pouvoir d'effacer la preuve que la table existe pour garder —
   // il suffirait de supprimer son compte entre le signalement et la décision.
-  // Stories façon Instagram (2026-11-14, migration_story_interactions_2026-11-14.sql) :
-  // comme `activite_jour`, la base les emporte elle-même — clé étrangère vers
-  // `profiles(id)` ON DELETE CASCADE (la purge supprime le profil) ET vers
-  // `stories(id)` ON DELETE CASCADE (la purge supprime ses stories). Les nommer
-  // dans TABLES_COMPTE ferait ÉCHOUER toute purge tant que la migration n'est pas
-  // appliquée (table absente = échec nommé, fail-closed).
-  "story_likes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
-  "story_comments.author_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
   "signalements_preuves.auteur_id": "preuve de modération d'un tiers : vit avec le signalement (report_id → reports(id) on delete cascade), survit à la suppression du compte de l'auteur comme reports.reporter_id ; durée de conservation des signalements traités à fixer côté juridique",
 };
 
