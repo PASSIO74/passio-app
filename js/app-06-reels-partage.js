@@ -1418,12 +1418,6 @@ function _myProfileEventsHTML() {
 function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
-  // La rangée de formats peut REVENIR ici (un média arrivé après l'entrée sur
-  // l'écran), jamais disparaître : seul `renderProfilesScreen` la masque.
-  try { _majRangeeFormats(true); } catch (e) {
-    try { if (typeof diagLog === "function") diagLog("profil_formats_montrer " + (e && e.message)); } catch (x) {}
-  }
-
   // ⚠️ AUCUNE PASSION COCHÉE = AUCUN FILTRE, donc TOUT s'affiche.
   //
   // Ce n'était pas le cas, et le défaut était double. ① « Réinitialiser » —
@@ -1532,41 +1526,11 @@ function renderProfileContent() {
   }
 }
 
-// ── La rangée de formats ne se peint que si elle peut montrer quelque chose
-// (2026-11-14, fiche 31 « le contenu d'abord »). Un compte sans photo, vidéo,
-// bobine ni audio — tout compte neuf, et celui de Benjamin (0 publication) —
-// voyait cinq filtres qui ne menaient qu'à des états vides, posés sur la
-// dernière place visible de l'écran, pendant que « Publie ta première
-// création » restait sous la barre du bas. Ils reviennent dès le premier média.
-// ⚠️ Calculé sur TOUTES mes publications, jamais sur la passion filtrée ; et
-// SEULEMENT depuis `renderProfilesScreen` (entrée sur l'écran, suppression,
-// retour du Studio…), jamais au toucher d'un format ou d'une bulle : la rangée
-// ne disparaît jamais sous le doigt. Un format déjà choisi la garde peinte
-// (sinon plus de chemin vers « Tout »).
-// ⚠️ Un ATTRIBUT, pas une classe : UI-6B et UI-7 observent `class`. Le masquage
-// vit en CSS sous `:root.passio-ui-7` — sans UI-7, la rangée reste peinte.
-// ⚠️ `seulementMontrer` (revue adversariale du 2026-11-14, CYC-01) : l'état du
-// serveur peut arriver APRÈS l'entrée sur le profil (`_applyUserState` →
-// `renderEverything`, qui ne repeint pas cet écran). Le premier toucher d'une
-// bulle repeint alors la liste — un média y apparaît — sans que la rangée
-// revienne. `renderProfileContent` appelle donc ce calcul en mode « montrer
-// seulement » : un rendu de la liste peut FAIRE APPARAÎTRE la rangée, jamais la
-// cacher sous le doigt.
-// ⚠️ « Un format choisi » = n'importe quelle clé autre que `posts` dans la
-// sélection (CYC-02) : une ancienne multi-sélection `["posts","photos"]`
-// d'avant LOT-16 garde la rangée, et son « Photos » coché reste visible.
-function _majRangeeFormats(seulementMontrer) {
-  var rangee = document.querySelector("#screen-profiles .profile-tabs");
-  if (!rangee) return;
-  var mine = (state.userPosts || []).filter(function (p) { return p && p.type !== "vlog"; });
-  var utile = PROFILE_TAB_KEYS.some(function (k) {
-    return k !== "posts" && mine.some(PROFILE_TAB_PRED[k]);
-  });
-  var formatChoisi = [..._profileTabSel()].some(function (k) { return k !== "posts"; });
-  var v = (utile || formatChoisi) ? "1" : "0";
-  if (seulementMontrer && v === "0") return;
-  if (rangee.getAttribute("data-formats") !== v) rangee.setAttribute("data-formats", v);
-}
+// ── La rangée de formats (Tout · Photos · Vidéos · Bobines · Audio) est
+// TOUJOURS peinte sur mon profil (2026-11-14, demande de Benjamin : « je ne
+// vois plus les onglets photo / vidéo à cocher »). Le masquage « tant qu'elle
+// ne filtre rien » (fiche 31 ⑨) est retiré : un compte sans média la croyait
+// disparue. Ne pas la remasquer selon le contenu.
 
 // Bascule un format dans une sélection (pure, partagée avec le profil visité).
 // Multi-sélection : chaque format se coche/décoche, l'affichage est l'UNION.
@@ -3545,10 +3509,7 @@ function renderProfilesScreen() {
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
-  // La rangée de formats ne se peint que si elle filtre quelque chose (fiche 31).
-  try { _majRangeeFormats(); } catch (e) {
-    try { if (typeof diagLog === "function") diagLog("profil_formats " + (e && e.message)); } catch (x) {}
-  }
+
 
   // Aide §8 « premier retour Profil » : montrer comment créer un second profil
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui

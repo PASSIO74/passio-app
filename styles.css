@@ -13450,7 +13450,7 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 #screen-profiles .main-profile-cover { cursor: default; }
 /* ⑥ LE CONTENU D'ABORD (relu par l'arbitrage des conceptions, sur le compte
    réel de Benjamin : 0 publication).
-   — La rangée de formats ne se peint que si elle filtre quelque chose
+   — (Retiré le 2026-11-14 : la rangée de formats est TOUJOURS peinte.) Elle ne se peignait que si elle filtrait quelque chose
      (`data-formats`, posé par `_majRangeeFormats`, app-06) ; le contenu prend sa
      place, à un `--espace-profil` des onglets : la formule ne change pas, et rien
      au-dessus des onglets ne bouge. Avec un média, la rangée revient, en bas de
@@ -13463,8 +13463,6 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
      par `titreContenant`, et un lecteur d'écran le lit). Le panneau prend le
      même rythme que « Publications ».
    ⚠️ Tout est sous `:root.passio-ui-7` : sans UI-7, l'écran d'avant revient. */
-:root.passio-ui-7 #screen-profiles .v7-subfilters[data-formats="0"] { display: none; }
-:root.passio-ui-7 #screen-profiles .v7-subfilters[data-formats="0"] + #myPosts { margin-top: var(--espace-profil); }
 :root.passio-ui-7 #screen-profiles #myPosts > .empty {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);

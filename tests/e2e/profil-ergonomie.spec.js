@@ -26,7 +26,7 @@
 //   ⑦ ordinateur (1440 × 900) : la barre collée au ras de l'en-tête
 //   ⑧ coupure du lot UI-7 : rien de collant, rien ne casse
 //   ⑨–⑮ le contenu d'abord (0 publication, comme le compte réel de Benjamin) :
-//      formats masqués tant qu'ils ne filtrent rien, état vide compact,
+//      formats TOUJOURS peints (2026-11-14), état vide compact,
 //      « Activité » sans titre redondant, libellé du profil visité, coupure
 //
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
@@ -375,87 +375,47 @@ function mesurerContenu() {
   };
 }
 
+// ⑨–⑪ (2026-11-14, demande de Benjamin : « je ne vois plus les onglets photo /
+// vidéo à cocher ») : la rangée de formats est TOUJOURS peinte — le masquage
+// « tant qu'elle ne filtre rien » est retiré. Ces cas verrouillent l'inverse.
 for (const [w, h] of [[390, 844], [390, 765], [375, 667]]) {
-  test(`⑨ ${w}×${h} — 0 publication : les formats cèdent leur place, l'invitation à publier est À L'ÉCRAN`, async ({ page }) => {
+  test(`⑨ ${w}×${h} — 0 publication : la rangée de formats reste à l'écran, et rien au-dessus ne bouge avec une photo`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     await ouvrirProfil(page);
     const m = await page.evaluate(mesurerContenu);
-    // Avant : rangée peinte, état vide à 779 (844) / 701 (765) — sous la barre.
-    expect(m.rangeePeinte, "cinq filtres qui ne mènent qu'à des états vides : masqués").toBe(false);
-    expect(m.libelles, "mais la rangée reste dans le DOM, intacte").toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Audio"]);
-    expect(m.titre.bottom, "« Publie ta première création » au-dessus de la barre").toBeLessThanOrEqual(m.barre);
-    expect(m.texte.bottom, "et sa phrase aussi").toBeLessThanOrEqual(m.barre);
-    expect(Math.abs((m.vide.top - m.onglets.bottom) - m.espace), "le contenu commence à UN espace des onglets").toBeLessThanOrEqual(1.5);
-    // Rien au-dessus des onglets ne bouge : la formule est la même qu'avec une photo.
-    // (L'état déjà enregistré n'est pas remplacé par un second démarrage : on
-    // publie la photo dans l'état en place.)
+    expect(m.rangeePeinte, "sans média, les formats restent cochables").toBe(true);
+    expect(m.libelles).toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Audio"]);
     await page.evaluate(() => {
       state.userPosts.push({ id: "up_erg_p9", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
       renderProfilesScreen();
     });
     await page.waitForTimeout(200);
     const avecPhoto = await page.evaluate(mesurerContenu);
-    expect(avecPhoto.rangeePeinte, "avec une photo, la rangée revient").toBe(true);
+    expect(avecPhoto.rangeePeinte).toBe(true);
     expect(Math.abs(avecPhoto.onglets.bottom - m.onglets.bottom), "onglets au même endroit dans les deux cas").toBeLessThanOrEqual(1);
   });
 }
 
-test("⑩ que des textes : la 1re publication remonte à la place des formats", async ({ page }) => {
+test("⑩ que des textes : la rangée de formats reste peinte", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await ouvrirProfil(page, { posts: 8 });
   const m = await page.evaluate(mesurerContenu);
-  expect(m.rangeePeinte).toBe(false);
-  expect(m.premierPost.top, "l'en-tête de la 1re publication se voit").toBeLessThanOrEqual(m.barre - 48);
+  expect(m.rangeePeinte).toBe(true);
+  expect(m.premierPost, "la 1re publication est rendue").not.toBeNull();
 });
 
-test("⑪ la rangée ne disparaît jamais sous le doigt, et revient au premier média", async ({ page }) => {
+test("⑪ la rangée ne disparaît jamais : ni au toucher, ni à la prochaine entrée, ni sans média", async ({ page }) => {
   await ouvrirProfil(page);
   const peinte = () => page.evaluate(() => !!document.querySelector("#screen-profiles .profile-tabs").offsetParent);
-  // Un format déjà choisi garde la rangée (sinon plus de chemin vers « Tout »).
-  await page.evaluate(() => {
-    window.profileTabSelection = new Set(["photos"]);
-    _persistProfileTabs();
-    goTo("feed"); goTo("profiles");
-  });
-  await page.waitForTimeout(300);
-  expect(await peinte(), "« Photos » choisi : la rangée reste").toBe(true);
+  expect(await peinte(), "0 média : peinte").toBe(true);
+  await page.locator('#screen-profiles .profile-tab[data-tab="photos"]').click();
+  await page.locator('#screen-profiles .profile-tab[data-tab="videos"]').click();
+  expect(await page.evaluate(() => [...profileTabSelection].sort()), "deux formats cochés").toEqual(["photos", "videos"]);
   await page.locator('#screen-profiles .profile-tab[data-tab="posts"]').click();
-  await page.waitForTimeout(200);
-  expect(await peinte(), "toucher « Tout » ne la fait pas disparaître sous le doigt").toBe(true);
+  expect(await peinte(), "après « Tout »").toBe(true);
   await page.evaluate(() => { goTo("feed"); goTo("profiles"); });
   await page.waitForTimeout(300);
-  expect(await peinte(), "à la prochaine entrée, sans média : masquée").toBe(false);
-  await page.evaluate(() => {
-    state.userPosts.push({ id: "up_erg_p2", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
-    renderProfilesScreen();
-  });
-  expect(await peinte(), "une photo publiée : la rangée revient").toBe(true);
-});
-
-test("⑪ bis — un média arrivé APRÈS l'entrée (état du serveur) : le premier rendu de la liste fait revenir la rangée ; une ancienne multi-sélection la garde", async ({ page }) => {
-  await ouvrirProfil(page);
-  const peinte = () => page.evaluate(() => !!document.querySelector("#screen-profiles .profile-tabs").offsetParent);
-  expect(await peinte(), "0 média : masquée").toBe(false);
-  // Hydratation tardive : l'état reçoit une photo SANS repeindre l'écran
-  // (`renderEverything` ne repeint pas le profil), puis on touche une bulle
-  // (`setProfilePassion` ne repeint que la liste).
-  await page.evaluate(() => {
-    state.userPosts.push({ id: "up_erg_p11", profileId: "pp_0", passion: "musique", type: "photo", image: "icon-512.png", text: "", createdAt: Date.now(), likes: 0, comments: [] });
-    renderProfileContent();
-  });
-  expect(await page.evaluate(() => !!document.querySelector("#myPosts img")), "la liste montre la photo").toBe(true);
-  expect(await peinte(), "et la rangée revient avec elle").toBe(true);
-  // Un rendu de la liste ne la cache JAMAIS, même redevenue inutile.
-  await page.evaluate(() => { state.userPosts = state.userPosts.filter((p) => p.id !== "up_erg_p11"); renderProfileContent(); });
-  expect(await peinte(), "jamais masquée sous le doigt").toBe(true);
-  // Ancienne multi-sélection d'avant LOT-16 : « Photos » coché doit rester visible.
-  await page.evaluate(() => {
-    window.profileTabSelection = new Set(["posts", "photos"]);
-    _persistProfileTabs();
-    goTo("feed"); goTo("profiles");
-  });
-  await page.waitForTimeout(300);
-  expect(await peinte(), "[\"posts\",\"photos\"] : la rangée reste peinte").toBe(true);
+  expect(await peinte(), "à la prochaine entrée").toBe(true);
 });
 
 test("⑫ l'état vide est compact : icône à gauche, bouton pleine largeur de 44 px, texte ≥ 12 px", async ({ page }) => {
