@@ -2503,13 +2503,40 @@ function storyBasculerJaime(s, nom, reel) {
   try { saveState(); } catch (e) {}
   var b = document.getElementById("storyLikeBtn");
   if (b) { b.classList.toggle("aimee", aime); b.setAttribute("aria-pressed", aime ? "true" : "false"); b.setAttribute("aria-label", aime ? "Je n'aime plus" : "J'aime"); }
-  if (!aime) return;
-  _storyEclosion("coeur");
-  try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
-  try { if (window.tel && tel.action) tel.action("story_like", { reel: !!reel }); } catch (_t) {}
-  // L'auteur n'est prévenu qu'au PREMIER j'aime d'une story : défaire et
-  // refaire ne l'inonde pas.
+  if (aime) {
+    _storyEclosion("coeur");
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("story_like", { reel: !!reel }); } catch (_t) {}
+  }
   if (!reel) return;
+  // Table `story_likes` présente : le j'aime s'écrit EN BASE (l'auteur le voit
+  // dans l'activité de sa story), aucun message. Refus = l'affichage revient.
+  if (storyIxPossible(s)) {
+    Promise.resolve(supaStoryAimer(s.id, aime)).then(function (r) {
+      if (r && r.ok) return;
+      if (r && r.absente) { if (aime) _storyPrevenirParMessage(s, nom); return; }
+      _storyNoterJaimeLocal(s.id, !aime);
+      var bb = document.getElementById("storyLikeBtn");
+      if (bb) { bb.classList.toggle("aimee", !aime); bb.setAttribute("aria-pressed", !aime ? "true" : "false"); }
+      toast("J'aime non enregistré — réessaie.", "warning");
+    });
+    return;
+  }
+  if (aime) _storyPrevenirParMessage(s, nom);
+}
+
+function _storyNoterJaimeLocal(id, oui) {
+  if (!state.user) return;
+  if (!Array.isArray(state.user.likedStories)) state.user.likedStories = [];
+  var l = state.user.likedStories, i = l.indexOf(id);
+  if (oui && i < 0) l.push(id);
+  if (!oui && i > -1) l.splice(i, 1);
+  try { saveState(); } catch (e) {}
+}
+
+// Repli sans table `story_likes` : l'auteur n'est prévenu qu'au PREMIER j'aime
+// d'une story, par un message direct — défaire et refaire ne l'inonde pas.
+function _storyPrevenirParMessage(s, nom) {
   if (!Array.isArray(state.user.storyLikesPrevenus)) state.user.storyLikesPrevenus = [];
   if (state.user.storyLikesPrevenus.indexOf(s.id) > -1 || window._storyLikeEnVol === s.id) return;
   window._storyLikeEnVol = s.id;
@@ -2558,6 +2585,172 @@ function storyPartager(s, nom, mienne) {
   try { if (window.tel && tel.action) tel.action("story_partage", {}); } catch (_t) {}
 }
 
+// ── Feuilles « Commentaires » et « Activité » (2026-11-14) ─────────────────
+// Rendu DOM uniquement : nom, texte et photo d'autrui passent par textContent
+// et avatarBg/safeUrl — jamais par innerHTML.
+function _storyProfilAffiche(id, profs) {
+  if (id && id === MY_UID) {
+    var cp = (typeof currentProfile === "function" && currentProfile()) || {};
+    return { nom: cp.name || "Moi", emoji: cp.emoji || "✨", couleur: cp.color || "#7c3aed", photo: (state.user && state.user.photoUrl) || null };
+  }
+  var p = (profs && profs[id]) || {};
+  var u = (typeof userById === "function" && userById(id)) || {};
+  return { nom: p.username || u.name || "Passionné", emoji: p.emoji || u.profileEmoji || "✨", couleur: p.color || u.avatar || "#8b5cf6", photo: p.avatar_url || u.photoUrl || null };
+}
+function _storyAvatarEl(pr) {
+  var a = document.createElement("div");
+  a.className = "avatar sm story-feuille-avatar";
+  try { a.style.background = pr.photo && typeof avatarBg === "function" ? avatarBg({ photoUrl: pr.photo, avatar: pr.couleur }) : pr.couleur; } catch (e) { a.style.background = pr.couleur; }
+  if (!pr.photo) a.textContent = pr.emoji || "✨";
+  return a;
+}
+function _storyLigneProfil(id, profs, droite) {
+  var pr = _storyProfilAffiche(id, profs);
+  var ligne = document.createElement("div");
+  ligne.className = "story-feuille-ligne";
+  ligne.appendChild(_storyAvatarEl(pr));
+  var nomEl = document.createElement("button");
+  nomEl.type = "button";
+  nomEl.className = "story-feuille-nom";
+  nomEl.textContent = pr.nom;
+  nomEl.addEventListener("click", function () { try { closeModal(); closeStoryViewer(); openUserProfile(id); } catch (e) {} });
+  ligne.appendChild(nomEl);
+  if (droite) ligne.appendChild(droite);
+  return ligne;
+}
+
+function ouvrirCommentairesStory(s, nom) {
+  if (!s) return;
+  openModal('<div class="modal-handle"></div><div class="modal-title">Commentaires</div>'
+    + '<div id="storyComList" class="story-com-list" aria-live="polite"><div class="story-com-vide">Chargement…</div></div>'
+    + '<form id="storyComForm" class="story-com-form"><input id="storyComInput" class="story-com-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" aria-label="Ajouter un commentaire" placeholder="Ajoute un commentaire…"><button type="submit" class="btn primary story-com-publier" id="storyComPublier">Publier</button></form>');
+  var liste = document.getElementById("storyComList");
+  var form = document.getElementById("storyComForm");
+  var champ = document.getElementById("storyComInput");
+  var bouton = document.getElementById("storyComPublier");
+  if (!liste || !form || !champ) return;
+  var storyAMoi = s.authorId === MY_UID;
+  var commentaires = [];
+  var profs = {};
+  var peindre = function () {
+    if (!document.body.contains(liste)) return;
+    liste.innerHTML = "";
+    if (!commentaires.length) {
+      var vide = document.createElement("div");
+      vide.className = "story-com-vide";
+      vide.textContent = "Aucun commentaire pour l'instant. Sois le premier !";
+      liste.appendChild(vide);
+      return;
+    }
+    commentaires.forEach(function (c) {
+      var bloc = document.createElement("div");
+      bloc.className = "story-com-row";
+      bloc.setAttribute("data-id", String(c.id));
+      var pr = _storyProfilAffiche(c.authorId, profs);
+      bloc.appendChild(_storyAvatarEl(pr));
+      var corps = document.createElement("div");
+      corps.className = "story-com-corps";
+      var tete = document.createElement("div");
+      tete.className = "story-com-tete";
+      var n = document.createElement("b"); n.textContent = pr.nom;
+      var h = document.createElement("span"); h.className = "story-com-heure"; h.textContent = fmtTime(c.at);
+      tete.appendChild(n); tete.appendChild(h);
+      var t = document.createElement("div"); t.className = "story-com-texte"; t.textContent = c.text;
+      corps.appendChild(tete); corps.appendChild(t);
+      bloc.appendChild(corps);
+      if (c.authorId === MY_UID || storyAMoi) {
+        var del = document.createElement("button");
+        del.type = "button"; del.className = "story-com-suppr"; del.setAttribute("aria-label", "Supprimer ce commentaire"); del.textContent = "🗑";
+        del.addEventListener("click", function () {
+          del.disabled = true;
+          Promise.resolve(supaStorySupprimerCommentaire(c.id)).then(function (ok) {
+            if (!ok) { del.disabled = false; toast("Suppression impossible — réessaie.", "warning"); return; }
+            commentaires = commentaires.filter(function (x) { return x.id !== c.id; });
+            peindre();
+          });
+        });
+        bloc.appendChild(del);
+      }
+      liste.appendChild(bloc);
+    });
+    liste.scrollTop = liste.scrollHeight;
+  };
+  Promise.resolve(supaStoryCommentaires(s.id)).then(function (r) {
+    if (r && r.absente) {
+      try { closeModal(); } catch (e) {}
+      var champMsg = document.querySelector("#storyReplyBar .story-reply-input");
+      if (champMsg) { toast("Commentaires publics bientôt disponibles — envoie un message à " + (nom || "l'auteur"), "info"); champMsg.focus(); }
+      return;
+    }
+    if (!r || r.erreur) { liste.innerHTML = ""; var e = document.createElement("div"); e.className = "story-com-vide"; e.textContent = "Commentaires indisponibles — vérifie ta connexion."; liste.appendChild(e); return; }
+    commentaires = r.liste;
+    peindre();
+    var ids = commentaires.map(function (c) { return c.authorId; }).filter(function (id) { return id !== MY_UID; });
+    if (ids.length && typeof _resolveProfilesByIds === "function") {
+      Promise.resolve(_resolveProfilesByIds(ids)).then(function (p) { profs = p || {}; peindre(); }).catch(function () {});
+    }
+  });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var texte = champ.value.trim();
+    if (!texte) { champ.focus(); return; }
+    if (window.requireAuthentication && !requireAuthentication("message")) return;
+    bouton.disabled = true;
+    Promise.resolve(supaStoryCommenter(s.id, texte.slice(0, 500))).then(function (r) {
+      bouton.disabled = false;
+      if (!r || !r.ok) { toast(r && r.absente ? "Commentaires publics bientôt disponibles" : "Commentaire non publié — réessaie.", "warning"); return; }
+      commentaires.push({ id: r.id, authorId: MY_UID, text: texte.slice(0, 500), at: r.at || Date.now() });
+      champ.value = "";
+      peindre();
+      _storyMajPastilleCommentaires(commentaires.length);
+      try { if (window.tel && tel.action) tel.action("story_commentaire", {}); } catch (_t) {}
+    });
+  });
+  setTimeout(function () { try { champ.focus(); } catch (e) {} }, 250);
+}
+function _storyMajPastilleCommentaires(n) {
+  var b = document.getElementById("storyCommentBtn");
+  if (!b) return;
+  var p = b.querySelector(".story-action-badge");
+  if (!n) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement("span"); p.className = "story-action-badge"; b.appendChild(p); }
+  p.textContent = n > 99 ? "99+" : String(n);
+}
+
+function ouvrirActiviteStory(s) {
+  if (!s) return;
+  openModal('<div class="modal-handle"></div><div class="modal-title">Activité de ta story</div>'
+    + '<div id="storyActResume" class="story-act-resume">Chargement…</div>'
+    + '<div id="storyActListe" class="story-com-list"></div>'
+    + '<button type="button" class="btn secondary block" id="storyActCommentaires">💬 Voir les commentaires</button>');
+  var resume = document.getElementById("storyActResume");
+  var liste = document.getElementById("storyActListe");
+  var voir = document.getElementById("storyActCommentaires");
+  if (voir) voir.addEventListener("click", function () { ouvrirCommentairesStory(s, ""); });
+  Promise.resolve(supaStoryActivite(s.id)).then(function (a) {
+    if (!resume || !document.body.contains(resume)) return;
+    if (!a || a.absente || a.erreur) { resume.textContent = a && a.absente ? "L'activité arrive bientôt." : "Activité indisponible — vérifie ta connexion."; return; }
+    var aimeurs = new Set(a.jaime);
+    resume.textContent = "👁 Vu par " + a.vues.length + "   ·   ❤️ " + a.jaime.length + " j'aime";
+    var ids = a.vues.map(function (v) { return v.userId; });
+    a.jaime.forEach(function (id) { if (ids.indexOf(id) < 0 && id !== MY_UID) ids.push(id); });
+    var peindre = function (profs) {
+      liste.innerHTML = "";
+      if (!ids.length) { var v = document.createElement("div"); v.className = "story-com-vide"; v.textContent = "Personne ne l'a encore vue."; liste.appendChild(v); return; }
+      // Ceux qui ont aimé d'abord (comme Instagram), puis l'ordre des vues.
+      ids.slice().sort(function (x, y) { return (aimeurs.has(y) ? 1 : 0) - (aimeurs.has(x) ? 1 : 0); }).forEach(function (id) {
+        var coeur = null;
+        if (aimeurs.has(id)) { coeur = document.createElement("span"); coeur.className = "story-act-coeur"; coeur.textContent = "❤️"; coeur.setAttribute("aria-label", "a aimé"); }
+        liste.appendChild(_storyLigneProfil(id, profs, coeur));
+      });
+    };
+    peindre({});
+    if (ids.length && typeof _resolveProfilesByIds === "function") {
+      Promise.resolve(_resolveProfilesByIds(ids)).then(function (p) { if (document.body.contains(liste)) peindre(p || {}); }).catch(function () {});
+    }
+  });
+}
+
 function _barreReponseStory(s, nom, reel) {
   try {
     var sv = document.getElementById("storyViewer");
@@ -2580,8 +2773,8 @@ function _barreReponseStory(s, nom, reel) {
       champ.type = "text";
       champ.maxLength = 500;
       champ.className = "story-reply-input";
-      champ.placeholder = "Commenter la story de " + (nom || "cette personne") + "…";
-      champ.setAttribute("aria-label", "Commenter la story de " + (nom || "cette personne"));
+      champ.placeholder = "Envoyer un message à " + (nom || "cette personne") + "…";
+      champ.setAttribute("aria-label", "Envoyer un message à " + (nom || "cette personne"));
       champ.setAttribute("enterkeyhint", "send");
       champ.setAttribute("autocomplete", "off");
       var envoyer = document.createElement("button");
@@ -2628,7 +2821,7 @@ function _barreReponseStory(s, nom, reel) {
         var texte = champ.value.trim();
         if (!texte) { champ.focus(); return; }
         var ex = _storyExtrait(s);
-        var message = "💬 Commentaire sur ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
+        var message = "↩️ Ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
         envoyer.disabled = true;
         Promise.resolve(_envoyerALAuteurStory(s, nom, message)).then(function (ok) {
           envoyer.disabled = false;
@@ -2638,16 +2831,33 @@ function _barreReponseStory(s, nom, reel) {
           try { champ.blur(); } catch (_) {}
           ecrit(false);
           window._storyEnPause = false;
-          _storyAnnoncerEnvoi(ok, "Commentaire envoyé à " + (nom || "l'auteur"));
+          _storyAnnoncerEnvoi(ok, "Message envoyé à " + (nom || "l'auteur"));
         });
         try { if (window.tel && tel.action) tel.action("story_reponse", {}); } catch (_t) {}
       });
     } else if (mienne) {
+      // « Activité » (comme Instagram) : qui a vu, qui a aimé — ma story RÉELLE seulement.
+      if (storyIxPossible(s)) {
+        var activite = document.createElement("button");
+        activite.type = "button";
+        activite.id = "storyActiviteBtn";
+        activite.className = "story-activite-btn";
+        activite.textContent = "👁 Activité";
+        activite.addEventListener("click", function () { ouvrirActiviteStory(s); });
+        barre.appendChild(activite);
+        Promise.resolve(supaStoryActivite(s.id)).then(function (a) {
+          if (!a || !a.vues || !document.body.contains(activite)) return;
+          activite.textContent = "👁 " + a.vues.length + (a.jaime.length ? "  ❤️ " + a.jaime.length : "");
+          activite.setAttribute("aria-label", "Activité : " + a.vues.length + " vue(s), " + a.jaime.length + " j'aime");
+        });
+      }
       var nouvelle = document.createElement("button");
       nouvelle.type = "button";
       nouvelle.id = "storyNouvelleBtn";
       nouvelle.className = "story-nouvelle-btn";
-      nouvelle.textContent = "＋ Nouvelle story";
+      nouvelle.textContent = storyIxPossible(s) ? "＋" : "＋ Nouvelle story";
+      nouvelle.setAttribute("aria-label", "Nouvelle story");
+      if (storyIxPossible(s)) nouvelle.classList.add("compacte");
       nouvelle.addEventListener("click", function () { closeStoryViewer(); try { openStudioAsStory(); } catch (_) {} });
       barre.appendChild(nouvelle);
     } else {
@@ -2656,22 +2866,36 @@ function _barreReponseStory(s, nom, reel) {
       barre.appendChild(espace);
     }
 
-    // 💬 Commenter (2026-11-14, demande de Benjamin) : le commentaire va à
-    // l'auteur, dans son fil direct, comme une réponse Instagram. Un commentaire
-    // PUBLIC sous la story demanderait une table et sa RLS (migration à part).
-    if (!mienne) {
+    // 💬 Commenter : les commentaires PUBLICS de la story (feuille), visibles
+    // de tous ceux qui voient la story — table `story_comments`. Tant que la
+    // migration n'est pas appliquée, ou sur une story d'exemple : le champ
+    // « Envoyer un message » (fil direct de l'auteur).
+    if (storyIxPossible(s) || !mienne) {
       var bulle = document.createElement("button");
       bulle.type = "button";
       bulle.id = "storyCommentBtn";
       bulle.className = "story-action-btn story-comment-btn";
-      bulle.setAttribute("aria-label", "Commenter");
+      bulle.setAttribute("aria-label", "Commentaires");
       bulle.innerHTML = STORY_BULLE_SVG;
       bulle.addEventListener("click", function () {
+        if (storyIxPossible(s)) { ouvrirCommentairesStory(s, nom); return; }
         var champCom = document.querySelector("#storyReplyBar .story-reply-input");
         if (champCom) { champCom.focus(); return; }
         toast("Story d'exemple — commente la story d'un vrai membre", "info");
       });
       barre.appendChild(bulle);
+      if (storyIxPossible(s)) {
+        Promise.resolve(supaStoryNbCommentaires(s.id)).then(function (n) {
+          if (!n || !document.body.contains(bulle)) return;
+          var pastille = document.createElement("span");
+          pastille.className = "story-action-badge";
+          pastille.textContent = n > 99 ? "99+" : String(n);
+          bulle.appendChild(pastille);
+          bulle.setAttribute("aria-label", "Commentaires (" + n + ")");
+        });
+      }
+    }
+    if (!mienne) {
       var coeur = document.createElement("button");
       coeur.type = "button";
       coeur.id = "storyLikeBtn";
@@ -2681,6 +2905,17 @@ function _barreReponseStory(s, nom, reel) {
       coeur.innerHTML = STORY_COEUR_SVG;
       coeur.addEventListener("click", function () { storyBasculerJaime(s, nom, reel && !mienne); });
       barre.appendChild(coeur);
+      // Le cœur dit l'état EN BASE (un autre appareil a pu aimer ou défaire).
+      if (storyIxPossible(s)) {
+        Promise.resolve(supaStoryMesJaime([s.id])).then(function (ids) {
+          if (!Array.isArray(ids) || !document.body.contains(coeur)) return;
+          var oui = ids.indexOf(String(s.id)) > -1;
+          _storyNoterJaimeLocal(s.id, oui);
+          coeur.classList.toggle("aimee", oui);
+          coeur.setAttribute("aria-pressed", oui ? "true" : "false");
+          coeur.setAttribute("aria-label", oui ? "Je n'aime plus" : "J'aime");
+        });
+      }
     }
     var partage = document.createElement("button");
     partage.type = "button";
@@ -9817,6 +10052,96 @@ async function supaReport(targetType, targetId, reason) {
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----
+// ═══ J'AIME, « VU PAR », COMMENTAIRES D'UNE STORY (2026-11-14) ═════════════
+// Tables `story_likes` / `story_comments` et la policy « Vu par » de
+// `story_views` : migration_story_interactions_2026-11-14.sql. Tant qu'elle
+// n'est pas appliquée, la base répond 42P01 / PGRST205 : `_storyIxDispo`
+// passe à faux et la visionneuse garde son repli (j'aime et réactions en
+// message direct). Seules les stories RÉELLES (`fromSupabase`) d'un COMPTE en
+// ont : une story d'exemple n'a pas de ligne en base.
+var _storyIxDispo = null; // null = inconnu, true = tables présentes, false = absentes
+function _storyIxAbsente(err) {
+  if (!err) return false;
+  var code = String(err.code || "");
+  var m = String(err.message || "");
+  return code === "42P01" || code === "PGRST205" || /story_(likes|comments)/.test(m) && /does not exist|schema cache|introuvable/i.test(m);
+}
+function _storyIxNoter(res) {
+  if (res && res.error && _storyIxAbsente(res.error)) { _storyIxDispo = false; return false; }
+  if (res && !res.error) _storyIxDispo = true;
+  return true;
+}
+function storyIxPossible(s) {
+  return _storyIxDispo !== false && !!(s && s.fromSupabase && s.id)
+    && !!window._supaReal && typeof supa !== "undefined" && !!supa
+    && typeof _compteAuthReel === "function" && _compteAuthReel();
+}
+// J'aime : l'INTENTION locale part telle quelle (jamais re-déduite d'une
+// lecture). Rend { ok, absente }.
+async function supaStoryAimer(storyId, aime) {
+  try {
+    var r = aime
+      ? await supa.from("story_likes").upsert({ story_id: String(storyId), user_id: MY_UID }, { onConflict: "story_id,user_id", ignoreDuplicates: true })
+      : await supa.from("story_likes").delete().eq("story_id", String(storyId)).eq("user_id", MY_UID);
+    if (!_storyIxNoter(r)) return { ok: false, absente: true };
+    if (r.error) { try { diagLog("story_like_refus " + String(r.error.code || "")); } catch (_) {} return { ok: false }; }
+    return { ok: true };
+  } catch (e) { return { ok: false }; }
+}
+// Mes j'aime parmi une liste de stories (pour peindre le cœur).
+async function supaStoryMesJaime(ids) {
+  try {
+    if (!ids || !ids.length) return [];
+    var r = await supa.from("story_likes").select("story_id").eq("user_id", MY_UID).in("story_id", ids.map(String));
+    if (!_storyIxNoter(r) || r.error) return null;
+    return (r.data || []).map(function (x) { return x.story_id; });
+  } catch (e) { return null; }
+}
+// Activité de MA story : qui l'a vue, qui l'a aimée.
+async function supaStoryActivite(storyId) {
+  try {
+    var id = String(storyId);
+    var rv = await supa.from("story_views").select("user_id, seen_at").eq("story_id", id).order("seen_at", { ascending: false }).limit(500);
+    var rl = await supa.from("story_likes").select("user_id").eq("story_id", id).limit(1000);
+    if (!_storyIxNoter(rl)) return { absente: true };
+    if (rv.error || rl.error) return { erreur: true };
+    return {
+      vues: (rv.data || []).filter(function (v) { return v.user_id !== MY_UID; }).map(function (v) { return { userId: v.user_id, at: supaTs(v.seen_at) }; }),
+      jaime: (rl.data || []).map(function (l) { return l.user_id; }),
+    };
+  } catch (e) { return { erreur: true }; }
+}
+async function supaStoryCommentaires(storyId) {
+  try {
+    var r = await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
+    if (!_storyIxNoter(r)) return { absente: true };
+    if (r.error) return { erreur: true };
+    return { liste: (r.data || []).map(function (c) { return { id: c.id, authorId: c.author_id, text: c.content || "", at: supaTs(c.created_at) }; }) };
+  } catch (e) { return { erreur: true }; }
+}
+async function supaStoryNbCommentaires(storyId) {
+  try {
+    var r = await supa.from("story_comments").select("id", { count: "exact", head: true }).eq("story_id", String(storyId));
+    if (!_storyIxNoter(r) || r.error) return null;
+    return typeof r.count === "number" ? r.count : null;
+  } catch (e) { return null; }
+}
+async function supaStoryCommenter(storyId, texte) {
+  try {
+    var r = await supa.from("story_comments").insert({ story_id: String(storyId), author_id: MY_UID, content: texte }).select("id, created_at");
+    if (!_storyIxNoter(r)) return { absente: true };
+    if (r.error || !r.data || !r.data.length) { try { diagLog("story_commentaire_refus " + String((r.error && r.error.code) || "0")); } catch (_) {} return { ok: false }; }
+    return { ok: true, id: r.data[0].id, at: supaTs(r.data[0].created_at) };
+  } catch (e) { return { ok: false }; }
+}
+async function supaStorySupprimerCommentaire(id) {
+  try {
+    var r = await supa.from("story_comments").delete().eq("id", String(id)).select("id");
+    if (r.error || !r.data || !r.data.length) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
 // Table story_views (story_id, user_id) : quelles stories J'AI vues, pour que
 // les anneaux vus/non-vus (Instagram) survivent au changement d'appareil.
 // Les ids des stories seed (« s1 »…) y passent aussi : mêmes ids partout →

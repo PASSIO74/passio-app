@@ -997,6 +997,22 @@ métadonnées ni mémoire tampon ; fin = retour en arrière de la boucle) ; l'au
 avant l'`await` (AUTH-06) ; « prévenu » n'est noté qu'après un envoi accepté et la porte de compte passe
 AVANT le cœur ; un commentaire en cours de saisie bloque toucher et reprise. Verrous ⑦ ⑧.
 
+**Suite le même jour — « la même chose qu'Instagram »** : compteur de j'aime et « Vu par » pour l'auteur,
+commentaires PUBLICS sous la story. Côté base : `migration_story_interactions_2026-11-14.sql` (PR à part,
+contre-revue de Benjamin) — `story_likes`, `story_comments`, policy « Vu par » sur `story_views`. Côté app
+(app-08, bloc « J'AIME, VU PAR, COMMENTAIRES ») :
+- ❤️ s'écrit dans `story_likes` (intention locale, retour arrière sur refus), sans message direct ; le cœur
+  relit l'état en base à l'ouverture ;
+- 💬 ouvre la feuille « Commentaires » (`ouvrirCommentairesStory`) : liste, pastille du nombre, publier,
+  supprimer le sien (ou tous, sur SA story) ; rendu DOM seulement (texte d'autrui par `textContent`) ;
+- sur MA story, « 👁 N ❤️ M » ouvre « Activité » (`ouvrirActiviteStory`) : qui a vu, qui a aimé (en tête) ;
+- le champ du bas redevient « Envoyer un message à X… » (réponse privée, comme Instagram).
+**Bascule sans prérequis** : `_storyIxDispo` passe à faux au premier 42P01 / PGRST205 — tant que la migration
+n'est pas appliquée, ❤️ et 💬 gardent le repli par message direct. Seules les stories RÉELLES
+(`fromSupabase`) d'un compte en ont. Les tables neuves sont en EXCEPTION de `audit-tables-compte`
+(cascade sur `profiles` et `stories`) : les nommer dans `TABLES_COMPTE` ferait échouer toute purge tant que
+la table n'existe pas. Verrous ⑨ ⑨bis ⑩ ⑪.
+
 ## 🔁 LE BOUTON « SUIVRE » DU PROFIL VISITÉ RESTAIT FIGÉ — identifiant en double (2026-11-14)
 
 Rapporté par Benjamin (deux captures Android) : sur le profil visité, le toast disait « Tu suis

@@ -86,7 +86,7 @@ test("② réaction rapide : un message vers l'auteur, la story reste ouverte", 
   expect(await actif(page)).toBe(true);
 });
 
-test("②bis 💬 Commenter : le bouton ouvre le champ, le commentaire part à l'auteur", async ({ page }) => {
+test("②bis 💬 sans table de commentaires (migration non appliquée) : le bouton ouvre le champ, le message part à l'auteur", async ({ page }) => {
   await banc(page);
   await page.evaluate(() => window.__ouvrir("reels"));
   await page.locator("#storyCommentBtn").click();
@@ -97,7 +97,7 @@ test("②bis 💬 Commenter : le bouton ouvre le champ, le commentaire part à l
   await page.waitForTimeout(300);
   const envois = await page.evaluate(() => window.__envois.map((e) => JSON.parse(e.contenu).text));
   expect(envois).toHaveLength(1);
-  expect(envois[0]).toContain("Commentaire sur ta story");
+  expect(envois[0]).toContain("Ta story");
   expect(envois[0]).toContain("Magnifique parcours");
   expect(await actif(page)).toBe(true);
 });
@@ -183,4 +183,97 @@ test("⑧ un commentaire en cours de saisie ne se perd pas d'un toucher sur la s
   await page.waitForTimeout(200);
   const r = await page.evaluate(() => ({ i: storyItemIdx, g: storyGroupIdx, texte: document.querySelector("#storyReplyBar .story-reply-input").value }));
   expect(r).toEqual({ i: 0, g: 0, texte: "Je tape un commentaire" });
+});
+
+
+// ═══ Avec les tables story_likes / story_comments (migration du 2026-11-14) ═══
+// La base est simulée : les fonctions `supaStory*` sont remplacées.
+async function bancBase(page, opts) {
+  await banc(page);
+  await page.evaluate(({ moi, lea, sam, opts }) => {
+    window._supaReal = true;
+    window.supa = window.supa || {};
+    window._compteAuthReel = () => true;
+    window.__aimer = [];
+    window.supaStoryAimer = async (id, aime) => { window.__aimer.push([id, aime]); return opts && opts.absente ? { ok: false, absente: true } : { ok: true }; };
+    window.supaStoryMesJaime = async () => [];
+    window.supaStoryNbCommentaires = async () => 2;
+    window.__coms = [
+      { id: "c1", authorId: sam, text: "<img src=x onerror=window.__xss=1>", at: Date.now() - 60000 },
+      { id: "c2", authorId: moi, text: "Mon commentaire", at: Date.now() - 30000 },
+    ];
+    window.supaStoryCommentaires = async () => ({ liste: window.__coms.slice() });
+    window.supaStoryCommenter = async (id, t) => ({ ok: true, id: "c_new", at: Date.now() });
+    window.supaStorySupprimerCommentaire = async () => true;
+    window.supaStoryActivite = async () => ({ vues: [{ userId: lea, at: Date.now() }, { userId: sam, at: Date.now() }], jaime: [sam] });
+    window._resolveProfilesByIds = async (ids) => { const o = {}; ids.forEach((id) => { o[id] = { id, username: id === sam ? "Sam" : "Léa", emoji: "🙂", color: "#7c3aed" }; }); return o; };
+    const reelle = (id, auteur, nom) => ({ id, authorId: auteur, authorName: nom, text: "Story " + id, createdAt: Date.now() - 600000, bg: "#7c3aed", fromSupabase: true });
+    window.__ouvrirBase = (quoi) => {
+      storyGroups = quoi === "mienne"
+        ? [{ authorId: moi, stories: [reelle("sb_moi", moi, "Moi")] }]
+        : [{ authorId: lea, stories: [reelle("sb_1", lea, "Léa")] }];
+      openStoryViewerAt(0, 0);
+    };
+  }, { moi: MOI, lea: LEA, sam: SAM, opts: opts || {} });
+}
+
+test("⑨ ❤️ en base : le j'aime s'écrit dans story_likes, aucun message", async ({ page }) => {
+  await bancBase(page);
+  await page.evaluate(() => window.__ouvrirBase("reels"));
+  await page.locator("#storyLikeBtn").click();
+  await page.waitForTimeout(200);
+  await page.locator("#storyLikeBtn").click();
+  await page.waitForTimeout(200);
+  const r = await page.evaluate(() => ({ aimer: window.__aimer, envois: window.__envois.length }));
+  expect(r.aimer).toEqual([["sb_1", true], ["sb_1", false]]);
+  expect(r.envois, "aucun message direct quand la table existe").toBe(0);
+});
+
+test("⑨bis table absente : le j'aime retombe sur le message direct", async ({ page }) => {
+  await bancBase(page, { absente: true });
+  await page.evaluate(() => window.__ouvrirBase("reels"));
+  await page.locator("#storyLikeBtn").click();
+  await page.waitForTimeout(300);
+  const envois = await page.evaluate(() => window.__envois.map((e) => JSON.parse(e.contenu).text));
+  expect(envois).toHaveLength(1);
+  expect(envois[0]).toContain("J'ai aimé ta story");
+});
+
+test("⑩ 💬 commentaires publics : liste échappée, pastille, publier, supprimer le sien", async ({ page }) => {
+  await bancBase(page);
+  await page.evaluate(() => window.__ouvrirBase("reels"));
+  await expect(page.locator("#storyCommentBtn .story-action-badge")).toHaveText("2");
+  await page.locator("#storyCommentBtn").click();
+  const liste = page.locator("#storyComList");
+  await expect(liste.locator(".story-com-row")).toHaveCount(2);
+  await expect(liste.locator(".story-com-texte").first()).toHaveText("<img src=x onerror=window.__xss=1>");
+  expect(await page.evaluate(() => !!window.__xss || !!document.querySelector("#storyComList img"))).toBe(false);
+  await expect(liste.locator(".story-com-row").first()).toContainText("Sam");
+  // Seul MON commentaire a la corbeille (la story n'est pas à moi).
+  await expect(liste.locator(".story-com-suppr")).toHaveCount(1);
+  await page.locator("#storyComInput").fill("Superbe !");
+  await page.locator("#storyComPublier").click();
+  await expect(liste.locator(".story-com-row")).toHaveCount(3);
+  await expect(page.locator("#storyCommentBtn .story-action-badge")).toHaveText("3");
+  await liste.locator('.story-com-row[data-id="c2"] .story-com-suppr').click();
+  await expect(liste.locator(".story-com-row")).toHaveCount(2);
+  // La story est en pause tant que la feuille est ouverte.
+  const w1 = await page.evaluate(() => parseFloat(document.getElementById("sp-0").style.width) || 0);
+  await page.waitForTimeout(700);
+  const w2 = await page.evaluate(() => parseFloat(document.getElementById("sp-0").style.width) || 0);
+  expect(w2 - w1).toBeLessThan(3);
+});
+
+test("⑪ ma story : « Activité » compte vues et j'aime, la feuille liste qui a vu et qui a aimé", async ({ page }) => {
+  await bancBase(page);
+  await page.evaluate(() => window.__ouvrirBase("mienne"));
+  const bouton = page.locator("#storyActiviteBtn");
+  await expect(bouton).toHaveText(/👁 2\s+❤️ 1/);
+  await bouton.click();
+  await expect(page.locator("#storyActResume")).toContainText("Vu par 2");
+  const lignes = page.locator("#storyActListe .story-feuille-ligne");
+  await expect(lignes).toHaveCount(2);
+  await expect(lignes.first()).toContainText("Sam");
+  await expect(lignes.first().locator(".story-act-coeur")).toHaveCount(1);
+  await expect(lignes.nth(1).locator(".story-act-coeur")).toHaveCount(0);
 });
