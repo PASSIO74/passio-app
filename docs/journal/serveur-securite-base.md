@@ -1904,7 +1904,7 @@ par pg_cron, et personne d'autre ne peut l'appeler. Chaque catégorie est borné
 Le verdict compare des IDENTIFIANTS, pas des comptes : une ligne arrivée pendant la migration aurait faussé un
 compte, ou masqué une perte.
 
-## 📸 STORIES : J'AIME, « VU PAR », COMMENTAIRES PUBLICS — `migration_story_interactions_2026-11-14.sql` (**NON appliquée** à l'écriture, 2026-11-14)
+## 📸 STORIES : J'AIME, « VU PAR », COMMENTAIRES PUBLICS — `migration_story_interactions_2026-11-14.sql` (**appliquée en production** le 2026-11-14)
 
 Demande de Benjamin : « la même chose qu'Instagram » — l'auteur voit le nombre de j'aime et « Vu par »,
 les commentaires sont visibles de tous ceux qui voient la story.
@@ -1921,3 +1921,11 @@ les commentaires sont visibles de tous ceux qui voient la story.
 (message direct). **Après application** : vérifier par le canal ① (`pg_policies`, simulation de rôles
 étranger / abonné / auteur / bloqué, `SET LOCAL role` et `SELECT` dans le MÊME appel), puis régénérer
 `migrations/SCHEMA_PROD_REFERENCE.sql`.
+**Appliquée le 2026-11-14** par Benjamin depuis son poste (`appliquer-migration.mjs`, verdict 5 × OK, journalisée),
+sur auto-revue de mainteneur unique (revue n°5906875768, ancrée sur 2fdf689d). **Mesuré ensuite au canal ①** :
+les 10 policies attendues (3 + 3 + 4 sur `story_views`, dont `story_views_select_own` d'origine), RLS active,
+`anon` sans SELECT, aucun UPDATE pour `authenticated`, fonctions SECURITY DEFINER sans EXECUTE pour `anon`,
+aucune table publiée. ⚠️ La simulation de rôles n'est PAS possible par le connecteur en lecture seule
+(`permission denied to set role "authenticated"`) : la preuve par rôle est le banc
+`tests/sql/migration-story-interactions.test.sh` (38 cas, mutation vérifiée). Reste à faire :
+régénérer `migrations/SCHEMA_PROD_REFERENCE.sql`.
