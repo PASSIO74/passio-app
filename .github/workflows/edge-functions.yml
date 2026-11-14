@@ -112,7 +112,7 @@ jobs:
           node --test tests/unit/politique-autonomie.test.mjs
           node --test tests/unit/battement.test.mjs
 
-      - uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3.1.0
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
         with:
           # Version figée : ce binaire reçoit le jeton personnel (E-07).
           version: 2.105.0
