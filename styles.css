@@ -13335,20 +13335,9 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   background: #fff; color: #1f1147; font-weight: 800; font-size: 14px;
 }
 
-/* LOT-51 (audit UX/UI du 2026-11-10, SOC-C03) : sur ordinateur, la colonne
-   mobile de 440 px laissait 70 % de l'écran vide — et la télémétrie de la
-   semaine compte autant d'ordinateurs et de tablettes que de téléphones
-   (13 + 8 appareils sur 32, hors équipe et robots). Sur un grand écran, la
-   colonne s'élargit (640 px) : fil, fiches et conversations y gagnent de la
-   place, sans changer de structure — la navigation reste en bas, le choix
-   mobile-first est gardé. Aucun calcul de l'app ne lit la largeur de la
-   colonne ; le téléphone et la tablette ne changent pas. */
-@media (min-width: 1100px) and (min-height: 700px) {
-  .app-shell {
-    width: min(640px, calc(100vw - 96px));
-    max-width: none;
-  }
-}
+/* LOT-51 (audit UX/UI du 2026-11-10, SOC-C03) : la colonne élargie à 640 px du
+   grand écran est REMPLACÉE, depuis le 2026-11-14, par la disposition pleine
+   page (bloc ORDINATEUR-PLEINE-PAGE, en fin de feuille). */
 
 /* LOT-52 (audit UX/UI du 2026-11-10, PCS-C05) : le rappel de la publication
    d'origine, au-dessus du champ — une ligne qu'on peut fermer. */
@@ -13361,3 +13350,232 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
    (le ⋯ du profil visité et le badge photo avaient déjà leur zone). */
 .v8-switch-go { min-height: 44px; }
 #pcropZoom { min-height: 44px; }
+
+/* ═══ ORDINATEUR-PLEINE-PAGE:DEBUT ═══════════════════════════════════════════
+   Demande de Benjamin du 2026-11-14 : « pour l'utilisation sur ordinateur, fais
+   en sorte que cela ressemble à un vrai site qui prend toute la page ».
+   À partir de 1024 px de large, l'app n'est plus une colonne de téléphone
+   posée au milieu de l'écran : la coque occupe toute la fenêtre, l'en-tête
+   court sur toute la largeur, la navigation devient un menu latéral à gauche
+   et le contenu se cale dans une largeur de lecture.
+   CSS seul : aucun nœud n'est créé ni déplacé, aucun calcul de l'app ne lit la
+   largeur de la coque. Sous 1024 px, rien ne change.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  :root {
+    --pc-rail: 248px;   /* largeur du menu latéral */
+    --pc-tete: 64px;    /* hauteur de l'en-tête (celle de .app-topbar) */
+  }
+  html, body { background: #f6f5fa; }
+
+  /* ── La coque : toute la fenêtre, en grille ──────────────────────────────
+     Seuls les enfants DANS LE FLUX sont des cellules (en-tête, contenu, pied
+     des filtres, barres de navigation) ; les panneaux absolus et fixes
+     (accueil, inscription, stories, conversation…) ne sont pas concernés. */
+  .app-shell {
+    width: 100%;
+    max-width: none;
+    height: var(--app-vh, 100svh);
+    max-height: var(--app-vh, 100svh);
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: grid;
+    grid-template-columns: var(--pc-rail) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .app-shell > .app-topbar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    height: var(--pc-tete);
+    padding: 8px 28px 8px 24px;
+  }
+  .app-shell > .app-main {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 28px 32px 56px;
+    scrollbar-gutter: stable;
+  }
+  .app-main::-webkit-scrollbar { width: 10px; }
+  /* Le contenu : une largeur de lecture, centrée dans la zone de droite. */
+  .app-main > .screen { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+  /* ── Le menu latéral ─────────────────────────────────────────────────── */
+  .app-shell > .app-nav,
+  #appNav.app-nav,
+  #appNavV2.app-nav-v2 {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    grid-template-columns: none;
+    padding: 20px 14px;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.72);
+    overflow-y: auto;
+  }
+  .app-shell > .app-nav .nav-item,
+  #appNavV2 .nav-v2-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    flex: 0 0 auto;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 15px;
+    color: var(--text-dim, #4b4563);
+    transition: background 140ms ease, color 140ms ease;
+  }
+  .app-shell > .app-nav .nav-label,
+  #appNavV2 .nav-label {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .app-shell > .app-nav .nav-item:hover,
+  #appNavV2 .nav-v2-item:hover { background: rgba(124, 58, 237, 0.07); color: var(--text); }
+  .app-shell > .app-nav .nav-item.active,
+  #appNavV2 .nav-v2-item.active { background: var(--accent-wash, #f1ebfe); color: var(--accent); }
+  #appNavV2 .nav-v2-item.active .nav-icon { transform: none; }
+  #appNavV2 .nav-v2-item.active::before {
+    top: 12px;
+    bottom: 12px;
+    left: 0;
+    width: 3px;
+    height: auto;
+  }
+  /* « Créer » : le bouton principal du menu, sous les destinations. */
+  #appNavV2 .nav-v2-cta {
+    order: 10;
+    margin-top: 14px;
+    justify-content: center;
+    gap: 8px;
+    background: var(--grad-hero);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(124, 58, 237, 0.28);
+  }
+  #appNavV2 .nav-v2-cta:hover { background: var(--grad-hero); color: #fff; filter: brightness(1.06); }
+  #appNavV2 .nav-v2-cta .nav-icon {
+    width: 24px;
+    height: 24px;
+    margin-top: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  #appNavV2 .nav-v2-cta .nav-icon svg { width: 22px; height: 22px; }
+  #appNavV2 .nav-v2-cta .nav-label { color: #fff; }
+
+  /* ── Écrans à grille : la largeur sert à montrer plus, pas à étirer ───── */
+  .app-main > #screen-irl,
+  .app-main > #screen-explore { max-width: 1080px; }
+  #eventList {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    align-items: start;
+  }
+  #eventList > :not(.event-card) { grid-column: 1 / -1; }
+  #screen-explore .passion-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  #screen-explore .trending-row { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+
+  /* ── Fenêtres : des dialogues centrés, plus des feuilles montées du bas ── */
+  .modal-backdrop { align-items: center; padding: 32px; }
+  .modal {
+    width: min(560px, 100%);
+    max-height: min(100%, 820px);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding-bottom: 24px;
+    box-shadow: 0 24px 64px rgba(24, 18, 48, 0.28);
+    animation: fadeIn 180ms ease-out;
+  }
+  .v2-sheet-backdrop { align-items: center; padding: 32px; }
+  .v2-sheet { max-width: 460px; border-radius: var(--v2-radius); padding-bottom: 18px; }
+  .v2-sheet-grip { display: none; }
+
+  /* ── Conversation : dans la zone de contenu, le menu et l'en-tête restent ── */
+  #conv-fullpage {
+    top: var(--pc-tete);
+    left: var(--pc-rail);
+    max-height: none;
+    border-left: 1px solid var(--border);
+  }
+
+  #conv-fullpage > .conv-fp-head,
+  #conv-fullpage > .conv-fp-thread,
+  #conv-fullpage > .conv-issue,
+  #conv-fullpage > .conv-toolbar,
+  #conv-fullpage > #convTypingBar,
+  #conv-fullpage > #voiceRecordBar {
+    padding-left: max(20px, calc((100% - 880px) / 2));
+    padding-right: max(20px, calc((100% - 880px) / 2));
+  }
+
+  /* ── Fiches (publication, activité) : des pages du site, sous l'en-tête ── */
+  /* `!important` : #postDetailPage porte `inset:0` en style en ligne. */
+  #postDetailPage,
+  #eventDetailPage.event-detail-page {
+    top: var(--pc-tete) !important;
+    left: var(--pc-rail) !important;
+    border-left: 1px solid var(--border);
+  }
+  #postDetailPage > * {
+    width: 100%;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  /* ── Ce qui se calait sur la barre du bas ─────────────────────────────── */
+  .toast-stack { left: var(--pc-rail); bottom: 28px; }
+  :root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-pied { left: var(--pc-rail); bottom: 0; }
+
+  /* ── Page d'accueil : deux colonnes, comme la page d'entrée d'un site ──── */
+  .landing {
+    padding: 28px max(40px, calc((100% - 1120px) / 2)) 40px;
+  }
+  .landing.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 72px;
+  }
+  .landing-header { grid-column: 1 / -1; grid-row: 1; margin-bottom: 12px; }
+  .landing-hero { grid-column: 1; grid-row: 2; align-self: end; padding-bottom: 8px; }
+  .landing-title { font-size: clamp(40px, 3.5vw, 54px); text-align: left; margin: 14px 0 20px; }
+  .landing-subtitle { font-size: 22px; text-align: left; margin-bottom: 24px; }
+  .landing-cta {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    position: static;
+    max-width: 420px;
+    margin: 0;
+    padding: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .landing-cta .landing-cta-lien { margin-left: 0; }
+  .landing-pillars { grid-column: 2; grid-row: 2 / 4; align-self: center; }
+
+  /* ── Inscription et connexion : une colonne centrée ───────────────────── */
+  .onboarding-shell > .onb-step {
+    align-self: center;
+    width: 100%;
+    max-width: 560px;
+    scrollbar-width: thin;
+  }
+}
+/* ═══ ORDINATEUR-PLEINE-PAGE:FIN ═══ */
