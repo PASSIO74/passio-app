@@ -21,7 +21,9 @@
 //     runner sont dans le lockfile ;
 //   ② deploy.yml : les jobs `deploy` et `preview` installent netlify-cli par `npm ci --ignore-scripts`
 //     sur ce lockfile, puis Deno par version et empreinte, par les MÊMES blocs, sans secret, AVANT
-//     l'étape qui exécute la CLI — et chaque copie d'edge-bundler du lockfile accepte ce Deno ;
+//     l'étape qui exécute la CLI — la plage principale de chaque copie d'edge-bundler accepte ce Deno (son pont
+//     hérité, Deno 1.x dans deno-cli-v1, ne prend jamais le PATH : son piège le fait échouer fermé) — et la CLI
+//     n'est lancée nulle part autrement que par "$NETLIFY_BIN" ;
 //   ③ ces blocs `run:` RÉELS, joués contre de faux outils : la copie et `npm ci` sur les fichiers du
 //     dépôt ; une archive Deno à la mauvaise empreinte ROUGIT sans rien poser sur le PATH ; la bonne
 //     pose Deno sur le PATH et bloque tout téléchargement ; l'étape d'envoi exécute la CLI installée ;
@@ -39,8 +41,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { parse } from "./lib/yaml-mini.mjs";
 import "./lib/bash-windows.mjs";
+
+const { commandes, lignesLogiques, scriptsRun } = createRequire(import.meta.url)("../../scripts/audit-workflows.js");
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8").split("\r\n").join("\n");
@@ -89,8 +94,9 @@ function auditerLockfile(nom, pkgTexte, lockTexte, epingles = []) {
       d.push(`${nom} : ${champ} de la racine du lockfile ≠ package.json — npm ci refuserait, ou installerait autre chose`);
     }
   }
-  // npm n'écrit PAS l'`overrides` dans le lockfile, et `npm ci` ne le compare pas : un overrides changé sans
-  // régénérer passerait. On lit donc son EFFET — chaque copie du paquet forcé porte la version forcée.
+  // npm n'écrit PAS l'`overrides` dans le lockfile. `npm ci` refuse (EUSAGE) un overrides que le lockfile contredit,
+  // mais seulement au déploiement ; ce banc le voit dès `npm run verif`, en lisant son EFFET : chaque copie du
+  // paquet forcé porte la version forcée. Un overrides RETIRÉ passe sans bruit, sans effet sur l'arbre installé.
   for (const [p, v] of Object.entries(pkg.overrides || {})) {
     if (typeof v !== "string") continue;
     const copies = Object.entries(paquets).filter(([cle]) => cle && nomDeCle(cle) === p);
@@ -236,9 +242,16 @@ function auditerDeploy(texte) {
   for (const [quoi, f] of Object.entries(formes)) {
     if (f.size > 1) d.push(`les installations de ${quoi} ont dérivé (${[...f.values()].map((v) => v.join("+")).join(" ≠ ")}) : un seul bloc, deux copies`);
   }
-  // Aucune autre installation de la CLI, nulle part dans le workflow (ni version en dur, ni npx).
-  const ailleurs = texte.split("\n").filter((l) => !/^\s*#/.test(l) && /netlify-cli@/.test(l));
-  if (ailleurs.length) d.push(`netlify-cli installé par version en dur : ${ailleurs.map((l) => l.trim()).join(" | ")}`);
+  // La CLI ne se lance nulle part autrement que par "$NETLIFY_BIN" : aucun script du workflow ne nomme `netlify` ou
+  // `netlify-cli` comme mot (npx, npm exec, version en dur…) — la gate, elle, ne voit pas un `npx netlify-cli` sans version.
+  for (const script of scriptsRun(texte.split("\n"))) {
+    for (const { n, l } of lignesLogiques(script.lignes)) {
+      for (const c of commandes(l)) {
+        const nomme = c.find((x) => /^(?:netlify|netlify-cli)(?:@.*)?$/.test(x));
+        if (nomme) d.push(`deploy.yml:${n} : la CLI est lancée autrement que par "$NETLIFY_BIN" (${c.join(" ")}) — hors du lockfile figé`);
+      }
+    }
+  }
   return { defauts: d, versionDeno };
 }
 
@@ -265,7 +278,9 @@ function auditerDependabot(texte) {
   if (!maj) return ["dependabot.yml : /.github/netlify-cli n'est pas surveillé — aucun avis de sécurité sur l'arbre de la CLI"];
   const d = [];
   if (String(maj["open-pull-requests-limit"]) !== "0") d.push("dependabot.yml : /.github/netlify-cli doit rester en mises à jour de sécurité seulement (open-pull-requests-limit: 0)");
-  if (String((maj.cooldown || {})["default-days"]) !== "7") d.push("dependabot.yml : /.github/netlify-cli sans le délai de 7 jours des autres lockfiles");
+  // Le délai (cooldown) ne vaut que pour les mises à jour de VERSION, coupées ici : c'est une cohérence avec les autres
+  // entrées, pas une protection. Les PR de sécurité arrivent sans délai, et se vérifient à la main (README).
+  if (String((maj.cooldown || {})["default-days"]) !== "7") d.push("dependabot.yml : /.github/netlify-cli ne suit pas la politique des autres lockfiles npm (cooldown 7)");
   return d;
 }
 
@@ -306,8 +321,14 @@ const posix = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (x, dr) => "/
 const etapeDe = (texte, job, quoi) => parse(texte).jobs[job].steps.find(quoi);
 
 /** Prépare un bac : un faux dépôt, un RUNNER_TEMP, un HOME, un dossier de faux outils, un journal. */
+const BACS = [];
+test.after(() => {
+  for (const b of BACS) fs.rmSync(b, { recursive: true, force: true });
+});
+
 function bac(outils) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), "outils-ci-figes-"));
+  BACS.push(racine);
   const d = { racine, ws: path.join(racine, "ws"), tmp: path.join(racine, "runner-temp"), home: path.join(racine, "home"), bin: path.join(racine, "bin"), vu: path.join(racine, "vu") };
   for (const x of [d.ws, d.tmp, d.home, d.bin, d.vu]) fs.mkdirSync(x, { recursive: true });
   d.log = path.join(racine, "journal.txt");
@@ -470,6 +491,14 @@ const MUTATIONS = [
     nom: "le dossier entier est copié (un .npmrc y entrerait)",
     muter: (f) => ({ ...f, deploy: remplacer(f.deploy, COPIE, COPIE.replace("cp ", "cp -r \"$GITHUB_WORKSPACE/.github/netlify-cli/.\" "), 2) }),
     attendu: /dossier entier/,
+  },
+  {
+    nom: "la CLI lancée par npx, sans version, dans une étape à jeton (la gate ne le voit pas)",
+    muter: (f) => ({
+      ...f,
+      deploy: remplacer(f.deploy, "      - name: Deploy to Netlify\n", "      - name: Envoi parallèle\n        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: npx netlify-cli deploy --prod --dir dist\n\n      - name: Deploy to Netlify\n"),
+    }),
+    attendu: /lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
   },
   { nom: "le .netlify/ du dépôt n'est plus retiré", muter: (f) => ({ ...f, deploy: remplacer(f.deploy, '          rm -rf "$GITHUB_WORKSPACE/.netlify"\n', "", 2) }), attendu: /un \.netlify\/ du dépôt resterait/ },
   {

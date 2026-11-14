@@ -1172,7 +1172,8 @@ jobs:
           # netlify-cli@27.1.2` figeait la CLI, pas ses ~1 120 dépendances : le 14/11 à 11:29 UTC,
           # le déploiement de production a rougi en E404 sur une dépendance publiée UNE MINUTE plus
           # tôt (run 43588829557). Une version malveillante fraîche serait entrée aussi vite — et
-          # cette CLI tourne à l'étape suivante avec NETLIFY_AUTH_TOKEN, après « Artefact identique ».
+          # cette CLI tourne plus loin, dans l'étape d'envoi, avec NETLIFY_AUTH_TOKEN (en production, après
+          # « Artefact identique »).
           # `.github/netlify-cli/` fige l'arbre entier, chaque archive vérifiée par son empreinte
           # sha512 ; `--ignore-scripts` : aucun script d'installation de tiers ne s'exécute.
           # Jamais `npx --yes netlify-cli@…` ni `npm install` ici : audit-workflows les refuse.
@@ -1194,8 +1195,9 @@ jobs:
           # fonctions de bord envoyées en production (2026-11-14). Sans Deno sur le PATH,
           # @netlify/edge-bundler téléchargeait à CHAQUE déploiement le dernier Deno publié
           # (dl.deno.land/release-latest.txt), sans vérifier d'empreinte. On pose ici un Deno de version
-          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (toute plage
-          # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
+          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (la plage principale
+          # de chaque edge-bundler l'accepte : le banc le tient ; son pont hérité, Deno 1.x, ne prend jamais le
+          # PATH : piégé lui aussi, il échoue fermé). SANS REPLI : un FICHIER à la place des
           # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
           # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
           # Téléchargement borné à 120 s par essai et 300 s en tout, essais compris (`--retry-all-errors` est sans
@@ -1367,7 +1369,8 @@ jobs:
           # netlify-cli@27.1.2` figeait la CLI, pas ses ~1 120 dépendances : le 14/11 à 11:29 UTC,
           # le déploiement de production a rougi en E404 sur une dépendance publiée UNE MINUTE plus
           # tôt (run 43588829557). Une version malveillante fraîche serait entrée aussi vite — et
-          # cette CLI tourne à l'étape suivante avec NETLIFY_AUTH_TOKEN, après « Artefact identique ».
+          # cette CLI tourne plus loin, dans l'étape d'envoi, avec NETLIFY_AUTH_TOKEN (en production, après
+          # « Artefact identique »).
           # `.github/netlify-cli/` fige l'arbre entier, chaque archive vérifiée par son empreinte
           # sha512 ; `--ignore-scripts` : aucun script d'installation de tiers ne s'exécute.
           # Jamais `npx --yes netlify-cli@…` ni `npm install` ici : audit-workflows les refuse.
@@ -1389,8 +1392,9 @@ jobs:
           # fonctions de bord envoyées en production (2026-11-14). Sans Deno sur le PATH,
           # @netlify/edge-bundler téléchargeait à CHAQUE déploiement le dernier Deno publié
           # (dl.deno.land/release-latest.txt), sans vérifier d'empreinte. On pose ici un Deno de version
-          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (toute plage
-          # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
+          # exacte, vérifié par l'empreinte de son archive, et la CLI le prend sur le PATH (la plage principale
+          # de chaque edge-bundler l'accepte : le banc le tient ; son pont hérité, Deno 1.x, ne prend jamais le
+          # PATH : piégé lui aussi, il échoue fermé). SANS REPLI : un FICHIER à la place des
           # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
           # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
           # Téléchargement borné à 120 s par essai et 300 s en tout, essais compris (`--retry-all-errors` est sans
