@@ -918,7 +918,7 @@ window.addEventListener("passio:app-ready", function () {
 // Portes : Paramètres → Support (`shareBeta`), le menu ⋯ (crayon) de mon profil,
 // le séparateur « Exemples PASSIO » du fil (compte seulement).
 // ═══════════════════════════════════════════════════════════════════════════
-var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
+var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions. Viens me rejoindre 👇";
 
 function lienInvitationAmis() {
   if (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) return lienPartageDe("user", MY_UID);

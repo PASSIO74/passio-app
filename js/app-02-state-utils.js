@@ -3888,6 +3888,8 @@ function ouvrirFeuillePartage(o) {
   var quoi = o.quoi || "publication";
   var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil" };
   var signe = /[?&]inv=/.test(String(o.url || ""));
+  // Le lien partagé est la forme COMPACTE (`?s=`) — `signe` est lu avant.
+  o.url = compacterLienPartage(o.url);
   var vignette = o.vignette && !/^data:/.test(String(o.vignette)) ? ((typeof passioThumb === "function") ? passioThumb(o.vignette, 192) : o.vignette) : "";
   var html = '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + shareIconSvg(20) + " " + escapeHtml(titres[quoi] || "Partager") + '</div>'
@@ -3927,7 +3929,46 @@ function ouvrirFeuillePartage(o) {
   if (typeof o.inviter === "function") brancher("_partageInviter", function () { o.inviter(); });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LIEN DE PARTAGE COMPACT (2026-11-14, demande de Benjamin : « supprime toutes
+// ces lettres dans le texte sous la photo »). Le lien court `/e/<id>` portait
+// `?inv=<uuid 36>&plk=lk_<25>` — 90 caractères illisibles sous l'aperçu
+// WhatsApp. Il porte désormais `?s=<jeton>` : l'invitant en base64url (22) et
+// le suivi sans son `lk_` (10). L'Edge Function (`lireJetonPartage`,
+// netlify/lib/apercu-coeur.js) et le service worker le redéploient en
+// `?plk=…&inv=…` vers le lien profond : l'application ne voit RIEN changer.
+// Seule la forme courte `/[pue]/<id>` est compactée (en local, le lien profond
+// en hash garde ses paramètres longs, que l'app lit directement) ; un
+// paramètre hors forme laisse le lien INTACT plutôt que de perdre une donnée.
+// ═══════════════════════════════════════════════════════════════════════════
+function compacterLienPartage(url) {
+  var s = String(url == null ? "" : url);
+  try {
+    var m = /^(https?:\/\/[^\/?#]+\/[pue]\/[A-Za-z0-9_-]{1,100})\?([^#]*)$/.exec(s);
+    if (!m) return s;
+    var inv = null, plk = null, autre = false;
+    new URLSearchParams(m[2]).forEach(function (v, k) {
+      if (k === "inv") inv = v; else if (k === "plk") plk = v; else autre = true;
+    });
+    if (autre) return s;
+    var jeton = "";
+    if (inv) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv)) return s;
+      var hex = inv.replace(/-/g, "").toLowerCase(), bin = "";
+      for (var i = 0; i < 32; i += 2) bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+      jeton += btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+    if (plk) {
+      var lk = /^lk_([a-z0-9]{10})$/.exec(plk);
+      if (!lk) return s;
+      jeton += lk[1];
+    }
+    return jeton ? m[1] + "?s=" + jeton : s;
+  } catch (e) { return s; }
+}
+
 function partagerOuCopier(data, msgCopie) {
+  if (data && data.url) data = Object.assign({}, data, { url: compacterLienPartage(data.url) });
   const url = (data && data.url) || "";
   const texteCopie = data && data.text ? (data.text + "\n" + url) : url;
   const copier = function () {

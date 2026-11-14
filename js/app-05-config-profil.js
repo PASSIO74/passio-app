@@ -4012,7 +4012,7 @@ function openReelShareModal(postId) {
     quoi: "bobine", auteur: author.name || "Passionné", extrait: extrait,
     vignette: reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || "",
     url: url,
-    message: "Une bobine de " + (author.name || "Passionné") + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    message: "Regarde la bobine de " + (author.name || "Passionné") + " sur PASSIO 🎬",
     republier: function () { shareReelInFeed(postId); },
   });
 }

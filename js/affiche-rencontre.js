@@ -90,7 +90,9 @@
     }
   }
 
-  // Gabarit d'un identifiant de suivi : `lk_` + `uid16()` de telemetry.js
+  // Gabarit d'un identifiant de suivi : `lk_` + 10 caractères depuis le
+  // 2026-11-14 (ancienne forme `uid16()`, 25) — le gabarit garde l'ancienne
+  // longueur : plus long que nécessaire, donc toujours du côté sûr.
   // (8 caractères d'horodatage, un tiret, 16 aléatoires = 28), plus 2 de marge.
   // On ne CRÉE le lien suivi que si un lien de cette longueur tient dans le
   // QR : sinon le pilotage compterait un lien créé qui ne peut pas s'ouvrir.
