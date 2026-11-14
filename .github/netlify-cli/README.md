@@ -20,12 +20,16 @@ Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jet
 Les verrous :
 
 - `tests/unit/outils-ci-figes.test.mjs` (dans `npm run verif`) : lockfile, étapes, plages de Deno, et
-  35 réinjections ;
-- `scripts/audit-workflows.js` : dans les scripts `run:`, il refuse les installations npm et npx hors
-  lockfile qu'il reconnaît (lues comme npm 11.13 les lit), pnpm, yarn et bun, et un `npm ci` ou
-  `npm rebuild` sans `--ignore-scripts` effectif. Il refuse aussi tout `npm-shrinkwrap.json`, `.npmrc`
-  ou `.netlify/` suivi. Il ne voit pas un `npx <outil>` sans version : le banc, lui, refuse toute
-  exécution de la CLI autrement que par `"$NETLIFY_BIN"`.
+  41 réinjections ;
+- `scripts/audit-workflows.js` lit chaque workflow et action composite par le lecteur YAML fermé du dépôt,
+  et TOUTE valeur comme du shell, un `name:` excepté. Il refuse les installations npm et npx hors lockfile,
+  pnpm, yarn et bun, et un `npm ci` ou `npm rebuild` sans `--ignore-scripts` lu avec certitude. Une forme
+  qu'il ne sait pas lire est refusée, jamais admise : un YAML hors du sous-ensemble du lecteur, une option
+  devant la sous-commande de npm ou devant l'outil de npx. Il refuse aussi tout `npm-shrinkwrap.json`,
+  `.npmrc` ou `.netlify/` suivi.
+- La gate ne voit pas un `npx <outil>` sans version. Pour la CLI Netlify, le banc refuse, dans tous les
+  workflows et actions composites, une ligne qui porte `netlify-cli@` et toute commande qui nomme `netlify`
+  ou `netlify-cli` (`bash -c` et `eval` compris). Un nom recomposé par variable (`npx "$X"`) lui échappe.
 
 ## Pourquoi
 

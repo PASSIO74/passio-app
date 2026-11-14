@@ -22,8 +22,11 @@
 //   ② deploy.yml : les jobs `deploy` et `preview` installent netlify-cli par `npm ci --ignore-scripts`
 //     sur ce lockfile, puis Deno par version et empreinte, par les MÊMES blocs, sans secret, AVANT
 //     l'étape qui exécute la CLI — la plage principale de chaque copie d'edge-bundler accepte ce Deno (son pont
-//     hérité, Deno 1.x dans deno-cli-v1, ne prend jamais le PATH : son piège le fait échouer fermé) — et la CLI
-//     n'est lancée nulle part autrement que par "$NETLIFY_BIN" ;
+//     hérité, Deno 1.x dans deno-cli-v1, ne prend jamais le PATH : son piège le fait échouer fermé) ;
+//     et dans TOUS les workflows et actions composites : aucune ligne non commentée ne porte `netlify-cli@`
+//     (une version en dur, même posée dans une variable), et aucune commande — lue comme la gate la lit, toute
+//     valeur du YAML, `bash -c` et `eval` compris — ne nomme `netlify` ou `netlify-cli` comme mot : la CLI ne
+//     se lance que par "$NETLIFY_BIN". Hors de portée : un nom de CLI recomposé par variable (`npx "$X"`) ;
 //   ③ ces blocs `run:` RÉELS, joués contre de faux outils : la copie et `npm ci` sur les fichiers du
 //     dépôt ; une archive Deno à la mauvaise empreinte ROUGIT sans rien poser sur le PATH ; la bonne
 //     pose Deno sur le PATH et bloque tout téléchargement ; l'étape d'envoi exécute la CLI installée ;
@@ -45,11 +48,19 @@ import { createRequire } from "node:module";
 import { parse } from "./lib/yaml-mini.mjs";
 import "./lib/bash-windows.mjs";
 
-const { commandes, lignesLogiques, scriptsRun } = createRequire(import.meta.url)("../../scripts/audit-workflows.js");
+const { commandesDuWorkflow, actionsComposites } = createRequire(import.meta.url)("../../scripts/audit-workflows.js");
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8").split("\r\n").join("\n");
+/** Tous les workflows et les actions composites que la gate lit, par chemin. */
+const lireWorkflows = () => {
+  const noms = fs.readdirSync(path.join(RACINE, ".github/workflows")).filter((f) => /\.ya?ml$/.test(f)).map((f) => `.github/workflows/${f}`);
+  const textes = noms.map(lire);
+  const composites = actionsComposites(textes, { actions: path.join(RACINE, ".github/actions"), racine: RACINE });
+  return Object.fromEntries([...noms, ...composites].map((f) => [f, lire(f)]));
+};
 const reel = () => ({
+  workflows: lireWorkflows(),
   netlifyPkg: lire(".github/netlify-cli/package.json"),
   netlifyLock: lire(".github/netlify-cli/package-lock.json"),
   racinePkg: lire("package.json"),
@@ -242,17 +253,36 @@ function auditerDeploy(texte) {
   for (const [quoi, f] of Object.entries(formes)) {
     if (f.size > 1) d.push(`les installations de ${quoi} ont dérivé (${[...f.values()].map((v) => v.join("+")).join(" ≠ ")}) : un seul bloc, deux copies`);
   }
-  // La CLI ne se lance nulle part autrement que par "$NETLIFY_BIN" : aucun script du workflow ne nomme `netlify` ou
-  // `netlify-cli` comme mot (npx, npm exec, version en dur…) — la gate, elle, ne voit pas un `npx netlify-cli` sans version.
-  for (const script of scriptsRun(texte.split("\n"))) {
-    for (const { n, l } of lignesLogiques(script.lignes)) {
-      for (const c of commandes(l)) {
-        const nomme = c.find((x) => /^(?:netlify|netlify-cli)(?:@.*)?$/.test(x));
-        if (nomme) d.push(`deploy.yml:${n} : la CLI est lancée autrement que par "$NETLIFY_BIN" (${c.join(" ")}) — hors du lockfile figé`);
-      }
+  return { defauts: d, versionDeno };
+}
+
+/**
+ * ② La CLI ne se lance, dans AUCUN workflow ni action composite, autrement que par "$NETLIFY_BIN" — la gate, elle,
+ * ne voit pas un `npx netlify-cli` sans version. Deux règles, parce qu'aucune ne suffit seule (relecture du delta,
+ * 14/11) : une ligne non commentée qui porte `netlify-cli@` (version en dur, même posée dans une variable puis
+ * lancée par `npx "$CLI"`) ; une commande — lue comme la gate la lit : toute valeur du YAML, `bash -c` et `eval`
+ * compris — qui nomme `netlify` ou `netlify-cli` comme mot. La règle d'avant ne lisait que deploy.yml, et seulement
+ * les mots de ses scripts : `bash -c 'npx netlify-cli deploy'`, ou la même ligne dans veille-production.yml (dont
+ * l'étape Verdict porte le jeton), passaient.
+ */
+function auditerCliNetlify(textes) {
+  const d = [];
+  for (const [nom, texte] of Object.entries(textes)) {
+    texte.split("\n").forEach((l, i) => {
+      if (!/^\s*#/.test(l) && /netlify-cli@/.test(l)) d.push(`${nom}:${i + 1} : netlify-cli installé par version en dur : ${l.trim()}`);
+    });
+    let cmds;
+    try {
+      cmds = commandesDuWorkflow(texte);
+    } catch (e) {
+      d.push(`${nom} : illisible pour la gate (${e.message}) — rien n'y est certifié`);
+      continue;
+    }
+    for (const { ligne, mots } of cmds) {
+      if (mots.some((x) => /^(?:netlify|netlify-cli)(?:@.*)?$/.test(x))) d.push(`${nom}:${ligne ?? "?"} : la CLI est lancée autrement que par "$NETLIFY_BIN" (${mots.join(" ")}) — hors du lockfile figé`);
     }
   }
-  return { defauts: d, versionDeno };
+  return d;
 }
 
 /** ④ Défauts de l'installation de controle-realtime.yml. */
@@ -289,9 +319,14 @@ const LOCKFILES = (f) => [
   ...auditerLockfile("racine", f.racinePkg, f.racineLock, [["@supabase/supabase-js", "devDependencies"]]),
   ...auditerLockfile("dashboard", f.dashboardPkg, f.dashboardLock),
 ];
+/** Les workflows lus par la règle de la CLI : ceux du dépôt, deploy.yml et controle-realtime.yml tels que la mutation les a faits. */
+const workflowsDe = (f) => ({ ...f.workflows, ".github/workflows/deploy.yml": f.deploy, ".github/workflows/controle-realtime.yml": f.controle });
 const TOUT = (f) => {
   const deploy = auditerDeploy(f.deploy);
-  return [...LOCKFILES(f), ...deploy.defauts, ...auditerArbreNetlify(f.netlifyLock, deploy.versionDeno), ...auditerControle(f.controle), ...auditerDependabot(f.dependabot)];
+  return [
+    ...LOCKFILES(f), ...deploy.defauts, ...auditerCliNetlify(workflowsDe(f)), ...auditerArbreNetlify(f.netlifyLock, deploy.versionDeno),
+    ...auditerControle(f.controle), ...auditerDependabot(f.dependabot),
+  ];
 };
 
 test("① les trois lockfiles que la CI installe : archives canoniques du registre npm, sha512, épinglages exacts", () => {
@@ -308,6 +343,10 @@ test("② deploy.yml : netlify-cli par npm ci --ignore-scripts, Deno par version
   const { defauts, versionDeno } = auditerDeploy(reel().deploy);
   assert.deepEqual(defauts, []);
   assert.deepEqual(auditerArbreNetlify(reel().netlifyLock, versionDeno), []);
+  // La CLI n'est lancée, dans aucun workflow ni action composite, autrement que par "$NETLIFY_BIN".
+  const f = reel();
+  assert.ok(Object.keys(f.workflows).length >= 15, "tous les workflows et l'action composite sont lus : " + Object.keys(f.workflows).join(", "));
+  assert.deepEqual(auditerCliNetlify(workflowsDe(f)), []);
 });
 
 test("④ controle-realtime, Dependabot et `npm run verif` tiennent leur part", () => {
@@ -473,6 +512,8 @@ const avecLock = (f, muter) => {
   return { ...f, netlifyLock: JSON.stringify(lock, null, 2) + "\n" };
 };
 const premiereCle = (lock) => Object.keys(lock.packages).find((k) => k && !lock.packages[k].inBundle);
+/** Insère une étape (son corps, sans tiret) juste avant l'étape d'envoi du job `deploy`. */
+const avantEnvoi = (deploy, corps) => remplacer(deploy, "      - name: Deploy to Netlify\n", `      - name: Étape ajoutée\n${corps}\n      - name: Deploy to Netlify\n`);
 
 const MUTATIONS = [
   {
@@ -499,6 +540,41 @@ const MUTATIONS = [
       deploy: remplacer(f.deploy, "      - name: Deploy to Netlify\n", "      - name: Envoi parallèle\n        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: npx netlify-cli deploy --prod --dir dist\n\n      - name: Deploy to Netlify\n"),
     }),
     attendu: /lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  // Relecture du delta (14/11) : la règle d'avant ne lisait que deploy.yml, et seulement les mots de ses scripts.
+  {
+    nom: "la CLI par `bash -c` (un seul mot pour une lecture qui ne relit pas le script)",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: bash -c 'npx netlify-cli deploy --prod --dir dist'\n") }),
+    attendu: /deploy\.yml:\d+ : la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI par `eval`",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, '        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: eval "npx netlify-cli deploy --prod --dir dist"\n') }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "une version en dur posée dans une variable, lancée par `npx \"$CLI\"`",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, '        env:\n          CLI: netlify-cli@27.1.2\n        run: npx "$CLI" deploy --prod --dir dist\n') }),
+    attendu: /netlify-cli installé par version en dur : CLI: netlify-cli@27\.1\.2/,
+  },
+  {
+    nom: "la forme de l'incident dans une chaîne passée à bash, sous `timeout`",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, '        run: timeout 10m bash -c "npx --yes netlify-cli@27.1.2 deploy --prod --dir dist"\n') }),
+    attendu: /lancée autrement que par "\$NETLIFY_BIN" \(npx --yes netlify-cli@27\.1\.2 deploy/,
+  },
+  {
+    nom: "la CLI par une action de relance (`with: command:`), hors de tout run:",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08\n        with:\n          command: npx netlify-cli deploy --prod --dir dist\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI par npx dans un AUTRE workflow : veille-production.yml (son étape Verdict porte le jeton)",
+    muter: (f) => {
+      const nom = ".github/workflows/veille-production.yml";
+      const piege = "\n  piege:\n    runs-on: ubuntu-latest\n    steps:\n      - env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: npx netlify-cli api listSites\n";
+      return { ...f, workflows: { ...f.workflows, [nom]: f.workflows[nom].replace(/\n*$/, "\n") + piege } };
+    },
+    attendu: /veille-production\.yml:\d+ : la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli api listSites\)/,
   },
   { nom: "le .netlify/ du dépôt n'est plus retiré", muter: (f) => ({ ...f, deploy: remplacer(f.deploy, '          rm -rf "$GITHUB_WORKSPACE/.netlify"\n', "", 2) }), attendu: /un \.netlify\/ du dépôt resterait/ },
   {

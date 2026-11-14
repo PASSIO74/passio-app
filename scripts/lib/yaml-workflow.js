@@ -15,7 +15,7 @@
 // mappings en accolades/crochets SIMPLES, scalaires nus / entre guillemets /
 // en bloc (`|`, `>`, avec `-`/`+`), commentaires. TOUT LE RESTE (ancres `&`,
 // alias `*`, étiquettes `!`, documents multiples `---`, clés complexes `?`,
-// accolades imbriquées) LÈVE une erreur : une forme inconnue ne doit jamais
+// accolades imbriquées, indicateur d'indentation explicite `|2`) LÈVE une erreur : une forme inconnue ne doit jamais
 // être certifiée sûre — la gate rend alors ROUGE, pas vert.
 // Les scalaires sont rendus en CHAÎNES (aucune conversion de type : `on` reste
 // la clé « on », `true` reste « true ») ; c'est ce que l'audit attend.
@@ -99,10 +99,14 @@ function lireYaml(texte) {
   function suivanteUtile(i) { while (i < lignes.length && lignes[i].t.trim() === "") i++; return i; }
 
   // Scalaire en bloc (`|`, `>`, `|-`, `>+`…) : les lignes plus indentées que `indentParent`.
+  // ⚠️ 2026-11-14 (relecture adverse de la PR #920) : un indicateur d'indentation EXPLICITE (`|2`, `>1-`) fixe
+  // l'indentation du contenu, donc ce qui est « plus indenté » dans un bloc replié — l'ignorer, c'était replier
+  // ce que YAML garde ligne à ligne. Aucun workflow ne s'en sert : il lève.
   function bloc(indic, indentParent, i, ligneDeb) {
     const plie = indic[0] === ">";
     const chomp = indic.slice(1);
-    if (!/^[|>][-+]?[0-9]?$/.test(indic)) throw new ErreurYaml("indicateur de bloc inconnu : " + indic, ligneDeb);
+    if (/^[|>](?:[-+]?[0-9]|[0-9][-+]?)$/.test(indic)) throw new ErreurYaml("indicateur d'indentation explicite : non pris en charge : " + indic, ligneDeb);
+    if (!/^[|>][-+]?$/.test(indic)) throw new ErreurYaml("indicateur de bloc inconnu : " + indic, ligneDeb);
     const corps = [];
     let indentBloc = -1;
     while (i < lignes.length) {
@@ -115,9 +119,29 @@ function lireYaml(texte) {
       i++;
     }
     while (corps.length && corps[corps.length - 1] === "") corps.pop();
-    let s = plie ? corps.join(" ").replace(/  +/g, " ") : corps.join("\n");
+    let s = plie ? replier(corps) : corps.join("\n");
     if (chomp !== "-") s += "\n";
     return { valeur: s, pos: i };
+  }
+  // Le pliage de YAML 1.2 (§ 8.1.3) : deux lignes de texte voisines se joignent par une espace ; une ligne vide
+  // entre elles devient un saut de ligne ; autour d'une ligne PLUS indentée, les sauts de ligne restent. Joindre
+  // tout par une espace faisait de `npm ci` suivi d'un `--ignore-scripts` plus indenté une seule commande, alors
+  // que le shell lance `npm ci` seul, avec les scripts (relecture adverse de la PR #920, 2026-11-14).
+  function replier(corps) {
+    let s = "";
+    let prec = null;
+    let vides = 0;
+    for (const c of corps) {
+      if (c === "") { vides++; continue; }
+      const plusIndentee = /^[ \t]/.test(c);
+      if (prec === null) s += "\n".repeat(vides);
+      else if (prec === "texte" && !plusIndentee) s += vides ? "\n".repeat(vides) : " ";
+      else s += "\n".repeat(vides + 1);
+      s += c;
+      prec = plusIndentee ? "indentee" : "texte";
+      vides = 0;
+    }
+    return s;
   }
 
   // Lit un nœud dont les lignes ont l'indentation `indent` ; rend { valeur, pos }.
