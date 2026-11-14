@@ -15,7 +15,7 @@
 - ✉️ NOTIFIER UN MESSAGE PRIVÉ (2026-09-09) — la cloche ne sonnait que si l'appli était OUVERTE
 - 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
 - ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
-- 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
+- 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06) — RETIRÉ le 2026-11-14
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 - 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
 - 🔁 LE BOUTON « SUIVRE » DU PROFIL VISITÉ RESTAIT FIGÉ — identifiant en double (2026-11-14)
@@ -280,6 +280,8 @@ dites en heure de Paris, quel que soit le fuseau de l'activité.
 ## 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
 
 Rien ne disait à un compte ce qui s'était passé pour lui pendant la semaine : les notifications arrivent une à une dans la cloche, et le fil ne distingue pas ce qui est neuf. Mesuré le même jour (`docs/journal/telemetrie-pilotage-sentinelle.md`, activation) : sur les comptes créés entre 7 et 30 jours plus tôt, un sur trois seulement a fait un geste social dans sa première semaine.
+
+> ⛔ **RETIRÉ le 2026-11-14** (demande de Benjamin : « supprime ce récap hebdomadaire »). Partis ensemble : `js/recap-semaine.js` et sa balise dans `index.html`, `tests/e2e/recap-semaine.spec.js`, la case « Récap de la semaine » de Paramètres › Notifications avec `saveNotifSettings` (plus rien à enregistrer : le bouton est « Fermer »). Restent, délibérément : `passio_recap_semaine_v1` dans `ACCOUNT_SCOPED_KEYS`, pour que la marque laissée sur les appareils parte encore avec le compte ; et la coupure `passio_recap_semaine` dans les listes blanches (client, `_shared/reglages.js`, libellés du pilotage), désormais SANS EFFET — la retirer touche `supabase/`, périmètre critique soumis à la contre-revue de Benjamin : à faire dans une PR à part. Verrou du retrait : `tests/e2e/lot7-reglages.spec.js` ①. La suite de cette fiche est de l'histoire.
 
 **Ce qui existe désormais** : `js/recap-semaine.js` (IIFE `window.PassioRecapSemaine`, hors bloc app, inliné au build) pose UNE carte « Ta semaine sur PASSIO », en FRÈRE juste avant `#feedList`, au plus une fois par semaine ISO (lundi, date LOCALE) et par compte : publications des 7 derniers jours dans les passions du compte (`passionsPossedeesIds()`, hors ses propres publications), abonnements, commentaires et mentions, j'aime, inscriptions à ses activités (comptés sur SES `notifications` des 7 jours), activités à venir dans ses passions (7 prochains jours, hors `cancelled`). Chaque ligne mène là où ça se passe : Rencontrer (`goTo("irl")`), la cloche (`openNotifications()`), ou le fil juste dessous.
 
