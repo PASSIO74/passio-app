@@ -3,7 +3,8 @@
 //   ① IRL-C14 : les vraies activités passent avant les exemples, l'ordre
 //      choisi tenant dans chaque groupe.
 //   ② IRL-C03 / C04 : sans référence (ni ville, ni position — et un refus
-//      n'en est pas une), une ligne propose de choisir sa ville ; le repli
+//      n'en est pas une), la carte « Où ? » du FILTRE invite à choisir sa
+//      ville (2026-11-14 : plus de bandeau en tête de la liste) ; le repli
 //      Paris n'est jamais présenté comme « Position actuelle ».
 //   ③ IRL-C05 : des choix sans résultat le disent dans le pied, avec
 //      « Tout effacer ».
@@ -30,26 +31,26 @@ test("① IRL-C14 : réel d'abord, exemples ensuite, ordre gardé dans chaque gr
   expect(ids).toEqual(["ev_reel_b", "ev_reel_a", "e1", "e2"]);
 });
 
-test("② IRL-C03 / C04 : sans référence, la porte « Choisis ta ville » ; un refus n'est pas une position", async ({ page }) => {
+test("② IRL-C03 / C04 (2026-11-14) : « Choisis ta ville » vit dans le filtre « Où ? », jamais en tête de la liste ; un refus n'est pas une position", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(() => {
     irlSelectedCity = null; irlUserLocation = null; irlUserLocationError = false;
     state.seed.events = [];
     renderIRL();
-    const sans = !!document.getElementById("irlVilleInvite");
+    const sans = { bandeau: !!document.querySelector("#eventList #irlVilleInvite, #eventList .irl-ville-invite"), lieu: irlLieuReference() };
     irlUserLocation = { lat: 48.8566, lng: 2.3522 }; irlUserLocationError = true;
     renderIRL();
-    const apresRefus = { invite: !!document.getElementById("irlVilleInvite"), lieu: irlLieuReference() };
+    const apresRefus = irlLieuReference();
     irlSelectedCity = { name: "Lyon", coords: [45.76, 4.83] };
     renderIRL();
-    const avecVille = !!document.getElementById("irlVilleInvite");
+    const avecVille = irlLieuReference();
     irlSelectedCity = null; irlUserLocation = null; irlUserLocationError = false;
     return { sans, apresRefus, avecVille };
   });
-  expect(r.sans).toBe(true);
-  expect(r.apresRefus.invite, "le repli Paris n'est pas une référence").toBe(true);
-  expect(r.apresRefus.lieu.sub).not.toBe("Position actuelle");
-  expect(r.avecVille).toBe(false);
+  expect(r.sans.bandeau, "plus de bandeau au-dessus des activités").toBe(false);
+  expect(r.sans.lieu.sub).toBe("Choisis ta ville pour voir les distances");
+  expect(r.apresRefus.sub, "le repli Paris n'est pas une référence").toBe("Choisis ta ville pour voir les distances");
+  expect(r.avecVille).toEqual({ nom: "Lyon", sub: "Ville choisie" });
 });
 
 test("③ IRL-C05 : choix sans résultat — le pied le dit et porte « Tout effacer »", async ({ page }) => {
