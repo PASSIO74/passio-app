@@ -55,7 +55,7 @@
 - 📜 L'AGENT DE RÉPARATION REÇOIT ENFIN LE JOURNAL D'UNE EXÉCUTION EN ÉCHEC — COMME DONNÉE, PAS COMME OUTIL (2026-11-12)
 - 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
 - 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
-- 📦 LES OUTILS DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
+- 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -709,7 +709,7 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
 - **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
 - **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
 - **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
-- **Toute installation hors lockfile, un `npm ci` sans `--ignore-scripts`, un `npm-shrinkwrap.json` ou un `.npmrc` suivis, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales (`npx --yes`, `npm install --no-save`) ; il lit désormais la sous-commande de chaque commande (fiche « LES OUTILS DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE »).
+- **Toute installation hors lockfile, un `npm ci` sans `--ignore-scripts`, un `npm-shrinkwrap.json` ou un `.npmrc` suivis, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales (`npx --yes`, `npm install --no-save`) ; il lit désormais la sous-commande de chaque commande (fiche « LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE »).
 - **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
 
 ## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
@@ -1563,12 +1563,15 @@ job. Le détecteur vient désormais d'un arbre extrait du départ (`git worktree
   (`String.raw` ou un fichier de données), jamais par l'outil d'édition, qui peut les écrire bruts : U+2028 casse
   alors une regex JavaScript.
 
-## 📦 LES OUTILS DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
+## 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 
 **Ce qui s'est passé.** Le 14/11 à 11:29 UTC, le déploiement de `958fcd9f` a échoué sur « Installer netlify-cli »
 (run 43588829557) : npm E404 sur `fast-json-stringify-7.3.6.tgz`, publiée à 11:27:40. Les métadonnées du registre
 listaient la version, mais son archive n'était pas encore servie ; elle l'a été une heure plus tard, et le job relancé
-est passé. Rien n'avait changé dans le dépôt.
+est passé. Rien n'avait changé dans le dépôt. Ce n'était pas la première fois. Le 9/09, `@netlify/build` 36.4.8 exigeait
+`@netlify/config` 25.2.5, publiée deux minutes après elle (15:13:49 UTC) : l'ETARGET de ce jour-là, d'où vient
+l'`overrides`, était déjà une version fraîche entrée dans le job. Le commentaire de `deploy.yml` la disait « jamais
+publiée ».
 
 **Le défaut derrière la panne.** `npm install netlify-cli@27.1.2` fige la CLI, pas ses ~1 120 dépendances : toute
 version publiée la minute d'avant entre dans le job de déploiement, une version malveillante aussi. Or cette CLI tourne
@@ -1609,7 +1612,10 @@ l'empêchait demain.
   - `npm install` et ses alias, `update`, `dedupe`, `audit fix`, `init` et `create` ;
   - `npx` et `npm exec` qui téléchargent (`--yes`, `-y`, `--package`, `outil@version`) ;
   - `npm ci` sans `--ignore-scripts` ;
-  - tout `npm-shrinkwrap.json` ou `.npmrc` suivi par git.
+  - tout `npm-shrinkwrap.json` ou `.npmrc` suivi par git, et tout fichier suivi sous `.netlify/` : la CLI y prend des
+    fonctions « internes », les regroupe et exécute leur code avec le jeton, hors du contrôle d'empreinte de `dist/`.
+    Les jobs `deploy` et `preview` suppriment aussi ce dossier avant d'installer la CLI (relecture finale du 14/11 :
+    rien n'y est versionné, mais rien ne l'empêchait, ni la gouvernance ni l'interdit de l'agent).
 
   Avant, il ne voyait que deux formes littérales. Rejouée sur les workflows de `main`, la règle refuse exactement les
   cinq sites corrigés ici.
@@ -1619,7 +1625,7 @@ l'empêchait demain.
     l'`overrides`, binaires Linux, plage de Deno de chaque copie d'edge-bundler) ;
   - les étapes réelles jouées contre de faux outils (une archive Deno à la mauvaise empreinte rougit sans rien poser
     sur le PATH ; l'étape d'envoi exécute la CLI installée) ;
-  - 33 réinjections.
+  - 34 réinjections.
 
 **Pièges.**
 - ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile, et `npm ci` ne le compare pas.** Un `overrides` changé sans
@@ -1649,9 +1655,32 @@ l'empêchait demain.
   configuration Netlify.
 
 **Reste ouvert.**
+- **Les avis de sécurité de l'arbre figé.** `npm audit` relève 23 avis, dont 10 élevés et aucun critique. Ils étaient déjà
+  dans l'installation flottante. Les élevés se corrigent en montant netlify-cli à 27.19.0, qui exige `@netlify/build`
+  ^37.7.6 : il faut donc retirer l'`overrides`, et c'est une PR à part.
+- **Les PR Dependabot de ce dossier.** Elles tournent sans les secrets du dépôt : leur aperçu échoue par construction,
+  et elles ignorent l'`overrides`. Elles ne se fusionnent jamais telles quelles (README).
 - `npx <outil>` SANS `--yes` installe aussi la dernière version en CI, quand l'outil n'est pas dans le lockfile : npm
   suppose `--yes` hors terminal. Les `npx playwright` actuels viennent du lockfile, mais la gate ne le prouve pas.
-- edge-bundler récupère encore, sans version, les types de `https://edge.netlify.com` (`deno cache -r`). Il ne les
-  exécute pas.
+- edge-bundler récupère encore, à chaque déploiement, sans version ni empreinte, `https://edge.netlify.com` : les
+  types (`deno cache -r`) et `bootstrap/globals/types.ts`, importé par son extracteur de configuration. Deno ne les
+  exécute pas (import de types, retiré à l'émission sans `verbatimModuleSyntax`).
+- ⚠️ **Si `edge.netlify.com` tombe pendant un déploiement, l'envoi ne rougit pas.** L'extracteur rend une configuration
+  VIDE sans lever d'erreur (edge-bundler 16.0.4, `config.js` : « Could not load configuration », `{}`), et les routes
+  de PASSIO ne sont déclarées que dans le code des fonctions (`apercu.js`, `demo.js`, `media.js`). On aurait donc un
+  déploiement VERT sans `/p/*`, `/u/*`, `/e/*`, `/demo/*` ni `/media/*`. Constat de la relecture finale, reproduit par
+  un sceptique avec le vrai extracteur et un faux Deno. Ce défaut est antérieur et ne dépend pas de ce lot. La parade
+  est de déclarer ces routes dans `netlify.toml` (`[[edge_functions]]`), qui ne dépend d'aucune extraction : suite à
+  faire.
+- **Le build lancé par `netlify deploy`.** Une commande réglée dans l'interface Netlify, ou détectée depuis le dépôt (un
+  `vite` dans les dépendances donne `vite build`), tournerait avec le jeton et réécrirait `dist/` après « Artefact
+  identique ». Les extensions recommandées d'un framework détecté seraient installées hors lockfile. Rien ne tourne
+  aujourd'hui : le journal de production ne montre ni commande ni extension. La parade solide est `--no-build`. Elle
+  demande une vérification à part, car elle change la façon dont la CLI traite `netlify.toml`, en-têtes de
+  sécurité compris.
+- **Node et Chromium.** `setup-node` installe le dernier correctif de Node 22, qui exécute la CLI avec le jeton et
+  le contrôle Realtime avec `service_role`. `npx playwright install` vérifie l'archive de Chromium par sa seule
+  taille (sentinelle-distante, clé du staging). Ce n'est figé que par la version majeure ou la révision. Le risque
+  reste théorique : il faudrait une image de GitHub ou un CDN de Playwright compromis.
 - `controle-realtime.yml` épingle supabase-js 2.58.0, alors que l'application embarque la 2.116.0. Cet écart n'est
   pas traité ici : changer la version changerait le contrôle lui-même.

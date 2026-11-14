@@ -18,17 +18,18 @@ cette CLI exécute Deno, avec le même jeton dans son environnement. Rien de cel
 Les verrous :
 
 - `tests/unit/outils-ci-figes.test.mjs` (dans `npm run verif`) : lockfile, étapes, plages de Deno, et
-  33 réinjections ;
+  34 réinjections ;
 - `scripts/audit-workflows.js` : il refuse toute installation hors lockfile dans un workflow, un
-  `npm ci` sans `--ignore-scripts`, et tout `npm-shrinkwrap.json` ou `.npmrc` suivi.
+  `npm ci` sans `--ignore-scripts`, et tout `npm-shrinkwrap.json`, `.npmrc` ou `.netlify/` suivi.
 
 ## Pourquoi
 
-- **Le 2026-09-09.** `@netlify/build@36.4.8` exigeait une version de `@netlify/config` jamais publiée.
-  L'installation tombait en ETARGET sur toutes les versions de netlify-cli, et le déploiement de
-  production avec elle. D'où l'`overrides` (`@netlify/build` 36.4.7). La version manquante est publiée
-  depuis : l'`overrides` ne sert plus qu'à garder l'arbre éprouvé en production depuis le 9/09. Le retirer
-  revient à régénérer, donc à éprouver un nouvel arbre.
+- **Le 2026-09-09.** `@netlify/build@36.4.8`, publiée à 15:11:46 UTC, exigeait `@netlify/config@^25.2.5`,
+  publiée deux minutes plus tard (15:13:49) : dans l'intervalle, l'installation tombait en ETARGET sur
+  toutes les versions de netlify-cli, et le déploiement de production avec elle. C'était déjà une version
+  fraîche entrée dans le job, comme le 14/11. D'où l'`overrides` (`@netlify/build` 36.4.7) : il ne sert
+  plus qu'à garder l'arbre éprouvé en production depuis le 9/09. Le retirer, c'est régénérer, donc
+  éprouver un nouvel arbre.
 - **Le 2026-11-14 à 11:29 UTC** (run 43588829557). Le déploiement de production a échoué en E404 sur
   `fast-json-stringify` 7.3.6, publiée une minute plus tôt et pas encore servie par le CDN. Une version
   malveillante fraîche serait entrée aussi vite, et elle aurait pu réécrire `dist/` après le contrôle.
@@ -70,8 +71,10 @@ Les quatre paquets de l'arbre qui ont un script d'installation ne s'en servent p
 - `netlify-cli` installe l'autocomplétion et affiche un message.
 
 Le job « Déploiement preview (PR) » installe et exécute ces outils sur chaque PR : un vrai
-`netlify deploy`, fonctions de bord comprises. Une PR qui les change est donc éprouvée de bout en bout
-avant sa fusion, une fois sa contre-revue faite.
+`netlify deploy`, fonctions de bord comprises. C'est la seule exécution avec le jeton avant la
+production, mais **ce n'est pas un contrôle requis** par la protection de `main`. Une PR qui change ces
+outils ne se fusionne donc qu'avec son aperçu VERT, une fois sa contre-revue faite : la gouvernance
+relancée, l'aperçu repart. Une PR Dependabot ne peut pas l'avoir (voir plus bas).
 
 ## Mettre à jour
 
@@ -86,7 +89,7 @@ avant sa fusion, une fois sa contre-revue faite.
 3. Lancer `node --test tests/unit/outils-ci-figes.test.mjs`.
    - Si `@netlify/edge-bundler` a changé de version, le banc rougit : lire `DENO_VERSION_RANGE` dans
      son `dist/node/bridge.js`, l'inscrire au banc, et vérifier que le Deno figé y entre.
-4. Ouvrir la PR.
+4. Ouvrir la PR, et ne la fusionner qu'avec « Déploiement preview (PR) » vert.
 
 **Pour Deno :**
 
@@ -95,8 +98,23 @@ avant sa fusion, une fois sa contre-revue faite.
 3. La comparer au fichier `deno-x86_64-unknown-linux-gnu.zip.sha256sum` de la même release.
 4. Changer `DENO_VERSION` et `DENO_ZIP_SHA256` dans les DEUX jobs de `deploy.yml` (deploy et preview).
 
+## Avis de sécurité connus, et PR Dependabot
+
+Le 2026-11-14, `npm audit` relève 23 avis dans cet arbre : 2 faibles, 11 modérés, 10 élevés, aucun
+critique. Ils étaient déjà dans l'installation flottante, et le figeage les rend visibles. Les dix élevés
+se corrigent en montant netlify-cli à 27.19.0, qui exige `@netlify/build` ^37.7.6 : il faut donc
+retirer l'`overrides` et éprouver un arbre neuf. C'est une PR à part, qui suit la procédure ci-dessus.
+
+**Une PR Dependabot de ce dossier ne se fusionne jamais telle quelle.**
+
+- Elle tourne sans les secrets du dépôt : son job « Déploiement preview (PR) » n'a pas de jeton, et
+  il échoue par construction. L'épreuve de bout en bout n'a donc jamais lieu.
+- Elle ne sait pas que l'`overrides` contredit la nouvelle version.
+
+On la refait par une PR ordinaire : régénération documentée, `overrides` revu, aperçu avec le vrai jeton.
+
 Ce dossier est sous `.github/` :
 
 - toute modification y est « critique » pour la gouvernance et demande une contre-revue ;
 - l'agent de réparation n'a pas le droit d'y toucher ;
-- Dependabot n'y propose que des correctifs de sécurité (`.github/dependabot.yml`).
+- Dependabot y signale les avis et n'y propose que des correctifs de sécurité (`.github/dependabot.yml`).
