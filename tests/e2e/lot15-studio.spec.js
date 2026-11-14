@@ -6,8 +6,8 @@
 //   ③ CRE-C06 / C07 / C08 / C15 : envies 44 px dans l'ordre du Fil, plus de zone
 //      d'envoi sombre, « Retirer la photo » nommé, « Texte, photo ou vidéo ».
 //   ④ CRE-C10 : une ligne dit pour qui (et combien de temps pour une story).
-//   ⑤ CRE-C02 / C17 : le sélecteur dit « Pour cette publication », annonce l'ajout
-//      aux passions, marque la ligne choisie d'un ✓.
+//   ⑤ CRE-C02 / C17 : le sélecteur ne propose que les passions du profil (2026-11-14),
+//      dit « Pour cette publication », marque la ligne choisie d'un ✓.
 //   ⑥ CRE-C14 : un visiteur n'a aucune demande de micro.
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -93,21 +93,36 @@ test("④ CRE-C10 : la ligne d'audience — story 24 h et passion, compte privé
   expect(r.studio).toBe("Visible par ta communauté");
 });
 
-test("⑤ CRE-C02 / C17 : le sélecteur dit pour quoi, annonce l'ajout, coche la ligne choisie", async ({ page }) => {
+test("⑤ CRE-C02 / C17 : le sélecteur ne propose QUE les passions du profil, coche la ligne choisie", async ({ page }) => {
   await bootOnboarded(page);
   await page.evaluate(() => goTo("studio"));
   await page.waitForTimeout(400);
   const ouvert = await page.evaluate(() => window.PassioFlatUI && typeof PassioFlatUI.ouvrirChoixStudio === "function"
     ? (PassioFlatUI.ouvrirChoixStudio(), true) : false);
   test.skip(!ouvert, "sélecteur plat indisponible dans ce banc");
-  const champ = page.locator("#modalContent .psel-input");
-  await champ.fill("escalade");
   await page.waitForTimeout(600);
-  const ligne = page.locator("#modalContent .psel-item").first();
-  await ligne.click();
+  // 2026-11-14 (Benjamin) : on ne publie que dans SES passions — ni
+  // « Quelques idées », ni « Récemment utilisées » tirées du référentiel.
+  const r = await page.evaluate(() => ({
+    possedees: passionsPossedeesIds(),
+    lignes: [...document.querySelectorAll("#modalContent .psel-item")].map((b) => b.getAttribute("data-psel-id")),
+    sections: [...document.querySelectorAll("#modalContent .psel-section")].map((s) => s.textContent),
+  }));
+  expect(r.possedees.length).toBeGreaterThan(0);
+  expect(r.lignes.slice().sort()).toEqual(r.possedees.slice().sort());
+  expect(r.sections.join("|")).not.toMatch(/Quelques idées|Récemment utilisées/);
+  // Une passion hors profil reste introuvable, même en la tapant.
+  const etrangere = await page.evaluate(() => ["escalade", "football", "cuisine", "guitare"].find((x) => passionsPossedeesIds().indexOf(x) < 0));
+  await page.locator("#modalContent .psel-input").fill(etrangere);
+  await page.waitForTimeout(400);
+  await expect(page.locator("#modalContent .psel-item")).toHaveCount(0);
+  await expect(page.locator("#modalContent .psel-vide")).toContainText("Aucune de tes passions");
+  await page.locator("#modalContent .psel-input").fill("");
+  await page.waitForTimeout(400);
+  await page.locator("#modalContent .psel-item").first().click();
   await page.waitForTimeout(200);
   await expect(page.locator("#modalContent .psel-section").first()).toHaveText("Pour cette publication");
-  await expect(page.locator("#modalContent .psel-note")).toContainText("rejoindra aussi tes passions");
+  await expect(page.locator("#modalContent .psel-note")).toHaveCount(0);
   await expect(page.locator("#modalContent .psel-item-choisie .psel-item-plus").first()).toHaveText("✓");
 });
 

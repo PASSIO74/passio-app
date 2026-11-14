@@ -13726,3 +13726,7 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   :root.passio-ui-7 #screen-profiles #v7ProfileTabs { top: -28px; }
 }
 /* ═══ ORDINATEUR-PLEINE-PAGE:FIN ═══ */
+
+/* Studio : aucune passion sur le profil -> sortie vers « Gérer mes passions » (2026-11-14) */
+.psel-vide-profil { padding: 8px 0; }
+.psel-vide-profil .btn { margin-top: 12px; }
