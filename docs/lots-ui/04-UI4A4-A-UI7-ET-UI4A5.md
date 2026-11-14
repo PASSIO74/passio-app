@@ -104,7 +104,16 @@
   `transition: all 0.25s`, donc une largeur relevée dans la foulée d'un changement de
   drapeau est encore à mi-course (piège vécu en écrivant le test du kill switch). ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
   « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
-  « avant lui » restituait un ordre inventé. ③ ~~Le bloc CSS UI-7 vient **après** les règles
+  « avant lui » restituait un ordre inventé. ⚠️ **Le rail des passions `#v9ProfilePassions`
+  est HORS de cette photographie (2026-11-14)** : sa place n'est pas à UI-7, elle est « juste
+  avant son ancre » (`ancrerRailPassions`, app-06 — `#v7ProfileTabs`, sinon `.profile-tabs`).
+  Photographié, il était rejoué à une place périmée ; absent de la photo, la coupure le
+  laissait AU-DESSUS de la carte ; et couper → repeindre → rétablir le posait SOUS les
+  panneaux (onglets remontés de 569 à 494 px à 390 × 765), jusqu'au repeint suivant.
+  `construireProfil` et `retirerProfil` rappellent donc `ancrerRailPassions()` après leurs
+  déplacements (`rendreLeRail`), et la restitution ne rejoue plus un nœud qu'un autre
+  code a retiré de l'écran. Verrou : `ui-v7-lot.spec.js`, section KILL SWITCH (2 cas, avec
+  et sans aller-retour d'écran, rouges avant le correctif). ③ ~~Le bloc CSS UI-7 vient **après** les règles
   de repli au défilement, à spécificité **égale** : sans réécrire
   `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.~~
   **CADUC depuis le 2026-08-29 : le repli au défilement a été RETIRÉ** (voir ci-dessous).

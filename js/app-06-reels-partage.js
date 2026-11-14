@@ -2568,6 +2568,30 @@ function _ancreRailPassions() {
       || document.getElementById("myPosts");
 }
 
+// Pose le rail JUSTE AVANT son ancre — la SEULE règle de sa place, partagée
+// par `renderProfilePassionRail` et par le lot UI-7 (`js/ui-v7-lot.js`), qui
+// l'appelle après chacun de ses déplacements de nœuds (construction ET
+// coupure). ⚠️ UI-7 rejoue un ordre d'enfants photographié : sans ce rappel,
+// une coupure suivie d'un repeint puis d'un rétablissement posait le rail SOUS
+// les panneaux, et sans le repeint AU-DESSUS de la carte (défaut préexistant
+// relevé le 2026-11-14, verrou « KILL SWITCH » de `ui-v7-lot.spec.js`).
+// Ne fait que DÉPLACER un rail existant : rien n'est créé ni réécrit.
+function ancrerRailPassions(rail) {
+  rail = rail || document.getElementById("v9ProfilePassions");
+  var ancre = _ancreRailPassions();
+  if (!rail || !ancre || !ancre.parentNode || rail === ancre) return null;
+  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
+  // `innerHTML`. Et le chemin du rendu échappe à `ecrireRailCoulissant` : la
+  // sortie anticipée sur `data-v9-sig` rend le rail sans jamais réécrire son
+  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
+  if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
+    var _xRail = rail.scrollLeft || 0;
+    ancre.parentNode.insertBefore(rail, ancre);
+    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
+  }
+  return rail;
+}
+
 function renderProfilePassionRail() {
   var ancre = _ancreRailPassions();
   if (!ancre || !ancre.parentNode) return null;
@@ -2587,15 +2611,8 @@ function renderProfilePassionRail() {
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
-  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
-  // `innerHTML`. Et ce chemin-ci échappe à `ecrireRailCoulissant` : la sortie
-  // anticipée sur `data-v9-sig` (plus bas) rend le rail sans jamais réécrire son
-  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
-  if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
-    var _xRail = rail.scrollLeft || 0;
-    ancre.parentNode.insertBefore(rail, ancre);
-    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
-  }
+  // Sa place : juste avant l'ancre (le `scrollLeft` y est préservé).
+  ancrerRailPassions(rail);
 
   var vivantes = passionsVivantes();
   var selIds = {};
