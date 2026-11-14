@@ -1169,7 +1169,7 @@
     .post-action:hover { color: var(--text); background: var(--bg-soft); }
     .post-action:active { transform: scale(0.94); }
 
-    .post-action.liked { color: var(--accent); }
+    .post-action.liked { color: #ef4444; }
 
     .post-action svg { width: 17px; height: 17px; display: block; }
 
@@ -12542,12 +12542,15 @@ button, a, label, select, summary,
 .notif-perm-denied { color: #9a3412; }
 .notif-perm-absent { color: var(--muted); }
 /* LOT-8 (audit UX/UI du 2026-11-10, FIL-C02) : la barre d'actions d'une
-   publication — icônes SVG, nombres lisibles à l'encre, cœur plein violet
+   publication — icônes SVG, nombres lisibles à l'encre, cœur plein (rouge)
    quand on aime. */
 .post-action .pa-ico { width: 19px; height: 19px; display: block; flex: 0 0 auto; }
 .post-action .pa-n { font-size: 13.5px; font-weight: 700; color: var(--text); }
-.post-action.liked { color: var(--accent); }
-.post-action.liked .pa-n { color: var(--accent); }
+/* 2026-11-14 (retour de Benjamin) : le cœur d'une publication aimée est ROUGE,
+   comme celui d'un commentaire (❤️) — le violet ne se lisait pas comme « aimé ».
+   Icône #ef4444 ; nombre #dc2626 (4,8:1 sur blanc, AA). */
+.post-action.liked { color: #ef4444; }
+.post-action.liked .pa-n { color: #dc2626; }
 
 /* LOT-8 (SOC-C01) : 44 px de cible pour les commandes fréquentes qui n'en
    avaient pas. Les commandes de TEXTE grandissent ; les ICÔNES gardent leur
