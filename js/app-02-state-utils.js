@@ -3938,7 +3938,7 @@ function unlockBodyScroll(owner) {
 function ouvrirFeuillePartage(o) {
   o = o || {};
   var quoi = o.quoi || "publication";
-  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil" };
+  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil", story: "Partager cette story" };
   var signe = /[?&]inv=/.test(String(o.url || ""));
   // Le lien partagé est la forme COMPACTE (`?s=`) — `signe` est lu avant.
   o.url = compacterLienPartage(o.url);
