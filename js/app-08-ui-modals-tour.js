@@ -10483,6 +10483,13 @@ async function supaInit() {
       renderFeed();
     }
 
+    // 1bis. MES PUBLICATIONS, relues dans `posts` (2026-11-14) : le profil ne
+    // dépend plus d'une copie locale que la synchronisation peut perdre, et une
+    // passion où j'ai publié après l'avoir archivée revient (app-06).
+    if (_compteAuthReel() && typeof rapatrierMesPublications === "function") {
+      rapatrierMesPublications().catch(function () {});
+    }
+
     // 2. D\u00c9MARRER LE REFRESH AUTOMATIQUE DU FEED
     // Cela garantit que les posts d'autres utilisateurs apparaissent en temps quasi-r\u00e9el
     startFeedRefreshLoop();

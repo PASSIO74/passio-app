@@ -1413,6 +1413,106 @@ function _myProfileEventsHTML() {
   }).join("");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// MES PUBLICATIONS ET MES PASSIONS NE DISPARAISSENT JAMAIS (2026-11-14)
+// ──────────────────────────────────────────────────────────────────────────
+// Défaut vécu par Benjamin : publier « soirée trkl a la maisons » en Course à
+// pied depuis l'ordinateur, fermer, rouvrir — la passion et le post avaient
+// disparu du profil. Le post était BIEN en base ; c'est l'appareil qui l'avait
+// perdu : ① l'onglet « Publications » ne lisait que `state.userPosts`, une
+// copie locale que l'état serveur remplaçait à la réouverture ; ② la passion,
+// réactivée ici, avait été re-archivée par un blob serveur plus ancien.
+//
+// La règle : la table `posts` est la vérité de MES publications, et une passion
+// dans laquelle j'ai publié APRÈS l'avoir archivée est une passion que j'ai
+// reprise. Rien n'est jamais supprimé ni masqué sans un geste de l'utilisateur.
+window._mesPublicationsServeur = window._mesPublicationsServeur || [];
+
+// Toutes mes publications connues de l'appareil : copie locale + relecture
+// serveur dédiée + celles du fil. Dédoublonnées par id, pierres tombales exclues.
+function mesPublicationsConnues() {
+  var moi = (typeof MY_UID !== "undefined") ? MY_UID : null;
+  var vus = Object.create(null);
+  var out = [];
+  function prendre(p, exigerAuteur) {
+    if (!p || !p.id || vus[p.id]) return;
+    if (exigerAuteur && (!moi || p.authorId !== moi)) return;
+    try { if (typeof postSupprime === "function" && postSupprime(p.id)) return; } catch (e) {}
+    vus[p.id] = 1;
+    out.push(p);
+  }
+  (state.userPosts || []).forEach(function (p) { prendre(p, false); });
+  (window._mesPublicationsServeur || []).forEach(function (p) { prendre(p, true); });
+  (state.supabasePosts || []).forEach(function (p) { prendre(p, true); });
+  return out;
+}
+
+// Une passion ARCHIVÉE dans laquelle j'ai publié APRÈS son archivage revient,
+// en silence et sans consommer de changement : publier dedans EST le geste de
+// la reprendre (le Studio refuse de publier dans une passion archivée, donc
+// elle était vivante à ce moment-là — c'est la synchronisation qui l'a perdue).
+// Un archivage postérieur à ma dernière publication reste, lui, respecté.
+function reactiverPassionsPubliees() {
+  if (!state || !state.user || !Array.isArray(state.user.profiles)) return 0;
+  var derniere = Object.create(null);   // passion → date de ma dernière publication
+  mesPublicationsConnues().forEach(function (p) {
+    if (!p || !p.passion) return;
+    var t = Number(p.createdAt) || 0;
+    if (t > (derniere[p.passion] || 0)) derniere[p.passion] = t;
+  });
+  var reprises = [];
+  state.user.profiles.forEach(function (pr) {
+    if (!pr || !pr.archived || !pr.passion) return;
+    var t = derniere[pr.passion];
+    if (!t || t <= (Number(pr.archivedAt) || 0)) return;
+    // Une passion « vivante » de même identifiant existe déjà : rien à reprendre.
+    if (state.user.profiles.some(function (x) { return x && x !== pr && x.passion === pr.passion && !x.archived; })) return;
+    pr.archived = false;
+    delete pr.archivedAt;
+    delete pr._parDefaut;
+    pr.restoredAt = t;
+    reprises.push(pr.passion);
+  });
+  if (!reprises.length) return 0;
+  reprises.forEach(function (id) { try { ajouterPassionAuFil(id); } catch (e) {} });
+  try { saveState(); } catch (e) {}
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  try { if (typeof diagLog === "function") diagLog("passions_reprises_par_publication " + reprises.join(",")); } catch (e) {}
+  return reprises.length;
+}
+
+// Relit MES publications dans la table `posts` (60 dernières) et repeint le
+// profil. Lecture « de moi » : réservée à un compte réel (un visiteur n'a rien).
+var _rapatriementEnCours = null;
+function rapatrierMesPublications() {
+  if (_rapatriementEnCours) return _rapatriementEnCours;
+  _rapatriementEnCours = (async function () {
+    try {
+      if (!window._supaReal || typeof supaLoadPosts !== "function") return 0;
+      if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return 0;
+      var moi = MY_UID;
+      var lus = await supaLoadPosts(0, moi);
+      if (moi !== MY_UID) return 0;                       // le compte a changé pendant la lecture
+      window._mesPublicationsServeur = (lus || []).filter(function (p) { return p && p.authorId === moi; });
+      var reprises = reactiverPassionsPubliees();
+      try {
+        var ecran = document.getElementById("screen-profiles");
+        if (ecran && ecran.classList.contains("active")) {
+          if (reprises && typeof renderProfilesScreen === "function") renderProfilesScreen();
+          else renderProfileContent();
+        }
+        if (reprises && typeof renderProfileStrip === "function") renderProfileStrip();
+      } catch (e) { if (typeof diagLog === "function") diagLog("rapatrier_publications_rendu " + (e && e.message)); }
+      return window._mesPublicationsServeur.length;
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("rapatrier_publications " + (e && e.message));
+      return 0;
+    } finally { _rapatriementEnCours = null; }
+  })();
+  return _rapatriementEnCours;
+}
+
 // Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
 // Sélection vide => invite à sélectionner (pas de fallback profil actif).
 function renderProfileContent() {
@@ -1435,7 +1535,10 @@ function renderProfileContent() {
   // `allFeedPosts` les exclut déjà pour le fil, mais cette liste-ci lit
   // `state.userPosts` en direct : sans ce filtre, un carnet ancien s'y
   // afficherait avec un `onclick` vers un viewer qui n'existe plus.
-  var mine = state.userPosts.filter(function (p) { return p && p.type !== "vlog"; });
+  // ⚠️ `mesPublicationsConnues()` ET NON `state.userPosts` SEUL (2026-11-14) :
+  // la copie locale peut avoir perdu un post que la base, elle, a gardé.
+  var mine = mesPublicationsConnues().filter(function (p) { return p && p.type !== "vlog"; });
+  mine.sort(function (a, b) { return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0); });
 
   if (passionsUnifieesActives()) {
     // ── LOT UI-8 : le filtre de contenu vit ICI, dans « Publications », et il
@@ -2998,6 +3101,9 @@ function restaurerPassion(profileId, silencieux) {
   }
   pr.archived = false;
   delete pr.archivedAt;
+  // Date du geste : c'est elle qui arbitre la fusion avec un blob serveur plus
+  // ancien (app-02) — sans elle, la réactivation était annulée à la réouverture.
+  pr.restoredAt = Date.now();
   // ⚠️ RESTAURER, C'EST POSSÉDER. Sans cette ligne, réactiver un remplissage
   // archivé consommait un changement et ne faisait RÉAPPARAÎTRE RIEN — ni
   // carte, ni bulle, ni compteur, puisque `passionsVivantes()` l'écarte. Un

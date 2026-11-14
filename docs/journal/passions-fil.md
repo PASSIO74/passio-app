@@ -25,6 +25,7 @@
 - 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
 - 🌀 LA BOUCLE DU BAS DU FIL — LE ROUGE CI « Received: 12 » ÉTAIT UN DÉFAUT DU FENÊTRAGE, RÉVÉLÉ PAR CHROMIUM 158 (2026-11-07)
 - 📡 UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE — le séparateur du fil dit l'échec de lecture (2026-11-09)
+- 🧷 « MA PASSION ET MON POST ONT DISPARU À LA RÉOUVERTURE » — L'APPAREIL PERDAIT CE QUE LA BASE GARDAIT (2026-11-14)
 
 ---
 
@@ -1075,3 +1076,50 @@ Retour de Benjamin, deux captures de la même publication : sur la carte du fil,
 - **Même jour, suite** (« fais comme Facebook et Instagram ») : « ▼ N réponses » déplie les réponses SOUS le commentaire, dans la carte, sans ouvrir la discussion (`_apercuReponsesHtml`, app-04). Le rendu d’une ligne est UNE fonction partagée avec la discussion (`_reponseLigneHtml`). Une réponse écrite depuis la carte y apparaît aussitôt : `_refreshCommentThreadUINow` repeint en place le lien et le bloc de chaque copie de l’aperçu (`_rafraichirApercusCarte`). La carte liste `_reponsesComptees` — les réactions emoji y comptent depuis toujours (verrou `reactions-commentaire-bloque`), elles s’y montrent donc aussi en ligne, comme dans le panneau des bobines.
 - Verrou : `capacite-fil-compteurs.spec.js` « carte du fil : « ▼ N réponses » déplie les réponses sur place… ».
 - Verrou : `capacite-fil-compteurs.spec.js` « aperçus du fil : les réponses et les « j'aime »… ».
+
+---
+
+## 🧷 « MA PASSION ET MON POST ONT DISPARU À LA RÉOUVERTURE » — L'APPAREIL PERDAIT CE QUE LA BASE GARDAIT (2026-11-14)
+
+**Signalement (Benjamin, compte « ben test ordi », ordinateur)** : publication « soirée trkl a la
+maisons » en Course à pied, l'app quittée puis rouverte → la bulle Course à pied et le post ont
+disparu du profil (l'autre compte, sur téléphone, voyait toujours le post dans son fil).
+
+**Mesuré en base (canal ①)** : le post `x5d0niqt4mwgrbnqu` (`passion_id = running`, 18:46 UTC)
+est INTACT dans `posts`. `user_state` (réécrit à 19:08, à la réouverture) porte `userPosts: []`
+et le profil `running` en `archived: true, archivedAt = 2026-09-01` ; `profiles.passions` idem.
+Rien n'avait été supprimé : l'appareil avait perdu sa copie, puis l'avait republiée.
+
+**Trois causes cumulées** :
+1. `_applyUserState` (app-02) recopiait les clés du blob serveur une à une : `userPosts` était
+   REMPLACÉ par celui d'un blob plus ancien → la publication locale disparaissait.
+2. L'onglet « Publications » (`renderProfileContent`, app-06) ne lisait QUE `state.userPosts` —
+   jamais la table `posts`, qui est pourtant la vérité.
+3. La fusion des passions (`supaLoadUserState`) ne réinjectait l'état « archivée » local que si le
+   serveur n'en avait aucun : le serveur gagnait TOUJOURS, faute de date. La réactivation de
+   Course à pied (choisie au Studio → `ajouterPassionAuCompte` → `restaurerPassion`), dont l'envoi
+   n'avait pas abouti, était re-archivée par le blob du 1er septembre.
+
+**Correctif** :
+- `_applyUserState` UNIT `userPosts` : garde les publications locales absentes du blob, et
+  SEULEMENT celles dont `authorId === MY_UID` (uuid de compte) — jamais l'état d'un autre compte.
+- `mesPublicationsConnues()` (app-06) = `userPosts` ∪ `window._mesPublicationsServeur` ∪ mes posts
+  de `supabasePosts`, dédoublonnés, pierres tombales exclues ; c'est ce que lit le profil.
+- `rapatrierMesPublications()` relit mes 60 dernières publications (`supaLoadPosts(0, MY_UID)`)
+  au démarrage, compte réel seulement (étape 1bis du boot, app-08).
+- `restaurerPassion` DATE le geste (`restoredAt`). La fusion donne raison au geste daté le plus
+  récent : restauration locale > archivage serveur plus ancien ; archivage local > restauration
+  serveur DATÉE plus ancienne. Un archivage sans date (`archivedAt: 0`) ne gagne jamais.
+- `reactiverPassionsPubliees()` : une passion archivée dans laquelle j'ai publié APRÈS son
+  archivage revient (le Studio refuse de publier dans une passion archivée — elle était donc
+  vivante). Un archivage postérieur à ma dernière publication reste respecté. Appelée après la
+  fusion serveur et après le rapatriement : c'est elle qui répare le compte de Benjamin à la
+  prochaine ouverture, sans écriture manuelle en base.
+
+**Règle** : la table `posts` est la vérité de MES publications ; une copie locale ne décide
+jamais de ce qui disparaît. Aucun contenu ni aucune passion ne sort de l'écran sans un geste de
+l'utilisateur (supprimer, archiver).
+
+Verrou : `tests/e2e/publications-passions-persistantes.spec.js` (4) — ①③④ rouges sans le
+correctif (réinjection faite).
+
