@@ -141,8 +141,9 @@
     if (!hoteOrigine || !ordreOrigine) return;
     try {
       for (var i = 0; i < ordreOrigine.length; i++) {
-        // Un nœud que quelqu'un d'autre a RETIRÉ depuis la photo ne revient
-        // pas : rejouer l'ordre ne doit restituer que ce que ce lot a déplacé.
+        // Un nœud qui n'est plus DANS l'écran (un autre code l'a retiré depuis
+        // la photo) ne revient pas. ⚠️ `contains` lit la descendance, pas la
+        // filiation : un nœud resté dans l'écran, même plus profond, est rejoué.
         if (hoteOrigine.contains(ordreOrigine[i])) hoteOrigine.appendChild(ordreOrigine[i]);
       }
     } catch (e) { fail("restitution", e); }

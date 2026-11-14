@@ -767,4 +767,38 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
       expect(y.onglets).toBeGreaterThanOrEqual(y.railBas);
     });
   }
+
+  // La coupure ne restitue que ce que CE lot a déplacé. Le rail est retiré par
+  // la coupure d'UI-8 (`renderProfilePassionRail` le détache) : une coupure
+  // d'UI-7 qui suit ne doit pas le RESSUSCITER. L'ancien code le faisait dès
+  // qu'une construction l'avait photographié (ici : après un rétablissement),
+  // et `ancrerRailPassions` l'aurait ensuite posé, bien visible, sous la carte.
+  // Ce cas tient ensemble le rail hors de la photographie et la garde
+  // `contains` de la restitution : chacune suffit, il faut retirer les deux
+  // pour le faire rougir.
+  test("une coupure d'UI-7 ne ressuscite pas un rail retiré par la coupure d'UI-8", async ({ page }) => {
+    await bootOnboarded(page, null, 3);
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(600);
+
+    // Un cycle couper → rétablir : la construction a lieu rail PRÉSENT.
+    await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { localStorage.removeItem("passio_ui_7"); PassioUIV7.apply(); });
+    await page.waitForTimeout(400);
+    await expect(page.locator("#v7ProfileTabs")).toHaveCount(1);
+    await expect(page.locator("#v9ProfilePassions")).toHaveCount(1);
+
+    // Coupure d'UI-8 : le rail part au rendu suivant.
+    await page.evaluate(() => { localStorage.setItem("passio_ui_8", "0"); renderProfilesScreen(); });
+    await page.waitForTimeout(200);
+    await expect(page.locator("#v9ProfilePassions")).toHaveCount(0);
+
+    // Coupure d'UI-7 : la restitution ne le fait pas revenir.
+    await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
+    await page.waitForTimeout(200);
+    await expect(page.locator("#v7ProfileTabs")).toHaveCount(0);
+    await expect(page.locator("#v9ProfilePassions")).toHaveCount(0);
+    expect(await page.evaluate(() => document.getElementById("myPosts").parentNode.id)).toBe("screen-profiles");
+  });
 });
