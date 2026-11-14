@@ -48,14 +48,15 @@ test("② TRA-C14 : trois j'aime d'une publication → une ligne", async ({ page
   expect(r[0]).toBe("Léa, Malik et 1 autre ont aimé ta publication");
 });
 
-test("③ FIL-C21 / C27 : commandes natives après la lecture ; « Abonnés » sur un compte privé", async ({ page }) => {
+test("③ FIL-C21 / C27 : commandes natives après la lecture ; plus de badge « Abonnés » sur un compte privé (retiré le 2026-11-14)", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(() => {
     const html = videoPubliqueHTML("https://exemple.passio.test/v.mp4");
     const box = document.createElement("div");
     box.innerHTML = renderPostHTML({ id: "p_l26_prive", authorId: "a1b2c3d4-0000-4000-8000-00000000c0b1", authorName: "Inès", authorPrive: true, passion: "musique", mood: "all", type: "text", text: "Réservé", createdAt: Date.now(), likes: 0, comments: [], fromSupabase: true });
-    return { controls: /<video[^>]*\scontrols[\s>]/.test(html), prive: (box.querySelector(".post-prive") || {}).textContent || "" };
+    return { controls: /<video[^>]*\scontrols[\s>]/.test(html), prive: !!box.querySelector(".post-prive"), texte: box.textContent };
   });
   expect(r.controls, "pas de barre native superposée à « ▶ Lire »").toBe(false);
-  expect(r.prive).toContain("Abonnés");
+  expect(r.prive, "le cadenas « Abonnés » ne s'affiche plus sur une carte").toBe(false);
+  expect(r.texte).not.toContain("Abonnés");
 });
