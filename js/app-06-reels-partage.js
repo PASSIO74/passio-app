@@ -1568,16 +1568,29 @@ function _majRangeeFormats(seulementMontrer) {
   if (rangee.getAttribute("data-formats") !== v) rangee.setAttribute("data-formats", v);
 }
 
+// Bascule un format dans une sélection (pure, partagée avec le profil visité).
+// Multi-sélection : chaque format se coche/décoche, l'affichage est l'UNION.
+// « Tout » (`posts`) est EXCLUSIF : le toucher vide les formats, et cocher un
+// format le retire — Tout ∪ Photos ne filtrait rien (PRO-C04, LOT-16). Une
+// sélection vidée retombe sur `vide` ("posts" pour mon profil, "" pour le
+// profil visité, où rien de coché = tout).
+function _basculerFormat(sel, tab, vide) {
+  var res = new Set(sel);
+  res.delete("posts");
+  if (tab === "posts") res.clear();
+  else if (res.has(tab)) res.delete(tab);
+  else res.add(tab);
+  if (!res.size && vide) res.add(vide);
+  return res;
+}
+
 // Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
 function switchProfileTab(tab, btn) {
   if (PROFILE_TAB_KEYS.indexOf(tab) === -1) return;
-  // LOT-16 (audit UX/UI du 2026-11-10, PRO-C04) : CHOIX UNIQUE, « Tout » neutre —
-  // comme le rail. « Tout » restait coché : toucher « Photos » donnait l'union
-  // (Tout ∪ Photos), donc ne filtrait rien. Retoucher le filtre actif rend « Tout ».
   var sel = _profileTabSel();
-  var dejaSeul = sel.size === 1 && sel.has(tab);
+  var nouv = _basculerFormat(sel, tab, "posts");
   sel.clear();
-  sel.add(dejaSeul || tab === "posts" ? "posts" : tab);
+  nouv.forEach(function (k) { sel.add(k); });
   window.activeProfileTab = _activeProfileTab(); // compat
   _persistProfileTabs();
   _syncProfileTabButtons();

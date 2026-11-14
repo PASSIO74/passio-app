@@ -501,7 +501,7 @@ test("⑬ « Activité » : le titre qui répète l'onglet n'est plus peint, le 
   expect(r.ecart, "le contenu est à un espace des onglets").toBeLessThanOrEqual(r.espace + 2);
 });
 
-test("⑭ profil visité : les formats s'annoncent en choix unique, plus « multi-sélection »", async ({ page }) => {
+test("⑭ profil visité : la rangée des formats s'annonce comme un filtre", async ({ page }) => {
   await ouvrirProfil(page);
   const label = await page.evaluate(async () => {
     state.seed.users.push({ id: "u_fmt_erg", name: "Camille", profileEmoji: "🎨", avatar: "#7c3aed", bio: "", passions: [] });
