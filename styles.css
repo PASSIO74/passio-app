@@ -4931,7 +4931,7 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
-    .reel-action-btn.liked .reel-action-icon { background: rgba(236, 72, 153, 0.85); border-color: #ec4899; }
+    .reel-action-btn.liked .reel-action-icon { background: rgba(239, 68, 68, 0.9); border-color: #ef4444; }
     .reel-action-btn.liked .reel-action-icon svg { fill: #fff; stroke: #fff; }
     .reel-action-btn.tipped .reel-action-icon { background: rgba(167, 139, 250, 0.95); border-color: #a78bfa; }
     .reel-action-label {
@@ -5237,10 +5237,10 @@
       transition: color 200ms;
     }
     .reel-comment-like:hover {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-like.liked {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-reply {
       cursor: pointer;
