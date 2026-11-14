@@ -8890,8 +8890,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v4a2-coral: var(--v3-coral-texte, #c13d28);
 }
 
-/* La carte décorée devient une colonne ordonnée. Trois enfants seulement
-   restent visibles : le bandeau d'état (annulé / en cours), le bloc du lot, et
+/* La carte décorée devient une colonne ordonnée. Quatre enfants seulement
+   restent visibles (le quatrième, la barre sociale, depuis le 2026-11-14) : le bandeau d'état (annulé / en cours), le bloc du lot, et
    la preuve sociale historique — la seule surface où des personnes sont
    nommées, et elle est déjà bornée par le moteur aux comptes suivis. */
 :root.passio-ui-4a2 .event-card[data-v4a2] {
@@ -8911,6 +8911,28 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner { display: block !important; order: 0; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .v4a2 { display: flex !important; order: 1; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-social-proof { display: flex !important; order: 2; }
+/* 2026-11-14 (demande de Benjamin) : aimer, commenter et partager DIRECTEMENT sur
+   la carte. La barre sociale historique n'est plus recouverte : ce sont les mêmes
+   nœuds, donc les mêmes moteurs (`toggleEventLike`, `openCommentSheet`,
+   `shareEvent`) et les mêmes ancres `data-evlike` / `data-evc` que les
+   chargements asynchrones repeignent — aucun second bouton à tenir synchronisé.
+   La réaction emoji et sa pastille restent dans la fiche. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions {
+  display: flex !important;
+  order: 3;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 4px;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  box-sizing: border-box;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="showEmojiPickerForEvent"],
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .event-react-chip-holder { display: none !important; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="shareEvent"] { margin-left: auto; }
 
 /* Le barré historique de l'activité annulée vit sur `.event-title`, que le lot
    ne montre plus : il est reporté sur le titre du bloc. */
