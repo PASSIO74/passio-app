@@ -54,6 +54,7 @@
 - 🧪 LA FONCTION `pilotage` S'EXÉCUTE ENFIN — ET CE QUE L'EXÉCUTER A FAIT TOMBER (2026-11-12)
 - 📜 L'AGENT DE RÉPARATION REÇOIT ENFIN LE JOURNAL D'UNE EXÉCUTION EN ÉCHEC — COMME DONNÉE, PAS COMME OUTIL (2026-11-12)
 - 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
+- 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1494,3 +1495,69 @@ banc `pilotage-chemins`, qui EXÉCUTE la fonction) :
   Une copie par passage, un journal par passage.
 - ⚠️ **`bornes-ci` ③ rougit sous charge locale** (« 10 556 ms » pour une borne de 10 s) : il mesure un
   temps. Le rejouer seul avant de conclure ; en CI et dans `npm run verif`, il passe (5,8 s).
+
+## 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
+
+**Le défaut, prouvé sur le runner (#875, P1-14).** La marche « Publier la branche produite par Claude »
+(`claude-code.yml`) cherchait un jeton par `git diff … | grep -qE '<motifs>'` sous `set -euo pipefail`.
+`grep -q` sort à la première trouvaille ; `git`, qui écrit encore, meurt de SIGPIPE ; le pipeline rend 141 ;
+le `if` voit FAUX — précisément quand le jeton est là. Un jeton au début d'un diff de 3 Mo partait (run
+43397080731 : l'exercice seul, joué contre la garde d'avant). Sous Git Bash Windows, rien : seul le runner
+prouve. La gouvernance (`gh api … --jq '.labels[].name' | grep -qx sentinelle`) avait la même forme : FRAGILE,
+montrée avec un faux `gh` qui écrit ses labels un à un ; le vrai `gh` n'est pas mesuré.
+
+**La règle.** Lire d'abord (un fichier, une variable), chercher ensuite. Lire le statut de `grep` et d'`awk`
+(`rc=0; grep … || rc=$?`, puis un `case`) : un code 2 n'est pas « rien trouvé ». Lire le contenu « binaire » en
+texte (`--text --no-ext-diff --no-textconv`) : un `.gitattributes` `-diff` cache tout à `git diff`, et à
+gitleaks, qui lit `git log -p` sans `--text` — d'où `.gitattributes` interdit à l'agent.
+
+**Ce qui part, c'est CHAQUE commit (#903, P1-14 bis).** La poussée publie chaque commit, et gitleaks lit
+chaque commit d'une PR : le diff des extrémités ne voit ni un jeton ajouté puis retiré, ni l'auteur, ni un nom
+de fichier rétabli. La lecture se fait commit par commit, en brut (`--format=raw -m -p`), bornée par le commit
+de DÉPART qu'une marche de confiance note AVANT l'agent (`steps.depart`) — jamais par un `main` relu au moment
+de publier : il a pu bouger, et dans le clone superficiel la racine entrerait dans la lecture.
+
+**Aucun code de l'agent ne tourne avec un jeton (P1-16).** « Signaler le résultat » importait
+`scripts/sentinelle-detecter.mjs` depuis l'arbre de l'agent. `scripts/` lui est interdit, mais le détecteur
+importe `supabase/functions/_shared/*.js`, qu'il peut modifier : son code tournait avec le jeton en écriture du
+job. Le détecteur vient désormais d'un arbre extrait du départ (`git worktree add --detach`, hooks coupés), et
+`node` part de `env -i`. Le risque voisin, une configuration git écrite par l'agent, était déjà fermé :
+`Edit(.git/**)` et `Write(.git/**)` lui sont refusés, la publication pose `core.hooksPath` et `core.fsmonitor`.
+
+**Pièges.**
+- ⚠️ **La preuve d'abord** : le premier commit d'une PR de ce genre ne porte QUE l'exercice, joué contre la
+  garde d'avant. C'est lui qui montre le rouge sur le runner ; sans lui, on corrige une hypothèse.
+- ⚠️ **Une garde se joue telle quelle** : extraite du workflow entre des marqueurs (`GARDES DE
+  PUBLICATION:DEBUT/FIN`, `FICHE DE CONFIANCE:DEBUT/FIN`), elle n'a pas de copie à resynchroniser.
+- ⚠️ **Un clone de banc hérite du `core.autocrlf=true` du poste** : un fichier y paraît modifié sans l'être.
+  `git clone -c core.autocrlf=false`.
+- ⚠️ **La relecture d'honnêteté trouve ce que les lentilles techniques ne voient pas** : un titre qui survend
+  une preuve, un run cité « vert » dont la conclusion est un échec (seul « Gouvernance critique » rouge, attendu
+  avant la revue), un compte de tests d'une autre tête, un « seul remède » que le message contredit. Au squash, le
+  titre et les messages entrent dans `main` : un message faux se rectifie dans le message d'un commit suivant de
+  la même PR.
+- ⚠️ **Un vérificateur peut être coupé par un filtre de l'API** sur un sujet de sécurité : le constat se juge
+  alors à la lecture du code, et le rapport le dit.
+
+**Pièges de la relecture de #903 (P1-14 bis, P1-16).**
+- ⚠️ **Lire commit par commit, c'est lire aussi les FUSIONS** (`-m`). Sans lui, `git log` n'imprime ni patch ni
+  nom pour une fusion : une fusion qui ajoutait seule un chemin interdit passait, alors que l'ancien diff des
+  extrémités la refusait. C'est une RÉGRESSION relevée par la relecture, et fermée. Le verrou est une double fusion
+  qui ajoute puis retire : seul `-m` la voit.
+- ⚠️ **Un nom de fichier reste une donnée de l'agent jusque dans le JOURNAL public.** Toute liste de noms
+  s'imprime entre `::stop-commands::<clé>` et `::<clé>::`, avec une clé tirée au hasard ; les noms d'un refus
+  s'impriment sans leurs caractères de contrôle (C0, DEL et C1). Le runner lit « :: » en tête de ligne, « ##[ »
+  n'importe où, et coupe sur `\r`. C'est ce que dit la lecture de son code ; rien n'a été exécuté sur un vrai
+  runner.
+- ⚠️ **`x="$(cmd)"` sous `set -e` tue la marche à l'affectation** si `cmd` échoue : le refus annoncé juste après
+  n'est jamais atteint. Il faut écrire `|| x=""`, puis vérifier la valeur. Dans une marche qui tourne APRÈS la
+  poussée, une panne doit taire l'affichage, pas arrêter la marche : sinon « Rien n'a été modifié » s'afficherait
+  à tort.
+- ⚠️ **Deux commits de banc au même arbre, même parent, même message, dans la même seconde, sont le MÊME
+  objet.** Un verrou qui en dépend ne mord qu'une fois sur deux. Il faut un message propre pour chacun, et une
+  prémisse vérifiée (« distincts », « absent de main »).
+- ⚠️ **Une affirmation absolue appelle son contre-exemple** (« jamais un faux vert », « tous les écarts sont
+  nommés ») : chaque tour de relecture trouvait le suivant, d'un U+FEFF à un flux UTF-16. Pour converger, il faut
+  dire ce qui est modélisé et ce qui ne l'est pas. Et les échappements `\uXXXX` d'un source s'écrivent par script
+  (`String.raw` ou un fichier de données), jamais par l'outil d'édition, qui peut les écrire bruts : U+2028 casse
+  alors une regex JavaScript.
