@@ -8389,8 +8389,75 @@ body.ctx-locked #appMain { overflow: hidden; }
    son propre « Voir » et la Passio répétée. UI-3B la masque seulement sur les
    cartes réellement décorées et identifiées comme `shared`. Le DOM reste en
    place et réapparaît dès que la classe racine est retirée par un kill switch. */
-:root.passio-ui-3 .post[data-v3-decore][data-v3-activity-source="shared"] .post-vlog-card {
-  display: none;
+/* 2026-11-14 (Benjamin) : la sous-carte n'est PLUS masquée — elle est devenue
+   la mise en avant de l'activité (photo + bloc date corail), identique dans le
+   fil et sur le profil. Seul son doublon de porte a disparu (plus de « Voir »). */
+.post-activite.post-vlog-card {
+  margin: 10px 0 0;
+  border: 1px solid rgba(109, 50, 244, 0.16);
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg-card, #fff);
+}
+.post-activite-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--accent-tile, #f5f3ff);
+}
+.post-activite-titre {
+  padding: 12px 14px 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.post-activite-rdv {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1ebfe, #ffeeeb);
+  min-width: 0;
+}
+.post-activite-tuile {
+  flex-shrink: 0;
+  width: 56px;
+  padding: 8px 0;
+  border-radius: 14px;
+  background: #c13d28;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.post-activite-jour { font-size: 23px; font-weight: 900; }
+.post-activite-mois {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+.post-activite-corps { min-width: 0; flex: 1; }
+.post-activite-quand {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #1f1147;
+}
+.post-activite-quand::first-letter { text-transform: uppercase; }
+.post-activite-ou {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a3f6b;
+  margin-top: 3px;
 }
 
 :root.passio-ui-3 #eventDetailCta .v3-rsvp {
