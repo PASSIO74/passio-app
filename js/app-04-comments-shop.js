@@ -5210,7 +5210,7 @@ async function openUserProfile(authorId, source) {
       : '') + '\
     <div id="' + (_bloqueParMoi ? 'visitedProfileActionsMasquees" hidden' : 'visitedProfileActions"') + ' style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary profil-action" onclick="closeModal();_convOrigineProfil(\'' + escapeJsArg(authorId) + '\');startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;border-radius:14px;">Message</button>\
-      <button class="btn ghost profil-action" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;border-radius:14px;' + (isFollowing ? 'background:rgba(124, 58, 237, 0.1);color:var(--accent);border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost profil-action" id="followBtn_' + escapeHtml(authorId) + '" data-follow-uid="' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;border-radius:14px;' + (isFollowing ? 'background:rgba(124, 58, 237, 0.1);color:var(--accent);border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -5538,9 +5538,17 @@ function repeindreBoutonsSuiviVisibles() {
 
 function _boutonsSuivi(userId) {
   var out = [];
+  // ⚠️ TOUS les porteurs de l'identifiant, PAS `getElementById` (2026-11-14).
+  // Rapporté par Benjamin (captures) : sur le profil visité, le toast disait
+  // « Tu suis… » puis « Tu ne suis plus… », le compteur bougeait, et le bouton
+  // restait figé sur « Demande envoyée ». « Créateurs à suivre » (app-06) émet
+  // le même `followBtn_<uid>` et PRÉCÈDE la modale : `getElementById` rendait
+  // ce bouton caché, et celui sous le doigt n'était jamais repeint.
   try {
-    var parId = document.getElementById("followBtn_" + userId);
-    if (parId) out.push(parId);
+    var idCherche = "followBtn_" + userId;
+    Array.prototype.forEach.call(document.querySelectorAll('[id^="followBtn_"]'), function (b) {
+      if (b.id === idCherche && out.indexOf(b) < 0) out.push(b);
+    });
   } catch (e) {}
   try {
     // Comparaison d'ATTRIBUT plutôt que sélecteur construit : un identifiant de
