@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersNpm } = require("../../scripts/audit-workflows.js");
+const { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersDetournants } = require("../../scripts/audit-workflows.js");
 
 const defauts = (t) => auditerWorkflow("x.yml", t);
 
@@ -41,6 +41,10 @@ test("② bis toute installation hors lockfile est refusée : la CI installe par
     "          npm ci --ignore-scripts && npm install left-pad",
     "          V=$(npm install left-pad)",
     "          if npm install left-pad; then exit 0; fi",
+    // Une substitution est une commande : lue aussi, même entre guillemets doubles ; un groupe aussi.
+    '          echo "$(npm install left-pad)"',
+    "          echo `npm install left-pad`",
+    "          ( cd outils && npm install left-pad )",
     // Ce qui réécrit l'arbre hors du lockfile relu, ou lance la dernière version d'un générateur.
     "      - run: npm update",
     "      - run: npm up left-pad",
@@ -66,6 +70,13 @@ test("② bis toute installation hors lockfile est refusée : la CI installe par
     "          npm ci --ignore-scripts --prefix /tmp/install",
     "# npm install dans un commentaire",
     "          npm ci --ignore-scripts  # et non npm install",
+    // `${…}` et `${{ … }}` restent dans leur mot : le drapeau qui suit compte (relecture du 14/11).
+    '          npm ci --prefix "${RUNNER_TEMP}/netlify-cli" --ignore-scripts --no-audit --no-fund',
+    '          npm ci --prefix "${{ runner.temp }}/outils" --ignore-scripts',
+    '          npm ci --prefix "$(pwd)/outils" --ignore-scripts',
+    "          { npm ci --ignore-scripts; }",
+    // Du texte entre guillemets n'est pas une commande.
+    '          echo "Pour réparer : npm install puis relancer le job"',
   ];
   for (const l of admis) assert.deepEqual(defauts(l), [], l);
 });
@@ -99,6 +110,7 @@ test("② quater `npx` et `npm exec` qui téléchargent sont refusés ; ceux du 
     "      - run: npm exec --yes netlify-cli -- deploy",
     "      - run: npm x -y netlify-cli",
     "      - run: npm exec netlify-cli@27.1.2 -- deploy",
+    "      - run: npm exec -- netlify-cli@27.1.2 deploy",
   ];
   for (const l of refuses) assert.ok(defauts(l).length > 0, l);
   const admis = [
@@ -112,9 +124,14 @@ test("② quater `npx` et `npm exec` qui téléchargent sont refusés ; ceux du 
   for (const l of admis) assert.deepEqual(defauts(l), [], l);
 });
 
-test("② quinquies aucun fichier ne détourne `npm ci` : ni npm-shrinkwrap.json, ni .npmrc (2026-11-14)", () => {
-  const vus = auditerFichiersNpm(["package.json", "npm-shrinkwrap.json", "dashboard/.npmrc", ".npmrc", "a/b/NPM-SHRINKWRAP.json", "package-lock.json", ".npmrc.exemple", "docs/npmrc.md"]);
-  assert.deepEqual(vus.map((d) => d.split(" : ")[0]), ["npm-shrinkwrap.json", "dashboard/.npmrc", ".npmrc", "a/b/NPM-SHRINKWRAP.json"]);
+test("② quinquies aucun fichier ne détourne une installation ou un envoi : ni npm-shrinkwrap.json, ni .npmrc, ni .netlify/ (2026-11-14)", () => {
+  const vus = auditerFichiersDetournants([
+    "package.json", "npm-shrinkwrap.json", "dashboard/.npmrc", ".npmrc", "a/b/NPM-SHRINKWRAP.json", "package-lock.json", ".npmrc.exemple", "docs/npmrc.md",
+    ".netlify/edge-functions/interne.js", ".netlify/functions-internal/f.js", "netlify/edge-functions/media.js", "docs/.netlify/x.md",
+  ]);
+  assert.deepEqual(vus.map((d) => d.split(" : ")[0]), [
+    "npm-shrinkwrap.json", "dashboard/.npmrc", ".npmrc", "a/b/NPM-SHRINKWRAP.json", ".netlify/edge-functions/interne.js", ".netlify/functions-internal/f.js",
+  ]);
 });
 
 test("② sexies les actions composites passent par les mêmes règles, et un fichier npm du dépôt le rougit", () => {

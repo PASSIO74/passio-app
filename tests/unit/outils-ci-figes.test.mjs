@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// CE QUI TOURNE AVEC UN SECRET EN CI VIENT D'UN LOCKFILE OU D'UNE EMPREINTE, JAMAIS DE « LA DERNIÈRE »
-// VERSION PUBLIÉE (2026-11-14).
+// LES PAQUETS NPM ET DENO QUI TOURNENT AVEC UN SECRET EN CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE, JAMAIS
+// DE « LA DERNIÈRE » VERSION PUBLIÉE (2026-11-14). Pas Node (correctif de la 22 non figé, setup-node) ni Chromium
+// (révision figée, archive vérifiée par sa seule taille) : restes ouverts, dits dans la fiche du journal.
 //
 // Le 2026-11-14 à 11:29 UTC, le déploiement de production a rougi sur « Installer netlify-cli »
 // (run 43588829557) : npm E404 sur fast-json-stringify 7.3.6, publiée une minute plus tôt et pas
@@ -200,6 +201,7 @@ function auditerDeploy(texte) {
       if (!/ "\$RUNNER_NETLIFY\/"$/.test(cp)) d.push(`${id} : la copie ne va pas dans "$RUNNER_NETLIFY/"`);
       if (/\s-r\b|\s-R\b|\/\.\s|\*/.test(cp)) d.push(`${id} : la copie prend un dossier entier — un .npmrc ou un npm-shrinkwrap.json y entrerait`);
       if (!code.includes('RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"')) d.push(`${id} : RUNNER_NETLIFY a changé de place`);
+      if (!code.includes('rm -rf "$GITHUB_WORKSPACE/.netlify"')) d.push(`${id} : un .netlify/ du dépôt resterait sous la CLI — ses fonctions internes seraient regroupées et exécutées avec le jeton`);
       formes["netlify-cli"].set(String(s.run), [...(formes["netlify-cli"].get(String(s.run)) || []), id]);
     }
     if (iDeno >= 0) {
@@ -344,6 +346,9 @@ function jouerNetlify({ avecLock = true } = {}) {
   fs.mkdirSync(path.join(d.ws, ".github", "netlify-cli"), { recursive: true });
   fs.writeFileSync(path.join(d.ws, ".github", "netlify-cli", "package.json"), f.netlifyPkg);
   if (avecLock) fs.writeFileSync(path.join(d.ws, ".github", "netlify-cli", "package-lock.json"), f.netlifyLock);
+  // Une fonction « interne » versionnée sous .netlify/ : l'étape doit la retirer avant toute installation.
+  fs.mkdirSync(path.join(d.ws, ".netlify", "edge-functions"), { recursive: true });
+  fs.writeFileSync(path.join(d.ws, ".netlify", "edge-functions", "interne.js"), "export default () => new Response('banc');\n");
   const r = jouer(d, etapeDe(f.deploy, "deploy", estInstallNetlify).run);
   const lu = (nom) => (fs.existsSync(path.join(d.vu, nom)) ? fs.readFileSync(path.join(d.vu, nom), "utf8") : null);
   return { ...r, d, f, lu };
@@ -355,6 +360,7 @@ test("③ netlify-cli : le bloc réel copie le package.json et le lockfile du d�
   assert.deepEqual(r.lignes, [`npm ci --prefix ${posix(r.d.tmp)}/netlify-cli --ignore-scripts --no-audit --no-fund`]);
   assert.equal(r.lu("package.json"), r.f.netlifyPkg);
   assert.equal(r.lu("package-lock.json"), r.f.netlifyLock);
+  assert.ok(!fs.existsSync(path.join(r.d.ws, ".netlify")), "le .netlify/ du dépôt doit avoir disparu avant la CLI");
 });
 
 test("③ netlify-cli : sans lockfile dans le dépôt, l'étape est ROUGE et npm n'est jamais appelé", () => {
@@ -465,6 +471,7 @@ const MUTATIONS = [
     muter: (f) => ({ ...f, deploy: remplacer(f.deploy, COPIE, COPIE.replace("cp ", "cp -r \"$GITHUB_WORKSPACE/.github/netlify-cli/.\" "), 2) }),
     attendu: /dossier entier/,
   },
+  { nom: "le .netlify/ du dépôt n'est plus retiré", muter: (f) => ({ ...f, deploy: remplacer(f.deploy, '          rm -rf "$GITHUB_WORKSPACE/.netlify"\n', "", 2) }), attendu: /un \.netlify\/ du dépôt resterait/ },
   {
     nom: "le jeton posé sur l'étape d'installation",
     muter: (f) => ({ ...f, deploy: remplacer(f.deploy, NOM_INSTALL, NOM_INSTALL.replace("        run: |", "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: |"), 2) }),

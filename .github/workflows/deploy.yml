@@ -1179,6 +1179,10 @@ jobs:
           # Monter la version, régénérer le lockfile, l'`overrides` du 9/09 : .github/netlify-cli/README.md.
           # Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
+          # La CLI prend dans .netlify/ des fonctions « internes » qu'elle regroupe et exécute (extraction de
+          # config) avec le jeton, hors du contrôle d'empreinte : rien de versionné n'y entre (audit-workflows le
+          # refuse aussi). Elle recrée le dossier pendant l'envoi.
+          rm -rf "$GITHUB_WORKSPACE/.netlify"
           RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
           mkdir -p "$RUNNER_NETLIFY"
           cp "$GITHUB_WORKSPACE/.github/netlify-cli/package.json" "$GITHUB_WORKSPACE/.github/netlify-cli/package-lock.json" "$RUNNER_NETLIFY/"
@@ -1194,13 +1198,15 @@ jobs:
           # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
           # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
           # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
+          # Téléchargement borné à 120 s par essai et 300 s en tout, essais compris (`--retry-all-errors` est sans
+          # risque : l'empreinte est vérifiée juste après) — sous les bornes des jobs, avec le message de curl.
           # Monter la version : .github/netlify-cli/README.md. Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
           DENO_VERSION="2.9.8"
           DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
           DENO_BIN_DIR="${RUNNER_TEMP:-/tmp}/deno"
           mkdir -p "$DENO_BIN_DIR"
-          curl --fail --silent --show-error --location --retry 3 --max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          curl --fail --silent --show-error --location --max-time 120 --retry 3 --retry-all-errors --retry-max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
           echo "${DENO_ZIP_SHA256}  ${DENO_BIN_DIR}/deno.zip" | sha256sum --check --strict -
           unzip -q -o "$DENO_BIN_DIR/deno.zip" deno -d "$DENO_BIN_DIR"
           rm -f "$DENO_BIN_DIR/deno.zip"
@@ -1368,6 +1374,10 @@ jobs:
           # Monter la version, régénérer le lockfile, l'`overrides` du 9/09 : .github/netlify-cli/README.md.
           # Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
+          # La CLI prend dans .netlify/ des fonctions « internes » qu'elle regroupe et exécute (extraction de
+          # config) avec le jeton, hors du contrôle d'empreinte : rien de versionné n'y entre (audit-workflows le
+          # refuse aussi). Elle recrée le dossier pendant l'envoi.
+          rm -rf "$GITHUB_WORKSPACE/.netlify"
           RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
           mkdir -p "$RUNNER_NETLIFY"
           cp "$GITHUB_WORKSPACE/.github/netlify-cli/package.json" "$GITHUB_WORKSPACE/.github/netlify-cli/package-lock.json" "$RUNNER_NETLIFY/"
@@ -1383,13 +1393,15 @@ jobs:
           # d'edge-bundler qui l'accepte : le banc le tient). SANS REPLI : un FICHIER à la place des
           # dossiers où edge-bundler téléchargerait fait échouer tout téléchargement, donc le
           # déploiement, avant l'envoi — jamais un Deno non vérifié, même si celui-ci n'était pas retenu.
+          # Téléchargement borné à 120 s par essai et 300 s en tout, essais compris (`--retry-all-errors` est sans
+          # risque : l'empreinte est vérifiée juste après) — sous les bornes des jobs, avec le message de curl.
           # Monter la version : .github/netlify-cli/README.md. Verrou : tests/unit/outils-ci-figes.test.mjs.
           set -euo pipefail
           DENO_VERSION="2.9.8"
           DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
           DENO_BIN_DIR="${RUNNER_TEMP:-/tmp}/deno"
           mkdir -p "$DENO_BIN_DIR"
-          curl --fail --silent --show-error --location --retry 3 --max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          curl --fail --silent --show-error --location --max-time 120 --retry 3 --retry-all-errors --retry-max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
           echo "${DENO_ZIP_SHA256}  ${DENO_BIN_DIR}/deno.zip" | sha256sum --check --strict -
           unzip -q -o "$DENO_BIN_DIR/deno.zip" deno -d "$DENO_BIN_DIR"
           rm -f "$DENO_BIN_DIR/deno.zip"

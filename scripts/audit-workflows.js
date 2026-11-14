@@ -13,6 +13,8 @@
 //     d'installation des paquets sur le runner ;
 //   · un fichier qui détournerait `npm ci` : un `npm-shrinkwrap.json` (il prime sur package-lock.json)
 //     ou un `.npmrc` (registre, scripts, jetons), suivis par git n'importe où dans le dépôt ;
+//   · un `.netlify/` versionné à la racine : la CLI y prend des fonctions « internes », les regroupe et
+//     exécute leur code (extraction de config) avec le jeton, hors du contrôle d'empreinte de dist/ ;
 //   · une action sans SHA, ou un binaire en `version: latest`, qui reçoit un secret ;
 //   · du texte d'un événement interpolé dans un `run:` (injection shell : edge-functions.yml) ;
 //   · un jeton personnel dans une étape qui exécute le code du dépôt, dans le job de l'agent :
@@ -33,8 +35,8 @@ const DOSSIER = path.join(RACINE, ".github", "workflows");
 const ACTIONS = path.join(RACINE, ".github", "actions");
 
 // ── Les commandes npm et npx, lues comme le shell les lit ─────────────────────
-// Une ligne (les lignes continuées par « \ » réunies) est coupée en commandes aux séparateurs du shell,
-// puis en mots. La SOUS-COMMANDE de `npm` est le premier mot qui est un nom de commande de npm : ses
+// Une ligne (les lignes continuées par « \ » réunies) est coupée en commandes, puis en mots, par `commandes`
+// plus bas : guillemets, substitutions `$( … )` et accents graves compris. La SOUS-COMMANDE de `npm` est le premier mot qui est un nom de commande de npm : ses
 // options, et leurs valeurs, peuvent précéder (`npm --prefix "$D" install x`), et `npm run i` reste un
 // `run`. Une commande de npm absente de ces listes n'est pas jugée.
 const HORS_LOCKFILE = new Set([
@@ -68,8 +70,131 @@ function lignesLogiques(lignes) {
   return sortie;
 }
 
-const mots = (commande) => commande.trim().split(/\s+/).filter(Boolean).map((m) => m.replace(/^["']+|["']+$/g, ""));
-const commandes = (ligne) => ligne.split(/;|&&|\|\||\||\$\(|`|\(|\)|\{|\}/).map(mots).filter((m) => m.length);
+/**
+ * Découpe une ligne de shell en commandes, puis en mots, comme le shell les lit :
+ *   · les guillemets délimitent les mots — `echo "npm install"` est UN mot pour echo, pas une installation ;
+ *   · `;`, `&&`, `||`, `|`, `&` hors guillemets séparent les commandes ;
+ *   · `$( … )` (hors guillemets simples, y compris DANS des guillemets doubles) et les accents graves sont des
+ *     commandes à part, lues elles aussi ; dans la commande qui les contient, ils ne sont qu'un mot ;
+ *   · `${…}` et `${{ … }}` restent dans leur mot ; `(`, `)`, `{`, `}` isolés (groupes) ne sont pas des mots.
+ * Un découpage aux parenthèses et aux accolades coupait `npm ci --prefix "${RUNNER_TEMP}/x" --ignore-scripts`
+ * avant le drapeau, et refusait à tort un `npm ci` correct.
+ */
+function commandes(ligne) {
+  const toutes = [];
+  const lire = (texte) => {
+    const cmds = [];
+    let mots = [];
+    let mot = "";
+    let dansMot = false;
+    let i = 0;
+    const finMot = () => {
+      if (dansMot) mots.push(mot);
+      mot = "";
+      dansMot = false;
+    };
+    const finCommande = () => {
+      finMot();
+      const m = mots.filter((x) => !["(", ")", "{", "}"].includes(x));
+      if (m.length) cmds.push(m);
+      mots = [];
+    };
+    /** Lit une substitution `$(` … `)` équilibrée à partir de l'indice après `$(` ; rend l'indice après `)`. */
+    const substitution = (debut) => {
+      let prof = 1;
+      let j = debut;
+      let q = null;
+      for (; j < texte.length; j++) {
+        const c = texte[j];
+        if (q) {
+          if (c === q) q = null;
+          continue;
+        }
+        if (c === "'" || c === '"') q = c;
+        else if (c === "(") prof++;
+        else if (c === ")" && --prof === 0) break;
+      }
+      lire(texte.slice(debut, j));
+      return j + 1;
+    };
+    while (i < texte.length) {
+      const c = texte[i];
+      if (c === "'") {
+        const j = texte.indexOf("'", i + 1);
+        const fin = j < 0 ? texte.length : j;
+        mot += texte.slice(i + 1, fin);
+        dansMot = true;
+        i = fin + 1;
+        continue;
+      }
+      if (c === '"') {
+        i++;
+        dansMot = true;
+        while (i < texte.length && texte[i] !== '"') {
+          if (texte[i] === "\\" && i + 1 < texte.length) {
+            mot += texte[i + 1];
+            i += 2;
+            continue;
+          }
+          if (texte[i] === "$" && texte[i + 1] === "(") {
+            i = substitution(i + 2);
+            mot += "$(…)";
+            continue;
+          }
+          if (texte[i] === "`") {
+            const j = texte.indexOf("`", i + 1);
+            const fin = j < 0 ? texte.length : j;
+            lire(texte.slice(i + 1, fin));
+            mot += "`…`";
+            i = fin + 1;
+            continue;
+          }
+          mot += texte[i++];
+        }
+        i++;
+        continue;
+      }
+      if (c === "$" && texte[i + 1] === "(") {
+        i = substitution(i + 2);
+        mot += "$(…)";
+        dansMot = true;
+        continue;
+      }
+      if (c === "`") {
+        const j = texte.indexOf("`", i + 1);
+        const fin = j < 0 ? texte.length : j;
+        lire(texte.slice(i + 1, fin));
+        mot += "`…`";
+        dansMot = true;
+        i = fin + 1;
+        continue;
+      }
+      if (c === "\\" && i + 1 < texte.length) {
+        mot += texte[i + 1];
+        dansMot = true;
+        i += 2;
+        continue;
+      }
+      if (c === ";" || c === "|" || c === "&") {
+        finCommande();
+        i += texte[i + 1] === c ? 2 : 1;
+        continue;
+      }
+      if (/\s/.test(c)) {
+        finMot();
+        i++;
+        continue;
+      }
+      mot += c;
+      dansMot = true;
+      i++;
+    }
+    finCommande();
+    toutes.push(...cmds);
+  };
+  lire(ligne);
+  return toutes;
+}
 const estOutil = (mot, nom) => mot === nom || mot.endsWith("/" + nom);
 
 /** Défauts des commandes npm / npx d'une commande du shell (une liste de mots). */
@@ -102,8 +227,12 @@ function auditerCommande(m) {
     const sansScripts = reste.some((x) => x === "--ignore-scripts" || x === "--ignore-scripts=true");
     if (!sansScripts) d.push(`\`npm ${sous}\` sans \`--ignore-scripts\` — les scripts d'installation de chaque paquet tourneraient sur le runner`);
   } else if (EXEC.has(sous)) {
-    for (let j = 0; j < apres.length && apres[j] !== "--"; j++) {
+    for (let j = 0; j < apres.length; j++) {
       const x = apres[j];
+      if (x === "--") {
+        if (j + 1 < apres.length && OUTIL_VERSIONNE.test(apres[j + 1])) d.push(`\`npm ${sous} -- ${apres[j + 1]}\` télécharge l'outil hors lockfile`);
+        break;
+      }
       if (!x.startsWith("-")) {
         if (OUTIL_VERSIONNE.test(x)) d.push(`\`npm ${sous} ${x}\` télécharge l'outil hors lockfile`);
         break;
@@ -186,11 +315,18 @@ function fichiersDuDepot(racine) {
   }
 }
 
-/** Aucun fichier du dépôt ne peut détourner un `npm ci` : ni npm-shrinkwrap.json, ni .npmrc. */
-function auditerFichiersNpm(fichiers) {
-  return fichiers
-    .filter((f) => /(?:^|\/)(?:npm-shrinkwrap\.json|\.npmrc)$/i.test(f))
-    .map((f) => `${f} : ${/shrinkwrap/i.test(f) ? "un npm-shrinkwrap.json prime sur package-lock.json" : "un .npmrc change le registre, les scripts ou les jetons de npm"} — retirer le fichier`);
+/**
+ * Aucun fichier du dépôt ne détourne une installation ou un envoi : ni npm-shrinkwrap.json, ni .npmrc (n'importe
+ * où), ni rien sous .netlify/ à la racine (la CLI y lit des fonctions qu'elle regroupe et exécute avec le jeton).
+ */
+function auditerFichiersDetournants(fichiers) {
+  const raison = (f) => {
+    if (/^\.netlify\//.test(f)) return "un .netlify/ versionné entre dans les paquets de fonctions de la CLI, exécuté avec le jeton";
+    if (/(?:^|\/)npm-shrinkwrap\.json$/i.test(f)) return "un npm-shrinkwrap.json prime sur package-lock.json";
+    if (/(?:^|\/)\.npmrc$/i.test(f)) return "un .npmrc change le registre, les scripts ou les jetons de npm";
+    return null;
+  };
+  return fichiers.filter(raison).map((f) => `${f} : ${raison(f)} — retirer le fichier`);
 }
 
 /** Les actions composites du dépôt : .github/actions/<nom>/action.yml (ou .yaml). */
@@ -218,7 +354,7 @@ function auditerDepot(dossier = DOSSIER, { actions = ACTIONS, racine = RACINE } 
   }
   const composites = actionsComposites(actions);
   for (const a of composites) defauts.push(...auditerWorkflow(`actions/${a}`, fs.readFileSync(path.join(actions, a), "utf8")));
-  defauts.push(...auditerFichiersNpm(fichiersDuDepot(racine)));
+  defauts.push(...auditerFichiersDetournants(fichiersDuDepot(racine)));
   return { defauts, fichiers, composites };
 }
 
@@ -231,4 +367,4 @@ if (require.main === module) {
   console.log(`✓ audit-workflows : ${fichiers.length} workflows et ${composites.length} action(s) composite(s), aucune installation hors lockfile, aucune action flottante, aucune injection, canal de l'agent sans jeton personnel`);
 }
 
-module.exports = { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersNpm, auditerCommande, commandes, lignesLogiques };
+module.exports = { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersDetournants, auditerCommande, commandes, lignesLogiques };
