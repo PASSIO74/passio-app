@@ -16,6 +16,8 @@
 --      (mêmes règles que `stories` : compte privé → abonnés acceptés ; blocage dans les deux sens →
 --      rien). Écrits par leur auteur ; effacés par leur auteur OU par l'auteur de la story. Jamais
 --      modifiés (aucun droit UPDATE). 1 à 500 caractères.
+--   Blocage : un compte bloqué (dans un sens ou l'autre) n'apparaît ni dans les j'aime, ni dans
+--      « Vu par », ni dans les commentaires que l'auteur lit — même règle partout (revue du 14/11).
 --   ③ `story_views` : l'auteur d'une story lit QUI l'a vue (« Vu par »). Chaque compte continuait
 --      de ne lire que ses propres lignes : la policy existante est gardée, une seconde s'ajoute.
 --   Les deux tables neuves suivent la story : `on delete cascade` sur `stories(id)` (une story
@@ -79,7 +81,8 @@ grant select, insert, delete on public.story_likes to authenticated;
 
 drop policy if exists story_likes_select on public.story_likes;
 create policy story_likes_select on public.story_likes for select to authenticated
-  using (user_id = (select auth.uid())::text or public.story_est_a_moi(story_id));
+  using (user_id = (select auth.uid())::text
+         or (public.story_est_a_moi(story_id) and not public.is_blocked_with(user_id)));
 drop policy if exists story_likes_insert on public.story_likes;
 create policy story_likes_insert on public.story_likes for insert to authenticated
   with check (user_id = (select auth.uid())::text and public.story_visible(story_id)
@@ -134,7 +137,7 @@ create trigger zz_barriere_suppression before insert or update on public.story_c
 -- ── ③ « Vu par » : l'auteur d'une story lit qui l'a vue ────────────────────────────────────────────
 drop policy if exists story_views_select_auteur_story on public.story_views;
 create policy story_views_select_auteur_story on public.story_views for select to authenticated
-  using (public.story_est_a_moi(story_id));
+  using (public.story_est_a_moi(story_id) and not public.is_blocked_with(user_id));
 
 -- ── TABLEAU DE VERDICT ───────────────────────────────────────────────────────────────────────────
 select 'story_likes : RLS active, 3 policies' as controle,
