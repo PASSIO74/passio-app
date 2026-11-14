@@ -701,4 +701,70 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
     // Et l'écran continue de fonctionner : le rendu historique repasse.
     expect(await page.evaluate(() => { renderProfilesScreen(); return !!document.getElementById("myPosts"); })).toBe(true);
   });
+
+  // ⚠️ DÉFAUT PRÉEXISTANT relevé par la revue adversariale du 2026-11-14 (lot
+  // « Profil : ergonomie », fiche 31) : couper UI-7, repeindre le profil, puis
+  // rétablir UI-7 posait le rail `#v9ProfilePassions` SOUS les panneaux et
+  // `#passionManager` — les onglets remontaient de 569 à 494 px. Sans le
+  // repeint, c'est au-dessus de la CARTE qu'il passait. Cause : la coupure
+  // rejouait un ordre PHOTOGRAPHIÉ à la construction (sans le rail, ou avec un
+  // rail périmé), et la construction suivante photographiait le rail là où le
+  // repeint l'avait ancré, puis glissait la barre juste sous la carte — au-dessus
+  // de lui. Or la place du rail n'appartient pas à UI-7 : elle est « juste avant
+  // son ancre » (`_ancreRailPassions`, app-06). Le lot doit donc la RENDRE au
+  // rail après chacun de ses déplacements, dans les deux sens.
+  //
+  // ⚠️ PAS de `boot()` ici : il pose `passio_ui_8 = "0"`, qui RETIRE le rail —
+  // le cas serait vert sans rien mesurer. La prémisse (le rail existe, il est
+  // entre la carte et les onglets) est vérifiée avant toute coupure.
+  for (const avecRepeint of [true, false]) {
+    test(`couper, ${avecRepeint ? "aller-retour d'écran" : "sans repeint"}, rétablir : carte → rail → onglets`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 765 });
+      await bootOnboarded(page, null, 3);
+      await page.evaluate(() => goTo("profiles"));
+      await page.waitForTimeout(600);
+
+      const ordre = () => page.evaluate(() => {
+        const garder = ["mainProfileCard", "v9ProfilePassions", "v7ProfileTabs",
+          "v7Pan-publications", "v7Pan-activites", "passionManager", "myPosts"];
+        const ec = document.getElementById("screen-profiles");
+        return Array.prototype.slice.call(ec.children)
+          .map((n) => (n.classList.contains("profile-tabs") ? ".profile-tabs" : n.id))
+          .filter((id) => garder.indexOf(id) > -1 || id === ".profile-tabs");
+      });
+      const ATTENDU = ["mainProfileCard", "v9ProfilePassions", "v7ProfileTabs",
+        "v7Pan-publications", "v7Pan-activites", "passionManager"];
+
+      // Prémisse : UI-7 et le rail sont là, dans l'ordre de référence.
+      expect(await ordre()).toEqual(ATTENDU);
+
+      // ② Coupure. L'écran d'avant UI-7 : la carte, puis le rail juste avant
+      // les formats (son ancre de repli) — jamais au-dessus de la carte.
+      await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
+      await page.waitForTimeout(200);
+      const coupe = await ordre();
+      expect(coupe[0]).toBe("mainProfileCard");
+      expect(coupe.indexOf("v9ProfilePassions")).toBe(coupe.indexOf(".profile-tabs") - 1);
+
+      // ③ Un aller-retour d'écran repeint le profil (et ré-ancre le rail).
+      if (avecRepeint) {
+        await page.evaluate(() => { goTo("feed"); goTo("profiles"); });
+        await page.waitForTimeout(600);
+      }
+
+      // ④ Rétablissement : AUCUN repeint après — l'ordre doit tenir tout seul.
+      await page.evaluate(() => { localStorage.removeItem("passio_ui_7"); PassioUIV7.apply(); });
+      await page.waitForTimeout(400);
+      expect(await ordre()).toEqual(ATTENDU);
+
+      // Et ce que l'œil voit : le rail entre la carte et les onglets.
+      const y = await page.evaluate(() => {
+        const r = (id) => document.getElementById(id).getBoundingClientRect();
+        return { carte: r("mainProfileCard").bottom, rail: r("v9ProfilePassions").top,
+          railBas: r("v9ProfilePassions").bottom, onglets: r("v7ProfileTabs").top };
+      });
+      expect(y.rail).toBeGreaterThanOrEqual(y.carte);
+      expect(y.onglets).toBeGreaterThanOrEqual(y.railBas);
+    });
+  }
 });

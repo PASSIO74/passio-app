@@ -109,13 +109,28 @@
   // restitution rendait l'écran dans un ordre inventé. On retient donc la liste
   // ordonnée des enfants AVANT le premier déplacement, et on la rejoue telle
   // quelle : `appendChild` déplace, donc rejouer l'ordre restaure l'ordre.
+  //
+  // ⚠️ LE RAIL DES PASSIONS (`#v9ProfilePassions`) N'EST PAS À CE LOT, et il
+  // est HORS de la photographie. Sa place est « juste avant son ancre »
+  // (`ancrerRailPassions`, app-06) — `#v7ProfileTabs` quand ce lot est là,
+  // `.profile-tabs` sinon —, et `renderProfilePassionRail` la lui rend à chaque
+  // repeint. Photographié, il était rejoué à une place PÉRIMÉE ; absent de la
+  // photo, la coupure le laissait en tête (tous les autres nœuds étant rejoués
+  // derrière lui) : au-dessus de la carte. Et une construction faite après un
+  // repeint glissait la barre sous la carte, AU-DESSUS du rail, qui restait
+  // sous les panneaux jusqu'au repeint suivant (défaut préexistant relevé le
+  // 2026-11-14). D'où `rendreLeRail()` à la fin de chaque déplacement de ce
+  // lot, dans les deux sens. Verrou : section KILL SWITCH de `ui-v7-lot.spec.js`.
   var hoteOrigine = null;
   var ordreOrigine = null;
+  var RAIL_ID = "v9ProfilePassions";
 
   function memoriserOrdre(hote) {
     if (ordreOrigine || !hote) return;
     hoteOrigine = hote;
-    ordreOrigine = Array.prototype.slice.call(hote.children);
+    ordreOrigine = Array.prototype.slice.call(hote.children).filter(function (n) {
+      return n.id !== RAIL_ID;
+    });
   }
   function deplacer(noeud, hote) {
     if (!noeud || !hote) return false;
@@ -125,10 +140,21 @@
   function rendreLesNoeuds() {
     if (!hoteOrigine || !ordreOrigine) return;
     try {
-      for (var i = 0; i < ordreOrigine.length; i++) hoteOrigine.appendChild(ordreOrigine[i]);
+      for (var i = 0; i < ordreOrigine.length; i++) {
+        // Un nœud que quelqu'un d'autre a RETIRÉ depuis la photo ne revient
+        // pas : rejouer l'ordre ne doit restituer que ce que ce lot a déplacé.
+        if (hoteOrigine.contains(ordreOrigine[i])) hoteOrigine.appendChild(ordreOrigine[i]);
+      }
     } catch (e) { fail("restitution", e); }
     hoteOrigine = null;
     ordreOrigine = null;
+  }
+  // Rend au rail SA place, décidée par app-06 (qui peut ne pas être chargé :
+  // le lot reste alors sans effet sur lui).
+  function rendreLeRail() {
+    try {
+      if (typeof window.ancrerRailPassions === "function") window.ancrerRailPassions();
+    } catch (e) { fail("rail_ancrage", e); }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -260,6 +286,10 @@
     // ⚠️ Le lien secondaire « Carnets de voyage » a été retiré avec la
     // fonctionnalité elle-même (§6).
 
+    // La barre vient de s'insérer sous la carte : le rail, s'il existe déjà,
+    // repasse juste avant elle (sans attendre le prochain repeint).
+    rendreLeRail();
+
     ec.setAttribute("data-v7-profil", "1");
     return true;
   }
@@ -322,6 +352,9 @@
       for (var k = 0; k < sec.length; k++) {
         if (sec[k].parentNode) sec[k].parentNode.removeChild(sec[k]);
       }
+      // APRÈS le retrait de la barre : l'ancre du rail retombe alors sur
+      // `.profile-tabs`, sa place d'avant ce lot.
+      rendreLeRail();
       var ec = ecranProfil();
       if (ec) ec.removeAttribute("data-v7-profil");
     } catch (e) { fail("profil_restitution", e); }
