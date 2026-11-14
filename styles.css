@@ -6768,37 +6768,10 @@
 
     .irl-tile-mine { font-size: 9px; vertical-align: super; color: var(--accent); }
 
-    /* Barre de passions : mes profils en principal + panneau « Autres » à cocher */
+    /* Barre de passions : mes profils en principal */
     /* Aligné à gauche (et non space-around comme la messagerie) : un compte n'a
        souvent qu'un ou deux profils passion, l'écartement les faisait flotter. */
     .irl-passion-zone .msg-filter-tiles { justify-content: flex-start; gap: 10px; }
-    .irl-tile-more .msg-tile-icon { font-weight: 700; color: var(--muted); }
-    .irl-tile-more.active .msg-tile-icon { color: var(--accent); }
-    .irl-extra-panel {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 14px; padding: 12px; margin: 8px 0 4px;
-    }
-    .irl-extra-title {
-      font-size: 11px; font-weight: 800; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
-    }
-    .irl-extra-list { display: flex; flex-wrap: wrap; gap: 6px; }
-    .irl-extra-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid var(--border); background: transparent; color: var(--text);
-      font-size: 12px; font-weight: 600; border-radius: 999px;
-      padding: 7px 12px; min-height: 34px; cursor: pointer;
-    }
-    .irl-extra-chip.on { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.07); }
-    .irl-extra-chip b { font-size: 10px; color: var(--muted); font-weight: 700; }
-    .irl-extra-chip.on b { color: var(--accent); }
-    .irl-extra-box {
-      width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--border);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 10px; line-height: 1; flex-shrink: 0;
-    }
-    .irl-extra-chip.on .irl-extra-box { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .irl-extra-empty { font-size: 12px; color: var(--muted); }
 
     .event-card-banner {
       font-size: 11px; font-weight: 800; border-radius: 10px;
@@ -12032,7 +12005,6 @@ button, a, label, select, summary,
   border: 0;
   box-shadow: none;
 }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile {
   min-width: 0;
   width: 100%;
@@ -12076,9 +12048,8 @@ button, a, label, select, summary,
 /* La tuile « Chercher » de la rangée fait DOUBLE EMPLOI avec la case
    « Chercher » de la ligne du dessus, qui appelle exactement la même fonction
    (`ouvrirRecherchePassionIRL`). Masquée ici, rendue par la coupure.
-   ⚠️ « Autres » (`#irlExtraToggle`), lui, RESTE : il ne cherche pas, il ajoute
-   durablement une passion à la rangée (`state.user.irlExtraPassions`), et
-   aucune autre porte ne fait ça. */
+   ⚠️ « Autres » (`#irlExtraToggle`) est RETIRÉ (2026-11-14) : « Chercher »
+   couvre le besoin. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.psel-tile-chercher { display: none; }
 
 /* Coché = violet plein, comme toutes les cases de la page. */
@@ -12092,32 +12063,6 @@ button, a, label, select, summary,
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-/* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
-   même langue : des pastilles au lavis violet, écriture violet foncé, et la
-   case à cocher qui se remplit de violet une fois cochée. */
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
-  border-color: var(--accent-tile-line);
-  background: var(--accent-tile);
-  color: var(--accent-2);
-  min-height: 38px;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
-  border-color: var(--accent);
-  background: var(--accent-tile-on);
-  color: var(--accent-2);
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: var(--accent); }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
-  border-color: var(--accent);
-  color: #fff;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 /* ── ⑤ Les raccourcis personnels : UNE ligne, visuellement secondaire ──────
