@@ -2107,7 +2107,7 @@ function playCurrentStory() {
       var _btn = document.createElement("button");
       _btn.id = "storyReportBtn"; _btn.type = "button"; _btn.setAttribute("aria-label", "Signaler cette story");
       _btn.textContent = "⋯"; _btn.className = "story-more-btn";
-      _btn.addEventListener("click", function (e) { e.stopPropagation(); clearInterval(storyTimer); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
+      _btn.addEventListener("click", function (e) { e.stopPropagation(); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
       _hdr.insertBefore(_btn, _hdr.querySelector(".story-viewer-close"));
     }
     _barreReponseStory(s, u.name, _reel);
@@ -2185,6 +2185,8 @@ function playCurrentStory() {
     try { if (typeof supaMarkStoryView === "function") supaMarkStoryView(s.id); } catch (e) {}
   }
 
+  _storyPrecharger();
+
   // Animate current bar
   const bar = document.getElementById("sp-" + storyItemIdx);
   if (bar) {
@@ -2194,9 +2196,21 @@ function playCurrentStory() {
       dernierTour = maintenant;
       // En mode économe/manuel, on attend le geste : la story ne disparaît pas
       // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
-      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause) return;
+      // Une feuille ouverte par-dessus (partage, signalement, porte de compte)
+      // met la story en pause ; elle reprend à la fermeture.
+      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause
+          || document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
       ecoule += pas;
-      const p = Math.min(100, (ecoule / STORY_DURATION) * 100);
+      // Une story VIDÉO dure le temps de sa vidéo (bornée à 60 s), et sa barre
+      // suit la lecture réelle — jamais coupée à 4,5 s au milieu d'une phrase.
+      let p;
+      if (storyVideo && isFinite(storyVideo.duration) && storyVideo.duration > 0) {
+        const d = Math.min(60, storyVideo.duration);
+        p = Math.min(100, (Math.min(storyVideo.currentTime, d) / d) * 100);
+        if (storyVideo.currentTime >= d - 0.15 || (storyVideo.loop && ecoule >= d * 1000 + 400)) p = 100;
+      } else {
+        p = Math.min(100, (ecoule / STORY_DURATION) * 100);
+      }
       bar.style.width = p + "%";
       if (p >= 100) {
         clearInterval(storyTimer);
@@ -2215,18 +2229,55 @@ function storyTap(sens) {
   if (sens === "prev") storyPrev(); else storyNext();
 }
 (function _brancherMaintienStory() {
-  var debut = 0;
+  // Gestes (2026-11-14, façon Instagram) : maintenir = pause et l'interface
+  // s'efface ; balayer vers le BAS ferme ; balayer à GAUCHE / à DROITE passe à
+  // l'auteur suivant / précédent. Un geste ne compte jamais comme un toucher
+  // bref (`_storyClicIgnore`).
+  var debut = 0, x0 = 0, y0 = 0, glisse = false, minuteurMaintien = null;
+  var SEUIL_GLISSE = 12, SEUIL_FERMER = 90, SEUIL_AUTEUR = 60;
+  var carteDe = function () { return document.getElementById("storyCard"); };
+  var viewer = function () { return document.getElementById("storyViewer"); };
   document.addEventListener("pointerdown", function (e) {
-    var carte = document.getElementById("storyCard");
+    var carte = carteDe();
     if (!carte || !carte.contains(e.target) || e.target.closest("button")) return;
-    debut = Date.now();
+    debut = Date.now(); x0 = e.clientX; y0 = e.clientY; glisse = false;
     window._storyEnPause = true;
+    clearTimeout(minuteurMaintien);
+    minuteurMaintien = setTimeout(function () { var v = viewer(); if (debut && !glisse && v) v.classList.add("story-maintenu"); }, 250);
   }, true);
-  var relacher = function () {
+  document.addEventListener("pointermove", function (e) {
     if (!debut) return;
-    window._storyClicIgnore = (Date.now() - debut) >= STORY_MAINTIEN_MS;
+    var dx = e.clientX - x0, dy = e.clientY - y0;
+    if (!glisse && Math.abs(dx) < SEUIL_GLISSE && Math.abs(dy) < SEUIL_GLISSE) return;
+    glisse = true;
+    var carte = carteDe();
+    if (!carte) return;
+    if (dy > 0 && dy > Math.abs(dx)) {
+      carte.style.transform = "translateY(" + dy + "px) scale(" + Math.max(0.85, 1 - dy / 1600) + ")";
+      carte.style.opacity = String(Math.max(0.4, 1 - dy / 600));
+    } else if (Math.abs(dx) > Math.abs(dy)) {
+      carte.style.transform = "translateX(" + (dx * 0.5) + "px)";
+    }
+  }, true);
+  var relacher = function (e) {
+    if (!debut) return;
+    clearTimeout(minuteurMaintien);
+    var v = viewer(); if (v) v.classList.remove("story-maintenu");
+    var carte = carteDe();
+    if (carte) { carte.style.transform = ""; carte.style.opacity = ""; }
+    var dx = e && typeof e.clientX === "number" ? e.clientX - x0 : 0;
+    var dy = e && typeof e.clientY === "number" ? e.clientY - y0 : 0;
+    var annule = e && e.type === "pointercancel";
+    window._storyClicIgnore = glisse || (Date.now() - debut) >= STORY_MAINTIEN_MS;
+    // Le clic qui suit un relâchement part dans la même rafale ; s'il ne vient
+    // pas (un balayage tactile n'en produit pas), le drapeau ne doit pas avaler
+    // le PROCHAIN toucher.
+    if (window._storyClicIgnore) setTimeout(function () { window._storyClicIgnore = false; }, 400);
     debut = 0;
     window._storyEnPause = false;
+    if (!glisse || annule || !v || !v.classList.contains("active")) return;
+    if (dy > SEUIL_FERMER && dy > Math.abs(dx)) { closeStoryViewer(); return; }
+    if (Math.abs(dx) > SEUIL_AUTEUR && Math.abs(dx) > Math.abs(dy)) storyGroupeVoisin(dx < 0 ? +1 : -1);
   };
   document.addEventListener("pointerup", relacher, true);
   document.addEventListener("pointercancel", relacher, true);
@@ -2321,72 +2372,299 @@ function storyPrev() {
   closeStoryViewer();
 }
 
-// LOT-49 (audit UX/UI du 2026-11-10, BOB-C09) : une story ne permettait ni de
-// répondre ni de réagir. Sous la story d'un COMPTE RÉEL autre que moi (jamais un
-// exemple), un champ « Répondre à Léa… » : envoyer ouvre la conversation
-// EXISTANTE (startDirectMessage, mêmes règles que la messagerie : blocage,
-// compte d'exemple) avec la réponse PRÉREMPLIE et la story citée — rien ne
-// part tout seul, c'est la personne qui envoie. Rendu DOM, aucun onclick inline.
+// ═══ STORY FAÇON INSTAGRAM (2026-11-14) ═══════════════════════════════════
+// Sous chaque story, une barre d'actions : « Envoyer un message… », ❤️ et
+// partager — plus, champ en main, une rangée de réactions rapides. LOT-49
+// (BOB-C09) avait posé la réponse, mais elle QUITTAIT la story et préremplissait
+// la conversation ; comme sur Instagram, réponse, réaction et j'aime partent
+// maintenant SANS quitter la visionneuse, dans le fil direct avec l'auteur
+// (`_envoyerALAuteurStory`) — le seul canal entre deux comptes que la base
+// connaît pour une story (aucune table de j'aime de story n'existe : `story_views`
+// est en `select_own`). Rien ne part sans un geste : taper « Envoyer », toucher
+// une réaction, toucher ❤️.
+//   · story d'un COMPTE RÉEL autre que moi, non bloqué : message, réactions, ❤️
+//     (le premier j'aime d'une story prévient l'auteur, une seule fois), partager ;
+//   · story d'exemple : ❤️ local et partager — aucun message vers un compte
+//     qui n'existe pas ;
+//   · MA story : « Nouvelle story » et partager ;
+//   · compte bloqué : aucune barre.
+// Rendu DOM, aucun onclick inline (identifiants d'autrui — règle MSG-02).
+var STORY_REACTIONS = ["😂", "😮", "😍", "😢", "👏", "🔥"];
+var STORY_COEUR_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.4 2.4h1.8c.8-1.2 2.3-2.4 4.4-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>';
+var STORY_PARTAGE_SVG = '<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M22 3 9.2 13.6"/><path d="M22 3 15 21l-4.2-7.8L3 9z"/></svg>';
+
+function _storyAimee(id) {
+  var l = (state.user && state.user.likedStories) || [];
+  return l.indexOf(id) > -1;
+}
+function _storyExtrait(s) {
+  return String((s && (s.text || s.content)) || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+// Écrit `texte` dans la conversation DIRECTE avec l'auteur de la story, sans
+// l'ouvrir. Mêmes garde-fous que la messagerie : visiteur → porte de compte,
+// compte bloqué → refus, recherche du fil en panne → on ne devine pas (un fil
+// existe peut-être, en créer un second le doublerait chez l'autre). Sans fil,
+// un BROUILLON local que `_sendTextToSupa` matérialise au premier envoi
+// (`_materialiserConv`, LOT-43). Rend vrai si le message est parti en envoi.
+async function _envoyerALAuteurStory(s, nom, texte) {
+  try {
+    if (!s || !s.authorId || !texte) return false;
+    if (window.requireAuthentication && !requireAuthentication("message")) return false;
+    var auteur = s.authorId;
+    if (typeof isBlocked === "function" && isBlocked(auteur)) { toast("Compte bloqué — débloque-le pour lui écrire", "warning"); return false; }
+    var convs = getConversations();
+    var c = convs.find(function (x) { return x && !x.isGroup && x.userId === auteur; });
+    if (!c) {
+      var r = (typeof supa !== "undefined" && supa && window._supaReal) ? await _chercherConvDirecte(auteur) : { id: null, absenceProuvee: true };
+      if (!r.id && !r.absenceProuvee) { toast("Pas envoyé — vérifie ta connexion et réessaie.", "warning"); return false; }
+      convs = getConversations();
+      c = convs.find(function (x) { return x && !x.isGroup && x.userId === auteur; });
+      if (!c) {
+        var uLoc = (typeof userById === "function" && userById(auteur)) || {};
+        c = { id: r.id || ("conv_" + uid()), userId: auteur, userName: nom || s.authorName || "Passionné", userEmoji: s.authorEmoji || uLoc.profileEmoji || "✨", userColor: s.authorColor || uLoc.avatar || "#8b5cf6", userPhoto: uLoc.photoUrl || null, passion: null, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
+        if (!r.id) c._brouillon = true;
+        convs.unshift(c);
+        conversationsState = convs;
+      }
+    }
+    if (texte.length > MSG_TEXTE_MAX) texte = texte.slice(0, MSG_TEXTE_MAX);
+    var msgId = "msg_" + uid();
+    if (!c.messages) c.messages = [];
+    c.messages.push({ id: msgId, from: "me", text: texte, at: Date.now(), status: "sending", de: _fileProprietaire() });
+    c.lastAt = Date.now();
+    saveConversations();
+    try { renderMessages(); } catch (_r) {}
+    _sendTextToSupa(c.id, msgId, _withSenderMeta(texte));
+    return true;
+  } catch (e) {
+    try { diagLog("story_envoi " + (e && e.message)); } catch (_) {}
+    toast("Pas envoyé — réessaie.", "warning");
+    return false;
+  }
+}
+
+// Une grande icône qui éclot au centre de la story (j'aime, réaction).
+function _storyEclosion(contenu) {
+  try {
+    var carte = document.getElementById("storyCard");
+    if (!carte) return;
+    var d = document.createElement("div");
+    d.className = "story-eclosion";
+    d.setAttribute("aria-hidden", "true");
+    if (contenu === "coeur") d.innerHTML = STORY_COEUR_SVG; else d.textContent = contenu;
+    carte.appendChild(d);
+    setTimeout(function () { d.remove(); }, 900);
+  } catch (e) {}
+}
+
+function storyBasculerJaime(s, nom, reel) {
+  if (!s || !s.id || !state.user) return;
+  if (!Array.isArray(state.user.likedStories)) state.user.likedStories = [];
+  var l = state.user.likedStories;
+  var i = l.indexOf(s.id);
+  var aime = i < 0;
+  if (aime) { l.push(s.id); if (l.length > 600) state.user.likedStories = l.slice(-500); }
+  else l.splice(i, 1);
+  try { saveState(); } catch (e) {}
+  var b = document.getElementById("storyLikeBtn");
+  if (b) { b.classList.toggle("aimee", aime); b.setAttribute("aria-pressed", aime ? "true" : "false"); b.setAttribute("aria-label", aime ? "Je n'aime plus" : "J'aime"); }
+  if (!aime) return;
+  _storyEclosion("coeur");
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("story_like", { reel: !!reel }); } catch (_t) {}
+  // L'auteur n'est prévenu qu'au PREMIER j'aime d'une story : défaire et
+  // refaire ne l'inonde pas.
+  if (!reel) return;
+  if (!Array.isArray(state.user.storyLikesPrevenus)) state.user.storyLikesPrevenus = [];
+  if (state.user.storyLikesPrevenus.indexOf(s.id) > -1) return;
+  state.user.storyLikesPrevenus.push(s.id);
+  if (state.user.storyLikesPrevenus.length > 600) state.user.storyLikesPrevenus = state.user.storyLikesPrevenus.slice(-500);
+  try { saveState(); } catch (e) {}
+  var ex = _storyExtrait(s);
+  _envoyerALAuteurStory(s, nom, "❤️ J'ai aimé ta story" + (ex ? " « " + ex + " »" : ""));
+}
+
+function storyReagir(s, nom, emoji) {
+  if (STORY_REACTIONS.indexOf(emoji) < 0) return;
+  _storyEclosion(emoji);
+  var ex = _storyExtrait(s);
+  Promise.resolve(_envoyerALAuteurStory(s, nom, emoji + " Réaction à ta story" + (ex ? " « " + ex + " »" : ""))).then(function (ok) {
+    if (ok) toast("Réaction envoyée à " + (nom || "l'auteur"), "success");
+  });
+  try { if (window.tel && tel.action) tel.action("story_reaction", {}); } catch (_t) {}
+}
+
+function storyPartager(s, nom, mienne) {
+  if (!s) return;
+  // Pas de `_storyEnPause` : la feuille ouverte suffit à suspendre la lecture
+  // (minuteur de playCurrentStory), et sa fermeture la relance d'elle-même.
+  var rawUrl = (typeof lienPartageDe === "function") ? lienPartageDe("user", s.authorId) : location.origin + location.pathname + "#user-" + s.authorId;
+  var url = rawUrl;
+  try { if (window.tel && tel.shareLink) url = tel.shareLink(rawUrl, "profile", s.authorId, navigator.share ? "native" : "clipboard"); } catch (_t) {}
+  var vignette = (s.media && s.mediaType !== "video") ? s.media : "";
+  ouvrirFeuillePartage({
+    quoi: "story", titre: mienne ? "Ma story" : ("Story de " + (nom || "ce profil")), auteur: nom || "", extrait: _storyExtrait(s), vignette: vignette, url: url,
+    message: mienne ? "Regarde ma story sur PASSIO" : ("Regarde la story de " + (nom || "ce profil") + " sur PASSIO"),
+    voit: "La personne qui reçoit le lien ouvre le profil dans PASSIO, avec ses stories du moment.",
+    idEnvoyer: "_storyPartageEnvoyer",
+  });
+  try { if (window.tel && tel.action) tel.action("story_partage", {}); } catch (_t) {}
+}
+
 function _barreReponseStory(s, nom, reel) {
   try {
     var sv = document.getElementById("storyViewer");
     if (!sv) return;
-    var ancienne = document.getElementById("storyReplyBar");
-    if (ancienne) ancienne.remove();
+    ["storyActionsBar", "storyReplyBar", "storyReactions"].forEach(function (id) { var a = document.getElementById(id); if (a) a.remove(); });
+    sv.classList.remove("story-ecrit");
     var bloque = typeof isBlocked === "function" && isBlocked(s.authorId);
-    if (!reel || bloque) return;
-    var barre = document.createElement("form");
-    barre.id = "storyReplyBar";
-    barre.className = "story-reply-bar";
-    var champ = document.createElement("input");
-    champ.type = "text";
-    champ.maxLength = 500;
-    champ.className = "story-reply-input";
-    champ.placeholder = "Répondre à " + (nom || "cette personne") + "…";
-    champ.setAttribute("aria-label", "Répondre à " + (nom || "cette personne"));
-    champ.setAttribute("enterkeyhint", "send");
-    var bouton = document.createElement("button");
-    bouton.type = "submit";
-    bouton.className = "story-reply-send";
-    bouton.textContent = "Envoyer";
-    barre.appendChild(champ);
-    barre.appendChild(bouton);
-    // Écrire met la story en pause ; quitter le champ vide la relance.
-    champ.addEventListener("focus", function () { window._storyEnPause = true; });
-    champ.addEventListener("input", function () { window._storyEnPause = true; });
-    champ.addEventListener("blur", function () { if (!champ.value.trim()) window._storyEnPause = false; });
+    if (bloque) return;
+    var mienne = !!s.authorId && (s.authorId === MY_UID || s.authorId === "me");
+    var barre = document.createElement("div");
+    barre.id = "storyActionsBar";
+    barre.className = "story-actions-bar";
     ["pointerdown", "click", "touchstart"].forEach(function (t) { barre.addEventListener(t, function (e) { e.stopPropagation(); }); });
-    barre.addEventListener("submit", function (e) {
-      e.preventDefault();
-      var texte = champ.value.trim();
-      if (!texte) { champ.focus(); return; }
-      var extrait = String(s.text || "").replace(/\s+/g, " ").trim().slice(0, 80);
-      var brouillon = "↩️ Ta story" + (extrait ? " « " + extrait + " »" : "") + "\n" + texte;
-      window._storyReponseEnAttente = { userId: s.authorId, texte: brouillon };
-      closeStoryViewer();
-      try { if (window.tel && tel.action) tel.action("story_reponse_ouverte", {}); } catch (_t) {}
-      Promise.resolve(startDirectMessage(s.authorId, nom)).then(function () {
-        setTimeout(_poserReponseStory, 350);
+
+    if (reel && !mienne) {
+      var form = document.createElement("form");
+      form.id = "storyReplyBar";
+      form.className = "story-reply-bar";
+      var champ = document.createElement("input");
+      champ.type = "text";
+      champ.maxLength = 500;
+      champ.className = "story-reply-input";
+      champ.placeholder = "Répondre à " + (nom || "cette personne") + "…";
+      champ.setAttribute("aria-label", "Répondre à " + (nom || "cette personne"));
+      champ.setAttribute("enterkeyhint", "send");
+      champ.setAttribute("autocomplete", "off");
+      var envoyer = document.createElement("button");
+      envoyer.type = "submit";
+      envoyer.className = "story-reply-send";
+      envoyer.textContent = "Envoyer";
+      form.appendChild(champ);
+      form.appendChild(envoyer);
+      barre.appendChild(form);
+
+      // Réactions rapides : visibles le champ en main (comme Instagram).
+      var rangee = document.createElement("div");
+      rangee.id = "storyReactions";
+      rangee.className = "story-reactions";
+      rangee.setAttribute("role", "group");
+      rangee.setAttribute("aria-label", "Réactions rapides");
+      STORY_REACTIONS.forEach(function (emo) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "story-reaction-btn";
+        b.textContent = emo;
+        b.setAttribute("aria-label", "Réagir " + emo);
+        // `pointerdown` + preventDefault : le champ garde le focus, la rangée
+        // ne disparaît pas avant que le toucher ne soit compté.
+        b.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+        b.addEventListener("click", function (e) {
+          e.preventDefault(); e.stopPropagation();
+          storyReagir(s, nom, emo);
+          try { champ.blur(); } catch (_) {}
+        });
+        rangee.appendChild(b);
       });
-    });
+      ["pointerdown", "click", "touchstart"].forEach(function (t) { rangee.addEventListener(t, function (e) { e.stopPropagation(); }); });
+      sv.appendChild(rangee);
+
+      var ecrit = function (oui) { sv.classList.toggle("story-ecrit", !!oui); };
+      champ.addEventListener("focus", function () { window._storyEnPause = true; ecrit(true); });
+      champ.addEventListener("input", function () { window._storyEnPause = true; form.classList.toggle("a-du-texte", !!champ.value.trim()); });
+      champ.addEventListener("blur", function () {
+        setTimeout(function () { if (document.activeElement !== champ) { ecrit(false); if (!champ.value.trim()) window._storyEnPause = false; } }, 120);
+      });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var texte = champ.value.trim();
+        if (!texte) { champ.focus(); return; }
+        var ex = _storyExtrait(s);
+        var message = "↩️ Ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
+        envoyer.disabled = true;
+        Promise.resolve(_envoyerALAuteurStory(s, nom, message)).then(function (ok) {
+          envoyer.disabled = false;
+          if (!ok) return;
+          champ.value = "";
+          form.classList.remove("a-du-texte");
+          try { champ.blur(); } catch (_) {}
+          ecrit(false);
+          window._storyEnPause = false;
+          toast("Message envoyé à " + (nom || "l'auteur"), "success");
+        });
+        try { if (window.tel && tel.action) tel.action("story_reponse", {}); } catch (_t) {}
+      });
+    } else if (mienne) {
+      var nouvelle = document.createElement("button");
+      nouvelle.type = "button";
+      nouvelle.id = "storyNouvelleBtn";
+      nouvelle.className = "story-nouvelle-btn";
+      nouvelle.textContent = "＋ Nouvelle story";
+      nouvelle.addEventListener("click", function () { closeStoryViewer(); try { openStudioAsStory(); } catch (_) {} });
+      barre.appendChild(nouvelle);
+    } else {
+      var espace = document.createElement("div");
+      espace.className = "story-actions-espace";
+      barre.appendChild(espace);
+    }
+
+    if (!mienne) {
+      var coeur = document.createElement("button");
+      coeur.type = "button";
+      coeur.id = "storyLikeBtn";
+      coeur.className = "story-action-btn story-like-btn" + (_storyAimee(s.id) ? " aimee" : "");
+      coeur.setAttribute("aria-pressed", _storyAimee(s.id) ? "true" : "false");
+      coeur.setAttribute("aria-label", _storyAimee(s.id) ? "Je n'aime plus" : "J'aime");
+      coeur.innerHTML = STORY_COEUR_SVG;
+      coeur.addEventListener("click", function () { storyBasculerJaime(s, nom, reel && !mienne); });
+      barre.appendChild(coeur);
+    }
+    var partage = document.createElement("button");
+    partage.type = "button";
+    partage.id = "storyShareBtn";
+    partage.className = "story-action-btn story-share-btn";
+    partage.setAttribute("aria-label", "Partager");
+    partage.innerHTML = STORY_PARTAGE_SVG;
+    partage.addEventListener("click", function () { storyPartager(s, nom, mienne); });
+    barre.appendChild(partage);
     sv.appendChild(barre);
-  } catch (e) { try { diagLog("story_reponse " + (e && e.message)); } catch (_) {} }
+  } catch (e) { try { diagLog("story_barre " + (e && e.message)); } catch (_) {} }
 }
-// Pose la réponse dans le champ de la conversation ouverte — si c'est bien celle
-// de l'auteur de la story. Le message n'est PAS envoyé.
-function _poserReponseStory() {
-  var r = window._storyReponseEnAttente;
-  window._storyReponseEnAttente = null;
-  if (!r) return;
+
+// Préchargement de l'image de la story SUIVANTE : l'enchaînement ne montre
+// plus un fond vide le temps du téléchargement. Une seule à la fois ; les
+// vidéos ne sont pas préchargées (données mobiles).
+function _storyPrecharger() {
   try {
-    var c = (getConversations() || []).find(function (x) { return x && x.id === window._openedConvId; });
-    var champ = document.getElementById("convFpInput");
-    if (!c || c.userId !== r.userId || !champ) return;
-    champ.value = r.texte;
-    if (typeof autoResizeTextarea === "function") autoResizeTextarea(champ);
-    try { champ.dispatchEvent(new Event("input", { bubbles: true })); } catch (_e) {}
-    try { champ.focus(); champ.setSelectionRange(champ.value.length, champ.value.length); } catch (_e) {}
-  } catch (e) { try { diagLog("story_reponse_pose " + (e && e.message)); } catch (_) {} }
+    var g = storyGroups[storyGroupIdx];
+    var suiv = g && g.stories[storyItemIdx + 1];
+    if (!suiv) {
+      var gi = _groupeStoryVoisin(storyGroupIdx, +1);
+      suiv = gi > -1 && storyGroups[gi] ? storyGroups[gi].stories[0] : null;
+    }
+    if (!suiv || !suiv.media || suiv.mediaType === "video") return;
+    var src = String(suiv.media);
+    if (window._storyPrecharge === src || /^(javascript|data:text)/i.test(src)) return;
+    window._storyPrecharge = src;
+    var im = new Image();
+    im.decoding = "async";
+    im.src = src;
+  } catch (e) {}
+}
+
+// Passer à l'auteur suivant / précédent d'un geste (balayage horizontal).
+function storyGroupeVoisin(sens) {
+  clearInterval(storyTimer);
+  var gi = _groupeStoryVoisin(storyGroupIdx, sens);
+  if (gi < 0) { closeStoryViewer(); return; }
+  storyGroupIdx = gi;
+  var g = storyGroups[gi];
+  var seen = (state.user && state.user.seenStories) || [];
+  var ii = sens > 0 && g ? g.stories.findIndex(function (x) { return seen.indexOf(x.id) < 0; }) : 0;
+  storyItemIdx = ii < 0 ? 0 : ii;
+  playCurrentStory();
 }
 
 function closeStoryViewer() {
@@ -2394,7 +2672,8 @@ function closeStoryViewer() {
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
   if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
-  if (sv) sv.classList.remove("active");
+  if (sv) sv.classList.remove("active", "story-ecrit", "story-maintenu");
+  try { var _c = document.getElementById("storyCard"); if (_c) { _c.style.transform = ""; _c.style.opacity = ""; } } catch (e) {}
   window._storyEnPause = false;
   window._storyClicIgnore = false;
   renderStories();

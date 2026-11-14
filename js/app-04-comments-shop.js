@@ -4665,6 +4665,40 @@ function _peindreContexteConv() {
     barre.parentNode.insertBefore(d, barre);
   } catch (e) { try { diagLog("conv_contexte " + (e && e.message)); } catch (_) {} }
 }
+// LOT-43 (relecture audit-passio) : la recherche d'une conversation DIRECTE
+// existante en base LIT ses erreurs. Une panne (hors ligne, 401, 500) rendait
+// `data: null`, lu comme « aucune conversation » : un brouillon s'ouvrait alors
+// qu'un fil existait, et le premier envoi en créait un SECOND chez l'autre.
+// `absenceProuvee` n'est vrai que si les trois lectures ont répondu sans erreur.
+// Rend { id, absenceProuvee } ; extrait de `startDirectMessage` le 2026-11-14
+// pour que la visionneuse de stories (app-08) écrive dans le MÊME fil.
+async function _chercherConvDirecte(userId) {
+  let supaConvId = null;
+  let absenceProuvee = false;
+  try {
+    // Chercher une conv directe existante entre les deux users dans Supabase
+    const r1 = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
+    if (r1 && r1.error) throw r1.error;
+    const myConvIds = ((r1 && r1.data) || []).map(m => m.conv_id);
+    if (!myConvIds.length) absenceProuvee = true;
+    else {
+      const r2 = await supa.from("conv_members")
+        .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
+      if (r2 && r2.error) throw r2.error;
+      const shared = (r2 && r2.data) || [];
+      if (!shared.length) absenceProuvee = true;
+      else {
+        // Vérifier que c'est une conv directe (pas groupe)
+        const r3 = await supa.from("conversations")
+          .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
+        if (r3 && r3.error) throw r3.error;
+        supaConvId = (r3 && r3.data && r3.data[0] && r3.data[0].id) || null;
+        if (!supaConvId) absenceProuvee = true;
+      }
+    }
+  } catch(e) { try { diagLog("dm_recherche_echec " + String((e && (e.code || e.message)) || "")); } catch (_) {} }
+  return { id: supaConvId, absenceProuvee: absenceProuvee };
+}
 async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
   // LOT-52 (PCS-C05) : la publication d'où l'on vient, si c'est bien son auteur.
   var _ctx = window._contexteMessage;
@@ -4697,35 +4731,11 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   // Si Supabase dispo : approche Supabase-first (ID cohérent entre utilisateurs)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && userId !== "me") {
     goTo("messages");
-    let supaConvId = null;
-    // LOT-43 (relecture audit-passio) : la recherche LIT ses erreurs. Une panne
-    // (hors ligne, 401, 500) rendait `data: null`, lu comme « aucune
-    // conversation » : un brouillon s'ouvrait alors qu'un fil existait, et le
-    // premier envoi en créait un SECOND chez l'autre. `absenceProuvee` n'est
-    // vrai que si les trois lectures ont répondu sans erreur.
-    let absenceProuvee = false;
-    try {
-      // Chercher une conv directe existante entre les deux users dans Supabase
-      const r1 = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
-      if (r1 && r1.error) throw r1.error;
-      const myConvIds = ((r1 && r1.data) || []).map(m => m.conv_id);
-      if (!myConvIds.length) absenceProuvee = true;
-      else {
-        const r2 = await supa.from("conv_members")
-          .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
-        if (r2 && r2.error) throw r2.error;
-        const shared = (r2 && r2.data) || [];
-        if (!shared.length) absenceProuvee = true;
-        else {
-          // Vérifier que c'est une conv directe (pas groupe)
-          const r3 = await supa.from("conversations")
-            .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
-          if (r3 && r3.error) throw r3.error;
-          supaConvId = (r3 && r3.data && r3.data[0] && r3.data[0].id) || null;
-          if (!supaConvId) absenceProuvee = true;
-        }
-      }
-    } catch(e) { try { diagLog("dm_recherche_echec " + String((e && (e.code || e.message)) || "")); } catch (_) {} }
+    // La recherche vit dans `_chercherConvDirecte` (partagée avec la story,
+    // app-08) ; voir son commentaire.
+    const _rech = await _chercherConvDirecte(userId);
+    let supaConvId = _rech.id;
+    let absenceProuvee = _rech.absenceProuvee;
 
     // LOT-43 (audit UX/UI du 2026-11-10, MSG-C22) : choisir une personne
     // CRÉAIT la conversation chez elle (une ligne `conversations`, deux

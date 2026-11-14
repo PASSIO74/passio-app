@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LOT-49 (audit UX/UI du 2026-11-10, BOB-C09) — RÉPONDRE À UNE STORY
-//   ① sous la story d'un compte réel : « Répondre à Léa… » ; envoyer ouvre la
-//      conversation de Léa avec la réponse PRÉREMPLIE (story citée) — rien ne
-//      part tout seul ;
+//   ① sous la story d'un compte réel : « Répondre à Léa… » ; depuis le
+//      2026-11-14 (façon Instagram), « Envoyer » écrit la réponse (story citée)
+//      dans le fil direct de Léa SANS quitter la story ;
 //   ② ma story, ou la story d'un compte bloqué : aucun champ.
 // Compte de démonstration local ; conversation et envoi simulés.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -30,7 +30,7 @@ async function banc(page) {
   }, { moi: MOI, lea: LEA });
 }
 
-test("① répondre à la story d'un compte réel : conversation ouverte, réponse préremplie, rien d'envoyé", async ({ page }) => {
+test("① répondre à la story d'un compte réel : le message part SANS quitter la story (2026-11-14, façon Instagram)", async ({ page }) => {
   await banc(page);
   await page.evaluate((lea) => window.__story(lea), LEA);
   const champ = page.locator("#storyReplyBar .story-reply-input");
@@ -38,18 +38,22 @@ test("① répondre à la story d'un compte réel : conversation ouverte, répon
   await expect(champ).toHaveAttribute("placeholder", "Répondre à Léa…");
   await champ.fill("Moi ! Samedi matin ?");
   await page.locator("#storyReplyBar .story-reply-send").click();
-  await page.waitForTimeout(800);
-  const r = await page.evaluate(() => ({
-    story: document.getElementById("storyViewer").classList.contains("active"),
-    conv: window._openedConvId,
-    texte: (document.getElementById("convFpInput") || {}).value || "",
-    envois: window.__envois,
-  }));
-  expect(r.story).toBe(false);
-  expect(r.conv).toBe("c_l49");
+  await page.waitForTimeout(500);
+  const r = await page.evaluate((lea) => {
+    const c = getConversations().find((x) => x && !x.isGroup && x.userId === lea);
+    const m = c && c.messages[c.messages.length - 1];
+    return {
+      story: document.getElementById("storyViewer").classList.contains("active"),
+      texte: (m && m.text) || "",
+      envois: window.__envois,
+      champ: document.querySelector("#storyReplyBar .story-reply-input").value,
+    };
+  }, LEA);
+  expect(r.story, "la story reste ouverte").toBe(true);
   expect(r.texte).toContain("Qui passe les essayer avant samedi ?");
   expect(r.texte).toContain("Moi ! Samedi matin ?");
-  expect(r.envois, "rien ne part tout seul").toBe(0);
+  expect(r.envois, "un message, parti au geste « Envoyer »").toBe(1);
+  expect(r.champ, "le champ est vidé").toBe("");
 });
 
 test("② ma story, ou un compte bloqué : pas de champ", async ({ page }) => {

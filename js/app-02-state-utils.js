@@ -3886,7 +3886,7 @@ function unlockBodyScroll(owner) {
 function ouvrirFeuillePartage(o) {
   o = o || {};
   var quoi = o.quoi || "publication";
-  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil" };
+  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil", story: "Partager cette story" };
   var signe = /[?&]inv=/.test(String(o.url || ""));
   var vignette = o.vignette && !/^data:/.test(String(o.vignette)) ? ((typeof passioThumb === "function") ? passioThumb(o.vignette, 192) : o.vignette) : "";
   var html = '<div class="modal-handle"></div>'

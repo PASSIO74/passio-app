@@ -28,6 +28,7 @@
 - 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
+- 📸 LA STORY FAÇON INSTAGRAM — ❤️, réactions, réponse et partage sans quitter la story ; gestes (2026-11-14)
 - 🔔 PAS DE NOTIFICATION SANS ÉVÉNEMENT MÉTIER — elle part au verdict de son écriture (2026-11-13)
 - 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
 - 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
@@ -943,3 +944,44 @@ Demande de Benjamin, capture à l'appui : « supprime les noms des passions dess
 - **Second temps, même jour** (« supprime également à ces endroits ») : retirée aussi des listes de personnes (`_personRowHTML`, app-06), de la recherche Explorer (`_exSearchLancer`, app-07) et des notifications (`_notifIdentiteHtml` supprimée, app-08). Plus AUCUN appelant applicatif de `identitePassionsHTML` ; la fonction et `identitePassionsTexte` restent dans app-02 (les tests calculent l'identité avec). Verrou : `profil-entete-passions.spec.js` « listes de personnes, recherche Explorer, notifications », réinjection faite (ancien code → 1 ligne trouvée, rouge).
 - **Ce qui reste, délibérément** : les en-têtes de profil. Les passions d'un GROUPE (fiche du groupe) sont son sujet, pas une ligne sous un pseudo : intactes.
 - Verrous : `ui-v6a-messages.spec.js` (« aucune passion sur une carte », « elle ne revient pas au rendu suivant »), `ui-v6a-boucle.spec.js`, `profil-entete-passions.spec.js` (« un commentaire ne porte AUCUNE passion sous le pseudo »). Chacun pose sa prémisse : l'auteur A une passion à afficher.
+
+## 📸 LA STORY FAÇON INSTAGRAM — ❤️, réactions, réponse et partage sans quitter la story ; gestes (2026-11-14)
+
+**Demande** (Benjamin, capture d'une story de Clara Jensen) : « optimiser tout le système de lecture des
+stories et faire une Instagram : pouvoir interagir / partager / liker ». La visionneuse n'offrait qu'un
+champ de réponse (LOT-49) qui QUITTAIT la story pour préremplir la conversation — et rien du tout sous
+une story d'exemple.
+
+**Ce qui est en place** (`js/app-08-ui-modals-tour.js`, bloc « STORY FAÇON INSTAGRAM ») :
+- barre `#storyActionsBar` : « Répondre à X… » (compte réel), ❤️ `#storyLikeBtn`, partager `#storyShareBtn` ;
+  sur MA story : « ＋ Nouvelle story » et partager ; compte bloqué : rien ;
+- champ en main : rangée `#storyReactions` (😂 😮 😍 😢 👏 🔥) ; ❤️ et réaction font éclore l'icône au centre ;
+- réponse, réaction et PREMIER j'aime d'une story partent dans le **fil direct** avec l'auteur
+  (`_envoyerALAuteurStory`) sans quitter la visionneuse. Défaire puis refaire le j'aime ne renvoie rien
+  (`state.user.storyLikesPrevenus`) ; l'état du cœur vit dans `state.user.likedStories` (borné) ;
+- partager : `ouvrirFeuillePartage({ quoi: "story" })`, lien du PROFIL de l'auteur (aucune story n'a d'URL) ;
+- gestes : maintenir = pause + interface effacée (`.story-maintenu`), balayer vers le bas = fermer,
+  à gauche / à droite = auteur suivant / précédent (`storyGroupeVoisin`) ;
+- lecture : une feuille ouverte par-dessus suspend la barre de progression et sa fermeture la relance ;
+  une story VIDÉO dure le temps de sa vidéo (≤ 60 s) ; l'image de la story suivante est préchargée.
+
+**Pourquoi un message et pas une table `story_likes`** : aucune table n'existe pour ça, `story_views` est
+en `select_own` (l'auteur ne peut pas lire qui a vu), et une notification `like` est refusée par
+`notifications_preuve_evenement` sans ligne métier prouvée. Le fil direct est le seul canal entre deux
+comptes que la base connaît déjà pour une story — c'est aussi ce que fait Instagram pour les réactions.
+« Vu par » et un compteur de j'aime pour l'auteur demandent une migration (table + RLS + preuve de
+notification) : à ouvrir comme un lot à part, avec sa contre-revue.
+
+**Pièges du lot** :
+- `_chercherConvDirecte` (app-04) est extraite de `startDirectMessage` : la story écrit dans le MÊME fil.
+  Recherche en panne = on n'écrit pas (créer un brouillon doublerait le fil chez l'autre, LOT-43).
+- Un DEUXIÈME balayage à la souris levait `pointercancel` : le premier avait sélectionné le texte de la
+  carte, que le navigateur se mettait à TIRER. `#storyCard` est en `user-select: none` +
+  `-webkit-touch-callout: none` (aussi le menu « copier » d'iOS au maintien) et `touch-action: none`.
+- `_storyClicIgnore` est remis à zéro 400 ms après un relâchement : un balayage tactile ne produit pas de
+  `click`, et le drapeau avalait sinon le PROCHAIN toucher.
+- Une feuille ne pose PAS `_storyEnPause` : le minuteur lit `#modalBackdrop.active` ; poser le drapeau
+  laissait la story figée après la fermeture de la feuille.
+
+Verrous : `tests/e2e/story-instagram.spec.js` (6), `tests/e2e/lot49-story-reponse.spec.js` (① réécrit :
+la réponse part sans quitter la story).
