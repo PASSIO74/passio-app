@@ -91,25 +91,35 @@ function scalaire(texte, ligne) {
 // clé que personne ne lisait. Un guillemet n'ouvre un scalaire cité qu'en tête
 // d'élément ou de valeur (`a'b` reste un scalaire nu) ; un crochet ou une
 // accolade cités ne sont pas une imbrication (`"${{ inputs.y }}"`).
-function decouperFlux(corps, ligne) {
+// ⚠️ Même jour, relecture suivante : dans une SÉQUENCE en ligne, une entrée
+// `clé: valeur` est un mapping pour YAML (`steps: [ run: '…' ]` est une
+// étape) ; rendue comme un texte, elle échappait à toutes les règles. Elle
+// lève, comme toute autre imbrication.
+function decouperFlux(corps, ligne, sequence) {
   const parts = [];
   let cur = "", q = null;
+  const fin = () => {
+    // Un `:` suivi d'un blanc (ou de la fin), hors des scalaires cités : l'entrée est une paire `clé: valeur`.
+    if (sequence && /:(?:[ \t]|$)/.test(cur.replace(/'(?:[^']|'')*'|"(?:[^"\\]|\\.)*"/g, "''"))) throw new ErreurYaml("entrée « clé: valeur » d'une séquence en ligne : non prise en charge", ligne);
+    parts.push(cur);
+    cur = "";
+  };
   for (let i = 0; i < corps.length; i++) {
     const c = corps[i];
     if (q === "'") { cur += c; if (c === "'") { if (corps[i + 1] === "'") { cur += "'"; i++; } else q = null; } continue; }
     if (q === '"') { cur += c; if (c === "\\" && i + 1 < corps.length) cur += corps[++i]; else if (c === '"') q = null; continue; }
     if ((c === "'" || c === '"') && /(?:^[ \t]*|:[ \t]+)$/.test(cur)) { q = c; cur += c; continue; }
     if (c === "[" || c === "]" || c === "{" || c === "}") throw new ErreurYaml("collection en ligne imbriquée : non prise en charge", ligne);
-    if (c === ",") { parts.push(cur); cur = ""; continue; }
+    if (c === ",") { fin(); continue; }
     cur += c;
   }
   if (q) throw new ErreurYaml("guillemet non fermé dans une collection en ligne", ligne);
-  parts.push(cur);
+  fin();
   return parts.map(sansBlancs).filter((x) => x !== "");
 }
 function flux(t, ouvre, ferme, ligne) {
   if (!t.endsWith(ferme)) throw new ErreurYaml("collection en ligne non fermée", ligne);
-  const parts = decouperFlux(sansBlancs(t.slice(1, -1)), ligne);
+  const parts = decouperFlux(sansBlancs(t.slice(1, -1)), ligne, ouvre === "[");
   if (ouvre === "[") return parts.map((p) => scalaire(p, ligne));
   const o = mappingVide();
   for (const p of parts) { const m = /^([^:]+):[ \t]*(.*)$/.exec(p); if (!m) throw new ErreurYaml("mapping en ligne illisible : " + p, ligne); poser(o, scalaire(m[1], ligne), scalaire(m[2], ligne), ligne); }

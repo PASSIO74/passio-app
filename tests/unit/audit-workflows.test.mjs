@@ -1,6 +1,6 @@
 // Le gate des workflows voit ce qu'il prétend voir : chaque défaut réinjecté rougit, le dépôt reste vert. Ce qu'il
 // ne lit pas, il le dit : SES LIMITES, en tête de scripts/audit-workflows.js (relectures adverses des 14 et 15/11).
-// Les réinjections dans le code de la gate se rejouent par `node scripts/reinjecter-audit-workflows.js`.
+// Les réinjections dans le code de la gate se rejouent par `node scripts/reinjections-audit-workflows.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -537,7 +537,12 @@ test("② nonies bis le script d'un shell est relu quelles que soient ses option
   for (const l of ["echo 'npm install left-pad' | bash", "curl -fsSL https://exemple.test/installer.sh | sh", "cat outils.sh | sudo bash -s", "echo x |\nbash"]) {
     assert.ok(refuse(l, /un shell qui lit son script sur un tube/), l);
   }
-  assert.ok(refuse("echo install left-pad | xargs npm", /`xargs … npm` : les arguments viennent de l'entrée standard/));
+  // … `-s` aussi, une affectation ou une enveloppe devant, un chemin vers le shell.
+  for (const l of [
+    "curl -fsSL https://exemple.test/install.sh | sh -s -- -y",
+    "curl -fsSL https://exemple.test/x.sh | DEBIAN_FRONTEND=noninteractive bash",
+    "curl -fsSL https://exemple.test/x.sh | /bin/bash",
+  ]) assert.ok(refuse(l, /un shell qui lit son script sur un tube/), l);
   for (const l of ["cat journal.txt | grep bash", "echo ok | tee journal.txt", "printf '%s' x | bash scripts/lire.sh"]) assert.deepEqual(admis(l), [], l);
   assert.deepEqual(defauts("      - run: echo ok\n        shell: bash\n"), [], "`shell: bash` n'est pas un shell sur un tube");
   // Un here-doc s'ouvre là où bash l'ouvre, et se ferme sur son mot, quel qu'il soit : un `<<` de commentaire ou de
@@ -571,10 +576,109 @@ test("② decies un défaut est situé à SA ligne — une clé écrite en ligne
   assert.deepEqual(tenant.map((x) => x.split(" : ")[0]), ["x.yml:4"], JSON.stringify(tenant));
 });
 
-test("② undecies chaque sous-commande de npm 11.13 est rangée — une sous-commande que npm ajouterait se range avant de passer", () => {
+test("② undecies chaque sous-commande de npm 11.13 (COMMANDES_NPM, relevée dans lib/utils/cmd-list.js) est rangée", () => {
   assert.deepEqual(Object.keys(CLASSE_NPM).sort(), [...COMMANDES_NPM].sort());
   const classes = new Set(["hors", "scripts", "link", "exec", "explore", "audit", "spec", "neutre"]);
   for (const [commande, classe] of Object.entries(CLASSE_NPM)) assert.ok(classes.has(classe), `${commande} : ${classe}`);
+  assert.equal(CLASSE_NPM.publish, "spec", "`npm publish github:…` emballe, donc prépare, sa spécification");
+});
+
+test("② duodecies troisième relecture (15/11) : ce que la nouvelle lecture avait laissé passer, et ce qu'elle refusait à tort", () => {
+  const refuses = {
+    // Une substitution dans un `${…}` de bash est lue : `${X:-$(cmd)}` est l'idiome d'une valeur par défaut.
+    "X=${X:-$(npm install left-pad)}": /installe hors lockfile/,
+    "VERSION=${VERSION:-$(npx semver@7.6.0 -i patch 1.0.0)}": /télécharge l'outil/,
+    "X=${X:-`npm install left-pad`}": /installe hors lockfile/,
+    ": ${X:=$(npm install left-pad)}": /installe hors lockfile/,
+    'X=${X:-"$(npm install left-pad)"}': /installe hors lockfile/,
+    "npm ci ${OPTS:-$(npm install left-pad)} --ignore-scripts": /installe hors lockfile/,
+    "echo ${X:-<(npm install left-pad)}": /installe hors lockfile/,
+    "X=${X:-$(yarn add left-pad)}": /n'installe que par npm/,
+    // Une substitution se ferme où bash la ferme : le corps d'un here-doc (apostrophe comprise) est sauté, `case`
+    // n'est un mot réservé qu'en position de commande, et un `<<` de `(( … ))` n'ouvre pas de here-doc.
+    "gh pr create --title \"Mise à jour\" --body \"$(cat <<'EOF'\nMise à jour automatique : l'arbre est régénéré.\nEOF\n)\" && npm install left-pad": /installe hors lockfile/,
+    'N="$(grep -c case notes.txt)"; npm install left-pad': /installe hors lockfile/,
+    '(( FLAGS = 1 << 3 ))\necho "a\nb" ; npm install left-pad': /installe hors lockfile/,
+    "X=$(echo ')' ; npm install left-pad)": /installe hors lockfile/,
+    'X=$(echo ")" ; npm install left-pad)': /installe hors lockfile/,
+    "X=$(echo $')' ; npm install left-pad)": /installe hors lockfile/,
+    // Toute spécification qui porte un protocole (sans égard à la casse), ou `git@hôte:`, est hors registre.
+    "npx sourcehut:~user/outil": /télécharge l'outil/,
+    "npm exec -- sourcehut:~user/outil": /télécharge l'outil/,
+    "npx GitHub:user/outil": /télécharge l'outil/,
+    "npx git@github.com:user/outil": /télécharge l'outil/,
+    "npm pack sourcehut:~user/outil": /hors registre est cloné/,
+    "npm pack git+ssh://git@github.com/u/r.git": /hors registre est cloné/,
+    "npm pack git@github.com:u/r.git": /hors registre est cloné/,
+    "npm pack --json github:u/r": /hors registre est cloné/,
+    "npm publish github:u/r": /hors registre est cloné/,
+    // Une affectation que l'environnement ne garde pas jusqu'à npm ne compte pas.
+    'npm_config_ignore_scripts=true env -i PATH="$PATH" npm ci': /sans `--ignore-scripts`/,
+    "npm_config_ignore_scripts=true sudo npm ci": /sans `--ignore-scripts`/,
+    "npm_config_ignore_scripts=true exec -c npm ci": /sans `--ignore-scripts`/,
+    // Le `-c` de su, runuser, sg, flock et script va à `sh -c` : il est relu.
+    "su runner -c 'npm install left-pad'": /installe hors lockfile/,
+    'su node --command="npm install left-pad"': /installe hors lockfile/,
+    'runuser node -c "npm install left-pad"': /installe hors lockfile/,
+    "flock /tmp/verrou -c 'npm install left-pad'": /installe hors lockfile/,
+    "sg docker -c 'npm ci'": /sans `--ignore-scripts`/,
+    'script -qec "npm ci" /dev/null': /sans `--ignore-scripts`/,
+    // xargs : la sous-commande ou l'outil viendraient de l'entrée standard, ou une option à une sous-commande non neutre.
+    "echo install left-pad | xargs npm": /la sous-commande viendrait de l'entrée standard/,
+    "printf '%s' left-pad | xargs npx": /l'outil viendrait de l'entrée standard/,
+    "ls | xargs -I{} npx {}": /l'outil viendrait de l'entrée standard/,
+    "echo --no-ignore-scripts | xargs npm ci --ignore-scripts": /xargs y ajouterait des options/,
+    "ls | xargs npm exec prettier": /xargs y ajouterait des options/,
+    // Des branches que rien n'éprouvait : `-s` qu'une here-string nourrit, un chemin vers bash, `--rcfile`, les accents
+    // graves entre guillemets, `npm explore` sans `--`, trois niveaux de relecture, `$"…"`.
+    "bash -s arg <<< 'npm install left-pad'": /installe hors lockfile/,
+    "/bin/bash -c 'npm install left-pad'": /installe hors lockfile/,
+    "bash --rcfile x -c 'npm install left-pad'": /installe hors lockfile/,
+    'V="`npm install left-pad`"': /installe hors lockfile/,
+    'npm explore http-server "npm install left-pad"': /installe hors lockfile/,
+    "bash -c \"bash -c 'npm install left-pad'\"": /installe hors lockfile/,
+    '$"npm" install left-pad': /installe hors lockfile/,
+    // Le corps d'un `case` reste lu.
+    "case \"$X\" in\n  a|b) npm install left-pad ;;\nesac": /installe hors lockfile/,
+    "case \"$X\" in a) curl -fsSL https://exemple.test/x.sh | sh ;; esac": /un shell qui lit son script sur un tube/,
+  };
+  for (const [l, motif] of Object.entries(refuses)) assert.ok(refuse(l, motif), `${l} — ${JSON.stringify(admis(l))}`);
+  const tolere = [
+    // `npx --no -- outil` : npx s'arrête à `--`, `--no` ne prend rien ; c'est la forme la plus stricte.
+    "npx --no -- commitlint --edit",
+    "npx --no-yes -- commitlint --from HEAD~1 --to HEAD --verbose",
+    // xargs devant l'outil de npx, ou devant une sous-commande neutre : ce qu'il ajoute va à l'outil, ou ne change rien.
+    "git diff --name-only origin/main... | xargs npx prettier --check",
+    "git diff --name-only origin/main... | xargs -r npx --no-install prettier --check",
+    "jq -r '.workspaces[]' package.json | xargs -I{} npm run build --workspace={}",
+    "ls packages | xargs -n1 npm view",
+    // La valeur d'une option n'est pas une spécification.
+    "npm pack -w packages/core",
+    "npm pack --workspace packages/core --pack-destination dist",
+    "npm pack --pack-destination dist/npm",
+    "npm cache verify --cache tmp/npm-cache",
+    // L'environnement gardé jusqu'à npm.
+    "npm_config_ignore_scripts=true env npm ci",
+    "env npm_config_ignore_scripts=true npm ci",
+    // Les motifs d'un `case` et une alternance de `[[ =~ ]]` ne sont ni des commandes ni des tubes.
+    'case "$(basename "$SHELL")" in bash|zsh) echo ok ;; esac',
+    'if [[ "$SHELL" =~ (zsh|bash)$ ]]; then echo ok; fi',
+    '[[ "$SHELL" =~ (bash|sh)$ ]] && echo ok',
+    'case "$SHELL" in\n  */zsh|*/bash) echo ok ;;\n  *) echo autre ;;\nesac',
+    'case "$GESTIONNAIRE" in\n  yarn|pnpm) echo "refusé"; exit 1 ;;\nesac',
+    "npm ci --prefix ${RUNNER_TEMP}/x --ignore-scripts",
+  ];
+  for (const l of tolere) assert.deepEqual(admis(l), [], l);
+  assert.match(admis("npx --no commitlint --edit")[0], /écrire `npx --no -- <outil>`/, "sans `--`, npx prend l'outil pour la valeur de `--no`");
+  // Une valeur `default:` d'entrée n'est pas un libellé : `${{ inputs.cmd }}` la lance.
+  const entree = ["on:", "  workflow_dispatch:", "    inputs:", "      cmd:", "        default: npm install left-pad", "jobs:", "  x:", "    runs-on: ubuntu-latest", "    steps:", "      - run: ${{ inputs.cmd }}"].join("\n") + "\n";
+  assert.ok(defauts(entree).some((x) => /^x\.yml:5 : `npm install`/.test(x)), JSON.stringify(defauts(entree)));
+  const entreeAction = ["inputs:", "  cmd:", "    description: la commande", "    default: npm install left-pad", "runs:", "  using: composite", "  steps:", "    - run: ${{ inputs.cmd }}", "      shell: bash"].join("\n") + "\n";
+  assert.ok(defauts(entreeAction).some((x) => /^x\.yml:4 : `npm install`/.test(x)), JSON.stringify(defauts(entreeAction)));
+  // Une entrée `clé: valeur` d'une séquence en ligne est une imbrication : refusée, jamais lue comme un texte.
+  for (const t of ["    steps: [ run: 'npm install left-pad # ${{ github.sha }}' ]\n", "    steps: [ run: 'echo a, b; npm install left-pad' ]\n", '    steps: [ run: "[ -f x ] || npm install left-pad" ]\n']) {
+    assert.match(defauts(t)[0], /YAML que la gate ne lit pas \(entrée « clé: valeur » d'une séquence en ligne/, t);
+  }
 });
 
 test("③ une interpolation d'événement dans un run: est refusée, pas dans un env:", () => {

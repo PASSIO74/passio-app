@@ -20,16 +20,18 @@ Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jet
 Les verrous :
 
 - `tests/unit/outils-ci-figes.test.mjs` (dans `npm run verif`) : lockfile, étapes, plages de Deno, et
-  46 réinjections ;
+  50 réinjections ;
 - `scripts/audit-workflows.js` lit chaque workflow et action composite par le lecteur YAML fermé du dépôt,
-  et toute valeur comme du shell, libellés exceptés (noms, `run-name`, `description`). Il refuse les
-  installations npm et npx hors lockfile qu'il reconnaît, pnpm, yarn et bun, un `npm ci`, `rebuild`,
+  et toute valeur comme du shell, libellés exceptés (noms, `run-name`, `author`, `description`). Il refuse
+  les installations npm et npx hors lockfile qu'il reconnaît, pnpm, yarn et bun, un `npm ci`, `rebuild`,
   `uninstall` ou `prune` sans `--ignore-scripts` lu avec certitude, et un shell qui lit son script sur un
   tube. Une forme qu'il sait ne pas lire est refusée : un YAML hors du sous-ensemble du lecteur, une option
   devant la sous-commande de npm ou devant l'outil de npx. Il refuse aussi tout `npm-shrinkwrap.json`,
   `.npmrc` ou `.netlify/` suivi. C'est un filet contre le retour des formes naturelles, pas une barrière :
   une commande recomposée (variable, accolades, expression `${{ }}`) lui échappe, comme un script lu dans
-  un fichier. Ses limites sont écrites en tête du script.
+  un fichier. Ses limites sont écrites en tête du script. `node scripts/reinjections-audit-workflows.mjs`
+  et `node scripts/differentiel-audit-workflows.mjs <révision>` (hors verif) l'éprouvent avant toute
+  réécriture.
 - La gate ne voit pas un `npx <outil>` sans version. Pour la CLI Netlify, le banc refuse, dans les
   workflows et actions composites que lit la gate, une ligne qui porte `netlify-cli@` et toute commande
   qui nomme `netlify` ou `netlify-cli`, lue comme la gate la lit (le script d'un shell relu compris). Un

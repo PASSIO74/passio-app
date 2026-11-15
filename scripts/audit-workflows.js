@@ -11,9 +11,11 @@
 //       - `npm ci`, `install-ci-test`, `rebuild`, `uninstall`, `prune`, `edit` et `link` sans `--ignore-scripts`
 //         lu avec certitude ;
 //       - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné (`outil@x`) ou hors
-//         registre (git, URL, archive, `org/dépôt`) ; `npm pack`, `cache` et `diff` d'un paquet hors registre ;
+//         registre (tout protocole sauf `npm:` et `file:`, `git@hôte:`, URL, archive, `org/dépôt`) ; `npm pack`,
+//         `cache`, `diff` et `publish` d'un paquet hors registre (cloné, puis préparé avec ses scripts) ;
 //       - pnpm, yarn, bun, bunx, pnpx : le dépôt n'installe que par npm.
-//     Chaque sous-commande de npm 11.13 est rangée dans CLASSE_NPM, et une épreuve vérifie qu'aucune n'y manque ;
+//     Chaque sous-commande de npm 11.13 (COMMANDES_NPM, relevée dans lib/utils/cmd-list.js) est rangée dans
+//     CLASSE_NPM, et une épreuve vérifie que les deux listes concordent ;
 //   · un fichier qui détournerait `npm ci` ou l'envoi : un `npm-shrinkwrap.json` (il prime sur package-lock.json),
 //     un `.npmrc` (registre, scripts, jetons), ou un `.netlify/` à la racine (la CLI y prend des fonctions
 //     « internes », les regroupe et exécute leur code avec le jeton), suivis par git ;
@@ -28,29 +30,37 @@
 //
 // CE QUE LA GATE LIT (relectures adverses des 14 et 15/11) :
 //   · Le YAML passe par le lecteur fermé du dépôt (scripts/lib/yaml-workflow.js) : une ancre, un alias, une
-//     étiquette, un scalaire simple ou cité sur plusieurs lignes, une collection en ligne imbriquée, un indicateur
-//     d'indentation explicite, un saut de ligne autre que LF ou CRLF la rendent rouge (« YAML que la gate ne lit
-//     pas »).
+//     étiquette, un scalaire simple ou cité sur plusieurs lignes, une collection en ligne imbriquée (une paire
+//     `clé: valeur` dans une séquence en ligne comprise), un indicateur d'indentation explicite, un saut de ligne
+//     autre que LF ou CRLF la rendent rouge (« YAML que la gate ne lit pas »).
 //   · Toute valeur du fichier est lue comme du shell — `run:`, mais aussi `with:` (une action de relance lance une
-//     commande), `env:` et une matrice (une commande posée là, qu'un `$CMD` ou un `${{ matrix.x }}` lance) — sauf
-//     les libellés que GitHub n'exécute jamais : le nom du workflow, d'un job ou d'une étape, `run-name`, les
-//     `description` (estLibelle). Un `name:` sous `env:`, `with:` ou dans une matrice est une valeur comme une autre.
+//     commande), `env:`, une matrice, la `default:` d'une entrée (une commande posée là, qu'un `$CMD` ou un
+//     `${{ matrix.x }}` lance) — sauf les libellés que GitHub n'exécute jamais (estLibelle) : le nom du workflow,
+//     d'un job ou d'une étape, `run-name`, `author`, les `description` (de l'action, de ses entrées et sorties, des
+//     entrées, sorties et secrets d'un déclencheur). Un `name:` sous `env:`, `with:` ou dans une matrice est une
+//     valeur comme une autre.
 //   · Chaque valeur est lue deux fois, et les deux lectures comptent : ligne logique par ligne logique (un « \ »
 //     final continue la ligne, hors commentaire) ; puis d'un seul tenant, comme bash la lit — guillemets sur
-//     plusieurs lignes, here-docs, redirections (le mot visé par `>` n'est pas un argument).
+//     plusieurs lignes, here-docs (sautés aussi dans une substitution), redirections (le mot visé par `>` n'est pas
+//     un argument), substitutions jusque dans un `${…}`, `(( … ))` et `[[ … ]]` lus à part, motifs d'un `case` (ni
+//     commandes, ni tubes).
 //   · Le script passé à un shell est relu : `bash -c`/`sh -c` quelles que soient les options (`-eo pipefail -c`),
-//     `eval`, une here-string (`bash <<< '…'`), un here-doc donné à un shell, la commande de `npm explore`. Un shell
-//     qui lit son script sur un tube (`… | bash`, `curl … | sh`) est REFUSÉ : ce script-là ne se lit pas.
+//     `eval`, une here-string (`bash <<< '…'`), un here-doc donné à un shell, le `-c` de su, runuser, sg, flock et
+//     script, la commande de `npm explore`. Un shell qui lit son script sur un tube (`… | bash`, `curl … | sh`) est
+//     REFUSÉ : ce script-là ne se lit pas.
 //   · npm : chaque mot `npm` d'une commande est jugé (`env -C d npm install`, `npm exec -- npm ci`). La
 //     sous-commande doit le suivre : une option placée avant elle est refusée (sa valeur, un raccourci, une
 //     abréviation ou un `--` la déplacent, et la gate ne rejoue pas l'analyseur d'options de npm) ; une
 //     sous-commande variable, en expression ou en accolades aussi.
 //   · `--ignore-scripts` n'est lu que sous la forme `--ignore-scripts` (ou `=true`), écrite en clair, avant tout
 //     `--`, hors de portée d'une option qui prendrait le mot suivant pour valeur. Une forme qui le touche
-//     (négation, abréviation, autre valeur, majuscules, variable ou accolades dans le nom) est refusée.
+//     (négation, abréviation, autre valeur, majuscules, variable ou accolades dans le nom) est refusée. Dans
+//     l'environnement, `npm_config_ignore_scripts=true` ne compte que si rien ne la retire avant npm (`env -i`, `sudo`).
 //   · npx et npm exec : devant l'outil, seules `--yes`/`-y` (refusées), `--no-install`, `--yes=false`, `-q` et
-//     `--quiet` sont lues, et `--no`/`--no-yes` pour `npm exec` (npx, lui, prend l'outil pour leur valeur) ; une
-//     autre option est refusée. `xargs` devant npm ou npx est refusé : il fabrique leurs arguments.
+//     `--quiet` sont lues ; `--no`/`--no-yes` pour `npm exec`, et pour npx suivis de `--` (sans lui, npx prend
+//     l'outil pour leur valeur) ; une autre option est refusée. `xargs` devant npm ou npx est refusé quand l'outil ou
+//     la sous-commande viendraient de l'entrée standard, ou que xargs ajouterait des options à une sous-commande
+//     qui n'est pas neutre ; devant l'outil de npx ou `npm run`, il est admis (ce qu'il ajoute va à l'outil).
 // SES LIMITES. C'est un filet contre le retour, par mégarde ou par habitude, des formes d'installation qu'on a
 // vues et de leurs variantes naturelles — pas une barrière contre un auteur de workflow qui voudrait la contourner :
 // celui-là a déjà la main sur la CI, et c'est la revue qui le voit. Elle ne voit pas :
@@ -62,9 +72,10 @@
 //   · un `npx <outil>` SANS version ni `--yes` : npm suppose `--yes` hors terminal, et seul le lockfile installé
 //     juste avant le rend sûr (c'est le cas de `npx playwright`).
 // Elle refuse aussi parfois à tort : le corps d'un here-doc qui n'est pas donné à un shell est lu comme du shell,
-// ligne à ligne ; une prose (un `prompt:`, un `body:`, un script de github-script) qui cite une commande npm aussi,
-// guillemets YAML compris ; un motif de `case` qui nomme yarn, pnpm ou bun. Un tel refus se règle en reformulant :
-// une commande citée entre guillemets doubles (`"npm ci"`) est un seul mot pour le shell.
+// ligne à ligne (un script écrit dans un fichier puis lancé est ainsi lu) ; une prose (un `prompt:`, un `body:`, un
+// script de github-script) qui cite une commande npm aussi, guillemets YAML compris ; un mot `yarn`, `pnpm` ou `bun`
+// en argument d'une commande. Un tel refus se règle en reformulant : une commande citée entre guillemets doubles
+// (`"npm ci"`) est un seul mot pour le shell.
 //
 // Résoudre un refus : corriger le workflow. Une action nouvelle s'épingle par SHA, l'étiquette en
 // commentaire : `gh api repos/<action>/git/ref/tags/<tag>`. Aucune exception n'est prévue ici.
@@ -104,17 +115,17 @@ const ALIAS_NPM = {
 //   link    : `link <paquet>` l'installe depuis le registre (hors) ; `link` seul lance les scripts du projet lié ;
 //   exec    : lance un outil (npx) ; explore : lance une commande dans le dossier d'un paquet (relue) ;
 //   audit   : `audit fix` réécrit l'arbre ; spec : une spécification hors registre fait cloner et préparer le
-//             paquet, ses scripts compris ;
+//             paquet, ses scripts compris (`pack`, `cache add`, `diff`, et `publish`, qui emballe sa spécification) ;
 //   neutre  : n'installe rien, et ne lance que les scripts du projet lui-même (`run`, `test`, `version`…).
 const CLASSE_NPM = {
   install: "hors", "install-test": "hors", update: "hors", dedupe: "hors", init: "hors",
   ci: "scripts", "install-ci-test": "scripts", rebuild: "scripts", uninstall: "scripts", prune: "scripts", edit: "scripts",
-  link: "link", exec: "exec", explore: "explore", audit: "audit", pack: "spec", cache: "spec", diff: "spec",
+  link: "link", exec: "exec", explore: "explore", audit: "audit", pack: "spec", cache: "spec", diff: "spec", publish: "spec",
   access: "neutre", adduser: "neutre", bugs: "neutre", completion: "neutre", config: "neutre", deprecate: "neutre",
   "dist-tag": "neutre", docs: "neutre", doctor: "neutre", explain: "neutre", "find-dupes": "neutre", fund: "neutre",
   get: "neutre", help: "neutre", "help-search": "neutre", ll: "neutre", login: "neutre", logout: "neutre", ls: "neutre",
   org: "neutre", outdated: "neutre", owner: "neutre", ping: "neutre", pkg: "neutre", prefix: "neutre", profile: "neutre",
-  publish: "neutre", query: "neutre", repo: "neutre", restart: "neutre", root: "neutre", run: "neutre", sbom: "neutre",
+  query: "neutre", repo: "neutre", restart: "neutre", root: "neutre", run: "neutre", sbom: "neutre",
   search: "neutre", set: "neutre", shrinkwrap: "neutre", star: "neutre", stars: "neutre", start: "neutre", stop: "neutre",
   team: "neutre", test: "neutre", token: "neutre", trust: "neutre", undeprecate: "neutre", unpublish: "neutre",
   unstar: "neutre", version: "neutre", view: "neutre", whoami: "neutre",
@@ -129,17 +140,26 @@ const BOOLEENS_SURS = new Set(
 // Devant l'outil de npx / npm exec, les SEULES options lues (et ce qu'elles disent de `--yes`). Toute autre option
 // pourrait prendre l'outil pour sa valeur : npx consomme le mot qui suit une option qu'il ne range pas parmi ses
 // booléens (bin/npx-cli.js) — `npx --reg <registre> outil@x` lance outil@x, et `npx --no outil --package=…` aussi
-// (le raccourci `--no` devient `--no-yes`, que npx ne range pas parmi ses booléens). `npm exec`, lui, passe par nopt,
-// qui lit `--no`/`--no-yes` comme des booléens.
+// (le raccourci `--no` devient `--no-yes`, que npx ne range pas parmi ses booléens) ; suivis de `--`, où npx s'arrête,
+// `--no` et `--no-yes` ne prennent rien (`npx --no -- outil`, la forme la plus stricte). `npm exec`, lui, passe par
+// nopt, qui lit `--no`/`--no-yes` comme des booléens.
 const OPTIONS_OUTIL = {
   "--yes": "oui", "-y": "oui", "--yes=true": "oui",
   "--no-install": "non", "--yes=false": "non",
   "-q": "neutre", "--quiet": "neutre",
 };
 const OPTIONS_EXEC = { ...OPTIONS_OUTIL, "--no": "non", "--no-yes": "non" };
+// Les options de npm qui prennent le mot suivant pour valeur, devant une spécification (`npm pack -w packages/core` :
+// `packages/core` est un espace de travail, pas un dépôt GitHub). Une option inconnue ne prend rien : la gate lit
+// alors le mot suivant comme une spécification, et refuse s'il en a l'air.
+const OPTIONS_A_VALEUR = new Set(["-w", "--workspace", "--pack-destination", "--cache", "--prefix", "-C", "--registry", "--tag", "--userconfig", "--globalconfig", "--loglevel", "--otp", "--access", "--diff-dst-prefix", "--diff-src-prefix", "--diff-unified"]);
 // Les shells dont le script est relu, et les enveloppes qui lancent une commande telle quelle (`sudo bash`).
 const SHELLS = ["bash", "sh", "dash", "zsh", "ksh", "ash", "mksh"];
 const ENVELOPPES = ["env", "sudo", "doas", "timeout", "nice", "nohup", "stdbuf", "time", "command", "exec", "setsid", "ionice", "chrt", "taskset", "unbuffer", "builtin"];
+// Ceux qui passent leur `-c`/`--command` à `sh -c` : `su node -c "npm ci"`, `flock verrou -c …`, `script -qec …`.
+const RELAIS_C = ["su", "runuser", "sg", "flock", "script"];
+// Les mots réservés après lesquels un mot est encore en position de commande (`if [[ … ]]`, `then case …`).
+const RESERVES = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "time", "{"]);
 
 /** Comme `deref` de npm : camelCase en tirets, commande exacte, alias exact, sinon préfixe unique. */
 function commandeNpm(mot) {
@@ -153,9 +173,15 @@ function commandeNpm(mot) {
   return a;
 }
 
-/** Une spécification hors du registre npm : git, URL, raccourci `org/dépôt` (GitHub). */
+/**
+ * Une spécification hors du registre npm, comme npm-package-arg la reconnaît : tout protocole (`git+ssh:`, `https:`,
+ * `github:`, `sourcehut:`…, sans égard à la casse) sauf `npm:` (un alias du registre) et `file:` (local) ; une
+ * adresse `git@hôte:chemin` ; un raccourci `org/dépôt` (GitHub).
+ */
 const specHorsRegistre = (spec) =>
-  /^(?:git\+|git:|github:|gitlab:|bitbucket:|gist:|https?:)/.test(spec) || /^[^@./~$\-][^/\s:]*\/[^/\s]+$/.test(spec);
+  (/^(?:git\+)?[a-z]+:/i.test(spec) && !/^(?:npm|file):/i.test(spec)) ||
+  /^[^@\s]+@[^:/\s]+:/.test(spec) ||
+  /^[^@./~$\-][^/\s:]*\/[^/\s]+$/.test(spec);
 /** Une spécification d'outil qui fait télécharger : versionnée, ou hors du registre (git, URL, archive, org/dépôt). */
 function specTelechargee(spec) {
   if (!spec) return false;
@@ -212,53 +238,118 @@ function finGuillemets(texte, j) {
   }
   return texte.length;
 }
+/** Le mot délimiteur d'un here-doc, à partir de `k` (guillemets et « \ » retirés), et l'indice qui le suit. */
+function motDelimiteur(texte, k) {
+  let mot = "";
+  while (k < texte.length && !/[ \t\n;&|()<>]/.test(texte[k])) {
+    const c = texte[k];
+    if (c === "'" || c === '"') {
+      const f = texte.indexOf(c, k + 1);
+      const fin = f < 0 ? texte.length : f;
+      mot += texte.slice(k + 1, fin);
+      k = fin + 1;
+    } else if (c === "\\" && k + 1 < texte.length) {
+      mot += texte[k + 1];
+      k += 2;
+    } else {
+      mot += c;
+      k++;
+    }
+  }
+  return { mot, fin: Math.min(k, texte.length) };
+}
 /**
- * L'indice de la `)` qui ferme une substitution ouverte juste avant `debut` (ou la fin du texte) : guillemets,
- * `$'…'`, « \ », commentaires et sous-substitutions sautés ; dans un `case … esac`, la `)` d'un motif ne ferme rien.
+ * L'indice de la `)` qui ferme une substitution ouverte juste avant `debut` (ou la fin du texte), comme bash la
+ * ferme : guillemets, `$'…'`, « \ », commentaires et sous-substitutions sautés ; le corps d'un here-doc sauté (une
+ * apostrophe y est une lettre) ; dans un `case … esac` — `case` en position de commande seulement —, la `)` d'un
+ * motif ne ferme rien.
  */
 function finSubstitution(texte, debut) {
   let prof = 1;
   let cas = 0;
-  let debutMot = true;
+  let commande = true;
+  let mot = "";
+  const enAttente = [];
+  const finDeMot = () => {
+    if (mot) {
+      if (commande && mot === "case") cas++;
+      else if (commande && mot === "esac" && cas > 0) cas--;
+      commande = commande && RESERVES.has(mot);
+    }
+    mot = "";
+  };
   for (let j = debut; j < texte.length; j++) {
     const c = texte[j];
     if (c === "\\") {
+      mot += c + (texte[j + 1] ?? "");
       j++;
-      debutMot = false;
       continue;
     }
     if (c === "'") {
       const k = texte.indexOf("'", j + 1);
       j = k < 0 ? texte.length : k;
-      debutMot = false;
+      mot += "'";
       continue;
     }
     if (c === "$" && texte[j + 1] === "'") {
       j = ansiC(texte, j + 2).fin - 1;
-      debutMot = false;
+      mot += "'";
       continue;
     }
     if (c === '"') {
       j = finGuillemets(texte, j + 1);
-      debutMot = false;
+      mot += '"';
       continue;
     }
     if (c === "`") {
       const k = texte.indexOf("`", j + 1);
       j = k < 0 ? texte.length : k;
-      debutMot = false;
+      mot += "`";
       continue;
     }
-    if (debutMot && c === "#") {
+    if (c === "$" && texte[j + 1] === "(") {
+      j = finSubstitution(texte, j + 2);
+      mot += "$";
+      continue;
+    }
+    if (c === "#" && !mot) {
       const k = texte.indexOf("\n", j);
-      j = k < 0 ? texte.length : k - 1;
+      j = (k < 0 ? texte.length : k) - 1;
       continue;
     }
-    if (debutMot && /^case[ \t\n]/.test(texte.slice(j, j + 5))) cas++;
-    if (debutMot && /^esac(?![^ \t\n;&|)])/.test(texte.slice(j, j + 5)) && cas > 0) cas--;
+    if (c === "<" && texte[j + 1] === "<" && texte[j + 2] !== "<") {
+      finDeMot();
+      let k = j + 2;
+      const tab = texte[k] === "-";
+      if (tab) k++;
+      while (texte[k] === " " || texte[k] === "\t") k++;
+      const d = motDelimiteur(texte, k);
+      if (d.mot) enAttente.push({ tab, mot: d.mot });
+      j = d.fin - 1;
+      continue;
+    }
+    if (!/[ \t\n;&|()<>]/.test(c)) {
+      mot += c;
+      continue;
+    }
+    finDeMot();
     if (c === "(") prof++;
     else if (c === ")" && !(cas > 0 && prof === 1) && --prof === 0) return j;
-    debutMot = /[ \t\n;&|()]/.test(c);
+    if (c === "\n" && enAttente.length) {
+      let k = j + 1;
+      for (const h of enAttente) {
+        while (k < texte.length) {
+          let e = texte.indexOf("\n", k);
+          if (e < 0) e = texte.length;
+          const l = texte.slice(k, e);
+          k = e + 1;
+          if ((h.tab ? l.replace(/^\t+/, "") : l) === h.mot) break;
+        }
+      }
+      enAttente.length = 0;
+      j = Math.min(k, texte.length) - 1;
+    }
+    if (/[\n;&|()]/.test(c)) commande = true;
   }
   return texte.length;
 }
@@ -266,37 +357,47 @@ function finSubstitution(texte, debut) {
 /**
  * Découpe du shell en commandes, puis en mots, comme bash les lit. Rend `{ cmds, commentaire }` : chaque commande
  * est une liste de mots qui porte aussi `ligne` (celle de son premier mot, 1 = première du texte), `redirs` (ses
- * redirections : `{ op, cible, corps }`, le corps étant celui d'un here-doc) et `tube` (elle lit, par `|`, la sortie
- * de la précédente) ; `commentaire` est la position du premier commentaire du texte (hors substitution), -1 sinon.
+ * redirections : `{ op, cible, corps }`, le corps étant celui d'un here-doc), `tube` (elle lit, par `|`, la sortie
+ * de la précédente) et `motif` (ce sont les motifs d'un `case`, que bash n'exécute pas) ; `commentaire` est la
+ * position du premier commentaire du texte (hors substitution), -1 sinon.
  *   · seuls l'espace, la tabulation et le saut de ligne séparent les mots (un blanc Unicode est une lettre, pour
  *     bash) ; les guillemets délimitent — `echo "npm install"` est UN mot pour echo, pas une installation ;
  *   · `;`, `&`, `|`, `(`, `)` et le saut de ligne séparent les commandes ; `<` et `>` ouvrent une redirection, dont
  *     le mot visé n'est pas un argument (`npm ci > --ignore-scripts` écrit dans un fichier nommé ainsi) ;
  *   · un here-doc (`<<MOT`, `<<-MOT`, `<<'MOT'`, `<<\MOT`, tout mot) prend les lignes qui suivent la sienne jusqu'à
- *     MOT, ou jusqu'à la fin comme bash ; un `<<` dans un commentaire ou entre guillemets n'en ouvre aucun ;
+ *     MOT, ou jusqu'à la fin comme bash ; un `<<` dans un commentaire, entre guillemets ou dans `(( … ))` n'en ouvre
+ *     aucun ;
  *   · un `#` en début de mot ouvre un commentaire, jusqu'à la fin de SA ligne ;
  *   · « \ » suivi d'un saut de ligne continue la ligne, sans rien ajouter au mot ; entre guillemets doubles, « \ »
  *     ne s'efface que devant $ ` " \ ; `$'…'` se décode comme bash le décode ;
- *   · `$( … )`, `<( … )`, `>( … )` et les accents graves sont des commandes à part, lues elles aussi ; dans la
- *     commande qui les contient, ils ne sont qu'un mot ;
- *   · `${…}` et `${{ … }}` (texte que GitHub remplace avant bash) restent un seul mot ; `{`, `}` isolés ne sont pas
- *     des mots.
+ *   · `$( … )`, `<( … )`, `>( … )` et les accents graves sont des commandes à part, lues elles aussi — dans un
+ *     `${…}` comme ailleurs ; dans la commande qui les contient, ils ne sont qu'un mot ;
+ *   · en position de commande, `(( … ))` est un seul mot (ses substitutions sont lues) ; dans `[[ … ]]`, `|`, `&`,
+ *     `<`, `>` et les parenthèses ne séparent rien ; dans un `case`, les motifs (`a|b)`) ne sont ni des commandes ni
+ *     des tubes ;
+ *   · `${{ … }}` (texte que GitHub remplace avant bash) reste un seul mot ; `{`, `}` isolés ne sont pas des mots.
  */
-function lexer(source) {
+function lexer(source, { motif = false } = {}) {
   const toutes = [];
   let commentaire = -1;
-  const lire = (texte, racine, ligneBase) => {
+  const lire = (texte, racine, ligneBase, enMotif = false) => {
     const cmds = [];
     let mots = [];
     let redirs = [];
     let mot = "";
     let dansMot = false;
+    let cite = false; // le mot en cours porte des guillemets ou un « \ » : ce n'est pas un mot réservé
     let cible = null;
     let enAttente = [];
     let tube = false;
+    let motif = false; // la commande en cours est faite des motifs d'un `case`
+    let crochets = false; // dans `[[ … ]]`
+    const cases = enMotif ? ["motif"] : []; // un état par `case` ouvert : "entete" (jusqu'à `in`), "motif", "corps"
     let ligne = ligneBase;
     let ligneCmd = null;
     let i = 0;
+    const etatCase = () => (cases.length ? cases[cases.length - 1] : null);
+    const enTete = () => mots.every((x) => RESERVES.has(x));
     const debut = () => {
       if (ligneCmd === null) ligneCmd = ligne;
     };
@@ -315,25 +416,40 @@ function lexer(source) {
           cible.cible = mot;
           if (cible.op === "<<" || cible.op === "<<-") enAttente.push(cible);
           cible = null;
-        } else mots.push(mot);
+        } else {
+          const reserve = !cite && enTete();
+          const etat = etatCase();
+          mots.push(mot);
+          if (!cite) {
+            if (mot === "case" && reserve && etat !== "motif") cases.push("entete");
+            else if (mot === "in" && etat === "entete") cases[cases.length - 1] = "motif";
+            else if (mot === "esac" && reserve && (etat === "motif" || etat === "corps")) cases.pop();
+            else if (mot === "[[" && reserve) crochets = true;
+            else if (mot === "]]" && crochets) crochets = false;
+          }
+        }
       }
       mot = "";
       dansMot = false;
+      cite = false;
     };
     const finCommande = (suivanteEnTube) => {
       finMot();
       cible = null;
+      crochets = false;
       const m = mots.filter((x) => x !== "{" && x !== "}");
       if (m.length || redirs.length) {
         m.ligne = ligneCmd === null ? ligne : ligneCmd;
         m.redirs = redirs;
         m.tube = tube;
+        if (motif) m.motif = true;
         cmds.push(m);
         tube = suivanteEnTube;
       } else tube = tube || suivanteEnTube; // `a |` puis un saut de ligne : la suite lit toujours le tube
       mots = [];
       redirs = [];
       ligneCmd = null;
+      motif = false;
     };
     /** Les corps des here-docs en attente : les lignes qui suivent, jusqu'à leur mot — ou jusqu'à la fin, comme bash. */
     const corpsHereDocs = () => {
@@ -384,6 +500,48 @@ function lexer(source) {
         ligne++;
         continue;
       }
+      // Dans `[[ … ]]`, ces signes sont des opérateurs de la condition, pas des séparateurs ni des redirections.
+      if (crochets && (c === "|" || c === "&" || c === "(" || c === ")" || c === "<" || c === ">")) {
+        mot += c;
+        dansMot = true;
+        i++;
+        continue;
+      }
+      // Les motifs d'un `case` : `(` en tête et `|` entre deux motifs ne séparent pas de commande ; `)` les clôt.
+      if (etatCase() === "motif") {
+        if (c === "(" && !dansMot && !mots.length) {
+          i++;
+          continue;
+        }
+        if (c === "|") {
+          finMot();
+          i++;
+          continue;
+        }
+        if (c === ")") {
+          motif = true;
+          finCommande(false);
+          cases[cases.length - 1] = "corps";
+          i++;
+          continue;
+        }
+      }
+      if (c === ";" && etatCase() === "corps" && (s === ";" || s === "&")) {
+        finCommande(false);
+        cases[cases.length - 1] = "motif";
+        i += s === ";" && texte[i + 2] === "&" ? 3 : 2;
+        continue;
+      }
+      // Une commande arithmétique `(( … ))` : un seul mot ; ses substitutions sont lues, un `<<` n'y ouvre rien.
+      if (c === "(" && s === "(" && !dansMot && mots.every((x) => RESERVES.has(x) || x === "for")) {
+        debut();
+        const f = finSubstitution(texte, i + 1);
+        lire(texte.slice(i + 2, Math.max(i + 2, f - 1)), false, ligne);
+        mot += "((…))";
+        dansMot = true;
+        sauter(Math.min(f + 1, texte.length));
+        continue;
+      }
       if (c === ";" || c === "|" || (c === "&" && s !== ">") || c === "(" || c === ")") {
         let pas = 1;
         let suivanteEnTube = false;
@@ -403,6 +561,7 @@ function lexer(source) {
         if (s !== undefined) {
           mot += s;
           dansMot = true;
+          cite = true;
         }
         i += 2;
         continue;
@@ -415,7 +574,7 @@ function lexer(source) {
         continue;
       }
       if (c === "<" || c === ">" || c === "&") {
-        if (dansMot && /^[0-9]+$/.test(mot)) {
+        if (dansMot && !cite && /^[0-9]+$/.test(mot)) {
           mot = "";
           dansMot = false;
         } else finMot();
@@ -431,6 +590,7 @@ function lexer(source) {
         const fin = j < 0 ? texte.length : j;
         mot += texte.slice(i + 1, fin);
         dansMot = true;
+        cite = true;
         sauter(Math.min(fin + 1, texte.length));
         continue;
       }
@@ -438,6 +598,7 @@ function lexer(source) {
         const { valeur, fin } = ansiC(texte, i + 2);
         mot += valeur;
         dansMot = true;
+        cite = true;
         sauter(fin);
         continue;
       }
@@ -447,6 +608,7 @@ function lexer(source) {
       }
       if (c === '"') {
         dansMot = true;
+        cite = true;
         let j = i + 1;
         while (j < texte.length && texte[j] !== '"') {
           const x = texte[j];
@@ -484,17 +646,17 @@ function lexer(source) {
         dansMot = true;
         continue;
       }
-      if (c === "$" && s === "{") {
+      // Une expression de GitHub, `${{ … }}` : remplacée par son texte AVANT bash, elle reste un seul mot. Un `${…}`
+      // de bash, lui, se lit caractère par caractère : ce qu'il contient (`${X:-$(npm …)}`) est lu.
+      if (c === "$" && s === "{" && texte[i + 2] === "{") {
         let prof = 0;
         let j = i + 1;
         for (; j < texte.length; j++) {
           const x = texte[j];
-          if (x === "\\") j++;
-          else if (x === "'") {
+          if (x === "'") {
             const k = texte.indexOf("'", j + 1);
             j = k < 0 ? texte.length : k;
-          } else if (x === '"') j = finGuillemets(texte, j + 1);
-          else if (x === "{") prof++;
+          } else if (x === "{") prof++;
           else if (x === "}" && --prof === 0) break;
         }
         const fin = Math.min(j + 1, texte.length);
@@ -519,10 +681,10 @@ function lexer(source) {
     finCommande(false);
     toutes.push(...cmds);
   };
-  lire(String(source), true, 1);
+  lire(String(source), true, 1, motif);
   return { cmds: toutes, commentaire };
 }
-const commandes = (texte) => lexer(texte).cmds;
+const commandes = (texte, options) => lexer(texte, options).cmds;
 const estOutil = (mot, nom) => mot === nom || mot.endsWith("/" + nom);
 const estShell = (mot) => SHELLS.some((s) => estOutil(mot, s));
 
@@ -564,15 +726,16 @@ function optionsDuShell(m, k) {
 /**
  * Les commandes d'un texte, et celles qu'il fait lancer par un shell, relues (trois niveaux au plus) : le script de
  * `bash -c '…'` (quelles que soient les options), d'`eval`, d'une here-string ou d'un here-doc donnés à un shell qui
- * lit son entrée, et la commande de `npm explore <paquet> -- …`. Une commande relue est située à la ligne de celle
- * qui la lance (celle d'un corps de here-doc, à sa propre ligne). Un script passé par variable (`bash -c "$S"`)
- * n'est pas relu : c'est une des limites dites en tête.
+ * lit son entrée, le `-c` de su, runuser, sg, flock et script, et la commande de `npm explore <paquet> [--] …`. Une
+ * commande relue est située à la ligne de celle qui la lance (celle d'un corps de here-doc, à sa propre ligne). Un
+ * script passé par variable (`bash -c "$S"`) n'est pas relu : c'est une des limites dites en tête. Les motifs d'un
+ * `case` ne lancent rien.
  */
-function commandesProfondes(texte, profondeur = 0) {
+function commandesProfondes(texte, profondeur = 0, options) {
   const sortie = [];
-  for (const m of commandes(texte)) {
+  for (const m of commandes(texte, options)) {
     sortie.push(m);
-    if (profondeur >= 3) continue;
+    if (profondeur >= 3 || m.motif) continue;
     const relire = (script, decalage) => {
       for (const x of commandesProfondes(script, profondeur + 1)) {
         x.ligne = m.ligne + decalage + (x.ligne - 1);
@@ -588,6 +751,28 @@ function commandesProfondes(texte, profondeur = 0) {
         for (const r of m.redirs) {
           if (r.op === "<<<" && r.cible !== undefined) relire(r.cible, 0);
           if ((r.op === "<<" || r.op === "<<-") && r.corps !== undefined) relire(r.corps, 1);
+        }
+      }
+    }
+    // su, runuser, sg, flock, script : leur `-c` / `--command` va à `sh -c` (un groupe `-qec` le porte en dernier).
+    for (let k = 0; k < m.length; k++) {
+      if (!RELAIS_C.some((r) => estOutil(m[k], r))) continue;
+      for (let j = k + 1; j < m.length; j++) {
+        const x = m[j];
+        if (x === "--") break;
+        if (x === "-c" || x === "--command") {
+          if (j + 1 < m.length) relire(m[j + 1], 0);
+          break;
+        }
+        if (x.startsWith("--command=")) {
+          relire(x.slice("--command=".length), 0);
+          break;
+        }
+        const g = /^-[A-Za-z]*c(.*)$/.exec(x);
+        if (g && !x.startsWith("--")) {
+          if (g[1]) relire(g[1], 0);
+          else if (j + 1 < m.length) relire(m[j + 1], 0);
+          break;
         }
       }
     }
@@ -640,14 +825,17 @@ function lignesLogiques(lignes) {
  * et sans un `false` derrière elle (nopt le lui prend). Toute autre forme qui la touche — négation (`--no-…`, en
  * majuscules aussi), abréviation (`--ig`), autre valeur (`=1`, `=false`) — est une lecture incertaine, comme une
  * option dont le nom porte une variable ou des accolades (`--ignore-scripts${X?}=false`, `--{x,no-ignore-scripts}`) :
- * le shell ou npm en font une autre option. Dans l'environnement, seule `npm_config_ignore_scripts=true` compte ; la
- * ligne de commande l'emporte sur lui.
+ * le shell ou npm en font une autre option. Dans l'environnement, seule `npm_config_ignore_scripts=true` compte, et
+ * seulement si rien ne la retire avant npm : entre elle et npm, rien que des affectations ou un `env` sans option
+ * (`env -i`, `env -u`, `sudo`, `exec -c` vident l'environnement). La ligne de commande l'emporte sur lui.
  */
 function ignoreScripts(avant, options) {
   let env;
-  for (const a of avant) {
-    const e = /^npm_config_ignore[_-]scripts=(.*)$/i.exec(a);
-    if (e) env = e[1];
+  for (let k = 0; k < avant.length; k++) {
+    const e = /^npm_config_ignore[_-]scripts=(.*)$/i.exec(avant[k]);
+    if (!e) continue;
+    const garde = avant.slice(k + 1).every((x) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(x) || x === "env");
+    env = garde ? e[1] : undefined;
   }
   let cli = false;
   for (let k = 0; k < options.length; k++) {
@@ -692,9 +880,10 @@ function auditerOutil(nom, mots, { npmExec }) {
       d.push(`\`${nom} --package\` installe un paquet hors lockfile`);
       break;
     }
-    const sens = lues[x];
+    // npx s'arrête à `--` : suivis de lui, `--no` et `--no-yes` ne prennent rien (`npx --no -- outil`).
+    const sens = lues[x] ?? ((x === "--no" || x === "--no-yes") && mots[j + 1] === "--" ? "non" : undefined);
     if (sens === undefined) {
-      d.push(`\`${nom} ${x}\` : option que la gate ne lit pas${spec === undefined ? " devant l'outil (elle pourrait le prendre pour sa valeur)" : ""} — écrire \`${nom} <outil>\``);
+      d.push(`\`${nom} ${x}\` : option que la gate ne lit pas${spec === undefined ? " devant l'outil (elle pourrait le prendre pour sa valeur)" : ""} — écrire \`${npmExec ? nom : "npx --no --"} <outil>\``);
       break;
     }
     if (sens === "oui") d.push(`\`${nom} --yes\` installe la dernière version publiée`);
@@ -745,15 +934,70 @@ function auditerNpm(m, i) {
   } else if (classe === "audit") {
     if (reste.includes("fix")) d.push("`npm audit fix` réécrit l'arbre hors lockfile relu");
   } else if (classe === "spec") {
-    const vues = reste.flatMap((x) => (x.startsWith("--diff=") ? [x.slice(7)] : x.startsWith("-") ? [] : [x]));
+    // Les spécifications : les positionnels (la valeur d'une option à valeur connue n'en est pas une) et `--diff`.
+    const vues = [];
+    for (let k = 0; k < reste.length; k++) {
+      const x = reste[k];
+      if (x.startsWith("--diff=")) vues.push(x.slice("--diff=".length));
+      else if (x === "--diff") {
+        if (k + 1 < reste.length) vues.push(reste[++k]);
+      } else if (x.startsWith("-")) {
+        if (OPTIONS_A_VALEUR.has(x)) k++;
+      } else vues.push(x);
+    }
     const hors = vues.find(specHorsRegistre);
-    if (hors) d.push(`\`npm ${sous} ${hors}\` : un paquet hors registre est cloné puis préparé, ses scripts compris`);
+    // Un `org/dépôt` peut être un chemin écrit sans `./`, ou la valeur d'une option que la gate ne connaît pas.
+    const aide = /^[^@./~$\-][^/\s:]*\/[^/\s]+$/.test(hors) ? ` — un chemin local s'écrit \`./${hors}\`, une valeur d'option \`--option=valeur\`` : "";
+    if (hors) d.push(`\`npm ${sous} ${hors}\` : un paquet hors registre est cloné puis préparé, ses scripts compris${aide}`);
   }
   return d;
 }
 
+/** La chaîne de remplacement de xargs (`-I R`, `-IR`, `--replace[=R]`, `-i[R]`), ou null. */
+function remplacementXargs(options) {
+  for (let k = 0; k < options.length; k++) {
+    const x = options[k];
+    if (x === "-I") return options[k + 1] ?? null;
+    if (/^-I./.test(x)) return x.slice(2);
+    if (x === "--replace" || x === "-i") return "{}";
+    if (x.startsWith("--replace=")) return x.slice("--replace=".length);
+    if (/^-i./.test(x)) return x.slice(2);
+  }
+  return null;
+}
+
+/**
+ * `xargs … npm` / `xargs … npx` : xargs AJOUTE à la commande ce qu'il lit sur l'entrée standard. Admis quand ce
+ * qu'il ajoute ne peut rien changer à ce que la gate juge : après l'outil de npx (npx insère `--` devant l'outil :
+ * le reste va à l'outil), ou après une sous-commande neutre de npm (`run`, `view`…). Refusé quand l'outil ou la
+ * sous-commande viendraient de l'entrée (absents, ou portant la chaîne de remplacement), et pour toute autre
+ * sous-commande, à qui xargs pourrait ajouter une option ou une spécification.
+ */
+function auditerXargs(m) {
+  const ix = m.findIndex((x) => estOutil(x, "xargs"));
+  if (ix < 0) return [];
+  const j = m.findIndex((x, k) => k > ix && (estOutil(x, "npm") || estOutil(x, "npx")));
+  if (j < 0) return [];
+  const remp = remplacementXargs(m.slice(ix + 1, j));
+  const outil = m[j].split("/").pop();
+  const suite = m.slice(j + 1);
+  const porte = (x) => remp !== null && x.includes(remp);
+  if (outil === "npx") {
+    const k = suite.findIndex((x) => x === "--" || !x.startsWith("-"));
+    const nomOutil = k < 0 ? undefined : suite[k] === "--" ? suite[k + 1] : suite[k];
+    if (nomOutil === undefined || porte(nomOutil)) return [`\`xargs … npx\` : l'outil viendrait de l'entrée standard, que la gate ne lit pas — écrire l'outil après npx`];
+    return [];
+  }
+  const sous = suite[0];
+  if (sous === undefined || sous.startsWith("-") || porte(sous)) return [`\`xargs … npm\` : la sous-commande viendrait de l'entrée standard, que la gate ne lit pas — écrire la sous-commande après npm`];
+  const classe = CLASSE_NPM[commandeNpm(sous)];
+  if (classe && classe !== "neutre") return [`\`xargs … npm ${sous}\` : xargs y ajouterait des options ou des paquets lus sur l'entrée standard, que la gate ne lit pas — écrire la commande en entier`];
+  return [];
+}
+
 /** Défauts d'une commande du shell (une liste de mots) : npm, npx, et les outils d'installation hors npm. */
 function auditerCommande(m) {
+  if (m.motif) return []; // les motifs d'un `case` : bash ne les exécute pas
   const d = [];
   const autre = m.find((x) => OUTILS_NON_NPM.some((o) => estOutil(x, o)));
   if (autre) d.push(`\`${autre.split("/").pop()}\` : le dépôt n'installe que par npm (\`npm ci --ignore-scripts\` sur un lockfile)`);
@@ -762,9 +1006,7 @@ function auditerCommande(m) {
     if (estOutil(m[i], "npx")) d.push(...auditerOutil("npx", m.slice(i + 1), { npmExec: false }));
     else if (estOutil(m[i], "npm")) d.push(...auditerNpm(m, i));
   }
-  const iXargs = m.findIndex((x) => estOutil(x, "xargs"));
-  const fabrique = iXargs < 0 ? undefined : m.slice(iXargs + 1).find((x) => estOutil(x, "npm") || estOutil(x, "npx"));
-  if (fabrique) d.push(`\`xargs … ${fabrique}\` : les arguments viennent de l'entrée standard, la gate ne les lit pas`);
+  d.push(...auditerXargs(m));
   // Un shell qui lit son script sur un tube : `… | bash`, `curl … | sudo sh`, `… | bash -s`.
   if (m.tube) {
     const k0 = m.findIndex((x) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(x));
@@ -792,8 +1034,12 @@ function commandesDuShell(source) {
   const sortie = [];
   const texte = avecTextesGitHub(source);
   const lignes = texte.split("\n").map((l, i) => ({ n: i + 1, l }));
-  for (const { n, l } of lignesLogiques(lignes)) for (const mots of commandesProfondes(l)) sortie.push({ n, mots, tenant: false });
-  for (const mots of commandesProfondes(texte)) sortie.push({ n: mots.ligne, mots, tenant: true });
+  // Une ligne lue seule ne sait pas qu'elle porte les motifs d'un `case` (`*/zsh|*/bash)` y serait un tube) : elle
+  // commence « en motifs » là où la lecture d'un seul tenant en a trouvé, et seulement là.
+  const tenant = commandesProfondes(texte);
+  const motifs = new Set(tenant.filter((m) => m.motif).map((m) => m.ligne));
+  for (const { n, l } of lignesLogiques(lignes)) for (const mots of commandesProfondes(l, 0, { motif: motifs.has(n) })) sortie.push({ n, mots, tenant: false });
+  for (const mots of tenant) sortie.push({ n: mots.ligne, mots, tenant: true });
   return sortie;
 }
 
@@ -820,8 +1066,9 @@ function parcourir(noeud, chemin, visite) {
 
 /**
  * Un libellé, que GitHub affiche et n'exécute jamais : le nom du workflow, d'un job, d'une étape (d'une action
- * composite aussi), `run-name`, et les `description` (de l'action, de ses entrées et sorties, des entrées d'un
- * déclencheur). Toute autre valeur — un `name:` sous `env:`, `with:` ou dans une matrice compris — est du shell.
+ * composite aussi), `run-name`, `author` (d'une action), et les `description` (de l'action, de ses entrées et
+ * sorties, des entrées, sorties et secrets d'un déclencheur). Toute autre valeur — un `name:` sous `env:`, `with:`
+ * ou dans une matrice, la `default:` d'une entrée compris — est du shell.
  */
 function estLibelle(chemin) {
   const n = chemin.length;

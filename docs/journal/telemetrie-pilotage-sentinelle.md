@@ -1617,23 +1617,28 @@ l'empêchait demain.
 - `--ignore-scripts` sur les deux `npm ci` qui ne l'avaient pas.
 - `scripts/audit-workflows.js` lit chaque workflow et action composite par le lecteur YAML fermé du dépôt
   (`scripts/lib/yaml-workflow.js`, celui d'audit-cle-production) : une ancre, un alias, une étiquette, un scalaire
-  simple ou cité sur plusieurs lignes, un indicateur d'indentation explicite, un saut de ligne autre que LF ou CRLF le
-  rendent rouge. Toute valeur est lue comme du shell, sauf les libellés que GitHub n'exécute jamais (nom du workflow,
-  d'un job, d'une étape, `run-name`, `description`) : les `run:`, mais aussi `with:` (une action de relance), `env:` et
-  une matrice (une commande posée là, qu'un `$CMD` ou un `${{ matrix.x }}` lance). Chaque valeur est lue ligne à ligne,
-  puis d'un seul tenant comme bash la lit : guillemets, `$'…'`, `$( … )`, here-docs, redirections, commentaires, lignes
-  continuées. Le script d'un shell est relu : `bash -c` quelles que soient ses options (`-eo pipefail -c`), `eval`, une
-  here-string, un here-doc donné à un shell, la commande de `npm explore` ; un shell qui lit son script sur un tube est
-  refusé. Chaque mot `npm` d'une commande est jugé. Ce que la gate sait ne pas lire est REFUSÉ, avec ce qu'il faut
-  écrire : une option devant la sous-commande de npm (sa valeur, un raccourci ou une abréviation la déplacent), une
-  sous-commande variable, une forme de `--ignore-scripts` autre que `--ignore-scripts` à portée sûre, une option
-  inconnue devant l'outil de npx, `xargs` devant npm. Les actions composites de `.github/actions/` et celles des
-  `uses: ./…` (la racine comprise, d'un workflow ou d'une action déjà lue) passent par les mêmes règles. Il refuse :
+  simple ou cité sur plusieurs lignes, une collection en ligne imbriquée (une paire `clé: valeur` dans une séquence en
+  ligne comprise), un indicateur d'indentation explicite, un saut de ligne autre que LF ou CRLF le rendent rouge. Toute
+  valeur est lue comme du shell, sauf les libellés que GitHub n'exécute jamais (nom du workflow, d'un job, d'une
+  étape, `run-name`, `author`, les `description`) : les `run:`, mais aussi `with:` (une action de relance), `env:`, une
+  matrice, la `default:` d'une entrée (une commande posée là, qu'un `$CMD` ou un `${{ matrix.x }}` lance). Chaque
+  valeur est lue ligne à ligne, puis d'un seul tenant comme bash la lit : guillemets, `$'…'`, `$( … )` (jusque dans un
+  `${…}`), here-docs (sautés aussi dans une substitution), redirections, commentaires, lignes continuées ; `(( … ))` et
+  `[[ … ]]` à part, et les motifs d'un `case` ni comme des commandes ni comme des tubes. Le script d'un shell est relu :
+  `bash -c` quelles que soient ses options (`-eo pipefail -c`), `eval`, une here-string, un here-doc donné à un shell,
+  le `-c` de su, runuser, sg, flock et script, la commande de `npm explore` ; un shell qui lit son script sur un tube
+  est refusé. Chaque mot `npm` d'une commande est jugé. Ce que la gate sait ne pas lire est REFUSÉ : une option devant
+  la sous-commande de npm (sa valeur, un raccourci ou une abréviation la déplacent), une sous-commande variable, une
+  forme de `--ignore-scripts` autre que `--ignore-scripts` à portée sûre, une option inconnue devant l'outil de npx,
+  un `xargs` dont l'entrée fournirait l'outil, la sous-commande ou une option de npm. Les actions composites de
+  `.github/actions/` et celles des `uses: ./…` (la racine comprise, d'un workflow ou d'une action déjà lue) passent par
+  les mêmes règles. Il refuse :
   - `npm install` et ses alias, `update`, `dedupe`, `init` et `create`, `link <paquet>`, `audit fix` ;
   - `npm ci`, `install-ci-test`, `rebuild`, `uninstall`, `prune`, `edit` et `link` sans `--ignore-scripts` effectif ;
-    chaque sous-commande de npm 11.13 est rangée, et une épreuve vérifie qu'aucune ne manque ;
-  - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné ou hors du registre ; `npm pack`,
-    `cache` et `diff` d'un paquet hors registre (cloné, puis préparé avec ses scripts) ;
+    chaque sous-commande de npm 11.13 est rangée, et une épreuve vérifie que la liste concorde avec celle de npm ;
+  - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné ou hors du registre (protocole,
+    `git@hôte:`, URL, archive, `org/dépôt`) ; `npm pack`, `cache`, `diff` et `publish` d'un paquet hors registre
+    (cloné, puis préparé avec ses scripts) ;
   - pnpm, yarn, bun, bunx et pnpx ;
   - tout `npm-shrinkwrap.json`, `.npmrc` ou fichier sous `.netlify/` suivi par git. La CLI prend dans `.netlify/` des
     fonctions « internes », les regroupe et exécute leur code avec le jeton, hors du contrôle d'empreinte de `dist/`.
@@ -1651,13 +1656,20 @@ l'empêchait demain.
     l'`overrides`, binaires Linux, plage principale de Deno de chaque copie d'edge-bundler ;
   - les étapes réelles, jouées contre de faux outils : une archive Deno à la mauvaise empreinte rougit sans rien poser
     sur le PATH, un `.netlify/` disparaît avant la CLI, et l'envoi exécute la CLI installée ;
-  - 46 réinjections, dont une CLI lancée par `npx` sans version (que la gate ne voit pas), par `bash -c` ou
-    `bash -eo pipefail -c`, par `eval`, par une here-string, par une action de relance (sur une ligne, ou derrière une
-    chaîne ouverte sur deux lignes), posée dans un `env: name:`, depuis l'action composite du dépôt, ou depuis un autre
-    workflow qui porte le jeton. La gate, elle, a ses propres épreuves (`tests/unit/audit-workflows.test.mjs`) : un
-    dépôt git réel pour les fichiers suivis, des actions citées par `uses: ./…` et par une autre action, chaque forme
-    YAML et shell des relectures adverses. `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 72 de ses
-    règles dans une copie : chacune rougit ses épreuves.
+  - 50 réinjections, dont une CLI lancée par `npx` sans version (que la gate ne voit pas), par `bash -c` ou
+    `bash -eo pipefail -c`, par `eval`, par une here-string, par `su … -c`, par une action de relance (sur une ligne, ou
+    derrière une chaîne ouverte sur deux lignes), posée dans un `env: name:` ou dans la valeur par défaut d'un `${…}`,
+    après un `"$(cat <<'EOF' …)"` dont le corps porte une apostrophe, depuis l'action composite du dépôt, depuis une
+    étape écrite en séquence en ligne, ou depuis un autre workflow qui porte le jeton. La gate, elle, a ses propres
+    épreuves (`tests/unit/audit-workflows.test.mjs`) : un dépôt git réel pour les fichiers suivis, des actions citées
+    par `uses: ./…` et par une autre action, chaque forme YAML et shell des relectures adverses. Hors verif,
+    `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 99 de ses règles dans une copie : chacune rougit
+    ses épreuves ; et `node scripts/differentiel-audit-workflows.mjs <révision>…` fait juger le même corpus (les
+    chaînes des épreuves, et 845 combinaisons d'une charge dangereuse et d'une construction de shell) par la gate
+    de la copie et par celles des révisions données. Rejoué contre `main` et les quatre états précédents de cette PR :
+    aucune forme refusée avant n'est admise, hors douze faux positifs corrigés exprès (motifs de `case`, `[[ =~ ]]`,
+    `npx --no -- outil`, `npx --yes=false`, `npm_config_ignore_scripts=true`, une sous-commande inconnue, deux
+    here-docs, `$'…'`).
 
 **Pièges.**
 - ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile.** `npm ci` refuse (EUSAGE) un `overrides` que le lockfile
@@ -1707,12 +1719,19 @@ l'empêchait demain.
   un simple texte cité —, un autre interpréteur (`node -e`, `python -c`), un script lu dans un fichier (`bash x.sh`,
   les scripts de package.json lancés par `npm run`), un shell nourri par une substitution de processus. Elle refuse
   parfois à tort : une prose qui cite une commande npm (un `prompt:`, un `body:`, guillemets YAML compris), le corps
-  d'un here-doc (lu ligne à ligne : un script écrit dans un fichier puis lancé l'est ainsi), un motif de `case` qui
-  nomme yarn ; un tel refus se règle en reformulant. Trois relectures adverses l'ont prise à admettre ce qu'elle disait
-  refuser : la première réécriture lisait les options de npm « comme nopt » et les seuls `run:` ; la deuxième
-  exemptait toute clé `name` (un `env: name:` lancé par `$name` passait), ne relisait pas `bash -eo pipefail -c` (la
-  forme même de GitHub) et ne jugeait que le premier mot `npm` d'une commande (`env -C d npm install` passait). D'où
-  la règle : chaque mécanisme a son épreuve et sa réinjection, et les textes disent ce qui est lu, rien de plus.
+  d'un here-doc (lu ligne à ligne : un script écrit dans un fichier puis lancé l'est ainsi), un mot `yarn` en argument
+  d'une commande ; un tel refus se règle en reformulant. Trois relectures adverses l'ont prise à admettre ce qu'elle
+  disait refuser — et chaque réécriture refermait les trous d'avant en en ouvrant d'autres :
+  - la première lisait les options de npm « comme nopt » et les seuls `run:` ;
+  - la deuxième exemptait toute clé `name` (un `env: name:` lancé par `$name` passait), ne relisait pas
+    `bash -eo pipefail -c` (la forme même de GitHub) et ne jugeait que le premier mot `npm` d'une commande
+    (`env -C d npm install` passait) ;
+  - la troisième lisait un `${…}` d'un seul mot, et avalait la substitution qu'il porte (`${X:-$(npm install …)}`,
+    l'idiome d'une valeur par défaut) ; fermait un `"$(…)"` dans le corps d'un here-doc dès qu'une apostrophe s'y
+    trouvait (`gh pr create --body "$(cat <<'EOF' …)"`) ; lisait comme un texte une étape écrite `[ run: '…' ]`.
+  D'où les règles : chaque mécanisme a son épreuve et sa réinjection ; une réécriture se compare à la version d'avant,
+  sur le même corpus, avant d'être poussée (`scripts/differentiel-audit-workflows.mjs`) ; et les textes disent ce qui
+  est lu, rien de plus.
 - edge-bundler récupère encore, à chaque déploiement, sans version ni empreinte, `https://edge.netlify.com` : les
   types (`deno cache -r`) et `bootstrap/globals/types.ts`, importé par son extracteur de configuration. Deno ne les
   exécute pas (import de types, retiré à l'émission sans `verbatimModuleSyntax`).

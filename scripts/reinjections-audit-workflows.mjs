@@ -2,16 +2,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RÉINJECTIONS de la gate des workflows (scripts/audit-workflows.js, scripts/lib/yaml-workflow.js) — 2026-11-15.
 //
-// Un test qui reste vert quand on remet le défaut ne garde rien. Chaque règle de la gate est retirée tour à tour
-// dans une COPIE (un dossier temporaire : rien n'est muté dans la copie de travail), et
+// Un test qui reste vert quand on remet le défaut ne garde rien. Les règles de la gate listées ci-dessous sont
+// retirées tour à tour dans une COPIE (un dossier temporaire : rien n'est muté dans la copie de travail), et
 // tests/unit/audit-workflows.test.mjs, rejoué sur cette copie, doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon
 // — une cible introuvable compte comme un échec : la réinjection ne décrit plus le code.
 //
-//   node scripts/reinjections-audit-workflows.mjs          # ~1 min 30
+//   node scripts/reinjections-audit-workflows.mjs          # ~2 min
 //
-// Hors de `npm run verif` (une suite par réinjection). Ce qui n'y est pas, délibérément : la lecture de `${…}` en un
-// seul mot et la table des échappements simples de `$'…'` (aucune décision de la gate n'en dépend aujourd'hui), et la
-// ligne d'une commande relue (elle ne sert qu'au message). Rien ici ne touche un réseau.
+// Hors de `npm run verif` (une suite par réinjection). La liste n'est pas TOUTE la gate : une relecture adverse en a
+// trouvé d'autres, ajoutées ensuite, et en trouvera encore. Pas ici, délibérément : la table des échappements simples
+// de `$'…'` et la ligne d'une commande relue (elle ne sert qu'au message). Rien ici ne touche un réseau.
 // ═══════════════════════════════════════════════════════════════════════════
 import fs from "node:fs";
 import os from "node:os";
@@ -37,22 +37,26 @@ const M = [
   ["L08 un blanc Unicode sépare les mots", [[G, R`if (c === " " || c === "\t") {`, R`if (c !== "\n" && /\s/.test(c)) {`]]],
   ["L09 le tube se perd au saut de ligne", [[G, "} else tube = tube || suivanteEnTube;", "} else tube = suivanteEnTube;"]]],
   ["L10 la cible d'une redirection est un argument", [[G, "        redirs.push(r);\n        cible = r;", "        redirs.push(r);\n        cible = null;"]]],
-  ["L11 un descripteur (`2>`) reste un argument", [[G, '        if (dansMot && /^[0-9]+$/.test(mot)) {\n          mot = "";\n          dansMot = false;\n        } else finMot();', "        finMot();"]]],
+  ["L11 un descripteur (`2>`) reste un argument", [[G, '        if (dansMot && !cite && /^[0-9]+$/.test(mot)) {\n          mot = "";\n          dansMot = false;\n        } else finMot();', "        finMot();"]]],
   ["L12 un here-doc n'est pas attendu : son corps est lu comme du code", [[G, 'if (cible.op === "<<" || cible.op === "<<-") enAttente.push(cible);', "void 0;"]]],
   ["L13 un here-doc ne se ferme que sur EOF", [[G, R`if ((h.op === "<<-" ? l.replace(/^\t+/, "") : l) === h.cible) break;`, R`if ((h.op === "<<-" ? l.replace(/^\t+/, "") : l) === "EOF") break;`]]],
   ["L14 `<<-` ne retire pas les tabulations", [[G, R`if ((h.op === "<<-" ? l.replace(/^\t+/, "") : l) === h.cible) break;`, "if (l === h.cible) break;"]]],
   ["L15 `$'…'` n'est pas lu", [[G, `if (c === "$" && s === "'") {`, "if (false) {"]]],
   ["L16 `$'…'` : l'hexadécimal n'est pas décodé", [[G, R`} else if (n === "x" && (m = /^[0-9A-Fa-f]{1,2}/.exec(texte.slice(i + 2, i + 4)))) {`, "} else if (false) {"]]],
   ["L17 substitution : la `)` d'un motif de case la ferme", [[G, R`else if (c === ")" && !(cas > 0 && prof === 1) && --prof === 0) return j;`, R`else if (c === ")" && --prof === 0) return j;`]]],
-  ["L18 substitution : « \\ » n'échappe rien", [[G, R`    if (c === "\\") {
+  ["L18 substitution : « \\ » n'échappe rien", [[G, R`      mot += c + (texte[j + 1] ?? "");
       j++;
-      debutMot = false;
-      continue;
-    }`, R`    if (c === "\\") {
-      debutMot = false;
-      continue;
-    }`]]],
+      continue;`, R`      mot += c;
+      continue;`]]],
   ["L19 `${{ 'texte' }}` n'est pas remplacé", [[G, "const avecTextesGitHub = (texte) => texte.replace(", "const avecTextesGitHub = (texte) => texte || texte.replace("]]],
+  ["L20 substitution : le corps d'un here-doc n'est pas sauté", [[G, "      if (d.mot) enAttente.push({ tab, mot: d.mot });", "      void d;"]]],
+  ["L21 substitution : `case` compte hors de la position de commande", [[G, '      if (commande && mot === "case") cas++;', '      if (mot === "case") cas++;']]],
+  ["L22 `(( … ))` n'est pas lu à part (un `<<` y ouvre un here-doc)", [[G, 'if (c === "(" && s === "(" && !dansMot && mots.every((x) => RESERVES.has(x) || x === "for")) {', "if (false) {"]]],
+  ["L23 dans `[[ … ]]`, `|` et `(` séparent", [[G, '            else if (mot === "[[" && reserve) crochets = true;', "            else if (false) crochets = true;"]]],
+  ["L24 un motif de case est un tube", [[G, "        if (c === \"|\") {\n          finMot();\n          i++;\n          continue;\n        }", "        void 0;"]]],
+  ["L25 les motifs d'un case sont jugés comme des commandes", [[G, "  if (m.motif) return []; // les motifs d'un `case` : bash ne les exécute pas", "  void 0;"]]],
+  ["L26 une ligne lue seule n'a pas le contexte du case", [[G, "commandesProfondes(l, 0, { motif: motifs.has(n) })", "commandesProfondes(l, 0, { motif: false })"]]],
+  ["L27 un `${…}` de bash avale sa substitution (lu d'un seul mot)", [[G, 'if (c === "$" && s === "{" && texte[i + 2] === "{") {', 'if (c === "$" && s === "{") {']]],
   // Ce qu'un shell lance.
   ["S01 le script de `bash -c` n'est plus relu", [[G, "      if (c) {\n        if (mot >= 0) relire(m[mot], 0);", "      if (c) {\n        if (false) relire(m[mot], 0);"]]],
   ["S02 `-eo` ne consomme pas `pipefail`", [[G, 'if (lettre === "o" || lettre === "O") j++;', "if (false) j++;"]]],
@@ -61,7 +65,17 @@ const M = [
   ["S05 eval n'est plus relu", [[G, "if (iEval >= 0 && iEval + 1 < m.length) relire(", "if (false) relire("]]],
   ["S06 la commande de `npm explore` n'est plus relue", [[G, 'if (script.length) relire(script.join(" "), 0);', "void 0;"]]],
   ["S07 un shell sur un tube est admis", [[G, "  if (m.tube) {", "  if (false) {"]]],
-  ["S08 xargs devant npm est admis", [[G, "if (fabrique) d.push(", "if (false) d.push("]]],
+  ["S08 xargs devant npm ou npx est admis", [[G, "  d.push(...auditerXargs(m));", "  void 0;"]]],
+  ["S09 xargs : une sous-commande non neutre est admise", [[G, '  if (classe && classe !== "neutre") return [', '  if (false) return [']]],
+  ["S10 xargs : la chaîne de remplacement est ignorée", [[G, "  const porte = (x) => remp !== null && x.includes(remp);", "  const porte = (x) => false;"]]],
+  ["S11 le `-c` de su, flock, sg, script n'est pas relu", [[G, 'const RELAIS_C = ["su", "runuser", "sg", "flock", "script"];', "const RELAIS_C = [];"]]],
+  ["S12 `-s` est ignoré", [[G, '        else if (x[0] === "-" && lettre === "s") s = true;', "        else if (false) s = true;"]]],
+  ["S13 une affectation devant le shell masque le tube", [[G, "    const k0 = m.findIndex((x) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(x));", "    const k0 = 0;"]]],
+  ["S14 `--rcfile` ne prend pas sa valeur", [[G, '    if (x === "--rcfile" || x === "--init-file") {\n      j++;', '    if (x === "--rcfile" || x === "--init-file") {\n      void 0;']]],
+  ["S15 la relecture s'arrête au premier niveau", [[G, "    if (profondeur >= 3 || m.motif) continue;", "    if (profondeur >= 1 || m.motif) continue;"]]],
+  ["S16 `npm explore` sans `--` n'est pas relu", [[G, '      const script = fin >= 0 ? reste.slice(fin + 1) : reste.filter((x) => !x.startsWith("-")).slice(1);', "      const script = fin >= 0 ? reste.slice(fin + 1) : [];"]]],
+  ["S17 les accents graves entre guillemets ne sont pas relus", [[G, '            lire(texte.slice(j + 1, f), false, ligne + lignesEntre(i, j));\n            mot += "`…`";', '            mot += "`…`";']]],
+  ["S18 `$\"…\"` n'est pas lu comme des guillemets", [[G, '      if (c === "$" && s === \'"\') {\n        i++;', '      if (false) {\n        i++;']]],
   // npm.
   ["N01 seul le premier mot npm est jugé", [[G, 'else if (estOutil(m[i], "npm")) d.push(...auditerNpm(m, i));', 'else if (estOutil(m[i], "npm")) { d.push(...auditerNpm(m, i)); break; }']]],
   ["N02 une option avant la sous-commande est admise", [[G, 'if (args.some((x) => !x.startsWith("-"))) {', "if (false) {"]]],
@@ -72,13 +86,19 @@ const M = [
   ["N07 `audit fix` n'est lu qu'avant `--`", [[G, 'if (reste.includes("fix"))', 'if (options.includes("fix"))']]],
   ["N08 `audit fix` est admis", [[G, '} else if (classe === "audit") {', "} else if (false) {"]]],
   ["N09 un paquet hors registre est admis", [[G, "if (hors) d.push(", "if (false) d.push("]]],
+  ["N10 la valeur d'une option est prise pour une spécification", [[G, "        if (OPTIONS_A_VALEUR.has(x)) k++;", "        void 0;"]]],
+  ["N11 un protocole en majuscules n'est pas reconnu", [[G, "  (/^(?:git\\+)?[a-z]+:/i.test(spec) && !/^(?:npm|file):/i.test(spec)) ||", "  (/^(?:git\\+)?[a-z]+:/.test(spec) && !/^(?:npm|file):/i.test(spec)) ||"]]],
+  ["N12 un protocole hors de la liste n'est pas reconnu (sourcehut:)", [[G, "  (/^(?:git\\+)?[a-z]+:/i.test(spec) && !/^(?:npm|file):/i.test(spec)) ||", "  /^(?:git\\+|git:|github:|gitlab:|bitbucket:|gist:|https?:)/i.test(spec) ||"]]],
+  ["N13 `git@hôte:` n'est pas reconnu", [[G, "  /^[^@\\s]+@[^:/\\s]+:/.test(spec) ||", "  false ||"]]],
+  ["N14 `publish` est neutre", [[G, 'diff: "spec", publish: "spec",', 'diff: "spec", publish: "neutre",']]],
   // --ignore-scripts.
   ["I01 toute forme de --ignore-scripts est admise", [[G, 'if (x !== "--ignore-scripts" && x !== "--ignore-scripts=true") return { actif: false, forme: x };', "void 0;"]]],
   ["I02 le mot précédent n'est pas vérifié", [[G, 'if (prec !== null && prec.startsWith("-") && !prec.includes("=") && !BOOLEENS_SURS.has(prec))', "if (false)"]]],
   ["I03 `--ignore-scripts false` est admis", [[G, 'if (x === "--ignore-scripts" && options[k + 1] === "false")', "if (false)"]]],
   ["I04 les booléens sûrs sont vidés", [[G, '["audit", "fund", "progress", "prefer-offline", "prefer-online", "offline", "legacy-peer-deps", "strict-peer-deps", "dry-run", "foreground-scripts"]', "[]"]]],
   ["I05 environnement : toute valeur est admise", [[G, 'if (env === "true") return { actif: true };', "if (env !== undefined) return { actif: true };"]]],
-  ["I06 l'environnement est ignoré", [[G, "const e = /^npm_config_ignore[_-]scripts=(.*)$/i.exec(a);", "const e = null;"]]],
+  ["I06 l'environnement est ignoré", [[G, "    const e = /^npm_config_ignore[_-]scripts=(.*)$/i.exec(avant[k]);", "    const e = null;"]]],
+  ["I09 une affectation retirée avant npm (`env -i`, `sudo`) compte", [[G, '    const garde = avant.slice(k + 1).every((x) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(x) || x === "env");', "    const garde = true;"]]],
   ["I07 un nom d'option variable est admis", [[G, 'if (/[$`{}]/.test(x.split("=")[0])) return { actif: false, forme: x };', "void 0;"]]],
   ["I08 le drapeau compte après `--`", [[G, "const options = fin < 0 ? reste : reste.slice(0, fin);", "const options = reste;"]]],
   // npx et npm exec.
@@ -89,12 +109,14 @@ const M = [
   ["X05 npm exec : les options après l'outil sont ignorées", [[G, "if (!npmExec) break; // npx", "break; // npx"]]],
   ["X06 un outil variable est admis", [[G, "if (spec !== undefined && /[$`]/.test(spec))", "if (false)"]]],
   ["X07 npx lit `--no` comme un booléen", [[G, '  "--no-install": "non", "--yes=false": "non",\n  "-q": "neutre", "--quiet": "neutre",', '  "--no": "non", "--no-yes": "non", "--no-install": "non", "--yes=false": "non",\n  "-q": "neutre", "--quiet": "neutre",']]],
+  ["X08 `npx --no -- outil` est refusé", [[G, '    const sens = lues[x] ?? ((x === "--no" || x === "--no-yes") && mots[j + 1] === "--" ? "non" : undefined);', "    const sens = lues[x];"]]],
   // Le workflow.
   ["W01 seuls les run: sont lus", [[G, "if (!libelle) for (const { n, d } of defautsDuShell(valeur))", "if (!libelle && run) for (const { n, d } of defautsDuShell(valeur))"]]],
   ["W02 toute clé `name` est un libellé", [[G, "function estLibelle(chemin) {\n  const n = chemin.length;", 'function estLibelle(chemin) {\n  if (chemin[chemin.length - 1] === "name") return true;\n  const n = chemin.length;']]],
   ["W03 aucun libellé", [[G, "function estLibelle(chemin) {\n  const n = chemin.length;", "function estLibelle(chemin) {\n  return false;\n  const n = chemin.length;"]]],
   ["W04 un run: qui n'est pas une chaîne passe", [[G, "for (const chemin of runsNonChaines(lu.doc))", "for (const chemin of [])"]]],
-  ["W05 pas de lecture d'un seul tenant", [[G, "  for (const mots of commandesProfondes(texte)) sortie.push({ n: mots.ligne, mots, tenant: true });", ""]]],
+  ["W05 pas de lecture d'un seul tenant", [[G, "  for (const mots of tenant) sortie.push({ n: mots.ligne, mots, tenant: true });", ""]]],
+  ["W08 une `default:` d'entrée est un libellé", [[G, '  if ((a === "inputs" || a === "outputs") && n === 3) return c === "description";', '  if ((a === "inputs" || a === "outputs") && n === 3) return c === "description" || c === "default";']]],
   ["W06 un YAML illisible est avalé", [[G, "lu = chainesDuWorkflow(texte);", "lu = (() => { try { return chainesDuWorkflow(texte); } catch { return { doc: {}, chaines: [] }; } })();"]]],
   ["W07 l'interpolation n'est cherchée qu'en 1re ligne", [[G, R`      valeur.split("\n").forEach((l, i) => {`, R`      valeur.split("\n").slice(0, 1).forEach((l, i) => {`]]],
   // Les actions composites.
@@ -114,6 +136,7 @@ const M = [
   ["Y05 tout blanc Unicode est un blanc", [[Y, R`const blanc = (c) => c === " " || c === "\t";`, R`const blanc = (c) => /\s/.test(c);`]]],
   ["Y06 le trim() de JavaScript", [[Y, R`const sansBlancs = (s) => s.replace(/^[ \t]+|[ \t]+$/g, "");`, "const sansBlancs = (s) => s.trim();"]]],
   ["Y07 une virgule coupe un scalaire cité", [[Y, R`if ((c === "'" || c === '"') && /(?:^[ \t]*|:[ \t]+)$/.test(cur)) { q = c; cur += c; continue; }`, "void 0;"]]],
+  ["Y08 une paire `clé: valeur` d'une séquence en ligne est lue comme un texte", [[Y, "    if (sequence && /:(?:[ \\t]|$)/.test(", "    if (false && /:(?:[ \\t]|$)/.test("]]],
 ];
 
 const bac = fs.mkdtempSync(path.join(os.tmpdir(), "reinjections-audit-workflows-"));
