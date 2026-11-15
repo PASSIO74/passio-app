@@ -10937,6 +10937,10 @@ function carteActiviteFilHTML(p) {
   const titre = (ev && ev.title) || se.title || "Activité";
   const ville = (ev && ev.city) || se.city || "";
   const date = (ev && ev.date) || se.date || null;
+  // 2026-11-15 (Benjamin) : « fais apparaître le titre et la description au-dessus
+  // du rectangle orange ». La description vient de l'activité vivante, du bloc
+  // partagé sinon ; elle est d'autrui → échappée, et bornée à 3 lignes en CSS.
+  const desc = String((ev && ev.desc) || se.desc || "").replace(/\s+/g, " ").trim();
   let photo = (ev && ev.coverUrl) || se.coverUrl || "";
   if (/^data:/.test(String(photo))) photo = (ev && ev.coverUrl) ? photo : "";
   let jour = "📍", mois = "", quand = "";
@@ -10955,6 +10959,7 @@ function carteActiviteFilHTML(p) {
     : "";
   return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
       <div class="post-activite-titre">${escapeHtml(titre)}</div>
+      ${desc ? `<div class="post-activite-desc">${escapeHtml(desc)}</div>` : ""}
       <div class="post-activite-rdv">
         <div class="post-activite-tuile" aria-hidden="true"><span class="post-activite-jour">${escapeHtml(jour)}</span><span class="post-activite-mois">${escapeHtml(mois)}</span></div>
         <div class="post-activite-corps">
