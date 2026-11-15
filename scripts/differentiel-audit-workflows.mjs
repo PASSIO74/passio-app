@@ -52,7 +52,9 @@ try {
   for (const d of Object.values(versions)) {
     const f = path.join(d, FICHIERS[2]);
     if (!fs.existsSync(f)) continue;
-    for (const m of fs.readFileSync(f, "utf8").matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$]|\\.)*`/g)) {
+    // Chaque ligne à part, commentaires retirés : un accent grave d'un commentaire ne s'apparie plus à celui d'une chaîne.
+    const source = fs.readFileSync(f, "utf8").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+    for (const m of source.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$\n]|\\.)*`/g)) {
       let s;
       try {
         s = Function("return " + m[0])();
@@ -81,6 +83,13 @@ try {
     "gh pr create --body \"$(cat <<'EOF'\nl'arbre\nEOF\n)\" && %", 'N="$(grep -c case f)"; %', "X=$(echo ')' ; %)",
     "echo $'l\\'app'; %", "echo ${X}; %", "echo ${X:-a b}; %", "echo ${#X}; %",
     "[[ -f x ]]&&%", "[[ -f x ]]||%", "(( 1 ))&&%", "echo ${{ github.sha %", "xargs -I{} sh -c '%'",
+    // Quatrième relecture : une charge dans chaque région que la gate relit à part.
+    "echo ${MSG:-Release #1} && %", "echo ${X:- #}; %", "case a in a) echo ${X:-;;}; (%) ;; esac", "V=${L%% #*}; %",
+    "X=$(echo ${Y:- #}); %", 'X="$(echo ${Y:- #})"; %', "[[ -n <(%) ]]", "2>/dev/null [[ x || %", "case \"$x\" in esac; (%)",
+    "case \"$x\" in esac\n( % )", "((echo) && %)", "(( N = $(% | wc -l) ))", 'X="$(\n  tr a b <<< "$y"\n)" && %',
+    'X="$(\n  (( F = 1 << 3 ))\n  echo $F\n)" && %', 'X="$(case a in a) echo;; esac)" && %',
+    'X="$(cat <<-EOF\n\tx\n\tEOF\n)" && %', "X=\"$(cat <<EOF\nl'app\nEOF\necho fin\n)\" && %", 'X="$(echo ${#Y})" && %',
+    "TITRE=\"$(\n  jq -r .t <<< \"$E\"\n)\"\necho \"a\nb\" && %",
   ];
   for (const g of GABARITS) for (const c of CHARGES) corpus.add(g.split("%").join(c));
 
@@ -100,7 +109,7 @@ try {
     const refusePar = revisions.filter((r) => juger(r, s).length > 0);
     if (!copie.length && refusePar.length) lignes.push(`- ${JSON.stringify(s).slice(0, 150)}  ← refusé par ${refusePar.join(", ")}`);
   }
-  console.log(`${corpus.size} formes jugées par la copie et par ${revisions.join(", ")}`);
+  console.log(`${corpus.size} formes (dont ${GABARITS.length} constructions × ${CHARGES.length} charges) jugées par la copie et par ${revisions.join(", ")}`);
   console.log(`exceptions de la copie : ${exceptions}`);
   console.log(`admises par la copie, refusées par une révision : ${lignes.length}${lignes.length ? " — régression, ou faux positif corrigé exprès ?" : ""}`);
   for (const l of lignes) console.log(l);

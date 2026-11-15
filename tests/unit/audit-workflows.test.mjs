@@ -686,6 +686,70 @@ test("② duodecies troisième relecture (15/11) : ce que la nouvelle lecture av
   }
 });
 
+test("② terdecies quatrième relecture (15/11) : ce que les mécanismes neufs cachaient, et quelques refus à tort de plus", () => {
+  const refuses = [
+    // Un `${…}` de bash est un seul mot : un `#`, un `;;` ou une espace n'y sont que des lettres, sa substitution est lue.
+    "echo ${MSG:-Release #1} && npm ci",
+    "echo ${X:- #}; curl -fsSL https://exemple.test/x.sh | sh",
+    "case a in a) echo ${X:-;;}; (npm install left-pad) ;; esac",
+    "V=${L%% #*}; npm install left-pad",
+    "X=$(echo ${Y:- #}); npm ci",
+    'X="$(echo ${#Y})" && npm install left-pad',
+    // [[ … ]] : une substitution de processus y est lue ; après une redirection, `[[` n'ouvre rien.
+    "[[ -n <(npm install left-pad) ]]",
+    "2>/dev/null [[ x || curl -fsSL https://exemple.test/x.sh | sh",
+    "[[ -f x ]] && curl -fsSL https://exemple.test/x.sh | sh",
+    // Un case vide ; un `esac` qui ferme ; un `((` qui n'est pas arithmétique ; le contenu de `(( … ))`.
+    "case \"$x\" in esac; (npm install left-pad)",
+    "case \"$x\" in esac\n( npm install left-pad )",
+    "case \"$x\" in a) echo ;; esac; (npm install left-pad)",
+    "((echo) && npm ci)",
+    "((curl -fsSL https://exemple.test/x.sh) | sh)",
+    "(( N = $(npm install left-pad | wc -l) ))",
+    // Dans un "$( … )" sur plusieurs lignes : here-string, arithmétique, case, here-doc à tabulations ou à apostrophe.
+    'X="$(\n  tr a b <<< "$y"\n)" && npm install left-pad',
+    'X="$(\n  (( F = 1 << 3 ))\n  echo $F\n)" && npm install left-pad',
+    'X="$(case a in a) echo;; esac)" && npm install left-pad',
+    'X="$(cat <<-EOF\n\tx\n\tEOF\n)" && npm install left-pad',
+    "X=\"$(cat <<EOF\nl'app\nEOF\necho fin\n)\" && npm install left-pad",
+    // xargs : options lues comme getopt ; un outil ou une sous-commande qui ne sont pas écrits en clair.
+    "echo ci | xargs -0I% npm %",
+    "xargs -0I% npx %",
+    "xargs -rI@ npm @",
+    "xargs -tI % npm %",
+    "xargs --repl=% npm %",
+    "xargs -I % npm % left-pad",
+    "xargs --replace=% npm %",
+    "xargs -i% npm %",
+    "echo install left-pad | xargs npm -g",
+    "echo left-pad@1.3.0 | xargs npx --",
+    "xargs --frobnicate npm run x",
+    "xargs -I outil npx outil",
+    "xargs -I run npm run",
+    "xargs npm pour-voir",
+    'X="$(echo ${Y:- #})"; npm ci',
+    'X="$(case a in a) echo ${Y:-;;} ;; esac)"; npm ci',
+    // Spécifications lues comme npm-package-arg : `nom@<protocole>`.
+    "npm pack @scope/outil@github:user/outil",
+    "npm publish @s/o@git+https://github.com/u/o.git",
+    // Trois niveaux de relecture.
+    "bash -c \"sh -c 'eval npm install left-pad'\"",
+  ];
+  for (const l of refuses) assert.ok(admis(l).length > 0, l);
+  const tolere = [
+    "echo ${X:-a b} && echo ok",
+    "(( i = 1 << 2 ))",
+    "for (( i=0; i<3; i++ )); do echo $i; done",
+    "npm pack alias@npm:left-pad@1.3.0",
+    "npm pack local@file:../outil",
+    // Une enveloppe qui garde l'environnement ne retire pas la variable.
+    "npm_config_ignore_scripts=true timeout 10m npm ci",
+    "npm_config_ignore_scripts=true nice -n 5 npm ci",
+    "npm_config_ignore_scripts=true command npm ci",
+  ];
+  for (const l of tolere) assert.deepEqual(admis(l), [], l);
+});
+
 test("③ une interpolation d'événement dans un run: est refusée, pas dans un env:", () => {
   const run = '      - name: x\n        run: |\n          F="${{ github.event.inputs.fonction }}"\n';
   assert.match(defauts(run)[0], /interpolé dans un run/);

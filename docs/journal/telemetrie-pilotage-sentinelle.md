@@ -1663,13 +1663,15 @@ l'empêchait demain.
     étape écrite en séquence en ligne, ou depuis un autre workflow qui porte le jeton. La gate, elle, a ses propres
     épreuves (`tests/unit/audit-workflows.test.mjs`) : un dépôt git réel pour les fichiers suivis, des actions citées
     par `uses: ./…` et par une autre action, chaque forme YAML et shell des relectures adverses. Hors verif,
-    `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 102 de ses règles dans une copie : chacune
+    `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 116 de ses règles dans une copie : chacune
     rougit ses épreuves ; et `node scripts/differentiel-audit-workflows.mjs <révision>…` fait juger le même corpus (les
-    chaînes des épreuves, et 910 combinaisons d'une charge dangereuse et d'une construction de shell) par la gate
-    de la copie et par celles des révisions données. Rejoué contre `main` et les quatre états précédents de cette PR :
-    aucune forme refusée avant n'est admise, hors douze faux positifs corrigés exprès (motifs de `case`, `[[ =~ ]]`,
-    `npx --no -- outil`, `npx --yes=false`, `npm_config_ignore_scripts=true`, une sous-commande inconnue, deux
-    here-docs, `$'…'`).
+    chaînes des épreuves, et 1 157 combinaisons d'une charge dangereuse et d'une construction de shell, 89 × 13) par
+    la gate de la copie et par celles des révisions données. Rejoué contre `main` et les cinq états précédents de
+    cette PR : aucune forme refusée avant n'est admise, hors des faux positifs corrigés exprès (motifs de `case`,
+    `[[ =~ ]]`, `npx --no -- outil`, `xargs npx prettier`, `npm pack -w`, `npx --yes=false`,
+    `npm_config_ignore_scripts=true` derrière `timeout` ou `env`, `alias@npm:`, une sous-commande inconnue, deux
+    here-docs, `$'…'`). Le relevé les liste un par un ; une quatrième relecture avait montré que son extraction en
+    perdait, et qu'aucune construction ne visait les régions relues à part.
 
 **Pièges.**
 - ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile.** `npm ci` refuse (EUSAGE) un `overrides` que le lockfile
@@ -1728,7 +1730,11 @@ l'empêchait demain.
     (`env -C d npm install` passait) ;
   - la troisième lisait un `${…}` d'un seul mot, et avalait la substitution qu'il porte (`${X:-$(npm install …)}`,
     l'idiome d'une valeur par défaut) ; fermait un `"$(…)"` dans le corps d'un here-doc dès qu'une apostrophe s'y
-    trouvait (`gh pr create --body "$(cat <<'EOF' …)"`) ; lisait comme un texte une étape écrite `[ run: '…' ]`.
+    trouvait (`gh pr create --body "$(cat <<'EOF' …)"`) ; lisait comme un texte une étape écrite `[ run: '…' ]` ;
+  - la quatrième, en corrigeant, lisait le `${…}` caractère par caractère (un `#` y ouvrait un commentaire :
+    `echo ${MSG:-Release #1} && npm ci` passait), prenait un `<<<` pour un here-doc dans un `"$(…)"`, et sa région
+    `[[ … ]]` avalait un `<(…)` ; et le banc différentiel, qui disait n'avoir trouvé aucune régression, ne plaçait
+    aucune charge dans ces régions.
   D'où les règles : chaque mécanisme a son épreuve et sa réinjection ; une réécriture se compare à la version d'avant,
   sur le même corpus, avant d'être poussée (`scripts/differentiel-audit-workflows.mjs`) ; et les textes disent ce qui
   est lu, rien de plus.
