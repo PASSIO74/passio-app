@@ -8388,6 +8388,18 @@ body.ctx-locked #appMain { overflow: hidden; }
   color: var(--text);
   overflow-wrap: anywhere;
 }
+.post-activite-desc {
+  padding: 6px 14px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-dim, #4a4663);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .post-activite-rdv {
   display: flex;
   align-items: center;

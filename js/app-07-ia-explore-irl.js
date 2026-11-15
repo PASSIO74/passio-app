@@ -5511,6 +5511,8 @@ function _postActiviteAuFil(ev, authorName, postId) {
       venue: ev.venue || "",
       date: ev.date || null,
       passion: ev.passion || null,
+      // Description, pour la carte du fil tant que l'activité n'est pas chargée.
+      desc: String(ev.desc || "").slice(0, 280),
       // Photo de l'activité, pour la carte du fil (jamais de base64 en base).
       coverUrl: /^https?:/.test(String(ev.coverUrl || "")) ? ev.coverUrl : "",
     },
