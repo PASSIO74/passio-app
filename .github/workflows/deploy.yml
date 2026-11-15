@@ -1425,4 +1425,6 @@ jobs:
           NETLIFY_BIN="${RUNNER_TEMP:-/tmp}/netlify-cli/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
           # La CLI lit NETLIFY_AUTH_TOKEN : le jeton ne passe plus sur une ligne de commande.
-          "$NETLIFY_BIN" deploy --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --site "$NETLIFY_SITE_ID"
+          # --no-build : dist/ est déjà construit. La CLI regroupe quand même les fonctions de bord
+          # (étape edge_functions_bundling seule) et applique les en-têtes de netlify.toml.
+          "$NETLIFY_BIN" deploy --no-build --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --site "$NETLIFY_SITE_ID"
