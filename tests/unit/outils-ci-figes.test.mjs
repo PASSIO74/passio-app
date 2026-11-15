@@ -440,7 +440,15 @@ test("③ l'étape d'envoi exécute la CLI que l'installation a posée, et elle 
   const envoi = etapeDe(r.f.deploy, "deploy", estEnvoi).run;
   const e = jouer(r.d, envoi, { NETLIFY_AUTH_TOKEN: "jeton-de-banc", NETLIFY_SITE_ID: "site-de-banc" });
   assert.equal(e.code, 0, e.sortie);
-  assert.deepEqual(e.lignes, ["netlify --version", `netlify deploy --prod --dir ${posix(r.d.ws)}/dist --site site-de-banc`]);
+  assert.deepEqual(e.lignes, ["netlify --version", `netlify deploy --no-build --prod --dir ${posix(r.d.ws)}/dist --site site-de-banc`]);
+});
+
+test("③ les deux envois passent --no-build : dist/ est déjà construit, la phase de build de Netlify ne tourne pas avec le jeton", () => {
+  const f = fs.readFileSync(path.join(RACINE, ".github/workflows/deploy.yml"), "utf8");
+  for (const job of ["deploy", "preview"]) {
+    const envoi = etapeDe(f, job, estEnvoi).run;
+    assert.match(envoi, /"\$NETLIFY_BIN" deploy --no-build /, `job ${job} : l'envoi doit passer --no-build`);
+  }
 });
 
 // Deno : un faux curl écrit l'archive demandée (son contenu vient du banc), un faux unzip pose un faux deno.
