@@ -103,7 +103,7 @@ Les deux jobs appellent `netlify deploy --no-build`. `dist/` est déjà construi
 gates : relancer la phase de build de Netlify (`@netlify/build`, sa configuration, ses plugins)
 n'exécutait que du code de plus avec le jeton.
 
-Dans netlify-cli 27.1.2 (`dist/commands/deploy/deploy.js`), sans build :
+Dans netlify-cli 27.1.2 comme dans 27.16.2 (`dist/commands/deploy/deploy.js`, relu dans les deux), sans build :
 
 - `bundleEdgeFunctions` lance la seule étape `edge_functions_bundling` de `@netlify/build`
   (`runCoreSteps`), avec le même edge-bundler et le même Deno du PATH. Le journal l'écrit sous la forme
