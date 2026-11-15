@@ -7,7 +7,7 @@ Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jet
 
 - **netlify-cli et ses dépendances.** `package.json` et `package-lock.json` de ce dossier sont copiés
   dans `$RUNNER_TEMP/netlify-cli`, puis installés par `npm ci --ignore-scripts`. L'arbre entier est
-  figé : 1 180 entrées, dont environ 1 120 installées sur le runner Linux. `npm ci` vérifie chaque
+  figé : 1 011 entrées, dont environ 950 installées sur le runner Linux. `npm ci` vérifie chaque
   archive par son empreinte sha512.
 - **Deno.** L'étape « Installer Deno » de `deploy.yml` prend l'archive d'une version exacte dans la
   release GitHub de `denoland/deno`, vérifie son empreinte sha256, puis pose Deno sur le PATH :
@@ -43,9 +43,9 @@ Les verrous :
   publiée deux minutes plus tard (15:13:49) : dans l'intervalle, l'installation de netlify-cli tombait
   en ETARGET. Seul un aperçu de PR a échoué (run 34368516164, 76 s avant la publication) ; les
   déploiements de production du jour sont restés verts. C'était déjà une version fraîche entrée dans le
-  job, comme le 14/11. D'où l'`overrides` (`@netlify/build` 36.4.7) : il ne sert
-  plus qu'à garder l'arbre éprouvé en production depuis le 9/09. Le retirer, c'est régénérer, donc
-  éprouver un nouvel arbre.
+  job, comme le 14/11. D'où un `overrides` (`@netlify/build` 36.4.7), qui a gardé l'arbre éprouvé
+  jusqu'au 15/11. Il a été retiré en montant netlify-cli à 27.16.2, qui exige `@netlify/build` ^37.7.2 :
+  le lockfile, lui, empêche désormais une version fraîche d'entrer.
 - **Le 2026-11-14 à 11:29 UTC** (run 43588829557, tentative 1). Le déploiement de production a échoué
   en E404 sur `fast-json-stringify` 7.3.6, publiée une minute plus tôt et pas encore servie par le CDN ;
   relancé quatre minutes plus tard, il est passé. Une version
@@ -55,21 +55,24 @@ Les verrous :
 
 ## D'où viennent ces versions
 
-**Le lockfile** a été généré le 2026-11-14, avec npm 11 (comme le lockfile racine), par :
+**Le lockfile** a été régénéré le 2026-11-15, avec npm 11 (comme le lockfile racine), pour monter
+netlify-cli de 27.1.2 à 27.16.2 et retirer l'`overrides` du 9/09, par :
 
-    npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before=2026-11-07T10:49:27Z
+    npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before=2026-11-08T00:00:00Z
 
-À 2026-11-07T10:49:27Z, le déploiement de production du run 42364454758 (commit `2d564265`, vert)
-lançait ce même `npm install netlify-cli@27.1.2`, avec le même `overrides`. Son journal indique
-« added 1120 packages ». Avec `--before`, npm ne retient que les versions publiées avant cet instant.
+Avec `--before`, npm ne retient que les versions publiées avant cet instant. 27.16.2 (2026-11-02) est la
+dernière netlify-cli publiée depuis au moins 7 jours. 27.19.0 (2026-11-13), que propose `npm audit`,
+n'avait que 2 jours, et 27.16.2 corrige déjà les dix avis élevés.
 
 - **Vérifié.** La date de chaque version de ce lockfile a été relue sur le registre : aucune n'est
   postérieure à cet instant. La plus récente est `import-in-the-middle@3.6.0`, du 2026-11-06 à 19:43 UTC.
-  Tout avait donc au moins 7 jours au figeage, la règle que suit le dépôt.
-- **Non prouvé.** L'arbre n'est pas forcément identique, octet pour octet, à celui de ce run : son
-  journal ne liste pas les versions installées.
-- **Le runner exécute npm 10.9.9.** Il lit les champs `libc` qu'écrit npm 11 : « added 1120 packages »
-  sur le runner, autant que le 7/11. Mais il les retire s'il RÉÉCRIT le lockfile : régénérer avec npm 11.
+- **`@netlify/edge-bundler`** reste en 16.2.0, seule copie de l'arbre : la plage Deno (`^2.4.2`) ne
+  change pas, et Deno 2.9.8 y entre.
+- **Le runner exécute npm 10.9.9.** Il lit les champs `libc` qu'écrit npm 11, mais il les retire s'il
+  RÉÉCRIT le lockfile : régénérer avec npm 11.
+
+L'arbre précédent (27.1.2, généré le 14/11 avec `--before=2026-11-07T10:49:27Z`, 1 180 entrées,
+« added 1120 packages » sur le runner) reprenait celui du déploiement de production du run 42364454758.
 
 **Deno 2.9.8**, publié le 2026-10-21, est celui que désigne `dl.deno.land/release-latest.txt` (relu le
 14/11) : celui que les déploiements téléchargeaient depuis sa sortie.
@@ -118,10 +121,13 @@ relancée, l'aperçu repart. Une PR Dependabot ne peut pas l'avoir (voir plus ba
 
 ## Avis de sécurité connus, et PR Dependabot
 
-Le 2026-11-14, `npm audit` relève 23 avis dans cet arbre : 2 faibles, 11 modérés, 10 élevés, aucun
-critique. Ils étaient déjà dans l'installation flottante, et le figeage les rend visibles. Les dix élevés
-se corrigent en montant netlify-cli à 27.19.0, qui exige `@netlify/build` ^37.7.6 : il faut donc
-retirer l'`overrides` et éprouver un arbre neuf. C'est une PR à part, qui suit la procédure ci-dessus.
+`npm audit --omit=dev` dans ce dossier :
+
+- **2026-11-14, netlify-cli 27.1.2** : 23 avis, 2 faibles, 11 modérés, 10 élevés, aucun critique. Ils
+  étaient déjà dans l'installation flottante ; le figeage les a rendus visibles.
+- **2026-11-15, netlify-cli 27.16.2** : 18 avis, 2 faibles, 16 modérés, **aucun élevé**, aucun critique.
+  Les modérés restants (`minimatch`, `glob`, `deepmerge`… sous `@netlify/build` et
+  `zip-it-and-ship-it`) sont aussi dans l'arbre de 27.19.0, la dernière publiée : aucune 27.x ne les corrige.
 
 **Une PR Dependabot de ce dossier ne se fusionne jamais telle quelle.**
 

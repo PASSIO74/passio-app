@@ -208,7 +208,7 @@ function auditerDeploy(texte) {
       if (ci.length !== 1) d.push(`${id} : ${ci.length} appel(s) à « npm ci » — un seul attendu`);
       else {
         if (!/ --prefix "\$RUNNER_NETLIFY"( |$)/.test(ci[0])) d.push(`${id} : « npm ci » ne vise pas le dossier où le lockfile est copié`);
-        if (!/ --ignore-scripts( |$)/.test(ci[0])) d.push(`${id} : « npm ci » sans --ignore-scripts — les scripts d'installation de ~1 120 paquets tourneraient`);
+        if (!/ --ignore-scripts( |$)/.test(ci[0])) d.push(`${id} : « npm ci » sans --ignore-scripts — les scripts d'installation de ~950 paquets tourneraient`);
       }
       if (code.some((l) => /\bnpm\b/.test(l) && !/^npm ci\b/.test(l))) d.push(`${id} : un appel à npm autre que « npm ci » — hors lockfile`);
       if (code.some((l) => /\bnpx\b/.test(l))) d.push(`${id} : npx installe la dernière version publiée`);
@@ -337,7 +337,9 @@ test("① les trois lockfiles que la CI installe : archives canoniques du regist
   // Ce que le lockfile de netlify-cli fige, et que la production installe depuis le 2026-11-14.
   const lock = JSON.parse(reel().netlifyLock);
   assert.equal(lock.packages["node_modules/netlify-cli"].version, JSON.parse(reel().netlifyPkg).dependencies["netlify-cli"]);
-  assert.equal(lock.packages["node_modules/@netlify/build"].version, "36.4.7", "l'arbre éprouvé en production depuis le 9/09");
+  // Régénéré le 2026-11-15 (--before=2026-11-08T00:00:00Z) pour netlify-cli 27.16.2 : plus d'overrides, plus d'avis « high ».
+  assert.equal(lock.packages["node_modules/@netlify/build"].version, "37.7.6", "l'arbre régénéré le 2026-11-15");
+  assert.equal(JSON.parse(reel().netlifyPkg).overrides, undefined, "l'overrides du 9/09 est retiré (netlify-cli 27.16.2 exige @netlify/build ^37.7.2)");
   // Le seul paquet du contrôle Realtime pris dans node_modules est celui que la racine épingle.
   assert.match(lire("scripts/controle-realtime.mjs"), /from "@supabase\/supabase-js"/);
 });
@@ -675,7 +677,7 @@ const MUTATIONS = [
     attendu: /16\.3\.0 : plage Deno inconnue/,
   },
   { nom: "un binaire Linux retiré du lockfile", muter: (f) => avecLock(f, (l) => delete l.packages["node_modules/@esbuild/linux-x64"]), attendu: /@esbuild\/linux-x64 absent/ },
-  { nom: "netlify-cli en plage (^27.1.2)", muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.1.2"', '"netlify-cli": "^27.1.2"') }), attendu: /version exacte/ },
+  { nom: "netlify-cli en plage (^27.16.2)", muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.16.2"', '"netlify-cli": "^27.16.2"') }), attendu: /version exacte/ },
   { nom: "le lockfile installe une autre version de la CLI", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/netlify-cli"].version = "27.1.3")), attendu: /installe netlify-cli@27\.1\.3/ },
   {
     nom: "une archive servie hors du registre npm",
@@ -692,18 +694,18 @@ const MUTATIONS = [
   { nom: "une empreinte sha1", muter: (f) => avecLock(f, (l) => (l.packages[premiereCle(l)].integrity = "sha1-2jmj7l5rSw0yVb/vlWAYkK/YBwk=")), attendu: /sans empreinte sha512/ },
   {
     nom: "un paquet qui se dit livré par un parent qui ne le déclare pas",
-    muter: (f) => avecLock(f, (l) => (l.packages["node_modules/@parcel/watcher-wasm"].bundleDependencies = [])),
+    muter: (f) => avecLock(f, (l) => (l.packages["node_modules/esbuild/node_modules/paquet-livre"] = { version: "1.0.0", inBundle: true })),
     attendu: /se dit livré par son parent/,
   },
   { nom: "un lien local dans le lockfile", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/paquet-local"] = { resolved: "outils/paquet-local", link: true })), attendu: /lien local/ },
   {
-    nom: "le lockfile n'applique plus l'overrides (@netlify/build 36.4.8 au lieu de 36.4.7)",
-    muter: (f) => avecLock(f, (l) => (l.packages["node_modules/@netlify/build"].version = "36.4.8")),
-    attendu: /l'overrides force @netlify\/build@36\.4\.7, le lockfile installe/,
+    nom: "un overrides que le lockfile n'applique pas (@netlify/build 37.7.5 forcé, 37.7.6 installé)",
+    muter: (f) => ({ ...f, netlifyPkg: JSON.stringify({ ...JSON.parse(f.netlifyPkg), overrides: { "@netlify/build": "37.7.5" } }) }),
+    attendu: /l'overrides force @netlify\/build@37\.7\.5, le lockfile installe/,
   },
   {
     nom: "une dépendance ajoutée au package.json sans régénérer le lockfile",
-    muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.1.2"', '"netlify-cli": "27.1.2",\n    "left-pad": "1.3.0"') }),
+    muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.16.2"', '"netlify-cli": "27.16.2",\n    "left-pad": "1.3.0"') }),
     attendu: /dependencies de la racine du lockfile ≠ package\.json/,
   },
   {
