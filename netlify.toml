@@ -3,21 +3,11 @@
   # Edge Function du cache CDN des médias (/media/*) — voir docs/CDN_MEDIAS.md
   edge_functions = "netlify/edge-functions"
 
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-[[headers]]
-  for = "/pilotage/*"
-  [headers.values]
-    Cache-Control = "no-cache"
-
-[[headers]]
-  for = "/manifest.json"
-  [headers.values]
-    Cache-Control = "no-cache"
-
+# Le CACHE se règle dans `_headers`, et là seulement (audit des routes, 2026-11-15).
+# Mesuré en production : pour un même chemin, la règle de ce fichier l'EMPORTE sur
+# celle de `_headers` — `/sw.js` et `/manifest.json` étaient servis `no-cache`
+# alors que `_headers` (et son banc) les déclaraient `no-store`. Verrou :
+# tests/unit/entetes-coherence.test.mjs ⑤.
 [[headers]]
   for = "/*"
   [headers.values]
