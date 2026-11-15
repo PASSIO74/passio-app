@@ -1228,7 +1228,9 @@ jobs:
           NETLIFY_BIN="${RUNNER_TEMP:-/tmp}/netlify-cli/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
           # La CLI lit NETLIFY_AUTH_TOKEN : le jeton ne passe plus sur une ligne de commande.
-          "$NETLIFY_BIN" deploy --prod --dir "$GITHUB_WORKSPACE/dist" --site "$NETLIFY_SITE_ID"
+          # --no-build : dist/ est déjà construit et éprouvé. La CLI regroupe quand même les fonctions de
+          # bord et applique les en-têtes de netlify.toml (.github/netlify-cli/README.md).
+          "$NETLIFY_BIN" deploy --no-build --prod --dir "$GITHUB_WORKSPACE/dist" --site "$NETLIFY_SITE_ID"
 
   # ⚠️ RETOUR SUR L'ISSUE AU DÉPLOIEMENT (A7, 2026-09-18). `Closes #n` ferme
   # l'issue à la FUSION — c'est ce qui débloque « une enquête à la fois », on le
@@ -1425,4 +1427,6 @@ jobs:
           NETLIFY_BIN="${RUNNER_TEMP:-/tmp}/netlify-cli/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
           # La CLI lit NETLIFY_AUTH_TOKEN : le jeton ne passe plus sur une ligne de commande.
-          "$NETLIFY_BIN" deploy --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --site "$NETLIFY_SITE_ID"
+          # --no-build : dist/ est déjà construit. La CLI regroupe quand même les fonctions de bord
+          # (étape edge_functions_bundling seule) et applique les en-têtes de netlify.toml.
+          "$NETLIFY_BIN" deploy --no-build --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --site "$NETLIFY_SITE_ID"

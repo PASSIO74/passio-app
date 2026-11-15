@@ -97,6 +97,39 @@ production, mais **ce n'est pas un contrôle requis** par la protection de `main
 outils ne se fusionne donc qu'avec son aperçu VERT, une fois sa contre-revue faite : la gouvernance
 relancée, l'aperçu repart. Une PR Dependabot ne peut pas l'avoir (voir plus bas).
 
+## `deploy --no-build` (depuis le 2026-11-15, PR 947)
+
+Les deux jobs appellent `netlify deploy --no-build`. `dist/` est déjà construit et éprouvé par les
+gates : relancer la phase de build de Netlify (`@netlify/build`, sa configuration, ses plugins)
+n'exécutait que du code de plus avec le jeton.
+
+Dans netlify-cli 27.1.2 comme dans 27.16.2 (`dist/commands/deploy/deploy.js`, relu dans les deux), sans build :
+
+- `bundleEdgeFunctions` lance la seule étape `edge_functions_bundling` de `@netlify/build`
+  (`runCoreSteps`), avec le même edge-bundler et le même Deno du PATH. Le journal l'écrit sous la forme
+  « Bundling edge functions... » puis « Finished bundling edge functions », au lieu de la section
+  « Netlify Build » ;
+- `runDeploy` relit les `headers` et `redirects` de `netlify.toml`, ainsi que `_headers` et `_redirects`
+  dans `dist/`, et les envoie avec le déploiement.
+
+**Éprouvé sur l'aperçu `pr-947`** (run 43724871406) :
+
+- les fonctions de bord sont regroupées. Netlify en a demandé 0 parce que l'empreinte du paquet était
+  déjà connue : c'est le même paquet que celui qu'avait produit le build complet ;
+- 11 routes ont été relevées par `curl -D -` : `/`, `/index.html`, `/media/*`, `/demo/*`, `/p/*`,
+  `/u/*`, `/e/*`, `/manifest.json`, `/sw.js`, `/pilotage/` et une page 404. Leur statut, `Location` et
+  en-têtes (CSP, `X-Frame-Options`, `Cache-Control`, etc.) sont identiques à ceux de la production et de
+  l'aperçu `pr-920`, construit sans l'option.
+
+**Pas de gain de temps mesurable.** L'étape d'envoi durait 6 à 9 s avant, et 6 s avec l'option : le
+démarrage de la CLI domine, et le build sautait déjà en 2,4 s. L'option est gardée pour la surface
+d'exécution, pas pour la vitesse.
+
+**À refaire à chaque montée de netlify-cli :** relire `bundleEdgeFunctions` et `runDeploy` dans le
+`deploy.js` de la nouvelle version, puis lire dans le journal de l'aperçu « Finished bundling edge
+functions ». Si cette ligne manque, les fonctions de bord ne partent plus : `/p/*` cesse de rediriger,
+et `/media/*` ne passe plus par le cache.
+
 ## Mettre à jour
 
 **Pour netlify-cli**, ou pour appliquer un correctif de sécurité :
