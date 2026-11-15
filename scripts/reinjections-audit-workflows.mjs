@@ -57,6 +57,8 @@ const M = [
   ["L25 les motifs d'un case sont jugés comme des commandes", [[G, "  if (m.motif) return []; // les motifs d'un `case` : bash ne les exécute pas", "  void 0;"]]],
   ["L26 une ligne lue seule n'a pas le contexte du case", [[G, "commandesProfondes(l, 0, { motif: motifs.has(n) })", "commandesProfondes(l, 0, { motif: false })"]]],
   ["L27 un `${…}` de bash avale sa substitution (lu d'un seul mot)", [[G, 'if (c === "$" && s === "{" && texte[i + 2] === "{") {', 'if (c === "$" && s === "{") {']]],
+  ["L28 un `]]` collé à `&&` ne ferme pas la condition", [[G, '      const fermeCrochets = dansMot && !cite && mot === "]]";', "      const fermeCrochets = false;"]]],
+  ["L29 un `${{` jamais fermé avale la suite", [[G, "        if (j < texte.length) {\n          const fin = j + 1;", "        if (true) {\n          const fin = j + 1;"]]],
   // Ce qu'un shell lance.
   ["S01 le script de `bash -c` n'est plus relu", [[G, "      if (c) {\n        if (mot >= 0) relire(m[mot], 0);", "      if (c) {\n        if (false) relire(m[mot], 0);"]]],
   ["S02 `-eo` ne consomme pas `pipefail`", [[G, 'if (lettre === "o" || lettre === "O") j++;', "if (false) j++;"]]],
@@ -107,7 +109,8 @@ const M = [
   ["X03 npx : une valeur séparée est admise", [[G, 'if (!x.includes("=") && /^(?:true|false|null)$/.test(mots[j + 1] || "")) {', "if (false) {"]]],
   ["X04 npx : --package n'est pas nommé", [[G, 'if (x === "-p" || x === "--package" || x.startsWith("--package=") || x.startsWith("-p=")) {', "if (false) {"]]],
   ["X05 npm exec : les options après l'outil sont ignorées", [[G, "if (!npmExec) break; // npx", "break; // npx"]]],
-  ["X06 un outil variable est admis", [[G, "if (spec !== undefined && /[$`]/.test(spec))", "if (false)"]]],
+  ["X06 un outil variable est admis", [[G, "if (spec !== undefined && /[$`{}]/.test(spec))", "if (false)"]]],
+  ["X09 un outil à accolades (`{}` de xargs) est admis", [[G, "if (spec !== undefined && /[$`{}]/.test(spec))", "if (spec !== undefined && /[$`]/.test(spec))"]]],
   ["X07 npx lit `--no` comme un booléen", [[G, '  "--no-install": "non", "--yes=false": "non",\n  "-q": "neutre", "--quiet": "neutre",', '  "--no": "non", "--no-yes": "non", "--no-install": "non", "--yes=false": "non",\n  "-q": "neutre", "--quiet": "neutre",']]],
   ["X08 `npx --no -- outil` est refusé", [[G, '    const sens = lues[x] ?? ((x === "--no" || x === "--no-yes") && mots[j + 1] === "--" ? "non" : undefined);', "    const sens = lues[x];"]]],
   // Le workflow.

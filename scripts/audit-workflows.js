@@ -500,8 +500,10 @@ function lexer(source, { motif = false } = {}) {
         ligne++;
         continue;
       }
-      // Dans `[[ … ]]`, ces signes sont des opérateurs de la condition, pas des séparateurs ni des redirections.
-      if (crochets && (c === "|" || c === "&" || c === "(" || c === ")" || c === "<" || c === ">")) {
+      // Dans `[[ … ]]`, ces signes sont des opérateurs de la condition, pas des séparateurs ni des redirections — sauf
+      // juste après le `]]` qui la ferme (`[[ -f x ]]&&npm ci` : `&&` y sépare, comme pour bash).
+      const fermeCrochets = dansMot && !cite && mot === "]]";
+      if (crochets && !fermeCrochets && (c === "|" || c === "&" || c === "(" || c === ")" || c === "<" || c === ">")) {
         mot += c;
         dansMot = true;
         i++;
@@ -659,11 +661,14 @@ function lexer(source, { motif = false } = {}) {
           } else if (x === "{") prof++;
           else if (x === "}" && --prof === 0) break;
         }
-        const fin = Math.min(j + 1, texte.length);
-        mot += texte.slice(i, fin);
-        dansMot = true;
-        sauter(fin);
-        continue;
+        // Une expression jamais fermée n'avale pas la suite : elle se lit alors caractère par caractère.
+        if (j < texte.length) {
+          const fin = j + 1;
+          mot += texte.slice(i, fin);
+          dansMot = true;
+          sauter(fin);
+          continue;
+        }
       }
       if (c === "`") {
         const k = texte.indexOf("`", i + 1);
@@ -892,7 +897,7 @@ function auditerOutil(nom, mots, { npmExec }) {
       break;
     }
   }
-  if (spec !== undefined && /[$`]/.test(spec)) d.push(`\`${nom} ${spec}\` : outil variable, que la gate ne lit pas`);
+  if (spec !== undefined && /[$`{}]/.test(spec)) d.push(`\`${nom} ${spec}\` : outil variable (ou chaîne de remplacement de xargs, ou accolades), que la gate ne lit pas`);
   else if (specTelechargee(spec)) d.push(`\`${nom} ${spec}\` télécharge l'outil hors lockfile`);
   return d;
 }

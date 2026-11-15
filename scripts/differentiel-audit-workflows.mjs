@@ -80,6 +80,7 @@ try {
     "(( F = 1 << 3 ))\n%", 'if [[ "$a" =~ (b|c) ]]; then %; fi', 'case "$x" in a|b) echo ;; esac; %',
     "gh pr create --body \"$(cat <<'EOF'\nl'arbre\nEOF\n)\" && %", 'N="$(grep -c case f)"; %', "X=$(echo ')' ; %)",
     "echo $'l\\'app'; %", "echo ${X}; %", "echo ${X:-a b}; %", "echo ${#X}; %",
+    "[[ -f x ]]&&%", "[[ -f x ]]||%", "(( 1 ))&&%", "echo ${{ github.sha %", "xargs -I{} sh -c '%'",
   ];
   for (const g of GABARITS) for (const c of CHARGES) corpus.add(g.split("%").join(c));
 

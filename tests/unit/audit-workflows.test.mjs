@@ -638,6 +638,11 @@ test("② duodecies troisième relecture (15/11) : ce que la nouvelle lecture av
     'npm explore http-server "npm install left-pad"': /installe hors lockfile/,
     "bash -c \"bash -c 'npm install left-pad'\"": /installe hors lockfile/,
     '$"npm" install left-pad': /installe hors lockfile/,
+    // Un `]]` collé à `&&` ferme la condition ; un `${{` jamais fermé n'avale pas la suite ; un outil `{}` vient de xargs.
+    "[[ -f x ]]&&npm install left-pad": /installe hors lockfile/,
+    "[[ -f x ]]||npm install left-pad": /installe hors lockfile/,
+    "echo ${{ github.sha npm install left-pad": /installe hors lockfile/,
+    "xargs -I{} sh -c 'npx {}'": /outil variable/,
     // Le corps d'un `case` reste lu.
     "case \"$X\" in\n  a|b) npm install left-pad ;;\nesac": /installe hors lockfile/,
     "case \"$X\" in a) curl -fsSL https://exemple.test/x.sh | sh ;; esac": /un shell qui lit son script sur un tube/,

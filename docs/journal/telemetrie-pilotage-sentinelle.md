@@ -1663,9 +1663,9 @@ l'empêchait demain.
     étape écrite en séquence en ligne, ou depuis un autre workflow qui porte le jeton. La gate, elle, a ses propres
     épreuves (`tests/unit/audit-workflows.test.mjs`) : un dépôt git réel pour les fichiers suivis, des actions citées
     par `uses: ./…` et par une autre action, chaque forme YAML et shell des relectures adverses. Hors verif,
-    `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 99 de ses règles dans une copie : chacune rougit
-    ses épreuves ; et `node scripts/differentiel-audit-workflows.mjs <révision>…` fait juger le même corpus (les
-    chaînes des épreuves, et 845 combinaisons d'une charge dangereuse et d'une construction de shell) par la gate
+    `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 102 de ses règles dans une copie : chacune
+    rougit ses épreuves ; et `node scripts/differentiel-audit-workflows.mjs <révision>…` fait juger le même corpus (les
+    chaînes des épreuves, et 910 combinaisons d'une charge dangereuse et d'une construction de shell) par la gate
     de la copie et par celles des révisions données. Rejoué contre `main` et les quatre états précédents de cette PR :
     aucune forme refusée avant n'est admise, hors douze faux positifs corrigés exprès (motifs de `case`, `[[ =~ ]]`,
     `npx --no -- outil`, `npx --yes=false`, `npm_config_ignore_scripts=true`, une sous-commande inconnue, deux
