@@ -74,7 +74,8 @@ test("③ le déploiement refuse un dist/ qui n'est pas celui que les tests ont 
   assert.match(deploy, /EMPREINTE_TESTEE: \$\{\{ needs\.gates-artefact\.outputs\.empreinte \}\}/);
   const build = deploy.indexOf("node scripts/build.js dist/index.html");
   const integrite = deploy.indexOf("node scripts/verifier-integrite-app.js dist");
-  const envoi = deploy.indexOf("deploy --prod --dir");
+  // L'envoi, options comprises (`--no-build` depuis la PR 947) : la commande, pas un ordre d'options figé.
+  const envoi = deploy.search(/ deploy (?:--[a-z-]+ )*--prod --dir/);
   assert.ok(build > 0 && integrite > build && controle > integrite && envoi > controle,
     `ordre build (${build}) < intégrité (${integrite}) < empreinte (${controle}) < envoi (${envoi})`);
   // Entre le contrôle et l'envoi, aucune ligne exécutée ne cite dist/ (relecture du
