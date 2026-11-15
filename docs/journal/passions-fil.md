@@ -27,6 +27,7 @@
 - 📡 UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE — le séparateur du fil dit l'échec de lecture (2026-11-09)
 - 🧷 « MA PASSION ET MON POST ONT DISPARU À LA RÉOUVERTURE » — L'APPAREIL PERDAIT CE QUE LA BASE GARDAIT (2026-11-14)
 - 📍 UNE ACTIVITÉ PARTAGÉE SE MET EN AVANT : PHOTO + BLOC DATE CORAIL, PAREIL AU FIL ET AU PROFIL (2026-11-14)
+- 🎯 « CRÉER UNE ACTIVITÉ » NE PROPOSE QUE LES PASSIONS DU PROFIL (2026-11-15)
 
 ---
 
@@ -1133,3 +1134,12 @@ Demande de Benjamin, captures à l'appui : dans le fil, une activité partagée 
 - La photo vient de l'activité chargée (`coverUrl`), sinon de `sharedReelData.coverUrl`, écrit désormais au partage (URL http seulement, jamais de base64). Une carte ancienne dont l'activité n'est pas chargée s'affiche sans photo.
 - Les styles `.post-activite*` ne sont ancrés à AUCUN drapeau : la carte est la même sous kill switch.
 Verrou : `tests/e2e/ui-v3b-activite.spec.js` (« un seul CTA »).
+
+## 🎯 « CRÉER UNE ACTIVITÉ » NE PROPOSE QUE LES PASSIONS DU PROFIL (2026-11-15)
+
+Demande de Benjamin (capture du sélecteur, 12 passions dont 7 marquées « ✦ ») : « quand je crée une activité il faut afficher seulement les passions sélectionnées dans le profil ». 🔁 Revirement sur le 2026-09-12, où le catalogue publiable suivait les passions du compte.
+- `_irlPassionsOrganisables` (app-07) rend les passions VIVANTES du compte qui peuvent aboutir, et elles seules. Le catalogue publiable n'est plus qu'un REPLI (`liste.repli = true`, `data-repli="1"` sur `#evPassion`) quand aucune n'est résolue : compte sans passion, référentiel pas encore arrivé, hors ligne — un `<select>` vide rendrait la création impossible. Le repeint du référentiel SORT du repli dès que les passions du compte sont résolues, même si l'option retenue par défaut n'en était pas.
+- Le « ✦ » a disparu du `<select>` : tout ce qui est listé est à soi.
+- Édition : la passion d'origine reste réinjectée ; « (non publiable) » n'est plus écrit que si elle l'est vraiment (une passion retirée du profil depuis reste publiable).
+- Préremplissages (pont Fil → IRL, « Proposer un IRL » d'une conversation) : la passion visée n'est posée que si elle est au profil ; `ui-v6c` construit le titre suggéré sur la passion RETENUE par le formulaire, jamais sur celle visée.
+Verrous : `tests/e2e/passions-organiser-et-groupe.spec.js` (③, ⑤, ⑤ bis, ⑤ ter), `tests/e2e/ui-v6c-proposer-irl.spec.js`.

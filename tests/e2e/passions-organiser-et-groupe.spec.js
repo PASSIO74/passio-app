@@ -110,26 +110,33 @@ test.describe("Organiser et grouper dans les 5 001 passions", () => {
   // rencontre sous une AUTRE passion, en silence — la faute que le mode
   // édition avait déjà dû rustiner à la main.
   test("③ le repeint du référentiel ne change pas la passion choisie", async ({ page }) => {
-    await bootOnboarded(page, null, 1, { state: compteAvecPassionPlate() });
+    // Deux passions DU COMPTE (2026-11-15 : le formulaire ne propose plus
+    // qu'elles) : celle du référentiel plat et une du socle.
+    const etat = compteAvecPassionPlate();
+    etat.user.profiles.push({
+      id: "pp_1", name: "Audit QA", passion: "musique",
+      emoji: "🎸", bio: "seconde", color: "#7c3aed", createdAt: 2,
+    });
+    await bootOnboarded(page, null, 1, { state: etat });
     await page.evaluate(() => openCreateEvent());
     await page.waitForSelector("#evPassion", { timeout: 10000 });
+
+    // On choisit explicitement l'AUTRE passion du compte, puis on laisse le
+    // référentiel repeindre : le choix doit tenir.
+    const autre = await page.evaluate(() => {
+      const opts = Array.from(document.querySelectorAll("#evPassion option"));
+      const cible = opts.find((o) => o.value === "musique");
+      if (!cible) return null;
+      document.getElementById("evPassion").value = cible.value;
+      return cible.value;
+    });
+    expect(autre).toBe("musique");
 
     await page.waitForFunction(
       (id) => Array.from(document.querySelectorAll("#evPassion option")).some((o) => o.value === id),
       PASSION,
       { timeout: 15000 }
     );
-
-    // On choisit explicitement une AUTRE passion, puis on laisse le référentiel
-    // repeindre : le choix doit tenir.
-    const autre = await page.evaluate(() => {
-      const opts = Array.from(document.querySelectorAll("#evPassion option"));
-      const cible = opts.find((o) => o.value === "musique") || opts[1];
-      if (!cible) return null;
-      document.getElementById("evPassion").value = cible.value;
-      return cible.value;
-    });
-    expect(autre).toBeTruthy();
 
     await page.waitForTimeout(2500);
     const apres = await page.evaluate(() => document.getElementById("evPassion").value);
@@ -217,22 +224,54 @@ test.describe("Organiser et grouper dans les 5 001 passions", () => {
     await page.waitForSelector("#evPassion", { timeout: 10000 });
     await page.waitForTimeout(2500);
 
-    // « Musique » appartient au socle, donc elle reste dans le catalogue — ce
-    // qu'on refuse, c'est qu'elle soit traitée comme une passion DU COMPTE.
-    const marquee = await page.evaluate(() => {
-      const o = Array.from(document.querySelectorAll("#evPassion option"))
-        .find((x) => x.value === "musique");
-      return o ? o.textContent : "";
-    });
-    expect(marquee).not.toMatch(/✦/);
+    // Depuis le 2026-11-15 le formulaire ne propose QUE les passions du
+    // compte : la passion rangée n'en est plus une, elle n'est pas proposée.
+    const valeurs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("#evPassion option")).map((o) => o.value));
+    expect(valeurs).toEqual([PASSION]);
+  });
 
-    // Et la passion vivante, elle, garde sa marque et sa place.
-    const premier = await page.evaluate(() => {
-      const o = document.querySelector("#evPassion option");
-      return o ? { v: o.value, t: o.textContent } : null;
+  // ⑤ bis — SEULES LES PASSIONS DU PROFIL (demande de Benjamin, 2026-11-15 :
+  // « quand je crée une activité il faut afficher seulement les passions
+  // sélectionnées dans le profil »). Le catalogue entier suivait les siennes.
+  test("⑤ bis « Créer une activité » ne liste que les passions du profil", async ({ page }) => {
+    const etat = compteAvecPassionPlate();
+    etat.user.profiles.push({
+      id: "pp_1", name: "Audit QA", passion: "musique",
+      emoji: "🎸", bio: "seconde", color: "#7c3aed", createdAt: 2,
     });
-    expect(premier.v).toBe(PASSION);
-    expect(premier.t).toMatch(/✦/);
+    await bootOnboarded(page, null, 1, { state: etat });
+
+    await page.evaluate(() => openCreateEvent());
+    await page.waitForSelector("#evPassion", { timeout: 10000 });
+    await page.waitForFunction(
+      (id) => Array.from(document.querySelectorAll("#evPassion option")).some((o) => o.value === id),
+      PASSION,
+      { timeout: 15000 }
+    );
+    await page.waitForTimeout(1500);
+
+    const options = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("#evPassion option")).map((o) => ({ v: o.value, t: o.textContent })));
+    expect(options.map((o) => o.v).sort()).toEqual([PASSION, "musique"].sort());
+    // Plus de « ✦ » : tout ce qui est listé est à soi.
+    expect(options.some((o) => /✦/.test(o.t))).toBe(false);
+  });
+
+  // ⑤ ter — SANS AUCUNE PASSION, LE FORMULAIRE RESTE UTILISABLE : le catalogue
+  // publiable sert de repli (un `<select>` vide rendrait la création impossible).
+  test("⑤ ter un compte sans passion garde le catalogue en repli", async ({ page }) => {
+    const etat = compteAvecPassionPlate();
+    etat.user.profiles = [];
+    etat.user.currentProfileId = null;
+    await bootOnboarded(page, null, 1, { state: etat });
+
+    await page.evaluate(() => openCreateEvent());
+    await page.waitForSelector("#evPassion", { timeout: 10000 });
+    await page.waitForTimeout(2500);
+
+    const n = await page.locator("#evPassion option").count();
+    expect(n).toBeGreaterThan(1);
   });
 
   // ⑥ ON NE PROPOSE PAS CE QUE « PUBLIER » REFUSERA (sortie A, 2026-08-30).
