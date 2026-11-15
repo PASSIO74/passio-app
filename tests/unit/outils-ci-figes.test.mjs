@@ -23,10 +23,11 @@
 //     sur ce lockfile, puis Deno par version et empreinte, par les MÊMES blocs, sans secret, AVANT
 //     l'étape qui exécute la CLI — la plage principale de chaque copie d'edge-bundler accepte ce Deno (son pont
 //     hérité, Deno 1.x dans deno-cli-v1, ne prend jamais le PATH : son piège le fait échouer fermé) ;
-//     et dans TOUS les workflows et actions composites : aucune ligne non commentée ne porte `netlify-cli@`
-//     (une version en dur, même posée dans une variable), et aucune commande — lue comme la gate la lit, toute
-//     valeur du YAML, `bash -c` et `eval` compris — ne nomme `netlify` ou `netlify-cli` comme mot : la CLI ne
-//     se lance que par "$NETLIFY_BIN". Hors de portée : un nom de CLI recomposé par variable (`npx "$X"`) ;
+//     et dans les workflows et actions composites que lit la gate : aucune ligne non commentée ne porte
+//     `netlify-cli@` (une version en dur, même posée dans une variable), et aucune commande — lue comme la gate la
+//     lit : toute valeur du YAML hors libellés, d'un seul tenant aussi, le script d'un shell relu — ne nomme
+//     `netlify` ou `netlify-cli` comme mot. Hors de portée : un nom de CLI recomposé (variable, accolades,
+//     expression `${{ }}`) ; un shell nourri par un tube est refusé par la gate, pas ici ;
 //   ③ ces blocs `run:` RÉELS, joués contre de faux outils : la copie et `npm ci` sur les fichiers du
 //     dépôt ; une archive Deno à la mauvaise empreinte ROUGIT sans rien poser sur le PATH ; la bonne
 //     pose Deno sur le PATH et bloque tout téléchargement ; l'étape d'envoi exécute la CLI installée ;
@@ -257,13 +258,15 @@ function auditerDeploy(texte) {
 }
 
 /**
- * ② La CLI ne se lance, dans AUCUN workflow ni action composite, autrement que par "$NETLIFY_BIN" — la gate, elle,
- * ne voit pas un `npx netlify-cli` sans version. Deux règles, parce qu'aucune ne suffit seule (relecture du delta,
- * 14/11) : une ligne non commentée qui porte `netlify-cli@` (version en dur, même posée dans une variable puis
- * lancée par `npx "$CLI"`) ; une commande — lue comme la gate la lit : toute valeur du YAML, `bash -c` et `eval`
- * compris — qui nomme `netlify` ou `netlify-cli` comme mot. La règle d'avant ne lisait que deploy.yml, et seulement
- * les mots de ses scripts : `bash -c 'npx netlify-cli deploy'`, ou la même ligne dans veille-production.yml (dont
- * l'étape Verdict porte le jeton), passaient.
+ * ② Aucune commande des workflows et actions composites que lit la gate ne lance la CLI autrement que par
+ * "$NETLIFY_BIN" — la gate, elle, ne voit pas un `npx netlify-cli` sans version. Deux règles, parce qu'aucune ne
+ * suffit seule (relecture du delta, 14/11) : une ligne non commentée qui porte `netlify-cli@` (version en dur, même
+ * posée dans une variable puis lancée par `npx "$CLI"`) ; une commande — lue comme la gate la lit : toute valeur du
+ * YAML hors libellés, d'un seul tenant aussi, le script d'un shell relu — qui nomme `netlify` ou `netlify-cli` comme
+ * mot. La règle d'avant ne lisait que deploy.yml, et seulement les mots de ses scripts : `bash -c 'npx netlify-cli
+ * deploy'`, ou la même ligne dans veille-production.yml (dont l'étape Verdict porte le jeton), passaient. Ce qu'elle
+ * ne voit pas : un nom recomposé (variable, accolades, expression `${{ }}`) ; un shell nourri par un tube, que la gate
+ * refuse, elle, dans `npm run verif`.
  */
 function auditerCliNetlify(textes) {
   const d = [];
@@ -566,6 +569,35 @@ const MUTATIONS = [
     nom: "la CLI par une action de relance (`with: command:`), hors de tout run:",
     muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08\n        with:\n          command: npx netlify-cli deploy --prod --dir dist\n") }),
     attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  // Relecture du 15/11 : les formes que la lecture d'avant ne relisait pas.
+  {
+    nom: "la CLI par `bash -eo pipefail -c` (les options de GitHub lui-même)",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: bash -eo pipefail -c 'npx netlify-cli deploy --prod --dir dist'\n") }),
+    attendu: /deploy\.yml:\d+ : la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI posée dans un `env: name:`, lancée par `$name`",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n          name: npx netlify-cli deploy --prod --dir dist\n        run: $name\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI par une here-string donnée à bash",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, "        env:\n          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}\n        run: bash <<< 'npx netlify-cli deploy --prod --dir dist'\n") }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI derrière une chaîne ouverte sur deux lignes, dans `with: command:` (lecture d'un seul tenant)",
+    muter: (f) => ({ ...f, deploy: avantEnvoi(f.deploy, '        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08\n        with:\n          command: |\n            echo "x\n            #" ; npx netlify-cli deploy --prod --dir dist\n') }),
+    attendu: /la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
+  },
+  {
+    nom: "la CLI dans l'action composite du dépôt",
+    muter: (f) => {
+      const nom = ".github/actions/claude-auth-guard/action.yml";
+      return { ...f, workflows: { ...f.workflows, [nom]: remplacer(f.workflows[nom], "  steps:\n", "  steps:\n    - shell: bash\n      run: npx netlify-cli deploy --prod --dir dist\n") } };
+    },
+    attendu: /claude-auth-guard\/action\.yml:\d+ : la CLI est lancée autrement que par "\$NETLIFY_BIN" \(npx netlify-cli deploy/,
   },
   {
     nom: "la CLI par npx dans un AUTRE workflow : veille-production.yml (son étape Verdict porte le jeton)",

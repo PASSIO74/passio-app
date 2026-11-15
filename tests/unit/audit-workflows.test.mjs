@@ -1,5 +1,6 @@
-// Le gate des workflows voit ce qu'il prétend voir : chaque défaut réinjecté rougit, le dépôt reste vert.
-// Une forme que la gate ne sait pas lire est REFUSÉE, jamais admise (deux relectures adverses du 14/11).
+// Le gate des workflows voit ce qu'il prétend voir : chaque défaut réinjecté rougit, le dépôt reste vert. Ce qu'il
+// ne lit pas, il le dit : SES LIMITES, en tête de scripts/audit-workflows.js (relectures adverses des 14 et 15/11).
+// Les réinjections dans le code de la gate se rejouent par `node scripts/reinjecter-audit-workflows.js`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -9,13 +10,17 @@ import os from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersDetournants } = require("../../scripts/audit-workflows.js");
+const { auditerWorkflow, auditerCanalAgent, auditerDepot, auditerFichiersDetournants, COMMANDES_NPM, CLASSE_NPM } = require("../../scripts/audit-workflows.js");
 
 const defauts = (t) => auditerWorkflow("x.yml", t);
 /** Un script `run: |` qui contient ces lignes de shell (la 1re ligne de shell est la ligne 2 du texte). */
 const enRun = (...shell) => ["      - run: |", ...shell.join("\n").split("\n").map((l) => (l ? "          " + l : ""))].join("\n") + "\n";
 const refuse = (cmd, motif) => defauts(enRun(cmd)).some((x) => motif.test(x));
 const admis = (cmd) => defauts(enRun(cmd));
+/** Un workflow complet : ces lignes sont les étapes du job `x` (la première est la ligne 6). */
+const enJob = (...etapes) => ["on: push", "jobs:", "  x:", "    runs-on: ubuntu-latest", "    steps:", ...etapes].join("\n") + "\n";
+const RELANCE = "nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08";
+const NBSP = String.fromCharCode(0xa0);
 
 /** Un dossier temporaire, effacé à la fin du test qui l'a demandé. */
 function bacTemporaire(t, prefixe) {
@@ -80,8 +85,32 @@ test("② bis toute installation npm hors lockfile est refusée : la CI installe
     "diff <(npm install left-pad) x",
     "if npm install left-pad; then exit 0; fi",
     'echo "étape #1"; npm install left-pad',
+    // Chaque mot `npm` d'une commande est jugé, pas le premier seulement (relecture du 15/11).
+    "env -C outils npm install left-pad",
+    "env -C npm npm install left-pad",
+    "sudo -u npm npm install left-pad",
+    "docker run --rm --name npm node:22 npm install left-pad",
+    "npm explore http-server -- npm install left-pad",
+    'npm explore http-server -- "npm install left-pad"',
+    "npm exec -- npm install left-pad",
+    "npm x -- npm i left-pad",
+    // `link <paquet>` l'installe depuis le registre ; `audit fix` se lit après `--` aussi ; un paquet hors registre est préparé.
+    "npm link left-pad",
+    "npm ln left-pad",
+    "npm audit -- fix",
+    "npm audit --- fix",
+    "npm audit --json -- fix",
+    "npm pack github:npm/left-pad",
+    "npm pack npm/left-pad",
+    "npm cache add github:npm/left-pad",
+    "npm diff --diff=github:npm/left-pad",
+    // Une expression qui n'est qu'un texte cité : GitHub la remplace avant bash.
+    "${{ 'npm' }} install left-pad",
+    "npm ${{ 'install' }} left-pad",
+    "${{ 'npm install left-pad' }}",
   ];
-  for (const l of refuses) assert.ok(refuse(l, /installe hors lockfile|ignore le lockfile|réécrit l'arbre/), l);
+  for (const l of refuses) assert.ok(refuse(l, /installe hors lockfile|ignore le lockfile|réécrit l'arbre|hors registre est cloné/), l);
+  assert.ok(refuse("npm exec npm ci", /`npm ci` sans `--ignore-scripts`/));
   // Une seule fois par commande : `--no-save` garde son propre message.
   assert.equal(defauts("      - run: npm install --no-save @playwright/test").length, 1);
   // Une commande continuée par « \ » se lit en entier, et se situe à sa première ligne ; une ligne de bloc, à la sienne.
@@ -106,8 +135,15 @@ test("② bis toute installation npm hors lockfile est refusée : la CI installe
     // Du texte entre guillemets n'est pas une commande.
     'echo "Pour réparer : npm install puis relancer le job"',
     'echo "npm a échoué, relancer in fine"',
-    // Une sous-commande que npm ne connaît pas ne tourne pas.
+    // Une sous-commande que npm ne connaît pas ne tourne pas ; un mot `npm` dans une phrase n'en lance pas.
     "npm pour-voir install",
+    "echo npm is great",
+    // Un paquet du registre n'est ni cloné ni préparé ; le dépôt lui-même non plus.
+    "npm pack",
+    "npm pack ./outils",
+    "npm pack left-pad@1.3.0",
+    "npm cache verify",
+    "npm audit signatures",
   ];
   for (const l of tolere) assert.deepEqual(admis(l), [], l);
 });
@@ -154,6 +190,8 @@ test("② bis (suite) une option AVANT la sous-commande est refusée : la gate n
   // Une sous-commande variable n'est pas lue.
   assert.ok(refuse('npm "$CMD" left-pad', /sous-commande variable/));
   assert.ok(refuse("npm $(echo install) left-pad", /sous-commande variable/));
+  assert.ok(refuse("npm {install,} left-pad", /sous-commande variable \(ou expression, ou accolades\)/));
+  assert.ok(refuse("npm ${{ matrix.cmd }} left-pad", /sous-commande variable/));
 });
 
 test("② ter `npm ci` et `npm rebuild` sans `--ignore-scripts` LU AVEC CERTITUDE sont refusés (2026-11-14)", () => {
@@ -190,6 +228,22 @@ test("② ter `npm ci` et `npm rebuild` sans `--ignore-scripts` LU AVEC CERTITUD
     // Dans l'environnement, seule la valeur `true` est lue.
     "npm_config_ignore_scripts=false npm ci",
     "npm_config_ignore_scripts=1 npm ci",
+    // Après `--`, le drapeau est un argument (relecture du 15/11) ; un nom d'option variable ou à accolades n'est pas lu.
+    "npm ci -- x --ignore-scripts",
+    "npm ci --ignore-scripts '--ignore-scripts${X?}=false'",
+    "npm ci --ignore-scripts --{x,no-ignore-scripts}",
+    "npm ci --ignore-scripts $'--no-ignore-scripts'",
+    // Le mot visé par une redirection n'est pas un argument : `> --ignore-scripts` écrit dans un fichier.
+    "npm ci > --ignore-scripts",
+    "npm ci 2> --ignore-scripts",
+    // `2>x` n'est pas un argument : `--prefix` prend le drapeau pour sa valeur.
+    "npm ci --prefix 2>journal.txt --ignore-scripts",
+    // uninstall et prune réinstallent l'arbre, edit finit par rebuild, link lance les scripts du projet lié.
+    "npm uninstall left-pad",
+    "npm rm left-pad",
+    "npm prune --omit=dev",
+    "npm edit left-pad",
+    "npm link",
   ];
   for (const l of refuses) assert.ok(refuse(l, /sans `--ignore-scripts`/), l);
   assert.ok(defauts(enRun("npm ci \\", "  --prefix outils")).some((x) => /sans `--ignore-scripts`/.test(x)));
@@ -205,6 +259,12 @@ test("② ter `npm ci` et `npm rebuild` sans `--ignore-scripts` LU AVEC CERTITUD
     // La ligne de commande l'emporte sur l'environnement.
     "npm_config_ignore_scripts=false npm ci --ignore-scripts",
     "npm run ci-locale",
+    "npm ci --ignore-scripts 2>&1 | tee journal.txt",
+    "npm ci --ignore-scripts &> journal.txt",
+    "npm ci --ignore-scripts >journal.txt 2>&1",
+    "npm ci --ignore-scripts < /dev/null",
+    "npm prune --omit=dev --ignore-scripts",
+    "npm link --ignore-scripts",
   ];
   for (const l of tolere) assert.deepEqual(admis(l), [], l);
   assert.deepEqual(defauts(enRun("npm ci \\", "  --ignore-scripts")), []);
@@ -246,6 +306,13 @@ test("② quater `npx` et `npm exec` qui téléchargent sont refusés ; ceux du 
     "npm exec playwright --yes -- test",
     // Un outil variable n'est pas lu.
     'npx "$OUTIL" deploy',
+    // npx prend l'outil pour la valeur de `--no`/`--no-yes` : ce qui suit va à npm (relecture du 15/11).
+    "npx --no playwright test",
+    "npx --no-yes playwright test",
+    "npx --no playwright --yes --package=left-pad@1.3.0 playwright --version",
+    // Pour `npm exec`, nopt prend `null` pour la valeur de --no-yes : l'installation automatique revient.
+    "npm exec --no null netlify-cli",
+    "npm exec --no-yes null netlify-cli",
   ];
   for (const l of refuses) assert.ok(admis(l).length > 0, l);
   assert.ok(refuse("npx -p netlify-cli netlify deploy", /`npx --package` installe un paquet/));
@@ -254,15 +321,15 @@ test("② quater `npx` et `npm exec` qui téléchargent sont refusés ; ceux du 
     // Les formes qui tournent : l'outil vient du lockfile installé juste avant.
     "npx playwright test --project=prod",
     "if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi",
-    "npx --no playwright test",
-    "npx --no-yes playwright test",
     "npx --no-install playwright test",
     "npx --yes=false playwright test",
     "npx -q playwright test",
     "npx @playwright/test --version",
     "npx ./outils/script.js",
     "npm exec -- playwright test",
+    // `npm exec` passe par nopt, qui lit `--no` et `--no-yes` comme des booléens.
     "npm exec --no -- playwright test",
+    "npm exec --no-yes -- playwright test",
   ];
   for (const l of tolere) assert.deepEqual(admis(l), [], l);
 });
@@ -281,14 +348,20 @@ test("② sexies les actions composites passent par les mêmes règles — `uses
   const bac = bacTemporaire(t, "audit-workflows-");
   fs.mkdirSync(path.join(bac, "workflows"));
   fs.mkdirSync(path.join(bac, "actions", "outil"), { recursive: true });
-  fs.mkdirSync(path.join(bac, "outils", "local"), { recursive: true });
-  fs.writeFileSync(path.join(bac, "workflows", "a.yml"), "jobs:\n  x:\n    steps:\n      - uses: ./outils/local\n      - uses: ./\n      - run: npm ci --ignore-scripts\n");
+  for (const d of ["local", "enligne", "a", "b"]) fs.mkdirSync(path.join(bac, "outils", d), { recursive: true });
+  fs.writeFileSync(path.join(bac, "workflows", "a.yml"), "jobs:\n  x:\n    steps:\n      - uses: ./outils/local\n      - uses: ./\n      - { uses: ./outils/enligne }\n      - uses: ./outils/a\n      - run: npm ci --ignore-scripts\n");
   fs.writeFileSync(path.join(bac, "actions", "outil", "action.yml"), "runs:\n  using: composite\n  steps:\n    - run: npm install left-pad\n      shell: bash\n");
   fs.writeFileSync(path.join(bac, "outils", "local", "action.yml"), "runs:\n  using: composite\n  steps:\n    - run: npx netlify-cli@27.1.2 deploy\n      shell: bash\n");
+  // Citée seulement par un mapping en ligne, que seule la lecture YAML voit ; citée seulement par une autre action.
+  fs.writeFileSync(path.join(bac, "outils", "enligne", "action.yml"), "runs:\n  using: composite\n  steps:\n    - run: npm install left-pad\n      shell: bash\n");
+  fs.writeFileSync(path.join(bac, "outils", "a", "action.yml"), "runs:\n  using: composite\n  steps:\n    - uses: ./outils/b\n");
+  fs.writeFileSync(path.join(bac, "outils", "b", "action.yml"), "runs:\n  using: composite\n  steps:\n    - run: npm install left-pad\n      shell: bash\n");
   fs.writeFileSync(path.join(bac, "action.yml"), "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: npm update\n");
   fs.writeFileSync(path.join(bac, ".npmrc"), "registry=https://registre.example.com/\n");
   const { defauts: d, composites } = auditerDepot(path.join(bac, "workflows"), { actions: path.join(bac, "actions"), racine: bac });
-  assert.deepEqual(composites, ["action.yml", "actions/outil/action.yml", "outils/local/action.yml"]);
+  assert.deepEqual(composites, ["action.yml", "actions/outil/action.yml", "outils/a/action.yml", "outils/b/action.yml", "outils/enligne/action.yml", "outils/local/action.yml"]);
+  assert.ok(d.some((x) => /^outils\/enligne\/action\.yml:4 : `npm install`/.test(x)), JSON.stringify(d));
+  assert.ok(d.some((x) => /^outils\/b\/action\.yml:4 : `npm install`/.test(x)), "une action citée par une action composite est lue aussi : " + JSON.stringify(d));
   assert.ok(d.some((x) => /^actions\/outil\/action\.yml:4 : `npm install`/.test(x)), JSON.stringify(d));
   assert.ok(d.some((x) => /^outils\/local\/action\.yml:4 : `npx netlify-cli@27\.1\.2`/.test(x)), "une action citée par `uses: ./…` est lue aussi");
   assert.ok(d.some((x) => /^action\.yml:5 : `npm update`/.test(x)), "`uses: ./` désigne l'action de la racine (relecture du delta) : " + JSON.stringify(d));
@@ -310,9 +383,38 @@ test("② sexies bis dans un dépôt git, ce sont les fichiers SUIVIS qui compte
   assert.ok(!d.some((x) => /^\.npmrc : /.test(x)), "un .npmrc NON suivi est ignoré — la preuve que git ls-files a parlé, pas le parcours du disque");
 });
 
-test("② septies un nom d'étape n'est pas une commande ; toute AUTRE valeur l'est (2026-11-14)", () => {
-  assert.deepEqual(defauts("      - name: npm install des dépendances\n        run: npm ci --ignore-scripts\n"), []);
-  assert.deepEqual(defauts("      - name: npm ci (pilotage)\n        run: npm ci --ignore-scripts\n"), []);
+test("② septies un libellé n'est pas une commande — nom du workflow, d'un job, d'une étape, `run-name`, `description` ; toute AUTRE valeur l'est, un `name:` sous `env:`, `with:` ou dans une matrice compris (relecture du 15/11)", () => {
+  const libelles = [
+    "name: npm install des dépendances",
+    "run-name: Déploiement (npm ci) de ${{ github.sha }}",
+    "on:",
+    "  workflow_dispatch:",
+    "    inputs:",
+    "      cache:",
+    "        description: Relancer npm ci sans cache (les scripts restent coupés)",
+    "jobs:",
+    "  x:",
+    "    name: npm ci (pilotage)",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - name: npm install des dépendances",
+    "        run: npm ci --ignore-scripts",
+  ].join("\n") + "\n";
+  assert.deepEqual(defauts(libelles), []);
+  const action = [
+    "name: outil", "description: Installe par npm install, jamais en CI", "inputs:", "  x:", "    description: npm update interdit",
+    "runs:", "  using: composite", "  steps:", "    - name: npm install puis npm update", "      shell: bash", "      run: npm ci --ignore-scripts",
+  ].join("\n") + "\n";
+  assert.deepEqual(defauts(action), []);
+  // Un `name:` ailleurs est une valeur : `run: $name`, `${{ matrix.name }}` ou une action la lancent.
+  const ailleurs = {
+    "env:": enJob("      - env:", "          name: npm install left-pad", "        run: $name"),
+    "with:": enJob(`      - uses: ${RELANCE}`, "        with:", "          name: npm install left-pad"),
+    "matrice": ["on: push", "jobs:", "  x:", "    runs-on: ubuntu-latest", "    strategy:", "      matrix:", "        include:", "          - name: npm install left-pad", "    steps:", "      - run: ${{ matrix.name }}"].join("\n") + "\n",
+    "env: du workflow": ["on: push", "env:", "  name: npm install left-pad", "jobs:", "  x:", "    runs-on: ubuntu-latest", "    steps:", "      - run: $name"].join("\n") + "\n",
+  };
+  for (const [ou, texte] of Object.entries(ailleurs)) assert.ok(defauts(texte).some((x) => /`npm install`/.test(x)), `${ou} ${JSON.stringify(defauts(texte))}`);
+  assert.ok(defauts(ailleurs["env:"]).some((x) => /^x\.yml:7 : `npm install`/.test(x)), JSON.stringify(defauts(ailleurs["env:"])));
   // Une valeur sur une ligne, simple ou entre guillemets, est un script.
   assert.ok(defauts("      - run: npm install left-pad\n").some((x) => /^x\.yml:1 : `npm install`/.test(x)));
   assert.ok(defauts("        run: 'npm install left-pad'\n").some((x) => /`npm install`/.test(x)));
@@ -322,6 +424,9 @@ test("② septies un nom d'étape n'est pas une commande ; toute AUTRE valeur l'
   // … mais garde à part une ligne PLUS indentée, et une ligne vide : bash lance alors `npm ci` seul (relecture du delta).
   assert.ok(defauts("      - run: >\n          npm ci\n            --ignore-scripts\n").some((x) => /sans `--ignore-scripts`/.test(x)));
   assert.ok(defauts("      - run: >-\n          npm ci --ignore-scripts\n\n          npm install left-pad\n").some((x) => /`npm install`/.test(x)));
+  // … et autour d'elle, les sauts de ligne restent : la ligne de texte qui la SUIT n'est pas jointe à elle (YAML 1.2,
+  // § 8.1.3) — jointe, elle serait la fin d'un commentaire.
+  assert.ok(defauts("      - run: >\n          npm ci --ignore-scripts\n            # étape suivante\n          npm install left-pad\n").some((x) => /`npm install`/.test(x)));
   // La clé sœur qui suit un bloc n'en fait pas partie — elle est lue pour elle-même : une commande posée dans env:,
   // qu'un `run: $NOTE` lancerait, est refusée (relecture du delta).
   assert.deepEqual(defauts("      - run: |\n          npm ci --ignore-scripts\n        shell: bash\n        env:\n          NOTE: relire le journal\n"), []);
@@ -329,7 +434,7 @@ test("② septies un nom d'étape n'est pas une commande ; toute AUTRE valeur l'
   assert.ok(dansEnv.some((x) => /^x\.yml:5 : `npm install`/.test(x)), JSON.stringify(dansEnv));
 });
 
-test("② octies chaque forme YAML est lue par le lecteur fermé — ou refusée, jamais admise sans lecture (relecture du delta, 14/11)", () => {
+test("② octies chaque forme YAML est lue par le lecteur fermé, ou refusée (relectures adverses des 14 et 15/11)", () => {
   const formes = {
     "A : valeur à la ligne suivante": "      - run:\n          npm install left-pad\n",
     "B : scalaire simple sur deux lignes": "      - run: npm ci --ignore-scripts\n          && npm install left-pad\n",
@@ -346,10 +451,27 @@ test("② octies chaque forme YAML est lue par le lecteur fermé — ou refusée
     "K : ancre réutilisée": "    env:\n      S: &s npm install left-pad\n    steps:\n      - run: *s\n",
     "échappement entre guillemets doubles": '      - run: "echo ok\\nnpm install left-pad"\n',
     "un `run` qui n'est pas une chaîne": "      - run:\n          npm install left-pad: x\n",
+    // Relecture du 15/11.
+    "valeur sur plusieurs lignes hors run:": enJob(`      - uses: ${RELANCE}`, "        with:", "          command: |", '            echo "x', '            " ; npm install left-pad'),
+    "virgule dans un scalaire cité d'un mapping en ligne": "      - { run: 'echo ''x'', ; npm install left-pad ;: ''z''' }\n",
+    "espace insécable devant #": `      - run: echo ok${NBSP}# ; npm install left-pad\n`,
+    "espace insécable collée au drapeau": `      - run: npm ci --ignore-scripts${NBSP}\n`,
+    "expression qui n'est qu'un texte cité": "      - run: ${{ 'npm install left-pad' }}\n",
+    "CR seul": `      - run: npm ci --ignore-scripts${String.fromCharCode(13)}      - run: npm install left-pad\n`,
+    "U+2028": `      - run: npm ci --ignore-scripts${String.fromCharCode(0x2028)}      - run: npm install left-pad\n`,
   };
   for (const [nom, texte] of Object.entries(formes)) assert.ok(defauts(texte).length > 0, `${nom} : admis — ${JSON.stringify(defauts(texte))}`);
   assert.match(defauts(formes["D : ancre"])[0], /YAML que la gate ne lit pas/);
   assert.match(defauts(formes["indicateur d'indentation explicite"])[0], /YAML que la gate ne lit pas/);
+  assert.match(defauts(formes["CR seul"])[0], /YAML que la gate ne lit pas \(saut de ligne que ce lecteur ne lit pas \(U\+000D\)\)/);
+  assert.match(defauts(formes["U+2028"])[0], /YAML que la gate ne lit pas \(saut de ligne que ce lecteur ne lit pas \(U\+2028\)\)/);
+  assert.ok(defauts(formes["virgule dans un scalaire cité d'un mapping en ligne"]).some((x) => /`npm install`/.test(x)));
+  assert.ok(defauts(formes["espace insécable devant #"]).some((x) => /`npm install`/.test(x)));
+  assert.ok(defauts(formes["espace insécable collée au drapeau"]).some((x) => /sans `--ignore-scripts`/.test(x)));
+  // Un crochet ou une accolade entre guillemets ne sont pas une imbrication ; une apostrophe au milieu d'un scalaire
+  // nu n'ouvre rien.
+  assert.deepEqual(defauts(enJob('      - env: { X: "${{ inputs.y }}" }', '        run: echo "$X"')), []);
+  assert.deepEqual(defauts("      - { run: echo it's, shell: bash }\n"), []);
   // `defaults: run:` est un mapping légitime (shell, working-directory).
   assert.deepEqual(defauts("defaults:\n  run:\n    shell: bash\n"), []);
 });
@@ -360,11 +482,12 @@ test("② nonies commentaires, continuations, chaînes sur plusieurs lignes, her
   assert.ok(refuse("echo un # commentaire \\\nnpm install left-pad", /installe hors lockfile/));
   assert.ok(refuse("echo a \\\n  # commentaire \\\nnpm install left-pad", /installe hors lockfile/));
   assert.deepEqual(admis("echo ok # ; npm install left-pad"), [], "ce qui suit # est un commentaire");
-  // La continuation se lit comme bash la lit — ici dans une valeur qui n'est pas un `run:`, lue ligne à ligne seulement.
-  const enEnv = (...lignes) => "      - env:\n          CMD: |\n" + lignes.map((l) => "            " + l).join("\n") + "\n        run: $CMD\n";
-  assert.ok(defauts(enEnv("npm c\\", "i")).some((x) => /sans `--ignore-scripts`/.test(x)), "`npm c\\` puis `i`, c'est `npm ci`");
-  assert.ok(defauts(enEnv("npm ci --ignore-scripts \\ ", "npm install left-pad")).some((x) => /installe hors lockfile/.test(x)), "un « \\ » suivi d'une espace ne continue pas la ligne");
-  assert.ok(defauts(enEnv("npm ci --ignore-scripts # x \\", "npm install left-pad")).some((x) => /installe hors lockfile/.test(x)), "ni un « \\ » de commentaire, hors d'un run: aussi");
+  // La continuation se lit comme bash la lit — ici dans le corps d'un here-doc écrit dans un fichier puis lancé : seule
+  // la lecture ligne à ligne le lit (pour la lecture d'un seul tenant, le corps d'un `cat <<EOF` n'est pas du code).
+  const enFichier = (...lignes) => defauts(enRun("cat > installer.sh <<'EOF'", ...lignes, "EOF", "bash installer.sh"));
+  assert.ok(enFichier("npm c\\", "i").some((x) => /sans `--ignore-scripts`/.test(x)), "`npm c\\` puis `i`, c'est `npm ci`");
+  assert.ok(enFichier("npm ci \\ ", "--ignore-scripts").some((x) => /sans `--ignore-scripts`/.test(x)), "un « \\ » suivi d'une espace ne continue pas la ligne : le drapeau est une autre commande");
+  assert.ok(enFichier("npm ci --ignore-scripts # x \\", "npm install left-pad").some((x) => /installe hors lockfile/.test(x)), "ni un « \\ » de commentaire");
   // Un saut de ligne sépare deux commandes, à la lecture d'un seul tenant aussi (`install`, ici, est celui de coreutils).
   assert.deepEqual(admis("command -v npm\ninstall -m 755 outil /usr/local/bin/outil"), []);
   assert.ok(refuse("echo a#b; npm install left-pad", /installe hors lockfile/), "un # au milieu d'un mot n'ouvre pas de commentaire");
@@ -388,15 +511,70 @@ test("② nonies commentaires, continuations, chaînes sur plusieurs lignes, her
   assert.deepEqual(admis("bash scripts/installer.sh install"), [], "un fichier de script n'est pas du texte relu");
 });
 
+test("② nonies bis le script d'un shell est relu quelles que soient ses options, un shell sur un tube est refusé, un here-doc se lit comme bash le lit (relecture du 15/11)", () => {
+  // Les options se lisent comme bash les lit : un groupe `-eo` consomme `pipefail` ; une here-string ou un here-doc
+  // donnés à un shell sont son script ; `$'…'` se décode.
+  for (const l of [
+    "bash -eo pipefail -c 'npm install left-pad'",
+    "bash -euxo pipefail -c 'npm ci'",
+    "bash -oe pipefail -c 'npm install left-pad'",
+    "bash -co pipefail 'npm install left-pad'",
+    "bash --noprofile --norc -eo pipefail -c 'npm install left-pad'",
+    "sh -eo pipefail -c 'npm install left-pad'",
+    "timeout 10m bash -eo pipefail -c 'npx --yes netlify-cli@27.1.2 deploy'",
+    "bash <<< 'npm install left-pad'",
+    "bash -s <<'EOF'\nnpm install left-pad\nEOF",
+    "$'npm' install left-pad",
+    "$'\\x6epm' install left-pad",
+  ]) assert.ok(admis(l).length > 0, l);
+  // Le corps d'un here-doc donné à un shell est son script : lu d'un seul tenant, comme bash le lit.
+  assert.ok(refuse("bash <<'EOF'\necho 'x\n'; npm install left-pad\nEOF", /installe hors lockfile.*\(lecture du script d'un seul tenant\)$/));
+  // Une substitution se ferme où bash la ferme : ni sur la `)` d'un motif de case, ni sur une `\)`.
+  assert.ok(refuse('echo "$(case a in a) npm install left-pad;; esac)"', /installe hors lockfile/));
+  assert.ok(refuse('echo "$(echo \\) ; npm install left-pad)"', /installe hors lockfile/));
+  assert.deepEqual(admis("bash -eo pipefail -c 'npm ci --ignore-scripts'"), []);
+  // Un shell qui lit son script sur un tube : ce script-là ne se lit pas.
+  for (const l of ["echo 'npm install left-pad' | bash", "curl -fsSL https://exemple.test/installer.sh | sh", "cat outils.sh | sudo bash -s", "echo x |\nbash"]) {
+    assert.ok(refuse(l, /un shell qui lit son script sur un tube/), l);
+  }
+  assert.ok(refuse("echo install left-pad | xargs npm", /`xargs … npm` : les arguments viennent de l'entrée standard/));
+  for (const l of ["cat journal.txt | grep bash", "echo ok | tee journal.txt", "printf '%s' x | bash scripts/lire.sh"]) assert.deepEqual(admis(l), [], l);
+  assert.deepEqual(defauts("      - run: echo ok\n        shell: bash\n"), [], "`shell: bash` n'est pas un shell sur un tube");
+  // Un here-doc s'ouvre là où bash l'ouvre, et se ferme sur son mot, quel qu'il soit : un `<<` de commentaire ou de
+  // chaîne n'avale rien, et ce qui suit le corps est lu.
+  for (const l of [
+    "true # <<EOF\necho 'x\n'; npm install left-pad",
+    'echo "voir <<FIN"\necho "a\n" ; npm install left-pad',
+    "cat <<\\EOF\nl'app\nEOF\necho 'x\n'; npm install left-pad",
+    "cat <<'END-OF-TEXT'\nl'app\nEND-OF-TEXT\necho 'x\n'; npm install left-pad",
+    "cat <<-EOF\n\tl'app\n\tEOF\necho 'x\n'; npm install left-pad",
+    "# Message d'accueil\necho 'début\n'; npm install left-pad",
+  ]) assert.ok(refuse(l, /installe hors lockfile/), l);
+  assert.deepEqual(admis("cat <<\\EOF > note.txt\nl'app est construite par npm ci --ignore-scripts\nEOF\necho 'rappel : pas de npm install ici'"), []);
+  assert.deepEqual(admis("echo $'l\\'app'\necho 'x npm install interdit'"), [], "`$'…'` n'ouvre pas une chaîne qui avalerait la suite");
+});
+
 test("② decies un défaut est situé à SA ligne — une clé écrite en ligne (`with: { … }`) ne fait pas dériver la suite", () => {
   const sha = "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09";
   const texte = [
     "jobs:", "  a:", "    steps:",
     `      - uses: actions/setup-node@${sha}`, "        with: { node-version: 22 }", "      - run: npm install left-pad",
     "  b:", "    steps:",
-    `      - uses: actions/setup-node@${sha}`, "        with:", "          node-version: 22", "      - run: npm ci --ignore-scripts",
+    `      - uses: actions/setup-node@${sha}`, "        with:", "          node-version: 22", "      - run: npm update",
   ].join("\n");
-  assert.deepEqual(defauts(texte).map((x) => x.split(" : ")[0]), ["x.yml:6"]);
+  assert.deepEqual(defauts(texte).map((x) => x.split(" : ")[0]), ["x.yml:6", "x.yml:12"], "le curseur avance d'un job à l'autre");
+  // Une clé sœur derrière `- run: |` n'est pas dans le bloc, même quand le bloc cite sa valeur (relecture du 15/11).
+  const soeur = defauts('      - run: |\n          echo "npm install left-pad est interdit"\n        env:\n          NOTE: npm install left-pad\n');
+  assert.deepEqual(soeur.map((x) => x.split(" : ")[0]), ["x.yml:4"]);
+  // Un défaut que seule la lecture d'un seul tenant voit est situé à la ligne où sa commande commence.
+  const tenant = defauts(enRun("echo debut", "echo 'x", "'; npm install left-pad"));
+  assert.deepEqual(tenant.map((x) => x.split(" : ")[0]), ["x.yml:4"], JSON.stringify(tenant));
+});
+
+test("② undecies chaque sous-commande de npm 11.13 est rangée — une sous-commande que npm ajouterait se range avant de passer", () => {
+  assert.deepEqual(Object.keys(CLASSE_NPM).sort(), [...COMMANDES_NPM].sort());
+  const classes = new Set(["hors", "scripts", "link", "exec", "explore", "audit", "spec", "neutre"]);
+  for (const [commande, classe] of Object.entries(CLASSE_NPM)) assert.ok(classes.has(classe), `${commande} : ${classe}`);
 });
 
 test("③ une interpolation d'événement dans un run: est refusée, pas dans un env:", () => {
@@ -404,6 +582,8 @@ test("③ une interpolation d'événement dans un run: est refusée, pas dans un
   assert.match(defauts(run)[0], /interpolé dans un run/);
   const ligne = '      - name: x\n        run: echo "${{ github.event.issue.title }}"\n';
   assert.match(defauts(ligne)[0], /x\.yml:2 : `github\.event\.issue\.title` interpolé dans un run/, "un run: d'une ligne aussi (relecture du 14/11)");
+  const deuxieme = '      - name: x\n        run: |\n          echo début\n          echo "${{ github.event.issue.title }}"\n';
+  assert.match(defauts(deuxieme)[0], /x\.yml:4 : `github\.event\.issue\.title` interpolé dans un run/, "à la deuxième ligne d'un bloc aussi");
   const env = '      - name: x\n        env:\n          F: ${{ github.event.inputs.fonction }}\n        run: |\n          echo "$F"\n';
   assert.deepEqual(defauts(env), []);
   const numero = '      - name: x\n        run: |\n          echo "${{ github.event.number }}"\n';

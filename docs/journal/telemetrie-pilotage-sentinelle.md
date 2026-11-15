@@ -709,7 +709,7 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
 - **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
 - **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
 - **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
-- **Sont refusés par le gate** : dans toute valeur des workflows et actions composites (lues par le lecteur YAML fermé ; une forme qu'il ne sait pas lire est refusée, jamais admise), les installations npm et npx hors lockfile, pnpm, yarn et bun, un `npm ci` ou `npm rebuild` sans `--ignore-scripts` lu avec certitude ; dans un `run:`, une interpolation d'événement ; un `npm-shrinkwrap.json`, un `.npmrc` ou un `.netlify/` suivis ; `version: latest` ; une action sans SHA ; et, dans le job de l'agent, `git log`, `git diff`, `git show` et un jeton personnel. Ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales d'installation (`npx --yes`, `npm install --no-save`). Ses limites sont dites dans son en-tête et dans la fiche « LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE ».
+- **Sont refusés par le gate** : dans les workflows et actions composites (lus par le lecteur YAML fermé ; un YAML hors de son sous-ensemble est refusé), et dans toute valeur lue comme du shell, libellés exceptés : les installations npm et npx hors lockfile qu'il reconnaît, pnpm, yarn et bun, un `npm ci`, `rebuild`, `uninstall` ou `prune` sans `--ignore-scripts` lu avec certitude, un shell qui lit son script sur un tube ; dans un `run:`, une interpolation d'événement ; un `npm-shrinkwrap.json`, un `.npmrc` ou un `.netlify/` suivis ; `version: latest` ; une action sans SHA ; et, dans le job de l'agent, `git log`, `git diff`, `git show` et un jeton personnel. Ces outils écrivent ce qui part en production, ou reçoivent une clé. Jusqu'au 2026-11-14, il ne voyait que deux formes littérales d'installation (`npx --yes`, `npm install --no-save`). C'est un filet contre le retour des formes naturelles, pas une barrière contre un auteur qui le contourne : ses limites sont dites dans son en-tête et dans la fiche « LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE ».
 - **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
 
 ## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
@@ -1616,27 +1616,33 @@ l'empêchait demain.
   racine (le lockfile racine gagne 15 entrées, même date `--before`, diff purement additif).
 - `--ignore-scripts` sur les deux `npm ci` qui ne l'avaient pas.
 - `scripts/audit-workflows.js` lit chaque workflow et action composite par le lecteur YAML fermé du dépôt
-  (`scripts/lib/yaml-workflow.js`, celui d'audit-cle-production) : une ancre, un alias, une étiquette, un scalaire sur
-  plusieurs lignes ou un indicateur d'indentation explicite le rendent rouge. TOUTE valeur est lue comme du shell, un
-  `name:` excepté : les `run:`, mais aussi `with:` (une action de relance) et `env:` (une commande posée dans une
-  variable). Le shell est découpé comme bash le découpe (guillemets, `$( … )`, accents graves, parenthèses,
-  commentaires, lignes continuées) ; un `run:` est lu aussi d'un seul tenant, et le script de `bash -c` et d'`eval`
-  est relu. Une forme que la gate ne sait pas lire est REFUSÉE, avec ce qu'il faut écrire : une option devant la
-  sous-commande de npm (sa valeur, un raccourci ou une abréviation la déplacent), une forme de `--ignore-scripts`
-  autre que `--ignore-scripts` à portée sûre, une option inconnue devant l'outil de npx. Les actions composites de
-  `.github/actions/` et celles des `uses: ./…` (la racine comprise) passent par les mêmes règles. Il refuse :
-  - `npm install` et ses alias, `update`, `dedupe`, `audit fix`, `init` et `create` ;
-  - `npm ci`, `npm install-ci-test` et `npm rebuild` sans `--ignore-scripts` effectif ;
-  - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné ou hors du registre ;
+  (`scripts/lib/yaml-workflow.js`, celui d'audit-cle-production) : une ancre, un alias, une étiquette, un scalaire
+  simple ou cité sur plusieurs lignes, un indicateur d'indentation explicite, un saut de ligne autre que LF ou CRLF le
+  rendent rouge. Toute valeur est lue comme du shell, sauf les libellés que GitHub n'exécute jamais (nom du workflow,
+  d'un job, d'une étape, `run-name`, `description`) : les `run:`, mais aussi `with:` (une action de relance), `env:` et
+  une matrice (une commande posée là, qu'un `$CMD` ou un `${{ matrix.x }}` lance). Chaque valeur est lue ligne à ligne,
+  puis d'un seul tenant comme bash la lit : guillemets, `$'…'`, `$( … )`, here-docs, redirections, commentaires, lignes
+  continuées. Le script d'un shell est relu : `bash -c` quelles que soient ses options (`-eo pipefail -c`), `eval`, une
+  here-string, un here-doc donné à un shell, la commande de `npm explore` ; un shell qui lit son script sur un tube est
+  refusé. Chaque mot `npm` d'une commande est jugé. Ce que la gate sait ne pas lire est REFUSÉ, avec ce qu'il faut
+  écrire : une option devant la sous-commande de npm (sa valeur, un raccourci ou une abréviation la déplacent), une
+  sous-commande variable, une forme de `--ignore-scripts` autre que `--ignore-scripts` à portée sûre, une option
+  inconnue devant l'outil de npx, `xargs` devant npm. Les actions composites de `.github/actions/` et celles des
+  `uses: ./…` (la racine comprise, d'un workflow ou d'une action déjà lue) passent par les mêmes règles. Il refuse :
+  - `npm install` et ses alias, `update`, `dedupe`, `init` et `create`, `link <paquet>`, `audit fix` ;
+  - `npm ci`, `install-ci-test`, `rebuild`, `uninstall`, `prune`, `edit` et `link` sans `--ignore-scripts` effectif ;
+    chaque sous-commande de npm 11.13 est rangée, et une épreuve vérifie qu'aucune ne manque ;
+  - `npx` et `npm exec` qui téléchargent : `--yes`, `--package`, un outil versionné ou hors du registre ; `npm pack`,
+    `cache` et `diff` d'un paquet hors registre (cloné, puis préparé avec ses scripts) ;
   - pnpm, yarn, bun, bunx et pnpx ;
   - tout `npm-shrinkwrap.json`, `.npmrc` ou fichier sous `.netlify/` suivi par git. La CLI prend dans `.netlify/` des
     fonctions « internes », les regroupe et exécute leur code avec le jeton, hors du contrôle d'empreinte de `dist/`.
     Rien n'y est versionné, mais rien ne l'empêchait, ni la gouvernance ni l'interdit de l'agent.
 
   Avant, il ne voyait que deux formes littérales, et lisait toutes les lignes, noms d'étapes compris. Rejouée sur les
-  workflows de `main`, la nouvelle lecture refuse exactement les cinq sites corrigés ici. Ce n'est pas un analyseur de
-  shell complet : un `npx <outil>` sans version passe (voir « Reste ouvert »), et le corps d'un here-doc est lu comme du
-  shell.
+  workflows de `main`, la nouvelle lecture refuse exactement les cinq sites corrigés ici. C'est un filet contre le
+  retour des formes naturelles, pas un analyseur de shell complet : ce qu'il ne voit pas, et ce qu'il refuse à tort,
+  est dit dans « Reste ouvert ».
 - Dependabot surveille `/.github/netlify-cli`, en mises à jour de sécurité seulement. Son délai de 7 jours ne vaut que
   pour les mises à jour de version, coupées ici (comme pour `/` et `/dashboard`) : une PR de sécurité arrive sans délai,
   et la date des versions qu'elle apporte se relit à la main.
@@ -1645,10 +1651,13 @@ l'empêchait demain.
     l'`overrides`, binaires Linux, plage principale de Deno de chaque copie d'edge-bundler ;
   - les étapes réelles, jouées contre de faux outils : une archive Deno à la mauvaise empreinte rougit sans rien poser
     sur le PATH, un `.netlify/` disparaît avant la CLI, et l'envoi exécute la CLI installée ;
-  - 41 réinjections, dont une CLI lancée par `npx` sans version (que la gate ne voit pas), par `bash -c`, par `eval`, par
-    une action de relance, ou depuis un autre workflow qui porte le jeton. La gate, elle, a ses propres tests : un dépôt
-    git réel pour les fichiers suivis, une action citée par `uses: ./…`, chaque forme YAML et shell de la relecture du
-    dernier delta ; 33 réinjections dans une copie de la gate les font toutes rougir.
+  - 46 réinjections, dont une CLI lancée par `npx` sans version (que la gate ne voit pas), par `bash -c` ou
+    `bash -eo pipefail -c`, par `eval`, par une here-string, par une action de relance (sur une ligne, ou derrière une
+    chaîne ouverte sur deux lignes), posée dans un `env: name:`, depuis l'action composite du dépôt, ou depuis un autre
+    workflow qui porte le jeton. La gate, elle, a ses propres épreuves (`tests/unit/audit-workflows.test.mjs`) : un
+    dépôt git réel pour les fichiers suivis, des actions citées par `uses: ./…` et par une autre action, chaque forme
+    YAML et shell des relectures adverses. `node scripts/reinjections-audit-workflows.mjs` retire tour à tour 72 de ses
+    règles dans une copie : chacune rougit ses épreuves.
 
 **Pièges.**
 - ⚠️ **npm n'écrit pas l'`overrides` dans le lockfile.** `npm ci` refuse (EUSAGE) un `overrides` que le lockfile
@@ -1688,15 +1697,22 @@ l'empêchait demain.
   et elles ignorent l'`overrides`. Elles ne se fusionnent jamais telles quelles (README).
 - **`npx <outil>` SANS `--yes` ni version** installe la dernière version en CI quand l'outil n'est pas dans le lockfile :
   npm suppose `--yes` hors terminal. Les `npx playwright` actuels viennent du lockfile installé juste avant, mais la gate
-  ne le prouve pas. Pour la CLI Netlify, le banc refuse, dans tous les workflows et actions composites, une ligne qui
-  porte `netlify-cli@` et toute commande qui nomme `netlify` ou `netlify-cli` (`bash -c` et `eval` compris) ; un nom
-  recomposé par variable (`npx "$X"`) lui échappe.
-- **La gate est un filet, pas un analyseur.** Elle ne suit pas une indirection par variable (`N=npm; $N install`,
-  `bash -c "$S"`) ni un autre interpréteur (`node -e`, `python -c`). Sa première réécriture lisait les options de npm
-  « comme nopt » et les seuls scripts `run:` : la relecture du dernier delta l'a prise à ADMETTRE des formes que la
-  version d'avant refusait (`npm --reg <url> install`, `npm -- install`, un `run:` sur deux lignes, un bloc replié dont
-  une ligne est plus indentée, une commande posée dans `env:`). D'où la règle actuelle : lire moins finement, mais ne
-  jamais admettre ce qui n'est pas lu.
+  ne le prouve pas. Pour la CLI Netlify, le banc refuse, dans les workflows et actions composites que lit la gate, une
+  ligne qui porte `netlify-cli@` et toute commande qui nomme `netlify` ou `netlify-cli`, lue comme la gate la lit (le
+  script d'un shell relu compris) ; un nom recomposé (variable, accolades, expression `${{ }}`) lui échappe.
+- **La gate est un filet, pas une barrière.** Elle arrête le retour, par mégarde ou par habitude, des formes
+  d'installation qu'on a vues et de leurs variantes naturelles. Un auteur de workflow qui voudrait la contourner a déjà
+  la main sur la CI : c'est la revue qui le voit. Elle ne voit pas une commande recomposée — par variable
+  (`N=npm; $N install`, `bash -c "$S"`), par accolades (`{npm,} install`), par une expression `${{ … }}` qui n'est pas
+  un simple texte cité —, un autre interpréteur (`node -e`, `python -c`), un script lu dans un fichier (`bash x.sh`,
+  les scripts de package.json lancés par `npm run`), un shell nourri par une substitution de processus. Elle refuse
+  parfois à tort : une prose qui cite une commande npm (un `prompt:`, un `body:`, guillemets YAML compris), le corps
+  d'un here-doc (lu ligne à ligne : un script écrit dans un fichier puis lancé l'est ainsi), un motif de `case` qui
+  nomme yarn ; un tel refus se règle en reformulant. Trois relectures adverses l'ont prise à admettre ce qu'elle disait
+  refuser : la première réécriture lisait les options de npm « comme nopt » et les seuls `run:` ; la deuxième
+  exemptait toute clé `name` (un `env: name:` lancé par `$name` passait), ne relisait pas `bash -eo pipefail -c` (la
+  forme même de GitHub) et ne jugeait que le premier mot `npm` d'une commande (`env -C d npm install` passait). D'où
+  la règle : chaque mécanisme a son épreuve et sa réinjection, et les textes disent ce qui est lu, rien de plus.
 - edge-bundler récupère encore, à chaque déploiement, sans version ni empreinte, `https://edge.netlify.com` : les
   types (`deno cache -r`) et `bootstrap/globals/types.ts`, importé par son extracteur de configuration. Deno ne les
   exécute pas (import de types, retiré à l'émission sans `verbatimModuleSyntax`).
