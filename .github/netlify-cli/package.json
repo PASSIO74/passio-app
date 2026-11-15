@@ -2,9 +2,6 @@
   "name": "passio-netlify-runner",
   "private": true,
   "dependencies": {
-    "netlify-cli": "27.1.2"
-  },
-  "overrides": {
-    "@netlify/build": "36.4.7"
+    "netlify-cli": "27.16.2"
   }
 }
