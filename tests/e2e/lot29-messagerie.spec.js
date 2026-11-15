@@ -93,3 +93,33 @@ test("③ MSG-C86 : la barre de réponse ne cache pas le dernier message", async
   expect(Math.min(r.annuler.l, r.annuler.h)).toBeGreaterThanOrEqual(44);
   expect(r.bas, "le dernier message reste au-dessus de la barre").toBeLessThanOrEqual(Math.min(r.barreHaut, r.filBas) + 1);
 });
+
+// 2026-11-15 (Benjamin, capture de « Nouile ») : le cercle de la discussion
+// d'une activité montrait 👥 ; il montre la photo de couverture de l'activité,
+// dans l'en-tête ET dans la liste, et ouvre l'activité au toucher.
+test("④ discussion d'activité : la photo de l'activité dans le cercle", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(async ([lea]) => {
+    const attendre = (ms) => new Promise((res) => setTimeout(res, ms));
+    const ev = (allEvents() || []).find((e) => e && e.coverUrl);
+    conversationsState = [
+      { id: "evgrp_" + ev.id, isGroup: true, groupName: "📍 " + ev.title, userIds: [lea], userId: lea, lastAt: Date.now(), messages: [] },
+    ];
+    try { goTo("messages"); renderMessages(); } catch (e) {}
+    await attendre(80);
+    const carte = document.querySelector('.msg-card[data-conv-id="evgrp_' + ev.id + '"] .msg-avatar');
+    const liste = carte ? { style: carte.getAttribute("style") || "", texte: carte.textContent } : null;
+    openConversation("evgrp_" + ev.id);
+    await attendre(80);
+    const av = document.querySelector("#convFpHead .conv-fp-head-avatar");
+    const tete = av ? { style: av.getAttribute("style") || "", texte: av.textContent, clic: av.getAttribute("onclick") || "" } : null;
+    const photo = String(ev.coverUrl).split("/").filter(Boolean).slice(-2).join("/");
+    return { liste, tete, evId: ev.id, photo };
+  }, [LEA]);
+  expect(r.tete.style).toContain(r.photo);
+  expect(r.tete.texte).not.toContain("👥");
+  expect(r.tete.clic).toContain("openEventDetails('" + r.evId + "')");
+  expect(r.liste).not.toBeNull();
+  expect(r.liste.style).toContain(r.photo);
+  expect(r.liste.texte).not.toContain("👥");
+});

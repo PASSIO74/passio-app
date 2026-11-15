@@ -6335,10 +6335,12 @@ function renderMessages() {
     // de `safeUrlAttr`). Aujourd'hui la photo de groupe n'est écrite que par
     // l'appareil de son créateur (data URL), mais une ligne serveur ou une fusion
     // multi-appareils en ferait une donnée d'autrui : le contexte décide.
+    const _photoActivite = (c.isGroup && !c.groupPhoto) ? photoActiviteConv(c) : "";
     const avatarStyle = (c.isGroup && c.groupPhoto)
       ? `background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;`
-      : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
-    const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
+      : (_photoActivite ? `background:var(--accent) url('${_photoActivite}') center/cover;font-size:0;`
+      : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`));
+    const _convAvInner = ((c.isGroup && c.groupPhoto) || _photoActivite) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
     const membresLine = c.isGroup
       ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${(typeof nbMembresGroupe === "function" ? nbMembresGroupe(c) : ((c.userIds||[]).length || 0))} membres</div>`
@@ -6468,6 +6470,25 @@ function _pointeurFin() {
   } catch (e) { return false; }
 }
 
+// 2026-11-15 (Benjamin, capture de « Nouile ») : la discussion d'une activité
+// (`evgrp_<id>`) montrait 👥 dans son cercle ; elle montre désormais la photo de
+// couverture de l'activité, si l'activité est connue ici et en porte une. Une
+// photo de groupe posée à la main reste prioritaire. Renvoie une URL passée par
+// `_cssUrl` (donnée d'autrui destinée à un `url(` CSS), ou "".
+function photoActiviteConv(c) {
+  try {
+    if (!c || !c.isGroup || !/^evgrp_/.test(String(c.id || ""))) return "";
+    var evId = String(c.id).slice(6);
+    var ev = null;
+    if (typeof _findCanonicalEvent === "function") ev = _findCanonicalEvent(evId);
+    if (!ev && typeof allEvents === "function") ev = (allEvents() || []).find(function (e) { return e && e.id === evId; }) || null;
+    var photo = ev && ev.coverUrl;
+    if (!photo) return "";
+    if (typeof urlMediaDirecte === "function") photo = urlMediaDirecte(photo);
+    return _cssUrl(passioThumb(photo, 192)) || "";
+  } catch (e) { console.warn("photoActiviteConv", e); return ""; }
+}
+
 async function openConversation(convId) {
   // LOT-46 (PCS-C02) : l'origine posée par startDirectMessage, ou aucune.
   window._convOrigine = window._convOrigineEnAttente || null;
@@ -6520,6 +6541,10 @@ async function openConversation(convId) {
       <div class="conv-fp-head-avatar" style="background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;"></div>
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
+  } else if (c.isGroup && photoActiviteConv(c)) {
+    // 2026-11-15 : discussion d'activité sans photo de groupe → la photo de
+    // l'activité ; le cercle ouvre l'activité, comme « Voir l'activité ».
+    avatarHtml = `<div class="conv-fp-head-avatar conv-fp-head-avatar-activite" role="button" aria-label="Voir l'activité" style="background:var(--accent) url('${photoActiviteConv(c)}') center/cover;font-size:0;" onclick="openEventDetails('${escapeJsArg(String(convId).slice(6))}')"></div>`;
   } else {
     // LOT-29 (MSG-C20) : un groupe sans photo montrait la photo de son premier
     // membre — la liste, elle, montre 👥. L'avatar d'un groupe ouvre sa fenêtre.
