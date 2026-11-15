@@ -371,7 +371,7 @@
   function decorerArticle(article) {
     var id = article.getAttribute("data-postid");
     if (!id) return;
-    if (article.querySelector("[data-v3-bridge]")) return; // déjà décorée
+    if (article.querySelector("[data-v3-bridge], [data-v3-activity]")) return; // déjà décorée
 
     var post = trouverPost(id);
     if (!post || !post.id) return;
@@ -407,6 +407,7 @@
     }
     // Le marqueur part avec la décoration : une carte non décorée ne doit
     // jamais rester porteuse de la condition qui masque le CTA historique.
+    retirerPorteCarte(list);
     var marquees = list.querySelectorAll("[data-v3-decore]");
     for (var j = 0; j < marquees.length; j++) {
       marquees[j].removeAttribute("data-v3-decore");
@@ -998,15 +999,43 @@
       if (!art) return;
       var row = art.querySelector("[data-v3-bridge]");
       if (row && row.parentNode) row.parentNode.removeChild(row);
+      retirerPorteCarte(art);
       art.removeAttribute("data-v3-decore");
       art.removeAttribute("data-v3-activity-source");
     } catch (e) { fail("decoration_retrait", e); }
   }
 
+  // 2026-11-15 (Benjamin, sur capture) : « supprime "Voir l'activité",
+  // maintenant qu'il y a le rectangle orange ça suffit ». Un PARTAGE d'activité
+  // porte déjà sa carte (photo, titre, rectangle date/lieu) : c'est ELLE la
+  // porte, et le lien du bas n'est plus posé. La carte reçoit les attributs du
+  // lien : l'écouteur en CAPTURE du lot passe avant son `onclick` historique,
+  // donc le tap ouvre la fiche DANS le contexte UI-3B (« Je participe »). Le
+  // kill switch retire ces attributs : la carte retombe sur `openEventDetails`.
+  // Une publication reliée par `eventId`, sans carte, garde son lien.
+  function porterSurCarte(article, post, ev) {
+    var carte = article.querySelector(".post-activite");
+    if (!carte) return false;
+    carte.setAttribute("data-v3-activity", String(ev.id));
+    carte.setAttribute("data-v3-post", String(post.id));
+    return true;
+  }
+
+  function retirerPorteCarte(racine) {
+    if (!racine) return;
+    var cartes = racine.querySelectorAll(".post-activite[data-v3-activity]");
+    for (var i = 0; i < cartes.length; i++) {
+      cartes[i].removeAttribute("data-v3-activity");
+      cartes[i].removeAttribute("data-v3-post");
+    }
+  }
+
   function decorerActivite(article, post, evId) {
     var ev = trouverEvenement(evId);
     if (!ev) { signalerActiviteIntrouvable(post.id); return; }
-    article.appendChild(construireVoirActivite(post, ev));
+    if (!(sourceRef(post) === "shared" && porterSurCarte(article, post, ev))) {
+      article.appendChild(construireVoirActivite(post, ev));
+    }
     // Même marqueur qu'UI-3A : c'est lui qui autorise le CSS à masquer le CTA
     // historique, borné aux cartes réellement décorées.
     article.setAttribute("data-v3-decore", "1");
