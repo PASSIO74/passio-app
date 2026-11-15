@@ -1,0 +1,10 @@
+{
+  "name": "passio-netlify-runner",
+  "private": true,
+  "dependencies": {
+    "netlify-cli": "27.1.2"
+  },
+  "overrides": {
+    "@netlify/build": "36.4.7"
+  }
+}

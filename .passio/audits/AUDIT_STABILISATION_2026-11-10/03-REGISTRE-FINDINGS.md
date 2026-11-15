@@ -182,7 +182,7 @@ d'outils, sans réseau ; `main` protégée, administrateurs compris.
 | EXPL-01 | P2 | non vérifié | Archives chiffrées en `age` depuis le 07/11 : aucun déchiffrement éprouvé avec la clé privée |
 | EXPL-02 | P2 | confirmé | La veille lit l'âge du dernier run d'une sauvegarde, jamais sa conclusion : un échec chaque nuit resterait « ok » |
 | EXPL-03 | P2 | confirmé, corrigé (#868) | = STAB-10 (la page minifiée n'est testée par rien) |
-| EXPL-04 | P2 | confirmé | `netlify-cli` installé sans lockfile avant de recevoir le jeton de déploiement |
+| EXPL-04 | P2 | confirmé, corrigé (#920) | `netlify-cli` installé sans lockfile avant de recevoir le jeton de déploiement |
 | EXPL-05 | P2 | confirmé | Retour arrière exercé une seule fois, le 14/09, avant les 9 scripts et `integrity` ; `rollback.yml` : zéro run |
 | EXPL-06 | P2 | confirmé | Une panne totale de Supabase n'est vue que par les crons GitHub : écart médian 5,7 h, maximum 10,6 h |
 | EXPL-07 | P2 | confirmé | Procédure d'incident non adoptée : responsable et suppléant non nommés, un seul compte GitHub |
