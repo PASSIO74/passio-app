@@ -727,6 +727,11 @@ test("② terdecies quatrième relecture (15/11) : ce que les mécanismes neufs 
     "xargs -I outil npx outil",
     "xargs -I run npm run",
     "xargs npm pour-voir",
+    // Dans un `${…}`, la première `}` ferme : seul un `${` imbriqué compte (vérification du dernier delta).
+    "{ echo ${X:-{}; npm i x; }",
+    "echo ${X:-{} && npm i x && echo }",
+    'X="$(echo ${Y//{/}; npm ci; echo })"',
+    "echo ${A:-${B:-x}} && npm ci",
     'X="$(echo ${Y:- #})"; npm ci',
     'X="$(case a in a) echo ${Y:-;;} ;; esac)"; npm ci',
     // Spécifications lues comme npm-package-arg : `nom@<protocole>`.

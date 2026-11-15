@@ -154,6 +154,7 @@ const M = [
   ["S22 sous xargs, une sous-commande de npm non résolue est admise",[[G,"porte(sous) ? undefined : CLASSE_NPM[commandeNpm(sous)];","porte(sous) ? undefined : CLASSE_NPM[commandeNpm(sous)] || \"neutre\";"]]],
   ["N15 `nom@spec` : la spécification n'est pas jugée",[[G,"spec.slice(a + 1) : spec;","spec : spec;"]]],
   ["I10 une enveloppe qui garde l'environnement l'efface",[[G,"    const garde = !avant.slice(k + 1).some(","    const garde = false && !avant.slice(k + 1).some("]]],
+  ["L39 dans un `${…}`, toute accolade ouvrante compte", [[G, '    else if (x === "$" && texte[j + 1] === "{") {\n      prof++;\n      j++;\n    }', '    else if (x === "{") {\n      prof++;\n    }']]],
 ];
 
 const bac = fs.mkdtempSync(path.join(os.tmpdir(), "reinjections-audit-workflows-"));

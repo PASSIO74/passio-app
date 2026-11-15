@@ -271,8 +271,9 @@ function motDelimiteur(texte, k) {
  */
 /** L'indice de la `}` qui ferme un `${…}` ouvert en `j` (son `$`), ou la fin du texte : guillemets et substitutions sautés. */
 function finExpansion(texte, j) {
-  let prof = 0;
-  for (j++; j < texte.length; j++) {
+  // Comme bash : la première `}` non citée ferme ; seul un `${` imbriqué compte (`${X:-{a}` vaut `{a`).
+  let prof = 1;
+  for (j += 2; j < texte.length; j++) {
     const x = texte[j];
     if (x === "\\") j++;
     else if (x === "'") {
@@ -283,8 +284,10 @@ function finExpansion(texte, j) {
       const k = texte.indexOf("`", j + 1);
       j = k < 0 ? texte.length : k;
     } else if ((x === "$" || x === "<" || x === ">") && texte[j + 1] === "(") j = finSubstitution(texte, j + 2);
-    else if (x === "{") prof++;
-    else if (x === "}" && --prof === 0) return j;
+    else if (x === "$" && texte[j + 1] === "{") {
+      prof++;
+      j++;
+    } else if (x === "}" && --prof === 0) return j;
   }
   return texte.length;
 }

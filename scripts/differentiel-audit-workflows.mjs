@@ -90,6 +90,7 @@ try {
     'X="$(\n  (( F = 1 << 3 ))\n  echo $F\n)" && %', 'X="$(case a in a) echo;; esac)" && %',
     'X="$(cat <<-EOF\n\tx\n\tEOF\n)" && %', "X=\"$(cat <<EOF\nl'app\nEOF\necho fin\n)\" && %", 'X="$(echo ${#Y})" && %',
     "TITRE=\"$(\n  jq -r .t <<< \"$E\"\n)\"\necho \"a\nb\" && %",
+    "{ echo ${X:-{}; %; }", "echo ${X:-{} && % && echo }", 'X="$(echo ${Y//{/}; %; echo })"', "echo ${A:-${B:-x}} && %",
   ];
   for (const g of GABARITS) for (const c of CHARGES) corpus.add(g.split("%").join(c));
 
