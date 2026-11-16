@@ -10521,20 +10521,30 @@ async function supaLoadEventPosts(eventId) {
 // Créée à la demande, puis mémorisée dans events.conv_id : tous les inscrits
 // rejoignent la même conversation (le levier n°1 de participation réelle).
 async function supaCreateEventConversation(ev) {
+  if (!ev || !ev.id || !MY_UID) return null;
   try {
-    await supaEnsureProfileExists();
-    const convId = "evgrp_" + (ev.id || uid());
+    if (await supaEnsureProfileExists() !== true) return null;
+    const convId = "evgrp_" + ev.id;
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
       group_name: "📍 " + String(ev.title || "Activité").slice(0, 40),
-      // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
-      // doit pas être bloquée par le classement de son événement.
       passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
-    if (r.error && String(r.error.code) !== "23505") return null;
-    // Le créateur doit être membre, sinon la discussion existe sans lui (IRL-10).
+    if (!r || (r.error && String(r.error.code) !== "23505")) return null;
+    // Prouver aussi l'identité d'une conversation déjà présente (23505).
+    const c = await supa.from("conversations").select("id,created_by,is_group")
+      .eq("id", convId).single();
+    if (!c || c.error || !c.data || c.data.id !== convId ||
+        c.data.created_by !== MY_UID || c.data.is_group !== true) return null;
+    // Le lien serveur doit exister AVANT le membre : la garde le relit.
+    const lien = await supa.from("events").update({ conv_id: convId })
+      .eq("id", ev.id).select("id,conv_id").single();
+    if (!lien || lien.error || !lien.data || lien.data.id !== ev.id || lien.data.conv_id !== convId) return null;
     const m = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
-    if (m && m.error && String(m.error.code) !== "23505") { console.warn("discussion créée, créateur non membre —", m.error.message); return null; }
+    if (!m || (m.error && String(m.error.code) !== "23505")) return null;
+    const preuve = await supa.from("conv_members").select("conv_id,user_id")
+      .eq("conv_id", convId).eq("user_id", MY_UID).single();
+    if (!preuve || preuve.error || !preuve.data || preuve.data.conv_id !== convId || preuve.data.user_id !== MY_UID) return null;
     return convId;
   } catch(e) { return null; }
 }

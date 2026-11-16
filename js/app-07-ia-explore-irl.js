@@ -4105,7 +4105,6 @@ async function _joinEventConversation(ev) {
       if (!convId) return false;
       ev.convId = convId;
       saveState();
-      await supaUpdateEvent(ev);
     } else {
       const membre = await supaJoinEventConversation(ev.convId);
       if (!membre) {

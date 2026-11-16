@@ -34,6 +34,18 @@ alter table rencontres_prive.accords enable row level security;
 alter table rencontres_prive.inscriptions enable row level security;
 revoke all on all tables in schema rencontres_prive from public, anon, authenticated;
 
+create table if not exists rencontres_prive.decisions (
+ id uuid primary key default gen_random_uuid(),
+ event_id text references public.events(id) on delete set null,
+ user_id text not null references public.profiles(id) on delete cascade,
+ decideur_id text references public.profiles(id) on delete set null,
+ accepter boolean not null, created_at timestamptz not null default now()
+);
+alter table rencontres_prive.decisions enable row level security;
+revoke all on rencontres_prive.decisions from public,anon,authenticated,service_role;
+create index if not exists decisions_compte_date on rencontres_prive.decisions(user_id,created_at,id);
+alter table rencontres_prive.coorganisations_anterieures add column if not exists created_at timestamptz not null default now();
+
 -- Le compte public est identique pour tous les appelants, blocage compris.
 create or replace function public.participants_compte(p_event_ids text[])
 returns table(event_id text, going integer, maybe integer, waitlist integer, checked_in integer)
@@ -163,12 +175,24 @@ drop trigger if exists zz_rencontres_suppression on public.events;
 create trigger zz_rencontres_suppression after delete on public.events
  for each row execute function rencontres_prive.activite_supprimee();
 
+-- Les triggers de ligne ne peuvent pas prendre un verrou avant la ligne UPDATE.
+-- Une contention de paire est donc un échec réessayable, jamais une attente cyclique.
+create or replace function rencontres_prive.verrou_paire(a text,b text) returns void
+language plpgsql security definer set search_path = '' as $f$
+begin
+ if not pg_try_advisory_xact_lock(hashtextextended('rencontre-paire:' || least(a,b) || ':' || greatest(a,b),0)) then
+   raise exception 'rencontre_concurrente_reessayer' using errcode = '40001';
+ end if;
+end $f$;
+
 create or replace function rencontres_prive.inscription_gardee() returns trigger
 language plpgsql security definer set search_path = '' as $f$
 begin
- -- Le même verrou de paire est pris par la pose du blocage.
- perform pg_advisory_xact_lock(hashtextextended('rencontre-paire:' || least(new.user_id,e.author_id) || ':' || greatest(new.user_id,e.author_id),0))
-   from public.events e where e.id = new.event_id;
+ -- UPDATE tient déjà la ligne : ne jamais attendre un verrou de paire ici.
+ perform rencontres_prive.verrou_paire(new.user_id, personne)
+   from public.events e cross join lateral
+     (select e.author_id as personne union select e.organizer_id) o
+   where e.id = new.event_id and personne is not null order by personne;
  if new.rsvp <> 'declined' and rencontres_prive.bloque(new.event_id,new.user_id) then
    raise exception 'organisateur_bloque' using errcode = '42501';
  end if;
@@ -220,6 +244,13 @@ begin
  if auth.uid() is null or public.suppression_de_mon_compte() or not public.organise_activite(p_event_id) then
    raise exception 'organisation_requise' using errcode = '42501';
  end if;
+ -- Même ordre que l'UPDATE RSVP et sa capacité : inscription, paire, activité.
+ perform 1 from public.event_attendees where event_id = p_event_id and user_id = p_user_id for update;
+ if not found then return false; end if;
+ perform rencontres_prive.verrou_paire(p_user_id, personne)
+   from public.events e cross join lateral
+     (select e.author_id as personne union select e.organizer_id) o
+   where e.id = p_event_id and personne is not null order by personne;
  perform 1 from public.events where id = p_event_id and status = 'active' for update;
  if not found then return false; end if;
  if p_accepter then
@@ -227,10 +258,16 @@ begin
    perform 1 from public.event_attendees where event_id = p_event_id and user_id = p_user_id and rsvp = 'going' for update;
    if not found then return false; end if;
    insert into rencontres_prive.accords values(p_event_id,p_user_id) on conflict do nothing;
+   if found then
+     insert into rencontres_prive.decisions(event_id,user_id,decideur_id,accepter)
+       values(p_event_id,p_user_id,auth.uid()::text,true);
+   end if;
  else
    if exists(select 1 from public.events where id = p_event_id and p_user_id in(author_id,organizer_id)) then
      raise exception 'organisateur_non_retirable' using errcode = '42501';
    end if;
+   insert into rencontres_prive.decisions(event_id,user_id,decideur_id,accepter)
+     values(p_event_id,p_user_id,auth.uid()::text,false);
    delete from rencontres_prive.accords where event_id = p_event_id and user_id = p_user_id;
    delete from public.conv_members where conv_id = 'evgrp_' || p_event_id and user_id = p_user_id;
    delete from public.event_attendees where event_id = p_event_id and user_id = p_user_id;
@@ -262,7 +299,14 @@ grant execute on function public.participants_validation(text) to authenticated,
 create or replace function rencontres_prive.blocage_pose() returns trigger
 language plpgsql security definer set search_path = '' as $f$
 begin
- perform pg_advisory_xact_lock(hashtextextended('rencontre-paire:' || least(new.blocker_id,new.blocked_id) || ':' || greatest(new.blocker_id,new.blocked_id),0));
+ -- Comme RSVP/validation : lignes d'inscription, paire, puis mutations.
+ -- Ordre total pour les activités multiples d'une même paire.
+ perform 1 from public.event_attendees a join public.events e on a.event_id=e.id
+   where (a.user_id=new.blocked_id and new.blocker_id in(e.author_id,e.organizer_id))
+      or (a.user_id=new.blocker_id and new.blocked_id in(e.author_id,e.organizer_id))
+   order by a.event_id,a.user_id for update of a;
+ -- Le try-lock couvre aussi une inscription concurrente encore invisible.
+ perform rencontres_prive.verrou_paire(new.blocker_id,new.blocked_id);
  delete from public.event_attendees a using public.events e where a.event_id = e.id and (
    (a.user_id = new.blocked_id and new.blocker_id in(e.author_id,e.organizer_id)) or
    (a.user_id = new.blocker_id and new.blocked_id in(e.author_id,e.organizer_id)));
@@ -281,6 +325,102 @@ delete from public.conv_members m where left(m.conv_id,6) = 'evgrp_'
        where a.event_id = e.id and a.user_id = m.user_id and a.rsvp = 'going'))));
 delete from public.event_attendees a using public.events e where a.event_id = e.id
  and rencontres_prive.bloque(e.id,a.user_id);
+
+-- Purge réelle : cette RPC est déjà appelée par purge-compte.js avant l'effacement.
+create or replace function public.retirer_co_organisateur(p_uid text) returns void
+language plpgsql security definer set search_path = '' as $f$
+begin
+ if p_uid is null or p_uid = '' then raise exception 'uid_requis'; end if;
+ update public.events set co_organizers = co_organizers - p_uid where co_organizers ? p_uid;
+ update rencontres_prive.coorganisations_anterieures set valeur = valeur - p_uid where valeur ? p_uid;
+ if exists(select 1 from rencontres_prive.coorganisations_anterieures where valeur ? p_uid) then
+   raise exception 'retrait_coorganisation_non_confirme';
+ end if;
+end $f$;
+-- Filet indépendant du transport : suppression du profil => aucun UID archivé.
+create or replace function rencontres_prive.compte_retire() returns trigger
+language plpgsql security definer set search_path = '' as $f$
+begin
+ update rencontres_prive.coorganisations_anterieures set valeur = valeur - old.id where valeur ? old.id;
+ return old;
+end $f$;
+drop trigger if exists zz_rencontres_compte_retire on public.profiles;
+create trigger zz_rencontres_compte_retire after delete on public.profiles
+ for each row execute function rencontres_prive.compte_retire();
+
+-- Garder intact le corps des fonctions existantes, une fois seulement, ACL fermées.
+do $f$ begin
+ if to_regprocedure('rencontres_prive.export_compte_socle(text,integer,bigint)') is null then
+   alter function public.export_compte_instantane(text,integer,bigint) set schema rencontres_prive;
+   alter function rencontres_prive.export_compte_instantane(text,integer,bigint) rename to export_compte_socle;
+ end if;
+ if to_regprocedure('rencontres_prive.purger_socle()') is null then
+   alter function public.purger_donnees_expirees() set schema rencontres_prive;
+   alter function rencontres_prive.purger_donnees_expirees() rename to purger_socle;
+ end if;
+end $f$;
+create or replace function public.export_compte_instantane(p_uid text,p_plafond integer default 5000,p_verrou bigint default null)
+returns jsonb language plpgsql stable security definer set search_path = '' as $f$
+declare resultat jsonb; t text; filtre text; attendu bigint; lignes jsonb;
+ plafond integer := greatest(coalesce(p_plafond,5000),1);
+begin
+ resultat := rencontres_prive.export_compte_socle(p_uid,p_plafond,p_verrou);
+ foreach t in array array['inscriptions','accords','decisions','coorganisations_anterieures'] loop
+   filtre := case t when 'coorganisations_anterieures' then 'valeur ? $1'
+      when 'decisions' then 'user_id = $1 or decideur_id = $1' else 'user_id = $1' end;
+   execute format('select count(*) from rencontres_prive.%I where %s',t,filtre) into attendu using p_uid;
+   -- L'archive d'une coorganisation n'exporte jamais les identifiants des tiers.
+   execute format('select coalesce(jsonb_agg(x),''[]''::jsonb) from
+     (select %s from rencontres_prive.%I where %s order by %s limit $2) x',
+     case t when 'coorganisations_anterieures' then 'event_id, jsonb_build_array($1::text) as valeur, created_at'
+       else '*' end,t,filtre,case t when 'accords' then 'event_id,user_id'
+       when 'coorganisations_anterieures' then 'created_at,event_id' else 'created_at,id' end)
+     into lignes using p_uid,plafond;
+   resultat := jsonb_set(resultat,array['tables'],(resultat->'tables') || jsonb_build_object(
+     'rencontres_prive.' || t,jsonb_build_object('lignes',lignes,'attendu',attendu,
+       'tronque',attendu > plafond,'ordre_total',true)));
+ end loop;
+ return resultat || jsonb_build_object('rencontres_prive',1);
+end $f$;
+
+-- 30 jours après l'activité pour les RSVP (plafond relit 24 h), 90 pour les décisions.
+-- Une ligne récente n'expire jamais. Activité sans date de fin : date + 3 heures.
+-- Archive de suspension : 30 jours de récupération, puis retrait ; pas de rôle restauré.
+create or replace function public.purger_donnees_expirees() returns jsonb
+language plpgsql security definer set search_path = '' as $f$
+declare resultat jsonb; n integer; d integer; h integer;
+begin
+ resultat := rencontres_prive.purger_socle();
+ with cibles as (
+   select j.id from rencontres_prive.inscriptions j left join public.events e on e.id=j.event_id
+   where j.created_at < now()-interval '30 days'
+     and (e.id is null or coalesce(e.end_at,e.date_at+interval '3 hours') < now()-interval '30 days')
+   order by j.created_at,j.id limit 5000
+ ) delete from rencontres_prive.inscriptions j using cibles c where j.id=c.id;
+ get diagnostics n = row_count;
+ with cibles as (
+   select j.id from rencontres_prive.decisions j left join public.events e on e.id=j.event_id
+   where j.created_at < now()-interval '90 days'
+     and (e.id is null or coalesce(e.end_at,e.date_at+interval '3 hours') < now()-interval '90 days')
+   order by j.created_at,j.id limit 5000
+ ) delete from rencontres_prive.decisions j using cibles c where j.id=c.id;
+ get diagnostics d = row_count;
+ with cibles as (
+   select event_id from rencontres_prive.coorganisations_anterieures
+   where created_at < now()-interval '30 days' order by created_at,event_id limit 5000
+ ) delete from rencontres_prive.coorganisations_anterieures j using cibles c where j.event_id=c.event_id;
+ get diagnostics h = row_count;
+ return resultat || jsonb_build_object('rencontres_inscriptions',n,'rencontres_decisions',d,'rencontres_archives',h);
+end $f$;
+revoke all on function public.export_compte_instantane(text,integer,bigint),public.purger_donnees_expirees(),
+ public.retirer_co_organisateur(text) from public,anon,authenticated;
+grant execute on function public.export_compte_instantane(text,integer,bigint),
+ public.retirer_co_organisateur(text) to service_role;
+revoke all on function public.purger_donnees_expirees() from service_role;
+revoke all on schema rencontres_prive from service_role;
+revoke all on all tables in schema rencontres_prive from service_role;
+revoke all on all sequences in schema rencontres_prive from public,anon,authenticated,service_role;
+revoke all on all functions in schema rencontres_prive from service_role;
 
 -- Tous les droits sont nommés, même avec des privilèges Supabase par défaut.
 revoke all on all functions in schema rencontres_prive from public,anon,authenticated;

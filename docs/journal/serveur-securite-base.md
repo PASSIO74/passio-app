@@ -1957,8 +1957,8 @@ restent à purger par l'API Storage : supprimer leurs lignes SQL créerait des b
 
 Journal serveur accessible à l'organisation et au participant par journal_participation, notification
 serveur à chaque entrée en going, plafond glissant de 20 changements d'inscription par jour et compte.
-Le journal n'a pas encore de tâche de rétention planifiée : à intégrer à la purge existante avant
-application. L'export complet des nouvelles données privées reste à raccorder. Le client historique
+Le journal est raccordé à la purge périodique existante et les données privées à l'export instantané.
+Les nouvelles durées de rétention sont décrites dans la fiche de reprise ci-dessous. Le client historique
 émet encore sa notification d'inscription : doublon possible, sans ouverture de droits.
 
 Ordre : client portant rencontres:validation-organisation-v1, puis migration après les migrations déjà
@@ -2015,3 +2015,29 @@ Controles locaux : chemins Edge, preuve de reconnexion et configuration veille ;
 Reprise Codex du 16/11 : risque critical ; implementation initiale preservee puis finalisee par Codex, sans delegation ; contre-revue independante encore requise avant fusion. Acceptation locale : primaire recente obligatoire, TURN reserve au contexte admis, veille fermee sans secret, cron sans GUC et sans activation implicite. Integration pilotage/Sentinelle pertinente via veille authentifiee, secours, journal officiel et desactivation explicite. Le cache TURN expire est aussi retire sans contexte actif. La validation Node du SQL injecte utilise sqlAvecJournal sur production et staging ; ce controle ne remplace pas une execution PostgreSQL. Aucun secret Vault ne doit etre copie entre cibles ; le Lead doit relire que pilotage_veille_projet correspond a la cible --projet du script officiel. Baseline locale : HEAD a270749b identique au suivi origin/main disponible ; aucune actualisation distante demandee. Aucun changement AAL2, secrets TURN ou notifications Auth.
 
 La cible Vault est aussi comparee a la cible de la ligne injectee par appliquer-migration.mjs dans la meme transaction (xmin). Une configuration de production copiee sur staging provoque un refus avant planification ; aucune URL de production ne part de ce cron staging. Ce controle exige le script officiel pour une activation, sans GUC manuelle. Validation de reprise : 212 tests Node cibles verts puis suite pilotage rejouee avec le nouveau cas (92 tests), Chrome local 14 tests verts + regression cache expire 1 test vert ; audits globals, tests-creux et workflows verts. Verif globale precedente conservee, non repetee. Restants ordonnes : contre-revue critique et execution SQL sur base jetable/staging avec Vault absent puis cibles divergentes ; provisionnement cible hors journal ; migration officielle ; secours et Edge selon ordre ci-dessus ; controle post-livraison.
+
+
+## Rencontres — reprise locale de contre-revue (2026-11-16)
+
+Périmètre critique : fiabilité de la création des discussions, cohérence des inscriptions,
+cycle de vie et traçabilité des données privées. Implémentation : Codex (modèle non attesté
+par les outils de cette reprise). Critères : verdict serveur vérifié avant succès client,
+contrôle de contention à deux sessions, export/purge effectifs et décisions datées.
+Aucun changement de production, de configuration distante ou de contenu utilisateur.
+
+Les décisions disposent d'un journal privé : participant, décision, auteur et date serveur.
+La purge existante traite les journaux par lots de 5 000 : inscriptions au-delà de 30 jours
+après leur écriture ET la fin d'activité ; décisions au-delà de 90 jours selon les mêmes
+bornes. Une activité supprimée garde les délais depuis l'écriture. Ces durées bornent le
+suivi opérationnel et l'assistance, tout en préservant la fenêtre de plafond de 24 heures.
+L'archive temporaire de suspension expire après 30 jours ; aucun rôle n'est rétabli.
+L'effacement du compte prime sur ces délais. Les exports signalent les troncatures.
+
+Pilotage/Sentinelle : réutilisation de la purge planifiée et de ses compteurs de résultat,
+ainsi que des erreurs déjà collectées ; aucun identifiant personnel dans la télémétrie.
+Aucune autoréparation ajoutée. Les restrictions restent fermées en cas de retour arrière ;
+la récupération de données effacées exige une sauvegarde contrôlée et une revue avant action.
+Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-restants.sh.
+La vérification locale PGlite couvre le SQL séquentiel et les triggers métier de référence ;
+elle ne prouve pas la concurrence à deux sessions. Une revue indépendante reste requise
+avant toute fusion/application, hors de cette demande de commit local.
