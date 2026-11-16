@@ -205,3 +205,31 @@ test("ASTRA-55 ④ un média MODIFIÉ sur disque (même nom) est vu par l'index 
   assert.match(ok.sortie, /Nature : archive COMPLÈTE/);
   assert.match(ok.sortie, /tous conformes à l'index/);
 });
+
+test("archive privée : le vrai vérificateur refuse un fichier manquant et un mélange de projets", () => {
+  const d = archive([], 0);
+  const noms = ["coorganisations_anterieures", "identifiants_retires", "accords", "inscriptions", "decisions"];
+  const tables = Object.fromEntries(noms.map((n) => [n, { pk: n === "accords" ? ["event_id", "user_id"] : [n === "identifiants_retires" || n === "coorganisations_anterieures" ? "event_id" : "id"],
+    attendu: 0, exporte: 0, octets: 0, sha256: createHash("sha256").update("").digest("hex") }]));
+  const prive = { version: 1, projet: "abcdefghijabcdefghij", schemas: {
+    rencontres_prive: { present: true, tables }, passio_realtime_budget: { present: true, ephemere: true, restauration: "vide" },
+  } };
+  const man = JSON.parse(fs.readFileSync(path.join(d, "manifeste.json"), "utf8"));
+  man.projet = "https://abcdefghijabcdefghij.supabase.co"; man.schemas_prives = prive;
+  fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
+  fs.appendFileSync(path.join(d, "schema.sql"), "\n" + noms.map((n) => `create table rencontres_prive.${n}(id text);`).join("\n") + "\ncreate table passio_realtime_budget.compteurs(compte text);");
+  fs.mkdirSync(path.join(d, "_prive", "rencontres_prive"), { recursive: true });
+  for (const n of noms) fs.writeFileSync(path.join(d, "_prive", "rencontres_prive", n + ".ndjson"), "");
+  assert.equal(verifier(d).code, 0);
+  fs.unlinkSync(path.join(d, "_prive", "rencontres_prive", "decisions.ndjson"));
+  const absent = verifier(d); assert.equal(absent.code, 1); assert.match(absent.sortie, /rencontres_prive.decisions.*invalides/);
+  fs.writeFileSync(path.join(d, "_prive", "rencontres_prive", "decisions.ndjson"), "");
+  man.projet = "https://zzzzzzzzzzzzzzzzzzzz.supabase.co";
+  fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
+  const melange = verifier(d); assert.equal(melange.code, 1); assert.match(melange.sortie, /projets public et privé.*divergent/);
+});
+
+test("archive historique : la portée privée non attestée est toujours dite", () => {
+  const r = verifier(archive([], 0)); assert.equal(r.code, 0);
+  assert.match(r.sortie, /périmètre privé non attesté/);
+});

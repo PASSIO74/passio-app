@@ -35,6 +35,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const RV = require("./lib/reprise-verdicts.js");
 const JE = require("./lib/json-exact.js");
+const PR = require("./lib/reprise-schemas-prives.js");
 const crypto = require("node:crypto");
 
 // Tables d'observabilité : volumineuses et REGÉNÉRABLES. Les inclure d'office
@@ -59,7 +60,8 @@ function env() {
     console.error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY absents (dashboard/.env).");
     process.exit(2);
   }
-  return { url: url.replace(/\/+$/, ""), cle };
+  return { url: url.replace(/\/+$/, ""), cle, ref: vals.SUPABASE_PROJECT_REF,
+    jeton: vals.SUPABASE_ACCESS_TOKEN };
 }
 
 const entetes = (cle, extra = {}) => ({ apikey: cle, Authorization: `Bearer ${cle}`, ...extra });
@@ -309,6 +311,10 @@ async function exporterMedias(cfg, dossier, journal) {
 
 async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
   const cfg = env();
+  const lirePrive = PR.lecteur(cfg);
+  // Avant le premier export de données : la cible et la lecture sans filtre
+  // RLS doivent être prouvées, même lorsque les schémas sont encore absents.
+  await PR.inventaire(lirePrive);
   fs.mkdirSync(dossier, { recursive: true });
   const toutes = await tables(cfg);
   const vues = toutes.filter((t) => t.vue).map((t) => t.nom);
@@ -337,6 +343,8 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
     console.log(`  ${t.padEnd(26)} ${String(ecrit).padStart(6)} lignes` +
       (attendu !== null && attendu !== ecrit ? `  ⚠ serveur en annonce ${attendu}` : ""));
   }
+
+  manifeste.schemas_prives = await PR.exporter({ ...cfg, dossier, lire: lirePrive });
 
   if (avecMedias) {
     const journal = [];
@@ -404,7 +412,13 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
 /** Relit une archive et confronte son contenu à son manifeste. */
 function verifier(dossier) {
   const man = JSON.parse(fs.readFileSync(path.join(dossier, "manifeste.json"), "utf8"));
-  let pb = 0;
+  const prives = PR.valider(dossier, man.schemas_prives);
+  let pb = prives.erreurs.length;
+  for (const erreur of prives.erreurs) console.error("  ✗ " + erreur);
+  for (const note of prives.notes) console.log("  ℹ " + note);
+  if (man.schemas_prives && man.projet !== `https://${man.schemas_prives.projet}.supabase.co`) {
+    console.error("  ✗ Les projets public et privé du manifeste divergent"); pb++;
+  }
   // ASTRA-45 : « complète » exige un inventaire des propriétaires qui couvre chaque objet.
   let proprietairesComplets = true;
   for (const [t, info] of Object.entries(man.tables)) {
@@ -514,7 +528,7 @@ function verifier(dossier) {
       if (suspendus.length) console.log(`  _auth_users : ${suspendus.length} compte(s) SUSPENDU(S) — la reprise doit les restituer suspendus (ASTRA-30).`);
     }
   }
-  console.log(`\nNature : archive ${n.nature.toUpperCase()}${n.complete ? "" : " — elle ne suffit pas à repartir d'une base vide"}.`);
+  console.log(`\nNature : archive ${n.nature.toUpperCase()}${n.complete ? "" : " — elle ne suffit pas à repartir d'une base vide"}${prives.historique ? " — périmètre historique, privé non attesté" : ""}.`);
   console.log(pb ? `\n${pb} anomalie(s).` : `\nArchive relue : ${Object.keys(man.tables).length} tables${man.comptes != null ? ` + ${man.comptes} comptes` : ""}, toutes lisibles et conformes au manifeste.`);
   process.exit(pb ? 1 : 0);
 }

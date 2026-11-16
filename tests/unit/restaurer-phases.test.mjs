@@ -92,6 +92,11 @@ function monde(opts = {}) {
       if (chemin === "") return json({ status: "ACTIVE_HEALTHY", name: "jetable" });
       if (chemin === "/database/query") {
         const q = JSON.parse(init.body).query.trim();
+        if (q.includes("as rencontres") && q.includes("as budget")) {
+          const P = require("../../scripts/lib/reprise-schemas-prives.js");
+          return json([{ lecture_seule: true, rencontres: !!opts.prives, budget: false,
+            tables: opts.prives ? Object.entries(P.TABLES).map(([nom, pk]) => ({ schema: P.SCHEMA, nom, pk, lisible: true, genre: "r" })) : [] }]);
+        }
         if (/^select id, file_size_limit from storage\.buckets/.test(q)) return json([...etat.buckets.values()]);
         if (/^update storage\.buckets set file_size_limit = null$/.test(q)) { for (const b of etat.buckets.values()) b.file_size_limit = null; return json([]); }
         if (/^update storage\.buckets set file_size_limit = /.test(q)) { if (etat.refusLimite) return texte("permission denied", 500); const mm = /file_size_limit = (\S+) where id = \$\w+\$(\w+)\$/.exec(q); etat.buckets.get(mm[2]).file_size_limit = mm[1] === "null" ? null : Number(mm[1]); return json([]); }
@@ -374,4 +379,19 @@ test("validation de l'archive : une ligne imbriquée sur 3 000 niveaux portant u
   const v2 = validerArchive(contexte(a));
   assert.equal(v2.ok, false);
   assert.ok(v2.bloquants.some((b) => /table user_state : NDJSON illisible/.test(b)), JSON.stringify(v2.bloquants));
+});
+
+test("schémas privés existants : archive historique et purge générale refusées avant mutation", async () => {
+  const a = archive(), m = monde({ prives: true });
+  await avec(m, async () => {
+    await assert.rejects(R._phases.schema(contexte(a)), /état privé non couvert/);
+    await assert.rejects(R._phases.purger(contexte(a)), /Purge automatique refusée/);
+  });
+  assert.equal(m.journal.length, 3, "seulement le catalogue public et deux inventaires privés ; aucune mutation");
+});
+
+test("la validation globale refuse un manifeste privé inconnu avant les phases de restauration", () => {
+  const a = archive(); a.man.schemas_prives = { version: 999 };
+  const v = validerArchive(contexte(a));
+  assert.equal(v.ok, false); assert.match(v.bloquants.join(" "), /Manifeste privé inconnu/);
 });
