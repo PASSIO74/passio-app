@@ -11,12 +11,6 @@
 /release.json
   Cache-Control: no-store, no-cache, must-revalidate
 
-# Complément pour erreurs de plateforme ; chaque réponse du relais porte aussi no-store.
-/private-media/*
-  Cache-Control: private, no-store
-  CDN-Cache-Control: no-store
-  Netlify-CDN-Cache-Control: no-store
-
 # pilotage/ : cockpit téléphone, jamais une vieille version
 /pilotage/*
   Cache-Control: no-cache

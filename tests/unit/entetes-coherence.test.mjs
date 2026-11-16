@@ -140,7 +140,6 @@ test("⑥ aucune règle de _headers ne vise une route morte", () => {
     "/icon-512.png": () => existe("icon-512.png"),
     "/styles.css": () => existe("styles.css"),
     "/app/*": () => /"app\/" \+ nom/.test(build),
-    "/private-media/*": () => existe("netlify/edge-functions/private-media.js") && /path:\s*['"]\/private-media\/\*/.test(fs.readFileSync(path.join(RACINE, "netlify/edge-functions/private-media.js"), "utf8")),
     "/pilotage/*": () => existe("pilotage/index.html"),
     "/pilotage/manifest.webmanifest": () => existe("pilotage/manifest.webmanifest"),
         "/data/passions-v1.json": () => existe("data/passions-v1.json"),

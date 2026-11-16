@@ -41,8 +41,9 @@ async function capabilities(upstream, signal) {
     return {protocol:1,uploads_enabled:value.uploads_enabled,reads_enabled:value.reads_enabled,min_client:1,max_bytes:MAX_MEDIA_BYTES};
   } catch { return null; } finally { signal.removeEventListener('abort',stop); await reader.cancel().catch(()=>{}); }
 }
-export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=60000}) {
+export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=60000, headersDeadlineMs=Math.min(15000,deadlineMs)}) {
   if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 60000) throw new Error('relay_deadline');
+  if (!Number.isInteger(headersDeadlineMs) || headersDeadlineMs < 1 || headersDeadlineMs > 15000 || headersDeadlineMs > deadlineMs) throw new Error('relay_headers_deadline');
   return async function relay(request) {
     if (!['GET','HEAD'].includes(request.method)) return empty(405,{'Allow':'GET, HEAD'});
     const url=new URL(request.url), cap=url.pathname==='/private-media/capabilities';
@@ -56,8 +57,9 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
     const abort=new AbortController(); let upstream, reader;
     function stop() { abort.abort(); if(reader) void reader.cancel().catch(()=>{}); }
     const timer=setTimeout(stop,deadlineMs); timer.unref?.();
+    const headersTimer=setTimeout(stop,headersDeadlineMs); headersTimer.unref?.();
     request.signal.addEventListener('abort',stop,{once:true});
-    function cleanup() { clearTimeout(timer); request.signal.removeEventListener('abort',stop); }
+    function cleanup() { clearTimeout(timer); clearTimeout(headersTimer); request.signal.removeEventListener('abort',stop); }
     function discard() { if(upstream?.body && !upstream.body.locked) void upstream.body.cancel().catch(()=>{}); }
     try {
       const headers=new Headers({apikey:target.anon,Accept:cap?'application/json':'*/*'});
@@ -66,7 +68,7 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
       upstream=await fetchImpl(target.url+'/functions/v1'+url.pathname,{
         method:cap?'GET':request.method,headers,signal:abort.signal,redirect:'error',cache:'no-store',credentials:'omit',
       });
-      if (abort.signal.aborted) { discard(); cleanup(); return empty(408); }
+      if (abort.signal.aborted) { discard(); cleanup(); return empty(request.signal.aborted?408:503); }
       if (cap) {
         const value=await capabilities(upstream,abort.signal); cleanup();
         if(!value || abort.signal.aborted) return empty(503);
@@ -97,6 +99,7 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
         },
         cancel() { stop(); cleanup(); },
       });
+      clearTimeout(headersTimer);
       return new Response(body,{status:upstream.status,headers:responseHeaders});
     } catch { stop(); discard(); cleanup(); return empty(request.signal.aborted?408:503); }
   };
