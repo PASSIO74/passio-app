@@ -2,7 +2,7 @@
 
 Risque critique. Implémentation : Codex. Revue indépendante requise avant fusion. Résultat attendu : les chemins privés relaient un JWT utilisateur au broker Supabase sans clé privilégiée Netlify ; le pilote téléphone peut suspendre les lectures/envois via le réglage serveur existant.
 
-Acceptation : aucun cache ni renvoi public, GET/HEAD et Range bornés, annulation/taille/MIME réels, corps d’erreur fermé, cible staging pour tout brouillon, cible production pour le seul déploiement publié, activation booléenne explicite avec historique/AAL2 existants. Le client n’utilise pas son cache local comme autorisation.
+Acceptation : aucun cache ni renvoi public, lectures POST vides et HEAD/Range bornées, annulation/taille/MIME réels, corps d’erreur fermé, cible staging pour tout brouillon, cible production pour le seul déploiement publié, activation booléenne explicite avec historique/AAL2 existants. Le client n’utilise pas son cache local comme autorisation.
 
 Périmètre : relais Netlify, configuration publique des deux projets, whitelist des réglages, pilotage mobile et cible publique des previews. La migration du registre/bucket privé, le broker Supabase et le client/SW sont livrés dans le lot médias complémentaire. Pas de changement de droits du pilote, de clé privilégiée Netlify ni d’activation automatique.
 
