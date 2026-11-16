@@ -1,3 +1,4 @@
+import {avecCibleFermee} from "./lib/reprise-cible-fermee.mjs";
 // ═══════════════════════════════════════════════════════════════════════════
 // LES PHASES DE RESTAURATION, AUX VRAIS POINTS D'APPEL (cinquième contre-revue
 // Astra, 15/09/2026 — ASTRA-45 / 46 / 47 / 48 / 55, et la mutation « ban non
@@ -125,7 +126,7 @@ function monde(opts = {}) {
 }
 
 function contexte(a) { return { jeton: "sbp_x", ref: REF, url: URL_CIBLE, cle: "service", archive: a.dossier, man: a.man, nom: "jetable" }; }
-async function avec(m, fn) { const vrai = globalThis.fetch; globalThis.fetch = m.fetch; try { return await fn(); } finally { globalThis.fetch = vrai; } }
+async function avec(m, fn) { const vrai = globalThis.fetch; globalThis.fetch = avecCibleFermee(m.fetch); try { return await fn(); } finally { globalThis.fetch = vrai; } }
 function preuveDe(ctx) { return ctx._preuve; }
 // `--preuve` écrit un fichier : on le lit pour vérifier le JSON.
 async function verdictAvecPreuve(ctx) {

@@ -46,7 +46,7 @@ if(a[0]?.endsWith('reprise-medias-portables-runner.mjs')){
  if(process.platform!=='win32'&&(fs.statSync(pgpass).mode&0o777)!==0o600)process.exit(95);
  fs.appendFileSync(process.env.PASSIO_PROTOCOL_LOG,'RUNNER '+JSON.stringify(a)+'\\n');
  const code=Number(process.env.PASSIO_PROTOCOL_RUNNER_FAIL||0);
- fs.writeFileSync(arg('--output'),JSON.stringify({ok:code===0,nettoyage_absence:code===0,cluster_directory_checked:true,postgres_version_num:180006,checks:Array.from({length:18},()=>({ok:true}))}));process.exit(code);
+ fs.writeFileSync(arg('--output'),JSON.stringify({ok:code===0,nettoyage_absence:code===0,cluster_directory_checked:true,postgres_version_num:180006,checks:Array.from({length:35},()=>({ok:true}))}));process.exit(code);
 }
 const r=spawnSync(process.execPath,a,{stdio:'inherit',env:process.env});process.exit(r.status??96);
 `);

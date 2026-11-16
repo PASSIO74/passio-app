@@ -17,7 +17,7 @@ function origine(v) {
 
 // Parcours itératif et substitutions de tokens : pas de resérialisation de
 // la ligne entière (bigint/numeric exacts, même dans un JSON incorporé).
-function transformerJson(texte, transformer) {
+function transformerJson(texte, transformer, transformerBooleen = (v) => v) {
   const racine = JSON.parse(texte); // syntaxe seulement ; aucune valeur numérique recopiée
   const pile = [], chemin = [], changements = [];
   let i = 0;
@@ -35,6 +35,13 @@ function transformerJson(texte, transformer) {
         if (suite !== valeur) changements.push({ debut: i, fin, texte: JSON.stringify(suite) });
       }
       i = fin; continue;
+    }
+    if ((c === 't' || c === 'f') && chemin.length <= 10) {
+      const jeton = c === 't' ? 'true' : 'false', valeur = c === 't';
+      const suite = transformerBooleen(valeur, pile.length ? [...chemin, cle()] : [], racine);
+      if (typeof suite !== 'boolean') throw new Error('Projection booléenne invalide');
+      if (suite !== valeur) changements.push({ debut: i, fin: i + jeton.length, texte: String(suite) });
+      i += jeton.length; continue;
     }
     if (c === "{" || c === "[") {
       const ajoute = pile.length > 0;

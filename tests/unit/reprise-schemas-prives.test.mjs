@@ -1,3 +1,4 @@
+import {avecCibleFermee} from "./lib/reprise-cible-fermee.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -197,6 +198,7 @@ test("empreinte DDL privée : archive modifiée et --schema étranger refusés a
     if (!q.startsWith("select")) mutations++;
     return await cibleVide.lire(q, JSON.parse(init.body).parameters).then((ligne) => new Response(JSON.stringify([ligne])));
   };
+  globalThis.fetch = avecCibleFermee(globalThis.fetch);
   process.argv = [...ancienArgv, "--schema", autre];
   try { await assert.rejects(R._phases.schema(ctx), /Empreinte DDL différente/); }
   finally { globalThis.fetch = ancienFetch; process.argv = ancienArgv; }

@@ -1,3 +1,4 @@
+import {avecCibleFermee} from "./lib/reprise-cible-fermee.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -167,6 +168,7 @@ test('vrai chargeur ET verdict attendent les mêmes URL projetées ; source cons
     if(q.includes('from storage.buckets'))return json(configuration);
     throw new Error('unexpected_query');
   };
+  globalThis.fetch=avecCibleFermee(globalThis.fetch);
   try {
     assert.equal(R._phases.validerArchive(ctx).ok,true);
     await R._phases.chargerTable(ctx,'posts',{notes:[],refus:[]});assert.equal(inserts,1);
