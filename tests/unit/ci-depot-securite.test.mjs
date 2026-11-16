@@ -115,3 +115,27 @@ test("télémétrie : même une instruction hors liste noire ne peut entrer dans
   assert.match(sortie, /Empreinte de regroupement : [a-f0-9]{8}/);
   assert.match(sortie, /cause établie/);
 });
+
+test("sauvegarde privée : main seulement, schéma haché avant données, archive chiffrée seule déposée", () => {
+  const job = parse(lire(".github/workflows/sauvegarde.yml")).jobs.sauvegarder;
+  for (const [event, ref, attendu] of [["schedule", "refs/heads/main", true], ["workflow_dispatch", "refs/heads/main", true], ["workflow_dispatch", "refs/heads/autre", false], ["pull_request", "refs/pull/951/merge", false]]) {
+    const ctx = contexte(event); ctx.github.ref = ref;
+    assert.equal(decide(job.if, ctx), attendu, event + " " + ref);
+  }
+  const steps = job.steps;
+  const ddl = steps.findIndex(s => String(s.run).includes("node scripts/schema-executable.js"));
+  const donnees = steps.findIndex(s => String(s.run).includes("node scripts/sauvegarde-donnees.js --sortie"));
+  const verifier = steps.findIndex(s => String(s.run).includes("--verifier sauvegarde"));
+  const chiffrer = steps.findIndex(s => s.name === "Chiffrer");
+  const depot = steps.findIndex(s => /^actions\/upload-artifact@/.test(String(s.uses)));
+  assert.ok(ddl >= 0 && ddl < donnees && donnees < verifier && verifier < chiffrer && chiffrer < depot);
+  for (const i of [ddl, donnees]) {
+    assert.equal(steps[i].env.SUPABASE_ACCESS_TOKEN, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
+    assert.equal(steps[i].env.SUPABASE_PROJECT_REF, "njkiyoklssvefstljemx");
+  }
+  assert.equal(steps[donnees].env.SUPABASE_SERVICE_ROLE_KEY, "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}");
+  for (const i of [chiffrer, depot]) assert.doesNotMatch(JSON.stringify(steps[i]), /SUPABASE_ACCESS_TOKEN/);
+  assert.match(steps[chiffrer].run, /age -r/);
+  assert.equal(steps[depot].with.path, "${{ env.nom }}");
+  assert.equal(String(steps.find(s => /^actions\/checkout@/.test(String(s.uses))).with["persist-credentials"]), "false");
+});
