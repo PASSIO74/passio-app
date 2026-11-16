@@ -10,6 +10,19 @@ const SECURITY = Object.freeze({
   'Cross-Origin-Resource-Policy':'same-origin','Referrer-Policy':'no-referrer',
 });
 function empty(status, extra = {}) { return new Response(null,{status,headers:{...SECURITY,...extra}}); }
+async function emptyReadBody(request,signal) {
+  const declared=request.headers.get('Content-Length');
+  if(declared!==null&&declared!=='0'){if(request.body)void request.body.cancel().catch(()=>{});return false;}
+  if(request.body===null)return true;
+  const reader=request.body.getReader();let timer;
+  const cancel=()=>{void reader.cancel().catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});
+  try {
+    return await Promise.race([
+      (async()=>{for(let i=0;i<4;i++){const part=await reader.read();if(signal.aborted)return false;if(part.done)return true;if(!(part.value instanceof Uint8Array)||part.value.byteLength>0)return false;}return false;})(),
+      new Promise(resolve=>{timer=setTimeout(()=>resolve(false),500);timer.unref?.();}),
+    ]);
+  } catch {return false;} finally {clearTimeout(timer);signal.removeEventListener('abort',cancel);cancel();}
+}
 function length(value) { return /^(0|[1-9][0-9]{0,8})$/.test(value || '') ? Number(value) : NaN; }
 function validRange(value) {
   const m = /^bytes=(\d{0,9})-(\d{0,9})$/.exec(value || '');
@@ -51,7 +64,6 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
     if(request.headers.get('X-Passio-Media-Read')!=='1')return empty(400);
     // POST est uniquement un transport de lecture vide : les anciens SW ne
     // l'interceptent pas. Le broker reçoit toujours GET, ou HEAD explicitement.
-    if(request.method==='POST'&&request.body!==null){void request.body.cancel().catch(()=>{});return empty(400);}
     const readMethod=request.method==='HEAD'?'HEAD':'GET';
     const url=new URL(request.url), cap=url.pathname==='/private-media/capabilities';
     if (url.search || (!cap && !PATH.test(url.pathname))) return empty(404);
@@ -76,6 +88,8 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
     function cleanup() { clearTimeout(timer); clearTimeout(headersTimer); request.signal.removeEventListener('abort',stop); }
     function discard() { if(upstream?.body && !upstream.body.locked) void upstream.body.cancel().catch(()=>{}); }
     try {
+      if(request.method==='POST'&&!await emptyReadBody(request,abort.signal)){cleanup();return empty(400);}
+      if(abort.signal.aborted){cleanup();return empty(request.signal.aborted?408:503);}
       const headers=new Headers({apikey:target.anon,Accept:cap?'application/json':'*/*'});
       if (!cap && auth !== null) headers.set('Authorization',auth);
       if (range !== null) headers.set('Range',range);

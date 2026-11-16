@@ -108,6 +108,19 @@ test('ancien SW : GET natif sans marqueur refusé ; POST vide lu en GET sans tra
   const r=await relay(req('',{method:'POST',headers:{Authorization:'Bearer a.b.c'}}));assert.equal(r.status,200);assert.equal(await r.text(),'abc');assert.equal(calls,1);safe(r);
   const cap=await createPrivateMediaRelay({target,fetchImpl:async(_,o)=>{assert.equal(o.method,'GET');return Response.json(caps);}})(capreq({method:'POST'}));assert.equal(cap.status,200);assert.deepEqual(await cap.json(),caps);safe(cap);
 });
+test('POST réseau : flux vide accepté, premier octet refusé et flux suspendu borné sans amont',async()=>{
+  let calls=0,cancelled=0;const keepAlive=setTimeout(()=>{},2000);
+  try {
+    const relay=createPrivateMediaRelay({target,fetchImpl:async()=>{calls++;return media();}});
+    const emptyStream=new ReadableStream({start(c){c.close();}});
+    const good=await relay(req('',{method:'POST',body:emptyStream,duplex:'half'}));assert.equal(good.status,200);assert.equal(await good.text(),'abc');assert.equal(calls,1);
+    const payload=new ReadableStream({start(c){c.enqueue(new Uint8Array([1]));},cancel(){cancelled++;}});
+    assert.equal((await relay(req('',{method:'POST',body:payload,duplex:'half'}))).status,400);assert.equal(cancelled,1);assert.equal(calls,1);
+    const pending=new ReadableStream({cancel(){cancelled++;}});
+    assert.equal((await relay(req('',{method:'POST',body:pending,duplex:'half'}))).status,400);assert.equal(cancelled,2);assert.equal(calls,1);
+    assert.equal((await relay(req('',{method:'POST',headers:{'Content-Length':'1'}}))).status,400);assert.equal(calls,1);
+  } finally {clearTimeout(keepAlive);}
+});
 test('en-têtes bornés séparément : refus avant réponse lente, corps autorisé reste lisible ensuite',async()=>{
   const keepAlive=setTimeout(()=>{},2000);
   let intermediate;
