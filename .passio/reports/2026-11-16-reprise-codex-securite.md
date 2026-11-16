@@ -20,7 +20,7 @@ Benjamin a étendu le mandat d'audit aux corrections et à leur livraison. La re
 | Relais d'appels | La session précédente a consigné la fermeture de l'émission des nouveaux identifiants | État fournisseur et expiration des identifiants déjà émis non recontrôlés |
 | Authentification | Les trois notifications de sécurité configurées ont été relues à vrai le 16 novembre ; contrôle de connexion primaire relu et testé | Réception effective des emails et sessions réelles non démontrées par ces relevés |
 | Messagerie | Correctif client et borne serveur préparés ; régression trouvée en contre-revue puis corrigée | SQL et code non déclarés livrés par leur seule présence dans Git |
-| Rencontres | Réserves de création, export, suppression, rétention et notification corrigées et relues séparément | Banc PostgreSQL natif réussi ; essais sur cible encore requis ; promotion/suppression concurrentes hors couverture actuelle |
+| Rencontres | Réserves de création, export, suppression, rétention et notification corrigées et relues séparément | Banc PostgreSQL natif réussi ; co-organisation suspendue jusqu’à un parcours de consentement ; essais sur cible encore requis ; promotion/suppression concurrentes hors couverture actuelle |
 | Social | Rendu renforcé ; 102 cas de privilèges/RLS réussis sur PostgreSQL natif jetable en CI | Cela ne prouve pas l'application sur les cibles réelles |
 | Auth/Edge et veille | Code relu séparément ; banc de veille avec vraie migration et journal, 40 contrôles PostgreSQL natifs réussis en CI | Configuration coordonnée et preuve de livraison encore requises |
 | CI et agents | Cloisonnement des secrets et réduction des données non fiables préparés | Les règles textuelles d'un agent ne prouvent pas un confinement de ses permissions |
@@ -73,3 +73,5 @@ La confrontation des catalogues réels du 16 novembre a confirmé des prérequis
 **Quel scénario à 100 000 utilisateurs est démontré ?** Aucun nouveau scénario. Il faut distinguer comptes inscrits, activité quotidienne, connexions simultanées et trafic hostile. Aucune charge de production n'est autorisée ou exécutée par cette reprise.
 
 **Quels points empêchent encore de conclure ?** La revue finale, les bancs et essais sur cible, l'application effective des migrations, les preuves de livraison et de récupération, ainsi que les constats non couverts par les lots. L'absence de faille trouvée ne constitue jamais une garantie absolue.
+
+Le test réel de co-organisation conservait une ancienne attribution directe désormais refusée. Il a été aligné sur la suspension actuelle : absence de rôle et refus d’édition pour l’autre compte, édition par l’organisateur et parcours RSVP préservés. Aucun parcours d’invitation n’est annoncé comme livré par ce lot.
