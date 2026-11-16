@@ -45,7 +45,9 @@ insert into public.conv_messages(id,conv_id,from_id,content) values('race_a','g'
 reset role;
 do \$\$ declare attend boolean:=false; begin
  for i in 1..200 loop
-  if exists(select 1 from pg_stat_activity where application_name='budget_b' and wait_event_type='Lock') then attend:=true;exit;end if;
+  perform pg_stat_clear_snapshot();
+  if exists(select 1 from pg_stat_activity where application_name='budget_b'
+    and wait_event_type='Lock' and pg_backend_pid() = any(pg_blocking_pids(pid))) then attend:=true;exit;end if;
   perform pg_sleep(0.02);
  end loop;
  if not attend then raise exception 'pas de contention observee';end if;
@@ -79,7 +81,9 @@ set application_name='fenetre_a';set statement_timeout='8s';begin;
 select 1 from passio_realtime_budget.compteurs where compte='$AUID' and fenetre=1 for update;
 do \$\$ declare attend boolean:=false; begin
  for i in 1..200 loop
-  if exists(select 1 from pg_stat_activity where application_name='fenetre_b' and wait_event_type='Lock') then attend:=true;exit;end if;
+  perform pg_stat_clear_snapshot();
+  if exists(select 1 from pg_stat_activity where application_name='fenetre_b'
+    and wait_event_type='Lock' and pg_backend_pid() = any(pg_blocking_pids(pid))) then attend:=true;exit;end if;
   perform pg_sleep(0.02);
  end loop;
  if not attend then raise exception 'pas de contention fenetre';end if;
