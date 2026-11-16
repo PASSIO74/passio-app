@@ -318,7 +318,7 @@ export async function executer(options) {
   }
   async function fil(compte, page) {
     const jwt = compte.jwt;
-    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
+    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
     const ids = posts.map(p => p.id);
     const compteurs = await rest("fil_compteurs", "rpc/fil_compteurs", {}, { jwt, methode: "POST", corps: { _post_ids: ids },
       attentes: attendreTableau(ids.length, ["post_id", "likes", "aime", "commentaires", "apercus", "reactions"]) });

@@ -515,6 +515,26 @@ test("le vrai parcours fil utilise le RPC du client courant, sans anciennes list
   assert.match(client, /comment_interactions"\)\.select\("id,comment_id,post_id,user_id,kind,payload,created_at"\)/);
 });
 
+test("le tri du banc suit les appels du vrai chargeur UI, y compris le départage des horodatages égaux", async () => {
+  const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
+  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(cols)", chargeur);
+  const fin = client.indexOf("let { data, error, status } = await _interroger", debut);
+  assert.ok(chargeur >= 0 && debut > chargeur && fin > debut, "extraire la requête du chargeur produit, pas une copie de son ordre");
+  const ordres = [];
+  const requete = {
+    select() { return this; },
+    order(colonne, options) { ordres.push(`${colonne}.${options.ascending ? "asc" : "desc"}`); return this; },
+    range() { return { data: [], error: null }; },
+  };
+  await runInNewContext(client.slice(debut, fin) + '\n_interroger("id");', {
+    supa: { from: table => { assert.equal(table, "posts"); return requete; } },
+    authorId: null, options: {}, offset: 0, pageSize: 20,
+  });
+  assert.ok(ordres.length >= 2, "la date seule ne départage pas les créations simultanées");
+  const { etat, lire } = filSimule(); await lire();
+  assert.equal(etat.appels.find(a => a.nom === "fil_posts").params.order, ordres.join(","));
+});
+
 test("vingt nouveaux posts sans commentaire sont valides, sans profiles in.() ni requête superflue", async () => {
   const { etat, lire } = filSimule();
   etat.posts = etat.posts.map((p, i) => ({ ...p, id: `nouveau_${i}` })); etat.commentaires = [];
