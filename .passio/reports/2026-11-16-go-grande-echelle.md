@@ -1,6 +1,6 @@
 # Préparation du GO grande échelle — 16 novembre 2026
 
-État initial : **GO non établi**. Mandat en cours, critères dans `docs/GO_GRANDE_ECHELLE_2026-11-16.md`. Baseline GitHub `627b6d4c71cf8aaea2c9da275d6dceeec866f6ff`, branche `test/go-grande-echelle-2026-11-16`.
+État actuel : **GO grande échelle non établi**. Mandat en cours, critères dans `docs/GO_GRANDE_ECHELLE_2026-11-16.md`. Baseline initiale GitHub `627b6d4c71cf8aaea2c9da275d6dceeec866f6ff` ; état livré vérifié `4bfb7974dffd14bf3b826321bf11939a85093a40` après PR953 et954. Les mesures nouvelles ne clôturent pas les autres préalables du lancement.
 
 ## Preuves reprises et portée
 
@@ -45,4 +45,24 @@ Le contrôle du workflow de déploiement a été disponible sur les 44 observati
 
 Les paliers portent sur un petit corpus fonctionnel ; ils ne sont pas une charge combinée avec les 100 000 profils du banc SQL local. Commentaires écrits, RSVP, reconnexion, endurance, débit média et réception SMTP restent à éprouver séparément. Les deux paliers verts ne constituent pas un GO grande échelle.
 
-Les lots de confidentialité et de récupération restent en préparation et en contre-revue. Aucun correctif ni changement de configuration n’a encore été déployé en production dans ce nouveau chantier. Le compte autorisé reste réservé à la recette ; aucun compte extérieur aux campagnes n’est concerné par leur nettoyage. Le **GO reste à établir** après corrections, recettes, charge et livraison vérifiée.
+## Répétition unique à cent acteurs avec diagnostic
+
+La seule répétition diagnostique prévue a été exécutée sur staging : cent acteurs pendant 60 secondes, page de vingt publications, source du banc `bb101310bf9a5bebf5db6b4b3e374ceccf6ef35f`, fichiers du banc identiques à ceux du main courant. Main est resté stable à `4bfb7974…`. La fenêtre mesurée dure 60 271 ms.
+
+| Acteurs | HTTP mesurés | Erreurs HTTP | P50 / P95 / P99 (ms) | Verdict du scénario |
+|---:|---:|---:|---:|---|
+| 100 | 3 046 | 0 | 79 / 137 / 249 | Vert sur cette répétition |
+
+Trente observations base et 62 du générateur couvrent cette fenêtre. Les maxima observés sont quatorze connexions clientes PostgreSQL, dont deux actives ; aucune attente IO/Lock/LWLock n’a été échantillonnée. Les temps d’I/O ne sont **pas mesurés**, car `track_io_timing=false`. Côté générateur : retard de boucle maximal 45,38 ms, CPU maximal 26,60 % d’un processus et mémoire résidente maximale 207 790 080 octets. Les 39 observations CI espacées de trente secondes sont disponibles sans chevauchement observé ; elles ne constituent pas un verrou d’exclusivité absolu.
+
+Le pic rouge de la première campagne n’a pas été reproduit. Sa cause n’est pas expliquée par ce résultat vert et aucun correctif de performance n’est revendiqué. Il n’y a eu ni palier à 200, ni augmentation de seuil pour valider. Les limites du scénario restent celles décrites plus haut : petit corpus, pas de charge combinée à 100 000 profils, pas de média, SMTP, commentaires écrits, RSVP, reconnexion ou endurance. Ce résultat ne certifie aucune capacité au-delà du scénario mesuré.
+
+Le nettoyage s’est terminé sans erreur. Une vérification indépendante en lecture seule à 21:57:25 UTC relève vingt-et-une catégories de données à zéro et un marqueur technique anti-réutilisation attendu ; aucun compte hors périmètre n’a été supprimé. Les preuves privées restent hors Git : manifeste final SHA-256 `273a4afb2f2dec464778cbea6dfc4384e45e77ed056ce507bd02b857c96f79f0`, diagnostic `4b0a20047bc26411b39c39960a47bdbb0fcc19c17c18c62bf4d1b22335b78d96`, contrôle des résidus `e19d874d00843c8e9b3e7a74ca95263b48bc8f4b633d591f6acfdc97d11c002f`.
+
+## Budget et livraisons constatées
+
+Benjamin a confirmé : **conserver l’existant, 0 € de nouvelle dépense**. Production et staging sont déjà sur Supabase Pro ; l’équipe Netlify est Free. Aucun abonnement n’a été changé ni projet payant jetable créé. Le modèle de facturation Netlify et les quotas encore disponibles doivent être attestés avant un dimensionnement commercial ; le forfait Free seul ne permet pas de calculer un plafond fiable. Aucune extrapolation de trafic ou de coût n’est faite à partir des octets applicatifs du banc.
+
+PR953 a livré les bancs de capacité ; PR954 a livré la projection des entrées non fiables des mandats d’agents et le refus de réparation sans reproduction indépendante. Les contre-revues, CI et fusions spécifiquement autorisées sont terminées. La CI après main `43954123575` est entièrement verte et le fichier release public porte le commit `4bfb7974…`. Cela ne prouve pas que le processus local du Centre de pilotage déjà ouvert a été redémarré ; il reste sous le contrôle de son propriétaire.
+
+Les lots médias privés, dépendances de livraison et récupération demeurent en préparation ou validation. Restent notamment : cycle de restauration isolé avec Auth et blobs réellement éprouvé, couverture des nouveaux registres dans l’export, conversion/retrait des anciens médias publics et recettes fournisseur/iOS. Aucun réglage média n’a été activé et aucune nouvelle migration média n’a été appliquée. Le compte autorisé reste réservé à la recette. Le **GO reste à établir** après ces corrections, recettes et livraisons vérifiées.
