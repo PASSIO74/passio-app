@@ -419,6 +419,10 @@ function verifier(dossier) {
   if (man.schemas_prives && man.projet !== `https://${man.schemas_prives.projet}.supabase.co`) {
     console.error("  ✗ Les projets public et privé du manifeste divergent"); pb++;
   }
+  if ((man.schemas_prives?.schemas?.rencontres_prive?.present || man.schemas_prives?.schemas?.passio_realtime_budget?.present)
+    && !/^[0-9a-f]{64}$/.test(man.schema_sha256 || "")) {
+    console.error("  ✗ Empreinte DDL requise pour les schémas privés"); pb++;
+  }
   // ASTRA-45 : « complète » exige un inventaire des propriétaires qui couvre chaque objet.
   let proprietairesComplets = true;
   for (const [t, info] of Object.entries(man.tables)) {

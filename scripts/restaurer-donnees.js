@@ -82,6 +82,17 @@ const TABLES_VOULUES = (() => { const v = arg("--tables"); return v ? new Set(v.
 const tablesRetenues = (noms) => TABLES_VOULUES ? noms.filter((t) => TABLES_VOULUES.has(t)) : noms;
 const sansComptes = () => drapeau("--sans-comptes") || !!TABLES_VOULUES;
 const sansMedias = () => drapeau("--sans-medias") || !!TABLES_VOULUES;
+const portePrive = (man) => !!(man?.schemas_prives?.schemas?.rencontres_prive?.present || man?.schemas_prives?.schemas?.passio_realtime_budget?.present);
+function exigerPortee(ctx) {
+  if (TABLES_VOULUES && portePrive(ctx.man)) throw new Error("Mode --tables refusé pour une archive portant des schémas privés : aucune autorisation privée ni compteur ne sera importé ; préparer une archive de référentiels dédiée");
+}
+function verifierDdlPrive(ctx, fichier) {
+  if (!portePrive(ctx.man)) return;
+  const attendu = ctx.man.schema_sha256;
+  if (!/^[0-9a-f]{64}$/.test(attendu || "")) throw new Error("Empreinte DDL requise pour une archive portant des schémas privés");
+  const ddl = fs.readFileSync(fichier, "utf8").replace(/\r\n/g, "\n");
+  if (crypto.createHash("sha256").update(ddl).digest("hex") !== attendu) throw new Error("Empreinte DDL différente du manifeste privé : restauration refusée avant mutation");
+}
 
 function lireJeton() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN.trim();
@@ -230,6 +241,8 @@ function validerArchive(ctx) {
   const bloquants = [], nonVerifiables = [];
   const b = bilan(ctx);
   if (!ctx.man || typeof ctx.man !== "object") return { ok: false, bloquants: ["manifeste absent ou illisible"], indetermine: false };
+  try { exigerPortee(ctx); verifierDdlPrive(ctx, path.join(ctx.archive, "schema.sql")); }
+  catch (e) { bloquants.push(e.message); }
   const prive = PR.valider(ctx.archive, ctx.man.schemas_prives);
   bloquants.push(...prive.erreurs);
   b.notes.push(...prive.notes);
@@ -273,6 +286,7 @@ async function tablesCible(ctx) {
 }
 
 async function schema(ctx) {
+  exigerPortee(ctx);
   const attendues = Object.keys(ctx.man.tables);
   let presentes = await tablesCible(ctx);
   let manquantes = attendues.filter((t) => !presentes.has(t));
@@ -288,6 +302,7 @@ async function schema(ctx) {
   manquantes.push(...priveesManquantes());
   const fichier = arg("--schema");
   if (manquantes.length && fichier) {
+    verifierDdlPrive(ctx, fichier);
     const ddl = fs.readFileSync(fichier, "utf8");
     const corps = ddl.replace(/--[^\n]*/g, "").trim().toLowerCase();
     if (!corps.startsWith("begin;") || !corps.endsWith("commit;")) echec("--schema doit être UNE transaction (`begin; … commit;`).");
@@ -1006,6 +1021,7 @@ if (require.main === module) (async () => {
   // en Node 20 (contre-revue finale, 2026-11-04).
   if (typeof JSON.rawJSON !== "function") echec(`Node ${process.versions.node} : la reprise exige Node 21 ou plus récent (JSON.rawJSON, lecture exacte des nombres). Rien n'a été lu ni écrit.`);
   const ctx = await contexte();
+  exigerPortee(ctx);
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }
   // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et

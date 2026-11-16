@@ -218,6 +218,8 @@ test("archive privée : le vrai vérificateur refuse un fichier manquant et un m
   man.projet = "https://abcdefghijabcdefghij.supabase.co"; man.schemas_prives = prive;
   fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
   fs.appendFileSync(path.join(d, "schema.sql"), "\n" + noms.map((n) => `create table rencontres_prive.${n}(id text);`).join("\n") + "\ncreate table passio_realtime_budget.compteurs(compte text);");
+  man.schema_sha256 = createHash("sha256").update(fs.readFileSync(path.join(d, "schema.sql"), "utf8")).digest("hex");
+  fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
   fs.mkdirSync(path.join(d, "_prive", "rencontres_prive"), { recursive: true });
   for (const n of noms) fs.writeFileSync(path.join(d, "_prive", "rencontres_prive", n + ".ndjson"), "");
   assert.equal(verifier(d).code, 0);

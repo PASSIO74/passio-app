@@ -72,13 +72,14 @@ async function inventaire(lire) {
   return i;
 }
 
-async function page(lire, nom, offset) {
+async function page(lire, nom, curseur) {
   const t = tableSql(nom), ordre = TABLES[nom].map(ident).join(",");
+  const suite = curseur ? `where ROW(${ordre}) > ROW(${curseur.map((_, i) => "$" + (i + 2)).join(",")})` : "";
   const r = await lire(`select current_setting('transaction_read_only') = 'on' as lecture_seule,
     has_table_privilege(current_user,'${t}','SELECT') and not row_security_active('${t}'::regclass) as lisible,
     (select count(*)::text from ${t}) as total,
     coalesce((select json_agg(row_to_json(p)::text) from
-      (select * from ${t} order by ${ordre} limit $1 offset $2) p),'[]'::json) as lignes`, [PAGE, offset]);
+      (select * from ${t} ${suite} order by ${ordre} limit $1) p),'[]'::json) as lignes`, [PAGE, ...(curseur || [])]);
   const total = Number(r.total);
   if (r.lisible !== true || !Number.isSafeInteger(total) || total < 0 || !Array.isArray(r.lignes)
     || r.lignes.length > PAGE || r.lignes.some((l) => typeof l !== "string")) throw new Error(`Lecture intégrale non prouvée : ${SCHEMA}.${nom}`);
@@ -86,14 +87,19 @@ async function page(lire, nom, offset) {
 }
 
 async function lignes(lire, nom) {
-  const out = []; let total = null;
-  for (let offset = 0; ; offset += PAGE) {
-    const p = await page(lire, nom, offset);
+  const out = []; let total = null, curseur = null;
+  for (;;) {
+    const p = await page(lire, nom, curseur);
     if (total === null) total = p.total;
     if (p.total !== total || out.length + p.lignes.length > total) throw new Error(`Comptage privé instable : ${nom}`);
     out.push(...p.lignes);
     if (out.length === total) return out;
     if (p.lignes.length === 0) throw new Error(`Pagination privée incomplète : ${nom}`);
+    let derniere;
+    try { derniere = JSON.parse(p.lignes.at(-1)); } catch { throw new Error(`Curseur privé illisible : ${nom}`); }
+    const suivant = TABLES[nom].map((k) => derniere[k]);
+    if (suivant.some((v) => typeof v !== "string") || JSON.stringify(suivant) === JSON.stringify(curseur)) throw new Error(`Curseur privé sans progression : ${nom}`);
+    curseur = suivant;
   }
 }
 
