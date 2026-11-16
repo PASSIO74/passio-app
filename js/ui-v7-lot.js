@@ -687,19 +687,8 @@
   }
 
   function envoyerCouverture(dataUrl) {
-    if (!dataUrl || String(dataUrl).indexOf("data:") !== 0) {
-      return Promise.resolve(dataUrl || null);
-    }
-    if (typeof supaUploadMedia !== "function" || !window._supaReal) {
-      return Promise.resolve(dataUrl);
-    }
-    var cle = "reelcover_" + Date.now();
-    return Promise.race([
-      supaUploadMedia(cle, "photos", dataUrl, "image", { legere: true }),
-      new Promise(function (r) { setTimeout(function () { r(null); }, 20000); }),
-    ]).then(function (u) {
-      return (u && String(u).indexOf("http") === 0) ? u : dataUrl;
-    }).catch(function () { return dataUrl; });
+    // La couverture reste locale jusqu'au vrai parent et a sa reservation de variantes.
+    return Promise.resolve(dataUrl||null);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

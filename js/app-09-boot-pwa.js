@@ -2420,3 +2420,6 @@ function calerConvSurClavier() {
   document.addEventListener("focusin", function () { setTimeout(calerConvSurClavier, 0); });
   document.addEventListener("focusout", function () { setTimeout(calerConvSurClavier, 0); });
 })();
+
+// Le pont de médias ne contacte aucun backend à l'installation ; auth seulement par requête.
+passioMediaProteges.installer();
