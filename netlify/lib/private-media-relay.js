@@ -54,8 +54,15 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
     const range=request.headers.get('Range');
     if (range !== null && (cap || !validRange(range))) return empty(416);
     if (request.signal.aborted) return empty(408);
-    const abort=new AbortController(); let upstream, reader;
-    function stop() { abort.abort(); if(reader) void reader.cancel().catch(()=>{}); }
+    const abort=new AbortController(); let upstream, reader, downstreamController, downstreamOpen=false;
+    function stop() {
+      abort.abort();
+      // Une réponse peut déjà avoir un chunk en file et ne plus appeler pull.
+      // L'erreur aval retire aussi ce chunk immédiatement après annulation.
+      if(downstreamOpen) {downstreamOpen=false;downstreamController.error(new Error('media_unavailable'));}
+      if(reader) void reader.cancel().catch(()=>{});
+      cleanup();
+    }
     const timer=setTimeout(stop,deadlineMs); timer.unref?.();
     const headersTimer=setTimeout(stop,headersDeadlineMs); headersTimer.unref?.();
     request.signal.addEventListener('abort',stop,{once:true});
@@ -88,16 +95,17 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
       if(!upstream.body) { cleanup(); return empty(502); }
       reader=upstream.body.getReader(); let received=0;
       const body=new ReadableStream({
+        start(controller) {downstreamController=controller;downstreamOpen=true;},
         async pull(controller) {
           try {
             const part=await reader.read();
             if(abort.signal.aborted) throw new Error('relay_abort');
-            if(part.done) { if(received!==size.n) throw new Error('relay_length'); cleanup(); controller.close(); return; }
+            if(part.done) { if(received!==size.n) throw new Error('relay_length'); downstreamOpen=false;cleanup();controller.close();return; }
             if(!(part.value instanceof Uint8Array) || received+part.value.byteLength>size.n || received+part.value.byteLength>MAX_MEDIA_BYTES) throw new Error('relay_length');
             received+=part.value.byteLength; controller.enqueue(part.value);
-          } catch { stop(); cleanup(); controller.error(new Error('media_unavailable')); }
+          } catch { stop(); }
         },
-        cancel() { stop(); cleanup(); },
+        cancel() {downstreamOpen=false;stop();},
       });
       clearTimeout(headersTimer);
       return new Response(body,{status:upstream.status,headers:responseHeaders});

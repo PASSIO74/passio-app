@@ -80,6 +80,13 @@ test('annulation lecteur et requête interrompent aussi le fetch et le lecteur a
     assert.equal(signal.aborted,true);assert.equal(cancelled,1);
   }
 });
+test('annuler vide immédiatement un chunk déjà en file, même sans nouveau pull du consommateur',async()=>{
+  const ctrl=new AbortController();let cancelled=0;
+  const upstream=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('abc'));},cancel(){cancelled++;}});
+  const r=await createPrivateMediaRelay({target,fetchImpl:async()=>media(upstream)})(req('',{signal:ctrl.signal}));
+  await new Promise(setImmediate);ctrl.abort();
+  await assert.rejects(r.body.getReader().read(),/media_unavailable/);assert.equal(cancelled,1);
+});
 test('cible absente ou hors liste ferme le relais avant réseau',async()=>{
   for(const value of [null,{url:'https://evil.test',anon:'x'}]) assert.equal((await createPrivateMediaRelay({target:value,fetchImpl:()=>assert.fail('NETWORK')})(req())).status,503);
 });
