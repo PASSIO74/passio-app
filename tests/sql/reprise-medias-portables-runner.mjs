@@ -9,13 +9,19 @@ import path from 'node:path';
 const require=createRequire(import.meta.url),R=require('../../scripts/restaurer-donnees.js'),{ETAPES}=require('../../scripts/schema-executable.js');
 const args=process.argv.slice(2),arg=n=>{const i=args.indexOf(n);return i<0?null:args[i+1];};
 const client=arg('--psql'),passwordFile=arg('--password-file'),output=arg('--output');
+const dataDirectory=arg('--data-directory'),clusterMarker=arg('--cluster-marker');
 const database='passio_urls_go_20261116',port='55472';
 if(!client||!path.isAbsolute(client)||!passwordFile||!path.isAbsolute(passwordFile)||!output||!path.isAbsolute(output))throw new Error('native_arguments_refused');
+if(process.env.GITHUB_ACTIONS==='true'&&(!dataDirectory||!clusterMarker||!process.versions.node.startsWith('22.')))throw new Error('native_ci_protocol_refused');
+if((dataDirectory||clusterMarker)&&(!path.isAbsolute(dataDirectory||'')||!path.isAbsolute(clusterMarker||'')
+  ||path.dirname(path.resolve(dataDirectory))!==path.dirname(path.resolve(clusterMarker))
+  ||path.basename(clusterMarker)!=='PASSIO_REPRISE_URLS_CI'
+  ||!/^PASSIO_REPRISE_URLS_CI_[0-9a-f-]{36}\n$/.test(readFileSync(clusterMarker,'utf8'))))throw new Error('native_cluster_marker_refused');
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^PG/i.test(k)));
 Object.assign(env,{PGPASSFILE:passwordFile,PGCONNECT_TIMEOUT:'5',PGCLIENTENCODING:'UTF8',PGTZ:'UTC'});
 const sha=x=>createHash('sha256').update(x).digest('hex'),lit=s=>"'"+s.replace(/'/g,"''")+"'";
 const marker='PASSIO URL recovery synthetic '+randomUUID(),checks=[];
-const report={kind:'native-local-synthetic-url-recovery',database,management_http_doubled:true,storage_http_tested:false,auth_http_tested:false,checks};
+const report={kind:'native-local-synthetic-url-recovery',database,node_version:process.versions.node,cluster_directory_checked:false,management_http_doubled:true,storage_http_tested:false,auth_http_tested:false,checks};
 let created=false;
 const archive=mkdtempSync(path.join(tmpdir(),'passio-reprise-urls-native-'));
 const psql=(query,db=database)=>{
@@ -29,6 +35,11 @@ const lire=q=>JSON.parse(lireTexte(q));
 const check=(categorie,ok)=>{checks.push({categorie,ok:!!ok});if(!ok)throw new Error('native_check_failed_'+categorie);};
 const originalFetch=globalThis.fetch;
 try {
+  if(dataDirectory&&path.resolve(psql('show data_directory;','postgres'))!==path.resolve(dataDirectory))throw new Error('native_cluster_directory_mismatch');
+  report.cluster_directory_checked=!!dataDirectory;
+  const version=Number(psql('show server_version_num;','postgres'));
+  if(![17,18].includes(Math.floor(version/10000)))throw new Error('native_postgres_major_refused');
+  report.postgres_version_num=version;
   check('cible_initialement_absente',psql('select count(*) from pg_database where datname='+lit(database)+';','postgres')==='0');
   psql('create database '+database+';','postgres');created=true;
   psql('comment on database '+database+' is '+lit(marker)+';','postgres');
@@ -103,6 +114,7 @@ finally {
     psql('drop database '+database+';','postgres');
     report.nettoyage_absence=psql('select count(*) from pg_database where datname='+lit(database)+';','postgres')==='0';
   }catch(e){report.nettoyage_absence=false;report.erreur_nettoyage=e.message;process.exitCode=1;}
+  if(path.dirname(path.resolve(archive))!==path.resolve(tmpdir())||!path.basename(archive).startsWith('passio-reprise-urls-native-'))throw new Error('native_temp_cleanup_target_refused');
   rmSync(archive,{recursive:true,force:true});
   report.ok=report.ok&&report.nettoyage_absence===true;
   writeFileSync(output,JSON.stringify(report,null,2)+'\n');
