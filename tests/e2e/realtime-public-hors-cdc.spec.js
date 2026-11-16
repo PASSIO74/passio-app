@@ -403,6 +403,8 @@ test("⑭ le filet des lives relit tout de suite au retour, et un tour EN VOL ne
   await figer(page);
   await page.evaluate(() => {
     window.__vlive = 0; window.__vliveEnVol = null;
+    window._videoLives = [];
+    window.delestageFacteur = () => 1;
     window.supaRefreshVideoLives = () => { window.__vlive++; return new Promise((res) => { window.__vliveEnVol = res; }); };
     vliveFiletReveiller(true);
   });
@@ -411,10 +413,16 @@ test("⑭ le filet des lives relit tout de suite au retour, et un tour EN VOL ne
   await page.evaluate(() => { vliveFiletReveiller(true); vliveFiletReveiller(true); });
   await page.clock.fastForward(10);
   expect(await page.evaluate(() => window.__vlive), "un tour en vol : aucun second tour").toBe(1);
-  await page.evaluate(() => { window.__vliveEnVol(false); });
-  await page.evaluate(() => Promise.resolve());
-  await page.clock.fastForward(61000);
-  expect(await page.evaluate(() => window.__vlive), "une seule chaîne : un tour par pas").toBe(2);
+  await page.evaluate(async () => { window.__vliveEnVol(false); await Promise.resolve(); await Promise.resolve(); });
+  // Deux lectures sans live reculent à 90 s (lot capacité du 15/11), au lieu
+  // d'épingler le seul chemin à 60 s. L'horloge et le délestage sont fixés :
+  // on éprouve la borne exacte, puis l'absence de seconde chaîne en vol.
+  await page.clock.runFor(89999);
+  expect(await page.evaluate(() => window.__vlive), "le tour calme ne repart pas avant 90 s").toBe(1);
+  await page.clock.runFor(1);
+  expect(await page.evaluate(() => window.__vlive), "une seule chaîne : un tour au pas de 90 s").toBe(2);
+  await page.clock.runFor(180000);
+  expect(await page.evaluate(() => window.__vlive), "le second tour en vol ne réarme aucune autre chaîne").toBe(2);
 });
 
 test("⑮ à la SOURCE : aucun gestionnaire n'interroge `profiles` ; la coalescence des lives et le tri des profils sont partis", () => {
