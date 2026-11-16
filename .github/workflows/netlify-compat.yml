@@ -1,0 +1,50 @@
+name: Compatibilité des dépendances Netlify CLI
+
+on:
+  pull_request:
+    paths:
+      - '.github/netlify-cli/**'
+      - '.github/workflows/netlify-compat.yml'
+      - 'tests/integration/outils-netlify-compat.test.mjs'
+      - 'tests/unit/outils-ci-figes.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/netlify-cli/**'
+      - '.github/workflows/netlify-compat.yml'
+      - 'tests/integration/outils-netlify-compat.test.mjs'
+      - 'tests/unit/outils-ci-figes.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  compatibilite:
+    name: Compatibilité Netlify CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Lire la branche, sans conserver le jeton Git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Installer Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Installer uniquement le lockfile de la CLI, sans scripts
+        run: npm ci --prefix .github/netlify-cli --ignore-scripts --no-audit --no-fund
+      - name: Audit du registre, JSON valide et aucun avis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --prefix .github/netlify-cli --json > "$RUNNER_TEMP/netlify-audit.json"
+          node -e 'const fs=require("node:fs"),path=require("node:path"),assert=require("node:assert/strict");const j=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,"netlify-audit.json"),"utf8"));assert.equal(j.error,undefined);assert.ok(j.metadata&&j.metadata.vulnerabilities);assert.equal(j.metadata.vulnerabilities.total,0);assert.deepEqual(Object.keys(j.vulnerabilities||{}),[]);console.log("AUDIT_NETLIFY_SANS_AVIS");'
+      - name: Callers réels et fixtures synthétiques, réseau interdit
+        run: node --test tests/integration/outils-netlify-compat.test.mjs

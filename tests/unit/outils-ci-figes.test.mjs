@@ -76,6 +76,13 @@ const reel = () => ({
 const REGISTRE = "https://registry.npmjs.org/";
 const EXACTE = /^\d+\.\d+\.\d+$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
+// Exceptions de sécurité bornées aux deux sources vulnérables ; les autres copies
+// déjà corrigées ne doivent pas être abaissées par un override global.
+const OVERRIDES_NETLIFY = { "minimatch@10.2.6": "11.0.1", "glob@13.0.7": "14.0.2" };
+const PORTEE_OVERRIDES = {
+  "minimatch@10.2.6": { nom: "minimatch", saine: "11.0.5" },
+  "glob@13.0.7": { nom: "glob", saine: "14.0.4" },
+};
 // Les binaires que le runner (Linux x64) exécute : sans eux dans le lockfile, `npm ci` n'installerait rien
 // pour cette plateforme, et l'outil irait chercher son binaire ailleurs (le repli d'esbuild télécharge).
 const BINAIRES_LINUX = ["@esbuild/linux-x64", "@img/sharp-linux-x64", "@img/sharp-libvips-linux-x64", "@netlify/local-functions-proxy-linux-x64"];
@@ -111,9 +118,12 @@ function auditerLockfile(nom, pkgTexte, lockTexte, epingles = []) {
   // paquet forcé porte la version forcée. Un overrides RETIRÉ passe sans bruit, sans effet sur l'arbre installé.
   for (const [p, v] of Object.entries(pkg.overrides || {})) {
     if (typeof v !== "string") continue;
-    const copies = Object.entries(paquets).filter(([cle]) => cle && nomDeCle(cle) === p);
+    const portee = PORTEE_OVERRIDES[p];
+    if (portee && v !== OVERRIDES_NETLIFY[p]) d.push(`${nom} : l'overrides ${p} sort de la version éprouvée ${OVERRIDES_NETLIFY[p]}`);
+    const copies = Object.entries(paquets).filter(([cle]) => cle && nomDeCle(cle) === (portee?.nom || p));
     if (!copies.length) d.push(`${nom} : l'overrides force ${p}@${v}, que le lockfile n'installe nulle part`);
-    for (const [cle, e] of copies) if (e.version !== v) d.push(`${nom} : l'overrides force ${p}@${v}, le lockfile installe ${cle}@${e.version}`);
+    if (portee && !copies.some(([, e]) => e.version === v)) d.push(`${nom} : l'overrides force ${p}@${v}, sans copie corrigée dans le lockfile`);
+    for (const [cle, e] of copies) if (e.version !== v && (!portee || e.version !== portee.saine)) d.push(`${nom} : l'overrides force ${p}@${v}, le lockfile installe ${cle}@${e.version}`);
   }
   for (const [p, champ] of epingles) {
     const v = (pkg[champ] || {})[p];
@@ -337,11 +347,32 @@ test("① les trois lockfiles que la CI installe : archives canoniques du regist
   // Ce que le lockfile de netlify-cli fige, et que la production installe depuis le 2026-11-14.
   const lock = JSON.parse(reel().netlifyLock);
   assert.equal(lock.packages["node_modules/netlify-cli"].version, JSON.parse(reel().netlifyPkg).dependencies["netlify-cli"]);
-  // Régénéré le 2026-11-15 (--before=2026-11-08T00:00:00Z) pour netlify-cli 27.16.2 : plus d'overrides, plus d'avis « high ».
+  // La CLI et les parents restent éprouvés ; deux substitutions ciblées sont
+  // couvertes par le banc réel tests/integration/outils-netlify-compat.test.mjs.
   assert.equal(lock.packages["node_modules/@netlify/build"].version, "37.7.6", "l'arbre régénéré le 2026-11-15");
-  assert.equal(JSON.parse(reel().netlifyPkg).overrides, undefined, "l'overrides du 9/09 est retiré (netlify-cli 27.16.2 exige @netlify/build ^37.7.2)");
+  assert.deepEqual(JSON.parse(reel().netlifyPkg).overrides, OVERRIDES_NETLIFY, "seules les deux substitutions de sécurité éprouvées sont permises");
   // Le seul paquet du contrôle Realtime pris dans node_modules est celui que la racine épingle.
   assert.match(lire("scripts/controle-realtime.mjs"), /from "@supabase\/supabase-js"/);
+});
+
+test("compatibilité CLI : matrice Ubuntu/Windows Node22, sans secrets ni déploiement", () => {
+  const texte = lire(".github/workflows/netlify-compat.yml"), doc = parse(texte);
+  assert.deepEqual(doc.permissions, { contents: "read" });
+  assert.doesNotMatch(texte, /secrets[.\[]|pull_request_target|workflow_dispatch/);
+  const job = doc.jobs.compatibilite;
+  assert.deepEqual(job.strategy.matrix.os, ["ubuntu-latest", "windows-latest"]);
+  assert.equal(String(job["timeout-minutes"]), "15");
+  const checkout = job.steps.find(s => String(s.uses).startsWith("actions/checkout@"));
+  assert.equal(String(checkout.with["persist-credentials"]), "false");
+  assert.match(checkout.uses, /@[a-f0-9]{40}$/);
+  const node = job.steps.find(s => String(s.uses).startsWith("actions/setup-node@"));
+  assert.equal(String(node.with["node-version"]), "22"); assert.match(node.uses, /@[a-f0-9]{40}$/);
+  const commandes = job.steps.filter(s => s.run).map(s => s.run).join("\n");
+  assert.match(commandes, /npm ci --prefix \.github\/netlify-cli --ignore-scripts --no-audit --no-fund/);
+  assert.match(commandes, /npm audit --prefix \.github\/netlify-cli --json/);
+  assert.match(commandes, /assert\.equal\(j\.metadata\.vulnerabilities\.total,0\)/);
+  assert.match(commandes, /node --test tests\/integration\/outils-netlify-compat\.test\.mjs/);
+  assert.doesNotMatch(commandes, /netlify deploy|--prod\b|npx |npm install/);
 });
 
 test("② deploy.yml : netlify-cli par npm ci --ignore-scripts, Deno par version et empreinte, mêmes blocs dans deploy et preview, avant l'envoi", () => {
@@ -687,6 +718,8 @@ const MUTATIONS = [
   { nom: "un binaire Linux retiré du lockfile", muter: (f) => avecLock(f, (l) => delete l.packages["node_modules/@esbuild/linux-x64"]), attendu: /@esbuild\/linux-x64 absent/ },
   { nom: "netlify-cli en plage (^27.16.2)", muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.16.2"', '"netlify-cli": "^27.16.2"') }), attendu: /version exacte/ },
   { nom: "le lockfile installe une autre version de la CLI", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/netlify-cli"].version = "27.1.3")), attendu: /installe netlify-cli@27\.1\.3/ },
+  { nom: "retour du minimatch vulnérable malgré la substitution ciblée", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/minimatch"].version = "10.2.6")), attendu: /l'overrides force minimatch@10\.2\.6@11\.0\.1/ },
+  { nom: "retour du glob vulnérable sous nft malgré la substitution ciblée", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/@vercel/nft/node_modules/glob"].version = "13.0.7")), attendu: /l'overrides force glob@13\.0\.7@14\.0\.2/ },
   {
     nom: "une archive servie hors du registre npm",
     muter: (f) => avecLock(f, (l) => (l.packages[premiereCle(l)].resolved = "https://registre.example.com/paquet-1.0.0.tgz")),

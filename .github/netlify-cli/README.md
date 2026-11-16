@@ -7,7 +7,7 @@ Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jet
 
 - **netlify-cli et ses dépendances.** `package.json` et `package-lock.json` de ce dossier sont copiés
   dans `$RUNNER_TEMP/netlify-cli`, puis installés par `npm ci --ignore-scripts`. L'arbre entier est
-  figé : 1 011 entrées, dont environ 950 installées sur le runner Linux. `npm ci` vérifie chaque
+  figé : 1 010 entrées après le correctif du 16/11, dont environ 950 installées suivant la plateforme. `npm ci` vérifie chaque
   archive par son empreinte sha512.
 - **Deno.** L'étape « Installer Deno » de `deploy.yml` prend l'archive d'une version exacte dans la
   release GitHub de `denoland/deno`, vérifie son empreinte sha256, puis pose Deno sur le PATH :
@@ -160,7 +160,75 @@ et `/media/*` ne passe plus par le cache.
   étaient déjà dans l'installation flottante ; le figeage les a rendus visibles.
 - **2026-11-15, netlify-cli 27.16.2** : 18 avis, 2 faibles, 16 modérés, **aucun élevé**, aucun critique.
   Les modérés restants (`minimatch`, `glob`, `deepmerge`… sous `@netlify/build` et
-  `zip-it-and-ship-it`) sont aussi dans l'arbre de 27.19.0, la dernière publiée : aucune 27.x ne les corrige.
+  `zip-it-and-ship-it`) étaient aussi dans l'arbre de 27.19.0, dernière version publiée lors de cette mesure.
+
+### Correctif ciblé du 2026-11-16
+
+La reproduction du lockfile initial retrouve **13 avis modérés agrégés**, aucun élevé ou critique :
+`minimatch@10.2.6` et `glob@13.0.7` sous `@vercel/nft@1.3.1`, ainsi que leurs parents.
+Les [avis minimatch](https://github.com/advisories/GHSA-g3hv-75wg-m249) et
+[glob](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) désignent respectivement 11.0.1 et 14.0.2
+comme versions corrigées. L'[avis deepmerge](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)
+a été **retiré le 16/11**, sans version corrigée ; sa disparition du nouvel audit ne constitue pas un patch.
+
+Une montée de CLI seule ne résout pas ces avis : [27.20.0](https://github.com/netlify/cli/releases/tag/v27.20.0),
+publiée le 16/11 à 18:57 UTC et vérifiée aussi sur npm, conserve `@netlify/build ^37.7.6`,
+`@netlify/build-info ^11.3.1` et `@netlify/zip-it-and-ship-it ^16.6.0`. Ces versions demandent encore
+`minimatch ^10.2.4` ; zip épingle nft 1.3.1, qui demande `glob ^13.0.0`. Le downgrade CLI 15.4.1
+suggéré par npm audit n'est pas appliqué. La CLI éprouvée reste donc **27.16.2**.
+
+Les deux exceptions sont exactes et limitées aux versions sources vulnérables :
+
+| Sélecteur npm | Version substituée | Copies saines conservées |
+| --- | --- | --- |
+| `minimatch@10.2.6` | `11.0.1` | `11.0.5` sous glob 14.0.4 |
+| `glob@13.0.7` | `14.0.2` | glob `14.0.4` à la racine |
+
+Les deux versions corrigées ont été publiées le 27/10/2026 (minimatch à 22:26:03 UTC,
+glob à 22:07:00 UTC), dates relues sur le registre npm. Le nouvel audit JSON valide retourne
+**zéro avis** ; ce résultat ne désigne pas deepmerge comme corrigé.
+
+Régénération par npm 11.13.0, sans scripts ni secrets, avec un cutoff d'au moins sept jours :
+
+```sh
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before=2026-11-09T00:00:00Z
+npm ci --ignore-scripts --no-audit --no-fund
+```
+
+Ce sont des changements majeurs internes, pas une compatibilité déduite du numéro de version.
+Les changelogs [minimatch 11](https://github.com/isaacs/minimatch/blob/v11.0.0/changelog.md) et
+[glob 14](https://github.com/isaacs/node-glob/blob/v14.0.0/changelog.md) ont été relus : suppression
+de makeRe/AST/regexp et changement des Matchers, ignores absolus et chemins Windows notamment.
+Le banc `tests/integration/outils-netlify-compat.test.mjs` exige les dépendances réellement installées
+et échoue si elles manquent. Il ferme l'environnement et bloque le réseau avant les imports tiers.
+
+| Consommateur installé | Contrat vérifié sur données synthétiques |
+| --- | --- |
+| build 37.7.6 | fichiers à scanner, exclusions relatives/dotfiles, scan d'une valeur synthétique |
+| build-info 11.3.1 | découverte/exclusion de workspaces, globParts/pattern/negate |
+| zip 16.6.0 | normalisation des motifs, includedFiles/exclusions, liste des fichiers et archive nft réelle |
+| typescript-estree | vrai prédicat defaultProject extrait du module, dot:true, dépendance résolue réelle |
+| readdir-glob | événements match, ignore/skip, dot/nodir ; matchBase/nocase/noglobstar dans la matrice |
+| nft 1.3.1 | require dynamique et assets analysés sans exécution, glob absolu/ignore/node_modules/dot/mark/nodir |
+
+La matrice de motifs appelle ESM et CommonJS de chaque résolution. Le test d'annulation n'utilise que
+trois dossiers synthétiques ; aucun motif de déni de service n'est exécuté. Les APIs supprimées ne
+sont pas employées par les consommateurs recensés. Toute nouvelle copie ou nouveau consommateur
+fait réexaminer cette preuve ; ce banc ne prouve pas l'équivalence sur tous les motifs possibles.
+
+Commande depuis la racine : `node --test tests/integration/outils-netlify-compat.test.mjs`.
+Au poste Windows, le banc a été exécuté sous Node **22.23.5**, binaire officiel dont le SHA256
+a été comparé à SHASUMS256 avant exécution : **15 tests verts, aucun skip**. Sur la baseline,
+les comportements attendus passent et le contrôle des versions corrigées est rouge. `npm ci`
+réinstalle 947 paquets sur ce poste, sans scripts. Cela ne remplace pas la preuve sur Ubuntu.
+Le workflow `netlify-compat.yml` installe le lockfile sans scripts ni secrets et impose audit JSON
+sans avis puis ces vrais callers sur **Ubuntu et Windows, Node 22**. Il doit être vert avant fusion.
+
+**Limite Edge explicite :** edge-bundler reste 16.2.0 et accepte Deno 2.9.8 (`^2.4.2`). Le banc
+vérifie cette plage, mais n'a pas effectué de bundling Edge natif : aucun Deno local n'était disponible.
+Une plage inchangée ne prouve pas un paquet Edge servi. Avant déploiement, il reste à vérifier le
+regroupement avec le Deno figé et l'aperçu autorisé, sans retirer les verrous de téléchargement.
+La contre-revue indépendante et la gouvernance critique restent requises.
 
 **Une PR Dependabot de ce dossier ne se fusionne jamais telle quelle.**
 
