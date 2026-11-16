@@ -20,7 +20,7 @@
 //      le rôle `postgres` de l'API de gestion, TRIGGERS UTILISATEUR COUPÉS le
 //      temps du chargement (voir plus bas pourquoi c'est obligatoire) ;
 //   ④ les MÉDIAS (`_storage/<seau>/<chemin>`) par l'API Storage, chemins
-//      PRÉSERVÉS — les URL en base les référencent ;
+//      PRÉSERVÉS — les références typées sont projetées vers la cible ;
 //   ⑤ le VERDICT : chaque table recomptée sur la cible et confrontée au
 //      manifeste, comptes recomptés, objets Storage recomptés en SQL.
 //
@@ -57,6 +57,7 @@ const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
 const JE = require("./lib/json-exact.js");
 const PR = require("./lib/reprise-schemas-prives.js");
+const MP = require("./lib/reprise-medias-portables.js");
 const os = require("os");
 const crypto = require("crypto");
 const { MARQUEUR_SEAUX, metadataSeaux } = require("./schema-executable.js");
@@ -210,6 +211,13 @@ function lireSeauxArchive(ctx) {
     return { ok: false, indetermine: false, etat: "METADATA_INVALIDES" };
   }
 }
+function projeterLigne(ctx, table, texte) {
+  if (!MP.TABLES.has(table)) return texte;
+  if (!ctx._projectionMedias) ctx._projectionMedias = MP.creerProjection({
+    source: ctx.man?.projet, cible: ctx.url, lireIndex: () => /^[0-9a-f]{64}$/.test(ctx.man?.medias?.index_sha256 || "") ? lireIndex(ctx) : { erreur: "empreinte absente" }, lireSeaux: () => lireSeauxArchive(ctx)
+  });
+  return ctx._projectionMedias.projeterLigne(table, texte);
+}
 async function verifierSeaux(ctx) {
   const archive = lireSeauxArchive(ctx);
   if (!archive.ok) return archive;
@@ -313,8 +321,13 @@ function validerArchive(ctx) {
     // lui faisait refuser l'archive ENTIÈRE, « INVALIDE », sans recours ; main la
     // validait. La comparaison au chiffre près reste au verdict.
     let n;
-    try { n = compterLignesNdjson(f); } catch (e) {
-      bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 200)}) — fichier tronqué ou corrompu`);
+    try {
+      n = compterLignesNdjson(f);
+      // Toute référence interne non portable refuse AVANT schéma/Auth/données.
+      // La même projection sera utilisée pour importer et comparer la cible.
+      if (MP.TABLES.has(t)) for (const ligne of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) projeterLigne(ctx, t, ligne);
+    } catch (e) {
+      bloquants.push(`table ${t} : NDJSON illisible ou référence médias non portable (${String(e.message).slice(0, 200)}) — fichier tronqué ou corrompu`);
       continue;
     }
     if (n !== info.exporte) bloquants.push(`table ${t} : ${n} ligne(s) sur disque, ${info.exporte} au manifeste — fichier tronqué ou étranger`);
@@ -384,9 +397,9 @@ function compterLignesNdjson(f) {
   for (const l of lignes) JSON.parse(l);
   return lignes.length;
 }
-function lireNdjson(f) {
+function lireNdjson(f, transformer = (l) => l) {
   if (!fs.existsSync(f)) return [];
-  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JE.lireJsonExact(l));
+  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JE.lireJsonExact(transformer(l)));
 }
 
 // ⚠️ ASTRA-31 — LIRE AUTH, OU DIRE QU'ON N'A PAS SU LIRE. `.json()` puis
@@ -482,12 +495,13 @@ async function comptes(ctx) {
 }
 
 // ───────────────────────────── ③ tables ─────────────────────────────
-function lots(f) {
+function lots(f, transformer = (l) => l) {
   // Des lots de lignes ENTIÈRES sous LOT_OCTETS : on ne coupe jamais un JSON.
   const contenu = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
   const lignes = contenu.split("\n").filter(Boolean);
   const out = []; let cur = [], taille = 0;
-  for (const l of lignes) {
+  for (const source of lignes) {
+    const l = transformer(source);
     const octets = Buffer.byteLength(l);
     if (taille + octets > LOT_OCTETS && cur.length) { out.push(cur); cur = []; taille = 0; }
     cur.push(l); taille += octets + 1;
@@ -749,7 +763,7 @@ async function chargerTable(ctx, t, bilan) {
     (bilan.phases || (bilan.phases = {})).tables = { ok: false, indetermine: true, motif: "LO_JOURNAL_EN_ATTENTE_NETTOYAGE" };
     throw e;
   }
-  const { lignes, lots: paquets } = lots(path.join(ctx.archive, `${t}.ndjson`));
+  const { lignes, lots: paquets } = lots(path.join(ctx.archive, `${t}.ndjson`), (l) => projeterLigne(ctx, t, l));
   if (!lignes) return { lignes: 0 };
   const presentes = new Set((await colonnes(ctx)).get(t) || []);
   const cles = new Set();
@@ -1051,7 +1065,7 @@ async function lignesCible(ctx, t, tri) {
 async function verdict(ctx) {
   // --preuve <fichier> : le verdict détaillé, écrit en JSON — la preuve DURABLE
   // que la contre-revue réclamait (commande, cible, résultats par table).
-  const preuve = { genere_le: new Date().toISOString(), cible: ctx.ref, nom: ctx.nom, archive: ctx.archive, manifeste_genere_le: ctx.man.genere_le, commande: process.argv.slice(2).join(" "), tables: [], comptes: null, medias: null, refus: (ctx.bilan && ctx.bilan.refus) || [], notes: (ctx.bilan && ctx.bilan.notes) || [] };
+  const preuve = { genere_le: new Date().toISOString(), cible: ctx.ref, nom: ctx.nom, archive: ctx.archive, manifeste_genere_le: ctx.man.genere_le, commande: process.argv.slice(2).join(" "), tables: [], comptes: null, medias: null, projection_medias: { version: 1, politique: "champs_types_index_visibilite", archive_modifiee: false }, refus: (ctx.bilan && ctx.bilan.refus) || [], notes: (ctx.bilan && ctx.bilan.notes) || [] };
   const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const presentes = await tablesCible(ctx);
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
@@ -1069,7 +1083,7 @@ async function verdict(ctx) {
     if (ok && obt > 0) {
       // Même nombre : on compare les DONNÉES (ASTRA-16).
       const tri = ctx.man.tables[t].tri || "id";
-      const d = comparerLignes(lireNdjson(path.join(ctx.archive, t + ".ndjson")), await lignesCible(ctx, t, tri), tri);
+      const d = comparerLignes(lireNdjson(path.join(ctx.archive, t + ".ndjson"), (l) => projeterLigne(ctx, t, l)), await lignesCible(ctx, t, tri), tri);
       if (d.manquantes.length || d.divergentes.length || d.enTrop.length) {
         ok = false;
         detail = ` — ${d.manquantes.length} manquante(s), ${d.divergentes.length} divergente(s), ${d.enTrop.length} en trop` + (d.divergentes.length ? ` (ex. ${d.divergentes[0]})` : "");
@@ -1187,7 +1201,7 @@ async function verdict(ctx) {
   preuve.ecarts = ecarts; preuve.non_verifies = nonVerifies; preuve.bloquants = g.bloquants; preuve.prouvee = g.prouvee;
   const fichierPreuve = arg("--preuve");
   if (fichierPreuve) { fs.writeFileSync(fichierPreuve, JSON.stringify(preuve, null, 2) + "\n"); console.log(`   preuve écrite : ${fichierPreuve}`); }
-  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
+  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias comparés sur la cible (URL Storage projetées dans les seuls champs médias typés).`);
   else { console.log(`\n❌ la restauration n'est PAS prouvée :`); for (const b of g.bloquants) console.log("   · " + b); }
   return g.prouvee;
 }
@@ -1239,7 +1253,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS, LIGNE_MAX_OCTETS, FRAGMENT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger, insererGrandObjet, nettoyerGrandObjet, exigerAucunJournalGrandObjetEnAttente } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger, projeterLigne, insererGrandObjet, nettoyerGrandObjet, exigerAucunJournalGrandObjetEnAttente } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
