@@ -163,12 +163,21 @@ create trigger aa_rencontres_activite before insert or update on public.events
  for each row execute function rencontres_prive.activite_garde();
 create or replace function rencontres_prive.activite_supprimee() returns trigger
 language plpgsql security definer set search_path = '' as $f$
+declare discussion text;
 begin
  insert into rencontres_prive.identifiants_retires values(old.id) on conflict do nothing;
- delete from public.conv_messages where conv_id = 'evgrp_' || old.id;
- delete from public.conv_reads where conv_id = 'evgrp_' || old.id;
- delete from public.conv_members where conv_id = 'evgrp_' || old.id;
- delete from public.conversations where id = 'evgrp_' || old.id;
+ -- Les anciennes collisions de nom ne prouvent pas le lien avec l'activité.
+ -- Même provenance que can_join_event_conversation, verrouillée jusqu'à la purge.
+ select c.id into discussion from public.conversations c
+ where c.id = old.conv_id and c.id = 'evgrp_' || old.id
+   and c.created_by in(old.author_id,old.organizer_id) and c.created_at >= old.created_at
+ for update;
+ if found then
+   delete from public.conv_messages where conv_id = discussion;
+   delete from public.conv_reads where conv_id = discussion;
+   delete from public.conv_members where conv_id = discussion;
+   delete from public.conversations where id = discussion;
+ end if;
  return old;
 end $f$;
 drop trigger if exists zz_rencontres_suppression on public.events;

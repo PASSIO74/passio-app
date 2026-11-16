@@ -24,6 +24,23 @@ test('un refus ou zéro ligne de la RPC ne devient jamais un succès local',asyn
 test('une panne est rendue comme non confirmée',async()=>{const t=contexte({supa:{rpc:async()=>{throw Error('offline')}}});vm.runInContext(fn('validerEventParticipant'),t.c);assert.equal(await t.c.validerEventParticipant('e','u',false),false);assert.equal(t.ouvert,0);});
 test('la validation attend le verdict vrai avant de rafraîchir',async()=>{let args;const t=contexte({supa:{rpc:async(n,a)=>{args={n,a};return {data:true}}}});vm.runInContext(fn('validerEventParticipant'),t.c);assert.equal(await t.c.validerEventParticipant('e','u',true),true);assert.equal(args.n,'valider_participant');assert.equal(args.a.p_user_id,'u');assert.equal(t.ouvert,1);});
 test('une ancienne discussion locale ne contourne pas le refus serveur',async()=>{let sorties=0,entrees=0;const t=contexte({allEvents:()=>[],myRsvp:()=> 'going',getConversations:()=>[{id:'evgrp_e'}],_joinEventConversation:async()=>{entrees++;return false},closeEventDetail:()=>sorties++,goTo:()=>sorties++,setTimeout:()=>sorties++});vm.runInContext(fn('openEventChat'),t.c);await t.c.openEventChat('e');assert.equal(entrees,1);assert.equal(sorties,0);});
+test('une demande confirmée réveille l’organisation sans doubler sa notification serveur',async()=>{
+ for(const [reel,reponse] of [[true,true],[true,false],[false,null]]){
+  const pushes=[],insertions=[];
+  const ev={id:'e',title:'Sortie',organizerId:'orga',fromSupabase:true,attendees:[],maybes:[],waitlist:[]};
+  const c=vm.createContext({window:{_supaReal:reel},MY_UID:'participant',requireAdmission:async()=>true,
+   _findCanonicalEvent:()=>ev,_eventIsCancelled:()=>false,myRsvp:()=>null,_eventIsFull:()=>false,
+   _ajusterCompteInscrits:()=>{},_setMyRsvpLocal:()=>{},saveState:()=>{},_patchEventCardJoin:()=>{},
+   _refreshEventDetailIfOpen:()=>{},supaSetEventRsvp:async()=>reponse,irlFunnelTrackJoin:()=>{},
+   _majAdresseActivite:()=>{},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
+   toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
+   supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
+  vm.runInContext(fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
+  assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
+  assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');
+  if(pushes.length)assert.deepEqual(pushes[0],['orga','event_join','']);
+ }
+});
 test('la coorganisation suspendue ne produit ni mutation ni notification',async()=>{const t=contexte();vm.runInContext(fn('openEventCoOrganizers')+'\n'+fn('toggleEventCoOrganizer'),t.c);await t.c.toggleEventCoOrganizer('e','u');assert.match(t.messages[0],/consentement/);});
 test('contrat SQL : transaction, fermeture des droits et compteur indépendant du blocage',()=>{assert.match(sql,/begin;[\s\S]*commit;/);const corps=sql.split('function public.participants_compte')[1].split('$f$;')[0];assert.doesNotMatch(corps,/is_blocked_with|blocks/);assert.match(sql,/revoke all on schema rencontres_prive from public, anon, authenticated/);assert.match(sql,/revoke all on all functions in schema rencontres_prive/);assert.match(sql,/rencontres_prive.accords v using/);assert.match(sql,/identifiant_activite_reserve/);});
 

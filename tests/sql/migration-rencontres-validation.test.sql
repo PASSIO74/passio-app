@@ -77,6 +77,13 @@ delete from public.events where id='creation';
 set role authenticated;
 select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
 insert into public.event_attendees(event_id,user_id) values('r1',auth.uid()::text);
+update public.event_attendees set rsvp='going' where event_id='r1' and user_id=auth.uid()::text;
+reset role;
+do $$ begin
+ if (select count(*) from public.notifications where kind='event_join' and ref_id='r1'
+   and from_id='22222222-2222-4222-8222-222222222222') <> 1 then raise exception 'notification de demande dupliquee'; end if;
+end $$;
+set role authenticated;
 do $$ begin
  if public.vient_a_activite('r1') or public.can_join_event_conversation('evgrp_r1')
    or exists(select 1 from public.adresses_activites(array['r1'])) then raise exception 'accès avant accord'; end if;
@@ -150,6 +157,38 @@ do $$ begin
  if (select count(*) from rencontres_prive.inscriptions) <> 2 then raise exception 'plafond effacé avec activité'; end if;
 end $$;
 select 'OK : rejeu, attente/accord, blocage, compteur, historique, rôles, suppression' as verdict;
+
+-- Historiques incohérents : un préfixe seul ne permet jamais de détruire une discussion.
+insert into public.events(id,author_id,organizer_id,conv_id) values
+ ('collision_tiers','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111','evgrp_collision_tiers'),
+ ('collision_ancienne','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111','evgrp_collision_ancienne'),
+ ('collision_sans_lien','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111',null),
+ ('collision_liee','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111','evgrp_collision_liee');
+insert into public.conversations(id,created_by,created_at) values
+ ('evgrp_collision_tiers','22222222-2222-4222-8222-222222222222',now()+interval '1 second'),
+ ('evgrp_collision_ancienne','11111111-1111-4111-8111-111111111111',now()-interval '1 hour'),
+ ('evgrp_collision_sans_lien','11111111-1111-4111-8111-111111111111',now()+interval '1 second'),
+ ('evgrp_collision_liee','11111111-1111-4111-8111-111111111111',now()+interval '1 second');
+insert into public.conv_messages(id,conv_id,content)
+ select id,id,'temoin-conservation' from public.conversations where id like 'evgrp_collision_%';
+insert into public.conv_reads(conv_id,user_id)
+ select id,'11111111-1111-4111-8111-111111111111' from public.conversations where id like 'evgrp_collision_%';
+insert into public.conv_members values('evgrp_collision_liee','11111111-1111-4111-8111-111111111111');
+delete from public.events where id like 'collision_%';
+do $$ begin
+ if (select count(*) from public.conversations where id like 'evgrp_collision_%') <> 3
+  or (select count(*) from public.conv_messages where conv_id like 'evgrp_collision_%') <> 3
+  or (select count(*) from public.conv_reads where conv_id like 'evgrp_collision_%') <> 3 then
+   raise exception 'collision historique detruite'; end if;
+ if exists(select 1 from public.conversations where id='evgrp_collision_liee')
+  or exists(select 1 from public.conv_members where conv_id='evgrp_collision_liee') then
+   raise exception 'discussion liee non purgee'; end if;
+end $$;
+-- Nettoyage des seules fixtures survivantes après contrôle de leur conservation.
+delete from public.conv_messages where conv_id like 'evgrp_collision_%';
+delete from public.conv_reads where conv_id like 'evgrp_collision_%';
+delete from public.conversations where id like 'evgrp_collision_%';
+select 'OK : conversations historiques conservees, discussion liee retiree' as verdict;
 
 -- Rétention : récentes gardées, expirées retirées, journal vivant et activité future gardés.
 insert into rencontres_prive.inscriptions(event_id,user_id,rsvp,created_at) values

@@ -3857,10 +3857,11 @@ async function setEventRsvp(id, rsvp) {
   } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
-  // Notifier l'organisateur (interaction cross-compte sur SON événement) — sur
-  // une inscription ÉCRITE seulement (SRV-02 : la base exige la ligne réelle).
-  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
-    supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
+  // La base écrit la demande de participation ; une insertion client ferait un
+  // doublon. Le push seul réveille l'organisation après le verdict de l'écriture.
+  // notify-call relit cette ligne serveur et ignore le texte fourni par le client.
+  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof _pousserPushNotif === "function") {
+    _pousserPushNotif(ev.organizerId, "event_join", "");
   }
   // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
   // ⚠️ « peut-être » n'y entre plus (C-04, troisième contre-revue du
