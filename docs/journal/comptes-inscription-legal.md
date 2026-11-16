@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🧪 FIXTURES À COMPTES RÉELS — reprise bornée des429 et adhésion vérifiée (2026-11-17)
 - 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
 - 🤖 CAPTCHA TURNSTILE À L'INSCRIPTION — le client d'abord, l'interrupteur ensuite (2026-09-13)
 - 🔑 MOT DE PASSE : 8 CARACTÈRES, ET LES REFUS DU SERVEUR EN FRANÇAIS (2026-09-13)
@@ -671,3 +672,22 @@ réécrite, un compte privé ne redevient jamais public tout seul, et `supaSaveP
 même que la règle du 31/08 interdit. Verrous : `profil-identite-serveur-autoritaire` ① ⑦ ⑦ bis (rouges sur l'ancienne
 règle) et ⑦ ter ; trois cas qui partaient de « la ligne neuve naît privée » partent désormais d'une ligne serveur privée
 explicite (`profil-confidentialite-interface`, `profil-trois-autorites` ⑤ bis).
+
+## 🧪 FIXTURES À COMPTES RÉELS — reprise bornée des429 et adhésion vérifiée (2026-11-17)
+
+La préparation des comptes de test conservait seulement le message d'un refus Auth : un HTTP429
+échouait immédiatement. `creerCompteE2E` garde désormais le statut et reprend ce seul refus au plus
+trois fois (1, 3 puis6secondes), avec le même compte confirmé par l'API admin et le même jeton.
+Les autres refus, le transport incertain et l'absence de session restent des échecs. Avant de
+mémoriser la connexion, l'UID doit être celui créé et le bearer doit être présent.
+
+La préparation IRL pouvait également réinsérer une adhésion déjà créée. Le seul INSERT de fixture
+`conv_members` utilise maintenant `ignore-duplicates` sur `(conv_id,user_id)`, puis relit l'unique
+couple exact sous le même JWT. Un409, un403 ou une ligne invisible/divergente reste rouge. Le
+transport réel de cette suite renvoie `{status,body}` ; le helper lit `body`, pas `Response.json()`.
+Les unités exercent ce transport réel dans une VM avec un fetch synthétique.
+
+Verrous : `tests/unit/fixtures-comptes-reels.test.mjs` et `verrou-comptes-reels.test.mjs`.
+Les barrières production, la sérialisation des comptes réels, les quotas, le captcha et les
+assertions de majorité/blocage/RLS ne sont pas modifiés. Ce lot ne prouve pas le débit commercial
+d'inscription : la CI hébergée reste nécessaire avant livraison.

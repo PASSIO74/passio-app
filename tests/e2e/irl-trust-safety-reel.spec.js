@@ -22,7 +22,7 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 const { viserCibleSupabase } = require("./cible-supabase");
-const { creerCompteE2E } = require("./compte-e2e");
+const { creerCompteE2E, assurerMembreE2E } = require("./compte-e2e");
 const { sansDonneesDistantes } = require("./app-helper");
 
 test.describe("Trust & Safety IRL — règle serveur, comptes réels", () => {
@@ -96,8 +96,8 @@ test.describe("Trust & Safety IRL — règle serveur, comptes réels", () => {
         expect(r.status, `${table} : écriture de ${qui === A ? "A" : "C"} (${r.status})`).toBeLessThan(300);
       };
       await ecrire(A, "conversations", { id: convId, is_group: false, created_by: A.uid });
-      await ecrire(A, "conv_members", { conv_id: convId, user_id: A.uid });
-      await ecrire(A, "conv_members", { conv_id: convId, user_id: C.uid });
+      await assurerMembreE2E(rest, A.token, convId, A.uid);
+      await assurerMembreE2E(rest, A.token, convId, C.uid);
       await ecrire(A, "conv_messages", { id: "m_ts_a_" + Date.now(), conv_id: convId, from_id: A.uid, content: "bonjour" });
       await ecrire(C, "conv_messages", { id: "m_ts_c_" + Date.now(), conv_id: convId, from_id: C.uid, content: "bonjour" });
       expect(await permis(A, C), "④ A et C majeurs → permis").toBe(true);

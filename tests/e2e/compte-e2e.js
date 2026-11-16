@@ -35,6 +35,7 @@ const path = require("node:path");
 const MDP_E2E = "Passio-e2e-12345!";
 const DOMAINE_E2E = "passio-e2e.test";
 const RACINE = path.resolve(__dirname, "..", "..");
+const ATTENTES_AUTH_429 = [1000, 3000, 6000];
 
 /** process.env complété par dashboard/.env (jamais l'inverse : l'env explicite prime). */
 function _env() {
@@ -141,21 +142,29 @@ async function creerCompteE2E(page, prefixe = "") {
   const cfg = configAdmin();
 
   if (cfg) {
-    await _creerViaAdmin(cfg, email);
+    const uidAttendu = await _creerViaAdmin(cfg, email);
     const tokenHash = await _jetonLienMagique(cfg, email);
-    const out = await page.evaluate(async ([em, mdp, th]) => {
-      try {
-        // Lien magique d'abord (immunisé contre le captcha) ; mot de passe en repli.
-        const r = th
-          ? await supa.auth.verifyOtp({ token_hash: th, type: "magiclink" })
-          : await supa.auth.signInWithPassword({ email: em, password: mdp });
-        const { data, error } = r;
-        if (error) return { erreur: error.message };
-        if (!data || !data.session) return { erreur: "connexion sans session" };
-        return { uid: data.session.user.id, token: data.session.access_token };
-      } catch (e) { return { erreur: (e && e.message) || String(e) }; }
-    }, [email, MDP_E2E, tokenHash]);
+    let out;
+    for (let essai = 0; ; essai++) {
+      out = await page.evaluate(async ([em, mdp, th]) => {
+        try {
+          // Lien magique d'abord ; mot de passe en repli seulement si absent.
+          const r = th
+            ? await supa.auth.verifyOtp({ token_hash: th, type: "magiclink" })
+            : await supa.auth.signInWithPassword({ email: em, password: mdp });
+          const { data, error } = r;
+          if (error) return { erreur: error.message, statut: error.status };
+          if (!data || !data.session || !data.session.user) return { erreur: "connexion sans session" };
+          return { uid: data.session.user.id, token: data.session.access_token };
+        } catch (e) { return { erreur: (e && e.message) || String(e), statut: e && e.status }; }
+      }, [email, MDP_E2E, tokenHash]);
+      // Reprendre seulement les429 explicites, en conservant compte et jeton.
+      // Erreurs réseau ambiguës et autres refus restent rouges, sans reprise.
+      if (!out.erreur || out.statut !== 429 || essai >= ATTENTES_AUTH_429.length) break;
+      await new Promise((resolve) => setTimeout(resolve, ATTENTES_AUTH_429[essai]));
+    }
     if (out.erreur) throw new Error(`connexion du compte e2e : ${out.erreur}`);
+    if (out.uid !== uidAttendu || typeof out.token !== "string" || !out.token) throw new Error("connexion du compte e2e : identité ou session incohérente");
     await _memoriserUid(page, out.uid);
     return { uid: out.uid, token: out.token, email };
   }
@@ -174,6 +183,19 @@ async function creerCompteE2E(page, prefixe = "") {
   return { uid: out.uid, token: out.token, email };
 }
 
+/** Précondition idempotente, puis preuve de l'adhésion sous le même JWT. */
+async function assurerMembreE2E(rest, token, convId, userId) {
+  const r = await rest(token, "conv_members?on_conflict=conv_id,user_id", {
+    method: "POST", headers: { Prefer: "return=minimal,resolution=ignore-duplicates" },
+    body: JSON.stringify({ conv_id: convId, user_id: userId }),
+  });
+  if (!r || r.status < 200 || r.status >= 300) throw new Error(`adhésion de fixture : HTTP ${r && r.status}`);
+  const lu = await rest(token, "conv_members?conv_id=eq." + encodeURIComponent(convId) + "&user_id=eq." + encodeURIComponent(userId) + "&select=conv_id,user_id");
+  if (!lu || lu.status < 200 || lu.status >= 300) throw new Error("adhésion de fixture : relecture refusée");
+  const lignes = lu.body;
+  if (!Array.isArray(lignes) || lignes.length !== 1 || lignes[0].conv_id !== convId || lignes[0].user_id !== userId) throw new Error("adhésion de fixture : couple attendu absent ou divergent");
+}
+
 // `MY_UID` est un `let` de portée script (app-08) : lui affecter une valeur
 // depuis page.evaluate atteint bien le binding, mais c'est `passio_uid` qui le
 // restitue après le reload — les deux sont nécessaires.
@@ -185,4 +207,4 @@ function _memoriserUid(page, uid) {
   }, uid);
 }
 
-module.exports = { creerCompteE2E, emailE2E, configAdmin, MDP_E2E, DOMAINE_E2E };
+module.exports = { creerCompteE2E, assurerMembreE2E, emailE2E, configAdmin, MDP_E2E, DOMAINE_E2E };
