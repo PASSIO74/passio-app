@@ -92,13 +92,15 @@ test('échéance ferme aussi un corps de capacités suspendu, sans lire de répo
 });
 test('en-têtes bornés séparément : refus avant réponse lente, corps autorisé reste lisible ensuite',async()=>{
   const keepAlive=setTimeout(()=>{},2000);
+  let intermediate;
   try {
     const slow=createPrivateMediaRelay({target,deadlineMs:1000,headersDeadlineMs:10,fetchImpl:async(_,o)=>new Promise((_,reject)=>o.signal.addEventListener('abort',()=>reject(new Error('ABORT')),{once:true}))});
-    const denied=await slow(req());assert.equal(denied.status,503);safe(denied);
+    const denied=await Promise.race([slow(req()),new Promise(resolve=>{intermediate=setTimeout(()=>resolve(null),300);})]);
+    clearTimeout(intermediate);assert.notEqual(denied,null,'la borne des en-têtes doit précéder le délai global');assert.equal(denied.status,503);safe(denied);
     let source,signal;
     const streamed=createPrivateMediaRelay({target,deadlineMs:1000,headersDeadlineMs:50,fetchImpl:async(_,o)=>{signal=o.signal;return media(new ReadableStream({start(c){source=c;}}));}});
     const r=await streamed(req());await new Promise(ok=>setTimeout(ok,100));assert.equal(signal.aborted,false);source.enqueue(new TextEncoder().encode('abc'));source.close();assert.equal(await r.text(),'abc');
     const bodyTimedOut=createPrivateMediaRelay({target,deadlineMs:30,headersDeadlineMs:10,fetchImpl:async()=>media(new ReadableStream({}))});
     const pending=await bodyTimedOut(req());await assert.rejects(pending.text(),/media_unavailable/);
-  } finally {clearTimeout(keepAlive);}
+  } finally {clearTimeout(intermediate);clearTimeout(keepAlive);}
 });
