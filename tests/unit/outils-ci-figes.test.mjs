@@ -76,6 +76,17 @@ const reel = () => ({
 const REGISTRE = "https://registry.npmjs.org/";
 const EXACTE = /^\d+\.\d+\.\d+$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
+// Exceptions limitees aux parents et versions reellement eprouves. Les overrides
+// globaux conditionnes par version ont echoue sous npm10 (EUSAGE), contrairement a npm11.
+const PORTEE_OVERRIDES = {
+  "@netlify/build@37.7.6": {"nom":"@netlify/build","version":"37.7.6","dep":"minimatch","cible":"11.0.1","saine":"11.0.5"},
+  "@netlify/build-info@11.3.1": {"nom":"@netlify/build-info","version":"11.3.1","dep":"minimatch","cible":"11.0.1","saine":"11.0.5"},
+  "@netlify/zip-it-and-ship-it@16.6.0": {"nom":"@netlify/zip-it-and-ship-it","version":"16.6.0","dep":"minimatch","cible":"11.0.1","saine":"11.0.5"},
+  "@typescript-eslint/typescript-estree@8.72.1": {"nom":"@typescript-eslint/typescript-estree","version":"8.72.1","dep":"minimatch","cible":"11.0.1","saine":"11.0.5"},
+  "readdir-glob@3.0.0": {"nom":"readdir-glob","version":"3.0.0","dep":"minimatch","cible":"11.0.1","saine":"11.0.5"},
+  "@vercel/nft@1.3.1": {"nom":"@vercel/nft","version":"1.3.1","dep":"glob","cible":"14.0.2","saine":"14.0.4"},
+};
+const OVERRIDES_NETLIFY = Object.fromEntries(Object.entries(PORTEE_OVERRIDES).map(([parent, p]) => [parent, { [p.dep]: p.cible }]));
 // Les binaires que le runner (Linux x64) exécute : sans eux dans le lockfile, `npm ci` n'installerait rien
 // pour cette plateforme, et l'outil irait chercher son binaire ailleurs (le repli d'esbuild télécharge).
 const BINAIRES_LINUX = ["@esbuild/linux-x64", "@img/sharp-linux-x64", "@img/sharp-libvips-linux-x64", "@netlify/local-functions-proxy-linux-x64"];
@@ -110,7 +121,20 @@ function auditerLockfile(nom, pkgTexte, lockTexte, epingles = []) {
   // mais seulement au déploiement ; ce banc le voit dès `npm run verif`, en lisant son EFFET : chaque copie du
   // paquet forcé porte la version forcée. Un overrides RETIRÉ passe sans bruit, sans effet sur l'arbre installé.
   for (const [p, v] of Object.entries(pkg.overrides || {})) {
-    if (typeof v !== "string") continue;
+    const portee = PORTEE_OVERRIDES[p];
+    if (portee) {
+      if (JSON.stringify(v) !== JSON.stringify(OVERRIDES_NETLIFY[p])) d.push(`${nom} : l'overrides ${p} sort de la substitution eprouvee`);
+      const parent = `node_modules/${portee.nom}`;
+      if (paquets[parent]?.version !== portee.version) d.push(`${nom} : parent ${p} absent ou version differente, override inapplicable`);
+      // Les six parents sont hoistes. Node resout d'abord leur copie locale,
+      // sinon celle de la racine ; les fixtures reelles confirment cette resolution.
+      const dep = paquets[`${parent}/node_modules/${portee.dep}`] || paquets[`node_modules/${portee.dep}`];
+      if (dep?.version !== portee.cible) d.push(`${nom} : l'overrides ${p} force ${portee.dep}@${portee.cible}, resolution ${dep?.version || 'absente'}`);
+      const copies = Object.entries(paquets).filter(([cle]) => cle && nomDeCle(cle) === portee.dep);
+      for (const [cle, e] of copies) if (![portee.cible, portee.saine].includes(e.version)) d.push(`${nom} : l'overrides ${p} force ${portee.dep}@${portee.cible}, le lockfile installe ${cle}@${e.version}`);
+      continue;
+    }
+    if (typeof v !== "string") { d.push(`${nom} : override imbrique non eprouve ${p}`); continue; }
     const copies = Object.entries(paquets).filter(([cle]) => cle && nomDeCle(cle) === p);
     if (!copies.length) d.push(`${nom} : l'overrides force ${p}@${v}, que le lockfile n'installe nulle part`);
     for (const [cle, e] of copies) if (e.version !== v) d.push(`${nom} : l'overrides force ${p}@${v}, le lockfile installe ${cle}@${e.version}`);
@@ -337,11 +361,50 @@ test("① les trois lockfiles que la CI installe : archives canoniques du regist
   // Ce que le lockfile de netlify-cli fige, et que la production installe depuis le 2026-11-14.
   const lock = JSON.parse(reel().netlifyLock);
   assert.equal(lock.packages["node_modules/netlify-cli"].version, JSON.parse(reel().netlifyPkg).dependencies["netlify-cli"]);
-  // Régénéré le 2026-11-15 (--before=2026-11-08T00:00:00Z) pour netlify-cli 27.16.2 : plus d'overrides, plus d'avis « high ».
+  // La CLI et les parents restent éprouvés ; deux substitutions ciblées sont
+  // couvertes par le banc réel tests/integration/outils-netlify-compat.test.mjs.
   assert.equal(lock.packages["node_modules/@netlify/build"].version, "37.7.6", "l'arbre régénéré le 2026-11-15");
-  assert.equal(JSON.parse(reel().netlifyPkg).overrides, undefined, "l'overrides du 9/09 est retiré (netlify-cli 27.16.2 exige @netlify/build ^37.7.2)");
+  assert.deepEqual(JSON.parse(reel().netlifyPkg).overrides, OVERRIDES_NETLIFY, "seules les substitutions des six parents exacts eprouves sont permises");
   // Le seul paquet du contrôle Realtime pris dans node_modules est celui que la racine épingle.
   assert.match(lire("scripts/controle-realtime.mjs"), /from "@supabase\/supabase-js"/);
+});
+
+test("compatibilité CLI : matrice Ubuntu/Windows Node22, sans secrets ni déploiement", () => {
+  const texte = lire(".github/workflows/netlify-compat.yml"), doc = parse(texte);
+  assert.deepEqual(doc.permissions, { contents: "read" });
+  assert.doesNotMatch(texte, /secrets[.\[]|pull_request_target|workflow_dispatch/);
+  const job = doc.jobs.compatibilite;
+  assert.deepEqual(job.strategy.matrix.os, ["ubuntu-latest", "windows-latest"]);
+  assert.equal(String(job["timeout-minutes"]), "15");
+  const checkout = job.steps.find(s => String(s.uses).startsWith("actions/checkout@"));
+  assert.equal(String(checkout.with["persist-credentials"]), "false");
+  assert.match(checkout.uses, /@[a-f0-9]{40}$/);
+  const node = job.steps.find(s => String(s.uses).startsWith("actions/setup-node@"));
+  assert.equal(String(node.with["node-version"]), "22"); assert.match(node.uses, /@[a-f0-9]{40}$/);
+  const commandes = job.steps.filter(s => s.run).map(s => s.run).join("\n");
+  assert.match(commandes, /npm ci --prefix \.github\/netlify-cli --ignore-scripts --no-audit --no-fund/);
+  assert.match(commandes, /npm audit --prefix \.github\/netlify-cli --json/);
+  assert.match(commandes, /assert\.equal\(j\.metadata\.vulnerabilities\.total,0\)/);
+  assert.match(commandes, /node --test tests\/integration\/outils-netlify-compat\.test\.mjs/);
+  assert.doesNotMatch(commandes, /netlify deploy|--prod\b|npx |npm install/);
+});
+
+test("Edge natif : Deno Linux figé et vérifié avant test, aucun secret ni faux binaire", () => {
+  const doc = parse(lire(".github/workflows/netlify-compat.yml")), job = doc.jobs.edge;
+  assert.equal(job["runs-on"], "ubuntu-latest"); assert.equal(String(job["timeout-minutes"]), "15");
+  const checkout = job.steps.find(s => String(s.uses).startsWith("actions/checkout@"));
+  assert.equal(String(checkout.with["persist-credentials"]), "false"); assert.match(checkout.uses, /@[a-f0-9]{40}$/);
+  const node = job.steps.find(s => String(s.uses).startsWith("actions/setup-node@"));
+  assert.equal(String(node.with["node-version"]), "22"); assert.match(node.uses, /@[a-f0-9]{40}$/);
+  const installation = job.steps.find(s => String(s.run).includes('DENO_VERSION="2.9.8"'));
+  assert.equal(installation.shell, "bash");
+  assert.match(installation.run, /DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"/);
+  assert.match(installation.run, /denoland\/deno\/releases\/download\/v\$\{DENO_VERSION\}\/deno-x86_64-unknown-linux-gnu\.zip/);
+  assert.ok(installation.run.indexOf("sha256sum --check") < installation.run.indexOf("unzip -q"));
+  assert.match(installation.run, /PASSIO_TEST_DENO_BIN=%s\/deno/);
+  assert.ok(job.steps.some(s => s.run === "node --test tests/integration/outils-netlify-edge.test.mjs"));
+  assert.ok(job.steps.some(s => s.run === "npm ci --prefix .github/netlify-cli --ignore-scripts --no-audit --no-fund"));
+  assert.doesNotMatch(JSON.stringify(job), /secrets[.\[]|netlify deploy|--prod\b|npx |npm install/);
 });
 
 test("② deploy.yml : netlify-cli par npm ci --ignore-scripts, Deno par version et empreinte, mêmes blocs dans deploy et preview, avant l'envoi", () => {
@@ -687,6 +750,23 @@ const MUTATIONS = [
   { nom: "un binaire Linux retiré du lockfile", muter: (f) => avecLock(f, (l) => delete l.packages["node_modules/@esbuild/linux-x64"]), attendu: /@esbuild\/linux-x64 absent/ },
   { nom: "netlify-cli en plage (^27.16.2)", muter: (f) => ({ ...f, netlifyPkg: remplacer(f.netlifyPkg, '"netlify-cli": "27.16.2"', '"netlify-cli": "^27.16.2"') }), attendu: /version exacte/ },
   { nom: "le lockfile installe une autre version de la CLI", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/netlify-cli"].version = "27.1.3")), attendu: /installe netlify-cli@27\.1\.3/ },
+  {
+    nom: "ancien override global conditionnel incompatible npm10",
+    muter: (f) => ({ ...f, netlifyPkg: JSON.stringify({ ...JSON.parse(f.netlifyPkg), overrides: { "minimatch@10.2.6": "11.0.1", "glob@13.0.7": "14.0.2" } }) }),
+    attendu: /n'installe nulle part/,
+  },
+  {
+    nom: "parent exact modifie : override devenu inapplicable",
+    muter: (f) => avecLock(f, (l) => (l.packages["node_modules/@netlify/build-info"].version = "11.3.2")),
+    attendu: /parent @netlify\/build-info@11\.3\.1 absent ou version differente/,
+  },
+  {
+    nom: "substitution imbriquee hors de la version eprouvee",
+    muter: (f) => { const pkg = JSON.parse(f.netlifyPkg); pkg.overrides["@netlify/build@37.7.6"].minimatch = "11.0.0"; return { ...f, netlifyPkg: JSON.stringify(pkg) }; },
+    attendu: /sort de la substitution eprouvee/,
+  },
+  { nom: "retour du minimatch vulnérable malgré la substitution ciblée", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/minimatch"].version = "10.2.6")), attendu: /force minimatch@11\.0\.1/ },
+  { nom: "retour du glob vulnérable sous nft malgré la substitution ciblée", muter: (f) => avecLock(f, (l) => (l.packages["node_modules/@vercel/nft/node_modules/glob"].version = "13.0.7")), attendu: /force glob@14\.0\.2/ },
   {
     nom: "une archive servie hors du registre npm",
     muter: (f) => avecLock(f, (l) => (l.packages[premiereCle(l)].resolved = "https://registre.example.com/paquet-1.0.0.tgz")),
