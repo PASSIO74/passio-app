@@ -585,7 +585,8 @@ function validerJournalGrandObjet(ctx, j) {
     || !/^[a-z_][a-z0-9_]{0,62}$/.test(j.table) || !Object.hasOwn(ctx.man?.tables || {}, j.table)
     || !Number.isInteger(j.oid) || j.oid < 16384 || j.oid > 4294967295
     || !Number.isInteger(j.octets) || j.octets < 2 || j.octets > LIGNE_MAX_OCTETS + 2
-    || !/^[0-9a-f]{64}$/.test(j.sha256)) throw new Error("LO_JOURNAL_INVALIDE");
+    || !/^[0-9a-f]{64}$/.test(j.sha256)
+    || !["creation", "creation_ambigue", "creation_confirmee", "fragments", "insertion", "nettoye"].includes(j.etape)) throw new Error("LO_JOURNAL_INVALIDE");
   return j;
 }
 const marqueurGrandObjet = (j) => `PASSIO_REPRISE_LO_V1:${j.ref}:${j.run}:${j.table}:${j.octets}:${j.sha256}`;
@@ -594,7 +595,7 @@ function ecrireJournalGrandObjet(fichier, j) {
   fs.writeFileSync(provisoire, JSON.stringify(j) + "\n", { mode: 0o600 });
   fs.renameSync(provisoire, fichier);
 }
-async function sqlGrandObjet(ctx, query, fin) {
+async function sqlGrandObjet(ctx, query, fin, { reprendre429 = true } = {}) {
   const body = JSON.stringify({ query });
   if (Buffer.byteLength(body) > LOT_OCTETS) throw new Error("LO_CORPS_API_TROP_GRAND");
   for (;;) {
@@ -604,7 +605,7 @@ async function sqlGrandObjet(ctx, query, fin) {
       const r = await fetch(`${API}/${ctx.ref}/database/query`, { method: "POST",
         headers: { Authorization: `Bearer ${ctx.jeton}`, "Content-Type": "application/json" },
         body, signal: AbortSignal.timeout(Math.min(reste, 20000)) });
-      if (r.status === 429) {
+      if (r.status === 429 && reprendre429) {
         await r.body?.cancel();
         const pause = Math.min(30000, fin - Date.now());
         if (pause <= 0) throw new Error("LO_DUREE_DEPASSEE");
@@ -644,6 +645,13 @@ async function lireGrandObjet(ctx, j, fin) {
 /** Nettoyage explicite après arrêt brutal : même ref, archive/table, OID, propriétaire ET marqueur. */
 async function nettoyerGrandObjet(ctx, fichier) {
   const j = validerJournalGrandObjet(ctx, JSON.parse(fs.readFileSync(fichier, "utf8")));
+  const creationAmbigue = j.etape === "creation" || j.etape === "creation_ambigue";
+  if (creationAmbigue) {
+    // Un timeout HTTP ne prouve pas l'annulation serveur. Même une série de
+    // lectures vides peut précéder un COMMIT tardif du POST de création.
+    ctx._grandObjetActif = true;ctx._grandObjetCreationAmbigue = true;
+    j.etape = "creation_ambigue";ecrireJournalGrandObjet(fichier, j);
+  }
   const fin = Date.now() + 20000;
   if (await lireGrandObjet(ctx, j, fin)) {
     try { await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
@@ -651,9 +659,25 @@ async function nettoyerGrandObjet(ctx, fichier) {
     catch { /* Un POST de nettoyage ambigu exige la relecture qui suit. */ }
     if (await lireGrandObjet(ctx, j, fin)) throw new Error("LO_NETTOYAGE_INCOMPLET");
   }
+  // Une présence positivement liée permet le nettoyage exact ci-dessus,
+  // jamais une attestation de quiescence des commandes encore en attente.
+  // Aucun bypass de déblocage opérateur n'est fourni par ce script.
+  if (creationAmbigue) throw new Error("LO_CREATION_QUIESCENCE_NON_PROUVEE");
   j.etape = "nettoye"; ecrireJournalGrandObjet(fichier, j);
-  ctx._grandObjetActif = false;
+  if (!ctx._grandObjetCreationAmbigue) ctx._grandObjetActif = false;
   return true;
+}
+function exigerAucunJournalGrandObjetEnAttente(ctx) {
+  const dossier = ctx.journalGrandsObjets || path.join(os.tmpdir(), "passio-reprise-grands-objets");
+  if (!fs.existsSync(dossier)) return;
+  for (const nom of fs.readdirSync(dossier).filter(n => n.endsWith(".json"))) {
+    const precedent = JSON.parse(fs.readFileSync(path.join(dossier, nom), "utf8"));
+    if (precedent.ref === ctx.ref && precedent.etape !== "nettoye") {
+      ctx._grandObjetActif = true;
+      if (["creation", "creation_ambigue"].includes(precedent.etape)) ctx._grandObjetCreationAmbigue = true;
+      throw new Error("LO_JOURNAL_EN_ATTENTE_NETTOYAGE");
+    }
+  }
 }
 async function insererGrandObjet(ctx, t, cols, ligne, pk) {
   const octets = Buffer.byteLength(ligne);
@@ -665,10 +689,7 @@ async function insererGrandObjet(ctx, t, cols, ligne, pk) {
     sha256: crypto.createHash("sha256").update(payload).digest("hex"), etape: "creation" });
   const dossier = ctx.journalGrandsObjets || path.join(os.tmpdir(), "passio-reprise-grands-objets");
   fs.mkdirSync(dossier, { recursive: true, mode: 0o700 });
-  for (const nom of fs.readdirSync(dossier).filter(n => n.endsWith(".json"))) {
-    const precedent = JSON.parse(fs.readFileSync(path.join(dossier, nom), "utf8"));
-    if (precedent.ref === ctx.ref && precedent.etape !== "nettoye") throw new Error("LO_JOURNAL_EN_ATTENTE_NETTOYAGE");
-  }
+  exigerAucunJournalGrandObjetEnAttente(ctx);
   const fichier = path.join(dossier, j.run + ".json"), fin = Date.now() + DUREE_GRAND_OBJET_MS;
   ecrireJournalGrandObjet(fichier, j);ctx._grandObjetActif = true;
   let erreur;
@@ -676,12 +697,18 @@ async function insererGrandObjet(ctx, t, cols, ligne, pk) {
     // Le numéro demandé est journalisé AVANT le POST. lo_create ne remplace
     // jamais un objet préexistant ; création + marqueur + ACL sont atomiques.
     try {
-      await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
+      const cree = await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
         do $lo$ begin perform lo_create(${j.oid}::oid); end $lo$;
         revoke all on large object ${j.oid} from public,anon,authenticated,service_role;
         comment on large object ${j.oid} is ${litteral(marqueurGrandObjet(j))};
-        select json_build_object('oid',${j.oid}::bigint) passio_lo;commit;`, fin);
-    } catch { /* Réponse perdue : RELIRE le même OID avant toute suite. */ }
+        select json_build_object('oid',${j.oid}::bigint) passio_lo;commit;`, fin, { reprendre429: false });
+      if (!Array.isArray(cree) || Number(cree[0]?.passio_lo?.oid) !== j.oid) throw new Error("LO_CREATION_REPONSE_INVALIDE");
+      j.etape = "creation_confirmee";ecrireJournalGrandObjet(fichier, j);
+    } catch {
+      j.etape = "creation_ambigue";ecrireJournalGrandObjet(fichier, j);
+      ctx._grandObjetCreationAmbigue = true;
+      throw new Error("LO_CREATION_AMBIGUE_JOURNAL_" + j.run);
+    }
     if (!await lireGrandObjet(ctx, j, fin)) throw new Error("LO_CREATION_NON_CONFIRMEE");
     j.etape = "fragments";ecrireJournalGrandObjet(fichier, j);
     for (let offset = 0; offset < payload.length; offset += FRAGMENT_OCTETS) {
@@ -710,12 +737,18 @@ async function insererGrandObjet(ctx, t, cols, ligne, pk) {
   } catch (e) { erreur = e; }
   finally {
     try { await nettoyerGrandObjet(ctx, fichier); }
-    catch { throw new Error("LO_NETTOYAGE_NON_PROUVE_JOURNAL_" + j.run); }
+    catch { throw new Error((ctx._grandObjetCreationAmbigue ? "LO_CREATION_AMBIGUE_JOURNAL_" : "LO_NETTOYAGE_NON_PROUVE_JOURNAL_") + j.run); }
   }
   if (erreur) throw erreur;
 }
 
 async function chargerTable(ctx, t, bilan) {
+  try { exigerAucunJournalGrandObjetEnAttente(ctx); }
+  catch (e) {
+    bilan.refus.push(`${t} : ${e.message}`);
+    (bilan.phases || (bilan.phases = {})).tables = { ok: false, indetermine: true, motif: "LO_JOURNAL_EN_ATTENTE_NETTOYAGE" };
+    throw e;
+  }
   const { lignes, lots: paquets } = lots(path.join(ctx.archive, `${t}.ndjson`));
   if (!lignes) return { lignes: 0 };
   const presentes = new Set((await colonnes(ctx)).get(t) || []);
@@ -729,7 +762,13 @@ async function chargerTable(ctx, t, bilan) {
   for (const paquet of paquets) {
     if (paquet.length === 1 && Buffer.byteLength(paquet[0]) > LOT_OCTETS) {
       try { await insererGrandObjet(ctx, t, cols, paquet[0], pk); }
-      catch (e) { bilan.refus.push(`${t} : ${e.message}`); }
+      catch (e) {
+        bilan.refus.push(`${t} : ${e.message}`);
+        if (ctx._grandObjetCreationAmbigue) {
+          (bilan.phases || (bilan.phases = {})).tables = { ok: false, indetermine: true, motif: "LO_CREATION_AMBIGUE" };
+          throw e; // Aucune phase d'écriture suivante après ce diagnostic.
+        }
+      }
       continue;
     }
     try { await sql(ctx, ordreInsert(t, cols, "[" + paquet.join(",") + "]", pk)); }
@@ -1200,7 +1239,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS, LIGNE_MAX_OCTETS, FRAGMENT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger, insererGrandObjet, nettoyerGrandObjet } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger, insererGrandObjet, nettoyerGrandObjet, exigerAucunJournalGrandObjetEnAttente } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -1214,6 +1253,7 @@ if (require.main === module) (async () => {
     await nettoyerGrandObjet(ctx, arg("--nettoyer-grand-objet"));
     console.log("Grand objet du journal : absence relue ; aucun autre objet visé.");return;
   }
+  exigerAucunJournalGrandObjetEnAttente(ctx);
   if (drapeau("--purger")) { await purger(ctx); return; }
   // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et
   // fichiers, inventaire). Invalide → code 2, la cible n'a pas été touchée.

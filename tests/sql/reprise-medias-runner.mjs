@@ -130,7 +130,14 @@ try {
       mode=transport;once=false;caseError=null;
       writeFileSync(path.join(archive,table+'.ndjson'),raw+'\n');
       const ctx={archive,ref:'dddddddddddddddddddd',jeton:'sbp_synthetic',url:'https://cible.invalid',man:{tables:{[table]:{}}},journalGrandsObjets:path.join(archive,'journaux-'+category)};
-      const b={notes:[],refus:[]};await R._phases.chargerTable(ctx,table,b);
+      const b={notes:[],refus:[]};
+      try {await R._phases.chargerTable(ctx,table,b);}
+      catch(e) {
+        if(transport!=='creation-ambigue'||ok)throw e;
+        check(category+'_indeterminate',ctx._grandObjetCreationAmbigue===true&&b.phases?.tables?.ok===false&&b.phases?.tables?.indetermine===true);
+        const jf=path.join(ctx.journalGrandsObjets,readdirSync(ctx.journalGrandsObjets).find(n=>n.endsWith('.json')));
+        check(category+'_journal_still_blocking',JSON.parse(readFileSync(jf,'utf8')).etape==='creation_ambigue');
+      }
       check(category+'_result',ok?b.refus.length===0:b.refus.length>0);
       if(state)check(category+'_sqlstate',caseError?.state===state);
       if(!ok&&transport!=='commit-ambigu')check(category+'_no_partial_row',sql(`select not exists(select 1 from public."${table}" where id=${R.litteral(JSON.parse(raw).id)})`).text==='t');
@@ -161,7 +168,7 @@ try {
       check('resume_fixture_lo_residual_zero',residual());
       await charger('large_row_replay',line);
       const variant=(id,extra={})=>JSON.stringify({...row,id,media_url:null,...extra});
-      await charger('create_ambiguous',variant('reprise_create_ambiguous'),{transport:'creation-ambigue'});
+      await charger('create_ambiguous',variant('reprise_create_ambiguous'),{transport:'creation-ambigue',ok:false});
       await charger('chunk_ambiguous',variant('reprise_chunk_ambiguous'),{transport:'fragment-ambigu'});
       await charger('commit_ambiguous',variant('reprise_commit_ambiguous'),{transport:'commit-ambigu',ok:false});
       check('commit_ambiguous_row_present',sql("select count(*)=1 from public.posts where id='reprise_commit_ambiguous'").text==='t');
