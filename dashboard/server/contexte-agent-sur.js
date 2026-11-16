@@ -13,7 +13,7 @@ const CATEGORIES = {
   verdict: { defect: "DEFAUT", expected: "ATTENDU", insufficient: "INSUFFISANT" },
   health: { ok: "OK", healthy: "OK", warn: "ATTENTION", warning: "ATTENTION", error: "ERREUR", critical: "CRITIQUE", unknown: "INCONNU" },
 };
-const COMPTEURS = ["count", "users", "devices", "total", "failed", "partial", "dead_click", "duplicates", "unconfirmed", "n", "denials", "essais", "success", "slow", "running", "missing", "durationMs", "successRate", "deliveryRate"];
+const COMPTEURS = ["count", "distinct", "recentCount", "users", "devices", "total", "failed", "partial", "dead_click", "duplicates", "unconfirmed", "n", "denials", "essais", "success", "slow", "running", "missing", "durationMs", "successRate", "deliveryRate"];
 const ENFANTS = ["bug", "meta", "trace", "overview", "traces", "interactions", "coverage", "integrity", "totals", "codeRef", "snippet", "suspects", "diagnosis", "note", "fichiers", "recent", "steps", "timeline", "commits", "bugs", "errors", "checks", "incidents", "stats", "uninstrumented", "versions", "screens", "lines"];
 export const LIMITES_CONTEXTE_AGENT = Object.freeze({ noeuds: 48, profondeur: 4, elements: 8, octets: 16384 });
 
@@ -75,6 +75,7 @@ export function projeterContexteAgent(valeur, nature = "AUTRE") {
     }
     for (const cle of COMPTEURS) {
       const x = propre(v, cle); if (x === undefined) continue;
+      if (cle === "partial" && typeof x === "boolean") { out.compteurs.partial = x ? 1 : 0; continue; }
       const taux = cle === "successRate" || cle === "deliveryRate", max = taux ? 100 : cle === "durationMs" ? 86400000 : 1000000000;
       if (typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= max && (taux || Number.isSafeInteger(x))) out.compteurs[cle] = x;
       else out.compteurs.invalides = (out.compteurs.invalides || 0) + 1;

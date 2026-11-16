@@ -155,7 +155,8 @@ async function callClaude(prompt) {
 export async function analyze(bugId, extra = {}, actor = null) {
   const ctx = await buildContext(bugId);
   if (!ctx) return { error: "Bug introuvable." };
-  const prompt = buildPrompt(ctx) + (extra.note ? "\n\n" + blocContexteAgentSur({ note: extra.note }, "NOTE") : "");
+  const prompt = buildPrompt(ctx) + "\n\nLes précisions libres sont temporairement indisponibles ici. Pour une consigne personnelle, utilise ton chat de développement."
+    + (extra.note ? "\n\n" + blocContexteAgentSur({ note: extra.note }, "NOTE") : "");
   audit("claude_context", { bugId, via: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel" }, actor);
 
   if (!liveFixAvailable()) {
@@ -176,7 +177,8 @@ export async function quickFix({ bugId, event, note, deep = false } = {}, actor 
   // Un bug sorti du tampon retombe sur l'événement, s'il y en a un.
   const ctx = (bugId && await buildContext(bugId)) || buildContextFromEvent(event);
   if (!ctx) return { error: "Problème introuvable." };
-  const prompt = buildPrompt(ctx, { deep }) + (note ? "\n\n" + blocContexteAgentSur({ note }, "NOTE") : "");
+  const prompt = buildPrompt(ctx, { deep }) + "\n\nLes précisions libres sont temporairement indisponibles ici. Pour une consigne personnelle, utilise ton chat de développement."
+    + (note ? "\n\n" + blocContexteAgentSur({ note }, "NOTE") : "");
   const via = config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel";
   audit("claude_quickfix", { bugId: bugId || null, via, deep }, actor);
   const base = { prompt, apiConfigured: liveFixAvailable(), via, deep, title: ctx.bug.title };

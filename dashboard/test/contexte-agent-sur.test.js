@@ -23,6 +23,7 @@ const { buildPrompt } = constructeurs("claude.js", "export function buildPrompt(
 const { buildTracePrompt } = constructeurs("claude.js", "export function buildTracePrompt(", "export function buildPlatformDiagnosis(", ["buildTracePrompt"]);
 const { buildPlatformDiagnosis } = constructeurs("claude.js", "export function buildPlatformDiagnosis(", "async function callClaudeApi(", ["buildPlatformDiagnosis"]);
 const { buildPatchPrompt } = constructeurs("repair.js", "export function buildPatchPrompt(", "/** Déduit les fichiers", ["buildPatchPrompt"]);
+const { buildReconcilePrompt } = constructeurs("reconcile.js", "export function buildReconcilePrompt(", "// Exportés pour les tests", ["buildReconcilePrompt"]);
 const { corpsRelais, titreRelais } = constructeurs("sentinel-relais.js", "export function titreRelais(", "/** L'issue déjà ouverte", ["corpsRelais", "titreRelais"]);
 const store = { recent: () => [] };
 const { buildJobPrompt } = constructeurs("sentinel.js", "function preambule(deep)", "function budgetOk(", ["buildJobPrompt"], {
@@ -55,6 +56,14 @@ for (const [categorie, construire] of [
 ]) test(`projection du vrai constructeur ${categorie} : aucun texte libre de fixture`, () => {
   assert.equal(construire().includes(MARQUEUR), false, "PRESENCE_TEXTE_LIBRE");
 });
+
+for (const champ of ["label", "count", "distinct", "impact", "recentCount", "samples"]) {
+  test(`projection du vrai constructeur RECONCILIATION : champ ${champ}`, () => {
+    const controle = { label: "fixture", status: "error", count: 2, distinct: 1, impact: "fixture", lastAt: Date.now(), recentCount: 1, samples: [] };
+    controle[champ] = champ === "samples" ? [MARQUEUR] : MARQUEUR;
+    assert.equal(buildReconcilePrompt(controle).includes(MARQUEUR), false, "PRESENCE_TEXTE_LIBRE");
+  });
+}
 
 test("projection du contexte générique et des erreurs récentes réelles de la Sentinelle", async () => {
   const recent = store.recent;
@@ -129,6 +138,7 @@ test("les notes des vraies routes analyze et quickFix sont projetées avant l'an
   const { quickFix } = constructeurs("claude.js", "export async function quickFix(", null, ["quickFix"], deps);
   await analyze("fixture", { note: MARQUEUR }); await quickFix({ event: {}, note: MARQUEUR });
   assert.equal(recus.length, 2); assert.equal(recus.some(p => p.includes(MARQUEUR)), false, "PRESENCE_TEXTE_LIBRE");
+  assert.equal(recus.every(p => p.includes("Les précisions libres sont temporairement indisponibles ici.")), true, "SUSPENSION_NON_ANNONCEE_DANS_PROMPT_COPIE");
 });
 
 test("un titre de relais reste stable par cause malgré une analyse ou un titre visuel différent", () => {

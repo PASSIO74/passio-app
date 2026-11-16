@@ -16,6 +16,7 @@
 // Aucun contenu privé n'est lu — uniquement des identifiants et des comptes.
 // ═══════════════════════════════════════════════════════════════════════════
 import { getAdmin } from "./ingest.js";
+import { blocContexteAgentSur, projeterContexteAgent } from "./contexte-agent-sur.js";
 
 // Borne de sécurité : au-delà, l'analyse est déclarée PARTIELLE (on ne prétend
 // jamais « 0 anomalie » sur un échantillon tronqué).
@@ -248,24 +249,16 @@ export async function reconcile({ force = false } = {}) {
 export function buildReconcilePrompt(check) {
   const L = [];
   L.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
-  L.push("Le centre de pilotage a détecté une INCOHÉRENCE DE DONNÉES en production (échec silencieux).");
+  L.push("Un contrôle d'intégrité est résumé ci-dessous ; vérifie indépendamment ce qu'il établit avant de proposer une action.");
   L.push("Commence par « ## En clair » (2-3 phrases sans jargon).");
   L.push("");
-  L.push("## Anomalie");
-  L.push(`- Règle : ${check.label}`);
-  L.push(`- Lignes concernées : ${check.count}${check.distinct != null ? ` (${check.distinct} clé(s) distincte(s))` : ""}`);
-  L.push(`- Impact : ${check.impact}`);
-  if (check.lastAt) {
-    const days = Math.floor((Date.now() - check.lastAt) / 86400_000);
-    L.push(`- Dernière occurrence : il y a ${days} jour(s)${check.recentCount != null ? ` · ${check.recentCount} sur les 7 derniers jours` : ""}`);
-    if (check.status === "residue") {
-      L.push("- ⚠️ AUCUNE récidive récente : il s'agit très probablement d'un RÉSIDU d'un défaut DÉJÀ corrigé.");
-      L.push("  Vérifie d'ABORD dans l'historique git si le correctif existe (git log -S) AVANT de proposer un correctif de code.");
-      L.push("  Si le code est déjà sain, le travail utile est uniquement le nettoyage des données résiduelles.");
-    }
+  L.push(blocContexteAgentSur(check, "PLATEFORME"));
+  const observation = projeterContexteAgent(check, "PLATEFORME").observation;
+  if (observation?.categories?.status === "RESIDU") {
+    L.push("Le statut RÉSIDU ne prouve pas que le défaut est déjà corrigé.");
+    L.push("Vérifie l'historique git (git log -S) avant de proposer un correctif ou un nettoyage.");
   }
-  if (check.partial) L.push("- ⚠️ Analyse PARTIELLE (borne de lecture atteinte) : le chiffre est un minorant.");
-  if (check.samples?.length) L.push(`- Exemples d'identifiants : ${check.samples.join(", ")}`);
+  if (observation?.compteurs?.partial === 1) L.push("Analyse PARTIELLE : le chiffre est un minorant, la complétude reste à vérifier.");
   L.push("");
   L.push("## Attendu");
   L.push("1. Cause probable (code applicatif ET/OU policy RLS) — un UPDATE/DELETE qui touche 0 ligne = policy manquante.");

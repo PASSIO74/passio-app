@@ -60,19 +60,20 @@ test("le prompt de réparation exige une SIMULATION avant toute écriture", () =
   });
   assert.match(p, /simulation/i);
   assert.match(p, /idempotent/i);
-  assert.match(p, /Bobines sans média/);
-  assert.match(p, /reel_a/);
+  assert.doesNotMatch(p, /Bobines sans média|reel_a|reel_b/);
+  assert.match(p, /"count":7/); assert.match(p, /"distinct":7/);
+  assert.match(p, /"empreinte":"[0-9a-f]{64}"/);
   // Ne doit jamais encourager une suppression aveugle.
   assert.match(p, /jamais supprimer une donnée récupérable/i);
 });
 
-test("un RÉSIDU (sans récidive) oriente vers le nettoyage, pas vers un correctif de code", () => {
+test("un statut RÉSIDU reste un indice à vérifier, sans recopier de libellé ou d'âge non validé", () => {
   const p = buildReconcilePrompt({
     label: "Bobines sans média", status: "residue", count: 7,
     impact: "Une bobine sans URL Storage est invisible.",
     lastAt: Date.now() - 38 * 86400_000, recentCount: 0, samples: [],
   });
-  assert.match(p, /il y a 38 jour\(s\)/);
+  assert.match(p, /"recentCount":0/);
   assert.match(p, /RÉSIDU/);
   assert.match(p, /déjà corrigé/i);
   // Doit exiger de vérifier l'historique git AVANT de proposer un correctif.
@@ -85,7 +86,7 @@ test("une anomalie ACTIVE ne porte pas la mention « résidu »", () => {
     impact: "Le message n'atteindra jamais son destinataire.",
     lastAt: Date.now() - 3600_000, recentCount: 3, samples: [],
   });
-  assert.match(p, /il y a 0 jour\(s\)/);
+  assert.match(p, /"recentCount":3/); assert.match(p, /"status":"ERREUR"/);
   assert.ok(!/RÉSIDU/.test(p), "ne doit pas être présenté comme un résidu");
 });
 
