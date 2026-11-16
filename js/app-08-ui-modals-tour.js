@@ -8125,6 +8125,81 @@ function _accuseLectureReparable(convId, moi) {
   } catch (e) { return false; }
 }
 
+// conv_reads_budget_reprise_v1 : une dernière lecture par conversation, sans
+// rejouer sous le compte suivant et sans dater la reprise comme une lecture neuve.
+function _rtLectureBudgetTrace(message) {
+  try { if (typeof diagLog === "function") diagLog(message); } catch (e) {}
+}
+function _rtLectureBudgetDelai(erreur) {
+  if (!erreur || String(erreur.code || "") !== "P0001") return 0;
+  try {
+    var d = JSON.parse(erreur.details || "null");
+    var ms = Number(d && d.reessai_ms);
+    return d && d.budget === "realtime" && Number.isFinite(ms) && ms >= 1000 && ms <= 86400000
+      ? Math.ceil(ms) : 0;
+  } catch (e) { return 0; }
+}
+function _rtLectureBudgetFile() {
+  if (!window._rtLecturesBudget) window._rtLecturesBudget = Object.create(null);
+  var file = window._rtLecturesBudget;
+  Object.keys(file).forEach(function (id) {
+    if (file[id].compte !== MY_UID) {
+      if (file[id].timer != null) clearTimeout(file[id].timer);
+      delete file[id];
+    }
+  });
+  return file;
+}
+function _rtLectureBudgetArmer(entree, delai) {
+  if (entree.timer != null) clearTimeout(entree.timer);
+  entree.timer = setTimeout(function () {
+    var file = _rtLectureBudgetFile();
+    if (file[entree.convId] !== entree || MY_UID !== entree.compte) return;
+    entree.timer = null;
+    if (!_compteAuthReel() || !window._supaReal || _identiteDivergeDeLaSession(entree.compte)) {
+      delete file[entree.convId];
+      return;
+    }
+    entree.essais++;
+    supaMarkRead(entree.convId, entree);
+  }, delai);
+}
+function _rtLectureBudgetReporter(convId, compte, instant, erreur) {
+  var delai = _rtLectureBudgetDelai(erreur);
+  if (!delai) return false;
+  var file = _rtLectureBudgetFile();
+  if (MY_UID !== compte) return true;
+  var entree = file[convId];
+  if (!entree) {
+    if (Object.keys(file).length >= 64) { _rtLectureBudgetTrace("conv_reads budget : file pleine"); return true; }
+    entree = file[convId] = { convId: convId, compte: compte, instant: instant, essais: 0, timer: null, prochain: 0 };
+  }
+  if (instant > entree.instant) entree.instant = instant;
+  entree.prochain = Math.max(entree.prochain, Date.now() + delai);
+  if (entree.essais >= 4) {
+    entree.epuise = true;
+    _rtLectureBudgetTrace("conv_reads budget : reprise epuisee");
+    return true;
+  }
+  _rtLectureBudgetTrace("conv_reads budget : lecture differee");
+  _rtLectureBudgetArmer(entree, Math.max(1000, entree.prochain - Date.now()));
+  return true;
+}
+function _rtLectureBudgetFin(convId, compte, instant, succes) {
+  var file = _rtLectureBudgetFile(), entree = file[convId];
+  if (!entree || entree.compte !== compte) return;
+  if (entree.instant > instant) {
+    if (succes) { entree.essais = 0; entree.epuise = false; _rtLectureBudgetArmer(entree, 1000); }
+    else if (entree.timer == null) {
+      // Une panne de la requête en vol ne doit pas laisser une file sans
+      // minuteur qui absorberait toutes les prochaines lectures.
+      entree.epuise = true; entree.prochain = Date.now();
+    }
+    return;
+  }
+  if (entree.timer != null) clearTimeout(entree.timer);
+  delete file[convId];
+}
 async function supaMarkRead(convId) {
   // Trace SANS donnée personnelle : ni identifiant de conversation, ni compte,
   // ni contenu — un code d'erreur et une étape.
@@ -8147,14 +8222,24 @@ async function supaMarkRead(convId) {
     // L'identité est CAPTURÉE : la reprise après réparation ne part que sous le
     // compte qui a ouvert la conversation (même règle qu'ASTRA-21 à l'envoi).
     var moi = MY_UID;
+    var reprise = arguments[1], fileBudget = _rtLectureBudgetFile(), attenteBudget = fileBudget[convId];
+    if (reprise && reprise !== attenteBudget) return;
+    if (!reprise && attenteBudget) {
+      attenteBudget.instant = new Date().toISOString();
+      if (!attenteBudget.epuise || Date.now() < attenteBudget.prochain) return;
+      attenteBudget.essais = 0; attenteBudget.epuise = false;
+    }
+    var instantLecture = attenteBudget ? attenteBudget.instant : new Date().toISOString();
     var poser = function () {
       return supa.from("conv_reads").upsert(
-        { conv_id: convId, user_id: moi, last_read_at: new Date().toISOString() },
+        { conv_id: convId, user_id: moi, last_read_at: instantLecture },
         { onConflict: "conv_id,user_id" }
       );
     };
     var r = await poser();
-    if (!r || !r.error) return;
+    if (!r || !r.error) { _rtLectureBudgetFin(convId, moi, instantLecture, true); return; }
+    if (_rtLectureBudgetReporter(convId, moi, instantLecture, r.error)) return;
+    _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Panne réseau : rien à réparer, rien à marquer.
     if (typeof estEchecReseau === "function" && estEchecReseau(r.error)) return;
     var code = String((r.error && r.error.code) || "");
@@ -8177,9 +8262,11 @@ async function supaMarkRead(convId) {
     if (MY_UID !== moi) return;
     var r2 = await poser();
     if (r2 && r2.error) {
+      if (_rtLectureBudgetReporter(convId, moi, instantLecture, r2.error)) return;
       tracer("conv_reads refus apres reparation " + (String(r2.error.code || "") || r2.status || "?"));
-    }
+    } else _rtLectureBudgetFin(convId, moi, instantLecture, true);
   } catch (e) {
+    if (typeof moi !== "undefined" && typeof instantLecture !== "undefined") _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Une exception n'est pas un refus : soit le réseau (un fetch avorté peut
     // lever), soit un défaut de code — et celui-là se TRACE : un catch muet a
     // déjà caché une ReferenceError six jours (diagLog).
