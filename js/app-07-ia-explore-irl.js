@@ -3853,7 +3853,7 @@ async function setEventRsvp(id, rsvp) {
   }
 
   if (rsvp === "going" && prev !== "going") {
-    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
+    pushNotification(`Demande envoyée pour <b>${escapeHtml(ev.title)}</b> · accès privés après validation`, "🤝");
   } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
@@ -4173,12 +4173,11 @@ async function openEventChat(id) {
         : "La discussion n'est pas encore ouverte par l'organisation de l'activité"));
     return;
   }
-  // Déjà membre localement : on ouvre. Sinon on DEMANDE l'entrée au serveur et
+  // Le cache local ne prouve pas le droit actuel : on DEMANDE au serveur et
   // on ne montre la discussion que s'il l'accorde (IRL-10).
-  const dejaLocal = typeof getConversations === "function" && getConversations().some(c => c.id === ev.convId);
-  if (!dejaLocal && window._supaReal) {
+  if (window._supaReal) {
     const entre = await _joinEventConversation(ev);
-    if (!entre) { toast("⚠️ Impossible de rejoindre la discussion pour le moment — réessaie", "warning"); return; }
+    if (!entre) { toast("La discussion nécessite la validation de l’organisation.", "warning"); return; }
   } else {
     _ensureLocalEventConv(ev);
   }
@@ -4663,7 +4662,7 @@ function openEventDetails(id) {
   // ville entière, puis « Adresse exacte : Communiquée une fois inscrit·e » —
   // deux lignes qui se contredisaient. Une seule ligne « Lieu » désormais, sans
   // lien tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.
-  const adresseReservee = !!(ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going");
+  const adresseReservee = !!(ev.fromSupabase && !ev.address);
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
@@ -4675,8 +4674,8 @@ function openEventDetails(id) {
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
     adresseReservee
       ? (lieuReserve
-        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche ici dès que tu participes.</span>')
-        : infoRow("Lieu", "L'adresse exacte s'affiche ici dès que tu participes."))
+        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche après validation par l\'organisation.</span>')
+        : infoRow("Lieu", "L'adresse exacte s'affiche après validation par l'organisation."))
       : (addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : "")),
     (ev.venue && !adresseReservee) ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
     infoRow("Prix", priceStr),
@@ -7059,7 +7058,8 @@ function openEventManage(id) {
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
@@ -7072,46 +7072,9 @@ function openEventManage(id) {
 // Un événement porté par une seule personne meurt avec elle : on partage les
 // droits d'édition (policy « Update organisateurs » côté RLS).
 function openEventCoOrganizers(id) {
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
-  if (!ev) return;
-  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  const co = ev.coOrganizers || [];
-  // Candidats : les participants (hors moi), c'est là que se trouvent les motivés.
-  const candidates = (ev.attendees || []).concat(ev.maybes || [])
-    .filter(u => u && u !== meId && u !== "me");
-  const row = (uidx) => {
-    const u = userById(uidx) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
-    const isCo = co.indexOf(uidx) > -1;
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name || "Participant")}</span>
-      <button class="btn small ${isCo ? "ghost" : "primary"}" onclick="toggleEventCoOrganizer('${escapeJsArg(id)}','${escapeJsArg(uidx)}')">${isCo ? "Retirer" : "Ajouter"}</button>
-    </div>`;
-  };
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Co-organisateurs</div>
-    <div class="modal-subtitle">Ils pourront modifier l'activité et prévenir les inscrits.</div>
-    <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
-      ${[...new Set(co.concat(candidates))].map(row).join("")
-        || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Aucun participant à promouvoir pour l\'instant.</div>'}
-    </div>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
-  `);
+  toast("La coorganisation est suspendue en attendant les invitations avec consentement.");
 }
-
 async function toggleEventCoOrganizer(id, userId) {
-  const ev = _findCanonicalEvent(id);
-  if (!ev || !_canManageEvent(ev)) return;
-  ev.coOrganizers = ev.coOrganizers || [];
-  const isCo = ev.coOrganizers.indexOf(userId) > -1;
-  ev.coOrganizers = isCo ? ev.coOrganizers.filter(x => x !== userId) : ev.coOrganizers.concat([userId]);
-  saveState();
-  if (window._supaReal) await supaUpdateEvent(ev);
-  if (!isCo && typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_update", id, "t'a nommé·e co-organisateur·ice");
-  }
-  toast(isCo ? "Co-organisateur retiré" : "Co-organisateur ajouté");
   openEventCoOrganizers(id);
 }
 
@@ -8683,3 +8646,30 @@ window.addEventListener("passio:app-ready", function () {
   _irlCkLinkAttentes = 0; _irlCkLinkEssais = 0;
   _openIrlCheckinFromHash();
 });
+
+// rencontres:validation-organisation-v1
+async function openEventParticipantValidation(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
+  let r;
+  try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
+  catch (e) { toast("Liste indisponible — réessaie"); return; }
+  if (r.error) { toast("Liste indisponible — réessaie"); return; }
+  const lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
+  openModal('<div class="modal-title">Participants</div><div class="modal-subtitle">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
+    + lignes.map(a => '<div style="padding:12px 0"><span>' + escapeHtml((userById(a.user_id) || {}).name || "Participant")
+      + '</span> <span>' + (a.valide ? 'Validé' : 'En attente') + '</span> '
+      + (a.rsvp === 'going' && !a.valide ? '<button class="btn small" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id)
+      + '\',true)">Valider</button> ' : '') + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\''
+      + escapeJsArg(a.user_id) + '\',false)">Retirer</button></div>').join("")
+    + (lignes.length ? '' : '<p>Aucune demande en cours.</p>'));
+}
+async function validerEventParticipant(id, uid, accepter) {
+  try {
+    const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
+    if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    toast(accepter ? "Participation validée" : "Participant retiré");
+    await openEventParticipantValidation(id);
+    return true;
+  } catch (e) { toast("Modification non confirmée — réessaie"); return false; }
+}

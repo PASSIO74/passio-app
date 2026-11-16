@@ -1929,3 +1929,68 @@ aucune table publiée. ⚠️ La simulation de rôles n'est PAS possible par le 
 (`permission denied to set role "authenticated"`) : la preuve par rôle est le banc
 `tests/sql/migration-story-interactions.test.sh` (38 cas, mutation vérifiée). Reste à faire :
 régénérer `migrations/SCHEMA_PROD_REFERENCE.sql`.
+
+
+## Rencontres : validation de l'organisation (2026-11-16, préparation locale)
+
+Lot critique réalisé par Codex GPT-6, sans délégation, sans accès distant, sans application SQL.
+Sources : photographie des fonctions et du catalogue de production fournie le 16/11, comparée aux policies
+et fonctions touchées. La branche de départ est a270749b (origin/main local identique), sans modifications.
+Les documents d'audit restreints restent hors dépôt ; aucune donnée personnelle n'est recopiée.
+
+Décision produit prudente : une inscription en « going » réserve une place mais ne donne PAS les accès
+privés. L'organisation les valide dans Gérer → Valider les participants. La validation ouvre l'adresse,
+le contact, la liste des venants et la discussion ; le retrait, un autre RSVP ou un blocage les révoque.
+Aucun accord historique n'est inventé : les inscrits existants doivent être validés. Le nombre public
+ne dépend plus des blocages. Les suivis mutuels ne donnent plus accès à la liste d'une rencontre.
+La coorganisation est SUSPENDUE (tableau vide imposé en base, rôles historiques retirés), tant qu'un
+parcours d'invitation, acceptation et retrait volontaire n'est pas implémenté. Ce parcours reste à faire.
+Un organisateur principal ne peut plus être désigné comme un tiers à l'INSERT.
+
+Migration : migration_rencontres_validation_2026-11-16.sql, transaction rejouable, droits nominatifs,
+schéma rencontres_prive non exposé avec RLS sans policy cliente. Accords et journal sont emportés avec
+le profil ; les accords partent avec l'inscription ; le journal survit au retrait et à la suppression
+d'activité (event_id devient NULL). Les identifiants retirés sont conservés sans donnée de compte.
+La suppression d'activité emporte les messages, lectures, membres et conversation canoniques ; une
+ancienne conversation orpheline ne peut plus être réattachée ou lue. Les objets Storage physiques
+restent à purger par l'API Storage : supprimer leurs lignes SQL créerait des blobs orphelins.
+
+Journal serveur accessible à l'organisation et au participant par journal_participation, notification
+serveur à chaque entrée en going, plafond glissant de 20 changements d'inscription par jour et compte.
+Le journal n'a pas encore de tâche de rétention planifiée : à intégrer à la purge existante avant
+application. L'export complet des nouvelles données privées reste à raccorder. Le client historique
+émet encore sa notification d'inscription : doublon possible, sans ouverture de droits.
+
+Ordre : client portant rencontres:validation-organisation-v1, puis migration après les migrations déjà
+appliquées du 06–14/11. Ne pas rejouer une ancienne migration qui réécrit les mêmes fonctions après.
+Pas de retour arrière automatique qui réouvrirait les accès : conserver les restrictions SQL et
+corriger en avant. Une restauration des messages supprimés exige une sauvegarde contrôlée.
+
+Pilotage/Sentinelle : pas d'événement contenant un identifiant de participant, d'adresse ou de contact.
+Les erreurs/RPC utilisent la collecte existante ; aucune nouvelle autoréparation. Les réglages AAL2
+et TURN sont hors périmètre et n'ont pas été modifiés. Revue indépendante et simulation PostgreSQL
+avec les déclencheurs actuels restent requises avant application réelle.
+
+
+Relecture du lot : la valeur historique non vide de co_organizers est copiée une seule fois dans
+rencontres_prive.coorganisations_anterieures AVANT suspension, RLS fermée, même durée de vie que
+l'activité. Une réexécution ne l'écrase pas. NULL est normalisé en tableau vide à la garde d'écriture.
+is_conv_member conserve la garde (_uid = auth.uid()::text OR auth.uid() IS NULL), et la recherche
+explicite d'appartenance : sans session, postgres/service_role garde le comportement antérieur ;
+avec session, la nouvelle garde d'activité s'ajoute. Participants en attente et validés sont
+rendus distinctement via une RPC réservée à l'organisation, sans ouverture de la table des accords.
+Avant application destructive : sauvegarde de la base ET inventaire Storage, vérifier la restauration.
+La suppression demandée d'une activité détruit son fil ; rollback = restauration contrôlée, pas de
+réouverture automatique de l'ancien modèle de droits. Aucun storage.objects n'est supprimé par SQL.
+
+
+Vérification locale : 9 tests unitaires du lot verts ; syntaxe JS, globals, handlers, échappement et
+ git diff --check verts. npm run verif exécuté : premier passage arrêté sur Bash absent du PATH ;
+second passage avec Git Bash arrêté sur sentinelle-workflows.test.mjs (attentes sleep non interceptées
+sur Windows, fichiers de cette suite inchangés). Ce résultat est ROUGE, pas une validation globale.
+Banc SQL fourni : tests/sql/migration-rencontres-validation.test.sql, base locale vide exclusivement
+nommée passio_test_rencontres. Non exécuté : psql et initdb absents, aucun accès réseau autorisé.
+Il couvre les rôles, l'attente/accord, la révocation, le compteur, l'historique et trois applications
+de la migration (la dernière après approbation : le nettoyage doit préserver l'accord existant).
+Ce socle est réduit : la chaîne complète des triggers de production doit encore être éprouvée.
+La photographie de production n'est pas copiée dans le dépôt. Aucun test:prod ni charge réseau.
