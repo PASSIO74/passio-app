@@ -224,11 +224,42 @@ réinstalle 947 paquets sur ce poste, sans scripts. Cela ne remplace pas la preu
 Le workflow `netlify-compat.yml` installe le lockfile sans scripts ni secrets et impose audit JSON
 sans avis puis ces vrais callers sur **Ubuntu et Windows, Node 22**. Il doit être vert avant fusion.
 
-**Limite Edge explicite :** edge-bundler reste 16.2.0 et accepte Deno 2.9.8 (`^2.4.2`). Le banc
-vérifie cette plage, mais n'a pas effectué de bundling Edge natif : aucun Deno local n'était disponible.
-Une plage inchangée ne prouve pas un paquet Edge servi. Avant déploiement, il reste à vérifier le
-regroupement avec le Deno figé et l'aperçu autorisé, sans retirer les verrous de téléchargement.
-La contre-revue indépendante et la gouvernance critique restent requises.
+### Preuve de bundling Edge natif
+
+Le complément `tests/integration/outils-netlify-edge.test.mjs` appelle le **vrai bundle() de
+edge-bundler 16.2.0**, avec **Deno 2.9.8**. Il copie les trois Edge canonicales du dépôt et leurs
+helpers dans une fixture, compare leurs octets, exige quatre commandes Deno réelles réussies
+(ESZIP et trois extractions de configuration), puis vérifie les cinq routes, leur phase cache,
+le manifeste, l'empreinte du fichier ESZIP et les sources relues par le vrai parseur WASM.
+Les handlers ne sont jamais appelés. Deno absent/mauvaise version et repli vers un téléchargement
+font échouer le test ; aucun skip n'est utilisé.
+
+**Mesuré localement sous Windows : deux tests verts**, Node 22.23.5 et Deno officiel 2.9.8.
+L'archive Windows a été vérifiée contre le digest GitHub et son fichier sha256sum :
+`cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf`.
+Le job Ubuntu du workflow emploie la même version et l'archive Linux officielle figée par
+deploy.yml, SHA256 `e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609`.
+Il reste à obtenir ce résultat **réel en CI Linux** avant fusion.
+
+Le processus ferme son environnement avant les imports et outils. Un pont réduit les droits du
+vrai Deno : imports distants et npm désactivés pour ESZIP/inspection, JS réseau/run/FFI refusés,
+lecture limitée aux fixtures et au paquet, écriture au temporaire. Une sonde du vrai runtime
+vérifie le refus réseau/run/FFI. Il ne s'agit pas d'un confinement général du poste ou de Node.
+
+L'extracteur de configuration exige le bootstrap de types officiel, même pour `import type` :
+**seules ses trois commandes** autorisent la résolution des imports sur `edge.netlify.com:443`.
+Le cache neuf doit contenir exactement `https://edge.netlify.com/bootstrap/globals/types.ts`,
+670 octets de source, SHA256 `eaa6148ded3121d8dee62dd91c86e7fe76601df0f3ca8d7962243a30f4c8935f`.
+Son import type relatif de context.ts n'est pas chargé par ces commandes. Tout autre cache distant
+ou changement de cette source fait échouer la preuve. Les fetch applicatifs restent refusés par
+Deno. Le check facultatif Node `https://edge.netlify.com/version.txt` est bloqué et recensé ;
+aucune mise à jour de types ni téléchargement du dernier Deno n'est accepté.
+
+Commande, depuis la racine et avec le binaire officiel vérifié :
+`PASSIO_TEST_DENO_BIN=/chemin/absolu/deno node --test tests/integration/outils-netlify-edge.test.mjs`.
+Ce bundling local ne prouve pas un déploiement ni la cible hébergée. Les trois jobs de
+netlify-compat, la contre-revue, la gouvernance et l'aperçu autorisé restent requis avant fusion ;
+aucun nouveau lockfile ne doit recevoir le jeton de production avant leur validation.
 
 **Une PR Dependabot de ce dossier ne se fusionne jamais telle quelle.**
 

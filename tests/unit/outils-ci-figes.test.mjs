@@ -375,6 +375,24 @@ test("compatibilité CLI : matrice Ubuntu/Windows Node22, sans secrets ni déplo
   assert.doesNotMatch(commandes, /netlify deploy|--prod\b|npx |npm install/);
 });
 
+test("Edge natif : Deno Linux figé et vérifié avant test, aucun secret ni faux binaire", () => {
+  const doc = parse(lire(".github/workflows/netlify-compat.yml")), job = doc.jobs.edge;
+  assert.equal(job["runs-on"], "ubuntu-latest"); assert.equal(String(job["timeout-minutes"]), "15");
+  const checkout = job.steps.find(s => String(s.uses).startsWith("actions/checkout@"));
+  assert.equal(String(checkout.with["persist-credentials"]), "false"); assert.match(checkout.uses, /@[a-f0-9]{40}$/);
+  const node = job.steps.find(s => String(s.uses).startsWith("actions/setup-node@"));
+  assert.equal(String(node.with["node-version"]), "22"); assert.match(node.uses, /@[a-f0-9]{40}$/);
+  const installation = job.steps.find(s => String(s.run).includes('DENO_VERSION="2.9.8"'));
+  assert.equal(installation.shell, "bash");
+  assert.match(installation.run, /DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"/);
+  assert.match(installation.run, /denoland\/deno\/releases\/download\/v\$\{DENO_VERSION\}\/deno-x86_64-unknown-linux-gnu\.zip/);
+  assert.ok(installation.run.indexOf("sha256sum --check") < installation.run.indexOf("unzip -q"));
+  assert.match(installation.run, /PASSIO_TEST_DENO_BIN=%s\/deno/);
+  assert.ok(job.steps.some(s => s.run === "node --test tests/integration/outils-netlify-edge.test.mjs"));
+  assert.ok(job.steps.some(s => s.run === "npm ci --prefix .github/netlify-cli --ignore-scripts --no-audit --no-fund"));
+  assert.doesNotMatch(JSON.stringify(job), /secrets[.\[]|netlify deploy|--prod\b|npx |npm install/);
+});
+
 test("② deploy.yml : netlify-cli par npm ci --ignore-scripts, Deno par version et empreinte, mêmes blocs dans deploy et preview, avant l'envoi", () => {
   const { defauts, versionDeno } = auditerDeploy(reel().deploy);
   assert.deepEqual(defauts, []);
