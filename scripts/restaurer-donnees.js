@@ -59,6 +59,7 @@ const JE = require("./lib/json-exact.js");
 const PR = require("./lib/reprise-schemas-prives.js");
 const MP = require("./lib/reprise-medias-portables.js");
 const MF = require("./lib/reprise-medias-fermes.js");
+const RT = require("./lib/reprise-triggers.js");
 const os = require("os");
 const crypto = require("crypto");
 const { MARQUEUR_SEAUX, metadataSeaux } = require("./schema-executable.js");
@@ -592,7 +593,7 @@ async function clesPrimaires(ctx) {
  * NOMMÉ au bilan. Sans clé primaire connue, l'ancienne clause, et une note.
  */
 function clauseConflit(cle) {
-  return cle && cle.length ? `on conflict (${cle.map((x) => `"${x}"`).join(", ")}) do nothing` : "on conflict do nothing";
+  return cle && cle.length ? `on conflict (${cle.map(RT.ident).join(", ")}) do nothing` : "on conflict do nothing";
 }
 
 function ordreInsert(t, cols, json, cle = []) {
@@ -610,27 +611,25 @@ function ordreInsert(t, cols, json, cle = []) {
   // d'identité `generated always` (`migrations_appliquees.id`) REFUSE toute
   // valeur explicite — les quatre lignes du journal tombaient, nommées dans le
   // bilan mais absentes de la cible. Sans identité, la clause est inerte.
-  const c = cols.map((x) => `"${x}"`).join(", ");
+  const table = "public." + RT.ident(t), c = cols.map(RT.ident).join(", ");
+  const insert = `insert into ${table} (${c}) overriding system value select ${c} from json_populate_recordset(null::${table}, ${litteral(json)}::json) ${clauseConflit(cle)};`;
   return `begin;
-alter table public."${t}" disable trigger user;
-insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) ${clauseConflit(cle)};
-alter table public."${t}" enable trigger user;
+${RT.encadrerTriggers(t, insert, litteral)}
 commit;`;
 }
 
 function ordreLigneALigne(t, cols, json, cle = []) {
-  const c = cols.map((x) => `"${x}"`).join(", ");
-  return `begin;
-alter table public."${t}" disable trigger user;
-create temp table _refus (motif text) on commit drop;
-do $$ declare e json; begin
+  const table = "public." + RT.ident(t), c = cols.map(RT.ident).join(", ");
+  const lignes = `declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
     begin
-      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) ${clauseConflit(cle)};
+      insert into ${table} (${c}) overriding system value select ${c} from json_populate_record(null::${table}, e) ${clauseConflit(cle)};
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
-end $$;
-alter table public."${t}" enable trigger user;
+end;`;
+  return `begin;
+create temp table _refus (motif text) on commit drop;
+${RT.encadrerTriggers(t, lignes, litteral)}
 select motif, count(*)::int n from _refus group by 1 order by 2 desc;
 commit;`;
 }
@@ -790,9 +789,7 @@ async function insererGrandObjet(ctx, t, cols, ligne, pk) {
       do $lo$ begin ${gardeGrandObjet(j)}
         if octet_length(lo_get(${j.oid}::oid))<>${j.octets} or encode(sha256(lo_get(${j.oid}::oid)),'hex')<>'${j.sha256}'
         then raise exception using errcode='23514',message='LO_INTEGRITE_REFUSEE';end if;end $lo$;
-      alter table ${table} disable trigger user;
-      insert into ${table} (${c}) overriding system value select ${c} from json_populate_recordset(null::${table},convert_from(lo_get(${j.oid}::oid),'UTF8')::json) ${clauseConflit(pk)};
-      alter table ${table} enable trigger user;
+${RT.encadrerTriggers(t, `insert into ${table} (${c}) overriding system value select ${c} from json_populate_recordset(null::${table},convert_from(lo_get(${j.oid}::oid),'UTF8')::json) ${clauseConflit(pk)};`, litteral)}
       select json_build_object('supprime',lo_unlink(${j.oid}::oid)=1) passio_lo;
       commit;`, fin);
   } catch (e) { erreur = e; }

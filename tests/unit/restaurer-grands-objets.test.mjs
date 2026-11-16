@@ -44,7 +44,8 @@ function monde(mode='normal') {
     }
     if(q.includes("json_build_object('ok'"))return response([{passio_lo:{ok:true}}]);
     if(q.includes('insert into public.')) {
-      assert.match(q,/begin;[\s\S]*disable trigger user;[\s\S]*insert into[\s\S]*enable trigger user;[\s\S]*lo_unlink[\s\S]*commit;/);
+      assert.match(q,/begin;[\s\S]*disable trigger user[\s\S]*insert into[\s\S]*REPRISE_TRIGGER_ETATS_NON_RESTAURES[\s\S]*lo_unlink[\s\S]*commit;/);
+      assert.doesNotMatch(q,/enable trigger user|set(?: local)? session_replication_role/i);
       assert.match(q,/octet_length\(lo_get/);assert.match(q,/encode\(sha256\(lo_get/);
       if(mode==='insertion-refusee')return new Response('{}',{status:400});
       etat.objets.delete(Number(q.match(/lo_unlink\((\d+)::oid/)[1]));etat.objet=null;return response([{passio_lo:{supprime:true}}]);

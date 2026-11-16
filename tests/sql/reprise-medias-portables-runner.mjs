@@ -1,7 +1,7 @@
 // Banc PostgreSQL local synthétique. Management/REST sont doublés par psql ;
 // ce n'est pas une preuve HTTP Storage/Auth hébergée.
-import {spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {spawn,spawnSync} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,readdirSync,rmSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
@@ -81,7 +81,7 @@ try {
   for(const b of seaux)psql('insert into storage.buckets values ('+lit(b.id)+','+lit(b.name)+','+b.public+','+b.file_size_limit+',null);');
   const ctx={archive,man,url:cible,ref:'dddddddddddddddddddd',jeton:'sbp_synthetic',cle:'synthetic'};
   const empreintes=Object.fromEntries(Object.keys(rows).map(t=>[t,sha(readFileSync(path.join(archive,t+'.ndjson')))]));
-  let ecritures=0;
+  let ecritures=0,dernierEtatLo=null;
   globalThis.fetch=async(u,init={})=>{
     if(String(u).startsWith(cible+'/rest/v1/')) {
       const table=new URL(u).pathname.split('/').pop();if(!Object.hasOwn(rows,table))throw new Error('native_rest_table_refused');
@@ -97,7 +97,15 @@ try {
       return new Response(psql((readonly?'begin read only;\n':'')+wrapped+(readonly?'\ncommit;':'')));
     }
     if(readonly)throw new Error('native_readonly_write_refused');
-    psql(q);return new Response('[]');
+    let resultat;
+    try { resultat=psql(q); }
+    catch(e) {
+      if(!q.includes('insert into')||!q.includes('lo_get('))throw e;
+      dernierEtatLo=(e.message.match(/native_sql_failed_([A-Z0-9]{5})/)||[])[1]||null;
+      if(!dernierEtatLo)throw e;
+      return new Response('{}',{status:400});
+    }
+    return new Response(q.includes(" passio_lo")&&resultat?'[{"passio_lo":'+resultat+'}]':'[]');
   };
   check('activation_source_active',JSON.parse(rows.reglages_distants.split('\n')[0]).valeur.actif===true);
   check('garde_initiale_absente',await R._phases.preparerRepriseMedias(ctx)==='ABSENTE');
@@ -133,6 +141,83 @@ try {
   try{await R._phases.tables(ctx);}catch(e){refus=e.message;}
   check('cible_malformee_refuse_avant_write',refus==='Reprise médias fermés : CIBLE_REGLAGE_INVALIDE'&&ecritures===avant);
   for(const t of Object.keys(rows))check('archive_immuable_'+t,sha(readFileSync(path.join(archive,t+'.ndjson')))===empreintes[t]);
+  {
+  // Compatibilité des triggers de clôture, sur le même PostgreSQL synthétique.
+  // Les rôles de fixture ne sont créés que dans le cluster CI neuf attesté.
+  for(const role of ['anon','authenticated','service_role']) {
+    if(lire('select count(*)::int as n from pg_roles where rolname='+lit(role))[0].n===0) {
+      if(!report.cluster_directory_checked)throw new Error('native_fixture_roles_require_owned_cluster');
+      psql('create role "'+role+'" nologin;');
+    }
+  }
+  psql(`update reglages_distants set valeur='{"actif":false}'::jsonb where cle='medias_proteges';
+    create function reprise_refuser_client() returns trigger language plpgsql as $$begin raise exception 'synthetic_client_trigger';end$$;`);
+  const nomSql=x=>'"'+x.replace(/"/g,'""')+'"';
+  const nomsTriggers=['a"toujours','d_inactif','o_ordinaire','r_replica'];
+  function definirEtats(table,modes=['A','D','O','R'],creer=true){
+    for(let i=0;i<nomsTriggers.length;i++) {
+      const nom=nomSql(nomsTriggers[i]);
+      if(creer)psql('create trigger '+nom+' before insert on public.'+nomSql(table)+' for each row execute function reprise_refuser_client();');
+      const action={A:'enable always',D:'disable',O:'enable',R:'enable replica'}[modes[i]];
+      psql('alter table only public.'+nomSql(table)+' '+action+' trigger '+nom+';');
+    }
+  }
+  const etats=table=>lire(`with recursive r(oid) as (select ${lit('public.'+nomSql(table))}::regclass::oid union select i.inhrelid from pg_inherits i join r on i.inhparent=r.oid)
+    select t.tgrelid::regclass::text as relation,t.oid,t.tgname,t.tgenabled::text as etat,t.tgisinternal as interne
+    from pg_trigger t where t.tgrelid in(select oid from r) order by t.oid`);
+  const egaux=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  for(const t of ['reprise_tg_classique','reprise_tg_ligne','reprise_tg_lo']){
+    psql('create table public.'+nomSql(t)+"(id text primary key,owner_id text references profiles(id),payload text check(left(payload,5)<>'refus'));");definirEtats(t);
+  }
+  psql("create table reprise_tg_parent(id text,payload text);create table reprise_tg_enfant() inherits(reprise_tg_parent);");
+  definirEtats('reprise_tg_parent');definirEtats('reprise_tg_enfant',['D','R','A','O']);
+  psql("create table reprise_tg_partition(id text primary key,payload text) partition by range(id);create table reprise_tg_p1 partition of reprise_tg_partition for values from('a') to('m');create table reprise_tg_p2 partition of reprise_tg_partition for values from('m') to('z');");
+  definirEtats('reprise_tg_partition');definirEtats('reprise_tg_p1',['D','R','A','O'],false);definirEtats('reprise_tg_p2',['R','A','D','O'],false);
+  const internesProfil=etats('profiles').filter(x=>x.interne),replicationAvant=psql("show session_replication_role;");
+  const colonnes=['id','owner_id','payload'],payload="synthetic $r$ $$ $reprise_tg$ ' ",jsonLigne=JSON.stringify({id:'ok',owner_id:'u',payload});
+  for(const [mode,table]of [['classique','reprise_tg_classique'],['ligne','reprise_tg_ligne']]){
+    const avant=etats(table);psql((mode==='classique'?R.ordreInsert:R.ordreLigneALigne)(table,colonnes,'['+jsonLigne+']',['id']));
+    check('triggers_'+mode+'_adro',egaux(avant,etats(table))&&avant.filter(x=>!x.interne).map(x=>x.etat).sort().join('')==='ADOR');
+  }
+  const journal=path.join(archive,'_journal_lo_triggers');mkdirSync(journal);
+  const ctxLo={...ctx,man:{tables:{reprise_tg_lo:{}}},journalGrandsObjets:journal};
+  const avantLo=etats('reprise_tg_lo');
+  await R._phases.insererGrandObjet(ctxLo,'reprise_tg_lo',colonnes,JSON.stringify({id:'lo',owner_id:'u',payload:'x'.repeat(R.LOT_OCTETS+100)}),['id']);
+  check('triggers_lo_adro',egaux(avantLo,etats('reprise_tg_lo'))&&avantLo.filter(x=>!x.interne).map(x=>x.etat).sort().join('')==='ADOR');
+  check('triggers_nom_guillemet',avantLo.some(x=>x.tgname==='a"toujours'&&x.etat==='A'));
+  check('triggers_payload_tokens_preserves',lire("select payload from reprise_tg_classique where id='ok'")[0].payload===payload);
+  let avant=etats('reprise_tg_parent');psql(R.ordreInsert('reprise_tg_parent',['id','payload'],'[{"id":"parent","payload":"fixture"}]',[]));
+  check('triggers_descendants_etats_differents',egaux(avant,etats('reprise_tg_parent'))&&avant.some(x=>x.relation==='reprise_tg_parent'&&x.tgname==='a"toujours'&&x.etat==='A')&&avant.some(x=>x.relation==='reprise_tg_enfant'&&x.tgname==='a"toujours'&&x.etat==='D'));
+  avant=etats('reprise_tg_partition');psql(R.ordreInsert('reprise_tg_partition',['id','payload'],'[{"id":"b","payload":"fixture"},{"id":"n","payload":"fixture"}]',['id']));
+  check('triggers_partitions_etats_differents',egaux(avant,etats('reprise_tg_partition'))&&avant.some(x=>x.relation==='reprise_tg_partition'&&x.tgname==='a"toujours'&&x.etat==='A')&&avant.some(x=>x.relation==='reprise_tg_p1'&&x.tgname==='a"toujours'&&x.etat==='D')&&avant.some(x=>x.relation==='reprise_tg_p2'&&x.tgname==='a"toujours'&&x.etat==='R')&&lire('select count(*)::int as n from reprise_tg_p1')[0].n===1&&lire('select count(*)::int as n from reprise_tg_p2')[0].n===1);
+  function echecSql(q,etat){const r=spawnSync(client,['-X','--no-password','-h','127.0.0.1','-p',port,'-U','postgres','-d',database,'-qtA','-v','ON_ERROR_STOP=1'],
+    {env,input:'\\set VERBOSITY verbose\n'+q,encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:4*1024*1024});return r.status===3&&(r.stderr.match(/ERROR:\s+([A-Z0-9]{5})/)||[])[1]===etat;}
+  avant=etats('reprise_tg_classique');
+  check('triggers_check_rollback',echecSql(R.ordreInsert('reprise_tg_classique',colonnes,'[{"id":"check","owner_id":"u","payload":"refus"}]',['id']),'23514')&&egaux(avant,etats('reprise_tg_classique')));
+  avant=etats('reprise_tg_ligne');const refusLigne=psql(R.ordreLigneALigne('reprise_tg_ligne',colonnes,'[{"id":"check","owner_id":"u","payload":"refus"}]',['id']));
+  check('triggers_ligne_refus_etats_preserves',/\|1$/.test(refusLigne)&&egaux(avant,etats('reprise_tg_ligne')));
+  avant=etats('reprise_tg_classique');
+  check('triggers_fk_rollback',echecSql(R.ordreInsert('reprise_tg_classique',colonnes,'[{"id":"fk","owner_id":"absent","payload":"fixture"}]',['id']),'23503')&&egaux(avant,etats('reprise_tg_classique')));
+  let echecLo=false;try{await R._phases.insererGrandObjet(ctxLo,'reprise_tg_lo',colonnes,JSON.stringify({id:'refuslo',owner_id:'u',payload:'refus'+'x'.repeat(R.LOT_OCTETS+100)}),['id']);}catch(e){echecLo=e.message==='LO_HTTP_400'&&dernierEtatLo==='23514';report.lo_check_sqlstate=dernierEtatLo;report.lo_check_diagnostic=e.message==='LO_HTTP_400'?'LO_HTTP_400':'LO_ERREUR_INATTENDUE';}
+  report.lo_check_states_preserved=egaux(avantLo,etats('reprise_tg_lo'));
+  check('triggers_lo_check_rollback',echecLo&&egaux(avantLo,etats('reprise_tg_lo')));
+  const holder=spawn(client,['-X','--no-password','-h','127.0.0.1','-p',port,'-U','postgres','-d',database,'-qtA','-v','ON_ERROR_STOP=1'],{env,windowsHide:true,stdio:['pipe','ignore','ignore']});
+  const finHolder=new Promise(resolve=>holder.once('exit',code=>resolve(code)));
+  holder.stdin.end("set application_name='passio_reprise_lock';begin;lock table reprise_tg_classique in access exclusive mode;select pg_sleep(6);commit;");
+  try{
+    let pret=false;for(let i=0;i<50;i++){if(lire("select count(*)::int as n from pg_stat_activity where application_name='passio_reprise_lock' and wait_event='PgSleep'")[0].n===1){pret=true;break;}await new Promise(r=>setTimeout(r,20));}
+    if(!pret)throw new Error('native_lock_holder_not_ready');
+    avant=etats('reprise_tg_classique');const refuse=echecSql(R.ordreInsert('reprise_tg_classique',colonnes,'[{"id":"timeout","owner_id":"u","payload":"fixture"}]',['id']),'55P03');
+    const holderOk=await finHolder;check('triggers_lock_timeout_rollback',refuse&&holderOk===0&&egaux(avant,etats('reprise_tg_classique')));
+  }finally{if(holder.exitCode===null)holder.kill();}
+  check('triggers_internes_fk_preserves',internesProfil.length>0&&egaux(internesProfil,etats('profiles').filter(x=>x.interne)));
+  const roleSql=psql("show session_replication_role;"+R.ordreInsert('reprise_tg_classique',colonnes,'[{"id":"role","owner_id":"u","payload":"fixture"}]',['id'])+"show session_replication_role;");
+  check('triggers_replication_role_inchange',replicationAvant==='origin'&&roleSql.split(/\r?\n/).filter(Boolean).join(',')==='origin,origin');
+  check('triggers_lo_zero',psql('select count(*) from pg_largeobject_metadata;')==='0');
+  check('triggers_journaux_nettoyes',readdirSync(journal).every(f=>JSON.parse(readFileSync(path.join(journal,f),'utf8')).etape==='nettoye'));
+  check('triggers_fence_active_apres_commit',echecSql("insert into reprise_tg_classique values('client','u','fixture');",'P0001'));
+
+  }
   report.ok=true;
 } catch(e) {report.ok=false;report.erreur=e.message;process.exitCode=1;}
 finally {
