@@ -92,6 +92,24 @@ test.describe('medias proteges client synthetique',()=>{
     expect(await page.evaluate(async url=>(await fetch(url,{method:'HEAD',headers:{'X-Passio-Media-Read':'1'}})).status,path(srv.B))).toBe(200);
   });
 
+  test('image A deja rendue : nouveau Blob et references apres releve du worker au meme UID',async({page})=>{
+    await page.evaluate(url=>{const image=document.createElement('img');image.id='same-uid-image';passioMediaProteges.poserImage(image,url);document.querySelector('#content').append(image);},path(srv.A));
+    await page.waitForFunction(()=>{const image=document.querySelector('#same-uid-image');return image.src.startsWith('blob:')&&image.complete&&image.naturalWidth===1;});
+    const before=await page.evaluate(()=>{const image=document.querySelector('#same-uid-image');return {blob:image.src,reference:image.getAttribute('data-pmp-src'),epoch:image.getAttribute('data-pmp-epoch'),images:passioMediaProteges.etat().images,bytes:passioMediaProteges.etat().imageBytes};});
+    expect(before.images).toBe(1);expect(before.bytes).toBe(42);expect(before.reference).toBe(srv.origin+path(srv.A));
+    const reads=srv.events.filter(event=>event.kind==='authorize').length;srv.restartWorker();
+    await page.evaluate(async()=>{const changed=new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));await (await navigator.serviceWorker.getRegistration()).update();await changed;});
+    await expect.poll(()=>page.evaluate(()=>{const image=document.querySelector('#same-uid-image');return {blob:image.src.startsWith('blob:'),width:image.naturalWidth,reference:image.getAttribute('data-pmp-src'),epoch:image.getAttribute('data-pmp-epoch')===String(passioMediaProteges.etat().epoch),images:passioMediaProteges.etat().images,bytes:passioMediaProteges.etat().imageBytes};})).toEqual({blob:true,width:1,reference:before.reference,epoch:true,images:1,bytes:42});
+    expect(await page.locator('#same-uid-image').getAttribute('src')).not.toBe(before.blob);
+    expect(await page.evaluate(async blob=>{try{await fetch(blob);return false;}catch(_){return true;}},before.blob)).toBe(true);
+    expect(srv.events.filter(event=>event.kind==='authorize').length).toBeGreaterThan(reads);
+    expect(srv.events.filter(event=>event.kind==='authorize').every(event=>event.subject==='A')).toBe(true);
+    await page.evaluate(id=>login(id),srv.B);
+    expect(await page.locator('#same-uid-image').getAttribute('src')).toBeNull();
+    expect(await page.evaluate(()=>passioMediaProteges.etat().imageBytes)).toBe(0);
+    expect(await page.evaluate(async url=>{try{await passioMediaProteges.charger(url,'image');return true;}catch(_){return false;}},path(srv.A))).toBe(false);
+  });
+
   test('sans controle SW : image Blob explicite, offline sans ancien repli public',async({browser})=>{
     const context=await browser.newContext({serviceWorkers:'block'});
     try{

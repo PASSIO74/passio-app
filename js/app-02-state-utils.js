@@ -2594,11 +2594,14 @@ var passioMediaProteges = (function () {
       var port=event.ports[0],nonce=event.data.nonce;
       try{
         if(typeof nonce!=="string"||!new RegExp("^"+UUID+"$","i").test(nonce))return;
+        var auteur=compte(),demandeEpoch=epoch;
         var reg=await navigator.serviceWorker.getRegistration();
-        if(!reg||!event.source||(event.source!==reg.installing&&event.source!==reg.waiting))return;
-        var auteur=compte(),reprise=retenirDom(),fins=Array.from(canaux.values()).map(function(c){return c.fin;});
+        if(compte()!==auteur||epoch!==demandeEpoch||!reg||!event.source||(event.source!==reg.installing&&event.source!==reg.waiting))return;
+        var reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom(),fins=Array.from(canaux.values()).map(function(c){return c.fin;});
         invalider(auteur);repriseTransport={uid:auteur,noeuds:reprise};
+        var annulationEpoch=epoch;
         var timer;await Promise.race([Promise.all(fins),new Promise(function(resolve){timer=setTimeout(resolve,350);})]);clearTimeout(timer);
+        if(compte()!==auteur||epoch!==annulationEpoch)return;
         port.postMessage({type:"PASSIO_PRIVATE_MEDIA_UPDATE_READY",nonce:nonce});
       }finally{port.close();}
     });
