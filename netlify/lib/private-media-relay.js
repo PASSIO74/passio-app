@@ -58,9 +58,9 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
   if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 60000) throw new Error('relay_deadline');
   if (!Number.isInteger(headersDeadlineMs) || headersDeadlineMs < 1 || headersDeadlineMs > 15000 || headersDeadlineMs > deadlineMs) throw new Error('relay_headers_deadline');
   return async function relay(request) {
-    if (!['GET','HEAD','POST'].includes(request.method)) return empty(405,{'Allow':'GET, HEAD, POST'});
-    // Marqueur de protocole, jamais une autorisation. Un IMG natif traité par
-    // un ancien SW n'en possède pas et ne reçoit donc aucun média à cacher.
+    if (!['HEAD','POST'].includes(request.method)) return empty(405,{'Allow':'HEAD, POST'});
+    // Marqueur de protocole, jamais une autorisation. Même marqué, un GET ne
+    // reçoit aucun corps : un ancien SW pourrait le garder malgré no-store.
     if(request.headers.get('X-Passio-Media-Read')!=='1')return empty(400);
     // POST est uniquement un transport de lecture vide : les anciens SW ne
     // l'interceptent pas. Le broker reçoit toujours GET, ou HEAD explicitement.
