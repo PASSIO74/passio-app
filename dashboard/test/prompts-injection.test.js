@@ -43,8 +43,8 @@ test("fiche de bug : le message du navigateur est désarmé et encadré", () => 
     snippet: null, commits: [], timeline: [],
   });
   assertDesarme(p, "buildPrompt");
-  // Le contenu reste ANALYSABLE : neutraliser n'est pas censurer.
-  assert.ok(p.includes("dashboard/.env"), "le texte doit rester lisible pour le diagnostic");
+  assert.ok(!p.includes("dashboard/.env"), "aucun texte observé ne doit subsister, même neutralisé");
+  assert.match(p, /"count":3/, "le compteur validé reste disponible");
 });
 
 test("fiche de bug : la chronologie aussi vient du client", () => {
@@ -91,7 +91,7 @@ test("les champs numériques ne transportent pas de texte", () => {
     snippet: null, commits: [], timeline: [],
   });
   assert.ok(!/^\s*system\s*:/im.test(p), "un nombre non coercé rouvre le canal");
-  assert.match(p, /Occurrences : 0/, "un compte non numérique retombe sur 0");
+  assert.match(p, /"invalides":3/, "un compte non numérique est signalé, jamais inventé comme zéro observé");
 });
 
 test("longueur bornée : une stack trace géante ne noie pas le prompt", () => {

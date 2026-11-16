@@ -50,7 +50,8 @@ import { suspectsFor, suspectsPromptBlock } from "./correlate.js";
 import { buildContext, buildPrompt, buildTracePrompt, liveAnalyze } from "./claude.js";
 import { liveFixAvailable } from "./claudecli.js";
 import { audit } from "./audit.js";
-import { sanitizeObserved, dataBlock } from "./donnees-observees.js";
+import { sanitizeObserved } from "./donnees-observees.js";
+import { blocContexteAgentSur } from "./contexte-agent-sur.js";
 import { attemptRepair, repairState } from "./repair.js";
 
 const db = new JsonDb("sentinel", { enabled: null, seen: {}, diagnoses: [], skippedLog: [] });
@@ -248,8 +249,8 @@ function preambule(deep) {
     "",
     "Sans reproduction, tu produis une HYPOTHÈSE causale, pas un diagnostic prouvé :",
     "sépare ce que les données montrent de ce que tu en déduis. Méfie-toi du biais",
-    "« le dernier commit est le coupable » — les commits récents te sont donnés comme",
-    "piste, pas comme conclusion.",
+    "« le dernier commit est le coupable » — une empreinte ne désigne ni un fichier",
+    "coupable, ni une conclusion. Sans reproduction indépendante, ne conclus pas à un défaut prouvé.",
     "",
     "Format de réponse imposé, dans cet ordre exact :",
     "## Verdict — l'un de : DÉFAUT RÉEL / COMPORTEMENT ATTENDU / INSUFFISAMMENT DE DONNÉES.",
@@ -264,25 +265,10 @@ function preambule(deep) {
 
 /** Contexte générique : l'alerte + les erreurs récentes qui l'entourent. */
 function genericBlock(alert) {
-  const L = [];
-  L.push(`- Alerte : ${sanitizeObserved(alert.title, 200)}`);
-  L.push(`- Niveau : ${sanitizeObserved(alert.level, 20)}`);
-  L.push(`- Message : ${sanitizeObserved(alert.message, 800)}`);
-  const m = alert.meta || {};
-  for (const k of ["screen", "endpoint", "action", "step", "device", "link"]) {
-    if (m[k]) L.push(`- ${k} : ${sanitizeObserved(m[k], 200)}`);
-  }
-  let recent = [];
-  try { recent = store.recent({ type: "error" }, 8) || []; } catch { recent = []; }
-  if (recent.length) {
-    L.push("");
-    L.push("Erreurs récentes du flux (les 8 dernières) :");
-    for (const e of recent) {
-      L.push(`- [${sanitizeObserved(e.type, 20)}] ${sanitizeObserved(e.message || e.action, 220)}`
-        + `${e.screen ? " @" + sanitizeObserved(e.screen, 40) : ""}`);
-    }
-  }
-  return dataBlock("Ce que le pilotage a observé", L.join("\n"));
+  let recent;
+  try { recent = store.recent({ type: "error" }, 8) || []; }
+  catch { recent = { status: "unknown" }; }
+  return blocContexteAgentSur({ meta: alert, recent }, "ALERTE");
 }
 
 /** Assemble le prompt complet du job. Exporté pour les tests. */
