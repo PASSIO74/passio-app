@@ -119,7 +119,7 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 create schema storage;
-create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint);
+create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
 create schema cron;
 create table cron.job (jobid bigint primary key, jobname text, schedule text, command text);
 create publication supabase_realtime;
@@ -129,6 +129,12 @@ projet_neuf source
 projet_neuf reprise
 
 psql -h "$BASE" -p "$PORT" -U postgres -d source -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+-- Configuration fournisseur synthétique : liste restrictive, NULL et [] ne se confondent pas.
+insert into storage.buckets values
+  ('content', 'content', true, 27262976, array['image/png','video/mp4']),
+  ('attachments', 'attachments', false, 27262976, array['image/png']),
+  ('mime_null', 'mime_null', false, null, null),
+  ('mime_vide', 'mime_vide', false, 0, '{}'::text[]);
 -- ① La forme R25 : rid opaque, index unique sur lui seul, identité de réplication,
 -- garde (copie de public.rid_opaque_garde), séquence sans droit client.
 create table public.membres (conv_id text not null, user_id text not null,
@@ -408,6 +414,7 @@ ACL_PRIVES="with droits as (
 ) select coalesce(string_agg(objet || ':' || coalesce(r.rolname,'PUBLIC') || ':' || privilege_type || ':' || is_grantable, E'\\n' order by objet, r.rolname nulls first, privilege_type), '')
   from droits d left join pg_roles r on r.oid=d.grantee where d.grantee=0 or r.rolname in ('anon','authenticated','service_role');"
 
+CONFIG_SEAUX="select jsonb_agg(jsonb_build_object('id',id,'name',name,'public',public,'file_size_limit',file_size_limit,'allowed_mime_types',allowed_mime_types) order by id)::text from storage.buckets;"
 echo "── ⓪ LA SOURCE EST CE QU'ON CROIT ─────────────────────────────────"
 verifier "identités de la source : membres et aimes USING INDEX, interactions FULL, brouillons NOTHING, orpheline sans index (NOTHING), les autres DEFAULT" \
   "aimes=i:aimes_rid_key brouillons=n erreurs=d interactions=f journal=d membres=i:membres_rid_key orpheline=n renommee=d" "$(SQL source "$IDENTITES")"
@@ -440,6 +447,8 @@ verifier "les deux schémas privés n'existent pas encore sur la cible vierge" "
   "$(SQL reprise "select (to_regnamespace('rencontres_prive') is null)::text || '|' || (to_regnamespace('passio_realtime_budget') is null)::text;" | sed 's/true/t/g')"
 if applique="$(psql -h "$BASE" -p "$PORT" -U postgres -d reprise -X -q -v ON_ERROR_STOP=1 -f "$OUTILS/schema.sql" 2>&1)"; then rc=0; else rc=$?; fi
 verifier "le DDL (une transaction) s'applique sans erreur" "0" "$rc"
+verifier "seaux : public/limite/MIME préservés, NULL et liste vide distincts" \
+  "$(SQL source "$CONFIG_SEAUX")" "$(SQL reprise "$CONFIG_SEAUX")"
 [ "$rc" -eq 0 ] || printf '%s\n' "$applique" | grep -iE "error|erreur" | head -3
 verifier "DDL privé : tables, colonnes, identités, FK, fonctions, trigger et RLS identiques" "$(SQL source "$OBJETS_PRIVES")" "$(SQL reprise "$OBJETS_PRIVES")"
 verifier "DDL privé : ACL PUBLIC/anon/authenticated/service_role identiques, délégation comprise" "$(SQL source "$ACL_PRIVES")" "$(SQL reprise "$ACL_PRIVES")"
@@ -541,6 +550,7 @@ echo "── ⑦ REJOUÉ SUR LA BASE SEMÉE, ET SUR UNE CIBLE QUI A DÉRIVÉ ─
 avant="$(CONTENU reprise)"
 if rejeu="$(psql -h "$BASE" -p "$PORT" -U postgres -d reprise -X -q -v ON_ERROR_STOP=1 -f "$OUTILS/schema.sql" 2>&1)"; then rc=0; else rc=$?; fi
 verifier "rejoué sur la base semée : sans erreur" "0" "$rc"
+verifier "…configuration de seaux inchangée après rejeu" "$(SQL source "$CONFIG_SEAUX")" "$(SQL reprise "$CONFIG_SEAUX")"
 [ "$rc" -eq 0 ] || printf '%s\n' "$rejeu" | grep -iE "error|erreur" | head -3
 verifier "…lignes intactes" "$avant" "$(CONTENU reprise)"
 verifier "…séquences inchangées, aucune ne se double" "$(SQL source "$SEQUENCES")|0" "$(SQL reprise "$SEQUENCES")|$(SQL reprise "$NB_SEQ1")"
@@ -564,8 +574,10 @@ SQL reprise "alter table public.journal replica identity full;
              revoke execute on function rencontres_prive.publique() from public;" >/dev/null
 verifier "dérive posée : journal et aimes FULL, membres et interactions DEFAULT" "journal=f membres=d aimes=f interactions=d" \
   "$(SQL reprise "select string_agg(relname || '=' || relreplident::text, ' ' order by array_position(array['journal', 'membres', 'aimes', 'interactions'], relname::text)) from pg_class where oid in ('public.journal'::regclass, 'public.membres'::regclass, 'public.aimes'::regclass, 'public.interactions'::regclass);")"
+SQL reprise "update storage.buckets set public=true,file_size_limit=null,allowed_mime_types=null where id='attachments';" >/dev/null
 if rejeu="$(psql -h "$BASE" -p "$PORT" -U postgres -d reprise -X -q -v ON_ERROR_STOP=1 -f "$OUTILS/schema.sql" 2>&1)"; then rc=0; else rc=$?; fi
 verifier "rejoué sur la cible qui a dérivé : sans erreur" "0" "$rc"
+verifier "…visibilité/limite/MIME du seau privé rétablies après dérive" "$(SQL source "$CONFIG_SEAUX")" "$(SQL reprise "$CONFIG_SEAUX")"
 verifier "…chaque identité revient à celle de la source (DEFAULT compris : journal)" "$(SQL source "$IDENTITES")" "$(SQL reprise "$IDENTITES")"
 verifier "…chaque droit de séquence aussi (rid repris à anon, SELECT rendu à authenticated)" "$(SQL source "$DROITS")" "$(SQL reprise "$DROITS")"
 verifier "…RLS/FORCE privées rétablies, avec les mêmes fonctions et dépendances" "$(SQL source "$OBJETS_PRIVES")" "$(SQL reprise "$OBJETS_PRIVES")"

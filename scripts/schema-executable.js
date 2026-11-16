@@ -119,6 +119,42 @@ const rendreAcl = (objet, x) => `revoke all on ${objet} from ${nomRole(x.role)};
   + (x.privs ? `\ngrant ${x.privs.toLowerCase()} on ${objet} to ${nomRole(x.role)};` : "")
   + (x.grantables ? `\ngrant ${x.grantables.toLowerCase()} on ${objet} to ${nomRole(x.role)} with grant option;` : "");
 
+// Le DDL porte aussi un état structuré, couvert par schema_sha256 dans l'archive.
+// NULL (aucune restriction MIME) et [] (aucun type admis) restent distincts.
+const MARQUEUR_SEAUX = "-- PASSIO_SEAUX_V1 ";
+function metadataSeaux(document) {
+  const exact = (o, cles) => o && typeof o === "object" && !Array.isArray(o)
+    && Object.keys(o).sort().join(",") === [...cles].sort().join(",");
+  if (!exact(document, ["version", "seaux"]) || document.version !== 1 || !Array.isArray(document.seaux)) {
+    throw new Error("Métadonnées de seaux inconnues ou invalides");
+  }
+  const ids = new Set();
+  const seaux = document.seaux.map((b) => {
+    if (!exact(b, ["id", "name", "public", "file_size_limit", "allowed_mime_types"])
+      || typeof b.id !== "string" || !b.id || typeof b.name !== "string" || !b.name
+      || ids.has(b.id) || typeof b.public !== "boolean"
+      || (b.file_size_limit !== null && (!Number.isSafeInteger(b.file_size_limit) || b.file_size_limit < 0))
+      || (b.allowed_mime_types !== null && (!Array.isArray(b.allowed_mime_types)
+        || b.allowed_mime_types.some((v) => typeof v !== "string" || !/^[a-z0-9!#$&^_.+-]+\/(?:[a-z0-9!#$&^_.+-]+|\*)$/i.test(v))))) {
+      throw new Error("Configuration de seau invalide ou incomplète");
+    }
+    ids.add(b.id);
+    return { id: b.id, name: b.name, public: b.public, file_size_limit: b.file_size_limit,
+      allowed_mime_types: b.allowed_mime_types === null ? null : [...b.allowed_mime_types] };
+  }).sort((a, b) => a.id.localeCompare(b.id));
+  return { version: 1, seaux };
+}
+function rendreSeaux(lignes) {
+  const m = metadataSeaux({ version: 1, seaux: lignes });
+  return [MARQUEUR_SEAUX + JSON.stringify(m), ...m.seaux.map((x) => {
+    const mime = x.allowed_mime_types === null ? "null"
+      : `array[${x.allowed_mime_types.map(litt).join(", ")}]::text[]`;
+    return `insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)\n`
+      + `  values (${litt(x.id)}, ${litt(x.name)}, ${x.public}, ${x.file_size_limit === null ? "null" : x.file_size_limit}, ${mime})\n`
+      + "  on conflict (id) do update set name=excluded.name, public=excluded.public, file_size_limit=excluded.file_size_limit, allowed_mime_types=excluded.allowed_mime_types;";
+  })];
+}
+
 const ETAPES = [
   { titre: "Garde — aucune table partitionnée ni étrangère dans les schémas applicatifs (le DDL de reprise ne sait pas les rendre)",
     // ⚠️ Contre-revue finale de R25 (2026-11-04). La section « Tables » ne rend
@@ -375,8 +411,8 @@ const ETAPES = [
     rendu: (r) => r.map((x) => `do $$ begin\n  alter publication ${ident(x.pubname)} add table ${x.schemaname}.${ident(x.tablename)};\nexception when duplicate_object then null; end $$;`) },
 
   { titre: "Seaux de stockage",
-    sql: `select id, name, public, file_size_limit from storage.buckets order by name`,
-    rendu: (r) => r.map((x) => `insert into storage.buckets (id, name, public, file_size_limit)\n  values (${litt(x.id)}, ${litt(x.name)}, ${x.public}, ${x.file_size_limit === null ? "null" : x.file_size_limit})\n  on conflict (id) do update set public=excluded.public, file_size_limit=excluded.file_size_limit;`) },
+    sql: `select id, name, public, file_size_limit, allowed_mime_types from storage.buckets order by name`,
+    rendu: rendreSeaux },
 
   { titre: "Tâches cron — une tâche qui APPELLE un projet n'est recopiée que sur lui",
     sql: `select jobname, schedule, command from cron.job order by jobname`,
@@ -436,4 +472,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });
-module.exports = { ETAPES, requete, PAUSES, projetsAppeles, rendreTacheCron };
+module.exports = { ETAPES, requete, PAUSES, projetsAppeles, rendreTacheCron, MARQUEUR_SEAUX, metadataSeaux };

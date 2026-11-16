@@ -58,6 +58,7 @@ const JE = require("./lib/json-exact.js");
 const PR = require("./lib/reprise-schemas-prives.js");
 const os = require("os");
 const crypto = require("crypto");
+const { MARQUEUR_SEAUX, metadataSeaux } = require("./schema-executable.js");
 
 const PROD_REF = "njkiyoklssvefstljemx";
 const API = "https://api.supabase.com/v1/projects";
@@ -184,6 +185,52 @@ function lireInventaire(ctx) {
   ctx._inventaire = RV.lireInventaireProprietaires(texte, att, texte === null ? null : crypto.createHash("sha256").update(texte, "utf8").digest("hex"));
   return ctx._inventaire;
 }
+function lireSeauxArchive(ctx) {
+  const inconnu = { ok: false, indetermine: true, etat: "INCONNU" };
+  const fichier = path.join(ctx.archive, "schema.sql");
+  const empreinte = ctx.man.schema_sha256;
+  if (!fs.existsSync(fichier)) return empreinte ? { ok: false, indetermine: false, etat: "DDL_ABSENT" } : inconnu;
+  const texte = fs.readFileSync(fichier, "utf8").replace(/\r\n/g, "\n");
+  if (empreinte && (!/^[0-9a-f]{64}$/.test(empreinte)
+    || crypto.createHash("sha256").update(texte, "utf8").digest("hex") !== empreinte)) {
+    return { ok: false, indetermine: false, etat: "DDL_DIVERGENT" };
+  }
+  const lignes = texte.split("\n").filter((l) => l.startsWith(MARQUEUR_SEAUX));
+  if (!lignes.length) return inconnu;
+  if (lignes.length !== 1) return { ok: false, indetermine: false, etat: "METADATA_INVALIDES" };
+  try {
+    const m = metadataSeaux(JSON.parse(lignes[0].slice(MARQUEUR_SEAUX.length)));
+    if (!empreinte) return inconnu; // Un commentaire non lié au manifeste n'est pas une attestation.
+    return { ok: true, indetermine: false, etat: "ATTESTE", seaux: m.seaux };
+  } catch {
+    return { ok: false, indetermine: false, etat: "METADATA_INVALIDES" };
+  }
+}
+async function verifierSeaux(ctx) {
+  const archive = lireSeauxArchive(ctx);
+  if (!archive.ok) return archive;
+  let cible;
+  try {
+    cible = metadataSeaux({ version: 1, seaux: await sql(ctx,
+      "select id, name, public, file_size_limit, allowed_mime_types from storage.buckets order by id") }).seaux;
+  } catch { return { ok: false, indetermine: true, etat: "CIBLE_NON_LUE" }; }
+  const normaliser = (b) => ({ ...b, allowed_mime_types: b.allowed_mime_types === null ? null : [...b.allowed_mime_types].sort() });
+  const attendus = new Map(archive.seaux.map((b) => [b.id, JSON.stringify(normaliser(b))]));
+  const obtenus = new Map(cible.map((b) => [b.id, JSON.stringify(normaliser(b))]));
+  const divergents = [...new Set([...attendus.keys(), ...obtenus.keys()])]
+    .filter((id) => attendus.get(id) !== obtenus.get(id)).length;
+  return { ok: divergents === 0, indetermine: false, etat: divergents ? "DIVERGENT" : "CONFORME",
+    attendu: attendus.size, obtenu: obtenus.size, divergents };
+}
+async function seauxAvantChargement(ctx) {
+  const v = await verifierSeaux(ctx);
+  bilan(ctx).phases.contraintes_seaux = { ok: v.ok, indetermine: v.indetermine, motif: v.etat };
+  // Le seul mode explicite préexistant reste disponible pour les anciennes archives.
+  // Il ne couvre ni une corruption connue ni une dérive/panne de la cible attestée.
+  if (v.ok || (v.etat === "INCONNU" && drapeau("--accepter-archive-non-verifiable"))) return true;
+  bilan(ctx).refus.push("Contraintes des seaux : " + v.etat + " — chargement refusé");
+  return false;
+}
 function fichiersMediasDisque(ctx) {
   const base = path.join(ctx.archive, "_storage");
   const out = [];
@@ -247,6 +294,10 @@ function validerArchive(ctx) {
   bloquants.push(...prive.erreurs);
   b.notes.push(...prive.notes);
   if (ctx.man.schemas_prives && ctx.man.projet !== `https://${ctx.man.schemas_prives.projet}.supabase.co`) bloquants.push("Projets public et privé du manifeste différents");
+  if (!sansMedias()) {
+    const seaux = lireSeauxArchive(ctx);
+    if (!seaux.ok) (seaux.indetermine ? nonVerifiables : bloquants).push("Contraintes des seaux : " + seaux.etat);
+  }
   // ① tables
   for (const [t, info] of Object.entries(ctx.man.tables || {})) {
     const f = path.join(ctx.archive, t + ".ndjson");
@@ -626,6 +677,8 @@ function fichiersSous(d, base = d) {
 async function medias(ctx) {
   const base = path.join(ctx.archive, "_storage");
   if (sansMedias() || !fs.existsSync(base)) { console.log("④ médias : ignorés."); return true; }
+  // Une dérive privée→publique ne doit pas exposer un blob avant le verdict final.
+  if (!await seauxAvantChargement(ctx)) return false;
   const existants = new Set((await (await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) })).json()).map((b) => b.name));
   let envoyes = 0, refus = [];
   // ⚠️ LA LIMITE DE TAILLE D'UN SEAU N'EST PAS CELLE DE SON CONTENU (mesuré
@@ -947,6 +1000,12 @@ async function verdict(ctx) {
     }
   }
 
+  if (!sansMedias()) {
+    preuve.seaux = await verifierSeaux(ctx);
+    bilan(ctx).phases.contraintes_seaux = { ok: preuve.seaux.ok, indetermine: preuve.seaux.indetermine,
+      motif: preuve.seaux.etat };
+    if (!preuve.seaux.ok) { if (preuve.seaux.indetermine) nonVerifies++; else ecarts++; }
+  }
   // ⚠️ ASTRA-29 (second volet) — UN SEUL VERDICT, ET IL COUVRE TOUT.
   // `prouvee = ecarts === 0` ne regardait ni les refus des phases précédentes,
   // ni les éléments non vérifiés, ni les limites Storage non restaurées. Un
@@ -1013,7 +1072,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -1039,6 +1098,7 @@ if (require.main === module) (async () => {
       : "archive INVALIDE : rien n'a été écrit sur la cible. Cette archive ne doit pas servir à une restauration.");
   }
   await schema(ctx);
+  if (!sansMedias() && !await seauxAvantChargement(ctx)) echec("Contraintes des seaux non conformes ou inconnues : aucune donnée de l'archive n'a été chargée.");
   await comptes(ctx);
   const t = await tables(ctx);
   const prive = await PR.restaurer({ dossier: ctx.archive, man: ctx.man.schemas_prives,

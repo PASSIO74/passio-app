@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const R = require("../../scripts/restaurer-donnees.js");
+const Seaux = require("../../scripts/schema-executable.js");
 const { comptes, medias, verdict, integriteArchive } = R._phases;
 
 const REF = "abcdefghijabcdefghij";
@@ -28,7 +29,7 @@ const sha = (t) => createHash("sha256").update(t, "utf8").digest("hex");
 const heures = (n) => new Date(Date.now() + n * 3600000).toISOString();
 
 /** Une archive réelle sur disque : médias + index + inventaire + comptes, manifeste cohérent. */
-function archive({ fichiers = { "content/photos/u/a.jpg": "AAA" }, inventaire, inventaireTexte, index = true, comptes = [], sansFichierSurDisque = [] } = {}) {
+function archive({ fichiers = { "content/photos/u/a.jpg": "AAA" }, inventaire, inventaireTexte, index = true, comptes = [], sansFichierSurDisque = [], contraintesSeaux = true, configurationSeaux } = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "passio-reprise-"));
   const idx = {};
   for (const [k, contenu] of Object.entries(fichiers)) {
@@ -41,6 +42,12 @@ function archive({ fichiers = { "content/photos/u/a.jpg": "AAA" }, inventaire, i
   if (inventaireTexte !== undefined) fs.writeFileSync(path.join(d, "_storage_proprietaires.json"), inventaireTexte);
   else if (inv !== null) { const t = JSON.stringify({ format: "passio-proprietaires/1", total: Object.keys(inv).length, objets: inv }); fs.writeFileSync(path.join(d, "_storage_proprietaires.json"), t); man.medias.proprietaires_sha256 = sha(t); man.medias.proprietaires_lus = Object.keys(inv).length; }
   fs.writeFileSync(path.join(d, "_auth_users.ndjson"), comptes.map((u) => JSON.stringify(u)).join("\n") + (comptes.length ? "\n" : ""));
+  if (contraintesSeaux) {
+    const ddl = 'begin;\n' + Seaux.ETAPES.find(e => e.titre === 'Seaux de stockage').rendu(configurationSeaux || [
+      {id: 'content', name: 'content', public: true, file_size_limit: 26000000, allowed_mime_types: ['image/jpeg']},
+    ]).join('\n') + '\ncommit;\n';
+    fs.writeFileSync(path.join(d, 'schema.sql'), ddl); man.schema_sha256 = sha(ddl);
+  }
   fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
   return { dossier: d, man };
 }
@@ -49,7 +56,7 @@ function archive({ fichiers = { "content/photos/u/a.jpg": "AAA" }, inventaire, i
 function monde(opts = {}) {
   const etat = {
     users: new Map(Object.entries(opts.users || {})),          // id → { id, email, banned_until }
-    buckets: new Map([["content", { id: "content", file_size_limit: 26000000 }]]),
+    buckets: new Map([["content", { id: "content", name: "content", public: true, file_size_limit: 26000000, allowed_mime_types: ['image/jpeg'] }]]),
     objets: new Map(Object.entries(opts.objets || {})),        // "seau/chemin" → { taille, etag, owner, owner_id }
     journal: [],
     refusUpload: new Set(opts.refusUpload || []),
@@ -98,6 +105,7 @@ function monde(opts = {}) {
             tables: opts.prives ? Object.entries(P.TABLES).map(([nom, pk]) => ({ schema: P.SCHEMA, nom, pk, lisible: true, genre: "r" })) : [] }]);
         }
         if (/^select id, file_size_limit from storage\.buckets/.test(q)) return json([...etat.buckets.values()]);
+        if (/^select id, name, public, file_size_limit, allowed_mime_types from storage\.buckets/.test(q)) return json([...etat.buckets.values()]);
         if (/^update storage\.buckets set file_size_limit = null$/.test(q)) { for (const b of etat.buckets.values()) b.file_size_limit = null; return json([]); }
         if (/^update storage\.buckets set file_size_limit = /.test(q)) { if (etat.refusLimite) return texte("permission denied", 500); const mm = /file_size_limit = (\S+) where id = \$\w+\$(\w+)\$/.exec(q); etat.buckets.get(mm[2]).file_size_limit = mm[1] === "null" ? null : Number(mm[1]); return json([]); }
         if (/^update storage\.objects o set owner = /.test(q)) {
@@ -394,4 +402,40 @@ test("la validation globale refuse un manifeste privé inconnu avant les phases 
   const a = archive(); a.man.schemas_prives = { version: 999 };
   const v = validerArchive(contexte(a));
   assert.equal(v.ok, false); assert.match(v.bloquants.join(" "), /Manifeste privé inconnu/);
+});
+
+test("REPRISE-GO : une archive historique sans contrainte MIME ne prouve pas la configuration du seau", async () => {
+  const a = archive({contraintesSeaux: false}), m = monde(), ctx = contexte(a);
+  await avec(m, async () => {
+    integriteArchive(ctx);
+    await medias(ctx);
+    const {ok} = await sansComptes(() => verdictAvecPreuve(ctx));
+    assert.equal(ok, false, 'liste MIME source inconnue : la preuve doit rester indéterminée');
+  });
+});
+
+test("REPRISE-GO : le verdict refuse une dérive MIME malgré blobs et owners conformes", async () => {
+  const a = archive(), m = monde(), ctx = contexte(a);
+  await avec(m, async () => {
+    integriteArchive(ctx); await medias(ctx);
+    m.buckets.get('content').allowed_mime_types = null;
+    const {ok, preuve} = await sansComptes(() => verdictAvecPreuve(ctx));
+    assert.equal(ok, false);
+    assert.equal(preuve.seaux.etat, 'DIVERGENT');
+    assert.equal(preuve.seaux.divergents, 1);
+  });
+});
+
+test("REPRISE-GO : une dérive de visibilité refuse les uploads avant exposition", async () => {
+  const prive = {id: 'attachments', name: 'attachments', public: false, file_size_limit: 26000000, allowed_mime_types: ['image/jpeg']};
+  const a = archive({fichiers: {'attachments/attachments/conv/image.jpg': 'AAA'}, configurationSeaux: [
+    {id: 'content', name: 'content', public: true, file_size_limit: 26000000, allowed_mime_types: ['image/jpeg']}, prive,
+  ]}), m = monde(), ctx = contexte(a);
+  m.buckets.set('attachments', {...prive, public: true});
+  await avec(m, async () => {
+    assert.equal(await medias(ctx), false);
+    assert.equal(m.objets.size, 0);
+    assert.equal(m.buckets.get('content').file_size_limit, 26000000, 'aucune limite temporairement desserrée');
+    assert.ok(ctx.bilan.refus.length > 0);
+  });
 });
