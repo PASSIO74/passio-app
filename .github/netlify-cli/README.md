@@ -177,12 +177,29 @@ publiée le 16/11 à 18:57 UTC et vérifiée aussi sur npm, conserve `@netlify/b
 `minimatch ^10.2.4` ; zip épingle nft 1.3.1, qui demande `glob ^13.0.0`. Le downgrade CLI 15.4.1
 suggéré par npm audit n'est pas appliqué. La CLI éprouvée reste donc **27.16.2**.
 
-Les deux exceptions sont exactes et limitées aux versions sources vulnérables :
+Les deux substitutions sont limitées aux **six parents et versions exacts** inventoriés :
 
-| Sélecteur npm | Version substituée | Copies saines conservées |
+| Parent du sélecteur npm | Dépendance substituée | Version cible |
 | --- | --- | --- |
-| `minimatch@10.2.6` | `11.0.1` | `11.0.5` sous glob 14.0.4 |
-| `glob@13.0.7` | `14.0.2` | glob `14.0.4` à la racine |
+| `@netlify/build@37.7.6` | minimatch | `11.0.1` |
+| `@netlify/build-info@11.3.1` | minimatch | `11.0.1` |
+| `@netlify/zip-it-and-ship-it@16.6.0` | minimatch | `11.0.1` |
+| `@typescript-eslint/typescript-estree@8.72.1` | minimatch | `11.0.1` |
+| `readdir-glob@3.0.0` | minimatch | `11.0.1` |
+| `@vercel/nft@1.3.1` | glob | `14.0.2` |
+
+Chaque valeur imbriquée est une version exacte. Les copies saines glob14.0.4 et son
+minimatch11.0.5 restent inchangées. Le contrôle refuse un parent absent ou d'une autre
+version : une mise à jour impose de réexaminer la portée, pas d'ignorer une substitution.
+
+**Écart npm reproduit le 16/11 :** les anciens sélecteurs globaux conditionnels
+`minimatch@10.2.6` et `glob@13.0.7` passent avec npm11.13.0, mais le vrai
+`npm ci` de npm10.9.9 (runner Node22) refuse le même lockfile avec EUSAGE et
+« Missing: minimatch@10.2.6 ». La copie locale avec npm10.9.9 officiel a reproduit
+ce rouge. Les sélecteurs par parent passent ensuite en dry-run avec npm10 et npm11. La vraie
+installation npm10.9.9 puis les29 tests (dont Deno natif) sont verts, sans
+réécrire le lockfile ni changer ses versions ou empreintes. Aucun changement de
+CLI, outil d'installation en CI ou option de contournement du lockfile n'est requis.
 
 Les deux versions corrigées ont été publiées le 27/10/2026 (minimatch à 22:26:03 UTC,
 glob à 22:07:00 UTC), dates relues sur le registre npm. Le nouvel audit JSON valide retourne
