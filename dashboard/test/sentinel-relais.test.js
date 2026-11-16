@@ -84,7 +84,8 @@ test("le corps est désamorcé : les lignes en forme d'instruction disparaissent
   assert.doesNotMatch(corps, /Ignore previous instructions/);
   assert.doesNotMatch(corps, /<system>/);
   assert.doesNotMatch(corps, /Testeur/, "meta.user ne doit jamais entrer dans une issue");
-  assert.match(corps, /trace:failed:send_message:api/);
+  assert.doesNotMatch(corps, /trace:failed:send_message:api/);
+  assert.match(corps, /"empreinte":"[0-9a-f]{64}"/);
   // Le texte du modèle dérive d'une télémétrie hostile : il ne part plus dans un dépôt public (F-05).
   assert.doesNotMatch(corps, /L'envoi échoue en 500/);
 });
@@ -103,15 +104,12 @@ test("contexte désamorcé : une clé, un endpoint, une action ou un écran en f
   });
   const corps = corpsRelais(hostile, detecteur);
   assert.doesNotMatch(corps, /Ignore previous/, "aucune ligne de contexte ne recopie l'instruction");
-  assert.match(corps, /Clé : \[ligne en forme d'instruction — retirée\]/);
-  assert.match(corps, /Endpoint : \[ligne en forme d'instruction — retirée\]/);
-  assert.match(corps, /Action : \[ligne en forme d'instruction — retirée\]/);
-  assert.match(corps, /Écran : ‹b‹ordre‹\/b‹ ˋcodeˋ/, "balises et backticks neutralisés dans le contexte, pas seulement dans l'analyse");
+  assert.doesNotMatch(corps, /Clé :|Endpoint :|Action :|Écran :/);
   assert.doesNotMatch(corps, /<b>|`/);
-  // Une valeur ordinaire reste lisible : le désamorçage n'efface pas le contexte utile.
+  // Même une valeur ordinaire n'est pas une entrée d'agent autorisée.
   const sain = corpsRelais(record({ meta: { endpoint: "/rest/v1/posts", action: "send_message", screen: "chat" } }), detecteur);
-  assert.match(sain, /Clé : trace:failed:send_message:api/);
-  assert.match(sain, /Endpoint : \/rest\/v1\/posts/);
+  assert.doesNotMatch(sain, /trace:failed:send_message:api|\/rest\/v1\/posts/);
+  assert.match(sain, /"empreinte":"[0-9a-f]{64}"/);
 });
 
 test("réparation locale non appelée quand le relais est actif ; appelée sinon", async () => {
