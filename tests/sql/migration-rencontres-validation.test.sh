@@ -34,7 +34,10 @@ select set_config('request.jwt.claim.sub','$USERID',true);
 select 1 from public.event_attendees where event_id='race_$CAS' and user_id='$USERID' for update;
 do \$\$ declare fini boolean:=false; begin
  for i in 1..200 loop
-  if exists(select 1 from pg_stat_activity where application_name='rencontres_b' and wait_event_type='Lock') then fini:=true;exit;end if;
+  -- pg_stat_activity conserve son premier instantané pendant toute la transaction.
+  perform pg_stat_clear_snapshot();
+  if exists(select 1 from pg_stat_activity where application_name='rencontres_b'
+    and wait_event_type='Lock' and pg_backend_pid() = any(pg_blocking_pids(pid))) then fini:=true;exit;end if;
   perform pg_sleep(0.02);
  end loop;
  if not fini then raise exception 'B ne contend pas'; end if;
