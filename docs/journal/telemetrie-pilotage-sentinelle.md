@@ -1754,3 +1754,8 @@ l'empêchait demain.
   reste théorique : il faudrait une image de GitHub ou un CDN de Playwright compromis.
 - `controle-realtime.yml` épingle supabase-js 2.58.0, alors que l'application embarque la 2.116.0. Cet écart n'est
   pas traité ici : changer la version changerait le contrôle lui-même.
+
+
+## Veille authentifiee et cible declaree dans Vault (2026-11-16, local)
+
+Le lot 5 coordonne le secret obligatoire Edge, le cron Vault et le seul workflow pilotage-veille.yml. Les reponses de veille ne sont plus imprimees par ce workflow. Details, ordre de provisionnement et limites : fiche du 16/11 dans serveur-securite-base.md. Aucun reglage distant modifie ; AAL2 active et TURN coupe par le Lead conserves.

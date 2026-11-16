@@ -54,6 +54,7 @@ const SITE_NETLIFY = "eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1";
 const ENV = Object.freeze({
   SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co", SUPABASE_ANON_KEY: "aaaa.bbbb.cccc",
   SUPABASE_SERVICE_ROLE_KEY: "cle-de-service-du-banc-0123456789abcdef", PILOTAGE_GITHUB_TOKEN: "jeton-github-du-banc",
+  PILOTAGE_VEILLE_SECRET: "secret-de-la-veille-du-banc",
   VAPID_PUBLIC_KEY: "vapid-publique", VAPID_PRIVATE_KEY: "vapid-privee",
 });
 // Un jeton a la forme d'un JWT : `aalDuJeton` lit le niveau dans sa charge.
@@ -243,7 +244,7 @@ async function appeler(corps, { jeton = JETON.pilote, entetes = {}, methode = "P
   if (r.status === 200 && corps && typeof corps.action === "string") ACTIONS_ABOUTIES.add(corps.action);
   return { status: r.status, corps: json, texte, entetes: r.headers };
 }
-const veille = (entetes = {}) => appeler({ action: "veille" }, { jeton: null, entetes });
+const veille = (entetes = {}) => appeler({ action: "veille" }, { jeton: null, entetes: { "x-passio-veille": ENV.PILOTAGE_VEILLE_SECRET, ...entetes } });
 /** Une minute plus tard : le créneau de la veille est rendu (les lignes `edge_*` vivent 2 h en production). */
 const minuteSuivante = () => banc.base.tables.set("analytics_events", banc.base.table("analytics_events").filter((l) => !String(l.event).startsWith("edge_")));
 const evenements = (nom) => banc.base.table("analytics_events").filter((l) => l.event === nom);
@@ -944,9 +945,9 @@ test("㉖ inscrits : des noms, jamais une adresse ni un identifiant ; les compte
 
 // ═══ LA VEILLE — ce qui fait sonner le téléphone ════════════════════════════
 
-test("㉗ veille : appelable sans compte, elle ne rend que { ok: true } ; elle prend son créneau, note l'état, bat — et ne sonne pas quand tout va bien", async () => {
+test("㉗ veille : réservée au secret serveur, elle ne rend que { ok: true } ; elle prend son créneau, note l'état, bat — et ne sonne pas quand tout va bien", async () => {
   await monter({ battement: false });
-  const r = await action({ action: "veille" }, { jeton: null });
+  const r = await action({ action: "veille" }, { jeton: null, entetes: { "x-passio-veille": ENV.PILOTAGE_VEILLE_SECRET } });
   assert.equal(r.status, 200);
   assert.deepEqual(r.corps, { ok: true }, "aucun oracle : ni voyant, ni décision, ni compteur dans la réponse publique");
   assert.equal(evenements("edge_pilotage-veille").length, 2, "le créneau : sa minute et la suivante, en une instruction");
@@ -1126,7 +1127,7 @@ test("㉝ panne de la base : la veille ne lève pas, ne prétend rien et ne lais
 
 test("㉞ le secret de la veille, une fois posé, ferme le déclencheur anonyme : sans l'en-tête 401, avec lui elle tourne", async () => {
   await monter({ battement: false, env: { PILOTAGE_VEILLE_SECRET: "secret-de-la-veille-du-banc" } });
-  assert.equal((await veille()).status, 401);
+  assert.equal((await appeler({action:"veille"}, {jeton:null})).status, 401);
   assert.equal((await veille({ "x-passio-veille": "secret-de-la-veille-du-ban" })).status, 401);
   assert.equal(banc.base.journal.length, 0);
   assert.deepEqual((await veille({ "x-passio-veille": "secret-de-la-veille-du-banc" })).corps, { ok: true });
@@ -1524,4 +1525,16 @@ test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au
   // Nommer une action ne suffit pas : un exercice qui ne lui ferait rendre que des refus (400, 409, 501) ne
   // prouverait rien de ce qu'elle FAIT. Chacune a répondu 200 au moins une fois dans ce banc.
   assert.deepEqual(declarees.filter((a) => !ACTIONS_ABOUTIES.has(a)), [], "actions jamais menées au bout");
+});
+
+test("veille : secret absent ou vide, clé anon et JWT pilote ne donnent aucun accès ni effet", async () => {
+  for (const secret of [undefined, ""]) {
+    await monter({env:{PILOTAGE_VEILLE_SECRET:secret}});
+    for (const jeton of [null, JETON.pilote, ENV.SUPABASE_ANON_KEY]) {
+      assert.equal((await appeler({action:"veille"}, {jeton,entetes:{"x-passio-veille":ENV.PILOTAGE_VEILLE_SECRET}})).status,401);
+    }
+    assert.equal(banc.base.journal.length,0);
+    assert.equal(banc.reseau.length,0);
+    assert.equal(banc.pushes.length,0);
+  }
 });

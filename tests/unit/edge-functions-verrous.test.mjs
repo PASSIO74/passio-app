@@ -882,12 +882,14 @@ test("⑦ ③ une suite listée absente, sans module emporté, ou deux fois : ch
 });
 
 test("⑦ ② ③ le banc qui EXÉCUTE notify-call : retiré de l'étape, il rougit ; listé sans lire le code d'une fonction, il rougit encore — le remède est une lecture écrite", () => {
-  const src = REEL.fichiers[NOTIFY_CHEMINS];
-  assert.equal(AUDIT.importsDe.has(NOTIFY_CHEMINS), false, "prémisse : il n'importe aucun module emporté — seule sa lecture le garde");
+  // La fixture sans import exerce toujours la détection des lectures seules ;
+  // le vrai banc importe désormais appels.js pour exécuter l’autorisation TURN.
+  const src = REEL.fichiers[NOTIFY_CHEMINS].replace(/^import \* as M_APPELS from [^\n]+\n/m, "");
+  assert.equal(AUDIT.importsDe.has(NOTIFY_CHEMINS), true, "le vrai banc exécute aussi le module partagé");
   assert.ok(AUDIT.listees.has(NOTIFY_CHEMINS), "prémisse : il tourne dans l'étape");
   // Retiré de l'étape : il rougit, en nommant le code qu'il lit.
   const sans = muter(REEL.workflow, "\n" + INDENT + "node --test " + NOTIFY_CHEMINS + "\n", "\n");
-  const absent = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : lit " + echapper(INDEX_NOTIFY) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »");
+  const absent = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : (?:importe [^,]+, )?lit " + echapper(INDEX_NOTIFY) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »");
   rougit(avec({ workflow: sans }), absent);
   // Listé, sans lire le code d'une fonction : il ne garde rien.
   const LECTURE = 'fs.readFileSync("' + INDEX_NOTIFY + '", "utf8")';
