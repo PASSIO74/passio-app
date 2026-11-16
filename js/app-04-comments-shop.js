@@ -8134,7 +8134,12 @@ function _messageContentData(raw) {
   return d;
 }
 function applyMsgContentData(m, raw) {
-  var src = (raw === undefined || raw === null) ? m.text : raw;
+  // Le rendu peut repasser après le chargement et après sauvegarde locale.
+  // Revalider l'enveloppe d'origine, jamais le texte qu'elle contenait : un
+  // texte comme « [rdv demain] » n'est pas une nouvelle enveloppe JSON.
+  var src = (raw === undefined || raw === null)
+    ? (typeof m._msgRawContent === "string" ? m._msgRawContent : m.text) : raw;
+  if (typeof src === "string") m._msgRawContent = src;
   var d = _messageContentData(src);
   if (!d) {
     m.text = "[Message invalide]";

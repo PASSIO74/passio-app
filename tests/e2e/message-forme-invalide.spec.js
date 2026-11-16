@@ -13,10 +13,17 @@ test('B06-N1 : la liste et le fil restent rendus avec une enveloppe invalide', a
     const c = {id:'grp_forme',isGroup:true,groupName:'Banc de forme',userName:'Banc',userIds:[MY_UID],unread:0,lastAt:Date.now(),messages:[]};
     raws.forEach((d,i) => {const m={id:'bad_'+i,from:'autre',text:JSON.stringify(d),at:Date.now()+i};applyMsgContentData(m);c.messages.push(m);});
     c.messages.push({id:'sain',from:'me',text:'message sain conservé',at:Date.now()+10});
+    for (const text of ['[rdv demain]', '{"a":1}']) {
+      const m = {id:'legitime_'+c.messages.length,from:'me',text:'',at:Date.now()+11};
+      applyMsgContentData(m, JSON.stringify({type:'text',text}));
+      c.messages.push(JSON.parse(JSON.stringify(m)));
+    }
     conversationsState=[c]; saveConversations(); goTo('messages'); renderMessages();
     return {list:document.getElementById('messageList').textContent, thread:(function(){if(!document.getElementById('convFpThread')){const el=document.createElement('div');el.id='convFpThread';document.body.appendChild(el);}renderConvFpThread(c,'Banc');return document.getElementById('convFpThread').textContent;})()};
   });
   expect(result.list).toContain('Banc de forme');
   expect(result.thread).toContain('message sain conservé');
+  expect(result.thread).toContain('[rdv demain]');
+  expect(result.thread).toContain('{"a":1}');
   expect(result.thread.match(/\[Message invalide\]/g)).toHaveLength(4);
 });

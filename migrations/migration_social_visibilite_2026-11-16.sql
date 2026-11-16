@@ -7,6 +7,8 @@
 -- restaurer story_comments_select et passio_rt_recevoir_fil depuis leurs migrations sources,
 -- retirer moderation_cible_propre puis REVOKE SELECT(target_type,target_id) sur contenus_masques.
 begin;
+set local lock_timeout = '3s';
+set local statement_timeout = '30s';
 
 -- Refus AVANT toute écriture si le staging n'est pas aligné. Ces empreintes
 -- portent sur les définitions publiques relues, avec espaces normalisés.
@@ -36,7 +38,7 @@ begin
     if to_regprocedure(f.signature) is null then
       raise exception 'Fonction prerequisite absente : %', f.signature;
     end if;
-    if md5(regexp_replace(btrim(pg_get_functiondef(to_regprocedure(f.signature))), '[[:space:]]+', ' ', 'g')) <> f.empreinte then
+    if md5(btrim(regexp_replace(pg_get_functiondef(to_regprocedure(f.signature)), '[[:space:]]+', ' ', 'g'))) <> f.empreinte then
       raise exception 'Corps prerequisite different du catalogue relu : %', f.signature;
     end if;
   end loop;
@@ -120,4 +122,5 @@ begin
     raise exception 'Droits de moderation incompatibles';
   end if;
 end $verdict$;
+select 'social_visibilite_2026-11-16' as controle, 'OK' as verdict;
 commit;

@@ -62,6 +62,22 @@ test('formats légitimes, texte ancien et réponse emoji tronquée', () => {
   const m = {text:'texte ancien'}; ctx.applyMsgContentData(m); assert.equal(m.text,'texte ancien');
 });
 
+test('chargement puis rendus et reprise locale préservent le texte déjà décodé', async () => {
+  for (const text of ['[rdv demain]', '{"a":1}', '{bad', '{"type":"media","fileType":1}']) {
+    const ctx = context([row('ok','conv_ok',JSON.stringify({type:'text',text}))]);
+    const convs = await ctx.supaLoadMyConversations();
+    const preview = convs.find(c => c.id === 'conv_ok').messages[0];
+    const messages = await ctx.supaLoadMessages('conv_ok');
+    for (const original of [preview, messages[0]]) {
+      ctx.applyMsgContentData(original);
+      assert.equal(original.text, text);
+      const restored = JSON.parse(JSON.stringify(original));
+      ctx.applyMsgContentData(restored);
+      assert.equal(restored.text, text);
+    }
+  }
+});
+
 test('texte scalaire ancien et format t ; dernière clé comme JSON.parse', () => {
   const ctx = context();
   for (const raw of ['42','null','true','"texte ancien"']) {const m={text:raw};ctx.applyMsgContentData(m);assert.equal(m.text,raw);}
