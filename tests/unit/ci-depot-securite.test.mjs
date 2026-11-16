@@ -10,7 +10,7 @@ const deploy = parse(lire(".github/workflows/deploy.yml")).jobs;
 const contexte = (event, repo, acteur = "PASSIO74") => ({ github: { event_name: event, repository: "owner/passio", actor: acteur,
   event: { pull_request: { head: { repo: { full_name: repo } } } } } });
 test("forks et Dependabot : aucun staging ni aperçu privilégié, tests locaux conservés", () => {
-  for (const nom of ["test-prod", "preview"]) {
+  for (const nom of ["test-prod", "preview-build", "preview"]) {
     for (const c of [contexte("pull_request", "tiers/fork"), contexte("pull_request", "owner/passio", "dependabot[bot]")]) {
       assert.equal(decide(deploy[nom].if, c), false, nom);
     }
@@ -28,11 +28,35 @@ test("forks et Dependabot : aucun staging ni aperçu privilégié, tests locaux 
   assert.match(suites[0].run, /^npx playwright test tests\/e2e\/authz-critical\.spec\.js --project=prod$/);
 });
 test("aperçu : outils verrouillés, minification avant contrôle des octets servis", () => {
-  const steps = deploy.preview.steps;
+  const steps = deploy['preview-build'].steps;
   const build = steps.find(s => String(s.run).includes("node scripts/build.js"));
   assert.equal(String(build.env.PASSIO_MINIFIER_APP), "1");
   assert.ok(steps.slice(0, steps.indexOf(build)).some(s => s.run === "npm ci --ignore-scripts"));
   assert.ok(build.run.split(/\r?\n/).some(l => l.trim() === "node scripts/verifier-integrite-app.js dist"), "le contrôleur reçoit le dossier dist");
+  assert.doesNotMatch(JSON.stringify(deploy['preview-build']), /secrets[.\[]/);
+  const pub = deploy.preview;
+  assert.match(String(pub.needs), /preview-build/);
+  assert.equal(pub.permissions.contents, 'read');
+  assert.equal(pub.steps.find(s => /^actions\/checkout@/.test(s.uses)).with.ref, '${{ github.event.pull_request.base.sha }}');
+  assert.ok(pub.steps.some(s => /^actions\/download-artifact@/.test(s.uses)));
+  assert.ok(steps.some(s => /^actions\/upload-artifact@/.test(s.uses)));
+  assert.ok(!pub.steps.some(s => /scripts\/build\.js|^npm ci --ignore-scripts$|node --test/.test(String(s.run))));
+  const verifier = pub.steps.find(s => String(s.run).includes('--attendue'));
+  assert.equal(verifier.env.EMPREINTE_TESTEE, '${{ needs.preview-build.outputs.empreinte }}');
+  assert.match(verifier.run, /find dist -type l/);
+});
+
+test('Sentinelle distante : aucune PR ne peut recevoir un secret de staging', () => {
+  const jobs = parse(lire('.github/workflows/sentinelle-distante.yml')).jobs;
+  for (const repo of ['tiers/fork','owner/passio']) {
+    const ctx=contexte('pull_request',repo);ctx.github.ref='refs/pull/951/merge';
+    assert.equal(decide(jobs.health.if,ctx),false);
+    assert.equal(decide(jobs.validation.if,ctx),true);
+  }
+  const ctx=contexte('workflow_dispatch');ctx.github.ref='refs/heads/branche';
+  assert.equal(decide(jobs.health.if,ctx),false);
+  ctx.github.ref='refs/heads/main';assert.equal(decide(jobs.health.if,ctx),true);
+  assert.doesNotMatch(JSON.stringify(jobs.validation), /secrets[.\[]/);
 });
 test("les validations des crons ne précèdent jamais leurs secrets sur un même runner", () => {
   for (const [f, j] of [["veille-production", "veiller"], ["digest", "composer"], ["moderation-alerte", "compter"], ["sentinelle-autonome", "detecter"]]) {

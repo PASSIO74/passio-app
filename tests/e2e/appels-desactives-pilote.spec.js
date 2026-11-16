@@ -112,7 +112,10 @@ test.describe("ASTRA-60 — les appels sont désactivés pour le pilote", () => 
     expect(partage).toMatch(/^export const APPELS_ACTIFS = false;$/m);
     // 2026-11-09 : le même import porte aussi le relais TURN (`{ type: "ice" }`), servi
     // AVANT l'interrupteur — un live en a besoin quand les appels sont coupés.
-    expect(src).toMatch(/import \{ APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S \} from "\.\.\/_shared\/appels\.js";/);
+    const importAppels = src.match(/import\s*\{([^}]+)\}\s*from\s*"\.\.\/_shared\/appels\.js";/);
+    expect(importAppels).not.toBeNull();
+    const nomsAppels = importAppels[1].split(",").map((nom) => nom.trim());
+    expect(nomsAppels).toEqual(expect.arrayContaining(["APPELS_ACTIFS", "pousserAppareils", "serveursIceDepuisCloudflare", "TTL_ICE_S"]));
     expect(src).not.toMatch(/const APPELS_ACTIFS\s*=/);
     expect(src).toMatch(/type === "call" && !APPELS_ACTIFS\) return json\(\{ ok: false, code: "appels_desactives"/);
     const app05 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-05-config-profil.js"), "utf8");

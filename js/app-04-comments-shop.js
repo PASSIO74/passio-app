@@ -8046,7 +8046,10 @@ async function _forwardTo(targetConvId) {
     content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
     localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
   }
-  else { localMsg.text = m.text || ""; }
+  else {
+    localMsg.text = m.text || "";
+    localMsg._msgRawContent = JSON.stringify({ type: "text", text: localMsg.text });
+  }
   // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
   // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
   // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
@@ -8066,7 +8069,7 @@ async function _forwardTo(targetConvId) {
   target.lastAt = Date.now();
   saveConversations();
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    var raw = content ? JSON.stringify(content) : (localMsg.text || "");
+    var raw = content ? JSON.stringify(content) : localMsg._msgRawContent;
     var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
     // ⚠️ Le verdict de l'écriture DOIT être lu. Ce chemin avalait les deux
     // callbacks (`.then(function(){}, function(){})`) : un transfert dont
@@ -8455,7 +8458,7 @@ function sendMessageFp(convId, displayName) {
   var msgId = "msg_" + uid();
   // `de` : le compte RÉEL qui a écrit ce message (AUTH-06) — c'est lui, et lui
   // seul, qui autorise un renvoi manuel reconstruit depuis le texte.
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending", de: _fileProprietaire() };
+  var _localMsg = { id: msgId, from: "me", text: txt, _msgRawContent: JSON.stringify({ type: "text", text: txt }), at: Date.now(), status: "sending", de: _fileProprietaire() };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -8473,7 +8476,7 @@ function sendMessageFp(convId, displayName) {
   try { renderMessages(); } catch(e) {}
 
   // 7. Envoyer à Supabase (statut + file d'attente hors-ligne)
-  var _content = _withSenderMeta(txt); // attache le profil actif (persona)
+  var _content = _withSenderMeta(_localMsg._msgRawContent); // texte littéral, puis profil actif
   if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
   _sendTextToSupa(convId, msgId, _content);
 }

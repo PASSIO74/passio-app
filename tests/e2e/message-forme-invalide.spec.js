@@ -27,3 +27,29 @@ test('B06-N1 : la liste et le fil restent rendus avec une enveloppe invalide', a
   expect(result.thread).toContain('{"a":1}');
   expect(result.thread.match(/\[Message invalide\]/g)).toHaveLength(4);
 });
+
+test('un texte saisi ressemblant à JSON reste un texte au rendu et à l’envoi', async ({ page }) => {
+  await bootOnboarded(page);
+  await page.route(/\/(rest|functions|storage)\/v1\//, route => route.fulfill({status:200,contentType:'application/json',body:'[]'}));
+  const result = await page.evaluate(() => {
+    const texts = ['[rdv demain]', '{"a":1}', '{"type":"media","fileType":1}'];
+    const c = {id:'grp_texte_litteral',isGroup:true,groupName:'Banc',userName:'Banc',userIds:[MY_UID],messages:[]};
+    conversationsState=[c];
+    window.requireAuthentication=()=>true;
+    const sent=[];
+    _sendTextToSupa=(conv,id,content)=>sent.push(JSON.parse(content));
+    for (const id of ['convFpInput','convFpThread']) {
+      if (!document.getElementById(id)) {const el=document.createElement(id==='convFpInput'?'textarea':'div');el.id=id;document.body.appendChild(el);}
+    }
+    for (const text of texts) {
+      document.getElementById('convFpInput').value=text;
+      sendMessageFp(c.id,'Banc');
+    }
+    renderConvFpThread(c,'Banc');
+    return {sent,texts,local:c.messages.map(m=>m.text),thread:document.getElementById('convFpThread').textContent};
+  });
+  expect(result.local).toEqual(result.texts);
+  expect(result.sent.map(m=>m.type)).toEqual(['text','text','text']);
+  expect(result.sent.map(m=>m.text)).toEqual(result.texts);
+  for (const text of result.texts) expect(result.thread).toContain(text);
+});

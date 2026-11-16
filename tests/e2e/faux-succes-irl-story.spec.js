@@ -36,6 +36,7 @@ async function banc(page) {
     window.supaPromoteFromWaitlist = async () => window.__promote;
     window.supaPublishStory = async () => window.__story;
     window.supaInsertNotif = async (to, kind, ref, txt) => { window.__notifs.push(kind + ":" + to + ":" + txt); };
+    window._pousserPushNotif = (to, kind) => { window.__notifs.push("push:" + kind + ":" + to); };
     state.seed.events = [{ id: "ev1", title: "Rando", passion: "musique", emoji: "🎸", city: "Paris", lat: 48.85, lng: 2.35,
       date: Date.now() + 3 * 86400000, time: "10:00", desc: "", attendees: [], maybes: [], waitlist: [], checkedIn: [],
       organizerId: "someone_else", status: "active", fromSupabase: true, maxAttendees: 1 }];
@@ -53,10 +54,10 @@ test.describe("ROB-02 — l'inscription attend le verdict", () => {
     await banc(page);
     await page.evaluate(async () => { window.__rsvp = false; await setEventRsvp("ev1", "going"); });
     const r = await etatEv(page);
-    // RÉINJECTION : sur le code d'avant, rsvp = "going", attendees = [moi], notification « Tu rejoins » émise.
+    // Un refus ne doit produire ni demande confirmée ni notification d'inscription.
     expect(r.rsvp).toBeNull();
     expect(r.attendees).toEqual([]);
-    expect(r.notifs.some((n) => /Tu rejoins|event_join/.test(n)), "ni notification locale ni notification à l'organisateur").toBe(false);
+    expect(r.notifs.some((n) => /Demande envoyée pour|event_join/.test(n)), "ni notification locale ni notification à l'organisateur").toBe(false);
     expect(r.toasts.some((t) => /non enregistrée/.test(t)), "l'échec est dit").toBe(true);
   });
 
@@ -66,8 +67,9 @@ test.describe("ROB-02 — l'inscription attend le verdict", () => {
     const r = await etatEv(page);
     expect(r.rsvp).toBe("going");
     expect(r.attendees.length).toBe(1);
-    expect(r.notifs.some((n) => /Tu rejoins/.test(n))).toBe(true);
-    expect(r.notifs.some((n) => /^event_join:someone_else/.test(n))).toBe(true);
+    expect(r.notifs.some((n) => /Demande envoyée pour/.test(n))).toBe(true);
+    expect(r.notifs.filter((n) => /^push:event_join:someone_else/.test(n))).toHaveLength(1);
+    expect(r.notifs.some((n) => /^event_join:/.test(n)), "la notification serveur n'est pas insérée une seconde fois par le client").toBe(false);
   });
 
   test("③ désinscription refusée : la place n'est pas rendue à l'écran", async ({ page }) => {
