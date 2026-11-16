@@ -1161,6 +1161,12 @@
     }
     zone.append(cc);
 
+    const mp = rg.medias_proteges || { actif: false, disponible: false };
+    const cm = carte("Médias protégés", mp.disponible ? (mp.actif === true ? "Activés" : "Suspendus") : "Indisponibles",
+      mp.disponible ? "Suspendre ferme les nouveaux envois et les prochaines lectures. Les fichiers déjà téléchargés ne peuvent pas être rappelés." : "La migration et la recette des médias protégés doivent être livrées avant activation.", mp.actif === true ? "vert" : "orange");
+    if (mp.disponible === true) bouton(cm, mp.actif === true ? "Suspendre les médias protégés" : "Activer les médias protégés", { action: "reglages", cle: "medias_proteges", valeur: { actif: mp.actif !== true } });
+    zone.append(cm);
+
     const b = rg.bandeau;
     const cb = carte("Message à tous", b ? (b.niveau === "alerte" ? "Alerte" : "Info") : "Aucun", b ? "« " + b.texte + " »" : "Aucun message affiché.", b ? (b.niveau === "alerte" ? "rouge" : "orange") : "vert");
     if (b) bouton(cb, "Retirer le message", { action: "reglages", cle: "bandeau", valeur: null });

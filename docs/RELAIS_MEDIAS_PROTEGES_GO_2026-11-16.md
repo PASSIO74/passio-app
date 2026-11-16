@@ -1,0 +1,15 @@
+# Relais et interrupteur des médias protégés
+
+Risque critique. Implémentation : Codex. Revue indépendante requise avant fusion. Résultat attendu : les chemins privés relaient un JWT utilisateur au broker Supabase sans clé privilégiée Netlify ; le pilote téléphone peut suspendre les lectures/envois via le réglage serveur existant.
+
+Acceptation : aucun cache ni renvoi public, GET/HEAD et Range bornés, annulation/taille/MIME réels, corps d’erreur fermé, cible staging pour tout brouillon, cible production pour le seul déploiement publié, activation booléenne explicite avec historique/AAL2 existants. Le client n’utilise pas son cache local comme autorisation.
+
+Périmètre : relais Netlify, configuration publique des deux projets, whitelist des réglages, pilotage mobile et cible publique des previews. La migration du registre/bucket privé, le broker Supabase et le client/SW sont livrés dans le lot médias complémentaire. Pas de changement de droits du pilote, de clé privilégiée Netlify ni d’activation automatique.
+
+Le réglage medias_proteges absent/invalide vaut fermé. Le serveur doit relire ce réglage à chaque résolution/réservation et INSERT Storage. La carte du pilote reste indisponible tant que la ligne validée n’existe pas ; les gestes passent par le mécanisme armement/confirmation/AAL2 et le journal existants. La veille ne modifie pas ce réglage.
+
+Déploiement : livrer ce relais et le client compatible avant toute activation ; SQL crée la ligne désactivée. Les previews utilisent la configuration publique STAGING du dépôt et la dernière fonction de bord de main protégée, conformément au workflow existant. Une preview avant fusion du relais ne prouve donc pas sa présence. Déploiement publié/alias et mémoire du broker restent à éprouver sur la plateforme avant GO.
+
+Retour arrière : désactiver le réglage serveur, vérifier refus de lecture/envoi, puis revenir à une release compatible. Ne jamais réouvrir le bucket public en réponse à un échec. Une fermeture ne rappelle pas des octets déjà reçus. La conversion des objets historiques, leur retrait source et les anciens caches restent des préalables distincts à la confidentialité complète.
+
+Le relais compte les octets sans décodage ni transformation, plafond26MiB et60s par requête, lecture en flux et aucune remise en mémoire globale. Limites fournisseur à vérifier : Netlify512MiB partagés et50ms CPU/requête, hors attente réseau, ainsi que streaming et HEAD/Range effectifs. Sources : https://docs.netlify.com/build/edge-functions/api/ et https://docs.netlify.com/build/edge-functions/limits/ .
