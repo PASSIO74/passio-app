@@ -78,9 +78,10 @@ export function createPrivateMediaHandler(dependencies) {
     if (!identity) return empty(401);
     if (request.signal.aborted) return empty(408);
     const abort = new AbortController();
+    let stopBody;
     const onAbort = () => abort.abort();
     request.signal.addEventListener('abort', onAbort, { once: true });
-    const cleanup = () => request.signal.removeEventListener('abort', onAbort);
+    const cleanup = () => { request.signal.removeEventListener('abort', onAbort); if(stopBody)abort.signal.removeEventListener('abort',stopBody); };
     let upstream;
     try {
       const actor = dependencies.createActor({ ...identity, signal: abort.signal });
@@ -110,23 +111,29 @@ export function createPrivateMediaHandler(dependencies) {
       };
       if (request.method === 'HEAD') { await upstream.body?.cancel(); cleanup(); return new Response(null, { status: range ? 206 : 200, headers }); }
       if (!upstream.body) { abort.abort(); cleanup(); return empty(502); }
-      const reader = upstream.body.getReader(); let received = 0;
+      const reader = upstream.body.getReader(); let received = 0, ended = false;
       const body = new ReadableStream({
+        start(controller) {
+          stopBody=()=>{if(ended)return;ended=true;controller.error(new Error('media_stream_unavailable'));cleanup();reader.cancel().catch(()=>{});};
+          abort.signal.addEventListener('abort',stopBody,{once:true});
+          if(abort.signal.aborted)stopBody();
+        },
         async pull(controller) {
           try {
             const item = await reader.read();
+            if(ended)return;
             if (abort.signal.aborted) throw new Error('media_aborted');
             if (item.done) {
               if (received !== length) throw new Error('media_length');
-              cleanup(); controller.close(); return;
+              ended=true;cleanup(); controller.close(); return;
             }
             if (!(item.value instanceof Uint8Array) || received + item.value.byteLength > length || received + item.value.byteLength > MEDIA_MAX_BYTES) throw new Error('media_length');
             received += item.value.byteLength; controller.enqueue(item.value);
           } catch {
-            abort.abort(); cleanup(); await reader.cancel().catch(() => {}); controller.error(new Error('media_stream_unavailable'));
+            abort.abort(); if(!ended)stopBody();
           }
         },
-        async cancel() { abort.abort(); cleanup(); await reader.cancel().catch(() => {}); },
+        cancel() { ended=true;abort.abort(); cleanup(); reader.cancel().catch(() => {}); },
       });
       return new Response(body, { status: range ? 206 : 200, headers });
     } catch {

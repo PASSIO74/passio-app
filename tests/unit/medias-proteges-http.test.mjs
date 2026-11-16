@@ -48,6 +48,17 @@ function security(response) {
   assert.equal(response.headers.has('Set-Cookie'), false);
 }
 
+test('annulation apres chunk mis en file : aucun octet rendu sans nouveau pull', async () => {
+  let canceled=false;
+  const f=fixture({open:async()=>new Response(new ReadableStream({start(c){c.enqueue(payload);},cancel(){canceled=true;}}),
+    {headers:{'Content-Type':'image/webp','Content-Length':String(payload.length)}})});
+  const abort=new AbortController(),response=await f.handler(request(PATH,{signal:abort.signal}));
+  await new Promise(resolve=>setImmediate(resolve)); // Le pull automatique a mis le chunk en file.
+  abort.abort();
+  await assert.rejects(response.body.getReader().read(),/media_stream_unavailable/);
+  assert.equal(f.upstreamAbort.aborted,true);assert.equal(canceled,true);
+});
+
 test('JWT validé puis session puis résolution appelante puis octets privilégiés', async () => {
   const f = fixture(); const response = await f.handler(request());
   assert.equal(response.status, 200); security(response);
