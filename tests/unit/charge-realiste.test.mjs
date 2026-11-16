@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
-  partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, verdictPalier, Sondes,
+  partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, mixObserve, verdictPalier, Sondes,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas,
   CADENCES_COMPTEURS, CADENCE_COMPTEURS, decalageInitialCompteurs, familleFrameRealtime,
@@ -407,7 +407,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
         }
         mono = debutMono + monoFinale; murale = debutMural + muraleFinale;
       },
-      statistiques, verdictAvecCompteurs, abonnements,
+      statistiques, mixObserve, verdictAvecCompteurs, abonnements,
       sauvegarder: () => { sauvegardes++; }, fermerSockets: async () => { fermetures++; },
     };
     const palier = runInNewContext(source.slice(debut, fin) + '\npalier;', ctx);
@@ -416,6 +416,9 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
     assert.equal(resultat.verdict.ok, attendu); assert.equal(resultat.validiteMesure.ok, attendu);
     assert.equal(resultat.livraisonRealtimeQualifiee, attendu);
     assert.equal(resultat.http.erreurs, 0); assert.equal(resultat.http.p95Ms, 20);
+    assert.equal(resultat.http.p99Ms, 20);
+    assert.equal(resultat.mixObserve.appelsHttp.total, resultat.http.tentatives);
+    assert.equal(resultat.mixObserve.actions.total, mesures.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles").length);
     if (!attendu) assert.ok(resultat.verdict.motifs.includes('DUREE_MESURE_INVALIDE'));
     assert.equal(rapport.paliers.length, 1); assert.equal(sauvegardes, 1); assert.equal(fermetures, 1);
   }
@@ -470,16 +473,26 @@ function filSimule() {
     attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
   };
   const etat = { posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
-    commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length] })), appels: [] };
+    commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length],
+      content: "Commentaire synthetique.", created_at: "2026-11-16T00:00:00Z" })), appels: [], rpcTransformer: rows => rows };
   ctx.rest = async (nom, table, params, opt) => {
-    assert.equal(opt.jwt, "jwt-lecteur"); etat.appels.push({ nom, params });
+    assert.equal(opt.jwt, "jwt-lecteur"); etat.appels.push({ nom, table, params, opt });
     let rows;
     if (table === "posts") rows = etat.posts;
-    else if (table === "post_comments") rows = etat.commentaires;
+    else if (table === "rpc/fil_compteurs") {
+      assert.equal(opt.methode, "POST");
+      assert.deepEqual(Array.from(opt.corps._post_ids), etat.posts.map(p => p.id));
+      rows = etat.rpcTransformer(etat.posts.map(p => {
+        const apercus = etat.commentaires.filter(c => c.post_id === p.id);
+        return { post_id: p.id, likes: 0, aime: false, commentaires: apercus.length,
+          apercus: apercus.slice(0, 2), reactions: [] };
+      }));
+    }
     else if (table === "profiles") {
       assert.notEqual(params.id, "in.()", "une page sans commentaire ne doit pas interroger une liste d'auteurs vide");
       rows = [...new Set(etat.commentaires.map(c => c.author_id))].map(id => ({ id, username: "Auteur" }));
-    } else rows = [];
+    } else if (table === "comment_interactions") rows = [];
+    else assert.fail("ancien chemin de lecture du fil");
     if (!verdictReponse(200, JSON.stringify(rows), opt.attentes).ok) throw new Error("CONTENU_INATTENDU");
     return rows;
   };
@@ -487,20 +500,56 @@ function filSimule() {
   return { etat, lire: () => lire({ index: 0, jwt: "jwt-lecteur" }, 20) };
 }
 
+test("le vrai parcours fil utilise le RPC du client courant, sans anciennes listes de compléments", async () => {
+  const { etat, lire } = filSimule();
+  await lire();
+  assert.ok(etat.appels.some(a => a.nom === "fil_compteurs"), "le banc mesure encore l'ancien chemin au lieu de rpc/fil_compteurs");
+  assert.equal(etat.appels.some(a => ["fil_likes", "fil_commentaires", "fil_interactions"].includes(a.nom)), false);
+  const rpc = etat.appels.find(a => a.nom === "fil_compteurs");
+  assert.equal(rpc.table, "rpc/fil_compteurs"); assert.equal(rpc.opt.methode, "POST");
+  const interactions = etat.appels.find(a => a.nom === "fil_interactions_apercus");
+  assert.equal(interactions.params.comment_id, `in.(${etat.commentaires.map(c => c.id).join(",")})`);
+  assert.equal(interactions.params.order, "created_at.asc");
+  const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
+  assert.match(client, /supa\.rpc\("fil_compteurs", \{ _post_ids: ids \}\)/);
+  assert.match(client, /comment_interactions"\)\.select\("id,comment_id,post_id,user_id,kind,payload,created_at"\)/);
+});
+
+test("le tri du banc suit les appels du vrai chargeur UI, y compris le départage des horodatages égaux", async () => {
+  const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
+  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(cols)", chargeur);
+  const fin = client.indexOf("let { data, error, status } = await _interroger", debut);
+  assert.ok(chargeur >= 0 && debut > chargeur && fin > debut, "extraire la requête du chargeur produit, pas une copie de son ordre");
+  const ordres = [];
+  const requete = {
+    select() { return this; },
+    order(colonne, options) { ordres.push(`${colonne}.${options.ascending ? "asc" : "desc"}`); return this; },
+    range() { return { data: [], error: null }; },
+  };
+  await runInNewContext(client.slice(debut, fin) + '\n_interroger("id");', {
+    supa: { from: table => { assert.equal(table, "posts"); return requete; } },
+    authorId: null, options: {}, offset: 0, pageSize: 20,
+  });
+  assert.ok(ordres.length >= 2, "la date seule ne départage pas les créations simultanées");
+  const { etat, lire } = filSimule(); await lire();
+  assert.equal(etat.appels.find(a => a.nom === "fil_posts").params.order, ordres.join(","));
+});
+
 test("vingt nouveaux posts sans commentaire sont valides, sans profiles in.() ni requête superflue", async () => {
   const { etat, lire } = filSimule();
   etat.posts = etat.posts.map((p, i) => ({ ...p, id: `nouveau_${i}` })); etat.commentaires = [];
   const result = await lire();
   assert.equal(result.posts.length, 20); assert.equal(result.commentaires, 0); assert.equal(result.profils, 0);
-  assert.equal(etat.appels.length, 4); assert.equal(etat.appels.some(a => a.nom === "fil_profils_commentaires"), false);
+  assert.equal(etat.appels.length, 2); assert.equal(etat.appels.some(a => a.nom === "fil_profils_commentaires"), false);
+  assert.equal(etat.appels.some(a => a.nom === "fil_interactions_apercus"), false);
 });
 
 test("la vraie lecture exige chaque commentaire de fixture encore visible et son auteur exact", async () => {
   const { etat, lire } = filSimule();
-  const tous = await lire(); assert.equal(tous.commentaires, 20); assert.equal(etat.appels.length, 5);
+  const tous = await lire(); assert.equal(tous.commentaires, 20); assert.equal(etat.appels.length, 4);
   etat.posts = etat.posts.map((p, i) => i ? { ...p, id: `nouveau_${i}` } : p);
   etat.commentaires = etat.commentaires.slice(0, 1); etat.appels.length = 0;
-  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 5);
+  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 4);
   const attendu = { ...etat.commentaires[0] };
   etat.commentaires = []; await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
   for (const cle of ["id", "author_id"]) {
@@ -508,14 +557,82 @@ test("la vraie lecture exige chaque commentaire de fixture encore visible et son
     await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
   }
   etat.commentaires = [{ ...attendu, post_id: "post_hors_page" }];
-  await assert.rejects(lire(), /COMMENTAIRE_HORS_PAGE/);
+  await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
 });
 
 test("tolérer zéro commentaire ne tolère jamais une page vide ni un commentaire mal formé", async () => {
   const { etat, lire } = filSimule();
   etat.posts = []; await assert.rejects(lire(), /CONTENU_INATTENDU/);
   const autre = filSimule(); delete autre.etat.commentaires[0].author_id;
-  await assert.rejects(autre.lire(), /CONTENU_INATTENDU/);
+  await assert.rejects(autre.lire(), /APERCU_FORME_INVALIDE/);
+});
+
+test("un RPC vide, doublonné, hors page ou aux compteurs invalides échoue sans repli legacy", async () => {
+  for (const transformer of [
+    () => [], rows => [...rows.slice(1), rows[1]], rows => rows.map((r, i) => i ? r : { ...r, post_id: "hors-page" }),
+    rows => rows.map((r, i) => i ? r : { ...r, likes: -1 }), rows => rows.map((r, i) => i ? r : { ...r, commentaires: 1.5 }),
+    rows => rows.map((r, i) => i ? r : { ...r, aime: "false" }), rows => rows.map((r, i) => i ? r : { ...r, apercus: {} }),
+    rows => rows.map((r, i) => i ? r : { ...r, reactions: null }),
+    rows => rows.map((r, i) => i ? r : { ...r, commentaires: 3, apercus: [r.apercus[0], r.apercus[0], r.apercus[0]] }),
+  ]) {
+    const { etat, lire } = filSimule(); etat.rpcTransformer = transformer;
+    await assert.rejects(lire(), /CONTENU_INATTENDU|COMPTEURS_/);
+    assert.equal(etat.appels.some(a => ["post_likes", "post_comments"].includes(a.table)), false);
+  }
+});
+
+test("P99 conserve les délais échoués et distingue une série vide", () => {
+  const serie = Array.from({ length: 99 }, () => ({ ok: true, ms: 10 }));
+  serie.push({ ok: false, ms: 12000, motif: "HTTP_503" });
+  const m = statistiques(serie);
+  assert.equal(m.p99Ms, 10, "percentile au rang supérieur, sans interpolation");
+  assert.equal(statistiques(serie.slice(1)).p99Ms, 12000, "l'échec reste dans la population du percentile");
+  assert.equal(statistiques([]).p99Ms, null);
+});
+
+test("le mix compte seulement les actions et appels réellement mesurés, erreurs comprises, sans catégories libres", () => {
+  const mix = mixObserve([
+    { phase: "mesure", type: "parcours", famille: "fil", ok: true },
+    { phase: "mesure", type: "parcours", famille: "message", ok: false },
+    { phase: "mesure", type: "parcours", famille: "compteurs_visibles", ok: true },
+    { phase: "mesure", type: "http", famille: "fil_compteurs", methode: "POST", ok: true },
+    { phase: "mesure", type: "http", famille: "compteur_like_visible", methode: "HEAD", ok: false },
+    { phase: "mesure", type: "http", famille: "texte-distant-non-fiable", methode: "methode-libre", ok: false },
+    { phase: "preparation", type: "parcours", famille: "publier", ok: true },
+    { phase: "prevol", type: "http", famille: "post_publier", methode: "POST", ok: true },
+    { phase: "diagnostic_realtime", type: "http", famille: "profil", methode: "GET", ok: true },
+  ]);
+  assert.equal(mix.actions.total, 2); assert.equal(mix.appelsHttp.total, 3); assert.equal(mix.cyclesCompteurs, 1);
+  assert.deepEqual(mix.actions.familles, [
+    { famille: "fil", tentatives: 1, succes: 1, erreurs: 0, pourcentage: 50 },
+    { famille: "message", tentatives: 1, succes: 0, erreurs: 1, pourcentage: 50 },
+  ]);
+  assert.equal(mix.appelsHttp.familles.find(f => f.famille === "HEAD:compteur_like_visible").erreurs, 1);
+  assert.equal(mix.appelsHttp.familles.every(f => f.pourcentage === 33.3333), true);
+  assert.equal(JSON.stringify(mix).includes("texte-distant"), false);
+  assert.deepEqual(mixObserve([]).actions, { total: 0, familles: [] });
+});
+
+test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre préparation et charge", () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("function sauvegarder()"), fin = source.indexOf("function stop(", debut);
+  const fichiers = new Map();
+  const ctx = {
+    rapport: {}, budget: { resume: () => ({ requetes: 2 }) }, nettoyageBudget: null, debut: 0,
+    Date: { now: () => 100 }, destination: "rapport-simule.json", mixObserve,
+    mesures: [{ phase: "preparation", type: "http", famille: "fixture_passion", methode: "GET", ok: true },
+      { phase: "mesure", type: "http", famille: "fil_compteurs", methode: "POST", ok: true },
+      { phase: "mesure", type: "parcours", famille: "fil", ok: true }],
+    o: { projet: STAGING_REF }, prefix: "fixture", comptes: [], emailsAttendus: [], profilsFixture: [], postsFixture: [],
+    mutationsPosts: new Set(), mutationsLikes: new Map(), convs: [], events: [],
+    writeFileSync: (nom, contenu) => fichiers.set(nom, JSON.parse(contenu)),
+  };
+  runInNewContext(source.slice(debut, fin) + "\nsauvegarder();", ctx);
+  const rapport = fichiers.get("rapport-simule.json");
+  assert.equal(rapport.mixObserve.actions.total, 1); assert.equal(rapport.mixObserve.appelsHttp.total, 1);
+  assert.equal(rapport.mixObserve.appelsHttp.familles[0].famille, "POST:fil_compteurs");
+  assert.equal(rapport.mesures.length, 3, "les données brutes conservent aussi les phases hors mesure");
+  assert.equal(fichiers.size, 2, "le manifeste existant reste produit séparément");
 });
 
 test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {
