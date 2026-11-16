@@ -10,6 +10,8 @@ on:
       - 'tests/unit/outils-ci-figes.test.mjs'
       - 'netlify/edge-functions/**'
       - 'netlify/lib/**'
+      - 'netlify/**'
+      - 'netlify.toml'
   push:
     branches: [main]
     paths:
@@ -20,6 +22,8 @@ on:
       - 'tests/unit/outils-ci-figes.test.mjs'
       - 'netlify/edge-functions/**'
       - 'netlify/lib/**'
+      - 'netlify/**'
+      - 'netlify.toml'
 
 permissions:
   contents: read
