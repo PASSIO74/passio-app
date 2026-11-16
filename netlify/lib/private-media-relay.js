@@ -45,7 +45,14 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
   if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 60000) throw new Error('relay_deadline');
   if (!Number.isInteger(headersDeadlineMs) || headersDeadlineMs < 1 || headersDeadlineMs > 15000 || headersDeadlineMs > deadlineMs) throw new Error('relay_headers_deadline');
   return async function relay(request) {
-    if (!['GET','HEAD'].includes(request.method)) return empty(405,{'Allow':'GET, HEAD'});
+    if (!['GET','HEAD','POST'].includes(request.method)) return empty(405,{'Allow':'GET, HEAD, POST'});
+    // Marqueur de protocole, jamais une autorisation. Un IMG natif traité par
+    // un ancien SW n'en possède pas et ne reçoit donc aucun média à cacher.
+    if(request.headers.get('X-Passio-Media-Read')!=='1')return empty(400);
+    // POST est uniquement un transport de lecture vide : les anciens SW ne
+    // l'interceptent pas. Le broker reçoit toujours GET, ou HEAD explicitement.
+    if(request.method==='POST'&&request.body!==null){void request.body.cancel().catch(()=>{});return empty(400);}
+    const readMethod=request.method==='HEAD'?'HEAD':'GET';
     const url=new URL(request.url), cap=url.pathname==='/private-media/capabilities';
     if (url.search || (!cap && !PATH.test(url.pathname))) return empty(404);
     if (!target || !/^https:\/\/(njkiyoklssvefstljemx|fcksxofaelcdmmifnwjo)\.supabase\.co$/.test(target.url) || typeof target.anon !== 'string' || !target.anon) return empty(503);
@@ -73,7 +80,7 @@ export function createPrivateMediaRelay({target, fetchImpl=fetch, deadlineMs=600
       if (!cap && auth !== null) headers.set('Authorization',auth);
       if (range !== null) headers.set('Range',range);
       upstream=await fetchImpl(target.url+'/functions/v1'+url.pathname,{
-        method:cap?'GET':request.method,headers,signal:abort.signal,redirect:'error',cache:'no-store',credentials:'omit',
+        method:cap?'GET':readMethod,headers,signal:abort.signal,redirect:'error',cache:'no-store',credentials:'omit',
       });
       if (abort.signal.aborted) { discard(); cleanup(); return empty(request.signal.aborted?408:503); }
       if (cap) {
