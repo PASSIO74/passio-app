@@ -6,11 +6,32 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {analyserSortie, environnementLocal, executerLocal, lireArguments, optionsLocales,
+import {analyserSortie, environnementLocal, executerLocal, indexesRequis, lireArguments, optionsLocales,
   planLocal} from '../../scripts/volume-go.mjs';
 
 const sql = readFileSync(new URL('../../scripts/test-volume.sql', import.meta.url), 'utf8');
 const socle = readFileSync(new URL('../sql/fixtures/socle-production-2026-11-06.sql', import.meta.url), 'utf8');
+const bootstrap = readFileSync(new URL('../sql/fixtures/volume-go-bootstrap.sql', import.meta.url), 'utf8');
+
+test('le bootstrap conserve les index historiques des cinq tables du chemin mesuré', () => {
+  const fichiers = ['migration_indexes_et_monitoring.sql', 'migration_comment_interactions.sql',
+    'migration_anti_flood_interactions.sql', 'migration_index_cles_etrangeres.sql',
+    'migration_irl_v2.sql', 'migration_publications_supprimees_2026-11-04.sql'];
+  const tables = new Set(['posts', 'profiles', 'post_comments', 'post_likes', 'comment_interactions']);
+  const extraire = texte => {
+    const trouves = new Map();
+    for (const m of texte.matchAll(/\bcreate\s+index\s+(?:if\s+not\s+exists\s+)?(\w+)\s+on\s+(?:public\.)?(\w+)\s*\(([^;]+?)\)\s*(where[^;]+)?;/gi)) {
+      if (tables.has(m[2].toLowerCase())) trouves.set(m[1].toLowerCase(),
+        [m[2], m[3], m[4] ?? ''].map(x => x.toLowerCase().replaceAll(/\s+/g, '')).join('|'));
+    }
+    return trouves;
+  };
+  const attendus = extraire(fichiers.map(f => readFileSync(new URL('../../migrations/' + f, import.meta.url), 'utf8')).join('\n'));
+  assert.equal(attendus.size, 11, 'aucune disparition silencieuse dans le catalogue des migrations');
+  const presents = extraire(bootstrap);
+  assert.deepEqual([...attendus].filter(([nom, definition]) => presents.get(nom) !== definition), [],
+    'index absents ou différents des DDL existants : ce montage ne représente pas leurs chemins');
+});
 
 test('le volume écrit les colonnes réellement présentes, pas le modèle de posts abandonné', () => {
   const inconnues = [];
@@ -84,7 +105,11 @@ test('libpq ne reçoit aucun aiguillage ni credential PG hérité', () => {
 function sortieValide(port = 5432) {
   const events = [{volume_go: 'fixtures', ...planLocal().fixtures_prevues,
     server_addr: '127.0.0.1', server_port: port, database: 'passio_volume_go_local',
-    postgres_version: '17.12', created_at_distincts: 1}];
+    postgres_version: '17.12', created_at_distincts: 1,
+    index_catalogue: Object.entries(indexesRequis).map(([nom, definition]) => {
+      const [table, colonnes, predicat] = definition.split('|');
+      return {nom, table, colonnes: colonnes.split(','), predicat, methode: 'btree', valide: true, pret: true};
+    })}];
   for (const [requete, lignes] of Object.entries({fil: 20, profils: 1, compteurs: 20})) {
     for (let iteration = 1; iteration <= 3; iteration++) events.push({volume_go: 'mesure', requete,
       iteration, role: 'authenticated', lignes, explain: [{Plan: {'Node Type': requete === 'compteurs' ? 'Function Scan' : 'Limit', 'Actual Rows': lignes},
@@ -104,6 +129,10 @@ test('la preuve exige cardinalités, 9 plans/temps client et marqueur après ROL
     e => { e[0].profils_applicatifs = 200; }, e => { e[0].comptes_auth_crees = 100000; },
     e => { e[0].server_addr = '192.0.2.1'; }, e => { e[0].database = 'postgres'; },
     e => { e[0].created_at_distincts = 100000; },
+    e => { delete e[0].index_catalogue; }, e => { e[0].index_catalogue.pop(); },
+    e => { e[0].index_catalogue[0].valide = false; },
+    e => { e[0].index_catalogue[0].colonnes = ['id']; },
+    e => { e[0].index_catalogue[0].predicat = 'autre'; },
     e => { e[1].role = 'postgres'; }, e => { e[1].lignes = 0; },
     e => { e[1].explain[0]['Execution Time'] = null; }, e => { e[1].explain[0].Plan = null; },
     e => { e[1].explain[0].Plan['Actual Rows'] = 0; },

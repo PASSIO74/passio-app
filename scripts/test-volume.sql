@@ -30,7 +30,7 @@ set local search_path = public, pg_catalog;
 select set_config('volume_go.repetitions', :'repetitions', true) as preparation \gset
 
 do $garde$
-declare t record; presente boolean;
+declare t record; requis record; presente boolean;
 begin
   if inet_server_addr() is null or host(inet_server_addr()) not in ('127.0.0.1', '::1')
      or inet_client_addr() is null or host(inet_client_addr()) not in ('127.0.0.1', '::1')
@@ -61,6 +61,39 @@ begin
        and (not relrowsecurity or pg_has_role('authenticated', relowner, 'USAGE'))) then
     raise exception 'VOLUME GO : RLS active et rôle client sans droits de propriétaire requis';
   end if;
+  -- Index historiques déjà déclarés dans le dépôt, jamais des index inventés pour le banc.
+  -- Nom, colonnes/ordre, prédicat, méthode et état sont vérifiés AVANT les insertions.
+  for requis in select * from (values
+    ('idx_posts_created_at', 'posts', array['created_at DESC'], ''),
+    ('idx_posts_author', 'posts', array['author_id'], ''),
+    ('idx_posts_passion', 'posts', array['passion_id'], ''),
+    ('idx_posts_event', 'posts', array['event_id'], 'event_idisnotnull'),
+    ('idx_comments_post', 'post_comments', array['post_id', 'created_at DESC'], ''),
+    ('idx_post_comments_author', 'post_comments', array['author_id'], ''),
+    ('idx_likes_post', 'post_likes', array['post_id'], ''),
+    ('idx_profiles_passion', 'profiles', array['passion_id'], ''),
+    ('idx_ci_comment', 'comment_interactions', array['comment_id'], ''),
+    ('idx_ci_user_created', 'comment_interactions', array['user_id', 'created_at'], ''),
+    ('idx_ci_post', 'comment_interactions', array['post_id'], '')
+  ) r(nom, table_nom, colonnes, predicat)
+  loop
+    if not exists (
+      select 1 from pg_index x join pg_class i on i.oid = x.indexrelid
+        join pg_namespace n on n.oid = i.relnamespace join pg_am a on a.oid = i.relam
+       where n.nspname = 'public' and i.relname = requis.nom
+         and x.indrelid = format('public.%I', requis.table_nom)::regclass
+         and a.amname = 'btree' and x.indisvalid and x.indisready and not x.indisunique
+         and x.indexprs is null and x.indnatts = cardinality(requis.colonnes)
+         and array(select pg_get_indexdef(i.oid, k, true)
+                     || case when pg_index_column_has_property(i.oid, k, 'desc') then ' DESC' else '' end
+                     || case when pg_index_column_has_property(i.oid, k, 'nulls_first')
+                                  is distinct from pg_index_column_has_property(i.oid, k, 'desc')
+                             then case when pg_index_column_has_property(i.oid, k, 'nulls_first')
+                                       then ' NULLS FIRST' else ' NULLS LAST' end else '' end
+                     from generate_series(1, x.indnkeyatts) k) = requis.colonnes
+         and lower(regexp_replace(coalesce(pg_get_expr(x.indpred, x.indrelid), ''), '[()[:space:]]', '', 'g')) = requis.predicat
+    ) then raise exception 'VOLUME GO : index prerequisite absent ou different : %', requis.nom; end if;
+  end loop;
   -- Aucune donnée utilisateur, même sur une cible locale mal nommée. Les seuls contenus
   -- permis sont les références passions et la configuration technique feature_flags.
   for t in select n.nspname, c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -73,6 +106,24 @@ begin
   end loop;
 end
 $garde$;
+
+select jsonb_agg(jsonb_build_object('nom', i.relname, 'table', t.relname, 'methode', a.amname,
+  'valide', x.indisvalid, 'pret', x.indisready,
+  'colonnes', array(select pg_get_indexdef(i.oid, k, true)
+    || case when pg_index_column_has_property(i.oid, k, 'desc') then ' DESC' else '' end
+    || case when pg_index_column_has_property(i.oid, k, 'nulls_first')
+                 is distinct from pg_index_column_has_property(i.oid, k, 'desc')
+            then case when pg_index_column_has_property(i.oid, k, 'nulls_first')
+                      then ' NULLS FIRST' else ' NULLS LAST' end else '' end
+    from generate_series(1, x.indnkeyatts) k),
+  'predicat', lower(regexp_replace(coalesce(pg_get_expr(x.indpred, x.indrelid), ''), '[()[:space:]]', '', 'g')))
+  order by i.relname) as volume_go_indexes
+  from pg_index x join pg_class i on i.oid = x.indexrelid
+    join pg_class t on t.oid = x.indrelid join pg_namespace n on n.oid = t.relnamespace
+    join pg_am a on a.oid = i.relam
+ where n.nspname = 'public' and i.relname in ('idx_posts_created_at', 'idx_posts_author',
+   'idx_posts_passion', 'idx_posts_event', 'idx_comments_post', 'idx_post_comments_author',
+   'idx_likes_post', 'idx_profiles_passion', 'idx_ci_comment', 'idx_ci_user_created', 'idx_ci_post') \gset
 
 insert into public.profiles (id, username, bio, is_private)
 select 'f1000000-0000-4000-8000-' || lpad(g::text, 12, '0'),
@@ -120,6 +171,7 @@ select jsonb_build_object('volume_go', 'fixtures', 'profils_applicatifs', count(
   'posts', (select count(*) from public.posts), 'likes', (select count(*) from public.post_likes),
   'commentaires', (select count(*) from public.post_comments), 'comptes_auth_crees', 0,
   'connexions', 1, 'created_at_distincts', (select count(distinct created_at) from public.posts),
+  'index_catalogue', :'volume_go_indexes'::jsonb,
   'postgres_version', current_setting('server_version'), 'database', current_database(),
   'server_addr', host(inet_server_addr()), 'server_port', inet_server_port()) from public.profiles;
 
