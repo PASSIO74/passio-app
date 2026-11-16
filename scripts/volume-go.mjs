@@ -11,6 +11,14 @@ const sqlPath = fileURLToPath(new URL('./test-volume.sql', import.meta.url));
 const attendus = Object.freeze({profils_applicatifs: 100000, auteurs_distincts: 100000,
   posts: 100000, likes: 300000, commentaires: 200000, comptes_auth_crees: 0, connexions: 1});
 const requetes = Object.freeze({fil: 20, profils: 1, compteurs: 20});
+export const indexesRequis = Object.freeze({
+  idx_posts_created_at: 'posts|created_at DESC|', idx_posts_author: 'posts|author_id|',
+  idx_posts_passion: 'posts|passion_id|', idx_posts_event: 'posts|event_id|event_idisnotnull',
+  idx_comments_post: 'post_comments|post_id,created_at DESC|',
+  idx_post_comments_author: 'post_comments|author_id|', idx_likes_post: 'post_likes|post_id|',
+  idx_profiles_passion: 'profiles|passion_id|', idx_ci_comment: 'comment_interactions|comment_id|',
+  idx_ci_user_created: 'comment_interactions|user_id,created_at|', idx_ci_post: 'comment_interactions|post_id|',
+});
 const limites = Object.freeze([
   'Comptes Auth, inscriptions et connexions de 100000 utilisateurs : NON MESURÉS',
   'Capacité Supabase hébergée, PostgREST, réseau, coûts et quotas : NON MESURÉS',
@@ -19,6 +27,7 @@ const limites = Object.freeze([
   'Profils tous publics, un post par auteur créé au même instant ; graphe social et historique réels NON MESURÉS',
   'Le plan du RPC peut masquer ses plans internes (Function Scan)',
   'ROLLBACK des lignes ; statistiques, séquences et espace disque exigent une base jetable',
+  'Index du chemin repris des migrations du dépôt ; leur présence en production NON VÉRIFIÉE par ce banc',
 ]);
 
 export function optionsLocales(entree = {}) {
@@ -66,10 +75,11 @@ export function lireArguments(args) {
 
 export function planLocal(entree = {}) {
   const o = optionsLocales(entree);
-  return {outil: 'volume-go-local-v1', statut: 'NON MESURÉ', cible: {
+  return {outil: 'volume-go-local-v2-indexes', statut: 'NON MESURÉ', cible: {
     host: o.host, port: o.port, database: o.database, user: o.user},
   psql: o.psql ?? 'NON FOURNI', sql_sha256: createHash('sha256').update(readFileSync(sqlPath)).digest('hex'),
   fixtures_prevues: attendus, role_lectures: 'authenticated (RLS active)',
+  indexes_requis: indexesRequis,
   repetitions: o.repetitions, duree_max_ms: o.dureeMs,
   statement_timeout_ms: 120000, lock_timeout_ms: 3000,
   requetes: Object.keys(requetes), limites,
@@ -103,6 +113,17 @@ export function analyserSortie(stdout, repetitions, cible) {
   }
   for (const [cle, n] of Object.entries(attendus)) if (evenements[0][cle] !== n) throw new Error('Cardinalité incorrecte : ' + cle);
   const contexte = evenements[0];
+  const indexes = contexte.index_catalogue;
+  const vus = new Set();
+  if (!Array.isArray(indexes) || indexes.length !== Object.keys(indexesRequis).length) throw new Error('Catalogue index incomplet');
+  for (const i of indexes) {
+    if (!i || !Object.hasOwn(indexesRequis, i.nom) || vus.has(i.nom) || i.methode !== 'btree'
+        || i.valide !== true || i.pret !== true || !Array.isArray(i.colonnes)
+        || [i.table, i.colonnes.join(','), i.predicat].join('|') !== indexesRequis[i.nom]) {
+      throw new Error('Index absent ou différent du contrat');
+    }
+    vus.add(i.nom);
+  }
   if (!['127.0.0.1', '::1'].includes(contexte.server_addr)
       || !/^passio_volume_go_[a-z0-9_]{1,32}$/.test(contexte.database)
       || !Number.isInteger(contexte.server_port) || contexte.server_port < 1 || contexte.server_port > 65535

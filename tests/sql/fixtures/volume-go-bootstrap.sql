@@ -25,3 +25,20 @@ set lock_timeout = '3s';
 \ir ../../../migrations/migration_securite_lot1_2026-11-06.sql
 \ir ../../../migrations/migration_securite_lot4_plafonds_2026-11-15.sql
 \ir ../../../migrations/migration_securite_lot4_lectures_2026-11-15.sql
+
+-- Le socle généré 06/11 n'emporte pas les index ordinaires. Reprendre UNIQUEMENT les
+-- DDL existants du chemin mesuré, sans rejouer leurs migrations de tables/policies.
+-- Sources : migration_indexes_et_monitoring.sql (4), migration_comment_interactions.sql,
+-- migration_anti_flood_interactions.sql, migration_index_cles_etrangeres.sql (3),
+-- migration_irl_v2.sql, migration_publications_supprimees_2026-11-04.sql.
+create index if not exists idx_posts_created_at on public.posts (created_at DESC);
+create index if not exists idx_posts_author on public.posts (author_id);
+create index if not exists idx_comments_post on public.post_comments (post_id, created_at DESC);
+create index if not exists idx_likes_post on public.post_likes (post_id);
+create index if not exists idx_ci_comment on public.comment_interactions (comment_id);
+create index if not exists idx_ci_user_created on public.comment_interactions (user_id, created_at);
+create index if not exists idx_posts_passion on public.posts (passion_id);
+create index if not exists idx_profiles_passion on public.profiles (passion_id);
+create index if not exists idx_post_comments_author on public.post_comments (author_id);
+create index if not exists idx_posts_event on public.posts (event_id) where event_id IS NOT NULL;
+create index if not exists idx_ci_post on public.comment_interactions (post_id);
