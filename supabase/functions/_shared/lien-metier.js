@@ -105,7 +105,7 @@ const GABARITS_PUSH = {
   follow: "{nom} a commencé à te suivre",
   follow_request: "{nom} souhaite s'abonner à ton compte privé",
   follow_accept: "{nom} a accepté ta demande d'abonnement",
-  event_join: "{nom} s'est inscrit·e à ton activité",
+  event_join: "{nom} demande à participer à ton activité",
   event_feedback: "{nom} a laissé un avis sur ton activité",
   event_comment: "{nom} a commenté ton activité",
   event_update: "{nom} a mis à jour une activité où tu es inscrit·e",

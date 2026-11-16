@@ -216,6 +216,25 @@ export async function exporterCompte(admin, uid, identite) {
     if (!lecture.instantane && !ordreTotal && lignes.length >= PAGE) { sansOrdre.push(cle); raisonsOrdre[cle] = ordre ? "ordre « " + ordre + " », non total (ex æquo possibles)" : "aucun ordre"; }
     if (incoherence) incoherences.push(cle + " : " + incoherence);
   }
+  // Les rencontres privées arrivent dans le MÊME instantané serveur.
+  // Compatibilité avant migration : l'ancien socle n'annonce pas ce périmètre.
+  const prive = instantane && (inst.dossier.rencontres_prive === 1 ||
+    Object.keys(inst.dossier.tables).some((cle) => cle.startsWith("rencontres_prive.")));
+  if (prive) {
+    for (const nom of ["inscriptions", "accords", "decisions", "coorganisations_anterieures"]) {
+      const cle = "rencontres_prive." + nom;
+      const e = inst.dossier.tables[cle];
+      if (!e || !Array.isArray(e.lignes) || !Number.isInteger(e.attendu) || e.attendu < 0 || typeof e.tronque !== "boolean") {
+        erreurs.push(cle + " : absente ou illisible dans l'instantané");
+        continue;
+      }
+      tables[cle] = e.lignes;
+      if (e.tronque) tronquees.push(cle);
+      if ((!e.tronque && e.lignes.length !== e.attendu) || (e.tronque && e.lignes.length >= e.attendu)) {
+        incoherences.push(cle + " : compte divergent de l'instantané");
+      }
+    }
+  }
   const medias = [];
   for (const dossier of DOSSIERS_CONTENU) {
     const l = await listerDossier(admin, "content", dossier + "/" + uid);

@@ -23,7 +23,25 @@ env:
   PASSIO_PROD_URL: https://passio-app.netlify.app
 
 jobs:
+  validation:
+    if: github.event_name == 'pull_request'
+    name: Validation sans secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - run: node scripts/audit-workflows.js
+      - run: node scripts/audit-cle-production.js
+
   health:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     # ⚠️ CE JOB CRÉE DE VRAIS COMPTES EN PRODUCTION (canari d'autorisation), il
     # tient donc le MÊME verrou que le job `test-prod` de `deploy.yml`.
     #

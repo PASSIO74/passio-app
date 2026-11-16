@@ -1929,3 +1929,115 @@ aucune table publiée. ⚠️ La simulation de rôles n'est PAS possible par le 
 (`permission denied to set role "authenticated"`) : la preuve par rôle est le banc
 `tests/sql/migration-story-interactions.test.sh` (38 cas, mutation vérifiée). Reste à faire :
 régénérer `migrations/SCHEMA_PROD_REFERENCE.sql`.
+
+
+## Rencontres : validation de l'organisation (2026-11-16, préparation locale)
+
+Lot critique réalisé par Codex GPT-6, sans délégation, sans accès distant, sans application SQL.
+Sources : photographie des fonctions et du catalogue de production fournie le 16/11, comparée aux policies
+et fonctions touchées. La branche de départ est a270749b (origin/main local identique), sans modifications.
+Les documents d'audit restreints restent hors dépôt ; aucune donnée personnelle n'est recopiée.
+
+Décision produit prudente : une inscription en « going » réserve une place mais ne donne PAS les accès
+privés. L'organisation les valide dans Gérer → Valider les participants. La validation ouvre l'adresse,
+le contact, la liste des venants et la discussion ; le retrait, un autre RSVP ou un blocage les révoque.
+Aucun accord historique n'est inventé : les inscrits existants doivent être validés. Le nombre public
+ne dépend plus des blocages. Les suivis mutuels ne donnent plus accès à la liste d'une rencontre.
+La coorganisation est SUSPENDUE (tableau vide imposé en base, rôles historiques retirés), tant qu'un
+parcours d'invitation, acceptation et retrait volontaire n'est pas implémenté. Ce parcours reste à faire.
+Un organisateur principal ne peut plus être désigné comme un tiers à l'INSERT.
+
+Migration : migration_rencontres_validation_2026-11-16.sql, transaction rejouable, droits nominatifs,
+schéma rencontres_prive non exposé avec RLS sans policy cliente. Accords et journal sont emportés avec
+le profil ; les accords partent avec l'inscription ; le journal survit au retrait et à la suppression
+d'activité (event_id devient NULL). Les identifiants retirés sont conservés sans donnée de compte.
+La suppression d'activité emporte les messages, lectures, membres et conversation canoniques ; une
+ancienne conversation orpheline ne peut plus être réattachée ou lue. Les objets Storage physiques
+restent à purger par l'API Storage : supprimer leurs lignes SQL créerait des blobs orphelins.
+
+Journal serveur accessible à l'organisation et au participant par journal_participation, notification
+serveur à chaque entrée en going, plafond glissant de 20 changements d'inscription par jour et compte.
+Le journal est raccordé à la purge périodique existante et les données privées à l'export instantané.
+Les nouvelles durées de rétention sont décrites dans la fiche de reprise ci-dessous. Le client historique
+émet encore sa notification d'inscription : doublon possible, sans ouverture de droits.
+
+Ordre : client portant rencontres:validation-organisation-v1, puis migration après les migrations déjà
+appliquées du 06–14/11. Ne pas rejouer une ancienne migration qui réécrit les mêmes fonctions après.
+Pas de retour arrière automatique qui réouvrirait les accès : conserver les restrictions SQL et
+corriger en avant. Une restauration des messages supprimés exige une sauvegarde contrôlée.
+
+Pilotage/Sentinelle : pas d'événement contenant un identifiant de participant, d'adresse ou de contact.
+Les erreurs/RPC utilisent la collecte existante ; aucune nouvelle autoréparation. Les réglages AAL2
+et TURN sont hors périmètre et n'ont pas été modifiés. Revue indépendante et simulation PostgreSQL
+avec les déclencheurs actuels restent requises avant application réelle.
+
+
+Relecture du lot : la valeur historique non vide de co_organizers est copiée une seule fois dans
+rencontres_prive.coorganisations_anterieures AVANT suspension, RLS fermée, même durée de vie que
+l'activité. Une réexécution ne l'écrase pas. NULL est normalisé en tableau vide à la garde d'écriture.
+is_conv_member conserve la garde (_uid = auth.uid()::text OR auth.uid() IS NULL), et la recherche
+explicite d'appartenance : sans session, postgres/service_role garde le comportement antérieur ;
+avec session, la nouvelle garde d'activité s'ajoute. Participants en attente et validés sont
+rendus distinctement via une RPC réservée à l'organisation, sans ouverture de la table des accords.
+Avant application destructive : sauvegarde de la base ET inventaire Storage, vérifier la restauration.
+La suppression demandée d'une activité détruit son fil ; rollback = restauration contrôlée, pas de
+réouverture automatique de l'ancien modèle de droits. Aucun storage.objects n'est supprimé par SQL.
+
+
+Vérification locale : 9 tests unitaires du lot verts ; syntaxe JS, globals, handlers, échappement et
+ git diff --check verts. npm run verif exécuté : premier passage arrêté sur Bash absent du PATH ;
+second passage avec Git Bash arrêté sur sentinelle-workflows.test.mjs (attentes sleep non interceptées
+sur Windows, fichiers de cette suite inchangés). Ce résultat est ROUGE, pas une validation globale.
+Banc SQL fourni : tests/sql/migration-rencontres-validation.test.sql, base locale vide exclusivement
+nommée passio_test_rencontres. Non exécuté : psql et initdb absents, aucun accès réseau autorisé.
+Il couvre les rôles, l'attente/accord, la révocation, le compteur, l'historique et trois applications
+de la migration (la dernière après approbation : le nettoyage doit préserver l'accord existant).
+Ce socle est réduit : la chaîne complète des triggers de production doit encore être éprouvée.
+La photographie de production n'est pas copiée dans le dépôt. Aucun test:prod ni charge réseau.
+## Contrôles sociaux complémentaires — 2026-11-16 (non appliqués)
+
+Migration locale : migration_social_visibilite_2026-11-16.sql. Fiche, ordre client,
+limites et retour arrière : docs/journal/social-messagerie.md, entrée du 2026-11-16.
+Aucun corps de fonction ni paramètre de production modifié. Validation SQL sous
+rôles réels à effectuer avant application ; ne pas confondre relecture et exécution.
+## Controle des fonctions et de la veille (2026-11-16, lot 5 local)
+
+Le relais exige un contexte live visible et vivant (battement de moins de deux minutes), ou un appel lie et recent si les appels sont actives. Refus ferme sur erreur, plafond propre 6/min et 30/h, identifiants limites a une heure. Le client transmet le contexte apres creation du live ou depot de l'invitation et renouvelle a trente minutes. Les anciennes pages sans contexte restent en STUN. Les secrets TURN retires par le Lead restent retires.
+
+Suppression et export exigent une methode primaire recente (password, oauth, otp, saml/sso) : TOTP ne renouvelle pas cette preuve. AMR absent, invalide, inconnu ou futur : reconnexion requise. Exception conservee pour les sessions anonymes validees par Auth.
+
+La veille refuse sans PILOTAGE_VEILLE_SECRET. Migration non appliquee : migration_pilotage_veille_secret_2026-11-16.sql, transaction begin/commit, aucun droit client nouveau. Apres revue, le Lead provisionne via l'API du tableau editor, hors journal SQL, les valeurs Vault pilotage_veille_secret, pilotage_veille_anon_key, pilotage_veille_base_url et les configurations non secretes pilotage_veille_projet et pilotage_veille_edge_disponible (1). Meme secret dans Edge et GitHub ; URL egale au projet declare parmi les deux cibles connues. Vault/configuration de cible absente ou Edge non disponible : ancien cron retire, aucun nouveau cron. Parametres relus a chaque execution ; aucune GUC requise par le script officiel. Staging sans Edge : ne pas provisionner l'activation.
+
+Ordre de livraison : revue, provisionnement hors journal, migration via le script officiel, workflow pilotage-veille.yml, puis Edge fermee. Publier le client avec contexte avant ou avec notify-call ; les anciens clients n'obtiennent plus de relais. Aucune operation distante effectuee par ce lot. AAL2 active par le Lead conserve.
+
+Controles locaux : chemins Edge, preuve de reconnexion et configuration veille ; verif et navigateur local rapportes au commit. La photographie des fonctions/policies fournie par le Lead confirme les noms, colonnes et predicats utilises. Limites : migration non executee ici (PostgreSQL serveur absent), aucune preuve sur cible ; role hote Realtime encore declaratif, separation serveur des emissions et signalisation privee a traiter ; TTL/plafonds TURN ne sont pas un plafond de facture. Retrait sur : laisser TURN coupe, garder la veille fermee et desactiver son cron si necessaire.
+
+Reprise Codex du 16/11 : risque critical ; implementation initiale preservee puis finalisee par Codex, sans delegation ; contre-revue independante encore requise avant fusion. Acceptation locale : primaire recente obligatoire, TURN reserve au contexte admis, veille fermee sans secret, cron sans GUC et sans activation implicite. Integration pilotage/Sentinelle pertinente via veille authentifiee, secours, journal officiel et desactivation explicite. Le cache TURN expire est aussi retire sans contexte actif. La validation Node du SQL injecte utilise sqlAvecJournal sur production et staging ; ce controle ne remplace pas une execution PostgreSQL. Aucun secret Vault ne doit etre copie entre cibles ; le Lead doit relire que pilotage_veille_projet correspond a la cible --projet du script officiel. Baseline locale : HEAD a270749b identique au suivi origin/main disponible ; aucune actualisation distante demandee. Aucun changement AAL2, secrets TURN ou notifications Auth.
+
+La cible Vault est aussi comparee a la cible de la ligne injectee par appliquer-migration.mjs dans la meme transaction (xmin). Une configuration de production copiee sur staging provoque un refus avant planification ; aucune URL de production ne part de ce cron staging. Ce controle exige le script officiel pour une activation, sans GUC manuelle. Validation de reprise : 212 tests Node cibles verts puis suite pilotage rejouee avec le nouveau cas (92 tests), Chrome local 14 tests verts + regression cache expire 1 test vert ; audits globals, tests-creux et workflows verts. Verif globale precedente conservee, non repetee. Restants ordonnes : contre-revue critique et execution SQL sur base jetable/staging avec Vault absent puis cibles divergentes ; provisionnement cible hors journal ; migration officielle ; secours et Edge selon ordre ci-dessus ; controle post-livraison.
+
+
+## Rencontres — reprise locale de contre-revue (2026-11-16)
+
+Périmètre critique : fiabilité de la création des discussions, cohérence des inscriptions,
+cycle de vie et traçabilité des données privées. Implémentation : Codex (modèle non attesté
+par les outils de cette reprise). Critères : verdict serveur vérifié avant succès client,
+contrôle de contention à deux sessions, export/purge effectifs et décisions datées.
+Aucun changement de production, de configuration distante ou de contenu utilisateur.
+
+Les décisions disposent d'un journal privé : participant, décision, auteur et date serveur.
+La purge existante traite les journaux par lots de 5 000 : inscriptions au-delà de 30 jours
+après leur écriture ET la fin d'activité ; décisions au-delà de 90 jours selon les mêmes
+bornes. Une activité supprimée garde les délais depuis l'écriture. Ces durées bornent le
+suivi opérationnel et l'assistance, tout en préservant la fenêtre de plafond de 24 heures.
+L'archive temporaire de suspension expire après 30 jours ; aucun rôle n'est rétabli.
+L'effacement du compte prime sur ces délais. Les exports signalent les troncatures.
+
+Pilotage/Sentinelle : réutilisation de la purge planifiée et de ses compteurs de résultat,
+ainsi que des erreurs déjà collectées ; aucun identifiant personnel dans la télémétrie.
+Aucune autoréparation ajoutée. Les restrictions restent fermées en cas de retour arrière ;
+la récupération de données effacées exige une sauvegarde contrôlée et une revue avant action.
+Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-restants.sh.
+La vérification locale PGlite couvre le SQL séquentiel et les triggers métier de référence ;
+elle ne prouve pas la concurrence à deux sessions. Une revue indépendante reste requise
+avant toute fusion/application, hors de cette demande de commit local.

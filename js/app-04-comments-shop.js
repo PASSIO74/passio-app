@@ -8046,7 +8046,10 @@ async function _forwardTo(targetConvId) {
     content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
     localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
   }
-  else { localMsg.text = m.text || ""; }
+  else {
+    localMsg.text = m.text || "";
+    localMsg._msgRawContent = JSON.stringify({ type: "text", text: localMsg.text });
+  }
   // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
   // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
   // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
@@ -8066,7 +8069,7 @@ async function _forwardTo(targetConvId) {
   target.lastAt = Date.now();
   saveConversations();
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    var raw = content ? JSON.stringify(content) : (localMsg.text || "");
+    var raw = content ? JSON.stringify(content) : localMsg._msgRawContent;
     var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
     // ⚠️ Le verdict de l'écriture DOIT être lu. Ce chemin avalait les deux
     // callbacks (`.then(function(){}, function(){})`) : un transfert dont
@@ -8106,12 +8109,47 @@ async function _forwardTo(targetConvId) {
 // Les messages vocaux (audio/webm ou "Message vocal (Xs)") vont vers le lecteur intégré
 // (m.voiceData) ; les autres fichiers audio restent des pièces jointes téléchargeables.
 // `raw` est optionnel : par défaut on tente de décoder m.text.
-function applyMsgContentData(m, raw) {
-  var src = (raw === undefined || raw === null) ? m.text : raw;
-  if (!src || typeof src !== "string" || src.trim().charAt(0) !== "{") return;
+// B06-N1 / D06-03 : une enveloppe invalide reste UNE bulle, jamais un fil vide.
+// Partagé par la liste, le rejeu et le temps réel ; aucune coercition d'objet hostile.
+function _messageContentData(raw) {
+  if (raw == null || raw === "") return { type: "text", text: "" };
+  if (typeof raw !== "string") return null;
   var d;
-  try { d = JSON.parse(src); } catch (e) { return; }
-  if (!d || !d.type) return;
+  try { d = JSON.parse(raw); } catch (e) {
+    return /^[\s]*[\[{]/.test(raw) ? null : { type: "text", text: raw };
+  }
+  if (!d || typeof d !== "object") return { type: "text", text: raw };
+  if (Array.isArray(d)) return null;
+  if (["text", "t", "gif", "location", "media", "audio", "doc", "react", "del"].indexOf(d.type) < 0) return null;
+  var strings = ["text", "url", "fileType", "filename", "target", "emoji", "op"];
+  if (strings.some(function(k) { return d[k] != null && typeof d[k] !== "string"; })) return null;
+  for (var name of ["sp", "rt"]) {
+    if (d[name] == null) continue;
+    if (typeof d[name] !== "object" || Array.isArray(d[name])) return null;
+    var keys = name === "sp" ? ["e", "c", "n", "ph"] : ["id", "t", "n"];
+    if (keys.some(function(k) { return d[name][k] != null && typeof d[name][k] !== "string"; })) return null;
+  }
+  if (["gif", "media", "audio", "doc"].indexOf(d.type) >= 0 && typeof d.url !== "string") return null;
+  if (d.type === "location" && (typeof d.lat !== "number" || !Number.isFinite(d.lat) || Math.abs(d.lat) > 90 ||
+      typeof d.lng !== "number" || !Number.isFinite(d.lng) || Math.abs(d.lng) > 180)) return null;
+  if ((d.type === "react" || d.type === "del") && (typeof d.target !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(d.target))) return null;
+  if (d.type === "react" && (typeof d.emoji !== "string" || !d.emoji || (d.op != null && d.op !== "add" && d.op !== "remove"))) return null;
+  return d;
+}
+function applyMsgContentData(m, raw) {
+  // Le rendu peut repasser après le chargement et après sauvegarde locale.
+  // Revalider l'enveloppe d'origine, jamais le texte qu'elle contenait : un
+  // texte comme « [rdv demain] » n'est pas une nouvelle enveloppe JSON.
+  var src = (raw === undefined || raw === null)
+    ? (typeof m._msgRawContent === "string" ? m._msgRawContent : m.text) : raw;
+  if (typeof src === "string") m._msgRawContent = src;
+  var d = _messageContentData(src);
+  if (!d) {
+    m.text = "[Message invalide]";
+    try { if (typeof diagLog === "function") diagLog("msg_forme_invalide"); } catch (e) {}
+    return;
+  }
+  if (typeof m.text !== "string") m.text = "";
   // ⚠️ L'IDENTITÉ VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE (PRO-02, 2026-09-14).
   // `sp` (cf. _withSenderMeta, app-02) est écrit par l'ÉMETTEUR dans `content`,
   // que tout membre d'une conversation peut poser librement. Il primait sur la
@@ -8163,7 +8201,7 @@ function applyMsgContentData(m, raw) {
     m.fileName = d.filename;
     m.fileType = d.type;
   }
-  if (d.text && m.text !== d.text) m.text = d.text;
+  if (typeof d.text === "string" && m.text !== d.text) m.text = d.text;
 }
 
 // Téléchargement doc depuis store global
@@ -8420,7 +8458,7 @@ function sendMessageFp(convId, displayName) {
   var msgId = "msg_" + uid();
   // `de` : le compte RÉEL qui a écrit ce message (AUTH-06) — c'est lui, et lui
   // seul, qui autorise un renvoi manuel reconstruit depuis le texte.
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending", de: _fileProprietaire() };
+  var _localMsg = { id: msgId, from: "me", text: txt, _msgRawContent: JSON.stringify({ type: "text", text: txt }), at: Date.now(), status: "sending", de: _fileProprietaire() };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -8438,7 +8476,7 @@ function sendMessageFp(convId, displayName) {
   try { renderMessages(); } catch(e) {}
 
   // 7. Envoyer à Supabase (statut + file d'attente hors-ligne)
-  var _content = _withSenderMeta(txt); // attache le profil actif (persona)
+  var _content = _withSenderMeta(_localMsg._msgRawContent); // texte littéral, puis profil actif
   if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
   _sendTextToSupa(convId, msgId, _content);
 }

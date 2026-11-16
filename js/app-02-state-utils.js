@@ -1181,6 +1181,45 @@ function filetProchainPas(pasActuel, vivant, masquee) {
   return Math.min(FILET_PAS_MAX, Math.round(pas * 1.5));
 }
 
+// LOT 4 DU 2026-11-15 (capacité) — DEUX RÈGLES PURES DE PLUS, à côté de
+// `filetProchainPas`, qui reste la seule autorité du recul « rien ne bouge ».
+//
+// ① LE SEUL CHEMIN N'EST PLUS ÉPINGLÉ À 60 S. Depuis le 2026-11-09, le filet du
+//    fil est la seule source des publications d'autrui, et il restait à 60 s tant
+//    que le fil était à l'écran — pour tout le monde, visiteurs compris, avec à
+//    chaque tour l'appel groupé des compteurs. Il recule désormais comme les
+//    autres (×1,5 sans changement), mais NE DÉPASSE PAS 3 MIN quand il est le
+//    seul chemin : une publication d'autrui arrive en 3 min au pire, tout de
+//    suite au retour au premier plan, en revenant sur le fil (`goTo`) ou à la
+//    réception d'un commentaire (`feedFiletReveiller`).
+const FILET_SEUL_CHEMIN_MAX_MS = 180000;
+function filetBorneSeulChemin(pas, seulChemin) {
+  var p = Number(pas);
+  if (!isFinite(p) || p < FILET_PAS_MIN) p = FILET_PAS_MIN;
+  return seulChemin ? Math.min(p, FILET_SEUL_CHEMIN_MAX_MS) : p;
+}
+window.filetBorneSeulChemin = filetBorneSeulChemin;
+
+// ② SOUS PANNE, ON RECULE AU LIEU D'ACCÉLÉRER. Une erreur gardait la cadence
+//    VIVE (15 s pour les compteurs, 60 s pour le fil) : quand la base sature et
+//    répond 503, chaque onglet la relançait au rythme le plus rapide, tous sur le
+//    même calendrier, et la surcharge s'entretenait. Après `echecs` tours en
+//    échec d'affilée, le délai est `base × 2^echecs`, plafonné à 10 min, puis
+//    une gigue de ±20 % (le plafond aussi est étalé) (`alea` dans [0, 1], Math.random) pour que les onglets ne
+//    reviennent pas ensemble. Un tour réussi remet le compte à zéro (à l'appelant).
+const RECUL_ERREUR_MAX_MS = 600000;
+function reculSurErreur(base, echecs, alea) {
+  var b = Number(base);
+  if (!isFinite(b) || b <= 0) b = 1000;
+  var n = Math.floor(Number(echecs));
+  if (!isFinite(n) || n < 1) n = 1;
+  if (n > 16) n = 16;
+  var a = Number(alea);
+  if (!isFinite(a) || a < 0 || a > 1) a = 0.5;
+  return Math.round(Math.min(RECUL_ERREUR_MAX_MS, b * Math.pow(2, n)) * (0.8 + 0.4 * a));
+}
+window.reculSurErreur = reculSurErreur;
+
 // DÉLESTAGE (2026-10-11) — un délai de filet, de compteur ou de repos du temps
 // réel, multiplié par le facteur posé À DISTANCE (js/reglages-distants.js :
 // 1, 2 ou 4, depuis le pilotage ou la veille quand la charge monte). Appliqué
@@ -6575,7 +6614,7 @@ function traduireRefusMotDePasse(m) {
 
 // ── AIDER À CHOISIR UN MOT DE PASSE, PLUTÔT QUE DE REFUSER CELUI QU'ON A ─────
 //
-// Rapport d'essai réel (capture, 2026-09-16) : quelqu'un tape « Emma0207@ »,
+// Un refus de mot de passe doit être expliqué au plus près du champ.
 // l'écran répond « Ce mot de passe apparaît dans des fuites de données
 // connues », EN HAUT du formulaire — à quatre champs de distance du mot de
 // passe — et ne dit PAS quoi faire. Trois choses manquaient, et aucune n'est

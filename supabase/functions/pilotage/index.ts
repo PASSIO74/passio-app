@@ -98,12 +98,12 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   if (action === "veille") {
-    // Le secret, une fois posé (PILOTAGE_VEILLE_SECRET), ferme le déclencheur anonyme.
-    // Sans lui, rien ne change pour pg_cron (audit 2026-11-06).
+    // Secret obligatoire, partagé avec Vault/pg_cron et le workflow de secours.
+    // Absent ou différent : aucun créneau, lecture ou geste de veille.
     const secret = Deno.env.get("PILOTAGE_VEILLE_SECRET") || "";
     const presente = req.headers.get("x-passio-veille") || "";
     const reconnu = !!secret && egaliteConstante(presente, secret);
-    if (secret && !reconnu) return json({ error: "Non authentifié" }, 401);
+    if (!reconnu) return json({ error: "Non authentifié" }, 401);
     return veille(admin);
   }
 
@@ -167,9 +167,8 @@ Deno.serve(async (req) => {
 });
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
-// Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
-// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Réservée aux ordonnanceurs qui présentent le secret de veille.
+// La clé anon seule ne donne aucun accès.
 // Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
 // « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
 // deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)

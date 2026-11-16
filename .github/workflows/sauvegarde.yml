@@ -25,9 +25,10 @@
 #     -pass pass:"$(printf %s "$SUPABASE_SERVICE_ROLE_KEY" | sha256sum | cut -d' ' -f1)" | tar xzf -
 #   node scripts/sauvegarde-donnees.js --verifier <dossier>
 #
-# ⚠️ Ce que l'archive NE contient PAS : le schéma (il vit dans migrations/), les
-# médias du Storage (option --avec-medias : le dimanche seulement, c'est lourd),
-# la télémétrie (régénérable). Restaurer = rejouer les migrations, puis recharger.
+# Le schéma exécutable est archivé AVANT les données pour que son empreinte
+# entre dans le manifeste. Les tables privées de rencontres passent par le
+# canal de gestion, sans exposer leurs schémas aux clients. Les médias Storage
+# sont inclus le dimanche ; télémétrie et compteurs Realtime éphémères exclus.
 # ⚠️ Un cron GitHub est une demande, pas une garantie : un jour peut manquer.
 # `workflow_dispatch` permet de relancer à la main.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -47,34 +48,20 @@ permissions:
 
 jobs:
   sauvegarder:
+    if: github.ref == 'refs/heads/main'
     name: Exporter, vérifier, chiffrer, déposer
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { fetch-depth: 1 }
+        with:
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: '22' }
-
-      - name: Exporter (données + comptes ; médias le dimanche)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-            echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Aucune sauvegarde possible. Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          jour="$(date -u +%u)"
-          medias=""
-          if [ "$jour" = "7" ]; then medias="--avec-medias"; fi
-          # Le script SORT EN ÉCHEC si une table est incomplète : une archive
-          # plausible et amputée est le pire cas, on préfère un run rouge.
-          node scripts/sauvegarde-donnees.js --sortie sauvegarde --avec-comptes ${medias}
 
       # ⚠️ LE SCHÉMA VOYAGE AVEC LES DONNÉES (NET-07 / TCI-15, 2026-09-15). Le DDL
       # exécutable de la production (tables, index, fonctions, triggers, policies,
@@ -103,6 +90,25 @@ jobs:
           # Un DDL que le générateur sait incomplet : les DONNÉES sont quand même
           # chiffrées et déposées, puis le run passe au rouge (dernière étape).
           if grep -q 'DDL de reprise INCOMPLET' sauvegarde/schema.sql; then echo "DDL_INCOMPLET=1" >> "${GITHUB_ENV}"; fi
+
+      - name: Exporter (données + comptes ; médias le dimanche)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: njkiyoklssvefstljemx
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Aucune sauvegarde possible. Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          jour="$(date -u +%u)"
+          medias=""
+          if [ "$jour" = "7" ]; then medias="--avec-medias"; fi
+          # Le script SORT EN ÉCHEC si une table est incomplète : une archive
+          # plausible et amputée est le pire cas, on préfère un run rouge.
+          node scripts/sauvegarde-donnees.js --sortie sauvegarde --avec-comptes ${medias}
 
       - name: Vérifier l'archive
         run: |

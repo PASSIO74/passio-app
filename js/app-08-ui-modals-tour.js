@@ -3107,31 +3107,15 @@ function renderMsgBadge() {
 // échappé la partie variable, et le contenu de démonstration fait de même.
 // Les échapper toutes afficherait « &lt;b&gt; » à l'écran.
 //
-// La confiance est donc EXPLICITE, et le défaut est le refus : tout producteur
-// futur qui oublie de se déclarer sera échappé, pas exécuté.
-//   · `html: true`      — posé par `pushNotification` et le contenu de démo ;
-//   · `kind === "local"` — les notifications déjà PERSISTÉES chez les comptes
-//     existants, écrites avant que le drapeau n'existe.
-// ⚠️ RÉCONCILIATION DE DEUX CORRECTIFS PARALLÈLES (2026-08-29, nuit).
-// Deux sessions ont fermé la même XSS le même soir, chacune à un bout de la
-// chaîne : neutralisation des chevrons à l'ENTRÉE (`mergeSupaNotifs`, #202) et
-// modèle de confiance explicite au RENDU (celui-ci, #200). Les deux fusionnés,
-// main est devenu ROUGE — et pas seulement sur des tests : `escapeHtml` appliqué
-// ici DOUBLE-ÉCHAPPAIT un texte déjà échappé à la source. `supaInsertNotif`
-// compose `escapeHtml(nom) + " " + libellé` : un pseudo avec apostrophe est
-// stocké « Ben&#39;j », et un second échappement l'affichait tel quel à l'écran.
-//
-// Le modèle de confiance de #200 est conservé — il est meilleur : le défaut est
-// le REFUS, tout producteur futur qui oublie de se déclarer est neutralisé. Seul
-// le désinfectant change pour le texte non fiable : on neutralise les CHEVRONS
-// au lieu d'échapper toutes les entités. C'est suffisant ici — le texte est
-// inséré entre deux balises, pas dans un attribut, et `<` et `>` sont les seuls
-// caractères qui peuvent y créer du balisage — et c'est idempotent, donc la
-// neutralisation d'entrée et celle-ci se composent sans se marcher dessus.
+// Le blob synchronisé et le cache local peuvent porter html:true ou kind:local.
+// Ces indicateurs ne donnent aucun droit d'exécuter du HTML. Seul le gras sans
+// attribut, utilisé par les notifications locales, est rétabli après neutralisation.
+// Les entités restent intactes pour éviter le double échappement des pseudos.
 function _notifTexteHtml(n) {
   if (!n) return "";
-  var deConfiance = n.html === true || n.kind === "local";
-  return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
+  var texte = _neutraliserBalisesNotif(n.text);
+  return n.html === true || n.kind === "local"
+    ? texte.replace(/&lt;(\/?b)&gt;/g, "<$1>") : texte;
 }
 
 // 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
@@ -3543,7 +3527,7 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
     id: _id, kind: (opts && opts.kind) || "local", refId: (opts && opts.refId) || null,
     fromId, text, createdAt: Date.now(), unread: true, emoji,
     // Ce texte est composé ICI, ses parties variables déjà échappées par
-    // l'appelant : c'est du HTML de confiance (cf. `_notifTexteHtml`).
+    // l'appelant ; seul le gras sans attribut survit au rendu `_notifTexteHtml`.
     html: true,
   });
   saveState();
@@ -5881,6 +5865,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         noterLectureTeteFil(estEchecReseau(error) || status >= 500 || status === 429);
       }
+      if (options.propagerErreur) throw error;
       return [];
     }
     if (!lectureValide()) return [];
@@ -6131,6 +6116,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) {
+    if (options.propagerErreur) throw e;
     // Une exception qui n'est pas réseau ne dit rien du réseau : verdict inchangé.
     if (teteSeq && teteSeq > _feedTeteDerniereServie && estEchecReseau(e)) noterLectureTeteFil(true);
     return [];
@@ -6812,7 +6798,9 @@ function _eventRow(event) {
     contact: event.contact || null,
     external_link: event.externalLink || null,
     event_type: event.eventType || "Autre",
-    cover_url: event.coverUrl || null,
+    // https seulement (`events_cover_url_forme`, lot 4 du 2026-11-15) : une couverture encore
+    // locale (data:) passe par Storage avant (app-07) ; sinon elle ne part pas.
+    cover_url: (typeof event.coverUrl === "string" && /^https:\/\//i.test(event.coverUrl)) ? event.coverUrl : null,
     // CLI-01 : la base n'accepte plus qu'un tableau d'uuid en minuscules (au plus
     // 20) — un identifiant de démonstration ferait refuser TOUTE l'activité.
     co_organizers: (event.coOrganizers || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
@@ -7581,6 +7569,14 @@ function _motifSansAccents(q) {
   }).join("");
 }
 
+// PURE : la saisie, pliée et réduite aux lettres et chiffres, a-t-elle au moins
+// RECHERCHE_PERSONNES_MIN caractères ? (verrou : tests/unit/abus-capacite.test.mjs)
+var RECHERCHE_PERSONNES_MIN = 3;
+function recherchePersonnesAssezLongue(q) {
+  var plie = (typeof plierRecherche === "function") ? plierRecherche(q) : String(q || "").toLowerCase();
+  return String(plie || "").replace(/[^a-z0-9]/g, "").length >= RECHERCHE_PERSONNES_MIN;
+}
+
 async function supaSearchUsers(query) {
   try {
     const cleanQuery = (query || "").trim();
@@ -7596,6 +7592,11 @@ async function supaSearchUsers(query) {
     // échappe les jokers ; on borne aussi la longueur.
     const safe = cleanQuery.slice(0, 60).replace(/[,()*]/g, " ").replace(/[%_]/g, "").trim();
     if (!safe) return [];
+    // Lot 4 du 2026-11-15 (capacité) : SOUS TROIS CARACTÈRES, ON NE DEMANDE RIEN
+    // AU SERVEUR — même plancher que les passions (passions-flat.js). Une ou deux
+    // lettres retiennent presque toute la table, et l'index trigramme de
+    // `profiles` (username, bio) ne sert qu'à partir de trois.
+    if (!recherchePersonnesAssezLongue(safe)) return [];
     // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
     const searchPattern = `%${safe}%`;
     // ⚠️ BORNE. Cette requête n'avait AUCUNE limite : chercher « a » ramenait
@@ -7995,24 +7996,15 @@ async function supaLoadMessages(convId) {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
 
-      // Essayer de décoder le content comme JSON
-      var contentData = null;
-      var contentText = r.content || "";
-      try {
-        // Toujours essayer de parser comme JSON
-        contentData = JSON.parse(r.content);
-        _diag("supaLoadMessages: JSON parsé - type=" + (contentData.type || "N/A"));
-      } catch(e) {
-        // content n'est pas du JSON, c'est du texte normal
-        contentData = null;
-      }
+      var contentData = _messageContentData(r.content);
+      var contentText = contentData ? (typeof contentData.text === "string" ? contentData.text : (r.content || "")) : "[Message invalide]";
 
       var msg = {
         id: r.id,
         from: r.from_id === MY_UID ? "me" : r.from_id,
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
-        text: contentData && contentData.text ? contentData.text : contentText,
+        text: contentText,
         at: supaTs(r.created_at) + _fractionMicrosecondes(r.created_at),
       };
 
@@ -8133,6 +8125,82 @@ function _accuseLectureReparable(convId, moi) {
   } catch (e) { return false; }
 }
 
+// conv_reads_budget_reprise_v1 : une dernière lecture par conversation, sans
+// rejouer sous le compte suivant et sans dater la reprise comme une lecture neuve.
+var CONV_READS_BUDGET_REPRISE = "conv_reads_budget_reprise_v1";
+function _rtLectureBudgetTrace(message) {
+  try { if (typeof diagLog === "function") diagLog(message); } catch (e) {}
+}
+function _rtLectureBudgetDelai(erreur) {
+  if (!erreur || String(erreur.code || "") !== "P0001") return 0;
+  try {
+    var d = JSON.parse(erreur.details || "null");
+    var ms = Number(d && d.reessai_ms);
+    return d && d.budget === "realtime" && Number.isFinite(ms) && ms >= 1000 && ms <= 86400000
+      ? Math.ceil(ms) : 0;
+  } catch (e) { return 0; }
+}
+function _rtLectureBudgetFile() {
+  if (!window._rtLecturesBudget) window._rtLecturesBudget = Object.create(null);
+  var file = window._rtLecturesBudget;
+  Object.keys(file).forEach(function (id) {
+    if (file[id].compte !== MY_UID) {
+      if (file[id].timer != null) clearTimeout(file[id].timer);
+      delete file[id];
+    }
+  });
+  return file;
+}
+function _rtLectureBudgetArmer(entree, delai) {
+  if (entree.timer != null) clearTimeout(entree.timer);
+  entree.timer = setTimeout(function () {
+    var file = _rtLectureBudgetFile();
+    if (file[entree.convId] !== entree || MY_UID !== entree.compte) return;
+    entree.timer = null;
+    if (!_compteAuthReel() || !window._supaReal || _identiteDivergeDeLaSession(entree.compte)) {
+      delete file[entree.convId];
+      return;
+    }
+    entree.essais++;
+    supaMarkRead(entree.convId, entree);
+  }, delai);
+}
+function _rtLectureBudgetReporter(convId, compte, instant, erreur) {
+  var delai = _rtLectureBudgetDelai(erreur);
+  if (!delai) return false;
+  var file = _rtLectureBudgetFile();
+  if (MY_UID !== compte) return true;
+  var entree = file[convId];
+  if (!entree) {
+    if (Object.keys(file).length >= 64) { _rtLectureBudgetTrace("conv_reads budget : file pleine"); return true; }
+    entree = file[convId] = { convId: convId, compte: compte, instant: instant, essais: 0, timer: null, prochain: 0 };
+  }
+  if (instant > entree.instant) entree.instant = instant;
+  entree.prochain = Math.max(entree.prochain, Date.now() + delai);
+  if (entree.essais >= 4) {
+    entree.epuise = true;
+    _rtLectureBudgetTrace("conv_reads budget : reprise epuisee");
+    return true;
+  }
+  _rtLectureBudgetTrace("conv_reads budget : lecture differee");
+  _rtLectureBudgetArmer(entree, Math.max(1000, entree.prochain - Date.now()));
+  return true;
+}
+function _rtLectureBudgetFin(convId, compte, instant, succes) {
+  var file = _rtLectureBudgetFile(), entree = file[convId];
+  if (!entree || entree.compte !== compte) return;
+  if (entree.instant > instant) {
+    if (succes) { entree.essais = 0; entree.epuise = false; _rtLectureBudgetArmer(entree, 1000); }
+    else if (entree.timer == null) {
+      // Une panne de la requête en vol ne doit pas laisser une file sans
+      // minuteur qui absorberait toutes les prochaines lectures.
+      entree.epuise = true; entree.prochain = Date.now();
+    }
+    return;
+  }
+  if (entree.timer != null) clearTimeout(entree.timer);
+  delete file[convId];
+}
 async function supaMarkRead(convId) {
   // Trace SANS donnée personnelle : ni identifiant de conversation, ni compte,
   // ni contenu — un code d'erreur et une étape.
@@ -8155,14 +8223,24 @@ async function supaMarkRead(convId) {
     // L'identité est CAPTURÉE : la reprise après réparation ne part que sous le
     // compte qui a ouvert la conversation (même règle qu'ASTRA-21 à l'envoi).
     var moi = MY_UID;
+    var reprise = arguments[1], fileBudget = _rtLectureBudgetFile(), attenteBudget = fileBudget[convId];
+    if (reprise && reprise !== attenteBudget) return;
+    if (!reprise && attenteBudget) {
+      attenteBudget.instant = new Date().toISOString();
+      if (!attenteBudget.epuise || Date.now() < attenteBudget.prochain) return;
+      attenteBudget.essais = 0; attenteBudget.epuise = false;
+    }
+    var instantLecture = attenteBudget ? attenteBudget.instant : new Date().toISOString();
     var poser = function () {
       return supa.from("conv_reads").upsert(
-        { conv_id: convId, user_id: moi, last_read_at: new Date().toISOString() },
+        { conv_id: convId, user_id: moi, last_read_at: instantLecture },
         { onConflict: "conv_id,user_id" }
       );
     };
     var r = await poser();
-    if (!r || !r.error) return;
+    if (!r || !r.error) { _rtLectureBudgetFin(convId, moi, instantLecture, true); return; }
+    if (_rtLectureBudgetReporter(convId, moi, instantLecture, r.error)) return;
+    _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Panne réseau : rien à réparer, rien à marquer.
     if (typeof estEchecReseau === "function" && estEchecReseau(r.error)) return;
     var code = String((r.error && r.error.code) || "");
@@ -8185,9 +8263,11 @@ async function supaMarkRead(convId) {
     if (MY_UID !== moi) return;
     var r2 = await poser();
     if (r2 && r2.error) {
+      if (_rtLectureBudgetReporter(convId, moi, instantLecture, r2.error)) return;
       tracer("conv_reads refus apres reparation " + (String(r2.error.code || "") || r2.status || "?"));
-    }
+    } else _rtLectureBudgetFin(convId, moi, instantLecture, true);
   } catch (e) {
+    if (typeof moi !== "undefined" && typeof instantLecture !== "undefined") _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Une exception n'est pas un refus : soit le réseau (un fetch avorté peut
     // lever), soit un défaut de code — et celui-là se TRACE : un catch muet a
     // déjà caché une ReferenceError six jours (diagLog).
@@ -8433,7 +8513,10 @@ async function supaLoadMyConversations() {
       if (!seenUsers[key]) { seenUsers[key] = true; deduped.push(c); }
     }
     return deduped;
-  } catch(e) { return []; }
+  } catch(e) {
+    try { if (typeof diagLog === "function") diagLog("conv_liste_echec " + String(e && e.name || "Error")); } catch (_e) {}
+    return [];
+  }
 }
 
 // supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
@@ -8583,7 +8666,7 @@ async function _handleIncomingConvMessage(r, opts) {
   // Messages de contrôle (pas de bulle) : suppression « pour tous » et réactions.
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
-      var _dd = JSON.parse(r.content);
+      var _dd = _messageContentData(r.content);
       // ⚠️ CANAL v2 : UN CONTRÔLE DIFFUSÉ N'EST JAMAIS APPLIQUÉ (revue du
       // 2026-11-03). La règle « l'expéditeur est le `from_id` DE LA LIGNE » ne
       // tient que si la ligne vient du serveur (RLS d'INSERT : `from_id =
@@ -10526,20 +10609,30 @@ async function supaLoadEventPosts(eventId) {
 // Créée à la demande, puis mémorisée dans events.conv_id : tous les inscrits
 // rejoignent la même conversation (le levier n°1 de participation réelle).
 async function supaCreateEventConversation(ev) {
+  if (!ev || !ev.id || !MY_UID) return null;
   try {
-    await supaEnsureProfileExists();
-    const convId = "evgrp_" + (ev.id || uid());
+    if (await supaEnsureProfileExists() !== true) return null;
+    const convId = "evgrp_" + ev.id;
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
       group_name: "📍 " + String(ev.title || "Activité").slice(0, 40),
-      // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
-      // doit pas être bloquée par le classement de son événement.
       passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
-    if (r.error && String(r.error.code) !== "23505") return null;
-    // Le créateur doit être membre, sinon la discussion existe sans lui (IRL-10).
+    if (!r || (r.error && String(r.error.code) !== "23505")) return null;
+    // Prouver aussi l'identité d'une conversation déjà présente (23505).
+    const c = await supa.from("conversations").select("id,created_by,is_group")
+      .eq("id", convId).single();
+    if (!c || c.error || !c.data || c.data.id !== convId ||
+        c.data.created_by !== MY_UID || c.data.is_group !== true) return null;
+    // Le lien serveur doit exister AVANT le membre : la garde le relit.
+    const lien = await supa.from("events").update({ conv_id: convId })
+      .eq("id", ev.id).select("id,conv_id").single();
+    if (!lien || lien.error || !lien.data || lien.data.id !== ev.id || lien.data.conv_id !== convId) return null;
     const m = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
-    if (m && m.error && String(m.error.code) !== "23505") { console.warn("discussion créée, créateur non membre —", m.error.message); return null; }
+    if (!m || (m.error && String(m.error.code) !== "23505")) return null;
+    const preuve = await supa.from("conv_members").select("conv_id,user_id")
+      .eq("conv_id", convId).eq("user_id", MY_UID).single();
+    if (!preuve || preuve.error || !preuve.data || preuve.data.conv_id !== convId || preuve.data.user_id !== MY_UID) return null;
     return convId;
   } catch(e) { return null; }
 }
@@ -10797,6 +10890,7 @@ function _feedPostsSig(posts) {
 // autorité PARTAGÉE avec le filet des lives : deux copies d'une même politique
 // finissent toujours par diverger sur celle qu'on oublie.
 let _feedFiletPas = 60000;
+let _feedFiletEchecs = 0;   // tours en échec d'affilée (lot 4 du 2026-11-15, `reculSurErreur`)
 
 // Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
 // l'écran et par les gestionnaires temps réel : il vient de se passer quelque
@@ -10822,13 +10916,13 @@ function startFeedRefreshLoop() {
     // rendez-vous de celui-ci en sortant sur la garde « en vol ».
     if (_feedRefreshInFlight) { _feedRefreshRelance = true; return; }
     _feedRefreshInFlight = true;
-    let vivant = false;
+    let vivant = false, echec = false;
     try {
       if (document.hidden) return;                    // onglet en arrière-plan : pas de requête (batterie/quota)
       if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
       const feedEl = document.getElementById("screen-feed");
       if (!feedEl || !feedEl.classList.contains("active")) return;
-      const posts = await supaLoadPosts(0, null, { generation });
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
       if (generation !== _feedRefreshGeneration) return;
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
@@ -10843,11 +10937,13 @@ function startFeedRefreshLoop() {
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
     } catch (e) {
-      // ⚠️ Une panne n'est PAS un calme : reculer sur une coupure réseau ferait
-      // mettre cinq minutes à retrouver le fil au retour de la connexion. On
-      // laisse le pas où il est.
+      // ⚠️ Une panne n'est PAS un calme : le PAS ne recule pas (le retour de la
+      // connexion relit vite, `online` réveille le filet). Mais le PROCHAIN TOUR,
+      // lui, recule (lot 4 du 2026-11-15, `reculSurErreur`, app-02) : relancer
+      // une base saturée au rythme le plus vif entretenait la surcharge.
       try { diagLog("feed_filet", e && e.message); } catch (_e) {}
       vivant = true;
+      echec = true;
     } finally {
       _feedRefreshInFlight = false;
       if (_feedRefreshRelance && _feedRefreshTour && _feedRefreshInterval !== null) {
@@ -10866,9 +10962,19 @@ function startFeedRefreshLoop() {
         // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) — voir
         // son commentaire. Pinné partout, ce filet coûtait 4 req/min par onglet
         // visiteur, ×5 du régime d'avant.
+        // ⚠️ LOT 4 DU 2026-11-15 (capacité) : épinglé à 60 s tant que le fil
+        // était à l'écran, il refaisait chaque minute, pour chaque onglet
+        // (visiteurs compris), la page et l'appel groupé des compteurs. Il
+        // recule désormais comme les autres, BORNÉ à 3 min quand il est le seul
+        // chemin (`filetBorneSeulChemin`, app-02) ; et un tour en échec espace
+        // le suivant (`reculSurErreur`) au lieu de le relancer au plus vif.
         const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
-        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));
+        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant, document.hidden);
+        _feedFiletPas = filetBorneSeulChemin(_feedFiletPas, seulChemin);
+        _feedFiletEchecs = echec ? _feedFiletEchecs + 1 : 0;
+        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletEchecs
+          ? reculSurErreur(_feedFiletPas, _feedFiletEchecs, Math.random())
+          : _feedFiletPas));
       }
     }
   };
@@ -10891,6 +10997,12 @@ function stopFeedRefreshLoop() {
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) return;
   feedFiletReveiller(true);
+});
+// Le réseau revient : le recul sur erreur (lot 4 du 2026-11-15) ne doit pas faire
+// attendre des minutes une connexion qui vient de se rétablir.
+window.addEventListener("online", function () {
+  _feedFiletEchecs = 0;
+  if (!document.hidden) feedFiletReveiller(true);
 });
 
 // ═══ ANALYTICS LÉGÈRES ═══

@@ -2004,3 +2004,42 @@ test("㉿㉖ une exécution réparable a SA ligne dans la liste fermée de claud
   assert.ok(!/gh run view|log-failed/.test(corps), "plus de « lis son journal » : " + corps);
   assert.match(corps, /Exécution en échec/, "la consigne dit où se trouve le journal");
 });
+
+test("veille : migration transactionnelle, Vault lu à chaque cron, secours secret et sans corps dans les logs", () => {
+  const migration = fs.readFileSync("migrations/migration_pilotage_veille_secret_2026-11-16.sql", "utf8");
+  assert.match(migration, /begin;[\s\S]*commit;/);
+  assert.match(migration, /perform cron.unschedule\(jobid\)/);
+  assert.match(migration, /into strict secret_veille/);
+  assert.match(migration, /pilotage_veille_base_url/);
+  assert.match(migration, /pilotage_veille_projet/);
+  assert.match(migration, /pilotage_veille_edge_disponible/);
+  assert.doesNotMatch(migration, /https:\/\/njkiyoklssvefstljemx|current_setting/);
+  assert.match(migration, /'x-passio-veille', secret_veille/);
+  assert.match(migration, /has_table_privilege\('authenticated'/);
+  assert.doesNotMatch(migration, /grant |security definer|eyJ/i);
+  const workflow=fs.readFileSync(".github/workflows/pilotage-veille.yml","utf8");
+  assert.match(workflow, /secrets\.PILOTAGE_VEILLE_SECRET/);
+  assert.ok(workflow.indexOf('if [ -z "') < workflow.indexOf('code=$(curl'));
+  assert.match(workflow, /x-passio-veille: \$VEILLE_SECRET/);
+  assert.doesNotMatch(workflow, /head -c|cat reponse/);
+});
+
+test("veille : le script officiel journalise la migration sur chaque cible sans GUC", async () => {
+  const { createRequire } = await import("node:module");
+  const barriere = createRequire(import.meta.url)("../../scripts/lib/barriere-migration.js");
+  const fichier = "migrations/migration_pilotage_veille_secret_2026-11-16.sql";
+  const sql = fs.readFileSync(fichier, "utf8");
+  for (const cible of ["njkiyoklssvefstljemx", "fcksxofaelcdmmifnwjo"]) {
+    const envoye = barriere.sqlAvecJournal(sql, { fichier, cible, outil: "appliquer-migration.mjs" });
+    const journal = envoye.indexOf("insert into public.migrations_appliquees");
+    assert.ok(journal > envoye.indexOf("begin;"));
+    assert.ok(journal < envoye.indexOf("do $installation$"));
+    assert.ok(envoye.includes(barriere.empreinte(sql)));
+    assert.doesNotMatch(envoye, /current_setting|set_config/);
+    assert.ok(envoye.includes("edge_disponible is distinct from '1'"));
+    assert.ok(envoye.includes("xmin = pg_current_xact_id()::xid"));
+    assert.ok(envoye.includes("projet is distinct from cible_migration"));
+    assert.ok(envoye.indexOf("projet is distinct from cible_migration") < envoye.indexOf("perform cron.schedule"));
+    assert.ok(envoye.includes("('https://' || projet || '.supabase.co')"));
+  }
+});

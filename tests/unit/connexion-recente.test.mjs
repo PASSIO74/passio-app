@@ -18,9 +18,9 @@ test("② c'est la plus récente des méthodes qui compte", () => {
   assert.equal(connexionRecente(jeton({ amr }), 900, MAINTENANT), true);
 });
 
-test("③ un format inconnu ne retire pas le droit de supprimer son compte", () => {
+test("③ un format inconnu exige une reconnexion", () => {
   for (const v of [jeton({}), jeton({ amr: [] }), jeton({ amr: "password" }), jeton({ amr: [{ method: "x" }] }), "Bearer a.b", "", null]) {
-    assert.equal(connexionRecente(v, 900, MAINTENANT), true);
+    assert.equal(connexionRecente(v, 900, MAINTENANT), false);
   }
 });
 
@@ -35,4 +35,20 @@ test("④ les deux fonctions portent la garde, avant tout effet", () => {
   const expo = fs.readFileSync("supabase/functions/export-account/index.ts", "utf8");
   assert.ok(expo.indexOf("connexionRecente(") > 0 && expo.indexOf("connexionRecente(") < expo.indexOf("exporterCompte(admin"), "export");
   assert.equal(REPONSE_REAUTH.code, "reauth_requise");
+});
+
+ test("TOTP seul ou récent avec un mot de passe ancien : refus ; primaire récente : accord", () => {
+  for (const amr of [[{method:"totp",timestamp:MAINTENANT}], [{method:"password",timestamp:MAINTENANT-99999},{method:"totp",timestamp:MAINTENANT}], [{method:"inconnue",timestamp:MAINTENANT}], [{method:"password",timestamp:MAINTENANT+1}], [{method:"password",timestamp:String(MAINTENANT)}]]) {
+    assert.equal(connexionRecente(jeton({amr}), 900, MAINTENANT), false);
+  }
+  for (const method of ["password", "oauth", "otp", "sso/saml", "magiclink"]) assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT}]}),900,MAINTENANT), true);
+ });
+
+test("un renouvellement ou une récupération ne remplace pas une connexion primaire", () => {
+  for (const method of ["token_refresh", "recovery", "email_change", "saml/sso"]) {
+    assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT}]}),900,MAINTENANT), false);
+  }
+  for (const method of ["sso/saml", "magiclink"]) {
+    assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT-901}]}),900,MAINTENANT), false);
+  }
 });

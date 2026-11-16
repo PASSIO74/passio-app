@@ -132,6 +132,10 @@ test.beforeEach(async ({ page }) => {
   etat.sansApp = false;
   await sansDonneesDistantes(page);
   await page.addInitScript(({ local, uid }) => {
+    // Lot 4 du 2026-11-15 : en production, une nouvelle version s'applique après un délai
+    // tiré au hasard (js/pwa-detect.js, `delaiMiseAJour`). Ce banc mesure les REPORTS
+    // (appel, saisie, envoi…) : il garde le geste immédiat d'avant.
+    window.__passioMajImmediate = true;
     const n = Number(sessionStorage.getItem("__docs") || 0) + 1;
     sessionStorage.setItem("__docs", String(n));
     const pousser = (cle, v) => {
@@ -382,6 +386,23 @@ test.describe("PWA — le rechargement d'une mise à jour attend la fin de ce qu
 
     await deployerB(page);
     await rechargeSurB(page, avant.docs);
+  });
+
+  // Lot 4 du 2026-11-15 (capacité) : une mise en ligne rechargeait tous les écrans
+  // ouverts dans la minute. Sans le geste immédiat des bancs, une page VISIBLE garde
+  // l'ancienne version et la remplace après 10 à 30 min tirées au hasard (ou en
+  // passant en arrière-plan, 0 à 60 s) ; le toast permet de recharger soi-même.
+  test("① bis sans le geste des bancs : une page visible ne recharge pas aussitôt, son délai est tiré sur 10–30 min", async ({ page }) => {
+    await page.addInitScript(() => { window.__passioMajImmediate = false; });
+    await ouvrirInstallee(page);
+    const avant = await lireSonde(page);
+    await deployerB(page);
+    await workerBAuxCommandes(page);
+    await page.waitForTimeout(3000);
+    expect((await lireSonde(page)).docs, "visible : pas de rechargement dans la foulée").toBe(avant.docs);
+    expect(await page.evaluate(() => window.__memeDocument), "même document").toBe(true);
+    const bornes = await page.evaluate(() => [passioDelaiMiseAJour(true, 0), passioDelaiMiseAJour(true, 1), passioDelaiMiseAJour(false, 0), passioDelaiMiseAJour(false, 1), passioDelaiMiseAJour(true, NaN)]);
+    expect(bornes).toEqual([600000, 1800000, 0, 60000, 1200000]);
   });
 
   test("② appel connecté : l'appel continue, pas d'invitation à recharger, et la page recharge après", async ({ page }) => {

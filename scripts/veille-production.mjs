@@ -36,6 +36,7 @@
 
 // L'activation des nouveaux comptes (2026-10-06) : UNE définition, partagée avec
 // la fonction `pilotage` — la requête est GÉNÉRÉE depuis la même liste de gestes.
+import { lireJetonsCI } from "./sonder-jeton-ci.mjs";
 import { sqlActivation, activationDepuisLignes } from "../supabase/functions/_shared/pilotage.js";
 import { resumerBattement, BATTEMENT, AUTEUR_BATTEMENT } from "../supabase/functions/_shared/battement.js";
 
@@ -939,7 +940,7 @@ export async function mesurerUsage(env) {
   };
 }
 
-export async function mesurer(env) {
+export async function mesurer(env, { jetons } = {}) {
   return {
     flux: await mesure(() => mesurerFlux(env)),
     inscriptions: await mesure(() => mesurerInscriptions(env)),
@@ -949,7 +950,7 @@ export async function mesurer(env) {
     crons: await mesure(() => mesurerCrons(env)),
     scan: await mesure(() => mesurerScan(env)),
     base: await mesure(() => mesurerBase(env)),
-    jetons: await mesure(() => mesurerJetons(env)),
+    jetons: jetons ?? await mesure(() => mesurerJetons(env)),
     battement: await mesure(() => mesurerBattement(env)),
   };
 }
@@ -962,7 +963,8 @@ if (estPrincipal) {
     console.error(`Variables absentes : ${manquants.join(", ")} — la veille est AVEUGLE, elle refuse de rendre « rien à signaler ».`);
     process.exit(2);
   }
-  mesurer(env).then((mesures) => {
+  const jetons = env.PASSIO_JETONS_CI ? lireJetonsCI(env.PASSIO_JETONS_CI) : undefined;
+  mesurer(env, { jetons }).then((mesures) => {
     const v = verdictVeille(mesures, Date.now());
     // Si TOUTES les lectures ont échoué, ce n'est pas un verdict, c'est une panne
     // du lecteur : on sort en erreur pour que l'issue [VEILLE MUETTE] parte.

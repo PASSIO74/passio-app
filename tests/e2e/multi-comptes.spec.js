@@ -412,13 +412,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
     }
   });
 
-  // IRL v2 (2026-07-21) : RSVP 3 états, liste d'attente et co-organisateurs
-  // reposent sur DEUX policies RLS ajoutées le même jour — event_attendees
-  // UPDATE (« Maj de sa propre participation ») et events UPDATE (« Update
-  // organisateurs », auteur OU co-organisateur). Une policy manquante ne lève
-  // AUCUNE erreur : l'UPDATE touche 0 ligne en silence, exactement le piège qui
-  // avait bloqué la correction d'étape CDV. Seul un test à 2 vrais comptes le voit.
-  test("RSVP, liste d'attente et co-organisateur → cross-compte réel", async ({ browser }) => {
+  // RSVP et liste d'attente : ses propres changements doivent persister. Depuis
+  // le 16/11, la coorganisation reste suspendue faute d'invitations consenties :
+  // l'ancien écrasement est refusé et ne donne aucun droit à B. On vérifie les
+  // lignes réellement touchées, puis l'état relu par A, jamais le seul HTTP 200.
+  test("RSVP, liste d'attente et coorganisation suspendue → cross-compte réel", async ({ browser }) => {
     test.setTimeout(180000);
     const t0 = Date.now();
     const log = (m) => console.log(`[irlv2 ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
@@ -500,39 +498,70 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect(seenByA.maybes, "B compté comme « peut-être »").toContain(uidB);
       expect(seenByA.attendees, "B n'occupe PAS une place").not.toContain(uidB);
 
-      // ── A nomme B co-organisateur (UPDATE events par l'auteur) ──
+      // ── L'ancien client ne peut plus nommer B sans consentement ──
       const promoted = await pageA.evaluate(async ([eid, bid]) => {
         const ev = { id: eid, title: "Atelier complet", passion: "musique", city: "Paris",
           emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1, coOrganizers: [bid] };
         return await supaUpdateEvent(ev);
       }, [eventId, uidB]);
-      expect(promoted, "A nomme B co-organisateur").toBe(true);
-      log("B est co-organisateur");
-
-      // ── B modifie l'événement : c'est LE cas que la nouvelle policy autorise
-      //    (auteur OU co-organisateur). Avec l'ancienne, l'UPDATE passait à 0 ligne.
-      const editedByCo = await pageB.evaluate(async (eid) => {
-        const ev = { id: eid, title: "Titre corrigé par le co-orga", passion: "musique",
-          city: "Paris", emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1 };
-        // supaUpdateEvent filtre sur author_id = moi : le co-organisateur doit
-        // écrire directement (c'est la policy qui l'autorise, pas la colonne).
-        const { error } = await supa.from("events").update({ title: ev.title }).eq("id", eid);
-        if (error) return "ERREUR: " + error.message;
-        const { data } = await supa.from("events").select("title").eq("id", eid).maybeSingle();
-        return data ? data.title : null;
+      expect(promoted, "l'ancien écrasement de coOrganizers est refusé").toBe(false);
+      const apresNomination = await pageA.evaluate(async (eid) => {
+        const { data, error } = await supa.from("events").select("title,co_organizers").eq("id", eid).single();
+        return { data, erreur: error && error.code };
       }, eventId);
-      expect(editedByCo, "un co-organisateur peut modifier l'événement").toBe("Titre corrigé par le co-orga");
-      log("✅ co-organisateur : édition autorisée (policy « Update organisateurs »)");
+      expect(apresNomination.erreur, "A relit l'activité après le refus").toBeNull();
+      expect(apresNomination.data.co_organizers, "aucun rôle n'a été attribué à B").toEqual([]);
+      expect(apresNomination.data.title, "l'écriture refusée n'a pas modifié l'activité").toBe("Atelier complet");
+      await pageA.evaluate((eid) => openEventCoOrganizers(eid), eventId);
+      await expect(pageA.locator("#toastStack .toast").filter({ hasText: "La coorganisation est suspendue en attendant les invitations avec consentement." }), "l'interface annonce la suspension réelle").toBeVisible();
+
+      // ── Sans rôle, B est refusé par le serveur même en contournant l'interface ──
+      const editionRefusee = await pageB.evaluate(async (eid) => {
+        const role = await supa.rpc("organise_activite", { p_event_id: eid });
+        const ecriture = await supa.from("events").update({ title: "Titre interdit de B" }).eq("id", eid).select("id,title");
+        return { organise: role.data, erreurRole: role.error && role.error.code,
+          lignes: ecriture.data, erreurEdition: ecriture.error && ecriture.error.code };
+      }, eventId);
+      expect(editionRefusee.erreurRole, "la RPC de droits répond réellement").toBeNull();
+      expect(editionRefusee.organise, "B n'a aucun rôle d'organisation").toBe(false);
+      expect(editionRefusee.erreurEdition, "le refus RLS est mesuré par zéro ligne").toBeNull();
+      expect(editionRefusee.lignes, "B n'a modifié aucune ligne events").toEqual([]);
+      const titreApresRefusB = await pageA.evaluate(async (eid) => {
+        const { data, error } = await supa.from("events").select("title").eq("id", eid).single();
+        return { titre: data && data.title, erreur: error && error.code };
+      }, eventId);
+      expect(titreApresRefusB.erreur).toBeNull();
+      expect(titreApresRefusB.titre, "A confirme que l'édition de B n'a eu aucun effet").toBe("Atelier complet");
+
+      // ── A conserve le parcours d'édition légitime et son effet persistant ──
+      const editedByOwner = await pageA.evaluate(async (eid) => {
+        const ev = (await supaLoadEvents()).find((e) => e.id === eid);
+        if (!ev) return { ok: false };
+        const ok = await supaUpdateEvent(Object.assign({}, ev, { title: "Titre corrigé par l'organisateur" }));
+        const { data, error } = await supa.from("events").select("title").eq("id", eid).single();
+        return { ok, titre: data && data.title, erreur: error && error.code };
+      }, eventId);
+      expect(editedByOwner.ok, "A peut toujours modifier sa propre activité").toBe(true);
+      expect(editedByOwner.erreur).toBeNull();
+      expect(editedByOwner.titre, "l'édition autorisée de A persiste").toBe("Titre corrigé par l'organisateur");
+      log("✅ suspension coorganisation : rôle absent, édition de B refusée, édition de A persistée");
 
       // ── Contre-épreuve : B ne doit PAS pouvoir modifier le RSVP de A ──
       const stolen = await pageB.evaluate(async ([eid, aid]) => {
-        await supa.from("event_attendees").update({ rsvp: "declined" })
-          .eq("event_id", eid).eq("user_id", aid);
-        const { data } = await supa.from("event_attendees")
-          .select("rsvp").eq("event_id", eid).eq("user_id", aid).maybeSingle();
-        return data ? data.rsvp : null;
+        const { data, error } = await supa.from("event_attendees").update({ rsvp: "declined" })
+          .eq("event_id", eid).eq("user_id", aid).select("rsvp");
+        return { lignes: data, erreur: error && error.code };
       }, [eventId, uidA]);
-      expect(stolen, "B ne peut PAS changer le RSVP de A").toBe("going");
+      expect(stolen.erreur).toBeNull();
+      expect(stolen.lignes, "B ne touche aucune ligne de participation de A").toEqual([]);
+      // B sans rôle ne lit pas les participations privées d'autrui : A vérifie
+      // lui-même l'état effectif, sous son propre jeton.
+      const rsvpA = await pageA.evaluate(async (eid) => {
+        const { data } = await supa.from("event_attendees")
+          .select("rsvp").eq("event_id", eid).eq("user_id", MY_UID).maybeSingle();
+        return data ? data.rsvp : null;
+      }, eventId);
+      expect(rsvpA, "B ne peut PAS changer le RSVP de A").toBe("going");
       log("✅ isolation des RSVP confirmée");
 
       await cleanupEvent(pageA, eventId);

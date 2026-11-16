@@ -122,13 +122,23 @@ test("un compteur qui change ramène le pas à 15 s ; une erreur n'est pas un ca
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(8);
   expect(await cycleSuivant(page)).toBe(15000); // stable → 22,5
   expect((await stats(page)).pas).toBe(22500);
-  await page.evaluate(() => { __erreur = true; });
+  await page.evaluate(() => { __erreur = true; Math.random = () => 0; });
   expect(await cycleSuivant(page)).toBe(22500);
   s = await stats(page);
   expect(s.errors).toBe(1); expect(s.pas).toBe(15000);
+  // Lot 4 du 2026-11-15 : le PAS reste vif, mais le tour suivant RECULE
+  // (`reculSurErreur` : 15 s × 2, gigue au plancher 0,8 → 24 s) au lieu de
+  // relancer à 15 s une base en panne ; puis ×2 encore (48 s) si elle l'est toujours.
+  expect(s.echecsConsecutifs).toBe(1);
+  expect(await cycleSuivant(page)).toBe(24000);
+  expect((await stats(page)).echecsConsecutifs).toBe(2);
+  expect(await cycleSuivant(page)).toBe(48000);
   await page.evaluate(() => { __erreur = false; });
-  expect(await cycleSuivant(page)).toBe(15000);
-  expect((await stats(page)).pas).toBe(22500);
+  expect(await cycleSuivant(page)).toBe(96000);
+  s = await stats(page);
+  expect(s.echecsConsecutifs, "une lecture réussie remet le compte à zéro").toBe(0);
+  expect(s.pas).toBe(22500);
+  expect(await cycleSuivant(page)).toBe(22500);
 });
 
 test("mon propre like : cadence vive et rendez-vous rapproché à 16,5 s au plus, sans nouveau tirage", async ({ page }) => {

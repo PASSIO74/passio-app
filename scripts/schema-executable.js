@@ -105,9 +105,22 @@ async function requete(jeton, sql, {
 const ident = (s) => `"${String(s).replace(/"/g, '""')}"`;
 const litt = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const SANS_EXTENSION = "p.oid not in (select objid from pg_depend where deptype='e')";
+// Liste fermée : les deux schémas applicatifs privés sont reconstruits, jamais
+// les tables du Vault ni un schéma découvert au hasard dans le catalogue.
+const SCHEMAS = ["public", "rencontres_prive", "passio_realtime_budget"];
+const SCHEMAS_SQL = SCHEMAS.map(litt).join(",");
+const NAMESPACES_SQL = `select oid from pg_namespace where nspname in (${SCHEMAS_SQL})`;
+const ROLES_SQL = `(values ('PUBLIC', 0::oid), ('anon', (select oid from pg_roles where rolname='anon')),
+  ('authenticated', (select oid from pg_roles where rolname='authenticated')),
+  ('service_role', (select oid from pg_roles where rolname='service_role'))) r(rolname, oid)`;
+const nomObjet = (x, cle) => `${ident(x.sch || "public")}.${ident(x[cle])}`;
+const nomRole = (r) => String(r).toUpperCase() === "PUBLIC" ? "public" : ident(r);
+const rendreAcl = (objet, x) => `revoke all on ${objet} from ${nomRole(x.role)};`
+  + (x.privs ? `\ngrant ${x.privs.toLowerCase()} on ${objet} to ${nomRole(x.role)};` : "")
+  + (x.grantables ? `\ngrant ${x.grantables.toLowerCase()} on ${objet} to ${nomRole(x.role)} with grant option;` : "");
 
 const ETAPES = [
-  { titre: "Garde — aucune table partitionnée ni étrangère dans public (le DDL de reprise ne sait pas les rendre)",
+  { titre: "Garde — aucune table partitionnée ni étrangère dans les schémas applicatifs (le DDL de reprise ne sait pas les rendre)",
     // ⚠️ Contre-revue finale de R25 (2026-11-04). La section « Tables » ne rend
     // que les tables ordinaires (relkind 'r') : un parent PARTITIONNÉ ('p') ou
     // une table ÉTRANGÈRE ('f') n'était pas rendu, et le DDL échouait plus loin —
@@ -119,17 +132,30 @@ const ETAPES = [
     // (contre-revue finale) ; il signale le défaut au journal du workflow
     // (`::warning`, voir main). Aucune en production le 2026-11-04 (canal ① :
     // 0 'p', 0 'f', 52 'r').
-    sql: `select c.relname, c.relkind::text k from pg_class c
-           where c.relnamespace='public'::regnamespace and c.relkind in ('p','f') order by 1`,
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname, c.relkind::text k from pg_class c
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind in ('p','f') order by 1,2`,
     rendu: (r) => {
       if (!r.length) return [];
-      const quoi = r.map((x) => `${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ");
-      return [`do $$ begin raise exception '%', ${litt(`DDL de reprise INCOMPLET : public porte ${quoi} — scripts/schema-executable.js ne sait pas les rendre. Recréer ce schéma à la main, puis restaurer les données sans l'option schéma.`)}; end $$;`];
+      const quoi = r.map((x) => `${x.sch && x.sch !== "public" ? x.sch + "." : ""}${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ");
+      return [`do $$ begin raise exception '%', ${litt(`DDL de reprise INCOMPLET : ${quoi} — scripts/schema-executable.js ne sait pas les rendre. Recréer ce schéma à la main, puis restaurer les données sans l'option schéma.`)}; end $$;`];
     } },
 
   { titre: "Extensions",
     sql: `select e.extname, n.nspname from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname not in ('plpgsql') order by 1`,
     rendu: (r) => r.map((x) => `create extension if not exists ${ident(x.extname)} with schema ${ident(x.nspname)};`) },
+
+  { titre: "Schémas applicatifs — liste fermée, avant leurs tables",
+    sql: `select nspname from pg_namespace where nspname in (${SCHEMAS_SQL}) order by nspname`,
+    rendu: (r) => r.map((x) => `create schema if not exists ${ident(x.nspname)};`) },
+
+  { titre: "Privilèges de SCHÉMA — PUBLIC, anon, authenticated et service_role",
+    sql: `select n.nspname sch, r.rolname role,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where not a.is_grantable) privs,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where a.is_grantable) grantables
+            from pg_namespace n cross join ${ROLES_SQL}
+            left join lateral aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a on a.grantee=r.oid
+           where n.nspname in (${SCHEMAS_SQL}) group by 1,2 order by 1,2`,
+    rendu: (r) => r.map((x) => rendreAcl(`schema ${ident(x.sch)}`, x)) },
 
   { titre: "Séquences (avant les tables qui les référencent) — hors séquences d'identité",
     // ⚠️ Une séquence d'IDENTITÉ (`generated … as identity`, pg_depend
@@ -139,28 +165,29 @@ const ETAPES = [
     // deux séquences de la production (canal ①, 2026-11-04) sont des
     // identités : chaque reconstruction les doublait. Restent ici les
     // séquences autonomes et celles des colonnes `serial`.
-    sql: `select s.sequencename, s.data_type, s.start_value, s.increment_by from pg_sequences s
-           where s.schemaname='public'
+    sql: `select s.schemaname sch, s.sequencename, s.data_type, s.start_value, s.increment_by from pg_sequences s
+           where s.schemaname in (${SCHEMAS_SQL})
              and not exists (select 1 from pg_depend d where d.classid='pg_class'::regclass and d.deptype='i'
                                and d.objid=format('%I.%I', s.schemaname, s.sequencename)::regclass)
-           order by 1`,
-    rendu: (r) => r.map((x) => `create sequence if not exists public.${ident(x.sequencename)} as ${x.data_type} start ${x.start_value} increment ${x.increment_by};`) },
+           order by 1,2`,
+    rendu: (r) => r.map((x) => `create sequence if not exists ${nomObjet(x, "sequencename")} as ${x.data_type} start ${x.start_value} increment ${x.increment_by};`) },
 
   { titre: "Tables et colonnes",
-    sql: `select c.relname as tbl, a.attname as col, format_type(a.atttypid, a.atttypmod) as typ, a.attnotnull as nn,
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname as tbl, a.attname as col, format_type(a.atttypid, a.atttypmod) as typ, a.attnotnull as nn,
                  pg_get_expr(d.adbin, d.adrelid) as defaut, a.attidentity as ident, a.attgenerated as gen
             from pg_attribute a join pg_class c on c.oid=a.attrelid
             left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
-           where c.relnamespace='public'::regnamespace and c.relkind='r' and a.attnum>0 and not a.attisdropped
-           order by c.relname, a.attnum`,
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='r' and a.attnum>0 and not a.attisdropped
+           order by c.relnamespace::regnamespace::text, c.relname, a.attnum`,
     rendu: (r) => {
       const t = new Map();
       for (const x of r) {
-        if (!t.has(x.tbl)) t.set(x.tbl, []);
+        const nom = nomObjet(x, "tbl");
+        if (!t.has(nom)) t.set(nom, []);
         const gen = x.gen === "s" ? ` generated always as (${x.defaut}) stored`
           : x.ident ? ` generated ${x.ident === "a" ? "always" : "by default"} as identity`
           : x.defaut ? ` default ${x.defaut}` : "";
-        t.get(x.tbl).push(`  ${ident(x.col)} ${x.typ}${gen}${x.nn ? " not null" : ""}`);
+        t.get(nom).push(`  ${ident(x.col)} ${x.typ}${gen}${x.nn ? " not null" : ""}`);
       }
       // ⚠️ RES-14 (21/10/2026, mesuré sur le staging) : `create table if not
       // exists` SAUTE une table déjà là, avec ses colonnes d'avant. Une cible
@@ -168,8 +195,8 @@ const ETAPES = [
       // ajoutée depuis) recevait alors la contrainte CHECK d'une colonne
       // absente, et toute la transaction tombait. Chaque colonne est donc aussi
       // reposée par `add column if not exists` : sans effet sur une base à jour.
-      return [...t].map(([n, cols]) => `create table if not exists public.${ident(n)} (\n${cols.join(",\n")}\n);\n`
-        + cols.map((c) => `alter table public.${ident(n)} add column if not exists ${c.trim()};`).join("\n"));
+      return [...t].map(([n, cols]) => `create table if not exists ${n} (\n${cols.join(",\n")}\n);\n`
+        + cols.map((c) => `alter table ${n} add column if not exists ${c.trim()};`).join("\n"));
     } },
 
   { titre: "Séquences rattachées à leur colonne (serial : OWNED BY)",
@@ -179,27 +206,34 @@ const ETAPES = [
     // première insertion suivante repartait de 1 et percutait une clé
     // restaurée. Aucune colonne `serial` en production le 2026-11-04 ; la
     // première qui naîtra sera rendue juste.
-    sql: `select s.relname seq, t.relname tbl, a.attname col
+    sql: `select s.relnamespace::regnamespace::text sch, s.relname seq, t.relnamespace::regnamespace::text table_schema, t.relname tbl, a.attname col
             from pg_class s
             join pg_depend d on d.classid='pg_class'::regclass and d.objid=s.oid and d.deptype='a'
                             and d.refclassid='pg_class'::regclass and d.refobjsubid>0
             join pg_class t on t.oid=d.refobjid
             join pg_attribute a on a.attrelid=d.refobjid and a.attnum=d.refobjsubid
-           where s.relnamespace='public'::regnamespace and s.relkind='S' order by 1`,
-    rendu: (r) => r.map((x) => `alter sequence public.${ident(x.seq)} owned by public.${ident(x.tbl)}.${ident(x.col)};`) },
+           where s.relnamespace in (${NAMESPACES_SQL}) and s.relkind='S' order by 1,2`,
+    rendu: (r) => r.map((x) => `alter sequence ${nomObjet(x, "seq")} owned by ${ident(x.table_schema || "public")}.${ident(x.tbl)}.${ident(x.col)};`) },
 
   { titre: "Clés primaires, uniques, CHECK et étrangères",
-    sql: `select conrelid::regclass::text as tbl, conname, pg_get_constraintdef(oid) as def, contype from pg_constraint
-           where connamespace='public'::regnamespace and contype in ('p','u','f','c')
+    sql: `select format('%I.%I', n.nspname, c.relname) as tbl, con.conname, pg_get_constraintdef(con.oid) as def, con.contype,
+                 con.confrelid::regclass::text ref_nom,
+                 case when con.contype='f' then format('%I.%I', rn.nspname, rc.relname) end ref_qualifie
+            from pg_constraint con join pg_class c on c.oid=con.conrelid join pg_namespace n on n.oid=c.relnamespace
+            left join pg_class rc on rc.oid=con.confrelid left join pg_namespace rn on rn.oid=rc.relnamespace
+           where con.connamespace in (${NAMESPACES_SQL}) and con.contype in ('p','u','f','c')
            order by case contype when 'p' then 1 when 'u' then 2 when 'c' then 3 else 4 end, 1, 2`,
     // `add constraint … if not exists` n'existe pas : le bloc avale les trois
     // erreurs d'une contrainte déjà là (duplicate_object, duplicate_table, et
     // invalid_table_definition pour « multiple primary keys »).
-    rendu: (r) => r.map((x) => `do $$ begin\n  alter table ${x.tbl} add constraint ${ident(x.conname)} ${x.def};\nexception when duplicate_table or duplicate_object or invalid_table_definition then null; end $$;`) },
+    rendu: (r) => r.map((x) => {
+      const definition = x.contype === "f" ? x.def.replace("REFERENCES " + x.ref_nom, "REFERENCES " + x.ref_qualifie) : x.def;
+      return `do $$ begin\n  alter table ${x.tbl} add constraint ${ident(x.conname)} ${definition};\nexception when duplicate_table or duplicate_object or invalid_table_definition then null; end $$;`;
+    }) },
 
   { titre: "Index (hors ceux portés par une contrainte)",
-    sql: `select pi.indexdef from pg_indexes pi where pi.schemaname='public'
-             and not exists (select 1 from pg_constraint con where con.conname=pi.indexname and con.connamespace='public'::regnamespace)
+    sql: `select pi.indexdef from pg_indexes pi where pi.schemaname in (${SCHEMAS_SQL})
+             and not exists (select 1 from pg_constraint con where con.conname=pi.indexname and con.connamespace=to_regnamespace(pi.schemaname))
            order by pi.tablename, pi.indexname`,
     rendu: (r) => r.map((x) => x.indexdef.replace(/^CREATE INDEX /i, "create index if not exists ").replace(/^CREATE UNIQUE INDEX /i, "create unique index if not exists ") + ";") },
 
@@ -213,62 +247,86 @@ const ETAPES = [
     // rendues, DEFAULT compris : sur une cible déjà semée, une identité qui a
     // dérivé revient à celle de la source (comme les privilèges : retirés puis
     // rendus). Après les index, puisque USING INDEX en désigne un.
-    sql: `select c.relname tbl, c.relreplident::text ri, ic.relname idx
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname tbl, c.relreplident::text ri, ic.relname idx
             from pg_class c
             left join pg_index i on i.indrelid=c.oid and i.indisreplident
             left join pg_class ic on ic.oid=i.indexrelid
-           where c.relnamespace='public'::regnamespace and c.relkind='r' order by 1`,
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='r' order by 1,2`,
     // 'i' sans index marqué : l'index a été supprimé, et PostgreSQL se conduit
     // alors en NOTHING (il refuse UPDATE et DELETE d'une table publiée). On
     // rend ce comportement, pas un `using index` sans nom qui ferait tomber
     // toute la transaction.
-    rendu: (r) => r.map((x) => `alter table public.${ident(x.tbl)} replica identity ${
+    rendu: (r) => r.map((x) => `alter table ${nomObjet(x, "tbl")} replica identity ${
       x.ri === "f" ? "full" : x.ri === "n" ? "nothing" : x.ri === "i" ? (x.idx ? `using index ${ident(x.idx)}` : "nothing") : "default"};`) },
 
   { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
     sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-           where n.nspname='public' and p.prokind='f' and ${SANS_EXTENSION} order by p.proname`,
+           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
     // `check_function_bodies` coupé le temps de la section : les fonctions
     // sortent par ordre alphabétique et certaines s'appellent entre elles.
     rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
 
   { titre: "Vues (options security_invoker comprises)",
-    sql: `select c.relname table_name, pg_get_viewdef(c.oid, true) def, coalesce(array_to_string(c.reloptions, ', '), '') opts
-            from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='v' order by 1`,
-    rendu: (r) => r.map((x) => `create or replace view public.${ident(x.table_name)}${x.opts ? ` with (${x.opts})` : ""} as\n${x.def.trim()}`) },
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname table_name, pg_get_viewdef(c.oid, true) def, coalesce(array_to_string(c.reloptions, ', '), '') opts
+            from pg_class c where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='v' order by 1,2`,
+    rendu: (r) => r.map((x) => `create or replace view ${nomObjet(x, "table_name")}${x.opts ? ` with (${x.opts})` : ""} as\n${x.def.trim()}`) },
 
   { titre: "Déclencheurs",
     sql: `select pg_get_triggerdef(t.oid) as def from pg_trigger t join pg_class c on c.oid=t.tgrelid
-           where not t.tgisinternal and c.relnamespace='public'::regnamespace order by c.relname, t.tgname`,
+           where not t.tgisinternal and c.relnamespace in (${NAMESPACES_SQL}) order by c.relnamespace::regnamespace::text, c.relname, t.tgname`,
     rendu: (r) => r.map((x) => `do $$ begin\n  ${x.def};\nexception when duplicate_object then null; end $$;`) },
 
   { titre: "RLS activée — sans quoi les policies ne s'appliquent PAS",
-    sql: `select relname from pg_class where relnamespace='public'::regnamespace and relkind='r' and relrowsecurity order by relname`,
-    rendu: (r) => r.map((x) => `alter table public.${ident(x.relname)} enable row level security;`) },
+    sql: `select relnamespace::regnamespace::text sch, relname, relrowsecurity rls, relforcerowsecurity force
+            from pg_class where relnamespace in (${NAMESPACES_SQL}) and relkind='r' order by 1,2`,
+    rendu: (r) => r.map((x) => `alter table ${nomObjet(x, "relname")} ${x.rls ? "enable" : "disable"} row level security;\n`
+      + `alter table ${nomObjet(x, "relname")} ${x.force ? "force" : "no force"} row level security;`) },
 
   { titre: "Policies RLS (public, storage et realtime) — la frontière de confiance",
     sql: `select schemaname, tablename, policyname, cmd, permissive, array_to_string(roles, ',') as roles, qual, with_check
-            from pg_policies where schemaname in ('public','storage','realtime') order by schemaname, tablename, policyname`,
+            from pg_policies where schemaname in (${SCHEMAS_SQL},'storage','realtime') order by schemaname, tablename, policyname`,
     rendu: (r) => r.map((x) =>
-      `drop policy if exists ${ident(x.policyname)} on ${x.schemaname}.${ident(x.tablename)};\n`
-      + `create policy ${ident(x.policyname)} on ${x.schemaname}.${ident(x.tablename)}\n`
+      `drop policy if exists ${ident(x.policyname)} on ${ident(x.schemaname)}.${ident(x.tablename)};\n`
+      + `create policy ${ident(x.policyname)} on ${ident(x.schemaname)}.${ident(x.tablename)}\n`
       + `  as ${x.permissive === "PERMISSIVE" ? "permissive" : "restrictive"}\n  for ${x.cmd.toLowerCase()} to ${x.roles}\n`
       + (x.qual ? `  using (${x.qual})\n` : "") + (x.with_check ? `  with check (${x.with_check})\n` : "") + ";") },
 
-  { titre: "Privilèges de TABLE pour anon/authenticated — retirés puis rendus tels qu'en prod",
-    sql: `select c.relname tbl, r.rolname role, string_agg(distinct g.privilege_type, ',' order by g.privilege_type) privs
-            from pg_class c cross join (values ('anon'),('authenticated')) r(rolname)
-            left join information_schema.role_table_grants g on g.table_schema='public' and g.table_name=c.relname and g.grantee=r.rolname
-           where c.relnamespace='public'::regnamespace and c.relkind in ('r','v') group by 1,2 order by 1,2`,
-    rendu: (r) => r.map((x) => `revoke all on public.${ident(x.tbl)} from ${x.role};` + (x.privs ? `\ngrant ${x.privs.toLowerCase()} on public.${ident(x.tbl)} to ${x.role};` : "")) },
+  { titre: "Privilèges de TABLE — PUBLIC, anon, authenticated et service_role",
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname tbl, r.rolname role,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where not a.is_grantable) privs,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where a.is_grantable) grantables
+            from pg_class c cross join ${ROLES_SQL}
+            left join lateral aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a on a.grantee=r.oid
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind in ('r','v') group by 1,2,3 order by 1,2,3`,
+    rendu: (r) => r.map((x) => rendreAcl(nomObjet(x, "tbl"), x)) },
 
-  { titre: "Privilèges de COLONNE (là où la table n'est pas accordée entière)",
-    sql: `select cp.table_name tbl, cp.grantee role, cp.privilege_type priv, string_agg(quote_ident(cp.column_name), ', ' order by cp.column_name) cols
-            from information_schema.column_privileges cp
-           where cp.table_schema='public' and cp.grantee in ('anon','authenticated')
-             and not exists (select 1 from information_schema.role_table_grants g where g.table_schema='public' and g.table_name=cp.table_name and g.grantee=cp.grantee and g.privilege_type=cp.privilege_type)
-           group by 1,2,3 order by 1,2,3`,
-    rendu: (r) => r.map((x) => `grant ${x.priv.toLowerCase()} (${x.cols}) on public.${ident(x.tbl)} to ${x.role};`) },
+  { titre: "Privilèges de COLONNE — reset explicite, y compris une cible qui a dérivé",
+    // REVOKE sur la table ne retire pas les droits accordés à ses colonnes.
+    // Lire aussi les colonnes sans ACL pour pouvoir fermer une dérive de cible.
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname tbl, a.attname col, r.rolname role,
+                 coalesce(jsonb_agg(jsonb_build_object('priv', g.privilege_type, 'grantable', g.is_grantable)
+                   order by g.privilege_type) filter (where g.privilege_type is not null), '[]'::jsonb) grants
+            from pg_class c join pg_attribute a on a.attrelid=c.oid
+            cross join ${ROLES_SQL}
+            left join lateral aclexplode(a.attacl) g on g.grantee=r.oid
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind in ('r','v')
+             and a.attnum>0 and not a.attisdropped group by 1,2,3,4 order by 1,2,4,3`,
+    rendu: (r) => {
+      const groupes = new Map();
+      for (const x of r) {
+        const cle = JSON.stringify([x.sch, x.tbl, x.role]);
+        if (!groupes.has(cle)) groupes.set(cle, { x, cols: [], grants: new Map() });
+        const g = groupes.get(cle); g.cols.push(ident(x.col));
+        for (const p of x.grants) {
+          const cleGrant = JSON.stringify([p.priv, p.grantable]);
+          if (!g.grants.has(cleGrant)) g.grants.set(cleGrant, { p, cols: [] });
+          g.grants.get(cleGrant).cols.push(ident(x.col));
+        }
+      }
+      return [...groupes.values()].map(({ x, cols, grants }) =>
+        `revoke all (${cols.join(", ")}) on ${nomObjet(x, "tbl")} from ${nomRole(x.role)};`
+        + [...grants.values()].map((g) => `\ngrant ${g.p.priv.toLowerCase()} (${g.cols.join(", ")}) on ${nomObjet(x, "tbl")} to ${nomRole(x.role)}${g.p.grantable ? " with grant option" : ""};`).join(""));
+    } },
 
   { titre: "Privilèges de SÉQUENCE pour anon/authenticated — retirés puis rendus tels qu'en prod",
     // ⚠️ R25 : les droits par défaut de Supabase donnent `rwU` (USAGE, SELECT,
@@ -281,35 +339,39 @@ const ETAPES = [
     // donnée de la source — une table renommée garde l'ancien, la cible en
     // donne un neuf. Absente de la cible, c'est une erreur : un droit qu'on
     // n'a pas su poser ne se tait pas.
-    sql: `select c.relname seq, r.rolname role,
-                 concat_ws(', ', case when has_sequence_privilege(r.rolname, c.oid, 'USAGE') then 'usage' end,
-                                 case when has_sequence_privilege(r.rolname, c.oid, 'SELECT') then 'select' end,
-                                 case when has_sequence_privilege(r.rolname, c.oid, 'UPDATE') then 'update' end) privs,
-                 t.relname id_tbl, a.attname id_col
-            from pg_class c cross join (values ('anon'),('authenticated')) r(rolname)
+    sql: `select c.relnamespace::regnamespace::text sch, c.relname seq, r.rolname role,
+                 string_agg(g.privilege_type, ',' order by g.privilege_type) filter (where not g.is_grantable) privs,
+                 string_agg(g.privilege_type, ',' order by g.privilege_type) filter (where g.is_grantable) grantables,
+                 t.relnamespace::regnamespace::text table_schema, t.relname id_tbl, a.attname id_col
+            from pg_class c cross join ${ROLES_SQL}
             left join pg_depend d on d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype='i' and d.refclassid='pg_class'::regclass
             left join pg_class t on t.oid=d.refobjid
             left join pg_attribute a on a.attrelid=d.refobjid and a.attnum=d.refobjsubid
-           where c.relnamespace='public'::regnamespace and c.relkind='S' order by 1, 2`,
+            left join lateral aclexplode(coalesce(c.relacl, acldefault('S', c.relowner))) g on g.grantee=r.oid
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='S' group by 1,2,3,6,7,8 order by 1,2,3`,
     rendu: (r) => r.map((x) => {
-      if (!x.id_tbl) return `revoke all on sequence public.${ident(x.seq)} from ${x.role};`
-        + (x.privs ? `\ngrant ${x.privs} on sequence public.${ident(x.seq)} to ${x.role};` : "");
-      const colonne = `public.${ident(x.id_tbl)}.${ident(x.id_col)}`;
-      return `do $$ declare s text := pg_get_serial_sequence(${litt(`public.${ident(x.id_tbl)}`)}, ${litt(x.id_col)}); begin\n`
+      if (!x.id_tbl) return rendreAcl(`sequence ${nomObjet(x, "seq")}`, x);
+      const table = `${ident(x.table_schema || "public")}.${ident(x.id_tbl)}`;
+      const colonne = `${table}.${ident(x.id_col)}`;
+      return `do $$ declare s text := pg_get_serial_sequence(${litt(table)}, ${litt(x.id_col)}); begin\n`
         + `  if s is null then raise exception '%', ${litt(`aucune séquence d'identité pour ${colonne} sur la cible`)}; end if;\n`
-        + `  execute 'revoke all on sequence ' || s || ' from ${x.role}';\n`
-        + (x.privs ? `  execute 'grant ${x.privs} on sequence ' || s || ' to ${x.role}';\n` : "")
+        + `  execute 'revoke all on sequence ' || s || ' from ${nomRole(x.role)}';\n`
+        + (x.privs ? `  execute 'grant ${x.privs.toLowerCase()} on sequence ' || s || ' to ${nomRole(x.role)}';\n` : "")
+        + (x.grantables ? `  execute 'grant ${x.grantables.toLowerCase()} on sequence ' || s || ' to ${nomRole(x.role)} with grant option';\n` : "")
         + "end $$;";
     }) },
 
-  { titre: "EXECUTE sur les fonctions — PUBLIC révoqué, puis anon/authenticated tels qu'en prod",
-    sql: `select p.oid::regprocedure::text sig, r.rolname role, has_function_privilege(r.rolname, p.oid, 'EXECUTE') ok
-            from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join (values ('anon'),('authenticated')) r(rolname)
-           where n.nspname='public' and p.prokind='f' and ${SANS_EXTENSION} order by 1,2`,
-    rendu: (r) => r.map((x) => `revoke execute on function ${x.sig} from public;\n${x.ok ? "grant" : "revoke"} execute on function ${x.sig} ${x.ok ? "to" : "from"} ${x.role};`) },
+  { titre: "EXECUTE sur les fonctions — ACL PUBLIC et trois rôles préservées",
+    sql: `select format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)) sig, r.rolname role,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where not a.is_grantable) privs,
+                 string_agg(a.privilege_type, ',' order by a.privilege_type) filter (where a.is_grantable) grantables
+            from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join ${ROLES_SQL}
+            left join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a on a.grantee=r.oid
+           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} group by 1,2 order by 1,2`,
+    rendu: (r) => r.map((x) => rendreAcl(`function ${x.sig}`, x)) },
 
   { titre: "Publication realtime — ce qui est diffusé en direct",
-    sql: `select pubname, schemaname, tablename from pg_publication_tables where pubname='supabase_realtime' order by schemaname, tablename`,
+    sql: `select pubname, schemaname, tablename from pg_publication_tables where pubname='supabase_realtime' and schemaname in (${SCHEMAS_SQL}) order by schemaname, tablename`,
     rendu: (r) => r.map((x) => `do $$ begin\n  alter publication ${ident(x.pubname)} add table ${x.schemaname}.${ident(x.tablename)};\nexception when duplicate_object then null; end $$;`) },
 
   { titre: "Seaux de stockage",

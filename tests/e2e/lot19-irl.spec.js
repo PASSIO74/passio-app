@@ -46,7 +46,7 @@ test("① IRL-C58 : adresse réservée → une ligne « Lieu », sans lien de ca
   expect(r.labels).not.toContain("Adresse exacte");
   expect(r.labels.filter((l) => l === "Lieu").length).toBe(1);
   expect(r.texte).toContain("Café L19 · 69001 Lyon");
-  expect(r.texte).toContain("L'adresse exacte s'affiche ici dès que tu participes.");
+  expect(r.texte).toContain("L'adresse exacte s'affiche après validation par l'organisation.");
   expect(r.lienCarte, "aucun lien de carte vers la ville entière").toBe(false);
 });
 

@@ -400,7 +400,7 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
       fs.renameSync(f + ".min", f);
     } catch (e) {
       try { fs.unlinkSync(f + ".min"); } catch (_e) { /* rien à retirer */ }
-      console.log("::warning title=Minification::Minification de app/" + s.nom + " échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+      throw new Error("Minification obligatoire échouée : arrêt du build public.");
     }
     const servie = sri(fs.readFileSync(f));
     if (servie === s.integrite) continue;
@@ -434,9 +434,8 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
     fs.renameSync(feuilleServie + ".min", feuilleServie);
   } catch (e) {
     try { fs.unlinkSync(feuilleServie + ".min"); } catch (_e) { /* rien à retirer */ }
-    // `::warning` : une annotation dans le résumé du run — le déploiement reste vert avec
-    // une feuille brute de 489 Ko, mais il le dit (relecture `audit-passio`, 2026-11-10).
-    console.log("::warning title=Minification::Minification de styles.css échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+    // Toute panne de minification bloque le build public.
+    throw new Error("Minification obligatoire échouée : arrêt du build public.");
   }
   const octetsServis = fs.readFileSync(feuilleServie);
   tailleFeuille = octetsServis.length;
@@ -472,7 +471,7 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
     fs.renameSync(outPath + ".min", outPath);
   } catch (e) {
     try { fs.unlinkSync(outPath + ".min"); } catch (_e) { /* rien à retirer */ }
-    console.log("::warning title=Minification::Minification de index.html échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+    throw new Error("Minification obligatoire échouée : arrêt du build public.");
   }
   taillePage = fs.statSync(outPath).size;
 }

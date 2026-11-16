@@ -302,8 +302,9 @@ jobs:
           critical=false
           while IFS= read -r file; do
             case "${file}" in
+              tests/e2e/sentinelle-*.spec.js) ;; # Suites locales, hors runner privilégié.
               # Tout ce qui s'exécute avec un secret, écrit ce qui part en production ou juge la PR (E-05).
-              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js|scripts/empreinte-dist.js|scripts/servir-dist.js)
+              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/*|tests/unit/*|tests/e2e/*|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js|scripts/empreinte-dist.js|scripts/servir-dist.js)
                 critical=true ;;
             esac
           done <<< "${files}"
@@ -672,6 +673,8 @@ jobs:
           npm test
 
   test-prod:
+    needs: governance
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     name: Suites production (comptes réels)
     runs-on: ubuntu-latest
     # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT.
@@ -792,6 +795,46 @@ jobs:
       # la clé de service de la PRODUCTION présente dans un run déclenché par une
       # pull request. SUP-04 / TCI-04 avaient déplacé la suite vers le staging ;
       # cette étape-ci était restée derrière. Un commentaire n'est pas une garde.
+
+  rls-prod:
+    name: Barrière production isolée
+    if: github.event_name == 'push'
+    needs: [governance, test-prod]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: passio-e2e-prod
+      cancel-in-progress: false
+      queue: max
+    env:
+      PASSIO_E2E_PROD: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Même borne, même relance que dans `test-local` (commentaire complet là-bas).
+      # Aucun compte n'est encore créé à ce stade : couper un essai ne laisse rien.
+      - name: Installer Playwright
+        timeout-minutes: 25
+        run: |
+          # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
+          npm ci --ignore-scripts
+          for essai in 1 2; do
+            if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          done
+          echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
+          exit 1
+
       - name: Barrière RLS de la production (authz-critical seule)
         if: github.event_name == 'push'
         env:
@@ -1063,13 +1106,17 @@ jobs:
   smoke:
     name: Tests smoke (Playwright)
     if: always()
-    needs: [audits, test-prod, test-local, gates-artefact, test-webkit]
+    needs: [audits, test-prod, test-local, gates-artefact, test-webkit, rls-prod]
     runs-on: ubuntu-latest
     timeout-minutes: 10 # pire sur 800 runs (21/09 → 14/11) : 0,3 min (bornes-ci ⑥)
     steps:
       - name: Agréger le verdict des cinq jobs
         env:
           R_AUDITS: ${{ needs.audits.result }}
+          EVENEMENT: ${{ github.event_name }}
+          MEME_DEPOT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          ACTEUR: ${{ github.actor }}
+          R_RLS: ${{ needs.rls-prod.result }}
           R_PROD: ${{ needs.test-prod.result }}
           R_LOCAL: ${{ needs.test-local.result }}
           R_ARTEFACT: ${{ needs.gates-artefact.result }}
@@ -1081,8 +1128,17 @@ jobs:
           echo "test-local     : ${R_LOCAL}"
           echo "gates-artefact : ${R_ARTEFACT}"
           echo "test-webkit    : ${R_WEBKIT}"
+          # Seuls les jobs privilégiés volontairement exclus des PR peuvent être sautés.
+          if [ "$EVENEMENT" = "pull_request" ]; then
+            if [ "$R_RLS" != "skipped" ]; then exit 1; fi
+            R_RLS=success
+            if [ "$MEME_DEPOT" != "true" ] || [ "$ACTEUR" = "dependabot[bot]" ]; then
+              if [ "$R_PROD" != "skipped" ]; then exit 1; fi
+              R_PROD=success
+            fi
+          fi
           rouge=0
-          for r in "${R_AUDITS}" "${R_PROD}" "${R_LOCAL}" "${R_ARTEFACT}" "${R_WEBKIT}"; do
+          for r in "${R_AUDITS}" "${R_PROD}" "${R_LOCAL}" "${R_ARTEFACT}" "${R_WEBKIT}" "${R_RLS}"; do
             # `skipped` est un échec ici : un job de test qui ne s'exécute pas ne
             # prouve rien, et le laisser passer rendrait ce contexte complaisant.
             [ "${r}" = "success" ] || rouge=1
@@ -1096,7 +1152,7 @@ jobs:
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
-    needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit]
+    needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit, rls-prod]
     runs-on: ubuntu-latest
     timeout-minutes: 20 # pire sur 800 runs (21/09 → 14/11) : 5,0 min, Netlify et ses fonctions de bord (bornes-ci ⑥)
     steps:
@@ -1310,9 +1366,47 @@ jobs:
             fi
           done
 
+  preview-build:
+    name: Construire l'aperçu sans secrets
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    needs: [governance, audits]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    outputs:
+      empreinte: ${{ steps.empreinte.outputs.valeur }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Installer les outils de minification verrouillés
+        run: npm ci --ignore-scripts
+      - name: Build dist
+        env:
+          COMMIT_REF: ${{ github.event.pull_request.head.sha }}
+          PASSIO_MINIFIER_APP: "1"
+        run: |
+          node scripts/build.js dist/index.html
+          cp manifest.json _headers icon-192.png icon-512.png dist/
+          node scripts/verifier-integrite-app.js dist
+      - name: Empreinte de l'aperçu
+        id: empreinte
+        run: echo "valeur=$(node scripts/empreinte-dist.js dist)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apercu-${{ github.event.pull_request.head.sha }}
+          path: dist/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
   preview:
     name: Déploiement preview (PR)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     # ⚠️ L'APERÇU NE DÉPEND QUE DES AUDITS, ET C'EST DÉLIBÉRÉ (2026-09-02).
     #
     # Un aperçu Netlify n'est pas la production : c'est l'URL par laquelle
@@ -1344,25 +1438,37 @@ jobs:
     # qu'un humain de confiance ne l'a pas relue. Le coût est nul quand il n'y
     # a rien à vérifier : sur un changement NON critique, ce job sort en 5
     # secondes, et l'aperçu part comme prévu vers 2 minutes.
-    needs: [governance, audits]
+    needs: [governance, audits, preview-build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 15 # pire sur 800 runs (21/09 → 14/11) : 2,8 min (bornes-ci ⑥)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Outils et fonctions de bord de la base protégée, jamais ceux de la PR.
+          ref: ${{ github.event.pull_request.base.sha }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
-      - name: Build dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: apercu-${{ github.event.pull_request.head.sha }}
+          path: dist/
+      - name: Vérifier les données reçues sans exécuter le code de PR
         env:
-          COMMIT_REF: ${{ github.event.pull_request.head.sha }}
+          EMPREINTE_TESTEE: ${{ needs.preview-build.outputs.empreinte }}
         run: |
-          node scripts/build.js dist/index.html
-          # sw.js et release.json sont générés par build.js — ne pas les recopier
-          cp manifest.json _headers icon-192.png icon-512.png dist/
+          set -euo pipefail
+          [ -f dist/index.html ]
+          [ -z "$(find dist -type l -print -quit)" ]
+          [ ! -e dist/.netlify ]
+          [ ! -e dist/netlify ]
+          node scripts/verifier-integrite-app.js dist
+          node scripts/empreinte-dist.js dist --attendue "$EMPREINTE_TESTEE"
 
       - name: Installer netlify-cli depuis son lockfile (sans le jeton dans l'environnement)
         run: |

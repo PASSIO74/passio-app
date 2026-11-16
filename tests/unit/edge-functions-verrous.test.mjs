@@ -335,7 +335,10 @@ function lireEtape(texte, defauts) {
   const jobs = Object.entries((doc && doc.jobs) || {}).filter(([, j]) => (j.steps || []).some((s) => DEPLOIE.test(String(s.run || ""))));
   if (jobs.length !== 1) { defauts.push(`${jobs.length} job(s) lancent « supabase functions deploy » : le banc en attend exactement un`); return null; }
   const job = jobs[0][1];
-  const etapes = job.steps;
+  const validation = doc.jobs.valider;
+  if (!validation || !/\bvalider\b/.test(String(job.needs))) defauts.push("le déploiement doit attendre le job valider sans secrets");
+  if (validation && (validation.if !== undefined || /secrets[.\[]/.test(JSON.stringify(validation)) || validation.env || validation.defaults)) defauts.push("le job valider doit être inconditionnel, sans secret ni options héritées");
+  const etapes = [...(validation?.steps || []), ...job.steps];
   // CHAQUE étape qui déploie, pas seulement la première : un « nouvel essai »
   // en `if: failure()` partirait justement quand un verrou a rougi.
   const deploiements = etapes.map((s, i) => [s, i]).filter(([s]) => DEPLOIE.test(String(s.run || "")));
@@ -882,12 +885,14 @@ test("⑦ ③ une suite listée absente, sans module emporté, ou deux fois : ch
 });
 
 test("⑦ ② ③ le banc qui EXÉCUTE notify-call : retiré de l'étape, il rougit ; listé sans lire le code d'une fonction, il rougit encore — le remède est une lecture écrite", () => {
-  const src = REEL.fichiers[NOTIFY_CHEMINS];
-  assert.equal(AUDIT.importsDe.has(NOTIFY_CHEMINS), false, "prémisse : il n'importe aucun module emporté — seule sa lecture le garde");
+  // La fixture sans import exerce toujours la détection des lectures seules ;
+  // le vrai banc importe désormais appels.js pour exécuter l’autorisation TURN.
+  const src = REEL.fichiers[NOTIFY_CHEMINS].replace(/^import \* as M_APPELS from [^\n]+\n/m, "");
+  assert.equal(AUDIT.importsDe.has(NOTIFY_CHEMINS), true, "le vrai banc exécute aussi le module partagé");
   assert.ok(AUDIT.listees.has(NOTIFY_CHEMINS), "prémisse : il tourne dans l'étape");
   // Retiré de l'étape : il rougit, en nommant le code qu'il lit.
   const sans = muter(REEL.workflow, "\n" + INDENT + "node --test " + NOTIFY_CHEMINS + "\n", "\n");
-  const absent = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : lit " + echapper(INDEX_NOTIFY) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »");
+  const absent = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : (?:importe [^,]+, )?lit " + echapper(INDEX_NOTIFY) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »");
   rougit(avec({ workflow: sans }), absent);
   // Listé, sans lire le code d'une fonction : il ne garde rien.
   const LECTURE = 'fs.readFileSync("' + INDEX_NOTIFY + '", "utf8")';

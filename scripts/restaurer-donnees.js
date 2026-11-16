@@ -55,6 +55,7 @@ const fs = require("fs");
 const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
 const JE = require("./lib/json-exact.js");
+const PR = require("./lib/reprise-schemas-prives.js");
 const os = require("os");
 const crypto = require("crypto");
 
@@ -81,6 +82,17 @@ const TABLES_VOULUES = (() => { const v = arg("--tables"); return v ? new Set(v.
 const tablesRetenues = (noms) => TABLES_VOULUES ? noms.filter((t) => TABLES_VOULUES.has(t)) : noms;
 const sansComptes = () => drapeau("--sans-comptes") || !!TABLES_VOULUES;
 const sansMedias = () => drapeau("--sans-medias") || !!TABLES_VOULUES;
+const portePrive = (man) => !!(man?.schemas_prives?.schemas?.rencontres_prive?.present || man?.schemas_prives?.schemas?.passio_realtime_budget?.present);
+function exigerPortee(ctx) {
+  if (TABLES_VOULUES && portePrive(ctx.man)) throw new Error("Mode --tables refusé pour une archive portant des schémas privés : aucune autorisation privée ni compteur ne sera importé ; préparer une archive de référentiels dédiée");
+}
+function verifierDdlPrive(ctx, fichier) {
+  if (!portePrive(ctx.man)) return;
+  const attendu = ctx.man.schema_sha256;
+  if (!/^[0-9a-f]{64}$/.test(attendu || "")) throw new Error("Empreinte DDL requise pour une archive portant des schémas privés");
+  const ddl = fs.readFileSync(fichier, "utf8").replace(/\r\n/g, "\n");
+  if (crypto.createHash("sha256").update(ddl).digest("hex") !== attendu) throw new Error("Empreinte DDL différente du manifeste privé : restauration refusée avant mutation");
+}
 
 function lireJeton() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN.trim();
@@ -98,11 +110,11 @@ async function gestion(jeton, ref, chemin, options = {}) {
 }
 
 /** SQL sous le rôle `postgres`, même endpoint que le bouton « Run » du tableau de bord. */
-async function sql(ctx, query) {
+async function sql(ctx, query, parameters) {
   // L'API de gestion plafonne les appels (429 « ThrottlerException », mesuré
   // à la première restauration) : on attend la fenêtre suivante, une fois.
   for (let essai = 0; ; essai++) {
-    try { return await gestion(ctx.jeton, ctx.ref, "/database/query", { method: "POST", body: JSON.stringify({ query }) }); }
+    try { return await gestion(ctx.jeton, ctx.ref, "/database/query", { method: "POST", body: JSON.stringify({ query, ...(parameters === undefined ? {} : { parameters }) }) }); }
     catch (e) {
       if (essai < 2 && /HTTP 429/.test(e.message)) { process.stdout.write("   (429 : pause 61 s)\n"); await new Promise((r) => setTimeout(r, 61000)); continue; }
       throw e;
@@ -229,6 +241,12 @@ function validerArchive(ctx) {
   const bloquants = [], nonVerifiables = [];
   const b = bilan(ctx);
   if (!ctx.man || typeof ctx.man !== "object") return { ok: false, bloquants: ["manifeste absent ou illisible"], indetermine: false };
+  try { exigerPortee(ctx); verifierDdlPrive(ctx, path.join(ctx.archive, "schema.sql")); }
+  catch (e) { bloquants.push(e.message); }
+  const prive = PR.valider(ctx.archive, ctx.man.schemas_prives);
+  bloquants.push(...prive.erreurs);
+  b.notes.push(...prive.notes);
+  if (ctx.man.schemas_prives && ctx.man.projet !== `https://${ctx.man.schemas_prives.projet}.supabase.co`) bloquants.push("Projets public et privé du manifeste différents");
   // ① tables
   for (const [t, info] of Object.entries(ctx.man.tables || {})) {
     const f = path.join(ctx.archive, t + ".ndjson");
@@ -268,11 +286,23 @@ async function tablesCible(ctx) {
 }
 
 async function schema(ctx) {
+  exigerPortee(ctx);
   const attendues = Object.keys(ctx.man.tables);
   let presentes = await tablesCible(ctx);
   let manquantes = attendues.filter((t) => !presentes.has(t));
+  const prive = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+  if (!ctx.man.schemas_prives && (prive.rencontres || prive.budget)) throw new Error("Archive historique : la cible porte un état privé non couvert ; restauration refusée avant mutation");
+  const schemas = ctx.man.schemas_prives?.schemas;
+  if (schemas && ((!schemas.rencontres_prive.present && prive.rencontres)
+    || (!schemas.passio_realtime_budget.present && prive.budget))) throw new Error("La cible porte un état privé absent de l'archive ; restauration refusée avant mutation");
+  const priveesManquantes = () => [
+    ...(schemas?.rencontres_prive.present && !prive.rencontres ? ["rencontres_prive"] : []),
+    ...(schemas?.passio_realtime_budget.present && !prive.budget ? ["passio_realtime_budget"] : []),
+  ];
+  manquantes.push(...priveesManquantes());
   const fichier = arg("--schema");
   if (manquantes.length && fichier) {
+    verifierDdlPrive(ctx, fichier);
     const ddl = fs.readFileSync(fichier, "utf8");
     const corps = ddl.replace(/--[^\n]*/g, "").trim().toLowerCase();
     if (!corps.startsWith("begin;") || !corps.endsWith("commit;")) echec("--schema doit être UNE transaction (`begin; … commit;`).");
@@ -280,6 +310,9 @@ async function schema(ctx) {
     await sql(ctx, ddl);
     presentes = await tablesCible(ctx);
     manquantes = attendues.filter((t) => !presentes.has(t));
+    const relu = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+    if (schemas?.rencontres_prive.present && !relu.rencontres) manquantes.push("rencontres_prive");
+    if (schemas?.passio_realtime_budget.present && !relu.budget) manquantes.push("passio_realtime_budget");
   }
   if (manquantes.length) echec(`① schéma : ${manquantes.length} table(s) du manifeste absentes de la cible : ${manquantes.join(", ")}\n   → passer --schema <fichier.sql> (DDL exécutable, une transaction).`);
   console.log(`① schéma : ${attendues.length} tables du manifeste présentes sur ${ctx.ref} (${presentes.size} tables publiques).`);
@@ -804,6 +837,11 @@ async function verdict(ctx) {
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
   let ecarts = 0, nonVerifies = 0;
+  preuve.schemas_prives = await PR.verifier({ dossier: ctx.archive, man: ctx.man.schemas_prives,
+    lire: PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }), comparer: comparerLignes });
+  if (!preuve.schemas_prives.ok) ecarts++;
+  for (const note of preuve.schemas_prives.notes || []) console.log("   ℹ " + note);
+  for (const erreur of preuve.schemas_prives.erreurs || []) console.log("   ECART " + erreur);
   console.log("\n⑤ VERDICT — table | manifeste | cible");
   for (const t of noms) {
     const att = ctx.man.tables[t].exporte, obt = comptes.has(t) ? comptes.get(t) : "ABSENTE";
@@ -935,6 +973,8 @@ async function verdict(ctx) {
 // objets — et tout reste est un échec (code 1). Une copie de données
 // personnelles qui reste sur le staging n'est pas une purge.
 async function purger(ctx) {
+  const prive = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+  if (prive.rencontres || prive.budget) throw new Error("Purge automatique refusée : schémas privés présents ; un plan de purge dédié doit couvrir cet état avant toute mutation");
   const refus = [];
   const presentes = [...await tablesCible(ctx)];
   if (presentes.length) await sql(ctx, `truncate ${presentes.map((t) => `public."${t}"`).join(", ")} cascade;`);
@@ -973,7 +1013,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -981,6 +1021,7 @@ if (require.main === module) (async () => {
   // en Node 20 (contre-revue finale, 2026-11-04).
   if (typeof JSON.rawJSON !== "function") echec(`Node ${process.versions.node} : la reprise exige Node 21 ou plus récent (JSON.rawJSON, lecture exacte des nombres). Rien n'a été lu ni écrit.`);
   const ctx = await contexte();
+  exigerPortee(ctx);
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }
   // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et
@@ -1000,6 +1041,10 @@ if (require.main === module) (async () => {
   await schema(ctx);
   await comptes(ctx);
   const t = await tables(ctx);
+  const prive = await PR.restaurer({ dossier: ctx.archive, man: ctx.man.schemas_prives,
+    lire: PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }),
+    ecrire: async (q, p) => { try { return await sql(ctx, q, p); } catch { throw new Error("Restauration privée : écriture refusée (détail serveur non journalisé)"); } } });
+  bilan(ctx).phases.schemas_prives = { ok: prive.ok };
   const m = await medias(ctx);
   const v = await verdict(ctx);
   // ⚠️ ASTRA-46 : UN SEUL RÉSULTAT. Le verdict lit le bilan de toutes les phases ;

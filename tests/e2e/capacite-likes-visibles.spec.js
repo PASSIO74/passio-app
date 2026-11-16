@@ -220,15 +220,30 @@ test("visiteur : zéro HEAD ; connexion réveille, déconnexion écarte la répo
 });
 
 test("NULL, refus, NaN et négatif ne deviennent jamais zéro", async ({ page }) => {
-  await preparer(page);
-  for (const kind of ["null", "error", "nan", "negative"]) {
+  await preparer(page, 1, 0.5);
+  await figer(page);
+  await page.evaluate(() => { window.delestageFacteur = () => 1; window.__casInvalidesLus = []; });
+  const invalides = ["null", "error", "nan", "negative"];
+  for (const [i, kind] of invalides.entries()) {
     await page.evaluate((k) => {
-      __hold = () => ({ count: k === "null" ? null : k === "nan" ? NaN : k === "negative" ? -1 : 0, error: k === "error" ? { message: "denied" } : null });
+      __hold = () => {
+        __casInvalidesLus.push(k);
+        return { count: k === "null" ? null : k === "nan" ? NaN : k === "negative" ? -1 : 0, error: k === "error" ? { message: "denied" } : null };
+      };
     }, kind);
-    await passer(page);
+    // Sous erreur le produit espace les créneaux (30, 60, 120 puis 240 s,
+    // gigue fixée au milieu). Chaque échantillon doit réellement atteindre
+    // le serveur ; quatre sauts fixes de 17 s n'en exerçaient plus que deux.
+    await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now() - 1));
+    expect(await lectures(page), kind + " : aucune lecture avant son créneau").toHaveLength(i);
+    await passer(page, 1);
+    expect(await lectures(page), kind + " : réponse effectivement lue").toHaveLength(i + 1);
     expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(4);
+    expect(await page.evaluate(() => _postLikeRefreshStats.echecsConsecutifs)).toBe(i + 1);
+    expect(await page.evaluate(() => _postLikeRefreshNextAt - Date.now())).toBe(30000 * 2 ** i);
   }
-  expect((await lectures(page)).length).toBeGreaterThanOrEqual(4);
+  expect(await page.evaluate(() => __casInvalidesLus)).toEqual(invalides);
+  expect(await lectures(page)).toHaveLength(4);
 });
 
 test("trois lectures par créneau, rotation, pas de rafale sur scroll et zéro hors viewport", async ({ page }) => {
@@ -361,20 +376,34 @@ for (const change of ["compte", "purge", "suppression", "blocage", "masque"]) {
 }
 
 test("une requête lente reste seule et son abandon rend le prochain créneau disponible", async ({ page }) => {
-  await preparer(page);
+  await preparer(page, 1, 0.5);
+  await figer(page);
   await page.evaluate(() => {
-    __hold = req => new Promise((resolve, reject) => { req.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }); });
+    window.delestageFacteur = () => 1;
+    window.__abandonsHead = 0;
+    __hold = req => new Promise((resolve, reject) => { req.signal.addEventListener("abort", () => { __abandonsHead++; reject(new Error("aborted")); }, { once: true }); });
   });
-  await passer(page, 350);
-  await passer(page, 7000);
+  await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now()));
   expect(await lectures(page)).toHaveLength(1);
+  const debut = (await lectures(page))[0].at;
+  await passer(page, 7999);
+  expect(await page.evaluate(() => __abandonsHead)).toBe(0);
   await page.evaluate(() => { for (let i = 0; i < 10; i++) window.dispatchEvent(new Event("resize")); });
-  await passer(page, 1500);
   expect(await lectures(page)).toHaveLength(1);
+  await passer(page, 1);
+  expect(await page.evaluate(() => __abandonsHead)).toBe(1);
+  expect(await lectures(page)).toHaveLength(1);
+  expect(await page.evaluate(() => _postLikeRefreshBusy)).toBe(false);
+  // L'abandon libère le cycle, sans effacer le recul sous panne : sa
+  // prochaine lecture tombe à 30 s du départ, pas après un délai fixe de 17 s.
+  expect(await page.evaluate(() => _postLikeRefreshNextAt)).toBe(debut + 30000);
   await page.evaluate(() => { __hold = null; });
-  await passer(page, 8500);
+  await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now() - 1));
+  expect(await lectures(page)).toHaveLength(1);
+  await passer(page, 1);
   expect(await lectures(page)).toHaveLength(2);
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(7);
+  expect(await page.evaluate(() => _postLikeRefreshStats.echecsConsecutifs)).toBe(0);
 });
 
 test("détail, profil et Bobines : copies durables, compteur visible et déduplication", async ({ page }) => {

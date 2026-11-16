@@ -157,6 +157,7 @@ function compteursProchainPas(pasActuel, vivant) {
   return Math.min(POST_LIKE_REFRESH_MAX_MS, Math.round(pas * 1.5));
 }
 let _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
+let _postLikeRefreshEchecs = 0;   // tours sans lecture réussie, d'affilée (lot 4 du 2026-11-15)
 let _postLikeRefreshTimer = null;
 let _postLikeRefreshDueAt = 0;
 let _postLikeRefreshRunning = false;
@@ -225,6 +226,7 @@ function _postLikeCadenceReveiller() {
 // Retour au premier plan, retour de bfcache, réseau revenu : on a manqué ce qui
 // s'est passé, on relit vite.
 function _postLikeRefreshReprise() {
+  if (!document.hidden && navigator.onLine !== false) _postLikeRefreshEchecs = 0;
   if (document.hidden) { _postLikeRefreshWake(); return; } // masquée : le réveil coupe le minuteur
   _postLikeCadenceReveiller();
 }
@@ -342,6 +344,7 @@ async function _postLikeRefreshTour() {
     window._postLikeRefreshStats.cycles++;
     // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
     let vivant = candidates.some(item => !item.entry.checkedAt);
+    let lus = 0, echoues = 0;
     for (const { id, entry } of candidates) {
       if (!_postLikeRefreshRunning || navigator.onLine === false || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch || !_postLikeVisibleIds().includes(id)) break;
       if (entry.pending) continue;
@@ -361,8 +364,12 @@ async function _postLikeRefreshTour() {
       if (!result || result.error || !Number.isSafeInteger(result.count) || result.count < 0) {
         window._postLikeRefreshStats.errors++;
         vivant = true; // une erreur n'est pas une absence de changement
-        continue;
+        echoues++;
+        // Lot 4 du 2026-11-15 : une lecture en échec arrête le tour — sous panne,
+        // relire les deux autres cartes tout de suite, c'est trois échecs au lieu d'un.
+        break;
       }
+      lus++;
       if (!_postLikeRefreshRunning || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch
           || _postLikeRefreshEntries.get(id) !== entry || entry.pending || entry.version !== version
           || !_postLikeVisibleIds().includes(id)) {
@@ -386,7 +393,17 @@ async function _postLikeRefreshTour() {
     _postLikeRefreshPas = compteursProchainPas(_postLikeRefreshPas, vivant);
     window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
     if (!vivant) window._postLikeRefreshStats.cyclesCalmes++;
-    _postLikeRefreshNextAt = debutTour + delaiDeleste(_postLikeRefreshPas) + jitter;
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : SOUS PANNE, LE TOUR SUIVANT RECULE.
+    // Le PAS reste vif (une panne n'est pas un calme : au retour, on relit vite),
+    // mais un tour sans aucune lecture réussie espace le suivant de
+    // `reculSurErreur` (app-02) — ×2 par tour en échec d'affilée, gigue ±20 %,
+    // plafond 10 min — au lieu de marteler à 15 s une base qui répond 503.
+    if (echoues) _postLikeRefreshEchecs++;
+    else if (lus) _postLikeRefreshEchecs = 0;
+    window._postLikeRefreshStats.echecsConsecutifs = _postLikeRefreshEchecs;
+    _postLikeRefreshNextAt = debutTour + (_postLikeRefreshEchecs
+      ? delaiDeleste(reculSurErreur(POST_LIKE_REFRESH_MS, _postLikeRefreshEchecs, Math.random()))
+      : delaiDeleste(_postLikeRefreshPas) + jitter);
   } finally {
     _postLikeRefreshBusy = false;
     if (_postLikeRefreshRunning && !document.hidden) {

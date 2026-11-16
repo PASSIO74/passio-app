@@ -51,7 +51,7 @@ import { endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shar
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from "../_shared/lien-metier.js";
 import { adresseAccuse, TTL_NOTIFS_MS } from "../_shared/reception.js";
-import { APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S } from "../_shared/appels.js";
+import { APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S, contexteIce, iceAutorise, PLAFOND_ICE } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
 // Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
 // (`PASSIO_APPELS_ACTIFS`, app-05). `APPELS_ACTIFS` vit dans _shared/appels.js
@@ -107,13 +107,21 @@ Deno.serve(async (req) => {
   const verdict = await verifierPlafondEnBase(admin, fromUid, "notify-call", PLAFOND);
   if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);
 
-  let body: { toUserId?: string; callId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
+  let body: { toUserId?: string; callId?: string; liveId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
   try { body = await req.json(); } catch { return json({ error: "Body invalide" }, 400); }
   // 1 ter. IDENTIFIANTS TURN (2026-11-09, `_shared/appels.js`) — `{ type: "ice" }`.
   // Servis aux appels ET aux lives : AVANT l'interrupteur des appels (un live en a
   // besoin même quand les appels sont coupés), APRÈS l'authentification et le
-  // plafond (un compte réel, 20 par minute). Jamais en cache : un secret de 6 h.
-  if (body.type === "ice") return await identifiantsIce(userData.user);
+  // plafond (un compte réel, 20 par minute). Jamais en cache ; contexte autorisé et plafond TURN propre.
+  if (body?.type === "ice") {
+    if (!userData.user || userData.user.is_anonymous) return json({ ok: false, iceServers: [], code: "compte_requis" }, 200, true);
+    const contexte = contexteIce(body);
+    if (!(await iceAutorise({ userClient, admin, contexte }))) return json({ ok: false, iceServers: [], code: "contexte_refuse" }, 200, true);
+    const limiteIce = await verifierPlafondEnBase(admin, fromUid, "notify-call-ice", PLAFOND_ICE);
+    if (!limiteIce.ok) return reponsePlafond(limiteIce, { ...corsHeaders, "Cache-Control": "no-store" });
+    return await identifiantsIce(userData.user);
+  }
+  if (!body || typeof body !== "object") return json({ error: "Body invalide" }, 400);
   const toUserId = borne(body.toUserId, 64);
   const callId = borne(body.callId, 80);
   const kind = borne(body.kind, 32);

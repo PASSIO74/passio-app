@@ -11,9 +11,9 @@ name: Pilotage — veille (secours)
 # la garantie. Deux déclencheurs ne font pas sonner deux fois : la fonction est
 # plafonnée à 1 veille par minute et ne sonne que sur un CHANGEMENT d'état.
 #
-# La clé est la clé ANON, publique (elle est dans l'application servie) :
-# « veille » ne rend que des agrégats et ne peut que notifier l'éditeur.
-# Aucun secret, aucune écriture dans le dépôt, aucun workflow déclenché.
+# La clé publique passe la passerelle ; PILOTAGE_VEILLE_SECRET authentifie
+# la veille (même valeur côté Edge et Vault). Absent : échec avant curl.
+# Ne jamais imprimer le corps de réponse ni les en-têtes.
 # ═══════════════════════════════════════════════════════════════════════════
 on:
   schedule:
@@ -34,12 +34,18 @@ jobs:
     steps:
       - name: "Appel POST pilotage (action veille)"
         env:
+          VEILLE_SECRET: ${{ secrets.PILOTAGE_VEILLE_SECRET }}
           ANON: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM"
         run: |
           set -euo pipefail
+          if [ -z "${VEILLE_SECRET:-}" ]; then
+            echo "::error::PILOTAGE_VEILLE_SECRET absent : veille non appelee."
+            exit 1
+          fi
           code=$(curl -s -o reponse.json -w "%{http_code}" --max-time 60 -X POST \
             -H "Content-Type: application/json" -H "Authorization: Bearer $ANON" \
+            -H "x-passio-veille: $VEILLE_SECRET" \
             -d '{"action":"veille"}' https://njkiyoklssvefstljemx.supabase.co/functions/v1/pilotage)
-          echo "HTTP $code"; head -c 300 reponse.json; echo
-          { echo "## Veille du pilotage"; echo; echo "- HTTP $code"; echo "- $(head -c 300 reponse.json)"; } >> "$GITHUB_STEP_SUMMARY"
+          echo "HTTP $code"
+          { echo "## Veille du pilotage"; echo; echo "- HTTP $code"; } >> "$GITHUB_STEP_SUMMARY"
           [ "$code" = "200" ]

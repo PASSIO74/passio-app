@@ -15,6 +15,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { chargerFonction, requete } from "./lib/executer-fonction.mjs";
 
+import { connexionRecente as vraieConnexionRecente } from "../../supabase/functions/_shared/connexion-recente.js";
+
 const SOURCE = fs.readFileSync("supabase/functions/export-account/index.ts", "utf8");
 const URL_FN = "https://banc.example/functions/v1/export-account";
 const MOI = "11111111-1111-4111-8111-111111111111";
@@ -42,7 +44,7 @@ const MODULES = {
     exporterCompte: async (admin, uid, identite) => { banc.appels.push({ quoi: "exporterCompte", admin, uid, identite }); return banc.dossier; },
   },
   "../_shared/connexion-recente.js": {
-    connexionRecente: (auth, secondes) => { banc.appels.push({ quoi: "connexionRecente", auth, secondes }); return banc.recente; },
+    connexionRecente: (auth, secondes) => { banc.appels.push({ quoi: "connexionRecente", auth, secondes }); return banc.recente === null ? vraieConnexionRecente(auth, secondes) : banc.recente; },
     REPONSE_REAUTH: REAUTH,
   },
   "../_shared/plafond.js": {
@@ -138,4 +140,16 @@ test("⑥ un compte sans e-mail ni métadonnées (session anonyme) : des null, j
   const r = await appeler({});
   assert.equal(r.status, 200, JSON.stringify(r.corps));
   assert.deepEqual(exportes()[0].identite, { id: MOI, email: null, cree_le: null, derniere_connexion: null, metadonnees: null });
+});
+
+test("TOTP récent sans connexion primaire récente : 403, aucun accès privilégié", async () => {
+  remettre({recente:null});
+  for (const amr of [[{method:"totp",timestamp:Math.floor(Date.now()/1000)}], [{method:"password",timestamp:1},{method:"totp",timestamp:Math.floor(Date.now()/1000)}], []]) {
+    const jeton="e30."+Buffer.from(JSON.stringify({amr})).toString("base64url")+".sig";
+    const r=await appeler({}, {jeton});
+    assert.equal(r.status,403);
+    assert.equal(r.corps.code,"reauth_requise");
+  }
+  assert.equal(banc.appels.filter(a=>a.quoi==="exporterCompte").length,0);
+  assert.ok(banc.clients.every(c=>c.cle==="cle-anon"));
 });

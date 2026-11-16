@@ -17,6 +17,12 @@ const liste = ids => `in.(${ids.join(",")})`;
 const colonnesFil = "id,author_id,passion_id,mood,content,media_url,created_at,is_reel,overlays,vlog,shared_from_post_id,shared_data,event_id,profiles!author_id(username,emoji,color,avatar_url,is_private)";
 const motifSur = e => /^[A-Z][A-Z0-9_: ]{0,100}$/.test(e?.message || "") ? e.message : "ERREUR_INTERNE_OU_RESEAU";
 const attendreTableau = (min = 1, champs = ["id"]) => ({ tableau: true, min, champs });
+export async function verifierPublicationLue(id, publier, lire) {
+  await publier();
+  const lignes = await lire();
+  if (!Array.isArray(lignes) || !lignes.some(l => l.id === id)) throw new Error("PUBLICATION_NON_VISIBLE");
+  return { ok: true, motif: null, preuve: "lecture_jwt_destinataire" };
+}
 
 export async function executer(options) {
   // Revérification même si cette fonction est importée : aucun appelant ne peut
@@ -45,7 +51,7 @@ export async function executer(options) {
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
       "Sans telechargement de medias, upload, inscription par email, rendu mobile ou cache du navigateur.",
-      "Dix handlers CDC sans post_likes ; publications et messages prives restent testes en Realtime.",
+      "Sans CDC : publications confirmees par lecture JWT destinataire ; messages prives par Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
       "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
       "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
@@ -380,6 +386,24 @@ export async function executer(options) {
   function convPour(compte, taille) { return convs.find(c => c.id === `${prefix}_conv_${clePaire(compte.index, partenaire(compte.index, taille))}`); }
   async function livraison(compte, taille, type) {
     const id = `${prefix}_mesure_${randomUUID()}`, recipient = comptes[partenaire(compte.index, taille)];
+    if (type === "post" && o.profilRealtime === "sans-cdc") {
+      const debutLecture = performance.now();
+      mutationsPosts.add(id); sauvegarder();
+      try {
+        const resultat = await verifierPublicationLue(id,
+          () => inserer("post_publier", "posts", { id, author_id: compte.id, passion_id: postsFixture[0].passion_id,
+            content: "Publication de capacite.", created_at: new Date().toISOString() }, { jwt: compte.jwt, attentes: { ...attendreTableau(), id } }),
+          () => rest("post_visibilite", "posts", { id: "eq." + id, select: "id", limit: "1" },
+            { jwt: recipient.jwt, attentes: { ...attendreTableau(), id } }));
+        mesures.push({ phase, palier: stage?.taille ?? null, page: stage?.page ?? null,
+          famille: "post", type: "lecture", ...resultat, ms: Math.round(performance.now() - debutLecture) });
+        return resultat;
+      } catch (e) {
+        mesures.push({ phase, palier: stage?.taille ?? null, page: stage?.page ?? null,
+          famille: "post", type: "lecture", ok: false, motif: motifSur(e), ms: Math.round(performance.now() - debutLecture) });
+        throw e;
+      }
+    }
     const sonde = sondes.armer(cleSonde(recipient.id, type, id));
     receptionsSonde.set(id, new Set());
     const contexte = { phase, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: type, type: "realtime",
@@ -465,6 +489,7 @@ export async function executer(options) {
       const compteursLikes = await prevolCompteurLikes();
       rapport.prevol = { ok: true, dureeMs: Math.round(performance.now() - debutPrevol),
         handlersParCompte: comptes.slice(0, 2).map(c => c.handlersConfirmes),
+        publications: o.profilRealtime === "sans-cdc" ? "lecture_jwt_destinataire" : "livraison_realtime",
         messagerieV3: o.scenario === "complet" ? "livraison_confirmee" : "non_qualifiee", compteursLikes, fil: premierFil };
     } catch (e) { rapport.prevol = { ok: false, motif: motifSur(e), dureeMs: Math.round(performance.now() - debutPrevol) }; throw e; }
     finally { await fermerSockets(); rapport.prevol.mesures = mesures.length - index; sauvegarder(); }
@@ -520,7 +545,7 @@ export async function executer(options) {
       const subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
       const http = statistiques(subset.filter(m => m.type === "http")), parcours = statistiques(subset.filter(m => m.type === "parcours")), realtime = statistiques(subset.filter(m => m.type === "realtime"));
       const messages = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "message"));
-      const publications = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "post"));
+      const publications = statistiques(subset.filter(m => (m.type === "lecture" || m.type === "realtime") && m.famille === "post"));
       const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.methode === "HEAD"));
       const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.methode !== "HEAD"));
       const parcoursCompteurs = statistiques(subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles"));

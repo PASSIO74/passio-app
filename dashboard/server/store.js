@@ -10,7 +10,9 @@ import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
 import { traficHorsPublic, ventilerTrafic } from "./trafic.js";
 
-const ONLINE_MS = 70_000;        // appareil « en ligne » si vu il y a < 70 s
+// Appareil « en ligne » si vu il y a < 270 s. Le battement du client passe de 20 à
+// 60 s le 2026-11-15 (js/telemetry.js, lot 4 capacité), jusqu'à 240 s délesté.
+const ONLINE_MS = 270_000; // couvre aussi le battement délesté à 240 s
 
 // ── Coupures « au départ » : la page part, ses requêtes tombent ──────────────
 // Quand une page passe en arrière-plan ou se ferme (`session end` / `lifecycle

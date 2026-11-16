@@ -1032,3 +1032,64 @@ et le bouton restait « Demande envoyée » quoi qu'il arrive.
   pour retrouver les boutons d'un compte, jamais `getElementById`.
 - **Verrou** : `tests/e2e/suivi-bouton-profil-visite-doublon.spec.js` (3) — un homonyme caché AVANT
   le bouton visible ; rouge sans le correctif (3/3), vert avec.
+
+
+## Contrôles sociaux complémentaires — 2026-11-16 (préparés localement)
+
+Lot critique réalisé par Codex GPT-6 sur la branche existante. Aucun accès distant,
+aucune fonction serveur modifiée, aucune migration appliquée. Les corps des fonctions
+et les policies ont été confrontés aux deux photographies de catalogue fournies par
+le responsable. Ces photographies et les rapports restreints ne sont pas versionnés.
+
+- Les insertions de commentaires, j'aime, interactions et vues de story exigent la
+  visibilité de la cible. La modification d'un commentaire la revérifie aussi.
+- L'auteur d'une publication peut lire et retirer les commentaires reçus ; l'auteur
+  d'une story conserve cette possibilité après blocage dans les deux sens.
+- Le canal de fil combine sa condition existante avec la visibilité REST du fil et
+  le contrôle de blocage. La publication est prioritaire sur une activité homonyme.
+- Une publication déjà passée en modération reste non modifiable, même rétablie.
+  Cette restriction conservatrice évite de changer les fonctions de modération.
+  Seules les clés des cibles éditables par le compte deviennent lisibles ; décisions,
+  signaleurs et horodatages restent fermés. Les droits d'écriture restent inchangés.
+- Les indicateurs HTML des notifications synchronisées ne permettent plus que le
+  gras sans attribut. Les entités existantes sont conservées sans double échappement.
+- Les libellés et emojis du référentiel sont échappés aux rendus activité, profil,
+  Studio, bobines et réponses locales de l'assistant. Le partage stocke du texte brut.
+
+Livraison : client corrigé en premier, puis migration_social_visibilite_2026-11-16.sql
+sur une base jetable/staging avec vérification des rôles avant toute production.
+Pas de prérequis bloquant pour l'ancien client : policies et rendu sont indépendants.
+Les canaux déjà autorisés peuvent conserver leur autorisation jusqu'à reconnexion.
+Le correctif ne révoque donc pas rétroactivement leurs souscriptions.
+
+Pilotage/Sentinelle : aucun nouvel événement ni donnée personnelle ; journal de
+modération et verdicts d'écriture existants conservés. Pas de modification AAL2/TURN.
+Retour arrière SQL décrit en en-tête de migration ; retirer les contrôles rouvre
+les comportements antérieurs et demande une décision explicite du responsable.
+
+Restent hors de ce premier lot : unicité des pseudos (précontrôle des doublons et
+parcours d'inscription à valider), restriction des hôtes média (inventaire des
+fournisseurs et compatibilité nécessaires), contrôle des couleurs du blob synchronisé,
+preuve figée au premier signalement et gestion d'une édition concurrente au masquage.
+Le gel après modération est définitif pour cet identifiant, même si le contenu est rétabli.
+Aucune validation SQL sous rôles réels n'est revendiquée sur ce poste sans PostgreSQL.
+
+Validation locale de ce premier lot : 9/9 tests navigateur (les 3 nouveaux cas
+et les 6 cas de xss-notifs-messages), syntaxe des 4 scripts et git diff --check OK.
+npm run verif exécuté avant puis après correction : même échec préexistant
+dans tests/unit/edge-functions-verrous.test.mjs:683 (sous-processus bash, code null
+sous Windows). Les gates statiques passent ; la commande complète n'est pas verte.
+Préconditions SQL : socle social/modération du 06/11, temps réel du 09/11, édition
+texte du 13/11 et interactions stories du 14/11. La migration vérifie AVANT DDL
+les signatures et empreintes normalisées de 9 helpers du catalogue relu, ainsi que
+les droits d'édition. Si un helper diffère, aligner/revoir ce prérequis d'abord,
+jamais ignorer la garde. Ne rejouer aucun ancien DDL social après ce correctif.
+## B06-N1 / D06-03 — tolérance des enveloppes malformées (2026-11-16)
+
+Premier correctif local par Codex GPT-6 : décodeur partagé liste/fil/temps réel, types vérifiés avant les opérations de chaîne, une bulle [Message invalide] conserve le reste du fil. Compatibilité texte ancien et scalaires JSON, type t, médias et aperçu rt.t coupé dans un emoji. Contrôles toujours attribués au from_id serveur. Diagnostic fixe msg_forme_invalide, sans contenu ni identifiant ; aucun nouveau champ de télémétrie.
+
+Migration migration_conv_messages_forme_2026-11-16.sql : begin/commit, lock_timeout 3s, trigger INSERT/UPDATE du contenu pour tous les rôles, fonctions internes sans EXECUTE public/anon/authenticated. Aucune policy ni aucun grant de table modifié ; contrôle contre les photographies LEAD des fonctions et du catalogue prod. Copie de validation normalisant les échappements surrogate/NUL que PostgreSQL refuse même en json ; contenu stocké intact, doublons JSON dernière clé gagnante. Client robuste en ligne D’ABORD, puis migration (PREREQUIS-CLIENT msg_forme_invalide). Rien appliqué à distance. Retour arrière : retirer trigger puis fonctions dans une transaction, garder le client robuste.
+
+Tests : régressions unitaires rouges avant, 14/14 après ; deux suites navigateur existantes 17/17 ; régression DOM dédiée sur textContent (le HTML compte aussi les noms accessibles). SQL PostgreSQL embarqué PGlite 0.3.16, récupéré hors ligne du cache : reproduction avant, migration et rejeu, 48 refus INSERT/UPDATE sous authenticated/postgres, scalaires/t/surrogate/doublons et historique conservé. Banc natif livré mais non exécuté faute de binaires serveur ; sans preuve PostgREST/Realtime ni production. npm run verif lancé : quatre échecs Sentinelle liés au lanceur Git/bin/bash sous Windows ; lead confirme baseline 36/36 avec Git/mingw64/bin puis Git/usr/bin avant PATH. Aucun test de workflow modifié ; pas de nouvelle verif complète pour cette livraison urgente.
+
+Restent D02-07 (remplacement 1:1, ajout forcé) et D10-01 (amplification et accusés) : non corrigés ici. Revue indépendante puis intégration à faire par le lead. AAL2 et TURN inchangés.

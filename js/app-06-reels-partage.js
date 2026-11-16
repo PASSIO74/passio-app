@@ -3612,7 +3612,7 @@ function renderProfilesScreen() {
         </div>
         <div class="profile-card-body" style="flex:1;">
           <div class="profile-card-name">
-            ${passion.emoji} ${passion.label}
+            ${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}
           </div>
           ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
         </div>
@@ -4882,7 +4882,7 @@ function openCreateProfile() {
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
         <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${escapeHtml(p.id)}" onclick="selectNewProfilePassion('${escapeJsArg(p.id)}')">
-          <div class="passion-tile-emoji">${p.emoji}</div>
+          <div class="passion-tile-emoji">${escapeHtml(p.emoji)}</div>
           <div class="passion-tile-label">${escapeHtml(p.label)}</div>
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
@@ -5085,7 +5085,7 @@ function renderStudio() {
   const _pool = _poolBrut.filter(p => p && estPassionCanonique(p.passion));
   sel.innerHTML = _pool.map(p => {
     const pn = passionById(p.passion);
-    return `<option value="${p.passion}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${pn.emoji} ${pn.label}</option>`;
+    return `<option value="${escapeHtml(p.passion)}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${escapeHtml(pn.emoji)} ${escapeHtml(pn.label)}</option>`;
   }).join("");
   // La ligne d'explication n'apparaît QUE si quelque chose a été écarté : sinon
   // elle inquiéterait pour rien l'immense majorité des comptes.
@@ -6288,7 +6288,7 @@ async function aiGenerateResponse(query) {
     var cardsHTML = matched.length ? matched.map(function(e) {
       var p = passionById(e.passion) || { emoji:"📍", label: e.passion };
       return '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-        '<div class="ai-card-title">' + p.emoji + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
+        '<div class="ai-card-title">' + escapeHtml(p.emoji) + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
         '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "Bientôt") + '</div>' +
       '</div>';
     }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucune activité trouvée pour ta recherche.</div>';
@@ -6314,7 +6314,7 @@ async function aiGenerateResponse(query) {
       return '<div class="ai-card" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
-          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + p.emoji + ' ' + p.label + '</div></div>' +
+          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</div></div>' +
         '</div>' +
       '</div>';
     }).join("");
@@ -6367,13 +6367,13 @@ async function aiGenerateResponse(query) {
 
     var html = '<div>';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-    html += '<span style="font-size:28px;">' + passionEmoji + '</span>';
-    html += '<div><div style="font-weight:800;font-size:15px;">' + passionLabel + '</div>';
+    html += '<span style="font-size:28px;">' + escapeHtml(passionEmoji) + '</span>';
+    html += '<div><div style="font-weight:800;font-size:15px;">' + escapeHtml(passionLabel) + '</div>';
     html += '<div style="font-size:11px;color:var(--muted);">Passion PASSIO</div></div></div>';
 
     if (!knowledge) {
       // Passion sans base de connaissance — réponse générique + données app
-      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + passionLabel + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
+      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + escapeHtml(passionLabel) + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
     } else if (isDebutant) {
       html += '<div class="ai-section-label">Pour débuter</div>';
       html += '<div style="font-size:13px;line-height:1.6;background:var(--bg-deep);border-radius:12px;padding:12px;margin-bottom:8px;">' + knowledge.pour_debuter + '</div>';
