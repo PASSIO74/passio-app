@@ -1466,10 +1466,27 @@
   });
 
   // 2) Heartbeat de présence (l'appareil est « en ligne » pour le dashboard)
-  setInterval(function () {
-    if (document.hidden) return;
-    track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
-  }, 20000);
+  // ⚠️ LOT 4 DU 2026-11-15 (capacité) : toutes les 20 s par onglet visible, le
+  // battement saturait les plafonds d'écriture de la télémétrie dès quelques
+  // centaines d'onglets — et un lot refusé emporte ses lignes d'erreur avec lui.
+  // Il passe à 60 s et SUIT LE DÉLESTAGE (×2, ×4, js/reglages-distants.js) comme
+  // les filets. Le pilotage tient un appareil « en ligne » 270 s
+  // (dashboard/server/store.js, ONLINE_MS) : compatible avec le délestage ×4.
+  // Une chaîne de `setTimeout`, pas un `setInterval` : le délai se relit à chaque tour.
+  var BATTEMENT_MS = 60000;
+  function battementDelai() {
+    var f = (typeof delestageFacteur === "function") ? delestageFacteur() : 1;
+    return BATTEMENT_MS * ((f === 2 || f === 4) ? f : 1);
+  }
+  window.passioBattementDelai = battementDelai;
+  (function battre() {
+    setTimeout(function () {
+      try {
+        if (!document.hidden) track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
+      } catch (e) {}
+      battre();
+    }, battementDelai());
+  })();
 
   // 3) Erreurs JS (complète platform.js, table distincte, usage distinct)
   // Le bug des contrôles vidéo de Safari (voir js/platform.js) laisse UNE trace

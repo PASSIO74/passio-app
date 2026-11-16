@@ -3101,3 +3101,84 @@ complet 13 / 13 sous chacun des deux moteurs.
   la barre v2 fait deux `goTo`, deux entrées d'historique, et le premier « retour » ne fait rien de visible. En
   développement (app-08 avant ui-v2) le défaut n'existe pas — le commentaire d'ui-v2-shell.js suppose cet ordre-là.
   Remède proposé : `#appNav .nav-item` ou `.nav-item:not(.nav-v2-item)`. Proposé en lot séparé.
+
+## Lot abus et capacité — reprise locale (2026-11-16)
+
+Travail interrompu repris sur la branche existante, sans opération distante. Les corps et prédicats
+ont été comparés aux photographies de production fournies par le lead ; ces photographies restent
+hors du dépôt. Aucun changement de messagerie, de configuration AAL2 ou TURN.
+
+Les trois migrations du 15/11 ajoutent des budgets atomiques par jour UTC, optimisent fil_compteurs
+en conservant les prédicats de visibilité, indexent les recherches, conservent le contrôle du quota
+Storage et séparent la capacité anonyme de télémétrie. Les statistiques de lignes sont approximatives.
+La purge est bornée par lots et par journées UTC complètes pour ne pas réagréger une journée amputée.
+Les nouvelles tables internes sont sous RLS sans droits clients ; les helpers internes ne sont pas RPC.
+
+Client : recherche de personnes à trois caractères, heartbeat 60 s (jusqu'à 240 s délesté),
+présence dashboard 270 s, recul exponentiel avec jitter en panne, recharge de version étalée.
+Le fil demande explicitement la propagation des erreurs : la lecture retournait [] même sous panne,
+rendant le catch du nouveau backoff inaccessible. Un échec partiel de lecture des cartes recule aussi.
+Le prévol sans CDC prouve une publication par lecture JWT destinataire ; il ne prétend pas mesurer
+une livraison Realtime de publication. Aucune campagne réseau exécutée.
+
+Ordre de livraison : client d'abord (marqueur video_lives:photo-https), puis migrations plafonds,
+lectures, telemetrie, après les lots de novembre précédents. Chaque migration est transactionnelle
+et rejouable ; revue critique et test SQL sur PostgreSQL jetable restent requis avant application.
+Les retours arrière sont décrits dans chaque fichier. Aucun déploiement ni application SQL effectué ici.
+
+Limites explicites : les HEAD count=exact des cartes et les comptages d'abonnés restent sous RLS
+par ligne ; D14-01 n'est donc que partiellement corrigé. Le cache Storage a été retiré après relecture : contrôle existant conservé, scans coûteux encore présents.
+Aucun DDL sur le schéma storage géré par Supabase.
+Les bornes de télémétrie fondées sur pg_stat sont approximatives, pas des quotas stricts.
+Le banc garde des lectures legacy et des HEAD : il ne certifie pas la capacité du client complet.
+Pas de preuve de tenue à 100 000 utilisateurs.
+
+Reprise finale Codex (16/11) : risque critical, finalisation du lot existant uniquement ;
+agent de correction/relecture locale : Codex, seconde revue indépendante encore requise.
+Critères : budgets journaliers atomiques, visibilité conservée, aucun cache Storage permissif,
+prévol sans CDC vérifié par lecture JWT destinataire ; aucun DDL sur storage.
+Socle local HEAD a270749b ; référence main locale d4c885af ancêtre du HEAD. Conformité avec
+le dernier état distant non revérifiée (consigne sans distant). Catalogue fourni LEAD relu.
+Le banc SQL vérifie maintenant aussi l'identité intégrale de quota_stockage_ok avant/après
+et la présence effective des verdicts. Aucun serveur PostgreSQL disponible sur le PATH :
+syntaxe Bash contrôlée, exécution SQL non réalisée, à faire sur une instance jetable avant
+revue/application. La purge conserve une borne UTC complète ; pg_stat reste approximatif.
+Le test unitaire exécute le vrai chemin livraison sans CDC et vérifie les deux JWT,
+l'absence de sonde CDC et l'échec si la publication reste invisible.
+Intégration pilotage pertinente : battement délesté et fenêtre de présence alignés ; aucune
+remédiation automatique ajoutée. Retour arrière : migrations documentées, client réversible.
+
+Validation finale : tests unitaires ciblés passants (59 initiaux, puis 43 après ajout de deux cas),
+Bash -n et diff --check passants. npm run verif s'arrête sur quatre échecs de bornes-ci.test.mjs
+(délais mesurés trop longs / processus expiré sous Windows), hors fichiers du lot : vérification
+complète NON verte, à reprendre dans le runner adapté avant fusion. Aucun contournement ajouté.
+Point de revue restant : fil_compteurs passe en SECURITY DEFINER avec les prédicats clients.
+Les lectures service_role privées peuvent différer du comportement antérieur sans RLS ; la
+correction proposée pour préserver cette compatibilité a été refusée par la revue automatique
+faute d'autorisation explicite du changement sensible. Aucun contournement ni correction appliquée.
+Les migrations ne sont donc pas annoncées prêtes à appliquer : trancher ce point, exécuter le
+banc SQL jetable avant/après/rejeu et obtenir la contre-revue critique avant toute application.
+
+Résultat navigateur final : 67/67 tests locaux passants avec Chrome via PASSIO_CHROMIUM
+(11,4 min pour les cinq fichiers, dont 9,6 min pour la suite PWA). Unitaires finaux : 61/61.
+La durée demandée a été dépassée par ces vérifications ; aucun échec navigateur.
+
+Suivi D10-01 demandé : reste OUVERT, aucune extension messagerie dans ce lot.
+D'après le catalogue LEAD : conv_members INSERT et conv_messages INSERT appellent déjà
+le compteur commun à 60/min ; le lot ajoute donc 900/jour avant 7 jours, 3 600/jour ensuite.
+Les budgets persistent côté PostgreSQL (debit_ecritures, debit_jour), UPSERT atomiques,
+clé par table/opération/source et fenêtre serveur ; ils survivent à un rechargement navigateur.
+Ils ne sont pas un budget global multi-comptes et les opérations de service échappent au jour.
+conv_reads : aucun trigger de débit dans le catalogue, seulement diffusion de lecture,
+rid et barrière de suppression. Ses INSERT/UPDATE last_read_at ne sont donc pas couverts.
+conv_members UPDATE n'est pas couvert par son trigger INSERT. Le lot ne pose pas de quota
+général UPDATE : il étend seulement les compteurs existants, notamment profils/lives/passions.
+Receipts par message/compte, broadcasts, destinataires du fanout et octets/événements Realtime
+n'ont pas de budget propre : limiter une insertion ne compte pas chaque émission qu'elle produit.
+Télémétrie : réserve anon/comptes sur statistiques de lignes approximatives et purge par lots,
+pas de plafond strict de tout le volume d'événements. Les reculs/heartbeats côté navigateur
+réduisent la charge normale, mais ne remplacent pas une protection serveur contre l'abus direct.
+Ordre restant : revue critique du point fil_compteurs service_role, banc PostgreSQL jetable
+avant/après/rejeu, CI verte, puis client servi portant video_lives:photo-https, migrations
+plafonds → lectures → telemetrie, contrôle sur cible et observation pilotage. Aucun de ces
+gestes distants, aucune charge ni application de migration n'a été exécuté ici.

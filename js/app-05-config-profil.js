@@ -4341,8 +4341,12 @@ function _vliveFiletTour() {
     // source, il ne recule pas. BORNÉ au fil à l'écran (les bulles « 🔴 LIVE »
     // vivent dans sa barre de stories) : `filetEstLeSeulChemin` (app-02), MÊME
     // autorité que le filet du fil.
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : le seul chemin n'épingle plus 60 s, il
+    // BORNE le recul à 3 min (`filetBorneSeulChemin`, app-02), comme le filet du fil.
+    // Un live connu garde la cadence vive : ce cas-là ne change pas.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetBorneSeulChemin(_vliveFiletPas, seulChemin);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
@@ -4435,6 +4439,12 @@ function _vlivePromptTitle() {
   });
 }
 
+// Lot 4 du 2026-11-15 : les colonnes d'adresse de média n'acceptent plus que https.
+var LIVE_PHOTO_HTTPS = "video_lives:photo-https";
+function _livePhotoHttps(v) {
+  return (typeof v === "string" && /^https:\/\//i.test(v) && v.length <= 2048) ? v : null;
+}
+
 async function startVideoLive() {
   if (window._call) { toast("Termine ton appel d'abord"); return; }
   if (window._vliveHost) return;
@@ -4478,7 +4488,10 @@ async function startVideoLive() {
   const row = {
     id: id, author_id: MY_UID, author_name: _callMyName(),
     author_emoji: me.emoji || "🔴",
-    author_photo: (state.user && state.user.general && state.user.general.avatarPhoto) || null,
+    // Une adresse https seulement : une photo encore locale (data:) serait refusée par la base
+    // (`video_lives_author_photo_forme`) et ferait échouer tout le direct. `LIVE_PHOTO_HTTPS`
+    // est la chaîne que la migration exige dans le client servi (`-- PREREQUIS-CLIENT:`).
+    author_photo: _livePhotoHttps(state.user && state.user.general && state.user.general.avatarPhoto),
     title: title || null,
     status: "live",
     started_at: new Date().toISOString(), last_seen: new Date().toISOString(),

@@ -119,18 +119,23 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
     expect(compte.topics).not.toContain("realtime:db");
   });
 
-  test("④ les DEUX filets NE RECULENT PAS quand ils sont le seul chemin", () => {
+  test("④ les DEUX filets ne reculent pas au-delà de 3 min quand ils sont le seul chemin", () => {
     // ⚠️ LE FIL **ET** LES LIVES. La première rédaction ne lisait qu'app-08 :
     // le filet des lives portait le même couplage, non traité et non mesuré —
     // un visiteur aurait gardé une bulle « 🔴 LIVE » allumée jusqu'à cinq
     // minutes après la fin du direct. « Corriger une surface, c'est corriger
     // une surface », et un verrou qui n'en lit qu'une ne garde qu'une.
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : « ne reculent pas » est devenu « ne
+    // reculent pas au-delà de 3 min » — épinglés à 60 s, ils refaisaient chaque
+    // minute, pour chaque onglet du fil, la page et les compteurs. La borne vit
+    // dans `filetBorneSeulChemin` (app-02), seule autorité, et les deux filets
+    // passent par elle (verrou de la règle : tests/unit/abus-capacite.test.mjs).
     const fil = corpsDeFonction(lire("js/app-08-ui-modals-tour.js"), "function startFeedRefreshLoop()");
-    expect(fil).toMatch(/filetProchainPas\(\s*_feedFiletPas,\s*vivant \|\| seulChemin/);
+    expect(fil).toMatch(/_feedFiletPas = filetBorneSeulChemin\(_feedFiletPas, seulChemin\)/);
     expect(fil).toMatch(/filetEstLeSeulChemin\(\)/);
 
     const lives = corpsDeFonction(lire("js/app-05-config-profil.js"), "function _vliveFiletTour()");
-    expect(lives).toMatch(/filetProchainPas\(\s*_vliveFiletPas,\s*vivant \|\| seulChemin/);
+    expect(lives).toMatch(/_vliveFiletPas = filetBorneSeulChemin\(_vliveFiletPas, seulChemin\)/);
     expect(lives).toMatch(/filetEstLeSeulChemin\(\)/);
 
     // ⚠️ ET LA BORNE EST LE LOT AUTANT QUE LE COUPLAGE : pinner ces filets

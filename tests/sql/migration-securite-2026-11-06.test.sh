@@ -165,5 +165,37 @@ for lot in "$LOT1" "$LOT2" "$LOT3"; do
 done
 
 echo
+
+echo "══ ⑥ Lot abus/capacité du 2026-11-15 : avant, après et rejeu ══"
+CAS5="$RACINE/tests/sql/fixtures/cas-securite-lot5-2026-11-15.sql"
+QD postgres "create database banc_lot5_apres template banc_apres" >/dev/null
+BASE5=banc_apres
+QUOTA5="$(QD banc_apres "select md5(pg_get_functiondef('public.quota_stockage_ok()'::regprocedure))")"
+for phase5 in avant apres; do
+  if [ "$phase5" = apres ]; then
+    BASE5=banc_lot5_apres
+    for nom5 in plafonds lectures telemetrie; do
+      fichier5="$RACINE/migrations/migration_securite_lot4_"$nom5"_2026-11-15.sql"
+      for passe5 in 1 2; do
+        sortie="$(FICHIER "$BASE5" "$fichier5")"; code=$?
+        verifier "$nom5 : application $passe5" "$code" "0"
+        [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | head -8
+        verifier "$nom5 : verdicts effectivement émis" "$([ "$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" -ge 5 ] && echo oui || echo non)" oui
+        verifier "$nom5 : aucun verdict ECHEC" "$(printf '%s\n' "$sortie" | grep -c '§ECHEC' || true)" "0"
+      done
+    done
+  fi
+  verifier "$phase5 : fonction quota Storage intégralement inchangée" "$(QD "$BASE5" "select md5(pg_get_functiondef('public.quota_stockage_ok()'::regprocedure))")" "$QUOTA5"
+  if ! sortie="$(FICHIER "$BASE5" "$CAS5")"; then
+    echo "❌ cas lot 5 : $sortie" | head -8; ko=$((ko+1))
+  else
+    total="$(QD "$BASE5" "select count(*) from banc.resultats_lot5 where phase = '$phase5'")"
+    ecarts="$(QD "$BASE5" "select count(*) from banc.resultats_lot5 where phase = '$phase5' and not ok")"
+    verifier "$phase5 lot capacité : $total cas, 0 écart" "$ecarts" "0"
+    verifier "$phase5 : cas effectivement joués" "$([ "$total" -gt 30 ] && echo oui || echo non)" oui
+    [ "$ecarts" != 0 ] && QD "$BASE5" "select cas || ': ' || obtenu || ' attendu ' || attendu from banc.resultats_lot5 where phase = '$phase5' and not ok"
+  fi
+done
+
 echo "Bilan : $ok vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ]

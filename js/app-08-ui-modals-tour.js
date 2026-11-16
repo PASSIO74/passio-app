@@ -5865,6 +5865,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         noterLectureTeteFil(estEchecReseau(error) || status >= 500 || status === 429);
       }
+      if (options.propagerErreur) throw error;
       return [];
     }
     if (!lectureValide()) return [];
@@ -6115,6 +6116,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) {
+    if (options.propagerErreur) throw e;
     // Une exception qui n'est pas réseau ne dit rien du réseau : verdict inchangé.
     if (teteSeq && teteSeq > _feedTeteDerniereServie && estEchecReseau(e)) noterLectureTeteFil(true);
     return [];
@@ -6796,7 +6798,9 @@ function _eventRow(event) {
     contact: event.contact || null,
     external_link: event.externalLink || null,
     event_type: event.eventType || "Autre",
-    cover_url: event.coverUrl || null,
+    // https seulement (`events_cover_url_forme`, lot 4 du 2026-11-15) : une couverture encore
+    // locale (data:) passe par Storage avant (app-07) ; sinon elle ne part pas.
+    cover_url: (typeof event.coverUrl === "string" && /^https:\/\//i.test(event.coverUrl)) ? event.coverUrl : null,
     // CLI-01 : la base n'accepte plus qu'un tableau d'uuid en minuscules (au plus
     // 20) — un identifiant de démonstration ferait refuser TOUTE l'activité.
     co_organizers: (event.coOrganizers || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
@@ -7565,6 +7569,14 @@ function _motifSansAccents(q) {
   }).join("");
 }
 
+// PURE : la saisie, pliée et réduite aux lettres et chiffres, a-t-elle au moins
+// RECHERCHE_PERSONNES_MIN caractères ? (verrou : tests/unit/abus-capacite.test.mjs)
+var RECHERCHE_PERSONNES_MIN = 3;
+function recherchePersonnesAssezLongue(q) {
+  var plie = (typeof plierRecherche === "function") ? plierRecherche(q) : String(q || "").toLowerCase();
+  return String(plie || "").replace(/[^a-z0-9]/g, "").length >= RECHERCHE_PERSONNES_MIN;
+}
+
 async function supaSearchUsers(query) {
   try {
     const cleanQuery = (query || "").trim();
@@ -7580,6 +7592,11 @@ async function supaSearchUsers(query) {
     // échappe les jokers ; on borne aussi la longueur.
     const safe = cleanQuery.slice(0, 60).replace(/[,()*]/g, " ").replace(/[%_]/g, "").trim();
     if (!safe) return [];
+    // Lot 4 du 2026-11-15 (capacité) : SOUS TROIS CARACTÈRES, ON NE DEMANDE RIEN
+    // AU SERVEUR — même plancher que les passions (passions-flat.js). Une ou deux
+    // lettres retiennent presque toute la table, et l'index trigramme de
+    // `profiles` (username, bio) ne sert qu'à partir de trois.
+    if (!recherchePersonnesAssezLongue(safe)) return [];
     // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
     const searchPattern = `%${safe}%`;
     // ⚠️ BORNE. Cette requête n'avait AUCUNE limite : chercher « a » ramenait
@@ -10775,6 +10792,7 @@ function _feedPostsSig(posts) {
 // autorité PARTAGÉE avec le filet des lives : deux copies d'une même politique
 // finissent toujours par diverger sur celle qu'on oublie.
 let _feedFiletPas = 60000;
+let _feedFiletEchecs = 0;   // tours en échec d'affilée (lot 4 du 2026-11-15, `reculSurErreur`)
 
 // Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
 // l'écran et par les gestionnaires temps réel : il vient de se passer quelque
@@ -10800,13 +10818,13 @@ function startFeedRefreshLoop() {
     // rendez-vous de celui-ci en sortant sur la garde « en vol ».
     if (_feedRefreshInFlight) { _feedRefreshRelance = true; return; }
     _feedRefreshInFlight = true;
-    let vivant = false;
+    let vivant = false, echec = false;
     try {
       if (document.hidden) return;                    // onglet en arrière-plan : pas de requête (batterie/quota)
       if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
       const feedEl = document.getElementById("screen-feed");
       if (!feedEl || !feedEl.classList.contains("active")) return;
-      const posts = await supaLoadPosts(0, null, { generation });
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
       if (generation !== _feedRefreshGeneration) return;
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
@@ -10821,11 +10839,13 @@ function startFeedRefreshLoop() {
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
     } catch (e) {
-      // ⚠️ Une panne n'est PAS un calme : reculer sur une coupure réseau ferait
-      // mettre cinq minutes à retrouver le fil au retour de la connexion. On
-      // laisse le pas où il est.
+      // ⚠️ Une panne n'est PAS un calme : le PAS ne recule pas (le retour de la
+      // connexion relit vite, `online` réveille le filet). Mais le PROCHAIN TOUR,
+      // lui, recule (lot 4 du 2026-11-15, `reculSurErreur`, app-02) : relancer
+      // une base saturée au rythme le plus vif entretenait la surcharge.
       try { diagLog("feed_filet", e && e.message); } catch (_e) {}
       vivant = true;
+      echec = true;
     } finally {
       _feedRefreshInFlight = false;
       if (_feedRefreshRelance && _feedRefreshTour && _feedRefreshInterval !== null) {
@@ -10844,9 +10864,19 @@ function startFeedRefreshLoop() {
         // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) — voir
         // son commentaire. Pinné partout, ce filet coûtait 4 req/min par onglet
         // visiteur, ×5 du régime d'avant.
+        // ⚠️ LOT 4 DU 2026-11-15 (capacité) : épinglé à 60 s tant que le fil
+        // était à l'écran, il refaisait chaque minute, pour chaque onglet
+        // (visiteurs compris), la page et l'appel groupé des compteurs. Il
+        // recule désormais comme les autres, BORNÉ à 3 min quand il est le seul
+        // chemin (`filetBorneSeulChemin`, app-02) ; et un tour en échec espace
+        // le suivant (`reculSurErreur`) au lieu de le relancer au plus vif.
         const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
-        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));
+        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant, document.hidden);
+        _feedFiletPas = filetBorneSeulChemin(_feedFiletPas, seulChemin);
+        _feedFiletEchecs = echec ? _feedFiletEchecs + 1 : 0;
+        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletEchecs
+          ? reculSurErreur(_feedFiletPas, _feedFiletEchecs, Math.random())
+          : _feedFiletPas));
       }
     }
   };
@@ -10869,6 +10899,12 @@ function stopFeedRefreshLoop() {
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) return;
   feedFiletReveiller(true);
+});
+// Le réseau revient : le recul sur erreur (lot 4 du 2026-11-15) ne doit pas faire
+// attendre des minutes une connexion qui vient de se rétablir.
+window.addEventListener("online", function () {
+  _feedFiletEchecs = 0;
+  if (!document.hidden) feedFiletReveiller(true);
 });
 
 // ═══ ANALYTICS LÉGÈRES ═══

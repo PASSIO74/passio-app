@@ -32,13 +32,40 @@ test.describe("Recherche de comptes", () => {
         chaine.then = function (r) { vus.push(null); return Promise.resolve({ data: [], error: null }).then(r); };
         return chaine;
       } };
-      await supaSearchUsers("a");
+      await supaSearchUsers("abc");
       return vus;
     });
 
     expect(appels.length, "la requête doit passer par .limit()").toBeGreaterThan(0);
     expect(appels[0], "une borne, et raisonnable").toBeGreaterThan(0);
     expect(appels[0]).toBeLessThanOrEqual(50);
+  });
+
+  // Lot 4 du 2026-11-15 (capacité) : une ou deux lettres retiennent presque
+  // toute la table de profils, et l'index trigramme n'y sert pas. Le serveur
+  // n'est plus interrogé sous trois caractères PLIÉS (« É » compte pour « e »,
+  // la ponctuation ne compte pas).
+  test("sous trois caractères pliés, aucune requête serveur", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      let appels = 0;
+      supa = { from: function () {
+        appels++;
+        const chaine = {};
+        chaine.select = function () { return chaine; };
+        chaine.or = function () { return chaine; };
+        chaine.limit = function () { return Promise.resolve({ data: [], error: null }); };
+        return chaine;
+      } };
+      const sorties = [];
+      for (const q of ["a", "Lé", "  é ", "a-b", "x,y"]) sorties.push((await supaSearchUsers(q)).length);
+      const avant = appels;
+      await supaSearchUsers("Léa");
+      return { avant, apres: appels, sorties };
+    });
+    expect(r.avant, "rien ne part sous trois caractères").toBe(0);
+    expect(r.sorties).toEqual([0, 0, 0, 0, 0]);
+    expect(r.apres, "trois caractères pliés : la requête part").toBe(1);
   });
 
   test("une réponse périmée n'écrase pas les résultats de la frappe en cours", async ({ page }) => {
