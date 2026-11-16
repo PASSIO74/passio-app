@@ -110,6 +110,16 @@ for role in anon authenticated; do
   Q "grant select on vault.decrypted_secrets to $role" >/dev/null
   refus_migration "Vault lisible par $role" "$BASE/prod.sql" 'Vault accessible aux roles clients'
   Q "revoke select on vault.decrypted_secrets from $role" >/dev/null
+  reinitialiser
+  Q "grant usage on schema vault to $role; grant select(decrypted_secret) on vault.decrypted_secrets to $role" >/dev/null
+  verifier "ACL colonne de $role sans droit SELECT table" "has_schema_privilege('$role','vault','usage') and not has_table_privilege('$role','vault.decrypted_secrets','select') and has_column_privilege('$role','vault.decrypted_secrets','decrypted_secret','select')"
+  # La lecture sous le vrai role confirme que ce grant suffit a lire la valeur.
+  # Le resultat synthetique reste hors journal de test.
+  Q "set role $role; select decrypted_secret from vault.decrypted_secrets limit 1; reset role" >/dev/null
+  refus_migration "Vault lisible par colonne pour $role" "$BASE/prod.sql" 'Vault accessible aux roles clients'
+  Q "revoke select(decrypted_secret) on vault.decrypted_secrets from $role; revoke usage on schema vault from $role" >/dev/null
+  F "$BASE/prod.sql" >/dev/null
+  verifier "revocation colonne de $role puis activation nominale" "not has_any_column_privilege('$role','vault.decrypted_secrets','select') and not has_schema_privilege('$role','vault','usage') and (select count(*) from cron.job where jobname='pilotage_veille')=1"
 done
 reinitialiser
 refus_migration 'configuration production sur cible staging' "$BASE/staging.sql" 'Projet Vault different de la cible du script officiel'
