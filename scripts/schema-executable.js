@@ -235,6 +235,24 @@ const ETAPES = [
         + cols.map((c) => `alter table ${n} add column if not exists ${c.trim()};`).join("\n"));
     } },
 
+  { titre: "Commentaires des tables",
+    // Certains commentaires sont des marqueurs de propriété vérifiés lors
+    // d'un rejeu de migration. Ils font partie du DDL et de schema_sha256,
+    // y compris NULL : un commentaire parasite ne doit pas survivre au rejeu.
+    sql: `select n.nspname sch, c.relname tbl, obj_description(c.oid, 'pg_class') commentaire
+            from pg_class c join pg_namespace n on n.oid=c.relnamespace
+           where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='r'
+           order by n.nspname, c.relname`,
+    rendu: (r) => [...r].sort((a, b) => {
+      const x = a.sch + "." + a.tbl, y = b.sch + "." + b.tbl;
+      return x < y ? -1 : x > y ? 1 : 0;
+    }).map((x) => {
+      if (x.commentaire !== null && (typeof x.commentaire !== "string" || x.commentaire.includes("\0"))) throw new Error("Commentaire de table invalide");
+      // E'...' garde le même sens avec standard_conforming_strings ON/OFF.
+      const valeur = x.commentaire === null ? "NULL" : "E'" + x.commentaire.replace(/\\/g, "\\\\").replace(/'/g, "''") + "'";
+      return `comment on table ${nomObjet(x, "tbl")} is ${valeur};`;
+    }) },
+
   { titre: "Séquences rattachées à leur colonne (serial : OWNED BY)",
     // Créée seule plus haut, la séquence d'un `serial` n'appartenait à rien :
     // `pg_get_serial_sequence` la disait NULL, et `restaurer-donnees.js`, qui
@@ -250,6 +268,14 @@ const ETAPES = [
             join pg_attribute a on a.attrelid=d.refobjid and a.attnum=d.refobjsubid
            where s.relnamespace in (${NAMESPACES_SQL}) and s.relkind='S' order by 1,2`,
     rendu: (r) => r.map((x) => `alter sequence ${nomObjet(x, "seq")} owned by ${ident(x.table_schema || "public")}.${ident(x.tbl)}.${ident(x.col)};`) },
+
+  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
+    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
+    // Après TOUTES les tables, avant les CHECK et index qui peuvent appeler
+    // une fonction (profiles.username appelle passion_plier en production).
+    // Les corps exacts restent inchangés, les références croisées permises.
+    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
 
   { titre: "Clés primaires, uniques, CHECK et étrangères",
     sql: `select format('%I.%I', n.nspname, c.relname) as tbl, con.conname, pg_get_constraintdef(con.oid) as def, con.contype,
@@ -294,13 +320,6 @@ const ETAPES = [
     // toute la transaction.
     rendu: (r) => r.map((x) => `alter table ${nomObjet(x, "tbl")} replica identity ${
       x.ri === "f" ? "full" : x.ri === "n" ? "nothing" : x.ri === "i" ? (x.idx ? `using index ${ident(x.idx)}` : "nothing") : "default"};`) },
-
-  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
-    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
-    // `check_function_bodies` coupé le temps de la section : les fonctions
-    // sortent par ordre alphabétique et certaines s'appellent entre elles.
-    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
 
   { titre: "Vues (options security_invoker comprises)",
     sql: `select c.relnamespace::regnamespace::text sch, c.relname table_name, pg_get_viewdef(c.oid, true) def, coalesce(array_to_string(c.reloptions, ', '), '') opts

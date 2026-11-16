@@ -29,7 +29,7 @@ test("① un lot ne coupe JAMAIS une ligne, et reste sous le plafond quand les l
   assert.ok(r.lots.length >= 2, "cinq lignes de 200 Ko tiennent en au moins deux lots de 700 Ko");
 });
 
-test("① bis une ligne plus grosse que le plafond fait un lot À ELLE SEULE (c'est elle que PostgREST reprend)", () => {
+test("① bis une ligne plus grosse que le plafond fait un lot À ELLE SEULE pour le transport SQL fragmenté", () => {
   const grosse = JSON.stringify({ id: "g", blob: "b".repeat(LOT_OCTETS + 10) });
   const petite = JSON.stringify({ id: "p" });
   const f = fichier("g.ndjson", [petite, grosse, petite].join("\n") + "\n");
@@ -381,26 +381,17 @@ test("⑧ ter une table SANS clé primaire sur la cible : l'ancienne clause, et 
   assert.match(bl.notes[0], /^journal : aucune clé primaire sur la cible/);
 });
 
-test("⑧ quater une ligne trop grosse passe par PostgREST : le bilan dit que les déclencheurs y sont ACTIFS, et nomme `rid` quand la ligne en porte un (RÉINJECTION : « passée par PostgREST » seul)", async () => {
+test("⑧ quater une ligne au-delà de32Mio est refusée au bilan, sans écriture REST ni SQL", async () => {
   const m = mondeChargement({
     colonnes: [{ t: "notifications", c: "id" }, { t: "notifications", c: "content" }, { t: "notifications", c: "rid" }],
     cles: [{ t: "notifications", c: "id" }],
   });
-  const geante = JSON.stringify({ id: "n1", content: "a".repeat(LOT_OCTETS + 10), rid: 4242 });
+  const geante = JSON.stringify({ id: "n1", content: "a".repeat(R.LIGNE_MAX_OCTETS + 1), rid: 4242 });
   const ctx = archiveTable("notifications", [geante]);
   const bl = { notes: [], refus: [] };
   await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "notifications", bl));
-  assert.ok(m.envoye.includes("REST /rest/v1/notifications"), "la ligne géante part par PostgREST");
-  assert.equal(m.envoye.filter((q) => q.startsWith("begin;")).length, 0, "et pas par l'API de gestion");
-  assert.equal(bl.notes.length, 1);
-  assert.match(bl.notes[0], /passée par PostgREST/);
-  assert.match(bl.notes[0], /déclencheurs ACTIFS/);
-  assert.match(bl.notes[0], /`rid`, re-tiré par trg_rid_opaque/);
-  assert.match(bl.notes[0], /la vérification dira la ligne divergente/);
-  // Sans `rid` dans la ligne, la note garde l'avertissement général, sans nommer `rid`.
-  const ctx2 = archiveTable("notifications", [JSON.stringify({ id: "n2", content: "b".repeat(LOT_OCTETS + 10) })]);
-  const bl2 = { notes: [], refus: [] };
-  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx2, "notifications", bl2));
-  assert.match(bl2.notes[0], /déclencheurs ACTIFS/);
-  assert.doesNotMatch(bl2.notes[0], /trg_rid_opaque/);
+  assert.ok(!m.envoye.some(q=>q.startsWith("REST ")), "aucun chemin client avec triggers actifs");
+  assert.equal(m.envoye.filter(q=>q.startsWith("begin;")).length,0);
+  assert.deepEqual(bl.refus,["notifications : LO_LIGNE_SUPERIEURE_32_MIO"]);
+  assert.deepEqual(bl.notes,[]);
 });

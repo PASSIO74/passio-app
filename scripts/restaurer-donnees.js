@@ -8,6 +8,7 @@
 //   node scripts/restaurer-donnees.js --archive <dossier> --projet <ref>
 //        [--schema <fichier.sql>] [--sans-comptes] [--sans-medias]
 //        [--verifier] [--purger] [--preuve <fichier.json>]
+//        [--nettoyer-grand-objet <journal.json>] (après un arrêt brutal)
 //
 // CE QU'IL FAIT, dans l'ordre — et chaque étape rend un nombre qu'on compare :
 //   ① le SCHÉMA : les tables du manifeste doivent exister sur la cible ; sinon,
@@ -65,6 +66,9 @@ const API = "https://api.supabase.com/v1/projects";
 // Un lot SQL reste sous ~700 Ko : l'API de gestion accepte des corps de
 // quelques Mo, et un lot plus petit localise mieux une ligne refusée.
 const LOT_OCTETS = 700 * 1024;
+const LIGNE_MAX_OCTETS = 32 * 1024 * 1024;
+const FRAGMENT_OCTETS = 256 * 1024;
+const DUREE_GRAND_OBJET_MS = 5 * 60 * 1000;
 
 // Parents d'abord. Ce qui n'est pas nommé ici passe APRÈS, par ordre
 // alphabétique, puis un second tour rejoue ce que les clés étrangères ont
@@ -484,8 +488,9 @@ function lots(f) {
   const lignes = contenu.split("\n").filter(Boolean);
   const out = []; let cur = [], taille = 0;
   for (const l of lignes) {
-    if (taille + l.length > LOT_OCTETS && cur.length) { out.push(cur); cur = []; taille = 0; }
-    cur.push(l); taille += l.length + 1;
+    const octets = Buffer.byteLength(l);
+    if (taille + octets > LOT_OCTETS && cur.length) { out.push(cur); cur = []; taille = 0; }
+    cur.push(l); taille += octets + 1;
   }
   if (cur.length) out.push(cur);
   return { lignes: lignes.length, lots: out };
@@ -569,12 +574,145 @@ select motif, count(*)::int n from _refus group by 1 order by 2 desc;
 commit;`;
 }
 
-/** Une ligne trop grosse pour l'API de gestion (413) passe par PostgREST, clé primaire en garde. */
-async function insererParRest(ctx, t, ligne) {
-  const r = await fetch(`${ctx.url}/rest/v1/${t}`, {
-    method: "POST", headers: entetes(ctx.cle, { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }), body: ligne,
-  });
-  if (!r.ok) throw new Error(`PostgREST ${t} : HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+// Les grosses lignes suivent AUSSI le SQL de restauration. PostgREST réactive
+// les triggers client (notamment le binder médias qui exige une vraie session)
+// et réécrit certaines valeurs. Un seul grand objet PostgreSQL privé sert de
+// transport, jamais une table métier, jamais lo_import ni un JWT inventé.
+// Le journal local ne porte QUE des métadonnées ; aucune ligne ni fragment.
+function validerJournalGrandObjet(ctx, j) {
+  if (!j || j.version !== 1 || j.ref !== ctx.ref || j.ref === PROD_REF || !/^[a-z]{20}$/.test(j.ref)
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(j.run)
+    || !/^[a-z_][a-z0-9_]{0,62}$/.test(j.table) || !Object.hasOwn(ctx.man?.tables || {}, j.table)
+    || !Number.isInteger(j.oid) || j.oid < 16384 || j.oid > 4294967295
+    || !Number.isInteger(j.octets) || j.octets < 2 || j.octets > LIGNE_MAX_OCTETS + 2
+    || !/^[0-9a-f]{64}$/.test(j.sha256)) throw new Error("LO_JOURNAL_INVALIDE");
+  return j;
+}
+const marqueurGrandObjet = (j) => `PASSIO_REPRISE_LO_V1:${j.ref}:${j.run}:${j.table}:${j.octets}:${j.sha256}`;
+function ecrireJournalGrandObjet(fichier, j) {
+  const provisoire = fichier + ".tmp";
+  fs.writeFileSync(provisoire, JSON.stringify(j) + "\n", { mode: 0o600 });
+  fs.renameSync(provisoire, fichier);
+}
+async function sqlGrandObjet(ctx, query, fin) {
+  const body = JSON.stringify({ query });
+  if (Buffer.byteLength(body) > LOT_OCTETS) throw new Error("LO_CORPS_API_TROP_GRAND");
+  for (;;) {
+    const reste = fin - Date.now();
+    if (reste <= 0) throw new Error("LO_DUREE_DEPASSEE");
+    try {
+      const r = await fetch(`${API}/${ctx.ref}/database/query`, { method: "POST",
+        headers: { Authorization: `Bearer ${ctx.jeton}`, "Content-Type": "application/json" },
+        body, signal: AbortSignal.timeout(Math.min(reste, 20000)) });
+      if (r.status === 429) {
+        await r.body?.cancel();
+        const pause = Math.min(30000, fin - Date.now());
+        if (pause <= 0) throw new Error("LO_DUREE_DEPASSEE");
+        await new Promise(r => setTimeout(r, pause));continue;
+      }
+      // Ne jamais recopier une erreur serveur libre : elle peut porter du JSON.
+      if (!r.ok) throw new Error(`LO_HTTP_${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (/^LO_HTTP_\d+$/.test(e.message) || e.message === "LO_DUREE_DEPASSEE") throw e;
+      throw new Error("LO_TRANSPORT_AMBIGU");
+    }
+  }
+}
+function conditionGrandObjet(j) {
+  return `m.oid=${j.oid}::oid and m.lomowner=(select oid from pg_roles where rolname=current_user)
+    and obj_description(m.oid,'pg_largeobject')=${litteral(marqueurGrandObjet(j))}`;
+}
+function gardeGrandObjet(j) {
+  return `if not exists(select 1 from pg_largeobject_metadata m where ${conditionGrandObjet(j)}
+    and not exists(select 1 from aclexplode(coalesce(m.lomacl,acldefault('L',m.lomowner))) a where a.grantee<>m.lomowner))
+    then raise exception using errcode='42501',message='LO_LIAISON_REFUSEE'; end if;`;
+}
+async function lireGrandObjet(ctx, j, fin) {
+  const rows = await sqlGrandObjet(ctx, `select json_build_object('oid',m.oid::bigint,
+    'lie',(${conditionGrandObjet(j)}),
+    'prive',not exists(select 1 from aclexplode(coalesce(m.lomacl,acldefault('L',m.lomowner))) a where a.grantee<>m.lomowner)
+      and not pg_has_role('anon',m.lomowner,'USAGE') and not pg_has_role('authenticated',m.lomowner,'USAGE')
+      and not exists(select 1 from pg_roles where rolname in ('anon','authenticated') and rolsuper)) passio_lo
+    from pg_largeobject_metadata m where m.oid=${j.oid}::oid`, fin);
+  if (!Array.isArray(rows)) throw new Error("LO_RELECTURE_INVALIDE");
+  if (!rows.length) return null;
+  const objet = rows[0].passio_lo;
+  if (!objet || Number(objet.oid) !== j.oid || objet.lie !== true || objet.prive !== true) throw new Error("LO_LIAISON_REFUSEE");
+  return objet;
+}
+/** Nettoyage explicite après arrêt brutal : même ref, archive/table, OID, propriétaire ET marqueur. */
+async function nettoyerGrandObjet(ctx, fichier) {
+  const j = validerJournalGrandObjet(ctx, JSON.parse(fs.readFileSync(fichier, "utf8")));
+  const fin = Date.now() + 20000;
+  if (await lireGrandObjet(ctx, j, fin)) {
+    try { await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
+      do $lo$ begin ${gardeGrandObjet(j)} perform lo_unlink(${j.oid}::oid); end $lo$;commit;`, fin); }
+    catch { /* Un POST de nettoyage ambigu exige la relecture qui suit. */ }
+    if (await lireGrandObjet(ctx, j, fin)) throw new Error("LO_NETTOYAGE_INCOMPLET");
+  }
+  j.etape = "nettoye"; ecrireJournalGrandObjet(fichier, j);
+  ctx._grandObjetActif = false;
+  return true;
+}
+async function insererGrandObjet(ctx, t, cols, ligne, pk) {
+  const octets = Buffer.byteLength(ligne);
+  if (octets > LIGNE_MAX_OCTETS) throw new Error("LO_LIGNE_SUPERIEURE_32_MIO");
+  if (ctx._grandObjetActif) throw new Error("LO_PRECEDENT_NON_NETTOYE");
+  const payload = Buffer.from("[" + ligne + "]", "utf8");
+  const j = validerJournalGrandObjet(ctx, { version: 1, ref: ctx.ref, run: crypto.randomUUID(), table: t,
+    oid: 16384 + crypto.randomInt(4294950912), octets: payload.length,
+    sha256: crypto.createHash("sha256").update(payload).digest("hex"), etape: "creation" });
+  const dossier = ctx.journalGrandsObjets || path.join(os.tmpdir(), "passio-reprise-grands-objets");
+  fs.mkdirSync(dossier, { recursive: true, mode: 0o700 });
+  for (const nom of fs.readdirSync(dossier).filter(n => n.endsWith(".json"))) {
+    const precedent = JSON.parse(fs.readFileSync(path.join(dossier, nom), "utf8"));
+    if (precedent.ref === ctx.ref && precedent.etape !== "nettoye") throw new Error("LO_JOURNAL_EN_ATTENTE_NETTOYAGE");
+  }
+  const fichier = path.join(dossier, j.run + ".json"), fin = Date.now() + DUREE_GRAND_OBJET_MS;
+  ecrireJournalGrandObjet(fichier, j);ctx._grandObjetActif = true;
+  let erreur;
+  try {
+    // Le numéro demandé est journalisé AVANT le POST. lo_create ne remplace
+    // jamais un objet préexistant ; création + marqueur + ACL sont atomiques.
+    try {
+      await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
+        do $lo$ begin perform lo_create(${j.oid}::oid); end $lo$;
+        revoke all on large object ${j.oid} from public,anon,authenticated,service_role;
+        comment on large object ${j.oid} is ${litteral(marqueurGrandObjet(j))};
+        select json_build_object('oid',${j.oid}::bigint) passio_lo;commit;`, fin);
+    } catch { /* Réponse perdue : RELIRE le même OID avant toute suite. */ }
+    if (!await lireGrandObjet(ctx, j, fin)) throw new Error("LO_CREATION_NON_CONFIRMEE");
+    j.etape = "fragments";ecrireJournalGrandObjet(fichier, j);
+    for (let offset = 0; offset < payload.length; offset += FRAGMENT_OCTETS) {
+      const fragment = payload.subarray(offset, offset + FRAGMENT_OCTETS);
+      // Écrire au même offset est idempotent, aucune concaténation ambiguë.
+      try { await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';do $lo$ begin ${gardeGrandObjet(j)}
+        perform lo_put(${j.oid}::oid,${offset},decode('${fragment.toString("hex")}','hex'));end $lo$;commit;`, fin); }
+      catch {
+        const h = crypto.createHash("sha256").update(fragment).digest("hex");
+        const relu = await sqlGrandObjet(ctx, `select json_build_object('ok',exists(select 1 from pg_largeobject_metadata m
+          where ${conditionGrandObjet(j)} and encode(sha256(lo_get(m.oid,${offset},${fragment.length})),'hex')='${h}')) passio_lo`, fin);
+        if (relu?.[0]?.passio_lo?.ok !== true) throw new Error("LO_FRAGMENT_NON_CONFIRME");
+      }
+    }
+    j.etape = "insertion";ecrireJournalGrandObjet(fichier, j);
+    const ident = x => '"' + x.replace(/"/g, '""') + '"', table = "public." + ident(t), c = cols.map(ident).join(", ");
+    await sqlGrandObjet(ctx, `begin;set local statement_timeout='15s';
+      do $lo$ begin ${gardeGrandObjet(j)}
+        if octet_length(lo_get(${j.oid}::oid))<>${j.octets} or encode(sha256(lo_get(${j.oid}::oid)),'hex')<>'${j.sha256}'
+        then raise exception using errcode='23514',message='LO_INTEGRITE_REFUSEE';end if;end $lo$;
+      alter table ${table} disable trigger user;
+      insert into ${table} (${c}) overriding system value select ${c} from json_populate_recordset(null::${table},convert_from(lo_get(${j.oid}::oid),'UTF8')::json) ${clauseConflit(pk)};
+      alter table ${table} enable trigger user;
+      select json_build_object('supprime',lo_unlink(${j.oid}::oid)=1) passio_lo;
+      commit;`, fin);
+  } catch (e) { erreur = e; }
+  finally {
+    try { await nettoyerGrandObjet(ctx, fichier); }
+    catch { throw new Error("LO_NETTOYAGE_NON_PROUVE_JOURNAL_" + j.run); }
+  }
+  if (erreur) throw erreur;
 }
 
 async function chargerTable(ctx, t, bilan) {
@@ -589,18 +727,8 @@ async function chargerTable(ctx, t, bilan) {
   const pk = (await clesPrimaires(ctx)).get(t) || [];
   if (!pk.length) bilan.notes.push(`${t} : aucune clé primaire sur la cible — un conflit d'unicité y écarte une ligne sans la nommer`);
   for (const paquet of paquets) {
-    // Un lot d'UNE ligne plus grosse que le plafond de l'API de gestion
-    // (mesuré : 4,8 Mo pour un seul `user_state`) part par PostgREST —
-    // déclencheurs ACTIFS sur ce chemin-là, et le bilan le dit AVEC SON EFFET :
-    // une colonne qu'un déclencheur pose (`rid` re-tiré par `trg_rid_opaque`
-    // depuis R25, `created_at` d'une notification par `rate_limit_insert`) n'a
-    // plus la valeur de l'archive, et la vérification dira la ligne divergente.
-    if (paquet.length === 1 && paquet[0].length > LOT_OCTETS) {
-      const aRid = Object.prototype.hasOwnProperty.call(JSON.parse(paquet[0]), "rid");
-      try {
-        await insererParRest(ctx, t, paquet[0]);
-        bilan.notes.push(`${t} : 1 ligne de ${Math.round(paquet[0].length / 1024)} Ko passée par PostgREST (trop grosse pour l'API de gestion) — déclencheurs ACTIFS sur ce chemin : une colonne posée par un déclencheur${aRid ? " (`rid`, re-tiré par trg_rid_opaque)" : ""} diffère de l'archive, et la vérification dira la ligne divergente`);
-      }
+    if (paquet.length === 1 && Buffer.byteLength(paquet[0]) > LOT_OCTETS) {
+      try { await insererGrandObjet(ctx, t, cols, paquet[0], pk); }
       catch (e) { bilan.refus.push(`${t} : ${e.message}`); }
       continue;
     }
@@ -1071,8 +1199,8 @@ async function purger(ctx) {
 // `_phases` : les VRAIES fonctions de phase, pour les tests d'intégration
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
-module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
+module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS, LIGNE_MAX_OCTETS, FRAGMENT_OCTETS,
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireSeauxArchive, verifierSeaux, seauxAvantChargement, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger, insererGrandObjet, nettoyerGrandObjet } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -1082,6 +1210,10 @@ if (require.main === module) (async () => {
   const ctx = await contexte();
   exigerPortee(ctx);
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
+  if (arg("--nettoyer-grand-objet")) {
+    await nettoyerGrandObjet(ctx, arg("--nettoyer-grand-objet"));
+    console.log("Grand objet du journal : absence relue ; aucun autre objet visé.");return;
+  }
   if (drapeau("--purger")) { await purger(ctx); return; }
   // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et
   // fichiers, inventaire). Invalide → code 2, la cible n'a pas été touchée.
