@@ -8,7 +8,7 @@
 // appel direct `supaInsertNotif(…, "<genre>", …)` posé à côté de l'écriture —
 // sans attendre son verdict — se ferait refuser : notification légitime perdue.
 //
-// Ce banc recense CHAQUE appel direct à genre littéral de ces genres dans js/,
+// Ce banc recense CHAQUE insertion ou push direct à genre littéral dans js/,
 // et exige qu'il soit l'un des sites connus, chacun avec la PREUVE écrite de
 // son ordonnancement dans les lignes qui le précèdent. Un nouveau site passe par
 // `notifierApresEcriture` (app-08), ou s'ajoute ici avec sa preuve.
@@ -27,7 +27,8 @@ const GENRES_PROUVES = new Set(["like", "comment", "event_join", "event_comment"
 const SITES_CONNUS = [
   { fichier: "app-03-posts-vlogs.js", genre: "like", preuve: /if \(res && res\.ok\)/ },                    // j'aime de publication
   { fichier: "app-07-ia-explore-irl.js", genre: "like", preuve: /supaSetEventLike\(id, voulu\)\)\.then/ },  // PARC-01
-  { fichier: "app-07-ia-explore-irl.js", genre: "event_join", preuve: /rsvpOk === true && rsvp === "going"/ },
+  // La ligne event_join vient du serveur ; le client déclenche uniquement sa push.
+  { fichier: "app-07-ia-explore-irl.js", genre: "event_join", appel: "_pousserPushNotif", preuve: /rsvpOk === true && rsvp === "going"/ },
   { fichier: "app-07-ia-explore-irl.js", genre: "event_comment", preuve: /if \(realId && ev/ },
   { fichier: "app-05-config-profil.js", genre: "live_video", preuve: /async function _vliveNotifyFollowers/ }, // appelée après l'insert du direct
   { fichier: "app-07-ia-explore-irl.js", genre: "event_invite", preuve: /_rememberEventInvite/ },          // l'invitation EST la notification
@@ -39,8 +40,8 @@ function appelsDirects() {
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".js"))) {
     const lignes = readFileSync(join(dir, f), "utf8").split(/\r?\n/);
     lignes.forEach((l, i) => {
-      for (const m of l.matchAll(/supaInsertNotif\(\s*[^,()]+,\s*"([a-z_]+)"/g)) {
-        if (GENRES_PROUVES.has(m[1])) out.push({ fichier: f, genre: m[1], ligne: i + 1, avant: lignes.slice(Math.max(0, i - 20), i + 1).join("\n") });
+      for (const m of l.matchAll(/(supaInsertNotif|_pousserPushNotif)\(\s*[^,()]+,\s*"([a-z_]+)"/g)) {
+        if (GENRES_PROUVES.has(m[2])) out.push({ fichier: f, appel: m[1], genre: m[2], ligne: i + 1, avant: lignes.slice(Math.max(0, i - 20), i + 1).join("\n") });
       }
     });
   }
@@ -49,11 +50,12 @@ function appelsDirects() {
 
 test("chaque notification soumise à la preuve attend le verdict de son écriture", () => {
   const appels = appelsDirects();
-  const inconnus = appels.filter((a) => !SITES_CONNUS.some((s) => s.fichier === a.fichier && s.genre === a.genre));
+  const correspond = (a, s) => s.fichier === a.fichier && s.genre === a.genre && (s.appel || "supaInsertNotif") === a.appel;
+  const inconnus = appels.filter((a) => !SITES_CONNUS.some((s) => correspond(a, s)));
   assert.deepEqual(inconnus.map((a) => a.fichier + ":" + a.ligne + " (" + a.genre + ")"), [],
-    "appel direct à supaInsertNotif en parallèle de son écriture : passer par notifierApresEcriture (app-08)");
+    "insertion ou push directe sans site relu : attendre le verdict de son écriture");
   for (const s of SITES_CONNUS) {
-    const trouves = appels.filter((a) => a.fichier === s.fichier && a.genre === s.genre);
+    const trouves = appels.filter((a) => correspond(a, s));
     assert.equal(trouves.length, 1, s.fichier + " / " + s.genre + " : un seul site attendu, " + trouves.length + " trouvé(s)");
     assert.match(trouves[0].avant, s.preuve, s.fichier + ":" + trouves[0].ligne + " (" + s.genre + ") : la preuve d'ordonnancement a disparu");
   }
