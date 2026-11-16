@@ -11,7 +11,7 @@
 // existante ne prouve pas une nouvelle connexion. Format absent/inconnu : refus.
 // ═════════════════════════════════════════════════
 
-const METHODES_CONNEXION = new Set(["password", "oauth", "otp", "saml/sso"]);
+const METHODES_CONNEXION = new Set(["password", "oauth", "otp", "sso/saml", "magiclink"]);
 
 /** La dernière authentification primaire porte-t-elle moins de maxSecondes ? */
 export function connexionRecente(enTeteAuthorization, maxSecondes, maintenantS = Math.floor(Date.now() / 1000)) {

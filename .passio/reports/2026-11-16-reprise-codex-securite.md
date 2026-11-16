@@ -16,27 +16,31 @@ Benjamin a étendu le mandat d'audit aux corrections et à leur livraison. La re
 
 | Surface | État prouvé à cette étape | Limite |
 |---|---|---|
-| Administration | La session précédente a consigné l'exigence du second facteur et la relecture de la configuration | Configuration non recontrôlée par cette reprise ; parcours mobile du propriétaire non rejoué |
+| Administration | La session précédente a consigné l'exigence du second facteur ; présence du paramètre relue | Valeur et effet du contrôle AAL2 à rejouer ; parcours mobile du propriétaire non rejoué |
 | Relais d'appels | La session précédente a consigné la fermeture de l'émission des nouveaux identifiants | État fournisseur et expiration des identifiants déjà émis non recontrôlés |
-| Authentification | La session précédente a consigné l'activation des notifications de sécurité et leur relecture | Réception d'un email et configuration actuelle non démontrées par cette reprise |
+| Authentification | Les trois notifications de sécurité configurées ont été relues à vrai le 16 novembre ; contrôle de connexion primaire relu et testé | Réception effective des emails et sessions réelles non démontrées par ces relevés |
 | Messagerie | Correctif client et borne serveur préparés ; régression trouvée en contre-revue puis corrigée | SQL et code non déclarés livrés par leur seule présence dans Git |
 | Rencontres | Réserves de création, export, suppression, rétention et notification corrigées et relues séparément | Bancs PostgreSQL et essais sur cible encore requis ; promotion/suppression concurrentes hors couverture actuelle |
-| Social | Rendu renforcé et contrôles serveur préparés | Vérification PostgreSQL des droits et de la composition des policies requise |
-| Auth/Edge et veille | Correctifs préparés et tests locaux ciblés | Configuration, ordre de livraison, revue indépendante et vérification sur cible requis |
+| Social | Rendu renforcé ; 102 cas de privilèges/RLS réussis sur PostgreSQL natif jetable en CI | Cela ne prouve pas l'application sur les cibles réelles |
+| Auth/Edge et veille | Code relu séparément ; banc de veille avec vraie migration et journal, 40 contrôles WASM réussis | Configuration coordonnée et preuve PostgreSQL native du nouveau banc encore requises |
 | CI et agents | Cloisonnement des secrets et réduction des données non fiables préparés | Les règles textuelles d'un agent ne prouvent pas un confinement de ses permissions |
-| Abus et capacité | Lot de plafonds et de réduction des lectures en revue | Amplification, accès anonymes et plafond financier global restent à prouver séparément |
+| Abus et capacité | Plafonds et lectures renforcés ; budget de diffusion messages/accusés intégré et relu, 12 tests client réussis | Preuve SQL native attendue ; Broadcast directs, cumul de comptes, lectures anonymes et plafond financier global hors de cette preuve |
 
 ## Vérifications acquises et contrôles encore ouverts
 
-Le passage ciblé actuel exécute **106 tests unitaires : 106 réussis**, sur les messages, rencontres, export, push, rétention, CI et plafonds. **35 scénarios Chrome distincts** ont été vérifiés avec les API interceptées : accès aux discussions, refus et succès d'inscription, adresse, messages et rendu social. Un scénario a d'abord reproduit la notification en double ; le correctif a été intégré, puis les neuf scénarios de ce fichier et les trois scénarios sociaux ont tous réussi. Ces bancs ne prouvent pas la RLS déployée.
+Une campagne ciblée a exécuté **106 tests unitaires : 106 réussis**, sur les messages, rencontres, export, push, rétention, CI et plafonds. Les campagnes supplémentaires ont validé les 12 tests du client de reprise Realtime et 20 tests de connexion/export/suppression. Les connexions primaires documentées sont reconnues, sans traiter un renouvellement ou un second facteur seul comme une nouvelle connexion.
 
-Le build local et son contrôle d'intégrité passent : neuf scripts applicatifs et la feuille de style correspondent aux empreintes déclarées. La version minifiée et les suites complètes restent à vérifier par la CI. Le banc SQL social est maintenant découvert par le lanceur automatique ; les bancs de concurrence exigent PostgreSQL natif et refusent une simulation locale qui prétendrait le remplacer.
+**35 scénarios Chrome distincts** ont été vérifiés avec les API interceptées : accès aux discussions, refus et succès d'inscription, adresse, messages et rendu social. Un scénario était rouge avant la correction du producteur client supplémentaire de notification, puis son fichier et les scénarios sociaux ont réussi. Deux autres suites ont ensuite validé **30 scénarios**, avec **10 répétitions ciblées réussies**. Les deux scénarios corrigés ont été rendus rouges par réinjection locale du défaut ; les mutations ont été retirées. Ces résultats concernent les versions testées et ne prouvent pas la RLS déployée ; la CI doit confirmer l'ensemble au commit final.
+
+Le build local **minifié** et son contrôle d'intégrité passent : neuf scripts applicatifs et la feuille de style correspondent aux empreintes déclarées. Les quatre prérequis client des nouvelles migrations ont été vérifiés dans les scripts minifiés ; deux marqueurs initialement limités à des commentaires ont été corrigés pour survivre au build. Le banc SQL social est maintenant découvert par le lanceur automatique ; les bancs de concurrence exigent PostgreSQL natif et refusent une simulation locale qui prétendrait le remplacer.
 
 Les audits locaux de données personnelles suivies dans Git, d'échappement, de globals et de publication Realtime passent. Leurs analyses statiques ont une portée limitée aux formes reconnues.
 
 Le premier passage CI était rouge. Ses deux échecs unitaires ont été corrigés localement ; les attentes navigateur ont été adaptées au nouveau contrat, en préservant les assertions de refus. Le contrôle général a ensuite identifié une borne non référencée pour le nouveau job de build de preview : corrigée et testée. Son majorant initial provient de l'ancien job complet ; la durée du job séparé reste à relever lors de son premier passage CI réussi. Une nouvelle CI et une revue ancrée sur le commit final restent nécessaires avant fusion.
 
-Le lot de réduction de l'amplification Realtime est traité séparément : sa présence dans le plan ne constitue pas une réparation ni une livraison. Le cumul de trafic de plusieurs comptes, les plafonds financiers et les lectures anonymes ne deviennent pas bornés par un seul quota par compte.
+`npm run verif` a été rejoué entièrement après intégration du budget client : résultat vert. La CI a ensuite validé 102 cas sociaux sur PostgreSQL natif et identifié deux défauts dans les nouveaux bancs : observation périmée des statistiques de contention et décor historique de télémétrie incorrect. Les corrections préservent les assertions de concurrence, de rétention et d'horloge serveur. Leur rejeu natif, celui du budget et celui de la veille restent requis.
+
+Le budget Realtime est préparé et relu, avec refus avant émission et reprise bornée des accusés par propriétaire. Il ne constitue pas une garantie de livraison distante. Le cumul de trafic de plusieurs comptes, les plafonds financiers et les lectures anonymes ne deviennent pas bornés par un seul quota par compte.
 
 Les contre-revues par des agents séparés ont effectivement détecté des régressions avant livraison. Elles ne sont ni une revue humaine indépendante, ni une certification de sécurité. Toute retouche critique invalide les conclusions portant uniquement sur le commit précédent.
 
@@ -49,6 +53,8 @@ Les contre-revues par des agents séparés ont effectivement détecté des régr
 5. Vérifier version servie, configuration, état effectif et disponibilité ; conserver un retour arrière examiné qui ne réouvre pas silencieusement une faille.
 
 Les plafonds de dépenses, la restauration de sauvegardes et les kill switches doivent être vérifiés par leur résultat effectif. Une sauvegarde présente ne prouve pas une restauration réussie.
+
+La confrontation des catalogues réels du 16 novembre a confirmé des prérequis manquants sur une cible et une configuration opérationnelle à préparer avant la livraison. Ces vérifications sont restées en lecture seule. Aucune migration, modification de configuration de production ou rotation de secret n'a été effectuée par cette nouvelle reprise.
 
 ## Réponses directes à cette étape
 

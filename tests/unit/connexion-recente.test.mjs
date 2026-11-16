@@ -41,5 +41,14 @@ test("④ les deux fonctions portent la garde, avant tout effet", () => {
   for (const amr of [[{method:"totp",timestamp:MAINTENANT}], [{method:"password",timestamp:MAINTENANT-99999},{method:"totp",timestamp:MAINTENANT}], [{method:"inconnue",timestamp:MAINTENANT}], [{method:"password",timestamp:MAINTENANT+1}], [{method:"password",timestamp:String(MAINTENANT)}]]) {
     assert.equal(connexionRecente(jeton({amr}), 900, MAINTENANT), false);
   }
-  for (const method of ["password", "oauth", "otp", "saml/sso"]) assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT}]}),900,MAINTENANT), true);
+  for (const method of ["password", "oauth", "otp", "sso/saml", "magiclink"]) assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT}]}),900,MAINTENANT), true);
  });
+
+test("un renouvellement ou une récupération ne remplace pas une connexion primaire", () => {
+  for (const method of ["token_refresh", "recovery", "email_change", "saml/sso"]) {
+    assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT}]}),900,MAINTENANT), false);
+  }
+  for (const method of ["sso/saml", "magiclink"]) {
+    assert.equal(connexionRecente(jeton({amr:[{method,timestamp:MAINTENANT-901}]}),900,MAINTENANT), false);
+  }
+});
