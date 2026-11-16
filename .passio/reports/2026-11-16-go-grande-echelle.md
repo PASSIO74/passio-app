@@ -11,7 +11,7 @@ La PR951 a livré son lot de sécurité : client et cinq fonctions Edge de même
 | Lot | État | Prochaine preuve |
 |---|---|---|
 | Réconciliation sécurité/privacy/continuité | Inventaire actuel en cours | Défauts reproduits et statuts datés, sans reconduire aveuglément les constats anciens |
-| Inscription et réception réelle de l’email | DNS vérifié (4/4) ; réception encore non vérifiée | Recette complète avec boîte de test autorisée demandée à Benjamin |
+| Inscription et réception réelle de l’email | DNS 4/4 ; réception et connexion déclarées par Benjamin ; confirmation/session/consentements vérifiés côté serveur | Refus, renvoi et expiration à rapprocher de la couverture existante |
 | Parcours produit/modération | Couverture actuelle à rapprocher des critères | Matrice et recette ciblée, puis correction des défauts réels |
 | Reprise complète | Nouveau DDL privé et bancs natifs validés par PR951 ; exercice hébergé complet encore à établir | Cycle isolé avec comptes et médias synthétiques et tables privées |
 | Capacité à volume | Fil du banc aligné sur le RPC actuel ; prévol staging réussi ; banc natif corrigé et exercé | Paliers de concurrence, puis interprétation du volume et des limites |
@@ -19,7 +19,9 @@ La PR951 a livré son lot de sécurité : client et cinq fonctions Edge de même
 
 ## Vérifications du 16 novembre
 
-Le prévol fonctionnel du banc réaliste s’est terminé sur staging à 18:52 UTC : deux comptes Auth distincts, lecture du fil par le RPC actuel, publication relue par le destinataire, message livré et compteur de « j’aime » vérifié à 1 → 2 → 1. Zéro palier de charge exécuté. Nettoyage déclaré réussi, puis contrôlé séparément par une transaction en lecture seule à 18:54:59 UTC : 21 catégories sans résidu, un identifiant technique de l’activité supprimée volontairement conservé par le mécanisme anti-réutilisation. Les comptes, profils, publications, commentaires, conversations et participations du test ont disparu. Cette trace technique n’est pas présentée comme zéro.
+Le prévol fonctionnel du banc réaliste s’est terminé sur staging à 18:52 UTC : deux comptes Auth distincts, lecture du fil par le RPC actuel, publication relue par le destinataire, message livré et compteur de « j’aime » vérifié à 1 → 2 → 1. Zéro palier de charge pendant ce prévol. Nettoyage déclaré réussi, puis contrôlé séparément par une transaction en lecture seule à 18:54:59 UTC : 21 catégories sans résidu, un identifiant technique de l’activité supprimée volontairement conservé par le mécanisme anti-réutilisation. Les comptes, profils, publications, commentaires, conversations et participations du test ont disparu. Cette trace technique n’est pas présentée comme zéro.
+
+La recette publique d’inscription a été réalisée avec Benjamin sur une boîte Gmail autorisée : réception du message, confirmation et connexion réussies selon son retour. À 19:48:06 UTC, une lecture serveur limitée au compte de test confirme exactement un compte, une confirmation, une connexion enregistrée, une session active et les consentements aux versions courantes. Le captcha a demandé une intervention humaine ; aucun contournement ni préconfirmation administrative n’a servi de preuve à cette recette.
 
 Le banc SQL natif utilise une base locale jetable, PostgreSQL 17.12, 100 000 profils applicatifs distincts, 100 000 publications, 300 000 likes et 200 000 commentaires. Une omission d’index dans le premier montage a été reproduite et corrigée en reprenant uniquement onze index déjà déclarés dans les migrations. Le catalogue est vérifié avant insertion ; une absence ou une différence fait désormais échouer le test. Aucun index produit nouveau n’est créé par ce lot.
 
@@ -43,4 +45,4 @@ Le contrôle du workflow de déploiement a été disponible sur les 44 observati
 
 Les paliers portent sur un petit corpus fonctionnel ; ils ne sont pas une charge combinée avec les 100 000 profils du banc SQL local. Commentaires écrits, RSVP, reconnexion, endurance, débit média et réception SMTP restent à éprouver séparément. Les deux paliers verts ne constituent pas un GO grande échelle.
 
-Les lots de confidentialité et de récupération restent en préparation et en contre-revue. Aucun correctif ni changement de configuration n’a encore été déployé en production dans ce nouveau chantier. La recette d’inscription réelle, autorisée sur une boîte Gmail de test, requiert une validation humaine du captcha ; aucune réception n’est annoncée sans preuve. Le **GO reste à établir** après corrections, recettes, charge et livraison vérifiée.
+Les lots de confidentialité et de récupération restent en préparation et en contre-revue. Aucun correctif ni changement de configuration n’a encore été déployé en production dans ce nouveau chantier. Le compte autorisé reste réservé à la recette ; aucun compte extérieur aux campagnes n’est concerné par leur nettoyage. Le **GO reste à établir** après corrections, recettes, charge et livraison vérifiée.
