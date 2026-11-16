@@ -7979,24 +7979,15 @@ async function supaLoadMessages(convId) {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
 
-      // Essayer de décoder le content comme JSON
-      var contentData = null;
-      var contentText = r.content || "";
-      try {
-        // Toujours essayer de parser comme JSON
-        contentData = JSON.parse(r.content);
-        _diag("supaLoadMessages: JSON parsé - type=" + (contentData.type || "N/A"));
-      } catch(e) {
-        // content n'est pas du JSON, c'est du texte normal
-        contentData = null;
-      }
+      var contentData = _messageContentData(r.content);
+      var contentText = contentData ? (typeof contentData.text === "string" ? contentData.text : (r.content || "")) : "[Message invalide]";
 
       var msg = {
         id: r.id,
         from: r.from_id === MY_UID ? "me" : r.from_id,
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
-        text: contentData && contentData.text ? contentData.text : contentText,
+        text: contentText,
         at: supaTs(r.created_at) + _fractionMicrosecondes(r.created_at),
       };
 
@@ -8417,7 +8408,10 @@ async function supaLoadMyConversations() {
       if (!seenUsers[key]) { seenUsers[key] = true; deduped.push(c); }
     }
     return deduped;
-  } catch(e) { return []; }
+  } catch(e) {
+    try { if (typeof diagLog === "function") diagLog("conv_liste_echec " + String(e && e.name || "Error")); } catch (_e) {}
+    return [];
+  }
 }
 
 // supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
@@ -8567,7 +8561,7 @@ async function _handleIncomingConvMessage(r, opts) {
   // Messages de contrôle (pas de bulle) : suppression « pour tous » et réactions.
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
-      var _dd = JSON.parse(r.content);
+      var _dd = _messageContentData(r.content);
       // ⚠️ CANAL v2 : UN CONTRÔLE DIFFUSÉ N'EST JAMAIS APPLIQUÉ (revue du
       // 2026-11-03). La règle « l'expéditeur est le `from_id` DE LA LIGNE » ne
       // tient que si la ligne vient du serveur (RLS d'INSERT : `from_id =

@@ -8106,12 +8106,42 @@ async function _forwardTo(targetConvId) {
 // Les messages vocaux (audio/webm ou "Message vocal (Xs)") vont vers le lecteur intégré
 // (m.voiceData) ; les autres fichiers audio restent des pièces jointes téléchargeables.
 // `raw` est optionnel : par défaut on tente de décoder m.text.
+// B06-N1 / D06-03 : une enveloppe invalide reste UNE bulle, jamais un fil vide.
+// Partagé par la liste, le rejeu et le temps réel ; aucune coercition d'objet hostile.
+function _messageContentData(raw) {
+  if (raw == null || raw === "") return { type: "text", text: "" };
+  if (typeof raw !== "string") return null;
+  var d;
+  try { d = JSON.parse(raw); } catch (e) {
+    return /^[\s]*[\[{]/.test(raw) ? null : { type: "text", text: raw };
+  }
+  if (!d || typeof d !== "object") return { type: "text", text: raw };
+  if (Array.isArray(d)) return null;
+  if (["text", "t", "gif", "location", "media", "audio", "doc", "react", "del"].indexOf(d.type) < 0) return null;
+  var strings = ["text", "url", "fileType", "filename", "target", "emoji", "op"];
+  if (strings.some(function(k) { return d[k] != null && typeof d[k] !== "string"; })) return null;
+  for (var name of ["sp", "rt"]) {
+    if (d[name] == null) continue;
+    if (typeof d[name] !== "object" || Array.isArray(d[name])) return null;
+    var keys = name === "sp" ? ["e", "c", "n", "ph"] : ["id", "t", "n"];
+    if (keys.some(function(k) { return d[name][k] != null && typeof d[name][k] !== "string"; })) return null;
+  }
+  if (["gif", "media", "audio", "doc"].indexOf(d.type) >= 0 && typeof d.url !== "string") return null;
+  if (d.type === "location" && (typeof d.lat !== "number" || !Number.isFinite(d.lat) || Math.abs(d.lat) > 90 ||
+      typeof d.lng !== "number" || !Number.isFinite(d.lng) || Math.abs(d.lng) > 180)) return null;
+  if ((d.type === "react" || d.type === "del") && (typeof d.target !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(d.target))) return null;
+  if (d.type === "react" && (typeof d.emoji !== "string" || !d.emoji || (d.op != null && d.op !== "add" && d.op !== "remove"))) return null;
+  return d;
+}
 function applyMsgContentData(m, raw) {
   var src = (raw === undefined || raw === null) ? m.text : raw;
-  if (!src || typeof src !== "string" || src.trim().charAt(0) !== "{") return;
-  var d;
-  try { d = JSON.parse(src); } catch (e) { return; }
-  if (!d || !d.type) return;
+  var d = _messageContentData(src);
+  if (!d) {
+    m.text = "[Message invalide]";
+    try { if (typeof diagLog === "function") diagLog("msg_forme_invalide"); } catch (e) {}
+    return;
+  }
+  if (typeof m.text !== "string") m.text = "";
   // ⚠️ L'IDENTITÉ VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE (PRO-02, 2026-09-14).
   // `sp` (cf. _withSenderMeta, app-02) est écrit par l'ÉMETTEUR dans `content`,
   // que tout membre d'une conversation peut poser librement. Il primait sur la
@@ -8163,7 +8193,7 @@ function applyMsgContentData(m, raw) {
     m.fileName = d.filename;
     m.fileType = d.type;
   }
-  if (d.text && m.text !== d.text) m.text = d.text;
+  if (typeof d.text === "string" && m.text !== d.text) m.text = d.text;
 }
 
 // Téléchargement doc depuis store global
