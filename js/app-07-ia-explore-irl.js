@@ -2182,7 +2182,7 @@ function renderIrlPassionTiles() {
     const isMine = mineSet.has(pid);
     return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
         aria-pressed="${escapeHtml(isActive)}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
-      <span class="msg-tile-icon">${p.emoji}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
+      <span class="msg-tile-icon">${escapeHtml(p.emoji)}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
@@ -3264,7 +3264,7 @@ function renderIRL() {
         </div>
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
-          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
+          <div class="event-meta">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
         </div>
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
@@ -4595,7 +4595,7 @@ function openEventDetails(id) {
     // Le <select> de création ne propose que des valeurs fixes, mais rien
     // n'empêche une insertion REST directe.
     heroTitle.innerHTML = `
-      <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
+      <div class="event-detail-passion-badge">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
       <div class="event-detail-title">${escapeHtml(ev.title || "Activité")}</div>
     `;
   }

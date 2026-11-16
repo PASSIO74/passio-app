@@ -3342,7 +3342,7 @@ function renderReelHTML(post, idx) {
           <div class="reel-avatar" style="background:${avatarBg(author)};">${avatarInner(author)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
+            <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>

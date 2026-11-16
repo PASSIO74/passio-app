@@ -1994,3 +1994,9 @@ Il couvre les rôles, l'attente/accord, la révocation, le compteur, l'historiqu
 de la migration (la dernière après approbation : le nettoyage doit préserver l'accord existant).
 Ce socle est réduit : la chaîne complète des triggers de production doit encore être éprouvée.
 La photographie de production n'est pas copiée dans le dépôt. Aucun test:prod ni charge réseau.
+## Contrôles sociaux complémentaires — 2026-11-16 (non appliqués)
+
+Migration locale : migration_social_visibilite_2026-11-16.sql. Fiche, ordre client,
+limites et retour arrière : docs/journal/social-messagerie.md, entrée du 2026-11-16.
+Aucun corps de fonction ni paramètre de production modifié. Validation SQL sous
+rôles réels à effectuer avant application ; ne pas confondre relecture et exécution.
