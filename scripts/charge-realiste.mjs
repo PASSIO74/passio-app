@@ -9,7 +9,7 @@ import { verdictReponse } from "./charge-verdict.mjs";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs, familleFrameRealtime,
-  partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
+  partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, mixObserve, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
 const octets = value => Buffer.byteLength(value, "utf8");
@@ -47,10 +47,12 @@ export async function executer(options) {
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
   const rapport = { version: 2, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
+    cheminFil: "rpc/fil_compteurs + auteurs et interactions des apercus ; aucun repli legacy",
     comparaisonDemandee: o.pages.length === 2,
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
       "Sans telechargement de medias, upload, inscription par email, rendu mobile ou cache du navigateur.",
+      "Le mix observe distingue actions, appels HTTP et cycles de compteurs ; ni commentaires ecrits, ni RSVP, reconnexion ou plusieurs sessions d'un compte.",
       "Sans CDC : publications confirmees par lecture JWT destinataire ; messages prives par Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
       "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
@@ -66,6 +68,7 @@ export async function executer(options) {
   function sauvegarder() {
     rapport.budget = budget.resume(); rapport.budgetNettoyage = nettoyageBudget?.resume() ?? null;
     rapport.dureeTotaleMs = Date.now() - debut;
+    rapport.mixObserve = mixObserve(mesures);
     writeFileSync(destination, JSON.stringify({ ...rapport, mesures }, null, 2));
     writeFileSync(destination + ".manifest.json", JSON.stringify({ projet: o.projet, campagne: prefix,
       comptes: comptes.map(c => c.id), emailsSynthetiquesAttendus: emailsAttendus, profils: profilsFixture, posts: [...postsFixture.map(p => p.id), ...mutationsPosts],
@@ -315,22 +318,30 @@ export async function executer(options) {
   }
   async function fil(compte, page) {
     const jwt = compte.jwt;
-    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
+    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
     const ids = posts.map(p => p.id);
-    const lots = await Promise.allSettled([
-      rest("fil_likes", "post_likes", { select: "post_id,user_id", post_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["post_id", "user_id"]) }),
-      rest("fil_commentaires", "post_comments", { select: "post_id,id,author_id,content,created_at", post_id: liste(ids), order: "created_at.desc", limit: "200" }, { jwt, attentes: attendreTableau(0, ["post_id", "id", "author_id"]) }),
-      rest("fil_interactions", "comment_interactions", { select: "comment_id,user_id,kind,payload,created_at", comment_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["comment_id", "user_id"]) }),
-    ]);
-    const refus = lots.find(r => r.status === "rejected");
-    if (refus) throw refus.reason;
-    const [likes, commentaires, reactions] = lots.map(r => r.value);
+    const compteurs = await rest("fil_compteurs", "rpc/fil_compteurs", {}, { jwt, methode: "POST", corps: { _post_ids: ids },
+      attentes: attendreTableau(ids.length, ["post_id", "likes", "aime", "commentaires", "apercus", "reactions"]) });
+    const visibles = new Set(ids), parPost = new Map(), commentaires = [];
+    for (const c of compteurs) {
+      if (!visibles.has(c.post_id) || parPost.has(c.post_id)) throw new Error("COMPTEURS_CIBLES_INVALIDES");
+      if (![c.likes, c.commentaires].every(n => Number.isSafeInteger(n) && n >= 0) || typeof c.aime !== "boolean"
+        || !Array.isArray(c.apercus) || c.apercus.length > 2 || c.apercus.length > c.commentaires || !Array.isArray(c.reactions))
+        throw new Error("COMPTEURS_FORME_INVALIDE");
+      parPost.set(c.post_id, c);
+      for (const a of c.apercus) {
+        if (!a || typeof a.id !== "string" || !a.id || typeof a.author_id !== "string" || !a.author_id
+          || typeof a.content !== "string" || typeof a.created_at !== "string") throw new Error("APERCU_FORME_INVALIDE");
+        commentaires.push({ ...a, post_id: c.post_id });
+      }
+    }
+    if (parPost.size !== visibles.size) throw new Error("COMPTEURS_CIBLES_INVALIDES");
     // Après vingt publications, la page de vingt peut ne plus contenir aucun
     // post de fixture : ces nouveaux posts n'ont légitimement aucun commentaire.
     // À l'inverse, une fixture encore visible doit conserver SON commentaire,
     // avec son auteur attendu ; un tableau vide n'est alors jamais acceptable.
-    const visibles = new Set(ids), parId = new Map(commentaires.map(c => [c.id, c]));
-    if (commentaires.some(c => !visibles.has(c.post_id))) throw new Error("COMMENTAIRE_HORS_PAGE");
+    const parId = new Map(commentaires.map(c => [c.id, c]));
+    if (parId.size !== commentaires.length) throw new Error("APERCUS_DUPLIQUES");
     for (let i = 0; i < postsFixture.length; i++) {
       const p = postsFixture[i]; if (!visibles.has(p.id)) continue;
       const c = parId.get(`${prefix}_comment_${i}`);
@@ -338,10 +349,22 @@ export async function executer(options) {
         throw new Error("COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE");
       }
     }
-    const auteurs = [...new Set(commentaires.map(c => c.author_id))];
-    const profils = auteurs.length ? await rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) }, { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [];
+    const auteurs = [...new Set(commentaires.map(c => c.author_id))], idsApercus = commentaires.map(c => c.id);
+    const lots = await Promise.allSettled([
+      auteurs.length ? rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) },
+        { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [],
+      idsApercus.length ? rest("fil_interactions_apercus", "comment_interactions",
+        { select: "id,comment_id,post_id,user_id,kind,payload,created_at", comment_id: liste(idsApercus), order: "created_at.asc" },
+        { jwt, attentes: attendreTableau(0, ["id", "comment_id", "user_id"]) }) : [],
+    ]);
+    const refus = lots.find(r => r.status === "rejected");
+    if (refus) throw refus.reason;
+    const [profils, interactions] = lots.map(r => r.value);
+    if (interactions.some(c => !idsApercus.includes(c.comment_id))) throw new Error("INTERACTION_HORS_APERCUS");
     if (phase === "mesure") compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
-    return { posts: ids, likes: likes.length, commentaires: commentaires.length, reactions: reactions.length, profils: profils.length };
+    return { posts: ids, likes: compteurs.reduce((n, c) => n + c.likes, 0),
+      commentaires: compteurs.reduce((n, c) => n + c.commentaires, 0), apercus: commentaires.length,
+      reactions: compteurs.reduce((n, c) => n + c.reactions.length, 0), profils: profils.length, interactionsApercus: interactions.length };
   }
   async function cycleCompteursVisibles(compte, fin, pasMs) {
     const debutCycle = performance.now(), date = new Date().toISOString(); let ok = false, motif = null, lectures = 0;
@@ -558,6 +581,7 @@ export async function executer(options) {
         profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
         dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
         http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
+        mixObserve: mixObserve(subset),
         compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", politique: o.compteursCadence, coalescenceAvecFil: false,
           cycles: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
           cyclesCalmes: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles" && m.vivant === false).length,
@@ -567,7 +591,7 @@ export async function executer(options) {
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
         framesRealtime: Object.values(rapport.framesRealtime).filter(f => f.phase === "mesure" && f.palier === taille && f.page === page), verdict };
       rapport.paliers.push(resultat); changerPhase("fin_mesure"); sauvegarder();
-      console.log(`Palier ${taille} personnes / page ${page} : ${resultat.verdict.ok ? "valide dans ce scenario" : "arret"}, HTTP p95 ${http.p95Ms} ms, erreurs ${http.erreurs}/${http.tentatives}.`);
+      console.log(`Palier ${taille} personnes / page ${page} : ${resultat.verdict.ok ? "valide dans ce scenario" : "arret"}, HTTP p95 ${http.p95Ms} ms, p99 ${http.p99Ms} ms, erreurs ${http.erreurs}/${http.tentatives}.`);
       return resultat;
     } finally { await fermerSockets(); stage = null; }
   }
