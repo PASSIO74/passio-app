@@ -53,10 +53,10 @@ begin
   if base_url is distinct from ('https://' || projet || '.supabase.co') then
     raise exception 'URL Vault differente du projet cible declare';
   end if;
-  if (select count(*) from vault.decrypted_secrets
-       where name = 'pilotage_veille_secret' and length(btrim(decrypted_secret)) > 0) <> 1
-     or (select count(*) from vault.decrypted_secrets
-       where name = 'pilotage_veille_anon_key' and length(btrim(decrypted_secret)) > 0) <> 1 then
+  if not (select count(*) = 1 and bool_and(coalesce(length(btrim(decrypted_secret)), 0) > 0)
+            from vault.decrypted_secrets where name = 'pilotage_veille_secret')
+     or not (select count(*) = 1 and bool_and(coalesce(length(btrim(decrypted_secret)), 0) > 0)
+               from vault.decrypted_secrets where name = 'pilotage_veille_anon_key') then
     raise exception 'Configuration Vault de la veille absente ou ambigue';
   end if;
   perform cron.unschedule(jobid) from cron.job where jobname = 'pilotage_veille';

@@ -45,6 +45,10 @@ do $g$ begin
      or to_regprocedure('public.purge_telemetrie_paliers()') is null then
     raise exception 'agreger_croissance / purge_telemetrie_paliers absentes : relire le schéma';
   end if;
+  if not exists (select 1 from cron.job where jobname = 'purge_telemetrie_paliers'
+                  and command like '%public.purge_telemetrie_paliers()%') then
+    raise exception 'Planification de purge quotidienne absente : application refusée';
+  end if;
 end $g$;
 
 -- ── ① Une borne qui redescend, et une part réservée aux comptes ─────────────────────────────────

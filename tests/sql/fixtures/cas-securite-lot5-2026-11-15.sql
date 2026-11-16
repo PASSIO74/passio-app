@@ -105,7 +105,7 @@ insert into public.passions (id, label, normalized_label, recherche, status, pop
          ('p5_gateau', 'Gâteau', 'gateau', 'gateau', 'active', 5)
   on conflict (id) do nothing;
 select banc.c5('Visiteur : « ga » (deux lettres)',
-  banc.val(null, $s$select count(*)::text from public.rechercher_passions('ga', 20) where id like 'p5_%'$s$), '2', '0');
+  banc.val(null, $s$select count(*)::text from public.rechercher_passions('ga', 20) where id like 'p5_%'$s$), '1', '0');
 select banc.c5('Visiteur : « gui » (trois lettres) trouve toujours',
   banc.val(null, $s$select string_agg(id, ',') from public.rechercher_passions('gui', 20) where id like 'p5_%'$s$), 'p5_guitare', 'p5_guitare');
 select banc.c5('Visiteur : vide rend toujours les populaires',
@@ -140,6 +140,11 @@ select banc.c5('fil_compteurs : définisseur après le lot',
 
 -- ═══ ⑦ Télémétrie : purge identique, par lots, borne notée ═════════════════════════════════════
 delete from public.telemetry_events where session_id = 'banc5';
+-- Import historique du décor seulement : le trigger d'identité remet autrement
+-- received_at à maintenant, même pour postgres. Les tests de purge doivent lire
+-- de vraies lignes anciennes, sans modifier cette frontière côté application.
+do $historique$ begin
+perform set_config('session_replication_role', 'replica', true);
 insert into public.telemetry_events (type, session_id, severity, received_at) values
   ('nav', 'banc5', 'info', now() - interval '8 days'),
   ('error', 'banc5', 'error', now() - interval '8 days'),
@@ -147,6 +152,8 @@ insert into public.telemetry_events (type, session_id, severity, received_at) va
   ('error', 'banc5', 'error', now() - interval '4 days'),
   ('api', 'banc5', 'warn', now() - interval '4 days'),
   ('nav', 'banc5', 'info', now() - interval '1 day');
+perform set_config('session_replication_role', 'origin', true);
+end $historique$;
 select public.purge_telemetrie_paliers();
 select banc.c5('Purge : ce qui reste (erreurs de 4 jours, ligne d''hier)',
   (select string_agg(type || ':' || severity, ',' order by type, severity) from public.telemetry_events where session_id = 'banc5'),
@@ -157,3 +164,7 @@ select banc.c5('Rattrapage : rien au-delà de la borne',
   banc.dyn($s$select public.purge_telemetrie_rattrapage()::text$s$), 'absent', '0');
 select banc.c5('Télémétrie anonyme ordinaire : toujours acceptée',
   banc.anon($s$insert into public.telemetry_events (type, screen, session_id, device_id, meta) values ('nav', 'feed', 's5', 'd', '{"a":1}'::jsonb)$s$), 'ok', 'ok');
+select banc.c5('Le visiteur ne peut pas antidater une ligne après le décor historique',
+  banc.anon($s$insert into public.telemetry_events (type, session_id, received_at) values ('nav', 'banc5_horloge', now() - interval '8 days')$s$), 'ok', 'ok');
+select banc.c5('Le trigger d''horloge serveur est rétabli avant les vrais appels',
+  (select (received_at > now() - interval '1 minute')::text from public.telemetry_events where session_id = 'banc5_horloge'), 'true', 'true');

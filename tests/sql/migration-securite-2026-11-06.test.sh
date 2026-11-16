@@ -168,6 +168,9 @@ echo
 
 echo "══ ⑥ Lot abus/capacité du 2026-11-15 : avant, après et rejeu ══"
 CAS5="$RACINE/tests/sql/fixtures/cas-securite-lot5-2026-11-15.sql"
+# Le socle exporte les fonctions et pas les tâches de production : matérialiser
+# le vrai prérequis d'agrégation/purge avant de cloner les deux phases du lot.
+QD banc_apres 'select public.planifier_croissance()' >/dev/null || exit 1
 QD postgres "create database banc_lot5_apres template banc_apres" >/dev/null
 BASE5=banc_apres
 QUOTA5="$(QD banc_apres "select md5(pg_get_functiondef('public.quota_stockage_ok()'::regprocedure))")"
