@@ -8127,6 +8127,7 @@ function _accuseLectureReparable(convId, moi) {
 
 // conv_reads_budget_reprise_v1 : une dernière lecture par conversation, sans
 // rejouer sous le compte suivant et sans dater la reprise comme une lecture neuve.
+var CONV_READS_BUDGET_REPRISE = "conv_reads_budget_reprise_v1";
 function _rtLectureBudgetTrace(message) {
   try { if (typeof diagLog === "function") diagLog(message); } catch (e) {}
 }

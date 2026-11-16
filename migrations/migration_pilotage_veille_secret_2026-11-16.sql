@@ -25,7 +25,9 @@ begin
     return;
   end if;
   if has_table_privilege('anon', 'vault.decrypted_secrets', 'SELECT')
-     or has_table_privilege('authenticated', 'vault.decrypted_secrets', 'SELECT') then
+     or has_table_privilege('authenticated', 'vault.decrypted_secrets', 'SELECT')
+     or has_any_column_privilege('anon', 'vault.decrypted_secrets', 'SELECT')
+     or has_any_column_privilege('authenticated', 'vault.decrypted_secrets', 'SELECT') then
     raise exception 'Vault accessible aux roles clients : application refusee';
   end if;
   select max(decrypted_secret) into projet from vault.decrypted_secrets

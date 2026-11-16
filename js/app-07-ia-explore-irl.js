@@ -8648,6 +8648,7 @@ window.addEventListener("passio:app-ready", function () {
 });
 
 // rencontres:validation-organisation-v1
+var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
 async function openEventParticipantValidation(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
