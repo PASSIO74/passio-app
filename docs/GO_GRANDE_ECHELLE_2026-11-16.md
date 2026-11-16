@@ -8,6 +8,8 @@ Obtenir une décision de lancement étayée par les parcours réellement livrés
 
 Le parcours prioritaire reste Découvrir → Partager → Rencontrer. La coorganisation suspendue ne sera pas réactivée sans parcours de consentement. Le chantier n’ajoute ni paiement, ni économie interne, ni nouvelle fonctionnalité étrangère au lancement.
 
+Contrainte budgétaire confirmée par Benjamin : **conserver les services existants, 0 € de nouvelle dépense**. La lecture des comptes fournisseurs montre production et staging sur Supabase Pro et l’équipe Netlify sur Free. Cette décision ne demande ni résiliation ni rétrogradation. Aucun abonnement ou projet payant supplémentaire ne doit être créé ; les preuves manquantes doivent utiliser les ressources existantes ou rester explicitement non établies. Un objectif de 100 000 comptes ne constitue pas une promesse de trafic illimité dans ces forfaits.
+
 Risque : **critical**. Orchestration et vérification : Codex ; implémentation ciblée par Codex/agents sur branches isolées, Claude distant lorsque pertinent ; contre-revue technique indépendante avant toute fusion critique. Chaque correctif garde sa branche et sa PR. Les déclarations personnelles du mainteneur ne sont jamais produites sans son instruction explicite.
 
 ## Conditions du GO
