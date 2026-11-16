@@ -16,15 +16,14 @@
 //   ③ la minification du build : chaque empreinte devient celle des octets minifiés,
 //     à sa place, et ni le buildId ni les `?v=` ne bougent (un build local rend ceux
 //     de la production) — mutation : ne pas remplacer l'empreinte → ③ rouge ;
-//   ④ un script que le minifieur n'arrive pas à traiter part brut, avec l'empreinte
-//     du brut — l'ancienne règle du workflow, sans casser la page.
+//   ④ un script refusé par le minifieur bloque le build public.
 // LA FEUILLE DE STYLE, LE MÊME JOUR (scripts/build.js, étapes 2 et 2 bis ;
 // tests/e2e/app-scripts-par-fichier.spec.js ⑨ ⑩) : ① son <link> porte l'empreinte du
 // fichier écrit, et sa reprise est posée AVANT lui ; ② le contrôle refuse un octet
 // changé, un <link> sans empreinte, une page sans feuille, une page sans la reprise ;
 // ③ minifiée par le build,
 // elle porte l'empreinte des octets minifiés, sans que son `?v=` ni le buildId ne
-// bougent ; ⑤ si le minifieur la refuse, elle part brute avec l'empreinte du brut.
+// bougent ; ⑤ si le minifieur la refuse, le build public échoue.
 // Le banc construit dans un arbre jetable, avec un FAUX terser
 // (`node_modules/terser/bin/terser`) et un FAUX clean-css
 // (`node_modules/clean-css-cli/bin/cleancss`) : le job « Audits » de la CI n'a pas de
@@ -261,29 +260,14 @@ test("⑥ la page est minifiée par le build, ses empreintes restent celles des 
   assert.notEqual(brut.html, fauxPage(brut.html), "prémisse : la page brute porte de l'indentation");
 });
 
-test("⑦ une page que le minifieur refuse part brute, et le build réussit", () => {
-  const r = construire("dist-echec-page", { PASSIO_MINIFIER_APP: "1", FAUX_HTMLMIN_ECHEC: "1" });
-  const sansEmpreintes = (h) => h.replace(/"sha384-[A-Za-z0-9+/]+={0,2}"/g, '"…"');
-  assert.equal(sansEmpreintes(r.html), sansEmpreintes(brut.html), "la page servie est la brute");
-  assert.ok(!fs.existsSync(path.join(r.dossier, "index.html.min")), "aucun reste du minifieur");
-  assert.deepEqual(controler(r.dossier).problemes, []);
+test("⑦ une page refusée par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-⑦", { PASSIO_MINIFIER_APP: "1", FAUX_HTMLMIN_ECHEC: "1" }), /Minification obligatoire échouée/);
 });
 
-test("④ un script que le minifieur refuse part brut, avec l'empreinte du brut", () => {
-  const r = construire("dist-echec", { PASSIO_MINIFIER_APP: "1", FAUX_TERSER_ECHEC: "app-03-posts-vlogs.js" });
-  assert.deepEqual(controler(r.dossier).problemes, []);
-  const p = r.paires.find((x) => x.nom === "app-03-posts-vlogs.js");
-  assert.equal(p.integrite, brut.paires.find((x) => x.nom === "app-03-posts-vlogs.js").integrite, "le brut garde son empreinte");
-  assert.ok(fs.readFileSync(path.join(r.dossier, "app", p.nom)).equals(fs.readFileSync(path.join(brut.dossier, "app", p.nom))), "le fichier servi est le brut");
-  assert.ok(!fs.existsSync(path.join(r.dossier, "app", p.nom + ".min")), "aucun reste du minifieur");
+test("④ un script refusé par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-④", { PASSIO_MINIFIER_APP: "1", FAUX_TERSER_ECHEC: "app-03-posts-vlogs.js" }), /Minification obligatoire échouée/);
 });
 
-test("⑤ une feuille que le minifieur refuse part brute, avec l'empreinte du brut", () => {
-  const r = construire("dist-echec-feuille", { PASSIO_MINIFIER_APP: "1", FAUX_CLEANCSS_ECHEC: "1" });
-  assert.deepEqual(controler(r.dossier).problemes, []);
-  assert.equal(r.feuilles[0].integrite, brut.feuilles[0].integrite, "la brute garde son empreinte");
-  assert.ok(fs.readFileSync(path.join(r.dossier, "styles.css")).equals(fs.readFileSync(path.join(brut.dossier, "styles.css"))), "la feuille servie est la brute");
-  assert.ok(!fs.existsSync(path.join(r.dossier, "styles.css.min")), "aucun reste du minifieur");
-  // Les 9 scripts, eux, sont minifiés quand même : l'échec de l'un ne touche pas l'autre.
-  assert.notEqual(r.paires[0].integrite, brut.paires[0].integrite);
+test("⑤ une feuille refusée par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-⑤", { PASSIO_MINIFIER_APP: "1", FAUX_CLEANCSS_ECHEC: "1" }), /Minification obligatoire échouée/);
 });

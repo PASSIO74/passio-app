@@ -24,6 +24,7 @@ env:
 
 jobs:
   health:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     # ⚠️ CE JOB CRÉE DE VRAIS COMPTES EN PRODUCTION (canari d'autorisation), il
     # tient donc le MÊME verrou que le job `test-prod` de `deploy.yml`.
     #

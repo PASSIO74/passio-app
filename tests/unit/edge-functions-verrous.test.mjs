@@ -335,7 +335,10 @@ function lireEtape(texte, defauts) {
   const jobs = Object.entries((doc && doc.jobs) || {}).filter(([, j]) => (j.steps || []).some((s) => DEPLOIE.test(String(s.run || ""))));
   if (jobs.length !== 1) { defauts.push(`${jobs.length} job(s) lancent « supabase functions deploy » : le banc en attend exactement un`); return null; }
   const job = jobs[0][1];
-  const etapes = job.steps;
+  const validation = doc.jobs.valider;
+  if (!validation || !/\bvalider\b/.test(String(job.needs))) defauts.push("le déploiement doit attendre le job valider sans secrets");
+  if (validation && (validation.if !== undefined || /secrets[.\[]/.test(JSON.stringify(validation)) || validation.env || validation.defaults)) defauts.push("le job valider doit être inconditionnel, sans secret ni options héritées");
+  const etapes = [...(validation?.steps || []), ...job.steps];
   // CHAQUE étape qui déploie, pas seulement la première : un « nouvel essai »
   // en `if: failure()` partirait justement quand un verrou a rougi.
   const deploiements = etapes.map((s, i) => [s, i]).filter(([s]) => DEPLOIE.test(String(s.run || "")));

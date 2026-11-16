@@ -1,9 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // MOT DE PASSE — AIDER À EN CHOISIR UN, PLUTÔT QUE DE REFUSER CELUI QU'ON A
 //
-// Rapport d'essai réel (capture, 2026-09-16) : « Emma0207@ » → « Ce mot de
-// passe apparaît dans des fuites de données connues. Choisis-en un autre, plus
-// original. », affiché EN HAUT du formulaire, à quatre champs du mot de passe,
+// Un refus de mot de passe doit expliquer la règle près du champ concerné.
 // sans la moindre indication de ce qui est attendu ni de quoi faire ensuite.
 //
 // ⚠️ CE LOT N'AJOUTE AUCUNE RÈGLE — et c'est la première chose que ce banc

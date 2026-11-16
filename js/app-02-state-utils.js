@@ -6575,7 +6575,7 @@ function traduireRefusMotDePasse(m) {
 
 // ── AIDER À CHOISIR UN MOT DE PASSE, PLUTÔT QUE DE REFUSER CELUI QU'ON A ─────
 //
-// Rapport d'essai réel (capture, 2026-09-16) : quelqu'un tape « Emma0207@ »,
+// Un refus de mot de passe doit être expliqué au plus près du champ.
 // l'écran répond « Ce mot de passe apparaît dans des fuites de données
 // connues », EN HAUT du formulaire — à quatre champs de distance du mot de
 // passe — et ne dit PAS quoi faire. Trois choses manquaient, et aucune n'est
