@@ -7,7 +7,7 @@ Pour regrouper les fonctions de bord, cette CLI exécute Deno, avec le même jet
 
 - **netlify-cli et ses dépendances.** `package.json` et `package-lock.json` de ce dossier sont copiés
   dans `$RUNNER_TEMP/netlify-cli`, puis installés par `npm ci --ignore-scripts`. L'arbre entier est
-  figé : 1 011 entrées, dont environ 950 installées sur le runner Linux. `npm ci` vérifie chaque
+  figé : 1 010 entrées après le correctif du 16/11, dont environ 950 installées suivant la plateforme. `npm ci` vérifie chaque
   archive par son empreinte sha512.
 - **Deno.** L'étape « Installer Deno » de `deploy.yml` prend l'archive d'une version exacte dans la
   release GitHub de `denoland/deno`, vérifie son empreinte sha256, puis pose Deno sur le PATH :
@@ -160,7 +160,123 @@ et `/media/*` ne passe plus par le cache.
   étaient déjà dans l'installation flottante ; le figeage les a rendus visibles.
 - **2026-11-15, netlify-cli 27.16.2** : 18 avis, 2 faibles, 16 modérés, **aucun élevé**, aucun critique.
   Les modérés restants (`minimatch`, `glob`, `deepmerge`… sous `@netlify/build` et
-  `zip-it-and-ship-it`) sont aussi dans l'arbre de 27.19.0, la dernière publiée : aucune 27.x ne les corrige.
+  `zip-it-and-ship-it`) étaient aussi dans l'arbre de 27.19.0, dernière version publiée lors de cette mesure.
+
+### Correctif ciblé du 2026-11-16
+
+La reproduction du lockfile initial retrouve **13 avis modérés agrégés**, aucun élevé ou critique :
+`minimatch@10.2.6` et `glob@13.0.7` sous `@vercel/nft@1.3.1`, ainsi que leurs parents.
+Les [avis minimatch](https://github.com/advisories/GHSA-g3hv-75wg-m249) et
+[glob](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) désignent respectivement 11.0.1 et 14.0.2
+comme versions corrigées. L'[avis deepmerge](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)
+a été **retiré le 16/11**, sans version corrigée ; sa disparition du nouvel audit ne constitue pas un patch.
+
+Une montée de CLI seule ne résout pas ces avis : [27.20.0](https://github.com/netlify/cli/releases/tag/v27.20.0),
+publiée le 16/11 à 18:57 UTC et vérifiée aussi sur npm, conserve `@netlify/build ^37.7.6`,
+`@netlify/build-info ^11.3.1` et `@netlify/zip-it-and-ship-it ^16.6.0`. Ces versions demandent encore
+`minimatch ^10.2.4` ; zip épingle nft 1.3.1, qui demande `glob ^13.0.0`. Le downgrade CLI 15.4.1
+suggéré par npm audit n'est pas appliqué. La CLI éprouvée reste donc **27.16.2**.
+
+Les deux substitutions sont limitées aux **six parents et versions exacts** inventoriés :
+
+| Parent du sélecteur npm | Dépendance substituée | Version cible |
+| --- | --- | --- |
+| `@netlify/build@37.7.6` | minimatch | `11.0.1` |
+| `@netlify/build-info@11.3.1` | minimatch | `11.0.1` |
+| `@netlify/zip-it-and-ship-it@16.6.0` | minimatch | `11.0.1` |
+| `@typescript-eslint/typescript-estree@8.72.1` | minimatch | `11.0.1` |
+| `readdir-glob@3.0.0` | minimatch | `11.0.1` |
+| `@vercel/nft@1.3.1` | glob | `14.0.2` |
+
+Chaque valeur imbriquée est une version exacte. Les copies saines glob14.0.4 et son
+minimatch11.0.5 restent inchangées. Le contrôle refuse un parent absent ou d'une autre
+version : une mise à jour impose de réexaminer la portée, pas d'ignorer une substitution.
+
+**Écart npm reproduit le 16/11 :** les anciens sélecteurs globaux conditionnels
+`minimatch@10.2.6` et `glob@13.0.7` passent avec npm11.13.0, mais le vrai
+`npm ci` de npm10.9.9 (runner Node22) refuse le même lockfile avec EUSAGE et
+« Missing: minimatch@10.2.6 ». La copie locale avec npm10.9.9 officiel a reproduit
+ce rouge. Les sélecteurs par parent passent ensuite en dry-run avec npm10 et npm11. La vraie
+installation npm10.9.9 puis les29 tests (dont Deno natif) sont verts, sans
+réécrire le lockfile ni changer ses versions ou empreintes. Aucun changement de
+CLI, outil d'installation en CI ou option de contournement du lockfile n'est requis.
+
+Les deux versions corrigées ont été publiées le 27/10/2026 (minimatch à 22:26:03 UTC,
+glob à 22:07:00 UTC), dates relues sur le registre npm. Le nouvel audit JSON valide retourne
+**zéro avis** ; ce résultat ne désigne pas deepmerge comme corrigé.
+
+Régénération par npm 11.13.0, sans scripts ni secrets, avec un cutoff d'au moins sept jours :
+
+```sh
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before=2026-11-09T00:00:00Z
+npm ci --ignore-scripts --no-audit --no-fund
+```
+
+Ce sont des changements majeurs internes, pas une compatibilité déduite du numéro de version.
+Les changelogs [minimatch 11](https://github.com/isaacs/minimatch/blob/v11.0.0/changelog.md) et
+[glob 14](https://github.com/isaacs/node-glob/blob/v14.0.0/changelog.md) ont été relus : suppression
+de makeRe/AST/regexp et changement des Matchers, ignores absolus et chemins Windows notamment.
+Le banc `tests/integration/outils-netlify-compat.test.mjs` exige les dépendances réellement installées
+et échoue si elles manquent. Il ferme l'environnement et bloque le réseau avant les imports tiers.
+
+| Consommateur installé | Contrat vérifié sur données synthétiques |
+| --- | --- |
+| build 37.7.6 | fichiers à scanner, exclusions relatives/dotfiles, scan d'une valeur synthétique |
+| build-info 11.3.1 | découverte/exclusion de workspaces, globParts/pattern/negate |
+| zip 16.6.0 | normalisation des motifs, includedFiles/exclusions, liste des fichiers et archive nft réelle |
+| typescript-estree | vrai prédicat defaultProject extrait du module, dot:true, dépendance résolue réelle |
+| readdir-glob | événements match, ignore/skip, dot/nodir ; matchBase/nocase/noglobstar dans la matrice |
+| nft 1.3.1 | require dynamique et assets analysés sans exécution, glob absolu/ignore/node_modules/dot/mark/nodir |
+
+La matrice de motifs appelle ESM et CommonJS de chaque résolution. Le test d'annulation n'utilise que
+trois dossiers synthétiques ; aucun motif de déni de service n'est exécuté. Les APIs supprimées ne
+sont pas employées par les consommateurs recensés. Toute nouvelle copie ou nouveau consommateur
+fait réexaminer cette preuve ; ce banc ne prouve pas l'équivalence sur tous les motifs possibles.
+
+Commande depuis la racine : `node --test tests/integration/outils-netlify-compat.test.mjs`.
+Au poste Windows, le banc a été exécuté sous Node **22.23.5**, binaire officiel dont le SHA256
+a été comparé à SHASUMS256 avant exécution : **15 tests verts, aucun skip**. Sur la baseline,
+les comportements attendus passent et le contrôle des versions corrigées est rouge. `npm ci`
+réinstalle 947 paquets sur ce poste, sans scripts. Cela ne remplace pas la preuve sur Ubuntu.
+Le workflow `netlify-compat.yml` installe le lockfile sans scripts ni secrets et impose audit JSON
+sans avis puis ces vrais callers sur **Ubuntu et Windows, Node 22**. Il doit être vert avant fusion.
+
+### Preuve de bundling Edge natif
+
+Le complément `tests/integration/outils-netlify-edge.test.mjs` appelle le **vrai bundle() de
+edge-bundler 16.2.0**, avec **Deno 2.9.8**. Il copie les trois Edge canonicales du dépôt et leurs
+helpers dans une fixture, compare leurs octets, exige quatre commandes Deno réelles réussies
+(ESZIP et trois extractions de configuration), puis vérifie les cinq routes, leur phase cache,
+le manifeste, l'empreinte du fichier ESZIP et les sources relues par le vrai parseur WASM.
+Les handlers ne sont jamais appelés. Deno absent/mauvaise version et repli vers un téléchargement
+font échouer le test ; aucun skip n'est utilisé.
+
+**Mesuré localement sous Windows : deux tests verts**, Node 22.23.5 et Deno officiel 2.9.8.
+L'archive Windows a été vérifiée contre le digest GitHub et son fichier sha256sum :
+`cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf`.
+Le job Ubuntu du workflow emploie la même version et l'archive Linux officielle figée par
+deploy.yml, SHA256 `e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609`.
+Il reste à obtenir ce résultat **réel en CI Linux** avant fusion.
+
+Le processus ferme son environnement avant les imports et outils. Un pont réduit les droits du
+vrai Deno : imports distants et npm désactivés pour ESZIP/inspection, JS réseau/run/FFI refusés,
+lecture limitée aux fixtures et au paquet, écriture au temporaire. Une sonde du vrai runtime
+vérifie le refus réseau/run/FFI. Il ne s'agit pas d'un confinement général du poste ou de Node.
+
+L'extracteur de configuration exige le bootstrap de types officiel, même pour `import type` :
+**seules ses trois commandes** autorisent la résolution des imports sur `edge.netlify.com:443`.
+Le cache neuf doit contenir exactement `https://edge.netlify.com/bootstrap/globals/types.ts`,
+670 octets de source, SHA256 `eaa6148ded3121d8dee62dd91c86e7fe76601df0f3ca8d7962243a30f4c8935f`.
+Son import type relatif de context.ts n'est pas chargé par ces commandes. Tout autre cache distant
+ou changement de cette source fait échouer la preuve. Les fetch applicatifs restent refusés par
+Deno. Le check facultatif Node `https://edge.netlify.com/version.txt` est bloqué et recensé ;
+aucune mise à jour de types ni téléchargement du dernier Deno n'est accepté.
+
+Commande, depuis la racine et avec le binaire officiel vérifié :
+`PASSIO_TEST_DENO_BIN=/chemin/absolu/deno node --test tests/integration/outils-netlify-edge.test.mjs`.
+Ce bundling local ne prouve pas un déploiement ni la cible hébergée. Les trois jobs de
+netlify-compat, la contre-revue, la gouvernance et l'aperçu autorisé restent requis avant fusion ;
+aucun nouveau lockfile ne doit recevoir le jeton de production avant leur validation.
 
 **Une PR Dependabot de ce dossier ne se fusionne jamais telle quelle.**
 
