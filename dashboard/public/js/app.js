@@ -216,18 +216,20 @@ function mdToHtml(md) {
 
 // Point d'entrée UNIQUE du bouton « Réparer avec Claude », partout dans l'app.
 // payload : { bugId } (bug groupé) OU { event } (une erreur brute du flux).
+const FIX_NOTE_SUSPENDUE = "Les précisions libres sont temporairement indisponibles ici. Le diagnostic utilise des données résumées. Pour donner une consigne personnelle, utilise ton chat de développement.";
 async function fixWithClaude(payload, title) {
   if (!hasCap("claude")) return toast("Réparation Claude non disponible pour ce rôle.");
-  fixWithClaude._last = payload; fixWithClaude._lastTitle = title;
-  const deep = payload && payload.deep;
+  const diagnostic = { ...payload }; delete diagnostic.note;
+  fixWithClaude._last = diagnostic; fixWithClaude._lastTitle = title;
+  const deep = diagnostic.deep;
   const load = deep
     ? `<span class="spinner"></span><p style="margin-top:10px">Analyse approfondie en cours… Claude lit ton vrai code.</p><p class="muted" style="font-size:12px">Jusqu'à 3-5 minutes — laisse le panneau ouvert.</p>`
     : `<span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p><p class="muted" style="font-size:12px">Environ 30 à 60 secondes — laisse le panneau ouvert.</p>`;
   openDrawer(`${icon("wrench")} Réparer ce problème`,
     `<div class="fix-intro">${esc(title || "Problème détecté")}</div>
-     <div class="empty" id="fixBody">${load}</div>`);
+     <div class="empty" id="fixBody">${load}<p class="muted" style="font-size:12px">${esc(FIX_NOTE_SUSPENDUE)}</p></div>`);
   try {
-    const r = await api.post("/claude/quickfix", payload);
+    const r = await api.post("/claude/quickfix", diagnostic);
     renderFixResult(r);
   } catch (e) {
     $("#fixBody").outerHTML = `<div class="fix-body"><div class="fix-note err">${icon("alertTriangle")} Impossible de contacter l'assistant : ${esc(e.message)}</div></div>`;
@@ -263,14 +265,14 @@ function renderFixResult(r) {
     content = `<details class="fix-details"><summary>Voir les instructions envoyées à Claude</summary><pre class="md-code">${esc(r.prompt || "")}</pre></details>`;
   }
   const more = `<div class="fix-more">
-      <input id="fixNote" class="select" style="width:100%" placeholder="Ajouter une précision (ex : ça arrive quand j'envoie un vocal)…" />
-      <button class="btn btn-sm" id="fixRelaunch">${icon("refresh")} Relancer</button>
+      <input id="fixNote" class="select" style="width:100%" placeholder="Précisions libres indisponibles" disabled aria-describedby="fixNoteNotice" />
+      <button class="btn btn-sm" id="fixRelaunch">${icon("refresh")} Relancer le diagnostic</button>
     </div>`;
-  const html = note + actions + content + more;
+  const html = note + actions + content + `<p id="fixNoteNotice" class="muted">${esc(FIX_NOTE_SUSPENDUE)}</p>` + more;
   const body = $("#fixBody");
   if (body) body.outerHTML = `<div class="fix-body" id="fixBody">${html}</div>`;
   const rl = $("#fixRelaunch");
-  if (rl) rl.onclick = () => { const note2 = $("#fixNote").value.trim(); fixWithClaude({ ...fixWithClaude._last, note: note2 }, fixWithClaude._lastTitle); };
+  if (rl) rl.onclick = () => fixWithClaude(fixWithClaude._last, fixWithClaude._lastTitle);
   const dp = $("#fixDeep");
   if (dp) dp.onclick = () => fixWithClaude({ ...fixWithClaude._last, deep: true }, fixWithClaude._lastTitle);
 }
