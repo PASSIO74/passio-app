@@ -16,6 +16,7 @@ function fixture(options = {}) {
     createActor(actor) {
       calls.push(['actor', actor.mode]);
       return {
+        async enabled() { calls.push(['enabled']); return options.enabled === undefined ? true : options.enabled; },
         async verify() { calls.push(['verify']); if (options.verifyError) throw new Error('synthetic-provider-failure'); return options.valid !== false; },
         async sessionActive() { calls.push(['session']); return options.session !== false; },
         async resolve(locator) { calls.push(['resolve', actor.mode, locator.sourceType]); return options.missing ? null : { ...metadata, ...options.metadata }; },
@@ -52,6 +53,21 @@ test('JWT validé puis session puis résolution appelante puis octets privilégi
   assert.equal(response.status, 200); security(response);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [...payload]);
   assert.deepEqual(f.calls.map((call) => call[0]), ['actor', 'verify', 'session', 'resolve', 'open']);
+});
+
+test('capabilities : protocole fixe, booleen strict, no-store et aucune lecture Storage', async () => {
+  for (const enabled of [true, false, 'true', null, {}]) {
+    const f = fixture({ enabled });
+    const response = await f.handler(request('/private-media/capabilities', { headers: {} }));
+    assert.equal(response.status, 200); security(response);
+    assert.deepEqual(await response.json(), { protocol: 1, uploads_enabled: enabled === true,
+      reads_enabled: enabled === true, min_client: 1, max_bytes: MEDIA_MAX_BYTES });
+    assert.deepEqual(f.calls.map(call => call[0]), ['actor', 'enabled']);
+  }
+  const invalid = fixture({ valid: false });
+  assert.equal((await invalid.handler(request('/private-media/capabilities'))).status, 401);
+  assert.equal(invalid.calls.some(call => call[0] === 'enabled'), false);
+  assert.equal((await fixture().handler(request('/private-media/capabilities?token=forbidden'))).status, 404);
 });
 
 test('vrai anon et clé anon exacte ont une voie RLS anon ; aucun helper session requis', async () => {

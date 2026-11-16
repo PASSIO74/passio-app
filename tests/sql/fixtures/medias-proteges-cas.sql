@@ -42,6 +42,18 @@ end $$;
 create function banc_medias.lire(i integer,cible text,aid integer,genre text default 'posts',variante text default 'original',sid text default null)
 returns text language sql as $$ select banc_medias.val(i,format('select count(*) from public.media_resoudre(%L,%L,%L::uuid,%L)',genre,cible,banc_medias.asset(aid),variante),sid) $$;
 
+select banc_medias.cas('drapeau initial false invoker anon',banc_medias.val(null,'select public.media_proteges_actifs()'),'false');
+select banc_medias.cas('drapeau initial false reservation',banc_medias.sous(1,format('select public.media_reserver(''posts'',''flag_disabled'',''[{"variant":"original","mime_type":"image/webp","byte_size":8}]'',%L::uuid)',banc_medias.asset(999))),'err:42501');
+select banc_medias.cas('client sans UPDATE drapeau',banc_medias.sous(1,'update public.reglages_distants set valeur=''{}'' where cle=''medias_proteges'''),'err:42501');
+select banc_medias.cas('anon sans INSERT drapeau',banc_medias.sous(null,'insert into public.reglages_distants(cle,valeur,pose_par) values(''medias_proteges'',''{}'',''pilote'')'),'err:42501');
+select banc_medias.cas('helper budget non expose',has_function_privilege('authenticated','public.media_budget_occupe(text)','EXECUTE')::text,'false');
+update public.reglages_distants set valeur='{"actif":"true"}' where cle='medias_proteges';
+select banc_medias.cas('drapeau chaine true refusee',banc_medias.val(1,'select public.media_proteges_actifs()'),'false');
+update public.reglages_distants set valeur='{}' where cle='medias_proteges';
+select banc_medias.cas('drapeau incomplet refuse',banc_medias.val(null,'select public.media_proteges_actifs()'),'false');
+update public.reglages_distants set valeur='{"actif":true}' where cle='medias_proteges';
+select banc_medias.cas('activation operateur synthetique',banc_medias.val(null,'select public.media_proteges_actifs()'),'true');
+
 select banc_medias.reserver(1,'media_private',1,'posts','[{"variant":"original","mime_type":"image/webp","byte_size":8},{"variant":"v720","mime_type":"image/webp","byte_size":4},{"variant":"poster","mime_type":"image/webp","byte_size":4}]');
 select banc_medias.objet(1,1); select banc_medias.objet(1,1,'v720','image/webp',4); select banc_medias.objet(1,1,'poster','image/webp',4);
 select banc_medias.publier(1,'media_private',1);

@@ -20,6 +20,24 @@ begin
   if exists (select 1 from pg_roles where rolname in ('anon','authenticated') and (rolsuper or rolbypassrls)) then
     raise exception 'Roles clients incompatibles';
   end if;
+  -- Catalogue read-only PROD/STAGING : SHA256 69f3d0ebcc62901f1d70d63555b15af04cf3eda4f7940900c52afa3f1cfa6626.
+  if not exists(select 1 from pg_constraint where conrelid='public.reglages_distants'::regclass
+    and conname='reglages_distants_cle_check' and contype='c' and convalidated
+    and (md5(pg_get_constraintdef(oid))='faf831e36444b21d841f602f6c4b736c'
+      or (existantes=3 and pg_get_constraintdef(oid)=$check$CHECK ((cle = ANY (ARRAY['delestage'::text, 'coupures'::text, 'bandeau'::text, 'medias_proteges'::text])))$check$)))
+    or exists(select 1 from pg_trigger where tgrelid='public.reglages_distants'::regclass and not tgisinternal)
+    or not (select relrowsecurity from pg_class where oid='public.reglages_distants'::regclass) then
+    raise exception 'Autorite reglages incompatible';
+  end if;
+  for f in select rolname from pg_roles where rolname in ('anon','authenticated') loop
+    if not has_column_privilege(f.rolname,'public.reglages_distants','cle','SELECT')
+      or not has_column_privilege(f.rolname,'public.reglages_distants','valeur','SELECT')
+      or has_any_column_privilege(f.rolname,'public.reglages_distants','INSERT')
+      or has_any_column_privilege(f.rolname,'public.reglages_distants','UPDATE')
+      or has_table_privilege(f.rolname,'public.reglages_distants','DELETE') then
+      raise exception 'Droits reglages incompatibles';
+    end if;
+  end loop;
   for f in select * from (values
     ('public.abonne_accepte_non_bloque(text)','b30e8afcff6f06e4b98b80d5234aae12'),
     ('public.post_masque(text)','d5590c6c97d59ec9a720bb1e7db5b026'),
@@ -63,6 +81,12 @@ begin
     raise exception 'Bucket protege incompatible';
   end if;
 end $prerequis$;
+
+alter table public.reglages_distants drop constraint reglages_distants_cle_check;
+alter table public.reglages_distants add constraint reglages_distants_cle_check
+  check(cle=any(array['delestage'::text,'coupures'::text,'bandeau'::text,'medias_proteges'::text]));
+insert into public.reglages_distants(cle,valeur,pose_par,motif,maj)
+  values('medias_proteges','{"actif":false}','pilote','Desactive avant recette et revue',clock_timestamp()) on conflict(cle) do nothing;
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values ('content-protected','content-protected',false,27262976,
@@ -118,7 +142,7 @@ create or replace function public.media_session_active() returns boolean
 language plpgsql stable security definer set search_path='' as $fn$
 declare sujet text := auth.jwt()->>'sub'; session_id text := auth.jwt()->>'session_id';
 begin
-  if sujet is null or session_id is null
+  if public.suppression_de_mon_compte() or sujet is null or session_id is null
      or sujet !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
      or session_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false; end if;
   return exists(select 1 from auth.sessions s where s.id=session_id::uuid and s.user_id=sujet::uuid
@@ -126,6 +150,14 @@ begin
 end $fn$;
 revoke all on function public.media_session_active() from public,anon;
 grant execute on function public.media_session_active() to authenticated;
+
+-- Lecture invoker des seules colonnes publiques ; absence/mauvais type = coupure.
+create or replace function public.media_proteges_actifs() returns boolean
+language sql stable security invoker set search_path='' as $fn$
+  select coalesce((select valeur->'actif'='true'::jsonb from public.reglages_distants where cle='medias_proteges'),false)
+$fn$;
+revoke all on function public.media_proteges_actifs() from public;
+grant execute on function public.media_proteges_actifs() to anon,authenticated;
 
 create or replace function public.media_mime_extension(p_mime text) returns text
 language sql immutable set search_path='' as $fn$
@@ -138,18 +170,18 @@ revoke all on function public.media_mime_extension(text) from public,anon,authen
 -- Réservation = seulement son propriétaire, avec session active. Aucun DML client direct.
 drop policy if exists media_reservations_own on public.media_reservations;
 create policy media_reservations_own on public.media_reservations as restrictive for select to authenticated
-  using(owner_id=(select auth.uid())::text and (select public.media_session_active()));
+  using((select public.media_proteges_actifs()) and owner_id=(select auth.uid())::text and (select public.media_session_active()));
 drop policy if exists media_reservations_select on public.media_reservations;
 create policy media_reservations_select on public.media_reservations for select to authenticated using(true);
 drop policy if exists media_assets_anon on public.media_assets;
 create policy media_assets_anon on public.media_assets as restrictive for select to anon using(
-  (post_id is not null and exists(select 1 from public.posts p where p.id=post_id and p.author_id=owner_id and (p.vlog is null or p.vlog='null'::jsonb)))
+  (select public.media_proteges_actifs()) and ((post_id is not null and exists(select 1 from public.posts p where p.id=post_id and p.author_id=owner_id and (p.vlog is null or p.vlog='null'::jsonb)))
   or (story_id is not null and created_at>statement_timestamp()-interval '24 hours' and exists(select 1 from public.stories s
     where s.id=story_id and s.author_id=owner_id and s.created_at at time zone 'UTC'>statement_timestamp()-interval '24 hours'
-      and s.created_at at time zone 'UTC'<=statement_timestamp()+interval '5 minutes')));
+      and s.created_at at time zone 'UTC'<=statement_timestamp()+interval '5 minutes'))));
 drop policy if exists media_assets_user on public.media_assets;
 create policy media_assets_user on public.media_assets as restrictive for select to authenticated using(
-  (select public.media_session_active()) and not public.is_blocked_with(owner_id) and (
+  (select public.media_proteges_actifs()) and (select public.media_session_active()) and not public.is_blocked_with(owner_id) and (
   (post_id is not null and exists(select 1 from public.posts p where p.id=post_id and p.author_id=owner_id and (p.vlog is null or p.vlog='null'::jsonb)))
   or (story_id is not null and created_at>statement_timestamp()-interval '24 hours' and exists(select 1 from public.stories s
     where s.id=story_id and s.author_id=owner_id and s.created_at at time zone 'UTC'>statement_timestamp()-interval '24 hours'
@@ -162,12 +194,38 @@ create policy media_objects_source on public.media_objects as restrictive for se
 drop policy if exists media_objects_select on public.media_objects;
 create policy media_objects_select on public.media_objects for select to anon,authenticated using(true);
 
+-- Cout fournisseur avant flux : contentLength n'est JAMAIS une preuve de taille finale.
+-- Une variante incomplete, expiree ou incompatible conserve au moins 26 MiB de provision.
+-- Les lignes provider sans size comptent deja 26 MiB ; le complement evite le double compte.
+create or replace function public.media_budget_occupe(p_owner text) returns numeric
+language sql stable security definer set search_path='' as $fn$
+  with objets as (
+    select o.*,case when coalesce(o.metadata->>'size','') ~ '^[0-9]{1,18}$'
+      then (o.metadata->>'size')::numeric else 27262976::numeric end as cout
+    from storage.objects o where o.owner_id=p_owner or o.owner=p_owner::uuid
+  ), complements as (
+    select case when exists(select 1 from objets o where o.bucket_id='content-protected'
+        and o.name=p_owner||'/'||r.id::text||'/'||(v.value->>'variant')||'.'||public.media_mime_extension(v.value->>'mime_type')
+        and o.archived_at is null and not o.is_delete_marker
+        and (o.owner is not null or o.owner_id is not null)
+        and (o.owner is null or o.owner=p_owner::uuid) and (o.owner_id is null or o.owner_id=p_owner)
+        and o.metadata->>'mimetype'=v.value->>'mime_type'
+        and o.metadata->>'size'=v.value->>'byte_size') then 0::numeric
+      else greatest(0::numeric,27262976-coalesce((select sum(o.cout) from objets o where o.bucket_id='content-protected'
+        and o.name=p_owner||'/'||r.id::text||'/'||(v.value->>'variant')||'.'||public.media_mime_extension(v.value->>'mime_type')
+        and o.archived_at is null and not o.is_delete_marker
+        and (o.owner is null or o.owner=p_owner::uuid) and (o.owner_id is null or o.owner_id=p_owner)),0)) end as cout
+    from public.media_reservations r cross join lateral jsonb_array_elements(r.variants) v where r.owner_id=p_owner
+  ) select coalesce((select sum(cout) from objets),0)+coalesce((select sum(cout) from complements),0)
+$fn$;
+revoke all on function public.media_budget_occupe(text) from public,anon,authenticated;
+
 create or replace function public.media_reserver(p_type text,p_source_id text,p_variantes jsonb,p_cle_idempotence uuid)
 returns jsonb language plpgsql volatile security definer set search_path='' as $fn$
 declare acteur text := auth.uid()::text; t timestamptz := clock_timestamp(); r public.media_reservations%rowtype;
-  v jsonb; propre jsonb; taille bigint; n integer; octets bigint; presents bigint; reserves bigint;
+  v jsonb; propre jsonb; taille bigint; n integer; presents bigint;
 begin
-  if not public.media_session_active() or public.suppression_de_mon_compte() or acteur is null
+  if not public.media_proteges_actifs() or not public.media_session_active() or acteur is null
      or p_type is null or p_type not in ('posts','stories') or p_source_id is null or p_source_id !~ '^[A-Za-z0-9_-]{1,120}$'
      or p_cle_idempotence is null or jsonb_typeof(p_variantes) is distinct from 'array' then
     raise exception using errcode='42501',message='Reservation refusee';
@@ -200,14 +258,10 @@ begin
        or (select count(*) from public.media_reservations where owner_id=acteur and linked_at is null and expires_at>t)>=8
        or (select coalesce(sum(jsonb_array_length(variants)),0) from public.media_reservations where owner_id=acteur and created_at>t-interval '1 hour')+n>120 then
       raise exception using errcode='54000',message='Quota medias atteint'; end if;
-    select count(*) filter(where created_at>t-interval '1 hour'),coalesce(sum((metadata->>'size')::bigint),0)
-      into presents,octets from storage.objects where owner=acteur::uuid or owner_id=acteur;
+    select count(*) filter(where created_at>t-interval '1 hour')
+      into presents from storage.objects where owner=acteur::uuid or owner_id=acteur;
     if presents>=120 then raise exception using errcode='54000',message='Quota medias atteint'; end if;
-    select coalesce(sum((v.value->>'byte_size')::bigint),0) into reserves from public.media_reservations x
-      cross join lateral jsonb_array_elements(x.variants) v where x.owner_id=acteur and x.linked_at is null and x.expires_at>t
-      and not exists(select 1 from storage.objects o where o.bucket_id='content-protected'
-        and o.name=acteur||'/'||x.id::text||'/'||(v.value->>'variant')||'.'||public.media_mime_extension(v.value->>'mime_type'));
-    if octets+reserves+(select sum((value->>'byte_size')::bigint) from jsonb_array_elements(propre))>2147483648 then
+    if public.media_budget_occupe(acteur)+n::numeric*27262976>2147483648 then
       raise exception using errcode='54000',message='Quota medias atteint'; end if;
     insert into public.media_reservations(id,owner_id,source_type,source_id,variants,created_at,expires_at)
       values(p_cle_idempotence,acteur,p_type,p_source_id,propre,t,t+interval '15 minutes') returning * into r;
@@ -226,11 +280,17 @@ create or replace function public.media_upload_autorise(p_name text,p_owner uuid
 returns boolean language plpgsql volatile security definer set search_path='' as $fn$
 declare acteur text:=auth.uid()::text; morceaux text[]; r public.media_reservations%rowtype; v jsonb;
 begin
-  if not public.media_session_active() or public.suppression_de_mon_compte()
+  if not public.media_proteges_actifs() or not public.media_session_active()
     or (p_owner is null and p_owner_id is null) or (p_owner is not null and p_owner is distinct from auth.uid())
     or (p_owner_id is not null and p_owner_id is distinct from acteur) or p_name is null
     or p_name !~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/(original|v720|poster)\.(jpg|png|webp|gif|mp4|webm|m4a|ogg|mp3)$'
-    or coalesce(p_metadata->>'size','') !~ '^[0-9]{1,8}$' then return false; end if;
+    or jsonb_typeof(p_metadata) is distinct from 'object' then return false; end if;
+  -- Deux formes fournisseur : preautorisation sans size, puis objet final avec size.
+  -- Le poids declare n'affecte jamais la provision pessimiste deja prise sous verrou.
+  if p_metadata ? 'size' then
+    if coalesce(p_metadata->>'size','') !~ '^[0-9]{1,8}$' then return false; end if;
+  elsif coalesce(p_metadata->>'contentLength','') !~ '^[0-9]{1,8}$'
+    or (p_metadata->>'contentLength')::bigint not between 1 and 27262976 then return false; end if;
   morceaux:=string_to_array(p_name,'/');
   if morceaux[1]<>acteur or morceaux[2] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false; end if;
   perform pg_advisory_xact_lock(hashtextextended('passio.media:'||acteur,0));
@@ -238,9 +298,10 @@ begin
   if not found or r.linked_at is not null or r.expires_at<=clock_timestamp() or not public.quota_stockage_ok() then return false; end if;
   for v in select value from jsonb_array_elements(r.variants) loop
     if morceaux[3]=(v->>'variant')||'.'||public.media_mime_extension(v->>'mime_type')
-      and p_metadata->>'mimetype'=v->>'mime_type' and (p_metadata->>'size')::bigint=(v->>'byte_size')::bigint then
+      and p_metadata->>'mimetype'=v->>'mime_type'
+      and (not (p_metadata ? 'size') or (p_metadata->>'size')::bigint=(v->>'byte_size')::bigint) then
       return (select count(*) from storage.objects where (owner=acteur::uuid or owner_id=acteur) and created_at>clock_timestamp()-interval '1 hour')<120
-        and (select coalesce(sum((metadata->>'size')::bigint),0) from storage.objects where owner=acteur::uuid or owner_id=acteur)+(v->>'byte_size')::bigint<=2147483648;
+        and public.media_budget_occupe(acteur)<=2147483648;
     end if;
   end loop;
   return false;
@@ -276,7 +337,7 @@ begin
   if new.media_url is null or new.media_url not like 'https://media.passio.invalid/%' then return new; end if;
   champs:=regexp_match(new.media_url,'^https://media\.passio\.invalid/private-media/(posts|stories)/([A-Za-z0-9_-]{1,120})/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/(original|v720|poster)$');
   if champs is null or champs[1]<>genre or champs[2]<>new.id or new.author_id is distinct from acteur
-    or not public.media_session_active() or public.suppression_de_mon_compte() then
+    or not public.media_proteges_actifs() or not public.media_session_active() then
     raise exception using errcode='42501',message='Liaison media refusee'; end if;
   perform pg_advisory_xact_lock(hashtextextended('passio.media:'||acteur,0));
   select * into r from public.media_reservations where id=champs[3]::uuid for update;
@@ -328,7 +389,7 @@ returns table(bucket_id text,object_key text,mime_type text,byte_size bigint)
 language plpgsql stable security invoker set search_path='' as $fn$
 declare a public.media_assets%rowtype; p record; courant text:=p_affichant_id; vus text[]:='{}'; i integer;
 begin
-  if p_type is null or p_type not in ('posts','stories') or p_affichant_id is null or p_affichant_id !~ '^[A-Za-z0-9_-]{1,120}$'
+  if not public.media_proteges_actifs() or p_type is null or p_type not in ('posts','stories') or p_affichant_id is null or p_affichant_id !~ '^[A-Za-z0-9_-]{1,120}$'
     or p_asset_id is null or p_variante is null or p_variante not in ('original','v720','poster') then return; end if;
   -- Deux instructions : anon ne planifie/exécute jamais un helper réservé à authenticated.
   if auth.uid() is not null then

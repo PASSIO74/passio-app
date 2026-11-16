@@ -24,6 +24,11 @@ export function createSupabaseMediaDependencies({ projectUrl, anonKey, serviceKe
           if (error) throw new Error('private_media_session_unavailable');
           return data === true;
         },
+        async enabled() {
+          const { data, error } = await client.rpc('media_proteges_actifs').abortSignal(signal);
+          if (error) throw new Error('private_media_capabilities_unavailable');
+          return data === true;
+        },
         async resolve(locator) {
           const { data, error } = await client.rpc('media_resoudre', {
             p_type: locator.sourceType, p_affichant_id: locator.displayId,

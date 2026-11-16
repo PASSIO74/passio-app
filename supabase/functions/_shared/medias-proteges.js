@@ -70,8 +70,10 @@ function upstreamHeadersValid(response, object, range, method) {
 export function createPrivateMediaHandler(dependencies) {
   return async function privateMedia(request) {
     if (request.method !== 'GET' && request.method !== 'HEAD') return empty(405, { Allow: 'GET, HEAD' });
+    const url = new URL(request.url);
+    const capabilities = !url.search && /^\/(?:functions\/v1\/)?private-media\/capabilities$/.test(url.pathname);
     const locator = locatorFor(request);
-    if (!locator) return empty(404);
+    if (!locator && !capabilities) return empty(404);
     const identity = actorFor(request, dependencies.anonKey);
     if (!identity) return empty(401);
     if (request.signal.aborted) return empty(408);
@@ -83,6 +85,14 @@ export function createPrivateMediaHandler(dependencies) {
     try {
       const actor = dependencies.createActor({ ...identity, signal: abort.signal });
       if (identity.mode === 'user' && (!await actor.verify() || !await actor.sessionActive())) { cleanup(); return empty(401); }
+      if (capabilities) {
+        const active = await actor.enabled() === true;
+        cleanup();
+        return new Response(request.method === 'HEAD' ? null : JSON.stringify({ protocol: 1, uploads_enabled: active,
+          reads_enabled: active, min_client: 1, max_bytes: MEDIA_MAX_BYTES }), {
+          status: 200, headers: { ...SECURITY, 'Content-Type': 'application/json' },
+        });
+      }
       const object = checkedMetadata(await actor.resolve(locator), locator);
       if (!object) { cleanup(); return empty(404); }
       const range = rangeFor(request.headers.get('Range'), object.size);

@@ -44,6 +44,14 @@ test('voie anon : aucun bearer utilisateur ni clé privilégiée dans le SDK', (
   assert.equal(f.calls[0].key, 'synthetic-anon-key'); assert.deepEqual(f.calls[0].config.global.headers, {});
 });
 
+test('capacites : RPC booleen invoker sans parametre libre ni SELECT etoile', async () => {
+  const f = setup();
+  const actor = f.dependencies.createActor({ mode: 'anon', bearer: null, signal: new AbortController().signal });
+  assert.equal(await actor.enabled(), false); // Le stub renvoie un tableau : jamais un booleen vrai.
+  assert.deepEqual(f.calls.filter(call => call.kind === 'rpc').map(({ name, params }) => ({ name, params })),
+    [{ name: 'media_proteges_actifs', params: undefined }]);
+});
+
 test('octets : origine fixe, chemin fermé, service runtime en headers seuls et liste fermée', async () => {
   const f = setup();
   await f.dependencies.openObject({ objectKey: `${owner}/${asset}/original.webp`, method: 'GET', range: { header: 'bytes=1-2' }, signal: new AbortController().signal });
