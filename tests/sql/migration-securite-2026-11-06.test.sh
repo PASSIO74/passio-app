@@ -170,7 +170,19 @@ echo "══ ⑥ Lot abus/capacité du 2026-11-15 : avant, après et rejeu ═�
 CAS5="$RACINE/tests/sql/fixtures/cas-securite-lot5-2026-11-15.sql"
 # Le socle exporte les fonctions et pas les tâches de production : matérialiser
 # le vrai prérequis d'agrégation/purge avant de cloner les deux phases du lot.
-QD banc_apres 'select public.planifier_croissance()' >/dev/null || exit 1
+if ! sortie="$(QD banc_apres "select cron.schedule('purge_telemetry_7j', '0 4 * * *', 'select public.purge_telemetry(7)')")"; then
+  printf '❌ décor cron historique : %s\n' "$sortie"; exit 1
+fi
+verifier "cron historique effectivement présent" "$(QD banc_apres "select count(*) from cron.job where jobname = 'purge_telemetry_7j'")" 1
+CRONS_CROISSANCE="select count(*) from cron.job where active and ((jobname = 'agreger_croissance' and schedule = '7 * * * *' and command = 'select public.agreger_croissance_recente()') or (jobname = 'purge_telemetrie_paliers' and schedule = '0 4 * * *' and command = 'select public.purge_telemetrie_paliers()'))"
+for passe_cron in 1 2; do
+  if ! sortie="$(QD banc_apres 'select public.planifier_croissance()')"; then
+    printf '❌ prérequis croissance : %s\n' "$sortie"; exit 1
+  fi
+  verifier "planification $passe_cron : ancien cron supprimé par son identifiant" "$(QD banc_apres "select count(*) from cron.job where jobname = 'purge_telemetry_7j'")" 0
+  verifier "planification $passe_cron : les deux tâches réelles actives et exactes" "$(QD banc_apres "$CRONS_CROISSANCE")" 2
+done
+verifier "avant migration : aucun rattrapage horaire" "$(QD banc_apres "select count(*) from cron.job where jobname = 'purge_telemetrie_rattrapage'")" 0
 QD postgres "create database banc_lot5_apres template banc_apres" >/dev/null
 BASE5=banc_apres
 QUOTA5="$(QD banc_apres "select md5(pg_get_functiondef('public.quota_stockage_ok()'::regprocedure))")"
@@ -183,8 +195,15 @@ for phase5 in avant apres; do
         sortie="$(FICHIER "$BASE5" "$fichier5")"; code=$?
         verifier "$nom5 : application $passe5" "$code" "0"
         [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | head -8
-        verifier "$nom5 : verdicts effectivement émis" "$([ "$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" -ge 5 ] && echo oui || echo non)" oui
+        case "$nom5" in plafonds) attendus5=8 ;; lectures|telemetrie) attendus5=5 ;; *) exit 1 ;; esac
+        verifier "$nom5 : nombre exact de verdicts OK" "$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "$attendus5"
         verifier "$nom5 : aucun verdict ECHEC" "$(printf '%s\n' "$sortie" | grep -c '§ECHEC' || true)" "0"
+        if [ "$nom5" = telemetrie ]; then
+          verifier "télémétrie $passe5 : croissance et purge quotidienne préservées" "$(QD "$BASE5" "$CRONS_CROISSANCE")" 2
+          verifier "télémétrie $passe5 : ancien cron toujours absent" "$(QD "$BASE5" "select count(*) from cron.job where jobname = 'purge_telemetry_7j'")" 0
+          verifier "télémétrie $passe5 : rattrapage actif et exact" "$(QD "$BASE5" "select count(*) from cron.job where jobname = 'purge_telemetrie_rattrapage' and active and schedule = '37 * * * *' and command = 'select public.purge_telemetrie_rattrapage()'")" 1
+          verifier "télémétrie $passe5 : trois tâches sans doublon" "$(QD "$BASE5" "select count(*) from cron.job where jobname in ('agreger_croissance', 'purge_telemetrie_paliers', 'purge_telemetrie_rattrapage')")" 3
+        fi
       done
     done
   fi

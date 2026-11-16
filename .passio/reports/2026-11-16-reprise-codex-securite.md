@@ -16,15 +16,15 @@ Benjamin a étendu le mandat d'audit aux corrections et à leur livraison. La re
 
 | Surface | État prouvé à cette étape | Limite |
 |---|---|---|
-| Administration | La session précédente a consigné l'exigence du second facteur ; présence du paramètre relue | Valeur et effet du contrôle AAL2 à rejouer ; parcours mobile du propriétaire non rejoué |
+| Administration | La session précédente a consigné l'exigence du second facteur ; présence du paramètre relue | Valeur non confirmée : contrôle automatique refusant la lecture de la collection des secrets ; effet et parcours mobile du propriétaire à rejouer |
 | Relais d'appels | La session précédente a consigné la fermeture de l'émission des nouveaux identifiants | État fournisseur et expiration des identifiants déjà émis non recontrôlés |
 | Authentification | Les trois notifications de sécurité configurées ont été relues à vrai le 16 novembre ; contrôle de connexion primaire relu et testé | Réception effective des emails et sessions réelles non démontrées par ces relevés |
 | Messagerie | Correctif client et borne serveur préparés ; régression trouvée en contre-revue puis corrigée | SQL et code non déclarés livrés par leur seule présence dans Git |
-| Rencontres | Réserves de création, export, suppression, rétention et notification corrigées et relues séparément | Bancs PostgreSQL et essais sur cible encore requis ; promotion/suppression concurrentes hors couverture actuelle |
+| Rencontres | Réserves de création, export, suppression, rétention et notification corrigées et relues séparément | Banc PostgreSQL natif réussi ; essais sur cible encore requis ; promotion/suppression concurrentes hors couverture actuelle |
 | Social | Rendu renforcé ; 102 cas de privilèges/RLS réussis sur PostgreSQL natif jetable en CI | Cela ne prouve pas l'application sur les cibles réelles |
-| Auth/Edge et veille | Code relu séparément ; banc de veille avec vraie migration et journal, 40 contrôles WASM réussis | Configuration coordonnée et preuve PostgreSQL native du nouveau banc encore requises |
+| Auth/Edge et veille | Code relu séparément ; banc de veille avec vraie migration et journal, 40 contrôles PostgreSQL natifs réussis en CI | Configuration coordonnée et preuve de livraison encore requises |
 | CI et agents | Cloisonnement des secrets et réduction des données non fiables préparés | Les règles textuelles d'un agent ne prouvent pas un confinement de ses permissions |
-| Abus et capacité | Plafonds et lectures renforcés ; budget de diffusion messages/accusés intégré et relu, 12 tests client réussis | Preuve SQL native attendue ; Broadcast directs, cumul de comptes, lectures anonymes et plafond financier global hors de cette preuve |
+| Abus et capacité | Plafonds et lectures renforcés ; budget de diffusion messages/accusés intégré et relu, 12 tests client réussis | Banc SQL natif réussi en CI ; Broadcast directs, cumul de comptes, lectures anonymes et plafond financier global hors de cette preuve |
 
 ## Vérifications acquises et contrôles encore ouverts
 
@@ -38,7 +38,7 @@ Les audits locaux de données personnelles suivies dans Git, d'échappement, de 
 
 Le premier passage CI était rouge. Ses deux échecs unitaires ont été corrigés localement ; les attentes navigateur ont été adaptées au nouveau contrat, en préservant les assertions de refus. Le contrôle général a ensuite identifié une borne non référencée pour le nouveau job de build de preview : corrigée et testée. Son majorant initial provient de l'ancien job complet ; la durée du job séparé reste à relever lors de son premier passage CI réussi. Une nouvelle CI et une revue ancrée sur le commit final restent nécessaires avant fusion.
 
-`npm run verif` a été rejoué entièrement après intégration du budget client : résultat vert. La CI a ensuite validé 102 cas sociaux sur PostgreSQL natif et identifié deux défauts dans les nouveaux bancs : observation périmée des statistiques de contention et décor historique de télémétrie incorrect. Les corrections préservent les assertions de concurrence, de rétention et d'horloge serveur. Leur rejeu natif, celui du budget et celui de la veille restent requis.
+`npm run verif` a été rejoué entièrement après intégration du budget client : résultat vert. La CI a ensuite validé 102 cas sociaux sur PostgreSQL natif et identifié deux défauts dans les nouveaux bancs : observation périmée des statistiques de contention et décor historique de télémétrie incorrect. Les corrections préservent les assertions de concurrence, de rétention et d'horloge serveur. La CI `43886364040`, au commit `482b4bb3`, valide maintenant les bancs natifs Realtime, veille et rencontres. Le banc historique de sécurité a ensuite révélé une surcharge `cron.unschedule(bigint)` absente de son décor : correction limitée au test, avec diagnostic visible, retrait effectif du cron historique et planification rejouée. Les migrations de production ne changent pas pour cette correction. Son nouveau passage CI reste requis.
 
 Le budget Realtime est préparé et relu, avec refus avant émission et reprise bornée des accusés par propriétaire. Il ne constitue pas une garantie de livraison distante. Le cumul de trafic de plusieurs comptes, les plafonds financiers et les lectures anonymes ne deviennent pas bornés par un seul quota par compte.
 
