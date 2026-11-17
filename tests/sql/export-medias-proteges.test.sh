@@ -16,8 +16,14 @@ fi
 lancer() { $SU "PATH='$PATH' $*"; }
 nettoyer() { lancer "pg_ctl -D '$BASE/data' stop -m immediate" >/dev/null 2>&1 || true; rm -rf "$BASE"; }
 trap nettoyer EXIT
-lancer "initdb -D '$BASE/data' -A trust -U postgres" >/dev/null 2>&1
-lancer "pg_ctl -D '$BASE/data' -o \"-h 127.0.0.1 -p $PORT\" -l '$BASE/pg.log' start" >/dev/null 2>&1
+if ! lancer "initdb -D '$BASE/data' -A trust -U postgres" >"$BASE/initdb.log" 2>&1; then
+  echo "export-medias: echec initialisation PostgreSQL local"; exit 1
+fi
+# Le runner non privilegie ne doit pas creer son socket dans /var/run/postgresql.
+# Comme le banc export-instantane, conserver ce socket dans sa cible privee.
+if ! lancer "pg_ctl -D '$BASE/data' -o \"-h 127.0.0.1 -k '$BASE' -p $PORT\" -l '$BASE/pg.log' start" >"$BASE/demarrage.log" 2>&1; then
+  echo "export-medias: echec demarrage PostgreSQL local"; exit 1
+fi
 pret=0
 for _ in $(seq 1 30); do
   psql -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -c 'select 1' >/dev/null 2>&1 && { pret=1; break; }
