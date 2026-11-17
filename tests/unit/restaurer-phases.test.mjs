@@ -117,6 +117,77 @@ function monde(opts = {}) {
 }
 
 function contexte(a) { return { jeton: "sbp_x", ref: REF, url: URL_CIBLE, cle: "service", archive: a.dossier, man: a.man, nom: "jetable" }; }
+
+test("l'UUID du média restauré doit correspondre à l'objet physique prouvé, toutes les autres colonnes restent comparées", async () => {
+  const owner = "11111111-1111-4111-8111-111111111111", asset = "22222222-2222-4222-8222-222222222222";
+  const source = "33333333-3333-4333-8333-333333333333", cible = "44444444-4444-4444-8444-444444444444";
+  const rel = owner + "/" + asset + "/original.webm", cle = "content-protected/" + rel;
+  const a = archive({ fichiers: { [cle]: "ABC" } }), ctx = contexte(a);
+  const archiveTables = {
+    media_reservations: [{ id: asset, owner_id: owner }],
+    media_assets: [{ id: asset, owner_id: owner }],
+    media_objects: [{ asset_id: asset, variant: "original", object_key: rel, byte_size: 3, mime_type: "video/webm",
+      bucket_id: "content-protected", storage_object_id: source, autre_colonne: "inchangée" }],
+  };
+  const cibles = structuredClone(archiveTables);
+  for (const [t, rows] of Object.entries(archiveTables)) {
+    a.man.tables[t] = { exporte: rows.length, tri: t === "media_objects" ? "asset_id,variant" : "id" };
+    fs.writeFileSync(path.join(a.dossier, t + ".ndjson"), rows.map(l => JSON.stringify(l)).join("\n") + "\n");
+  }
+  const m = monde(), repondre = m.fetch;
+  let corrections = 0, mimeEnvoye = null, publicSurCible = false;
+  m.fetch = async (url, init = {}) => {
+    if (url.includes("/rest/v1/")) return Response.json(cibles[new URL(url).pathname.split("/").pop()]);
+    if (url.endsWith("/storage/v1/bucket") && publicSurCible) return Response.json([{ id: "content-protected", name: "content-protected", public: true }]);
+    if (url.includes("/storage/v1/object/")) mimeEnvoye = init.headers["Content-Type"];
+    if (url.endsWith("/database/query")) {
+      const { query, parameters, read_only } = JSON.parse(init.body);
+      if (query.includes("from conformes")) {
+        const [attendu] = JSON.parse(parameters[0]);
+        assert.equal(attendu.md5, md5("ABC"));
+        assert.equal(attendu.asset_owner, owner);
+        if (query.includes("update public.media_objects")) { assert.notEqual(read_only, true); corrections++; cibles.media_objects[0].storage_object_id = cible; }
+        const ids = [{ source, cible, inscrit: cibles.media_objects[0].storage_object_id }];
+        return Response.json(read_only ? [{ lecture_seule: true, objets: ids }] : ids);
+      }
+      if (query.startsWith("select table_name from information_schema.tables")) return Response.json(Object.keys(cibles).map(table_name => ({ table_name })));
+      if (query.includes("count(*)::int n from public.")) return Response.json(Object.entries(cibles).map(([t, rows]) => ({ t, n: rows.length })));
+    }
+    return repondre(url, init);
+  };
+  await avec(m, async () => {
+    assert.equal(R._phases.validerArchive(ctx).ok, true);
+    const inventaireInitial = ctx._inventaire;
+    ctx._inventaire = { objets: { [cle]: { owner, owner_id: asset } } };
+    assert.ok(R._phases.validerArchive(ctx).bloquants.includes("reprise_medias_proteges_inventaire"));
+    ctx._inventaire = inventaireInitial;
+    const reservations = a.man.tables.media_reservations;
+    delete a.man.tables.media_reservations;
+    assert.ok(R._phases.validerArchive(ctx).bloquants.includes("reprise_medias_proteges_schema_partiel"));
+    a.man.tables.media_reservations = reservations;
+    assert.equal(R._phases.validerArchive(ctx).ok, true);
+    publicSurCible = true;
+    await assert.rejects(medias(ctx), /seau_non_prive/);
+    assert.equal(mimeEnvoye, null);
+    publicSurCible = false;
+    assert.equal(await medias(ctx), true);
+    assert.equal(mimeEnvoye, "video/webm");
+    assert.equal((await verdictAvecPreuve(ctx)).ok, false);
+    assert.equal(corrections, 0);
+    assert.equal((await R._phases.rapprocherMediasProteges(ctx, true)).preuve.ok, true);
+    const resultat = await verdictAvecPreuve(ctx);
+    assert.equal(resultat.ok, true);
+    assert.deepEqual(resultat.preuve.medias_proteges, { ok: true, objets: 1, identites_physiques_differentes: 1 });
+    assert.equal(corrections, 1);
+    cibles.media_objects[0].autre_colonne = "différente";
+    assert.equal((await verdictAvecPreuve(ctx)).ok, false);
+    assert.equal(corrections, 1);
+    assert.equal(archiveTables.media_objects[0].storage_object_id, source);
+    process.argv.push("--sans-medias");
+    try { assert.equal((await verdictAvecPreuve(ctx)).preuve.medias_proteges.ok, false); }
+    finally { process.argv.splice(process.argv.lastIndexOf("--sans-medias"), 1); }
+  });
+});
 async function avec(m, fn) { const vrai = globalThis.fetch; globalThis.fetch = m.fetch; try { return await fn(); } finally { globalThis.fetch = vrai; } }
 function preuveDe(ctx) { return ctx._preuve; }
 // `--preuve` écrit un fichier : on le lit pour vérifier le JSON.
