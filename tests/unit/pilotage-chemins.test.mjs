@@ -343,6 +343,24 @@ test("⑥ état calme : vert, tout lu, la liste rendue ; lire l'état n'ÉCRIT r
   assert.equal(banc.base.ecritures().length, 1);
   assert.deepEqual([...new Set(banc.reseau.map((x) => x.hote))].sort(), ["api.github.com", "passio-app.netlify.app"]);
   assert.ok(banc.reseau.every((x) => x.methode === "GET"));
+  // Les profils créés ne sont jamais une consommation SMTP : vrai gestionnaire,
+  // mêmes modules, vraie préparation de l'état, sans fournisseur ni donnée réelle.
+  for (const nombre of [280, 3000]) {
+    await monter({ tables: { profiles: Array.from({ length: nombre }, (_, i) => ({ id: "profil-smtp-" + i, created_at: ilYa(3600e3) })) } });
+    const etat = await action({ action: "etat" });
+    assert.equal(etat.status, 200); assert.deepEqual(etat.corps.nonLus, []);
+    const smtp = etat.corps.capacite.jauges.find((j) => j.cle === "emails");
+    assert.deepEqual([smtp.valeur, smtp.plafond, smtp.pct, smtp.couleur, smtp.prix], [null, null, null, "gris", 0]);
+    assert.equal(etat.corps.capacite.cout.aPrevoir, 0);
+    assert.ok(!etat.corps.aFaire.some((x) => x.id === "capacite:emails"));
+    assert.equal(etat.corps.aFaire.find((x) => x.id === "capacite:smtp").gestes[0].ouvrir, M_PILOTAGE.PAGES_REGLAGE.brevo);
+    assert.equal(etat.corps.utilisateurs.inscritsJour, nombre, "le compteur de profils reste séparé");
+    const comptesJour = banc.base.requetes("profiles").filter((q) => q.filtres.length === 1
+      && q.filtres[0][0] === "gte" && q.filtres[0][1] === "created_at"
+      && Math.abs(Date.now() - Date.parse(q.filtres[0][2]) - 864e5) < 60000);
+    assert.equal(comptesJour.length, 1, "un seul comptage 24 h, réservé au compteur de profils ; aucun doublon SMTP");
+    assert.deepEqual(ecrituresHorsMarque(), []);
+  }
 });
 
 test("⑦ une source ILLISIBLE n'est jamais un vert : la télémétrie tombe → « non lu », sa raison, et une ligne pour relire", async () => {

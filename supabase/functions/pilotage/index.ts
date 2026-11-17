@@ -1455,15 +1455,15 @@ async function lireCapacite(admin: Admin) {
   // sinon le total reçu sur 60 s contre 3 000, comme avant.
   const mur = aud.exact ? mesureAveugle(aud) : null;
   const telemetrie = mur ? mur.mesure : await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
-  // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
-  const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
+  // Le nombre de profils ne mesure pas les envois SMTP : Google, renvois et
+  // récupérations suivent d'autres chemins. Le quota reste à vérifier sur Brevo.
   let base: number | null = null, stockage: number | null = null;
   const { data: m, error } = await admin.rpc("pilotage_mesures");
   if (!error && m) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
+  return { jauges: jauges({ connexions, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {

@@ -996,7 +996,11 @@ export function aFaire(d, maintenant = Date.now()) {
   // elle, ne s'achète pas : le bouton ralentit l'app d'un cran.
   const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
   const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
-  for (const j of jg.filter((x) => x.couleur === "rouge" || x.couleur === "orange")) {
+  // Les anciens payloads « emails » comptaient des profils, pas le SMTP.
+  if (jg.some((j) => j.cle === "emails")) ajoute({ id: "capacite:smtp", prio: 2, etiquette: "Non mesuré", titre: "Quota SMTP inconnu",
+    quoi: "Ouvre le compte Brevo pour vérifier le solde.", detail: "Le quota et les envois SMTP ne sont pas lus automatiquement.",
+    gestes: [{ libelle: "Vérifier sur Brevo", principal: true, ouvrir: PAGES_REGLAGE.brevo }] });
+  for (const j of jg.filter((x) => x.cle !== "emails" && (x.couleur === "rouge" || x.couleur === "orange"))) {
     const prix = Number(j.prix) > 0 ? " (~" + j.prix + " €/mois)" : "";
     const pctTexte = String(j.pct).replace(".", ",") + " %";
     const ralentir = j.cle === "telemetrie" && niveau < 2;
@@ -1243,8 +1247,8 @@ export function detailsErreurs(lignes, max = 8, maintenant = Date.now()) {
 export const PLAFONDS = {
   connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "", url: PAGES_REGLAGE.facturation,
     geste: "Supabase › Billing : poser une alerte de budget, puis lever le spend cap (ou acheter des connexions temps réel).", prix: 10 },
-  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "", url: PAGES_REGLAGE.brevo,
-    geste: "Passer Brevo sur une offre payante (ou Resend), puis relever « emails per hour » dans Supabase › Auth › Rate Limits.", prix: 20 },
+  emails: { libelle: "E-mails SMTP", plafond: null, unite: "", url: PAGES_REGLAGE.brevo,
+    geste: "Vérifier le quota et le solde sur le compte Brevo.", prix: 0 },
   base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets", url: PAGES_REGLAGE.calcul,
     geste: "Supabase › Settings › Compute : passer en Small, puis Medium si la latence reste haute (quelques minutes d'indisponibilité).", prix: 15 },
   stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets", url: PAGES_REGLAGE.facturation,
@@ -1290,7 +1294,7 @@ export function bandePassanteEstimee(appareils24h, versions = VERSIONS_PAR_MOIS)
 export const FORFAITS = Object.freeze([
   Object.freeze({ libelle: "Supabase Pro", prix: 25 }),
   Object.freeze({ libelle: "Netlify (gratuit, 100 Go)", prix: 0 }),
-  Object.freeze({ libelle: "Brevo (gratuit, 300 e-mails/jour)", prix: 0 }),
+  Object.freeze({ libelle: "Brevo (offre gratuite)", prix: 0 }),
 ]);
 /**
  * La facture : ce qui est payé aujourd'hui, et ce que coûteraient les gestes des
@@ -1300,7 +1304,7 @@ export const FORFAITS = Object.freeze([
 export function coutMensuel(js) {
   const lignes = FORFAITS.map((f) => ({ libelle: f.libelle, prix: f.prix, aPrevoir: false }));
   for (const j of Array.isArray(js) ? js : []) {
-    if (!j || (j.couleur !== "orange" && j.couleur !== "rouge") || !(Number(j.prix) > 0)) continue;
+    if (!j || j.cle === "emails" || (j.couleur !== "orange" && j.couleur !== "rouge") || !(Number(j.prix) > 0)) continue;
     lignes.push({ libelle: j.libelle, prix: Number(j.prix), aPrevoir: true, geste: j.geste || "" });
   }
   const somme = (f) => lignes.filter(f).reduce((s, l) => s + l.prix, 0);
@@ -1338,7 +1342,8 @@ export function jauges(m) {
     out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation, ...g });
   };
   ajoute("connexions", m && m.connexions, true);
-  ajoute("emails", m && m.emails, true);
+  // Aucune source SMTP réelle : ignorer aussi le champ des anciens producteurs.
+  ajoute("emails", null, false);
   ajoute("base", m && m.base, false);
   ajoute("stockage", m && m.stockage, false);
   // Le mur qui aveugle la veille, quand pilotage_audience le rend (pire minute

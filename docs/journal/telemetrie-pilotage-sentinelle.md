@@ -1759,3 +1759,27 @@ l'empêchait demain.
 ## Veille authentifiee et cible declaree dans Vault (2026-11-16, local)
 
 Le lot 5 coordonne le secret obligatoire Edge, le cron Vault et le seul workflow pilotage-veille.yml. Les reponses de veille ne sont plus imprimees par ce workflow. Details, ordre de provisionnement et limites : fiche du 16/11 dans serveur-securite-base.md. Aucun reglage distant modifie ; AAL2 active et TURN coupe par le Lead conserves.
+
+## Quota SMTP : inconnu sans mesure du fournisseur (2026-11-17)
+
+`lireCapacite` comptait les profils créés sur 24 h comme des e-mails envoyés :
+280 profils fabriquaient 93,3 %, une urgence rouge et un supplément de 20 €/mois.
+Ce comptage ne voit ni Google, ni les renvois, ni les récupérations. Il est retiré.
+La photographie manuelle d'un compte Brevo ne devient pas une mesure dynamique.
+
+La jauge SMTP reste grise, non mesurée, sans valeur, plafond, pourcentage, barre ou
+coût prévisionnel. « Vérifier sur Brevo » ouvre le compte depuis le mobile ; le
+pilotage ne connaît pas son solde. Les anciens champs `emails` sont ignorés aussi
+par les jauges, la liste À faire et le calcul de coût. Le client neutralise une
+ancienne jauge et sa ligne de facture, sans toucher aux autres alertes ou coûts.
+
+Verrous : `pilotage.test.mjs` ⑨ bis exécute les rendus réels en VM, ancien payload
+et DOM synthétique ; `pilotage-chemins.test.mjs` ⑥ prépare l'état par le vrai
+gestionnaire avec 280/3000 profils synthétiques, sans comptage SMTP ni coût.
+Les connexions et la télémétrie conservent leurs seuils. Le test générique du geste payant de
+`croissance.test.mjs` porte désormais sur la connexion orange, modération conservée.
+Le scénario navigateur `pilotage-nuage.spec.js` ㉑ vérifie aussi le lien manuel sans
+barre SMTP, la connexion à 72 % et son supplément de 10 €, croissance et modération.
+Risque critique : métriques et décisions du pilotage. Aucun appel Brevo, secret,
+changement Auth/RLS, admission, délestage ou automatisme ajouté. Contre-revue et
+CI requises avant livraison ; retour arrière par PR de revert.

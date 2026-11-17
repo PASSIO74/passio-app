@@ -714,8 +714,10 @@ test("㉑ Croissance : sources, bouche-à-oreille, rétention « … » quand c'
   await expect(af).toContainText("Une publication a été masquée après 3 signalements");
   expect(await af.textContent()).toContain(CHARGE);
   // Jauge orange : le geste et son prix, et le bouton mène à la page du fournisseur.
-  await expect(af).toContainText("Brevo");
-  await expect(af.locator("article", { hasText: "E-mails d'inscription" }).locator("a.btn-regler")).toHaveAttribute("href", "https://app.brevo.com/");
+  await expect(af).toContainText("Supabase");
+  await expect(af.locator("article", { hasText: "Connexions en direct" })).toContainText("72 %");
+  await expect(af.locator("article", { hasText: "Connexions en direct" }).locator("a.btn-regler")).toHaveAttribute("href", "https://supabase.com/dashboard/org/_/billing");
+  await expect(af).not.toContainText("E-mails");
   await af.locator("article", { hasText: "masquée" }).locator(".btn-regler").click();
   await expect.poll(() => gestes(envois).map((x) => x.corps)).toContainEqual({ action: "masquage", id: "p_9", decision: "garder" });
   // Croissance.
@@ -734,7 +736,13 @@ test("㉑ Croissance : sources, bouche-à-oreille, rétention « … » quand c'
   await aller(page, "details");
   await expect(page.locator("#cout")).toContainText("~25 €");
   await expect(page.locator("#cout")).toContainText("(à prévoir)");
-  await expect(page.locator("#jauges")).toContainText("À faire : Passer Brevo");
+  await expect(page.locator("#cout")).toContainText("~10 € de plus");
+  await expect(page.locator("#cout")).not.toContainText("20 €");
+  const smtp = page.locator("#jauges article", { hasText: "E-mails SMTP" });
+  await expect(smtp).toContainText("Non mesuré");
+  await expect(smtp).not.toContainText("%");
+  await expect(smtp.locator(".jauge")).toHaveCount(0);
+  await expect(smtp.locator("a", { hasText: "Vérifier sur Brevo" })).toHaveAttribute("href", "https://app.brevo.com/");
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
   expect(soucis).toEqual([]);
 });

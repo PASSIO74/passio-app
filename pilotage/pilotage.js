@@ -456,7 +456,8 @@
       suite.hidden = true; tout.hidden = true; $("enCoursZone").hidden = true; $("pourInfoRepli").hidden = true;
       return { problemes: 0, enCours: 0, indisponible: true };
     }
-    const toutes = d.aFaire.filter(Boolean);
+    // Une ancienne fonction pouvait déduire une urgence SMTP des profils créés.
+    const toutes = d.aFaire.filter((x) => x && x.id !== "capacite:emails");
     const problemes = toutes.filter((x) => x.prio <= 1 && !x.enCours);
     const enCoursListe = toutes.filter((x) => x.enCours);
     const pourInfo = toutes.filter((x) => x.prio >= 2 && !x.enCours);
@@ -957,6 +958,14 @@
     const ja = vider("jauges");
     if (!d.capacite) { nonLu("jauges", "Capacité", "capacite"); return; }
     (d.capacite.jauges || []).forEach((j) => {
+      // Aucun payload « emails » actuel ou ancien ne prouve un solde SMTP.
+      if (j.cle === "emails") {
+        const c = carte("E-mails SMTP", "Non mesuré", "Le quota et le solde SMTP ne sont pas lus automatiquement.", "gris");
+        const a = lienReglage({ libelle: "Vérifier sur Brevo", ouvrir: "https://app.brevo.com/" }, "btn");
+        if (a) actions(c).append(a);
+        ja.append(c);
+        return;
+      }
       const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
       const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
       const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
@@ -965,13 +974,19 @@
       ja.append(c);
     });
     const co = vider("cout"), cout = d.capacite.cout;
-    if (cout && Array.isArray(cout.lignes)) {
-      const c = carte("Par mois aujourd'hui", "~" + cout.actuel + " €", cout.aPrevoir ? "À prévoir si tu fais les gestes des jauges orange : ~" + cout.aPrevoir + " € de plus par mois." : "Aucune jauge à l'orange : rien à prévoir.", cout.aPrevoir ? "orange" : "vert");
+    // Une ancienne facture incluait le geste payant de sa fausse jauge SMTP.
+    // Seuls nos deux libellés SMTP connus : un libellé reçu ne désigne pas une autre dépense.
+    const smtp = new Set(["E-mails d'inscription (24 h)", "E-mails SMTP"]);
+    const lignes = cout && Array.isArray(cout.lignes) ? cout.lignes.filter((l) => !l || !l.aPrevoir || !smtp.has(l.libelle)) : null;
+    if (cout && typeof cout.actuel === "number" && Number.isFinite(cout.actuel) && cout.actuel >= 0 && lignes
+      && lignes.every((l) => l && typeof l.libelle === "string" && typeof l.prix === "number" && Number.isFinite(l.prix) && l.prix >= 0)) {
+      const aPrevoir = lignes.filter((l) => l.aPrevoir).reduce((total, l) => total + l.prix, 0);
+      const c = carte("Par mois aujourd'hui", "~" + cout.actuel + " €", (aPrevoir ? "À prévoir si tu fais les gestes des jauges orange : ~" + aPrevoir + " € de plus par mois." : "Aucun supplément chiffré pour les jauges mesurées.") + " Le quota SMTP reste à vérifier sur Brevo.", aPrevoir ? "orange" : "vert");
       const ul = el("ul", "liste-cout");
-      cout.lignes.forEach((l) => ul.append(el("li", l.aPrevoir ? "a-prevoir" : null, l.libelle + " : " + (l.prix ? "~" + l.prix + " €" : "gratuit") + (l.aPrevoir ? " (à prévoir)" : ""))));
+      lignes.forEach((l) => ul.append(el("li", l.aPrevoir ? "a-prevoir" : null, l.libelle + " : " + (l.prix ? "~" + l.prix + " €" : "gratuit") + (l.aPrevoir ? " (à prévoir)" : ""))));
       c.append(ul, el("p", "discret", "Estimation : relis les tarifs sur la page Pricing de chaque service le jour du geste."));
       co.append(c);
-    } else co.append(carte("Coût", "Non lu", "La fonction « pilotage » n'a pas rendu la facture : elle n'est sans doute pas encore à jour.", "gris"));
+    } else co.append(carte("Coût", "Non lu", "La facture est absente ou illisible : aucun supplément fiable ne peut être affiché.", "gris"));
     if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
     if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
     ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
