@@ -1093,3 +1093,16 @@ Migration migration_conv_messages_forme_2026-11-16.sql : begin/commit, lock_time
 Tests : régressions unitaires rouges avant, 14/14 après ; deux suites navigateur existantes 17/17 ; régression DOM dédiée sur textContent (le HTML compte aussi les noms accessibles). SQL PostgreSQL embarqué PGlite 0.3.16, récupéré hors ligne du cache : reproduction avant, migration et rejeu, 48 refus INSERT/UPDATE sous authenticated/postgres, scalaires/t/surrogate/doublons et historique conservé. Banc natif livré mais non exécuté faute de binaires serveur ; sans preuve PostgREST/Realtime ni production. npm run verif lancé : quatre échecs Sentinelle liés au lanceur Git/bin/bash sous Windows ; lead confirme baseline 36/36 avec Git/mingw64/bin puis Git/usr/bin avant PATH. Aucun test de workflow modifié ; pas de nouvelle verif complète pour cette livraison urgente.
 
 Restent D02-07 (remplacement 1:1, ajout forcé) et D10-01 (amplification et accusés) : non corrigés ici. Revue indépendante puis intégration à faire par le lead. AAL2 et TURN inchangés.
+
+
+## 2026-11-17 — IRL-MAP-029 : ouvrir une activité depuis la carte agrandie
+
+Résultat attendu : toucher le bouton de la bulle ouvre la fiche visible et touchable ; un retour ferme la fiche et revient à Rencontrer, sans retour mort. Portée : navigation de carte vers fiche, sans changement de rendu, de données ni de droits. Risque normal. Implémentation : Codex ; contre-revue : audit-passio. Fichiers : app-07, test irl-carte-fiche, registre et rapports d'incident.
+
+La fiche était ouverte en z-index 200 sous la carte plein écran en z-index 9000. Le chemin central openEventDetails quitte le plein écran, ferme la bulle puis réutilise l'entrée de carte avec pushOverlayHistory (son mécanisme de remplacement existant). Une activité introuvable ne modifie plus l'historique. Le re-rendu conserve sa garde.
+
+Preuve avant correctif, puis réinjection après le premier vert : **1 failed, 1 passed**, couche tactile **Expected: true / Received: false**. Avec correctif : **2 passed (14.4s)**. Le test clique sur le vrai marqueur MapLibre et son bouton ; elementFromPoint exclut un faux vert où la fiche reste masquée. Il vérifie le retour, l'unique entrée, le re-rendu et la réouverture du plein écran. Tuiles externes remplacées par un style vide, données Supabase isolées par le helper.
+
+Pilotage/Sentinelle : pas de nouvel événement ni de drapeau pour ce correctif local ; conservation de la télémétrie existante d'ouverture de contenu et de détection des clics sans effet. Incident et preuve au registre. Retour arrière : revert de la PR puis déploiement habituel, sans opération de données.
+
+Validation locale finale : **62 passed (3.9m)** sur irl-carte-fiche, irl, ui-v4a3-vue, lot19-irl et historique-retour-en-vol. Build : **Build OK**, 9 scripts. Syntaxe, audit:globals et audit:handlers verts, contre-revue audit-passio sans défaut bloquant. La CI et la mise en ligne sont suivies dans la PR ; le statut du registre reste FIXED_LOCALLY jusqu’à preuve de production.
