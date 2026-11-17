@@ -3,6 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import vm from "node:vm";
+import { coutMensuel } from "../../supabase/functions/_shared/pilotage.js";
 import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE, RUNS_DU_VOYANT } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
@@ -113,7 +115,7 @@ test("⑧ détails d'erreur : appareil, page SANS requête, série 7 j", () => {
 test("⑨ jauges : pourcentage, couleurs 70/90, valeur absente = non mesuré", () => {
   const j = Object.fromEntries(jauges({ connexions: 360, emails: 280, base: 100 * 1024 ** 2, stockage: null }).map((x) => [x.cle, x]));
   assert.equal(j.connexions.pct, 72); assert.equal(j.connexions.couleur, "orange"); assert.equal(j.connexions.estimation, true);
-  assert.equal(j.emails.couleur, "rouge");
+  assert.equal(j.emails.couleur, "gris"); assert.equal(j.emails.pct, null);
   assert.equal(j.base.couleur, "vert");
   assert.equal(j.stockage.pct, null); assert.equal(j.stockage.couleur, "gris");
   assert.equal(j.telemetrie.pct, null, "télémétrie non mesurée = non mesuré, jamais 0 %");
@@ -125,6 +127,84 @@ test("⑨ jauges : pourcentage, couleurs 70/90, valeur absente = non mesuré", (
   assert.match(a.telemetrie.libelle, /comptes anciens/);
   const g = Object.fromEntries(jauges({ telemetrie: 1500, telemetriePlafond: 3000 }).map((x) => [x.cle, x]));
   assert.equal(g.telemetrie.pct, 50); assert.match(g.telemetrie.libelle, /reçue/);
+});
+
+test("⑨ bis SMTP : profils et ancien payload restent inconnus, sans urgence ni coût, jusque sur le mobile", () => {
+  const autre = jauges({ connexions: 360 }).find((j) => j.cle === "connexions");
+  const ancien = { cle: "emails", libelle: "E-mails d'inscription (24 h)", valeur: 280, plafond: 300, pct: 93.3,
+    couleur: "rouge", estimation: true, prix: 20, geste: "Passer Brevo sur une offre payante", url: PAGES_REGLAGE.brevo };
+  for (const profils of [0, 280, 3000]) {
+    const j = jauges({ emails: profils, profils24h: profils }).find((x) => x.cle === "emails");
+    assert.deepEqual([j.valeur, j.plafond, j.pct, j.couleur, j.prix], [null, null, null, "gris", 0]);
+    assert.match(j.geste, /Vérifier/); assert.equal(j.url, PAGES_REGLAGE.brevo);
+    const cout = coutMensuel([{ ...ancien, valeur: profils }, autre]);
+    assert.equal(cout.aPrevoir, 10, "seule la connexion orange appelle un coût");
+    assert.equal(coutMensuel([{ ...ancien, valeur: profils }]).aPrevoir, 0, "SMTP seul : aucun supplément");
+    assert.ok(!cout.lignes.some((l) => l.aPrevoir && l.libelle === ancien.libelle));
+    const af = aFaire({ capacite: { jauges: [{ ...ancien, valeur: profils }, autre] } });
+    assert.ok(!af.some((x) => x.id === "capacite:emails"));
+    const smtp = af.find((x) => x.id === "capacite:smtp");
+    assert.equal(smtp.prio, 2); assert.equal(smtp.etiquette, "Non mesuré");
+    assert.deepEqual(smtp.gestes, [{ libelle: "Vérifier sur Brevo", principal: true, ouvrir: PAGES_REGLAGE.brevo }]);
+    assert.equal(af.find((x) => x.id === "capacite:connexions").prio, 1);
+  }
+
+  // Exécuter les vrais rendus contre un DOM minimal : ancien backend + nouveau client.
+  class Noeud {
+    constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this.textContent = ""; this.className = ""; }
+    append(...nodes) { this.children.push(...nodes); }
+    get firstChild() { return this.children[0] || null; }
+    removeChild(n) { this.children.splice(this.children.indexOf(n), 1); }
+    querySelector() { return this.children.find((n) => n.className === "carte-actions") || null; }
+  }
+  const zones = new Map(), zone = (id) => { if (!zones.has(id)) zones.set(id, new Noeud("section")); return zones.get(id); };
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  const extraire = (a, b) => { const i = page.indexOf(a), k = page.indexOf(b, i); assert.ok(i >= 0 && k > i, a); return page.slice(i, k); };
+  const navigateur = vm.createContext({
+    document: { createElement: (tag) => new Noeud(tag) }, $: zone,
+    LIENS_SURS: new Function("return " + page.match(/const LIENS_SURS = (\/.*\/);/)[1])(),
+    taille: (n) => String(n), nonLu: () => { throw new Error("RENDU_INATTENDU"); },
+    ligne: (x) => { const n = new Noeud("article"); n.textContent = x.titre; return n; },
+    afaireDeplie: true, PROBLEMES_VISIBLES: 3, aRegler: [],
+  });
+  vm.runInContext(extraire("  function el(", "  function lien(c,") +
+    extraire("  function lienReglage(", "  function boutonPrincipal(") +
+    extraire("  function rendreAFaire(", '  $("afaireSuite").addEventListener') +
+    extraire("  function rendreCapacite(", "  // ─── Croissance") +
+    ";globalThis.api = {rendreCapacite, rendreAFaire};", navigateur);
+  const tous = (n) => [n, ...n.children.flatMap(tous)];
+  const texte = (n) => tous(n).map((x) => x.textContent).join(" ");
+  for (const [profils, avecAutre] of [[280, true], [3000, true], [280, false], [3000, false]]) {
+    const payload = { capacite: { mesuresServeur: true, jauges: [{ ...ancien, valeur: profils, pct: profils / 3 }, ...(avecAutre ? [autre] : [])],
+      cout: { actuel: 25, aPrevoir: avecAutre ? 30 : 20, lignes: [
+        { libelle: "Supabase Pro", prix: 25, aPrevoir: false },
+        { libelle: ancien.libelle, prix: 20, aPrevoir: true },
+        ...(avecAutre ? [{ libelle: autre.libelle, prix: 10, aPrevoir: true }] : []),
+      ] } }, aFaire: [
+        { id: "capacite:emails", prio: 0, titre: "SMTP : faux pourcentage", gestes: [] },
+        ...(avecAutre ? [{ id: "capacite:connexions", prio: 1, titre: "Connexions : 72 %", gestes: [] }] : []),
+      ] };
+    navigateur.api.rendreCapacite(payload);
+    const smtp = zone("jauges").children[0], connexions = zone("jauges").children[1];
+    assert.match(texte(smtp), /Non mesuré/); assert.match(texte(smtp), /ne sont pas lus automatiquement/);
+    assert.doesNotMatch(texte(smtp), /%|sur 300|20 €|offre payante/);
+    assert.equal(tous(smtp).filter((n) => /^jauge(?: |$)/.test(n.className)).length, 0, "aucune barre fabriquée");
+    const lien = tous(smtp).find((n) => n.tagName === "a");
+    assert.equal(lien.href, PAGES_REGLAGE.brevo); assert.equal(lien.target, "_blank"); assert.equal(lien.rel, "noopener");
+    if (avecAutre) {
+      assert.match(texte(connexions), /72 %/);
+      assert.equal(tous(connexions).find((n) => n.tagName === "span" && n.style.width).style.width, "72%");
+      assert.match(texte(zone("cout")), /~10 € de plus/);
+    } else assert.match(texte(zone("cout")), /Aucun supplément chiffré/);
+    assert.doesNotMatch(texte(zone("cout")), /20 €|30 €|E-mails d'inscription/);
+    assert.match(texte(zone("cout")), /quota SMTP reste à vérifier/);
+    assert.equal(navigateur.api.rendreAFaire(payload).problemes, avecAutre ? 1 : 0);
+    if (avecAutre) assert.match(texte(zone("afaire")), /Connexions/);
+    assert.doesNotMatch(texte(zone("afaire")), /SMTP/);
+    payload.capacite.cout.lignes.push({ libelle: "Prix illisible", prix: "inconnu", aPrevoir: true });
+    navigateur.api.rendreCapacite(payload);
+    assert.match(texte(zone("cout")), /Non lu/); assert.doesNotMatch(texte(zone("cout")), /Aucun supplément chiffré|~0 €/);
+  }
 });
 
 test("⑩ pause Sentinelle : même convention que sentinelle-autonome.yml", () => {
