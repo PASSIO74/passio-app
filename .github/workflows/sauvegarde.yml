@@ -38,6 +38,12 @@ on:
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
+    inputs:
+      avec_medias:
+        description: Inclure les fichiers Storage dans la sauvegarde chiffrée
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: sauvegarde-production
@@ -91,8 +97,9 @@ jobs:
           # chiffrées et déposées, puis le run passe au rouge (dernière étape).
           if grep -q 'DDL de reprise INCOMPLET' sauvegarde/schema.sql; then echo "DDL_INCOMPLET=1" >> "${GITHUB_ENV}"; fi
 
-      - name: Exporter (données + comptes ; médias le dimanche)
+      - name: Exporter (données + comptes ; médias le dimanche ou sur demande)
         env:
+          MEDIAS_DEMANDES: ${{ github.event_name == 'workflow_dispatch' && inputs.avec_medias == true }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: njkiyoklssvefstljemx
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
@@ -105,7 +112,7 @@ jobs:
           fi
           jour="$(date -u +%u)"
           medias=""
-          if [ "$jour" = "7" ]; then medias="--avec-medias"; fi
+          if [ "$jour" = "7" ] || [ "${MEDIAS_DEMANDES:-false}" = "true" ]; then medias="--avec-medias"; fi
           # Le script SORT EN ÉCHEC si une table est incomplète : une archive
           # plausible et amputée est le pire cas, on préfère un run rouge.
           node scripts/sauvegarde-donnees.js --sortie sauvegarde --avec-comptes ${medias}
