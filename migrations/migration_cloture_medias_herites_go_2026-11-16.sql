@@ -65,7 +65,7 @@ begin
     end if;
   end loop;
   for f in select * from(values
-    ('public.media_heritage_stockage_public(text,text)','5fffeefbabb107c0724afd682331d7bb'),('public.media_heritage_ref_categorie(text)','dfd79df859a0ed5da167e8e414283fce'),
+    ('public.media_heritage_stockage_public(text,text)','5fffeefbabb107c0724afd682331d7bb'),('public.media_heritage_ref_categorie(text)','5efdfd83881c420de19ac9c558dc10a2'),
     ('public.media_heritage_refs(jsonb)','755aa2a97100d677a60f0b7050a5fd9c'),('public.media_heritage_stockage()','3c0fd7dc87072e1b997423a9f71cccdb'),('public.media_heritage_references()','f49cbb2b1a5e5b8bc7bd722d923841dc')
   ) as x(signature,empreinte) loop
     if to_regprocedure(f.signature) is not null and (obj_description(to_regprocedure(f.signature),'pg_proc')
@@ -107,11 +107,20 @@ begin
   elsif v like '/storage/%' or v like '/private-media/%' then return 'refusee';
   else
     m:=regexp_match(v,'^(https?://|//)([^/?#]*)([^?#]*)','i');
-    if m is null then return 'tierce'; end if;
-    autorite:=lower(m[2]);
+    -- Pas de normalisation IDNA/WHATWG implicite : les autorites ambigues sont fermees.
+    if m is null then
+      if v ~* '^https?:' then return 'refusee'; end if;
+      return 'tierce';
+    end if;
+    if m[2]='' or octet_length(m[2])<>length(m[2])
+      or (m[2] collate "C") !~ '^[A-Za-z0-9.-]+(:[0-9]{1,5})?$' then return 'refusee'; end if;
+    autorite:=lower(m[2] collate "C");
     -- Une autorite encodee ou avec credentials n'est jamais une reference media canonique.
     if autorite ~ '[@%]' then return 'refusee'; end if;
-    hote:=regexp_replace(autorite,':[0-9]+$','');canonique:=rtrim(hote,'.');
+    hote:=regexp_replace(autorite,':[0-9]+$','');
+    if octet_length(hote)>253 or (hote collate "C") !~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
+      or (autorite ~ ':[0-9]+$' and split_part(autorite,':',2)::integer>65535) then return 'refusee'; end if;
+    canonique:=rtrim(hote,'.');
     if canonique='media.passio.invalid' then return 'refusee'; end if;
     interne:=canonique in('njkiyoklssvefstljemx.supabase.co','fcksxofaelcdmmifnwjo.supabase.co');
     site:=canonique ~ '^([a-z0-9-]+--)?passio-app\.netlify\.app$';

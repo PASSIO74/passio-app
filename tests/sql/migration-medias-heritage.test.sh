@@ -57,4 +57,4 @@ lancer "$PGBIN/pg_ctl" -D "$BASE/data" -o "-h 127.0.0.1 -p $PORT -k $BASE" -l "$
 cd "$RACINE"
 node tests/sql/medias-heritage-runner.mjs --psql "$PGBIN/psql" --port "$PORT" --password-file "$BASE/pgpass" \
   --data-directory "$BASE/data" --cluster-marker "$BASE/PASSIO_FENCE_HERITAGE_CI" --output "$BASE/preuve.json"
-node -e 'const p=require(process.argv[1]); if(p.ok!==true||p.nettoyage_absence!==true||p.cluster_directory_checked!==true||![17,18].includes(Math.floor(p.postgres_version_num/10000))||p.checks.length!==16||p.cases!==284||p.failed!==0||p.checks.some(c=>c.ok!==true))process.exit(1)' "$BASE/preuve.json"
+node -e 'const p=require(process.argv[1]); if(p.ok!==true||p.nettoyage_absence!==true||p.cluster_directory_checked!==true||![17,18].includes(Math.floor(p.postgres_version_num/10000))||p.checks.length!==18||p.cases!==328||p.failed!==0||p.checks.some(c=>c.ok!==true))process.exit(1)' "$BASE/preuve.json"

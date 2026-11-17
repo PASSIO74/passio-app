@@ -52,6 +52,14 @@ try{
  sql('drop policy media_heritage_insert on storage.objects;');
  sql(fs.readFileSync(path.join(root,'tests/sql/fixtures/medias-heritage-pre.sql'),'utf8'));
  sql(migration);check('application',true);sql(migration);check('rejeu_initial',true);
+ const autorites=fs.readFileSync(path.join(root,'tests/sql/fixtures/medias-heritage-autorites.sql'),'utf8');
+ const ancien=fs.readFileSync(path.join(root,'tests/sql/fixtures/medias-heritage-classificateur-avant.sql'),'utf8');
+ const avantMutation=sql("select md5(pg_get_functiondef('public.media_heritage_ref_categorie(text)'::regprocedure))||':'||(select count(*) from public.posts);").text;
+ const mutation=JSON.parse(sql('begin;'+ancien+';'+autorites+"select json_build_object('tierces_indues',count(*) filter(where cas like 'autorite classification %' and obtenu='tierce'),'insertions_indues',count(*) filter(where cas like 'autorite insertion %' and obtenu='ok:1')) from banc_heritage.resultats;rollback;").text);
+ report.mutation_ancienne={classifications_indues:mutation.tierces_indues,insertions_indues:mutation.insertions_indues};
+ check('ancien_classificateur_ambigu_rend_rouge',mutation.tierces_indues===5&&mutation.insertions_indues>=3);
+ check('mutation_rollback_integral',sql("select md5(pg_get_functiondef('public.media_heritage_ref_categorie(text)'::regprocedure))||':'||(select count(*) from public.posts);").text===avantMutation);
+ sql(autorites);
  sql(fs.readFileSync(path.join(root,'tests/sql/fixtures/medias-heritage-cas.sql'),'utf8'));
  const result=JSON.parse(sql("select json_build_object('cases',count(*),'failed',count(*) filter(where not ok),'categories_rouges',coalesce(json_agg(json_build_object('cas',cas,'obtenu',obtenu,'attendu',attendu)) filter(where not ok),'[]')) from banc_heritage.resultats;").text);
  report.cases=result.cases;report.failed=result.failed;report.categories_rouges=result.categories_rouges;
