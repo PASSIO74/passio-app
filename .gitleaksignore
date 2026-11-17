@@ -8,3 +8,9 @@
 # de la requête. La ligne porte désormais `gitleaks:allow` ; cette empreinte couvre
 # le premier commit de la PR #796, qui l'avait introduite sans le marqueur.
 3664f98a90c49a58f3c2bb6f073dc509c490585a:js/emoji-misc.js:generic-api-key:34
+
+# 2026-11-17 — Supabase STAGING : clé anon PUBLIQUE (role=anon, ref staging),
+# déjà exposée par le bootstrap navigateur des previews (scripts/build.js).
+# Cette empreinte couvre uniquement son introduction historique dans le relais ;
+# aucune exception de règle JWT, de dossier ou de future ligne.
+ec6933391c66738a00592e4293ea7392ec2191a6:netlify/lib/cibles-medias.js:jwt:3

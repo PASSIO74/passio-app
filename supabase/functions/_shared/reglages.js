@@ -10,7 +10,7 @@
 // Sentinelle écrit le correctif ; et une production qui approche d'un mur de
 // capacité doit pouvoir RALENTIR toute seule plutôt que tomber.
 //
-// Trois réglages, une ligne chacun dans `public.reglages_distants` (lisible par
+// Quatre réglages, une ligne chacun dans `public.reglages_distants` (lisible par
 // tous, écrite par la seule fonction `pilotage`, clé service_role) :
 //   · `delestage` { niveau: 0 | 1 | 2 } — les filets de rafraîchissement, les
 //     compteurs visibles et l'échantillon de télémétrie ralentissent ×2 / ×4,
@@ -22,12 +22,15 @@
 //   · `bandeau` { texte, niveau } — un message court à tous (« les inscriptions
 //     par e-mail sont saturées, passe par Google »).
 //
+//   · `medias_proteges` { actif: boolean } — fermeture serveur des envois ET
+//     lectures ; absent/invalide = fermé. Aucune activation automatique.
+//
 // Ce fichier ne fait AUCUN appel réseau : il valide et il DÉCIDE. Le client
 // (js/reglages-distants.js) porte une copie de la liste blanche et des
 // facteurs ; tests/unit/reglages.test.mjs confronte les deux.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const CLES_REGLAGES = Object.freeze(["delestage", "coupures", "bandeau"]);
+export const CLES_REGLAGES = Object.freeze(["delestage", "coupures", "bandeau", "medias_proteges"]);
 
 /** Niveau de délestage → facteur appliqué aux cadences (×) et à l'échantillon (÷). */
 export const FACTEURS_DELESTAGE = Object.freeze({ 0: 1, 1: 2, 2: 4 });
@@ -101,6 +104,10 @@ export function normaliserReglage(cle, valeur) {
     const inconnues = v.cles.filter((k) => !COUPURES_AUTORISEES.includes(k));
     if (inconnues.length) return { erreur: "Coupure hors liste blanche : " + inconnues.slice(0, 3).map(String).join(", ") };
     return { valeur: { cles: [...new Set(v.cles)].sort() } };
+  }
+  if (cle === "medias_proteges") {
+    if (typeof v.actif !== "boolean" || Object.keys(v).length !== 1) return { erreur: "Activation des médias invalide." };
+    return { valeur: { actif: v.actif } };
   }
   // bandeau
   const texte = typeof v.texte === "string" ? v.texte.replace(RE_CONTROLE, " ").replace(/\s+/g, " ").trim() : "";
@@ -190,13 +197,14 @@ export function decideDelestage(actuel, mesures, maintenant = Date.now()) {
 
 /** Les réglages lus en base, rendus au téléphone (le motif reste côté pilote). */
 export function resumerReglages(lignes) {
-  const out = { delestage: { niveau: 0, pose_par: null, maj: null, motif: null }, coupures: { cles: [], maj: null }, bandeau: null };
+  const out = { delestage: { niveau: 0, pose_par: null, maj: null, motif: null }, coupures: { cles: [], maj: null }, bandeau: null, medias_proteges: { actif: false, disponible: false, maj: null } };
   for (const l of lignes || []) {
     if (!l || !CLES_REGLAGES.includes(l.cle)) continue;
     const n = normaliserReglage(l.cle, l.valeur);
     if (n.erreur) continue;
     if (l.cle === "delestage") out.delestage = { niveau: n.valeur.niveau, pose_par: l.pose_par || null, maj: l.maj || null, motif: l.motif || null };
     else if (l.cle === "coupures") out.coupures = { cles: n.valeur.cles, maj: l.maj || null };
+    else if (l.cle === "medias_proteges") out.medias_proteges = { actif: n.valeur.actif, disponible: true, maj: l.maj || null };
     else out.bandeau = { ...n.valeur, maj: l.maj || null };
   }
   return out;

@@ -123,7 +123,7 @@ test("⑨ resumerReglages : une ligne invalide en base ne fabrique pas un régla
   assert.deepEqual(r.coupures.cles, [], "une clé hors liste invalide toute la ligne : rien n'est posé");
   assert.equal(r.bandeau.texte, "Maintenance");
   assert.deepEqual(resumerReglages(null).delestage.niveau, 0);
-  assert.deepEqual(CLES_REGLAGES, ["delestage", "coupures", "bandeau"]);
+  assert.deepEqual(CLES_REGLAGES, ["delestage", "coupures", "bandeau", "medias_proteges"]);
 });
 
 test("⑩ le module est chargé AVANT la télémétrie et toute l'app (mutation : le déplacer après app-01)", () => {
@@ -146,4 +146,16 @@ test("⑪ chaque point d'armement des filets passe par delaiDeleste (mutation : 
   assert.match(src("app-08-ui-modals-tour.js"), /\(now - r\.dernierGeste\) \* f/);
   assert.match(src("telemetry.js"), /_taux = _taux \/ _fDel/);
   assert.match(src("telemetry.js"), /reglages_distants\$\/i\.test\(path\) && res\.status === 404/);
+});
+
+test("médias protégés : activation booléenne fermée et statut absent/invalide suspendu", () => {
+  for (const actif of [true, false]) {
+    assert.deepEqual(normaliserReglage("medias_proteges", {actif}), {valeur:{actif}});
+    assert.deepEqual(resumerReglages([{cle:"medias_proteges",valeur:{actif}}]).medias_proteges, {actif,disponible:true,maj:null});
+  }
+  for (const valeur of [{actif:"true"},{actif:1},{},{actif:true,autre:true},[]]) {
+    assert.ok(normaliserReglage("medias_proteges",valeur).erreur);
+    assert.deepEqual(resumerReglages([{cle:"medias_proteges",valeur}]).medias_proteges,{actif:false,disponible:false,maj:null});
+  }
+  assert.deepEqual(resumerReglages([]).medias_proteges,{actif:false,disponible:false,maj:null});
 });
