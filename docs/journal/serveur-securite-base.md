@@ -2035,6 +2035,23 @@ L'effacement du compte prime sur ces délais. Les exports signalent les troncatu
 
 Pilotage/Sentinelle : réutilisation de la purge planifiée et de ses compteurs de résultat,
 ainsi que des erreurs déjà collectées ; aucun identifiant personnel dans la télémétrie.
+
+## Export des registres médias protégés — préparation locale (2026-11-16)
+
+Le snapshot historique ignorait les trois registres et pouvait encore être annoncé complet.
+Le lot complémentaire conserve le socle et les rencontres privées sous un snapshot STABLE,
+ajoute les registres propres (objets via leur asset autoritatif) et exige une version de
+couverture côté export. Avant migration, le téléchargement reste possible et se dit incomplet.
+Les gardes pinent les définitions réellement lues ainsi que la forme, la propriété et les
+marqueurs des tables. Les FK emportent les registres avec le profil après le relevé Storage
+par propriété ; les octets sont ensuite supprimés via ce relevé conservé. Aucun lien client
+n'autorise une suppression ou un export tiers.
+
+Implémentation Codex, risque critical, contre-revue indépendante requise. Validation locale :
+75 tests ciblés et31 contrôles PostgreSQL synthétiques, avec contention et nettoyage vérifié.
+La migration `migration_export_medias_proteges_go_2026-11-16.sql` n'est appliquée à aucune cible.
+Le bilan d'export existant porte la supervision ; aucun nouvel automatisme ou coût.
+Contrat et limites : `docs/EXPORT_MEDIAS_PROTEGES_GO_2026-11-16.md`.
 Aucune autoréparation ajoutée. Les restrictions restent fermées en cas de retour arrière ;
 la récupération de données effacées exige une sauvegarde contrôlée et une revue avant action.
 Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-restants.sh.
