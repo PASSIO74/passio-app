@@ -205,6 +205,20 @@ test("⑨ bis SMTP : profils et ancien payload restent inconnus, sans urgence ni
     navigateur.api.rendreCapacite(payload);
     assert.match(texte(zone("cout")), /Non lu/); assert.doesNotMatch(texte(zone("cout")), /Aucun supplément chiffré|~0 €/);
   }
+  // Le libellé fourni par une jauge SMTP n'identifie jamais une autre dépense.
+  for (const libelleSmtp of [ancien.libelle, "E-mails SMTP"]) {
+    navigateur.api.rendreCapacite({ capacite: { mesuresServeur: true,
+      jauges: [{ ...ancien, libelle: autre.libelle }, autre],
+      cout: { actuel: 25, aPrevoir: 30, lignes: [
+        { libelle: "Supabase Pro", prix: 25, aPrevoir: false },
+        { libelle: libelleSmtp, prix: 20, aPrevoir: true },
+        { libelle: autre.libelle, prix: 10, aPrevoir: true },
+      ] },
+    } });
+    assert.match(texte(zone("cout")), /~10 € de plus/);
+    assert.match(texte(zone("cout")), /Connexions en direct/);
+    assert.doesNotMatch(texte(zone("cout")), /Aucun supplément chiffré|20 €/);
+  }
 });
 
 test("⑩ pause Sentinelle : même convention que sentinelle-autonome.yml", () => {

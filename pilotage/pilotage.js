@@ -975,7 +975,8 @@
     });
     const co = vider("cout"), cout = d.capacite.cout;
     // Une ancienne facture incluait le geste payant de sa fausse jauge SMTP.
-    const smtp = new Set(["E-mails d'inscription (24 h)", ...(d.capacite.jauges || []).filter((j) => j.cle === "emails").map((j) => j.libelle)]);
+    // Seuls nos deux libellés SMTP connus : un libellé reçu ne désigne pas une autre dépense.
+    const smtp = new Set(["E-mails d'inscription (24 h)", "E-mails SMTP"]);
     const lignes = cout && Array.isArray(cout.lignes) ? cout.lignes.filter((l) => !l || !l.aPrevoir || !smtp.has(l.libelle)) : null;
     if (cout && typeof cout.actuel === "number" && Number.isFinite(cout.actuel) && cout.actuel >= 0 && lignes
       && lignes.every((l) => l && typeof l.libelle === "string" && typeof l.prix === "number" && Number.isFinite(l.prix) && l.prix >= 0)) {
