@@ -11,7 +11,7 @@
 // existe. Un prérequis `obligatoire` absent → code 1 → le job s'arrête AVANT le
 // déploiement : la fonction en service reste celle d'avant, la migration est
 // nommée. Un prérequis facultatif absent est DIT (résumé), pas bloquant : la
-// fonction se dégrade honnêtement (repli d'export, mentions silencieuses).
+// fonction se dégrade honnêtement (par exemple, mentions silencieuses).
 //
 //   node scripts/verifier-prerequis-fonctions.mjs --fonctions "delete-account export-account" \
 //        [--projet <ref>]            # via l'API de gestion (SUPABASE_ACCESS_TOKEN) — la CI
@@ -38,6 +38,8 @@ function litteral(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
 /** Décompose "function:public.f(a,b)" etc. en { genre, schema, nom, args, colonne, motif }. */
 export function lireObjet(spec) {
   let m;
+  if (spec === "reglage:medias_proteges.actif=false") return { genre: "medias_desactives" };
+  if ((m = /^empreinte:([a-z_]+\.[a-z_0-9]+\([a-z, ]*\))~([0-9a-f]{32})$/.exec(spec))) return { genre: "empreinte", signature: m[1], md5: m[2] };
   if ((m = /^function:([a-z_]+)\.([a-z_0-9]+)\(([^)]*)\)$/.exec(spec))) return { genre: "function", schema: m[1], nom: m[2], args: m[3].split(",").map((x) => x.trim()).filter(Boolean) };
   if ((m = /^column:([a-z_]+)\.([a-z_0-9]+)\.([a-z_0-9]+)$/.exec(spec))) return { genre: "column", schema: m[1], nom: m[2], colonne: m[3] };
   if ((m = /^table:([a-z_]+)\.([a-z_0-9]+)$/.exec(spec))) return { genre: "table", schema: m[1], nom: m[2] };
@@ -56,6 +58,11 @@ export function sqlPrerequis(specs) {
       cond = `exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                 where n.nspname = ${litteral(o.schema)} and p.proname = ${litteral(o.nom)}
                   and array_to_string(array(select format_type(t, null) from unnest(p.proargtypes::oid[]) t), ',') = ${litteral(o.args.join(","))})`;
+    } else if (o.genre === "medias_desactives") {
+      // Un rejeu de la primaire conserve le réglage en place. Exiger un booléen false explicite.
+      cond = "exists (select 1 from public.reglages_distants where cle = 'medias_proteges' and valeur->'actif' = 'false'::jsonb)";
+    } else if (o.genre === "empreinte") {
+      cond = `md5(pg_get_functiondef(to_regprocedure(${litteral(o.signature)}))) = ${litteral(o.md5)}`;
     } else if (o.genre === "column") {
       cond = `exists (select 1 from information_schema.columns where table_schema = ${litteral(o.schema)} and table_name = ${litteral(o.nom)} and column_name = ${litteral(o.colonne)})`;
     } else if (o.genre === "table") {

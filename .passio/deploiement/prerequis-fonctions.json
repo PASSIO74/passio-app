@@ -1,5 +1,5 @@
 {
-  "_commentaire": "ASTRA-64 (2026-09-16) — ce que chaque Edge Function EXIGE de la base pour être déployée. Lu par scripts/verifier-prerequis-fonctions.mjs, exécuté par .github/workflows/edge-functions.yml AVANT `supabase functions deploy` : un prérequis `obligatoire` absent sur la cible RETIENT le déploiement (job rouge, rien n'est déployé). Chaque objet est vérifié dans le catalogue de la cible, en lecture seule. Formes : function:<schema>.<nom>(<types>) · column:<schema>.<table>.<colonne> · table:<schema>.<table> · source:<schema>.<fonction>~<texte attendu dans prosrc>.",
+  "_commentaire": "La CI consulte ces prérequis en lecture seule avant de déployer une Edge Function. Un prérequis obligatoire absent retient le déploiement. function, column et table vérifient le catalogue, source cherche un marqueur dans prosrc, empreinte vérifie la définition de la signature complète. reglage:medias_proteges.actif=false exige le booléen JSON false dans le réglage serveur.",
   "fonctions": {
     "delete-account": {
       "migration": "migrations/migration_barriere_suppression_2026-09-15.sql",
@@ -17,11 +17,31 @@
       ]
     },
     "export-account": {
-      "migration": "migrations/migration_export_instantane_2026-09-15.sql",
-      "obligatoire": false,
-      "sans": "repli par pages, jamais `complet` (ASTRA-44) — dégradé mais honnête, déploiement autorisé, l'absence est dite dans le résumé",
+      "migration": "migrations/migration_export_medias_proteges_go_2026-11-16.sql",
+      "obligatoire": true,
+      "sans": "export des registres non attesté : retenir le nouveau bundle jusqu'à la primaire médias et son wrapper export complémentaire",
       "objets": [
-        "function:public.export_compte_instantane(text,integer,bigint)"
+        "function:public.export_compte_instantane(text,integer,bigint)",
+        "empreinte:public.export_compte_instantane(text,integer,bigint)~1ca6dbf6269c9441b83d8461fa8a1914",
+        "table:public.media_reservations",
+        "table:public.media_assets",
+        "table:public.media_objects"
+      ]
+    },
+    "private-media": {
+      "migration": "migrations/migration_medias_proteges_go_2026-11-16.sql",
+      "obligatoire": true,
+      "sans": "serveur médias non préparé : conserver les médias protégés désactivés et retenir le déploiement",
+      "objets": [
+        "reglage:medias_proteges.actif=false",
+        "table:public.media_reservations",
+        "table:public.media_assets",
+        "table:public.media_objects",
+        "function:public.media_proteges_actifs()",
+        "function:public.media_session_active()",
+        "function:public.media_resoudre(text,text,uuid,text)",
+        "function:public.media_reserver(text,text,jsonb,uuid)",
+        "function:public.media_upload_autorise(text,uuid,text,jsonb)"
       ]
     },
     "notify-call": {
