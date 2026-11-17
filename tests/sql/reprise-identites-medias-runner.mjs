@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import MP from '../../scripts/lib/reprise-medias-proteges.js';
+import schema from '../../scripts/schema-executable.js';
 
 const [psql, socket] = process.argv.slice(2);
 assert.match(socket || '', /^\/tmp\/passio-reprise-medias\.[a-zA-Z0-9]{8}$/);
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^PG/i.test(k)));
-function sql(query) {
-  return execFileSync(psql, ['-X', '-w', '-h', socket, '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-qtA', '-v', 'ON_ERROR_STOP=1'], {
+function sql(query, database = 'postgres') {
+  return execFileSync(psql, ['-X', '-w', '-h', socket, '-p', '5432', '-U', 'postgres', '-d', database, '-qtA', '-v', 'ON_ERROR_STOP=1'], {
     input: query, encoding: 'utf8', env,
   }).trim();
 }
@@ -16,15 +18,34 @@ const cle = utilisateur + '/' + asset + '/original.webp', md5 = 'a'.repeat(32);
 const ligne = { source, asset_id: asset, variant: 'original', object_key: cle, byte_size: 3,
   mime_type: 'image/webp', owner: null, owner_id: utilisateur, asset_owner: utilisateur, md5 };
 const plan = new Map([['content-protected/' + cle, ligne]]);
+const sourceDDL = 'source_synthetique';
+sql('create database ' + sourceDDL);
+function rendreEtape(titre) {
+  const etape = schema.ETAPES.find(e => e.titre === titre);
+  const rows = JSON.parse(sql(`select coalesce(json_agg(s),'[]'::json) from (${etape.sql}) s;`, sourceDDL));
+  return etape.rendu(rows).join('\n');
+}
+const tables = () => rendreEtape('Tables et colonnes');
+assert.equal(tables(), '', 'source historique sans registre');
+sql(`create table public.media_assets(id uuid primary key,owner_id text);
+  create table public.media_reservations(id uuid primary key);
+  create table public.media_objects(asset_id uuid,variant text,object_key text,bucket_id text,storage_object_id uuid unique,mime_type text,byte_size bigint,primary key(asset_id,variant));
+  comment on table public.media_assets is 'commentaire libre source';`, sourceDDL);
+assert.match(tables(), /Registres médias source incomplets/);
+assert.doesNotMatch(tables(), /commentaire libre source/);
+const primaire = readFileSync(new URL('../../migrations/migration_medias_proteges_go_2026-11-16.sql', import.meta.url), 'utf8');
+const marquesSource = primaire.match(/^comment on table public\.media_(?:assets|objects|reservations) is 'PASSIO protected-media v1 2026-11-16';\r?$/gm);
+assert.equal(marquesSource?.length, 3);
+sql(marquesSource.join('\n'), sourceDDL);
+const ddl = tables() + '\n' + rendreEtape('Clés primaires, uniques, CHECK et étrangères');
+assert.throws(() => sql(`begin; create table public.media_assets(id uuid); ${ddl} commit;`),
+  /Registre médias cible non reconnu/);
+assert.equal(sql("select to_regclass('public.media_assets') is null;"), 't');
+sql(`begin; ${ddl} commit;`);
+sql(`begin; ${ddl} commit;`); // Seules les marques réellement reconstruites permettent le rejeu.
 sql(`create schema storage;
   create table storage.buckets(id text primary key,public boolean);
   create table storage.objects(id uuid primary key,bucket_id text,name text,owner uuid,owner_id text,metadata jsonb,archived_at timestamptz,is_delete_marker boolean);
-  create table public.media_assets(id uuid primary key,owner_id text);
-  create table public.media_reservations(id uuid primary key);
-  create table public.media_objects(asset_id uuid,variant text,object_key text,bucket_id text,storage_object_id uuid unique,mime_type text,byte_size bigint,primary key(asset_id,variant));
-  comment on table public.media_assets is 'PASSIO protected-media v1 2026-11-16';
-  comment on table public.media_objects is 'PASSIO protected-media v1 2026-11-16';
-  comment on table public.media_reservations is 'PASSIO protected-media v1 2026-11-16';
   insert into storage.buckets values ('content-protected',false);
   insert into storage.objects values ('${cible}','content-protected','${cle}',null,'${utilisateur}','{"mimetype":"image/webp","size":3,"eTag":"${md5}"}',null,false);
   insert into public.media_assets values ('${asset}','${utilisateur}');

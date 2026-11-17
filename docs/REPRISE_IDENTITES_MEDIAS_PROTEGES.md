@@ -12,4 +12,6 @@ Le restaurateur écrit uniquement le nouvel UUID dans la ligne de registre corre
 
 `--verifier` recalcule les correspondances en lecture seule. Il exige que l’UUID inscrit dans le registre soit bien l’UUID physique courant. Seul ce champ de la copie de comparaison est normalisé. Les autres colonnes et les vérifications ordinaires de la reprise continuent à compter dans le verdict global. La preuve JSON indique le nombre d’objets et le nombre d’identités physiques différentes, ou une catégorie fixe de refus.
 
+Le générateur de `schema.sql` vérifie dans le catalogue source les trois tables publiques ordinaires et leur marque de migration exacte. Sur une cible vide, le DDL recrée la marque en même temps que chaque registre. Une table préexistante portant le même nom doit déjà porter cette marque. Une source historique dépourvue des trois registres garde son parcours habituel. Un ancien DDL qui a perdu les marques ne permet pas de prouver la reconstruction d’un registre protégé.
+
 Les bancs utilisent des fichiers synthétiques et un PostgreSQL jetable. La preuve de restauration commerciale exige encore une restauration autorisée et une lecture fonctionnelle des médias sur la cible isolée. Le changement ne crée aucune ressource ni activation.

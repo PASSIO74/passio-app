@@ -115,6 +115,35 @@ const ROLES_SQL = `(values ('PUBLIC', 0::oid), ('anon', (select oid from pg_role
   ('service_role', (select oid from pg_roles where rolname='service_role'))) r(rolname, oid)`;
 const nomObjet = (x, cle) => `${ident(x.sch || "public")}.${ident(x[cle])}`;
 const nomRole = (r) => String(r).toUpperCase() === "PUBLIC" ? "public" : ident(r);
+const REGISTRES_MEDIAS = ["media_reservations", "media_assets", "media_objects"];
+const MARQUE_MEDIAS = "PASSIO protected-media v1 2026-11-16";
+
+// Le remap ne reconnaît que les tables créées par la migration média. Sur une
+// cible neuve on marque la table dans l'instruction qui la crée. Un nom déjà
+// occupé n'acquiert jamais la marque par le simple rejeu du DDL.
+function preparerRegistresMedias(colonnes) {
+  const registres = colonnes.filter(x => x.sch === "public" && REGISTRES_MEDIAS.includes(x.tbl));
+  if (!registres.length) return [];
+  if (new Set(registres.map(x => x.tbl)).size !== REGISTRES_MEDIAS.length ||
+      registres.some(x => x.marque_media !== true)) {
+    return ["do $$ begin raise exception 'Registres médias source incomplets ou non reconnus'; end $$;"];
+  }
+  return REGISTRES_MEDIAS.map(table => {
+    const nom = "public." + table;
+    return `do $$ begin
+  if to_regclass('${nom}') is null then
+    create table ${nom} ();
+    comment on table ${nom} is '${MARQUE_MEDIAS}';
+  else
+    lock table only ${nom} in access share mode;
+    if not exists (select 1 from pg_catalog.pg_class where oid=to_regclass('${nom}')
+                   and relkind='r' and not relispartition and obj_description(oid,'pg_class')='${MARQUE_MEDIAS}') then
+      raise exception 'Registre médias cible non reconnu';
+    end if;
+  end if;
+end $$;`;
+  });
+}
 const rendreAcl = (objet, x) => `revoke all on ${objet} from ${nomRole(x.role)};`
   + (x.privs ? `\ngrant ${x.privs.toLowerCase()} on ${objet} to ${nomRole(x.role)};` : "")
   + (x.grantables ? `\ngrant ${x.grantables.toLowerCase()} on ${objet} to ${nomRole(x.role)} with grant option;` : "");
@@ -174,7 +203,10 @@ const ETAPES = [
 
   { titre: "Tables et colonnes",
     sql: `select c.relnamespace::regnamespace::text sch, c.relname as tbl, a.attname as col, format_type(a.atttypid, a.atttypmod) as typ, a.attnotnull as nn,
-                 pg_get_expr(d.adbin, d.adrelid) as defaut, a.attidentity as ident, a.attgenerated as gen
+                 pg_get_expr(d.adbin, d.adrelid) as defaut, a.attidentity as ident, a.attgenerated as gen,
+                 case when c.relnamespace='public'::regnamespace and c.relname in (${REGISTRES_MEDIAS.map(litt).join(",")})
+                      then not c.relispartition and obj_description(c.oid,'pg_class')=${litt(MARQUE_MEDIAS)}
+                      else false end as marque_media
             from pg_attribute a join pg_class c on c.oid=a.attrelid
             left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
            where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='r' and a.attnum>0 and not a.attisdropped
@@ -195,8 +227,8 @@ const ETAPES = [
       // ajoutée depuis) recevait alors la contrainte CHECK d'une colonne
       // absente, et toute la transaction tombait. Chaque colonne est donc aussi
       // reposée par `add column if not exists` : sans effet sur une base à jour.
-      return [...t].map(([n, cols]) => `create table if not exists ${n} (\n${cols.join(",\n")}\n);\n`
-        + cols.map((c) => `alter table ${n} add column if not exists ${c.trim()};`).join("\n"));
+      return preparerRegistresMedias(r).concat([...t].map(([n, cols]) => `create table if not exists ${n} (\n${cols.join(",\n")}\n);\n`
+        + cols.map((c) => `alter table ${n} add column if not exists ${c.trim()};`).join("\n")));
     } },
 
   { titre: "Séquences rattachées à leur colonne (serial : OWNED BY)",
