@@ -43,7 +43,9 @@ function fauxAdmin(donnees, erreurs = {}, opts = {}) {
             tout.sort((x, y) => { for (const k of cles) { const a = String(x[k] ?? ""), z = String(y[k] ?? ""); if (a !== z) return a < z ? -1 : 1; } return 0; });
             tables[t + "." + c] = { lignes: tout.slice(0, plafond), attendu: tout.length, tronque: tout.length > plafond, ordre: cles.join(", ") || null, ordre_total: cles.includes("id") };
           }
-          return Promise.resolve({ data: { instantane: "742:742:", prise_le: "2026-09-15T18:00:00Z", plafond, tables: { ...tables, ...(opts.rencontres || {}) }, ...(opts.perimetreRencontres ? { rencontres_prive: 1 } : {}), absentes: [] }, error: null }).then(res);
+          const medias = Object.fromEntries(["media_reservations", "media_assets", "media_objects"].map((t) =>
+            [t, { lignes: [], attendu: 0, tronque: false, ordre_total: true }]));
+          return Promise.resolve({ data: { instantane: "742:742:", prise_le: "2026-09-15T18:00:00Z", plafond, tables: { ...tables, ...(opts.rencontres || {}), ...medias, ...(opts.medias || {}) }, ...(opts.perimetreRencontres ? { rencontres_prive: 1 } : {}), ...(opts.perimetreMedias === false ? {} : { medias_proteges: 1 }), absentes: [] }, error: null }).then(res);
         },
       };
     },
@@ -311,4 +313,40 @@ test("rencontres : le dossier final exporte les quatre tables privées du même 
   const vide = await exporterCompte(fauxAdmin({}, {}, { perimetreRencontres: true }), "moi", {});
   assert.equal(vide.bilan.complet, false);
   assert.equal(vide.erreurs.filter((e) => e.startsWith("rencontres_prive.")).length, 4);
+});
+
+test("médias protégés : les trois registres du même instantané et les chemins privés sont exportés", async () => {
+  const medias = Object.fromEntries(["media_reservations", "media_assets", "media_objects"].map((t) =>
+    [t, { lignes: [{ temoin: t }], attendu: 1, tronque: false, ordre_total: true }]));
+  const d = await exporterCompte(fauxAdmin({}, {}, { medias, objets: [{ bucket_id: "content-protected", name: "uid/asset/original.webp" }] }), "moi", {});
+  for (const [cle, e] of Object.entries(medias)) assert.deepEqual(d.tables[cle], e.lignes);
+  assert.equal(d.bilan.complet, true);
+  assert.equal(d.bilan.lignes, 3);
+  assert.equal(d.bilan.perimetre_medias_proteges, 1);
+  assert.deepEqual(d.medias, [{ seau: "content-protected", chemin: "uid/asset/original.webp", url: null }]);
+});
+
+test("médias protégés : sans version de couverture, l'ancien instantané ne certifie plus un export complet", async () => {
+  const d = await exporterCompte(fauxAdmin({}, {}, { perimetreMedias: false }), "moi", {});
+  assert.equal(d.bilan.complet, false);
+  assert.equal(d.bilan.perimetre_medias_proteges, null);
+  assert.ok(d.erreurs.some((e) => e.startsWith("medias_proteges : perimetre_non_atteste")));
+});
+
+test("médias protégés : absence, forme, comptage, ordre et dépassement ne peuvent certifier la complétude", async () => {
+  const juste = { lignes: [{ id: "asset" }], attendu: 1, tronque: false, ordre_total: true };
+  const variantes = [null, { ...juste, attendu: -1 }, { ...juste, attendu: Number.MAX_SAFE_INTEGER + 1 },
+    { ...juste, ordre_total: false }, { ...juste, tronque: "false" }, { ...juste, lignes: [null] },
+    { ...juste, attendu: 2 }, { ...juste, tronque: true },
+    { ...juste, lignes: Array(PLAFOND_PAR_TABLE + 1).fill({ id: "asset" }), attendu: PLAFOND_PAR_TABLE + 1 }];
+  for (const entree of variantes) {
+    const d = await exporterCompte(fauxAdmin({}, {}, { medias: { media_objects: entree } }), "moi", {});
+    assert.equal(d.bilan.complet, false, JSON.stringify(entree)?.slice(0, 80));
+    assert.ok(d.erreurs.some((e) => e.startsWith("media_objects :")) || d.bilan.incoherences_de_pagination.some((e) => e.startsWith("media_objects :")));
+  }
+  const plein = { lignes: Array.from({ length: PLAFOND_PAR_TABLE }, (_, i) => ({ id: i })), attendu: PLAFOND_PAR_TABLE + 1, tronque: true, ordre_total: true };
+  const d = await exporterCompte(fauxAdmin({}, {}, { medias: { media_objects: plein } }), "moi", {});
+  assert.equal(d.bilan.complet, false);
+  assert.ok(d.tronquees.includes("media_objects"));
+  assert.deepEqual(d.bilan.incoherences_de_pagination, []);
 });

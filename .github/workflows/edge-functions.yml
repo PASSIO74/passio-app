@@ -6,7 +6,7 @@ name: Edge Functions
 #
 # Jusqu'ici : `supabase functions deploy <nom>` à la main, depuis un poste, sans
 # version, sans test, sans trace — et l'état déployé n'était connu de personne.
-# Ce workflow déploie les QUATRE fonctions à chaque fusion sur main qui touche
+# Ce workflow déploie les fonctions déclarées à chaque fusion sur main qui touche
 # `supabase/functions/**` (idempotent : redéployer une fonction inchangée ne
 # change rien), ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
 #   · OPTIONS → 200 (CORS) ;
@@ -30,17 +30,25 @@ on:
         description: "Une fonction précise (vide = toutes)"
         required: false
         default: ""
+      cible:
+        description: "Cible fermée (production par défaut)"
+        type: choice
+        required: true
+        options:
+          - production
+          - staging
+        default: production
 
 concurrency:
-  group: edge-functions
+  group: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.cible == 'staging' && 'edge-functions-staging' || 'edge-functions' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
-  PROJECT_REF: njkiyoklssvefstljemx
-  SUPABASE_URL: https://njkiyoklssvefstljemx.supabase.co
+  PROJECT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.cible == 'staging' && 'fcksxofaelcdmmifnwjo' || 'njkiyoklssvefstljemx' }}
+  SUPABASE_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.cible == 'staging' && 'https://fcksxofaelcdmmifnwjo.supabase.co' || 'https://njkiyoklssvefstljemx.supabase.co' }}
 
 jobs:
   valider:
@@ -78,6 +86,9 @@ jobs:
           node --test tests/unit/ask-ai-chemins.test.mjs
           node --test tests/unit/delete-account-chemins.test.mjs
           node --test tests/unit/export-account-chemins.test.mjs
+          node --test tests/unit/medias-proteges-http.test.mjs
+          node --test tests/unit/medias-proteges-supabase.test.mjs
+          node --test tests/unit/private-media-chemins.test.mjs
           node --test tests/unit/pilotage-chemins.test.mjs
           node --test tests/unit/push-sur.test.mjs
           node --test tests/unit/autonomie.test.mjs
@@ -96,6 +107,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Cible — choix fermé avant tout accès aux secrets
+        env:
+          ENTREE_CIBLE: ${{ github.event.inputs.cible }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME/${ENTREE_CIBLE:-}" in
+            push/|workflow_dispatch/production|workflow_dispatch/staging) ;;
+            *) echo "::error::Cible inconnue."; exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -152,8 +172,8 @@ jobs:
             exit 1
           fi
           FONCTIONS="${ENTREE_FONCTION:-}"
-          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage"; fi
+          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
+          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage private-media"; fi
           node scripts/verifier-prerequis-fonctions.mjs --fonctions "$FONCTIONS" --projet "$PROJECT_REF"
 
       # La RÉVISION servie (dossier de livraison §6) : le SHA déployé est écrit
@@ -176,8 +196,8 @@ jobs:
             exit 1
           fi
           FONCTIONS="${ENTREE_FONCTION:-}"
-          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage"; fi
+          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
+          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage private-media"; fi
           # ⚠️ `--yes` (2026-11-03) : la CLI `latest` demande désormais une
           # confirmation avant de déployer — « This run can't ask because stdout
           # is not a terminal. Nothing was changed. » — et sortait en 1 : deux
@@ -186,7 +206,12 @@ jobs:
           # n'y était pour rien (le secret était présent, masqué `***`).
           for f in $FONCTIONS; do
             echo "── déploiement : $f ──"
-            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --yes
+            if [ "$f" = "private-media" ]; then
+              # Seul ce handler accepte des lectures publiques sous RLS et vérifie lui-même les JWT fournis.
+              supabase functions deploy "$f" --project-ref "$PROJECT_REF" --yes --no-verify-jwt
+            else
+              supabase functions deploy "$f" --project-ref "$PROJECT_REF" --yes
+            fi
           done
           echo "DEPLOYEES=$FONCTIONS" >> "$GITHUB_ENV"
 
@@ -195,6 +220,10 @@ jobs:
           set -euo pipefail
           ko=0
           for f in $DEPLOYEES; do
+            if [ "$f" = "private-media" ]; then
+              PASSIO_MEDIA_SMOKE_URL="$SUPABASE_URL" PASSIO_MEDIA_SMOKE_REVISION="${{ github.sha }}" node scripts/fumee-private-media.mjs
+              continue
+            fi
             url="$SUPABASE_URL/functions/v1/$f"
             opt=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS "$url")
             post=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' "$url")
@@ -215,5 +244,6 @@ jobs:
             echo ""
             echo "- Commit : \`${{ github.sha }}\`"
             echo "- Fonctions : $DEPLOYEES"
-            echo "- Fumée : OPTIONS 200, POST sans jeton 401, X-Passio-Revision = ${{ github.sha }} sur chacune"
+            echo "- Cible : $PROJECT_REF"
+            echo "- Fumée : contrat HTTP des fonctions déployées et X-Passio-Revision = ${{ github.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"

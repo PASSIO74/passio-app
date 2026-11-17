@@ -8,7 +8,7 @@
 #   ① base sans migration : delete-account RETENUE (objets nommés) ;
 #   ② barrière v2 seule (colonne `tentative_vivante` retirée, `auth_echec`
 #      absent du source) : encore RETENUE — v3 exigée, pas « une barrière » ;
-#   ③ v3 appliquée : autorisé ; export-account facultatif absent : ⚠️ dit, code 0 ;
+#   ③ v3 appliquée : autorisé ; export médias absent : retenu ; notify-call reste facultatif ;
 #   ④ lecture seule : la requête ne peut pas écrire (read only) ;
 #   ⑤ une fonction hors manifeste ne se déploie pas ;
 #   ⑥ MUTATION : retirer l'objet obligatoire du manifeste → le banc rougit ici
@@ -94,9 +94,11 @@ JOUER "delete-account"
 verifier "code 0 : delete-account peut partir" "0" "$CODE"
 verifier "…prérequis présents" "1" "$(printf '%s\n' "$SORTIE" | grep -c "✅ delete-account : prérequis présents" || true)"
 JOUER "delete-account export-account notify-call"
-verifier "export-account (instantané absent) : dégradée, code 0" "0" "$CODE"
-verifier "…⚠️ dit" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ export-account : dégradée" || true)"
+verifier "export-account (instantané médias absent) : retenu, code 1" "1" "$CODE"
+verifier "…retenue dite" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account : RETENUE" || true)"
 verifier "…et notify-call (mentions serveur absentes) aussi" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ notify-call : dégradée" || true)"
+JOUER "delete-account notify-call"
+verifier "notify-call facultatif reste non bloquant" "0" "$CODE"
 
 echo "── ④ LECTURE SEULE ───────────────────────────────────────────────────────"
 verifier "une écriture dans la même forme de transaction est refusée" "REFUSE" "$(if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -1 -v ON_ERROR_STOP=1 -c "set transaction read only; create table public.tentative_ecriture (x int);" >/dev/null 2>&1; then echo OK; else echo REFUSE; fi)"
