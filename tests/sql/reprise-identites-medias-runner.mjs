@@ -30,7 +30,7 @@ sql(`create schema storage;
   insert into public.media_assets values ('${asset}','${utilisateur}');
   insert into public.media_objects values ('${asset}','original','${cle}','content-protected','${source}','image/webp',3);`);
 
-function executer(ecrire, lot = plan) {
+function executer(ecrire, lot = plan, physiques) {
   return MP.rapprocher(lot, async (query, [json]) => {
     // Exécuter la requête paramétrée de production, y compris sa mise à jour. La
     // connexion ferme à chaque commande ; le mode vérification refuse tout DML.
@@ -40,7 +40,7 @@ function executer(ecrire, lot = plan) {
       const [source, cible, inscrit] = row.split('|');
       return { source, cible, inscrit };
     }) : [];
-  }, ecrire);
+  }, ecrire, physiques);
 }
 const inscrit = () => sql('select storage_object_id from public.media_objects;');
 await assert.rejects(executer(false), /identite_cible/);
@@ -75,4 +75,25 @@ assert.equal((await executer(true)).get(source), cible);
 assert.equal(inscrit(), cible);
 assert.equal((await executer(true)).get(source), cible);
 assert.equal((await executer(false)).get(source), cible);
+sql("update storage.objects set metadata=metadata-'eTag';");
+const version = sql("select 'tuple:'||xmin::text from storage.objects;");
+function empreinte(id, version, md5, etag = null) {
+  return new Map([['content-protected/' + cle, { id, version, md5, etag }]]);
+}
+await assert.rejects(executer(false), /preuve_cible/);
+await assert.rejects(executer(false, plan, empreinte(cible, version, 'b'.repeat(32))), /preuve_cible/);
+await assert.rejects(executer(false, plan, empreinte(cible, 'version-anterieure', md5)), /preuve_cible/);
+await assert.rejects(executer(false, plan, empreinte(source, version, md5)), /preuve_cible/);
+assert.equal((await executer(false, plan, empreinte(cible, version, md5))).get(source), cible);
+sql(`update public.media_objects set storage_object_id='${source}';`);
+assert.equal((await executer(true, plan, empreinte(cible, version, md5))).get(source), cible);
+sql("alter table storage.objects add column version text; update storage.objects set version='v1';");
+sql(`update storage.objects set metadata=metadata||'{"eTag":"ancien-2"}';`);
+const ancienne = empreinte(cible, 'v1', md5, 'ancien-2');
+assert.equal((await executer(false, plan, ancienne)).get(source), cible);
+sql(`update storage.objects set metadata=metadata||'{"eTag":"nouveau-2"}';`);
+await assert.rejects(executer(false, plan, ancienne), /preuve_cible/);
+sql(`update public.media_objects set storage_object_id='${source}';`);
+await assert.rejects(executer(true, plan, ancienne), /preuve_cible/);
+assert.equal(inscrit(), source);
 console.log('OK rapprochement, refus, rejeu et vérification PostgreSQL en lecture seule');

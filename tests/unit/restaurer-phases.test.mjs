@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 const require = createRequire(import.meta.url);
 const R = require("../../scripts/restaurer-donnees.js");
 const { comptes, medias, verdict, integriteArchive } = R._phases;
@@ -117,6 +118,43 @@ function monde(opts = {}) {
 }
 
 function contexte(a) { return { jeton: "sbp_x", ref: REF, url: URL_CIBLE, cle: "service", archive: a.dossier, man: a.man, nom: "jetable" }; }
+
+test("CLI --verifier --hash-medias : le GET borné tranche un eTag absent ou multipart pour les deux verdicts", () => {
+  const owner = "11111111-1111-4111-8111-111111111111", id = "22222222-2222-4222-8222-222222222222";
+  const object_key = owner + "/" + id + "/original.webp", cle = "content-protected/" + object_key;
+  const a = archive({ fichiers: { [cle]: "ABC" } });
+  const rows = {
+    media_reservations: { id, owner_id: owner }, media_assets: { id, owner_id: owner },
+    media_objects: { asset_id: id, variant: "original", bucket_id: "content-protected", object_key,
+      mime_type: "image/webp", byte_size: 3, storage_object_id: "33333333-3333-4333-8333-333333333333" },
+  };
+  for (const [t, row] of Object.entries(rows)) {
+    fs.writeFileSync(path.join(a.dossier, t + ".ndjson"), JSON.stringify(row) + "\n");
+    a.man.tables[t] = { exporte: 1, tri: t === "media_objects" ? "asset_id,variant" : "id" };
+  }
+  fs.writeFileSync(path.join(a.dossier, "manifeste.json"), JSON.stringify(a.man));
+  const compteur = path.join(a.dossier, "compteur-get"), preuve = path.join(a.dossier, "preuve.json");
+  for (const [mode, flag, ok, gets] of [
+    ["absent", false, false, 0], ["multipart", false, false, 0], ["absent", true, true, 1],
+    ["multipart", true, true, 1], ["different", true, false, 1], ["long", true, false, 1],
+    ["instable", true, false, 1], ["fort", true, true, 0],
+  ]) {
+    fs.writeFileSync(compteur, "");
+    const args = ["--require", require.resolve("./lib/reprise-hash-transport.cjs"), require.resolve("../../scripts/restaurer-donnees.js"),
+      "--projet", REF, "--archive", a.dossier, "--verifier", "--sans-comptes", "--preuve", preuve];
+    if (flag) args.push("--hash-medias");
+    const env = { SUPABASE_ACCESS_TOKEN: "sbp_factice", ARCHIVE_SYNTHETIQUE: a.dossier, TYPE_SYNTHETIQUE: mode };
+    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot;
+    const r = spawnSync(process.execPath, args, { encoding: "utf8", env, windowsHide: true, timeout: 10000 });
+    assert.ifError(r.error);
+    assert.equal(r.status, ok ? 0 : 1, mode + " " + r.stderr);
+    const rapport = JSON.parse(fs.readFileSync(preuve, "utf8"));
+    assert.equal(rapport.prouvee, ok, mode);
+    assert.equal(rapport.medias.ok, ok, mode);
+    assert.equal(rapport.medias_proteges.ok, ok, mode);
+    assert.equal(fs.readFileSync(compteur, "utf8").length, gets, mode);
+  }
+});
 
 test("l'UUID du média restauré doit correspondre à l'objet physique prouvé, toutes les autres colonnes restent comparées", async () => {
   const owner = "11111111-1111-4111-8111-111111111111", asset = "22222222-2222-4222-8222-222222222222";

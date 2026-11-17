@@ -856,17 +856,31 @@ function motifMediaProtege(e) {
   return /^reprise_medias_proteges_[a-z_]+$/.test(e?.message || "") ? e.message : "reprise_medias_proteges_preuve_indisponible";
 }
 
-async function rapprocherMediasProteges(ctx, ecrire) {
+async function catalogueMedias(ctx, selection) {
+  const hacher = drapeau("--hash-medias") && /^[0-9a-f]{64}$/.test(ctx.man.medias?.index_sha256 || "");
+  const colonnes = hacher ? `, s.id::text as identite, ${MP.VERSION_SQL} as version,
+    (to_jsonb(s)->>'archived_at' is null and coalesce(to_jsonb(s)->>'is_delete_marker','false')='false') as vivant` : "";
+  const filtre = selection ? " and bucket_id='content-protected'" : "";
+  const lire = () => sql(ctx, `select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag${colonnes}
+    from storage.objects s where metadata is not null${filtre}`);
+  if (!hacher) return { objets: await lire(), physiques: new Map() };
+  return MP.empreintesPhysiques(ctx, lireIndex(ctx).objets || {}, lire, PROD_REF, selection);
+}
+
+async function rapprocherMediasProteges(ctx, ecrire, preuves) {
   try {
     const plan = planMediasProteges(ctx);
     if (!plan) return null;
+    if (!preuves && ecrire && plan.size && drapeau("--hash-medias")) {
+      preuves = (await catalogueMedias(ctx, plan)).physiques;
+    }
     const requeter = ecrire ? (q, p) => sql(ctx, q, p) : async (q, p) => {
       const lire = PR.lecteur(ctx);
       const ligne = await lire(`select current_setting('transaction_read_only')::boolean as lecture_seule,
         coalesce(jsonb_agg(r),'[]'::jsonb) as objets from (${q}) r`, p);
       return ligne.objets;
     };
-    const ids = await MP.rapprocher(plan, requeter, ecrire);
+    const ids = await MP.rapprocher(plan, requeter, ecrire, preuves);
     const remappes = [...ids].filter(([ancien, courant]) => ancien !== courant).length;
     return { ids, preuve: { ok: true, objets: ids.size, identites_physiques_differentes: remappes } };
   } catch (e) {
@@ -882,7 +896,8 @@ async function verdict(ctx) {
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
   let ecarts = 0, nonVerifies = 0;
-  const proteges = await rapprocherMediasProteges(ctx, false);
+  const catalogue = ctx.man.medias && !sansMedias() ? await catalogueMedias(ctx) : null;
+  const proteges = await rapprocherMediasProteges(ctx, false, catalogue?.physiques);
   if (proteges) {
     preuve.medias_proteges = proteges.preuve;
     if (!proteges.preuve.ok) ecarts++;
@@ -939,9 +954,10 @@ async function verdict(ctx) {
     // ⚠️ ASTRA-55 : l'ensemble ATTENDU est l'INDEX de l'archive, jamais les
     // fichiers encore présents sur disque ; l'intégrité du disque est
     // confrontée à l'index ; et `en_trop` entre dans `ok`.
-    const objets = (await sql(ctx, "select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag from storage.objects where metadata is not null"));
+    const objets = catalogue.objets.map(o => MP.ETAG_MD5.test(o.etag || "") || /-\d+"?$/.test(o.etag || "") ? o : { ...o, etag: null });
     const idx = lireIndex(ctx);
-    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, attenduManifeste: ctx.man.medias.fichiers });
+    const hashes = Object.fromEntries([...catalogue.physiques].map(([cle, p]) => [cle, p.md5]));
+    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, hashes, attenduManifeste: ctx.man.medias.fichiers });
     if (v.indetermine) {
       ecarts++;
       preuve.medias = { ok: false, indetermine: true, motif: (idx.erreur ? "index : " + idx.erreur + " — " : "") + v.motif, obtenu: objets.length };
