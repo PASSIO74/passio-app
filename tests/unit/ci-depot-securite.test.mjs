@@ -31,6 +31,11 @@ test("aperçu : outils verrouillés, minification avant contrôle des octets ser
   const steps = deploy['preview-build'].steps;
   const build = steps.find(s => String(s.run).includes("node scripts/build.js"));
   assert.equal(String(build.env.PASSIO_MINIFIER_APP), "1");
+  assert.equal(build.env.PASSIO_SUPABASE_URL, "${{ vars.STAGING_SUPABASE_URL }}");
+  assert.equal(build.env.PASSIO_SUPABASE_ANON, "${{ vars.STAGING_SUPABASE_ANON }}");
+  const gardeCible = build.run.indexOf('test "$PASSIO_SUPABASE_URL" = "https://fcksxofaelcdmmifnwjo.supabase.co"');
+  assert.ok(gardeCible >= 0 && gardeCible < build.run.indexOf("node scripts/build.js"));
+  assert.match(build.run, /test -n "\$PASSIO_SUPABASE_ANON"/);
   assert.ok(steps.slice(0, steps.indexOf(build)).some(s => s.run === "npm ci --ignore-scripts"));
   assert.ok(build.run.split(/\r?\n/).some(l => l.trim() === "node scripts/verifier-integrite-app.js dist"), "le contrôleur reçoit le dossier dist");
   assert.doesNotMatch(JSON.stringify(deploy['preview-build']), /secrets[.\[]/);

@@ -1388,8 +1388,13 @@ jobs:
       - name: Build dist
         env:
           COMMIT_REF: ${{ github.event.pull_request.head.sha }}
+          # Configuration publique : les brouillons et leur relais restent sur staging.
+          PASSIO_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          PASSIO_SUPABASE_ANON: ${{ vars.STAGING_SUPABASE_ANON }}
           PASSIO_MINIFIER_APP: "1"
         run: |
+          test "$PASSIO_SUPABASE_URL" = "https://fcksxofaelcdmmifnwjo.supabase.co"
+          test -n "$PASSIO_SUPABASE_ANON"
           node scripts/build.js dist/index.html
           cp manifest.json _headers icon-192.png icon-512.png dist/
           node scripts/verifier-integrite-app.js dist

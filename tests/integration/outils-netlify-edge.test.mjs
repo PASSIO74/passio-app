@@ -54,7 +54,7 @@ async function fichiers(dossier, prefixe = '') {
   return resultat.sort();
 }
 
-test('bundle natif des trois Edge canonicales, manifeste et sources ESZIP vérifiés', { timeout: 120000 }, async () => {
+test('bundle natif des quatre Edge canonicales, manifeste et sources ESZIP vérifiés', { timeout: 120000 }, async () => {
   const temporaire = await fsp.mkdtemp(path.join(os.tmpdir(), 'passio-edge-native-'));
   const ancienEnv = { ...process.env };
   let restaurerPont;
@@ -72,7 +72,7 @@ test('bundle natif des trois Edge canonicales, manifeste et sources ESZIP vérif
         assert.equal(hash(await fsp.readFile(destination)), hash(contenu)); attendus[relatif] = hash(contenu);
       }
     }
-    assert.deepEqual(Object.keys(attendus).filter(p => p.startsWith('netlify/edge-functions/')).sort(), ['netlify/edge-functions/apercu.js', 'netlify/edge-functions/demo.js', 'netlify/edge-functions/media.js']);
+    assert.deepEqual(Object.keys(attendus).filter(p => p.startsWith('netlify/edge-functions/')).sort(), ['netlify/edge-functions/apercu.js', 'netlify/edge-functions/demo.js', 'netlify/edge-functions/media.js', 'netlify/edge-functions/private-media.js']);
     const { DenoBridge } = await import(pathToFileURL(path.join(paquet, 'dist/node/bridge.js')).href);
     const executer = DenoBridge.runWithBinary, commandes = [];
     const drapeaux = ['--no-remote', '--no-npm', '--no-prompt', '--allow-import=edge.netlify.com:443', '--deny-net', '--deny-run', '--deny-ffi', `--allow-read=${temporaire},${paquet}`, `--allow-write=${temporaire}`, '--allow-env'];
@@ -84,7 +84,7 @@ test('bundle natif des trois Edge canonicales, manifeste et sources ESZIP vérif
       const sansPermissions = args.slice(1).filter(a => a !== '--allow-all' && a !== '-A' && !a.startsWith('--allow-'));
       const extraction = args.includes(path.join(paquet, 'deno/config.ts'));
       // Les types du bootstrap officiel sont requis même pour un import type.
-      // Seules ces trois commandes peuvent résoudre edge.netlify.com:443 ;
+      // Seules ces quatre commandes peuvent résoudre edge.netlify.com:443 ;
       // leurs fetch applicatifs, sous-processus et FFI restent refusés.
       const permissions = extraction ? drapeaux.filter(a => a !== '--no-remote') : drapeaux;
       const gardes = ['run', ...permissions, ...sansPermissions]; commandes.push(gardes);
@@ -102,12 +102,12 @@ test('bundle natif des trois Edge canonicales, manifeste et sources ESZIP vérif
       userLogger: () => {}, systemLogger: () => {},
     });
     assert.equal(telechargements, 0);
-    assert.deepEqual(resultat.functions.map(f => f.name).sort(), ['apercu', 'demo', 'media']);
-    assert.equal(commandes.length, 4, 'ESZIP_ET_TROIS_EXTRACTIONS_REELLES_REQUISES');
+    assert.deepEqual(resultat.functions.map(f => f.name).sort(), ['apercu', 'demo', 'media', 'private-media']);
+    assert.equal(commandes.length, 5, 'ESZIP_ET_QUATRE_EXTRACTIONS_REELLES_REQUISES');
     assert.deepEqual(nodeFetches, ['https://edge.netlify.com/version.txt'], 'SEUL_CHECK_TYPES_OPTIONNEL_REFUSE');
     const manifeste = JSON.parse(await fsp.readFile(path.join(dist, 'manifest.json'), 'utf8'));
     assert.deepEqual(manifeste, resultat.manifest); assert.equal(manifeste.bundler_version, '16.2.0');
-    assert.deepEqual(manifeste.routes.map(r => [r.function, r.path]).sort(), [['apercu', '/e/*'], ['apercu', '/p/*'], ['apercu', '/u/*']]);
+    assert.deepEqual(manifeste.routes.map(r => [r.function, r.path]).sort(), [['apercu', '/e/*'], ['apercu', '/p/*'], ['apercu', '/u/*'], ['private-media', '/private-media/*']]);
     assert.deepEqual(manifeste.post_cache_routes.map(r => [r.function, r.path]).sort(), [['demo', '/demo/*'], ['media', '/media/*']]);
     assert.equal(manifeste.bundles.length, 1);
     const asset = manifeste.bundles[0]; assert.equal(asset.format, 'eszip2'); assert.match(asset.asset, /^[a-f0-9]{64}\.eszip$/);

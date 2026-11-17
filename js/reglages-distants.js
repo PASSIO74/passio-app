@@ -101,7 +101,7 @@
   // ── Normalisation (même règles que le serveur, en plus strict : le client
   // ne fait confiance ni au cache ni au réseau) ──────────────────────────────
   function normaliser(lignes) {
-    var r = { delestage: 0, coupures: [], bandeau: null };
+    var r = { delestage: 0, coupures: [], bandeau: null, mediasProteges: false };
     if (!Array.isArray(lignes)) return r;
     for (var i = 0; i < lignes.length; i++) {
       var l = lignes[i];
@@ -112,6 +112,8 @@
       } else if (l.cle === "coupures" && Array.isArray(l.valeur.cles)) {
         var ok = l.valeur.cles.every(function (k) { return COUPURES_AUTORISEES.indexOf(k) !== -1; });
         if (ok) r.coupures = l.valeur.cles.filter(function (k, j, a) { return a.indexOf(k) === j; });
+      } else if (l.cle === "medias_proteges") {
+        r.mediasProteges = !Array.isArray(l.valeur) && Object.keys(l.valeur).length === 1 && l.valeur.actif === true;
       } else if (l.cle === "bandeau" && typeof l.valeur.texte === "string") {
         var t = l.valeur.texte.replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
         if (t && t.length <= BANDEAU_MAX) r.bandeau = { texte: t, niveau: l.valeur.niveau === "alerte" ? "alerte" : "info", id: String(l.maj || "") + "|" + t };
@@ -120,7 +122,7 @@
     return r;
   }
 
-  var etat = { delestage: 0, coupures: [], bandeau: null, recuLe: 0, lu: false };
+  var etat = { delestage: 0, coupures: [], bandeau: null, mediasProteges: false, recuLe: 0, lu: false };
 
   function depuisCache() {
     var c = json(CLE_CACHE, null);
@@ -207,9 +209,16 @@
   }
   function appliquer(r, recuLe) {
     var avant = etat.delestage;
+    var mediasAvant = etat.mediasProteges;
     etat.delestage = r.delestage; etat.coupures = r.coupures; etat.bandeau = r.bandeau;
     etat.recuLe = recuLe; etat.lu = true;
     ecrire(CLE_CACHE, JSON.stringify({ recuLe: recuLe, reglages: { delestage: r.delestage, coupures: r.coupures, bandeau: r.bandeau } }));
+    // Ce signal sert à libérer les médias résidents. Le serveur autorise chaque
+    // lecture/envoi ; cette préférence n’est jamais chargée depuis localStorage.
+    etat.mediasProteges = r.mediasProteges === true;
+    if (mediasAvant !== etat.mediasProteges) {
+      try { window.dispatchEvent(new CustomEvent("passio:medias-proteges", { detail: { actif: etat.mediasProteges } })); } catch (e) {}
+    }
     appliquerCoupures(r.coupures);
     peindreBandeau();
     if (avant !== etat.delestage) {
@@ -273,6 +282,7 @@
     facteur: function () { return delestageFacteur(); },
     coupures: function () { return etat.coupures.slice(); },
     bandeau: function () { return etat.bandeau ? { texte: etat.bandeau.texte, niveau: etat.bandeau.niveau } : null; },
+    mediasProtegesActifs: function () { return actif() && etat.lu && Date.now() - etat.recuLe < PERIODE_MS && etat.mediasProteges === true; },
     rafraichir: rafraichir,
     actif: actif,
     _etat: etat,
