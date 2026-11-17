@@ -183,17 +183,27 @@ async function creerCompteE2E(page, prefixe = "") {
   return { uid: out.uid, token: out.token, email };
 }
 
-/** Précondition idempotente, puis preuve de l'adhésion sous le même JWT. */
+/** Prouver l'adhésion ; si elle manque, INSERT simple puis preuve sous le même JWT. */
 async function assurerMembreE2E(rest, token, convId, userId) {
-  const r = await rest(token, "conv_members?on_conflict=conv_id,user_id", {
-    method: "POST", headers: { Prefer: "return=minimal,resolution=ignore-duplicates" },
+  const chemin = "conv_members?conv_id=eq." + encodeURIComponent(convId) + "&user_id=eq." + encodeURIComponent(userId) + "&select=conv_id,user_id";
+  const lire = async () => {
+    const lu = await rest(token, chemin);
+    if (!lu || !Number.isInteger(lu.status) || lu.status < 200 || lu.status >= 300) throw new Error("adhésion de fixture : lecture refusée");
+    const lignes = lu.body;
+    if (!Array.isArray(lignes)) throw new Error("adhésion de fixture : couple attendu absent ou divergent");
+    if (lignes.length === 0) return false;
+    if (lignes.length !== 1 || !lignes[0] || lignes[0].conv_id !== convId || lignes[0].user_id !== userId) throw new Error("adhésion de fixture : couple attendu absent ou divergent");
+    return true;
+  };
+  if (await lire()) return;
+  // Comme supaCreateConversation : le premier membre n'est pas encore lisible.
+  // ON CONFLICT avec index explicite lui imposerait déjà la policy SELECT.
+  const r = await rest(token, "conv_members", {
+    method: "POST", headers: { Prefer: "return=minimal" },
     body: JSON.stringify({ conv_id: convId, user_id: userId }),
   });
-  if (!r || r.status < 200 || r.status >= 300) throw new Error(`adhésion de fixture : HTTP ${r && r.status}`);
-  const lu = await rest(token, "conv_members?conv_id=eq." + encodeURIComponent(convId) + "&user_id=eq." + encodeURIComponent(userId) + "&select=conv_id,user_id");
-  if (!lu || lu.status < 200 || lu.status >= 300) throw new Error("adhésion de fixture : relecture refusée");
-  const lignes = lu.body;
-  if (!Array.isArray(lignes) || lignes.length !== 1 || lignes[0].conv_id !== convId || lignes[0].user_id !== userId) throw new Error("adhésion de fixture : couple attendu absent ou divergent");
+  if (!r || !Number.isInteger(r.status) || r.status < 200 || r.status >= 300) throw new Error(`adhésion de fixture : HTTP ${r && r.status}`);
+  if (!await lire()) throw new Error("adhésion de fixture : couple attendu absent ou divergent");
 }
 
 // `MY_UID` est un `let` de portée script (app-08) : lui affecter une valeur

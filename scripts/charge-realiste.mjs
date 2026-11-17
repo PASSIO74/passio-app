@@ -39,6 +39,7 @@ export async function executer(options) {
   const prefix = `capacite_${Date.now()}_${randomUUID().slice(0, 8)}`;
   const budget = new Budget(); let nettoyageBudget = null;
   const debut = Date.now(), actifs = new Set(), controleurs = new Set();
+  const originesInterruption = new WeakMap();
   const comptes = [], emailsAttendus = [], profilsFixture = [], postsFixture = [], convs = [], events = [], mesures = [], sondes = new Sondes();
   const mutationsPosts = new Set();
   const mutationsLikes = new Map();
@@ -56,6 +57,7 @@ export async function executer(options) {
       "Sans CDC : publications confirmees par lecture JWT destinataire ; messages prives par Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
       "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
+      "L'etat adaptatif des compteurs est conserve entre paliers ; son etat initial est compte avant chaque mesure, sans reinitialisation.",
       "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
         : "Page 20 seule : mesure de capacite de ce scenario, aucune comparaison avant/apres."],
@@ -76,7 +78,10 @@ export async function executer(options) {
   }
   function stop(motif) {
     arret ||= motif;
-    for (const c of controleurs) c.abort();
+    for (const c of controleurs) {
+      if (!c.signal.aborted) originesInterruption.set(c, "ARRET_CAMPAGNE");
+      c.abort();
+    }
     for (const s of actifs) { try { s.close(); } catch {} }
   }
   const interruption = () => stop("INTERRUPTION");
@@ -88,24 +93,34 @@ export async function executer(options) {
   }
   async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), extra = {}, management = false, phaseMesure = phase } = {}) {
     const depart = performance.now(), controller = new AbortController();
+    let etapeRequete = "PREPARATION";
     const current = { phase: phaseMesure, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: nom, type: "http", ok: false, motif: null, ms: 0, octets: 0, status: null,
       date: new Date().toISOString(), depuisDebutMs: Date.now() - debut, methode };
     const body = corps === undefined ? undefined : JSON.stringify(corps);
     controleurs.add(controller);
-    const timer = setTimeout(() => controller.abort(), 12000);
+    const timer = setTimeout(() => {
+      if (!controller.signal.aborted) originesInterruption.set(controller, "ECHEANCE_12_S");
+      controller.abort();
+    }, 12000);
     try {
-      if (phase !== "nettoyage" && arret) throw new Error(arret);
+      if (phase !== "nettoyage" && arret) {
+        originesInterruption.set(controller, "ARRET_CAMPAGNE");
+        throw new Error(arret);
+      }
       compter({ requetes: 1, octets: body ? octets(body) : 0 });
       current.octets = body ? octets(body) : 0;
       const headers = { Authorization: `Bearer ${jwt}`, ...(management ? {} : { apikey: cleAnon }),
         ...(body ? { "Content-Type": "application/json" } : {}), ...extra };
+      etapeRequete = "ATTENTE_ENTETES";
       const res = await fetch(management ? chemin : base + chemin, { method: methode, headers, body, signal: controller.signal, redirect: "error" });
       current.status = res.status;
       if (methode === "HEAD") {
+        etapeRequete = "VALIDATION";
         const compte = compteurHead(res.status, res.headers.get("content-range"));
         current.ok = true; current.compteur = compte;
         return compte;
       }
+      etapeRequete = "LECTURE_CORPS";
       const reader = res.body?.getReader(), chunks = []; let total = 0;
       if (reader) while (true) {
         const { done, value } = await reader.read(); if (done) break;
@@ -113,6 +128,7 @@ export async function executer(options) {
         if (total > 1_000_000) { await reader.cancel(); throw new Error("REPONSE_SUP_1_MO"); }
         chunks.push(Buffer.from(value));
       }
+      etapeRequete = "VALIDATION";
       const texte = Buffer.concat(chunks).toString("utf8");
       const verdict = verdictReponse(res.status, texte, attentes);
       // Le rapport contient un code stable, jamais un corps d'erreur distant.
@@ -120,6 +136,8 @@ export async function executer(options) {
       current.ok = true;
       return texte.trim() ? JSON.parse(texte) : null;
     } catch (e) {
+      current.diagnosticTransport = { etape: etapeRequete,
+        interruption: originesInterruption.get(controller) || "AUCUNE", signalInterrompu: controller.signal.aborted };
       current.motif = motifSur(e);
       throw new Error(current.motif);
     } finally {
@@ -552,6 +570,14 @@ export async function executer(options) {
       changerPhase("echauffement"); const debutChauffe = performance.now();
       for (const c of selection.slice(0, 4)) await fil(c, page);
       const chauffeMs = Math.round(performance.now() - debutChauffe);
+      const etatInitialCompteurs = selection.reduce((etat, c) => {
+        const ids = [...new Set(c.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
+        const connus = ids.filter(id => c.derniersComptes?.has(id)).length;
+        if (!connus) etat.froids++;
+        else if (ids.length === LIKES_VISIBLES.maximum && connus === LIKES_VISIBLES.maximum) etat.chauds++;
+        else etat.partiels++;
+        return etat;
+      }, { conservationEntrePaliers: true, froids: 0, partiels: 0, chauds: 0 });
       changerPhase("mesure"); const start = performance.now(), debutMural = Date.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
       const borneDure = setTimeout(() => { if (controleurs.size) stop("DUREE_PALIER_180_S"); }, 180000);
       const parcoursActeurs = selection.map(async c => {
@@ -583,6 +609,7 @@ export async function executer(options) {
         http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
         mixObserve: mixObserve(subset),
         compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", politique: o.compteursCadence, coalescenceAvecFil: false,
+          etatInitial: etatInitialCompteurs,
           cycles: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
           cyclesCalmes: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles" && m.vivant === false).length,
           headParPersonne: taille ? Number((subset.filter(m => m.type === "http" && m.methode === "HEAD").length / taille).toFixed(2)) : 0,

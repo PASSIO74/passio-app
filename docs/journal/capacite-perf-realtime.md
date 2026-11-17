@@ -3182,3 +3182,26 @@ Ordre restant : revue critique du point fil_compteurs service_role, banc Postgre
 avant/après/rejeu, CI verte, puis client servi portant video_lives:photo-https, migrations
 plafonds → lectures → telemetrie, contrôle sur cible et observation pilotage. Aucun de ces
 gestes distants, aucune charge ni application de migration n'a été exécuté ici.
+
+
+## Diagnostic du banc de charge — 17 novembre 2026
+
+Le timer HTTP reste 12 s, mais les échecs indiquent désormais le stade atteint
+(préparation, attente des en-têtes, lecture du corps, validation), la première
+origine locale d'interruption (échéance ou arrêt de campagne) et l'état du signal.
+Ces nouveaux champs sont fermés, sans propriété d'exception, URL ou identité ;
+les motifs historiques uppercase de motifSur restent inchangés et gardent leur limite.
+
+L'état adaptatif est conservé entre paliers. Une photographie agrégée après
+échauffement, avant mesure, compte les acteurs froids/partiels/chauds ; aucune Map
+n'est vidée, aucune clé/valeur n'est exportée. Auth, cibles, budgets, cadence,
+verdicts et nettoyage sont conservés. Le banc privé a validé la parité avec
+l'ancien chemin ; les 11 tests intégrés exercent les vrais requete/stop/palier
+en VM avec fetch et horloges injectés, sans lancer l'opérateur ou un réseau.
+
+Ce lot ne corrige pas causalement le pic historique et ne donne aucun GO. Le
+palier 100 n'a pas été relancé. Implémentation Codex, contre-revue Root favorable
+et relecture séparée de l'adaptation de la fixture VM existante : ses assertions
+sont conservées. Les 55 tests concernés et `npm run verif` passent sous Node22.
+Les chemins scripts/tests restent critiques pour la gouvernance. Pilotage :
+catégories et compteurs de rapport seulement, aucune connexion/remédiation active.

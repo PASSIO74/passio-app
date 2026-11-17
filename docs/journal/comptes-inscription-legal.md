@@ -691,3 +691,28 @@ Verrous : `tests/unit/fixtures-comptes-reels.test.mjs` et `verrou-comptes-reels.
 Les barrières production, la sérialisation des comptes réels, les quotas, le captcha et les
 assertions de majorité/blocage/RLS ne sont pas modifiés. Ce lot ne prouve pas le débit commercial
 d'inscription : la CI hébergée reste nécessaire avant livraison.
+
+### Première adhésion : lecture préalable et INSERT simple (2026-11-17)
+
+La CI de cette PR a ensuite refusé la première adhésion du créateur en403. La
+lecture du catalogue en production, explicitement en transaction de lecture seule,
+confirme que la création de conversation n'ajoute pas son membre : la policy INSERT
+autorise le créateur, mais SELECT exige une adhésion existante. PostgreSQL vérifie
+également SELECT sur la ligne proposée quand `ON CONFLICT DO NOTHING` désigne un
+index explicite. `on_conflict=conv_id,user_id` ne convient donc pas au premier membre.
+Il s'agit d'un mécanisme reproduit localement avec le transport réel et des réponses
+synthétiques ; aucune donnée utilisateur n'a été lue pour attribuer le refus historique.
+
+`assurerMembreE2E` lit maintenant d'abord le couple exact sous le JWT de l'acteur.
+S'il est déjà prouvé, aucune écriture ne part. S'il manque, le helper suit le produit
+`supaCreateConversation` : INSERT simple `return=minimal`, puis relecture exacte sous
+le même JWT. Aucun conflit, refus403/409/429 ou transport ambigu n'est récupéré ; une
+course qui rend409 reste rouge, même si un tiers a créé la ligne entre-temps.
+Lectures refusées, malformées, multiples ou divergentes restent également rouges.
+
+Les unités conservent les quatre tests Auth et les cinq tests du verrou, et exercent
+les neuf cas d'adhésion via les vrais helpers et l'adaptateur IRL `{status,body}` en VM.
+Les assertions majorité/blocage/RLS, la cadence, les quotas et le backend sont inchangés.
+Risque critique de gouvernance des fixtures privilégiées ; implémentation Codex,
+contre-revue Root et CI hébergée requises avant livraison. Centre/Sentinelle : les
+contrôles GitHub existants suffisent, aucun nouvel événement ni automatisme.
