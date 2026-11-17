@@ -76,6 +76,11 @@ const EXCEPTIONS = {
   // appliquée (table absente = échec nommé, fail-closed).
   "story_likes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
   "story_comments.author_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
+  // Médias protégés : le relevé Storage par propriété précède les lignes.
+  // Les FK emportent les registres avec le profil ; les octets sont ensuite
+  // supprimés depuis le relevé conservé. L'export lit le même instantané.
+  "media_reservations.owner_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : le registre part avec le profil après le relevé Storage par propriété ; suppression physique ensuite via le relevé conservé ; export explicite dans export_compte_instantane (migration_export_medias_proteges_go_2026-11-16.sql)",
+  "media_assets.owner_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : asset et media_objects dépendants partent avec le profil purgé ; export explicite des trois registres sous le même instantané",
   "signalements_preuves.auteur_id": "preuve de modération d'un tiers : vit avec le signalement (report_id → reports(id) on delete cascade), survit à la suppression du compte de l'auteur comme reports.reporter_id ; durée de conservation des signalements traités à fixer côté juridique",
 };
 
