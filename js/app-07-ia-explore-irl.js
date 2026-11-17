@@ -4525,6 +4525,8 @@ function _lienContactEvenement(contact) {
 })();
 
 function openEventDetails(id) {
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) return;
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("activite"); } catch (e) {}
@@ -4547,11 +4549,18 @@ function openEventDetails(id) {
       if (typeof closeConversation === "function") closeConversation();
       else _conv.classList.remove("active");
     }
-    pushOverlayToHistory("event", id);
+    const carte = document.getElementById("irlMapWrap");
+    if (carte && carte.classList.contains("fullscreen")) {
+      // La carte (z 9000) masquait la fiche (z 200). La quitter et réutiliser
+      // son entrée, comme un remplacement de modale : aucun retour mort.
+      toggleIrlMapFullscreen();
+      if (irlMap) irlMap.closePopup();
+      pushOverlayHistory("event", "#event-" + id);
+    } else {
+      pushOverlayToHistory("event", id);
+    }
   }
 
-  const ev = allEvents().find(e => e.id === id);
-  if (!ev) return;
   window._openEventDetailId = id; // pour le refresh realtime des commentaires
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
