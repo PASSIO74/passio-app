@@ -2287,6 +2287,10 @@ function estImageLegere(url) {
 // est rendue telle quelle aussi — la meilleure image CERTAINE, jamais une
 // URL devinée qui ferait un 404.
 function imageGrande(url) {
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) {
+    var prive = passioMediaProteges.parser(url) || passioMediaProteges.local(url);
+    if (prive) return passioMediaProteges.route(url).replace(/\/v720$/, "/original");
+  }
   if (!estImageLegere(url)) return url;
   var sans = url.replace(/\.v720\.(jpe?g|png|webp)/i, "");
   return _RE_EXT_IMAGE_GRANDE.test(sans.split("?")[0].split("#")[0]) ? sans : url;
@@ -2308,6 +2312,366 @@ window.estImageLegere = estImageLegere;
 window.imageGrande = imageGrande;
 window.cheminsImageStorage = cheminsImageStorage;
 
+// PRIVATE MEDIA CLIENT v1 — aucune URL signée, aucun jeton conservé par ce module.
+var passioMediaProteges = (function () {
+  var UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  var RE = new RegExp("^/private-media/(posts|stories)/([A-Za-z0-9_-]{1,120})/(" + UUID + ")/(original|v720|poster)$");
+  var MAX = 27262976, IMAGES = 33554432, epoch = 0, attendu, bloque = null;
+  var controles = new Set(), canaux=new Map(), images = new Map(), imageOctets = 0, media = null, mediaSeq = 0;
+  var file = [], actifs = 0, imagesEnCours = new Map(), installe = false, invalidations=[],annulations=0,repriseTransport=null,registrationsVues=new WeakSet(),workersVus=new WeakSet(),observateurImages=null;
+  var IMAGE_NEUTRE="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  var cacheGate=Promise.resolve();
+  function erreur() { return new Error("media_protege_indisponible"); }
+  function compte() { return typeof MY_UID === "string" && new RegExp("^" + UUID + "$", "i").test(MY_UID) ? MY_UID : null; }
+  function parser(value) {
+    if (typeof value !== "string" || value.indexOf("https://media.passio.invalid/private-media/") !== 0) return null;
+    var u; try { u = new URL(value); } catch (_) { return null; }
+    if (u.origin !== "https://media.passio.invalid" || u.username || u.password || u.search || u.hash) return null;
+    var m = RE.exec(value.slice("https://media.passio.invalid".length)); return m ? { type: m[1], id: m[2], asset: m[3], variant: m[4] } : null;
+  }
+  function local(value) {
+    if(typeof value!=="string")return null;
+    var u; try { u = new URL(value, location.origin); } catch (_) { return null; }
+    var brut=value.indexOf(location.origin+"/")===0?value.slice(location.origin.length):value.charAt(0)==="/"?value:null;
+    if (u.origin !== location.origin || u.username || u.password || u.search || u.hash || brut!==u.pathname) return null;
+    var m = RE.exec(u.pathname); return m ? { type: m[1], id: m[2], asset: m[3], variant: m[4] } : null;
+  }
+  function route(value, contexte) {
+    var p = parser(value) || local(value);
+    if (!p) return typeof value === "string" && /media\.passio\.invalid/i.test(value) ? "" : value;
+    if (contexte) {
+      if (!/^(posts|stories)$/.test(contexte.type) || !/^[A-Za-z0-9_-]{1,120}$/.test(contexte.id || "")) return "";
+      p.type = contexte.type; p.id = contexte.id;
+    }
+    return location.origin + "/private-media/" + p.type + "/" + p.id + "/" + p.asset + "/" + p.variant;
+  }
+  function contextualiser(obj, contexte) {
+    function copie(v, profondeur) {
+      if (typeof v === "string") return route(v, contexte);
+      if (!v || typeof v !== "object") return v;
+      if (profondeur > 6) return null;
+      if (Array.isArray(v)) return v.slice(0, 128).map(function (x) { return copie(x, profondeur + 1); });
+      var res = {}; Object.keys(v).slice(0, 128).forEach(function (k) {
+        if (k !== "__proto__" && k !== "constructor" && k !== "prototype") res[k] = copie(v[k], profondeur + 1);
+      }); return res;
+    }
+    var res = Object.assign({}, obj);
+    ["image", "video", "audio", "poster", "media", "overlays", "sharedReelData"].forEach(function (k) { if (Object.prototype.hasOwnProperty.call(res, k)) res[k] = copie(res[k], 0); });
+    return res;
+  }
+  function retirer(entry) {
+    if (!entry) return;
+    entry.cibles.forEach(function (c) {
+      if (c.element.getAttribute(c.attribut) === entry.url) {
+        if (c.element.pause) c.element.pause(); c.element.removeAttribute(c.attribut);
+        if (c.element.load && c.attribut === "src") c.element.load();
+      }
+    }); URL.revokeObjectURL(entry.url);
+  }
+  function purgerCaches(){
+    if(typeof caches==="undefined")return cacheGate;
+    async function purger(){
+      for(var nom of await caches.keys()){
+        var cache=await caches.open(nom);
+        for(var request of await cache.keys()){
+          var url=new URL(request.url);
+          if(url.origin===location.origin&&url.pathname.indexOf("/private-media/")===0)await cache.delete(request);
+        }
+      }
+    }
+    cacheGate=cacheGate.then(purger,purger);
+    // Le rejet reste dans cacheGate et ferme session(). Cet observateur evite seulement
+    // un rejet global non gere pour les invalidations synchrones du callback Auth.
+    cacheGate.catch(function(){});return cacheGate;
+  }
+  function invalider(nouveau) {
+    var ancien = compte(); epoch++; attendu = nouveau; bloque = nouveau === undefined ? ancien : null;
+    repriseTransport=null;
+    purgerCaches();
+    canaux.forEach(function(c,port){c.annule=true;clearTimeout(c.timer);port.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCEL",nonce:c.nonce,epoch:epoch});c.timer=setTimeout(function(){canaux.delete(port);c.terminer();port.close();},1000);});
+    controles.forEach(function (c) { c.abort(); }); controles.clear();
+    file.splice(0).forEach(function (t) { t.rejeter(erreur()); });
+    imagesEnCours.clear();
+    images.forEach(retirer); images.clear(); imageOctets = 0;
+    if (media) { media.abort.abort(); retirer(media.entry); media = null; } mediaSeq++;
+    invalidations.forEach(function(f){f();});
+    if (typeof document !== "undefined") document.querySelectorAll("[data-pmp-epoch]").forEach(function (el) {
+      if (el.pause) el.pause(); el.removeAttribute("src"); el.removeAttribute("poster"); el.removeAttribute("data-pmp-epoch");
+      el.removeAttribute("data-video-public-src");
+      el.removeAttribute("data-pmp-src");el.removeAttribute("data-pmp-poster");delete el._pmpChargements;delete el._pmpObservation;
+      if(observateurImages)observateurImages.unobserve(el);
+      if (el.load) el.load();
+      delete el._pmpReferences;
+    });
+    if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: "PASSIO_PRIVATE_MEDIA_INVALIDATE", epoch: epoch });
+  }
+  function authChanged(session, event) {
+    var nouveau = session && session.user && session.user.id || null;
+    if (event === "SIGNED_OUT" || nouveau !== compte()) invalider(nouveau);
+  }
+  function delai(p) {
+    var timer; return Promise.race([p, new Promise(function (_, reject) { timer = setTimeout(function () { reject(erreur()); }, 10000); })]).finally(function () { clearTimeout(timer); });
+  }
+  async function session() {
+    var capture = epoch, auteur = compte();
+    if (attendu === undefined) { if (bloque && auteur === bloque) throw erreur(); attendu = auteur; }
+    if (attendu !== auteur) throw erreur();
+    await cacheGate;
+    if(capture!==epoch||auteur!==compte()||attendu!==auteur)throw erreur();
+    if (!auteur) return { mode: "anon", epoch: capture };
+    if (typeof supa === "undefined" || !window._supaReal || !supa.auth || !supa.auth.getSession) throw erreur();
+    var r = await delai(supa.auth.getSession());
+    if (capture !== epoch || auteur !== compte() || attendu !== auteur || r.error) throw erreur();
+    var s = r.data && r.data.session;
+    if (s && s.expires_at && s.expires_at * 1000 < Date.now() + 30000) {
+      r = await delai(supa.auth.refreshSession());
+      if (capture !== epoch || auteur !== compte() || attendu !== auteur || r.error) throw erreur(); s = r.data && r.data.session;
+    }
+    if (!s || !s.user || s.user.id !== auteur || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(s.access_token || "")) throw erreur();
+    return { mode: "user", token: s.access_token, epoch: capture };
+  }
+  function cible(entry, element, attribut) {
+    if (!element) return;
+    entry.cibles = entry.cibles.filter(function (c) { return c.element.isConnected && c.element !== element; }).slice(-63);
+    entry.cibles.push({ element: element, attribut: attribut || "src" });
+    element._pmpReferences=element._pmpReferences||{};element._pmpReferences[attribut||"src"]=entry.path;
+    element.setAttribute("data-pmp-epoch", String(epoch));
+  }
+  function visible(element){
+    if(!element||!element.isConnected||document.hidden)return false;
+    if(typeof element.getBoundingClientRect!=="function")return true;
+    var r=element.getBoundingClientRect();
+    return r.right>0&&r.bottom>=0&&r.left<(window.innerWidth||document.documentElement.clientWidth)&&r.top<(window.innerHeight||document.documentElement.clientHeight)&&(r.width>0||r.height>0);
+  }
+  async function avecSession(operation) {
+    var capture=epoch,abort=new AbortController();controles.add(abort);
+    var timer=setTimeout(function(){abort.abort();},180000);
+    try{
+      var auth=await session();
+      if(auth.mode!=="user"||capture!==epoch||abort.signal.aborted)throw erreur();
+      var resultat=await operation({headers:{Authorization:"Bearer "+auth.token},signal:abort.signal});
+      if(capture!==epoch||abort.signal.aborted)throw erreur();return resultat;
+    }finally{clearTimeout(timer);controles.delete(abort);}
+  }
+  async function capacites() {
+    return avecSession(async function(contexte){
+      var r=await fetch(location.origin+"/private-media/capabilities",{method:"POST",headers:Object.assign({"X-Passio-Media-Read":"1"},contexte.headers),signal:contexte.signal,cache:"no-store",credentials:"omit",redirect:"error"});
+      if(!r.ok||!/no-store/i.test(r.headers.get("Cache-Control")||""))throw erreur();
+      var c=await r.json();
+      if(!c||c.protocol!==1||c.min_client!==1||c.max_bytes!==MAX||c.uploads_enabled!==true||c.reads_enabled!==true)throw erreur();return c;
+    });
+  }
+  async function telecharger(path, kind, element, attribut, imageAdmise) {
+    if (!local(path)) throw erreur();
+    var capture = epoch, abort = new AbortController(), seq = mediaSeq;
+    controles.add(abort);
+    if (kind !== "image") {
+      if (media) { media.abort.abort(); retirer(media.entry); }
+      seq = ++mediaSeq; media = { abort: abort, entry: null };
+    }
+    var timer = setTimeout(function () { abort.abort(); }, 120000);
+    try {
+      var auth = await session();
+      if (capture !== epoch || abort.signal.aborted || (kind==="image"&&element&&!visible(element)) || (imageAdmise&&!imageAdmise())) throw erreur();
+      var response = await fetch(path, {method:"POST", headers: Object.assign({"X-Passio-Media-Read":"1"},auth.mode === "user" ? { Authorization: "Bearer " + auth.token } : {}), credentials: "omit", cache: "no-store", redirect: "error", signal: abort.signal });
+      var mime = (response.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+      var longueur = response.headers.get("Content-Length");
+      if (!response.ok || !/no-store/i.test(response.headers.get("Cache-Control") || "") || !/^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm)|audio\/(mp4|webm|ogg|mpeg))$/.test(mime)
+        || (kind === "image" && mime.indexOf("image/") !== 0) || (longueur !== null && (!/^\d{1,9}$/.test(longueur) || Number(longueur) > MAX)) || !response.body) throw erreur();
+      var reader = response.body.getReader(), chunks = [], bytes = 0;
+      for (;;) {
+        var item = await reader.read();
+        if (capture !== epoch || abort.signal.aborted || (kind !== "image" && seq !== mediaSeq)) throw erreur();
+        if (item.done) break;
+        if (bytes + item.value.byteLength > MAX) throw erreur();
+        chunks.push(item.value); bytes += item.value.byteLength;
+      }
+      if (!bytes || (longueur !== null && bytes !== Number(longueur)) || (element && !element.isConnected)) throw erreur();
+      var entry = { url: URL.createObjectURL(new Blob(chunks, { type: mime })), bytes: bytes, path:path, cibles: [] };
+      cible(entry, element, attribut);
+      if (kind === "image") {
+        while (images.size && (images.size >= 24 || imageOctets + bytes > IMAGES)) {
+          var key = images.keys().next().value, ancien = images.get(key); images.delete(key); imageOctets -= ancien.bytes; retirer(ancien);
+        }
+        var precedent = images.get(path); if (precedent) { imageOctets -= precedent.bytes; retirer(precedent); images.delete(path); }
+        images.set(path, entry); imageOctets += bytes;
+      } else media.entry = entry;
+      return entry.url;
+    } catch (_) { abort.abort(); if(reader)reader.cancel().catch(function () {});else if(response&&response.body)response.body.cancel().catch(function () {}); throw erreur(); }
+    finally { controles.delete(abort); clearTimeout(timer); }
+  }
+  function pompe() {
+    while (actifs < 2 && file.length) {
+      var t = file.shift(); actifs++;
+      (function (travail) { telecharger.apply(null, travail.args).then(travail.resoudre, travail.rejeter).finally(function () { actifs--; pompe(); }); })(t);
+    }
+  }
+  function charger(value, kind, element, attribut) {
+    var path = route(value); if (!local(path)) return Promise.reject(erreur());
+    if(attendu!==undefined&&attendu!==compte())return Promise.reject(erreur());
+    if (kind !== "image") return telecharger(path, kind, element, attribut);
+    var present = images.get(path);
+    if (present) { images.delete(path); images.set(path, present); cible(present, element, attribut); return Promise.resolve(present.url); }
+    var travail = imagesEnCours.get(path);
+    if (!travail) {
+      if (file.length >= 64) return Promise.reject(erreur());
+      travail = { epoch:epoch, compte:compte(), cibles:[], autonome:false };
+      var resoudre, rejeter;
+      travail.promise = new Promise(function (resolve, reject) { resoudre=resolve; rejeter=reject; });
+      // Une seule entrée LRU et un seul Blob pour toutes les surfaces du même média.
+      // La fin d'une ancienne époque ne doit pas effacer le travail de la nouvelle.
+      var courant=travail;
+      travail.promise = travail.promise.finally(function () { if (imagesEnCours.get(path)===courant) imagesEnCours.delete(path); });
+      imagesEnCours.set(path, travail);
+      travail.demarrer = function () {
+        file.push({ args:[path,kind,null,null,function () { return courant.autonome || courant.cibles.some(function (c) { return visible(c.element); }); }], resoudre:resoudre, rejeter:rejeter });
+        pompe();
+      };
+    }
+    if (travail.cibles.length >= 64) return Promise.reject(erreur());
+    travail.cibles.push({element:element, attribut:attribut});
+    if (!element) travail.autonome=true;
+    var chargement=travail.promise.then(function (url) {
+      if (travail.epoch!==epoch || travail.compte!==compte() || (element&&!element.isConnected)) throw erreur();
+      var entree=images.get(path);
+      if (!entree || entree.url!==url) throw erreur();
+      cible(entree,element,attribut); return url;
+    });
+    if (travail.demarrer) { var demarrer=travail.demarrer; travail.demarrer=null; demarrer(); }
+    return chargement;
+  }
+  async function jouer(element, value, volontaire) {
+    var capture = epoch;
+    try { var url = await charger(value, "media", element); if(capture!==epoch || !element.isConnected) throw erreur(); element.src = url; return lancerVideoPublique(element, volontaire); }
+    catch (_) { if (typeof videoPubliqueBouton === "function") videoPubliqueBouton(element, true); return false; }
+  }
+  function pret(element) { return element && element.getAttribute("data-pmp-epoch") === String(epoch) && /^blob:/.test(element.getAttribute("src") || ""); }
+  function chargerVisuel(el,attribut){
+    var src=el._pmpReferences&&el._pmpReferences[attribut],capture=epoch;
+    if(!src||!local(src)||!visible(el))return;
+    if(el.getAttribute("data-pmp-epoch")===String(epoch)&&/^blob:/.test(el.getAttribute(attribut)||""))return;
+    var cle=String(epoch)+":"+src;el._pmpChargements=el._pmpChargements||{};
+    if(el._pmpChargements[attribut]===cle)return;el._pmpChargements[attribut]=cle;
+    charger(src,"image",el,attribut).then(function(u){if(el.isConnected&&capture===epoch&&el._pmpReferences&&el._pmpReferences[attribut]===src)el.setAttribute(attribut,u);},function(){el.setAttribute("aria-label","Média indisponible");})
+      .finally(function(){if(el._pmpChargements&&el._pmpChargements[attribut]===cle)delete el._pmpChargements[attribut];});
+  }
+  function observerVisuel(el){
+    if(observateurImages){var cle=String(epoch)+":"+JSON.stringify(el._pmpReferences||{});if(el._pmpObservation!==cle){el._pmpObservation=cle;observateurImages.unobserve(el);observateurImages.observe(el);}}
+    else{if(el.tagName==="IMG")chargerVisuel(el,"src");chargerVisuel(el,"poster");}
+  }
+  function monter(root) {
+    if (!root || !root.querySelectorAll) return;
+    var noeuds = root.matches && root.matches("img,video,audio,source") ? [root] : [];
+    noeuds = noeuds.concat(Array.from(root.querySelectorAll("img,video,audio,source")));
+    noeuds.forEach(function (el) {
+      var attente=el.getAttribute("data-pmp-src"),src=attente?route(attente):el.getAttribute("src"),path=local(src||""),differe=el.getAttribute("data-video-public-src");
+      var capture = epoch;
+      if (path || local(el.getAttribute("data-video-public-src") || "")) el.setAttribute("data-pmp-epoch",String(epoch));
+      if(path){el._pmpReferences=el._pmpReferences||{};el._pmpReferences.src=src;}
+      if (path && el.tagName === "IMG") {
+        if(!pret(el)&&el.getAttribute("src")!==IMAGE_NEUTRE)el.setAttribute("src",IMAGE_NEUTRE);
+        observerVisuel(el);
+      } else if ((path||local(differe||"")) && (el.tagName === "VIDEO" || el.tagName === "AUDIO" || el.tagName === "SOURCE")) {
+        var parent = el.tagName === "SOURCE" ? el.parentElement : el;parent.setAttribute("data-pmp-epoch",String(epoch)); if(path){el.removeAttribute("src");parent.dataset.videoPublicSrc=src;}else src=differe;
+        parent._pmpReferences=parent._pmpReferences||{};parent._pmpReferences.video=src;
+        if (parent.tagName === "AUDIO") {
+          if(!parent._pmpEcouteAudio){parent._pmpEcouteAudio=true;
+            var demanderAudio=function(event){
+              if(event.type==="keydown"&&event.key!=="Enter"&&event.key!==" ")return;
+              if(pret(parent))return;
+              var epoque=epoch,source=parent.getAttribute("data-video-public-src"),cle=String(epoque)+":"+source;
+              if(!local(source||"")||parent._pmpAudioEnCours===cle)return;parent._pmpAudioEnCours=cle;
+              charger(source,"media",parent).then(function(u){if(epoque!==epoch||!parent.isConnected)return;parent.src=u;parent.play().catch(function(){});},function(){parent.setAttribute("aria-label","Média indisponible");})
+                .finally(function(){if(parent._pmpAudioEnCours===cle)delete parent._pmpAudioEnCours;});
+            };
+            parent.addEventListener("pointerdown",demanderAudio);parent.addEventListener("click",demanderAudio);parent.addEventListener("keydown",demanderAudio);
+          }
+        } else if (parent.autoplay) jouer(parent,src,false);
+      }
+      var poster=route(el.getAttribute("data-pmp-poster")||el.getAttribute("poster")||"");
+      if(poster&&local(poster)){el._pmpReferences=el._pmpReferences||{};el._pmpReferences.poster=poster;if(!/^blob:/.test(el.getAttribute("poster")||""))el.removeAttribute("poster");observerVisuel(el);}
+    });
+  }
+  function installer() {
+    if (installe) return; installe = true;
+    purgerCaches();
+    if(typeof IntersectionObserver==="function")observateurImages=new IntersectionObserver(function(entries){entries.forEach(function(entry){entry.target._pmpDansVue=entry.isIntersecting;if(entry.isIntersecting){if(entry.target.tagName==="IMG")chargerVisuel(entry.target,"src");chargerVisuel(entry.target,"poster");}});},{rootMargin:"0px"});
+    document.addEventListener("visibilitychange",function(){if(!document.hidden)document.querySelectorAll("[data-pmp-epoch]").forEach(function(el){if(el.tagName==="IMG")chargerVisuel(el,"src");chargerVisuel(el,"poster");});});
+    if(!observateurImages){var raf=null;window.addEventListener("scroll",function(){if(raf!==null)return;raf=requestAnimationFrame(function(){raf=null;monter(document);});},{passive:true,capture:true});}
+    window.addEventListener("passio:medias-proteges",function(event){if(event.detail&&event.detail.actif===false)invalider(compte());});
+    function retenirDom(){return Array.from(document.querySelectorAll("[data-pmp-epoch]")).map(function(el){return {element:el,refs:Object.assign({},el._pmpReferences||{})};});}
+    function observerRelais(){
+      if(!navigator.serviceWorker)return;
+      navigator.serviceWorker.getRegistration().then(function(reg){
+        if(!reg||registrationsVues.has(reg))return;registrationsVues.add(reg);
+        function observer(worker){if(!worker||workersVus.has(worker))return;workersVus.add(worker);
+          // Couper des updatefound/reg.installing : attendre installed puis reveiller
+          // l'ancien controller bloque la releve Chromium (reproduction minimale locale).
+          if(navigator.serviceWorker.controller){
+            var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();invalider(auteur);repriseTransport={uid:auteur,noeuds:reprise};
+          }
+        }
+        reg.addEventListener("updatefound",function(){observer(reg.installing);});observer(reg.installing);
+      }).catch(function(){/* Absence de registration : Blob explicite uniquement. */});
+    }
+    observerRelais();
+    if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("message",async function(event){
+      if(!event.data||event.data.type!=="PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE"||event.origin!==location.origin||!event.ports[0])return;
+      var port=event.ports[0],nonce=event.data.nonce;
+      try{
+        if(typeof nonce!=="string"||!new RegExp("^"+UUID+"$","i").test(nonce))return;
+        var auteur=compte(),demandeEpoch=epoch;
+        var reg=await navigator.serviceWorker.getRegistration();
+        if(compte()!==auteur||epoch!==demandeEpoch||!reg||!event.source||(event.source!==reg.installing&&event.source!==reg.waiting))return;
+        var reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom(),fins=Array.from(canaux.values()).map(function(c){return c.fin;});
+        invalider(auteur);repriseTransport={uid:auteur,noeuds:reprise};
+        var annulationEpoch=epoch;
+        var timer;await Promise.race([Promise.all(fins),new Promise(function(resolve){timer=setTimeout(resolve,350);})]);clearTimeout(timer);
+        if(compte()!==auteur||epoch!==annulationEpoch)return;
+        port.postMessage({type:"PASSIO_PRIVATE_MEDIA_UPDATE_READY",nonce:nonce});
+      }finally{port.close();}
+    });
+    if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("controllerchange",function(){
+      var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();
+      invalider(auteur);
+      if(compte()!==auteur)return;
+      reprise.forEach(function(r){var el=r.element;if(!el.isConnected)return;
+        if(el.tagName==="IMG"&&local(r.refs.src||""))el.setAttribute("data-pmp-src",r.refs.src);
+        else if((el.tagName==="VIDEO"||el.tagName==="AUDIO")&&local(r.refs.video||r.refs.src||""))el.setAttribute("data-video-public-src",r.refs.video||r.refs.src);
+        if(local(r.refs.poster||""))el.setAttribute("data-pmp-poster",r.refs.poster);
+      });monter(document);observerRelais();
+    });
+    if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", async function (event) {
+      if (!event.data || event.data.type !== "PASSIO_PRIVATE_MEDIA_TOKEN" || event.origin !== location.origin || event.source !== navigator.serviceWorker.controller || !event.ports[0]) return;
+      var port = event.ports[0], nonce = event.data.nonce;
+      try {
+        if(canaux.size>=128||typeof nonce!=="string"||!new RegExp("^"+UUID+"$","i").test(nonce))throw erreur();
+        var s = await session();if(event.source!==navigator.serviceWorker.controller)throw erreur();
+        var terminer;var fini=new Promise(function(resolve){terminer=resolve;});
+        var fermer=function(){var c=canaux.get(port);if(c){clearTimeout(c.timer);c.terminer();}canaux.delete(port);port.close();};
+        port.onmessage=function(e){if(!e.data||e.data.nonce!==nonce)return;if(e.data.type==="PASSIO_PRIVATE_MEDIA_CANCELLED"||e.data.type==="PASSIO_PRIVATE_MEDIA_DONE"){var c=canaux.get(port);if(c&&c.annule)annulations++;fermer();}};
+        var timer=setTimeout(function(){port.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCEL",nonce:nonce,epoch:epoch});fermer();},180000);
+        canaux.set(port,{nonce:nonce,timer:timer,fin:fini,terminer:terminer});
+        port.postMessage(Object.assign({ type:"PASSIO_PRIVATE_MEDIA_TOKEN_RESULT",nonce:nonce },s));
+        s.token=undefined;s=null; // Le canal ne garde que nonce/timer, jamais le bearer remis.
+      } catch (_) { port.postMessage({ type:"PASSIO_PRIVATE_MEDIA_DENIED",nonce:nonce });port.close(); }
+    });
+    new MutationObserver(function (records) { records.forEach(function (r) { if(r.type==="attributes")monter(r.target);else{if(observateurImages)r.removedNodes.forEach(function(n){if(!n.querySelectorAll)return;if(n.matches&&n.matches("img,video"))observateurImages.unobserve(n);n.querySelectorAll("img,video").forEach(function(el){observateurImages.unobserve(el);});});r.addedNodes.forEach(monter);} }); }).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","poster","data-video-public-src","data-pmp-src","data-pmp-poster"]});
+    monter(document);
+  }
+  return { parser:parser, local:local, route:route, contextualiser:contextualiser, invalider:invalider, authChanged:authChanged, session:session,
+    charger:charger, jouer:jouer, pret:pret, installer:installer,avecSession:avecSession,capacites:capacites,
+    capture:function(){return {uid:compte(),epoch:epoch};},courant:function(c){return !!c&&c.uid===compte()&&c.epoch===epoch;},
+    surInvalidation:function(f){if(typeof f==="function")invalidations.push(f);},
+    purgerCaches:purgerCaches,
+    attributImage:function(value){return parser(value)||local(value)||/media\.passio\.invalid/i.test(String(value||""))?"data-pmp-src":"src";},
+    attributPoster:function(value){return parser(value)||local(value)||/media\.passio\.invalid/i.test(String(value||""))?"data-pmp-poster":"poster";},
+    poserImage:function(element,value){if(!parser(value)&&!local(value)){if(!/media\.passio\.invalid/i.test(String(value||"")))return false;element.removeAttribute("src");return true;}element.removeAttribute("src");element.setAttribute("data-pmp-src",route(value));if(installe)monter(element);return true;},
+    poserVideo:function(element,value){if(!parser(value)&&!local(value)){if(!/media\.passio\.invalid/i.test(String(value||"")))return false;element.removeAttribute("src");return true;}element.removeAttribute("src");element.setAttribute("data-video-public-src",route(value));if(installe&&element.isConnected)monter(element);return true;},
+    etat:function () { return { epoch:epoch,images:images.size,imageBytes:imageOctets,imageBudget:IMAGES,mediaResident:!!(media&&media.entry),mediaBytes:media&&media.entry?media.entry.bytes:0,activeImages:actifs,canaux:canaux.size,annulations:annulations }; } };
+})();
+// END PRIVATE MEDIA CLIENT v1
+
 // ── Médias servis en DIRECT par le CDN Supabase (2026-11-09) ────────────────
 // Du 2026-09-11 au 2026-11-09, les médias passaient par le relais Netlify
 // `/media/*` (netlify/edge-functions/media.js). Mesuré le 2026-11-09 : son cache
@@ -2323,6 +2687,7 @@ window.cheminsImageStorage = cheminsImageStorage;
 const MEDIA_RELAIS_HISTORIQUE = "https://passio-app.netlify.app/media/";
 const MEDIA_SUPABASE_PUBLIC = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/";
 function urlMediaDirecte(url) {
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) url = passioMediaProteges.route(url);
   if (typeof url !== "string" || url.indexOf(MEDIA_RELAIS_HISTORIQUE) !== 0) return url;
   var rel = url.slice(MEDIA_RELAIS_HISTORIQUE.length).split("#")[0].split("?")[0];
   if (rel.indexOf("content/") !== 0) return url;
@@ -2458,6 +2823,7 @@ function escapeJsArg(s) {
 // (bloque javascript: & co), et échappe les quotes pour rester dans l'attribut.
 function safeUrlAttr(u) {
   var s = String(u == null ? "" : u).trim();
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) s = passioMediaProteges.route(s);
   if (!/^(https?:\/\/|data:image\/|data:audio\/|data:video\/|blob:)/i.test(s)) return "#";
   return escapeHtml(s);
 }
@@ -2539,6 +2905,7 @@ function urlPieceJointeSignee(url) {
 function attrMediaSrc(url, attr) {
   attr = attr || "src";
   if (pieceJointeChemin(url)) return 'data-pj="' + escapeHtml(url) + '"';
+  if(attr==="src"&&passioMediaProteges.attributImage(url)==="data-pmp-src")return 'data-pmp-src="'+safeUrlAttr(url)+'"';
   return attr + '="' + safeUrlAttr(url) + '"';
 }
 
@@ -3423,6 +3790,7 @@ function _userPhoto(u) {
 // (comme safeUrlAttr) + neutralisation de tout ce qui peut refermer quoi que ce soit.
 function _cssUrl(u) {
   const s = String(u || "").trim();
+  if(passioMediaProteges.parser(s)||passioMediaProteges.local(s)||/media\.passio\.invalid/i.test(s))return null;
   // data:image en base64 : l'alphabet est clos, rien à neutraliser — mais on exige
   // la forme exacte, sinon on refuse (un « data:image/x;… » libre serait un vecteur).
   if (/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(s)) return s;
@@ -3985,7 +4353,7 @@ function ouvrirFeuillePartage(o) {
   var html = '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + shareIconSvg(20) + " " + escapeHtml(titres[quoi] || "Partager") + '</div>'
     + '<div class="partage-apercu">'
-    +   (vignette ? '<img class="partage-apercu-media" src="' + safeUrlAttr(vignette) + '" alt="" onerror="this.remove()">' : "")
+    +   (vignette ? '<img class="partage-apercu-media" ' + passioMediaProteges.attributImage(vignette) + '="' + safeUrlAttr(vignette) + '" alt="" onerror="this.remove()">' : "")
     +   '<div class="partage-apercu-texte">'
     +     (o.titre ? '<div class="partage-apercu-titre">' + escapeHtml(o.titre) + '</div>' : "")
     +     (o.auteur ? '<div class="partage-apercu-auteur">' + escapeHtml(o.auteur) + '</div>' : "")
@@ -4761,8 +5129,8 @@ function savePrivacySettings() {
 }
 
 // Politique commune aux vidéos publiques. Le mode économe interdit toute lecture
-// automatique ; un geste explicite reste toujours possible. Aucun média privé,
-// appel ou live ne passe par ces helpers.
+// automatique ; un geste explicite reste toujours possible. Les references
+// protegees passent d'abord par le Blob authentifie ; appels/live gardent leur transport.
 function preferencesVideoPublique() {
   var cfg = (typeof getCurrentConfig === "function" ? getCurrentConfig() : {}) || {};
   var content = cfg.content || {};
@@ -4795,6 +5163,10 @@ function videoPubliqueBouton(video, visible) {
 
 function lancerVideoPublique(video, volontaire) {
   if (!video || (!volontaire && !videoPubliqueAutoplay())) return Promise.resolve(false);
+  var brutProtege = video.getAttribute("data-video-public-src") || "";
+  var protege = passioMediaProteges.route(brutProtege);
+  if (!protege && /media\.passio\.invalid/i.test(brutProtege)) return Promise.resolve(false);
+  if (passioMediaProteges.local(protege || "") && !passioMediaProteges.pret(video)) return passioMediaProteges.jouer(video, protege, volontaire);
   if (volontaire) video.dataset.videoPublicVolontaire = "1";
   var src = video.getAttribute("data-video-public-src");
   if (src && !video.getAttribute("src")) video.src = src;
@@ -4856,12 +5228,14 @@ function miniatureVideoPubliqueHTML(poster, video) {
   var eco = false;
   try { eco = preferencesVideoPublique().dataEco; } catch (e) {}
   var brut = (!poster && video && !eco) ? String(video).split("#")[0] : "";
+  // Sans poster protege, garder l'aplat : aucun GET natif pour extraire une frame.
+  if(passioMediaProteges.parser(brut)||passioMediaProteges.local(brut))brut="";
   if (brut && safeUrlAttr(brut) !== "#") {
     var apercuVideo = brut + "#t=0.5";
     return '<video class="miniature-video" src="' + safeUrlAttr(apercuVideo) + '" preload="metadata" muted playsinline tabindex="-1" aria-label="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;pointer-events:none;background:#2e1065;"></video>';
   }
   return poster
-    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
+    ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(poster) + '="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
     : '<div aria-label="Bobine vidéo" style="width:100%;height:100%;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;">▶</div>';
 }
 
@@ -5153,6 +5527,7 @@ var ACCOUNT_SCOPED_KEYS = [
 // Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
 // best-effort : ne throw jamais. Renvoie une promesse résolue quand IndexedDB est vidé.
 function purgeAccountScopedData() {
+  passioMediaProteges.invalider();
   // ⚠️ EN PREMIER : le verrou. Tout ce qui suit serait vain si une écriture
   // survenait pendant les 1,2 s qui séparent la purge du rechargement.
   _accountPurged = true;
@@ -5390,6 +5765,7 @@ async function _retirerAbonnementPush(opts) {
 window._retirerAbonnementPush = _retirerAbonnementPush;
 
 async function doLogout(intention) {
+  passioMediaProteges.invalider();
   // ⚠️ AVANT `supaSaveUserState` et `signOut` : ce sont des appels réseau, et le
   // rechargement qui suit coupe ce qui est encore en vol (voir `annoncerRechargement`).
   annoncerRechargement();
@@ -7729,7 +8105,7 @@ function passionTileHTML(o) {
     ? ' onerror="if(this.dataset.repli){this.onerror=null;this.style.visibility=\'hidden\';}else{this.dataset.repli=\'1\';this.src=\'' + escapeJsArg(o.fallbackUrl) + '\';}"'
     : ' onerror="this.onerror=null;this.style.visibility=\'hidden\';"';
   var avatarContent = o.photoUrl
-    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
+    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" ' + passioMediaProteges.attributImage(passioThumb(o.photoUrl, 192)) + '="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
       + surErreur
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
@@ -9139,7 +9515,7 @@ function carteCiteeHTML(p) {
     + ' onclick="event.stopPropagation();' + (bobine ? "openReelById" : ((typeof feedIntentsEnabled === "function" && feedIntentsEnabled()) ? "openFeedPost" : "openPost")) + '(\'' + escapeJsArg(p.sharedReel) + '\')">'
     + '<div class="post-citee-tete">A partagé ' + (bobine ? "une bobine" : "une publication") + '</div>'
     + '<div class="post-citee-corps">'
-    + (vignette ? '<img class="post-citee-media" src="' + safeUrlAttr(vignette) + '" alt="" loading="lazy" onerror="this.remove()">' : "")
+    + (vignette ? '<img class="post-citee-media" ' + passioMediaProteges.attributImage(vignette) + '="' + safeUrlAttr(vignette) + '" alt="" loading="lazy" onerror="this.remove()">' : "")
     + '<div class="post-citee-texte">'
     + '<div class="post-citee-auteur">' + escapeHtml(emoji) + " " + escapeHtml(auteur) + (pa ? ' · <span class="post-citee-passion">' + escapeHtml(pa.emoji || "") + " " + escapeHtml(pa.label || "") + "</span>" : "") + '</div>'
     + (extrait ? '<div class="post-citee-extrait">' + escapeHtml(extrait) + '</div>' : "")
@@ -10803,7 +11179,7 @@ function renderPostCover(p, passion) {
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
         linear-gradient(135deg, ${pc}33 0%, #2a2450 60%, #1c1938 100%);
     ">
-      <img class="post-cover-img" src="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="var p=this.parentNode;if(p&&this.src.indexOf('/demo/u/')>-1)p.classList.add('cover-ok');" onerror="${onerr}" />
+      <img class="post-cover-img" ${passioMediaProteges.attributImage(primary)}="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="var p=this.parentNode;if(p&&this.src.indexOf('/demo/u/')>-1)p.classList.add('cover-ok');" onerror="${onerr}" />
       <div class="post-cover-overlay"></div>
       <div class="post-cover-caption">${passionEmoji} ${escapeHtml(passionLabel)}</div>
     </div>`;
@@ -10994,7 +11370,7 @@ function carteActiviteFilHTML(p) {
     quand += " · " + heure;
   }
   const img = photo
-    ? `<img class="post-activite-photo" src="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
+    ? `<img class="post-activite-photo" ${passioMediaProteges.attributImage(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
     : "";
   return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
       <div class="post-activite-titre">${escapeHtml(titre)}</div>
@@ -11021,6 +11397,7 @@ function texteActivitePartagee(p) {
 }
 
 function renderPostHTML(p) {
+  p = passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
 
@@ -11076,7 +11453,7 @@ function renderPostHTML(p) {
       // ✅ Ajouter fallback si l'image échoue à charger
       media = `<div class="post-media">
         <img
-          src="${safeUrlAttr(passioThumb(p.image, 700))}"
+          ${passioMediaProteges.attributImage(passioThumb(p.image, 700))}="${safeUrlAttr(passioThumb(p.image, 700))}"
           alt="Image de la publication"
           loading="lazy" decoding="async"
           onerror="imageFilIndisponible(this)"
@@ -11093,8 +11470,8 @@ function renderPostHTML(p) {
       media = `<div class="post-audio">
         🎙 <audio
           controls
-          src="${safeUrlAttr(p.audio)}"
-          onerror="console.error('Audio failed:', this.src);"
+          ${passioMediaProteges.local(p.audio)?"data-video-public-src":"src"}="${safeUrlAttr(p.audio)}"
+          onerror="this.setAttribute('aria-label','Audio indisponible')"
           style="width:100%;"
         ></audio>
       </div>`;
@@ -11253,9 +11630,8 @@ function renderPostHTML(p) {
 }
 
 async function openPost(id) {
-  const post = state.seed.posts.find(p => p.id === id)
-            || state.userPosts.find(p => p.id === id)
-            || (state.supabasePosts || []).find(p => p.id === id);
+  const trouve = findPostAnywhere(id);
+  const post = trouve && passioMediaProteges.contextualiser(trouve,{type:"posts",id:trouve.id});
   if (!post) return;
   const page = document.getElementById("postDetailPage");
   const content = document.getElementById("postDetailContent");
@@ -11282,12 +11658,12 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(post.image, 700))}" alt="Image de la publication" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(post.image, 700))}="${safeUrlAttr(passioThumb(post.image, 700))}" alt="Image de la publication" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {
     media = post.audio
-      ? `<div class="post-audio">🎙 <audio controls src="${safeUrlAttr(post.audio)}" style="flex:1;"></audio></div>`
+      ? `<div class="post-audio">🎙 <audio controls ${passioMediaProteges.local(post.audio)?"data-video-public-src":"src"}="${safeUrlAttr(post.audio)}" style="flex:1;"></audio></div>`
       : `<div class="post-audio" style="padding:14px;background:var(--bg-card);border-radius:13px;border:1px solid var(--border);gap:10px;">🎙 <div style="flex:1;font-size:13px;color:var(--text-dim);">Podcast de ${escapeHtml(author.name || "un créateur")} · Mode démo</div></div>`;
   }
   if (post.type === "video" && post.video) {

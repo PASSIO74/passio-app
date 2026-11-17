@@ -1,8 +1,16 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+test.beforeEach(async ({ context }) => {
+  // Toute requete distante non satisfaite par les fixtures maison est coupee.
+  await context.route('**/*', route => {
+    const url = new URL(route.request().url());
+    return ['127.0.0.1', 'localhost'].includes(url.hostname) ? route.continue() : route.abort();
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
-// PHOTOS DE PUBLICATION : UNE VERSION LÉGÈRE À CÔTÉ DE LA GRANDE (2026-09-21)
+// IMAGES PUBLIQUES : GENERATEUR ET DERIVES ; MEDIAS PROTEGES COUVERTS SEPAREMENT.
 //
 // Le navigateur exécute le VRAI générateur (`_imageLegerePourFil`), le vrai
 // envoi (`supaUploadMedia`, Storage simulé) et les vrais rendus. Aucun média
@@ -12,11 +20,11 @@ const { bootOnboarded } = require("./app-helper");
 //   · l'envoi pose la grande PUIS la légère à `<chemin complet>.v720.<ext>`
 //     (le nom de la grande, extension comprise, reste dans celui de la légère),
 //     et rend l'URL de la légère ; si la légère échoue, l'URL de la grande ;
-//   · la légère se demande par l'APPELANT (`{ legere: true }`) : la publication,
-//     et depuis le 2026-11-09 l'avatar, la couverture, la photo et le fond de
-//     passion, la couverture d'activité et de bobine — sans légère, chacun
-//     coûtait une transformation d'image (100 images d'origine/mois en Pro) ;
-//     jamais la story, le GIF ni la vidéo ; un chemin réécrit (`upsert`) se
+//   · pour les categories publiques, la legere se demande par l'APPELANT :
+//     avatar, couverture, photo/fond de passion et couverture d'activite ;
+//     publications/stories/couvertures de bobines passent par reservation,
+//     verifies dans le banc medias-proteges-client. Un GIF public n'a pas
+//     de legere ; un chemin public reecrit (`upsert`) se
 //     garde une heure (`{ cache: "3600" }`), le reste un an ;
 //   · les URL rendues sont celles du CDN Supabase, plus celles du relais
 //     `/media/*` (2026-11-09) ; une ancienne URL du relais se lit à la source ;
@@ -102,25 +110,25 @@ test("la transparence d'un PNG survit dans la légère", async ({ page }) => {
   }
 });
 
-test("l'envoi pose la grande puis la légère, et rend l'URL de la légère ; sans légère possible, celle de la grande", async ({ page }) => {
+test("l'envoi public pose la grande puis la légère, et rend leur URL ; sans légère possible, celle de la grande", async ({ page }) => {
   await preparer(page);
   const r = await page.evaluate(async () => {
-    const url = await supaUploadMedia("post_x", "photos", __image(1600, 1200, "jpeg"), "image", { legere: true });
+    const url = await supaUploadMedia("post_x", "covers", __image(1600, 1200, "jpeg"), "image", { legere: true });
     const envois = __envois.slice(); __envois.length = 0;
     __refuserLegere = true;
-    const urlSansLegere = await supaUploadMedia("post_y", "photos", __image(1600, 1200, "jpeg"), "image", { legere: true });
+    const urlSansLegere = await supaUploadMedia("post_y", "covers", __image(1600, 1200, "jpeg"), "image", { legere: true });
     const envoisRefus = __envois.slice(); __envois.length = 0;
     return { url, envois, urlSansLegere, envoisRefus, mesures: __mesures.filter(m => m.nom === "image_legere") };
   });
-  expect(r.envois.map(e => e.chemin)).toEqual(["photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg", "photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp"]);
+  expect(r.envois.map(e => e.chemin)).toEqual(["covers/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg", "covers/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp"]);
   expect(r.envois.map(e => e.type)).toEqual(["image/jpeg", "image/webp"]);
   expect(r.envois[1].octets).toBeLessThan(r.envois[0].octets);
   // L'URL du CDN Supabase, plus celle du relais `/media/*` (2026-11-09).
-  expect(r.url).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp");
+  expect(r.url).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/covers/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp");
   expect(r.envois.map(e => e.cache)).toEqual(["31536000", "31536000"]);
   // Légère refusée : la grande vit seule, sans marqueur — le chemin d'avant.
-  expect(r.envoisRefus.map(e => e.chemin)).toEqual(["photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg", "photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg.v720.webp"]);
-  expect(r.urlSansLegere).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg");
+  expect(r.envoisRefus.map(e => e.chemin)).toEqual(["covers/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg", "covers/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg.v720.webp"]);
+  expect(r.urlSansLegere).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/covers/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg");
   expect(r.mesures.map(m => m.meta.issue)).toEqual(["legere", "envoi_legere_refuse"]);
   expect(r.mesures[0].meta.grande_octets).toBeGreaterThan(r.mesures[0].meta.legere_octets);
   expect(Object.keys(r.mesures[0].meta).sort()).toEqual(["format", "grande_octets", "issue", "largeur", "legere_octets"]);
@@ -133,23 +141,22 @@ test("sans `legere`, aucun second objet ; un GIF ou un dossier hors liste n'en r
     await supaUploadMedia("avatarPhoto_x", "avatars", img, "photo");
     await supaUploadMedia("cover_x", "covers", img, "photo");
     await supaUploadMedia("ev_x", "events", img, "photo");
-    await supaUploadMedia("post_g", "photos", "data:image/gif;base64,R0lGODlhAQABAAAAACw=", "image", { legere: true });
-    // Une story photo va dans le MÊME dossier que les publications (app-08,
-    // supaPublishStory) : le dossier ne suffit pas, c'est l'appelant qui demande.
-    await supaUploadMedia("story_x", "photos", img, "photo");
+    await supaUploadMedia("public_g", "covers", "data:image/gif;base64,R0lGODlhAQABAAAAACw=", "image", { legere: true });
+    const sensibles=[];
+    for(const dossier of ["photos","videos","audios"])sensibles.push(await supaUploadMedia("refuse_x",dossier,img,"photo"));
     // Un dossier hors de la liste ne reçoit jamais de légère, même demandée.
     await supaUploadMedia("autre_x", "documents", img, "photo", { legere: true });
-    return { chemins: __envois.map(e => e.chemin), mesures: __mesures.filter(m => m.nom === "image_legere").length };
+    return { chemins: __envois.map(e => e.chemin), mesures: __mesures.filter(m => m.nom === "image_legere").length,sensibles };
   });
   expect(r.chemins).toEqual([
     "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg",
     "covers/812aee2b-214f-4949-931e-842599b6d68b/cover_x.jpg",
     "events/812aee2b-214f-4949-931e-842599b6d68b/ev_x.jpg",
-    "photos/812aee2b-214f-4949-931e-842599b6d68b/post_g.gif",
-    "photos/812aee2b-214f-4949-931e-842599b6d68b/story_x.jpg",
+    "covers/812aee2b-214f-4949-931e-842599b6d68b/public_g.gif",
     "documents/812aee2b-214f-4949-931e-842599b6d68b/autre_x.jpg",
   ]);
   expect(r.mesures).toBe(0);
+  expect(r.sensibles).toEqual([null,null,null]);
 });
 
 test("avatar et photo de passion : la légère est posée et rendue ; un chemin réécrit se garde une heure", async ({ page }) => {
@@ -183,7 +190,7 @@ test("avatar et photo de passion : la légère est posée et rendue ; un chemin 
   expect(r.envoisInvalide.map(e => e.cache)).toEqual(["31536000", "31536000"]);
 });
 
-test("les vrais appels : avatars, couvertures, passions, activités et bobines demandent la légère, la story non", async () => {
+test("les vrais appels : categories publiques conservees, bobines et stories par reservation protegee", async () => {
   const fs = require("fs"), path = require("path");
   const lire = (f) => fs.readFileSync(path.join(__dirname, "..", "..", "js", f), "utf8");
   const app06 = lire("app-06-reels-partage.js"), app07 = lire("app-07-ia-explore-irl.js");
@@ -192,10 +199,13 @@ test("les vrais appels : avatars, couvertures, passions, activités et bobines d
   expect(app06).toContain('supaUploadMedia(profileId, "passion_photos", base64, "photo", { legere: true, cache: "3600" })');
   expect(app06).toContain('supaUploadMedia(profileId + "_cover", "passion_covers", base64, "photo", { legere: true, cache: "3600" })');
   expect(app07).toContain('supaUploadMedia(ev.id, "events", coverUrl, "photo", { legere: true, cache: "3600" })');
-  expect(uiV7).toContain('supaUploadMedia(cle, "photos", dataUrl, "image", { legere: true })');
+  const cover=uiV7.slice(uiV7.indexOf("function envoyerCouverture("),uiV7.indexOf("// ═════",uiV7.indexOf("function envoyerCouverture(")));
+  expect(cover).not.toContain("supaUploadMedia(");expect(cover).toContain("Promise.resolve(dataUrl||null)");
+  expect(app08).toContain('passioMediaProteges.envoyer("posts",post)');
   const debut = app08.indexOf("async function supaPublishStory(");
   const story = app08.slice(debut, debut + 4000);
-  expect((story.match(/supaUploadMedia\([^)]*\)/) || [])[0]).toBe('supaUploadMedia(story.id, folder, story.media, mediaType || "photo")');
+  expect(story).toContain('passioMediaProteges.envoyer("stories",story)');
+  expect(story).not.toContain("supaUploadMedia(");
 });
 
 test("une légère est servie telle quelle : aucune transformation, la grande se retrouve, les grilles ne demandent plus la grande", async ({ page }) => {
@@ -225,15 +235,15 @@ test("une légère est servie telle quelle : aucune transformation, la grande se
   // Mesuré à la SOURCE : la grille du profil et l'album d'une activité passent par passioThumb.
   const fs = require("fs"), path = require("path");
   const app06 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-06-reels-partage.js"), "utf8");
-  expect(app06).toContain('p.image?passioThumb(p.image, 360)');
+  expect(app06).toContain('passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360)');
   const app07 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-07-ia-explore-irl.js"), "utf8");
-  expect(app07).toContain('safeUrlAttr(passioThumb(p.image, 400))');
+  expect(app07).toContain('safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))');
   // La grille « Photos » d'un profil VISITÉ (app-04), oubliée par le lot : vignette, jamais la grande.
   const app04 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-04-comments-shop.js"), "utf8");
-  expect(app04).toContain('var src = p.image ? passioThumb(p.image, 360) : "";');
+  expect(app04).toContain('var src = p.image ? passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360) : "";');
 });
 
-test("supprimer une publication emporte la grande avec la légère ; une story refusée aussi ; les médias d'avant, un seul objet", async ({ page }) => {
+test("suppression legacy conserve les derives ; story protegee refusee conserve sa reservation privee", async ({ page }) => {
   await preparer(page);
   const r = await page.evaluate(async () => {
     const cdn = "https://passio-app.netlify.app/media/content/";
@@ -250,6 +260,7 @@ test("supprimer une publication emporte la grande avec la légère ; une story r
       ancienne: chemins(cdn + "photos/u/r.jpg"),
       video: _cheminsMediaPost({ video: cdn + "videos/u/v.mp4", cover: cdn + "photos/u/c.jpg.v720.webp" }),
       storyRefusee: src.includes('await supa.storage.from("content").remove(cheminsImageStorage(decodeURIComponent(_chemin)));'),
+      protege:chemins('https://media.passio.invalid/private-media/posts/p/00000000-0000-4000-8000-000000000001/original'),
       helper: [cheminsImageStorage(""), cheminsImageStorage(null), cheminsImageStorage("photos/u/p.jpg.v720.webp#f")],
     };
   });
@@ -259,6 +270,6 @@ test("supprimer une publication emporte la grande avec la légère ; une story r
   expect(r.premiereForme).toEqual(["photos/u/q.v720.webp", "photos/u/q.jpg", "photos/u/q.jpeg", "photos/u/q.png", "photos/u/q.webp"]);
   expect(r.ancienne).toEqual(["photos/u/r.jpg"]);
   expect(r.video).toEqual(["videos/u/v.mp4", "photos/u/c.jpg.v720.webp", "photos/u/c.jpg"]);
-  expect(r.storyRefusee).toBe(true);
+  expect(r.storyRefusee).toBe(false);expect(r.protege).toEqual([]);
   expect(r.helper).toEqual([[], [], ["photos/u/p.jpg.v720.webp", "photos/u/p.jpg"]]);
 });
