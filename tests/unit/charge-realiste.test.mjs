@@ -296,7 +296,7 @@ test("le vrai chemin HEAD porte le JWT lecteur, compte son appel et refuse un en
   let status = 200, range = "*/7"; const appels = [], mesures = [], budget = new Budget();
   const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, compteurHead,
     phase: "mesure", stage: { taille: 25, page: 20 }, debut: Date.now(), arret: null,
-    base: "https://staging.example.test", cleAnon: "anon-factice", cleService: "service-factice", controleurs: new Set(), mesures,
+    base: "https://staging.example.test", cleAnon: "anon-factice", cleService: "service-factice", controleurs: new Set(), originesInterruption: new WeakMap(), mesures,
     octets: x => Buffer.byteLength(x), compter: q => budget.compter(q), attendreTableau: () => ({}),
     motifSur: e => e.message, URLSearchParams,
     fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(null, { status, headers: range ? { "content-range": range } : {} }); },
