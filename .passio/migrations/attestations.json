@@ -1639,20 +1639,20 @@
   },
   {
     "fichier": "migrations/migration_cloture_medias_herites_go_2026-11-16.sql",
-    "empreinte": "3d4d21649239b18222b908d65184c9431313e703c278152850e374ea2d186e4d",
+    "empreinte": "31f28ee35922ec2d8bd48ddee09ca1768ac38b2759d8b225f8e5c07b20112435",
     "cibles": [
       "fcksxofaelcdmmifnwjo"
     ],
     "pr": "#969",
-    "commit": "ee1d8a5c6c49ec0312aa150fdc1ea83b48474bce",
-    "revue_id": 5953325110,
+    "commit": "e6065e18125f51c6c20dfa4aa74f52df7a329d21",
+    "revue_id": 5956444380,
     "relecteur": "PASSIO74",
     "revue_le": "2026-11-18",
     "consigne_le": "2026-11-18",
-    "source": "https://github.com/PASSIO74/passio-app/pull/969#pullrequestreview-5953325110",
+    "source": "https://github.com/PASSIO74/passio-app/pull/969#pullrequestreview-5956444380",
     "revue": {
       "etat": "COMMENTED",
-      "soumise_le": "2026-11-18T08:49:37Z",
+      "soumise_le": "2026-11-18T12:21:33Z",
       "auteur_pr": "PASSIO74",
       "fournisseur": "github",
       "auto_revue_mainteneur_unique": true
@@ -1660,20 +1660,20 @@
   },
   {
     "fichier": "migrations/migration_cloture_medias_herites_go_2026-11-16.sql",
-    "empreinte": "3d4d21649239b18222b908d65184c9431313e703c278152850e374ea2d186e4d",
+    "empreinte": "31f28ee35922ec2d8bd48ddee09ca1768ac38b2759d8b225f8e5c07b20112435",
     "cibles": [
       "njkiyoklssvefstljemx"
     ],
     "pr": "#969",
-    "commit": "ee1d8a5c6c49ec0312aa150fdc1ea83b48474bce",
-    "revue_id": 5953325110,
+    "commit": "e6065e18125f51c6c20dfa4aa74f52df7a329d21",
+    "revue_id": 5956444380,
     "relecteur": "PASSIO74",
     "revue_le": "2026-11-18",
     "consigne_le": "2026-11-18",
-    "source": "https://github.com/PASSIO74/passio-app/pull/969#pullrequestreview-5953325110",
+    "source": "https://github.com/PASSIO74/passio-app/pull/969#pullrequestreview-5956444380",
     "revue": {
       "etat": "COMMENTED",
-      "soumise_le": "2026-11-18T08:49:37Z",
+      "soumise_le": "2026-11-18T12:21:33Z",
       "auteur_pr": "PASSIO74",
       "fournisseur": "github",
       "auto_revue_mainteneur_unique": true
