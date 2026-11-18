@@ -44,6 +44,9 @@ select 'trigger:'||v.tableau||'.'||v.nom,t.oid is not null,pg_catalog.obj_descri
 from (values ${valeurs(triggers)}) v(tableau,nom,attendue)
 left join pg_catalog.pg_trigger t on t.tgrelid=pg_catalog.to_regclass(v.tableau) and t.tgname=v.nom and not t.tgisinternal`;
 
+const triggerStockage = 'trigger:storage.objects.media_heritage_stockage';
+const marqueAttendueSQL = "(case when d.identite="+litt(triggerStockage)+" then null::text else "+litt(MARQUE)+" end)";
+const etatAttenduSQL = "(case when d.identite="+litt(triggerStockage)+" then 'O' else 'A' end)";
 const attenduSQL = '(case d.identite '+[...hashes].map(([k,v])=>'when '+litt(k)+' then '+litt(v)).join(' ')+' end)';
 function verifierSQL({avant=false}={}) {
   return `do $passio_cloture_reprise$
@@ -54,8 +57,8 @@ begin
       n:=n+1;
       if d.empreinte is distinct from ${attenduSQL}
         or d.roles_ok is distinct from true
-        or (d.identite like 'trigger:%' and d.etat is distinct from 'A')
-        ${avant?`or d.marque is distinct from ${litt(MARQUE)} or not d.proprietaires_ok`:''}
+        or (d.identite like 'trigger:%' and d.etat is distinct from ${etatAttenduSQL})
+        ${avant?`or d.marque is distinct from ${marqueAttendueSQL} or not d.proprietaires_ok`:''}
       then raise exception 'reprise_cloture_catalogue_incompatible'; end if;
     ${avant?'':"else raise exception 'reprise_cloture_objet_absent';"}
     end if;
@@ -69,17 +72,16 @@ function rendre(rows) {
   if(!Array.isArray(rows)||rows.length!==10||new Set(rows.map(r=>r.identite)).size!==10
     ||rows.some(r=>!hashes.has(r.identite)||typeof r.presente!=='boolean')) throw Error('reprise_cloture_source_inconnue');
   if(rows.every(r=>!r.presente)) return [];
-  if(rows.some(r=>!r.presente||r.marque!==MARQUE||r.empreinte!==hashes.get(r.identite)||r.proprietaires_ok!==true||r.roles_ok!==true
-    ||r.identite.startsWith('trigger:')&&r.etat!=='A')) throw Error('reprise_cloture_source_partielle_ou_derivee');
+  if(rows.some(r=>!r.presente||r.marque!==(r.identite===triggerStockage?null:MARQUE)||r.empreinte!==hashes.get(r.identite)||r.proprietaires_ok!==true||r.roles_ok!==true
+    ||r.identite.startsWith('trigger:')&&r.etat!==(r.identite===triggerStockage?'O':'A'))) throw Error('reprise_cloture_source_partielle_ou_derivee');
   const stockage=rows.find(r=>r.identite==='trigger:storage.objects.media_heritage_stockage');
   if(typeof stockage.definition!=='string'||crypto.createHash('md5').update(stockage.definition).digest('hex')!==hashes.get(stockage.identite)) throw Error('reprise_cloture_definition_divergente');
   return [
-    `do $passio_stockage_reprise$ begin ${stockage.definition}; exception when duplicate_object then null; end $passio_stockage_reprise$;
-alter table storage.objects enable always trigger media_heritage_stockage;`,
+    `do $passio_stockage_reprise$ begin ${stockage.definition}; exception when duplicate_object then null; end $passio_stockage_reprise$;`,
     verifierSQL(),
     ...fonctions.map(([f])=>`comment on function ${f} is ${litt(MARQUE)};`),
     ...policies.map(([p])=>`comment on policy ${p} on storage.objects is ${litt(MARQUE)};`),
-    ...triggers.map(([t,n])=>`comment on trigger ${n} on ${t} is ${litt(MARQUE)};`),
+    ...triggers.filter(([t])=>t!=='storage.objects').map(([t,n])=>`comment on trigger ${n} on ${t} is ${litt(MARQUE)};`),
     `do $passio_proprietaires_reprise$
 declare nom text;
 begin

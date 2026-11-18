@@ -59,8 +59,12 @@ begin
     ('storage.objects','media_heritage_stockage','d3a91cb38d1af877ef2d734227594877'),('public.posts','media_heritage_references','be8128742749f087291aa8abd1f27917'),('public.stories','media_heritage_references','7b8048a59ac788218d20bba433dd04df')
   ) as x(tableau,nom,empreinte) loop
     if exists(select 1 from pg_trigger where tgrelid=to_regclass(t.tableau) and tgname=t.nom
-      and (obj_description(oid,'pg_trigger') is distinct from 'PASSIO protected-media heritage fence v1 2026-11-16'
-        or tgenabled<>'A' or md5(pg_get_triggerdef(oid))<>t.empreinte)) then
+      and (tgisinternal or md5(pg_get_triggerdef(oid))<>t.empreinte
+        or case when t.tableau='storage.objects' then
+          tgenabled<>'O' or obj_description(oid,'pg_trigger') is not null
+          or tgfoid is distinct from to_regprocedure('public.media_heritage_stockage()')
+          or obj_description(tgfoid,'pg_proc') is distinct from 'PASSIO protected-media heritage fence v1 2026-11-16'
+        else tgenabled<>'A' or obj_description(oid,'pg_trigger') is distinct from 'PASSIO protected-media heritage fence v1 2026-11-16' end)) then
       raise exception 'Trigger heritage homonyme ou derive';
     end if;
   end loop;
@@ -216,10 +220,21 @@ create policy media_heritage_update on storage.objects as restrictive for update
   using(public.media_heritage_stockage_public(bucket_id,name)) with check(public.media_heritage_stockage_public(bucket_id,name));
 comment on policy media_heritage_update on storage.objects is 'PASSIO protected-media heritage fence v1 2026-11-16';
 
-drop trigger if exists media_heritage_stockage on storage.objects;
-create trigger media_heritage_stockage after insert or update on storage.objects for each row execute function public.media_heritage_stockage();
-alter table storage.objects enable always trigger media_heritage_stockage;
-comment on trigger media_heritage_stockage on storage.objects is 'PASSIO protected-media heritage fence v1 2026-11-16';
+-- Storage gere sa table. TRIGGER suffit en session REST normale (origin).
+-- Le mode de replication privilegie sort du perimetre de cette cloture Storage.
+do $declencheur_stockage$ begin
+  if not exists(select 1 from pg_trigger where tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage') then
+    create trigger media_heritage_stockage after insert or update on storage.objects for each row execute function public.media_heritage_stockage();
+  end if;
+  if not exists(select 1 from pg_trigger where tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage'
+    and not tgisinternal and tgenabled='O' and obj_description(oid,'pg_trigger') is null
+    and md5(pg_get_triggerdef(oid))='d3a91cb38d1af877ef2d734227594877'
+    and tgfoid='public.media_heritage_stockage()'::regprocedure
+    and obj_description(tgfoid,'pg_proc')='PASSIO protected-media heritage fence v1 2026-11-16'
+    and md5(pg_get_functiondef(tgfoid))='3c0fd7dc87072e1b997423a9f71cccdb') then
+    raise exception 'Trigger Storage heritage incompatible';
+  end if;
+end $declencheur_stockage$;
 drop trigger if exists media_heritage_references on public.posts;
 create trigger media_heritage_references after insert or update on public.posts for each row execute function public.media_heritage_references();
 alter table public.posts enable always trigger media_heritage_references;
@@ -229,8 +244,8 @@ create trigger media_heritage_references after insert or update on public.storie
 alter table public.stories enable always trigger media_heritage_references;
 comment on trigger media_heritage_references on public.stories is 'PASSIO protected-media heritage fence v1 2026-11-16';
 
-select 'heritage ferme sur nouveaux ecrits sans exception BYPASSRLS; contenu existant conserve' as controle,
-  case when (select count(*) from pg_trigger where (tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage'
-     or tgrelid in('public.posts'::regclass,'public.stories'::regclass) and tgname='media_heritage_references') and tgenabled='A')=3
+select 'heritage ferme sur nouveaux ecrits en session normale; contenu existant conserve' as controle,
+  case when (select count(*) from pg_trigger where (tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage' and tgenabled='O'
+     or tgrelid in('public.posts'::regclass,'public.stories'::regclass) and tgname='media_heritage_references' and tgenabled='A'))=3
     and not (select prosecdef from pg_proc where oid='public.media_heritage_stockage()'::regprocedure) then 'OK' else 'ECHEC' end as verdict;
 commit;

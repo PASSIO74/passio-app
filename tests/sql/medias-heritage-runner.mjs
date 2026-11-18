@@ -76,9 +76,13 @@ try{
  sql("create or replace function public.quota_stockage_ok() returns boolean language sql stable security definer set search_path='' as $$select false$$;");
  check('quota_ancien_toujours_effectif',sql("select banc_heritage.sous('authenticated',1,'insert into storage.objects(bucket_id,name,owner,metadata) values(''content'',''avatars/00000000-0000-4000-8000-000000000001/quota.webp'',''00000000-0000-4000-8000-000000000001'',''{\"size\":8}'')');").text==='err:42501');
  sql(quota+';');
+ sql("comment on trigger media_heritage_stockage on storage.objects is 'fixture etrangere';");
+ const marqueEtrangereRefusee=sql(migration,{failure:true}).status!==0
+   &&sql("select obj_description(oid,'pg_trigger') from pg_trigger where tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage';").text==='fixture etrangere';
+ sql('comment on trigger media_heritage_stockage on storage.objects is null;');
  sql('alter table storage.objects disable trigger media_heritage_stockage;');
- check('derive_trigger_refusee',sql(migration,{failure:true}).status!==0&&sql("select tgenabled from pg_trigger where tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage';").text==='D');
- sql('alter table storage.objects enable always trigger media_heritage_stockage;');
+ check('derive_trigger_refusee',marqueEtrangereRefusee&&sql(migration,{failure:true}).status!==0&&sql("select tgenabled from pg_trigger where tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage';").text==='D');
+ sql('alter table storage.objects enable trigger media_heritage_stockage;');
  sql('alter policy media_heritage_insert on storage.objects with check(true);');
  check('derive_policy_refusee',sql(migration,{failure:true}).status!==0);
  sql('alter policy media_heritage_insert on storage.objects with check(public.media_heritage_stockage_public(bucket_id,name));');
@@ -86,7 +90,7 @@ try{
  sql('create or replace function public.media_heritage_stockage_public(p_bucket text,p_name text) returns boolean language sql immutable set search_path=\'\' as $$select true$$;');
  check('derive_fonction_propre_refusee',sql(migration,{failure:true}).status!==0);
  sql(own+';');sql(migration);check('rejeu_apres_donnees',true);
- check('trois_triggers_ALWAYS',sql("select count(*) from pg_trigger where (tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage' or tgrelid in('public.posts'::regclass,'public.stories'::regclass) and tgname='media_heritage_references') and tgenabled='A';").text==='3');
+ check('stockage_origin_et_references_always',sql("select count(*) from pg_trigger where (tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage' and tgenabled='O' or tgrelid in('public.posts'::regclass,'public.stories'::regclass) and tgname='media_heritage_references' and tgenabled='A');").text==='3');
  check('trigger_functions_invoker',sql("select count(*) from pg_proc where oid in('public.media_heritage_stockage()'::regprocedure,'public.media_heritage_references()'::regprocedure) and not prosecdef;").text==='2');
  const reprise=verifierRepriseCloture({root,sql});report.reprise_cloture=reprise;
  for(const {categorie,ok} of reprise.checks)check('reprise_'+categorie,ok);

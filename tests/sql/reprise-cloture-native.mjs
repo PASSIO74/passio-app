@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const migrationFile = 'migrations/migration_cloture_medias_herites_go_2026-11-16.sql';
-const migrationSha = '3d4d21649239b18222b908d65184c9431313e703c278152850e374ea2d186e4d';
+const migrationSha = '31f28ee35922ec2d8bd48ddee09ca1768ac38b2759d8b225f8e5c07b20112435';
 const garde = `do $garde$ begin
   if not coalesce(current_database() ~ '^passio_fence_heritage_go_20261116_[0-9a-f]{12}$'
     and current_user = 'postgres' and inet_server_addr() = inet '127.0.0.1'
@@ -20,13 +20,13 @@ const etats = {o:'enable', a:'enable always', r:'enable replica', d:'disable'};
 const agreger = s => `select coalesce(json_agg(q),'[]'::json) from (${s}) q;`;
 const exige = (expr, code) => `do $oracle$ begin if (${expr}) is not true then raise exception '${code}'; end if; end $oracle$;`;
 
-function ecritureSousProprietaire(role, mode) {
-  return `set local session_replication_role = ${mode};
+function ecritureSousProprietaire(role) {
+  return `set local session_replication_role = origin;
 set local role ${role};
 do $ecriture$ begin
   begin
     insert into storage.objects(bucket_id,name,owner,owner_id,metadata) values
-      ('content','photos/00000000-0000-4000-8000-000000000001/qualification-${mode}.webp',
+      ('content','photos/00000000-0000-4000-8000-000000000001/qualification-origin.webp',
        '00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001','{"size":8}');
     raise exception 'banc_cloture_ecriture_acceptee';
   exception when insufficient_privilege then
@@ -55,6 +55,8 @@ export function verifierRepriseCloture({root,sql}) {
     const corps = /^(?:--[^\n]*\n)*begin;\n([\s\S]*)\ncommit;\s*$/i.exec(source)?.[1];
     verifier(createHash('sha256').update(source).digest('hex')===migrationSha && !!corps
       && !/^\s*(?:begin|commit|rollback);\s*$/im.test(corps));
+    const blocStockage = /do \$declencheur_stockage\$[\s\S]+?end \$declencheur_stockage\$;/.exec(corps)?.[0];
+    if (!blocStockage) throw Error('bloc_stockage_absent');
     const lancer = (s,options) => {
       const r=sql(garde+'\n'+s,options);
       if(!r || !Number.isInteger(r.status) || typeof r.text!=='string' || typeof r.error!=='string'
@@ -112,7 +114,7 @@ ${exige(modes+' and '+ri,'fixture_etats')} commit;`);
       ['media_heritage_insert','media_heritage_update'].includes(r.policyname),2);
     const a = capturer('EXECUTE sur les fonctions',r=>noms.has(r.sig.split('(')[0]),20);
     const cloture = capturer('Clôture médias',()=>true,10);
-    verifier(cloture.rows.every(r=>r.presente && r.marque===C.MARQUE && r.roles_ok===true));
+    verifier(cloture.rows.every(r=>r.presente && r.marque===(r.identite==='trigger:storage.objects.media_heritage_stockage'?null:C.MARQUE) && r.roles_ok===true));
 
     categorie='policy_public_refusee_source_et_cible';
     // Le changement de rôle est réel, sa transaction est annulée avant l'appel JS au rendu.
@@ -138,14 +140,17 @@ ${agreger(C.SQL)} rollback;`).text);
 
     categorie='restauration_du_catalogue_dans_une_transaction';
     const droits = fonctions.slice(0,3).map(s=>`has_function_privilege('${role}','${s}'::regprocedure,'EXECUTE')`);
-    const exact = `select count(*)=10 and count(*) filter(where presente and marque='${C.MARQUE}'
-      and roles_ok and proprietaires_ok)=10 and count(*) filter(where identite like 'trigger:%' and etat='A')=3
+    const exact = `select count(*)=10 and bool_and(presente and roles_ok and proprietaires_ok)
+      and count(*) filter(where identite<>'trigger:storage.objects.media_heritage_stockage' and marque='${C.MARQUE}')=9
+      and count(*) filter(where identite='trigger:storage.objects.media_heritage_stockage' and etat='O' and marque is null)=1
+      and count(*) filter(where identite in ('trigger:public.posts.media_heritage_references','trigger:public.stories.media_heritage_references') and etat='A')=2
       from (${C.SQL}) q`;
     const preuves = [];
     function passage(nom) {
       preuves.push(nom);
       return `select 'banc_ok_${nom}';`;
     }
+    const createur='banc_createur_'+nonce;
     const clone = lancer(`begin; create role ${role} nologin nosuperuser noinherit nobypassrls;
 grant usage on schema storage,public to ${role};
 alter table storage.objects owner to ${role};
@@ -164,28 +169,60 @@ ${a.ddl}
 ${exige(droits.map(d=>'not '+d).join(' and '),'banc_grant_deja_present')}
 ${cloture.ddl}
 ${exige(exact,'banc_catalogue_inexact')}
-${passage('dix_marques_trois_always')}
+${passage('neuf_marques_storage_origin_references_always')}
 ${exige(modes+' and '+ri,'banc_etats_differents')}
 ${passage('quatre_etats_et_fk_reconstruits')}
 ${exige(droits.join(' and '),'banc_droits_absents')}
 ${passage('trois_execute_proprietaire_storage')}
-${ecritureSousProprietaire(role,'origin')}
+-- Le createur a TRIGGER et EXECUTE, sans propriete de la table ni appartenance au role Storage.
+drop trigger media_heritage_stockage on storage.objects;
+create role ${createur} nologin nosuperuser noinherit nobypassrls;
+grant usage on schema storage,public to ${createur};
+grant trigger on storage.objects to ${createur};
+grant execute on function public.media_heritage_stockage() to ${createur};
+set local role ${createur};
+${exige("not pg_has_role(current_user,'"+role+"','MEMBER') and has_table_privilege(current_user,'storage.objects','TRIGGER')",'banc_createur_privileges')}
+${blocStockage}
+${blocStockage}
+do $droits$ begin
+  begin alter table storage.objects enable always trigger media_heritage_stockage;
+    raise exception 'banc_alter_accepte';
+  exception when insufficient_privilege then null; end;
+  begin comment on trigger media_heritage_stockage on storage.objects is 'fixture';
+    raise exception 'banc_comment_accepte';
+  exception when insufficient_privilege then null; end;
+end $droits$;
+reset role;
+revoke execute on function public.media_heritage_stockage() from ${createur};
+${ecritureSousProprietaire(role)}
 ${passage('refus_metier_proprietaire_origin')}
-${ecritureSousProprietaire(role,'replica')}
-${passage('refus_metier_proprietaire_replica')}
+set local session_replication_role = replica;
+do $references$ declare tbl text; begin
+  foreach tbl in array array['posts','stories'] loop
+    begin
+      execute format('insert into public.%I(id,author_id,media_url) values($1,$2,$3)',tbl)
+        using 'banc_replication_'||tbl,banc_heritage.uid(1),banc_heritage.url('photos');
+      raise exception 'banc_reference_acceptee';
+    exception when insufficient_privilege then
+      if sqlerrm<>'medias_heritage_reference_fermee' then raise; end if;
+    end;
+  end loop;
+end $references$;
+set local session_replication_role = origin;
+${passage('references_publiques_always_replica')}
 ${corps}
 ${C.preconditions()}
 ${exige(exact,'banc_rejeu_inexact')}
 ${passage('rejeu_du_corps_original')}
 rollback;`);
     const sorties = clone.text.split(/\r?\n/);
-    verifier(sorties.includes('heritage ferme sur nouveaux ecrits sans exception BYPASSRLS; contenu existant conserve|OK'));
+    verifier(sorties.includes('heritage ferme sur nouveaux ecrits en session normale; contenu existant conserve|OK'));
     for(const nom of preuves) {
       categorie=nom;
       verifier(sorties.filter(s=>s==='banc_ok_'+nom).length===1);
     }
     categorie='rollback_role_catalogue_et_etats';
-    verifier(lancer(`select not exists(select from pg_roles where rolname='${role}') and (${exact}) and ${modes} and ${ri};`).text==='t');
+    verifier(lancer(`select not exists(select from pg_roles where rolname in ('${role}','${createur}')) and (${exact}) and ${modes} and ${ri};`).text==='t');
     return {ok:true,checks};
   } catch {
     checks.push({categorie,ok:false});
