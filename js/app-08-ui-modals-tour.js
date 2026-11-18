@@ -6817,6 +6817,15 @@ async function _envoyerStory(story) {
   } catch(e) { console.warn("publication de story :", e && e.message); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
 }
 
+async function rafraichirBandeauStories() {
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const stories = await supaLoadStories();
+  if (!stories.length || lecteur !== MY_UID || generation !== _profileCacheGeneration) return;
+  state.seed.stories = stories;
+  renderStories();
+}
+
 async function supaLoadStories() {
   try {
     const since = new Date(Date.now() - 24*3600*1000).toISOString();
@@ -11338,8 +11347,7 @@ async function supaInit() {
 
     // 3. Les autres requ\u00eates peuvent attendre (moins critiques)
     setTimeout(() => {
-      if (typeof supaLoadStories === "function")
-        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
+      rafraichirBandeauStories().catch(() => console.warn("Actualisation du bandeau des stories indisponible"));
       // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
       // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events ; et
       // repeindre « Rencontrer » s'il est déjà affiché. Tout est dans
