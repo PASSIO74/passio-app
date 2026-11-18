@@ -1,5 +1,7 @@
 // Sur la seule base synthétique possédée par le runner ; aucun transport propre.
 import {readFileSync} from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';
+import journal from '../../scripts/lib/journal-migrations.js';
+import barriere from '../../scripts/lib/barriere-migration.js';
 export function verifierProjectionHeritage({sql,root}){
  const migration=readFileSync(path.join(root,'migrations/migration_projection_medias_herites_2026-11-18.sql'),'utf8');
  const ancienFlag=sql("select valeur::text from public.reglages_distants where cle='medias_proteges';").text;
@@ -12,7 +14,13 @@ export function verifierProjectionHeritage({sql,root}){
  function lire(n,q){return sql('begin;set local role '+(n?'authenticated':'anon')+';set local request.jwt.claims='+quote(JSON.stringify(n?{sub:uid(n),role:'authenticated',session_id:sid(n)}:{}))+';'+q+'rollback;').text;}
  function cas(nom,obtenu,attendu){sql('select banc_medias.cas('+quote('projection heritage '+nom)+','+quote(obtenu)+','+quote(attendu)+');');}
  try{
-  sql(migration);
+  const fichier='migrations/migration_projection_medias_herites_2026-11-18.sql';
+  sql(journal.sqlCreation());
+  sql(barriere.sqlColonnesJournal());
+  const avecJournal=barriere.sqlAvecJournal(migration,{fichier,cible:'fixture-locale'});
+  cas('verdict transaction',sql(avecJournal).text,'projection heritage|OK');
+  const compteJournal="select count(*) from public.migrations_appliquees where fichier="+quote(fichier)+" and empreinte="+quote(barriere.empreinte(migration))+" and cible='fixture-locale' and statut='applique';";
+  cas('journal atomique',sql(compteJournal).text,'1');
   sql("update public.reglages_distants set valeur='{\"actif\":true}' where cle='medias_proteges';");
   for(const n of [1,2,3])sql(`insert into auth.users(id,email) values('${uid(n)}','projection-${n}@invalid.test');
    insert into public.profiles(id,username,is_private) values('${uid(n)}','projection_${n}',${n===1});
@@ -32,7 +40,8 @@ export function verifierProjectionHeritage({sql,root}){
   cas('invoker',sql("select (not prosecdef)::text from pg_proc where oid='public.media_projeter_heritage(jsonb)'::regprocedure;").text,'true');
   cas('pas de droit ecriture',sql("select has_column_privilege('authenticated','public.media_assets','heritage_ref_sha256','UPDATE')::text;").text,'false');
   cas('validateur inchange',sql("select md5(pg_get_functiondef('public.media_lier_source()'::regprocedure));").text,avant);
-  const rejeu=sql(migration,{failure:true});cas('rejeu ferme',String(rejeu.status!==0&&rejeu.error.includes('42501')),'true');
+  const rejeu=sql(avecJournal,{failure:true});cas('rejeu ferme',String(rejeu.status!==0&&rejeu.error.includes('42501')),'true');
+  cas('journal inchange apres rejeu',sql(compteJournal).text,'1');
   sql("update public.reglages_distants set valeur='{\"actif\":false}' where cle='medias_proteges';");cas('coupure effective',lire(1,compte([refs[0]])),'0');
  }finally{sql('update public.reglages_distants set valeur='+quote(ancienFlag)+'::jsonb where cle=\'medias_proteges\';');}
 }

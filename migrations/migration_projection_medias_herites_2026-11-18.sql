@@ -70,4 +70,22 @@ end $fn$;
 revoke all on function public.media_projeter_heritage(jsonb) from public;
 grant execute on function public.media_projeter_heritage(jsonb) to anon,authenticated;
 comment on function public.media_projeter_heritage(jsonb) is 'PASSIO heritage association v1: invoker read, parent and exact legacy-reference bound';
+select 'projection heritage' as controle,
+ case when exists (
+   select 1 from pg_catalog.pg_attribute a
+   where a.attrelid='public.media_assets'::regclass and a.attname='heritage_ref_sha256' and not a.attisdropped
+    and pg_catalog.col_description(a.attrelid,a.attnum)='PASSIO heritage association v1: server-owned SHA256 of exact legacy media_url'
+ ) and exists (
+   select 1 from pg_catalog.pg_proc p
+   where p.oid='public.media_projeter_heritage(jsonb)'::regprocedure and not p.prosecdef
+    and pg_catalog.obj_description(p.oid,'pg_proc')='PASSIO heritage association v1: invoker read, parent and exact legacy-reference bound'
+    and not exists (select 1 from pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
+                    where acl.grantee=0 and acl.privilege_type='EXECUTE')
+ ) and not exists (
+   select 1 from (values ('anon'::name),('authenticated'::name)) roles(nom)
+   where not pg_catalog.has_function_privilege(nom,'public.media_projeter_heritage(jsonb)','EXECUTE')
+      or not pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','SELECT')
+      or pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','INSERT')
+      or pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','UPDATE')
+ ) then 'OK' else 'ECHEC' end as valeur;
 commit;
