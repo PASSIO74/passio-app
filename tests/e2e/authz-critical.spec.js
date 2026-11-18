@@ -320,32 +320,34 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
           return res.status;
         }, [token, chemin, init, PNG_1x1]);
 
-      const sien = `photos/${B.uid}/authz_${Date.now()}.png`;
+      const sien = `avatars/${B.uid}/authz_${Date.now()}.png`;
 
       // CONTRE-ÉPREUVE D'ABORD — c'est le vrai risque de cette policy. Un envoi
-      // légitime refusé ne se voit PAS à l'écran : le code retombe en base64 et
-      // recopie le média EN BASE (défaut SYNC-B64-005). Un test qui ne vérifie
-      // que les refus resterait vert avec le Storage entièrement cassé.
+      // légitime doit rester possible : un test des seuls refus serait vert
+      // avec le Storage entièrement cassé. Les avatars sont une surface publique
+      // maintenue avant ET après clôture des préfixes personnels. Le parcours
+      // personnel passe désormais par réservation/broker et sa recette dédiée ;
+      // ce témoin ne doit pas exiger la réouverture de l'ancien dossier photos.
       expect(await stor(B.token, `object/content/${sien}`),
         "B dépose dans SON dossier → doit passer").toBeLessThan(300);
 
-      expect(await stor(B.token, `object/content/photos/${A.uid}/vole.png`),
+      expect(await stor(B.token, `object/content/avatars/${A.uid}/vole.png`),
         "B écrit chez A → refusé").toBeGreaterThanOrEqual(400);
 
       // `move` et `copy` ne passent PAS par l'INSERT — renommer est un UPDATE
       // de la colonne `name`. Une policy d'INSERT seule ne fermait donc rien
       // (mesuré en production le 2026-08-17 : HTTP 200 avant correctif).
       expect(await stor(B.token, "object/move", { json: { bucketId: "content",
-        sourceKey: sien, destinationKey: `photos/${A.uid}/deplace.png` } }),
+        sourceKey: sien, destinationKey: `avatars/${A.uid}/deplace.png` } }),
         "B DÉPLACE son fichier chez A → refusé").toBeGreaterThanOrEqual(400);
 
       expect(await stor(B.token, "object/copy", { json: { bucketId: "content",
-        sourceKey: sien, destinationKey: `photos/${A.uid}/copie.png` } }),
+        sourceKey: sien, destinationKey: `avatars/${A.uid}/copie.png` } }),
         "B COPIE son fichier chez A → refusé").toBeGreaterThanOrEqual(400);
 
       // Le serveur normalise `../` AVANT d'enregistrer : la RLS doit donc voir
       // le nom normalisé, celui du dossier de la victime.
-      expect(await stor(B.token, `object/content/photos/${B.uid}/../${A.uid}/trav.png`),
+      expect(await stor(B.token, `object/content/avatars/${B.uid}/../${A.uid}/trav.png`),
         "B via un chemin fabriqué → refusé").toBeGreaterThanOrEqual(400);
 
       // `attachments` est rangé par conversation, pas par uid : le cloisonnement
@@ -353,7 +355,7 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       expect(await stor(B.token, `object/attachments/attachments/conv_absente_${Date.now()}/x.png`),
         "B dépose dans une conversation dont il n'est pas membre → refusé").toBeGreaterThanOrEqual(400);
 
-      log("storage : écriture cloisonnée (dépôt, move, copy, chemin fabriqué, conv)");
+      log("storage : écriture publique cloisonnée (avatar, move, copy, chemin fabriqué, conv)");
       await stor(B.token, `object/content/${sien}`, { method: "DELETE" }).catch(() => {});
 
       // ── 12. Les relations SOCIALES ne se forgent pas pour autrui ───────────
