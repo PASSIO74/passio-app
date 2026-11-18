@@ -58,6 +58,7 @@ const JE = require("./lib/json-exact.js");
 const PR = require("./lib/reprise-schemas-prives.js");
 const os = require("os");
 const crypto = require("crypto");
+const MP = require("./lib/reprise-medias-proteges.js");
 
 const PROD_REF = "njkiyoklssvefstljemx";
 const API = "https://api.supabase.com/v1/projects";
@@ -184,6 +185,18 @@ function lireInventaire(ctx) {
   ctx._inventaire = RV.lireInventaireProprietaires(texte, att, texte === null ? null : crypto.createHash("sha256").update(texte, "utf8").digest("hex"));
   return ctx._inventaire;
 }
+function planMediasProteges(ctx) {
+  const tables = ctx.man.tables || {};
+  const avecRegistres = MP.TABLES.some(t => Object.hasOwn(tables, t));
+  if (!avecRegistres && (sansMedias() || !ctx.man.medias)) return null;
+  const index = ctx.man.medias ? lireIndex(ctx) : null;
+  if (!avecRegistres && !Object.keys(index?.objets || {}).some(cle => cle.startsWith(MP.BUCKET + "/"))) return null;
+  return MP.preparer({
+    tables, manifesteMedias: ctx.man.medias, sansMedias: sansMedias(), index,
+    inventaire: ctx.man.medias ? lireInventaire(ctx) : null,
+    lire: t => lireNdjson(path.join(ctx.archive, t + ".ndjson")),
+  });
+}
 function fichiersMediasDisque(ctx) {
   const base = path.join(ctx.archive, "_storage");
   const out = [];
@@ -244,6 +257,8 @@ function validerArchive(ctx) {
   try { exigerPortee(ctx); verifierDdlPrive(ctx, path.join(ctx.archive, "schema.sql")); }
   catch (e) { bloquants.push(e.message); }
   const prive = PR.valider(ctx.archive, ctx.man.schemas_prives);
+  try { planMediasProteges(ctx); }
+  catch (e) { bloquants.push(motifMediaProtege(e)); }
   bloquants.push(...prive.erreurs);
   b.notes.push(...prive.notes);
   if (ctx.man.schemas_prives && ctx.man.projet !== `https://${ctx.man.schemas_prives.projet}.supabase.co`) bloquants.push("Projets public et privé du manifeste différents");
@@ -624,9 +639,16 @@ function fichiersSous(d, base = d) {
 }
 
 async function medias(ctx) {
+  const proteges = planMediasProteges(ctx);
   const base = path.join(ctx.archive, "_storage");
   if (sansMedias() || !fs.existsSync(base)) { console.log("④ médias : ignorés."); return true; }
-  const existants = new Set((await (await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) })).json()).map((b) => b.name));
+  const repSeaux = await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) });
+  if (!repSeaux.ok) throw new Error("Inventaire des seaux indisponible");
+  const seaux = await repSeaux.json();
+  const existants = new Set(seaux.map(b => b.name));
+  if (proteges?.size && seaux.some(b => (b.id === MP.BUCKET || b.name === MP.BUCKET) && b.public !== false)) {
+    throw new Error("reprise_medias_proteges_seau_non_prive");
+  }
   let envoyes = 0, refus = [];
   // ⚠️ LA LIMITE DE TAILLE D'UN SEAU N'EST PAS CELLE DE SON CONTENU (mesuré
   // le 2026-09-14) : `content` plafonne à 26 Mo en production et porte une
@@ -676,8 +698,10 @@ async function medias(ctx) {
         continue;
       }
       const ext = path.extname(rel).slice(1).toLowerCase();
+      const mime = seau === MP.BUCKET ? proteges?.get(seau + "/" + rel)?.mime_type : MIME[ext] || "application/octet-stream";
+      if (!mime) { refus.push("reprise_medias_proteges_mime_inconnu"); continue; }
       const r = await fetch(`${ctx.url}/storage/v1/object/${seau}/${rel.split("/").map(encodeURIComponent).join("/")}`, {
-        method: "POST", headers: entetes(ctx.cle, { "Content-Type": MIME[ext] || "application/octet-stream", "x-upsert": "true" }), body: buf,
+        method: "POST", headers: entetes(ctx.cle, { "Content-Type": mime, "x-upsert": "true" }), body: buf,
       });
       if (r.ok) envoyes++; else refus.push(`${seau}/${rel} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
     }
@@ -828,6 +852,41 @@ async function lignesCible(ctx, t, tri) {
     if (l.length < 1000) return out;
   }
 }
+function motifMediaProtege(e) {
+  return /^reprise_medias_proteges_[a-z_]+$/.test(e?.message || "") ? e.message : "reprise_medias_proteges_preuve_indisponible";
+}
+
+async function catalogueMedias(ctx, selection) {
+  const hacher = drapeau("--hash-medias") && /^[0-9a-f]{64}$/.test(ctx.man.medias?.index_sha256 || "");
+  const colonnes = hacher ? `, s.id::text as identite, ${MP.VERSION_SQL} as version,
+    (to_jsonb(s)->>'archived_at' is null and coalesce(to_jsonb(s)->>'is_delete_marker','false')='false') as vivant` : "";
+  const filtre = selection ? " and bucket_id='content-protected'" : "";
+  const lire = () => sql(ctx, `select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag${colonnes}
+    from storage.objects s where metadata is not null${filtre}`);
+  if (!hacher) return { objets: await lire(), physiques: new Map() };
+  return MP.empreintesPhysiques(ctx, lireIndex(ctx).objets || {}, lire, PROD_REF, selection);
+}
+
+async function rapprocherMediasProteges(ctx, ecrire, preuves) {
+  try {
+    const plan = planMediasProteges(ctx);
+    if (!plan) return null;
+    if (!preuves && ecrire && plan.size && drapeau("--hash-medias")) {
+      preuves = (await catalogueMedias(ctx, plan)).physiques;
+    }
+    const requeter = ecrire ? (q, p) => sql(ctx, q, p) : async (q, p) => {
+      const lire = PR.lecteur(ctx);
+      const ligne = await lire(`select current_setting('transaction_read_only')::boolean as lecture_seule,
+        coalesce(jsonb_agg(r),'[]'::jsonb) as objets from (${q}) r`, p);
+      return ligne.objets;
+    };
+    const ids = await MP.rapprocher(plan, requeter, ecrire, preuves);
+    const remappes = [...ids].filter(([ancien, courant]) => ancien !== courant).length;
+    return { ids, preuve: { ok: true, objets: ids.size, identites_physiques_differentes: remappes } };
+  } catch (e) {
+    return { ids: new Map(), preuve: { ok: false, motif: motifMediaProtege(e) } };
+  }
+}
 async function verdict(ctx) {
   // --preuve <fichier> : le verdict détaillé, écrit en JSON — la preuve DURABLE
   // que la contre-revue réclamait (commande, cible, résultats par table).
@@ -837,6 +896,13 @@ async function verdict(ctx) {
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
   let ecarts = 0, nonVerifies = 0;
+  const catalogue = ctx.man.medias && !sansMedias() ? await catalogueMedias(ctx) : null;
+  const proteges = await rapprocherMediasProteges(ctx, false, catalogue?.physiques);
+  if (proteges) {
+    preuve.medias_proteges = proteges.preuve;
+    if (!proteges.preuve.ok) ecarts++;
+    console.log("   " + (proteges.preuve.ok ? "OK" : "ECART") + " rapprochement des médias protégés");
+  }
   preuve.schemas_prives = await PR.verifier({ dossier: ctx.archive, man: ctx.man.schemas_prives,
     lire: PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }), comparer: comparerLignes });
   if (!preuve.schemas_prives.ok) ecarts++;
@@ -849,7 +915,11 @@ async function verdict(ctx) {
     if (ok && obt > 0) {
       // Même nombre : on compare les DONNÉES (ASTRA-16).
       const tri = ctx.man.tables[t].tri || "id";
-      const d = comparerLignes(lireNdjson(path.join(ctx.archive, t + ".ndjson")), await lignesCible(ctx, t, tri), tri);
+      let archive = lireNdjson(path.join(ctx.archive, t + ".ndjson"));
+      if (t === "media_objects" && proteges?.preuve.ok) {
+        archive = archive.map(l => ({ ...l, storage_object_id: proteges.ids.get(l.storage_object_id) }));
+      }
+      const d = comparerLignes(archive, await lignesCible(ctx, t, tri), tri);
       if (d.manquantes.length || d.divergentes.length || d.enTrop.length) {
         ok = false;
         detail = ` — ${d.manquantes.length} manquante(s), ${d.divergentes.length} divergente(s), ${d.enTrop.length} en trop` + (d.divergentes.length ? ` (ex. ${d.divergentes[0]})` : "");
@@ -884,9 +954,10 @@ async function verdict(ctx) {
     // ⚠️ ASTRA-55 : l'ensemble ATTENDU est l'INDEX de l'archive, jamais les
     // fichiers encore présents sur disque ; l'intégrité du disque est
     // confrontée à l'index ; et `en_trop` entre dans `ok`.
-    const objets = (await sql(ctx, "select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag from storage.objects where metadata is not null"));
+    const objets = catalogue.objets.map(o => MP.ETAG_MD5.test(o.etag || "") || /-\d+"?$/.test(o.etag || "") ? o : { ...o, etag: null });
     const idx = lireIndex(ctx);
-    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, attenduManifeste: ctx.man.medias.fichiers });
+    const hashes = Object.fromEntries([...catalogue.physiques].map(([cle, p]) => [cle, p.md5]));
+    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, hashes, attenduManifeste: ctx.man.medias.fichiers });
     if (v.indetermine) {
       ecarts++;
       preuve.medias = { ok: false, indetermine: true, motif: (idx.erreur ? "index : " + idx.erreur + " — " : "") + v.motif, obtenu: objets.length };
@@ -961,7 +1032,9 @@ async function verdict(ctx) {
   preuve.ecarts = ecarts; preuve.non_verifies = nonVerifies; preuve.bloquants = g.bloquants; preuve.prouvee = g.prouvee;
   const fichierPreuve = arg("--preuve");
   if (fichierPreuve) { fs.writeFileSync(fichierPreuve, JSON.stringify(preuve, null, 2) + "\n"); console.log(`   preuve écrite : ${fichierPreuve}`); }
-  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
+  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : ` +
+    (proteges ? `lignes, comptes et médias vérifiés ; ${proteges.preuve.identites_physiques_differentes} identifiant(s) physique(s) Storage rapproché(s).`
+      : "lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible."));
   else { console.log(`\n❌ la restauration n'est PAS prouvée :`); for (const b of g.bloquants) console.log("   · " + b); }
   return g.prouvee;
 }
@@ -1013,7 +1086,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
+  _phases: { comptes, tables, medias, verdict, rapprocherMediasProteges, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -1046,6 +1119,10 @@ if (require.main === module) (async () => {
     ecrire: async (q, p) => { try { return await sql(ctx, q, p); } catch { throw new Error("Restauration privée : écriture refusée (détail serveur non journalisé)"); } } });
   bilan(ctx).phases.schemas_prives = { ok: prive.ok };
   const m = await medias(ctx);
+  if (t && m && prive.ok && val.ok && Object.values(bilan(ctx).phases).every(p => p.ok)) {
+    const proteges = await rapprocherMediasProteges(ctx, true);
+    if (proteges) bilan(ctx).phases.medias_proteges = proteges.preuve;
+  }
   const v = await verdict(ctx);
   // ⚠️ ASTRA-46 : UN SEUL RÉSULTAT. Le verdict lit le bilan de toutes les phases ;
   // si une phase disait faux alors que le verdict dit prouvé, c'est une
