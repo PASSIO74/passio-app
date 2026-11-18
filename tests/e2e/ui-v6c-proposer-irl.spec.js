@@ -102,10 +102,36 @@ test.describe("UI-6C — Proposer un IRL depuis une conversation", () => {
     await page.evaluate(() => document.getElementById("v6cProposerIrl").click());
     await page.waitForSelector("#evTitle", { timeout: 8000 });
 
+    // Depuis le 2026-11-15 le formulaire ne propose que les passions DU COMPTE :
+    // celle de l'interlocutrice n'en est pas une ici, la Passio retenue est donc
+    // une des miennes — et le titre suggéré parle de CELLE-LÀ.
+    const r = await page.evaluate(() => ({
+      nina: userById("u_nina").passion,
+      miennes: passionsVivantes().map((p) => p.passion),
+      valeur: document.getElementById("evPassion").value,
+      titre: document.getElementById("evTitle").value,
+    }));
+    expect(r.miennes).not.toContain(r.nina);
+    expect(r.miennes).toContain(r.valeur);
+    const libelle = await page.evaluate((id) => passionById(id).label, r.valeur);
+    expect(r.titre).toBe("Sortie " + libelle.toLowerCase());
+  });
+
+  test("une Passio partagée avec l'interlocuteur est préremplie", async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      state.user.profiles.push({
+        id: "pp_v6c", name: "Audit QA", passion: userById("u_nina").passion,
+        emoji: "🌍", bio: "", color: "#7c3aed", createdAt: 2,
+      });
+    });
+    await ouvrirConv(page, "v6c_nina");
+
+    await page.evaluate(() => document.getElementById("v6cProposerIrl").click());
+    await page.waitForSelector("#evTitle", { timeout: 8000 });
+
     const attendu = await page.evaluate(() => userById("u_nina").passion);
     expect(await page.evaluate(() => document.getElementById("evPassion").value)).toBe(attendu);
-    const titre = await page.evaluate(() => document.getElementById("evTitle").value);
-    expect(titre.length, "un titre est suggéré").toBeGreaterThan(0);
   });
 
   test("§10 mot pour mot : rien n'est fait dans le dos de l'utilisateur", async ({ page }) => {
@@ -147,7 +173,7 @@ test.describe("UI-6C — Proposer un IRL depuis une conversation", () => {
     expect(titre).not.toContain("nina");
     expect(titre).not.toContain("costa");
     // Il est bien construit sur la Passio.
-    const label = await page.evaluate(() => passionById(userById("u_nina").passion).label.toLowerCase());
+    const label = await page.evaluate(() => passionById(document.getElementById("evPassion").value).label.toLowerCase());
     expect(titre).toContain(label);
   });
 

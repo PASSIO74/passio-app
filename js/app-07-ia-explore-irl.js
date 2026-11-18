@@ -6710,8 +6710,14 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
 // centaines de mètres reste EXACT.
 
-// Les passions sous lesquelles ce compte peut organiser : les SIENNES d'abord
-// (résolues par le référentiel), puis le catalogue publiable. Dédupliqué.
+// Les passions sous lesquelles ce compte peut organiser : LES SIENNES, ET
+// ELLES SEULES (demande de Benjamin, 2026-11-15 : « quand je crée une activité
+// il faut afficher seulement les passions sélectionnées dans le profil »).
+// Le catalogue publiable n'est plus qu'un REPLI, quand aucune passion du compte
+// ne peut aboutir (compte sans passion, référentiel pas encore arrivé, hors
+// ligne) : un `<select>` vide rendrait la création impossible. La liste rendue
+// porte alors `repli = true`, et le repeint du référentiel la remplace dès que
+// les passions du compte sont résolues.
 //
 // ⚠️ `passionById` NE REND JAMAIS `null` — sur un identifiant qu'il ne connaît
 // pas encore il rend « Passion ». On garde alors l'identifiant, qui dit au moins
@@ -6767,8 +6773,10 @@ function _irlPassionsOrganisables(myPassionIds) {
     if (!meta) { try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) { meta = null; } }
     pousser(id, meta);
   });
+  if (out.length) return out;                  // les miennes suffisent : rien d'autre
   try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); }
   catch (e) { try { diagLog("irl passionsPubliables " + (e && e.message ? e.message : e)); } catch (_) {} }
+  out.repli = true;
   return out;
 }
 
@@ -6793,12 +6801,18 @@ function _irlAssurerReferentielPassions(myPassionIds) {
       if (!sel) return;
       var choix = sel.value;
       var liste = _irlPassionsOrganisables(myPassionIds);
-      if (choix && !liste.some(function (x) { return x.id === choix; })) return;
+      var present = liste.some(function (x) { return x.id === choix; });
+      // Le formulaire s'était ouvert sur le catalogue de REPLI (les passions du
+      // compte n'étaient pas encore résolues) : maintenant qu'elles le sont, la
+      // liste se réduit à elles, même si l'option retenue par défaut n'en est pas.
+      var sortDuRepli = sel.getAttribute("data-repli") === "1" && !liste.repli;
+      if (choix && !present && !sortDuRepli) return;
+      if (!present) choix = liste.length ? liste[0].id : "";
       sel.innerHTML = liste.map(function (p) {
         return '<option value="' + escapeHtml(p.id) + '"' + (p.id === choix ? " selected" : "") + ">"
-          + escapeHtml(p.emoji) + " " + escapeHtml(p.label)
-          + ((myPassionIds || []).indexOf(p.id) >= 0 ? " \u2726" : "") + "</option>";
+          + escapeHtml(p.emoji) + " " + escapeHtml(p.label) + "</option>";
       }).join("");
+      if (liste.repli) sel.setAttribute("data-repli", "1"); else sel.removeAttribute("data-repli");
       sel.value = choix;
     }).catch(function (e) { try { diagLog("irl referentiel " + (e && e.message ? e.message : e)); } catch (_) {} });
   } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
@@ -6817,12 +6831,12 @@ function openCreateEvent(editId) {
   if (editId && !ed) { toast("Activité introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
 
-  // Toutes les passions sont proposées (les miennes en tête) : restreindre le
-  // choix aux profils créés empêchait d'organiser un événement « photo » quand on
-  // n'avait qu'un profil « musique ».
+  // 🔁 REVIREMENT DU 2026-11-15 (demande de Benjamin) : SEULES les passions du
+  // profil sont proposées. Organiser dans une autre passion = l'ajouter d'abord
+  // dans « Gérer mes passions ». Le « ✦ » (« c'est la tienne ») a disparu avec
+  // le catalogue : tout ce qui est listé est à soi.
   // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
-  // la seule définition de « mes passions », et une passion rangée ne doit ni
-  // remonter en tête ni porter le « ✦ ».
+  // la seule définition de « mes passions » — une passion rangée n'est pas proposée.
   const myPassionIds = ((typeof passionsVivantes === "function")
     ? passionsVivantes()
     : (state.user.profiles || []).filter(pr => !pr.archived))
@@ -6849,16 +6863,22 @@ function openCreateEvent(editId) {
   // Les passions DU COMPTE passent donc en tête, résolues par `passionById`
   // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
   const _pubs = _irlPassionsOrganisables(myPassionIds);
+  const _repli = !!_pubs.repli;
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
+    // Une activité créée sous une passion retirée du profil depuis reste
+    // publiable : seule une passion que « Enregistrer » refusera le dit.
+    let _publiable = !!_irlPassionPlateConnue(_passionEditee);
+    try { _publiable = _publiable || ((typeof estPassionCanonique === "function") && estPassionCanonique(_passionEditee)); }
+    catch (e) { try { diagLog("irl canonique " + (e && e.message ? e.message : e)); } catch (_) {} }
     _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
-                 label: ((_pOrig && _pOrig.label) || _passionEditee) + " (non publiable)" });
+                 label: ((_pOrig && _pOrig.label && _pOrig.label !== "Passion") ? _pOrig.label : _passionEditee) + (_publiable ? "" : " (non publiable)") });
   }
   const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
-    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
+    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
   const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
@@ -6898,7 +6918,7 @@ function openCreateEvent(editId) {
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
-        <select class="input" id="evPassion">${passionOptions}</select>
+        <select class="input" id="evPassion"${_repli ? ' data-repli="1"' : ""}>${passionOptions}</select>
       </label>
       <label class="field"><span>Type</span>
         <select class="input" id="evType">${typeOptions}</select>
