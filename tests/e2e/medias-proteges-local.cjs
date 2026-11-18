@@ -187,6 +187,7 @@ function heritageFixture(events) {
 
 function heritageClient(raw,rows,tokens) {
   const source08=fs.readFileSync(path.join(ROOT,'js/app-08-ui-modals-tour.js'),'utf8');
+  const source07=fs.readFileSync(path.join(ROOT,'js/app-07-ia-explore-irl.js'),'utf8');
   const source03=fs.readFileSync(path.join(ROOT,'js/app-03-posts-vlogs.js'),'utf8');
   function block(source,begin,end){const a=source.indexOf(begin),b=source.indexOf(end,a);if(a<0||b<=a)throw Error('fixture_source_marker_missing');return source.slice(a,b);}
   function fn(source,entry){const a=source.indexOf(entry),b=source.indexOf('\n}',a);if(a<0||b<a)throw Error('fixture_function_missing');return source.slice(a,b+2);}
@@ -194,7 +195,7 @@ function heritageClient(raw,rows,tokens) {
   const presentation=block(source08,'passioMediaProteges.presentation=function','// END PRIVATE MEDIA UPLOAD v1');
   const complements=block(source08,'const FIL_COMPTEURS_ABSENTE_CLE','// La copie précédente');
   const functions=[fn(source08,'async function supaLoadPosts('),fn(source08,'function _discussionChargee('),fn(source08,'async function _resolveProfilesByIds('),
-    fn(source08,'async function supaLoadEventPosts('),fn(raw,'function findPostAnywhere('),fn(raw,'function allPostCopies('),fn(raw,'async function openPost('),fn(source03,'function closePost('),fn(raw,'function safeUrlAttr(')].join('\n');
+    fn(source08,'async function supaLoadEventPosts('),fn(source07,'async function _loadEventAlbum('),fn(raw,'function findPostAnywhere('),fn(raw,'function allPostCopies('),fn(raw,'async function openPost('),fn(source03,'function closePost('),fn(raw,'function safeUrlAttr(')].join('\n');
   return `
   // Sessions ordinaires synthetiques, claims de forme JWT ; verification Auth doublee.
   syntheticSession=function(id){return {data:{session:id?{user:{id},access_token:${JSON.stringify(tokens)}[id],expires_at:Date.now()/1000+3600}:null}};};
@@ -234,7 +235,7 @@ function heritageClient(raw,rows,tokens) {
     for(const p of loaded){if(!p.image)continue;const image=document.createElement('img');image.alt='Photo synthetique';passioMediaProteges.poserImage(image,p.image);root.appendChild(image);}
     return loaded.map(p=>({id:p.id,image:p.image,type:p.type,eventId:p.eventId}));
   };
-  window.heritageCards=function(){const cards=${JSON.stringify(rows.map(r=>({id:r.id,authorId:A,type:'photo',image:r.media_url,text:r.content,comments:[],likes:0,createdAt:1})))};state.seed.posts=structuredClone(cards);state.userPosts=structuredClone(cards);state.supabasePosts=structuredClone(cards);};
+  window.heritageCards=function(){const cards=${JSON.stringify(rows.map(r=>({id:r.id,authorId:A,eventId:r.event_id,type:'photo',image:r.media_url,text:r.content,comments:[],likes:0,createdAt:1})))};state.seed.posts=structuredClone(cards);state.userPosts=structuredClone(cards);state.supabasePosts=structuredClone(cards);};
   window.heritageCopies=function(id){return allPostCopies(id).map(p=>p.image);};
   `;
 }

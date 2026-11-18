@@ -61,6 +61,38 @@ test.describe('projection des photos heritees aux points de lecture reels',()=>{
     });
   }
 
+  test('album réel : les lignes serveur remplacent les copies locales, même au refus',async({page})=>{
+    await page.evaluate(()=>{
+      heritageCards();
+      const local=state.userPosts[0];
+      state.userPosts.push({...local,id:'local_seul'});
+      const box=document.createElement('div');box.id='eventAlbum';document.body.appendChild(box);
+      window._openEventDetailId='heritage_event';
+    });
+    await page.addStyleTag({path:require.resolve('../../styles.css')});
+    await page.evaluate(()=>_loadEventAlbum('heritage_event'));
+    await imagesDecodees(page,'#eventAlbum img',2);
+    expect(await page.locator('#eventAlbum .is-text').count()).toBe(1);
+    srv.setHeritageMode('missing');
+    await page.evaluate(()=>_loadEventAlbum('heritage_event'));
+    expect(await page.locator('#eventAlbum img').count()).toBe(0);
+    expect(await page.locator('#eventAlbum .is-text').count()).toBe(3);
+  });
+
+  test('album réel : changement de lecteur pendant la projection',async({page})=>{
+    srv.holdProjection();
+    await page.evaluate(()=>{
+      heritageCards();
+      const box=document.createElement('div');box.id='eventAlbum';document.body.appendChild(box);
+      window._openEventDetailId='heritage_event';
+      window.albumEnVol=_loadEventAlbum('heritage_event');
+    });
+    await expect.poll(()=>srv.projectionHeld).toBe(true);
+    await page.evaluate(id=>login(id),srv.B);srv.releaseProjection();
+    await page.evaluate(()=>albumEnVol);
+    expect(await page.locator('#eventAlbum .event-album-cell').count()).toBe(0);
+  });
+
   test('texte sans candidat : aucun RPC de projection ni lecture media',async({page})=>{
     srv.setHeritageMode('text');
     const fil=await page.evaluate(()=>heritageLoad('feed'));

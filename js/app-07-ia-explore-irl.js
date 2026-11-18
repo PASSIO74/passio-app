@@ -4936,25 +4936,32 @@ function shareEventExperience(id) {
 async function _loadEventAlbum(eventId) {
   const box = document.getElementById("eventAlbum");
   if (!box) return;
-  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
-    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const requete = {};
+  box._requeteAlbum = requete;
+  const locaux = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: projectionHeritageLecture().candidat(p.image) ? null : (p.image || null),
+    text: p.text || "", authorName: p.authorName || "Moi",
   }));
+  let distants = [];
   if (window._supaReal && typeof supaLoadEventPosts === "function") {
     try {
-      const remote = await supaLoadEventPosts(eventId);
-      const seen = new Set(items.map(i => i.id));
-      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
-    } catch (e) {}
+      distants = await supaLoadEventPosts(eventId) || [];
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("album", "lecture_distante_indisponible");
+    }
   }
-  // La fiche a pu être fermée ou changée pendant la requête.
-  if (window._openEventDetailId !== eventId) return;
-  const box2 = document.getElementById("eventAlbum");
-  if (!box2) return;
+  if (MY_UID !== lecteur || _profileCacheGeneration !== generation || window._openEventDetailId !== eventId ||
+      document.getElementById("eventAlbum") !== box || box._requeteAlbum !== requete) return;
+  // Les lignes synchronisées portent le résultat de la projection privée, y compris un refus.
+  const synchronises = new Set(distants.map(p => p.id));
+  const items = locaux.filter(p => !synchronises.has(p.id)).concat(distants);
   if (!items.length) {
-    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    box.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
     return;
   }
-  box2.innerHTML = items.slice(0, 12).map(p => p.image
+  box.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
          <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}="${safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}" alt=""/>
        </div>`
