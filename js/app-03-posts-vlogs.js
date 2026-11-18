@@ -1,4 +1,5 @@
 function closePost() {
+  if(typeof _postDetailProjectionSequence==="number")_postDetailProjectionSequence++;
   const page = document.getElementById("postDetailPage");
   const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
   if (page) page.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);

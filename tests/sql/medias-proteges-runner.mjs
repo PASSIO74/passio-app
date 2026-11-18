@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
+import {verifierProjectionHeritage} from './medias-heritage-projection.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const args = process.argv.slice(2);
@@ -86,6 +87,7 @@ mediaPrerequisite(1);report.deploymentRetainedAfterEnabledReplay=true;
 sql(`update public.reglages_distants set valeur='{"actif":false}' where cle='medias_proteges';`);
 sql(readFileSync(path.join(root,'tests/sql/fixtures/medias-proteges-cas.sql'),'utf8'));
 sql(readFileSync(path.join(root,'tests/sql/fixtures/medias-proteges-p1.sql'),'utf8'));
+verifierProjectionHeritage({sql,root});
 const [cases,failed]=sql('select count(*),count(*) filter(where not ok) from banc_medias.resultats').text.split('|').map(Number);
 report.cases=cases;report.failed=failed;
 if(cases<180||failed) throw new Error('native_cases_incomplete_or_red');
