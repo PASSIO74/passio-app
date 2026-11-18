@@ -317,9 +317,10 @@ test("rencontres : le dossier final exporte les quatre tables privées du même 
 
 test("médias protégés : les trois registres du même instantané et les chemins privés sont exportés", async () => {
   const medias = Object.fromEntries(["media_reservations", "media_assets", "media_objects"].map((t) =>
-    [t, { lignes: [{ temoin: t }], attendu: 1, tronque: false, ordre_total: true }]));
+    [t, { lignes: [{ temoin: t, ...(t === "media_assets" ? { heritage_ref_sha256: "a".repeat(64) } : {}) }], attendu: 1, tronque: false, ordre_total: true }]));
   const d = await exporterCompte(fauxAdmin({}, {}, { medias, objets: [{ bucket_id: "content-protected", name: "uid/asset/original.webp" }] }), "moi", {});
   for (const [cle, e] of Object.entries(medias)) assert.deepEqual(d.tables[cle], e.lignes);
+  assert.equal(d.tables.media_assets[0].heritage_ref_sha256, "a".repeat(64));
   assert.equal(d.bilan.complet, true);
   assert.equal(d.bilan.lignes, 3);
   assert.equal(d.bilan.perimetre_medias_proteges, 1);

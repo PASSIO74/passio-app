@@ -159,11 +159,14 @@ test("CLI --verifier --hash-medias : le GET borné tranche un eTag absent ou mul
 test("l'UUID du média restauré doit correspondre à l'objet physique prouvé, toutes les autres colonnes restent comparées", async () => {
   const owner = "11111111-1111-4111-8111-111111111111", asset = "22222222-2222-4222-8222-222222222222";
   const source = "33333333-3333-4333-8333-333333333333", cible = "44444444-4444-4444-8444-444444444444";
+  const referenceHistorique = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/videos/synthetic.webm";
+  const heritageSHA = createHash("sha256").update(referenceHistorique).digest("hex");
   const rel = owner + "/" + asset + "/original.webm", cle = "content-protected/" + rel;
   const a = archive({ fichiers: { [cle]: "ABC" } }), ctx = contexte(a);
   const archiveTables = {
     media_reservations: [{ id: asset, owner_id: owner }],
-    media_assets: [{ id: asset, owner_id: owner }],
+    media_assets: [{ id: asset, owner_id: owner, post_id: "post_heritage", heritage_ref_sha256: heritageSHA }],
+    posts: [{ id: "post_heritage", author_id: owner, media_url: referenceHistorique }],
     media_objects: [{ asset_id: asset, variant: "original", object_key: rel, byte_size: 3, mime_type: "video/webm",
       bucket_id: "content-protected", storage_object_id: source, autre_colonne: "inchangée" }],
   };
@@ -217,6 +220,15 @@ test("l'UUID du média restauré doit correspondre à l'objet physique prouvé, 
     assert.equal(resultat.ok, true);
     assert.deepEqual(resultat.preuve.medias_proteges, { ok: true, objets: 1, identites_physiques_differentes: 1 });
     assert.equal(corrections, 1);
+    assert.equal(cibles.media_assets[0].heritage_ref_sha256, heritageSHA);
+    assert.equal(createHash("sha256").update(cibles.posts[0].media_url).digest("hex"), heritageSHA);
+    cibles.media_assets[0].heritage_ref_sha256 = "b".repeat(64);
+    assert.equal((await verdictAvecPreuve(ctx)).ok, false);
+    delete cibles.media_assets[0].heritage_ref_sha256;
+    assert.equal((await verdictAvecPreuve(ctx)).ok, false);
+    cibles.media_assets[0].heritage_ref_sha256 = heritageSHA;
+    assert.equal((await verdictAvecPreuve(ctx)).ok, true);
+    assert.equal(archiveTables.media_assets[0].heritage_ref_sha256, heritageSHA);
     cibles.media_objects[0].autre_colonne = "différente";
     assert.equal((await verdictAvecPreuve(ctx)).ok, false);
     assert.equal(corrections, 1);

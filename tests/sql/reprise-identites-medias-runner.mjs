@@ -27,7 +27,7 @@ function rendreEtape(titre) {
 }
 const tables = () => rendreEtape('Tables et colonnes');
 assert.equal(tables(), '', 'source historique sans registre');
-sql(`create table public.media_assets(id uuid primary key,owner_id text);
+sql(`create table public.media_assets(id uuid primary key,owner_id text,heritage_ref_sha256 text);
   create table public.media_reservations(id uuid primary key);
   create table public.media_objects(asset_id uuid,variant text,object_key text,bucket_id text,storage_object_id uuid unique,mime_type text,byte_size bigint,primary key(asset_id,variant));
   comment on table public.media_assets is 'commentaire libre source';`, sourceDDL);
@@ -48,7 +48,7 @@ sql(`create schema storage;
   create table storage.objects(id uuid primary key,bucket_id text,name text,owner uuid,owner_id text,metadata jsonb,archived_at timestamptz,is_delete_marker boolean);
   insert into storage.buckets values ('content-protected',false);
   insert into storage.objects values ('${cible}','content-protected','${cle}',null,'${utilisateur}','{"mimetype":"image/webp","size":3,"eTag":"${md5}"}',null,false);
-  insert into public.media_assets values ('${asset}','${utilisateur}');
+  insert into public.media_assets values ('${asset}','${utilisateur}','${'d'.repeat(64)}');
   insert into public.media_objects values ('${asset}','original','${cle}','content-protected','${source}','image/webp',3);`);
 
 function executer(ecrire, lot = plan, physiques) {
@@ -94,6 +94,7 @@ assert.equal(inscrit(), source);
 sql(`delete from storage.objects where id='${source}';`);
 assert.equal((await executer(true)).get(source), cible);
 assert.equal(inscrit(), cible);
+assert.equal(sql('select heritage_ref_sha256 from public.media_assets;'), 'd'.repeat(64));
 assert.equal((await executer(true)).get(source), cible);
 assert.equal((await executer(false)).get(source), cible);
 sql("update storage.objects set metadata=metadata-'eTag';");
@@ -117,4 +118,5 @@ await assert.rejects(executer(false, plan, ancienne), /preuve_cible/);
 sql(`update public.media_objects set storage_object_id='${source}';`);
 await assert.rejects(executer(true, plan, ancienne), /preuve_cible/);
 assert.equal(inscrit(), source);
+assert.equal(sql('select heritage_ref_sha256 from public.media_assets;'), 'd'.repeat(64));
 console.log('OK rapprochement, refus, rejeu et vérification PostgreSQL en lecture seule');

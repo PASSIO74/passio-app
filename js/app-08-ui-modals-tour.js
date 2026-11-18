@@ -5951,6 +5951,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return [];
     }
     if (!lectureValide()) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
+    if(!lectureValide())return [];
     const lignesBrutes = data || [];
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
@@ -10656,9 +10658,10 @@ async function supaLoadJoinedEvents() {
 // ---- ALBUM D'ÉVÉNEMENT : posts rattachés à un événement ----
 async function supaLoadEventPosts(eventId) {
   try {
-    const { data, error } = await supa.from("posts")
+    let { data, error } = await supa.from("posts")
       .select("id,author_id,content,media_url,shared_data,created_at,event_id").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
     if (error) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
     const profs = await _resolveProfilesByIds((data || []).map(r => r.author_id));
     return (data || []).map(r => ({
       id: r.id, authorId: r.author_id,

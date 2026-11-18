@@ -2682,6 +2682,74 @@ var passioMediaProteges = (function () {
 })();
 // END PRIVATE MEDIA CLIENT v1
 
+// HERITAGE MEDIA READ v1 — autorité serveur, jamais de repli public.
+function creerProjectionHeritage(deps) {
+  var generation=0, controles=new Set(),enCours=new WeakMap(),statistiques={candidats:0,projetes:0,refuses:0};
+  function invalider(){generation++;controles.forEach(function(c){c.abort();});controles.clear();}
+  deps.api.surInvalidation(invalider);
+  function candidat(v){
+    if(typeof v!=="string")return false;
+    var brut=v,chemin,canonique=true;v=v.trim(); // Classification seulement ; le SHA conserve les octets bruts.
+    if(/^[.\/\\]/.test(v)&&/[\s\x00-\x1f\x7f\\%#]/.test(v)&&/(media|storage)/i.test(v))return true;
+    if(/^\.{1,2}\//.test(v)&&/(media|storage).*content/.test(v))return true;
+    if(v.charAt(0)==="/"&&v.charAt(1)!=="/"){if(!/\/(media|storage)\//.test(v)&&v.indexOf("%")===-1)return false;chemin=v.split("?")[0].split("#")[0];}
+    else{
+      var a=/^(?:(https?):)?\/\/([^/?#]*)([^?#]*)(?:\?[^#]*)?(?:#.*)?$/i.exec(v);if(!a)return false;
+      var h=a[2].toLowerCase(),owned=/njkiyoklssvefstljemx\.supabase\.co|fcksxofaelcdmmifnwjo\.supabase\.co|passio-app\.netlify\.app/.test(h);
+      if(owned&&/[\s\x00-\x1f\x7f\\%#]/.test(brut))return true;
+      if(!owned||(!/\/(media|storage)\//.test(a[3])&&a[3].indexOf("%")===-1))return false;
+      canonique=a[1]==="https"&&["njkiyoklssvefstljemx.supabase.co","fcksxofaelcdmmifnwjo.supabase.co","passio-app.netlify.app"].indexOf(a[2])!==-1;chemin=a[3];
+    }
+    var m=/^\/(?:media|storage\/v1\/(?:object\/public|render\/image\/public))\/content\/(.*)$/.exec(chemin);
+    // Autorité/route/encodage ambigus appartenant à PASSIO : fermeture, pas repli.
+    if(!m||!canonique||brut.length>8192||/[\s\x00-\x1f\x7f\\%#]/.test(brut))return true;
+    var segments=m[1].split("/");if(segments.length<2||segments.some(function(x){return !x||x==="."||x===".."||!/^[A-Za-z0-9._-]+$/.test(x);}))return true;
+    return ["avatars","covers","passion_photos","passion_covers","events"].indexOf(segments[0])===-1;
+  }
+  async function empreinte(s){var b=await deps.crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,"0");}).join("");}
+  async function projeter(rows,champ,lignes){
+    var gen=generation,uid=deps.compte(),candidats=[],uniques=new Map();
+    rows.forEach(function(r){if(r&&candidat(r[champ])){var jeton={},m=enCours.get(r)||new Map();m.set(champ,jeton);enCours.set(r,m);candidats.push({r:r,id:r.id,ancienne:r[champ],jeton:jeton});r[champ]=null;}});
+    // Effacement synchrone avant le premier await, même au refus/SDK absent.
+    if(!candidats.length)return rows;
+    statistiques.candidats+=candidats.length;
+    if(candidats.some(function(c){return !/^[A-Za-z0-9_-]{1,120}$/.test(c.id||"");})||candidats.length>300){statistiques.refuses+=candidats.length;return rows;}
+    var appliques=0;
+    var abort=new AbortController();controles.add(abort);var timer=setTimeout(function(){abort.abort();},15000);
+    function courant(){return gen===generation&&uid===deps.compte()&&!abort.signal.aborted;}
+    try{
+      for(var c of candidats){c.sha=await empreinte(c.ancienne);if(!courant())return rows;var deja=uniques.get(c.id);if(deja&&deja.reference_sha256!==c.sha)return rows;uniques.set(c.id,{id:c.id,reference_sha256:c.sha});}
+      if(uniques.size>100)return rows;
+      await deps.api.session();if(!courant())return rows;
+      var rep=await deps.sdk().rpc("media_projeter_heritage",{p_references:Array.from(uniques.values())}).abortSignal(abort.signal);
+      if(!courant()||rep.error||!Array.isArray(rep.data)||rep.data.length>uniques.size)return rows;
+      var parId=new Map();
+      for(var d of rep.data){var p=deps.api.parser(d&&d.reference);if(!d||Object.keys(d).sort().join("|")!=="post_id|reference"||!uniques.has(d.post_id)||parId.has(d.post_id)||!p||p.type!=="posts"||p.id!==d.post_id||p.variant!=="original")return rows;parId.set(d.post_id,d.reference);}
+      if(!courant())return rows;
+      for(var x of candidats){var ref=parId.get(x.id);if(!ref||x.r.id!==x.id||x.r[champ]!==null||enCours.get(x.r).get(champ)!==x.jeton)continue;
+        if(lignes){var raw=x.r.shared_data;try{if(typeof raw==="string")raw=raw?JSON.parse(raw):null;}catch(_){continue;}if(raw!==null&&raw!==undefined&&(typeof raw!=="object"||Array.isArray(raw)))continue;
+          // Présentation seulement en RAM ; aucune écriture de shared_data.
+          x.r.shared_data=Object.assign(Object.create(null),raw||{},{passio_media:{protocol:1,type:"photo",poster:null}});
+        }
+        x.r[champ]=ref;
+        appliques++;
+      }
+      return rows;
+    }catch(_){return rows;}finally{clearTimeout(timer);controles.delete(abort);for(var c of candidats){var m=enCours.get(c.r);if(m&&m.get(champ)===c.jeton)m.delete(champ);}statistiques.projetes+=appliques;statistiques.refuses+=candidats.length-appliques;if(appliques<candidats.length&&typeof deps.signaler==="function")deps.signaler({categorie:"heritage_projection_refusee",candidats:candidats.length,projetes:appliques});}
+  }
+  return {candidat:candidat,invalider:invalider,etat:function(){return Object.assign({},statistiques);},projeterLignes:function(rows){return projeter(rows,"media_url",true);},projeterCartes:function(rows){return projeter(rows,"image",false);}};
+}
+var _passioProjectionHeritage;
+function projectionHeritageLecture(){
+  if(!_passioProjectionHeritage)_passioProjectionHeritage=creerProjectionHeritage({api:passioMediaProteges,crypto:window.crypto,compte:function(){return typeof MY_UID==="string"?MY_UID:null;},sdk:function(){return supa;},signaler:function(e){if(typeof diagLog==="function")diagLog("heritage_projection",e.categorie);}});
+  return _passioProjectionHeritage;
+}
+passioMediaProteges.projeterHeritageLignes=function(rows){return projectionHeritageLecture().projeterLignes(rows);};
+passioMediaProteges.projeterHeritageCartes=function(rows){return projectionHeritageLecture().projeterCartes(rows);};
+passioMediaProteges.etatHeritage=function(){return _passioProjectionHeritage?_passioProjectionHeritage.etat():{candidats:0,projetes:0,refuses:0};};
+// END HERITAGE MEDIA READ v1
+
+
 // ── Médias servis en DIRECT par le CDN Supabase (2026-11-09) ────────────────
 // Du 2026-09-11 au 2026-11-09, les médias passaient par le relais Netlify
 // `/media/*` (netlify/edge-functions/media.js). Mesuré le 2026-11-09 : son cache
@@ -11639,7 +11707,15 @@ function renderPostHTML(p) {
   </article>`;
 }
 
+var _postDetailProjectionSequence=0;
 async function openPost(id) {
+  const projectionSequence=++_postDetailProjectionSequence;
+  const projectionUid=typeof MY_UID==="string"?MY_UID:null;
+  await passioMediaProteges.projeterHeritageCartes(allPostCopies(id));
+  if(projectionSequence!==_postDetailProjectionSequence||projectionUid!==(typeof MY_UID==="string"?MY_UID:null))return;
+  // Une lecture concurrente peut avoir remplacé une copie durant le RPC.
+  // Fermer tout candidat resté brut avant la recherche et le rendu synchrones.
+  allPostCopies(id).forEach(function(copie){if(projectionHeritageLecture().candidat(copie.image))copie.image=null;});
   const trouve = findPostAnywhere(id);
   const post = trouve && passioMediaProteges.contextualiser(trouve,{type:"posts",id:trouve.id});
   if (!post) return;
