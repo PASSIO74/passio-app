@@ -70,8 +70,9 @@ end $fn$;
 revoke all on function public.media_projeter_heritage(jsonb) from public;
 grant execute on function public.media_projeter_heritage(jsonb) to anon,authenticated;
 comment on function public.media_projeter_heritage(jsonb) is 'PASSIO heritage association v1: invoker read, parent and exact legacy-reference bound';
-select 'projection heritage' as controle,
- case when exists (
+do $verdict$
+begin
+ if not (exists (
    select 1 from pg_catalog.pg_attribute a
    where a.attrelid='public.media_assets'::regclass and a.attname='heritage_ref_sha256' and not a.attisdropped
     and pg_catalog.col_description(a.attrelid,a.attnum)='PASSIO heritage association v1: server-owned SHA256 of exact legacy media_url'
@@ -87,5 +88,9 @@ select 'projection heritage' as controle,
       or not pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','SELECT')
       or pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','INSERT')
       or pg_catalog.has_column_privilege(nom,'public.media_assets','heritage_ref_sha256','UPDATE')
- ) then 'OK' else 'ECHEC' end as valeur;
+ )) then
+  raise exception using errcode='42501',message='heritage_projection_verdict';
+ end if;
+end $verdict$;
+select 'projection heritage' as controle, 'OK' as valeur;
 commit;

@@ -18,8 +18,19 @@ export function verifierProjectionHeritage({sql,root}){
   sql(journal.sqlCreation());
   sql(barriere.sqlColonnesJournal());
   const avecJournal=barriere.sqlAvecJournal(migration,{fichier,cible:'fixture-locale'});
-  cas('verdict transaction',sql(avecJournal).text,'projection heritage|OK');
   const compteJournal="select count(*) from public.migrations_appliquees where fichier="+quote(fichier)+" and empreinte="+quote(barriere.empreinte(migration))+" and cible='fixture-locale' and statut='applique';";
+  // Une lecture accordée colonne par colonne avant le DDL ne couvre pas la colonne créée.
+  sql("revoke select on public.media_assets from anon; grant select (id) on public.media_assets to anon;");
+  try {
+   const refus=sql(avecJournal,{failure:true});
+   cas('ACL colonne insuffisante',String(refus.status!==0&&refus.error.includes('42501')),'true');
+   cas('colonne annulee',sql("select count(*) from pg_attribute where attrelid='public.media_assets'::regclass and attname='heritage_ref_sha256' and not attisdropped;").text,'0');
+   cas('fonction annulee',sql("select (to_regprocedure('public.media_projeter_heritage(jsonb)') is null)::text;").text,'true');
+   cas('journal annule',sql(compteJournal).text,'0');
+  } finally {
+   sql("revoke select (id) on public.media_assets from anon; grant select on public.media_assets to anon;");
+  }
+  cas('verdict transaction',sql(avecJournal).text,'projection heritage|OK');
   cas('journal atomique',sql(compteJournal).text,'1');
   sql("update public.reglages_distants set valeur='{\"actif\":true}' where cle='medias_proteges';");
   for(const n of [1,2,3])sql(`insert into auth.users(id,email) values('${uid(n)}','projection-${n}@invalid.test');
