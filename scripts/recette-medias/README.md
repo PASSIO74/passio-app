@@ -1,0 +1,15 @@
+# Recette manuelle des médias sur staging
+
+La PR 969 fournit l’application à tester. Le workflow vérifie l’empreinte de son artefact CI et charge ses véritables scripts dans deux navigateurs. Les requêtes admises pour la publication et la lecture vont vers la passerelle staging et le relais de l’aperçu immuable. Le cockpit de supervision vient de la PR 970. Le lanceur compare sa configuration publique à celle de l’application.
+
+Le workflow devient disponible dans Actions après sa livraison sur la branche par défaut. Le mainteneur ouvre le cockpit staging, vérifie son compte et son second facteur lorsque le cockpit le demande, réserve la fenêtre et déclenche le workflow depuis `main`. Les capacités doivent être fermées au départ.
+
+1. À `PRET_OUVERTURE_COCKPIT`, le mainteneur active les médias dans le cockpit. Deux comptes synthétiques possèdent déjà des profils privés, et A a accepté la demande de B.
+2. A publie un post et une story. A puis B chargent chaque image par le relais. Le test exige la même empreinte SHA-256 que le PNG envoyé. B retrouve chaque publication via le SDK sous sa propre session.
+3. À `REFERMER_DANS_LE_COCKPIT`, le mainteneur suspend les médias. Il les referme aussi si le runner s’interrompt. Le workflow attend les capacités fermées, appelle la procédure normale de suppression avec la session de chaque compte et vérifie leur disparition dans Auth.
+
+Le job utilise le secret staging existant uniquement côté Node pour créer les deux comptes préconfirmés et vérifier leur identité. Les navigateurs reçoivent chacun leur propre session et la clé publique de l’application. La procédure de suppression du compte conserve ses marqueurs habituels. Si le runner disparaît brutalement, le journal GitHub identifie le run dont dérivent les deux identités. Une réponse incomplète ou un rangement incomplet conserve un verdict rouge.
+
+Suivre les journaux de l’étape **Parcours supervisé du propriétaire et du destinataire** dans Actions. Si le runner disparaît, suspendre immédiatement les médias dans le cockpit. Depuis le contexte CI habilité, `identites(runId)` redonne `run`, `owner` et `reader`. Pour chacun de ces deux UID, le GET Auth admin ciblé doit rendre `user_not_found` ou un compte dont `verifierProprieteAuth` reconnaît l’UID, le courriel synthétique et `app_metadata.passio_recette`. En cas de divergence, interrompre le rangement. Pour un compte reconnu, le mécanisme de `tests/e2e/compte-e2e.js` permet de générer son lien de test côté serveur et d’échanger son jeton via `verifyOtp`, sans envoi de courriel. Appeler `delete-account` avec cette session, exiger `ok`, `garantie=barriere`, `marqueur=supprimee`, puis constater `user_not_found` sur cet UID précis. Le workflow automatique n’exécute pas cette récupération après perte du runner.
+
+Le test local s’exécute avec `node --test scripts/recette-medias/cycle.test.mjs`. La simulation Chromium utilise `node scripts/recette-medias/simulation.mjs <dossier-de-l-artefact-969>`, Playwright et son Chromium installés. Elle exerce le vrai client, deux sessions distinctes et un serveur HTTP local. Elle ne contacte aucun fournisseur.
