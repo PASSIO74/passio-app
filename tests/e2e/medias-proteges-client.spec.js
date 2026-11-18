@@ -1,6 +1,9 @@
 const {test,expect}=require('@playwright/test');
 const {localMediaServer}=require('./medias-proteges-local.cjs');
+const {projetSupabaseVide}=require('./app-helper');
 // ISOLATION: fixture HTTP loopback dediee, aucune app complete ni Supabase distant ; vrai SW/namespace/handler.
+// La garde standard protège aussi les onglets/frames et un départ de page imprévu.
+test.beforeEach(async({page})=>{await projetSupabaseVide(page);});
 test.describe('medias proteges client synthetique',()=>{
   let srv;
   test.beforeEach(async({context,page})=>{

@@ -20,8 +20,9 @@
 // `window.__posts` dicte la réponse de l'INSERT sur `posts`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { UID_PUBLICATION, preparerBootPublication, installerSessionPublication } = require("./publication-sdk-fixture");
 
-const UID_MOI = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31";
+const UID_MOI = UID_PUBLICATION;
 const UID_AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const FAUX_SUPA = `
@@ -30,6 +31,7 @@ const FAUX_SUPA = `
 if (window.__vraiSupaPublishPost) window.supaPublishPostWithRetry = window.__vraiSupaPublishPost;
 window.__ecrits = []; window.__toasts = [];
 window._supaReal = true;
+Object.defineProperty(window.supa, "auth", { configurable:true, value:window.__publicationSDK.auth });
 window.toast = function (t) { window.__toasts.push(String(t)); };
 window.supaEnsureProfileExists = async function () { return true; };
 window.supaUploadMedia = async function (id, folder) { return "https://storage.test/" + folder + "/" + id; };
@@ -38,9 +40,12 @@ Object.defineProperty(window.supa, "from", {
   value: function (table) {
     return {
       insert: function (rows) {
-        window.__ecrits.push({ table: table, row: rows[0] });
-        var res = table === "posts" ? (window.__posts || { data: rows, error: null }) : { data: rows, error: null };
-        return { select: function () { return Promise.resolve(res); }, then: function (a, c) { return Promise.resolve(res).then(a, c); } };
+        return window.__publicationSDK.ecriture(function () {
+          window.__ecrits.push({ table:table, row:rows[0] });
+          var res = table === "posts" && window.__posts || {data:rows,error:null};
+          if (table === "posts" && res.status===401 && window.__expirerAuRefus) window.__publicationSDK.session=null;
+          return res;
+        });
       },
       select: function () { var b = { eq: function () { return b; }, in: function () { return b; }, limit: function () { return b; }, order: function () { return b; }, range: function () { return b; },
         maybeSingle: function () { return Promise.resolve({ data: null, error: null }); }, then: function (a, c) { return Promise.resolve({ data: [], error: null }).then(a, c); } }; return b; },
@@ -54,8 +59,10 @@ Object.defineProperty(window.supa, "from", {
 
 async function banc(page) {
   await page.route(/supabase\.co/, (route) => route.abort());
+  await page.addInitScript(preparerBootPublication, UID_MOI);
   await page.addInitScript((u) => { localStorage.setItem("passio_uid", u); }, UID_MOI);
   await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
+  await page.evaluate(installerSessionPublication, UID_MOI);
   await page.evaluate(FAUX_SUPA);
 }
 const post = (id, extra) => Object.assign({ id, authorId: UID_MOI, passion: "musique", mood: "all", type: "text", text: "hello " + id, createdAt: Date.now(), likes: 0, comments: [], syncStatus: "syncing" }, extra || {});
@@ -109,6 +116,7 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
     await page.reload();
     await page.waitForFunction(() => typeof _rejouerPublicationsEnAttente === "function" && window.supa && typeof state !== "undefined" && state.userPosts && typeof MY_UID !== "undefined" && MY_UID);
     await page.evaluate(() => { const l = document.getElementById("landing"); if (l) l.classList.remove("active"); });
+    await page.evaluate(installerSessionPublication, UID_MOI);
     await page.evaluate(FAUX_SUPA);
     expect(await statutPersiste(page, "p3")).toBe("offline");
     // Le lancement rejoue de lui-même (minuteur d'amorçage ~6 s).
@@ -136,7 +144,7 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   test("⑦ un 401 (session morte) pose le mode « session expirée » : gate fermé, aucun rejeu, publication gardée", async ({ page }) => {
     await banc(page);
     await page.evaluate(() => {
-      Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: null } }) } });
+      window.__expirerAuRefus = true;
       window.__posts = { data: null, error: { code: "42501", message: "new row violates row-level security policy for table \"posts\"" }, status: 401 };
       window._reelRetryTimer = null; window._reelRetryCount = 0;
     });
@@ -159,7 +167,6 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   test("⑦ bis un 401 avec une session encore vivante est transitoire : le chemin d'avant (retry puis « offline »), pas de mode", async ({ page }) => {
     await banc(page);
     await page.evaluate(() => {
-      Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: { user: { id: MY_UID } } } }) } });
       window.__posts = { data: null, error: { code: "PGRST301", message: "JWT expired" }, status: 401 };
     });
     await page.evaluate(async (p) => { state.userPosts.unshift(p); await supaPublishPostWithRetry(p); }, post("p7b"));

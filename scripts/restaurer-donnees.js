@@ -56,6 +56,7 @@ const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
 const JE = require("./lib/json-exact.js");
 const PR = require("./lib/reprise-schemas-prives.js");
+const DECLENCHEURS = require("./lib/reprise-declencheurs.js");
 const os = require("os");
 const crypto = require("crypto");
 const MP = require("./lib/reprise-medias-proteges.js");
@@ -510,16 +511,16 @@ function ordreInsert(t, cols, json, cle = []) {
   // bilan mais absentes de la cible. Sans identité, la clause est inerte.
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
-alter table public."${t}" disable trigger user;
+${DECLENCHEURS.suspendre(t)}
 insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) ${clauseConflit(cle)};
-alter table public."${t}" enable trigger user;
+${DECLENCHEURS.retablir(t)}
 commit;`;
 }
 
 function ordreLigneALigne(t, cols, json, cle = []) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
-alter table public."${t}" disable trigger user;
+${DECLENCHEURS.suspendre(t)}
 create temp table _refus (motif text) on commit drop;
 do $$ declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
@@ -528,7 +529,7 @@ do $$ declare e json; begin
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
 end $$;
-alter table public."${t}" enable trigger user;
+${DECLENCHEURS.retablir(t)}
 select motif, count(*)::int n from _refus group by 1 order by 2 desc;
 commit;`;
 }

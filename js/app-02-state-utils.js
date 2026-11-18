@@ -2316,8 +2316,8 @@ window.cheminsImageStorage = cheminsImageStorage;
 var passioMediaProteges = (function () {
   var UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   var RE = new RegExp("^/private-media/(posts|stories)/([A-Za-z0-9_-]{1,120})/(" + UUID + ")/(original|v720|poster)$");
-  var MAX = 27262976, IMAGES = 33554432, epoch = 0, attendu, bloque = null;
-  var controles = new Set(), canaux=new Map(), images = new Map(), imageOctets = 0, media = null, mediaSeq = 0;
+  var MAX = 27262976, IMAGES = 33554432, epoch = 0, epochIdentite = 0, attendu, bloque = null;
+  var controles = new Set(), controlesEcriture = new Set(), canaux=new Map(), images = new Map(), imageOctets = 0, media = null, mediaSeq = 0;
   var file = [], actifs = 0, imagesEnCours = new Map(), installe = false, invalidations=[],annulations=0,repriseTransport=null,registrationsVues=new WeakSet(),workersVus=new WeakSet(),observateurImages=null;
   var IMAGE_NEUTRE="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
   var cacheGate=Promise.resolve();
@@ -2384,8 +2384,12 @@ var passioMediaProteges = (function () {
     // un rejet global non gere pour les invalidations synchrones du callback Auth.
     cacheGate.catch(function(){});return cacheGate;
   }
-  function invalider(nouveau) {
-    var ancien = compte(); epoch++; attendu = nouveau; bloque = nouveau === undefined ? ancien : null;
+  function invalider(nouveau, transportSeulement) {
+    var ancien = compte();
+    var lectureSeule=transportSeulement===true && nouveau===ancien && (attendu===undefined||attendu===nouveau) && !bloque;
+    epoch++;
+    if(!lectureSeule){epochIdentite++;controlesEcriture.forEach(function(c){c.abort();});controlesEcriture.clear();}
+    attendu = nouveau; bloque = nouveau === undefined ? ancien : null;
     repriseTransport=null;
     purgerCaches();
     canaux.forEach(function(c,port){c.annule=true;clearTimeout(c.timer);port.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCEL",nonce:c.nonce,epoch:epoch});c.timer=setTimeout(function(){canaux.delete(port);c.terminer();port.close();},1000);});
@@ -2394,7 +2398,7 @@ var passioMediaProteges = (function () {
     imagesEnCours.clear();
     images.forEach(retirer); images.clear(); imageOctets = 0;
     if (media) { media.abort.abort(); retirer(media.entry); media = null; } mediaSeq++;
-    invalidations.forEach(function(f){f();});
+    if(!lectureSeule)invalidations.forEach(function(f){f();});
     if (typeof document !== "undefined") document.querySelectorAll("[data-pmp-epoch]").forEach(function (el) {
       if (el.pause) el.pause(); el.removeAttribute("src"); el.removeAttribute("poster"); el.removeAttribute("data-pmp-epoch");
       el.removeAttribute("data-video-public-src");
@@ -2407,27 +2411,33 @@ var passioMediaProteges = (function () {
   }
   function authChanged(session, event) {
     var nouveau = session && session.user && session.user.id || null;
-    if (event === "SIGNED_OUT" || nouveau !== compte()) invalider(nouveau);
+    if (event === "SIGNED_OUT") invalider(null);
+    else if (event === "SIGNED_IN") {
+      if (nouveau !== compte() || (attendu !== undefined && nouveau !== attendu)) invalider(nouveau);
+    } else if (nouveau !== compte()) invalider(null);
   }
   function delai(p) {
     var timer; return Promise.race([p, new Promise(function (_, reject) { timer = setTimeout(function () { reject(erreur()); }, 10000); })]).finally(function () { clearTimeout(timer); });
   }
-  async function session() {
-    var capture = epoch, auteur = compte();
+  async function session(ecriture) {
+    var identite=ecriture===true,capture=identite?epochIdentite:epoch,auteur=compte();
+    function actuelle(){return capture===(identite?epochIdentite:epoch)&&auteur===compte()&&attendu===auteur;}
     if (attendu === undefined) { if (bloque && auteur === bloque) throw erreur(); attendu = auteur; }
     if (attendu !== auteur) throw erreur();
     await cacheGate;
-    if(capture!==epoch||auteur!==compte()||attendu!==auteur)throw erreur();
+    if(!actuelle())throw erreur();
     if (!auteur) return { mode: "anon", epoch: capture };
     if (typeof supa === "undefined" || !window._supaReal || !supa.auth || !supa.auth.getSession) throw erreur();
     var r = await delai(supa.auth.getSession());
-    if (capture !== epoch || auteur !== compte() || attendu !== auteur || r.error) throw erreur();
+    if (!actuelle() || r.error) throw erreur();
     var s = r.data && r.data.session;
     if (s && s.expires_at && s.expires_at * 1000 < Date.now() + 30000) {
       r = await delai(supa.auth.refreshSession());
-      if (capture !== epoch || auteur !== compte() || attendu !== auteur || r.error) throw erreur(); s = r.data && r.data.session;
+      if (!actuelle() || r.error) throw erreur(); s = r.data && r.data.session;
     }
     if (!s || !s.user || s.user.id !== auteur || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(s.access_token || "")) throw erreur();
+    await cacheGate;
+    if(!actuelle())throw erreur();
     return { mode: "user", token: s.access_token, epoch: capture };
   }
   function cible(entry, element, attribut) {
@@ -2444,14 +2454,14 @@ var passioMediaProteges = (function () {
     return r.right>0&&r.bottom>=0&&r.left<(window.innerWidth||document.documentElement.clientWidth)&&r.top<(window.innerHeight||document.documentElement.clientHeight)&&(r.width>0||r.height>0);
   }
   async function avecSession(operation) {
-    var capture=epoch,abort=new AbortController();controles.add(abort);
+    var capture=epochIdentite,auteur=compte(),abort=new AbortController();controlesEcriture.add(abort);
     var timer=setTimeout(function(){abort.abort();},180000);
     try{
-      var auth=await session();
-      if(auth.mode!=="user"||capture!==epoch||abort.signal.aborted)throw erreur();
+      var auth=await session(true);
+      if(auth.mode!=="user"||capture!==epochIdentite||auteur!==compte()||abort.signal.aborted)throw erreur();
       var resultat=await operation({headers:{Authorization:"Bearer "+auth.token},signal:abort.signal});
-      if(capture!==epoch||abort.signal.aborted)throw erreur();return resultat;
-    }finally{clearTimeout(timer);controles.delete(abort);}
+      if(capture!==epochIdentite||auteur!==compte()||abort.signal.aborted)throw erreur();return resultat;
+    }finally{clearTimeout(timer);controlesEcriture.delete(abort);}
   }
   async function capacites() {
     return avecSession(async function(contexte){
@@ -2608,7 +2618,7 @@ var passioMediaProteges = (function () {
           // Couper des updatefound/reg.installing : attendre installed puis reveiller
           // l'ancien controller bloque la releve Chromium (reproduction minimale locale).
           if(navigator.serviceWorker.controller){
-            var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();invalider(auteur);repriseTransport={uid:auteur,noeuds:reprise};
+            var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();invalider(auteur,true);repriseTransport={uid:auteur,noeuds:reprise};
           }
         }
         reg.addEventListener("updatefound",function(){observer(reg.installing);});observer(reg.installing);
@@ -2624,7 +2634,7 @@ var passioMediaProteges = (function () {
         var reg=await navigator.serviceWorker.getRegistration();
         if(compte()!==auteur||epoch!==demandeEpoch||!reg||!event.source||(event.source!==reg.installing&&event.source!==reg.waiting))return;
         var reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom(),fins=Array.from(canaux.values()).map(function(c){return c.fin;});
-        invalider(auteur);repriseTransport={uid:auteur,noeuds:reprise};
+        invalider(auteur,true);repriseTransport={uid:auteur,noeuds:reprise};
         var annulationEpoch=epoch;
         var timer;await Promise.race([Promise.all(fins),new Promise(function(resolve){timer=setTimeout(resolve,350);})]);clearTimeout(timer);
         if(compte()!==auteur||epoch!==annulationEpoch)return;
@@ -2633,7 +2643,7 @@ var passioMediaProteges = (function () {
     });
     if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("controllerchange",function(){
       var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();
-      invalider(auteur);
+      invalider(auteur,true);
       if(compte()!==auteur)return;
       reprise.forEach(function(r){var el=r.element;if(!el.isConnected)return;
         if(el.tagName==="IMG"&&local(r.refs.src||""))el.setAttribute("data-pmp-src",r.refs.src);
@@ -2661,7 +2671,7 @@ var passioMediaProteges = (function () {
   }
   return { parser:parser, local:local, route:route, contextualiser:contextualiser, invalider:invalider, authChanged:authChanged, session:session,
     charger:charger, jouer:jouer, pret:pret, installer:installer,avecSession:avecSession,capacites:capacites,
-    capture:function(){return {uid:compte(),epoch:epoch};},courant:function(c){return !!c&&c.uid===compte()&&c.epoch===epoch;},
+    capture:function(){return {uid:compte(),epoch:epochIdentite};},courant:function(c){return !!c&&c.uid===compte()&&c.epoch===epochIdentite;},
     surInvalidation:function(f){if(typeof f==="function")invalidations.push(f);},
     purgerCaches:purgerCaches,
     attributImage:function(value){return parser(value)||local(value)||/media\.passio\.invalid/i.test(String(value||""))?"data-pmp-src":"src";},

@@ -141,6 +141,7 @@ function uploadFixture(options={}) {
     assert.ok(url.pathname.startsWith('/storage/v1/object/content-protected/'+A+'/'));
     events.push('upload');uploadCalls++;assert.equal(init.headers['x-upsert'],'false');assert.equal(init.headers['cache-control'],'max-age=0');
     assert.ok(init.body instanceof Blob);
+    if(options.upload)return options.upload(init);
     return new Response(null,{status:options.firstUploadFails&&uploadCalls===1?503:200});
   }});
   Object.assign(f.sandbox,{crypto:globalThis.crypto,SUPABASE_URL:'https://storage.synthetic.invalid',SUPABASE_KEY:'synthetic-public',
@@ -160,6 +161,89 @@ function uploadFixture(options={}) {
   return {...f,events,reservations,inserts};
 }
 const post=()=>({id:'new_post',authorId:A,type:'photo',image,passion:'art',createdAt:Date.now(),text:'synthetique'});
+
+async function relaisSW(f) {
+  const callbacks=new Map(),registrationCallbacks=new Map(),fenetre=new Map();
+  const worker={postMessage(){}},reg={installing:null,waiting:null,addEventListener(n,fn){registrationCallbacks.set(n,fn);}};
+  const sw={controller:worker,getRegistration:async()=>reg,addEventListener(n,fn){const a=callbacks.get(n)||[];a.push(fn);callbacks.set(n,a);}};
+  Object.assign(f.sandbox,{MutationObserver:class {observe(){}},IntersectionObserver:class {observe(){}unobserve(){}},
+    addEventListener(n,fn){fenetre.set(n,fn);}});
+  f.sandbox.document.addEventListener=()=>{};f.sandbox.document.documentElement={};f.sandbox.navigator.serviceWorker=sw;
+  f.api.installer();await new Promise(r=>setImmediate(r));
+  return {
+    async changement(type){
+      if(type==='updatefound'){reg.installing={};registrationCallbacks.get('updatefound')();}
+      else if(type==='controllerchange'){sw.controller={postMessage(){}};for(const fn of callbacks.get('controllerchange')||[])await fn();}
+      else {reg.waiting={};for(const fn of callbacks.get('message')||[])await fn({data:{type:'PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE',nonce:B},origin:f.sandbox.location.origin,source:reg.waiting,ports:[{postMessage(){},close(){}}]});}
+    },
+    couper(){fenetre.get('passio:medias-proteges')({detail:{actif:false}});}
+  };
+}
+
+test('vraies releves SW : purger les lectures sans interrompre le POST prive et son verdict',async()=>{
+  for(const type of ['updatefound','prepare','controllerchange']) {
+    let release,started,signal;const ready=new Promise(r=>started=r);
+    const f=uploadFixture({upload:init=>{signal=init.signal;started();return new Promise(r=>release=()=>r(new Response(null,{status:200})));}});
+    const sw=await relaisSW(f),p=post(),capture=f.api.capture(),pending=f.sandbox._publierAvecEssais(p,1);
+    await ready;
+    try {await sw.changement(type);assert.equal(signal.aborted,false,type);assert.equal(f.api.courant(capture),true,type);}
+    finally {release();}
+    assert.equal(await pending,true,type);assert.equal(p.testVerdict,true,type);assert.equal(f.inserts.length,1,type);
+    assert.equal(f.reservations.length,1,type);assert.ok(f.api.parser(p.image));
+  }
+});
+
+test('apres releve SW : deconnexion, autre compte et coupure annulent toujours le POST prive',async()=>{
+  for(const fin of ['deconnexion','autre_compte','coupure']) {
+    let release,started,signal;const ready=new Promise(r=>started=r);
+    const f=uploadFixture({upload:init=>{signal=init.signal;started();return new Promise(r=>release=()=>r(new Response(null,{status:200})));}});
+    const sw=await relaisSW(f),p=post(),capture=f.api.capture(),pending=f.sandbox._publierAvecEssais(p,1);
+    await ready;await sw.changement('controllerchange');assert.equal(signal.aborted,false,fin);
+    try {
+      if(fin==='coupure')sw.couper();
+      else if(fin==='deconnexion'){f.api.authChanged(null,'SIGNED_OUT');f.sandbox.MY_UID=null;}
+      else {f.api.authChanged({user:{id:B}},'SIGNED_IN');f.sandbox.MY_UID=B;}
+      assert.equal(signal.aborted,true,fin);assert.equal(f.api.courant(capture),false,fin);
+    }finally{release();}
+    assert.equal(await pending,false,fin);assert.equal(f.inserts.length,0,fin);assert.equal(p.image,image,fin);
+  }
+});
+
+test('Auth tardive : SIGNED_IN du meme UUID retablit une identite initialement vide',async()=>{
+  const f=fixture();let operations=0;
+  f.api.authChanged(null,'INITIAL_SESSION');
+  await assert.rejects(f.api.avecSession(async()=>++operations));assert.equal(operations,0);
+  f.api.authChanged({user:{id:A}},'SIGNED_IN');
+  assert.equal(await f.api.avecSession(async()=>++operations),1);
+});
+
+test('Auth fermee avant signOut : un SIGNED_IN de focus ne leve pas la coupure manuelle',async()=>{
+  const f=fixture();let operations=0;
+  f.api.invalider();
+  f.api.authChanged({user:{id:A}},'SIGNED_IN');
+  await assert.rejects(f.api.avecSession(async()=>++operations));assert.equal(operations,0);
+});
+
+test('Auth revoquee : INITIAL_SESSION et TOKEN_REFRESHED tardifs ne rearment pas un principal adopte',async()=>{
+  for(const event of ['INITIAL_SESSION','TOKEN_REFRESHED']){
+    const f=fixture();let operations=0;
+    f.api.authChanged(null,'SIGNED_OUT');f.sandbox.MY_UID=null;
+    f.api.authChanged({user:{id:A}},event);f.sandbox.MY_UID=A;
+    await assert.rejects(f.api.avecSession(async()=>++operations),event);assert.equal(operations,0,event);
+    f.api.authChanged({user:{id:A}},'SIGNED_IN');
+    assert.equal(await f.api.avecSession(async()=>++operations),1,event);
+  }
+});
+
+test('SIGNED_IN avant adoption : aucun envoi sous ancien UID, puis SDK et nouveau principal concordants',async()=>{
+  const f=fixture(),ancien=f.api.capture();let operations=0;
+  f.api.authChanged({user:{id:B}},'SIGNED_IN');
+  await assert.rejects(f.api.avecSession(async()=>++operations));assert.equal(operations,0);
+  f.sandbox.MY_UID=B;assert.equal(await f.api.avecSession(async()=>++operations),1);
+  assert.equal(f.api.courant(ancien),false);
+  const courant=f.api.capture();f.api.authChanged({user:{id:B}},'SIGNED_IN');
+  assert.equal(f.api.courant(courant),true,'un SIGNED_IN de focus ne revoque pas un envoi du meme principal');
+});
 
 test('upload : reservation exacte avant original/v720, aucune URL publique et preview intacte avant INSERT',async()=>{
   const f=uploadFixture({thumbnail:true}),p=post();

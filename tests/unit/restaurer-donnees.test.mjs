@@ -60,7 +60,8 @@ test("③ l'INSERT ne nomme QUE les colonnes reçues — les autres prennent leu
   assert.match(sql, /insert into public\."follows" \("follower_id", "following_id"\) overriding system value select "follower_id", "following_id" from json_populate_recordset/);
   assert.doesNotMatch(sql, /created_at/, "une colonne absente de l'archive ne doit pas être nommée (elle serait posée à NULL)");
   assert.match(sql, /on conflict do nothing/, "sans clé primaire connue : l'ancienne clause");
-  assert.match(sql, /disable trigger user[\s\S]*enable trigger user/, "triggers utilisateur coupés puis rendus");
+  assert.match(sql, /lock table[\s\S]*tgenabled[\s\S]*disable trigger user/, "états capturés sous verrou avant suspension");
+  assert.doesNotMatch(sql, /enable trigger user/, "ne jamais convertir ALWAYS/REPLICA/DISABLED en état ordinaire");
   assert.doesNotMatch(sql, /disable trigger all/i, "les contraintes (FK, CHECK) restent actives : jamais TRIGGER ALL");
 });
 
@@ -69,7 +70,7 @@ test("③ bis le rejeu ligne à ligne isole chaque refus DANS la base, en un seu
   assert.match(sql, /json_array_elements/);
   assert.match(sql, /exception when others then insert into _refus/);
   assert.match(sql, /select motif, count\(\*\)::int n from _refus/);
-  assert.match(sql, /enable trigger user/);
+  assert.doesNotMatch(sql, /enable trigger user/);
 });
 
 test("④ la production est nommée en dur comme cible INTERDITE", () => {
@@ -339,7 +340,7 @@ function mondeChargement({ colonnes, cles, restOk = true }) {
       const json = (x) => new Response(JSON.stringify(x), { status: 200 });
       if (/^select table_name t, column_name c from information_schema\.columns/.test(q)) return json(colonnes);
       if (/where i\.indisprimary/.test(q)) return json(cles);
-      if (/^begin;\nalter table public\."/.test(q)) return json([]);
+      if (/^begin;\nset local lock_timeout='5s';\nlock table public\."/.test(q)) return json([]);
       throw new Error("SQL non routé : " + q.slice(0, 60));
     }
     if (u.includes("/rest/v1/")) { envoye.push("REST " + u.slice(u.indexOf("/rest/v1/"))); return new Response("", { status: restOk ? 201 : 400 }); }

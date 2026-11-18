@@ -1,5 +1,6 @@
 // PostgreSQL natif uniquement : aucune URL distante, aucune interface Storage HTTP.
 import fs from 'node:fs';
+import {verifierRepriseCloture} from './reprise-cloture-native.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
@@ -19,11 +20,18 @@ const lit=s=>"'"+s.replaceAll("'","''")+"'",sha=x=>createHash('sha256').update(x
 const checks=[],report={kind:'native-local-synthetic-heritage-fence',database,existing_local_cluster:existing,checks,storage_http_tested:false,auth_http_tested:false,cloud:false};
 let created=false,creationAttempted=false;
 function sql(text,{db=database,failure=false}={}){
- const r=spawnSync(client,['-X','--no-password','-h','127.0.0.1','-p',port,'-U','postgres','-d',db,'-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],
-  {env,input:'set client_min_messages=warning;\n'+text,encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:16*1024*1024});
- if(r.error)throw Error('heritage_native_transport_failed');
+ const input='set client_min_messages=warning;\n'+text;
+ const sqlFile=process.platform==='win32'?path.join(path.dirname(output),'requete-'+randomUUID()+'.sql'):null;
+ const args=['-X','--no-password','-h','127.0.0.1','-p',port,'-U','postgres','-d',db,'-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'];
+ let r,owned=false,cleanupFailed=false;
+ try{
+  if(sqlFile){const fd=fs.openSync(sqlFile,'wx');owned=true;try{fs.writeFileSync(fd,input);}finally{fs.closeSync(fd);}args.push('--file',sqlFile);}
+  r=spawnSync(client,args,{env,...(sqlFile?{}:{input}),encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:16*1024*1024});
+ }finally{if(owned){try{fs.unlinkSync(sqlFile);}catch{cleanupFailed=true;}}}
+ if(r.error)throw Error('heritage_native_transport_'+(['ETIMEDOUT','ENOBUFS','EPIPE','ENOENT','EPERM','EACCES'].includes(r.error.code)?r.error.code:'failed')+'_'+sha(text).slice(0,12));
  if(r.status!==0&&!failure)throw Error('heritage_native_sql_'+((r.stderr.match(/ERROR:\s+([A-Z0-9]{5})/)||[])[1]||'failed')+'_'+sha(text).slice(0,12));
- return {status:r.status,text:r.stdout.trim(),error:r.stderr};
+ if(cleanupFailed)throw Error('heritage_native_temporary_file_cleanup_failed');
+ return {status:r.status,text:(process.platform==='win32'?r.stdout.replaceAll('\r\n','\n'):r.stdout).trim(),error:r.stderr};
 }
 function expand(file,seen=new Set()){const f=path.resolve(file);if(seen.has(f))throw Error('fixture_cycle');const next=new Set(seen);next.add(f);return fs.readFileSync(f,'utf8').replace(/\r\n/g,'\n').split('\n').map(l=>{const m=/^\s*\\ir\s+(.+?)\s*$/.exec(l);return m?expand(path.resolve(path.dirname(f),m[1]),next):l;}).join('\n');}
 function check(categorie,ok){checks.push({categorie,ok:ok===true});if(ok!==true)throw Error('heritage_native_check_'+categorie);}
@@ -80,6 +88,9 @@ try{
  sql(own+';');sql(migration);check('rejeu_apres_donnees',true);
  check('trois_triggers_ALWAYS',sql("select count(*) from pg_trigger where (tgrelid='storage.objects'::regclass and tgname='media_heritage_stockage' or tgrelid in('public.posts'::regclass,'public.stories'::regclass) and tgname='media_heritage_references') and tgenabled='A';").text==='3');
  check('trigger_functions_invoker',sql("select count(*) from pg_proc where oid in('public.media_heritage_stockage()'::regprocedure,'public.media_heritage_references()'::regprocedure) and not prosecdef;").text==='2');
+ const reprise=verifierRepriseCloture({root,sql});report.reprise_cloture=reprise;
+ for(const {categorie,ok} of reprise.checks)check('reprise_'+categorie,ok);
+ check('reprise_cloture_complete',reprise.ok);
  report.ok=true;
 }catch(e){report.ok=false;report.erreur=e.message;process.exitCode=1;}
 finally{
