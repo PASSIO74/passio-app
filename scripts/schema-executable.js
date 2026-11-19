@@ -248,6 +248,15 @@ const ETAPES = [
            where s.relnamespace in (${NAMESPACES_SQL}) and s.relkind='S' order by 1,2`,
     rendu: (r) => r.map((x) => `alter sequence ${nomObjet(x, "seq")} owned by ${ident(x.table_schema || "public")}.${ident(x.tbl)}.${ident(x.col)};`) },
 
+  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
+    // Les signatures peuvent référencer les types des tables. Les CHECK et
+    // les index d'expression peuvent ensuite appeler ces fonctions.
+    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
+    // `check_function_bodies` coupé le temps de la section : les fonctions
+    // sortent par ordre alphabétique et certaines s'appellent entre elles.
+    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
+
   { titre: "Clés primaires, uniques, CHECK et étrangères",
     sql: `select format('%I.%I', n.nspname, c.relname) as tbl, con.conname, pg_get_constraintdef(con.oid) as def, con.contype,
                  con.confrelid::regclass::text ref_nom,
@@ -291,13 +300,6 @@ const ETAPES = [
     // toute la transaction.
     rendu: (r) => r.map((x) => `alter table ${nomObjet(x, "tbl")} replica identity ${
       x.ri === "f" ? "full" : x.ri === "n" ? "nothing" : x.ri === "i" ? (x.idx ? `using index ${ident(x.idx)}` : "nothing") : "default"};`) },
-
-  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
-    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
-    // `check_function_bodies` coupé le temps de la section : les fonctions
-    // sortent par ordre alphabétique et certaines s'appellent entre elles.
-    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
 
   { titre: "Vues (options security_invoker comprises)",
     sql: `select c.relnamespace::regnamespace::text sch, c.relname table_name, pg_get_viewdef(c.oid, true) def, coalesce(array_to_string(c.reloptions, ', '), '') opts
