@@ -1,0 +1,30 @@
+{
+  "format": "passio-photos-public/1",
+  "workflow": "3cacef9f6419da1096a975329f3a24698c7f6c51b391446421eb09026738b1f6",
+  "fichiers": {
+    "audience.mjs": "bd528071c2127c0f1b423c967607b46252faecc2a44dd0d295d5f6106bc3fe28",
+    "contexte.mjs": "6613c0c0f6a28d51e243d381869d98d5f56c3d33bda59160e944c396f7d6cad7",
+    "contrat.mjs": "4674b87615e180f77eb08878bfd0e22faeb585a9a4cab4724ba2f0a7cb368a4b",
+    "copier.mjs": "8ac2057e325a9cae927f88f33a6acbf8e1d8e64fd5a6f821ce9f0ddce6327a7b",
+    "core/cadre.mjs": "38132ebc2bd0269a4a407a51748c2f288490c6ec4fa6ebf509716ec2cc6d00bc",
+    "core/classificateur.mjs": "0d4ca56420b0bc5cbb0419e30a412d5d65846e851166058eaa233fd6979ad6e1",
+    "core/cohorte.mjs": "e92a82416a5b58d0543b12feb0e96a01d2678475ee71bf4c3bcf7f1444996f5a",
+    "core/noyau.mjs": "e85d47bcb45a4cd64711f1cf08ba24e9102eab6f92317ff0d41343abb9626186",
+    "core/requetes.mjs": "ef91dc72bd2a536d21dda74622a3a098889dcdcd210f12fa75905609508c4908",
+    "generer-seed.mjs": "7f9f84ab68faec556ddd8b7fcb525a1da8f4dd42af6678c11e39bbcfca28c887",
+    "journal-retrait.mjs": "bbdc03305b73cce55d0eb288de37bda889868852fab433daa70e5bd5ec8ce93e",
+    "lecture/fence.sql": "8c1397878d061d5f66b80f2d9de06eb643eb546398a55e2e40d34c6eb205b4d9",
+    "lecture/metadata.sql": "669bcfe6c7e6b781e7af6a41e885c489f6481422eb79b10b6df86a1adab9e843",
+    "livraison.test.mjs": "6ed0ba5d6184667656e4b4a9cdd34bafdd767c3b5c75306e2fd10346cc942414",
+    "noyau-retrait.mjs": "00d0ce9f598e7a36cbbed85f576a9b6c25947603e6f9dbaefee57bc6eeab9240",
+    "operateur.mjs": "54c5b7c3b018d7b449e7a56b52652f7ae4f332e504a5bb9742caf445f3a8aeea",
+    "retrait.mjs": "a0839356d19c6639dd5d6b1f2b6d71953214f61b1b520bb6b174f3819505e8c7",
+    "sceller.mjs": "01836756534b769d69c279f317fc62e1bc164709f2462eb987a4d682b6e58831",
+    "seed.sql.source": "680583e794e8f77bccd9d09cb853ef8b48d6235e604cc41010585959e66145fc",
+    "serveur.mjs": "6eece1ee4417a25e75bd1d2b98b7c4a5581c0199196dbe70e283a605d291e01a",
+    "sondes.mjs": "5da31402f00720ff8971cfe3564e1d35624e3a4576228780181e1861e5cf9a5c",
+    "transport-anonyme.mjs": "70eda956043496e1842ea0f298a6ace26778b2d5d61e5a85efb72d2e411aa69d",
+    "transport-photos.mjs": "5c38ef96c714aa0b164c0a47da0a9952504e64da78fdad54bef5bb6b00b623c5",
+    "transport-retrait.mjs": "375badd92b25f301c713bc45245a0f8c0179a62ac9d4ee163aa23495bf4771dc"
+  }
+}
