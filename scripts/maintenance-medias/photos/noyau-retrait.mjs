@@ -1,8 +1,9 @@
 // Machine à IO injectés. Aucun transport natif, clé, HTTPS ou reprise activable.
 import {createHash} from 'node:crypto';
 import {C,ERREUR400,stop,sha,UUID,empreintePhysique,identite,descriptorDelete} from './contrat.mjs';
-import {sondes,observerChaine} from './sondes.mjs';
+import {sondes,observerSerie} from './sondes.mjs';
 import {prefixeRemplacable} from './core/cohorte.mjs';
+import {MAX_EVENEMENTS} from './journal-retrait.mjs';
 const VIVANT=x=>x?.auth===true&&x.profil===true&&x.suppression_active===false;
 async function hacher(flux,b){const s=createHash('sha256'),m=createHash('md5');let n=0;for await(const c of flux){if(!Buffer.isBuffer(c))stop('FLUX_REFUSE');b.reste();n+=c.length;s.update(c);m.update(c);}b.reste();return {sha256:s.digest('hex'),md5:m.digest('hex'),octets:n};}
 function verifCopie(entree,e){const {source:s,copie:c}=entree;if(!e?.copie||empreintePhysique(e.copie)!==empreintePhysique(c)||c.owner!==s.owner||c.owner_id!==s.owner_id)stop('COPIE_DERIVEE');if(!VIVANT(e.owner))stop('OWNER_DISPARU');}
@@ -57,17 +58,48 @@ export async function retirerAvecIO({io,journal,budget,preparerSelection,prepare
       (a&&(a.sha256!==b.sha256||a.md5!==b.md5||a.octets!==b.octets)))stop('HASH_DIVERGENT');
    log('VERIFIE','GET_COPIE',{...traces(s),sha256:b.sha256,md5:b.md5,octets:b.octets});
   }
-  const precedentes=plan.filter(x=>absentes.has(x.preuve.source_fp)).map(x=>sondes(x.source,x.variantes||[]));
+  const anterieures=plan.filter(x=>absentes.has(x.preuve.source_fp));
+  const precedentes=anterieures.map(x=>sondes(x.source,x.variantes||[]));
   const compterSondes=ms=>ms.reduce((n,m)=>n+m.demandes.length,0);
   // Chaque redirection consomme aussi un appel physique (transport). Les lots
   // séparés contrôlent toutes les routes à T0 puis après les 60 s de délai.
   const minimumRetrait=3*taille+2+(partiel?taille+2:0)+(partiel?2:1)*compterSondes(matrices);
   const exigerBudget=min=>{if(budget.compteurs().appels+min>C.requete_max)stop('BUDGET_REQUETES');};
   exigerBudget(minimumRetrait+compterSondes(precedentes));
-  for(const matrice of precedentes)for(const d of matrice.demandes){
-   const r=await observerChaine({descripteur:d,matrice,requete:desc=>lireSonde(null,desc),body400Connus:erreurs400,body403Connus:erreurs403});sondesEffectuees++;
-   if(!r.absent)stop('ABSENCE_NON_ETABLIE');
+  // Deux événements par IO, au plus deux preuves logiques par GET physique
+  // (alias et terminal), 14 copies, 14 absences, début/attente/fin et arrêt.
+  if(partiel&&4*C.requete_max+2*plan.length+5>MAX_EVENEMENTS)stop('JOURNAL_PERSISTANCE');
+  const encoreVisibles=new Set();
+  async function verifierSerie(x,matrice,demandes,mediaTemporaire){
+   const reprendre=[];
+   const lirePhysique=async desc=>{
+    const reponse=await lireSonde(x,desc);
+    if(partiel)try{
+     const suivant=[301,302,307,308].includes(reponse.status)?matrice.rediriger(desc,reponse.location):null;
+     log('RETOUR','PROBE_PUBLIC',{...traces(x.source),dest_fp:desc.empreinte,http:reponse.status,
+      ...(suivant?{sha256:suivant.empreinte}:{})});
+    }catch(e){reponse.annuler();throw e;}
+    return reponse;
+   };
+   const serie=observerSerie({matrice,demandes,partager:partiel,requete:lirePhysique,
+    body400Connus:erreurs400,body403Connus:erreurs403});
+   for await(const {d,r,terminal,statut} of serie){
+    sondesEffectuees++;
+    if(!r.absent){
+     if(!mediaTemporaire)stop('ABSENCE_NON_ETABLIE');
+     if(r.categorie!=='REPONSE_MEDIA_POSSIBLE')stop('SONDE_NON_QUALIFIEE');
+     reponses200++;encoreVisibles.add(x.preuve.source_fp);
+    }
+    if(partiel){
+     // dest_fp = contrôle logique ; sha256 = URL terminale réellement interrogée.
+     // Le transport journalise séparément chaque requête et son ticket avant l'IO.
+     log('VERIFIE','PROBE_PUBLIC',{...traces(x.source),dest_fp:d.empreinte,sha256:terminal.empreinte,http:statut,statut:r.absent?'OK':'REFUSE'});
+    }
+    if(partiel||!r.absent)reprendre.push(d);
+   }
+   return reprendre;
   }
+  for(const [i,matrice] of precedentes.entries())await verifierSerie(anterieures[i],matrice,matrice.demandes,false);
   exigerBudget(minimumRetrait);
   for(const x of candidats){const s=x.source;await controlerCatalogue();verifEtat(x,await call('SOURCE_ETAT',()=>io.etat(x),traces(s)));budget.supprimer();
    const e=await call('DELETE_SOURCE',ticket=>{demandeAmbigue=true;return io.supprimerSource(x,descriptorDelete(s),ticket);},traces(s));
@@ -77,19 +109,18 @@ export async function retirerAvecIO({io,journal,budget,preparerSelection,prepare
   }
   await absenceGroupee();await controlerCatalogue();
   const resteSondes=[];
-  for(let i=0;i<candidats.length;i++){const x=candidats[i],matrice=matrices[i];for(const d of matrice.demandes){
-   const lire=desc=>lireSonde(x,desc);
-   const r=await observerChaine({descripteur:d,matrice,requete:lire,body400Connus:erreurs400,body403Connus:erreurs403});sondesEffectuees++;
-   if(!r.absent){if(r.categorie!=='REPONSE_MEDIA_POSSIBLE')stop('SONDE_NON_QUALIFIEE');reponses200++;}
-   if(partiel||!r.absent)resteSondes.push({x,d,matrice});
-  }}
-  if(resteSondes.length){budget.observer();budget.attendre();log('INTENTION','ATTENTE_CDN',{objets:resteSondes.length});
-   journal.consommer('ATTENTE_CDN');await io.attendre(C.attente_cdn_ms);budget.attenteEcoulee();log('RETOUR','ATTENTE_CDN',{statut:'OK'});
-   for(const {x,d,matrice}of resteSondes){const lire=desc=>lireSonde(x,desc);
-    const r=await observerChaine({descripteur:d,matrice,requete:lire,body400Connus:erreurs400,body403Connus:erreurs403});sondesEffectuees++;if(!r.absent)stop('ABSENCE_NON_ETABLIE');}
+  for(const [i,x] of candidats.entries()){
+   const matrice=matrices[i],demandes=await verifierSerie(x,matrice,matrice.demandes,true);
+   if(demandes.length)resteSondes.push({x,matrice,demandes});
+  }
+  if(resteSondes.length){budget.observer();budget.attendre();log('INTENTION','ATTENTE_CDN',{objets:resteSondes.reduce((n,g)=>n+g.demandes.length,0)});
+   journal.consommer('ATTENTE_CDN');await io.attendre(C.attente_cdn_ms);const duree=budget.attenteEcoulee();
+   log('RETOUR','ATTENTE_CDN',{statut:'OK',...(partiel?{duree_ms:duree}:{})});
+   for(const {x,matrice,demandes} of resteSondes)await verifierSerie(x,matrice,demandes,false);
   }
   await absenceGroupee();await controlerCatalogue();
-  const lot=partiel?{operation,sondes_par_passage:compterSondes(matrices),intervalle_minimum_ms:C.attente_cdn_ms,sources_retires:[...retirees].sort(),sources_deja_absentes:[...absentes].sort(),
+  const lot=partiel?{operation,sources_fermees_t0:candidats.length-encoreVisibles.size,sources_fermees_apres_delai:candidats.length,
+   sondes_par_passage:compterSondes(matrices),intervalle_minimum_ms:C.attente_cdn_ms,sources_retires:[...retirees].sort(),sources_deja_absentes:[...absentes].sort(),
    sources_preservees:fps.filter(fp=>!absentes.has(fp)&&!cibles.has(fp)).sort()}:{};
   log('FIN','FIN',{statut:'OK',objets:supprimees});return {ok:true,...lot,sources_absentes_observees:supprimees,sondes_effectuees:sondesEffectuees,reponses_media_possibles_initiales:reponses200,controles_finis_uniquement:true,purge_globale_cdn_prouvee:false,copies_non_supprimees_par_programme:true,copies_conformes_observees:true,compteurs:budget.compteurs(),go:false};
  }catch(e){io.arreterIO?.();try{log('BLOQUE','FIN',{statut:'NON_GO',objets:supprimees});}catch{}
