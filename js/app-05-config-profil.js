@@ -1539,7 +1539,7 @@ function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callAvatarHtml(idn, couleur) {
   var photo = (idn && idn.photo) || "";
   // safeUrlAttr rend "#" pour une URL refusée : ce n'est PAS une photo.
-  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img src="' + safeUrlAttr(photo) + '" alt=""></div>';
+  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img ' + passioMediaProteges.attributImage(photo) + '="' + safeUrlAttr(photo) + '" alt=""></div>';
   return '<div class="call-avatar" style="background:' + _cssColor(couleur || "var(--accent)") + ';">' + _emojiSur(idn && idn.emoji) + '</div>';
 }
 // Le calque d'appel est un dialogue nommé, et le focus y entre.
@@ -3276,6 +3276,7 @@ function authorOfReel(post) {
 }
 
 function reelMediaHTML(post) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   // ⚠️ Une bobine peut venir de N'IMPORTE QUEL compte : `video`, `poster` et
   // `fallback` sont des champs libres côté serveur. Trois contextes distincts,
   // trois helpers — se tromper ici, c'est exécuter le code d'un inconnu :
@@ -3284,7 +3285,7 @@ function reelMediaHTML(post) {
   //                l'intérieur d'un attribut onerror ; le HTML décode avant que JS
   //                ne parse, donc escapeHtml seul ne protège pas.
   if (post.type === "video" && post.video) {
-    const poster = post.poster ? ` poster="${safeUrlAttr(post.poster)}"` : "";
+    const poster = post.poster ? ` ${passioMediaProteges.attributPoster(post.poster)}="${safeUrlAttr(post.poster)}"` : "";
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
@@ -3299,7 +3300,7 @@ function reelMediaHTML(post) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
   const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
-  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
+  return `<img class="reel-media" ${passioMediaProteges.attributImage(vignette)}="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
 }
 
 function resolveCoverUrl(cover) {
@@ -3328,6 +3329,7 @@ function bobineExemple(post) {
 }
 
 function renderReelHTML(post, idx) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = moodShortLabel(post.mood);
@@ -3837,7 +3839,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
-              <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text || "")}="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
@@ -4386,7 +4388,7 @@ function _vliveChipsHtml() {
   const mine = (typeof MY_UID !== "undefined" && MY_UID) || "";
   return (window._videoLives || []).filter(r => r.author_id !== mine).map(r => {
     const inner = r.author_photo
-      ? '<img loading="lazy" decoding="async" src="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(r.author_photo) + '="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
       : escapeHtml(r.author_emoji || "🔴");
     const tip = r.title ? (r.author_name || "Live") + " — " + r.title : "Rejoindre le live";
     return '' +

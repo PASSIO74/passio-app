@@ -88,6 +88,7 @@ jobs:
           node --test tests/unit/export-account-chemins.test.mjs
           node --test tests/unit/medias-proteges-http.test.mjs
           node --test tests/unit/medias-proteges-supabase.test.mjs
+          node --test tests/unit/medias-proteges-client-relay.test.mjs
           node --test tests/unit/private-media-chemins.test.mjs
           node --test tests/unit/pilotage-chemins.test.mjs
           node --test tests/unit/push-sur.test.mjs

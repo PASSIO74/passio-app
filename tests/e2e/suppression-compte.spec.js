@@ -57,13 +57,15 @@ test.describe("Suppression de compte", () => {
       const d = { user: { email: compte.email } };
       if (!tok) return { erreur: "compte e2e sans jeton" };
 
-      // Une donnée et un média, comme en usage réel.
+      // Une donnée et un avatar : cette surface publique reste inscriptible
+      // après clôture des anciens préfixes personnels. Le témoin doit vérifier
+      // une vraie suppression, sans dépendre d'un upload photos désormais fermé.
       const etat = await fetch(cfg.url + "/rest/v1/user_state?on_conflict=user_id", {
         method: "POST",
         headers: H(tok, { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }),
         body: JSON.stringify({ user_id: uid, data: { marqueur: "suppression" } }),
       });
-      const chemin = `photos/${uid}/temoin.png`;
+      const chemin = `avatars/${uid}/temoin.png`;
       const octets = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
       const media = await fetch(cfg.url + "/storage/v1/object/content/" + chemin, {
         method: "POST", headers: H(tok, { "Content-Type": "image/png" }), body: octets,

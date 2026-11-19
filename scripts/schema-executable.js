@@ -52,6 +52,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const CLOTURE = require("./lib/reprise-cloture-medias.js");
 
 const args = process.argv.slice(2);
 const iRef = args.indexOf("--projet");
@@ -304,9 +305,10 @@ const ETAPES = [
     rendu: (r) => r.map((x) => `create or replace view ${nomObjet(x, "table_name")}${x.opts ? ` with (${x.opts})` : ""} as\n${x.def.trim()}`) },
 
   { titre: "Déclencheurs",
-    sql: `select pg_get_triggerdef(t.oid) as def from pg_trigger t join pg_class c on c.oid=t.tgrelid
+    sql: `select pg_get_triggerdef(t.oid) as def,c.relnamespace::regnamespace::text as sch,
+                 c.relname as table_name,t.tgname,t.tgenabled::text as etat from pg_trigger t join pg_class c on c.oid=t.tgrelid
            where not t.tgisinternal and c.relnamespace in (${NAMESPACES_SQL}) order by c.relnamespace::regnamespace::text, c.relname, t.tgname`,
-    rendu: (r) => r.map((x) => `do $$ begin\n  ${x.def};\nexception when duplicate_object then null; end $$;`) },
+    rendu: CLOTURE.rendreDeclencheurs },
 
   { titre: "RLS activée — sans quoi les policies ne s'appliquent PAS",
     sql: `select relnamespace::regnamespace::text sch, relname, relrowsecurity rls, relforcerowsecurity force
@@ -402,6 +404,10 @@ const ETAPES = [
            where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} group by 1,2 order by 1,2`,
     rendu: (r) => r.map((x) => rendreAcl(`function ${x.sig}`, x)) },
 
+  { titre: "Clôture médias — trigger Storage, marques et propriétaires techniques",
+    sql: CLOTURE.SQL,
+    rendu: CLOTURE.rendre },
+
   { titre: "Publication realtime — ce qui est diffusé en direct",
     sql: `select pubname, schemaname, tablename from pg_publication_tables where pubname='supabase_realtime' and schemaname in (${SCHEMAS_SQL}) order by schemaname, tablename`,
     rendu: (r) => r.map((x) => `do $$ begin\n  alter publication ${ident(x.pubname)} add table ${x.schemaname}.${ident(x.tablename)};\nexception when duplicate_object then null; end $$;`) },
@@ -449,7 +455,7 @@ async function main() {
     "-- Structure seule : aucune donnée, aucun compte (schéma auth), aucun fichier",
     "-- du Storage, aucun réglage d'authentification ni secret du projet.",
     "-- Une transaction, rejouable sur une base vide comme sur une base déjà semée.",
-    "-- " + "═".repeat(73), "", "begin;", "",
+    "-- " + "═".repeat(73), "", "begin;", "", CLOTURE.preconditions(), "",
   ];
   let n = 0;
   for (const e of ETAPES) {

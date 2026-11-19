@@ -33,6 +33,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { test, expect } = require("@playwright/test");
 const { onboardedState, sansDonneesDistantes } = require("./app-helper");
+const { UID_PUBLICATION, preparerBootPublication, installerSessionPublication } = require("./publication-sdk-fixture");
 
 test.use({
   serviceWorkers: "allow",
@@ -47,7 +48,7 @@ test.use({
 });
 
 const RACINE = path.join(__dirname, "..", "..");
-const UID_MOI = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31";
+const UID_MOI = UID_PUBLICATION;
 const UID_LEA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const TOAST_MAJ = "✨ Mise à jour disponible — recharge pour l'appliquer";
 
@@ -168,7 +169,8 @@ const adresse = (query = "") => "http://127.0.0.1:" + serveur.address().port + "
 const controleur = () => !!navigator.serviceWorker.controller;
 
 // L'application DÉJÀ INSTALLÉE : le worker A contrôle la page dès son ouverture.
-async function ouvrirInstallee(page) {
+async function ouvrirInstallee(page, {publication=false}={}) {
+  if(publication) await page.addInitScript(preparerBootPublication, UID_MOI);
   await page.goto(adresse());
   await page.waitForFunction(controleur, null, { polling: 50, timeout: 20000 });
   await page.reload();
@@ -193,6 +195,7 @@ async function ouvrirInstallee(page) {
 // s'inscrit dans `sessionStorage`, seule preuve qui survive au rechargement.
 // `vraisMedias` garde le vrai micro là où il existe (voir l'en-tête).
 async function clientSimule(page, opts = {}) {
+  await page.evaluate(installerSessionPublication, UID_MOI);
   await page.evaluate(({ lea, vraisMedias }) => {
     window.__tenue = {
       media: false, lecture: false, relacherMedia: null, relacherLecture: null,
@@ -206,31 +209,93 @@ async function clientSimule(page, opts = {}) {
     };
     const liveVivant = () => ({ data: { id: "vl_lea", author_id: lea, author_name: "Léa", status: "live", started_at: new Date().toISOString(), last_seen: new Date().toISOString() }, error: null });
     const chaine = (table) => {
-      let inseree = null;
+      let inseree = null, signal;
       const rep = () => Promise.resolve(table === "video_lives" ? liveVivant() : { data: [], error: null });
       // ⚠️ SEUL CE QU'ON MESURE EST TENU : une notification ou un événement qui passe
       // au même moment ne doit pas prendre la place de l'écriture attendue.
       const inserer = () => {
         const aboutir = () => {
           if (window.__tenue.insertionRefusee) return Promise.resolve({ data: null, error: { message: "refus de banc", code: "XX000" }, status: 500 });
-          noterEcriture(table + ":" + inseree);
-          return rep().then((r) => ({ ...r, status: 201 }));
+          if(signal?.aborted) throw new DOMException("Annulé","AbortError");
+          noterEcriture(table + ":" + inseree[0].id);
+          return Promise.resolve({data:inseree,error:null,status:201});
         };
         if (!window.__tenue.insertion || !["conv_messages", "posts", "stories"].includes(table)) return aboutir();
         window.__tenue.insertionsTenues++;
         return new Promise((res) => { window.__tenue.relacherInsertion = () => { window.__tenue.insertion = false; res(aboutir()); }; });
       };
       const b = {
+        abortSignal(s) { signal=s; return b; },
         then: (a, c) => (inseree ? inserer() : rep()).then(a, c),
         maybeSingle: () => ((window.__tenue.lecture && table === "video_lives")
           ? new Promise((res) => { window.__tenue.relacherLecture = () => res(liveVivant()); })
           : rep()),
       };
       for (const m of ["select", "eq", "neq", "in", "is", "gte", "gt", "lte", "lt", "or", "not", "order", "limit", "range", "update", "upsert", "delete"]) b[m] = () => b;
-      b.insert = (ligne) => { inseree = String((Array.isArray(ligne) ? ligne[0] : ligne).id); return b; };
+      b.insert = (ligne) => { inseree = Array.isArray(ligne) ? ligne : [ligne]; return b; };
       return b;
     };
     const depots = [];
+    const chemins = new Map();
+    const extensions = {"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","video/mp4":"mp4","video/webm":"webm"};
+    const fetchLocal = window.fetch.bind(window);
+    const origineFixture = "https://aaaaaaaaaaaaaaaaaaaa.supabase.co";
+    const repondre = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"private, no-store"}});
+    window.fetch = async (cible,init={}) => {
+      const url = new URL(cible instanceof Request ? cible.url : cible,location.href);
+      const capacites = url.origin===location.origin && url.pathname==="/private-media/capabilities";
+      if(!capacites && url.origin!==origineFixture) {
+        if(url.origin!==location.origin || url.pathname.startsWith("/private-media/")) return repondre({},403);
+        return fetchLocal(cible,init);
+      }
+      const h=new Headers(init.headers);
+      const f=window.__publicationSDK;
+      if(url.search || url.hash || init.method!=="POST" || init.cache!=="no-store" || init.credentials!=="omit"
+        || init.redirect!=="error" || !(init.signal instanceof AbortSignal)
+        || !f.session || h.get("Authorization")!=="Bearer "+f.session.access_token) return repondre({},403);
+      if(init.signal.aborted) throw new DOMException("Annulé","AbortError");
+      if(capacites) return h.get("X-Passio-Media-Read")==="1" && !init.body
+        ? repondre({protocol:1,min_client:1,max_bytes:27262976,uploads_enabled:true,reads_enabled:true}) : repondre({},400);
+      if(h.get("apikey")!=="cle-de-banc") return repondre({},403);
+      if(url.pathname==="/rest/v1/rpc/media_reserver" && h.get("Content-Type")==="application/json") {
+        const {p_type:genre,p_source_id:parent,p_cle_idempotence:asset,p_variantes:variantes}=JSON.parse(init.body);
+        if(!["posts","stories"].includes(genre) || !/^[A-Za-z0-9_-]{1,120}$/.test(parent)
+          || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(asset)
+          || !Array.isArray(variantes) || variantes.length<1 || variantes.length>3
+          || !variantes.some(v=>v.variant==="original") || new Set(variantes.map(v=>v.variant)).size!==variantes.length
+          || variantes.some(v=>!["original","v720","poster"].includes(v.variant) || !Object.hasOwn(extensions,v.mime_type)
+            || !Number.isSafeInteger(v.byte_size) || v.byte_size<1 || v.byte_size>27262976)) return repondre({},400);
+        const objects=variantes.map(({variant,mime_type,byte_size})=>{
+          const object_key=[f.uid,asset,variant+"."+extensions[mime_type]].join("/");
+          const reference="https://media.passio.invalid/private-media/"+[genre,parent,asset,variant].join("/");
+          return {variant,mime_type,byte_size,object_key,reference};
+        });
+        for(const o of objects) {
+          const p="/storage/v1/object/content-protected/"+o.object_key;
+          if(chemins.has(p) && JSON.stringify(chemins.get(p))!==JSON.stringify(o)) return repondre({},409);
+        }
+        for(const o of objects) chemins.set("/storage/v1/object/content-protected/"+o.object_key,o);
+        return repondre({asset_id:asset,bucket_id:"content-protected",objects});
+      }
+      const objet=chemins.get(url.pathname);
+      if(!objet || !(init.body instanceof Blob) || init.body.size!==objet.byte_size || init.body.type!==objet.mime_type
+        || h.get("Content-Type")!==objet.mime_type || h.get("x-upsert")!=="false" || h.get("cache-control")!=="max-age=0") return repondre({},403);
+      if(window.__tenue.depotEchoue) return repondre({},503);
+      if(!window.__tenue.depot) return repondre({},201);
+      window.__tenue.depotsTenus++;
+      return new Promise((resolve,reject)=>{
+        const tenue=window.__tenue;
+        const fin=()=>{ init.signal.removeEventListener("abort",annuler); resolve(repondre({},201)); };
+        const annuler=()=>{
+          const i=depots.indexOf(fin);
+          if(i!==-1) depots.splice(i,1);
+          reject(new DOMException("Annulé","AbortError"));
+        };
+        init.signal.addEventListener("abort",annuler,{once:true});
+        depots.push(fin);
+        tenue.relacherDepot=()=>{ tenue.depot=false; depots.splice(0).forEach(f=>f()); };
+      });
+    };
     const seau = (nom) => ({
       upload: (chemin) => {
         const aboutit = { data: { path: chemin }, error: null };
@@ -258,7 +323,7 @@ async function clientSimule(page, opts = {}) {
       };
       return c;
     };
-    const proprietes = { from: chaine, channel: canal, removeChannel: () => Promise.resolve("ok"), functions: { invoke: () => Promise.resolve({ data: {} }) }, storage: { from: seau } };
+    const proprietes = { auth:window.__publicationSDK.auth, from: chaine, channel: canal, removeChannel: () => Promise.resolve("ok"), functions: { invoke: () => Promise.resolve({ data: {} }) }, storage: { from: seau } };
     for (const nom of Object.keys(proprietes)) {
       Object.defineProperty(window.supa, nom, { configurable: true, writable: true, value: proprietes[nom] });
     }
@@ -897,7 +962,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉑ photo publiée : le dépôt dure plus que l'affichage, la page attend, et rien n'est perdu", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page);
     await ouvrirStudio(page);
     await page.evaluate((png) => {
@@ -927,7 +992,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉒ bobine publiée : la page attend le dépôt de la vidéo", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page, { vraisMedias: true });
     await ouvrirCapture(page, "bobine");
     await page.evaluate((video) => {
@@ -953,7 +1018,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉓ story publiée : la page attend, puis la story est bien partie", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page, { vraisMedias: true });
     await ouvrirCapture(page, "story");
     await page.evaluate((png) => {
@@ -976,7 +1041,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉔ publication de texte en cours : elle survit au rechargement, la page n'attend pas", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page);
     await ouvrirStudio(page);
     await page.evaluate(() => {
@@ -1046,7 +1111,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉖ dépôt échoué, renvoi prévu : le média attend l'essai suivant au lieu de se perdre", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page);
     await ouvrirStudio(page);
     await page.evaluate((png) => {
@@ -1077,7 +1142,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
   });
 
   test("㉗ dernier essai passé : plus rien à attendre, le rechargement n'est pas perdu", async ({ page }) => {
-    await ouvrirInstallee(page);
+    await ouvrirInstallee(page, {publication:true});
     await clientSimule(page);
     await ouvrirStudio(page);
     await page.evaluate((png) => {
