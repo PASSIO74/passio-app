@@ -33,3 +33,30 @@ export async function observerChaine({descripteur,matrice,requete,body400Connus=
  }
  return {categorie:'REDIRECTIONS_BORNEES',absent:false};
 }
+
+// Chaque appel couvre une seule source et une seule série. Un GET terminal
+// de l'alias peut déjà avoir établi le refus direct de l'URL demandée.
+export async function* observerSerie({matrice,demandes,requete,partager,body400Connus,body403Connus}){
+ const terminaux=new Map();
+ const ordre=partager?[...demandes.filter(d=>d.famille==='ALIAS'),
+  ...demandes.filter(d=>d.famille!=='ALIAS')]:demandes;
+ for(const d of ordre){
+  if(terminaux.has(d.url)){
+   yield {d,...terminaux.get(d.url)};
+   continue;
+  }
+  let terminal,statut;
+  const lire=async desc=>{
+   const reponse=await requete(desc);
+   terminal=desc;statut=reponse?.status;
+   return reponse;
+  };
+  const r=await observerChaine({descripteur:d,matrice,requete:lire,body400Connus,body403Connus});
+  const preuve={r,terminal,statut};
+  if(partager&&r.absent&&d.famille==='ALIAS'&&terminal&&
+     ['ORIGINE','TRANSFORMATION'].includes(terminal.famille)&&demandes.some(v=>v.url===terminal.url)){
+   terminaux.set(terminal.url,preuve);
+  }
+  yield {d,...preuve};
+ }
+}
