@@ -10,13 +10,15 @@ export function examiner(raw,pin){
  ok(Buffer.isBuffer(raw)&&sha(raw)===pin);const doc=JSON.parse(raw);ok(doc.format==='passio-photos-chiffre/1'&&doc.execution.job==='photos_associees'&&doc.execution.run_attempt==='1'&&/^[0-9a-f]{40}$/.test(doc.execution.head)&&/^[1-9]\d*$/.test(doc.execution.run_id)&&doc.execution.workflow_ref==='PASSIO74/passio-app/.github/workflows/maintenance-photos.yml@refs/heads/main'&&hex.test(doc.plan_sha256));
  const x=doc.objet;ok(x.format==='passio-deux-copies-preparees/1'&&x.sql_applique===false&&Array.isArray(x.parents)&&x.parents.length===2);
  const proof=Buffer.from(x.preuve_copies,'base64');ok(proof.toString('base64')===x.preuve_copies);
- const seed=preparerAssociationLocale({parents:x.parents,preuveCopies:proof,empreintePreuveAttendue:sha(proof)});ok(seed.sql_sha256===x.sql_sha256&&seed.parents===2);
+ ok(typeof x.sql_sha256==='string'&&hex.test(x.sql_sha256));
+ const seed=preparerAssociationLocale({parents:x.parents,preuveCopies:proof,empreintePreuveAttendue:sha(proof),empreinteSqlRecu:x.sql_sha256});ok(seed.parents===2);
  const copies=JSON.parse(proof).copies;const routes=copies.map(c=>sha('/private-media/posts/'+c.post_id+'/'+c.asset_id+'/original'));ok(JSON.stringify(routes)===JSON.stringify(x.routes));
  ok(hex.test(x.copies_sha256));return {doc,x,seed,copies,routes};
 }
 const auditSQL=`select p.id as parent,p.author_id,a.id::text as asset,a.heritage_ref_sha256 as reference,
  o.object_key as key,o.storage_object_id::text as id,o.byte_size::text as size,s.version::text as version
- from public.posts p join public.media_assets a on a.post_id=p.id and a.owner_id=p.author_id join public.media_objects o on o.asset_id=a.id and o.variant='original'
+ from public.posts p join public.profiles pr on pr.id=p.author_id and pr.is_private is true
+ join public.media_assets a on a.post_id=p.id and a.owner_id=p.author_id join public.media_objects o on o.asset_id=a.id and o.variant='original'
  join storage.objects s on s.id=o.storage_object_id and s.bucket_id=o.bucket_id and s.name=o.object_key and s.owner::text=p.author_id and s.owner_id=p.author_id
  join storage.buckets b on b.id=s.bucket_id and b.public=false where o.bucket_id='content-protected' and p.id in ($1,$2) order by p.id`;
 async function query(token,sql,ro,params){const r=await fetch('https://api.supabase.com/v1/projects/njkiyoklssvefstljemx/database/query',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:sql,read_only:ro,...(params?{parameters:params}:{})})});ok(r.status===201);const chunks=[];let n=0;for await(const b of r.body){n+=b.length;ok(n<=16384);chunks.push(b);}return JSON.parse(Buffer.concat(chunks));}
