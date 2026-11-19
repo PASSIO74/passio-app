@@ -3,7 +3,7 @@ import fs from 'node:fs';import path from 'node:path';import {randomUUID} from '
 import {sha,stop,UUID} from './contrat.mjs';
 const RUNS=path.join(process.env.RUNNER_TEMP||path.dirname(fileURLToPath(import.meta.url)),'passio-retrait-journal');
 const TYPES=['DEBUT','INTENTION','RETOUR','VERIFIE','BLOQUE','FIN'];
-const ACTIONS=['PREVOL','CATALOGUE','SOURCE_ETAT','GET_SOURCE','GET_COPIE','DELETE_SOURCE','ABSENCE','PROBE_PUBLIC','ATTENTE_CDN','FIN'];
+const ACTIONS=['PREVOL','CATALOGUE','SOURCE_ETAT','GET_SOURCE','GET_COPIE','LIAISON','GET_APPLICATIVE','DELETE_SOURCE','ABSENCE','PROBE_PUBLIC','ATTENTE_CDN','FIN'];
 export const MAX_EVENEMENTS=700;
 const KEYS=['type','action','phase','source_fp','dest_fp','identite_fp','sha256','md5','octets','objets','http','statut','duree_ms'];
 function forme(e){if(!e||Object.keys(e).some(k=>!KEYS.includes(k))||!TYPES.includes(e.type)||!ACTIONS.includes(e.action)||!['PRINCIPAL','OBSERVATION'].includes(e.phase))stop('JOURNAL_FORME');

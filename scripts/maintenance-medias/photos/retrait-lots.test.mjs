@@ -11,6 +11,18 @@ import {retirerAvecIO} from './noyau-retrait.mjs';
 import {sondes,observerSerie} from './sondes.mjs';
 
 const restant='RETRAIT_PHOTOS_RESTANTES',douze='RETRAIT_SANS_USAGE';
+import {cleApplicative} from './lecture-protegee.mjs';
+test('la clé de lecture est déduite du propriétaire et de la version scellée',()=>{
+ const source={owner:uuid(44),mime:'image/webp'},asset=uuid(9),objet=uuid(10),version='version-synthetique';
+ const cle=source.owner+'/'+asset+'/original.webp';
+ const row={asset,objet,version,cle};
+ const attendu={asset_fp:sha(asset),registre_fp:sha(JSON.stringify([asset,'original',cle,objet])),
+  object_fp:sha(JSON.stringify([objet,'content-protected',cle,version]))};
+ assert.equal(cleApplicative([row],source,attendu),cle);
+ for(const change of [{asset:uuid(8)},{objet:uuid(11)},{version:'autre'},{cle:cle+'/ailleurs'}])
+  assert.throws(()=>cleApplicative([{...row,...change}],source,attendu),/PARENT_DERIVE/);
+ assert.throws(()=>cleApplicative([row,row],source,attendu),/PARENT_DERIVE/);
+});
 const uuid=n=>'12345678-0000-4000-8000-'+String(n).padStart(12,'0');
 function montage(operation,{prefixe,index=0,journalDisque}={}){
  const bytes=Buffer.from('fixture'),md5=createHash('md5').update(bytes).digest('hex');
@@ -41,11 +53,12 @@ function montage(operation,{prefixe,index=0,journalDisque}={}){
  let temps=0;const b=budget(()=>({wall:temps,mono:temps}));
  const io={prevol:async()=>({fence_sha256:C.fence_sha256,...attendu}),catalogue,etatsInitiaux:async()=>plan.map(etat),lierPlan(){},
   etat:async x=>etat(x),getSource:async()=>[bytes],getCopie:async()=>[bytes],
+  verifierLiaison:async x=>sha(x.source.name),getApplicative:async()=>[bytes],
   supprimerSource:async x=>{paquets.push(x.source.name);actuels.delete(x.source.name);return [{id:x.source.id,name:x.source.name}];},
   absence:async x=>etat(x),absences:async()=>plan.map(etat),
   attendre:async ms=>{temps+=ms;},
   probe:async d=>{sondes.push({...d,temps});return {status:404,annuler(){},lireErreurBornee(){throw Error();}};}};
- for(const k of ['prevol','catalogue','etatsInitiaux','etat','getSource','getCopie','supprimerSource','absence','absences','probe']){
+ for(const k of ['prevol','catalogue','etatsInitiaux','etat','getSource','getCopie','verifierLiaison','getApplicative','supprimerSource','absence','absences','probe']){
   const f=io[k];io[k]=(...args)=>{b.appel();return f(...args);};
  }
  const evenements=[];
@@ -55,6 +68,13 @@ function montage(operation,{prefixe,index=0,journalDisque}={}){
   verifierCatalogue:(cat,r,ss)=>selectionRetrait(cat,p,r,ss)});
  return {go,actuels,posts,profils,p,sources,sondes,paquets,io,plan,b,evenements};
 }
+test('un seul octet divergent sur la seconde copie applicative conserve les deux originaux',async()=>{
+ const m=montage(restant),lire=m.io.getApplicative;
+ let lectures=0;
+ m.io.getApplicative=x=>++lectures===2?[Buffer.from('copie divergente')]:lire(x);
+ const r=await m.go();
+ assert.equal(lectures,2);assert.equal(r.categorie,'HASH_DIVERGENT');assert.deepEqual(m.paquets,[]);
+});
 test('journal disque : 72 GET et 72 résultats logiques, 301→origine, un média à T0 puis fermeture à T+60',async t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'passio-journal-lot-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -100,7 +120,7 @@ test('douze seuls puis deux seules : ensembles, copies et sondes finis',async()=
   const phases=m.sondes.slice(-2*parPassage);
   assert.deepEqual(phases.slice(0,parPassage).map(d=>d.url),phases.slice(parPassage).map(d=>d.url));
   assert.ok(phases.slice(0,parPassage).every(d=>d.temps===0)&&phases.slice(parPassage).every(d=>d.temps>=60000));
-  assert.equal(r.compteurs.appels,op===douze?155:79);
+  assert.equal(r.compteurs.appels,op===douze?155:85);
  }
 });
 test('les cinq préfixes Storage remplaçables sont exclus des deux lots, avant le premier DELETE',async()=>{

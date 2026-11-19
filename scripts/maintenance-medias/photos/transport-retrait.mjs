@@ -3,6 +3,7 @@ import {CONTRAT,empreintePhysique,identite,chemin,sha,UUID} from './core/cadre.m
 import {SQL_PREFLIGHT,sqlEtats,routeManagement,observation,validerEtats} from './core/requetes.mjs';
 import {C,descriptorDelete} from './contrat.mjs';
 import {prefixeRemplacable} from './core/cohorte.mjs';
+import {SQL_LECTURE_PROTEGEE,cleApplicative} from './lecture-protegee.mjs';
 // Après retrait, le même nom avec un nouvel UUID doit être vu, pas filtré par
 // l'ancien UUID. Transformation unique et fermée de la requête épinglée ef91.
 export function sqlEtatsParCle(sources){
@@ -42,6 +43,7 @@ export async function creerTransportRetrait(cap,cles,{budget,journal,sqlCatalogu
  }
  const lire=async(action,sources,trace={})=>validerEtats(observation(await requete(action,'api.supabase.com','POST',routeManagement,{query:sqlEtatsParCle(sources),read_only:true},trace)),sources.length);
  const projeter=e=>({cle:e.cle,source:e.source,copie:e.destination,owner:e.owner});
+ const valides=new Map();
  return {
   fermer(){ferme=true;for(const x of actifs)x.destroy();actifs.clear();pat=null;service=null;selection=null;plan=null;},
   arreterIO(){for(const x of actifs)x.destroy();actifs.clear();},
@@ -54,6 +56,20 @@ export async function creerTransportRetrait(cap,cles,{budget,journal,sqlCatalogu
   async etat(x){const p=entree(x);return projeter((await lire('SOURCE_ETAT',[p.source],traces(p.source)))[0]);},
   async getSource(x){const p=entree(x);return requete('GET_SOURCE',C.hote,'GET','/storage/v1/object/authenticated/content/'+chemin(p.source.name),undefined,traces(p.source),{flux:true,ok:[200]});},
   async getCopie(x){const p=entree(x);return requete('GET_COPIE',C.hote,'GET','/storage/v1/object/authenticated/'+C.copie+'/'+chemin(p.source.name),undefined,{...traces(p.source),dest_fp:identite(p.copie)},{flux:true,ok:[200]});},
+  async verifierLiaison(x){
+   const s=entree(x).source,fp=empreintePhysique(s),mandat=contexte.autorisation;
+   if(operation!=='RETRAIT_PHOTOS_RESTANTES'||!mandat.actives.includes(fp))refuser('OBJET_HORS_COHORTE');
+   const r=mandat.lectures_protegees.find(v=>v.source_fp===fp),parent=mandat.parents_actifs.find(v=>v.source_fp===fp);
+   const parameters=[s.owner,parent.parent_fp,parent.reference_sha256,r.asset_fp,s.mime,s.size,fp===mandat.source_sans_abonne];
+   const rows=await requete('LIAISON','api.supabase.com','POST',routeManagement,{query:SQL_LECTURE_PROTEGEE,parameters,read_only:true},traces(s));
+   valides.set(fp,cleApplicative(rows,s,r));
+   return r.object_fp;
+  },
+  async getApplicative(x){
+   const s=entree(x).source,fp=empreintePhysique(s),key=valides.get(fp);
+   if(operation!=='RETRAIT_PHOTOS_RESTANTES'||!key)refuser('PARENT_DERIVE');
+   return requete('GET_APPLICATIVE',C.hote,'GET','/storage/v1/object/authenticated/content-protected/'+chemin(key),undefined,traces(s),{flux:true,ok:[200]});
+  },
   async supprimerSource(x,descriptor,ticket){const p=entree(x),d=descriptorDelete(p.source);
    const active=contexte.autorisation.actives.includes(empreintePhysique(p.source));
    if((operation!=='RETRAIT_PUBLIC'&&prefixeRemplacable(p.source.name))||

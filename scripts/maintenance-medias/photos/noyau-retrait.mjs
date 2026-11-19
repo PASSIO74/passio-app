@@ -100,8 +100,21 @@ export async function retirerAvecIO({io,journal,budget,preparerSelection,prepare
    return reprendre;
   }
   for(const [i,matrice] of precedentes.entries())await verifierSerie(anterieures[i],matrice,matrice.demandes,false);
-  exigerBudget(minimumRetrait);
-  for(const x of candidats){const s=x.source;await controlerCatalogue();verifEtat(x,await call('SOURCE_ETAT',()=>io.etat(x),traces(s)));budget.supprimer();
+  if(restantes){
+   exigerBudget(minimumRetrait+3*candidats.length);
+   for(const x of candidats){
+    const trace=traces(x.source);
+    const dest_fp=await call('LIAISON',()=>io.verifierLiaison(x),trace);
+    if(typeof dest_fp!=='string'||!/^[0-9a-f]{64}$/.test(dest_fp))stop('PARENT_DERIVE');
+    const digest=await call('GET_APPLICATIVE',async()=>hacher(await io.getApplicative(x),budget),trace);
+    if(digest.sha256!==x.preuve.sha256||digest.md5!==x.preuve.md5||digest.octets!==x.preuve.octets)stop('HASH_DIVERGENT');
+    log('VERIFIE','GET_APPLICATIVE',{...trace,dest_fp,...digest});
+   }
+  }
+  exigerBudget(minimumRetrait+(restantes?candidats.length:0));
+  for(const x of candidats){const s=x.source;await controlerCatalogue();verifEtat(x,await call('SOURCE_ETAT',()=>io.etat(x),traces(s)));
+   if(restantes)await call('LIAISON',()=>io.verifierLiaison(x),traces(s));
+   budget.supprimer();
    const e=await call('DELETE_SOURCE',ticket=>{demandeAmbigue=true;return io.supprimerSource(x,descriptorDelete(s),ticket);},traces(s));
    if(!echoDelete(e,s))stop('DELETE_AMBIGU');
    const apres=await call('ABSENCE',()=>io.absence(x),traces(s));if(apres?.cle!==s.name||apres.source!==null)stop(apres?.source?.id&&apres.source.id!==s.id?'RECREATION':'ABSENCE_NON_ETABLIE');verifCopie(x,apres);

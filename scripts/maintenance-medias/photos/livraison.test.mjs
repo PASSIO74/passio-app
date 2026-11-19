@@ -33,7 +33,11 @@ function lotPartiel(restantes){
  p.parents_actifs=p.actives.map((source_fp,i)=>({source_fp,parent_fp:pin('parent'+i),owner_fp:pin(owner),reference_sha256:pin('url'+i)})).sort((a,b)=>a.source_fp<b.source_fp?-1:1);
  delete p.admission.qualification_stage;
  Object.assign(p.admission,{snapshot_actives:sha(JSON.stringify(p.parents_actifs)),sauvegarde:pin('archive'),dossier:pin('dossier')});
- if(restantes){p.sources_scellees=sources;Object.assign(p.admission,{association:pin('liaison'),audience:pin('audience'),retrait_douze:pin('douze')});}
+ if(restantes){
+  p.sources_scellees=sources;p.source_sans_abonne=p.actives[0];
+  p.lectures_protegees=p.actives.map((source_fp,i)=>({source_fp,asset_fp:pin('asset'+i),registre_fp:pin('registre'+i),object_fp:pin('objet'+i)}));
+  Object.assign(p.admission,{association:pin('liaison'),audience:pin('audience'),retrait_douze:pin('douze')});
+ }
  return p;
 }
 test('les phases partielles sont liées au job, aux parents et à chacun des quatorze objets archivés',()=>{
