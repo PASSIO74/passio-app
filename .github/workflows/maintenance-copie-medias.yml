@@ -1,0 +1,39 @@
+name: Maintenance médias - copie privée
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: maintenance-medias-production
+  cancel-in-progress: false
+jobs:
+  copie_heritage:
+    if: github.repository == 'PASSIO74/passio-app' && github.actor == 'PASSIO74' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: maintenance-medias
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Préparer les outils publics
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+          git init -q "$RUNNER_TEMP/passio-upload-artifact"
+          git -C "$RUNNER_TEMP/passio-upload-artifact" fetch -q --depth=1 https://github.com/actions/upload-artifact.git ea165f8d65b6e75b540449e92b4886f43607fa02
+          git -C "$RUNNER_TEMP/passio-upload-artifact" checkout -q --detach FETCH_HEAD
+      - name: Exécuter la copie seule sous plan privé
+        uses: ./scripts/maintenance-medias/copie
+        with:
+          operation: copie-seule
+        env:
+          PASSIO_ENVIRONNEMENT: maintenance-medias
+          PASSIO_COPIE_PLAN_PRIVE: ${{ secrets.PASSIO_COPIE_PLAN_PRIVE }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SAUVEGARDE_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}

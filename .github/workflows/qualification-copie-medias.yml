@@ -1,0 +1,36 @@
+name: Qualification du checkpoint chiffré
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/maintenance-medias/copie/**
+      - .github/workflows/qualification-copie-medias.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  copie_heritage:
+    if: github.repository == 'PASSIO74/passio-app' && github.actor == 'PASSIO74' && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Préparer AGE et l'action publique épinglée
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+          git init -q "$RUNNER_TEMP/passio-upload-artifact"
+          git -C "$RUNNER_TEMP/passio-upload-artifact" fetch -q --depth=1 https://github.com/actions/upload-artifact.git ea165f8d65b6e75b540449e92b4886f43607fa02
+          git -C "$RUNNER_TEMP/passio-upload-artifact" checkout -q --detach FETCH_HEAD
+      - name: Déposer un checkpoint uniquement synthétique
+        uses: ./scripts/maintenance-medias/copie
+        with:
+          operation: qualification
+        env:
+          SAUVEGARDE_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
