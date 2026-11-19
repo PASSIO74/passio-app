@@ -121,4 +121,30 @@ alter table public.profiles enable always trigger media_heritage_profils_eveneme
 create trigger media_heritage_profils_evenements after insert or update on public.events
 for each row execute function public.media_heritage_profils_evenements();
 alter table public.events enable always trigger media_heritage_profils_evenements;
+do $verdict$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_proc p
+    where p.oid='public.media_heritage_profils_evenements()'::regprocedure
+      and not p.prosecdef and p.prorettype='pg_catalog.trigger'::regtype
+      and md5(pg_get_functiondef(p.oid))='7667d4c981e4ff03170957d5e5d63642'
+  ) or exists (
+    select 1 from (values
+      ('public.profiles'::regclass,'9bb52d4cf751390f68ce12ab21271c54'),
+      ('public.events'::regclass,'cb0e4d28e0fe5b35db05706547c562d1')
+    ) cible(relation,empreinte)
+    where not exists (
+      select 1 from pg_catalog.pg_trigger t join pg_catalog.pg_class c on c.oid=t.tgrelid
+      where t.tgrelid=cible.relation and c.relkind='r' and not c.relispartition
+        and not exists (select from pg_catalog.pg_inherits i where i.inhparent=c.oid)
+        and t.tgname='media_heritage_profils_evenements' and not t.tgisinternal and t.tgenabled='A'
+        and t.tgfoid='public.media_heritage_profils_evenements()'::regprocedure
+        and md5(pg_get_triggerdef(t.oid))=cible.empreinte
+    )
+  ) then
+    raise exception using errcode='42501',message='medias_heritage_profils_evenements_verdict';
+  end if;
+end
+$verdict$;
+select 'cloture references profils et evenements' as controle, 'OK' as valeur;
 commit;

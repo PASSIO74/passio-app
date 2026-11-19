@@ -13,7 +13,7 @@
     "core/requetes.mjs": "ef91dc72bd2a536d21dda74622a3a098889dcdcd210f12fa75905609508c4908",
     "generer-seed.mjs": "fd2b601290a1c2f5e0da4049375c253468f1d697efbb7730b3cb70c33e4ad42a",
     "journal-retrait.mjs": "bbdc03305b73cce55d0eb288de37bda889868852fab433daa70e5bd5ec8ce93e",
-    "lecture/fence-profils-evenements.sql": "4e6e762474fc562b982174b06dff9a19df9a25be4fe55e5716458e69520ecfad",
+    "lecture/fence-profils-evenements.sql": "c3df010df857128f199d270b46cb22cb595a56ece806124046aa4770e802af48",
     "lecture/fence.sql": "8c1397878d061d5f66b80f2d9de06eb643eb546398a55e2e40d34c6eb205b4d9",
     "lecture/metadata.sql": "669bcfe6c7e6b781e7af6a41e885c489f6481422eb79b10b6df86a1adab9e843",
     "livraison.test.mjs": "67e53de69e6faecb0ac3633c112fdf7cfddd7c1269033ac6bc4b488fd880b31c",

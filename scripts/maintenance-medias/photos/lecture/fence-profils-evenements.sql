@@ -27,7 +27,7 @@ SELECT pg_catalog.current_setting('transaction_read_only') = 'on' AS lecture_seu
   pg_catalog.has_table_privilege(current_user, 'public.migrations_appliquees', 'SELECT')
   AND NOT pg_catalog.row_security_active('public.migrations_appliquees'::pg_catalog.regclass)
   AND (SELECT count(*) = 1 AND bool_and(
-    j.empreinte = '816b291538d8235bb9f4179d016a34459d742b82686e2b825dcb35dc2a53545e'
+    j.empreinte = '7fbc11b7e603ff32a8a0d27b3619555e01bb6a403de5aae49771c494839f5ce7'
     AND j.outil = 'appliquer-migration.mjs' AND j.statut = 'applique')
     FROM public.migrations_appliquees AS j
     WHERE j.cible = 'njkiyoklssvefstljemx'
