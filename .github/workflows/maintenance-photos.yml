@@ -1,0 +1,129 @@
+name: Maintenance des photos privées
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Opération déjà revue
+        required: true
+        type: choice
+        options:
+          - photos_associees
+          - retrait_sources
+permissions:
+  contents: read
+concurrency:
+  group: maintenance-medias-production
+  cancel-in-progress: false
+jobs:
+  photos_associees:
+    name: Deux photos
+    if: github.event.inputs.phase == 'photos_associees' && github.actor == 'PASSIO74' && github.ref == 'refs/heads/main' && github.run_attempt == '1'
+    environment: maintenance-medias
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PASSIO_ENVIRONNEMENT: maintenance-medias
+    steps:
+      - name: Lire la version approuvée
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Préparer le runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Installer le chiffrement des reçus
+        run: sudo apt-get install -y -qq age
+      - id: prep
+        name: Réserver le plan et vérifier la cible en lecture seule
+        env:
+          PASSIO_COPIE_PLAN_PRIVE: ${{ secrets.PASSIO_COPIE_PLAN_PRIVE }}
+          PASSIO_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/maintenance-medias/photos/serveur.mjs reservation
+      - id: archive
+        name: Conserver la réservation chiffrée avant les écritures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reservation-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/passio-${{ github.job }}-${{ github.run_id }}/checkpoint.age
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+      - name: Exécuter l’opération approuvée
+        env:
+          PASSIO_COPIE_PLAN_PRIVE: ${{ secrets.PASSIO_COPIE_PLAN_PRIVE }}
+          PASSIO_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PASSIO_ACK_ID: ${{ steps.archive.outputs.artifact-id }}
+          PASSIO_ACK_DIGEST: ${{ steps.archive.outputs.artifact-digest }}
+          PASSIO_PREPARATION_SHA: ${{ steps.prep.outputs.empreinte }}
+        run: node scripts/maintenance-medias/photos/serveur.mjs execution
+      - name: Conserver le résultat chiffré
+        if: ${{ always() && steps.archive.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: resultat-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/passio-${{ github.job }}-${{ github.run_id }}/resultat.age
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+  retrait_sources:
+    name: Retrait des sources
+    if: github.event.inputs.phase == 'retrait_sources' && github.actor == 'PASSIO74' && github.ref == 'refs/heads/main' && github.run_attempt == '1'
+    environment: maintenance-medias
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PASSIO_ENVIRONNEMENT: maintenance-medias
+    steps:
+      - name: Lire la version approuvée
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Préparer le runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Installer le chiffrement des reçus
+        run: sudo apt-get install -y -qq age
+      - id: prep
+        name: Réserver le plan et vérifier la cible en lecture seule
+        env:
+          PASSIO_COPIE_PLAN_PRIVE: ${{ secrets.PASSIO_COPIE_PLAN_PRIVE }}
+          PASSIO_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/maintenance-medias/photos/serveur.mjs reservation
+      - id: archive
+        name: Conserver la réservation chiffrée avant les écritures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reservation-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/passio-${{ github.job }}-${{ github.run_id }}/checkpoint.age
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+      - name: Exécuter l’opération approuvée
+        env:
+          PASSIO_COPIE_PLAN_PRIVE: ${{ secrets.PASSIO_COPIE_PLAN_PRIVE }}
+          PASSIO_AGE_PUBLIC: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PASSIO_ACK_ID: ${{ steps.archive.outputs.artifact-id }}
+          PASSIO_ACK_DIGEST: ${{ steps.archive.outputs.artifact-digest }}
+          PASSIO_PREPARATION_SHA: ${{ steps.prep.outputs.empreinte }}
+        run: node scripts/maintenance-medias/photos/serveur.mjs execution
+      - name: Conserver le résultat chiffré
+        if: ${{ always() && steps.archive.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: resultat-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/passio-${{ github.job }}-${{ github.run_id }}/resultat.age
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
