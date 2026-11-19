@@ -1,0 +1,73 @@
+# Fermer les nouveaux écrits des médias hérités
+
+## État du lot réassemblé le 17 novembre
+
+Préparation sur main `99d881ca7e7a8352c380427d98b1d6628fce4f05`, après le serveur préparatoire de PR967. Codex Root réassemble le client, le SW et la clôture depuis PR960 `bf19e00e…`, en conservant le serveur et l'ADR actuels ainsi que les changements récents d'IRL. Le correctif de restauration et du générateur de schéma est suivi séparément dans PR968 par Codex configuré avec gpt-6.2-astra.
+
+Ce lot n'est pas une bascule exécutée. Le client exige les capacités actives : il ne doit pas être livré seul avec un serveur désactivé. Après qualification hébergée et autorisations spécifiques, la préparation serveur/SQL précède une recette staging puis une bascule coordonnée avec version minimale, quiescence, fermeture héritée et activation. La clôture coupe les anciens uploads même si le drapeau est faux. Une simple fusion ne coordonne pas ces étapes.
+
+## Compatibilité Storage géré — correction du 18 novembre
+
+Le relevé staging confirme que `storage.objects` appartient à `supabase_storage_admin`. Le rôle `postgres` n'en possède pas les droits de propriétaire ; il possède le droit `TRIGGER`. La variante précédente demandait aussi `ALTER TABLE ... ENABLE ALWAYS TRIGGER` et `COMMENT ON TRIGGER` sur cette table. Le correctif prépare sa clôture sans ces opérations réservées au propriétaire et sans changer les rôles ou ACL.
+
+Le trigger Storage est créé en mode `ORIGIN` et conservé au rejeu après vérification stricte de sa définition, de son mode, de l'absence de commentaire étranger et de sa fonction marquée. Les triggers de publications et stories restent `ALWAYS`. Les uploads de l'API Storage en session normale, y compris avec `service_role`, restent soumis à la clôture ; une maintenance privilégiée choisissant volontairement le mode de réplication sort du périmètre du trigger Storage. L'API d'upload n'expose pas ce choix au client. La reprise attend dix objets, neuf commentaires et les modes exacts `O/A/A`.
+
+Codex configuré avec gpt-6.2-astra prépare ce correctif ; Codex Root et un contexte Codex distinct le relisent. Le client et les fonctions Edge ne changent pas dans ce delta. Les validations et autorisations de l'ancienne empreinte SQL ne valent pas pour la nouvelle. Aucune application distante ou bascule n'est acquise par cette préparation ; les drapeaux restent fermés jusqu'à la recette et au traitement des anciennes origines publiques.
+
+## Compléments de la PR969 du 18 novembre
+
+Les mises à jour du service worker invalident les lectures, ports et Blob sans annuler un envoi du même compte. Une déconnexion, un changement de compte ou une coupure manuelle révoquent toujours cet envoi et son plan. Une connexion tardive du même UUID peut rétablir une session initialement vide ; les événements de rafraîchissement tardifs et un retour de focus pendant la déconnexion ne lèvent pas une fermeture préalable.
+
+La reprise conserve les quatre états des déclencheurs utilisateur sous verrou, y compris ALWAYS et REPLICA, en laissant les contraintes internes actives. Le générateur restitue les dix objets de clôture, leurs neuf commentaires, le trigger Storage en mode ORIGIN et les références publiques en mode ALWAYS, ainsi que les droits EXECUTE nécessaires aux propriétaires réels des tables. Une clôture partielle, une policy portant le mauvais rôle ou une définition divergente reste refusée. Ce complément concerne la clôture ; le correctif distinct de PR968 reste nécessaire pour les marqueurs des registres et les identités physiques Storage.
+
+La contre-revue distincte est favorable aux deltas client/Auth et à cette intégration. Vérification complète locale : 1 181 tests réussis, aucun échec ni saut ; après le dernier correctif de syntaxe SQL, la reprise est aussi exercée sur PostgreSQL 17.12 local UTF-8, avec 34 contrôles globaux dont 15 de reprise et 328 cas métier sans échec. La base synthétique est absente après le banc et le cluster possédé est arrêté. Les essais locaux préalablement échoués sont conservés ; aucun contrôle n'est abaissé pour les rendre verts. Ces comptes se recouvrent.
+
+Après intégration de PR968 sur main `948acf72`, la vérification locale complète passe 1 183 tests sans échec ni saut et le banc PostgreSQL combiné conserve ses 34 contrôles et 328 cas sans échec. Les témoins d'autorisation Storage et de suppression du compte utilisent désormais un avatar appartenant au compte synthétique : cette surface reste autorisée après clôture. Les cinq assertions de propriété, dépôt, déplacement, copie et traversée, ainsi que le dépôt préalable et les refus après suppression, sont conservés. Ils ne prouvent pas le parcours personnel privé : le refus du dépôt personnel hérité et la réussite du protocole privé restent des préalables explicites de la recette hébergée avant activation.
+
+Les fixtures navigateur utilisent une véritable session SDK synthétique avant le démarrage et des routes privées bornées ; leurs assertions métier sont conservées. Le passage local de 74 scénarios a été interrompu après l'affichage du dernier cas, sans verdict global : il n'est pas déclaré vert. La CI Linux, les suites WebKit et une nouvelle revue du commit final restent nécessaires avant livraison. La preuve hébergée du backend préparatoire ne qualifie pas encore la bascule du client ni la clôture des objets existants.
+
+Les tests et preuves PostgreSQL décrits ci-dessous documentent le lot source historique. L'assemblage courant doit obtenir sa propre CI et sa contre-revue. Aucun SQL distant, drapeau, objet utilisateur ou déploiement n'a été modifié lors de cet assemblage. La fermeture des écritures ne convertit ni ne retire les anciens objets publics : leur confidentialité et leur migration restent un chantier distinct à terminer avant toute annonce correspondante. Aucun GO n'est déduit de ce document.
+
+Résultat utilisateur : un ancien onglet ne peut plus alimenter les dossiers personnels publics ni rattacher nouvellement ces références à une publication ou une story. Les cinq surfaces volontairement publiques et les pièces jointes privées de messagerie conservent leurs contrôles actuels.
+
+Risque **critical**. Implémentation Codex, contre-revue indépendante requise. Périmètre : migration complémentaire, tests PostgreSQL et protocole CI. Le client `14fa9af7` et la migration primaire des médias privés restent inchangés. Ce lot ne convertit aucun objet ni ligne existante, ne purge rien, n'active aucun réglage et ne crée aucune dépense.
+
+## Autorité observée et barrière
+
+Le catalogue en lecture seule des deux cibles du 16 novembre à 22:38 UTC porte l'empreinte `ed125de18c90aeae2e4b2c335a49b2259241e4a0244240d7b2420a87f9a638d7`. `content` est public ; les deux policies d'écriture existantes n'ont pas de restriction de catégorie. `service_role` et `postgres` ont BYPASSRLS. Une nouvelle policy RLS seule ne ferme donc pas les finalisations privilégiées.
+
+La migration ajoute deux policies restrictives pour les clients et trois triggers **AFTER ROW** : Storage en mode **ORIGIN**, publications et stories en mode **ALWAYS**, sans exemption de rôle en session normale. Pour `content`, seules `avatars`, `covers`, `passion_photos`, `passion_covers` et `events` sont admises, sur l'ancienne et la nouvelle destination d'un UPDATE. Les noms ambigus (segments vides, traversées, séparateurs échappés, contrôles) sont refusés. Les autres buckets traversent cette classification, puis restent soumis à leurs autorisations antérieures. Aucun contrôle propriétaire/quota n'est remplacé.
+
+Le contrôle AFTER lit la valeur finale après les normaliseurs BEFORE ; un refus annule toute la transaction. Les fonctions de trigger sont SECURITY INVOKER, search_path vide. Les helpers purs exposés aux rôles existants classent leurs seuls arguments ; ils ne lisent aucune table et n'accordent aucun droit.
+
+Sur posts/stories, seuls les nouveaux champs médias actifs sont contrôlés : `media_url`, présentation typée de `shared_data` (dont `passio_media.poster`) et URL des overlays GIF. Les valeurs anciennes inchangées au même chemin restent éditables selon les droits existants. Texte libre, enveloppes non rendues et GIF tiers courants sont conservés. Les références logiques privées gardent leur binder et resolver existants ; `shared_data` n'est jamais une preuve de droits de repartage.
+
+Les URL internes non reconnues, les anciens dossiers personnels, leurs alias/transformations et formes ambiguës sont refusés. Les cinq catégories publiques connues restent publiques, y compris leurs URL absolues canoniques. Un classement « public » n'annule pas le CHECK HTTPS existant : les URL relatives ne deviennent pas un nouveau format accepté en base.
+
+Avant un classement « tiers », une autorité HTTP(S) doit être non vide et strictement ASCII, avec des labels DNS bornés et un port numérique borné. Les autorités Unicode ne sont pas normalisées implicitement. Trois ou quatre slashs après HTTPS, lettres pleine chasse et points Unicode sont refusés, ainsi que les préfixes HTTP(S) sans autorité. Cela évite que le navigateur transforme une référence classée tierce en référence Supabase personnelle. Les GIF tiers usuels à autorité canonique restent admis ; les chemins UTF8 ne sont pas interdits par ce contrôle d'autorité.
+
+Les gardes vérifient les corps source bruts, les policies antérieures et les marqueurs/empreintes des nouveaux objets au rejeu. Collision, fonction/policy modifiée, commentaire étranger ou mode de trigger différent du contrat `O/A/A` provoquent un refus avant remplacement. Les empreintes de rôles ne dépendent pas des OID propres à un projet.
+
+## Preuves locales
+
+Le banc PostgreSQL 17.12/Node 22 a exercé **328 contre-épreuves métier et 18 contrôles de prérequis/rejeu**, sans erreur, avec base synthétique neuve puis suppression et absence vérifiée. Il couvre les rôles authenticated/service_role/postgres, les cinq publics (original et version légère), les refus personnels/inconnus/encodés, UPSERT, changement de bucket, copie DM autorisée, propriété, quota, références typées et privées, BEFORE hostile, corruption après binder et rollback de la publication/asset. Le DELETE natif conserve les droits propres et laisse l'objet d'un tiers ; il ne remplace pas la preuve du service Storage de suppression.
+
+Les 44 cas supplémentaires couvrent l'autorité HTTP(S) avant classement, dont les cinq variantes équivalentes pour le navigateur sur trois surfaces actives. La réinjection de l'ancien classificateur dans une transaction distincte reproduit cinq classements tiers indus et quinze insertions acceptées ; son rollback restaure exactement le classificateur et le nombre de publications. Sur le correctif, chacune de ces insertions est refusée par le message fixe de la barrière. Les 284 cas antérieurs restent exécutés, sans modification de leurs attentes.
+
+Le quota réel de dix publications/minute est gardé : les succès sont répartis entre comptes synthétiques, puis dix succès et un onzième refus sont testés séparément. Aucune date ni fonction de quota n'est modifiée pour faire passer ces cas. Les refus CHECK 23514 préexistants et l'UPDATE client de story à zéro ligne sont explicitement distingués des refus 42501 de la nouvelle barrière.
+
+Le wrapper `*.test.sh` est ramassé par le collecteur SQL existant, avec PostgreSQL 18 fourni par la CI (17 explicite accepté), Node 22, cluster neuf SCRAM, pgpass 0600, port loopback libre, répertoire attesté et nettoyage sous marqueur. Cinq tests de protocole doublent seulement les outils du wrapper ; le SQL métier est testé séparément sur PostgreSQL réel. La preuve CI native 18 reste à obtenir avant fusion.
+
+Les audits des tests creux et workflows passent localement. L'audit des tables de compte refuse encore les deux couples `media_reservations.owner_id` et `media_assets.owner_id` introduits par la migration primaire : le lot export/purge distinct doit fournir leur traitement avant intégration. Ce refus n'est pas neutralisé par cette migration complémentaire.
+
+## Exploitation et limites
+
+Centre de pilotage/Sentinelle : les refus ont des messages fixes, sans chemin, URL ni texte utilisateur. Les contrôles GitHub existants montrent les échecs ; aucun nouvel automatisme de production ou collecte PII. Le réglage médias reste fermé jusqu'aux recettes et à la clôture complète des sources héritées.
+
+Un UPDATE de métadonnées d'un ancien objet personnel est volontairement refusé. Si le fournisseur met à jour last_accessed_at pendant lecture/copie, cette opération peut échouer : cette interaction doit être éprouvée sur la plateforme avant application de production. Pour authenticated, une ancienne ligne filtrée par RLS peut rendre zéro ligne modifiée ; le comportement HTTP/blob du fournisseur dans ce cas n'est pas attesté par le banc SQL.
+
+POST/PUT/upsert, copy/move, liens signés antérieurs, TUS, S3, écritures blob hors transaction et anciens caches nécessitent toujours leurs recettes hébergées et protocole de quiescence/retrait. Aucun média réel n'a été lu, copié ou supprimé. La barrière ne rappelle pas les octets déjà distribués et ne certifie pas leur confidentialité rétroactive.
+
+Retour arrière conservateur : suspendre les nouveaux envois/lectures et livrer une correction compatible, conserver la fermeture des anciens préfixes. Ne pas réouvrir le public ni supprimer les registres. Les anciennes archives portant ces chemins exigent une conversion de reprise revue ; une restauration doit préserver les modes exacts du contrat : Storage ORIGIN et références publiques ALWAYS. Aucun GO d'activation ou grande échelle ne découle de ce lot.
+
+Références : [Storage access control](https://supabase.com/docs/guides/storage/security/access-control), [RLS PostgreSQL17](https://www.postgresql.org/docs/17/ddl-rowsecurity.html), [transactions et triggers](https://www.postgresql.org/docs/17/trigger-definition.html).

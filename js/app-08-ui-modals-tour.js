@@ -506,7 +506,10 @@ function _ecouterFinDeSession() {
   try {
     if (!(supa && supa.auth && typeof supa.auth.onAuthStateChange === "function")) return;
     window._finDeSessionEcoutee = true;
-    supa.auth.onAuthStateChange(function (event) {
+    supa.auth.onAuthStateChange(function (event, session) {
+      // Révocation synchrone sur le chemin qui démarre déjà connecté aussi.
+      // Aucun appel SDK ici : seul le bandeau de fin de session reste différé.
+      if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) passioMediaProteges.authChanged(session, event);
       if (event !== "SIGNED_OUT") return;
       setTimeout(function () {
         try {
@@ -704,13 +707,13 @@ function buildStoryGroups() {
 function _storyBubbleInner(g) {
   const withMedia = g.stories.slice().reverse().find(s => s.media && s.mediaType !== "video");
   if (withMedia) {
-    return `<img loading="lazy" decoding="async" src="${safeUrlAttr(withMedia.media)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+    return `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioMediaProteges.route(withMedia.media,{type:"stories",id:withMedia.id}))}="${safeUrlAttr(passioMediaProteges.route(withMedia.media,{type:"stories",id:withMedia.id}))}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   const withPhoto = g.stories.slice().reverse().find(s => s.photo);
   if (withPhoto) {
     // `photo` est un identifiant d'exemple : hors de la liste servie par PASSIO, `imageDemo` rend null et l'emoji reste.
     const photoUrl = imageDemo(withPhoto.photo, "mini");
-    if (photoUrl) return `<img loading="lazy" decoding="async" src="${safeUrlAttr(photoUrl)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+    if (photoUrl) return `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(photoUrl)}="${safeUrlAttr(photoUrl)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   // `profiles.emoji` est un champ libre d'un autre compte (aucune contrainte en base) :
   // ce retour part tel quel dans le HTML du rail (audit 2026-11-06).
@@ -734,7 +737,7 @@ function renderStories() {
   const myEmoji = (myGroup && myGroup.emoji) || me.emoji || "✨";
   const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
   const myAvatarHtml = myAvatar
-    ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
+    ? `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(myAvatar)}="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
     : escapeHtml(myEmoji);
 
   let html;
@@ -1491,7 +1494,7 @@ function meSetMedia(dataUrl, type) {
     vid.muted = true; vid.defaultMuted = true; vid.loop = true; vid.autoplay = true;
     vid.preload = "auto"; vid.playsInline = true;
     vid.setAttribute("muted", ""); vid.setAttribute("playsinline", ""); vid.setAttribute("webkit-playsinline", "");
-    vid.src = src;
+    if(!passioMediaProteges.poserVideo(vid,src))vid.src=src;
     box.appendChild(vid);
     // iOS ne peint pas la 1ʳᵉ image tant que la lecture n'a pas démarré → on
     // force un micro-seek pour afficher une vraie image au lieu d'un cadre noir.
@@ -1499,7 +1502,7 @@ function meSetMedia(dataUrl, type) {
     _meTryPlayPreview(vid);
     _meSetupVideoPreviewControls(vid);
   } else {
-    box.innerHTML = '<img src="' + escapeHtml(dataUrl) + '" alt=""/>';
+    box.innerHTML = '<img ' + passioMediaProteges.attributImage(dataUrl) + '="' + safeUrlAttr(dataUrl) + '" alt=""/>';
   }
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
@@ -1638,7 +1641,7 @@ function _meRenderOverlay(ov) {
   var content = document.createElement("span");
   if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
-  else if (ov.type === "gif") { content.innerHTML = '<img src="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
+  else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
   el.appendChild(content);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
@@ -1900,6 +1903,7 @@ function _verdictPublication(post, ok) {
   try { saveState(); } catch (e) {}
 }
 function _publicationRejouable(p) {
+  if(p._pmpOwner===MY_UID&&passioMediaProteges.parser(p._pmpReference))return true;
   if (p.type === "photo") return typeof p.image === "string" && p.image.length > 0;
   if (p.type === "video") return typeof p.video === "string" && p.video.length > 0;
   if (p.type === "audio") return typeof p.audio === "string" && p.audio.length > 0;
@@ -2051,7 +2055,7 @@ function _storyOverlaysHtml(overlays) {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
     }
     if (o.type === "gif") {
-      return '<div class="story-ov gif" style="' + pos + '"><img src="' + safeUrlAttr(o.url || "") + '" alt="GIF"/></div>';
+      return '<div class="story-ov gif" style="' + pos + '"><img ' + passioMediaProteges.attributImage(o.url || "") + '="' + safeUrlAttr(o.url || "") + '" alt="GIF"/></div>';
     }
     return "";
   }).join("");
@@ -2063,7 +2067,7 @@ function playCurrentStory() {
   if (!group) return closeStoryViewer();
   const stories = group.stories;
   if (!stories[storyItemIdx]) return closeStoryViewer();
-  const s = stories[storyItemIdx];
+  const s = passioMediaProteges.contextualiser(stories[storyItemIdx],{type:"stories",id:stories[storyItemIdx].id});
   // Priorité aux infos embarquées dans la story (Supabase), sinon fallback userById
   const uLocal = userById(s.authorId);
   const u = {
@@ -2132,7 +2136,7 @@ function playCurrentStory() {
       sv.loop = true; sv.playsInline = true; sv.preload = "none";
       sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
       sv.setAttribute("playsinline", ""); sv.setAttribute("webkit-playsinline", "");
-      sv.setAttribute("data-video-public-src", s.media);
+      sv.setAttribute("data-video-public-src", passioMediaProteges.route(s.media,{type:"stories",id:s.id}));
       mediaLayer.appendChild(sv);
       storyVideo = sv;
       card.insertAdjacentHTML("beforeend", boutonVideoPubliqueHTML());
@@ -2150,7 +2154,7 @@ function playCurrentStory() {
       card.appendChild(sb);
       lancerVideoPublique(sv, false);
     } else if (s.media) {
-      mediaLayer.innerHTML = `<img src="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
+      mediaLayer.innerHTML = `<img ${passioMediaProteges.attributImage(s.media)}="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
     } else { mediaLayer.innerHTML = ""; }
   }
 
@@ -2941,9 +2945,10 @@ function _storyPrecharger() {
       suiv = gi > -1 && storyGroups[gi] ? storyGroups[gi].stories[0] : null;
     }
     if (!suiv || !suiv.media || suiv.mediaType === "video") return;
-    var src = String(suiv.media);
+    var src = passioMediaProteges.route(String(suiv.media),{type:"stories",id:suiv.id});
     if (window._storyPrecharge === src || /^(javascript|data:text)/i.test(src)) return;
     window._storyPrecharge = src;
+    if(passioMediaProteges.local(src))return; // Pas de prefetch prive detache du DOM/client vivant.
     var im = new Image();
     im.decoding = "async";
     im.src = src;
@@ -4138,6 +4143,7 @@ async function boot() {
   // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {
     supa.auth.onAuthStateChange((event, session) => {
+      passioMediaProteges.authChanged(session,event);
       // Lien « mot de passe oublié » → afficher l'UI de nouveau mot de passe.
       if (event === "PASSWORD_RECOVERY") {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
@@ -5335,6 +5341,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   finally { if (fin) fin(); }
 }
 async function _publierAvecEssais(post, maxRetries) {
+  var _pmpCompte=passioMediaProteges.capture();
   // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
   // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
   // pas regrouper les publications par passion. Même valeur, nom neutre.
@@ -5344,6 +5351,7 @@ async function _publierAvecEssais(post, maxRetries) {
   var _pubCid = null;
   try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     try { _verdictPublication(post, ok); } catch (e) {}
     return ok;
@@ -5371,61 +5379,12 @@ async function _publierAvecEssais(post, maxRetries) {
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaEnsureProfileExists(); } catch(e) {}
 
-  // Timeout d'upload PROPORTIONNEL à la taille du média : l'ancien plafond fixe
-  // (20 s vidéo) expirait systématiquement sur une vidéo de 15-25 Mo → le retry
-  // ré-uploadait tout, puis échouait pareil → bobines/posts sans média en prod.
-  // ~5 s par Mo + 15 s de marge, borné à 3 min. (Déjà une URL http → 5 s symbolique.)
-  const _uploadTimeoutMs = (b64) => {
-    if (!b64 || typeof b64 !== "string" || b64.indexOf("data:") !== 0) return 5000;
-    const mb = (b64.length * 0.75) / 1048576;
-    return Math.min(180000, 15000 + Math.ceil(mb) * 5000);
-  };
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // STEP 1: Uploader les médias
-      let mediaUrl = null;
-      let hadMedia = false; // le post embarque un média (base64 ou URL)
-
-      if (post.type === "photo" && post.image) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "photos", post.image, "image", { legere: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.image)))
-        ]);
-      } else if (post.type === "video" && post.video) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "videos", post.video, "video"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.video)))
-        ]);
-      } else if (post.type === "audio" && post.audio) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "audios", post.audio, "audio"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.audio)))
-        ]);
-      }
-
-      // ⚠️ Un post MÉDIA sans URL Storage ne doit JAMAIS être inséré : la ligne
-      // serait créée avec media_url NULL (le base64 est filtré plus bas) → une
-      // bobine/vidéo invisible et irréparable. On échoue → retry (ou échec franc,
-      // remonté à l'appelant qui garde la copie locale et réessaie).
-      if (hadMedia && !(mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0)) {
-        throw new Error("Upload média échoué (pas d'URL Storage)");
-      }
-
-      // Réécrire l'URL Storage dans le post local : le base64 est remplacé par
-      // l'URL → l'affichage et la persistance (saveState) n'utilisent plus le
-      // base64 (évite le quota localStorage et garde l'image après reload).
-      // saveState() tout de suite : un retry (insert lent) ne ré-uploadera pas,
-      // supaUploadMedia renvoie l'URL http telle quelle.
-      if (mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0) {
-        if (post.type === "photo") post.image = mediaUrl;
-        else if (post.type === "video") post.video = mediaUrl;
-        else if (post.type === "audio") post.audio = mediaUrl;
-        try { saveState(); } catch (e) {}
-      }
+      if(!passioMediaProteges.courant(_pmpCompte)||!_pmpCompte.uid)return false;
+      const mediaProtege=await passioMediaProteges.envoyer("posts",post);
+      const mediaUrl=mediaProtege?mediaProtege.reference:null;
+      if(!passioMediaProteges.courant(_pmpCompte))return false;
 
       // ⚠️ La construction du blob jsonb `vlog` a été retirée avec le Carnet de
       // voyage (§6) : plus aucun chemin ne produit une publication de ce type.
@@ -5435,7 +5394,7 @@ async function _publierAvecEssais(post, maxRetries) {
       // STEP 2: Créer le post
       const postData = {
         id: post.id,
-        author_id: MY_UID,
+        author_id: _pmpCompte.uid,
         passion_id: _clsPassion.valeur,
         mood: post.mood || "all",
         content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
@@ -5446,7 +5405,8 @@ async function _publierAvecEssais(post, maxRetries) {
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
-        ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
+        ...(post.sharedReel && post.sharedReelData ? {shared_data:JSON.stringify(post.sharedReelData)} : mediaProtege ?
+          {shared_data:{passio_media:{protocol:1,type:post.type,poster:mediaProtege.poster}}} : {}),
         // Album d'événement : le post remonte sur la fiche de l'événement.
         ...(post.eventId ? { event_id: post.eventId } : {}),
       };
@@ -5454,11 +5414,10 @@ async function _publierAvecEssais(post, maxRetries) {
       // Timeout d'insert : l'ancien 3 s était trop court juste après un gros upload
       // (connexion encore saturée) → la ligne n'était jamais créée alors que la
       // vidéo, elle, était bien sur Storage (bobines orphelines constatées en prod).
-      const insertPromise = supa.from("posts").insert([postData]).select();
-      const { data, error, status } = await Promise.race([
-        insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 12000))
-      ]);
+      const { data, error, status } = await passioMediaProteges.avecSession(async function(c){
+        return supa.from("posts").insert([postData]).select("id,author_id,media_url").abortSignal(c.signal);
+      });
+      if(!passioMediaProteges.courant(_pmpCompte))return false;
       // ⚠️ 401 = JETON ABSENT OU INVALIDE (PGRST301/302/303, ou rôle anon) : la
       // session est morte, pas le réseau. Réessayer est un 401 certain, et
       // chaque essai est une alerte « Action en échec » au pilotage (5 pour 1
@@ -5479,16 +5438,22 @@ async function _publierAvecEssais(post, maxRetries) {
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
         delete postData.event_id;
-        const retry = await supa.from("posts").insert([postData]).select();
-        if (!retry.error || String(retry.error.code) === "23505") return _pubDone(true);
+        const retry = await passioMediaProteges.avecSession(async function(c){return supa.from("posts").insert([postData]).select("id,author_id,media_url").abortSignal(c.signal);});
+        if (!retry.error || String(retry.error.code) === "23505") {
+          const confirme=await passioMediaProteges.verifierParent("posts",postData,retry);
+          if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
+        }
         throw retry.error;
       }
       // Clé dupliquée = un insert précédent (timeout côté client) a en fait réussi
       // côté serveur → le post existe, c'est un succès.
-      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) return _pubDone(true);
+      if (error && error.code === "23505") {
+        const confirme=await passioMediaProteges.verifierParent("posts",postData,{error:error});
+        if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
+      }
       if (error) throw error;
-
-      return _pubDone(true);
+      const confirme=await passioMediaProteges.verifierParent("posts",postData,{data:data});
+      if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
 
     } catch (e) {
       // 23503 = clé étrangère. Erreur de DONNÉES, donc définitive : la réessayer
@@ -5649,7 +5614,124 @@ function _blobDepuisDataUrl(dataUrl) {
 // navigateur garderait sinon l'ancienne image un an. Supabase purge son CDN
 // lui-même à la réécriture ; le navigateur, lui, ne le sait pas.
 const DOSSIERS_IMAGE_LEGERE = ["photos", "avatars", "covers", "passion_photos", "passion_covers", "events"];
+// PRIVATE MEDIA UPLOAD v1 : reservation avant flux, parent lie par son vrai INSERT.
+passioMediaProteges.envoyer = (function(){
+  var plans=new WeakMap(),MAX=27262976;
+  var extensions={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","video/mp4":"mp4","video/webm":"webm","audio/mp4":"m4a","audio/webm":"webm","audio/ogg":"ogg","audio/mpeg":"mp3"};
+  function erreur(){return new Error("media_protege_envoi_refuse");}
+  async function requete(chemin,init){
+    return passioMediaProteges.avecSession(async function(c){
+      var headers=Object.assign({apikey:SUPABASE_KEY},c.headers,init.headers||{});
+      return fetch(new URL(chemin,SUPABASE_URL).href,Object.assign({},init,{headers:headers,signal:c.signal,cache:"no-store",credentials:"omit",redirect:"error"}));
+    });
+  }
+  async function envoyer(genre,obj){
+    if(!obj||!window._supaReal||!supa||!/^(posts|stories)$/.test(genre))throw erreur();
+    var capture=passioMediaProteges.capture();
+    if(!capture.uid||(obj.authorId&&obj.authorId!=="me"&&obj.authorId!==capture.uid))throw erreur();
+    if(!obj.id)obj.id=(genre==="stories"?"story_":"post_")+uid();
+    if(!/^[A-Za-z0-9_-]{1,120}$/.test(obj.id))throw erreur();
+    // Une republication n'enregistre aucun nouvel asset : son lien SQL prouve sa source.
+    if(genre==="posts"&&obj.sharedReel)return null;
+    var valeur=genre==="stories"?obj.media:obj.type==="video"?obj.video:obj.type==="audio"?obj.audio:obj.image;
+    if(!valeur&&obj._pmpOwner===capture.uid)valeur=obj._pmpReference;
+    if(!valeur&&((genre==="posts"&&/^(video|audio)$/.test(obj.type))||(genre==="stories"&&/^(photo|video)$/.test(obj.mediaType))))throw erreur();
+    if(!valeur)return null;
+    var existant=plans.get(obj);
+    if(existant&&passioMediaProteges.courant(existant.capture)&&existant.promise)return existant.promise;
+    var sauvegarde=obj._pmpReference&&obj._pmpOwner===capture.uid?obj._pmpReference:valeur;
+    var connue=passioMediaProteges.parser(sauvegarde);
+    if(connue){if(connue.type!==genre||connue.id!==obj.id)throw erreur();return {reference:sauvegarde,poster:obj._pmpPoster||null};}
+    if(typeof valeur!=="string"||valeur.indexOf("data:")!==0)throw erreur(); // Aucun repli public ou copie distante implicite.
+    var plan=existant&&passioMediaProteges.courant(existant.capture)?existant:{capture:capture,cle:crypto.randomUUID(),variantes:null,uploads:new Set(),id:obj.id,genre:genre};
+    if(plan.id!==obj.id||plan.genre!==genre)throw erreur();plans.set(obj,plan);
+    plan.promise=(async function(){
+      await passioMediaProteges.capacites();
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var variantes=plan.variantes||[];
+      function ajouter(nom,data){
+        var blob=_blobDepuisDataUrl(data),mime=blob.type.toLowerCase();
+        if(!extensions[mime]||!blob.size||blob.size>MAX||(nom!=="original"&&mime.indexOf("image/")!==0))throw erreur();
+        variantes.push({variant:nom,mime_type:mime,byte_size:blob.size,blob:blob});
+      }
+      if(!plan.variantes){
+        var image=valeur.indexOf("data:image/")===0&&valeur.indexOf("data:image/gif")!==0;
+        if(image)valeur=await _downscaleImageForUpload(valeur);
+        ajouter("original",valeur);
+        if(image&&genre==="posts"){
+          var legere=await _imageLegerePourFil(valeur);if(legere&&legere.dataUrl)ajouter("v720",legere.dataUrl);
+        }
+        if(genre==="posts"&&obj.type==="video"&&(obj.poster||obj.image)){
+          var poster=obj.poster||obj.image;
+          if(typeof poster!=="string"||poster.indexOf("data:image/")!==0)throw erreur();
+          ajouter("poster",await _downscaleImageForUpload(poster));
+        }
+        plan.variantes=variantes;
+      }
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var cle=plan.cle;
+      var reservation=await requete('/rest/v1/rpc/media_reserver',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({p_type:genre,p_source_id:obj.id,p_cle_idempotence:cle,
+        p_variantes:variantes.map(function(v){return {variant:v.variant,mime_type:v.mime_type,byte_size:v.byte_size};})})});
+      if(!reservation.ok)throw erreur();var r=await reservation.json();
+      if(!r||r.asset_id!==cle||r.bucket_id!=="content-protected"||!Array.isArray(r.objects)||r.objects.length!==variantes.length)throw erreur();
+      for(var i=0;i<variantes.length;i++){
+        if(!passioMediaProteges.courant(capture))throw erreur();
+        var v=variantes[i],objet=r.objects.find(function(o){return o&&o.variant===v.variant;});
+        var chemin=capture.uid+"/"+cle+"/"+v.variant+"."+extensions[v.mime_type];
+        var reference="https://media.passio.invalid/private-media/"+genre+"/"+obj.id+"/"+cle+"/"+v.variant;
+        if(!objet||objet.object_key!==chemin||objet.reference!==reference||objet.mime_type!==v.mime_type||objet.byte_size!==v.byte_size)throw erreur();
+        if(!plan.uploads.has(v.variant)){
+          var upload=await requete('/storage/v1/object/content-protected/'+chemin.split('/').map(encodeURIComponent).join('/'),{method:"POST",headers:{"Content-Type":v.mime_type,"cache-control":"max-age=0","x-upsert":"false"},body:v.blob});
+        // Un conflit sur NOTRE chemin immuable peut etre un retry d'un flux deja termine.
+        // La liaison DB relit ensuite owner/MIME/taille reels : le conflit seul n'est jamais un succes de publication.
+          await upload.body?.cancel();if(!upload.ok&&upload.status!==409)throw erreur();plan.uploads.add(v.variant);
+        }
+        v.reference=reference;
+      }
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var original=variantes.find(function(v){return v.variant==="original";}),vignette=variantes.find(function(v){return v.variant==="v720";}),couverture=variantes.find(function(v){return v.variant==="poster";});
+      var resultat={reference:(vignette||original).reference,poster:couverture?couverture.reference:null};
+      obj._pmpOwner=capture.uid;obj._pmpReference=resultat.reference;obj._pmpPoster=resultat.poster;return resultat;
+    })();
+    try{return await plan.promise;}catch(error){plan.promise=null;throw error;}
+  };
+  envoyer.terminer=function(obj){plans.delete(obj);};
+  passioMediaProteges.surInvalidation(function(){plans=new WeakMap();});
+  return envoyer;
+})();
+passioMediaProteges.verifierParent=async function(genre,attendu,resultat){
+  var capture=passioMediaProteges.capture();
+  if(!/^(posts|stories)$/.test(genre)||!attendu||attendu.author_id!==capture.uid||!/^[A-Za-z0-9_-]{1,120}$/.test(attendu.id||""))return false;
+  var donnees=resultat&&resultat.data;
+  if(resultat&&resultat.error){
+    if(resultat.error.code!=="23505")return false;
+    var relu=await passioMediaProteges.avecSession(async function(c){return supa.from(genre).select("id,author_id,media_url").eq("id",attendu.id).maybeSingle().abortSignal(c.signal);});
+    if(relu.error)return false;donnees=relu.data;
+  }
+  var row=Array.isArray(donnees)?donnees.length===1&&donnees[0]:donnees;
+  return passioMediaProteges.courant(capture)&&!!row&&row.id===attendu.id&&row.author_id===capture.uid&&row.media_url===attendu.media_url;
+};
+passioMediaProteges.appliquerEnvoi=function(obj,resultat){
+  if(resultat){
+    if(Object.prototype.hasOwnProperty.call(obj,"media"))obj.media=resultat.reference;
+    else if(obj.type==="video")obj.video=resultat.reference;else if(obj.type==="audio")obj.audio=resultat.reference;else obj.image=resultat.reference;
+    if(resultat.poster){obj.poster=resultat.poster;obj.image=resultat.poster;}
+  }
+  passioMediaProteges.envoyer.terminer(obj);
+};
+// Presentation seulement : ces metadonnees ne prouvent aucun droit ni MIME.
+passioMediaProteges.presentation=function(row){
+  var ref=passioMediaProteges.parser(row&&row.media_url);if(!ref||ref.type!=="posts"||ref.id!==row.id)return null;
+  var raw=row.shared_data;try{if(typeof raw==="string")raw=JSON.parse(raw);}catch(_){return null;}
+  var info=raw&&raw.passio_media;
+  if(!info||info.protocol!==1||["photo","video","audio"].indexOf(info.type)===-1)return null;
+  var poster=passioMediaProteges.parser(info.poster),couverture=null;
+  if(poster&&poster.type===ref.type&&poster.id===ref.id&&poster.asset===ref.asset&&poster.variant==="poster")couverture=info.poster;
+  return {type:info.type,image:info.type==="photo"?row.media_url:couverture,video:info.type==="video"?row.media_url:null,audio:info.type==="audio"?row.media_url:null,poster:couverture};
+};
+// END PRIVATE MEDIA UPLOAD v1
 async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
+  if(["photos","videos","audios"].indexOf(folder)!==-1)return null; // Publications/stories : reservation protegee obligatoire.
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
 
   if (!base64Data || !base64Data.startsWith("data:")) {
@@ -5869,6 +5951,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return [];
     }
     if (!lectureValide()) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
+    if(!lectureValide())return [];
     const lignesBrutes = data || [];
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
@@ -5978,7 +6062,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       };});
 
       // Diagnostic du premier post
-      if (idx === 0) {
+      if (idx === 0 && !passioMediaProteges.parser(r.media_url)) {
         diagLog(`📌 Post #1 détails:`);
         diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - passion_id: "${r.passion_id}"`);
@@ -6006,6 +6090,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       // Cache le profil de l'auteur (photo comprise) → propagation partout.
       // La passion du POST n'est pas celle du PROFIL : cet embed ne la relit pas.
       try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url }); } catch(e) {}
+      const _pmpRef=passioMediaProteges.parser(r.media_url),_pmpPresentation=_pmpRef?passioMediaProteges.presentation(r):null;
       const loadedPost = {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username depuis Supabase!
@@ -6029,6 +6114,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           // ligne ferait retomber un carnet « Privé » sur son type de média et
           // l'afficherait, en clair, dans le fil de tout le monde.
           if (r.vlog) return "vlog";
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.type:"text";
           if (!r.media_url) return "text";
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return "video";
@@ -6039,6 +6125,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         text: r.content || "",
         // ✅ Charger media_url dans la bonne variable selon le type détecté
         image: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.image:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return null;
@@ -6046,12 +6133,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           return r.media_url;
         })(),
         video: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.video:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return r.media_url;
           return null;
         })(),
         audio: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.audio:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return r.media_url;
@@ -6091,7 +6180,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // ancien pour l'écarter de l'affichage.
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
-        ...(r.shared_data && { sharedReelData: (() => {
+        ...(_pmpPresentation&&{poster:_pmpPresentation.poster}),
+        ...(r.shared_from_post_id && r.shared_data && { sharedReelData: (() => {
           try {
             return typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
           } catch(e) {
@@ -6692,36 +6782,20 @@ async function supaPublishStory(story) {
   finally { fin(); }
 }
 async function _envoyerStory(story) {
+  var _pmpCompte=passioMediaProteges.capture();
+  if(!story.id)story.id="story_"+uid();
   // Upload média + insert = plusieurs requêtes → confirmation explicite, comme
   // pour la publication (l'auto-tag réseau désignerait l'upload, pas le résultat).
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("publish_story", { postId: story && story.id }); } catch (e) {}
   try {
     await supaEnsureProfileExists();
-    // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
-    var mediaUrl = null, mediaType = story.mediaType || null;
-    var _uploadeIci = false;   // a-t-on créé un fichier Storage dans CET appel ?
-    if (story.media && typeof story.media === "string") {
-      if (story.media.startsWith("data:") && typeof supaUploadMedia === "function") {
-        var folder = (mediaType === "video") ? "videos" : "photos";
-        try { mediaUrl = await supaUploadMedia(story.id, folder, story.media, mediaType || "photo"); } catch(e) {}
-        if (mediaUrl && mediaUrl.indexOf("data:") !== 0) _uploadeIci = true;
-        if (mediaUrl && mediaUrl.indexOf("data:") === 0) mediaUrl = null;
-        if (mediaUrl) { story.media = mediaUrl; try { saveState(); renderStories(); } catch(e) {} }
-      } else if (story.media.indexOf("data:") !== 0) {
-        mediaUrl = story.media;
-      }
-      // ⚠️ L'upload a échoué (mediaUrl est resté null alors que la story PORTE un
-      // média) : insérer quand même créait une story vide côté serveur, correcte
-      // chez son auteur et muette pour tout le monde. On échoue franchement.
-      if (!mediaUrl) {
-        console.warn("story : média non uploadé, publication abandonnée");
-        try { window.tel && tel.settle(_cid, "saved", false, { message: "média non uploadé" }); } catch (e) {}
-        return false;
-      }
-    }
-    const res = await supa.from("stories").insert({
-      id: story.id || uid(), author_id: MY_UID,
+    if(!passioMediaProteges.courant(_pmpCompte)||!_pmpCompte.uid)return false;
+    const mediaProtege=await passioMediaProteges.envoyer("stories",story);
+    var mediaUrl=mediaProtege?mediaProtege.reference:null,mediaType=story.mediaType||null;
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
+    const payload={
+      id: story.id, author_id: _pmpCompte.uid,
       // Politique FACULTATIVE (ADR-010) : une story éphémère vaut d'être
       // publiée même sans classement — le refuser pour ça la ferait disparaître.
       passion_id: optionalCanonicalPassion(story.passion),
@@ -6731,26 +6805,27 @@ async function _envoyerStory(story) {
       media_type: mediaType,
       overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
-    });
+    };
+    const res=await passioMediaProteges.avecSession(async function(c){return supa.from("stories").insert(payload).select("id,author_id,media_url").abortSignal(c.signal);});
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
     // restait « publiée » côté auteur et invisible pour tout le monde.
-    const ok = _writeVerdict(res, { label: "publication de story" }).ok;
-    // ⚠️ ORPHELIN. L'insert vient d'être refusé alors que le média est DÉJÀ dans
-    // Storage : plus aucune ligne ne le référencera jamais, et il reste facturé.
-    // On ne retire que ce que CET appel a uploadé — une story qui portait déjà une
-    // URL ne doit pas voir son fichier supprimé sous elle.
-    if (!ok && _uploadeIci && mediaUrl) {
-      try {
-        var _chemin = String(mediaUrl).split("/content/")[1];
-        if (_chemin) {
-          await supa.storage.from("content").remove(cheminsImageStorage(decodeURIComponent(_chemin)));
-          console.warn("story refusée : média orphelin retiré de Storage —", _chemin);
-        }
-      } catch (e) {}
-    }
+    if(res.error&&res.error.code!=="23505")_writeVerdict(res,{label:"publication de story"});
+    const ok=await passioMediaProteges.verifierParent("stories",payload,res);
+    if(ok){passioMediaProteges.appliquerEnvoi(story,mediaProtege);saveState();renderStories();}
+    // Les objets prives non lies et leur provision attendent la collecte revue ; aucun DELETE public par URL.
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     return ok;
   } catch(e) { console.warn("publication de story :", e && e.message); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
+}
+
+async function rafraichirBandeauStories() {
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const stories = await supaLoadStories();
+  if (!stories.length || lecteur !== MY_UID || generation !== _profileCacheGeneration) return;
+  state.seed.stories = stories;
+  renderStories();
 }
 
 async function supaLoadStories() {
@@ -10592,14 +10667,15 @@ async function supaLoadJoinedEvents() {
 // ---- ALBUM D'ÉVÉNEMENT : posts rattachés à un événement ----
 async function supaLoadEventPosts(eventId) {
   try {
-    const { data, error } = await supa.from("posts")
-      .select("*").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
+    let { data, error } = await supa.from("posts")
+      .select("id,author_id,content,media_url,shared_data,created_at,event_id").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
     if (error) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
     const profs = await _resolveProfilesByIds((data || []).map(r => r.author_id));
     return (data || []).map(r => ({
       id: r.id, authorId: r.author_id,
       authorName: (profs[r.author_id] || {}).username || "Passionné",
-      text: r.content || "", image: r.media_url || null,
+      text: r.content || "", image: passioMediaProteges.parser(r.media_url)?(passioMediaProteges.presentation(r)||{}).image||null:r.media_url||null,
       createdAt: supaTs(r.created_at), eventId: r.event_id,
     }));
   } catch(e) { return []; }
@@ -11274,8 +11350,7 @@ async function supaInit() {
 
     // 3. Les autres requ\u00eates peuvent attendre (moins critiques)
     setTimeout(() => {
-      if (typeof supaLoadStories === "function")
-        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
+      rafraichirBandeauStories().catch(() => console.warn("Actualisation du bandeau des stories indisponible"));
       // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
       // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events ; et
       // repeindre « Rencontrer » s'il est déjà affiché. Tout est dans

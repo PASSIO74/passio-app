@@ -38,6 +38,22 @@ const viewerOuvert = (page) => page.evaluate(() => {
 });
 
 test.describe("Stories et blocage", () => {
+  test("une story arrivée après le premier rendu apparaît sans interaction", async ({ page }) => {
+    await bootOnboarded(page);
+    const rail = page.locator("#storiesRowFeed").getByText("Alice969", { exact: true });
+    await expect(rail).toHaveCount(0);
+    await page.evaluate(async () => {
+      const lire = supaLoadStories;
+      try {
+        supaLoadStories = async () => [{
+          id: "story-retardee", authorId: "auteur-retarde", authorName: "Alice969", createdAt: Date.now()
+        }];
+        await rafraichirBandeauStories();
+      } finally { supaLoadStories = lire; }
+    });
+    await expect(rail).toHaveCount(1);
+  });
+
   test("un compte bloqué disparaît des groupes de stories", async ({ page }) => {
     await bootOnboarded(page);
     // Anti-creux : il doit y ÊTRE avant, sinon le test ne prouve rien.

@@ -12,6 +12,7 @@ const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 const { creerCompteE2E } = require("./compte-e2e");
+const { exigerStagingMedias, observerMediaFerme, compterAvatarTemoin } = require("./medias-fermes-helper");
 
 // Mode realtime à tester : PASSIO_E2E_RT = "v2" | "v3" (sinon v1 par défaut).
 // Permet de valider le realtime scalable de bout en bout :
@@ -572,17 +573,17 @@ test.describe("messagerie entre 2 comptes réels", () => {
     }
   });
 
-  // Story + Bobine façon Instagram : A publie une story (média + overlays) et une
-  // bobine (is_reel), B doit les charger depuis Supabase (overlays préservés ;
-  // bobine dans les Bobines, PAS dans le feed). Valide le chemin d'écriture
-  // Supabase de l'éditeur média du 2026-06-19.
-  test("story + bobine façon Instagram → publiées et visibles cross-compte", async ({ browser }) => {
+  // Circuit fermé : refus explicite d'un nouveau média, puis vrais parents texte
+  // et métadonnées (overlays/is_reel) relus par B. Les octets du circuit ouvert
+  // restent une recette hébergée bloquante distincte avant livraison.
+  test("média fermé refusé ; story et métadonnées de bobine visibles cross-compte", async ({ browser }) => {
     test.setTimeout(180000);
+    exigerStagingMedias();
     const t0 = Date.now();
     const log = (m) => console.log(`[media ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
 
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
+    const ctxA = await browser.newContext({ serviceWorkers: "block" });
+    const ctxB = await browser.newContext({ serviceWorkers: "block" });
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
     pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
@@ -590,7 +591,9 @@ test.describe("messagerie entre 2 comptes réels", () => {
     wireHttpDiag(log, pageA, pageB);
 
     const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
-    let storyId = null, reelId = null;
+    const AVATAR_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+      + "2mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let storyId = null, reelId = null, avatarTemoin = null, avatarUid = null;
     try {
       const uidA = await signupAnonymous(pageA, "Test Alice");
       // ⚠️ Un compte neuf est PRIVÉ par défaut (règle du 2026-08-31) : sans
@@ -608,58 +611,95 @@ test.describe("messagerie entre 2 comptes réels", () => {
       const uidB = await signupAnonymous(pageB, "Test Bob");
       expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
 
-      // ── A publie une STORY (média + 2 overlays) ──
-      storyId = await pageA.evaluate(async (px) => {
+      const ferme = await observerMediaFerme(pageA, "posts", PX);
+      expect(ferme.publie, "un média fermé n'est pas annoncé publié").toBe(false);
+      expect(ferme.capacites, "le vrai client a lu les capacités fermées").toBeGreaterThan(0);
+      expect(ferme.capacitesNonConformes, "aucune requête de capacités hors contrat").toBe(0);
+      expect(ferme.mutations, "aucune tentative de réservation, dépôt ou parent").toBe(0);
+      expect(ferme.parents, "aucun parent dans la lecture admin autoritative").toBe(0);
+
+      // ── A publie une STORY texte avec 2 overlays ──
+      const publicationStory = await pageA.evaluate(async () => {
         const id = "story_" + uid();
-        await supaPublishStory({
+        const publie = await supaPublishStory({
           id, authorId: MY_UID, authorName: "Test Alice", authorEmoji: "✨", authorColor: "#8b5cf6",
-          text: "Story auto", content: "Story auto", media: px, mediaType: "photo",
+          text: "Story auto", content: "Story auto",
           overlays: [
             { type: "text", text: "Coucou", color: "#ffffff", x: 50, y: 40, size: 26 },
             { type: "emoji", emoji: "🔥", x: 60, y: 60, size: 52 },
           ],
           emoji: "✨", passion: null, createdAt: Date.now(),
         });
-        return id;
-      }, PX);
+        return { id, publie };
+      });
+      expect(publicationStory.publie, "la story texte est réellement publiée").toBe(true);
+      storyId = publicationStory.id;
       log("story publiée: " + storyId);
       const bStory = await loadFindWithRetry(pageB, "supaLoadStories", storyId, 20000);
       expect(bStory, "B charge la story de A").toBeTruthy();
       expect((bStory.overlays || []).length, "overlays de la story préservés").toBeGreaterThanOrEqual(2);
       log("B voit la story · overlays=" + (bStory.overlays || []).length + " · media=" + (bStory.media ? (bStory.media.indexOf("data:") === 0 ? "base64" : "url") : "none"));
 
-      // ── A publie une BOBINE (is_reel + média + overlay) ──
-      reelId = await pageA.evaluate(async (px) => {
-        const id = "reel_" + uid();
-        await supaPublishPostWithRetry({
-          id, authorId: MY_UID, authorName: "Test Alice", authorEmoji: "✨", authorColor: "#8b5cf6",
-          passion: "musique", mood: "creation", type: "photo", isReel: true, image: px,
+      // ── Témoin de présentation : l'AVATAR public de A, réellement déposé ──
+      // Une bobine sans visuel est légitimement écartée par buildReels. On ne
+      // force pas cette liste : le témoin est d'abord l'avatar public du profil,
+      // puis un parent SDK ordinaire. Ce n'est pas un envoi personnel protégé.
+      reelId = "reel_" + require("node:crypto").randomUUID();
+      avatarTemoin = "avatars/" + uidA + "/" + reelId + ".png";
+      avatarUid = uidA;
+      const publicationBobine = await pageA.evaluate(async ({ id, key, png }) => {
+        const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
+        const depot = await supa.storage.from("content").upload(key, bytes, { contentType: "image/png", upsert: false });
+        if (depot.error) return { avatarDepose: false, avatarProfil: false, publie: false };
+        const image = supa.storage.from("content").getPublicUrl(key).data.publicUrl;
+        const modif = await supa.from("profiles").update({ avatar_url: image }).eq("id", MY_UID).select("id,avatar_url");
+        const profil = await supa.from("profiles").select("avatar_url").eq("id", MY_UID).single();
+        const avatarProfil = !modif.error && modif.data?.length === 1 && modif.data[0].avatar_url === image
+          && !profil.error && profil.data?.avatar_url === image;
+        if (!avatarProfil) return { avatarDepose: true, avatarProfil: false, publie: false };
+        const r = await supa.from("posts").insert({ id, author_id: MY_UID, passion_id: "musique", mood: "creation",
+          content: "Ma bobine", media_url: image, is_reel: true,
           overlays: [{ type: "text", text: "Ma bobine", color: "#ffffff", x: 50, y: 30, size: 24 }],
-          text: "Ma bobine", createdAt: Date.now(), likes: 0, liked: false, comments: [],
-        });
-        return id;
-      }, PX);
+          created_at: new Date().toISOString() }).select("id,media_url,is_reel");
+        return { avatarDepose: true, avatarProfil, image,
+          publie: !r.error && r.data?.length === 1 && r.data[0].id === id && r.data[0].media_url === image && r.data[0].is_reel === true };
+      }, { id: reelId, key: avatarTemoin, png: AVATAR_PNG });
+      expect(publicationBobine.avatarDepose, "le témoin est un vrai avatar public déposé par A").toBe(true);
+      expect(publicationBobine.avatarProfil, "le profil de A référence effectivement cet avatar").toBe(true);
+      expect(publicationBobine.publie, "les métadonnées de bobine sont réellement publiées").toBe(true);
       log("bobine publiée: " + reelId);
       const bReel = await loadFindWithRetry(pageB, "supaLoadPosts", reelId, 20000);
       expect(bReel, "B charge la bobine de A").toBeTruthy();
       expect(bReel.isReel, "bobine marquée is_reel chez B").toBe(true);
+      expect(bReel.image, "le vrai mappeur B conserve l'avatar témoin").toBe(publicationBobine.image);
+      expect((bReel.overlays || []).length, "overlay de bobine préservé").toBeGreaterThanOrEqual(1);
+      const avatarPublic = await pageB.request.get(publicationBobine.image, { maxRedirects: 0, timeout: 10000 });
+      expect(avatarPublic.status(), "l'avatar est publiquement disponible").toBe(200);
+      expect((avatarPublic.headers()["content-type"] || "").split(";")[0], "le témoin public est un PNG").toBe("image/png");
+      expect(await avatarPublic.body(), "les octets du témoin public sont exacts").toEqual(Buffer.from(AVATAR_PNG, "base64"));
 
-      // B : la bobine est dans les Bobines, PAS dans le feed
-      const split = await pageB.evaluate((reel) => {
-        state.supabasePosts = state.supabasePosts || [];
-        if (!state.supabasePosts.find((p) => p.id === reel.id)) state.supabasePosts.unshift(reel);
-        return { inReels: buildReels().some((p) => p.id === reel.id), inFeed: allFeedPosts().some((p) => p.id === reel.id) };
-      }, bReel);
+      // B : le vrai rafraîchissement produit alimente l'état, sans y insérer le témoin.
+      await pageB.evaluate(() => reessayerFilCommunaute());
+      await expect.poll(() => pageB.evaluate(id => (state.supabasePosts || []).some(p => p.id === id), reelId), { timeout: 20000 }).toBe(true);
+      const split = await pageB.evaluate(id => ({ inReels: buildReels().some(p => p.id === id), inFeed: allFeedPosts().some(p => p.id === id) }), reelId);
       log("B : bobine dans Bobines=" + split.inReels + " feed=" + split.inFeed);
       expect(split.inReels, "bobine visible dans Bobines chez B").toBe(true);
       expect(split.inFeed, "bobine ABSENTE du feed chez B").toBe(false);
       log("✅ story + bobine cross-compte validées");
 
-      await cleanupMedia(pageA, storyId, reelId);
-      await cleanupMedia(pageB, storyId, reelId);
     } finally {
-      await ctxA.close();
-      await ctxB.close();
+      try {
+        if (avatarTemoin) {
+          const retire = await pageA.evaluate(async key => {
+            const r = await supa.storage.from("content").remove([key]); return !r.error;
+          }, avatarTemoin);
+          expect(retire, "le seul avatar témoin est retiré avant la déconnexion").toBe(true);
+          expect(await compterAvatarTemoin(avatarUid, avatarTemoin), "le catalogue admin confirme l'absence du témoin").toBe(0);
+        }
+      } finally {
+        try { await cleanupMedia(pageA, storyId, reelId); await cleanupMedia(pageB, storyId, reelId); }
+        finally { await ctxA.close(); await ctxB.close(); }
+      }
     }
   });
 

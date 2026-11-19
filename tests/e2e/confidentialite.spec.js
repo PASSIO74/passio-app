@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { signupUser, wireHttpDiag } = require("./qa-helper");
+const { exigerStagingMedias, observerMediaFerme } = require("./medias-fermes-helper");
 
 const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
@@ -82,8 +83,9 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
 
   test("stories d'un compte privé : invisibles au non-abonné, visibles à l'abonné", async ({ browser }) => {
     test.setTimeout(240000);
+    exigerStagingMedias();
     const log = (m) => console.log(`[conf-story] ${m}`);
-    const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
+    const ctxA = await browser.newContext({ serviceWorkers: "block" }), ctxB = await browser.newContext({ serviceWorkers: "block" }), ctxC = await browser.newContext({ serviceWorkers: "block" });
     const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
     wireHttpDiag(log, [{ who: "A", page: A }, { who: "B", page: B }, { who: "C", page: C }]);
     let storyId = null;
@@ -116,11 +118,23 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
         return false;
       });
       expect(isPriv, "compte A bien marqué privé en base").toBe(true);
-      storyId = await A.evaluate(async (px) => {
+      // Le client fermé doit refuser l'image, sans réservation, upload ou parent.
+      // Le helper double uniquement les capacités et vérifie le zéro côté admin.
+      const ferme = await observerMediaFerme(A, "stories", PX);
+      expect(ferme.publie, "un média fermé n'est pas annoncé publié").toBe(false);
+      expect(ferme.capacites, "le vrai client a lu les capacités fermées").toBeGreaterThan(0);
+      expect(ferme.capacitesNonConformes, "aucune requête de capacités hors contrat").toBe(0);
+      expect(ferme.mutations, "aucune tentative de réservation, dépôt ou parent").toBe(0);
+      expect(ferme.parents, "aucun parent dans la lecture admin autoritative").toBe(0);
+      // La confidentialité des lignes reste éprouvée sur une story texte réelle.
+      // Les droits et octets du parent média sont une garde hébergée distincte.
+      const publication = await A.evaluate(async () => {
         const id = "story_" + uid();
-        await supaPublishStory({ id, authorId: MY_UID, authorName: "Priv Alice", authorEmoji: "✨", authorColor: "#8b5cf6", text: "Story privée", content: "Story privée", media: px, mediaType: "photo", overlays: [], emoji: "✨", passion: null, createdAt: Date.now() });
-        return id;
-      }, PX);
+        const publie = await supaPublishStory({ id, authorId: MY_UID, authorName: "Priv Alice", authorEmoji: "✨", authorColor: "#8b5cf6", text: "Story privée", content: "Story privée", overlays: [], emoji: "✨", passion: null, createdAt: Date.now() });
+        return { id, publie };
+      });
+      expect(publication.publie, "la story texte est réellement publiée").toBe(true);
+      storyId = publication.id;
       expect(storyId).toBeTruthy();
 
       // B suit A. supaFollowUser est fire-and-forget → on ATTEND que la ligne

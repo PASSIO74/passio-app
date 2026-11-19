@@ -362,7 +362,7 @@ function _exSearchLancer(query) {
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
-          ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          ? "<img " + passioMediaProteges.attributImage(_photo) + "='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
           : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
         // Attribut style en quotes SIMPLES : une apostrophe dans la couleur d'un
         // autre compte en sortait. _cssColor refuse quotes, url( et expression(.
@@ -3580,7 +3580,7 @@ async function _fillEventReactionDetail(eventId) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.emoji) + '="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
         : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
@@ -3594,7 +3594,7 @@ async function _fillEventReactionDetail(eventId) {
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
   body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" ' + passioMediaProteges.attributImage(g) + '="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -4580,7 +4580,7 @@ function openEventDetails(id) {
     // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
     // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
     // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" ${passioMediaProteges.attributImage(urlMediaDirecte(ev.coverUrl))}="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
     const coverImg = coverEl.querySelector("img");
     if (coverImg) {
       const coverFb = ev.emoji || passion.emoji || "✨";
@@ -4936,27 +4936,34 @@ function shareEventExperience(id) {
 async function _loadEventAlbum(eventId) {
   const box = document.getElementById("eventAlbum");
   if (!box) return;
-  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
-    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const requete = {};
+  box._requeteAlbum = requete;
+  const locaux = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: projectionHeritageLecture().candidat(p.image) ? null : (p.image || null),
+    text: p.text || "", authorName: p.authorName || "Moi",
   }));
+  let distants = [];
   if (window._supaReal && typeof supaLoadEventPosts === "function") {
     try {
-      const remote = await supaLoadEventPosts(eventId);
-      const seen = new Set(items.map(i => i.id));
-      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
-    } catch (e) {}
+      distants = await supaLoadEventPosts(eventId) || [];
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("album", "lecture_distante_indisponible");
+    }
   }
-  // La fiche a pu être fermée ou changée pendant la requête.
-  if (window._openEventDetailId !== eventId) return;
-  const box2 = document.getElementById("eventAlbum");
-  if (!box2) return;
+  if (MY_UID !== lecteur || _profileCacheGeneration !== generation || window._openEventDetailId !== eventId ||
+      document.getElementById("eventAlbum") !== box || box._requeteAlbum !== requete) return;
+  // Les lignes synchronisées portent le résultat de la projection privée, y compris un refus.
+  const synchronises = new Set(distants.map(p => p.id));
+  const items = locaux.filter(p => !synchronises.has(p.id)).concat(distants);
   if (!items.length) {
-    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    box.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
     return;
   }
-  box2.innerHTML = items.slice(0, 12).map(p => p.image
+  box.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
-         <img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(p.image, 400))}" alt=""/>
+         <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}="${safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}" alt=""/>
        </div>`
     : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
          <span>${escapeHtml((p.text || "").slice(0, 60))}</span>

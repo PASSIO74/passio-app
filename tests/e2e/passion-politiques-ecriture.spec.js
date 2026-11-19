@@ -15,6 +15,7 @@
 // au SDK — elle ne relit pas la logique, elle l'exerce.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { UID_PUBLICATION, installerSessionPublication } = require("./publication-sdk-fixture");
 
 // Passion personnalisée telle que l'interface la fabrique (app-02
 // `confirmCreateCustomPassion`) : préfixe `custom_`, drapeau `custom: true`.
@@ -31,6 +32,7 @@ async function boot(page, opts = {}) {
   // le kill switch du lot et GARDE TOUTES SES ASSERTIONS.
   await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
   await bootOnboarded(page, null, 1, {});
+  await page.evaluate(installerSessionPublication, UID_PUBLICATION);
   await page.evaluate((o) => {
     window.__ecrits = { posts: [], profiles: [], stories: [], events: [], conversations: [], conv_members: [] };
     const note = (t, payload) => {
@@ -40,6 +42,7 @@ async function boot(page, opts = {}) {
     const reponse = { data: [{ id: "x" }], error: null };
     window.supabase = {
       createClient: () => ({
+        auth:window.__publicationSDK.auth,
         from: (t) => ({
           select: (...a) => {
             // Le référentiel : le SDK factice sert exactement les identifiants demandés.
@@ -51,7 +54,10 @@ async function boot(page, opts = {}) {
             };
             return q;
           },
-          insert: (p) => { note(t, p); const r = Promise.resolve(reponse); r.select = () => Promise.resolve(reponse); return r; },
+          insert: (p) => window.__publicationSDK.ecriture(() => {
+            note(t,p);
+            return {data:Array.isArray(p)?p:[p],error:null};
+          }),
           upsert: (p) => { note(t, p); return Promise.resolve(reponse); },
           update: (p) => { note(t, p); const q = { eq: () => q, select: async () => reponse, then: (f) => Promise.resolve(reponse).then(f) }; return q; },
           delete: () => { const q = { eq: () => q, then: (f) => Promise.resolve(reponse).then(f) }; return q; },
@@ -63,7 +69,6 @@ async function boot(page, opts = {}) {
     // Restaure les VRAIS points d'écriture, neutralisés par `app-helper`.
     window.supaPublishPostWithRetry = window.__vraiSupa.publishPost;
     window.supaUpsertProfile = window.__vraiSupa.upsertProfile;
-    window.MY_UID = "uid_test";
   }, opts);
   // Laisse le chargement d'arrière-plan du référentiel répondre.
   await page.waitForTimeout(600);
