@@ -5405,7 +5405,9 @@ async function _publierAvecEssais(post, maxRetries) {
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
-        ...(post.sharedReel && post.sharedReelData ? {shared_data:JSON.stringify(post.sharedReelData)} : mediaProtege ?
+        // Une carte d'activité porte son snapshot sans republication de post
+        // (donc sans sharedReel / shared_from_post_id). Le conserver aussi.
+        ...(post.sharedReelData && (post.sharedReel || post.sharedReelData.kind === "event") ? {shared_data:JSON.stringify(post.sharedReelData)} : mediaProtege ?
           {shared_data:{passio_media:{protocol:1,type:post.type,poster:mediaProtege.poster}}} : {}),
         // Album d'événement : le post remonte sur la fiche de l'événement.
         ...(post.eventId ? { event_id: post.eventId } : {}),
@@ -6181,9 +6183,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
         ...(_pmpPresentation&&{poster:_pmpPresentation.poster}),
-        ...(r.shared_from_post_id && r.shared_data && { sharedReelData: (() => {
+        ...(r.shared_data && { sharedReelData: (() => {
           try {
-            return typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
+            const partage = typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
+            // Les activités ne référencent pas un post source. À l'inverse,
+            // passio_media seul n'est jamais un snapshot de republication.
+            return partage && typeof partage === "object" && !Array.isArray(partage)
+              && (r.shared_from_post_id || (partage.kind === "event" && typeof partage.id === "string" && partage.id))
+              ? partage : null;
           } catch(e) {
             console.warn("Failed to parse shared_data:", e);
             return null;
