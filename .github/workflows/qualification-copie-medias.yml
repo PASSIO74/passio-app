@@ -29,7 +29,7 @@ jobs:
           git -C "$RUNNER_TEMP/passio-upload-artifact" fetch -q --depth=1 https://github.com/actions/upload-artifact.git ea165f8d65b6e75b540449e92b4886f43607fa02
           git -C "$RUNNER_TEMP/passio-upload-artifact" checkout -q --detach FETCH_HEAD
       - name: Déposer un checkpoint uniquement synthétique
-        uses: ./scripts/maintenance-medias/copie
+        uses: $/scripts/maintenance-medias/copie
         with:
           operation: qualification
         env:
