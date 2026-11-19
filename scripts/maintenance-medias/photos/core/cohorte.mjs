@@ -1,4 +1,5 @@
 const PREFIXES=['avatars','covers','passion_photos','passion_covers','events'];
+export const prefixeRemplacable=cle=>PREFIXES.includes(cle.split('/')[0]);
 export function projeter(payload,base){
  const analyse=base.analyser(payload),index=new Map(analyse.objets_classes.map(x=>[x.empreinte,x]));
  const motifs={HORS_CINQ_PREFIXES:0,USAGE_PERSONNEL_REFERENCE:0,USAGE_MIXTE_REFERENCE:0};
@@ -6,7 +7,7 @@ export function projeter(payload,base){
  for(const o of payload.tables.objects.rows){
   const empreinte=base.empreinteObjet(o),x=index.get(empreinte);if(!x)throw Error('COHERENCE');
   const prefixe=o.name.split('/')[0],raisons=[];
-  if(!PREFIXES.includes(prefixe))raisons.push('HORS_CINQ_PREFIXES');
+  if(!prefixeRemplacable(o.name))raisons.push('HORS_CINQ_PREFIXES');
   if(x.usages.personnel>0)raisons.push('USAGE_PERSONNEL_REFERENCE');
   if(x.classe==='MIXTE_RETENU')raisons.push('USAGE_MIXTE_REFERENCE');
   if(raisons.length){for(const r of raisons)motifs[r]++;cohorte.push({empreinte,classe_reference:x.classe,motifs:raisons});}

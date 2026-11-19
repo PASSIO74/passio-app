@@ -4,6 +4,8 @@ import {examiner,conduire} from './operateur.mjs';
 import {preparerAssociationLocale} from './generer-seed.mjs';
 import {verifierAudience} from './audience.mjs';
 import {verifierAck} from './sceller.mjs';
+import {budget} from './contrat.mjs';
+import {empreintePhysique} from './core/noyau.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex'),pin=i=>sha(String(i)),hex=(x)=>Buffer.from(JSON.stringify(x)),head='a'.repeat(40),target='njkiyoklssvefstljemx';
 const exec={run_id:'1',run_attempt:'1',head,workflow_ref:'PASSIO74/passio-app/.github/workflows/maintenance-photos.yml@refs/heads/main',job:'photos_associees'};
 function source(){
@@ -16,6 +18,40 @@ test('plan fermé au job/run/main, délai et preuves distinctes',()=>{
  for(const updater of [x=>x.execution.job='retrait_sources',x=>x.execution.run_id='2',x=>x.operation='RETRAIT_PUBLIC',x=>x.actives.reverse().fill(x.actives[0]),x=>x.nonce='invalide',x=>x.expires_utc='2026-11-18T12:00:00.000Z',x=>x.revues.fill(pin('A')),x=>x.copies[0].source_fp=x.copies[1].source_fp]){const x=source();updater(x);assert.throws(()=>verifierPlan(JSON.stringify(x),exec,now));}
  const env={GITHUB_JOB:'photos_associees',GITHUB_ACTIONS:'true',GITHUB_SERVER_URL:'https://github.com',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REPOSITORY:'PASSIO74/passio-app',GITHUB_ACTOR:'PASSIO74',GITHUB_REF:'refs/heads/main',GITHUB_RUN_ATTEMPT:'1',PASSIO_ENVIRONNEMENT:'maintenance-medias',GITHUB_WORKFLOW_REF:exec.workflow_ref,GITHUB_RUN_ID:'1',GITHUB_SHA:head};
  assert.deepEqual(cadre(env),exec);for(const k of ['GITHUB_ACTOR','GITHUB_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_WORKFLOW_REF','PASSIO_ENVIRONNEMENT'])assert.throws(()=>cadre({...env,[k]:'autre'}));
+});
+function lotPartiel(restantes){
+ const p=source();
+ p.format='passio-plan-photos/2';
+ p.operation=restantes?'RETRAIT_PHOTOS_RESTANTES':'RETRAIT_SANS_USAGE';
+ p.execution.job=restantes?'retrait_photos_restantes':'retrait_sans_usage';
+ const owner='11111111-2222-4333-8444-555555555555';
+ const sources=p.copies.map((c,i)=>({id:'00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),bucket:'content',name:'test/'+i,version:'v1',owner,owner_id:owner,auth_presente:true,mime:'image/png',size:String(c.octets),etag:null}));
+ const fps=sources.map(empreintePhysique);
+ p.cohorte.empreintes_cohorte=fps;p.actives=fps.slice(0,2);
+ p.copies.forEach((c,i)=>{c.source_fp=fps[i];});
+ p.archives=p.copies.map(({source_fp,sha256,octets})=>({source_fp,sha256,octets}));
+ p.parents_actifs=p.actives.map((source_fp,i)=>({source_fp,parent_fp:pin('parent'+i),owner_fp:pin(owner),reference_sha256:pin('url'+i)})).sort((a,b)=>a.source_fp<b.source_fp?-1:1);
+ delete p.admission.qualification_stage;
+ Object.assign(p.admission,{snapshot_actives:sha(JSON.stringify(p.parents_actifs)),sauvegarde:pin('archive'),dossier:pin('dossier')});
+ if(restantes){p.sources_scellees=sources;Object.assign(p.admission,{association:pin('liaison'),audience:pin('audience'),retrait_douze:pin('douze')});}
+ return p;
+}
+test('les phases partielles sont liées au job, aux parents et à chacun des quatorze objets archivés',()=>{
+ for(const restantes of [false,true]){
+  const p=lotPartiel(restantes),verify=x=>verifierPlan(JSON.stringify(x),p.execution,Date.parse(p.issued_utc));
+  assert.equal(verify(p).operation,p.operation);
+  const mutations=[x=>x.format='passio-plan-photos/1',x=>x.operation='RETRAIT_PUBLIC',x=>x.archives.pop(),x=>x.archives[13].octets++,x=>x.archives[13].sha256=pin('autre'),x=>x.archives[0]=x.archives[1],x=>x.parents_actifs[0].parent_fp=pin('autre'),x=>x.parents_actifs[0]=x.parents_actifs[1],x=>delete x.admission.sauvegarde];
+  if(restantes)mutations.push(x=>delete x.admission.audience,x=>delete x.admission.association,x=>delete x.admission.retrait_douze,x=>x.sources_scellees.pop(),x=>x.sources_scellees[13].name='autre');
+  else mutations.push(x=>x.admission.audience=pin('autre'));
+  for(const mutate of mutations){const bad=structuredClone(p);mutate(bad);assert.throws(()=>verify(bad));}
+ }
+});
+test('le budget du lot borne aussi le nombre physique de suppressions',()=>{
+ for(const max of [2,12,14]){
+  const b=budget(()=>({wall:1,mono:1}),max);for(let i=0;i<max;i++)b.supprimer();
+  assert.throws(()=>b.supprimer(),/BUDGET_DELETE/);
+ }
+ assert.throws(()=>budget(undefined,13),/BUDGET_DELETE/);
 });
 test('un ACK absent arrête le chemin réel avant le prévol et toute écriture',()=>{
  const ack=process.env.PASSIO_ACK_ID;delete process.env.PASSIO_ACK_ID;

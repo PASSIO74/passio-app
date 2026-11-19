@@ -18,9 +18,10 @@ export function planCanonique(selection,copies,preuves){
   if(!cp||!p||p.echo_uuid_fp!==sha(cp.id)||p.copie_identite_fp!==identite(cp)||cp.owner!==s.owner||cp.owner_id!==s.owner_id||!/^[0-9a-f]{64}$/.test(p.sha256||'')||!/^[0-9a-f]{32}$/.test(p.md5||'')||p.octets!==Number(s.size))stop('PREUVE_COPIE_REFUSEE');
   return {source:{...s},copie:{...cp},preuve:{...p}};});
 }
-export function budget(horloge=()=>({wall:Date.now(),mono:performance.now()})){
+export function budget(horloge=()=>({wall:Date.now(),mono:performance.now()}),sourcesMax=14){
+ if(![2,12,14].includes(sourcesMax))stop('BUDGET_DELETE');
  const t0=horloge();let debutObs=null,debutAttente=null,phase='PRINCIPAL',appels=0,octets=0,deletes=0,attentes=0;
  const reste=()=>{const t=horloge(),s=debutObs||t0,lim=debutObs?C.observation_ms:C.principal_ms,w=t.wall-s.wall,m=t.mono-s.mono;if(!Number.isFinite(w)||!Number.isFinite(m)||w<0||m<0||w>=lim||m>=lim)stop('DELAI');return Math.min(lim-w,lim-m);};
  return {reste,phase:()=>phase,appel(){reste();if(++appels>C.requete_max)stop('BUDGET_REQUETES');},lire(n){if(!Number.isSafeInteger(n)||n<0)stop('FORME');octets+=n;if(octets>C.octets_max)stop('BUDGET_OCTETS');reste();},
-  supprimer(){reste();if(phase!=='PRINCIPAL'||++deletes>14)stop('BUDGET_DELETE');},observer(){if(debutObs)stop('OBSERVATION_DEJA_ENGAGEE');debutObs=horloge();phase='OBSERVATION';reste();},attendre(){if(++attentes>1)stop('ATTENTE_DEJA_ENGAGEE');debutAttente=horloge();},attenteEcoulee(){const t=horloge();if(!debutAttente||t.wall-debutAttente.wall<60000||t.mono-debutAttente.mono<60000)stop('ATTENTE_NON_ECOULEE');reste();},compteurs:()=>({appels,octets,deletes_demandes:deletes,attentes})};
+  supprimer(){reste();if(phase!=='PRINCIPAL'||++deletes>sourcesMax)stop('BUDGET_DELETE');},observer(){if(debutObs)stop('OBSERVATION_DEJA_ENGAGEE');debutObs=horloge();phase='OBSERVATION';reste();},attendre(){if(++attentes>1)stop('ATTENTE_DEJA_ENGAGEE');debutAttente=horloge();},attenteEcoulee(){const t=horloge();if(!debutAttente||t.wall-debutAttente.wall<60000||t.mono-debutAttente.mono<60000)stop('ATTENTE_NON_ECOULEE');reste();},compteurs:()=>({appels,octets,deletes_demandes:deletes,attentes})};
 }

@@ -1,14 +1,18 @@
 import fs from 'node:fs';import path from 'node:path';import {pathToFileURL} from 'node:url';
-import {ROOT,initialiser,contexte,ouvrir,chargerClesServeur,sha,pinPlan,cadre,refuser} from './contexte.mjs';
+import {ROOT,initialiser,contexte,ouvrir,chargerClesServeur,sha,pinPlan,cadre,refuser,estRetrait} from './contexte.mjs';
 import {local,ouvrirDossier,exclusivement,sceller,verifierAck} from './sceller.mjs';
 import * as base from './core/classificateur.mjs';import {projeter} from './core/cohorte.mjs';import {selectionFigee,empreintePhysique} from './core/cadre.mjs';import {SQL_PREFLIGHT,observation} from './core/requetes.mjs';
 import {construirePlan,copierEtPreparer} from './copier.mjs';import {creerIO} from './transport-photos.mjs';
-import {retraitProduction} from './retrait.mjs';
+import {retraitProduction,selectionRetrait} from './retrait.mjs';
 const ok=(x,c)=>{if(!x)refuser(c);};
 const management='api.supabase.com',target='njkiyoklssvefstljemx',sqlPath='/v1/projects/'+target+'/database/query',storage=target+'.supabase.co';
 export function canon(o){return o&&typeof o==='object'?Array.isArray(o)?o.map(canon):Object.fromEntries(Object.keys(o).sort().map(k=>[k,canon(o[k])])):o;}
 const canonPin=o=>sha(JSON.stringify(canon(o)));
-const prevolSQL="select jsonb_build_object('lecture',(select metadata from ("+fs.readFileSync(path.join(ROOT,'lecture/metadata.sql'),'utf8')+") m),'fence',(select row_to_json(f) from ("+fs.readFileSync(path.join(ROOT,'lecture/fence.sql'),'utf8')+") f),'base',(select observation from ("+SQL_PREFLIGHT+") p)) as observation";
+const lectureSQL=nom=>fs.readFileSync(path.join(ROOT,'lecture',nom),'utf8');
+const basePrevol="'lecture',(select metadata from ("+lectureSQL('metadata.sql')+") m),'fence',(select row_to_json(f) from ("+lectureSQL('fence.sql')+") f),'base',(select observation from ("+SQL_PREFLIGHT+") p)";
+const extensionPrevol=",'profils_evenements',(select row_to_json(g) from ("+lectureSQL('fence-profils-evenements.sql')+") g)";
+function lotPartiel(p){return p.operation==='RETRAIT_SANS_USAGE'||p.operation==='RETRAIT_PHOTOS_RESTANTES';}
+function requetePrevol(p){return 'select jsonb_build_object('+basePrevol+(lotPartiel(p)?extensionPrevol:'')+') as observation';}
 function transport(p,phase){
  let calls=0,total=0;const debut=performance.now(),max=phase==='reservation'?3:28;const pat=process.env.SUPABASE_ACCESS_TOKEN;
  ok(typeof pat==='string'&&/^sbp_[A-Za-z0-9_-]+$/.test(pat),'AUTH');
@@ -23,11 +27,15 @@ function transport(p,phase){
  const lire=(query,parameters,cap=1048576)=>requete({host:management,path:sqlPath,method:'POST',body:{query,read_only:true,...(parameters?{parameters}:{})},http:201,max_octets:cap});
  return {requete,lire};
 }
-async function prevol(p,http){const v=observation(await http.lire(prevolSQL));const b=v.base;
+export async function prevol(p,http){const v=observation(await http.lire(requetePrevol(p)));const b=v.base;
+ if(lotPartiel(p)){
+  const g=v.profils_evenements;
+  ok(g?.lecture_seule===true&&g.cloture_exacte===true&&g.journal_cible===true,'CLOTURE_PROFILS_EVENEMENTS');
+ }
  ok(v.fence?.lecture_seule===true&&v.fence?.cloture_exacte===true&&v.fence?.journal_cible===true&&canonPin(v.lecture)===p.lecture_catalogue_sha256&&b?.ro===true&&b.bypass===true&&b.structure_ok===true&&b.privacy_catalogue===true&&b.catalogue_fp===p.catalogue_attendu_sha256&&b.bucket?.nombre===1&&b.bucket.prive===true&&b.bucket.objets===14,'PREVOL');
 }
 async function reserver(p){ouvrirDossier();const http=transport(p,'reservation');await prevol(p,http);
- const catalogue=observation(await http.lire(base.SQL)),cohorte=selectionFigee(catalogue,base,projeter),sources=cohorte.sources;
+ const catalogue=observation(await http.lire(base.SQL)),cohorte=estRetrait(p.operation)?selectionRetrait(catalogue,p):selectionFigee(catalogue,base,projeter),sources=cohorte.sources;
  const data={sources,cohorte:p.cohorte,actives:p.actives,copies:p.copies,mandat:p.admission};
  if(p.operation==='DEUX_COPIES'){
   const act=sources.filter(s=>p.actives.includes(empreintePhysique(s)));const ids=act.map(s=>{const ps=catalogue.tables.posts.rows.filter(t=>{const r=base.reference(t.media);return r.type==='CONTENT'&&r.key===s.name;});ok(ps.length===1&&ps[0].owner===s.owner,'PARENT');return ps[0].id;});
@@ -39,7 +47,7 @@ async function reserver(p){ouvrirDossier();const http=transport(p,'reservation')
  exclusivement(local('preparation'),raw);fs.appendFileSync(process.env.GITHUB_OUTPUT,'empreinte='+sha(raw)+'\n');
 }
 async function executer(p){const reserved=verifierAck();const http=transport(p,'execution');await prevol(p,http);const cap=ouvrir();
- if(p.operation==='RETRAIT_PUBLIC'){
+ if(estRetrait(p.operation)){
   const r=await retraitProduction(cap,chargerClesServeur),d=path.join(process.env.RUNNER_TEMP,'passio-retrait-journal',p.nonce);
   ok(fs.realpathSync(d)===d&&fs.lstatSync(d).isDirectory(),'JOURNAL');
   const noms=fs.readdirSync(d).filter(n=>/^event-[0-9]{5}\.json$/.test(n)).sort();ok(noms.length>0&&noms.length<=700,'JOURNAL');
