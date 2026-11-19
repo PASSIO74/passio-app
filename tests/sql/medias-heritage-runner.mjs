@@ -95,6 +95,9 @@ try{
  const reprise=verifierRepriseCloture({root,sql});report.reprise_cloture=reprise;
  for(const {categorie,ok} of reprise.checks)check('reprise_'+categorie,ok);
  check('reprise_cloture_complete',reprise.ok);
+ // Valide la protection sur le schéma complet et avec le rôle du client.
+ sql(fs.readFileSync(path.join(root,'migrations/migration_cloture_references_profils_evenements_2026-11-19.sql'),'utf8'));
+ sql(fs.readFileSync(path.join(root,'tests/sql/fixtures/medias-heritage-profils-evenements.sql'),'utf8'));
  report.ok=true;
 }catch(e){report.ok=false;report.erreur=e.message;process.exitCode=1;}
 finally{

@@ -1,21 +1,21 @@
-import {exigerAutorisation,engagerTransport,refuser} from './contexte.mjs';
+import {exigerAutorisation,engagerTransport,operationRetrait,refuser} from './contexte.mjs';
 import {C,sha,empreintePhysique,identite} from './contrat.mjs';
 import {CONTRAT} from './core/cadre.mjs';
 import {sondes} from './sondes.mjs';
 // Transport de sonde seulement. Ne prend ni PAT, ni service key. Les URL du
 // manifeste restent en mémoire ; seules les trois familles canoniques passent.
 export async function creerTransportAnonyme(cap,{plan,budget,journal}){
- exigerAutorisation(cap,'RETRAIT_PUBLIC');
+ const operation=operationRetrait(cap);exigerAutorisation(cap,operation);
  if(!Array.isArray(plan)||plan.length!==14||!journal||['valide','ajouter','consommer','autoriserIO'].some(k=>typeof journal[k]!=='function')||['reste','phase','appel','lire'].some(k=>typeof budget?.[k]!=='function'))refuser('PLAN_REFUSE');
  const fps=plan.map(x=>empreintePhysique(x.source)).sort();
  if(new Set(fps).size!==14||JSON.stringify(fps)!==JSON.stringify([...CONTRAT.empreintes_cohorte].sort()))refuser('PLAN_REFUSE');
- engagerTransport(cap,'RETRAIT_PUBLIC','ANONYME');
+ engagerTransport(cap,operation,'ANONYME');
  const permis=new Map();
  for(const x of plan){const m=sondes(x.source,x.variantes||[]);for(const d of m.demandes){permis.set(d.url,{...d,trace:{source_fp:empreintePhysique(x.source),identite_fp:identite(x.source)}});}}
  // Inclure les destinations de redirection canoniques de ces mêmes clés.
  for(const x of plan){const m=sondes(x.source);for(const d of m.demandes)if(!permis.has(d.url))permis.set(d.url,{...d,trace:{source_fp:empreintePhysique(x.source),identite_fp:identite(x.source)}});}
  const {default:https}=await import('node:https');let ferme=false;const actifs=new Set();
- const garde=()=>{exigerAutorisation(cap,'RETRAIT_PUBLIC');if(ferme||!journal.valide())refuser('TRANSPORT_FERME');const r=budget.reste();if(!Number.isFinite(r)||r<1)refuser('DELAI');return Math.floor(Math.min(15000,r));};
+ const garde=()=>{exigerAutorisation(cap,operation);if(ferme||!journal.valide())refuser('TRANSPORT_FERME');const r=budget.reste();if(!Number.isFinite(r)||r<1)refuser('DELAI');return Math.floor(Math.min(15000,r));};
  return {
   fermer(){ferme=true;for(const x of actifs)x.destroy();actifs.clear();},
   async probe(d){
