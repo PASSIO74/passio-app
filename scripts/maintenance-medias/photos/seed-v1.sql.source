@@ -1,0 +1,89 @@
+-- PROPOSITION LOCALE INERTE : aucune exécution distante autorisée.
+-- Deux associations au maximum ; aucune copie, suppression ou mutation du parent.
+begin isolation level read committed;
+set local search_path=pg_catalog;
+set local lock_timeout='2s';
+set local statement_timeout='15s';
+do $association$
+declare
+ donnees jsonb:=pg_catalog.convert_from(pg_catalog.decode('__PARAMETRES_HEX__','hex'),'UTF8')::jsonb;
+ r record; p public.posts%rowtype; s storage.objects%rowtype; c storage.objects%rowtype;
+ proprietaire text; nombre integer:=0; rang_ligne integer:=0; t timestamptz;
+begin
+ if pg_catalog.jsonb_typeof(donnees) is distinct from 'array' or pg_catalog.jsonb_array_length(donnees) not between 1 and 2
+  or current_user::text in ('anon','authenticated')
+  or not exists(select 1 from pg_catalog.pg_roles where rolname=current_user and (rolsuper or rolbypassrls))
+  or pg_catalog.current_setting('transaction_read_only')<>'off' then
+  raise exception using errcode='42501',message='ASSOCIATION_CONTEXTE_REFUSE'; end if;
+ if exists(select 1 from unnest(array['public.media_reservations','public.media_assets','public.media_objects']) n
+  where not exists(select 1 from pg_catalog.pg_class where oid=pg_catalog.to_regclass(n) and relkind='r' and relrowsecurity
+   and pg_catalog.obj_description(oid,'pg_class')='PASSIO protected-media v1 2026-11-16'))
+  or not exists(select 1 from pg_catalog.pg_attribute a where a.attrelid='public.media_assets'::regclass
+   and a.attname='heritage_ref_sha256' and not a.attisdropped and a.atttypid='pg_catalog.text'::regtype
+   and pg_catalog.col_description(a.attrelid,a.attnum)='PASSIO heritage association v1: server-owned SHA256 of exact legacy media_url')
+  or exists(select 1 from unnest(array['public.media_reservations','public.media_assets','public.media_objects']) n,
+   (values('anon'::name),('authenticated'::name)) roles(nom)
+   where pg_catalog.has_any_column_privilege(roles.nom,n,'INSERT') or pg_catalog.has_any_column_privilege(roles.nom,n,'UPDATE')) then
+  raise exception using errcode='42501',message='ASSOCIATION_SCHEMA_REFUSE'; end if;
+ -- Même verrou que le début canonique de suppression, puis celui des médias.
+ -- READ COMMITTED donne des lectures fraîches APRÈS une éventuelle attente.
+ for proprietaire in select distinct value->>'owner_id' from pg_catalog.jsonb_array_elements(donnees) order by 1 loop
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('comptes_en_suppression:'||proprietaire));
+ end loop;
+ for proprietaire in select distinct value->>'owner_id' from pg_catalog.jsonb_array_elements(donnees) order by 1 loop
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('passio.media:'||proprietaire,0));
+ end loop;
+ perform 1 from auth.users u where u.id in(select (value->>'owner_id')::uuid from pg_catalog.jsonb_array_elements(donnees)) order by u.id for share;
+ perform 1 from public.profiles pr where pr.id in(select value->>'owner_id' from pg_catalog.jsonb_array_elements(donnees)) order by pr.id for share;
+ perform 1 from public.comptes_en_suppression m where m.user_id in(select value->>'owner_id' from pg_catalog.jsonb_array_elements(donnees)) order by m.user_id for share;
+ perform 1 from public.posts pp where pp.id in(select value->>'post_id' from pg_catalog.jsonb_array_elements(donnees)) order by pp.id for update;
+ perform 1 from storage.buckets b where b.id='content-protected' for share;
+ if not exists(select 1 from storage.buckets b where b.id='content-protected' and b.public is false) then
+  raise exception using errcode='42501',message='ASSOCIATION_BUCKET_REFUSE'; end if;
+ perform 1 from storage.objects o where o.id in(
+  select (value->>'source_id')::uuid from pg_catalog.jsonb_array_elements(donnees)
+  union select (value->>'copy_id')::uuid from pg_catalog.jsonb_array_elements(donnees)) order by o.id for share;
+ for r in select * from pg_catalog.jsonb_to_recordset(donnees) as x(
+  post_id text,owner_id text,reference_sha256 text,asset_id uuid,mime_type text,byte_size bigint,
+  source_id uuid,source_key text,source_version text,source_etag text,
+  copy_id uuid,copy_key text,copy_version text,copy_etag text)
+  order by post_id loop
+  rang_ligne:=rang_ligne+1;
+  select * into p from public.posts where id=r.post_id;
+  if not found or p.author_id is distinct from r.owner_id or p.shared_from_post_id is not null
+   or (p.vlog is not null and p.vlog<>'null'::jsonb) or p.media_url is null
+   or pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.media_url,'UTF8')),'hex') is distinct from r.reference_sha256 then
+   raise exception using errcode='42501',message='ASSOCIATION_PARENT_REFUSE_LIGNE_'||rang_ligne; end if;
+  if not exists(select 1 from auth.users u where u.id=r.owner_id::uuid and (u.banned_until is null or u.banned_until<=pg_catalog.statement_timestamp()))
+   or not exists(select 1 from public.profiles pr where pr.id=r.owner_id)
+   or exists(select 1 from public.comptes_en_suppression m where m.user_id=r.owner_id and m.statut in('en_cours','purgee','supprimee')) then
+   raise exception using errcode='42501',message='ASSOCIATION_COMPTE_REFUSE_LIGNE_'||rang_ligne; end if;
+  if exists(select 1 from public.media_reservations a where a.id=r.asset_id or (a.source_type='posts' and a.source_id=r.post_id))
+   or exists(select 1 from public.media_assets a where a.id=r.asset_id or a.post_id=r.post_id or a.heritage_ref_sha256=r.reference_sha256)
+   or exists(select 1 from public.media_objects a where a.asset_id=r.asset_id or a.storage_object_id=r.copy_id or a.object_key=r.copy_key) then
+   raise exception using errcode='42501',message='ASSOCIATION_COLLISION_LIGNE_'||rang_ligne; end if;
+  select * into s from storage.objects where id=r.source_id and bucket_id='content' and name=r.source_key;
+  if not found or s.version is distinct from r.source_version or s.owner is distinct from r.owner_id::uuid or s.owner_id is distinct from r.owner_id
+   or s.archived_at is not null or s.is_delete_marker is distinct from false
+   or s.metadata->>'mimetype' is distinct from r.mime_type or s.metadata->>'eTag' is distinct from r.source_etag
+   or not(case when coalesce(s.metadata->>'size','')~'^[0-9]{1,8}$' then (s.metadata->>'size')::bigint=r.byte_size else false end) then
+   raise exception using errcode='42501',message='ASSOCIATION_SOURCE_REFUSE_LIGNE_'||rang_ligne; end if;
+  select * into c from storage.objects where id=r.copy_id and bucket_id='content-protected' and name=r.copy_key;
+  if not found or c.id=s.id or c.version is distinct from r.copy_version or c.owner is distinct from r.owner_id::uuid or c.owner_id is distinct from r.owner_id
+   or c.archived_at is not null or c.is_delete_marker is distinct from false
+   or c.metadata->>'mimetype' is distinct from r.mime_type or c.metadata->>'eTag' is distinct from r.copy_etag
+   or not(case when coalesce(c.metadata->>'size','')~'^[0-9]{1,8}$' then (c.metadata->>'size')::bigint=r.byte_size else false end) then
+   raise exception using errcode='42501',message='ASSOCIATION_COPIE_REFUSE_LIGNE_'||rang_ligne; end if;
+  t:=pg_catalog.clock_timestamp();
+  insert into public.media_reservations(id,owner_id,source_type,source_id,variants,created_at,expires_at,linked_at)
+   values(r.asset_id,r.owner_id,'posts',r.post_id,pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('variant','original','mime_type',r.mime_type,'byte_size',r.byte_size)),t,t+interval '15 minutes',t);
+  insert into public.media_assets(id,owner_id,post_id,story_id,created_at,heritage_ref_sha256)
+   values(r.asset_id,r.owner_id,r.post_id,null,t,r.reference_sha256);
+  insert into public.media_objects(asset_id,variant,storage_object_id,bucket_id,object_key,mime_type,byte_size)
+   values(r.asset_id,'original',r.copy_id,'content-protected',r.copy_key,r.mime_type,r.byte_size);
+  nombre:=nombre+1;
+ end loop;
+ if nombre<>pg_catalog.jsonb_array_length(donnees) then raise exception using errcode='42501',message='ASSOCIATION_NOMBRE_REFUSE'; end if;
+end $association$;
+select pg_catalog.jsonb_build_object('categorie','ASSOCIATIONS_CREEES','parents',__NOMBRE__,'preuve_copie_sha256','__PREUVE_SHA__') as preuve;
+commit;

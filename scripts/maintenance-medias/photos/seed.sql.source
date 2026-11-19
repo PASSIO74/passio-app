@@ -55,7 +55,7 @@ begin
    or pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.media_url,'UTF8')),'hex') is distinct from r.reference_sha256 then
    raise exception using errcode='42501',message='ASSOCIATION_PARENT_REFUSE_LIGNE_'||rang_ligne; end if;
   if not exists(select 1 from auth.users u where u.id=r.owner_id::uuid and (u.banned_until is null or u.banned_until<=pg_catalog.statement_timestamp()))
-   or not exists(select 1 from public.profiles pr where pr.id=r.owner_id)
+   or not exists(select 1 from public.profiles pr where pr.id=r.owner_id and pr.is_private is true for share)
    or exists(select 1 from public.comptes_en_suppression m where m.user_id=r.owner_id and m.statut in('en_cours','purgee','supprimee')) then
    raise exception using errcode='42501',message='ASSOCIATION_COMPTE_REFUSE_LIGNE_'||rang_ligne; end if;
   if exists(select 1 from public.media_reservations a where a.id=r.asset_id or (a.source_type='posts' and a.source_id=r.post_id))

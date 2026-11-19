@@ -13,7 +13,7 @@ function objet(o,owner,bucket){
  cle(o.key);texte(o.version,512);besoin(Number.isSafeInteger(o.byte_size)&&o.byte_size>=1&&o.byte_size<=27262976);
  besoin(o.etag===null||typeof o.etag==='string'&&Buffer.byteLength(o.etag)<=512&&!/[\x00-\x1f\x7f]/.test(o.etag));
 }
-export function preparerAssociationLocale({parents,preuveCopies,empreintePreuveAttendue}){
+export function preparerAssociationLocale({parents,preuveCopies,empreintePreuveAttendue,empreinteSqlRecu}){
  besoin(Array.isArray(parents)&&parents.length>=1&&parents.length<=2&&Buffer.isBuffer(preuveCopies)&&preuveCopies.length<=65536&&HEX.test(empreintePreuveAttendue||'')&&sha(preuveCopies)===empreintePreuveAttendue);
  for(const p of parents){cles(p,'post_id owner_id reference_sha256');besoin(/^[A-Za-z0-9_-]{1,120}$/.test(p.post_id)&&UUID.test(p.owner_id)&&HEX.test(p.reference_sha256));}
  besoin(new Set(parents.map(p=>p.post_id)).size===parents.length&&new Set(parents.map(p=>p.reference_sha256)).size===parents.length);
@@ -33,10 +33,24 @@ export function preparerAssociationLocale({parents,preuveCopies,empreintePreuveA
    source_id:p.source.id,source_key:p.source.key,source_version:p.source.version,source_etag:p.source.etag,copy_id:p.copy.id,copy_key:p.copy.key,copy_version:p.copy.version,copy_etag:p.copy.etag});
  }
  besoin([...copies].every(id=>!sources.has(id)));
- let sql=fs.readFileSync(new URL('./seed.sql.source',import.meta.url),'utf8');
  const valeurs={__PARAMETRES_HEX__:Buffer.from(JSON.stringify(rows)).toString('hex'),__NOMBRE__:String(rows.length),__PREUVE_SHA__:empreintePreuveAttendue};
- for(const [marqueur,valeur]of Object.entries(valeurs)){besoin(sql.split(marqueur).length===2);sql=sql.replace(marqueur,valeur);}
- return {sql,sql_sha256:sha(sql),preuve_copie_sha256:empreintePreuveAttendue,parents:rows.length,execution_distante:false,autorisation_reelle:false};
+ function remplir(modele){
+  for(const [marqueur,valeur] of Object.entries(valeurs)){
+   besoin(modele.split(marqueur).length===2);
+   modele=modele.replace(marqueur,valeur);
+  }
+  return modele;
+ }
+ const sql=remplir(fs.readFileSync(new URL('./seed.sql.source',import.meta.url),'utf8'));
+ const sql_sha256=sha(sql);
+ if(empreinteSqlRecu!==undefined&&empreinteSqlRecu!==sql_sha256){
+  besoin(HEX.test(empreinteSqlRecu));
+  // Le modèle du premier runner sert uniquement à authentifier son reçu déjà émis.
+  const ancien=fs.readFileSync(new URL('./seed-v1.sql.source',import.meta.url));
+  besoin(sha(ancien)==='680583e794e8f77bccd9d09cb853ef8b48d6235e604cc41010585959e66145fc');
+  besoin(sha(remplir(ancien.toString('utf8')))===empreinteSqlRecu);
+ }
+ return {sql,sql_sha256,preuve_copie_sha256:empreintePreuveAttendue,parents:rows.length,execution_distante:false,autorisation_reelle:false};
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
  if(process.argv.length===3&&process.argv[2]==='--controle-local')console.log(JSON.stringify({proposition_seule:true,parents_max:2,reseau:false,credential:false,sql_execute:false}));

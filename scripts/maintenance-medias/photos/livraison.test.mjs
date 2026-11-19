@@ -46,6 +46,55 @@ function documents(){
  const doc={format:'passio-photos-chiffre/1',execution:exec,plan_sha256:pin('plan'),objet:{format:'passio-deux-copies-preparees/1',copies_sha256:pin('copies'),parents:ps,preuve_copies:proof.toString('base64'),routes,sql_sha256:seed.sql_sha256,sql_applique:false}};
  return {doc,lines,seed};
 }
+test('reçu du premier runner : authentifier les octets v1 et n’exposer que le SQL renforcé',async t=>{
+ const {doc,seed,lines}=documents();
+ // Empreinte relevée sur cette fixture avec le générateur ba9b8944, avant le correctif.
+ const ancienPin='aeba45dcb138c6d135594d76f0404fc334bf1004ae96d15f03c0e0c73dc13fac';
+ assert.notEqual(seed.sql_sha256,ancienPin);
+ const valider=recu=>{const b=hex(recu);return examiner(b,sha(b));};
+ assert.equal(valider(doc).seed.sql_sha256,seed.sql_sha256);
+ doc.objet.sql_sha256=ancienPin;
+ assert.equal(valider(doc).seed.sql,seed.sql);
+ for(const changer of [
+  r=>{delete r.objet.sql_sha256;},
+  r=>{r.objet.sql_sha256=pin('autre SQL');},
+  r=>{ // Deux preuves cohérentes entre elles, mais différentes du reçu v1.
+   const nouveaux=structuredClone(lines);
+   nouveaux[0].source_sha256=nouveaux[0].copy_sha256=pin('autres octets');
+   r.objet.preuve_copies=hex({format:'passio-preuves-copies-protegees/1',copies:nouveaux}).toString('base64');
+  }]){
+  const mauvais=structuredClone(doc);changer(mauvais);assert.throws(()=>valider(mauvais));
+ }
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'passio-photos-v1-'));
+ t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'ancien.json'),raw=hex(doc);fs.writeFileSync(file,raw);
+ const cfg={file,out:dir,pin:sha(raw)};
+ const ancienJeton=process.env.SUPABASE_ACCESS_TOKEN,actions=process.env.GITHUB_ACTIONS;
+ process.env.SUPABASE_ACCESS_TOKEN='sbp_synthetique_local';delete process.env.GITHUB_ACTIONS;
+ t.after(()=>{
+  if(ancienJeton===undefined)delete process.env.SUPABASE_ACCESS_TOKEN;else process.env.SUPABASE_ACCESS_TOKEN=ancienJeton;
+  if(actions!==undefined)process.env.GITHUB_ACTIONS=actions;
+ });
+ assert.equal((await conduire({...cfg,mode:'--examiner'})).sql_sha256,seed.sql_sha256);
+ const appels=[];
+ const fetchSQL=async(_token,sql,ro)=>{
+  appels.push(ro);
+  if(!ro){assert.equal(sql,seed.sql);assert.match(sql,/pr\.is_private is true for share/i);return [];}
+  assert.match(sql,/pr\.is_private is true/i);
+  return lines.map(c=>({parent:c.post_id,author_id:c.owner_id,asset:c.asset_id,reference:c.reference_sha256,key:c.copy.key,id:c.copy.id,size:'4',version:'v1'}));
+ };
+ for(const mode of ['--appliquer','--relire'])await assert.rejects(conduire({...cfg,mode,sqlPin:ancienPin,fetchSQL}));
+ assert.deepEqual(appels,[]);assert.deepEqual(fs.readdirSync(dir),['ancien.json']);
+ assert.equal((await conduire({...cfg,mode:'--appliquer',sqlPin:seed.sql_sha256,fetchSQL})).associations_relues,2);
+ assert.deepEqual(appels,[false,true]);
+ for(const nom of ['INTENTION','TRANSACTION']){
+  const receipt=JSON.parse(fs.readFileSync(path.join(dir,nom+'-'+seed.sql_sha256+'.json')));
+  assert.equal(receipt.sql_sha256,seed.sql_sha256);
+ }
+ const att=JSON.parse(fs.readFileSync(path.join(dir,'RECU-ASSOCIATIONS-PRODUCTION.json')));
+ const relecture=JSON.parse(fs.readFileSync(path.join(dir,'justificatifs',att.relecture_sha256)));
+ assert.equal(relecture.sql_sha256,seed.sql_sha256);
+});
 test('examen local et relecture après réponse de transaction perdue, sans deuxième écriture',async()=>{
  const {doc,lines,seed}=documents(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'passio-operateur-')),f=path.join(dir,'synthetique.json');
  fs.writeFileSync(f,hex(doc));const pin=sha(hex(doc));assert.equal(examiner(hex(doc),pin).seed.parents,2);assert.throws(()=>examiner(hex(doc),sha('diff')));
