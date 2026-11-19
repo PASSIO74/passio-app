@@ -43,9 +43,27 @@ test("② outils non figés et actions flottantes sont refusés", () => {
   assert.match(defauts("      - { uses: actions/checkout@v5 }")[0], /non épinglée/, "dans un mapping en ligne aussi");
   assert.deepEqual(defauts("      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5"), []);
   assert.deepEqual(defauts("      - uses: ./.github/actions/claude-auth-guard"), []);
+  assert.deepEqual(defauts("      - uses: $/.github/actions/claude-auth-guard"), []);
+  for (const prefixe of ["./", "$/"]) {
+    for (const chemin of ["x@v1", "x@" + "a".repeat(40), "../x", "a/../x", "/x", "a//b", "a\\b", ".git/config", "a/%2e%2e/b"]) {
+      assert.match(defauts("      - uses: " + prefixe + chemin)[0], /chemin d.action locale invalide/, prefixe + chemin);
+    }
+  }
   assert.deepEqual(defauts("# npx --yes dans un commentaire YAML"), []);
   // Un commentaire DANS un script : le texte d'avant ne passait plus par le lexeur (relecture du delta).
   assert.deepEqual(admis("# npx --yes dans un commentaire de shell"), []);
+});
+
+test("la référence au commit courant découvre les composites cités récursivement", (t) => {
+  const racine = bacTemporaire(t, "passio-audit-ref-");
+  for (const dir of ["workflows", "outils/a", "outils/b"]) fs.mkdirSync(path.join(racine, dir), {recursive: true});
+  fs.writeFileSync(path.join(racine, "workflows/exemple.yml"), enJob("      - { uses: '$/outils/a' }"));
+  fs.writeFileSync(path.join(racine, "outils/a/action.yaml"), "runs:\n  using: composite\n  steps:\n    - uses: $/outils/b\n");
+  fs.writeFileSync(path.join(racine, "outils/b/action.yml"), "runs:\n  using: composite\n  steps:\n    - uses: ./outils/a\n    - uses: actions/checkout@main\n");
+  const resultat = auditerDepot(path.join(racine, "workflows"), {racine, actions: path.join(racine, "actions")});
+  assert.deepEqual(resultat.composites, ["outils/a/action.yaml", "outils/b/action.yml"]);
+  assert.equal(resultat.defauts.length, 1);
+  assert.match(resultat.defauts[0], /outils\/b\/action\.yml:5 : action non épinglée par SHA/);
 });
 
 test("② bis toute installation npm hors lockfile est refusée : la CI installe par `npm ci` (2026-11-14)", () => {
