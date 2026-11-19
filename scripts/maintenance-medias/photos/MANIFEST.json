@@ -3,7 +3,7 @@
   "workflow": "e3c3b0bdd3ee78200eeb8dce5ad4c4f2864400d230189cf32fc7c57c31834b11",
   "fichiers": {
     "audience.mjs": "bd528071c2127c0f1b423c967607b46252faecc2a44dd0d295d5f6106bc3fe28",
-    "contexte.mjs": "3c98f9382d297fe9279cc514df9118a066629b329cd092db53ef60ce5291e793",
+    "contexte.mjs": "53bd334521fb80332bb34052e9b52add7de774567b7ee32021654f643bf1e644",
     "contrat.mjs": "8ceb480c1093b9ce8ccf47285f617fd26f64cf7eb8e3c1e38e6530bfc626f393",
     "copier.mjs": "8ac2057e325a9cae927f88f33a6acbf8e1d8e64fd5a6f821ce9f0ddce6327a7b",
     "core/cadre.mjs": "38132ebc2bd0269a4a407a51748c2f288490c6ec4fa6ebf509716ec2cc6d00bc",
@@ -12,15 +12,16 @@
     "core/noyau.mjs": "e85d47bcb45a4cd64711f1cf08ba24e9102eab6f92317ff0d41343abb9626186",
     "core/requetes.mjs": "ef91dc72bd2a536d21dda74622a3a098889dcdcd210f12fa75905609508c4908",
     "generer-seed.mjs": "fd2b601290a1c2f5e0da4049375c253468f1d697efbb7730b3cb70c33e4ad42a",
-    "journal-retrait.mjs": "77111e530b83d0b5968165c1029fa01947a61a8c00848904416436f121822952",
+    "journal-retrait.mjs": "e6c2798b321fbc3637487ef2848e3680a6e30f7fce66798207e95556b61e0aaa",
+    "lecture-protegee.mjs": "05e00b764aedcede5ded488b188381930532dbb10e6007d1f2dd0f07ddcd0bf1",
     "lecture/fence-profils-evenements.sql": "c3df010df857128f199d270b46cb22cb595a56ece806124046aa4770e802af48",
     "lecture/fence.sql": "8c1397878d061d5f66b80f2d9de06eb643eb546398a55e2e40d34c6eb205b4d9",
     "lecture/metadata.sql": "669bcfe6c7e6b781e7af6a41e885c489f6481422eb79b10b6df86a1adab9e843",
-    "livraison.test.mjs": "67e53de69e6faecb0ac3633c112fdf7cfddd7c1269033ac6bc4b488fd880b31c",
-    "noyau-retrait.mjs": "e466b0431800a72185021acd9086696bddc2c37803c6f6f13c8cecef17a7a473",
+    "livraison.test.mjs": "1e3506775a352ff2d04c8c0c113deda1a1768298bd9e97a89c39a1a2f7e192e8",
+    "noyau-retrait.mjs": "e25f646fa1071e5de84c6f3821070ba5fc83d88a646f457d9e3e3192b5e86d55",
     "operateur.mjs": "a2a5951b6a0a310c129918f71b5b47c288237259196a85d68baf0c1d3d061e42",
     "prevol-lots.test.mjs": "88ebcab216c01ca5f38857c85835abed8182287f050844b8c66e5c14d9d50085",
-    "retrait-lots.test.mjs": "6b9a26cc12e7b4a3e91a16677f07adcc98c6ffe71cd2ab2105e33b4f95eec537",
+    "retrait-lots.test.mjs": "0ec70565d7a4ee9e22f8154573b50741be077d85e75b67267dc723152ba9a2c3",
     "retrait.mjs": "fc051170ef2ee200d90242c66b764607161bdbfa5fe1d609b992f8a6009f08a6",
     "sceller.mjs": "01836756534b769d69c279f317fc62e1bc164709f2462eb987a4d682b6e58831",
     "seed-v1.sql.source": "680583e794e8f77bccd9d09cb853ef8b48d6235e604cc41010585959e66145fc",
@@ -29,6 +30,6 @@
     "sondes.mjs": "08ff22fe77b0d0d28be8cee8ab1b9d39706fde3ca481f62ab46c81a2cd3731c6",
     "transport-anonyme.mjs": "90446747f3a3da69c9db7c6a90b58a1a56f59703ffee0ae66edcb2a4acafb6d8",
     "transport-photos.mjs": "5c38ef96c714aa0b164c0a47da0a9952504e64da78fdad54bef5bb6b00b623c5",
-    "transport-retrait.mjs": "d5910449933b199a0e9902d0473fb2bb64f6f8210e35b512b940c45717dabd93"
+    "transport-retrait.mjs": "64cec14c3205894cd1acd2bb838059485984f9db651610e285b6a6d53a1f6765"
   }
 }

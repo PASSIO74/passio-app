@@ -30,6 +30,12 @@ function verifierLot(p){
  }).sort((a,b)=>a.source_fp<b.source_fp?-1:1);
  ok(sha(JSON.stringify(lignes))===p.admission.snapshot_actives,'PARENTS');
  if(p.operation!=='RETRAIT_PHOTOS_RESTANTES')return;
+ ok(p.actives.includes(p.source_sans_abonne)&&Array.isArray(p.lectures_protegees)&&p.lectures_protegees.length===2,'LECTURES_PROTEGEES');
+ for(const r of p.lectures_protegees){
+  fields(r,['source_fp','asset_fp','registre_fp','object_fp']);
+  ok(p.actives.includes(r.source_fp)&&Object.values(r).every(v=>typeof v==='string'&&hex.test(v)),'LECTURES_PROTEGEES');
+ }
+ for(const k of ['source_fp','asset_fp','registre_fp','object_fp'])ok(new Set(p.lectures_protegees.map(r=>r[k])).size===2,'LECTURES_PROTEGEES');
  ok(Array.isArray(sources)&&sources.length===14,'SOURCES_SCELLEES');
  for(const k of ['id','name'])ok(new Set(sources.map(x=>x[k])).size===14,'SOURCES_SCELLEES');
  for(const x of sources){
@@ -42,7 +48,7 @@ function verifierLot(p){
 export function verifierPlan(brut,e,now=Date.now()){
  ok(typeof brut==='string'&&Buffer.byteLength(brut)<=40960,'PLAN_TAILLE');const p=JSON.parse(brut);
  const partiel=['retrait_sans_usage','retrait_photos_restantes'].includes(e.job);
- fields(p,[...(partiel?['parents_actifs','archives']:[]),...(e.job==='retrait_photos_restantes'?['sources_scellees']:[]),'format','operation','cible','execution','nonce','issued_utc','expires_utc','manifest_sha256','instruction_sha256','revues','maintenance_sha256','lecture_catalogue_sha256','catalogue_attendu_sha256','cohorte','copies','actives','admission']);
+ fields(p,[...(partiel?['parents_actifs','archives']:[]),...(e.job==='retrait_photos_restantes'?['sources_scellees','lectures_protegees','source_sans_abonne']:[]),'format','operation','cible','execution','nonce','issued_utc','expires_utc','manifest_sha256','instruction_sha256','revues','maintenance_sha256','lecture_catalogue_sha256','catalogue_attendu_sha256','cohorte','copies','actives','admission']);
  ok(p.format===(partiel?'passio-plan-photos/2':'passio-plan-photos/1')&&Object.hasOwn(ops,e.job)&&p.operation===ops[e.job]&&p.cible==='njkiyoklssvefstljemx'&&uuid.test(p.nonce),'PLAN');
  fields(p.execution,Object.keys(e));ok(Object.keys(e).every(k=>e[k]===p.execution[k]),'RUN');
  for(const k of ['manifest_sha256','instruction_sha256','maintenance_sha256','lecture_catalogue_sha256','catalogue_attendu_sha256'])ok(typeof p[k]==='string'&&hex.test(p[k]),'PIN');
