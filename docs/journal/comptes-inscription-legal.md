@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🧭 PARCOURS DU NOUVEL INSCRIT — quatre frictions retirées avant les premiers testeurs (2026-11-20)
 - 🧪 FIXTURES À COMPTES RÉELS — reprise bornée des429 et adhésion vérifiée (2026-11-17)
 - 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
 - 🤖 CAPTCHA TURNSTILE À L'INSCRIPTION — le client d'abord, l'interrupteur ensuite (2026-09-13)
@@ -716,3 +717,49 @@ Les assertions majorité/blocage/RLS, la cadence, les quotas et le backend sont 
 Risque critique de gouvernance des fixtures privilégiées ; implémentation Codex,
 contre-revue Root et CI hébergée requises avant livraison. Centre/Sentinelle : les
 contrôles GitHub existants suffisent, aucun nouvel événement ni automatisme.
+
+## 🧭 PARCOURS DU NOUVEL INSCRIT — quatre frictions retirées avant les premiers testeurs (2026-11-20)
+
+Demande de Benjamin : relire le parcours d'un nouveau venu, du lien jusqu'au premier geste, et retirer les frictions avant d'inviter des testeurs. Parcours refait à 390 × 664 (hauteur utile d'un iPhone sous Safari), en visiteur, sur le code de `main` servi en local.
+
+**Mesuré en production le 20/11, au canal ① (lecture seule).**
+- **Comptes.** 13 comptes hors comptes de test de Benjamin, dont **10 nés par le formulaire e-mail** et 3 par Google : le « 3 sur 4 par Google » de la fiche 📱 du 09/11 ne tient pas sur l'ensemble. 2 inscriptions e-mail sur 10 n'ont jamais été confirmées, sans aucun renvoi demandé ; 9 des confirmées l'ont été en moins de 10 minutes. 7 comptes sur 13 n'ont fait aucun geste (publication, commentaire, abonnement, inscription à une activité, message).
+- **Lien de confirmation.** Le lien expire au bout d'**une heure** (`mailer_otp_exp` = 3 600 s).
+- **Télémétrie.** Les 11 « visiteurs » des trois derniers jours ont l'allure d'un trafic automatisé (6 appareils Windows en 90 s, des sessions de 0 à 13 s, aucun lien d'origine, aucun geste) : la télémétrie récente ne dit rien d'un parcours humain.
+
+**Ce qui change**
+- **① Le clavier ne s'ouvre plus tout seul au choix des passions.** `ouvrirPersonnalisation` posait le focus dans la recherche 60 ms après le toucher, et sur un téléphone le clavier recouvrait la grille et « Voir mon fil ». Le focus n'est posé qu'avec un pointeur fin (`pointeurFin`, qui délègue à `_pointeurFin` d'app-04, la règle du champ de commentaire). Le poste de travail garde son raccourci.
+- **② Un message à la fois après « Voir mon fil ».** Le toast « Ton fil est à toi » (3 s), la note « Gardées sur cet appareil » et la bulle « Un Fil construit autour de tes passions » (700 ms) arrivaient ensemble, le toast posé sur la rangée « Ne plus afficher / Compris ». Quand la note se pose, le toast se tait. Sinon (note déjà vue), `planifierTour(delaiMs)` attend la fin du toast, mesurée par `dureeToast` d'app-02.
+- **③ La note « Gardées sur cet appareil » tient en deux lignes.** À 390 px, texte, bouton et × passaient chacun sur leur ligne (124 px, le × seul en bas à gauche). Le × sort du flux, à droite et centré : 69 px. La modification est faite en CRLF, octet par octet.
+- **④ Un lien reçu par e-mail qui n'ouvre rien dit pourquoi.** Supabase revient avec `#error=access_denied&error_code=otp_expired&error_description=…`, ou en paramètres de requête, pour un lien périmé, déjà utilisé (un antivirus de messagerie qui le prévisite suffit) ou refusé. Rien ne le lisait : la personne retombait sur le fil en visiteur, sans un mot.
+  - `lireRefusLienAuth` (app-02) le relève en tête de `boot()`. `nettoyerRefusLienAuth` le retire de l'adresse.
+  - Pour un visiteur, une fois l'entrée invitée construite (même règle d'ordre que l'intention de connexion), `montrerRefusLienAuth` ouvre la connexion avec le pourquoi et ses deux sorties : se connecter (le lien avait déjà servi) ou se renvoyer un lien. `_showResendConfirmation(email, sansAdresse)` montre la sortie sans adresse connue, et `onbResendConfirmation` lit alors l'adresse saisie.
+  - Télémétrie : `auth_link_refused { rc }`, code nettoyé (`[a-z0-9_]{1,40}`, sinon `autre`).
+- **⑤ Plus de « Confirmer le mot de passe ».** C'était le cinquième champ du formulaire par lequel naissent 10 comptes sur 13. Le bouton 👁, « Proposer un mot de passe » (en clair) et « Mot de passe oublié ? » couvrent la faute de frappe. Comptage des balises avant et après : exactement une `label`, une `div` et un `button` de moins, et le déséquilibre préexistant de `div` (377/378) est inchangé. 14 suites remplissaient le champ ; elles ne le font plus, et `mot-de-passe-aide` ③ vérifie qu'il ne revient pas.
+
+**Pièges**
+- ⚠️ **AUCUNE DURÉE ÉCRITE DANS LE MESSAGE DU LIEN REFUSÉ** : la validité est un réglage serveur qui peut changer sans que le texte le sache.
+- ⚠️ **« ci-dessus » était faux** : le bouton de renvoi du haut (`#authResendTop`) est AU-DESSUS du champ e-mail. Le message nomme le champ et l'amène sous le doigt (focus voulu : la personne vient de demander l'envoi).
+- ⚠️ **Une sonde de visibilité par `offsetParent` ne voit jamais un élément `position: fixed`** : la première version du verrou ② ne voyait pas la bulle, et « jamais ensemble » passait à vide. Le cas exige désormais d'avoir vu le toast ET la bulle, dans cet ordre.
+- ⚠️ **Pour un lien refusé en FRAGMENT, l'historique des écrans réécrit déjà l'ancre** (`#feed` au démarrage, `#compte` à l'ouverture du formulaire) : seule la variante en paramètres de requête prouve le nettoyage (④ bis).
+- ⚠️ **Le premier contenu réel montré à un visiteur venait des comptes de test de Benjamin** : la publication d'une activité (14/11), des commentaires « aaa », « Vhh » et « Top », et un compte de test parmi les « Passionnés à découvrir ». Trois de ces comptes sont publics à nouveau, et la grille des passions populaires place leur passion en tête. C'est un geste de Benjamin dans l'application, pas un correctif : le ménage du 12/11 avait demandé une migration attestée, et l'audit avait critiqué le masquage « hors mécanisme » du 04/11.
+
+**Verrou** : `tests/e2e/parcours-nouvel-inscrit.spec.js` (10 cas).
+
+**Réinjection** : chaque mutation fait rougir le cas visé, et les témoins restent verts.
+
+| Mutation | Effet |
+|---|---|
+| Focus toujours posé | ① rouge, le témoin « souris » reste vert |
+| Toast toujours | ② rouge |
+| Bulle à 700 ms | ② bis rouge |
+| × dans le flux | ③ rouge aux deux largeurs |
+| Crochet de démarrage retiré | ④ et ④ bis rouges |
+| Sortie sans adresse cachée | ④ et ④ bis rouges |
+| Code non nettoyé | ④ ter rouge |
+| Adresse non nettoyée | ④ bis rouge |
+
+**Non fait, délibérément**
+- **Allonger la validité du lien (24 h).** C'est un réglage d'authentification de production, laissé à Benjamin.
+- **Garder les passions d'un visiteur quand le lien de confirmation s'ouvre dans un AUTRE navigateur.** Elles ne voyagent pas dans `user_metadata`, contrairement à l'année et à l'invitation : lot à part.
+- **Instrumenter l'affichage de la carte de bienvenue, l'intention Google et les étapes d'onboarding.** Sans quoi l'entonnoir de la première visite reste aveugle entre l'arrivée et la création du compte.
