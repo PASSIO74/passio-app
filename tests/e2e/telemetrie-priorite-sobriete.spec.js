@@ -518,9 +518,10 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
     //    l'ordre de la file, toujours sous le budget.
     etat.mode = "ok";
     await etat.retenus[1].fulfill({ status: 201, body: "" });
-    await page.waitForTimeout(300);
-    await page.evaluate(() => window.tel.flush({ keepalive: true }));
-    await expect.poll(() => etat.lots.length, { message: "aucun envoi de fermeture après le retour du premier", timeout: 10000 }).toBeGreaterThan(avant + 1);
+    // Attente ACTIVE, pas un délai fixe : le poids n'est rendu qu'une fois la
+    // réponse traitée par la page, et rien ne relance seul un envoi de fermeture.
+    await expect.poll(async () => { await page.evaluate(() => window.tel.flush({ keepalive: true })); return etat.lots.length; },
+      { message: "aucun envoi de fermeture après le retour du premier", timeout: 10000 }).toBeGreaterThan(avant + 1);
     const suite = etat.lots[avant + 1];
     expect(suite.octets, "le second envoi de fermeture dépasse le budget").toBeLessThan(18000);
     expect(duBanc(suite).slice(0, 2), "la suite ne reprend pas dans l'ordre de la file").toEqual(["banc_enorme_2", "banc_leger"]);
