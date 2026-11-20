@@ -2098,3 +2098,10 @@ Une revue de ChatGPT (codex) sur le diff complet, faite après la mise en produc
   - un 5xx est passager même quand il porte un SQLSTATE ;
   - l'attente du recul fait aussi reculer le filet du fil (`_filComplementsReculSeq`), sans prolonger le recul partagé ;
   - le budget de relecture des diffusions tronquées compte les requêtes, nouvel essai compris.
+- **Trace du stockage, mesurée au staging en quatre essais, avec un vrai compte** :
+  - Un remplacement (x-upsert ou PUT) est un UPDATE de la même ligne : nouvelle `version`, nouvelle taille.
+  - L'API Storage éprouve la RLS dans une transaction ANNULÉE, puis fait l'écriture finale depuis la session `supabase_storage_admin`, sous l'identité de SERVICE.
+  - Donc : ni le rôle SQL, ni `auth.role()`, ni `auth.uid()` ne désignent l'appelant au moment où la ligne change vraiment. Seul `new.owner` le désigne.
+  - Le déclencheur `aa_stockage_remplacement_borne` compte donc le propriétaire, et n'exempte que la session `postgres`.
+  - Mesure finale : 20 remplacements acceptés, puis 5 refusés, en une minute ; lectures et dépôt, remplacement, suppression normaux inchangés.
+  - Le contrôle de taille à 2 Gio n'a pas été atteint par le banc (limite de 26 Mo par objet).
