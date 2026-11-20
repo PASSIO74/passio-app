@@ -38,6 +38,7 @@
 - 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
+- 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 
 ---
 
@@ -3205,3 +3206,33 @@ et relecture séparée de l'adaptation de la fixture VM existante : ses assertio
 sont conservées. Les 55 tests concernés et `npm run verif` passent sous Node22.
 Les chemins scripts/tests restent critiques pour la gouvernance. Pilotage :
 catégories et compteurs de rapport seulement, aucune connexion/remédiation active.
+
+## 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+
+Revérification du 20/11 (groupe C) : la correction serveur de `fil_compteurs` tenait, mais trois
+chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation.
+
+- **Repli du fil.** Toute erreur de `fil_compteurs` (délai à 8 s, 503) basculait la page sur les
+  trois lectures d'avant (`post_likes` sans limite, commentaires, réactions — contrôle RLS par
+  ligne), et trois échecs passaient la session entière en legacy ; ce repli « réussissait », donc le
+  filet ne reculait pas. **Règle :** le chemin d'avant ne sert que pour une fonction ABSENTE
+  (PGRST202/42883, `_erreurFonctionAbsente`). Sur une erreur de charge, `_chargerComplementsFil`
+  rend `source: "echec"` : la copie précédente de chaque publication fait foi
+  (`_complementConserve`), aucune autre lecture ne part, la fonction est retentée après
+  `reculSurErreur(15 s, n)` ; le filet du fil lit `window._filComplementsDegradesSeq` et compte le
+  tour comme un échec.
+- **Compteur des cartes.** Trois `HEAD count=exact` par tour (règle de lecture de `post_likes`
+  évaluée par « j'aime ») → UN appel groupé `fil_compteurs` (`_postLikeLireGroupe`) ; le HEAD ne
+  reste que si la fonction est mémorisée absente. Le recul n'est plus remis à zéro par
+  `_postLikeRefreshReprise` (retour au premier plan, `online`) ni rapproché par un réveil : seule
+  une lecture réussie le lève. La cadence de base (15 → 60 s) est INCHANGÉE : le banc de charge en
+  porte une copie verrouillée (`tests/unit/charge-realiste.test.mjs`), et il modélise encore trois
+  HEAD par tour — il surestime donc ce poste (à réaligner avec D15-01).
+- **Diffusions de messages tronquées** (préparation de D10-01, client prêt AVANT la migration) :
+  `tronque: true` + `id` dans la charge → relecture de `conv_messages` par identifiant
+  (`_relireMessageTronque`), au plus 30/min, jamais deux fois le même, ligne d'une autre
+  conversation jetée, un seul nouvel essai ; jamais le contenu tronqué peint comme entier.
+- **B06-N1** : `supaLoadMyConversations` filtre ses lignes (`_lignesConv`) et construit chaque
+  conversation sous son propre `try` — une ligne invalide ne vide plus la liste.
+
+Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (7 cas ; 6 rouges sur le client d'avant).
