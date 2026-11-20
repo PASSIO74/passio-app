@@ -10,8 +10,10 @@
 > `docs/PASSIO_100K_AUTONOMIE.md` (2026-10-11) et de la matrice `docs/AUTONOMIE_EXPLOITATION.md`.
 >
 > **Livré le même jour (lot T1 + T10 partiel)** : priorité des signaux de panne dans la file de
-> télémétrie, fin des réémissions de `perf-ios`, mesure du clic lent — voir la fiche du 20/11 dans
-> `docs/journal/telemetrie-pilotage-sentinelle.md`. Le reste de ce document est la feuille de route.
+> télémétrie, fin des réémissions de `perf-ios` (qui se tait aussi sous la pression), mesure du clic
+> lent — voir la fiche du 20/11 dans `docs/journal/telemetrie-pilotage-sentinelle.md`, qui dit aussi
+> ce que la contre-revue du lot a corrigé (le plan des pièces A et B ci-dessous, appliqué tel quel,
+> portait un défaut : dédoublonner sur `n`). Le reste de ce document est la feuille de route.
 
 **Réponse courte :** non, pas encore. Au trafic actuel (17 comptes, ~45 sessions par jour) la pile est solide. À 2 000–5 000 connectés, trois choses cèdent ensemble :
 
