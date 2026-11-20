@@ -488,8 +488,9 @@
   }
   // Poids d'un événement dans le corps d'un envoi, en octets (majorant : on
   // compte 3 octets pour tout caractère hors ASCII, le pire cas en UTF-8).
-  // `KEEPALIVE_OCTETS_MAX` : ce qu'un envoi de fermeture pesait déjà avant la
-  // priorité (vingt lignes ordinaires ≈ 12 Ko), avec une marge — voir `flush`.
+  // `KEEPALIVE_OCTETS_MAX` : ce que la télémétrie s'autorise EN VOL en keepalive,
+  // tous envois confondus — ce qu'un envoi de fermeture pesait déjà avant la
+  // priorité (vingt lignes ordinaires ≈ 12 Ko), avec une marge. Voir `flush`.
   var KEEPALIVE_OCTETS_MAX = 16000;
   function _poids(ev) {
     var s = "";
@@ -497,6 +498,16 @@
     var n = s.length;
     for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) n += 2;
     return n;
+  }
+  // Les envois keepalive encore en vol, avec leur poids. Un envoi sans réponse
+  // au bout de `EN_VOL_MAX_MS` n'est plus compté — même borne que `enVol`,
+  // même raison : une requête perdue ne doit pas bloquer la suite pour toujours.
+  var keepaliveVols = [];
+  function _poidsKeepaliveEnVol() {
+    var t = Date.now(), somme = 0;
+    keepaliveVols = keepaliveVols.filter(function (v) { return v.poids > 0 && t - v.t <= EN_VOL_MAX_MS; });
+    for (var i = 0; i < keepaliveVols.length; i++) somme += keepaliveVols[i].poids;
+    return somme;
   }
 
   // ─── File + envoi ──────────────────────────────────────────────────────────
@@ -727,6 +738,7 @@
     (lot || []).forEach(function (ev) {
       if (ev && ev.event_id && enVol[ev.event_id] === jeton) delete enVol[ev.event_id];
     });
+    if (jeton) jeton.poids = 0;            // rend son poids au budget keepalive
   }
 
   function flush(opts) {
@@ -756,7 +768,7 @@
     // ensuite, chaque classe dans son ordre d'arrivée. Sous un refus 429, c'est
     // le PREMIER lot de la minute suivante qui passe : il porte désormais les
     // erreurs et les flows, pas soixante photos de performance.
-    // ⚠️ EN KEEPALIVE, LE LOT SE BORNE AUSSI EN POIDS (`KEEPALIVE_OCTETS_MAX`).
+    // ⚠️ EN KEEPALIVE, LA TÉLÉMÉTRIE SE BORNE AUSSI EN POIDS (`KEEPALIVE_OCTETS_MAX`).
     // Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et
     // la sauvegarde d'état du compte part sur le même événement, juste après
     // (`supaSaveUserStateBeacon`, jusqu'à 60 Ko). Vingt lignes ordinaires pèsent
@@ -764,17 +776,27 @@
     // lourdes — mesuré le 20/11 : 1,2 à 1,8 Ko par erreur à pile pleine, 32 Ko
     // pour vingt. Sans borne, un orage d'erreurs à la fermeture faisait refuser
     // toute sauvegarde d'état de plus de ~32 Ko (rejouée au démarrage suivant,
-    // mais c'est l'état du compte qui attend, pour de la télémétrie). Un
-    // événement qui ferait dépasser le budget attend le lot suivant — la file
-    // est persistée ; le premier part toujours.
-    var poids = 0;
-    for (var passe = 0; passe < 2 && batch.length < max; passe++) {
+    // mais c'est l'état du compte qui attend, pour de la télémétrie).
+    // · Le budget est COMMUN aux envois keepalive en vol : deux `flush` partent
+    //   sur un même passage en arrière-plan (celui-ci, puis la photo de
+    //   js/perf-ios.js) — une borne par lot en laissait 31 Ko en vol.
+    // · La composition S'ARRÊTE au premier événement qui ne tient pas : pas de
+    //   plus léger qui double, ni de bruit qui comble devant une erreur — l'ordre
+    //   reste celui de la file.
+    // · Ce qui ne part pas reste dans la file persistée et repart au prochain
+    //   envoi (événement suivant, retour au premier plan, démarrage suivant) :
+    //   un succès keepalive n'enchaîne pas de lui-même. Le premier événement part
+    //   toujours quand rien n'est en vol — jamais de blocage sur un seul trop gros.
+    var poids = 0, plein = false;
+    var dejaEnVol = opts.keepalive ? _poidsKeepaliveEnVol() : 0;
+    var budget = KEEPALIVE_OCTETS_MAX - dejaEnVol;
+    for (var passe = 0; passe < 2 && !plein && batch.length < max; passe++) {
       for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
         if ((passe === 0) !== _estPrioritaire(queue[qi])) continue;
         if (!_peutPartir(queue[qi], !!opts.keepalive)) continue;
         if (opts.keepalive) {
           var p = _poids(queue[qi]);
-          if (batch.length && poids + p > KEEPALIVE_OCTETS_MAX) continue;
+          if ((batch.length || dejaEnVol > 0) && poids + p > budget) { plein = true; break; }
           poids += p;
         }
         batch.push(queue[qi]);
@@ -784,7 +806,8 @@
     // Le lot ORIGINAL (références de la file) : c'est lui qu'on retire au succès,
     // les copies désattribuées ci-dessous n'étant pas dans la file.
     var lot = batch;
-    var envoi = { seq: ++envoiSeq, keepalive: !!opts.keepalive, t: Date.now() };
+    var envoi = { seq: ++envoiSeq, keepalive: !!opts.keepalive, t: Date.now(), poids: opts.keepalive ? poids : 0 };
+    if (envoi.poids) keepaliveVols.push(envoi);
     lot.forEach(function (ev) { if (ev && ev.event_id) enVol[ev.event_id] = envoi; });
     // Un lot part en UN SEUL insert multi-lignes : une ligne refusée par la RLS
     // annule TOUTES les autres. Il suffit donc d'un événement dont l'identité ne

@@ -1858,18 +1858,24 @@ par le cache de navigation) ou durée > 30 s → mesure vide, sinon une suspensi
 de faux clics lents (R2). Aucun compteur ne lit `click` en `warn` (la veille ne compte que
 `type = error`) ; un clic lent vit 7 jours au lieu de 3 (purge par gravité).
 
-⚠️ **L'ENVOI DE FERMETURE SE BORNE EN POIDS, PARCE QUE SON QUOTA EST PARTAGÉ** (`KEEPALIVE_OCTETS_MAX`
-= 16 Ko, `flush`). Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et la
-sauvegarde d'état du compte (`supaSaveUserStateBeacon`, jusqu'à 60 Ko) part sur le même événement,
-juste après la télémétrie. Vingt lignes ordinaires pèsent ≈ 12 Ko ; les prioritaires, désormais en
-tête, sont les plus lourdes. Histoire de ce point, à garder : la première contre-revue craignait
-« 4 000 caractères de pile par erreur » — faux, `redactString` borne message et pile à 500
-caractères ; le correctif en avait conclu « ≈ 1 Ko par erreur, 21 Ko pour vingt » et retiré la borne — faux
-aussi : la seconde contre-revue a MESURÉ 1,2 à 1,8 Ko par erreur et **32 351 octets pour vingt**,
-et rappelé le quota partagé. Sans borne, un orage d'erreurs à la fermeture faisait refuser toute
-sauvegarde d'état de plus de ~32 Ko (elle est rejouée au démarrage, mais c'est l'état du compte
-qui attendait, pour de la télémétrie). Le lot de fermeture garde donc le poids qu'il avait avant
-la priorité ; ce qui dépasse attend le lot suivant, la file étant persistée.
+⚠️ **LES ENVOIS DE FERMETURE ONT UN BUDGET DE POIDS COMMUN, PARCE QUE LEUR QUOTA EST PARTAGÉ**
+(`KEEPALIVE_OCTETS_MAX` = 16 Ko, `keepaliveVols`, `flush`). Le navigateur plafonne à 64 Kio la
+SOMME des envois `keepalive` en vol, et la sauvegarde d'état du compte (`supaSaveUserStateBeacon`,
+jusqu'à 60 Ko) part sur le même événement, juste après la télémétrie. Vingt lignes ordinaires
+pèsent ≈ 12 Ko ; les prioritaires, désormais en tête, sont les plus lourdes. Histoire de ce point,
+à garder, parce qu'il a fallu trois passes : ① la première contre-revue craignait « 4 000
+caractères de pile par erreur » — faux, `redactString` borne message et pile à 500 caractères ; le
+correctif en avait conclu « ≈ 1 Ko par erreur, 21 Ko pour vingt » et retiré la borne — faux aussi ;
+② la seconde a MESURÉ 1,2 à 1,8 Ko par erreur, **32 351 octets pour vingt**, et rappelé le quota
+partagé : borne remise, par lot ; ③ la relecture de ce delta a montré qu'une borne PAR LOT ne tient
+pas la promesse — deux `flush` partent sur un même passage en arrière-plan (celui de la télémétrie,
+puis celui de la photo de perf-ios) et laissaient 31 Ko en vol. Le budget est donc commun à tous les
+envois keepalive en vol (un envoi rend son poids quand il aboutit, échoue, ou après 60 s sans
+réponse). La composition S'ARRÊTE au premier événement qui ne tient pas : ni un plus léger qui
+double, ni du bruit qui comble devant une erreur — l'ordre de la file reste strict sur ce chemin
+aussi. Ce qui ne part pas reste dans la file persistée et repart au prochain envoi (événement
+suivant, retour au premier plan, démarrage suivant) : un succès keepalive n'enchaîne pas de
+lui-même. Le premier événement part toujours quand rien n'est en vol.
 
 **Limites connues, non traitées ici** : ① un clic dont le gestionnaire bloque plus de ~1 s est
 horodaté après son effet de plus de `BOUTON_AVANCE_MS` — la famille « bouton mort » peut le lire
@@ -1883,9 +1889,10 @@ signal existe, il ne sonne pas encore.
 
 Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (13), dont le CÂBLAGE des minuteurs à
 l'horloge simulée (②d : personne ne lit encore `ios_stat_*`, des photos qui ne partiraient plus ne
-se verraient nulle part). Trente et une réinjections, toutes rouges — chaque garde nommée ci-dessus
-retirée une à une. Deux contre-revues adversariales : la première a trouvé B1, S1 et S2 ; la seconde,
-sur l'état corrigé, aucune objection bloquante. ⚠️ Le plafond client de 400/min/onglet
+se verraient nulle part). Trente-quatre réinjections, toutes rouges — chaque garde nommée ci-dessus
+retirée une à une. Trois passes de contre-revue adversariale : la première a trouvé B1, S1 et S2 ; la
+seconde, sur l'état corrigé, aucune objection bloquante et six remarques ; la troisième, sur leur
+traitement, le budget de poids à rendre commun. ⚠️ Le plafond client de 400/min/onglet
 empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien
 prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
 À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part

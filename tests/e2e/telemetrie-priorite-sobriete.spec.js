@@ -28,7 +28,8 @@
 //      les erreurs ni la requête corrélée d'un flow ;
 //   ③b l'éviction, cas par cas (fonction pure), et le backlog rechargé ;
 //   ④  le lot qui part porte les signaux de panne EN TÊTE ;
-//   ④b l'envoi de fermeture (keepalive) se borne en POIDS, pas seulement en nombre ;
+//   ④b les envois de fermeture (keepalive) ont un budget de POIDS commun, et
+//      gardent l'ordre de la file ;
 //   ⑤  un clic dont le gestionnaire bloque 1,5 s est mesuré (≥ 1,4 s, `warn`,
 //      `lent`) ; un clic vif reste `info` ;
 //   ⑥  sans peinture : durée réelle si le fil était bloqué, rien onglet masqué ;
@@ -470,36 +471,68 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
   // Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et la
   // sauvegarde d'état du compte part sur le même événement, juste après. Les
   // prioritaires en tête sont aussi les plus lourds : vingt erreurs à pile
-  // pleine pèsent 32 Ko (mesuré par la contre-revue du 20/11). Le lot de
-  // fermeture garde donc le poids qu'il avait avant la priorité.
-  test("④b envoi de fermeture : le lot se borne en poids, et rien n'est perdu", async ({ page }) => {
+  // pleine pèsent 32 Ko (mesuré par la contre-revue du 20/11). La télémétrie
+  // garde donc en keepalive le poids qu'elle avait avant la priorité (16 Ko),
+  // TOUS ENVOIS EN VOL CONFONDUS — deux `flush` partent sur un même passage en
+  // arrière-plan — et sans qu'un événement plus léger en double un plus lourd.
+  test("④b envois de fermeture : un budget de poids commun, l'ordre de la file, et rien n'est perdu", async ({ page }) => {
     const etat = await intercepter(page);
     await charger(page, etat);
-    await amorcerEnVol(page, etat);
-    await page.evaluate(() => {
-      const pile = "at fonctionDuBanc (fichier-du-banc.js) ".repeat(20);    // bornée à 500 caractères par le filtre
-      const message = "erreur du banc ".repeat(40);                          // idem
-      for (let i = 0; i < 20; i++) window.tel.track("error", "banc_lourd_" + i, { severity: "error", status: "error", message, stack: pile });
+    await amorcerEnVol(page, etat);   // l'amorce est un envoi ORDINAIRE : elle ne pèse pas sur le budget keepalive
+    const poidsDe = await page.evaluate(() => {
+      const texte = (motif, n) => motif.repeat(Math.ceil(n / motif.length)).slice(0, n);
+      const lourd = { severity: "error", status: "error", message: texte("erreur du banc ", 500), stack: texte("at fonctionDuBanc (fichier-du-banc.js) ", 500) };
+      const meta = {};
+      for (let k = 0; k < 29; k++) meta["k" + k] = texte("valeur du banc ", 160);
+      for (let i = 0; i < 3; i++) window.tel.track("error", "banc_enorme_" + i, { ...lourd, meta });
+      window.tel.track("error", "banc_leger", { severity: "error", status: "error" });
+      for (let i = 0; i < 10; i++) window.tel.track("error", "banc_lourd_" + i, lourd);
+      const taille = (a) => JSON.stringify(window.tel._queue().find((e) => e.action === a)).length;
+      return { enorme: taille("banc_enorme_0"), leger: taille("banc_leger"), lourd: taille("banc_lourd_0") };
     });
-    expect(await page.evaluate(() => window.tel._queue().filter((e) => /^banc_lourd_/.test(e.action || "")).length),
-      "les erreurs lourdes ne sont pas toutes en file").toBe(20);
+    // Les tailles qui rendent le cas probant : deux énormes tiennent dans 16 Ko,
+    // pas trois ; et le léger tiendrait dans ce qu'il reste après deux énormes.
+    expect(2 * poidsDe.enorme, "deux énormes doivent tenir dans le budget").toBeLessThanOrEqual(16000);
+    expect(3 * poidsDe.enorme, "trois énormes ne doivent pas tenir : le cas ne prouverait rien").toBeGreaterThan(16000);
+    expect(2 * poidsDe.enorme + poidsDe.leger, "le léger doit tenir dans le reliquat, sinon rien ne peut doubler").toBeLessThanOrEqual(16000);
+    const tous = ["banc_enorme_0", "banc_enorme_1", "banc_enorme_2", "banc_leger", ...Array.from({ length: 10 }, (_, i) => "banc_lourd_" + i)];
+    const duBanc = (lot) => lot.rows.map((r) => r.action).filter((a) => tous.includes(a));
 
+    // ① Premier envoi de fermeture, RETENU en vol : il s'arrête au premier
+    //    événement qui ne tient pas — le léger ne double pas le troisième énorme.
     const avant = etat.lots.length;
-    etat.mode = "ok";
     await page.evaluate(() => window.tel.flush({ keepalive: true }));
-    await expect.poll(() => etat.lots.length > avant, { message: "l'envoi de fermeture n'est pas parti", timeout: 10000 }).toBe(true);
-    const fermeture = etat.lots[avant];
-    const lourds = fermeture.rows.filter((r) => /^banc_lourd_/.test(r.action || ""));
-    expect(lourds.length, "aucune erreur dans l'envoi de fermeture").toBeGreaterThan(0);
-    expect(lourds.length, "le lot n'a pas été borné en poids : le cas ne prouverait rien").toBeLessThan(20);
-    expect(fermeture.octets, "l'envoi de fermeture pèse plus que le budget (16 Ko, marge de mise en forme comprise)").toBeLessThan(18000);
+    await expect.poll(() => etat.lots.length, { message: "le premier envoi de fermeture n'est pas parti", timeout: 10000 }).toBe(avant + 1);
+    expect(duBanc(etat.lots[avant]), "le lot n'est pas un préfixe de la file (un plus léger a doublé, ou le poids n'est pas borné)").toEqual(["banc_enorme_0", "banc_enorme_1"]);
+    expect(etat.lots[avant].octets).toBeLessThan(18000);
 
-    // Le reste part aux envois suivants : les vingt erreurs arrivent, une fois chacune.
+    // ② Second envoi de fermeture pendant que le premier est EN VOL (c'est ce que
+    //    fait la photo d'arrière-plan) : le budget est commun, rien ne part.
+    await page.evaluate(() => window.tel.flush({ keepalive: true }));
+    await page.waitForTimeout(800);
+    const enVol = etat.lots.slice(avant).reduce((n, l) => n + l.octets, 0);
+    expect(enVol, "les envois de fermeture en vol dépassent le budget commun").toBeLessThan(18000);
+    expect(etat.lots.length, "un second envoi de fermeture est parti alors que le budget était pris").toBe(avant + 1);
+
+    // ③ Le premier aboutit : son poids est rendu, la suite part — toujours dans
+    //    l'ordre de la file, toujours sous le budget.
+    etat.mode = "ok";
+    await etat.retenus[1].fulfill({ status: 201, body: "" });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.tel.flush({ keepalive: true }));
+    await expect.poll(() => etat.lots.length, { message: "aucun envoi de fermeture après le retour du premier", timeout: 10000 }).toBeGreaterThan(avant + 1);
+    const suite = etat.lots[avant + 1];
+    expect(suite.octets, "le second envoi de fermeture dépasse le budget").toBeLessThan(18000);
+    expect(duBanc(suite).slice(0, 2), "la suite ne reprend pas dans l'ordre de la file").toEqual(["banc_enorme_2", "banc_leger"]);
+    expect(duBanc(suite), "la suite n'est pas un préfixe de ce qui restait").toEqual(tous.slice(2, 2 + duBanc(suite).length));
+
+    // ④ Le reste part aux envois suivants : tout arrive, une fois chacun.
     await etat.retenus[0].fulfill({ status: 201, body: "" });
-    const recues = () => lignes(etat).filter((r) => /^banc_lourd_/.test(r.action || "")).map((r) => r.action);
-    await expect.poll(async () => { await page.evaluate(() => window.tel.flush()); return new Set(recues()).size; },
-      { message: "des erreurs lourdes ne sont jamais parties", timeout: 15000 }).toBe(20);
-    expect(recues().length, "une erreur lourde est partie deux fois").toBe(20);
+    const recus = () => lignes(etat).map((r) => r.action).filter((a) => tous.includes(a));
+    await expect.poll(async () => { await page.evaluate(() => window.tel.flush()); return new Set(recus()).size; },
+      { message: "des événements du banc ne sont jamais partis", timeout: 15000 }).toBe(tous.length);
+    // Le premier lot, retenu puis accepté, compte une fois ; rien n'est parti deux fois.
+    expect(recus().length, "un événement est parti deux fois").toBe(tous.length);
   });
 
   test("⑤ un clic qui bloque 1,5 s est mesuré et marqué lent ; un clic vif reste ordinaire", async ({ page }) => {
