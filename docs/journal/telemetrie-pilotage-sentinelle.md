@@ -56,6 +56,7 @@
 - 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
 - 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
+- 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1783,3 +1784,58 @@ barre SMTP, la connexion à 72 % et son supplément de 10 €, croissance et mod
 Risque critique : métriques et décisions du pilotage. Aucun appel Brevo, secret,
 changement Auth/RLS, admission, délestage ou automatisme ajouté. Contre-revue et
 CI requises avant livraison ; retour arrière par PR de revert.
+
+
+## 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
+
+Audit complet et feuille de route : `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (six familles,
+chacune contredite, quinze trous triés par rendement). Ce lot en livre la pièce de tête (T1) et
+la mesure du clic lent (T10, volet client) — côté appareil, sans migration.
+
+**Mesuré (canal ①, 72 h)** : `perf` = 77 % des lignes de `telemetry_events`, dont 83 % de photos
+`ios_stat_*` « periodic ». `perf-ios.js` réémettait toutes les 3 min l'agrégat CUMULÉ de chaque
+métrique, inchangé ou non, onglet masqué compris (`ios_stat_gate_ready` : 1 218 lignes pour 66
+sessions, valeur mesurée une seule fois). Le commentaire « ~4 lignes par session » de
+`telemetry.js` était faux (≈ 87 à 133). À 2 000–5 000 onglets ouverts, ce flux seul dépassait le
+plafond de débit de la base (4 200/min) ; un 429 refuse le lot ENTIER, la file de 300 jetait « les
+plus anciens » sans regarder le type, et le lot suivant repartait dans l'ordre d'arrivée — erreurs,
+flows et clics morts partaient avec les photos, au moment exact où la Sentinelle en a besoin.
+
+⚠️ **PRIORITÉ À DEUX ENDROITS, ORDRE RELATIF CONSERVÉ** (`_estPrioritaire`, `_bornerFile`,
+js/telemetry.js) : type critique OU gravité ≥ `warn`. Au débordement (et au rechargement du
+backlog), les non-prioritaires les plus anciens partent d'abord ; le lot se compose en deux passes,
+les prioritaires en tête. Les étapes d'un flow (toutes `flow`) gardent leur ordre ; le retrait par
+identité (`telemetrie-doublons`) n'est pas touché. Ce lot NE lève PAS le plafond serveur : une
+réserve pour les types critiques côté base reste à faire (T2, migration).
+
+⚠️ **ON NE TIRE PAS AU SORT UN AGRÉGAT, ON CESSE DE LE RÉPÉTER** (js/perf-ios.js) : une métrique
+ne repart que si son `n` a bougé (`_nEmis`) ; `ios_context` seulement avec une métrique ou si ses
+compteurs ont bougé ; pas de photo périodique onglet masqué ni sous délestage ×2/×4
+(`photoPeriodiqueUtile`, lu à chaque battement) ; une photo au passage en arrière-plan (après t45),
+parce qu'un mobile tue souvent l'onglet masqué sans `pagehide`. `reset()` oublie aussi ce qui a été
+émis. Aucun lecteur du nuage ne lisait `ios_stat_*` (grep vide hors bancs) : rien en aval ne change.
+
+⚠️ **UN CLIC LENT SE MESURE, MAIS ON N'INVENTE JAMAIS UN DÉLAI** (écouteur de clic, telemetry.js).
+L'audit supposait que le minuteur de secours (1 s) passait avant la seconde peinture après un
+blocage, effaçant le clic le plus lent (`ms: null`). **Non reproduit dans Chromium** : la double
+peinture gagne la course (réinjection : remettre `emettre(null)` laissait le cas réel vert).
+Et `latence-percue.spec.js` ② garde un invariant délibéré : sans peinture, AUCUN délai. Le premier
+jet émettait « le temps écoulé » dès qu'il n'y avait pas de peinture — il a rougi ce banc, à juste
+titre. Le discriminant retenu est le **retard du minuteur lui-même** : en retard de ≥ 250 ms
+(`CLIC_FIL_BLOQUE_MS`), le fil était bloqué, l'attente a été vécue, on la rapporte ; à l'heure et
+sans peinture, on attend la peinture jusqu'à 5 s (`CLIC_PEINTURE_MAX_MS`) puis `null` ; onglet
+masqué, `null` aussitôt. Au-delà de 500 ms (`CLIC_LENT_MS`, seuil « mauvais » de l'INP), le clic
+porte `severity: "warn"` et `meta.lent = 1` : jamais échantillonné, en tête de lot. PAS de
+`status: "slow"` — `dashboard/server/traces.js` juge les parcours sur ce champ. Aucun compteur ne
+lit `click` en `warn` (la veille ne compte que `type = error`). Le lecteur « Interface lente » du
+pilotage (par écran, en taux, par version) reste à faire : le signal existe, il ne sonne pas encore.
+
+Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (6). Huit réinjections, toutes rouges :
+dédoublonnage retiré (①), garde du battement retirée (②), éviction d'avant (③), lot sans priorité
+(④), clic lent sans `warn` (⑤), fil bloqué rendu `null` et masqué sans réponse immédiate (⑥), délai
+inventé sans peinture (`latence-percue` ②). ⚠️ Le plafond client de 400/min/onglet empêchait la
+file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien prouver : le
+banc décale `Date.now` d'une minute par salve ET exige une file pleine.
+À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
+des `perf`, avant et après.
+

@@ -331,6 +331,14 @@
   }
   // Types échantillonnés (bruit potentiel). 1 = tout garder.
   var SAMPLE = { click: 1, api: 1, perf: 1, nav: 1, action: 1, heartbeat: 1 };
+  // Au-delà, un toucher est « lent » : l'utilisateur voit l'écran ne pas réagir
+  // (seuil « mauvais » de l'INP du web : 500 ms).
+  var CLIC_LENT_MS = 500;
+  // Secours de la mesure d'un clic (voir l'écouteur de clic) : un minuteur qui
+  // se déclenche avec ce retard prouve un fil bloqué ; sans peinture au-delà de
+  // `CLIC_PEINTURE_MAX_MS`, fil libre, la mesure part vide plutôt qu'inventée.
+  var CLIC_FIL_BLOQUE_MS = 250;
+  var CLIC_PEINTURE_MAX_MS = 5000;
 
   // ─── ÉCHANTILLONNAGE DU BRUIT DE LECTURE (2026-09-19) ──────────────────────
   // Mesuré sur 7 jours en production : 61 470 lignes, dont **20 575 `api` en
@@ -375,6 +383,15 @@
   // Au total ~4 lignes par session — ce n'était jamais le volume, contrairement
   // à ce que le lot avait écrit en rangeant `perf` avec les lectures `api`.
   // La seule famille qui soit réellement du volume répétitif est `api` en 200.
+  // ⚠️ « ~4 LIGNES PAR SESSION » ÉTAIT FAUX, ET LA RÈGLE RESTE JUSTE (2026-11-20).
+  // Remesuré sur 72 h : `perf` = 77 % des lignes, dont 83 % d'instantanés
+  // `ios_stat_*` « periodic » — l'agrégat CUMULÉ de chaque métrique réémis
+  // toutes les 3 min, même inchangé, même onglet masqué (`ios_stat_gate_ready` :
+  // 1 218 lignes pour 66 sessions, la valeur n'étant mesurée qu'une fois). Le
+  // volume ne venait pas de l'absence d'échantillonnage mais des RÉÉMISSIONS :
+  // c'est à la source qu'on le coupe (`snapshot`, js/perf-ios.js — une métrique
+  // ne repart que si son `n` a bougé, pas de photo périodique onglet masqué ni
+  // sous délestage), sans jamais tirer au sort un agrégat.
   var ECH_PERF = 1;        // recensement et agrégats : on garde TOUT
 
   // Rend la probabilité de GARDER l'événement. Fonction pure : c'est elle que
@@ -428,6 +445,39 @@
   // nature (un flow = 2 à 3 événements par action métier), donc sans risque.
   var CRITICAL_TYPE = { error: 1, connectivity: 1, link: 1, flow: 1, rt_recv: 1 };
 
+  // ─── PRIORITÉ DANS LA FILE (2026-11-20, audit « 100 000 », AFF-02 / CLIC-04) ──
+  // Un signal de panne passe AVANT le reste à DEUX endroits où il était traité
+  // comme le reste : le débordement de la file (300) et la composition du lot.
+  // MESURÉ sur 72 h de production : 77 % des lignes sont des `perf`, et le
+  // serveur refuse un lot ENTIER en 429 dès qu'un réservoir est plein — la file
+  // jetait alors « les plus anciens » quel que soit leur type, et le lot suivant
+  // repartait dans l'ordre d'arrivée : sous la pointe, une erreur ou la fin d'un
+  // flow attendait derrière soixante photos de performance, ou disparaissait
+  // avec elles. Exactement au moment où la Sentinelle et la veille en ont besoin.
+  // Prioritaire = type critique (jamais échantillonné) OU gravité ≥ avertissement
+  // (un appel lent, un clic lent, un refus) : ce sont les lignes qui disent
+  // qu'un utilisateur souffre. L'ordre RELATIF de chaque classe est conservé —
+  // les étapes d'un même flow (toutes `flow`) restent dans leur ordre.
+  function _estPrioritaire(ev) {
+    if (!ev) return false;
+    if (CRITICAL_TYPE[ev.type]) return true;
+    var g = ev.severity;
+    return g === "warn" || g === "error" || g === "critical";
+  }
+  // Ramène une file à `max` en jetant d'abord les plus anciens NON prioritaires ;
+  // si tout est prioritaire, les plus anciens tout court (comportement d'avant).
+  function _bornerFile(q, max) {
+    var exces = q.length - max;
+    if (exces <= 0) return q;
+    var garde = [];
+    for (var i = 0; i < q.length; i++) {
+      if (exces > 0 && !_estPrioritaire(q[i])) { exces--; continue; }
+      garde.push(q[i]);
+    }
+    if (exces > 0) garde.splice(0, exces);
+    return garde;
+  }
+
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
   var MAX_QUEUE = 300;
@@ -473,7 +523,7 @@
       var raw = localStorage.getItem(BACKLOG_KEY);
       if (!raw) return;
       var arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length) queue = arr.concat(queue).slice(-MAX_QUEUE);
+      if (Array.isArray(arr) && arr.length) queue = _bornerFile(arr.concat(queue), MAX_QUEUE);
     } catch (e) {}
   }
 
@@ -520,7 +570,7 @@
 
   function enqueue(ev) {
     queue.push(ev);
-    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
+    if (queue.length > MAX_QUEUE) queue = _bornerFile(queue, MAX_QUEUE);
     persistBacklog();                      // durable : rien n'est perdu même en coupure
     // Un réessai armé = envoi en backoff après échec. Sans cette garde, l'événement
     // émis PAR un échec relançait immédiatement un envoi, qui échouait de nouveau :
@@ -677,8 +727,15 @@
     if (!opts.keepalive && sending) return;
     var max = opts.keepalive ? 20 : 60;    // keepalive : lots plus petits (limite 64 Ko)
     var batch = [];
-    for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
-      if (_peutPartir(queue[qi], !!opts.keepalive)) batch.push(queue[qi]);
+    // Deux passes : les signaux de panne d'abord (`_estPrioritaire`), le reste
+    // ensuite, chaque classe dans son ordre d'arrivée. Sous un refus 429, c'est
+    // le PREMIER lot de la minute suivante qui passe : il porte désormais les
+    // erreurs et les flows, pas soixante photos de performance.
+    for (var passe = 0; passe < 2 && batch.length < max; passe++) {
+      for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
+        if ((passe === 0) !== _estPrioritaire(queue[qi])) continue;
+        if (_peutPartir(queue[qi], !!opts.keepalive)) batch.push(queue[qi]);
+      }
     }
     if (!batch.length) return;
     // Le lot ORIGINAL (références de la file) : c'est lui qu'on retire au succès,
@@ -1235,7 +1292,17 @@
     // livraison cross-device). type dédié "rt_recv" → n'entre dans aucun compteur
     // d'activité existant ; le centre de pilotage l'apparie à l'émission par cible.
     recv: function (name, meta) { track("rt_recv", name, { meta: meta }); },
-    click: function (label, meta) { track("click", label, { meta: meta }); },
+    // Un toucher qui met plus de `CLIC_LENT_MS` à se peindre est un signal, pas
+    // du volume : `severity: "warn"` le garde entier (`tauxEchantillon`) et le
+    // fait passer en tête de lot (`_estPrioritaire`). PAS de `status: "slow"` :
+    // `dashboard/server/traces.js` juge les parcours sur ce champ, et un clic
+    // n'est pas une étape réseau. Aucun compteur ne lit `click` en `warn`
+    // (la veille ne compte que `type = error`).
+    click: function (label, meta) {
+      var lent = !!(meta && typeof meta.ms === "number" && meta.ms >= CLIC_LENT_MS);
+      if (lent) meta.lent = 1;
+      track("click", label, lent ? { meta: meta, severity: "warn" } : { meta: meta });
+    },
     _libelleClic: _libelleClic,
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },
@@ -1598,7 +1665,31 @@
             emettre(Math.round(t1 - t0));
           });
         });
-        setTimeout(function () { emettre(null); }, 1000);
+        // ⚠️ LE SECOURS NE DOIT NI EFFACER LE CLIC LE PLUS LENT, NI INVENTER UN
+        // DÉLAI (2026-11-20, CLIC-03). Il est armé AVANT le gestionnaire : si
+        // celui-ci bloque le fil plus d'une seconde, le minuteur échu peut passer
+        // avant la seconde peinture, et le clic le plus lent partait avec
+        // `ms: null` — indiscernable d'un passage en arrière-plan. Mais émettre
+        // « le temps écoulé » dès qu'il n'y a pas de peinture fabriquerait un
+        // délai là où rien n'a été rendu (`latence-percue.spec.js` ② le garde).
+        // Le discriminant est le RETARD DU MINUTEUR LUI-MÊME : s'il se déclenche
+        // en retard, le fil était bloqué — l'utilisateur a réellement attendu
+        // tout ce temps, on le rapporte. À l'heure et toujours sans peinture,
+        // rien n'est bloqué : on attend la peinture (elle peut venir), jusqu'à
+        // `CLIC_PEINTURE_MAX_MS`, puis `null`. Onglet masqué : `null` aussitôt.
+        var maintenant = function () { return (window.performance && performance.now) ? performance.now() : Date.now(); };
+        var prevu = t0 + 1000;
+        var secours = function () {
+          var tF = maintenant();
+          var masque = false;
+          try { masque = document.visibilityState === "hidden"; } catch (e) {}
+          if (masque) { emettre(null); return; }
+          if (tF - prevu >= CLIC_FIL_BLOQUE_MS) { emettre(Math.round(tF - t0)); return; }
+          if (tF - t0 >= CLIC_PEINTURE_MAX_MS) { emettre(null); return; }
+          prevu = tF + 1000;
+          setTimeout(secours, 1000);
+        };
+        setTimeout(secours, 1000);
       } else {
         emettre(null);
       }

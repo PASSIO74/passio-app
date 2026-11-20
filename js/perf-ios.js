@@ -306,13 +306,32 @@
   // métrique (duration_ms = p95, le chiffre qui décide) + un événement de
   // contexte. Volume borné : au plus MAX_METRICS + 1 événements par appel, et le
   // client de télémétrie plafonne déjà à 400 événements/minute.
+  //
+  // ⚠️ UNE MÉTRIQUE NE REPART QUE SI ELLE A BOUGÉ (2026-11-20, audit « 100 000 »,
+  // AFF-02 / CLIC-04). Chaque photo réémettait l'agrégat CUMULÉ de TOUTES les
+  // métriques, inchangé ou non : mesuré sur 72 h de production, `perf` faisait
+  // 77 % de la télémétrie, dont 83 % de photos « periodic » (une valeur mesurée
+  // une seule fois par session, `gate_ready`, revenait ~18 fois). À 2 000–5 000
+  // onglets ouverts, ce flux seul dépassait le plafond de débit de la base
+  // (4 200 lignes/min), qui refuse alors les lots ENTIERS — erreurs et flows
+  // compris. On n'échantillonne pas un agrégat (telemetry.js, `ECH_PERF`) : on
+  // cesse de le RÉPÉTER. La dernière ligne émise d'une métrique reste sa valeur
+  // à jour, puisqu'une métrique sans nouvel échantillon n'a pas changé.
+  // `ios_context` suit la même règle : il ne repart qu'avec une métrique, ou si
+  // ses compteurs (longues tâches, saccades) ont bougé.
+  var _nEmis = {};          // métrique → `n` de sa dernière émission
+  var _ctxEmis = null;      // empreinte des compteurs du dernier `ios_context`
   function snapshot(labelPhase) {
     var r = report();
     var ph = String(labelPhase || "auto").slice(0, 24);
     var names = Object.keys(r.metrics);
+    var emises = 0;
     for (var i = 0; i < names.length; i++) {
       var s = r.metrics[names[i]];
       if (!s) continue;
+      if (_nEmis[names[i]] === s.n) continue;   // rien de neuf depuis sa dernière ligne
+      _nEmis[names[i]] = s.n;
+      emises++;
       emit("ios_stat_" + names[i], s.p95, {
         phase: ph, n: s.n, p50: s.p50, p99: s.p99, mn: s.mn, mx: s.mx, avg: s.avg,
       });
@@ -321,9 +340,27 @@
     var m = { phase: ph, uptime_s: r.uptime_s,
       sup_longtask: r.support.longtask ? 1 : 0, sup_event: r.support.event_timing ? 1 : 0,
       longtask_n: counters.longtask_n || 0, tbt_ms: counters.tbt_ms || 0, jank_n: counters.jank_n || 0 };
-    for (var k in ctx) if (Object.prototype.hasOwnProperty.call(ctx, k)) m[k] = ctx[k];
-    emit("ios_context", null, m);
+    var empreinteCtx = m.longtask_n + "|" + m.tbt_ms + "|" + m.jank_n;
+    if (emises > 0 || _ctxEmis !== empreinteCtx) {
+      _ctxEmis = empreinteCtx;
+      for (var k in ctx) if (Object.prototype.hasOwnProperty.call(ctx, k)) m[k] = ctx[k];
+      emit("ios_context", null, m);
+    }
     return r;
+  }
+  // La photo PÉRIODIQUE n'a lieu que si quelqu'un regarde et que la production
+  // n'est pas en délestage. Onglet masqué : rien n'y bouge à l'écran, et la
+  // photo de sortie (`pagehide`) emporte de toute façon le dernier état. Sous
+  // délestage (js/reglages-distants.js, facteur 2 ou 4), la plus grosse famille
+  // de télémétrie cède enfin sa place : il reste la photo de t45 et celle de
+  // sortie, les deux qui portent la mesure d'une session.
+  function photoPeriodiqueUtile() {
+    try { if (document.visibilityState === "hidden") return false; } catch (e) {}
+    try {
+      var f = (typeof W.delestageFacteur === "function") ? W.delestageFacteur() : 1;
+      if (f === 2 || f === 4) return false;
+    } catch (e) {}
+    return true;
   }
 
   // ─── Parcours instrumentés ─────────────────────────────────────────────────
@@ -477,15 +514,38 @@
     setTimeout(fn, 0);
   }
   var SNAP_FIRST_MS = 45000, SNAP_EVERY_MS = 180000;
+  // Le battement périodique, nommé pour que le banc éprouve CE que l'intervalle
+  // exécute (`_tickPeriodique`), et non une copie de sa condition.
+  function tickPeriodique() {
+    if (!photoPeriodiqueUtile()) return false;
+    whenIdle(function () { snapshot("periodic"); });
+    return true;
+  }
   setTimeout(function () {
     whenIdle(function () { snapshot("t45"); });
-    setInterval(function () { whenIdle(function () { snapshot("periodic"); }); }, SNAP_EVERY_MS);
+    setInterval(tickPeriodique, SNAP_EVERY_MS);
   }, SNAP_FIRST_MS);
   // Dernière photo avant la fermeture : c'est la session la plus longue qui porte
   // les p99 intéressants, et c'est justement celle qu'on perdrait sans ceci.
   W.addEventListener("pagehide", function () {
     try { snapshot("exit"); if (W.tel && W.tel.flush) W.tel.flush({ keepalive: true }); } catch (e) {}
   });
+  // Passage en arrière-plan : sur mobile, c'est souvent la DERNIÈRE occasion —
+  // le système tue l'onglet masqué sans `pagehide`. Puisque la photo périodique
+  // ne tourne plus onglet masqué, celle-ci emporte l'état du moment ; le
+  // dédoublonnage la rend gratuite quand rien n'a bougé depuis la précédente.
+  // Pas avant t45 : une session éclair n'a encore rien de stable à dire, et
+  // `pagehide` reste là pour elle.
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("visibilitychange", function () {
+      try {
+        if (document.visibilityState !== "hidden") return;
+        if (Date.now() - startedAt < SNAP_FIRST_MS) return;
+        snapshot("hidden");
+        if (W.tel && W.tel.flush) W.tel.flush({ keepalive: true });
+      } catch (e) {}
+    });
+  }
 
   // ─── API publique ──────────────────────────────────────────────────────────
   W.PassioPerf = {
@@ -498,11 +558,14 @@
     journey: journey,
     report: report,
     snapshot: snapshot,
+    _tickPeriodique: tickPeriodique,   // pour les bancs : le battement de 180 s
     context: domContext,
     // baseline() : le rapport en JSON lisible, à copier tel quel dans le dossier
     // de mesure (docs/PERF_IOS_BASELINE.md). Aucun chiffre n'est inventé : ce qui
     // n'a pas été mesuré n'apparaît pas.
     baseline: function () { return JSON.stringify(report(), null, 2); },
-    reset: function () { samples = Object.create(null); counters = Object.create(null); startedAt = Date.now(); },
+    // Remise à zéro complète : les `n` repartent de 0, donc la mémoire de ce qui
+    // a été émis aussi — sinon une métrique revenue au même `n` serait tue.
+    reset: function () { samples = Object.create(null); counters = Object.create(null); startedAt = Date.now(); _nEmis = {}; _ctxEmis = null; },
   };
 })();
