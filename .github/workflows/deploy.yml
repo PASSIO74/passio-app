@@ -250,10 +250,11 @@ jobs:
                 # LES INSTRUMENTS DE MESURE (2026-11-20, audit « 100 000 », T8) : une réparation
                 # automatique ne modifie pas ce qui la juge. Sa preuve de guérison est le SILENCE
                 # du signal ; un filtre posé dans la télémétrie, le relais d'erreurs, la mesure de
-                # performance, la garde de version, le délestage ou l'enveloppe de `fetch` qui voit
-                # passer chaque envoi fabriquerait ce silence. Ces fichiers sont aussi au périmètre
+                # performance, la garde de version, le délestage ou l'enveloppe de `fetch` déjà posée
+                # sur chaque envoi fabriquerait ce silence. Ces fichiers sont aussi au périmètre
                 # critique plus bas (contre-revue humaine). La garde ferme le chemin DIRECT, pas
-                # tous : voir docs/SENTINELLE_AUTONOME.md (« ce que cette garde ne ferme pas »).
+                # tous — un autre fichier peut encore poser sa propre enveloppe ou un interrupteur :
+                # voir docs/SENTINELLE_AUTONOME.md (« ce que cette garde ne ferme pas »).
                 js/telemetry.js|js/platform.js|js/perf-ios.js|js/release-guard.js|js/reglages-distants.js|js/identity-transition.js) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
                 # Le verrou se limite au nommage `sentinelle-*` : `authz-critical` et ses aides reçoivent la
                 # clé de production au push, et une réparation automatique ne les touche pas (E-04).

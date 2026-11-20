@@ -112,7 +112,8 @@ envoi — pouvait fabriquer ce silence, puis s'auto-fusionner.
   refus est écrit sur l'issue, label `humain`.
 - Ils entrent au périmètre critique : toute PR, humaine comprise, exige la contre-revue ancrée sur le SHA.
 - Le corps de l'issue le dit à l'agent avant qu'il écrive (`corpsIssue`, `scripts/sentinelle-detecter.mjs`) :
-  si la cause est dans un instrument, la décrire en commentaire et laisser la main, sans ouvrir de PR.
+  si la cause est dans un instrument, c'est hors périmètre — la décrire et laisser la main, comme pour
+  toute cause hors périmètre. Il dit aussi le principe : un correctif supprime la cause, JAMAIS la mesure.
 - La politique d'automatisation le déclare (`exclus`, `supabase/functions/_shared/politique-autonomie.js`).
 - **Les trois listes sont tenues ensemble** par `tests/unit/politique-autonomie-executants.test.mjs` ⑥ :
   ce que la politique exclut est EXACTEMENT ce que `deploy.yml` écarte, AVANT le motif `js/*.js` (dans un
@@ -121,16 +122,22 @@ envoi — pouvait fabriquer ce silence, puis s'auto-fusionner.
 
 ⚠️ **`js/identity-transition.js` avait échappé au premier jet** — la contre-revue l'a trouvé. Il
 enveloppe `window.fetch` et reconnaît `/rest/v1/telemetry_events` ; `scripts/build.js` l'injecte en
-production juste après la télémétrie, et il est ABSENT de l'`index.html` de développement : aucune
-suite locale ne le charge. Trois lignes dans `observedFetch` auraient fait taire toute la télémétrie
-de production, depuis l'intérieur du périmètre autonome. **Chercher un instrument, c'est chercher qui
-se trouve sur le fil d'un envoi, pas qui porte « télémétrie » dans son nom.**
+production juste après la télémétrie, et il est ABSENT de l'`index.html` de développement : seules
+les suites qui construisent l'artefact le chargent (`deconnexion-artefact.spec.js`,
+`release-integrity.spec.js`). Un étouffement TOTAL des envois y rougirait la première ; un filtre
+SÉLECTIF (un message, un type d'événement) dans `observedFetch` serait passé inaperçu, depuis
+l'intérieur du périmètre autonome. **Chercher un instrument, c'est chercher qui se trouve sur le fil
+d'un envoi, pas qui porte « télémétrie » dans son nom.**
 
 ### ⚠️ Ce que cette garde ne ferme PAS
 
 Elle interdit de modifier six fichiers : le chemin DIRECT, et le plus naturel (ajouter un
 `refus_attendu` dans `telemetry.js`). Elle ne rend pas le silence infalsifiable. Depuis un fichier
 du périmètre, une ligne suffit encore :
+
+- **une enveloppe de `fetch` posée ailleurs** : la télémétrie envoie par le `fetch` global, et
+  n'importe quel fichier du périmètre peut l'envelopper à son tour. Exclure `identity-transition.js`
+  ferme cette enveloppe-là, pas la technique ;
 
 - **les interrupteurs globaux** `window.PASSIO_TELEMETRY_SAMPLE = 0` ou `PASSIO_TELEMETRY_DEFAULT_ON =
   false`, posés par un script en ligne d'`index.html` ou par un script chargé avant la télémétrie
@@ -145,26 +152,39 @@ Ce qui est bien fermé : retirer la balise de la télémétrie fait échouer le 
 l'instrument sous un autre nom dépasse la borne des 60 lignes. **Seule la contre-mesure après
 déploiement fermerait le reste** (T8-3 de l'audit : « vérifié sur N sessions » plutôt que le
 silence, sinon `humain`) — à faire. D'ici là, une issue `[SENTINELLE]` « déployée » dit qu'un
-correctif est en ligne, pas que le défaut a été revu guéri.
+correctif est en ligne, pas que le défaut a été revu guéri. La consigne de l'issue demande à l'agent
+de ne jamais faire taire la mesure : c'est une instruction, pas une garde.
 
 ### Conséquences à connaître
 
-- **Une enquête dont la cause est dans un instrument ne se répare plus seule.** Si l'agent ouvre quand
-  même une PR : refus écrit et `humain` aussitôt. S'il suit la consigne et s'arrête sans PR : l'issue
-  porte son commentaire, puis passe `humain` par le veilleur au bout de 6 h — elle occupe une des 3
-  places et compte dans le budget de 6 enquêtes par 24 h pendant ce temps (comportement d'avant le
-  lot, rendu plus fréquent).
+- **Une enquête dont la cause est dans un instrument ne se répare plus seule**, et ses deux issues ne
+  coûtent pas pareil :
+  - l'agent ouvre quand même une PR qui touche l'instrument → refus écrit sur l'issue et `humain`
+    AUSSITÔT ; la PR reste ouverte, à reprendre à la main ;
+  - l'agent suit la consigne et s'arrête sans PR → son run finit rouge (pas de branche ni de PR),
+    l'issue reçoit « ❌ Claude Code n'a pas exécuté cette tâche » à côté de son commentaire, le
+    veilleur relance l'enquête UNE fois à 20 min (un second run d'agent), puis la passe `humain` à
+    6 h. Pendant ces 6 h elle occupe une des 3 places ; elle compte dans le budget de 6 enquêtes par
+    24 h pendant 24 h (il se compte par date de création).
+  C'est le comportement de TOUTE cause hors périmètre (règle serveur, réparation trop large), pas une
+  nouveauté de ce lot — il le rend seulement plus fréquent. Y remédier (un `humain` immédiat quand
+  l'agent conclut « hors périmètre ») est un chantier de `claude-code.yml`, à part.
 - `js/platform.js` porte aussi l'invite d'installation de l'application : un défaut d'interface à cet
   endroit part désormais chez un humain. Coût accepté.
 - **La seconde chaîne, celle du poste** (`dashboard/server/repair.js`, `sentinel-production.js`), garde
   son ancienne liste blanche (`js/*.js`, `sw.js`). Une de ses PR qui toucherait un instrument est
-  arrêtée par le périmètre critique (contre-revue manquante), mais sans mot sur une issue. Elle est
-  éteinte sur le poste (`DASH_SENTINEL_REPAIR=off`) ; à aligner avant de la rallumer.
+  arrêtée par le périmètre critique (contre-revue manquante), mais sans mot sur une issue. ⚠️ Son
+  défaut dans le code est ACTIF (`DASH_SENTINEL_REPAIR !== "off"`) : qu'elle soit éteinte tient au
+  `.env` du poste, non versionné — le journal le note au 2026-09-18, le dépôt ne peut pas le
+  vérifier. Deux autres verrous la retiennent par défaut : `DASH_ALLOW_MUTATIONS=false` et
+  `DASH_SENTINEL_PRODUCTION=false` (`dashboard/.env.example`). À aligner avant de la rallumer.
 
 Verrou : `tests/unit/sentinelle-workflows.test.mjs` (gouvernance A6) — chaque instrument refusé à une
 réparation, refus ÉCRIT sur l'issue ; chaque instrument critique pour une PR humaine, accepté avec une
-contre-revue ancrée — et `politique-autonomie-executants.test.mjs` ⑥. Sept réinjections, toutes vues
+contre-revue ancrée — et `politique-autonomie-executants.test.mjs` ⑥. Neuf réinjections, toutes vues
 par au moins un des deux bancs (ligne retirée, un instrument retiré, instruments retirés du critique,
-un seul absent du critique, ligne déplacée après `js/*.js`, un absent de la politique, un absent de la
-consigne). ⚠️ La première version de l'assertion de périmètre ne vérifiait que l'échec du job : un
+un seul absent du critique, ligne déplacée après `js/*.js`, la même avec un commentaire recopié en
+leurre, un absent de la politique, un absent de la consigne, principe « jamais la mesure » retiré). ⑥ lit des LISTES dans le texte du workflow : une branche antérieure du `case` qui
+exempterait un instrument lui échappe — c'est `sentinelle-workflows`, qui EXÉCUTE le `case`, qui la voit.
+Les deux bancs vont ensemble. ⚠️ La première version de l'assertion de périmètre ne vérifiait que l'échec du job : un
 instrument sorti du périmètre restait refusé… par la seule contre-revue manquante, issue muette.
