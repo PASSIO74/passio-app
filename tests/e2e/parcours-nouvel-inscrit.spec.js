@@ -234,6 +234,15 @@ test.describe("④ lien de confirmation périmé", () => {
     await page.locator("#authResendTopBtn").click();
     await expect.poll(() => page.evaluate(() => window.__renvois.length)).toBe(1);
     expect(await page.evaluate(() => window.__renvois[0])).toMatchObject({ type: "signup", email: "nouvelle@exemple.test" });
+
+    // Retour à l'exploration : l'écran de connexion avait poussé SA propre entrée
+    // (#compte), qui masquait l'adresse d'arrivée. Le retour la rend : elle ne
+    // doit plus porter la réponse d'Auth — sans le nettoyage, revenir en
+    // arrière, puis recharger, rejouait le refus.
+    await page.locator("#frBackToExplore").click();
+    await expect(page.locator("#onboarding.active")).toHaveCount(0);
+    await page.waitForTimeout(600);   // le retour d'historique est asynchrone
+    expect(await page.evaluate(() => location.href)).not.toMatch(/error_code|error_description|error=/);
   });
 
   test("④ bis (paramètres de requête) même écran, même nettoyage", async ({ page }) => {
