@@ -49,7 +49,6 @@ async function remplir(page, annee) {
   if (annee !== undefined) await page.locator("#authBirthYear").fill(annee);
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
-  await page.locator("#authPasswordConfirm").fill("motdepasse123");
   await page.locator("#authConsent").click();
 }
 

@@ -380,10 +380,12 @@
           <div id="authPwdRefus" style="display:none;font-size:12px;line-height:1.45;margin-top:6px;"></div>
           <button type="button" id="authPwdSuggest" onclick="authProposerMotDePasse()" style="margin-top:6px;min-height:44px;padding:6px 0;background:none;border:none;font-size:12px;font-weight:800;color:var(--accent);text-decoration:underline;text-align:left;cursor:pointer;">🎲 Proposer un mot de passe</button>
         </div>
-        <label class="field" id="authPasswordConfirmWrap" style="display:none;">
-          <span>Confirmer le mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
-        </label>
+        <!-- PLUS DE « CONFIRMER LE MOT DE PASSE » (parcours du nouvel inscrit,
+             2026-11-20). 10 comptes sur 13 sont nés par ce formulaire, sur un
+             téléphone le plus souvent : taper deux fois le même mot de passe
+             était le cinquième champ à remplir. Le bouton 👁 montre ce qu'on a
+             tapé, « Proposer un mot de passe » l'écrit en clair, et « Mot de passe
+             oublié ? » rattrape une faute de frappe. -->
 
         <!-- Art. 13 RGPD : l'identité du responsable du traitement, AU MOMENT de la collecte
              (ASTRA-09). Rempli par switchAuthTab depuis js/legal-textes.js, en mode inscription seulement. -->

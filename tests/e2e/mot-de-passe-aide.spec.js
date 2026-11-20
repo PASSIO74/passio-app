@@ -53,7 +53,6 @@ async function soumettre(page, mdp) {
   await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill(mdp);
-  await page.locator("#authPasswordConfirm").fill(mdp);
   await page.locator("#authConsent").click();
   await page.locator("#authSubmitBtn").click();
 }
@@ -91,22 +90,21 @@ test("② les règles s'allument à la frappe, une par une", async ({ page }) =>
   expect(await lus()).toEqual(["✓", "✓", "✓"]);
 });
 
-test("③ « Proposer un mot de passe » remplit les DEUX champs, EN CLAIR", async ({ page }) => {
+test("③ « Proposer un mot de passe » remplit le champ, EN CLAIR", async ({ page }) => {
   await ouvrirInscription(page);
   await page.locator("#authPwdSuggest").click();
   const etat = await page.evaluate(() => ({
     a: document.getElementById("authPassword").value,
-    b: document.getElementById("authPasswordConfirm").value,
     ta: document.getElementById("authPassword").type,
-    tb: document.getElementById("authPasswordConfirm").type,
+    // Le champ de confirmation a quitté le formulaire le 2026-11-20 (parcours
+    // du nouvel inscrit) : il ne doit pas revenir par la bande.
+    confirmation: !!document.getElementById("authPasswordConfirm"),
     ok: motDePasseAccepte(document.getElementById("authPassword").value),
   }));
   expect(etat.a.length).toBeGreaterThan(8);
-  // Les deux champs, sinon « les mots de passe ne correspondent pas » juste après.
-  expect(etat.b).toBe(etat.a);
+  expect(etat.confirmation).toBe(false);
   // ⚠️ Un mot de passe proposé qu'on ne peut pas LIRE est un mot de passe perdu.
   expect(etat.ta).toBe("text");
-  expect(etat.tb).toBe("text");
   expect(etat.ok).toBe(true);
   // Et on dit qu'il faut le noter : c'est lui qu'il faudra retaper.
   await expect(page.locator("#authPwdRefus")).toBeVisible();

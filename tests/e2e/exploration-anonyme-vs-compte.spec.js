@@ -463,8 +463,6 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
       // français. Un mot de passe sans chiffre sortirait ici, et ce cas ne
       // mesurerait plus le câblage de propriété qui est son sujet.
       document.getElementById("authPassword").value = "motdepasse42";
-      const c = document.getElementById("authPasswordConfirm");
-      if (c) c.value = "motdepasse42";
       // Consentement aux CGU (2026-09-08) : sans lui, `onbDoAuth` refuse
       // l'inscription avant même d'atteindre le câblage mesuré ici.
       const cgu = document.getElementById("authConsent");
