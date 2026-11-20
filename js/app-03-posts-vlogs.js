@@ -128,8 +128,11 @@ async function sharePostInFeed(id) {
 const _likePending = new Set();
 
 // Les compteurs publics ne s'abonnent plus aux likes de TOUT le réseau.
-// Au plus trois HEAD exacts, séquentiels, par créneau ; aucune liste
-// d'identifiants n'est téléchargée (ni tronquée par max-rows).
+// Au plus trois cartes par créneau, lues en UN appel groupé `fil_compteurs`
+// (D14-01, 2026-11-20) ; trois HEAD exacts séquentiels seulement quand la
+// fonction est absente du projet. Aucune liste d'identifiants n'est téléchargée.
+// Un échec recule (`reculSurErreur`) et le retour au premier plan ne remet PAS
+// ce recul à zéro : seule une lecture réussie le fait.
 // ⚠️ LE CRÉNEAU RECULE QUAND RIEN NE BOUGE (2026-09-21) : 15 s tant qu'un
 // compteur change, puis ×1,5 par cycle sans changement (15 → 22,5 → 33,75 →
 // 50,6 → 60 s, plafond). Même politique que les deux filets
@@ -221,14 +224,21 @@ function _postLikeCadenceReveiller() {
   // Sans tirage : la phase initiale est le seul tirage d'étalement (verrou
   // « chacun leur échéance »), et le prochain tour retire son propre jitter.
   const plafond = Date.now() + POST_LIKE_REFRESH_MS + POST_LIKE_REFRESH_JITTER_MS;
-  if (_postLikeRefreshNextAt > plafond) _postLikeRefreshNextAt = plafond;
+  // Sous recul (D14-01), un réveil ne rapproche pas le rendez-vous : mon geste
+  // reste peint localement, la base en panne n'est pas relancée.
+  if (_postLikeRefreshNextAt > plafond && !_postLikeRefreshEchecs) _postLikeRefreshNextAt = plafond;
   _postLikeRefreshWake();
 }
 // Retour au premier plan, retour de bfcache, réseau revenu : on a manqué ce qui
-// s'est passé, on relit vite.
+// s'est passé, on relit vite — SAUF sous recul.
+// ⚠️ D14-01 (revérification du 2026-11-20) : le recul après échec était remis à
+// zéro ici, à chaque retour au premier plan et à chaque retour du réseau. Sous
+// une base saturée, basculer d'application suffisait à relancer la lecture au
+// rythme le plus vif. Seule une lecture RÉUSSIE remet le compte à zéro (fin de
+// `_postLikeRefreshTour`) ; tant qu'il tient, le rendez-vous n'est pas rapproché.
 function _postLikeRefreshReprise() {
-  if (!document.hidden && navigator.onLine !== false) _postLikeRefreshEchecs = 0;
   if (document.hidden) { _postLikeRefreshWake(); return; } // masquée : le réveil coupe le minuteur
+  if (_postLikeRefreshEchecs > 0) { _postLikeRefreshWake(); return; }
   _postLikeCadenceReveiller();
 }
 function _postLikeCopies(id) {
@@ -322,6 +332,64 @@ function _postLikeRefreshWake() {
   _postLikeRefreshDueAt = Date.now() + delay;
   _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
 }
+// La lecture groupée est-elle permise ? Oui, sauf fonction mémorisée absente
+// pour cette release (même autorité que le fil : `_filCompteursMemoAbsence`, app-08).
+function _postLikeGroupeDisponible() {
+  return typeof supa !== "undefined" && !!supa && typeof supa.rpc === "function"
+    && !(typeof _filCompteursMemoAbsence === "function" && _filCompteursMemoAbsence());
+}
+// UN appel `fil_compteurs` pour les cartes à l'écran. Rend :
+//   { counts: Map(id → nombre | null) } — null = valeur invalide (jamais un zéro) ;
+//   { absente: true } — PGRST202/42883, mémorisé comme pour le fil ;
+//   { error: true } — refus, délai (8 s), réseau, réponse illisible.
+// `aime` n'est pas lu : MON état reste local (intention, `supaSetPostLike`).
+async function _postLikeLireGroupe(ids) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    // POST, jamais GET : un identifiant peut porter une virgule (même règle que le fil).
+    let query = supa.rpc("fil_compteurs", { _post_ids: ids });
+    if (query && typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
+    const { data, error } = await query;
+    if (error) {
+      if (typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error)) {
+        if (typeof _filCompteursNoterAbsence === "function") _filCompteursNoterAbsence();
+        return { absente: true };
+      }
+      return { error: true };
+    }
+    if (!Array.isArray(data)) return { error: true };
+    const voulus = new Set(ids), counts = new Map();
+    data.forEach(function (row) {
+      if (!row || typeof row.post_id !== "string" || !voulus.has(row.post_id)) return;
+      counts.set(row.post_id, Number.isSafeInteger(row.likes) && row.likes >= 0 ? row.likes : null);
+    });
+    return { counts };
+  } catch (e) {
+    return { error: true };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+// Applique un compte lu à toutes les copies, si rien ne l'a périmé pendant la
+// lecture. Rend vrai si une copie a changé (cadence vive).
+function _postLikeAppliquerCompte(id, entry, version, count, identity, epoch) {
+  if (!_postLikeRefreshRunning || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch
+      || _postLikeRefreshEntries.get(id) !== entry || entry.pending || entry.version !== version
+      || !_postLikeVisibleIds().includes(id)) {
+    window._postLikeRefreshStats.discarded++;
+    return false;
+  }
+  const copies = _postLikeCopies(id);
+  let change = false;
+  if (copies.some(function (post) { return post.likes !== count; })) { change = true; window._postLikeRefreshStats.changed++; }
+  copies.forEach(function (post) { post.likes = count; }); // MON liked reste local
+  entry.version++;
+  const post = copies[0];
+  if (post) _paintPostLike(id, !!post.liked || (state.user.likedPosts || []).includes(id), count, null, false);
+  window._postLikeRefreshStats.updated++;
+  return change;
+}
 async function _postLikeRefreshTour() {
   _postLikeRefreshTimer = null;
   if (!_postLikeRefreshRunning || _postLikeRefreshBusy || document.hidden) return;
@@ -346,7 +414,40 @@ async function _postLikeRefreshTour() {
     // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
     let vivant = candidates.some(item => !item.entry.checkedAt);
     let lus = 0, echoues = 0;
-    for (const { id, entry } of candidates) {
+    // D14-01 (2026-11-20) : UN appel groupé `fil_compteurs` pour les cartes à
+    // l'écran, au lieu d'un `HEAD count=exact` par carte. Le HEAD passe la règle
+    // de lecture de `post_likes` LIGNE PAR LIGNE (`post_is_visible` par « j'aime ») :
+    // sur une publication populaire, son coût suivait le nombre de « j'aime ». La
+    // fonction ne contrôle la visibilité qu'une fois par publication. Le HEAD ne
+    // reste que quand la fonction n'existe pas sur le projet (`_filCompteursMemoAbsence`).
+    let groupe = _postLikeGroupeDisponible();
+    if (groupe) {
+      const lot = candidates.filter(item => !item.entry.pending);
+      const versions = new Map(lot.map(item => [item.id, item.entry.version]));
+      lot.forEach(item => { item.entry.checkedAt = Date.now(); }); // rotation, même sur erreur
+      window._postLikeRefreshStats.reads += lot.length;
+      window._postLikeRefreshStats.groupes = (window._postLikeRefreshStats.groupes || 0) + 1;
+      const res = lot.length ? await _postLikeLireGroupe(lot.map(item => item.id)) : { counts: new Map() };
+      if (res.absente) {
+        groupe = false; // fonction absente : le chemin HEAD ci-dessous, pour ce tour
+        lot.forEach(item => { item.entry.checkedAt = 0; });
+        window._postLikeRefreshStats.reads -= lot.length; // le chemin HEAD les compte
+      } else if (res.error) {
+        window._postLikeRefreshStats.errors++;
+        vivant = true; // une erreur n'est pas une absence de changement
+        echoues++;
+      } else {
+        for (const { id, entry } of lot) {
+          if (!res.counts.has(id)) continue; // non rendue (invisible, retirée) : rien de prouvé
+          const count = res.counts.get(id);
+          if (count === null) { window._postLikeRefreshStats.errors++; vivant = true; echoues++; continue; }
+          lus++;
+          const change = _postLikeAppliquerCompte(id, entry, versions.get(id), count, identity, epoch);
+          if (change) vivant = true;
+        }
+      }
+    }
+    for (const { id, entry } of (groupe ? [] : candidates)) {
       if (!_postLikeRefreshRunning || navigator.onLine === false || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch || !_postLikeVisibleIds().includes(id)) break;
       if (entry.pending) continue;
       const version = entry.version;
@@ -371,19 +472,7 @@ async function _postLikeRefreshTour() {
         break;
       }
       lus++;
-      if (!_postLikeRefreshRunning || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch
-          || _postLikeRefreshEntries.get(id) !== entry || entry.pending || entry.version !== version
-          || !_postLikeVisibleIds().includes(id)) {
-        window._postLikeRefreshStats.discarded++;
-        continue;
-      }
-      const copies = _postLikeCopies(id);
-      if (copies.some(function (post) { return post.likes !== result.count; })) { vivant = true; window._postLikeRefreshStats.changed++; }
-      copies.forEach(function (post) { post.likes = result.count; }); // MON liked reste local
-      entry.version++;
-      const post = copies[0];
-      if (post) _paintPostLike(id, !!post.liked || (state.user.likedPosts || []).includes(id), result.count, null, false);
-      window._postLikeRefreshStats.updated++;
+      if (_postLikeAppliquerCompte(id, entry, version, result.count, identity, epoch)) vivant = true;
     }
     // Le pas du PROCHAIN créneau se décide sur ce que ce tour a vu ; le
     // rendez-vous posé en tête de tour est recalé avec le même jitter. Un

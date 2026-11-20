@@ -13,9 +13,9 @@ const { bootOnboarded } = require("./app-helper");
 //   · la carte affiche le compte EXACT (7) alors que deux aperçus sont chargés ;
 //   · fonction absente (PGRST202) : repli sur les lectures d'avant, mémorisé
 //     pour la session — un seul essai, jamais un par page ;
-//   · erreur passagère : les lectures d'avant pour CETTE page (des compteurs
-//     justes valent quatre lectures de plus), trois échecs consécutifs → plus
-//     d'essai de la session, rien de mémorisé ;
+//   · erreur passagère (D14-01, 2026-11-20) : AUCUNE lecture d'avant, les
+//     compteurs affichés sont conservés, la fonction est retentée après un recul
+//     exponentiel avec gigue ; jamais de bascule de session, rien de mémorisé ;
 //   · la discussion se charge par pages de 30, les plus récents d'abord, avec
 //     un curseur `(created_at, id)` et un bouton « précédents · N restants » ;
 //   · mes commentaires EN ATTENTE (`_pending`), un commentaire reçu en direct
@@ -185,24 +185,47 @@ test("fonction absente (PGRST202) : repli sur les lectures d'avant, mémorisé p
 });
 
 for (const mode of ["erreur", "reseau"]) {
-  test("erreur passagère (" + mode + ") : lectures d'avant pour cette page, compteurs justes, la page suivante réessaie", async ({ page }) => {
-    await preparer(page, { rpcMode: mode });
-    const r = await page.evaluate(async () => {
+  // D14-01 (revérification du 2026-11-20) : une erreur de CHARGE n'est pas une
+  // absence. Avant, elle repliait sur les lectures d'avant (post_likes sans
+  // limite, post_comments, comment_interactions) — le chemin coûteux, au moment
+  // même où la base sature. Désormais : compteurs affichés conservés, aucune
+  // autre lecture, et la fonction n'est retentée qu'après un recul.
+  test("erreur passagère (" + mode + ") : compteurs conservés, aucune lecture d'avant, recul avant le nouvel essai", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async (mode) => {
+      Math.random = () => 0.5;
+      state.supabasePosts = await supaLoadPosts(); // lecture saine : 12 « j'aime », 45 commentaires
+      __rpcMode = mode; __lectures.length = 0;
+      const seqAvant = window._filComplementsDegradesSeq;
       const a = await supaLoadPosts();
       const p0 = a.find((p) => p.id === "fil_00");
-      const tables1 = __lectures.map((q) => q.table);
+      const tables1 = __lectures.map((q) => q.table), rpc1 = __rpc.length;
+      const attente = Math.round((_filCompteursProchainEssai - Date.now()) / 1000) * 1000;
+      state.supabasePosts = a;
       __rpcMode = "ok"; __lectures.length = 0;
-      const b = await supaLoadPosts();
+      const b = await supaLoadPosts(); // recul en cours : pas d'essai
+      const rpc2 = __rpc.length, tables2 = __lectures.map((q) => q.table);
       const q0 = b.find((p) => p.id === "fil_00");
-      return { n: a.length, tables1, rpc: __rpc.length, memo: sessionStorage.getItem("passio_fil_compteurs_absente"),
-        avant: { likes: p0.likes, total: p0.commentsTotal, nb: p0.comments.length }, apres: { likes: q0.likes, total: q0.commentsTotal, tables: __lectures.map((q) => q.table) } };
-    });
+      _filCompteursProchainEssai = 0; __lectures.length = 0; // le recul est écoulé
+      const c = await supaLoadPosts();
+      const s0 = c.find((p) => p.id === "fil_00");
+      return { n: a.length, tables1, rpc1, rpc2, tables2, attente, degrades: window._filComplementsDegradesSeq - seqAvant,
+        memo: sessionStorage.getItem("passio_fil_compteurs_absente"),
+        pendant: { likes: p0.likes, liked: p0.liked, total: p0.commentsTotal, apercus: p0.comments.length, reactions: p0.reactions.length },
+        recul: { likes: q0.likes, total: q0.commentsTotal },
+        apres: { rpc: __rpc.length, likes: s0.likes, total: s0.commentsTotal, echecs: _filCompteursEchecs, tables: __lectures.map((q) => q.table) } };
+    }, mode);
     expect(r.n).toBe(20);
-    expect(r.tables1).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles", "comment_interactions"]);
-    expect(r.rpc).toBe(2);
+    expect(r.tables1).toEqual(["posts"]); // ni post_likes, ni post_comments, ni comment_interactions
+    expect(r.rpc1).toBe(2);
+    expect(r.pendant).toEqual({ likes: 12, liked: true, total: 45, apercus: 2, reactions: 1 });
+    expect(r.attente).toBe(30000); // reculSurErreur(15 s, 1, gigue au milieu)
+    expect(r.rpc2).toBe(2);
+    expect(r.tables2).toEqual(["posts"]);
+    expect(r.recul).toEqual({ likes: 12, total: 45 });
+    expect(r.degrades).toBe(2);
     expect(r.memo).toBeNull();
-    expect(r.avant).toEqual({ likes: 12, total: undefined, nb: 45 });
-    expect(r.apres).toEqual({ likes: 12, total: 45, tables: ["posts", "comment_interactions"] });
+    expect(r.apres).toEqual({ rpc: 3, likes: 12, total: 45, echecs: 0, tables: ["posts", "comment_interactions"] });
   });
 }
 
@@ -465,25 +488,28 @@ test("une page en erreur ne laisse pas le squelette : les aperçus restent, le b
   expect(r).toEqual({ squelette: false, lignes: 1, affiche: 1, suiteGardee: true, chargesGardes: 30, boutonGarde: true });
 });
 
-test("trois erreurs consécutives de la fonction : plus d'essai de la session, lectures d'avant, rien de mémorisé", async ({ page }) => {
+test("échecs consécutifs : le recul double, et la session ne bascule JAMAIS sur les lectures d'avant", async ({ page }) => {
   await preparer(page, { rpcMode: "erreur" });
   const r = await page.evaluate(async () => {
-    await supaLoadPosts(); await supaLoadPosts(); await supaLoadPosts(); // 3 échecs, chacun replié
-    __lectures.length = 0;
-    const c = await supaLoadPosts(); // 4ᵉ page : plus d'essai
+    Math.random = () => 0.5;
+    const attentes = [];
+    for (let i = 0; i < 4; i++) {
+      _filCompteursProchainEssai = 0; // chaque essai attend la fin du recul précédent
+      await supaLoadPosts();
+      attentes.push(Math.round((_filCompteursProchainEssai - Date.now()) / 1000) * 1000);
+    }
+    const tables = __lectures.map((q) => q.table);
+    __rpcMode = "ok"; _filCompteursProchainEssai = 0; __lectures.length = 0;
+    const c = await supaLoadPosts();
     const p = c.find((x) => x.id === "fil_00");
-    const tables4 = __lectures.map((q) => q.table);
-    __rpcMode = "ok"; __lectures.length = 0;
-    await supaLoadPosts(); // même une fonction revenue n'est plus tentée dans cette session
-    return { rpc: __rpc.length, tables4, memo: sessionStorage.getItem("passio_fil_compteurs_absente"),
-      likes: p.likes, nb: p.comments.length, tables5: __lectures.map((x) => x.table) };
+    return { rpc: __rpc.length, attentes, legacy: tables.filter((t) => t !== "posts"),
+      memo: sessionStorage.getItem("passio_fil_compteurs_absente"), likes: p.likes, total: p.commentsTotal, echecs: _filCompteursEchecs };
   });
-  expect(r.rpc).toBe(3);
-  expect(r.tables4).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "comment_interactions"]);
+  expect(r.attentes).toEqual([30000, 60000, 120000, 240000]);
+  expect(r.legacy).toEqual([]);
+  expect(r.rpc).toBe(5); // la fonction revenue est retentée, pas abandonnée pour la session
   expect(r.memo).toBeNull();
-  expect(r.likes).toBe(12);
-  expect(r.nb).toBe(45);
-  expect(r.tables5).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "comment_interactions"]);
+  expect({ likes: r.likes, total: r.total, echecs: r.echecs }).toEqual({ likes: 12, total: 45, echecs: 0 });
 });
 
 test("la clé de mémorisation est l'identifiant de build, jamais « [object Object] »", async ({ page }) => {
