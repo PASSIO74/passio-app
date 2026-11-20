@@ -340,8 +340,11 @@ function _postLikeGroupeDisponible() {
 }
 // UN appel `fil_compteurs` pour les cartes à l'écran. Rend :
 //   { counts: Map(id → nombre | null) } — null = valeur invalide (jamais un zéro) ;
-//   { absente: true } — PGRST202/42883, mémorisé comme pour le fil ;
-//   { error: true } — refus, délai (8 s), réseau, réponse illisible.
+//   { absente: true } — PGRST202/42883, ou erreur DURABLE (4xx, 42501,
+//     PGRST203… : `_filCompteursErreurDeCharge`, app-08), mémorisé comme pour le fil ;
+//   { error: true } — charge : délai (8 s), 5xx, 57014, réseau, réponse illisible.
+// Le recul est PARTAGÉ avec le fil (contre-revue du 2026-11-20) : un échec de
+// charge le pose (`_filCompteursNoterEchec`), un succès le lève pour les deux.
 // `aime` n'est pas lu : MON état reste local (intention, `supaSetPostLike`).
 async function _postLikeLireGroupe(ids) {
   const controller = new AbortController();
@@ -350,15 +353,19 @@ async function _postLikeLireGroupe(ids) {
     // POST, jamais GET : un identifiant peut porter une virgule (même règle que le fil).
     let query = supa.rpc("fil_compteurs", { _post_ids: ids });
     if (query && typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
-    const { data, error } = await query;
+    const { data, error, status } = await query;
     if (error) {
-      if (typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error)) {
+      const absente = typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error);
+      const durable = !absente && typeof _filCompteursErreurDeCharge === "function" && !_filCompteursErreurDeCharge(error, status);
+      if (absente || durable) {
         if (typeof _filCompteursNoterAbsence === "function") _filCompteursNoterAbsence();
         return { absente: true };
       }
+      _postLikeNoterEchecPartage();
       return { error: true };
     }
-    if (!Array.isArray(data)) return { error: true };
+    if (!Array.isArray(data)) { _postLikeNoterEchecPartage(); return { error: true }; }
+    if (typeof _filCompteursNoterSucces === "function") _filCompteursNoterSucces();
     const voulus = new Set(ids), counts = new Map();
     data.forEach(function (row) {
       if (!row || typeof row.post_id !== "string" || !voulus.has(row.post_id)) return;
@@ -366,10 +373,14 @@ async function _postLikeLireGroupe(ids) {
     });
     return { counts };
   } catch (e) {
+    _postLikeNoterEchecPartage();
     return { error: true };
   } finally {
     clearTimeout(timeout);
   }
+}
+function _postLikeNoterEchecPartage() {
+  try { if (typeof _filCompteursNoterEchec === "function") _filCompteursNoterEchec("compteurs des cartes"); } catch (e) {}
 }
 // Applique un compte lu à toutes les copies, si rien ne l'a périmé pendant la
 // lecture. Rend vrai si une copie a changé (cadence vive).
@@ -406,6 +417,14 @@ async function _postLikeRefreshTour() {
       .sort((a, b) => a.entry.checkedAt - b.entry.checkedAt)
       .slice(0, POST_LIKE_REFRESH_MAX_POSTS);
     if (!candidates.length) return;
+    // Recul PARTAGÉ avec le fil (contre-revue du 2026-11-20) : tant que la
+    // fonction recule, les cartes ne l'appellent pas non plus — rendez-vous à la
+    // fin du recul, sans compter d'échec (aucun appel n'est parti).
+    if (_postLikeGroupeDisponible() && typeof _filCompteursEnRecul === "function" && _filCompteursEnRecul()) {
+      _postLikeRefreshNextAt = Math.max(_postLikeRefreshNextAt, _filCompteursProchainEssai);
+      window._postLikeRefreshStats.reculPartage = (window._postLikeRefreshStats.reculPartage || 0) + 1;
+      return;
+    }
     queried = true;
     const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
     const debutTour = Date.now(), jitter = Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);

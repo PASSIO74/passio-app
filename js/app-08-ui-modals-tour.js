@@ -6240,7 +6240,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
 // Tant que la fonction n'est pas en base (PGRST202), on retombe sur les lectures
 // d'avant et on le MÉMORISE pour la release : un seul 404 par session, jamais un
 // par page.
-// ⚠️ TOUTE AUTRE ERREUR N'EST PAS UNE ABSENCE (D14-01, revérification du
+// ⚠️ UNE ERREUR DE CHARGE N'EST PAS UNE ABSENCE (D14-01, revérification du
 // 2026-11-20). Jusque-là, un délai, un 503 ou un refus retombait AUSSI sur les
 // lectures d'avant pour la page — trois lectures sous RLS, contrôle par ligne,
 // `post_likes` sans limite — et, après trois échecs, toute la session y passait.
@@ -6251,6 +6251,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
 // ne relit RIEN d'autre, et la fonction n'est retentée qu'après un recul
 // exponentiel avec gigue (`reculSurErreur`, app-02). Le filet du fil compte ce
 // tour comme un échec (`_filComplementsDegradesSeq`) et recule lui aussi.
+// Une erreur DURABLE (4xx, 42501, PGRST203…) n'est pas une charge : elle prend
+// le chemin d'avant comme une absence (`_filCompteursErreurDeCharge`).
 const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
 // Nombre d'aperçus de commentaires que la carte du fil peint (`renderPostHTML`,
 // app-02 : `slice(0, 2)`) — ceux dont `supaLoadPosts` lit les interactions.
@@ -6260,8 +6262,8 @@ const FIL_APERCUS_PEINTS = 2;
 const FIL_COMPTEURS_RECUL_BASE_MS = 15000;
 let _filCompteursEchecs = 0;          // échecs consécutifs (hors « absente »)
 let _filCompteursProchainEssai = 0;   // Date.now() avant lequel on ne retente pas
-// Compte MONOTONE des pages servies sans compléments frais (échec ou attente du
-// recul) : le filet du fil le relit avant et après son tour pour savoir s'il a
+// Compte MONOTONE des appels `fil_compteurs` réellement partis et en échec
+// (l'attente du recul n'en est pas un) : le filet du fil le relit avant et après son tour pour savoir s'il a
 // été dégradé, sans qu'une exception fasse perdre les publications lues.
 window._filComplementsDegradesSeq = 0;
 // `reactionsLues` (RV-39) : la liste `reactions` est-elle la réponse du serveur ?
@@ -6304,6 +6306,37 @@ function _erreurFonctionAbsente(err) {
   if (err.code === "PGRST202" || err.code === "42883") return true;
   return /could not find the function/i.test(String(err.message || ""));
 }
+// ⚠️ UNE ERREUR DURABLE N'EST PAS UNE CHARGE (contre-revue du 2026-11-20). Seule
+// une erreur de CHARGE justifie de reculer en gardant les compteurs : réseau ou
+// délai (aucun code), 5xx/408/429 sans code, 57014 (délai de requête), classes
+// 53 (ressources), 08 (connexion), 40 (sérialisation), PGRST000-003 (pool,
+// connexion). Tout autre code ou 4xx — 42501 après un droit retiré, PGRST203
+// (surcharge ambiguë), 42703… — ne se règle pas en attendant : reculer « sans
+// repli » figeait le fil à 0 pour toute publication neuve, indéfiniment, et
+// faisait monter le filet du fil à 10 min. Une erreur durable se traite donc
+// comme une absence : chemin d'avant, mémorisé pour l'heure (TTL ci-dessus).
+function _filCompteursErreurDeCharge(err, status) {
+  if (!err) return true;
+  var code = (typeof err.code === "string") ? err.code : "";
+  if (code) return code === "57014" || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code);
+  var st = Number(status != null ? status : err.status);
+  if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 408 && st !== 429) return false;
+  return true;
+}
+// ⚠️ UN SEUL RECUL POUR LA FONCTION, QUEL QUE SOIT L'APPELANT (contre-revue du
+// 2026-11-20). Le fil (`_chargerComplementsFil`) et les cartes (app-03,
+// `_postLikeLireGroupe`) appellent la même fonction : chacun tapait la fonction
+// saturée sur son propre calendrier, et un succès de l'un ne levait pas le
+// recul de l'autre. Ils lisent et écrivent désormais le même état ; une rafale
+// d'échecs concurrents (fil, profil et Bobines au démarrage) ne compte qu'UN
+// échec par fenêtre de recul.
+function _filCompteursEnRecul() {
+  return _filCompteursEchecs > 0 && Date.now() < _filCompteursProchainEssai;
+}
+function _filCompteursNoterSucces() {
+  _filCompteursEchecs = 0;
+  _filCompteursProchainEssai = 0;
+}
 async function _chargerComplementsFil(postIds) {
   const parPost = new Map();
   const ids = [...new Set((postIds || []).filter(Boolean))];
@@ -6313,13 +6346,15 @@ async function _chargerComplementsFil(postIds) {
   // SDK réel) : jamais sur une erreur de charge.
   const legacy = !window._supaReal || _filCompteursMemoAbsence();
   if (!legacy) {
-    // Recul en cours : aucune lecture des compteurs, ceux affichés restent.
-    if (_filCompteursEchecs > 0 && Date.now() < _filCompteursProchainEssai) return _complementsFilEnEchec(out);
+    // Recul en cours (partagé avec les cartes) : aucune lecture des compteurs,
+    // ceux affichés restent. L'ATTENTE n'est pas un échec du filet : aucun appel
+    // n'est parti (seul un appel réellement en échec le fait reculer).
+    if (_filCompteursEnRecul()) return _complementsFilEnEchec(out, false);
     try {
       // POST, jamais GET : un identifiant de publication est un texte choisi par
       // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
       // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
-      const { data, error } = await supa.rpc("fil_compteurs", { _post_ids: ids });
+      const { data, error, status } = await supa.rpc("fil_compteurs", { _post_ids: ids });
       if (!error && Array.isArray(data)) {
         data.forEach(function (row) {
           if (!row || !row.post_id) return;
@@ -6336,7 +6371,7 @@ async function _chargerComplementsFil(postIds) {
             reactionsLues: Array.isArray(row.reactions),
           });
         });
-        _filCompteursEchecs = 0;
+        _filCompteursNoterSucces();
         out.source = "rpc";
         out.auteursApercus = [].concat(...Array.from(parPost.values()).map(function (c) { return c.apercus.map(function (a) { return a.author_id; }); }));
         return out;
@@ -6346,15 +6381,25 @@ async function _chargerComplementsFil(postIds) {
         diagLog("fil_compteurs: fonction absente sur ce projet, repli sur les lectures d'avant pour la session");
         return _chargerComplementsFilLegacy(ids, out);
       }
+      if (error && !_filCompteursErreurDeCharge(error, status)) {
+        // Erreur durable (droit retiré, surcharge ambiguë…) : attendre ne la
+        // règle pas. Chemin d'avant, mémorisé pour l'heure comme une absence.
+        _filCompteursNoterAbsence();
+        diagLog("fil_compteurs: erreur durable " + String(error.code || status || "") + ", repli sur les lectures d'avant pour l'heure");
+        return _chargerComplementsFilLegacy(ids, out);
+      }
       _filCompteursNoterEchec((error && error.message) || "réponse invalide");
     } catch (e) {
       _filCompteursNoterEchec(e && e.message);
     }
-    return _complementsFilEnEchec(out);
+    return _complementsFilEnEchec(out, true);
   }
   return _chargerComplementsFilLegacy(ids, out);
 }
 function _filCompteursNoterEchec(motif) {
+  // Un échec arrivé PENDANT une fenêtre de recul (appel concurrent parti avant
+  // le premier échec) ne compte pas : une rafale vaut un échec, pas n.
+  if (_filCompteursEnRecul()) return;
   _filCompteursEchecs++;
   const attente = (typeof reculSurErreur === "function")
     ? reculSurErreur(FIL_COMPTEURS_RECUL_BASE_MS, _filCompteursEchecs, Math.random())
@@ -6364,10 +6409,12 @@ function _filCompteursNoterEchec(motif) {
 }
 // Une page servie SANS compléments frais : `supaLoadPosts` reprend, publication
 // par publication, ce que la copie précédente portait (`_complementConserve`).
-function _complementsFilEnEchec(out) {
+// `appelEchoue` : un appel est réellement parti et a échoué — seul cas compté
+// pour le filet du fil (`_filComplementsDegradesSeq`).
+function _complementsFilEnEchec(out, appelEchoue) {
   out.source = "echec";
   out.auteursApercus = [];
-  window._filComplementsDegradesSeq = (window._filComplementsDegradesSeq || 0) + 1;
+  if (appelEchoue) window._filComplementsDegradesSeq = (window._filComplementsDegradesSeq || 0) + 1;
   return out;
 }
 // Les compléments d'une publication quand la lecture a échoué : ceux de sa copie
@@ -8566,6 +8613,19 @@ async function supaLoadMyConversations() {
       // depuis `conv_reads`, la même source que le ✓✓ de `supaLoadOtherRead`.
       supa.from("conv_reads").select("conv_id,last_read_at").eq("user_id", MY_UID).in("conv_id", convIds),
     ]);
+    // ⚠️ UNE SOUS-LECTURE EN ÉCHEC NE FABRIQUE PAS D'ENTRÉES (contre-revue du
+    // 2026-11-20). Messages, membres ou accusés illisibles donnaient des
+    // conversations sans aperçu, à 0 non-lu (ou tout non-lu), au partenaire mal
+    // résolu — qui REMPLAÇAIENT la copie locale au démarrage et l'écrasaient au
+    // réveil. La lecture serveur est alors abandonnée : `[]` = garder le local
+    // (`_rafraichirConversationsServeur`), le prochain réveil retente.
+    const sousLectureEnEchec = [msgsRes, membersRes, readsRes].some(function (res) {
+      return !res || !!res.error;
+    });
+    if (sousLectureEnEchec) {
+      try { if (typeof diagLog === "function") diagLog("conv_liste_sous_lecture_echec : liste locale conservee"); } catch (_e) {}
+      return [];
+    }
     const lignesMsgs = _lignesConv(msgsRes).filter(function (m) { return m.content == null || typeof m.content === "string"; });
     const lignesMembres = _lignesConv(membersRes);
     const luJusquA = {};
@@ -8827,6 +8887,15 @@ async function _handleIncomingConvMessage(r, opts) {
   // `tronque: true` et l'`id`. On relit la ligne complète par l'API — jamais le
   // contenu tronqué affiché comme s'il était entier. Ancien format (sans
   // drapeau) : inchangé, le client part AVANT la migration.
+  // ⚠️ SEULEMENT SUR `user:<moi>` (contre-revue du 2026-11-20) : aucun client ne
+  // peut y émettre. Sur `conv:<id>`, tout membre émet : relire l'identifiant
+  // qu'il désigne rendait authentique un ANCIEN contrôle (react, del) d'un autre
+  // membre, et chaque charge forgée coûtait une lecture par abonné. Le serveur
+  // n'y émet jamais de drapeau : une telle charge est jetée.
+  if (_diffusionTronquee(r) && _diffusionMembre) {
+    try { diagLog("msg_tronque_jete : drapeau sur un canal ou tout membre emet"); } catch (e) {}
+    return;
+  }
   if (_diffusionTronquee(r) && !(opts && opts.relu)) return _relireMessageTronque(r, opts);
   // Preuve de livraison cross-device : ce message vient d'un AUTRE appareil.
   try { window.tel && tel.recv("message", { convId: r.conv_id }); } catch (e) {}
@@ -9007,18 +9076,24 @@ window._handleIncomingConvMessage = _handleIncomingConvMessage;
 
 // ── Diffusion tronquée d'un message (D10-01, client prêt AVANT la migration) ──
 // Contrat proposé au lot base : la charge diffusée porte `tronque: true` et l'`id`
-// du message (dans `record`, ou au niveau de la charge — les deux sont acceptés
-// par les gestionnaires de `user:` et `conv:`). Le client relit `conv_messages`
+// du message (dans `record`, ou au niveau de la charge), sur `user:<membre>`
+// SEULEMENT — sur `conv:<id>`, où tout membre émet, la charge est jetée
+// (contre-revue du 2026-11-20). Le client relit `conv_messages`
 // par identifiant, sous SA règle de lecture (membre de la conversation), puis
 // traite la ligne SERVEUR comme un message reçu : son `from_id` est prouvé.
-// Bornes, parce qu'une charge `conv:<id>` peut être forgée par un membre :
+// Bornes :
 //   · une relecture par identifiant à la fois, et jamais deux fois le même ;
-//   · au plus MSG_RELECTURE_MAX_MIN relectures par minute (au-delà : jetée, le
-//     prochain chargement de la conversation la rattrape) ;
+//   · au plus MSG_RELECTURE_MAX_MIN relectures par minute, et
+//     MSG_RELECTURE_MAX_MIN_CONV par conversation (au-delà : pas de bulle, mais
+//     la pastille non lue ; le prochain chargement apporte le contenu) ;
 //   · une ligne d'une AUTRE conversation que celle annoncée est jetée ;
 //   · un échec est retenté UNE fois, après MSG_RELECTURE_RETRY_MS — puis
-//     abandonné (jamais le contenu tronqué peint comme entier).
-var MSG_RELECTURE_MAX_MIN = 30;
+//     abandonné (jamais le contenu tronqué peint comme entier ; pastille seule).
+var MSG_RELECTURE_MAX_MIN = 60;
+// Budget PAR CONVERSATION (contre-revue du 2026-11-20) : un membre qui envoie
+// beaucoup de longs messages dans un groupe ne consomme plus le budget des
+// autres conversations.
+var MSG_RELECTURE_MAX_MIN_CONV = 20;
 var MSG_RELECTURE_RETRY_MS = 3000;
 var _msgRelecturesEnCours = new Set();
 var _msgRelecturesFaites = new Set();
@@ -9026,19 +9101,46 @@ var _msgRelecturesFenetre = [];
 function _diffusionTronquee(r) {
   return !!r && r.tronque === true;
 }
-function _msgRelectureAutorisee(id) {
+// Rend "ok", "deja" (en cours ou faite) ou "budget" (hors budget).
+function _msgRelectureAutorisee(id, convId) {
   var maintenant = Date.now();
-  _msgRelecturesFenetre = _msgRelecturesFenetre.filter(function (t) { return maintenant - t < 60000; });
-  if (_msgRelecturesFenetre.length >= MSG_RELECTURE_MAX_MIN) return false;
-  if (_msgRelecturesEnCours.has(id) || _msgRelecturesFaites.has(id)) return false;
-  _msgRelecturesFenetre.push(maintenant);
-  return true;
+  _msgRelecturesFenetre = _msgRelecturesFenetre.filter(function (e) { return maintenant - e.t < 60000; });
+  if (_msgRelecturesEnCours.has(id) || _msgRelecturesFaites.has(id)) return "deja";
+  if (_msgRelecturesFenetre.length >= MSG_RELECTURE_MAX_MIN) return "budget";
+  var cle = String(convId);
+  if (_msgRelecturesFenetre.filter(function (e) { return e.c === cle; }).length >= MSG_RELECTURE_MAX_MIN_CONV) return "budget";
+  _msgRelecturesFenetre.push({ t: maintenant, c: cle });
+  return "ok";
+}
+// Message annoncé mais pas relu (hors budget, relecture en échec) : pas de
+// bulle — jamais le contenu tronqué — mais la conversation remonte avec sa
+// pastille non lue, et le contenu arrive au prochain chargement. Seulement pour
+// une conversation CONNUE (aucune n'est créée ici), et une fois par message.
+var _msgSignalesSansContenu = new Set();
+function _signalerMessageNonRelu(r) {
+  try {
+    if (!r || typeof r.id !== "string" || _msgSignalesSansContenu.has(r.id)) return;
+    var convs = getConversations();
+    var conv = convs.find(function (c) { return c && c.id === r.conv_id; });
+    if (!conv || (conv.messages || []).some(function (m) { return m && m.id === r.id; })) return;
+    _msgSignalesSansContenu.add(r.id);
+    if (_msgSignalesSansContenu.size > 500) _msgSignalesSansContenu.delete(_msgSignalesSansContenu.values().next().value);
+    var at = supaTs(r.created_at) || Date.now();
+    if (!(conv.lastAt >= at)) conv.lastAt = at;
+    if (window._openedConvId !== conv.id) conv.unread = (conv.unread || 0) + 1;
+    conversationsState = convs;
+    saveConversations();
+    try { renderMessages(); } catch (e) {}
+    try { renderMsgBadge(); } catch (e) {}
+  } catch (e) {}
 }
 async function _relireMessageTronque(r, opts) {
   var id = r && r.id;
   if (typeof id !== "string" || !id || id.length > 200 || typeof supa === "undefined" || !supa) return;
-  if (!_msgRelectureAutorisee(id)) {
+  var autorisation = _msgRelectureAutorisee(id, r.conv_id);
+  if (autorisation !== "ok") {
     try { diagLog("msg_tronque_ignore : relecture deja faite, en cours ou hors budget"); } catch (e) {}
+    if (autorisation === "budget") _signalerMessageNonRelu(r);
     return;
   }
   _msgRelecturesEnCours.add(id);
@@ -9067,6 +9169,7 @@ async function _relireMessageTronque(r, opts) {
       }
     }
     try { diagLog("msg_tronque_echec : relecture impossible, rattrapee au prochain chargement"); } catch (e) {}
+    _signalerMessageNonRelu(r);
   } finally {
     _msgRelecturesEnCours.delete(id);
   }
@@ -9083,6 +9186,8 @@ function _subscribePrivateConv(convId) {
     .on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
       var r = p && (p.record || p.new || p); // selon le format broadcast_changes
+      // Un drapeau `tronque` (dans `record` ou au niveau de la charge) n'est
+      // jamais honoré ici : `_handleIncomingConvMessage` jette la charge.
       if (r && r !== p && p.tronque === true && r.tronque !== true) r = Object.assign({}, r, { tronque: true });
       // ⚠️ `passio_rt_emettre` laisse tout MEMBRE diffuser sur `conv:<id>` :
       // cette charge n'est pas forcément celle du trigger, et son `from_id`

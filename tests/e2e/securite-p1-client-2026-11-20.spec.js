@@ -215,6 +215,89 @@ test("cartes : un échec recule, et le retour au premier plan ne remet PAS le re
   expect(await page.evaluate(() => ({ echecs: _postLikeRefreshEchecs, likes: state.supabasePosts[0].likes }))).toEqual({ echecs: 0, likes: 11 });
 });
 
+// ── Contre-revue du 2026-11-20 : erreur durable, recul partagé ──────────────
+const UNE_LIGNE = [{ id: "f_d", author_id: "auteur_f", passion_id: "photo", mood: "all", content: "D", created_at: "2026-11-20T10:00:00", media_url: null, profiles: { username: "A", emoji: "📷", color: "#123456", avatar_url: null, is_private: false } }];
+
+test("fil : une erreur DURABLE (42501, PGRST203) prend le chemin d'avant, ne recule pas et ne fige pas le filet", async ({ page }) => {
+  await demarrer(page);
+  const r = await page.evaluate(async (lignes) => {
+    __repondre = (req) => req.table === "posts" ? { data: lignes, error: null } : { data: [], error: null };
+    const sorties = [];
+    for (const code of ["42501", "PGRST203"]) {
+      sessionStorage.removeItem("passio_fil_compteurs_absente");
+      _filCompteursEchecs = 0; _filCompteursProchainEssai = 0;
+      __lectures.length = 0;
+      supa.rpc = () => Promise.resolve({ data: null, error: { code, message: "refus" }, status: 403 });
+      const seq = window._filComplementsDegradesSeq;
+      await supaLoadPosts();
+      sorties.push({ tables: __lectures.map((q) => q.table).slice(0, 4), echecs: _filCompteursEchecs, seq: window._filComplementsDegradesSeq - seq,
+        memo: _filCompteursMemoAbsence() });
+    }
+    // Et la charge reste une charge : 503 sans code, 57014, réseau, pool.
+    const charge = [[{ message: "Service Unavailable" }, 503], [{ code: "57014", message: "timeout" }, 500], [{ message: "Failed to fetch" }, 0], [{ code: "PGRST003", message: "pool" }, 504]]
+      .map(([e, st]) => _filCompteursErreurDeCharge(e, st));
+    return { sorties, charge };
+  }, UNE_LIGNE);
+  // Avant : ["posts"] seul, 0 j'aime pour toute publication neuve, et recul jusqu'à 10 min.
+  for (const s of r.sorties) expect(s).toEqual({ tables: ["posts", "post_likes", "post_comments", "comment_interactions"], echecs: 0, seq: 0, memo: true });
+  expect(r.charge).toEqual([true, true, true, true]);
+});
+
+test("fil : l'ATTENTE du recul n'est pas un échec du filet ; une rafale d'échecs concurrents compte pour un", async ({ page }) => {
+  await demarrer(page);
+  const r = await page.evaluate(async (lignes) => {
+    Math.random = () => 0.5;
+    __repondre = (req) => req.table === "posts" ? { data: lignes, error: null } : { data: [], error: null };
+    let appels = 0;
+    supa.rpc = (fn) => { if (fn === "fil_compteurs") appels++; return Promise.resolve({ data: null, error: { code: "57014", message: "timeout" } }); };
+    // Trois appels concurrents (fil, profil, Bobines au démarrage) en échec.
+    await Promise.all([supaLoadPosts(), supaLoadPosts(), supaLoadPosts()]);
+    const apresRafale = { echecs: _filCompteursEchecs, appels };
+    goTo("feed");
+    startFeedRefreshLoop();
+    _feedFiletEchecs = 0;
+    await _feedRefreshTour(); // en recul : aucun appel, et ce n'est pas un échec du filet
+    const out = { apresRafale, appelsPendantRecul: appels - apresRafale.appels, echecsFilet: _feedFiletEchecs };
+    stopFeedRefreshLoop();
+    return out;
+  }, UNE_LIGNE);
+  // Avant : 3 échecs (recul de 120 s d'emblée), et le filet comptait l'attente comme un échec.
+  expect(r.apresRafale).toEqual({ echecs: 1, appels: 3 });
+  expect(r.appelsPendantRecul).toBe(0);
+  expect(r.echecsFilet).toBe(0);
+});
+
+test("recul partagé : un échec des cartes fait reculer le fil, un succès des cartes le lève", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 1);
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  await page.evaluate(() => { __erreur = true; });
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  const apresEchecCartes = await page.evaluate(async () => {
+    const avant = __rpc.length;
+    await _chargerComplementsFil(["carte_0"]);
+    return { echecsFil: _filCompteursEchecs, enRecul: _filCompteursEnRecul(), appelsFil: __rpc.length - avant };
+  });
+  // Avant : le fil ignorait l'échec des cartes et rappelait la fonction aussitôt.
+  expect(apresEchecCartes).toEqual({ echecsFil: 1, enRecul: true, appelsFil: 0 });
+  await page.evaluate(() => { __erreur = false; });
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  expect(await page.evaluate(() => ({ echecs: _filCompteursEchecs, enRecul: _filCompteursEnRecul() }))).toEqual({ echecs: 0, enRecul: false });
+});
+
+test("recul partagé : pendant le recul du fil, les cartes n'appellent pas la fonction", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 1);
+  await page.evaluate(() => { _filCompteursEchecs = 1; _filCompteursProchainEssai = Date.now() + 60000; });
+  await passer(page, 20000);
+  const r = await page.evaluate(() => ({ appels: __rpc.filter((x) => x.fn === "fil_compteurs").length, heads: __heads, dans: _postLikeRefreshNextAt - Date.now() }));
+  expect(r.appels).toBe(0);
+  expect(r.heads).toBe(0);
+  expect(r.dans).toBeGreaterThan(30000); // rendez-vous à la fin du recul partagé
+  await passer(page, r.dans + 1);
+  expect(await page.evaluate(() => __rpc.filter((x) => x.fn === "fil_compteurs").length)).toBe(1);
+});
+
 // ── D10-01 (préparation) : diffusion tronquée ───────────────────────────────
 async function conversationDeGroupe(page) {
   await page.evaluate(({ autre }) => {
@@ -255,24 +338,54 @@ test("diffusion tronquée : relue par identifiant, jamais peinte tronquée ; anc
   expect(await messagesDe(page)).toEqual([{ id: "m_tr", n: 20000 }, { id: "m_ancien", n: 7 }]);
 });
 
-test("diffusion tronquée : la charge au niveau du canal `conv:` est liée à sa conversation, et un échec n'affiche rien", async ({ page }) => {
+test("diffusion tronquée : liée à sa conversation, JETÉE sur `conv:`, et un échec ne peint que la pastille", async ({ page }) => {
   await demarrer(page);
   await conversationDeGroupe(page);
   await page.clock.install();
   const r = await page.evaluate(async (autre) => {
     // Une ligne relue qui appartient à une AUTRE conversation est jetée.
-    await _handleIncomingConvMessage({ id: "m_ailleurs", conv_id: "g_tr", from_id: autre, content: "a", created_at: "2026-11-20T10:00:00", tronque: true }, { diffusionMembre: true });
+    await _handleIncomingConvMessage({ id: "m_ailleurs", conv_id: "g_tr", from_id: autre, content: "a", created_at: "2026-11-20T10:00:00", tronque: true });
+    const apresAilleurs = __lectures.filter((q) => q.table === "conv_messages").length;
+    // Contre-revue : sur `conv:` (tout membre y émet), un drapeau n'est jamais
+    // honoré — aucune relecture, rien de peint. Avant : relecture de l'id désigné,
+    // ligne traitée comme authentique (rejeu d'un ancien contrôle d'autrui).
+    await _handleIncomingConvMessage({ id: "m_ancien_ctrl", conv_id: "g_tr", from_id: autre, content: "x", created_at: "2026-11-20T10:00:00", tronque: true }, { diffusionMembre: true });
+    const apresConv = __lectures.filter((q) => q.table === "conv_messages").length;
     // Relecture en panne : aucun contenu tronqué peint.
     window.__relectureEnPanne = true;
     const p = _handleIncomingConvMessage({ id: "m_panne", conv_id: "g_tr", from_id: autre, content: "tronq", created_at: "2026-11-20T10:00:00", tronque: true });
-    return { p: !!p };
+    return { p: !!p, apresAilleurs, apresConv };
   }, AUTRE);
   expect(r.p).toBe(true);
+  expect(r.apresAilleurs).toBe(1);
+  expect(r.apresConv).toBe(1);
   await page.clock.fastForward(5000);
   await page.evaluate(() => new Promise((ok) => setTimeout(ok, 0)));
   await page.clock.fastForward(1);
   expect(await messagesDe(page)).toEqual([]);
   expect(await page.evaluate(() => __lectures.filter((q) => q.table === "conv_messages").length)).toBe(3); // 1 + 2 essais
+  // Pas de bulle, mais la conversation porte sa pastille non lue.
+  expect(await page.evaluate(() => getConversations().find((c) => c.id === "g_tr").unread)).toBe(1);
+});
+
+test("diffusion tronquée : le budget est PAR conversation — un groupe bavard ne prive pas les autres", async ({ page }) => {
+  await demarrer(page);
+  await conversationDeGroupe(page);
+  const r = await page.evaluate(async (autre) => {
+    conversationsState.push({ id: "dm_b", isGroup: false, userId: autre, userIds: [MY_UID, autre], userName: "Camille",
+      userEmoji: "✨", userColor: "#8b5cf6", lastAt: Date.now() - 60000, unread: 0, messages: [], fromSupabase: true });
+    saveConversations();
+    for (let i = 0; i < 25; i++) {
+      await _handleIncomingConvMessage({ id: "flot_" + i, conv_id: "g_tr", from_id: autre, content: "x", created_at: "2026-11-20T10:00:00", tronque: true });
+    }
+    const groupe = __lectures.filter((q) => q.table === "conv_messages").length;
+    await _handleIncomingConvMessage({ id: "dm_long", conv_id: "dm_b", from_id: autre, content: "x", created_at: "2026-11-20T10:00:00", tronque: true });
+    return { groupe, total: __lectures.filter((q) => q.table === "conv_messages").length,
+      nonLusGroupe: getConversations().find((c) => c.id === "g_tr").unread };
+  }, AUTRE);
+  expect(r.groupe).toBe(20);           // MSG_RELECTURE_MAX_MIN_CONV
+  expect(r.total).toBe(21);            // l'autre conversation relit toujours
+  expect(r.nonLusGroupe).toBe(5);      // hors budget : pastille, sans contenu
 });
 
 // ── B06-N1 : la liste des conversations ─────────────────────────────────────
@@ -300,4 +413,28 @@ test("conversations : une ligne invalide est écartée, elle ne vide plus toute 
   }, AUTRE);
   // Avant le correctif : [] (la ligne nulle levait dans le regroupement des messages).
   expect(r).toEqual([{ id: "c1", groupe: false, n: 1, nonLus: 1 }, { id: "c2", groupe: true, n: 0, nonLus: 0 }]);
+});
+
+test("conversations : une SOUS-lecture en échec (messages, membres, accusés) ne fabrique aucune entrée — le local est gardé", async ({ page }) => {
+  await demarrer(page);
+  const r = await page.evaluate(async (autre) => {
+    const sorties = {};
+    for (const enPanne of ["messages", "membres", "accuses"]) {
+      __repondre = (req) => {
+        const t = req.table, cols = String(req.cols || "");
+        if (t === "conv_members" && cols === "conv_id") return { data: [{ conv_id: "c1" }], error: null };
+        if (t === "conversations") return { data: [{ id: "c1", is_group: false, created_at: "2026-11-20T09:00:00" }], error: null };
+        if (t === "conv_messages") return enPanne === "messages" ? { data: null, error: { code: "57014", message: "timeout" } }
+          : { data: [{ id: "m1", conv_id: "c1", from_id: autre, content: "salut", created_at: "2026-11-20T10:00:00" }], error: null };
+        if (t === "conv_members") return enPanne === "membres" ? { data: null, error: { message: "Failed to fetch" } }
+          : { data: [{ conv_id: "c1", user_id: autre, profiles: { username: "Camille" } }], error: null };
+        if (t === "conv_reads") return enPanne === "accuses" ? { data: null, error: { code: "PGRST003", message: "pool" } } : { data: [], error: null };
+        return { data: [], error: null };
+      };
+      sorties[enPanne] = (await supaLoadMyConversations()).length;
+    }
+    return sorties;
+  }, AUTRE);
+  // Avant : une entrée c1 sans aperçu, à 0 non-lu, qui REMPLAÇAIT la copie locale.
+  expect(r).toEqual({ messages: 0, membres: 0, accuses: 0 });
 });
