@@ -97,3 +97,23 @@ ouverte et `humain`, l'issue ne gêne rien.
 ## Quatrième famille : les parcours qui échouent (2026-11-06)
 
 `classerParcours` (`scripts/sentinelle-detecter.mjs`) lit les flux d'action (`type=flow`) et fait d'un parcours refusé — même en HTTP 200 — un candidat : contrat de `supabase/functions/_shared/contrats-actions.js`, identité serveur (`auth_uid`) obligatoire, refus légitimes et mises en file exclus, action « sans verdict » jamais retenue. Titre `[SENTINELLE] parcours <action> <code> · <condensé>` (aucun texte libre), une enquête par parcours (`zoneCible`). Confort comme les boutons : sa lecture qui échoue ne fait pas échouer la détection. La veille la réveille dès qu'un parcours est en panne chez ≥ 2 comptes anciens. Détail : `docs/AUTONOMIE_EXPLOITATION.md`.
+
+## Les instruments de mesure sont hors du périmètre de réparation (2026-11-20)
+
+Audit « la surveillance tient-elle à 100 000 ? » (`docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`, T8) :
+la preuve qu'une réparation automatique a guéri est le **silence** du signal. Une PR de la Sentinelle
+qui touchait l'instrument lui-même — un filtre posé dans la télémétrie, le relais d'erreurs, la mesure
+de performance, la garde de version ou le délestage — pouvait fabriquer ce silence, puis s'auto-fusionner.
+
+- `js/telemetry.js`, `js/platform.js`, `js/perf-ios.js`, `js/release-guard.js`, `js/reglages-distants.js`
+  sortent du périmètre autonome (`deploy.yml`, job « Gouvernance critique », même traitement que
+  `js/vendor/*`) : une enquête qui y touche est refusée, le refus est écrit sur l'issue, label `humain`.
+- Ils entrent au périmètre critique : toute PR, humaine comprise, exige la contre-revue ancrée sur le SHA.
+- Le corps de l'issue le dit à l'agent avant qu'il écrive (`corpsIssue`, `scripts/sentinelle-detecter.mjs`) :
+  si la cause est dans un instrument, la décrire et laisser la main.
+
+Verrou : `tests/unit/sentinelle-workflows.test.mjs` (gouvernance A6) — chaque instrument refusé à une
+réparation, refus ÉCRIT sur l'issue ; chaque instrument critique pour une PR humaine, accepté avec une
+contre-revue ancrée. Réinjections : retirer les instruments du `case` de périmètre, puis du `case`
+critique, rougit chacune. ⚠️ La première version de l'assertion ne vérifiait que l'échec du job : un
+instrument sorti du périmètre restait refusé… par la seule contre-revue manquante, issue muette.

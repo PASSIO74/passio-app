@@ -1274,7 +1274,7 @@ export function corpsIssue(v, c, options = {}) {
     L.push("");
   }
   L.push("1. Établir la CAUSE dans le code. Sans cause établie, ne rien corriger : commenter ce qui manque et s’arrêter.");
-  L.push("2. Corriger UNIQUEMENT dans `js/*.js` (hors `js/vendor/`), `styles.css`, `index.html` ; le verrou du point 3 UNIQUEMENT dans `tests/e2e/sentinelle-*.spec.js` ; la fiche du point 6 UNIQUEMENT dans `docs/sentinelle/`. Jamais `.github/`, `migrations/`, `scripts/`, `dashboard/`, ni le reste de `tests/`. La gouvernance de `deploy.yml` REFUSE la PR au-delà (ASTRA-05).");
+  L.push("2. Corriger UNIQUEMENT dans `js/*.js` (hors `js/vendor/` et hors instruments de mesure : `js/telemetry.js`, `js/platform.js`, `js/perf-ios.js`, `js/release-guard.js`, `js/reglages-distants.js` — si la cause est là, la décrire et laisser la main), `styles.css`, `index.html` ; le verrou du point 3 UNIQUEMENT dans `tests/e2e/sentinelle-*.spec.js` ; la fiche du point 6 UNIQUEMENT dans `docs/sentinelle/`. Jamais `.github/`, `migrations/`, `scripts/`, `dashboard/`, ni le reste de `tests/`. La gouvernance de `deploy.yml` REFUSE la PR au-delà (ASTRA-05).");
   L.push("3. Ajouter un verrou qui ÉCHOUE sur le défaut et passe après (réinjection).");
   L.push("4. `npm run verif` vert, suites e2e concernées vertes, avant toute PR.");
   L.push("5. Au-delà de ~60 lignes ou 2 fichiers de code (verrou et fiche non comptés), ce n’est plus une réparation : décrire la cause et laisser la main.");

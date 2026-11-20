@@ -247,6 +247,12 @@ jobs:
                 docs/sentinelle/*/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
                 # `js/*.js` matcherait aussi js/vendor/x.js : `*` traverse les / dans un `case`.
                 js/vendor/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
+                # LES INSTRUMENTS DE MESURE (2026-11-20, audit « 100 000 », T8) : une réparation
+                # automatique ne modifie pas ce qui la juge. Sa preuve de guérison est le SILENCE
+                # du signal ; un filtre posé dans la télémétrie, le relais d'erreurs, la mesure de
+                # performance, la garde de version ou le délestage fabriquerait ce silence. Ces
+                # fichiers sont aussi au périmètre critique plus bas (contre-revue humaine).
+                js/telemetry.js|js/platform.js|js/perf-ios.js|js/release-guard.js|js/reglages-distants.js) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
                 # Le verrou se limite au nommage `sentinelle-*` : `authz-critical` et ses aides reçoivent la
                 # clé de production au push, et une réparation automatique ne les touche pas (E-04).
                 js/*.js|styles.css|index.html|tests/e2e/sentinelle-*.spec.js|docs/sentinelle/*.md) ;;
@@ -254,8 +260,8 @@ jobs:
               esac
             done <<< "${files}"
             if [ -n "${hors_perimetre}" ]; then
-              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js hors js/vendor, styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
-              refuser_sentinelle "Périmètre dépassé : la PR touche des fichiers hors de js/*.js, styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md :"$'\n\n'"${hors_perimetre}"
+              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js hors js/vendor et hors instruments de mesure, styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
+              refuser_sentinelle "Périmètre dépassé : la PR touche des fichiers hors de js/*.js (instruments de mesure exclus), styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md :"$'\n\n'"${hors_perimetre}"
               exit 1
             fi
             # ⚠️ ASTRA-05, second étage (2026-09-15) : l'issue dit aussi « au-delà
@@ -304,7 +310,7 @@ jobs:
             case "${file}" in
               tests/e2e/sentinelle-*.spec.js) ;; # Suites locales, hors runner privilégié.
               # Tout ce qui s'exécute avec un secret, écrit ce qui part en production ou juge la PR (E-05).
-              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/*|tests/unit/*|tests/e2e/*|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js|scripts/empreinte-dist.js|scripts/servir-dist.js)
+              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|js/telemetry.js|js/platform.js|js/perf-ios.js|js/release-guard.js|js/reglages-distants.js|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/*|tests/unit/*|tests/e2e/*|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js|scripts/empreinte-dist.js|scripts/servir-dist.js)
                 critical=true ;;
             esac
           done <<< "${files}"
