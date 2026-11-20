@@ -618,7 +618,10 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g2 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g2.code, 0, g2.sortie);
   assert.ok(g2.summary.includes("1 fichier(s) de code, 30 ligne(s)"), "fiche et verrou hors comptage\n" + g2.summary);
-  for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js"]) {
+  // Les INSTRUMENTS DE MESURE (2026-11-20, audit « 100 000 », T8) : une réparation automatique ne
+  // modifie pas ce qui la juge. Mutation : retirer leur ligne du `case` de périmètre → rougit ici.
+  const INSTRUMENTS = ["js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js", "js/identity-transition.js"];
+  for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js", ...INSTRUMENTS]) {
     fixtures({
       "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
       "issue-700": { labels: [{ name: "sentinelle" }] },
@@ -626,6 +629,11 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
     });
     const r = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
     assert.notEqual(r.code, 0, `une réparation automatique ne touche pas ${interdit} (audit du 2026-11-06, E-04)`);
+    // C'est le REFUS DE PÉRIMÈTRE qui doit parler (écrit sur l'issue, label `humain`), pas un échec plus
+    // loin : sans cette assertion, un instrument sorti du `case` restait refusé… par la seule contre-revue
+    // manquante, et l'issue restait muette, comptée dans les enquêtes en cours (vu par réinjection).
+    assert.ok(r.log.includes("issue comment 700") && r.log.includes("Périmètre dépassé") && r.log.includes(interdit),
+      `${interdit} : le refus de périmètre doit être écrit sur l'issue\n` + r.log);
   }
   fixtures({
     "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
@@ -654,6 +662,18 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g5 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "78", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g5.code, 0, g5.sortie);
   assert.equal(g5.log.trim(), "", "PR humaine non critique : aucun commentaire");
+  // Un instrument de mesure est au périmètre CRITIQUE, même pour une PR humaine : contre-revue
+  // exigée, ancrée sur le SHA. Mutation : retirer les instruments du `case` critique → rougit.
+  for (const instrument of INSTRUMENTS) {
+    fixtures({ "pr-view": { headRefName: "feature/humaine", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: instrument, additions: 2, deletions: 1 }] });
+    const sans = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "79", TRUSTED_REVIEWER: "PASSIO74" });
+    assert.notEqual(sans.code, 0, `${instrument} sans contre-revue : doit être refusé (périmètre critique)\n` + sans.sortie.slice(-400));
+    assert.ok(sans.sortie.includes("Contre-revue manquante"), sans.sortie.slice(-400));
+    fixtures({ "pr-view": { headRefName: "feature/humaine", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: instrument, additions: 2, deletions: 1 }],
+      "pr-reviews": [{ user: { login: "PASSIO74" }, commit_id: "b".repeat(40), body: "Contre-revue technique indépendante — instrument" }] });
+    const avec = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "79", TRUSTED_REVIEWER: "PASSIO74" });
+    assert.equal(avec.code, 0, `${instrument} avec contre-revue ancrée : accepté\n` + avec.sortie.slice(-400));
+  }
 });
 
 test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'être cherchés — un gh qui écrit « sentinelle » puis une autre ligne ne fait plus passer une réparation pour une PR humaine ; illisibles, la gouvernance s'arrête", () => {

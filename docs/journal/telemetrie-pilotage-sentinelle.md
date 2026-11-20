@@ -1876,6 +1876,13 @@ double, ni du bruit qui comble devant une erreur — l'ordre de la file reste st
 aussi. Ce qui ne part pas reste dans la file persistée et repart au prochain envoi (événement
 suivant, retour au premier plan, démarrage suivant) : un succès keepalive n'enchaîne pas de
 lui-même. Le premier événement part toujours quand rien n'est en vol.
+Mesuré par la dernière relecture, sur son scénario (40 erreurs lourdes en file, passage en
+arrière-plan) : 14 590 octets en vol au lieu de 31 480, et une sauvegarde d'état de 50 Ko passe
+(elle était refusée dès 40 Ko). ⚠️ **Contrepartie, à connaître** : à la FERMETURE avec une file
+chargée de lignes ordinaires, le premier lot peut prendre ≈ 12 Ko ; la photo de sortie n'a alors
+plus qu'environ 4 Ko en keepalive (≈ 6 lignes au lieu de 20) et le reste — `session/end` compris
+s'il est derrière — attend dans la file persistée jusqu'au démarrage suivant. Sans effet au masquage
+ordinaire, où le premier lot pèse 0,5 à 3 Ko.
 
 **Limites connues, non traitées ici** : ① un clic dont le gestionnaire bloque plus de ~1 s est
 horodaté après son effet de plus de `BOUTON_AVANCE_MS` — la famille « bouton mort » peut le lire
@@ -1890,9 +1897,9 @@ signal existe, il ne sonne pas encore.
 Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (13), dont le CÂBLAGE des minuteurs à
 l'horloge simulée (②d : personne ne lit encore `ios_stat_*`, des photos qui ne partiraient plus ne
 se verraient nulle part). Trente-quatre réinjections, toutes rouges — chaque garde nommée ci-dessus
-retirée une à une. Trois passes de contre-revue adversariale : la première a trouvé B1, S1 et S2 ; la
+retirée une à une. Quatre passes de contre-revue adversariale : la première a trouvé B1, S1 et S2 ; la
 seconde, sur l'état corrigé, aucune objection bloquante et six remarques ; la troisième, sur leur
-traitement, le budget de poids à rendre commun. ⚠️ Le plafond client de 400/min/onglet
+traitement, le budget de poids à rendre commun ; la quatrième l'a confirmé, mesure à l'appui. ⚠️ Le plafond client de 400/min/onglet
 empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien
 prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
 À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
