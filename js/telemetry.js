@@ -486,6 +486,18 @@
     if (exces > 0) garde.splice(0, exces);
     return garde;
   }
+  // Poids d'un événement dans le corps d'un envoi, en octets (majorant : on
+  // compte 3 octets pour tout caractère hors ASCII, le pire cas en UTF-8).
+  // `KEEPALIVE_OCTETS_MAX` : ce qu'un envoi de fermeture pesait déjà avant la
+  // priorité (vingt lignes ordinaires ≈ 12 Ko), avec une marge — voir `flush`.
+  var KEEPALIVE_OCTETS_MAX = 16000;
+  function _poids(ev) {
+    var s = "";
+    try { s = JSON.stringify(ev) || ""; } catch (e) { return KEEPALIVE_OCTETS_MAX; }
+    var n = s.length;
+    for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) n += 2;
+    return n;
+  }
 
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
@@ -739,19 +751,33 @@
     if (!cfg) return;                      // config pas prête → file persistée, on réessaiera
     if (!opts.keepalive && sending) return;
     var max = opts.keepalive ? 20 : 60;    // keepalive : lots plus petits (limite 64 Ko)
-    // (Vingt prioritaires en tête restent loin des 64 Ko : `redactString` borne
-    // message et pile à 500 caractères chacun — mesuré le 20/11, une erreur à
-    // pile pleine pèse ≈ 1 Ko, soit ≈ 21 Ko pour vingt. La contre-revue
-    // craignait 4 000 caractères de pile par erreur : ce n'est pas le cas.)
     var batch = [];
     // Deux passes : les signaux de panne d'abord (`_estPrioritaire`), le reste
     // ensuite, chaque classe dans son ordre d'arrivée. Sous un refus 429, c'est
     // le PREMIER lot de la minute suivante qui passe : il porte désormais les
     // erreurs et les flows, pas soixante photos de performance.
+    // ⚠️ EN KEEPALIVE, LE LOT SE BORNE AUSSI EN POIDS (`KEEPALIVE_OCTETS_MAX`).
+    // Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et
+    // la sauvegarde d'état du compte part sur le même événement, juste après
+    // (`supaSaveUserStateBeacon`, jusqu'à 60 Ko). Vingt lignes ordinaires pèsent
+    // ≈ 12 Ko ; mais les prioritaires sont désormais en tête, et ce sont les plus
+    // lourdes — mesuré le 20/11 : 1,2 à 1,8 Ko par erreur à pile pleine, 32 Ko
+    // pour vingt. Sans borne, un orage d'erreurs à la fermeture faisait refuser
+    // toute sauvegarde d'état de plus de ~32 Ko (rejouée au démarrage suivant,
+    // mais c'est l'état du compte qui attend, pour de la télémétrie). Un
+    // événement qui ferait dépasser le budget attend le lot suivant — la file
+    // est persistée ; le premier part toujours.
+    var poids = 0;
     for (var passe = 0; passe < 2 && batch.length < max; passe++) {
       for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
         if ((passe === 0) !== _estPrioritaire(queue[qi])) continue;
-        if (_peutPartir(queue[qi], !!opts.keepalive)) batch.push(queue[qi]);
+        if (!_peutPartir(queue[qi], !!opts.keepalive)) continue;
+        if (opts.keepalive) {
+          var p = _poids(queue[qi]);
+          if (batch.length && poids + p > KEEPALIVE_OCTETS_MAX) continue;
+          poids += p;
+        }
+        batch.push(queue[qi]);
       }
     }
     if (!batch.length) return;
@@ -1335,10 +1361,13 @@
     _estPrioritaire: _estPrioritaire,
     _bornerFile: function (q, max) { return _bornerFile(q.slice(), max); },
     // ── Contre-pression (2026-11-20) ────────────────────────────────────────
-    // Vrai tant que CET appareil est en attente après un refus de débit (429),
-    // et pendant `PRESSION_MEMOIRE_MS` ensuite. Ce que la base refuse, elle le
-    // refuse à tous : un appareil qui vient d'être refusé sait que le tuyau est
-    // plein, sans attendre que la veille pose un délestage (5 min au mieux).
+    // Vrai après un refus de débit (429) reçu par CET appareil : pendant
+    // l'attente, puis tant qu'AUCUN envoi n'a réussi depuis (`limite` — le tuyau
+    // n'a pas prouvé qu'il était rouvert), et encore `PRESSION_MEMOIRE_MS` après
+    // le dernier refus. Ce que la base refuse, elle le refuse à tous : un
+    // appareil qui vient d'être refusé sait que le tuyau est plein, sans
+    // attendre que la veille pose un délestage (5 min au mieux). Sur un appareil
+    // sain, le battement de la session (60 s) garantit un envoi, donc une sortie.
     // Lu par les familles qui peuvent attendre — aujourd'hui les photos de
     // performance (js/perf-ios.js) — jamais par un signal de panne.
     sousPression: function () {

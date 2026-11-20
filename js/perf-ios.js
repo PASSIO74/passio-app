@@ -562,13 +562,17 @@
     whenIdle(function () { snapshot("periodic"); });
     return true;
   }
-  var _battements = 0;
+  // La cadence ne s'espace que sur une photo PRISE : un battement refusé (onglet
+  // masqué, pression) ne compte pas, sinon une longue absence repoussait la
+  // photo du retour à 30 min (contre-revue du 20/11).
+  var _photosPeriodiques = 0;
   function armerPeriodique() {
     setTimeout(function () {
-      try { tickPeriodique(); } catch (e) {}
-      _battements++;
+      var prise = false;
+      try { prise = tickPeriodique(); } catch (e) {}
+      if (prise) _photosPeriodiques++;
       armerPeriodique();
-    }, delaiPeriodique(_battements));
+    }, delaiPeriodique(_photosPeriodiques));
   }
   setTimeout(function () {
     whenIdle(function () { photo("t45"); });

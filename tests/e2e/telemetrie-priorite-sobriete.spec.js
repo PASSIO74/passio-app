@@ -22,10 +22,13 @@
 //   ②b un refus de débit (429) reçu par l'appareil fait taire les photos, et
 //      rien n'est perdu : la pression passée, tout ce qui a bougé repart ;
 //   ②c le passage en arrière-plan prend sa photo (après 45 s), sans répétition ;
+//   ②d le câblage des minuteurs : photo à 45 s, cadence qui ne s'espace que sur
+//      une photo prise, photo de sortie ;
 //   ③  au débordement de la file, ce sont les non-critiques qui partent, pas
 //      les erreurs ni la requête corrélée d'un flow ;
 //   ③b l'éviction, cas par cas (fonction pure), et le backlog rechargé ;
 //   ④  le lot qui part porte les signaux de panne EN TÊTE ;
+//   ④b l'envoi de fermeture (keepalive) se borne en POIDS, pas seulement en nombre ;
 //   ⑤  un clic dont le gestionnaire bloque 1,5 s est mesuré (≥ 1,4 s, `warn`,
 //      `lent`) ; un clic vif reste `info` ;
 //   ⑥  sans peinture : durée réelle si le fil était bloqué, rien onglet masqué ;
@@ -53,7 +56,7 @@ async function intercepter(page, modeInitial) {
     let rows = [];
     try { rows = JSON.parse(corps); } catch (e) { rows = []; }
     if (!Array.isArray(rows)) rows = [];
-    etat.lots.push({ mode: etat.mode, rows });
+    etat.lots.push({ mode: etat.mode, rows, octets: Buffer.byteLength(corps, "utf8") });
     if (etat.mode === "retenu") { etat.retenus.push(route); return undefined; }
     if (etat.mode === "refuse") {
       return route.fulfill({ status: 429, contentType: "application/json",
@@ -145,6 +148,14 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
     const derniere = statsDe(etat, "banc_a")[1];
     expect(derniere.meta && derniere.meta.n, "n à jour sur la ligne réémise").toBe(2);
     expect(statsDe(etat, "banc_b").length, "banc_b repartie alors qu'elle n'a pas bougé").toBe(1);
+
+    // `ios_context` suit la même règle : il part avec une métrique, pas seul. Les
+    // deux photos sont prises dans la MÊME tâche — aucun compteur (longue tâche,
+    // saccade) ne peut bouger entre elles.
+    await page.evaluate(() => { const p = window.PassioPerf; p.record("banc_ctx", 1); p.snapshot("ctx1"); p.snapshot("ctx2"); });
+    const contextes = (phase) => lignes(etat).filter((r) => r.type === "perf" && r.action === "ios_context" && r.meta && r.meta.phase === phase);
+    await vider(page, etat, () => contextes("ctx1").length === 1, "ios_context n'est pas parti avec une métrique");
+    expect(contextes("ctx2").length, "ios_context répété sans rien de neuf").toBe(0);
 
     // `reset()` oublie aussi ce qui a été émis : la même métrique, revenue au
     // même compte, repart.
@@ -246,11 +257,30 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
     await page.waitForTimeout(4500);   // un battement accepté à tort photographierait dans les 4 s
     expect(await enFile(page, "banc_pression"), "une photo est entrée en file sous pression").toBe(0);
 
-    // Rien n'a été marqué « émis » pendant le silence : la pression passée, la
-    // première photo emporte ce qui a bougé entre-temps.
-    await page.evaluate(() => { window.tel.sousPression = () => false; });
+    // Tant qu'AUCUN envoi n'a réussi depuis le refus, le tuyau n'a pas prouvé
+    // qu'il était rouvert : même onze minutes plus tard, l'appareil reste prudent.
+    const sansSucces = await page.evaluate(() => {
+      const vrai = Date.now;
+      try { Date.now = () => vrai.call(Date) + 11 * 60000; return window.tel.sousPression(); } finally { Date.now = vrai; }
+    });
+    expect(sansSucces, "sous pression levée sans qu'aucun envoi n'ait réussi").toBe(true);
+
+    // Deux minutes plus tard la base accepte de nouveau : l'envoi réussit…
+    etat.mode = "ok";
+    const avantReprise = etat.lots.length;
+    await page.evaluate(() => { const vrai = Date.now; window.__decal = 120000; Date.now = () => vrai.call(Date) + window.__decal; window.tel.flush(); });
+    await expect.poll(() => etat.lots.slice(avantReprise).some((l) => l.mode === "ok"), { message: "aucun envoi n'est reparti après l'attente", timeout: 10000 }).toBe(true);
+    await page.waitForTimeout(300);
+    // … mais l'appareil reste prudent : dix minutes de mémoire après son dernier refus.
+    expect(await page.evaluate(() => window.tel.sousPression()), "plus de mémoire du refus, 2 min après").toBe(true);
+    expect(await page.evaluate(() => window.PassioPerf._photo("periodic")), "photo acceptée 2 min après un refus").toBe(false);
+
+    // Onze minutes après le refus, la pression est passée. Rien n'a été marqué
+    // « émis » pendant le silence : la première photo emporte ce qui a bougé.
+    await page.evaluate(() => { window.__decal = 11 * 60000; });
+    expect(await page.evaluate(() => window.tel.sousPression()), "encore sous pression 11 min après le dernier refus").toBe(false);
     expect(await page.evaluate(() => window.PassioPerf._photo("periodic")), "photo refusée une fois la pression passée").toBe(true);
-    expect(await enFile(page, "banc_pression"), "la métrique enregistrée sous pression n'est pas repartie").toBe(1);
+    expect(await enFile(page, "banc_pression") + statsDe(etat, "banc_pression").length, "la métrique enregistrée sous pression n'est pas repartie").toBeGreaterThanOrEqual(1);
   });
 
   // Sur mobile, le système tue souvent un onglet masqué sans `pagehide` : le
@@ -280,6 +310,53 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
     await page.evaluate(() => window.tel.flush());
     await page.waitForTimeout(1200);
     expect(statsDe(etat, "banc_fond").length, "photo d'arrière-plan répétée sans nouvel enregistrement").toBe(1);
+  });
+
+  // Personne ne lit encore `ios_stat_*` dans le nuage : si les minuteurs
+  // cessaient d'appeler la photo, RIEN ne le dirait. Ce cas garde le câblage
+  // lui-même, à l'horloge simulée (posée AVANT le chargement : les minuteurs de
+  // perf-ios s'arment à l'exécution du script).
+  test("②d câblage : photo à 45 s, cadence qui ne s'espace que sur une photo prise, photo de sortie", async ({ page }) => {
+    await page.clock.install();
+    const etat = await intercepter(page);
+    await poserGateSansPremiereVisite(page);
+    await page.goto("/index.html?telemetry=1");
+    await page.waitForFunction(() => !!(window.tel && window.tel.enabled && window.PassioPerf), null, { timeout: 30000 });
+    await page.evaluate(piloterVisibilite);
+    // Toutes les lignes d'une métrique du banc, qu'elles soient parties ou en file.
+    const phases = async (nom) => {
+      const file = await page.evaluate((n) => window.tel._queue().filter((e) => e.action === "ios_stat_" + n).map((e) => [e.event_id, e.meta && e.meta.phase]), nom);
+      const vues = new Map(statsDe(etat, nom).map((r) => [r.event_id, r.meta && r.meta.phase]));
+      file.forEach(([id, ph]) => vues.set(id, ph));
+      return [...vues.values()];
+    };
+    const enregistrer = (v) => page.evaluate((x) => window.PassioPerf.record("banc_cable", x), v);
+    const avancer = async (ms) => { await page.clock.runFor(ms); await page.evaluate(() => Promise.resolve()); };
+
+    await enregistrer(1);
+    await avancer(50000);   // 45 s, plus l'attente d'oisiveté (≤ 4 s)
+    expect(await phases("banc_cable"), "pas de photo à 45 s").toEqual(["t45"]);
+
+    // Première photo périodique 3 min après t45.
+    await enregistrer(2);
+    await avancer(3 * 60000);
+    expect(await phases("banc_cable"), "pas de photo périodique à 3 min").toEqual(["t45", "periodic"]);
+
+    // Onglet masqué 20 min : aucun battement n'est accepté…
+    await page.evaluate(() => { window.__masque = true; });
+    await enregistrer(3);
+    await avancer(20 * 60000);
+    expect(await phases("banc_cable"), "photo périodique prise onglet masqué").toEqual(["t45", "periodic"]);
+    // … et ces refus n'ont pas espacé la cadence : de retour, la photo suivante
+    // vient au pas en cours (6 min), pas à 30.
+    await page.evaluate(() => { window.__masque = false; });
+    await avancer(6 * 60000 + 5000);
+    expect(await phases("banc_cable"), "au retour, la photo périodique s'est fait attendre au-delà du pas en cours").toEqual(["t45", "periodic", "periodic"]);
+
+    // Fermeture de la page : la photo de sortie emporte le dernier état.
+    await enregistrer(4);
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await expect.poll(() => phases("banc_cable"), { message: "pas de photo de sortie", timeout: 10000 }).toEqual(["t45", "periodic", "periodic", "exit"]);
   });
 
   test("③ au débordement de la file, les erreurs et la requête d'un flow restent — les non-critiques partent", async ({ page }) => {
@@ -388,6 +465,41 @@ test.describe("Télémétrie à l'échelle — priorité aux pannes, mesure sans
     // Tout ce qui les précède est un signal de panne : aucun bruit devant eux.
     const devant = suivant.slice(0, Math.max(...idx)).filter((r) => !prioritaire(r));
     expect(devant.map((r) => r.action), "du bruit est parti AVANT les signaux de panne").toEqual([]);
+  });
+
+  // Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et la
+  // sauvegarde d'état du compte part sur le même événement, juste après. Les
+  // prioritaires en tête sont aussi les plus lourds : vingt erreurs à pile
+  // pleine pèsent 32 Ko (mesuré par la contre-revue du 20/11). Le lot de
+  // fermeture garde donc le poids qu'il avait avant la priorité.
+  test("④b envoi de fermeture : le lot se borne en poids, et rien n'est perdu", async ({ page }) => {
+    const etat = await intercepter(page);
+    await charger(page, etat);
+    await amorcerEnVol(page, etat);
+    await page.evaluate(() => {
+      const pile = "at fonctionDuBanc (fichier-du-banc.js) ".repeat(20);    // bornée à 500 caractères par le filtre
+      const message = "erreur du banc ".repeat(40);                          // idem
+      for (let i = 0; i < 20; i++) window.tel.track("error", "banc_lourd_" + i, { severity: "error", status: "error", message, stack: pile });
+    });
+    expect(await page.evaluate(() => window.tel._queue().filter((e) => /^banc_lourd_/.test(e.action || "")).length),
+      "les erreurs lourdes ne sont pas toutes en file").toBe(20);
+
+    const avant = etat.lots.length;
+    etat.mode = "ok";
+    await page.evaluate(() => window.tel.flush({ keepalive: true }));
+    await expect.poll(() => etat.lots.length > avant, { message: "l'envoi de fermeture n'est pas parti", timeout: 10000 }).toBe(true);
+    const fermeture = etat.lots[avant];
+    const lourds = fermeture.rows.filter((r) => /^banc_lourd_/.test(r.action || ""));
+    expect(lourds.length, "aucune erreur dans l'envoi de fermeture").toBeGreaterThan(0);
+    expect(lourds.length, "le lot n'a pas été borné en poids : le cas ne prouverait rien").toBeLessThan(20);
+    expect(fermeture.octets, "l'envoi de fermeture pèse plus que le budget (16 Ko, marge de mise en forme comprise)").toBeLessThan(18000);
+
+    // Le reste part aux envois suivants : les vingt erreurs arrivent, une fois chacune.
+    await etat.retenus[0].fulfill({ status: 201, body: "" });
+    const recues = () => lignes(etat).filter((r) => /^banc_lourd_/.test(r.action || "")).map((r) => r.action);
+    await expect.poll(async () => { await page.evaluate(() => window.tel.flush()); return new Set(recues()).size; },
+      { message: "des erreurs lourdes ne sont jamais parties", timeout: 15000 }).toBe(20);
+    expect(recues().length, "une erreur lourde est partie deux fois").toBe(20);
   });
 
   test("⑤ un clic qui bloque 1,5 s est mesuré et marqué lent ; un clic vif reste ordinaire", async ({ page }) => {

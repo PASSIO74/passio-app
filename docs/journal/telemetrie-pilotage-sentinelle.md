@@ -1818,18 +1818,25 @@ dernière ligne (`recus`, jamais plafonné). Le premier jet comparait `n`, la ta
 du 120ᵉ, photo de sortie comprise — une dégradation en cours de longue session devenait invisible.
 Défaut BLOQUANT trouvé par la contre-revue (B1), reproduit par un test rouge avant le correctif.
 `ios_context` ne repart qu'avec une métrique ou si ses compteurs ont bougé ; `reset()` oublie aussi
-ce qui a été émis ; la cadence périodique S'ESPACE (3, 6, 12, 24 min, puis 30 — `delaiPeriodique`).
+ce qui a été émis ; la cadence périodique S'ESPACE (3, 6, 12, 24 min, puis 30 — `delaiPeriodique`),
+et seulement sur une photo PRISE : un battement refusé ne compte pas, sinon une longue absence
+repoussait la photo du retour à 30 min.
 
 ⚠️ **LA MESURE DE PERFORMANCE CÈDE SOUS LA PRESSION** (`photoUtile`, `photo`). Dédoublonner ne
 suffit pas à l'échelle : une photo vaut ~12 lignes, et 500 sessions qui démarrent par minute en
 font 6 000 — plus que le plafond. Au moindre signal de pression, AUCUNE photo automatique (ni t45,
 ni périodique, ni arrière-plan, ni sortie). Deux signaux : la production en délestage ×2/×4, et
-`tel.sousPression()` — CET appareil s'est vu refuser un lot en 429 dans les 10 dernières minutes
-(ce que la base refuse, elle le refuse à tous : pas besoin d'attendre que la veille pose un
-délestage, 5 min au mieux). Rien n'est marqué « émis » pendant le silence : la pression passée, la
-photo suivante emporte ce qui a bougé. Photo périodique : en plus, onglet visible. Photo au passage
-en arrière-plan après 45 s (un mobile tue souvent l'onglet masqué sans `pagehide`). `snapshot()`
-reste l'outil nu (bancs, baseline à la main). Aucun lecteur du nuage ne lisait `ios_stat_*`.
+`tel.sousPression()` — CET appareil s'est vu refuser un lot en 429 : vrai pendant l'attente, puis
+tant qu'AUCUN envoi n'a réussi depuis (le tuyau n'a pas prouvé qu'il était rouvert), et encore
+10 min après le dernier refus. Ce que la base refuse, elle le refuse à tous : pas besoin d'attendre
+que la veille pose un délestage, 5 min au mieux. Cette mémoire n'est pas persistée — un
+rechargement l'oublie jusqu'au prochain refus. Rien n'est marqué « émis » pendant le silence : la
+pression passée, la photo suivante emporte ce qui a bougé. Photo périodique : en plus, onglet
+visible. Photo au passage en arrière-plan après 45 s (un mobile tue souvent l'onglet masqué sans
+`pagehide`) — ⚠️ elle n'est qu'EN PARTIE en keepalive : au-delà de 12 lignes la vidange ordinaire
+de la file en emporte une part, que le système peut couper ; ces lignes restent dans la file
+persistée et repartent au prochain démarrage. `snapshot()` reste l'outil nu (bancs, baseline à la
+main). Aucun lecteur du nuage ne lisait `ios_stat_*`.
 ⚠️ **Ce lot NE lève PAS le plafond serveur** : il fait céder le bruit et passer les preuves dans ce
 que la base accepte. La réserve de débit pour les types critiques reste à faire (T2, migration).
 
@@ -1851,19 +1858,34 @@ par le cache de navigation) ou durée > 30 s → mesure vide, sinon une suspensi
 de faux clics lents (R2). Aucun compteur ne lit `click` en `warn` (la veille ne compte que
 `type = error`) ; un clic lent vit 7 jours au lieu de 3 (purge par gravité).
 
-**Ce que la contre-revue a écarté, mesure à l'appui** (R4) : « vingt erreurs en tête d'un envoi de
-fermeture dépassent 64 Ko ». Non : `redactString` borne message et pile à 500 caractères — une
-erreur à pile pleine pèse ≈ 1 Ko, vingt ≈ 21 Ko. Le garde-fou de poids écrit pour y répondre a été
-retiré : il ne protégeait de rien.
+⚠️ **L'ENVOI DE FERMETURE SE BORNE EN POIDS, PARCE QUE SON QUOTA EST PARTAGÉ** (`KEEPALIVE_OCTETS_MAX`
+= 16 Ko, `flush`). Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et la
+sauvegarde d'état du compte (`supaSaveUserStateBeacon`, jusqu'à 60 Ko) part sur le même événement,
+juste après la télémétrie. Vingt lignes ordinaires pèsent ≈ 12 Ko ; les prioritaires, désormais en
+tête, sont les plus lourdes. Histoire de ce point, à garder : la première contre-revue craignait
+« 4 000 caractères de pile par erreur » — faux, `redactString` borne message et pile à 500
+caractères ; le correctif en avait conclu « ≈ 1 Ko par erreur, 21 Ko pour vingt » et retiré la borne — faux
+aussi : la seconde contre-revue a MESURÉ 1,2 à 1,8 Ko par erreur et **32 351 octets pour vingt**,
+et rappelé le quota partagé. Sans borne, un orage d'erreurs à la fermeture faisait refuser toute
+sauvegarde d'état de plus de ~32 Ko (elle est rejouée au démarrage, mais c'est l'état du compte
+qui attendait, pour de la télémétrie). Le lot de fermeture garde donc le poids qu'il avait avant
+la priorité ; ce qui dépasse attend le lot suivant, la file étant persistée.
 
-**Limites connues, non traitées ici** : un clic dont le gestionnaire bloque plus de ~1 s est
+**Limites connues, non traitées ici** : ① un clic dont le gestionnaire bloque plus de ~1 s est
 horodaté après son effet de plus de `BOUTON_AVANCE_MS` — la famille « bouton mort » peut le lire
-« sans effet » (préexistant ; le détecteur peut désormais rétro-dater par `meta.ms`, lot suivant).
-Le lecteur « Interface lente » du pilotage (par écran, en taux, par version) reste à faire : le
+« sans effet » (préexistant ; le détecteur peut désormais rétro-dater par `meta.ms`, lot suivant) ;
+② au débordement de la file, un clic LENT (prioritaire) survit à son effet `nav`/`action` (qui ne
+l'est pas) — même lecture possible, mais il faut un débordement chez plusieurs comptes sur le même
+bouton ; ③ sans peinture, un blocage de 1,0 à 1,25 s part encore sans durée, et une suspension
+silencieuse (aucun événement de page) de moins de 30 s fabriquerait un faux clic lent — théorique ;
+④ le lecteur « Interface lente » du pilotage (par écran, en taux, par version) reste à faire : le
 signal existe, il ne sonne pas encore.
 
-Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (11). Vingt-trois réinjections, toutes
-rouges — chaque garde nommée ci-dessus retirée une à une. ⚠️ Le plafond client de 400/min/onglet
+Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (13), dont le CÂBLAGE des minuteurs à
+l'horloge simulée (②d : personne ne lit encore `ios_stat_*`, des photos qui ne partiraient plus ne
+se verraient nulle part). Trente et une réinjections, toutes rouges — chaque garde nommée ci-dessus
+retirée une à une. Deux contre-revues adversariales : la première a trouvé B1, S1 et S2 ; la seconde,
+sur l'état corrigé, aucune objection bloquante. ⚠️ Le plafond client de 400/min/onglet
 empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien
 prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
 À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
