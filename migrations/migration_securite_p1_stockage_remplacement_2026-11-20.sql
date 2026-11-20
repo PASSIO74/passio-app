@@ -13,9 +13,11 @@
 --   (a) `stockage_remplacement_borne()`, déclencheur BEFORE UPDATE sur `storage.objects`, ne joue
 --       que pour un rôle client (`authenticated`/`anon`), avec un compte, quand le CONTENU change
 --       (`metadata` différente : un remplacement change l'eTag et la taille ; la lecture d'un objet
---       ne change pas `metadata`), et hors archivage ou marque de suppression :
+--       ne change pas `metadata`). Archiver ou marquer une suppression SANS toucher `metadata` reste
+--       libre ; poser un marqueur ne dispense JAMAIS une réécriture de `metadata` (revue second modèle) :
 --         · nombre : `debit_compter('storage_objects:maj', <compte>, 20)` — un compteur ATOMIQUE
---           (insert … on conflict) par minute, × 60 par jour (× 15 la première semaine) ;
+--           (insert … on conflict) : 20 par minute, 1 200 par jour (300 la première semaine). Il
+--           remplace « 120 objets distincts par heure », qui ne comptait pas les opérations ;
 --         · taille : verrou transactionnel par compte, puis total des AUTRES objets du compte
 --           + taille NOUVELLE ≤ 2 Gio (même plafond que `quota_stockage_ok`).
 --   (b) `quota_stockage_maj_ok()` garde le quota d'avant (état courant) et perd son compteur
@@ -56,9 +58,7 @@ declare
 begin
   if moi is null
      or pg_catalog.current_setting('role', true) not in ('anon', 'authenticated')
-     or new.metadata is not distinct from old.metadata
-     or new.archived_at is not null
-     or coalesce(new.is_delete_marker, false) then
+     or new.metadata is not distinct from old.metadata then
     return new;
   end if;
   perform public.debit_compter('storage_objects:maj', moi::text, 20);
@@ -72,7 +72,7 @@ begin
     select coalesce(sum((o.metadata->>'size')::bigint), 0) into autres
       from storage.objects o
      where o.owner = moi and o.id <> new.id;
-    if autres + taille >= 2147483648 then
+    if autres + taille > 2147483648 then
       raise exception 'quota de stockage atteint (2 Gio par compte)' using errcode = 'P0001';
     end if;
   end if;
