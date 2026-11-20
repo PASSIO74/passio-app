@@ -172,7 +172,19 @@ test("⑧ ENT-C14 : l'aide « auteur » dit « profil » et « Compris » fait 4
   });
   const bulle = page.locator(".passio-hint");
   await expect(bulle).toContainText("Touche le nom pour voir son profil");
-  expect((await bulle.locator(".passio-hint-ok").boundingBox()).height).toBeGreaterThanOrEqual(44);
+  const ok = bulle.locator(".passio-hint-ok");
+  // ⚠️ LA MARGE EST LE VERROU (run 44759808385, 2026-11-20). `boundingBox()` lit
+  // les quads de Chromium (`DOM.getBoxModel`), calculés en float32 : tant que
+  // l'entrée de la bulle anime un transform (`passio-hint-in`, 180 ms), la
+  // soustraction bas − haut perd un ulp et 44 px se lit 43.999969482421875. Ce
+  // test est tombé au rouge — et le déploiement de `main` avec lui — sans qu'aucune
+  // cible n'ait rétréci d'un pixel. On continue de mesurer le RENDU (c'est lui que
+  // le doigt touche), et la feuille de style demande désormais 45 px : une cible
+  // tactile ne se spécifie jamais EXACTEMENT au seuil auquel on la mesure. Ces
+  // deux lignes vont ensemble — retirer la marge rouvre le faux rouge.
+  const demande = parseFloat(await ok.evaluate((b) => getComputedStyle(b).minHeight));
+  expect(demande, "« Compris » demande plus que le seuil tactile de 44 px").toBeGreaterThanOrEqual(45);
+  expect((await ok.boundingBox()).height).toBeGreaterThanOrEqual(44);
 });
 
 test("⑨ ENT-C12 / C13 : liens d'évitement, et une seule action principale à l'accueil", async ({ page }) => {

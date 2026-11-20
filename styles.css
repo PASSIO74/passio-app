@@ -12750,7 +12750,15 @@ button, a, label, select, summary,
 .fr-tip-ok, .fr-tip-skip { min-height: 44px; }
 /* ENT-C14 : l'aide pointe vers le nom ; « Compris » à 44 px. */
 .passio-hint { position: fixed; }
-.passio-hint-ok { min-height: 44px; }
+/* 45 px, ET PAS 44 (run 44759808385, 2026-11-20). 44 px est le SEUIL tactile :
+   une cible posée EXACTEMENT dessus n'a aucune marge de mesure. Les quads de
+   Chromium (DOM.getBoxModel, derrière `boundingBox()`) se calculent en float32 ;
+   tant que l'entrée de la bulle anime un transform (`passio-hint-in`, 180 ms de
+   translateY), la soustraction bas − haut perd un ulp et 44 px se lit
+   43.999969482421875 — ENT-C14 au rouge, et le déploiement avec, sans le moindre
+   défaut d'interface. 1 px de marge rend la mesure indifférente au bruit
+   sous-pixel, sur tous les moteurs. Verrou : lot13-entree.spec.js ⑧. */
+.passio-hint-ok { min-height: 45px; }
 .passio-hint.passio-hint-sous::before, .passio-hint.passio-hint-sur::after {
   content: ""; position: absolute; left: var(--hint-fleche, 24px); width: 12px; height: 12px;
   background: var(--accent); transform: translateX(-50%) rotate(45deg);
