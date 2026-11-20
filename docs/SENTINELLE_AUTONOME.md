@@ -111,6 +111,9 @@ de performance, la garde de version ou le délestage — pouvait fabriquer ce si
 - Ils entrent au périmètre critique : toute PR, humaine comprise, exige la contre-revue ancrée sur le SHA.
 - Le corps de l'issue le dit à l'agent avant qu'il écrive (`corpsIssue`, `scripts/sentinelle-detecter.mjs`) :
   si la cause est dans un instrument, la décrire et laisser la main.
+- La politique d'automatisation le déclare (`exclus`, `supabase/functions/_shared/politique-autonomie.js`),
+  et `tests/unit/politique-autonomie-executants.test.mjs` ⑥ exige que cette liste soit EXACTEMENT celle que
+  `deploy.yml` écarte : retirer un instrument d'un seul des deux côtés rougit.
 
 Verrou : `tests/unit/sentinelle-workflows.test.mjs` (gouvernance A6) — chaque instrument refusé à une
 réparation, refus ÉCRIT sur l'issue ; chaque instrument critique pour une PR humaine, accepté avec une

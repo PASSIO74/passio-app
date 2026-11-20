@@ -36,6 +36,12 @@ test("⑥ le correctif autonome : la politique dit ce que deploy.yml et la Senti
   const cas = /\n\s+(js\/\*\.js\|[^)]+)\) ;;/.exec(y);
   assert.ok(cas, "périmètre de la Sentinelle introuvable dans deploy.yml");
   assert.deepEqual(cas[1].split("|"), [...c.perimetre]);
+  // Les exclusions : chaque motif que deploy.yml écarte AVANT le périmètre (hors le `*)` final), dans l'ordre.
+  // Mutation : retirer un instrument de mesure du `case` de deploy.yml, ou de la politique → rougit.
+  const ecartes = [...y.matchAll(/\n\s+(\S[^)\n]*)\) hors_perimetre="\$\{hors_perimetre\}\$\{file\}"\$'\\n' ;;/g)]
+    .map((m) => m[1]).filter((motif) => motif !== "*").flatMap((motif) => motif.split("|"));
+  assert.ok(ecartes.length >= 3, "exclusions du périmètre introuvables dans deploy.yml : " + JSON.stringify(ecartes));
+  assert.deepEqual(ecartes, [...c.exclus], "la politique et deploy.yml n'excluent pas les mêmes fichiers du périmètre autonome");
   assert.equal(c.limites.enquetesMax, MAX_ENQUETES);
   assert.equal(POLITIQUE.limites.enquetesSimultanees, MAX_ENQUETES);
   assert.equal(c.limites.recidiveApres, RECIDIVE_SEUIL);
