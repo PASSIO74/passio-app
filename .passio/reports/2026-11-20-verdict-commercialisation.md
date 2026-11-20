@@ -21,7 +21,7 @@ Le GO est écrit par Claude Code, sur l'ordre du mainteneur. Il s'appuie sur des
 | Lectures sans compte | Réduit | Table de liens fermée, recherche bornée. Il reste à poser une limite par adresse ou un cache en bordure |
 | Coûts des services hébergés | Borné | Plafond de dépense actif ; consommation relevée le 20/11 |
 | Repli coûteux du fil | Fermé | Le client recule au lieu de basculer sur le chemin coûteux ; tests e2e verts |
-| Capacité à volume | Ouvert, pas de GO 100K | Aucune campagne de charge au-delà de 100 utilisateurs sur un environnement dimensionné |
+| Capacité à volume | Mesuré jusqu'à 200, pas de GO 100K | Campagne du 20/11 au staging, même instance que la production : 100 comptes simultanés sans dégradation (p95 116 ms, 0 erreur) ; à 200, p95 787 ms et pics à 2 s (`docs/CAPACITE_PALIERS_2026-11-20.md`) |
 | Chaîne de livraison et secrets | Accepté pour l'échelle maîtrisée | Mainteneur unique, revues assumées et non indépendantes, secrets au niveau du dépôt |
 | Intégrations et agents | Réduit | Voir le dossier restreint |
 | Dépense de l'hébergeur de la base | Fermé | Plafond de dépense actif |
