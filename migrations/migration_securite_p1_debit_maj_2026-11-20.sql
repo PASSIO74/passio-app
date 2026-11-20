@@ -19,7 +19,11 @@
 --       `video_lives` et `user_passions`) sur ces quatre tables, avant chaque UPDATE. Par minute,
 --       puis × 60 par jour (× 15 la première semaine), par `debit_compter` :
 --         posts 10/min (600/jour) · post_comments 30/min (1 800/jour) · events 15/min (900/jour)
---         · user_state 120/min (7 200/jour ; le client n'écrit qu'après 2,5 s de calme).
+--         · user_state 600/min (36 000/jour, 9 000 la première semaine). Le client n'écrit l'état
+--           qu'après 2,5 s de calme : 24/min au plus par appareil, 9 000 = 6 h 15 d'écriture continue.
+--           Un plafond plus serré (120/min, soit 1 800/jour la première semaine, partagés entre les
+--           appareils) pouvait figer la synchronisation d'une séance normale de 2 à 4 h (contre-revue
+--           du 2026-11-20) ; le volume réel par compte n'est pas mesuré : borne d'abus, pas de quota.
 --       Seuls les rôles `anon`/`authenticated` sont comptés (service et tâches : rien ne change).
 --   (b) Policy RESTRICTIVE `passio_media_update_quota` : un remplacement doit tenir dans le quota
 --       (`quota_stockage_ok()`, 2 Gio et 120 dépôts par heure) ET dans 120 objets modifiés par heure
@@ -69,7 +73,7 @@ create trigger trg_debit_maj before update on public.events
  for each row execute function public.debit_maj_par_compte('15');
 drop trigger if exists trg_debit_maj on public.user_state;
 create trigger trg_debit_maj before update on public.user_state
- for each row execute function public.debit_maj_par_compte('120');
+ for each row execute function public.debit_maj_par_compte('600');
 
 -- ── (b) Un remplacement de fichier tient dans le quota ─────────────────────────────────────────
 create or replace function public.quota_stockage_maj_ok() returns boolean

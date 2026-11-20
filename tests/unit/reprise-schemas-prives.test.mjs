@@ -15,7 +15,8 @@ const cfg = { url: URL, ref: REF, jeton: JETON };
 const ddl = () => Object.keys(P.TABLES).map((n) => `create table rencontres_prive.${n}(id text);`).join("\n")
   + "\ncreate table passio_realtime_budget.compteurs(compte text);";
 
-function monde({ absent = false, lisible = true, lectureSeule = true, taille = 1, videPage = false, mutation = false } = {}) {
+function monde({ absent = false, lisible = true, lectureSeule = true, taille = 1, videPage = false, mutation = false,
+  budgetTables = ["compteurs"], budgetTotal = "0" } = {}) {
   const appels = [], data = Object.fromEntries(Object.keys(P.TABLES).map((n) => [n, []]));
   for (let i = 0; i < taille; i++) data.coorganisations_anterieures.push('{"event_id":"ev_' + String(i).padStart(5, "0")
     + '","valeur":{"nombre":9007199254740993,"texte":"apostrophe \' et $1"},"created_at":"2026-01-01T00:00:00Z"}');
@@ -35,9 +36,10 @@ function monde({ absent = false, lisible = true, lectureSeule = true, taille = 1
       assert.deepEqual(b.parameters, [P.SCHEMA, P.BUDGET]);
       reponse = { lecture_seule: lectureSeule, rencontres: !absent, budget: !absent, tables: absent ? [] : [
         ...Object.entries(P.TABLES).map(([nom, pk]) => ({ schema: P.SCHEMA, nom, pk, lisible, genre: "r" })),
-        { schema: P.BUDGET, nom: "compteurs", pk: ["compte", "fenetre"], lisible, genre: "r" },
+        ...budgetTables.map((nom) => ({ schema: P.BUDGET, nom, pk: nom === "accuses" ? ["compte", "conv_id"] : ["compte", "fenetre"], lisible, genre: "r" })),
       ] };
-    } else if (b.query.includes("from passio_realtime_budget.compteurs")) reponse = { lecture_seule: lectureSeule, lisible, total: "0" };
+    } else if (["compteurs", "accuses"].some((n) => b.query.includes("from passio_realtime_budget." + n + ")"))) reponse = { lecture_seule: lectureSeule, lisible,
+      total: b.query.includes("passio_realtime_budget.accuses") ? budgetTotal : "0" };
     else {
       const nom = /from "rencontres_prive"\."([a-z_]+)"/.exec(b.query)?.[1];
       assert.ok(Object.hasOwn(P.TABLES, nom));
@@ -201,4 +203,24 @@ test("empreinte DDL privée : archive modifiée et --schema étranger refusés a
   try { await assert.rejects(R._phases.schema(ctx), /Empreinte DDL différente/); }
   finally { globalThis.fetch = ancienFetch; process.argv = ancienArgv; }
   assert.equal(mutations, 0);
+});
+
+test("accusés de lecture (2026-11-20) : table éphémère reconnue, remise vide et relue vide ; inconnue ou compteur absent refusés", async () => {
+  const a = await archive({ budgetTables: ["compteurs", "accuses"] });
+  assert.deepEqual(a.man.schemas.passio_realtime_budget, { present: true, ephemere: true, restauration: "vide" });
+  assert.equal(a.m.appels.some((x) => x.query.includes("accuses")), false, "aucune ligne d'accusé exportée");
+  const ecrits = [], cible = monde({ taille: 0, budgetTables: ["compteurs", "accuses"] });
+  await P.restaurer({ ...a, lire: cible.lire, ecrire: async (query, parameters) => {
+    ecrits.push(query);
+    const nom = /^insert into "rencontres_prive"\."([a-z_]+)"/.exec(query)?.[1];
+    if (nom) cible.data[nom] = JE.decouperLignes(parameters[0]);
+  } });
+  assert.deepEqual(ecrits.slice(-2), ['truncate table "passio_realtime_budget"."compteurs"', 'truncate table "passio_realtime_budget"."accuses"']);
+  assert.equal((await P.verifier({ ...a, lire: cible.lire, comparer: comparerLignes })).ok, true);
+  const pleine = monde({ taille: 0, budgetTables: ["compteurs", "accuses"], budgetTotal: "3" });
+  const v = await P.verifier({ ...a, lire: pleine.lire, comparer: comparerLignes });
+  assert.equal(v.ok, false); assert.match(v.erreurs.join(" "), /accuses non relue vide/);
+  await assert.rejects(P.inventaire(monde({ budgetTables: ["compteurs", "intruse"] }).lire), /hors périmètre/);
+  await assert.rejects(P.inventaire(monde({ budgetTables: ["accuses"] }).lire), /compteur éphémère incomplet/);
+  await assert.rejects(P.inventaire(monde({ budgetTables: ["compteurs", "compteurs"] }).lire), /compteur éphémère incomplet/);
 });

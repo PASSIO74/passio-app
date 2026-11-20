@@ -29,7 +29,9 @@
 --
 -- RETOUR ARRIÈRE (éditeur SQL) : corps de `rechercher_passions` de
 -- migration_securite_lot4_lectures_2026-11-15.sql, puis
---| grant select, insert, update, delete on public.passion_relations to anon, authenticated;
+--| grant select on public.passion_relations to anon, authenticated;
+-- (SELECT seul : aucun client n'a jamais écrit dans cette table, et un retour arrière ne doit pas
+-- ouvrir l'écriture aux visiteurs.)
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 begin;
 set local lock_timeout = '5s';

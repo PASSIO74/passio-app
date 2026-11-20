@@ -80,14 +80,14 @@ verifier "D10-01 : un message de 5 000 caractères est RECOPIÉ ENTIER pour chaq
 
 Q "truncate realtime.trames"
 EN authenticated "$A" "insert into public.conv_reads(conv_id,user_id,last_read_at) values('g','$A',now()-interval '1 hour')"
-for _ in 1 2 3; do EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"; done
-verifier "D10-01 : quatre accusés rapprochés sont TOUS poussés (défaut)" \
- "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "8"
+for _ in 1 2 3 4 5 6; do EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"; done
+verifier "D10-01 : sept accusés rapprochés sont TOUS poussés (défaut)" \
+ "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "14"
 
 verifier "D10-02 : 25 réécritures d'une publication en une minute (défaut)" \
  "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..25 loop update public.posts set content='texte' where id='p1'; end loop; end \$\$")" "accepte"
-verifier "D10-02 : 250 réécritures de l'état du compte en une minute (défaut)" \
- "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..250 loop update public.user_state set data='{\"v\":1}' where user_id=auth.uid()::text; end loop; end \$\$")" "accepte"
+verifier "D10-02 : 650 réécritures de l'état du compte en une minute (défaut)" \
+ "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..650 loop update public.user_state set data='{\"v\":1}' where user_id=auth.uid()::text; end loop; end \$\$")" "accepte"
 verifier "D10-02 : A, au-delà de 2 Gio, remplace un fichier (défaut)" \
  "$(issue EN authenticated "$A" "update storage.objects set metadata='{\"size\":1048576}' where name='avatars/$A/petit.jpg'")" "accepte"
 verifier "D10-02 : B, après 120 modifications dans l'heure, en fait une autre (défaut)" \
@@ -128,39 +128,50 @@ verifier "D10-01 : un auteur sans compte d'authentification n'a pas de budget" \
  "$(issue Q "select passio_realtime_budget.consommer('u_visiteur',1,1)")" "refuse"
 
 Q "truncate realtime.trames"
+OCTETS_AVANT="$(Q "select coalesce(sum(octets),0) from passio_realtime_budget.compteurs where compte='$A' and fenetre=3")"
 EN authenticated "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values
  ('ap_long','g','$A',repeat('x',5000)),
  ('ap_env','g','$A','{\"type\":\"text\",\"text\":\"'||repeat('y',3000)||'\"}'),
  ('ap_court','g','$A','court')"
 verifier "D10-01 : texte long → 500 caractères et drapeau, pour chaque membre" \
- "$(Q "select count(*)||'/'||max(char_length(charge->'record'->>'content'))||'/'||bool_and((charge->'record'->>'contenu_tronque')::boolean) from realtime.trames where charge->'record'->>'id'='ap_long'")" "3/500/true"
+ "$(Q "select count(*)||'/'||max(char_length(charge->'record'->>'content'))||'/'||bool_and((charge->'record'->>'tronque')::boolean) from realtime.trames where charge->'record'->>'id'='ap_long'")" "3/500/true"
 verifier "D10-01 : enveloppe longue → contenu vide et drapeau" \
- "$(Q "select count(*)||'/'||max(char_length(charge->'record'->>'content'))||'/'||bool_and((charge->'record'->>'contenu_tronque')::boolean) from realtime.trames where charge->'record'->>'id'='ap_env'")" "3/0/true"
+ "$(Q "select count(*)||'/'||max(char_length(charge->'record'->>'content'))||'/'||bool_and((charge->'record'->>'tronque')::boolean) from realtime.trames where charge->'record'->>'id'='ap_env'")" "3/0/true"
 verifier "D10-01 : message court → charge inchangée, sans drapeau" \
- "$(Q "select count(*)||'/'||min(charge->'record'->>'content')||'/'||bool_or(charge->'record' ? 'contenu_tronque') from realtime.trames where charge->'record'->>'id'='ap_court'")" "3/court/false"
+ "$(Q "select count(*)||'/'||min(charge->'record'->>'content')||'/'||bool_or(charge->'record' ? 'tronque') from realtime.trames where charge->'record'->>'id'='ap_court'")" "3/court/false"
 verifier "D10-01 : même enveloppe (événement, table, opération) pour les trois" \
  "$(Q "select count(*) from realtime.trames where event='INSERT' and charge->>'table'='conv_messages' and charge->>'operation'='INSERT' and charge ? 'old_record'")" "9"
+verifier "D10-01 : le budget compte la taille ENTIÈRE (chaque membre relira la ligne), pas l'extrait" \
+ "$(Q "select (sum(octets) - $OCTETS_AVANT >= 3*(5000+3000))::text from passio_realtime_budget.compteurs where compte='$A' and fenetre=3")" "true"
 verifier "D10-01 : le message en base reste ENTIER" \
  "$(Q "select char_length(content) from public.conv_messages where id='ap_long'")" "5000"
 
 Q "truncate realtime.trames, passio_realtime_budget.accuses"
-for _ in 1 2 3; do EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"; done
-verifier "D10-01 : trois accusés rapprochés → UN seul poussé (2 destinataires)" \
- "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "2"
-verifier "D10-01 : la lecture la plus récente est quand même ENREGISTRÉE" \
- "$(Q "select (r.last_read_at > a.dernier)::text from public.conv_reads r join passio_realtime_budget.accuses a on a.compte::text=r.user_id and a.conv_id=r.conv_id where r.conv_id='g' and r.user_id='$A'")" "true"
-Q "select pg_sleep(2.2)" >/dev/null
 EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"
-verifier "D10-01 : 2 secondes plus tard, l'accusé suivant repart" \
+Q "select pg_sleep(1)" >/dev/null
+EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"
+verifier "D10-01 : deux accusés à une seconde d'écart (conversation vive) → les DEUX poussés" \
  "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "4"
+for _ in 1 2 3 4 5; do EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"; done
+verifier "D10-01 : sept accusés rapprochés → CINQ poussés (2 destinataires chacun)" \
+ "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "10"
+verifier "D10-01 : la lecture la plus récente est quand même ENREGISTRÉE" \
+ "$(Q "select (r.last_read_at > a.debut)::text||'/'||a.nombre from public.conv_reads r join passio_realtime_budget.accuses a on a.compte::text=r.user_id and a.conv_id=r.conv_id where r.conv_id='g' and r.user_id='$A'")" "true/5"
+# La fenêtre de 10 s s'écoule (reculée en base plutôt qu'attendue).
+Q "update passio_realtime_budget.accuses set debut=debut-interval '11 seconds'"
+EN authenticated "$A" "update public.conv_reads set last_read_at=clock_timestamp() where conv_id='g' and user_id='$A'"
+verifier "D10-01 : la fenêtre passée, l'accusé suivant repart" \
+ "$(Q "select count(*) from realtime.trames where event='conv_reads:UPSERT'")" "12"
 
 verifier "D10-02 : 25 réécritures d'une publication → refusées" \
  "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..25 loop update public.posts set content='texte' where id='p1'; end loop; end \$\$")" "refuse"
 grep -q 'rate limit' "$BASE/issue.log" || { ko=$((ko+1)); echo "  ECHEC  D10-02 : le refus n'est pas un plafond"; cat "$BASE/issue.log"; }
 verifier "D10-02 : une correction de publication ordinaire passe" \
  "$(issue EN authenticated "$A" "update public.posts set content='texte corrigé' where id='p1'")" "accepte"
-verifier "D10-02 : 250 réécritures de l'état du compte → refusées" \
- "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..250 loop update public.user_state set data='{\"v\":1}' where user_id=auth.uid()::text; end loop; end \$\$")" "refuse"
+verifier "D10-02 : une séance d'état ordinaire (200 écritures) passe" \
+ "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..200 loop update public.user_state set data='{\"v\":2}' where user_id=auth.uid()::text; end loop; end \$\$")" "accepte"
+verifier "D10-02 : 650 réécritures de l'état du compte → refusées" \
+ "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..650 loop update public.user_state set data='{\"v\":1}' where user_id=auth.uid()::text; end loop; end \$\$")" "refuse"
 verifier "D10-02 : 35 réécritures d'un commentaire → refusées" \
  "$(issue EN authenticated "$A" "do \$\$ begin for i in 1..35 loop update public.post_comments set content='texte' where id='c1'; end loop; end \$\$")" "refuse"
 verifier "D10-02 : 20 réécritures d'une activité → refusées" \
@@ -184,8 +195,12 @@ verifier "B06-N1 : … et à l'écriture" \
 grep -q 'forme de message invalide' "$BASE/issue.log" || { ko=$((ko+1)); echo "  ECHEC  B06-N1 : refus d'une autre nature"; cat "$BASE/issue.log"; }
 verifier "B06-N1 : un TEXTE précédé d'un BOM reste accepté" \
  "$(issue EN authenticated "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values('bom_txt','g','$A',chr(65279)||'bonjour')")" "accepte"
-verifier "B06-N1 : espace de largeur nulle et word joiner refusés devant une enveloppe" \
- "$(Q "select public.conv_message_forme_valide(chr(8203)||'[1,')::text||'/'||public.conv_message_forme_valide(chr(8288)||'{bad')::text")" "false/false"
+verifier "B06-N1 : espace idéographique et séparateur de ligne (blancs du client) refusés devant une enveloppe" \
+ "$(Q "select public.conv_message_forme_valide(chr(12288)||'[1,')::text||'/'||public.conv_message_forme_valide(chr(8232)||'{bad')::text")" "false/false"
+verifier "B06-N1 : largeur nulle et word joiner, que le client ne saute pas, restent du texte (comme côté client)" \
+ "$(Q "select public.conv_message_forme_valide(chr(8203)||'[1,')::text||'/'||public.conv_message_forme_valide(chr(8288)||'{bad')::text")" "true/true"
+verifier "B06-N1 : un texte « largeur nulle + accolade » est accepté à l'écriture" \
+ "$(issue EN authenticated "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values('zw_txt','g','$A',chr(8203)||'{ clin d''oeil }')")" "accepte"
 
 verifier "D10-03 : un visiteur ne lit plus passion_relations" \
  "$(issue "${PSQL[@]}" -c "set role anon" -c "select count(*) from public.passion_relations")" "refuse"

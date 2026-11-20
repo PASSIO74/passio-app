@@ -18,10 +18,17 @@
 --     `auth.users ON DELETE CASCADE`) : supprimer ou recréer son profil ne touche plus le budget ;
 --     seule la suppression réelle du compte l'efface. Un auteur sans compte d'authentification est
 --     refusé (il n'existe pas en production : 0 profil sans compte, relu le 2026-11-20).
---   ② Un accusé est POUSSÉ au plus une fois toutes les 2 secondes par conversation et par compte
---     (`passio_realtime_budget.accuses`). Au-delà, la lecture est ENREGISTRÉE (la ligne avance) mais
---     n'est pas poussée : les autres membres la relisent à l'ouverture, ou la reçoivent avec
---     l'accusé suivant. L'avancée coûte toujours un effet du budget commun.
+--   ② Au plus 5 accusés sont POUSSÉS par fenêtre de 10 secondes, par conversation et par compte
+--     (`passio_realtime_budget.accuses`) : le même débit moyen qu'un accusé toutes les 2 s, mais une
+--     conversation vive (deux messages lus à une seconde d'écart) voit passer TOUS ses accusés — un
+--     plafond d'un accusé toutes les 2 s laissait m2 « non lu » chez l'expéditeur (contre-revue du
+--     2026-11-20). Au-delà, la lecture est ENREGISTRÉE (la ligne avance) mais n'est pas poussée : les
+--     autres membres la relisent à l'ouverture, ou la reçoivent avec l'accusé suivant. L'avancée
+--     coûte toujours un effet du budget commun.
+--   La table `accuses` est ÉPHÉMÈRE pour la sauvegarde : déclarée dans
+--   scripts/lib/reprise-schemas-prives.js (jamais exportée, remise vide à la restauration). Ce
+--   fichier-là doit être en production AVANT cette migration, sinon l'inventaire de la sauvegarde
+--   quotidienne refuse le schéma.
 --
 -- RETOUR ARRIÈRE (éditeur SQL), dans une transaction : remettre les corps de `consommer` et de
 -- `diffuser_lecture` de migration_realtime_budget_2026-11-16.sql, puis :
@@ -47,7 +54,7 @@ do $g$ declare f record; h text; begin
  end if;
  for f in select * from (values
    ('passio_realtime_budget.consommer(text,bigint,bigint)', '29a5a0186715c523654c8fc2e78fdf4f', 'a555b378aa795ae2e12ee5bc02058161'),
-   ('public.diffuser_lecture()', '28d8f71c2f3ad9cc52720c4e4c5fddd6', '6f7daabfa2f740c8028b21ff3d0289fa')
+   ('public.diffuser_lecture()', '28d8f71c2f3ad9cc52720c4e4c5fddd6', 'e7c470483d0f12a9eee439e9c36bb6b1')
  ) as x(signature,avant,apres) loop
   if to_regprocedure(f.signature) is null then raise exception 'budget realtime du 2026-11-16 requis avant ce lot'; end if;
   select md5(btrim(regexp_replace(p.prosrc,'[[:space:]]+',' ','g'))) into h
@@ -75,11 +82,12 @@ do $t$ begin
  end if;
 end $t$;
 
--- ── ② Un accusé poussé par conversation et par compte toutes les 2 secondes ───────────────────
+-- ── ② Au plus 5 accusés poussés par conversation et par compte toutes les 10 secondes ────────
 create table if not exists passio_realtime_budget.accuses (
  compte uuid not null references auth.users(id) on delete cascade,
  conv_id text not null,
- dernier timestamptz not null,
+ debut timestamptz not null,
+ nombre integer not null check (nombre >= 0),
  primary key (compte, conv_id)
 );
 alter table passio_realtime_budget.accuses enable row level security;
@@ -120,8 +128,8 @@ begin
  end loop;
 end $f$;
 
--- Vrai si l'accusé peut être poussé : la ligne n'avance que si 2 secondes sont passées depuis le
--- dernier accusé poussé. Deux transactions concurrentes se sérialisent sur la ligne.
+-- Vrai si l'accusé peut être poussé : au plus 5 par fenêtre de 10 secondes (la fenêtre repart au
+-- premier accusé qui la dépasse). Deux transactions concurrentes se sérialisent sur la ligne.
 create or replace function passio_realtime_budget.accuse_autorise(p_compte text,p_conv text)
 returns boolean language plpgsql security definer set search_path = '' as $f$
 declare pousse boolean;
@@ -130,10 +138,12 @@ begin
  or p_compte !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
   raise exception 'accuse de lecture invalide' using errcode='22023';
  end if;
- insert into passio_realtime_budget.accuses as a(compte,conv_id,dernier)
-  values(p_compte::uuid,p_conv,clock_timestamp())
-  on conflict(compte,conv_id) do update set dernier=excluded.dernier
-   where a.dernier <= excluded.dernier - interval '2 seconds'
+ insert into passio_realtime_budget.accuses as a(compte,conv_id,debut,nombre)
+  values(p_compte::uuid,p_conv,clock_timestamp(),1)
+  on conflict(compte,conv_id) do update set
+   debut=case when a.debut <= excluded.debut - interval '10 seconds' then excluded.debut else a.debut end,
+   nombre=case when a.debut <= excluded.debut - interval '10 seconds' then 1 else a.nombre+1 end
+   where a.debut <= excluded.debut - interval '10 seconds' or a.nombre < 5
   returning true into pousse;
  return coalesce(pousse,false);
 end $f$;
@@ -151,7 +161,7 @@ begin
   perform passio_realtime_budget.consommer(acteur,0,0);
   return null;
  end if;
- -- Plafond propre aux accusés : un poussé par conversation et par compte toutes les 2 s.
+ -- Plafond propre aux accusés : 5 poussés par conversation et par compte toutes les 10 s.
  if not passio_realtime_budget.accuse_autorise(acteur,new.conv_id) then
   perform passio_realtime_budget.consommer(acteur,0,0);
   return null;
@@ -183,7 +193,7 @@ revoke all on function public.diffuser_lecture() from public,anon,authenticated,
 -- Une ligne d'accusé de plus d'un jour ne règle plus rien.
 do $c$ begin
  perform cron.schedule('purge_accuses_realtime','41 2 * * *',
-  $q$delete from passio_realtime_budget.accuses where dernier < now() - interval '1 day'$q$);
+  $q$delete from passio_realtime_budget.accuses where debut < now() - interval '1 day'$q$);
 end $c$;
 
 -- ── TABLEAU DE VERDICT ───────────────────────────────────────────────────────────────────────────
@@ -196,10 +206,11 @@ select 'budget realtime : indexé par le compte d''authentification' as controle
 union all select 'budget realtime : survit à la suppression du profil',
        case when not exists (select 1 from pg_constraint where conrelid='passio_realtime_budget.compteurs'::regclass
                               and contype='f' and confrelid='public.profiles'::regclass) then 'OK' else 'ECHEC' end
-union all select 'accusés : un poussé par conversation et par compte toutes les 2 s',
+union all select 'accusés : 5 poussés par conversation et par compte toutes les 10 s',
        case when (select relrowsecurity from pg_class where oid='passio_realtime_budget.accuses'::regclass)
              and (select prosrc from pg_proc where oid='public.diffuser_lecture()'::regprocedure) like '%accuse_autorise%'
-             and (select prosrc from pg_proc where oid='passio_realtime_budget.accuse_autorise(text,text)'::regprocedure) like '%2 seconds%'
+             and (select prosrc from pg_proc where oid='passio_realtime_budget.accuse_autorise(text,text)'::regprocedure) like '%10 seconds%'
+             and (select prosrc from pg_proc where oid='passio_realtime_budget.accuse_autorise(text,text)'::regprocedure) like '%a.nombre < 5%'
             then 'OK' else 'ECHEC' end
 union all select 'accusés : effacés avec le compte d''authentification',
        case when exists (select 1 from pg_constraint where conrelid='passio_realtime_budget.accuses'::regclass

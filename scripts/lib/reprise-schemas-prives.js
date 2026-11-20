@@ -12,6 +12,11 @@ const TABLES = Object.freeze({
   accords: ["event_id", "user_id"], inscriptions: ["id"], decisions: ["id"],
 });
 const SCHEMA = "rencontres_prive", BUDGET = "passio_realtime_budget", PAGE = 500;
+// Tables ÉPHÉMÈRES du budget temps réel : jamais exportées, recréées VIDES à la
+// restauration. `compteurs` (2026-11-16) est obligatoire dès que le schéma existe ;
+// `accuses` (plafond des accusés de lecture, 2026-11-20) l'est dès qu'elle existe.
+const BUDGET_TABLES = Object.freeze(["compteurs", "accuses"]);
+const budgetSql = (nom) => { if (!BUDGET_TABLES.includes(nom)) throw new Error("Table éphémère hors périmètre"); return ident(BUDGET) + "." + ident(nom); };
 const ident = (v) => '"' + v.replace(/"/g, '""') + '"';
 const tableSql = (nom) => { if (!Object.hasOwn(TABLES, nom)) throw new Error("Table privée hors périmètre"); return ident(SCHEMA) + "." + ident(nom); };
 const empreinte = (v) => crypto.createHash("sha256").update(v).digest("hex");
@@ -62,8 +67,10 @@ async function inventaire(lire) {
   if (typeof i.rencontres !== "boolean" || typeof i.budget !== "boolean" || !Array.isArray(i.tables)) throw new Error("Inventaire privé illisible");
   const r = i.tables.filter((t) => t.schema === SCHEMA);
   if (i.tables.some((t) => t.genre !== "r" || ![SCHEMA, BUDGET].includes(t.schema)
-    || (t.schema === BUDGET && t.nom !== "compteurs"))) throw new Error("Inventaire privé hors périmètre");
-  if (i.tables.filter((t) => t.schema === BUDGET).length !== (i.budget ? 1 : 0)) throw new Error("Inventaire du compteur éphémère incomplet");
+    || (t.schema === BUDGET && !BUDGET_TABLES.includes(t.nom)))) throw new Error("Inventaire privé hors périmètre");
+  const b = i.tables.filter((t) => t.schema === BUDGET).map((t) => t.nom);
+  if (new Set(b).size !== b.length || (i.budget ? !b.includes("compteurs") : b.length)) throw new Error("Inventaire du compteur éphémère incomplet");
+  i.budgetTables = BUDGET_TABLES.filter((nom) => b.includes(nom));
   if (i.rencontres && (r.length !== Object.keys(TABLES).length || r.some((t) => !Object.hasOwn(TABLES, t.nom)))) throw new Error("Inventaire Rencontres incomplet ou inconnu");
   if (!i.rencontres && r.length) throw new Error("Inventaire Rencontres incohérent");
   for (const t of r) if (t.lisible !== true || JSON.stringify(t.pk) !== JSON.stringify(TABLES[t.nom])) {
@@ -174,7 +181,7 @@ async function restaurer({ dossier, man, lire, ecrire }) {
         on conflict (${TABLES[nom].map(ident).join(",")}) do nothing`, ["[" + l.slice(debut, debut + PAGE).join(",") + "]"]);
     }
   }
-  if (i.budget) await ecrire('truncate table "passio_realtime_budget"."compteurs"');
+  for (const nom of i.budgetTables) await ecrire("truncate table " + budgetSql(nom));
   return { ok: true, historique: false };
 }
 
@@ -194,14 +201,15 @@ async function verifier({ dossier, man, lire, comparer }) {
     tables.push({ table: SCHEMA + "." + nom, attendu: archive.length, obtenu: cible.length, ok });
     if (!ok) erreurs.push(`${SCHEMA}.${nom} : contenu différent`);
   }
-  if (i.budget) {
+  for (const nom of i.budgetTables) {
+    const q = "passio_realtime_budget." + nom;
     const b = await lire(`select current_setting('transaction_read_only') = 'on' as lecture_seule,
-      has_table_privilege(current_user,'passio_realtime_budget.compteurs','SELECT')
-        and not row_security_active('passio_realtime_budget.compteurs'::regclass) as lisible,
-      (select count(*)::text from passio_realtime_budget.compteurs) as total`);
-    if (b.lisible !== true || b.total !== "0") erreurs.push("Compteurs éphémères non relus vides");
+      has_table_privilege(current_user,'${q}','SELECT')
+        and not row_security_active('${q}'::regclass) as lisible,
+      (select count(*)::text from ${q}) as total`);
+    if (b.lisible !== true || b.total !== "0") erreurs.push(`Table éphémère ${nom} non relue vide`);
   }
   return { ok: erreurs.length === 0, historique: false, tables, erreurs, notes: v.notes };
 }
 
-module.exports = { TABLES, SCHEMA, BUDGET, PAGE, SQL_INVENTAIRE, cible, lecteur, inventaire, exporter, valider, restaurer, verifier };
+module.exports = { TABLES, SCHEMA, BUDGET, BUDGET_TABLES, PAGE, SQL_INVENTAIRE, cible, lecteur, inventaire, exporter, valider, restaurer, verifier };

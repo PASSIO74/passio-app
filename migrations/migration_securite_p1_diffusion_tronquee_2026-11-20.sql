@@ -3,7 +3,7 @@
 --
 -- Une transaction, REJOUABLE, tableau de verdict en fin. Se joue APRÈS
 -- migration_securite_p1_budget_realtime_2026-11-20.sql (même budget, même acteur).
--- PREREQUIS-CLIENT: contenu_tronque
+-- PREREQUIS-CLIENT: msg_tronque_echec
 -- Banc : tests/sql/migration-securite-p1-2026-11-20.test.sh.
 --
 -- CE QUI COÛTAIT : `broadcast_conv_message_to_users` pousse la ligne ENTIÈRE à chaque membre
@@ -14,18 +14,26 @@
 -- (`record`, `old_record`, `operation`, `table`, `schema`, même événement `INSERT`, même sujet
 -- `user:<membre>`) mais `record.content` est réduit — 500 premiers caractères pour un texte simple,
 -- chaîne vide pour une enveloppe JSON (qu'un extrait rendrait invalide) — et `record` porte
--- `"contenu_tronque": true`. Le message en base reste intact. En dessous de 2 048 octets, rien ne
+-- `"tronque": true`. Le message en base reste intact. En dessous de 2 048 octets, rien ne
 -- change (même appel `broadcast_changes`). Une copie coûte donc au plus ~3 Ko au lieu de ~20 Ko.
 --
--- CONTRAT CLIENT (d'où le PREREQUIS-CLIENT, motif littéral `contenu_tronque`) : sur `user:<moi>`,
--- événement `INSERT`, `payload.table === "conv_messages"`, si `payload.record.contenu_tronque ===
--- true`, le client N'UTILISE PAS `record.content` : il relit la ligne par l'API —
+-- LE BUDGET COMPTE LA TAILLE ENTIÈRE (contre-revue du 2026-11-20) : chaque destinataire relit la
+-- ligne complète par l'API, hors de tout budget. Facturer la charge tronquée aurait ôté la borne
+-- sur le volume réellement distribué (1 Mio × 500 membres passait sous le plafond du jour) : les
+-- octets comptés sont ceux de la charge NON tronquée, comme avant ce lot ; seule la copie écrite
+-- dans `realtime.messages` est allégée.
+--
+-- CONTRAT CLIENT (d'où le PREREQUIS-CLIENT) : sur `user:<moi>`, événement `INSERT`,
+-- `payload.table === "conv_messages"`, si `payload.record.tronque === true`, le client N'UTILISE
+-- PAS `record.content` : il relit la ligne par l'API —
 --   supa.from("conv_messages").select("id, conv_id, from_id, content, created_at")
 --       .eq("id", record.id).maybeSingle()
 -- — et passe CETTE ligne à `_handleIncomingConvMessage`. Relecture vide ou en échec : rien n'est
 -- peint (le prochain `supaLoadMessages` apporte le message). Un client sans ce contrat afficherait
 -- l'extrait (texte) ou une bulle vide (enveloppe) : ne pas appliquer avant que le client servi
--- porte le motif.
+-- porte le motif. Le nom du drapeau, `tronque`, est celui que lit `_diffusionTronquee`
+-- (app-08) ; le motif `msg_tronque_echec` est un diagnostic de cette même relecture, une chaîne
+-- que la minification ne renomme pas (le mot `tronque` seul se trouve déjà ailleurs dans le client).
 --
 -- RETOUR ARRIÈRE (éditeur SQL) : remettre le corps de `broadcast_conv_message_to_users` de
 -- migration_realtime_budget_2026-11-16.sql. Le client relecteur peut rester en place.
@@ -41,7 +49,7 @@ do $g$ declare h text; begin
  end if;
  select md5(btrim(regexp_replace(p.prosrc,'[[:space:]]+',' ','g'))) into h
   from pg_proc p where p.oid='public.broadcast_conv_message_to_users()'::regprocedure;
- if h not in ('d9b5e155ae80c1de96b61143395df6a7','6c8af6a13460903f10c160002a8407bb') then
+ if h not in ('d9b5e155ae80c1de96b61143395df6a7','7a4c67bd04999946b48951e74a7ead2d') then
   raise exception 'diffuseur different du catalogue relu';
  end if;
  if not exists(select 1 from pg_trigger where tgrelid='public.conv_messages'::regclass
@@ -65,16 +73,17 @@ begin
  from public.conv_members cm where cm.conv_id=new.conv_id
   and not public.blocage_entre(new.from_id,cm.user_id);
  -- Même enveloppe que realtime.broadcast_changes ; au-delà de 2 048 octets, le contenu
- -- n'est plus recopié : le client relit la ligne (contrat contenu_tronque).
+ -- n'est plus recopié : le client relit la ligne (contrat du drapeau `tronque`).
  charge := jsonb_build_object('old_record',to_jsonb(old),'record',to_jsonb(new),
   'operation',tg_op,'table',tg_table_name,'schema',tg_table_schema);
+ -- Taille ENTIÈRE, mesurée avant la troncature : chaque destinataire relira la ligne complète.
+ octets := octet_length(charge::text)+1024;
  tronque := coalesce(octet_length(new.content),0) > 2048;
  if tronque then
   charge := jsonb_set(charge,'{record}',(charge->'record')||jsonb_build_object(
    'content',case when new.content ~ '^[[:space:]]*[\[{]' then '' else left(new.content,500) end,
-   'contenu_tronque',true));
+   'tronque',true));
  end if;
- octets := octet_length(charge::text)+1024;
  perform passio_realtime_budget.consommer(acteur,cardinality(destinataires)::bigint,
   cardinality(destinataires)::bigint*octets);
  foreach destinataire in array destinataires loop
@@ -92,9 +101,14 @@ revoke all on function public.broadcast_conv_message_to_users() from public,anon
 
 -- ── TABLEAU DE VERDICT ───────────────────────────────────────────────────────────────────────────
 select 'diffusion : contenu long non recopié par membre' as controle,
-       case when (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure) like '%contenu_tronque%'
+       case when (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure) like '%''tronque'',true%'
              and (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure) like '%> 2048%'
             then 'OK' else 'ECHEC' end as valeur
+union all select 'diffusion : budget compté sur la taille entière, mesurée avant la troncature',
+       case when position('octets := octet_length(charge::text)+1024' in (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure))
+               < position('tronque := ' in (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure))
+             and position('octets := octet_length(charge::text)+1024' in (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure)) > 0
+            then 'OK' else 'ECHEC' end
 union all select 'diffusion : budget compté avant la première émission',
        case when (select prosrc from pg_proc where oid='public.broadcast_conv_message_to_users()'::regprocedure) like '%passio_realtime_budget.consommer(acteur%'
             then 'OK' else 'ECHEC' end
