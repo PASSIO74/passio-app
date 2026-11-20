@@ -9,7 +9,7 @@ Le GO est écrit par Claude Code, sur l'ordre du mainteneur. Il s'appuie sur des
 ## Conditions du GO (gestes du responsable, hors code)
 
 1. **Plafond de dépense de l'hébergeur de la base**, ou à défaut des alertes de budget. C'est la seule protection contre une facture non bornée en cas d'abus du trafic sortant. Sans ce plafond, le GO ne vaut pas.
-2. **Accès de l'hébergeur du site** : renouveler le jeton du poste, aujourd'hui refusé, puis relever la consommation de l'offre actuelle et choisir l'offre adaptée au lancement. Sinon, le site peut être suspendu au dépassement.
+2. ~~Hébergeur du site~~ — **levée le 20/11**, consommation relevée sur le tableau de bord. Novembre, jusqu'au 20 : 2,4 Go de bande passante sur 100 Go, 97 000 requêtes, 19 000 appels de fonctions en bordure. La marge est d'environ 40 fois, et les médias sont servis par le CDN de la base, pas par le site. L'offre gratuite « historique » est conservée : en changer serait irréversible et sans objet à ce volume.
 
 ## Les 11 constats P1 de l'audit du 15/11
 
@@ -25,7 +25,7 @@ Le GO est écrit par Claude Code, sur l'ordre du mainteneur. Il s'appuie sur des
 | Chaîne de livraison et secrets | Accepté pour l'échelle maîtrisée | Mainteneur unique, revues assumées et non indépendantes, secrets au niveau du dépôt |
 | Intégrations et agents | Réduit | Voir le dossier restreint |
 | Dépense de l'hébergeur de la base | Ouvert, condition 1 | |
-| Hébergeur du site | Ouvert, condition 2 | |
+| Hébergeur du site | Fermé le 20/11 | Consommation relevée, marge d'environ 40 fois |
 
 ## Ce que « échelle maîtrisée » veut dire
 
