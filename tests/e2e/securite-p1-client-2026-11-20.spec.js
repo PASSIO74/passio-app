@@ -233,14 +233,14 @@ test("fil : une erreur DURABLE (42501, PGRST203) prend le chemin d'avant, ne rec
       sorties.push({ tables: __lectures.map((q) => q.table).slice(0, 4), echecs: _filCompteursEchecs, seq: window._filComplementsDegradesSeq - seq,
         memo: _filCompteursMemoAbsence() });
     }
-    // Et la charge reste une charge : 503 sans code, 57014, réseau, pool.
-    const charge = [[{ message: "Service Unavailable" }, 503], [{ code: "57014", message: "timeout" }, 500], [{ message: "Failed to fetch" }, 0], [{ code: "PGRST003", message: "pool" }, 504]]
-      .map(([e, st]) => _filCompteursErreurDeCharge(e, st));
+    // Et le passager reste passager : 503 sans code, 57014, réseau, pool, jeton expiré.
+    const charge = [[{ message: "Service Unavailable" }, 503], [{ code: "57014", message: "timeout" }, 500], [{ message: "Failed to fetch" }, 0], [{ code: "PGRST003", message: "pool" }, 504], [{ code: "PGRST301", message: "JWT expired" }, 401]]
+      .map(([e, st]) => _filCompteursErreurPassagere(e, st));
     return { sorties, charge };
   }, UNE_LIGNE);
   // Avant : ["posts"] seul, 0 j'aime pour toute publication neuve, et recul jusqu'à 10 min.
   for (const s of r.sorties) expect(s).toEqual({ tables: ["posts", "post_likes", "post_comments", "comment_interactions"], echecs: 0, seq: 0, memo: true });
-  expect(r.charge).toEqual([true, true, true, true]);
+  expect(r.charge).toEqual([true, true, true, true, true]);
 });
 
 test("fil : l'ATTENTE du recul n'est pas un échec du filet ; une rafale d'échecs concurrents compte pour un", async ({ page }) => {

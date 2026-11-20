@@ -341,7 +341,7 @@ function _postLikeGroupeDisponible() {
 // UN appel `fil_compteurs` pour les cartes à l'écran. Rend :
 //   { counts: Map(id → nombre | null) } — null = valeur invalide (jamais un zéro) ;
 //   { absente: true } — PGRST202/42883, ou erreur DURABLE (4xx, 42501,
-//     PGRST203… : `_filCompteursErreurDeCharge`, app-08), mémorisé comme pour le fil ;
+//     PGRST203… : `_filCompteursErreurPassagere`, app-08), mémorisé comme pour le fil ;
 //   { error: true } — charge : délai (8 s), 5xx, 57014, réseau, réponse illisible.
 // Le recul est PARTAGÉ avec le fil (contre-revue du 2026-11-20) : un échec de
 // charge le pose (`_filCompteursNoterEchec`), un succès le lève pour les deux.
@@ -356,7 +356,7 @@ async function _postLikeLireGroupe(ids) {
     const { data, error, status } = await query;
     if (error) {
       const absente = typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error);
-      const durable = !absente && typeof _filCompteursErreurDeCharge === "function" && !_filCompteursErreurDeCharge(error, status);
+      const durable = !absente && typeof _filCompteursErreurPassagere === "function" && !_filCompteursErreurPassagere(error, status);
       if (absente || durable) {
         if (typeof _filCompteursNoterAbsence === "function") _filCompteursNoterAbsence();
         return { absente: true };

@@ -223,7 +223,7 @@ for (const mode of ["erreur", "reseau"]) {
     expect(r.rpc2).toBe(2);
     expect(r.tables2).toEqual(["posts"]);
     expect(r.recul).toEqual({ likes: 12, total: 45 });
-    expect(r.degrades).toBe(2);
+    expect(r.degrades).toBe(1); // contre-revue : l'attente du recul (2e lecture) n'est pas un échec du filet
     expect(r.memo).toBeNull();
     expect(r.apres).toEqual({ rpc: 3, likes: 12, total: 45, echecs: 0, tables: ["posts", "comment_interactions"] });
   });

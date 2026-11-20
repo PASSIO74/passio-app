@@ -6252,7 +6252,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
 // exponentiel avec gigue (`reculSurErreur`, app-02). Le filet du fil compte ce
 // tour comme un échec (`_filComplementsDegradesSeq`) et recule lui aussi.
 // Une erreur DURABLE (4xx, 42501, PGRST203…) n'est pas une charge : elle prend
-// le chemin d'avant comme une absence (`_filCompteursErreurDeCharge`).
+// le chemin d'avant comme une absence (`_filCompteursErreurPassagere`).
 const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
 // Nombre d'aperçus de commentaires que la carte du fil peint (`renderPostHTML`,
 // app-02 : `slice(0, 2)`) — ceux dont `supaLoadPosts` lit les interactions.
@@ -6307,20 +6307,21 @@ function _erreurFonctionAbsente(err) {
   return /could not find the function/i.test(String(err.message || ""));
 }
 // ⚠️ UNE ERREUR DURABLE N'EST PAS UNE CHARGE (contre-revue du 2026-11-20). Seule
-// une erreur de CHARGE justifie de reculer en gardant les compteurs : réseau ou
-// délai (aucun code), 5xx/408/429 sans code, 57014 (délai de requête), classes
+// une erreur PASSAGÈRE justifie de reculer en gardant les compteurs : réseau ou
+// délai (aucun code), 5xx/401/408/429 sans code, 57014 (délai de requête), classes
 // 53 (ressources), 08 (connexion), 40 (sérialisation), PGRST000-003 (pool,
-// connexion). Tout autre code ou 4xx — 42501 après un droit retiré, PGRST203
+// connexion), PGRST3xx (jeton expiré ou invalide : le rafraîchissement de session
+// la règle, et le chemin d'avant échouerait de même). Tout autre code ou 4xx — 42501 après un droit retiré, PGRST203
 // (surcharge ambiguë), 42703… — ne se règle pas en attendant : reculer « sans
 // repli » figeait le fil à 0 pour toute publication neuve, indéfiniment, et
 // faisait monter le filet du fil à 10 min. Une erreur durable se traite donc
 // comme une absence : chemin d'avant, mémorisé pour l'heure (TTL ci-dessus).
-function _filCompteursErreurDeCharge(err, status) {
+function _filCompteursErreurPassagere(err, status) {
   if (!err) return true;
   var code = (typeof err.code === "string") ? err.code : "";
-  if (code) return code === "57014" || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code);
+  if (code) return code === "57014" || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code) || /^PGRST3[0-9][0-9]$/.test(code);
   var st = Number(status != null ? status : err.status);
-  if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 408 && st !== 429) return false;
+  if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 401 && st !== 408 && st !== 429) return false;
   return true;
 }
 // ⚠️ UN SEUL RECUL POUR LA FONCTION, QUEL QUE SOIT L'APPELANT (contre-revue du
@@ -6381,7 +6382,7 @@ async function _chargerComplementsFil(postIds) {
         diagLog("fil_compteurs: fonction absente sur ce projet, repli sur les lectures d'avant pour la session");
         return _chargerComplementsFilLegacy(ids, out);
       }
-      if (error && !_filCompteursErreurDeCharge(error, status)) {
+      if (error && !_filCompteursErreurPassagere(error, status)) {
         // Erreur durable (droit retiré, surcharge ambiguë…) : attendre ne la
         // règle pas. Chemin d'avant, mémorisé pour l'heure comme une absence.
         _filCompteursNoterAbsence();

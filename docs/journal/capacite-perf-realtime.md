@@ -3235,4 +3235,23 @@ chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation
 - **B06-N1** : `supaLoadMyConversations` filtre ses lignes (`_lignesConv`) et construit chaque
   conversation sous son propre `try` — une ligne invalide ne vide plus la liste.
 
-Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (7 cas ; 6 rouges sur le client d'avant).
+**Contre-revue du même jour** — quatre corrections :
+- **Erreur durable ≠ charge** (`_filCompteursErreurPassagere`) : seuls réseau, délai, 5xx/401/408/429
+  sans code, 57014, classes 53/08/40, PGRST000-003 et PGRST3xx (jeton) reculent en gardant les
+  compteurs. Un 4xx ou un code durable (42501 après un droit retiré, PGRST203…) prend le chemin
+  d'avant, mémorisé pour l'heure comme une absence — sinon le fil restait à 0 j'aime pour toute
+  publication neuve, indéfiniment. L'ATTENTE du recul n'est plus comptée comme un échec du filet
+  (seul un appel parti et en échec l'est) : le filet est le seul chemin des nouvelles publications.
+- **Un seul recul pour la fonction** : fil et cartes lisent et écrivent `_filCompteursEchecs` /
+  `_filCompteursProchainEssai` (`_filCompteursEnRecul`, `_filCompteursNoterSucces`) ; un succès de
+  l'un lève le recul de l'autre, et un échec arrivé pendant une fenêtre de recul (rafale concurrente
+  au démarrage) ne compte pas.
+- **Sous-lecture en échec** (messages, membres, accusés) : `supaLoadMyConversations` rend `[]`
+  (= garder le local) au lieu de fabriquer des entrées sans aperçu qui remplaçaient la copie locale.
+- **Drapeau `tronque` honoré sur `user:<moi>` seulement** : sur `conv:<id>`, où tout membre émet,
+  la charge est jetée (sinon : rejeu d'un ancien contrôle d'autrui rendu authentique, et une lecture
+  par abonné pour chaque charge forgée). Budget de relecture : 60/min, dont 20 par conversation ;
+  hors budget ou relecture en échec, la conversation reçoit sa pastille non lue, sans contenu.
+
+Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
+et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).
