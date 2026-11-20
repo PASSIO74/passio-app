@@ -182,6 +182,25 @@ test("⑥ témoin du banc : un vrai build, sur le disque, rend le même buildId 
     for (const s of temoin.scripts) assert.equal(fs.readFileSync(path.join(sortie, "app", s.nom), "utf8"), s.contenu, s.nom);
     assert.equal(fs.existsSync(path.join(sortie, "app.js")), false, "plus de monolithe app.js");
     assert.equal(/const CACHE = "passio-v([a-f0-9]+)"/.exec(fs.readFileSync(path.join(sortie, "sw.js"), "utf8"))[1], contrat.buildId);
+    const configParDefaut = fs.readFileSync(path.join(sortie, "pilotage", "config.js"), "utf8");
+    assert.ok(configParDefaut === source("pilotage/config.js"), "configuration de production recopiée à l’identique");
+
+    const apercu = path.join(sortie, "apercu");
+    const url = "https://abcdefghijklmnopqrst.supabase.co";
+    const anon = "cle-anon-de-test";
+    execFileSync(process.execPath, [SCRIPT_BUILD, path.join(apercu, "index.html")], {
+      cwd: RACINE, env: { ...env, PASSIO_SUPABASE_URL: url, PASSIO_SUPABASE_ANON: anon }, stdio: "pipe", timeout: 120000,
+    });
+    const indexApercu = fs.readFileSync(path.join(apercu, "index.html"), "utf8");
+    const affectation = indexApercu.match(/<script>(window\.PASSIO_SUPABASE_CIBLE=[^<]+;)<\/script>/);
+    assert.ok(affectation, "bootstrap de l’application présent");
+    const fenetre = {};
+    vm.runInNewContext(affectation[1], { window: fenetre });
+    vm.runInNewContext(fs.readFileSync(path.join(apercu, "pilotage", "config.js"), "utf8"), { window: fenetre });
+    for (const cfg of [fenetre.PASSIO_SUPABASE_CIBLE, fenetre.PILOTAGE_SUPABASE]) {
+      assert.deepEqual(Object.keys(cfg).sort(), ["anon", "url"]);
+      assert.ok(cfg.url === url && cfg.anon === anon, "les deux pages utilisent la cible explicite");
+    }
   } finally {
     fs.rmSync(sortie, { recursive: true, force: true });
   }
