@@ -2041,3 +2041,30 @@ Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-res
 La vérification locale PGlite couvre le SQL séquentiel et les triggers métier de référence ;
 elle ne prouve pas la concurrence à deux sessions. Une revue indépendante reste requise
 avant toute fusion/application, hors de cette demande de commit local.
+
+## 🧱 P1 RESTÉS OUVERTS AU 20/11 — BUDGET TEMPS RÉEL, RÉÉCRITURES, BOM, LECTURES ANONYMES (2026-11-20, non appliqués)
+
+Cinq migrations, rejouables, à jouer dans cet ordre ; banc `tests/sql/migration-securite-p1-2026-11-20.test.sh`
+(mesure chaque défaut AVANT, joue chaque migration deux fois, vérifie APRÈS ; PostgreSQL natif, CI seulement).
+
+- `migration_securite_p1_budget_realtime_2026-11-20.sql` (D10-01) : `passio_realtime_budget.compteurs.compte` passe
+  de `text → profiles ON DELETE CASCADE` à `uuid → auth.users ON DELETE CASCADE`. Supprimer puis recréer son profil
+  remettait les trois fenêtres à zéro (6 requêtes) ; seule la suppression réelle du compte les efface désormais.
+  Accusés de lecture : un poussé par conversation et par compte toutes les 2 s (`passio_realtime_budget.accuses`) ;
+  au-delà la ligne avance, rien n'est poussé.
+- `migration_securite_p1_diffusion_tronquee_2026-11-20.sql` (D10-01, **PREREQUIS-CLIENT: contenu_tronque**) :
+  au-delà de 2 048 octets, la charge poussée garde son enveloppe mais `record.content` est réduit (500 caractères
+  de texte, ou vide pour une enveloppe JSON) avec `record.contenu_tronque = true` ; le client relit la ligne par
+  l'API. Ne pas appliquer avant que le client servi porte le motif.
+- `migration_securite_p1_debit_maj_2026-11-20.sql` (D10-02) : `trg_debit_maj` sur `posts` (10/min),
+  `post_comments` (30), `events` (15), `user_state` (120) — × 60 par jour, × 15 la première semaine ; policy
+  restrictive `passio_media_update_quota` (quota + 120 objets modifiés par heure), archivage toujours permis.
+- `migration_securite_p1_forme_message_2026-11-20.sql` (B06-N1) : le test de tête de `conv_message_forme_valide`
+  saute aussi contrôles, NBSP et caractères de format Unicode (U+FEFF, U+200B, U+2060…).
+- `migration_securite_p1_lectures_anonymes_2026-11-20.sql` (D10-03/04) : `passion_relations` fermée à `anon` et
+  `authenticated` (aucun client ne la lit) ; `rechercher_passions` ne note plus que 300 candidats (« ion » :
+  ~39 ms → ~12 ms à chaud en lecture de production, mêmes 20 premiers résultats sur 4 termes relus).
+
+⚠️ **Piège rencontré** : un `\u00A0` écrit dans un fichier par l'outil d'édition est arrivé en caractère BRUT
+(un NBSP réel dans l'expression régulière) — vérifier tout fichier SQL qui porte des échappements Unicode par un
+scan des invisibles avant de calculer une empreinte de corps.
