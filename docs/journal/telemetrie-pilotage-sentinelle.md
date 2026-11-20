@@ -56,6 +56,7 @@
 - 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
 - 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
+- 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1783,3 +1784,116 @@ barre SMTP, la connexion à 72 % et son supplément de 10 €, croissance et mod
 Risque critique : métriques et décisions du pilotage. Aucun appel Brevo, secret,
 changement Auth/RLS, admission, délestage ou automatisme ajouté. Contre-revue et
 CI requises avant livraison ; retour arrière par PR de revert.
+
+
+## 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
+
+Audit complet et feuille de route : `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (six familles,
+chacune contredite, quinze trous triés par rendement). Ce lot en livre la pièce de tête (T1) et
+la mesure du clic lent (T10, volet client) — côté appareil, sans migration.
+
+**Mesuré (canal ①, 72 h)** : `perf` = 77 % des lignes de `telemetry_events`, dont 83 % de photos
+`ios_stat_*` « periodic ». `perf-ios.js` réémettait toutes les 3 min l'agrégat CUMULÉ de chaque
+métrique, inchangé ou non, onglet masqué compris (`ios_stat_gate_ready` : 1 218 lignes pour 66
+sessions, valeur mesurée une seule fois). Le commentaire « ~4 lignes par session » de
+`telemetry.js` était faux (≈ 87 à 133). À 2 000–5 000 onglets ouverts, ce flux seul dépassait le
+plafond de débit de la base (4 200/min) ; un 429 refuse le lot ENTIER, la file de 300 jetait « les
+plus anciens » sans regarder le type, et le lot suivant repartait dans l'ordre d'arrivée — erreurs,
+flows et clics morts partaient avec les photos, au moment exact où la Sentinelle en a besoin.
+
+⚠️ **PRIORITÉ À TROIS ENDROITS, ORDRE RELATIF CONSERVÉ** (`_estPrioritaire`, `_bornerFile`,
+js/telemetry.js) : type critique, OU gravité ≥ `warn`, OU ligne portant un `correlation_id`. Au
+débordement et au rechargement du backlog, les non-prioritaires les plus anciens partent d'abord ;
+le lot se compose en deux passes, les prioritaires en tête. Le retrait par identité
+(`telemetrie-doublons`) n'est pas touché. ⚠️ **Une ligne corrélée voyage avec son flow** : la
+requête `api` d'un flow n'est ni critique ni grave, et le premier jet la laissait partir un lot
+après son `start`, ou tomber la première — `dashboard/server/traces.js` lit alors un « clic sans
+effet ». Avant le lot, le début et sa requête vieillissaient ensemble : la priorité ne doit pas les
+séparer (contre-revue, S1).
+
+⚠️ **ON NE TIRE PAS AU SORT UN AGRÉGAT, ON CESSE DE LE RÉPÉTER — ET « A BOUGÉ » NE SE LIT PAS SUR
+`n`** (js/perf-ios.js). Une métrique ne repart que si elle a REÇU un enregistrement depuis sa
+dernière ligne (`recus`, jamais plafonné). Le premier jet comparait `n`, la taille de l'anneau :
+à 120 échantillons il ne bouge plus, et les métriques les plus actives se figeaient à leur valeur
+du 120ᵉ, photo de sortie comprise — une dégradation en cours de longue session devenait invisible.
+Défaut BLOQUANT trouvé par la contre-revue (B1), reproduit par un test rouge avant le correctif.
+`ios_context` ne repart qu'avec une métrique ou si ses compteurs ont bougé ; `reset()` oublie aussi
+ce qui a été émis ; la cadence périodique S'ESPACE (3, 6, 12, 24 min, puis 30 — `delaiPeriodique`),
+et seulement sur une photo PRISE : un battement refusé ne compte pas, sinon une longue absence
+repoussait la photo du retour à 30 min.
+
+⚠️ **LA MESURE DE PERFORMANCE CÈDE SOUS LA PRESSION** (`photoUtile`, `photo`). Dédoublonner ne
+suffit pas à l'échelle : une photo vaut ~12 lignes, et 500 sessions qui démarrent par minute en
+font 6 000 — plus que le plafond. Au moindre signal de pression, AUCUNE photo automatique (ni t45,
+ni périodique, ni arrière-plan, ni sortie). Deux signaux : la production en délestage ×2/×4, et
+`tel.sousPression()` — CET appareil s'est vu refuser un lot en 429 : vrai pendant l'attente, puis
+tant qu'AUCUN envoi n'a réussi depuis (le tuyau n'a pas prouvé qu'il était rouvert), et encore
+10 min après le dernier refus. Ce que la base refuse, elle le refuse à tous : pas besoin d'attendre
+que la veille pose un délestage, 5 min au mieux. Cette mémoire n'est pas persistée — un
+rechargement l'oublie jusqu'au prochain refus. Rien n'est marqué « émis » pendant le silence : la
+pression passée, la photo suivante emporte ce qui a bougé. Photo périodique : en plus, onglet
+visible. Photo au passage en arrière-plan après 45 s (un mobile tue souvent l'onglet masqué sans
+`pagehide`) — ⚠️ elle n'est qu'EN PARTIE en keepalive : au-delà de 12 lignes la vidange ordinaire
+de la file en emporte une part, que le système peut couper ; ces lignes restent dans la file
+persistée et repartent au prochain démarrage. `snapshot()` reste l'outil nu (bancs, baseline à la
+main). Aucun lecteur du nuage ne lisait `ios_stat_*`.
+⚠️ **Ce lot NE lève PAS le plafond serveur** : il fait céder le bruit et passer les preuves dans ce
+que la base accepte. La réserve de débit pour les types critiques reste à faire (T2, migration).
+
+⚠️ **UN CLIC LENT SE MESURE, MAIS ON N'INVENTE JAMAIS UN DÉLAI** (écouteur de clic, telemetry.js).
+L'audit supposait que le minuteur de secours (1 s) passait avant la seconde peinture après un
+blocage, effaçant le clic le plus lent. **Non reproduit dans Chromium** (la double peinture gagne
+la course), possible ailleurs. Le discriminant est le **retard du minuteur lui-même** : en retard
+de ≥ 250 ms (`CLIC_FIL_BLOQUE_MS`), page visible, le fil était bloqué — on rapporte l'attente
+vécue ; à l'heure, rien n'a été peint dans la seconde : mesure vide, comme avant
+(`latence-percue.spec.js` ② garde cet invariant ; le tout premier jet l'enfreignait et l'a rougi).
+⚠️ **UN SEUL MINUTEUR, À 1 s, ET C'EST UN CONTRAT** : la Sentinelle apparie un clic à son effet en
+supposant le clic horodaté au plus ~1 s après le toucher (`BOUTON_AVANCE_MS`). Le deuxième jet
+attendait la peinture jusqu'à 5 s : des boutons vivants seraient passés pour morts (S2).
+Au-delà de 500 ms (`CLIC_LENT_MS`, seuil « mauvais » de l'INP), le clic porte `severity: "warn"`
+et `meta.lent = 1` : jamais échantillonné, en tête de lot. PAS de `status: "slow"` —
+`traces.js` juge les parcours sur ce champ. ⚠️ **Une durée n'est une latence que si quelqu'un
+regardait** : page occultée depuis le toucher (`_occultation` : arrière-plan, gel, départ, retour
+par le cache de navigation) ou durée > 30 s → mesure vide, sinon une suspension iOS fabriquerait
+de faux clics lents (R2). Aucun compteur ne lit `click` en `warn` (la veille ne compte que
+`type = error`) ; un clic lent vit 7 jours au lieu de 3 (purge par gravité).
+
+⚠️ **LES ENVOIS DE FERMETURE ONT UN BUDGET DE POIDS COMMUN, PARCE QUE LEUR QUOTA EST PARTAGÉ**
+(`KEEPALIVE_OCTETS_MAX` = 16 Ko, `keepaliveVols`, `flush`). Le navigateur plafonne à 64 Kio la
+SOMME des envois `keepalive` en vol, et la sauvegarde d'état du compte (`supaSaveUserStateBeacon`,
+jusqu'à 60 Ko) part sur le même événement, juste après la télémétrie. Vingt lignes ordinaires
+pèsent ≈ 12 Ko ; les prioritaires, désormais en tête, sont les plus lourdes. Histoire de ce point,
+à garder, parce qu'il a fallu trois passes : ① la première contre-revue craignait « 4 000
+caractères de pile par erreur » — faux, `redactString` borne message et pile à 500 caractères ; le
+correctif en avait conclu « ≈ 1 Ko par erreur, 21 Ko pour vingt » et retiré la borne — faux aussi ;
+② la seconde a MESURÉ 1,2 à 1,8 Ko par erreur, **32 351 octets pour vingt**, et rappelé le quota
+partagé : borne remise, par lot ; ③ la relecture de ce delta a montré qu'une borne PAR LOT ne tient
+pas la promesse — deux `flush` partent sur un même passage en arrière-plan (celui de la télémétrie,
+puis celui de la photo de perf-ios) et laissaient 31 Ko en vol. Le budget est donc commun à tous les
+envois keepalive en vol (un envoi rend son poids quand il aboutit, échoue, ou après 60 s sans
+réponse). La composition S'ARRÊTE au premier événement qui ne tient pas : ni un plus léger qui
+double, ni du bruit qui comble devant une erreur — l'ordre de la file reste strict sur ce chemin
+aussi. Ce qui ne part pas reste dans la file persistée et repart au prochain envoi (événement
+suivant, retour au premier plan, démarrage suivant) : un succès keepalive n'enchaîne pas de
+lui-même. Le premier événement part toujours quand rien n'est en vol.
+
+**Limites connues, non traitées ici** : ① un clic dont le gestionnaire bloque plus de ~1 s est
+horodaté après son effet de plus de `BOUTON_AVANCE_MS` — la famille « bouton mort » peut le lire
+« sans effet » (préexistant ; le détecteur peut désormais rétro-dater par `meta.ms`, lot suivant) ;
+② au débordement de la file, un clic LENT (prioritaire) survit à son effet `nav`/`action` (qui ne
+l'est pas) — même lecture possible, mais il faut un débordement chez plusieurs comptes sur le même
+bouton ; ③ sans peinture, un blocage de 1,0 à 1,25 s part encore sans durée, et une suspension
+silencieuse (aucun événement de page) de moins de 30 s fabriquerait un faux clic lent — théorique ;
+④ le lecteur « Interface lente » du pilotage (par écran, en taux, par version) reste à faire : le
+signal existe, il ne sonne pas encore.
+
+Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (13), dont le CÂBLAGE des minuteurs à
+l'horloge simulée (②d : personne ne lit encore `ios_stat_*`, des photos qui ne partiraient plus ne
+se verraient nulle part). Trente-quatre réinjections, toutes rouges — chaque garde nommée ci-dessus
+retirée une à une. Trois passes de contre-revue adversariale : la première a trouvé B1, S1 et S2 ; la
+seconde, sur l'état corrigé, aucune objection bloquante et six remarques ; la troisième, sur leur
+traitement, le budget de poids à rendre commun. ⚠️ Le plafond client de 400/min/onglet
+empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien
+prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
+À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
+des `perf`, avant et après.
