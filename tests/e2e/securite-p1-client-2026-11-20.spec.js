@@ -241,9 +241,15 @@ test("fil : une erreur DURABLE (42501, PGRST203) prend le chemin d'avant, ne rec
   // Avant : ["posts"] seul, 0 j'aime pour toute publication neuve, et recul jusqu'à 10 min.
   for (const s of r.sorties) expect(s).toEqual({ tables: ["posts", "post_likes", "post_comments", "comment_interactions"], echecs: 0, seq: 0, memo: true });
   expect(r.charge).toEqual([true, true, true, true, true]);
+  // Revue second modèle : un 5xx reste passager même avec un SQLSTATE, et les
+  // codes d'indisponibilité ou de verrou le sont aussi (avant : « absente » 1 h).
+  const indispo = await page.evaluate(() => [[{ code: "57P03", message: "starting up" }, 503], [{ code: "XX000", message: "x" }, 502],
+    [{ code: "55P03", message: "lock" }, 0], [{ code: "57P01", message: "admin shutdown" }, 0], [{ code: "42501", message: "refus" }, 403]]
+    .map(([e, st]) => _filCompteursErreurPassagere(e, st)));
+  expect(indispo).toEqual([true, true, true, true, false]);
 });
 
-test("fil : l'ATTENTE du recul n'est pas un échec du filet ; une rafale d'échecs concurrents compte pour un", async ({ page }) => {
+test("fil : l'ATTENTE du recul fait reculer le filet sans prolonger le recul ; une rafale d'échecs concurrents compte pour un", async ({ page }) => {
   await demarrer(page);
   const r = await page.evaluate(async (lignes) => {
     Math.random = () => 0.5;
@@ -256,15 +262,18 @@ test("fil : l'ATTENTE du recul n'est pas un échec du filet ; une rafale d'éche
     goTo("feed");
     startFeedRefreshLoop();
     _feedFiletEchecs = 0;
-    await _feedRefreshTour(); // en recul : aucun appel, et ce n'est pas un échec du filet
-    const out = { apresRafale, appelsPendantRecul: appels - apresRafale.appels, echecsFilet: _feedFiletEchecs };
+    await _feedRefreshTour(); // en recul : aucun appel ; le filet recule, le recul partagé n'est pas prolongé
+    const out = { apresRafale, appelsPendantRecul: appels - apresRafale.appels, echecsFilet: _feedFiletEchecs, echecsApres: _filCompteursEchecs };
     stopFeedRefreshLoop();
     return out;
   }, UNE_LIGNE);
   // Avant : 3 échecs (recul de 120 s d'emblée), et le filet comptait l'attente comme un échec.
   expect(r.apresRafale).toEqual({ echecs: 1, appels: 3 });
   expect(r.appelsPendantRecul).toBe(0);
-  expect(r.echecsFilet).toBe(0);
+  // Revue second modèle : avant, le tour en recul passait pour un succès et le
+  // filet relisait `posts` à pleine cadence pendant la panne.
+  expect(r.echecsFilet).toBe(1);
+  expect(r.echecsApres).toBe(1);
 });
 
 test("recul partagé : un échec des cartes fait reculer le fil, un succès des cartes le lève", async ({ page }) => {
@@ -437,4 +446,22 @@ test("conversations : une SOUS-lecture en échec (messages, membres, accusés) n
   }, AUTRE);
   // Avant : une entrée c1 sans aperçu, à 0 non-lu, qui REMPLAÇAIT la copie locale.
   expect(r).toEqual({ messages: 0, membres: 0, accuses: 0 });
+});
+
+test("diffusion tronquée : le nouvel essai d'une relecture consomme le budget (requêtes, pas identifiants)", async ({ page }) => {
+  await demarrer(page);
+  await conversationDeGroupe(page);
+  await page.clock.install();
+  await page.evaluate(async (autre) => {
+    window.__relectureEnPanne = true;
+    for (let i = 0; i < 15; i++) {
+      _handleIncomingConvMessage({ id: "pan_" + i, conv_id: "g_tr", from_id: autre, content: "x", created_at: "2026-11-20T10:00:00", tronque: true });
+    }
+  }, AUTRE);
+  await page.clock.fastForward(5000);
+  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 0)));
+  await page.clock.fastForward(1);
+  // 15 premiers essais + 5 nouveaux essais = 20 (MSG_RELECTURE_MAX_MIN_CONV).
+  // Avant : 30 requêtes pour un budget de 20.
+  expect(await page.evaluate(() => __lectures.filter((q) => q.table === "conv_messages").length)).toBe(20);
 });

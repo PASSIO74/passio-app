@@ -6266,6 +6266,7 @@ let _filCompteursProchainEssai = 0;   // Date.now() avant lequel on ne retente p
 // (l'attente du recul n'en est pas un) : le filet du fil le relit avant et après son tour pour savoir s'il a
 // été dégradé, sans qu'une exception fasse perdre les publications lues.
 window._filComplementsDegradesSeq = 0;
+window._filComplementsReculSeq = 0;
 // `reactionsLues` (RV-39) : la liste `reactions` est-elle la réponse du serveur ?
 // Faux ici : une publication absente de la réponse n'a rien prouvé.
 function _complementFilVide() {
@@ -6319,8 +6320,12 @@ function _erreurFonctionAbsente(err) {
 function _filCompteursErreurPassagere(err, status) {
   if (!err) return true;
   var code = (typeof err.code === "string") ? err.code : "";
-  if (code) return code === "57014" || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code) || /^PGRST3[0-9][0-9]$/.test(code);
   var st = Number(status != null ? status : err.status);
+  // Revue second modèle (2026-11-20) : un 5xx est TOUJOURS passager, même avec
+  // un SQLSTATE (57P03 « serveur indisponible » rendait la fonction « absente »
+  // et rouvrait le chemin coûteux pendant une heure, en pleine panne).
+  if (Number.isFinite(st) && st >= 500) return true;
+  if (code) return code === "57014" || code === "55P03" || /^57P0[1-3]$/.test(code) || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code) || /^PGRST3[0-9][0-9]$/.test(code);
   if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 401 && st !== 408 && st !== 429) return false;
   return true;
 }
@@ -6416,6 +6421,10 @@ function _complementsFilEnEchec(out, appelEchoue) {
   out.source = "echec";
   out.auteursApercus = [];
   if (appelEchoue) window._filComplementsDegradesSeq = (window._filComplementsDegradesSeq || 0) + 1;
+  // Revue second modèle (2026-11-20) : l'ATTENTE du recul n'est pas un échec
+  // compté (le recul partagé n'est pas prolongé), mais le filet du fil doit la
+  // voir pour reculer lui aussi au lieu de relire `posts` à pleine cadence.
+  else window._filComplementsReculSeq = (window._filComplementsReculSeq || 0) + 1;
   return out;
 }
 // Les compléments d'une publication quand la lecture a échoué : ceux de sa copie
@@ -9104,14 +9113,19 @@ function _diffusionTronquee(r) {
 }
 // Rend "ok", "deja" (en cours ou faite) ou "budget" (hors budget).
 function _msgRelectureAutorisee(id, convId) {
+  if (_msgRelecturesEnCours.has(id) || _msgRelecturesFaites.has(id)) return "deja";
+  return _msgRelectureBudget(convId) ? "ok" : "budget";
+}
+// Le budget compte des REQUÊTES, pas des identifiants (revue second modèle du
+// 2026-11-20) : le nouvel essai d'une relecture en échec le consomme aussi.
+function _msgRelectureBudget(convId) {
   var maintenant = Date.now();
   _msgRelecturesFenetre = _msgRelecturesFenetre.filter(function (e) { return maintenant - e.t < 60000; });
-  if (_msgRelecturesEnCours.has(id) || _msgRelecturesFaites.has(id)) return "deja";
-  if (_msgRelecturesFenetre.length >= MSG_RELECTURE_MAX_MIN) return "budget";
+  if (_msgRelecturesFenetre.length >= MSG_RELECTURE_MAX_MIN) return false;
   var cle = String(convId);
-  if (_msgRelecturesFenetre.filter(function (e) { return e.c === cle; }).length >= MSG_RELECTURE_MAX_MIN_CONV) return "budget";
+  if (_msgRelecturesFenetre.filter(function (e) { return e.c === cle; }).length >= MSG_RELECTURE_MAX_MIN_CONV) return false;
   _msgRelecturesFenetre.push({ t: maintenant, c: cle });
-  return "ok";
+  return true;
 }
 // Message annoncé mais pas relu (hors budget, relecture en échec) : pas de
 // bulle — jamais le contenu tronqué — mais la conversation remonte avec sa
@@ -9147,7 +9161,10 @@ async function _relireMessageTronque(r, opts) {
   _msgRelecturesEnCours.add(id);
   try {
     for (var essai = 0; essai < 2; essai++) {
-      if (essai) await new Promise(function (ok) { setTimeout(ok, MSG_RELECTURE_RETRY_MS); });
+      if (essai) {
+        await new Promise(function (ok) { setTimeout(ok, MSG_RELECTURE_RETRY_MS); });
+        if (!_msgRelectureBudget(r.conv_id)) break;
+      }
       var res = null;
       try {
         res = await supa.from("conv_messages")
@@ -11268,10 +11285,12 @@ function startFeedRefreshLoop() {
       const feedEl = document.getElementById("screen-feed");
       if (!feedEl || !feedEl.classList.contains("active")) return;
       const degradesAvant = window._filComplementsDegradesSeq || 0;
+      const reculAvant = window._filComplementsReculSeq || 0;
       const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
       // D14-01 : des compteurs en échec (ou en recul) sont un ÉCHEC du tour, pas
       // un calme ni un succès — le tour suivant recule (`reculSurErreur`).
       if ((window._filComplementsDegradesSeq || 0) !== degradesAvant) echec = true;
+      if ((window._filComplementsReculSeq || 0) !== reculAvant) echec = true;
       if (generation !== _feedRefreshGeneration) return;
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
