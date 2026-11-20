@@ -5446,7 +5446,11 @@ window.consommerIntentionAuth = consommerIntentionAuth;
 /* Ouvre le formulaire d'authentification, où qu'on se trouve dans l'app.
    Renvoie `false` si le balisage d'onboarding est absent — l'appelant garde
    alors la main plutôt que de laisser l'écran dans un état intermédiaire. */
-function openAuthScreen(mode) {
+// `ctx` (facultatif, 2026-11-20) : la porte qui ouvre l'écran, telle que la
+// télémétrie et le retour (`prefs().retour.action`) la retiennent. Sans lui,
+// une connexion vaut « J'ai déjà un compte » (`deja_compte`) : une ouverture
+// AUTOMATIQUE (lien refusé) se compterait comme un clic sur cette porte.
+function openAuthScreen(mode, ctx) {
   var onb = document.getElementById("onboarding");
   if (!onb) return false;
   try { closeModal(); } catch (e) {}
@@ -5461,8 +5465,8 @@ function openAuthScreen(mode) {
   // repli ci-dessous ne sert que si le module n'est pas chargé.
   try {
     if (window.PassioFirstRun) {
-      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("");
-      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion("deja_compte");
+      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription(ctx || "");
+      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion(ctx || "deja_compte");
       if (onb.classList.contains("active")) return true;
     }
   } catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen (module) : " + e); }
@@ -5498,6 +5502,88 @@ function openAuthScreen(mode) {
   return true;
 }
 window.openAuthScreen = openAuthScreen;
+
+// ── UN LIEN REÇU PAR E-MAIL QUI N'OUVRE RIEN DIT POURQUOI (2026-11-20) ──────
+//
+// Parcours du nouvel inscrit. Un lien de confirmation (ou de nouveau mot de
+// passe) périmé, DÉJÀ UTILISÉ — un antivirus de messagerie qui le
+// « prévisite » suffit — ou refusé revient avec
+// `#error=access_denied&error_code=otp_expired&error_description=…` (ou en
+// paramètres de requête). Rien ne le lisait : la personne qui venait de créer
+// son compte retombait sur le fil, en visiteur, sans un mot — exactement le
+// refus sans sortie que la règle du 17/09 interdit. Mesuré en production le
+// 20/11 : 2 inscriptions par e-mail sur 10 jamais confirmées, aucun renvoi
+// demandé.
+//
+// ⚠️ AUCUNE DURÉE ÉCRITE : la validité d'un lien est un réglage serveur
+// (`mailer_otp_exp`) qui peut changer sans que ce texte le sache.
+// ⚠️ LE CODE NE VOYAGE QUE DANS UNE LISTE FERMÉE : il vient de l'adresse, donc de
+// n'importe qui. Une simple forme (`[a-z0-9_]`) laissait passer
+// `jean_dupont_0612345678` jusqu'au pilotage (contre-revue du lot) — une
+// cardinalité libre, et une donnée personnelle injectable par un lien forgé.
+const CODES_REFUS_LIEN_AUTH = ["otp_expired", "access_denied", "flow_state_expired", "flow_state_not_found",
+  "bad_code_verifier", "bad_oauth_state", "bad_oauth_callback", "email_not_confirmed",
+  "provider_email_needs_verification", "signup_disabled", "user_banned", "server_error", "unexpected_failure"];
+function lireRefusLienAuth() {
+  var sources = [];
+  try { sources.push(String(window.location.hash || "").replace(/^#/, "")); } catch (e) {}
+  try { sources.push(String(window.location.search || "").replace(/^\?/, "")); } catch (e) {}
+  for (var i = 0; i < sources.length; i++) {
+    var brut = sources[i];
+    if (!brut || brut.indexOf("error") === -1) continue;
+    var p;
+    try { p = new URLSearchParams(brut); } catch (e) { continue; }
+    var code = p.get("error_code") || "";
+    var err = p.get("error") || "";
+    // Une réponse d'Auth porte `error_code`, ou `error` ET sa description :
+    // un fragment qui ne fait que contenir le mot « error » n'en est pas une.
+    if (!code && !(err && p.get("error_description"))) continue;
+    var c = String(code || err).toLowerCase();
+    return { code: CODES_REFUS_LIEN_AUTH.indexOf(c) !== -1 ? c : "autre" };
+  }
+  return null;
+}
+
+// Retire la réponse d'Auth de l'adresse : un rechargement ne doit pas la
+// rejouer, et un partage de l'adresse ne doit pas l'emporter.
+function nettoyerRefusLienAuth() {
+  try {
+    var u = new URL(window.location.href);
+    ["error", "error_code", "error_description"].forEach(function (k) { u.searchParams.delete(k); });
+    if (/(^|[#&])(error|error_code|error_description)=/.test(u.hash || "")) u.hash = "";
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+  } catch (e) {}
+}
+
+// Ouvre la connexion avec l'explication et les sorties sous les yeux.
+//
+// ⚠️ LE TEXTE NE PRÉSUME RIEN DE L'ÉTAT DU COMPTE (contre-revue du lot). La même
+// adresse de retour sert à la confirmation, au nouveau mot de passe ET à
+// Google : un lien refusé peut venir d'une confirmation périmée (le compte
+// attend), d'une confirmation déjà consommée par un antivirus de messagerie (le
+// compte est CONFIRMÉ), ou d'un lien de nouveau mot de passe (la connexion est
+// impossible). Le message nomme donc les trois sorties, et le texte fixe de
+// `#authResendTop` (« Ton compte attend… ») est tu (`sansAdresse`).
+// ⚠️ GOOGLE A SON PROPRE MESSAGE : un retour annulé ou refusé n'est pas un lien
+// d'e-mail, et le drapeau `passio_oauth_pending`, sinon jamais retiré sur ce
+// chemin, est consommé ici.
+function montrerRefusLienAuth(refus) {
+  if (!refus) return false;
+  let google = false;
+  try { google = !!localStorage.getItem("passio_oauth_pending"); if (google) localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+  try { window.tel && tel.action("auth_link_refused", { rc: refus.code, voie: google ? "google" : "lien" }); } catch (e) {}
+  if (!openAuthScreen("signin", "lien_refuse")) return false;
+  if (google) {
+    _showAuthMsg("La connexion avec Google n'a pas abouti. Réessaie avec le bouton Google ci-dessous, ou utilise ton adresse e-mail.", "error");
+    return true;
+  }
+  _showAuthMsg("Ce lien n'ouvre plus rien : un lien reçu par e-mail ne sert qu'une fois, et pas indéfiniment. Adresse déjà confirmée ? Connecte-toi ci-dessous. Lien de nouveau mot de passe ? Touche « Mot de passe oublié ? » sous le bouton de connexion. Adresse jamais confirmée ? Entre ton e-mail et renvoie-toi un lien.", "error");
+  _showResendConfirmation("", true);
+  return true;
+}
+window.lireRefusLienAuth = lireRefusLienAuth;
+window.nettoyerRefusLienAuth = nettoyerRefusLienAuth;
+window.montrerRefusLienAuth = montrerRefusLienAuth;
 
 /* Entrée « Compte » du panneau Paramètres. Deux situations, un seul bouton :
    • visiteur sans compte  → rien à déconnecter, on ouvre la connexion ;
@@ -6543,7 +6629,7 @@ function switchAuthTab(mode) {
   // ENT-C11 : les deux onglets se disent onglets (role=tab) et disent lequel est choisi.
   document.getElementById("authTabSignin").setAttribute("aria-selected", mode === "signin" ? "true" : "false");
   document.getElementById("authTabSignup").setAttribute("aria-selected", mode === "signup" ? "true" : "false");
-  document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
+  // (Plus de champ « Confirmer le mot de passe » depuis le 2026-11-20 : voir index.html.)
   // Nom public : demandé UNIQUEMENT à la création (voir nomCompteValide plus bas).
   // ⚠️ Ici `""` et pas `"flex"` : `label.field` est `display:block` en CSS et
   // c'est exactement la mise en page voulue (libellé, champ, aide en dessous) —
@@ -6575,7 +6661,7 @@ function switchAuthTab(mode) {
   // 8 caractères (2026-09-13) a le droit d’entrer avec le sien.
   const pwdHint = document.getElementById("authPwdHint");
   if (pwdHint) pwdHint.style.display = mode === "signup" ? "block" : "none";
-  [["authPassword", "current-password"], ["authPasswordConfirm", "new-password"]].forEach(function (paire) {
+  [["authPassword", "current-password"]].forEach(function (paire) {
     const el = document.getElementById(paire[0]);
     if (!el) return;
     // ⚠️ Le `minlength` SUIT `MOT_DE_PASSE_MIN`, seule source du nombre. Posé
@@ -6645,9 +6731,12 @@ async function onbForgotPassword() {
 // L'adresse est mémorisée par _showResendConfirmation pour que le lien reste
 // utilisable après un changement d'onglet piloté par le code, mais la valeur
 // SAISIE prime toujours : on renvoie là où la personne regarde.
-function _showResendConfirmation(email) {
+// `sansAdresse` (2026-11-20) : montrer la sortie sans adresse connue — un lien
+// refusé ne dit pas à qui il était destiné. `onbResendConfirmation` lit alors
+// l'adresse saisie, et demande de la saisir si le champ est vide.
+function _showResendConfirmation(email, sansAdresse) {
   _pendingConfirmEmail = String(email || "").trim();
-  const actif = !!_pendingConfirmEmail;
+  const actif = !!_pendingConfirmEmail || sansAdresse === true;
   const el = document.getElementById("authResendLink");
   if (el) el.style.display = actif ? "" : "none";
   // ⚠️ LA SORTIE DOIT ÊTRE SOUS LES YEUX, PAS SEULEMENT DANS LE DOM
@@ -6659,6 +6748,11 @@ function _showResendConfirmation(email) {
   // posé JUSTE SOUS le message : même endroit que le refus, même regard.
   const haut = document.getElementById("authResendTop");
   if (haut) haut.style.display = actif ? "block" : "none";
+  // Sans adresse connue (lien refusé), le texte fixe « Ton compte attend que tu
+  // ouvres le lien » peut être FAUX : le message au-dessus dit les cas, seul le
+  // bouton reste. Toute autre ouverture le rétablit.
+  const hautTexte = haut ? haut.querySelector("p") : null;
+  if (hautTexte) hautTexte.style.display = sansAdresse === true ? "none" : "";
   // Et on l'amène à l'écran quand le formulaire est déjà défilé : `switchAuthTab`
   // appelle cette fonction avec "" à chaque bascule, donc jamais sur ce chemin.
   // ⚠️ ON CALE LE MESSAGE EN HAUT (`block: "start"` sur #authMsg), pas le bloc au
@@ -6680,7 +6774,14 @@ async function onbResendConfirmation() {
   const saisi = (document.getElementById("authEmail")?.value || "").trim();
   const email = saisi || _pendingConfirmEmail;
   if (!email || !email.includes("@")) {
-    _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Renvoyer ».", "error");
+    // ⚠️ PAS « ci-dessus » (2026-11-20) : le bouton du haut (#authResendTop) est
+    // AU-DESSUS du champ. On nomme le champ, et on l'amène sous le doigt — la
+    // personne vient de demander l'envoi, le clavier est ce qu'elle attend.
+    _showAuthMsg("Entre ton adresse dans le champ « Adresse e-mail », puis touche à nouveau « Renvoyer ».", "error");
+    try {
+      const champ = document.getElementById("authEmail");
+      if (champ) { champ.focus(); champ.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    } catch (e) {}
     return;
   }
   if (authHorsLigne()) return;
@@ -6983,7 +7084,11 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
+      // 👁 (2026-11-20) : le formulaire d'inscription n'a plus de champ de
+      // confirmation ; celui-ci, qui rattrape une faute de frappe, doit au moins
+      // laisser LIRE ce qu'on tape. Même bouton, même fonction que l'inscription.
+      '<div style="position:relative;margin-bottom:8px;"><input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;padding-right:44px;"/>' +
+        '<button type="button" onclick="togglePwd(\'pwdRecoveryInput\',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';
@@ -7182,26 +7287,22 @@ function majAideMotDePasse(refus) {
   }
 }
 
-// « Proposer un mot de passe » : la sortie qui manquait. On remplit les DEUX
-// champs et on AFFICHE le mot de passe en clair — un mot de passe proposé
-// qu'on ne peut pas lire est un mot de passe perdu.
+// « Proposer un mot de passe » : la sortie qui manquait. On remplit le champ
+// et on AFFICHE le mot de passe en clair — un mot de passe proposé qu'on ne
+// peut pas lire est un mot de passe perdu. (Un seul champ depuis le
+// 2026-11-20 : la confirmation a quitté le formulaire.)
 function authProposerMotDePasse() {
   const a = document.getElementById("authPassword");
   if (!a) return;
-  const b = document.getElementById("authPasswordConfirm");
   const mdp = motDePasseSuggere();
   a.value = mdp;
-  if (b) b.value = mdp;
-  // Les deux champs passent en clair, et les boutons « œil » doivent DIRE le
-  // même état — sinon le suivant remet le masque à l'envers.
-  [a, b].forEach(function (el) {
-    if (!el) return;
-    el.type = "text";
-    try {
-      const oeil = el.parentElement ? el.parentElement.querySelector("button") : null;
-      if (oeil) oeil.textContent = "🙈";
-    } catch (e) {}
-  });
+  // Le champ passe en clair, et le bouton « œil » doit DIRE cet état — sinon
+  // le toucher suivant remet le masque à l'envers.
+  a.type = "text";
+  try {
+    const oeil = a.parentElement ? a.parentElement.querySelector("button") : null;
+    if (oeil) oeil.textContent = "🙈";
+  } catch (e) {}
   majAideMotDePasse();
   const ligne = document.getElementById("authPwdRefus");
   if (ligne) {
@@ -7285,7 +7386,6 @@ function appliquerNomCompte(session) {
 async function onbDoAuth() {
   const email = (document.getElementById("authEmail")?.value || "").trim();
   const pwd = document.getElementById("authPassword")?.value || "";
-  const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
   const nom = nomCompteValide(document.getElementById("authName")?.value || "");
   const btn = document.getElementById("authSubmitBtn");
 
@@ -7336,7 +7436,6 @@ async function onbDoAuth() {
     majAideMotDePasse();
     return;
   }
-  if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
   // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
   // Il est demandé au SEUL moment où un contrat se forme (la création de
   // compte) : l'exiger à la connexion redemanderait son accord à quelqu'un qui

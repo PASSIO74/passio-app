@@ -3836,6 +3836,14 @@ async function boot() {
   // juste avant le rechargement que `_showPasswordRecoveryUI` déclenche
   // lui-même, une fois le mot de passe changé (app-02).
   const _recuperationEnCours = (window.location.hash || "").indexOf("type=recovery") !== -1;
+  // Lien reçu par e-mail REFUSÉ (périmé, déjà utilisé) : relevé avant tout le
+  // reste, puis retiré de l'adresse. Il ne s'affiche qu'à un visiteur, plus bas,
+  // une fois l'entrée invitée construite — une session présente n'a rien à
+  // apprendre d'un lien devenu inutile (2026-11-20, `lireRefusLienAuth`, app-02).
+  let _refusLienAuth = null;
+  // Pas de `catch` muet (audit du lot) : un renommage ferait taire la fonction
+  // sans une trace — le démarrage continue, mais la console le dit.
+  try { _refusLienAuth = lireRefusLienAuth(); if (_refusLienAuth) nettoyerRefusLienAuth(); } catch (e) { console.warn("lien refusé (lecture):", e); }
   if (_recuperationEnCours) {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }
@@ -4317,6 +4325,12 @@ async function boot() {
   // pitch. Il n'y a pas de piège à défaire dans ce cas-là.
   if (_authIntent && _entreeInvite) {
     try { openAuthScreen(_authIntent); } catch (e) { console.warn("auth intent:", e); }
+  }
+
+  // ── Lien reçu par e-mail refusé : l'écran de connexion, le pourquoi, les sorties ──
+  // Même règle d'ordre que l'intention ci-dessus : l'entrée invitée d'abord.
+  if (_refusLienAuth && _entreeInvite) {
+    try { montrerRefusLienAuth(_refusLienAuth); } catch (e) { console.warn("lien refusé:", e); }
   }
 
   if (_entreeInvite) return;

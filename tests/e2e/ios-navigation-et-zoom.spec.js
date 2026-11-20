@@ -340,7 +340,7 @@ test.describe("iPhone — navigation, historique et saisie", () => {
   // testeur : il était à 15 px, donc le défaut se déclenchait dès l'entrée.
   test("les champs de connexion sont à 16 px au moins", async ({ page }) => {
     await bootOnboarded(page);
-    for (const id of ["#authEmail", "#authPassword", "#authPasswordConfirm"]) {
+    for (const id of ["#authEmail", "#authPassword"]) {
       const px = await page.locator(id).evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
       expect(px, id + " déclencherait l'auto-zoom iOS").toBeGreaterThanOrEqual(16);
     }

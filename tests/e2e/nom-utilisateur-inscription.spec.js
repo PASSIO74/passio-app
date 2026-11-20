@@ -56,7 +56,6 @@ async function remplir(page, { nom, consent = true } = {}) {
   await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
-  await page.locator("#authPasswordConfirm").fill("motdepasse123");
   if (consent) await page.locator("#authConsent").click();
 }
 
