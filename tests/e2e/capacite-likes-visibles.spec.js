@@ -80,6 +80,11 @@ async function preparer(page, count = 1, initialRandom = 0) {
       };
       return q;
     };
+    // D14-01 (2026-11-20) : le compteur des cartes passe par UN appel groupé
+    // `fil_compteurs` ; ce banc éprouve le chemin HEAD, qui ne sert plus que
+    // quand la fonction est ABSENTE du projet (mémorisée comme pour le fil).
+    // Le chemin groupé : tests/e2e/securite-p1-client-2026-11-20.spec.js.
+    _filCompteursNoterAbsence();
     startPostLikeRefresh();
   }, { n: count, initialRandom });
 }
@@ -466,6 +471,11 @@ for (const chemin of ["listes", "rpc"]) for (const newValue of ["head", "clic"])
       supa.rpc = (fn, args) => {
         if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });
         if (chemin === "listes") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function public.fil_compteurs" } });
+        // D14-01 (2026-11-20) : le compteur des cartes lit lui aussi par
+        // `fil_compteurs`. Le premier appel est la lecture du fil (retenue) ; les
+        // suivants sont les tours du compteur, servis tout de suite (le serveur
+        // « actuel » : `__counts`, comme le HEAD).
+        if (window.__resolveBulk) return Promise.resolve({ data: args._post_ids.map(id => ({ post_id: id, likes: __counts[id], aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null });
         return new Promise(resolve => { window.__resolveBulk = (res) => resolve(res.data
           ? { data: res.data.map(l => ({ post_id: l.post_id, likes: 1, aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null }
           : res); });
