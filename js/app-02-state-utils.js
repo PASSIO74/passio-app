@@ -5446,7 +5446,11 @@ window.consommerIntentionAuth = consommerIntentionAuth;
 /* Ouvre le formulaire d'authentification, où qu'on se trouve dans l'app.
    Renvoie `false` si le balisage d'onboarding est absent — l'appelant garde
    alors la main plutôt que de laisser l'écran dans un état intermédiaire. */
-function openAuthScreen(mode) {
+// `ctx` (facultatif, 2026-11-20) : la porte qui ouvre l'écran, telle que la
+// télémétrie et le retour (`prefs().retour.action`) la retiennent. Sans lui,
+// une connexion vaut « J'ai déjà un compte » (`deja_compte`) : une ouverture
+// AUTOMATIQUE (lien refusé) se compterait comme un clic sur cette porte.
+function openAuthScreen(mode, ctx) {
   var onb = document.getElementById("onboarding");
   if (!onb) return false;
   try { closeModal(); } catch (e) {}
@@ -5461,8 +5465,8 @@ function openAuthScreen(mode) {
   // repli ci-dessous ne sert que si le module n'est pas chargé.
   try {
     if (window.PassioFirstRun) {
-      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("");
-      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion("deja_compte");
+      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription(ctx || "");
+      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion(ctx || "deja_compte");
       if (onb.classList.contains("active")) return true;
     }
   } catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen (module) : " + e); }
@@ -5501,8 +5505,8 @@ window.openAuthScreen = openAuthScreen;
 
 // ── UN LIEN REÇU PAR E-MAIL QUI N'OUVRE RIEN DIT POURQUOI (2026-11-20) ──────
 //
-// Parcours du nouvel inscrit. Un lien de confirmation (ou de connexion, ou de
-// réinitialisation) périmé, DÉJÀ UTILISÉ — un antivirus de messagerie qui le
+// Parcours du nouvel inscrit. Un lien de confirmation (ou de nouveau mot de
+// passe) périmé, DÉJÀ UTILISÉ — un antivirus de messagerie qui le
 // « prévisite » suffit — ou refusé revient avec
 // `#error=access_denied&error_code=otp_expired&error_description=…` (ou en
 // paramètres de requête). Rien ne le lisait : la personne qui venait de créer
@@ -5513,7 +5517,13 @@ window.openAuthScreen = openAuthScreen;
 //
 // ⚠️ AUCUNE DURÉE ÉCRITE : la validité d'un lien est un réglage serveur
 // (`mailer_otp_exp`) qui peut changer sans que ce texte le sache.
-// ⚠️ LE CODE NE VOYAGE QUE NETTOYÉ : il vient de l'adresse, donc de n'importe qui.
+// ⚠️ LE CODE NE VOYAGE QUE DANS UNE LISTE FERMÉE : il vient de l'adresse, donc de
+// n'importe qui. Une simple forme (`[a-z0-9_]`) laissait passer
+// `jean_dupont_0612345678` jusqu'au pilotage (contre-revue du lot) — une
+// cardinalité libre, et une donnée personnelle injectable par un lien forgé.
+const CODES_REFUS_LIEN_AUTH = ["otp_expired", "access_denied", "flow_state_expired", "flow_state_not_found",
+  "bad_code_verifier", "bad_oauth_state", "bad_oauth_callback", "email_not_confirmed",
+  "provider_email_needs_verification", "signup_disabled", "user_banned", "server_error", "unexpected_failure"];
 function lireRefusLienAuth() {
   var sources = [];
   try { sources.push(String(window.location.hash || "").replace(/^#/, "")); } catch (e) {}
@@ -5529,7 +5539,7 @@ function lireRefusLienAuth() {
     // un fragment qui ne fait que contenir le mot « error » n'en est pas une.
     if (!code && !(err && p.get("error_description"))) continue;
     var c = String(code || err).toLowerCase();
-    return { code: /^[a-z0-9_]{1,40}$/.test(c) ? c : "autre" };
+    return { code: CODES_REFUS_LIEN_AUTH.indexOf(c) !== -1 ? c : "autre" };
   }
   return null;
 }
@@ -5545,16 +5555,29 @@ function nettoyerRefusLienAuth() {
   } catch (e) {}
 }
 
-// Ouvre la connexion avec l'explication ET les deux sorties sous les yeux :
-// se connecter (le lien avait déjà servi : l'adresse est confirmée), ou se
-// renvoyer un lien (`_showResendConfirmation`, seule autorité du renvoi).
+// Ouvre la connexion avec l'explication et les sorties sous les yeux.
+//
+// ⚠️ LE TEXTE NE PRÉSUME RIEN DE L'ÉTAT DU COMPTE (contre-revue du lot). La même
+// adresse de retour sert à la confirmation, au nouveau mot de passe ET à
+// Google : un lien refusé peut venir d'une confirmation périmée (le compte
+// attend), d'une confirmation déjà consommée par un antivirus de messagerie (le
+// compte est CONFIRMÉ), ou d'un lien de nouveau mot de passe (la connexion est
+// impossible). Le message nomme donc les trois sorties, et le texte fixe de
+// `#authResendTop` (« Ton compte attend… ») est tu (`sansAdresse`).
+// ⚠️ GOOGLE A SON PROPRE MESSAGE : un retour annulé ou refusé n'est pas un lien
+// d'e-mail, et le drapeau `passio_oauth_pending`, sinon jamais retiré sur ce
+// chemin, est consommé ici.
 function montrerRefusLienAuth(refus) {
   if (!refus) return false;
-  try { window.tel && tel.action("auth_link_refused", { rc: refus.code }); } catch (e) {}
-  if (!openAuthScreen("signin")) return false;
-  _showAuthMsg(refus.code === "otp_expired"
-    ? "Ce lien n'est plus valable : un lien reçu par e-mail ne reste valable qu'un temps limité et ne sert qu'une fois. Si tu as déjà confirmé ton adresse, connecte-toi ci-dessous. Sinon, entre ton e-mail et renvoie-toi un nouveau lien."
-    : "Ce lien n'a pas pu ouvrir ta session. Connecte-toi ci-dessous, ou entre ton e-mail et renvoie-toi un nouveau lien.", "error");
+  let google = false;
+  try { google = !!localStorage.getItem("passio_oauth_pending"); if (google) localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+  try { window.tel && tel.action("auth_link_refused", { rc: refus.code, voie: google ? "google" : "lien" }); } catch (e) {}
+  if (!openAuthScreen("signin", "lien_refuse")) return false;
+  if (google) {
+    _showAuthMsg("La connexion avec Google n'a pas abouti. Réessaie avec le bouton Google ci-dessous, ou utilise ton adresse e-mail.", "error");
+    return true;
+  }
+  _showAuthMsg("Ce lien n'ouvre plus rien : un lien reçu par e-mail ne sert qu'une fois, et pas indéfiniment. Adresse déjà confirmée ? Connecte-toi ci-dessous. Lien de nouveau mot de passe ? Touche « Mot de passe oublié ? » sous le bouton de connexion. Adresse jamais confirmée ? Entre ton e-mail et renvoie-toi un lien.", "error");
   _showResendConfirmation("", true);
   return true;
 }
@@ -6725,6 +6748,11 @@ function _showResendConfirmation(email, sansAdresse) {
   // posé JUSTE SOUS le message : même endroit que le refus, même regard.
   const haut = document.getElementById("authResendTop");
   if (haut) haut.style.display = actif ? "block" : "none";
+  // Sans adresse connue (lien refusé), le texte fixe « Ton compte attend que tu
+  // ouvres le lien » peut être FAUX : le message au-dessus dit les cas, seul le
+  // bouton reste. Toute autre ouverture le rétablit.
+  const hautTexte = haut ? haut.querySelector("p") : null;
+  if (hautTexte) hautTexte.style.display = sansAdresse === true ? "none" : "";
   // Et on l'amène à l'écran quand le formulaire est déjà défilé : `switchAuthTab`
   // appelle cette fonction avec "" à chaque bascule, donc jamais sur ce chemin.
   // ⚠️ ON CALE LE MESSAGE EN HAUT (`block: "start"` sur #authMsg), pas le bloc au
@@ -7056,7 +7084,11 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
+      // 👁 (2026-11-20) : le formulaire d'inscription n'a plus de champ de
+      // confirmation ; celui-ci, qui rattrape une faute de frappe, doit au moins
+      // laisser LIRE ce qu'on tape. Même bouton, même fonction que l'inscription.
+      '<div style="position:relative;margin-bottom:8px;"><input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;padding-right:44px;"/>' +
+        '<button type="button" onclick="togglePwd(\'pwdRecoveryInput\',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';

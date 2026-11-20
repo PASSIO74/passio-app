@@ -3841,7 +3841,9 @@ async function boot() {
   // une fois l'entrée invitée construite — une session présente n'a rien à
   // apprendre d'un lien devenu inutile (2026-11-20, `lireRefusLienAuth`, app-02).
   let _refusLienAuth = null;
-  try { _refusLienAuth = lireRefusLienAuth(); if (_refusLienAuth) nettoyerRefusLienAuth(); } catch (e) {}
+  // Pas de `catch` muet (audit du lot) : un renommage ferait taire la fonction
+  // sans une trace — le démarrage continue, mais la console le dit.
+  try { _refusLienAuth = lireRefusLienAuth(); if (_refusLienAuth) nettoyerRefusLienAuth(); } catch (e) { console.warn("lien refusé (lecture):", e); }
   if (_recuperationEnCours) {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }

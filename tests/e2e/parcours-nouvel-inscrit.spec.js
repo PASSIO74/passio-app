@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// PARCOURS DU NOUVEL INSCRIT — trois frictions au choix des passions (2026-11-20)
+// PARCOURS DU NOUVEL INSCRIT — frictions retirées avant les testeurs (2026-11-20)
 //
 // Relevées en refaisant le parcours d'un visiteur à 390 × 664 (hauteur utile
 // d'un iPhone sous Safari), carte de bienvenue → « Choisir mes passions » →
@@ -14,7 +14,9 @@
 //      « Gardées sur cet appareil » et la bulle « Un Fil construit autour de tes
 //      passions » arrivaient ensemble, le toast (3 s) posé SUR la rangée
 //      « Ne plus afficher / Compris » de la bulle (700 ms). Quand la note se
-//      pose, le toast se tait ; sinon la bulle attend la fin du toast.
+//      pose À L'ÉCRAN, le toast se tait ; sinon la bulle attend la fin du
+//      toast — échéance qu'aucun autre appel n'avance (② ter), et jamais sous
+//      les Paramètres (② quater).
 //   ③ LA NOTE SUR TROIS LIGNES. À 390 px, texte, bouton et × passaient chacun
 //      sur leur ligne, le × seul en bas à gauche : 124 px de haut. Le × sort du
 //      flux, à droite.
@@ -22,7 +24,13 @@
 //      `#error=access_denied&error_code=otp_expired…` : rien ne le lisait, la
 //      personne qui venait de s'inscrire retombait sur le fil en visiteur, sans
 //      un mot ni un moyen de se renvoyer le lien. Mesuré en production le
-//      20/11 : 2 inscriptions par e-mail sur 10 jamais confirmées.
+//      20/11 : 2 inscriptions par e-mail sur 10 jamais confirmées. Le message
+//      nomme les trois sorties sans présumer de l'état du compte ; un retour de
+//      Google en échec a le sien (④ quater) ; le code ne voyage que dans une
+//      liste fermée (④ ter).
+//   (⑤, le champ « Confirmer le mot de passe » retiré, est verrouillé par
+//    `mot-de-passe-aide` ③ et par les suites d'inscription qui ne le remplissent
+//    plus.)
 //
 // Aucune requête ne part : `bootVisiteur` coupe le SDK et l'API Supabase ; le
 // renvoi du lien et le captcha sont remplacés par des doubles qui enregistrent.
@@ -120,7 +128,7 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     expect(vu.some((e) => e.bulle)).toBe(true);
   });
 
-  test("② validation suivante (note déjà vue) : le toast, PUIS la bulle — jamais ensemble", async ({ page }) => {
+  test("② bis validation suivante (note déjà vue) : le toast, PUIS la bulle — jamais ensemble", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
     await choisirEtValider(page, ["musique"]);
@@ -142,6 +150,45 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     // …et dans cet ordre : la bulle après le toast.
     const premierToast = vu.findIndex((e) => e.toast), premiereBulle = vu.findIndex((e) => e.bulle);
     expect(premiereBulle).toBeGreaterThan(premierToast);
+  });
+
+  test("② ter fil défilé : la note se pose hors de l'écran, donc le toast parle", async ({ page }) => {
+    await bootVisiteur(page, { sansBienvenue: true });
+    // Le visiteur a fait défiler le fil, puis rouvre ses passions (Paramètres ›
+    // « Mes passions » fait le même appel).
+    await page.evaluate(() => { const m = document.getElementById("appMain"); if (m) m.scrollTop = 2000; });
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await expect(page.locator("#frValider")).toBeVisible();
+    await choisirEtValider(page, ["voyage"]);
+    await expect(page.locator("#frNoteLocale")).toHaveCount(1);
+    // Prémisse VÉRIFIÉE : la note est bien au-dessus du pli — sinon ce cas
+    // mesurerait la première validation, déjà couverte.
+    const horsEcran = await page.evaluate(() => document.getElementById("frNoteLocale").getBoundingClientRect().bottom <= 0);
+    expect(horsEcran).toBe(true);
+    await page.waitForTimeout(1500);
+    const vu = await lireSonde(page);
+    expect(vu.some((e) => e.toast)).toBe(true);
+    expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
+  });
+
+  test("② quater Paramètres ouverts pendant l'attente : aucune bulle ne se pose dessous", async ({ page }) => {
+    await bootVisiteur(page);
+    await ouvrirPanneauParLaCarte(page);
+    await choisirEtValider(page, ["musique"]);
+    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
+    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
+    await lireSonde(page);
+    // Validation suivante (toast, donc bulle différée de 3,3 s) — et la personne
+    // ouvre les Paramètres pendant ce temps.
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await expect(page.locator("#frValider")).toBeVisible();
+    await choisirEtValider(page, ["cuisine"]);
+    await page.evaluate(() => toggleDevPanel());
+    await expect(page.locator("#devPanel")).toHaveClass(/active/);
+    await page.waitForTimeout(4200);
+    const vu = await lireSonde(page);
+    expect(vu.some((e) => e.toast)).toBe(true);   // le chemin différé a bien été pris
+    expect(vu.filter((e) => e.bulle)).toEqual([]);
   });
 });
 
@@ -206,10 +253,22 @@ async function doublerRenvoi(page) {
 async function attendreEcranDuRefus(page) {
   await expect(page.locator("#onboarding")).toHaveClass(/active/, { timeout: 15000 });
   await expect(page.locator("#authTabSignin")).toHaveClass(/active/);
-  await expect(page.locator("#authMsg")).toContainText("n'est plus valable");
+  // Le message nomme les TROIS sorties, sans rien présumer de l'état du compte :
+  // la même adresse de retour sert à la confirmation, au nouveau mot de passe…
+  const msg = page.locator("#authMsg");
+  await expect(msg).toContainText("n'ouvre plus rien");
+  await expect(msg).toContainText("Connecte-toi");
+  await expect(msg).toContainText("Mot de passe oublié");
+  await expect(msg).toContainText("renvoie-toi un lien");
+  // …le bouton de renvoi est là, SANS le texte « Ton compte attend… », faux
+  // quand un antivirus a déjà consommé (donc confirmé) le lien.
   await expect(page.locator("#authResendTop")).toBeVisible();
+  await expect(page.locator("#authResendTopBtn")).toBeVisible();
+  await expect(page.locator("#authResendTop p")).toBeHidden();
   // L'exploration reste à un toucher : on n'enferme personne dans le formulaire.
   await expect(page.locator("#frBackToExplore")).toBeVisible();
+  // L'ouverture AUTOMATIQUE ne se compte pas comme la porte « J'ai déjà un compte ».
+  expect(await page.evaluate(() => (PassioFirstRun.prefs().retour || {}).action)).toBe("lien_refuse");
   // La réponse d'Auth a quitté l'adresse : un rechargement ne la rejoue pas.
   expect(await page.evaluate(() => location.href)).not.toMatch(/error_code|error_description|error=/);
 }
@@ -250,6 +309,18 @@ test.describe("④ lien de confirmation périmé", () => {
     await attendreEcranDuRefus(page);
   });
 
+  test("④ quater retour de Google annulé : son propre message, pas de renvoi, drapeau consommé", async ({ page }) => {
+    // `onbGoogleAuth` pose ce drapeau avant de quitter la page pour Google ;
+    // un retour en erreur n'ouvre aucune session, et rien d'autre ne le retire.
+    await page.addInitScript(() => { try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {} });
+    await bootVisiteur(page, { hash: "#error=access_denied&error_description=The+user+denied+the+request" });
+    await expect(page.locator("#onboarding")).toHaveClass(/active/, { timeout: 15000 });
+    await expect(page.locator("#authMsg")).toContainText("Google");
+    await expect(page.locator("#authMsg")).not.toContainText("lien reçu par e-mail");
+    await expect(page.locator("#authResendTop")).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem("passio_oauth_pending"))).toBeNull();
+  });
+
   test("④ ter aucun faux refus : seule une réponse d'Auth complète est lue, et son code est nettoyé", async ({ page }) => {
     await bootVisiteur(page);
     // Un démarrage ordinaire n'ouvre pas la connexion.
@@ -261,7 +332,9 @@ test.describe("④ lien de confirmation périmé", () => {
         motNu: lire("#error"),
         sansDescription: lire("#x=1&error=foo"),
         complet: lire("#error=access_denied&error_description=Oups"),
+        perime: lire("#error=access_denied&error_code=otp_expired&error_description=x"),
         hostile: lire("#error_code=%3Cimg%20src%3Dx%3E"),
+        forge: lire("#error_code=jean_dupont_0612345678"),
       };
       history.replaceState(history.state, "", location.pathname);
       return r;
@@ -270,7 +343,11 @@ test.describe("④ lien de confirmation périmé", () => {
     expect(lus.motNu).toBeNull();
     expect(lus.sansDescription).toBeNull();
     expect(lus.complet).toEqual({ code: "access_denied" });
-    // Le code vient de l'adresse, donc de n'importe qui : il ne voyage que nettoyé.
+    expect(lus.perime).toEqual({ code: "otp_expired" });
+    // Le code vient de l'adresse, donc de n'importe qui : il ne voyage que dans
+    // une LISTE FERMÉE — ni balise, ni chaîne libre de bonne forme (une donnée
+    // personnelle glissée dans un lien forgé n'atteint pas le pilotage).
     expect(lus.hostile).toEqual({ code: "autre" });
+    expect(lus.forge).toEqual({ code: "autre" });
   });
 });
