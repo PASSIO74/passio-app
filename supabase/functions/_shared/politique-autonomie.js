@@ -142,7 +142,7 @@ export const POLITIQUE = Object.freeze({
       // Ce que le périmètre NE couvre PAS, bien que `js/*.js` le recouvre : les bibliothèques
       // tierces, et les INSTRUMENTS DE MESURE (2026-11-20) — la preuve qu'une réparation a guéri
       // est le silence du signal, une réparation ne modifie donc pas ce qui la juge.
-      exclus: Object.freeze(["docs/sentinelle/*/*", "js/vendor/*", "js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js"]),
+      exclus: Object.freeze(["docs/sentinelle/*/*", "js/vendor/*", "js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js", "js/identity-transition.js"]),
       verification: "le job « retour-issue » commente « déployé » ou ROUVRE l'issue avec `humain`", retour: "rollback Netlify (geste humain) ; la PR suivante corrige",
       escalade: "périmètre ou taille dépassés : refus écrit sur l'issue, label `humain`", appliquePar: ".github/workflows/deploy.yml (Gouvernance critique, ASTRA-34)",
     }),

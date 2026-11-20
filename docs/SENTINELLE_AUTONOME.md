@@ -103,20 +103,68 @@ ouverte et `humain`, l'issue ne gêne rien.
 Audit « la surveillance tient-elle à 100 000 ? » (`docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`, T8) :
 la preuve qu'une réparation automatique a guéri est le **silence** du signal. Une PR de la Sentinelle
 qui touchait l'instrument lui-même — un filtre posé dans la télémétrie, le relais d'erreurs, la mesure
-de performance, la garde de version ou le délestage — pouvait fabriquer ce silence, puis s'auto-fusionner.
+de performance, la garde de version, le délestage, ou l'enveloppe de `fetch` qui voit passer chaque
+envoi — pouvait fabriquer ce silence, puis s'auto-fusionner.
 
 - `js/telemetry.js`, `js/platform.js`, `js/perf-ios.js`, `js/release-guard.js`, `js/reglages-distants.js`
-  sortent du périmètre autonome (`deploy.yml`, job « Gouvernance critique », même traitement que
-  `js/vendor/*`) : une enquête qui y touche est refusée, le refus est écrit sur l'issue, label `humain`.
+  et `js/identity-transition.js` sortent du périmètre autonome (`deploy.yml`, job « Gouvernance
+  critique », même traitement que `js/vendor/*`) : une PR `[SENTINELLE]` qui y touche est refusée, le
+  refus est écrit sur l'issue, label `humain`.
 - Ils entrent au périmètre critique : toute PR, humaine comprise, exige la contre-revue ancrée sur le SHA.
 - Le corps de l'issue le dit à l'agent avant qu'il écrive (`corpsIssue`, `scripts/sentinelle-detecter.mjs`) :
-  si la cause est dans un instrument, la décrire et laisser la main.
-- La politique d'automatisation le déclare (`exclus`, `supabase/functions/_shared/politique-autonomie.js`),
-  et `tests/unit/politique-autonomie-executants.test.mjs` ⑥ exige que cette liste soit EXACTEMENT celle que
-  `deploy.yml` écarte : retirer un instrument d'un seul des deux côtés rougit.
+  si la cause est dans un instrument, la décrire en commentaire et laisser la main, sans ouvrir de PR.
+- La politique d'automatisation le déclare (`exclus`, `supabase/functions/_shared/politique-autonomie.js`).
+- **Les trois listes sont tenues ensemble** par `tests/unit/politique-autonomie-executants.test.mjs` ⑥ :
+  ce que la politique exclut est EXACTEMENT ce que `deploy.yml` écarte, AVANT le motif `js/*.js` (dans un
+  `case`, le premier motif gagne) ; chaque instrument est aussi au périmètre critique et nommé dans la
+  consigne. En oublier un dans l'une des trois rougit.
+
+⚠️ **`js/identity-transition.js` avait échappé au premier jet** — la contre-revue l'a trouvé. Il
+enveloppe `window.fetch` et reconnaît `/rest/v1/telemetry_events` ; `scripts/build.js` l'injecte en
+production juste après la télémétrie, et il est ABSENT de l'`index.html` de développement : aucune
+suite locale ne le charge. Trois lignes dans `observedFetch` auraient fait taire toute la télémétrie
+de production, depuis l'intérieur du périmètre autonome. **Chercher un instrument, c'est chercher qui
+se trouve sur le fil d'un envoi, pas qui porte « télémétrie » dans son nom.**
+
+### ⚠️ Ce que cette garde ne ferme PAS
+
+Elle interdit de modifier six fichiers : le chemin DIRECT, et le plus naturel (ajouter un
+`refus_attendu` dans `telemetry.js`). Elle ne rend pas le silence infalsifiable. Depuis un fichier
+du périmètre, une ligne suffit encore :
+
+- **les interrupteurs globaux** `window.PASSIO_TELEMETRY_SAMPLE = 0` ou `PASSIO_TELEMETRY_DEFAULT_ON =
+  false`, posés par un script en ligne d'`index.html` ou par un script chargé avant la télémétrie
+  (`js/access-gate.js`, `js/legal-textes.js`) ; aucune suite ne les voit, la télémétrie étant inerte en local ;
+- **un global réassignable** que l'instrument consulte (`window.passioBugVideoSafari`, lu par l'écouteur
+  d'erreurs) ou l'API publique elle-même (`tel.api = function(){}`) ;
+- **l'opposition** `localStorage.passio_telemetry = "0"`, qui coupe aussi le relais `client_errors` ;
+- et par nature : un `try/catch` large autour du défaut, un `display:none` sur un bouton mort, le
+  retrait d'un `tel.flowStart`.
+
+Ce qui est bien fermé : retirer la balise de la télémétrie fait échouer le build ; recopier
+l'instrument sous un autre nom dépasse la borne des 60 lignes. **Seule la contre-mesure après
+déploiement fermerait le reste** (T8-3 de l'audit : « vérifié sur N sessions » plutôt que le
+silence, sinon `humain`) — à faire. D'ici là, une issue `[SENTINELLE]` « déployée » dit qu'un
+correctif est en ligne, pas que le défaut a été revu guéri.
+
+### Conséquences à connaître
+
+- **Une enquête dont la cause est dans un instrument ne se répare plus seule.** Si l'agent ouvre quand
+  même une PR : refus écrit et `humain` aussitôt. S'il suit la consigne et s'arrête sans PR : l'issue
+  porte son commentaire, puis passe `humain` par le veilleur au bout de 6 h — elle occupe une des 3
+  places et compte dans le budget de 6 enquêtes par 24 h pendant ce temps (comportement d'avant le
+  lot, rendu plus fréquent).
+- `js/platform.js` porte aussi l'invite d'installation de l'application : un défaut d'interface à cet
+  endroit part désormais chez un humain. Coût accepté.
+- **La seconde chaîne, celle du poste** (`dashboard/server/repair.js`, `sentinel-production.js`), garde
+  son ancienne liste blanche (`js/*.js`, `sw.js`). Une de ses PR qui toucherait un instrument est
+  arrêtée par le périmètre critique (contre-revue manquante), mais sans mot sur une issue. Elle est
+  éteinte sur le poste (`DASH_SENTINEL_REPAIR=off`) ; à aligner avant de la rallumer.
 
 Verrou : `tests/unit/sentinelle-workflows.test.mjs` (gouvernance A6) — chaque instrument refusé à une
 réparation, refus ÉCRIT sur l'issue ; chaque instrument critique pour une PR humaine, accepté avec une
-contre-revue ancrée. Réinjections : retirer les instruments du `case` de périmètre, puis du `case`
-critique, rougit chacune. ⚠️ La première version de l'assertion ne vérifiait que l'échec du job : un
+contre-revue ancrée — et `politique-autonomie-executants.test.mjs` ⑥. Sept réinjections, toutes vues
+par au moins un des deux bancs (ligne retirée, un instrument retiré, instruments retirés du critique,
+un seul absent du critique, ligne déplacée après `js/*.js`, un absent de la politique, un absent de la
+consigne). ⚠️ La première version de l'assertion de périmètre ne vérifiait que l'échec du job : un
 instrument sorti du périmètre restait refusé… par la seule contre-revue manquante, issue muette.

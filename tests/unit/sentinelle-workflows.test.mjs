@@ -620,7 +620,7 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   assert.ok(g2.summary.includes("1 fichier(s) de code, 30 ligne(s)"), "fiche et verrou hors comptage\n" + g2.summary);
   // Les INSTRUMENTS DE MESURE (2026-11-20, audit « 100 000 », T8) : une réparation automatique ne
   // modifie pas ce qui la juge. Mutation : retirer leur ligne du `case` de périmètre → rougit ici.
-  const INSTRUMENTS = ["js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js"];
+  const INSTRUMENTS = ["js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js", "js/identity-transition.js"];
   for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js", ...INSTRUMENTS]) {
     fixtures({
       "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },

@@ -22,7 +22,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { POLITIQUE } from "../../supabase/functions/_shared/politique-autonomie.js";
-import { MAX_ENQUETES, RECIDIVE_SEUIL } from "../../scripts/sentinelle-detecter.mjs";
+import { MAX_ENQUETES, RECIDIVE_SEUIL, corpsIssue } from "../../scripts/sentinelle-detecter.mjs";
 
 const R = POLITIQUE.runbooks;
 
@@ -36,12 +36,27 @@ test("⑥ le correctif autonome : la politique dit ce que deploy.yml et la Senti
   const cas = /\n\s+(js\/\*\.js\|[^)]+)\) ;;/.exec(y);
   assert.ok(cas, "périmètre de la Sentinelle introuvable dans deploy.yml");
   assert.deepEqual(cas[1].split("|"), [...c.perimetre]);
-  // Les exclusions : chaque motif que deploy.yml écarte AVANT le périmètre (hors le `*)` final), dans l'ordre.
+  // Les exclusions : chaque motif que deploy.yml écarte (hors le `*)` final), dans l'ordre.
   // Mutation : retirer un instrument de mesure du `case` de deploy.yml, ou de la politique → rougit.
   const ecartes = [...y.matchAll(/\n\s+(\S[^)\n]*)\) hors_perimetre="\$\{hors_perimetre\}\$\{file\}"\$'\\n' ;;/g)]
     .map((m) => m[1]).filter((motif) => motif !== "*").flatMap((motif) => motif.split("|"));
   assert.ok(ecartes.length >= 3, "exclusions du périmètre introuvables dans deploy.yml : " + JSON.stringify(ecartes));
   assert.deepEqual(ecartes, [...c.exclus], "la politique et deploy.yml n'excluent pas les mêmes fichiers du périmètre autonome");
+  // … et ils sont écartés AVANT le périmètre : dans un `case`, le premier motif qui correspond gagne, et
+  // `js/*.js` recouvre chaque instrument. Mutation : déplacer la ligne des instruments après `js/*.js` → rougit.
+  const instruments = c.exclus.filter((f) => /^js\/[^/*]+\.js$/.test(f));
+  assert.ok(instruments.length >= 5, "instruments de mesure introuvables dans la politique");
+  assert.ok(y.indexOf(instruments.join("|") + ") hors_perimetre") > 0 && y.indexOf(instruments.join("|") + ") hors_perimetre") < y.indexOf(cas[1] + ") ;;"),
+    "les instruments doivent être écartés AVANT le motif js/*.js du périmètre");
+  // Les TROIS listes disent la même chose : le périmètre CRITIQUE (contre-revue exigée, PR humaine comprise)
+  // et la consigne donnée à l'agent. Mutation : oublier un instrument dans l'un des trois → rougit.
+  const critique = /\n\s+(\.github\/\*\|[^)\n]+)\)\n\s+critical=true ;;/.exec(y);
+  assert.ok(critique, "périmètre critique introuvable dans deploy.yml");
+  const consigne = corpsIssue({ fenetreHeures: 24 }, { message: "boum", n: 3, comptes: 1, dernier: "x", exemple: null }, { date: "2026-11-20" });
+  for (const f of instruments) {
+    assert.ok(critique[1].split("|").includes(f), `${f} : exclu du périmètre autonome mais absent du périmètre critique de deploy.yml`);
+    assert.ok(consigne.includes("`" + f + "`"), `${f} : exclu du périmètre autonome mais la consigne de l'issue ne le dit pas à l'agent`);
+  }
   assert.equal(c.limites.enquetesMax, MAX_ENQUETES);
   assert.equal(POLITIQUE.limites.enquetesSimultanees, MAX_ENQUETES);
   assert.equal(c.limites.recidiveApres, RECIDIVE_SEUIL);
