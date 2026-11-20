@@ -171,6 +171,28 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
   });
 
+  test("② quinquies validée depuis un autre écran : le retour au fil n'avance pas la bulle sous le toast", async ({ page }) => {
+    await bootVisiteur(page);
+    await ouvrirPanneauParLaCarte(page);
+    await choisirEtValider(page, ["musique"]);
+    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
+    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
+    await lireSonde(page);
+    // Ailleurs que sur le fil, la personne rouvre ses passions et valide :
+    // `validerPersonnalisation` ramène au fil (`goTo`), ce qui replanifie
+    // l'accueil — et l'accueil rappelait `planifierTour()` à 700 ms, sous le toast.
+    await page.evaluate(() => goTo("explore"));
+    await page.waitForTimeout(300);
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await expect(page.locator("#frValider")).toBeVisible();
+    await choisirEtValider(page, ["cuisine"]);
+    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 7000 });
+    const vu = await lireSonde(page);
+    expect(vu.some((e) => e.toast)).toBe(true);
+    expect(vu.some((e) => e.bulle)).toBe(true);
+    expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
+  });
+
   test("② quater Paramètres ouverts pendant l'attente : aucune bulle ne se pose dessous", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
