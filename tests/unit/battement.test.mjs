@@ -221,10 +221,10 @@ test("⑧ le remplissage ou la mémoire du canari ILLISIBLES rendent la veille �
 test("T3-l le battement porte la mesure d'échelle en NOMBRES seulement ; illisible = null ; aucune clé de plus dans `lectures`", () => {
   const ok = { status: "fulfilled", value: {} };
   const lectures = { sante: ok, signalements: ok, github: ok, parcours: ok };
-  const c = contenuBattement({ lectures, echelle: { connectes15: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300.7, api5xx15: 4, principales: ["texte d'un tiers"], evenements15: 9 } });
-  assert.deepEqual(c.echelle, { connectes15: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300, api5xx15: 4 }, "les clés de la liste, rien d'autre");
-  const h = contenuBattement({ lectures, echelle: { connectes15: "25000", comptesErreurs15: -1, comptes5xx15: NaN, erreursJs15: null, api5xx15: { x: 1 } } });
-  assert.deepEqual(h.echelle, { connectes15: null, comptesErreurs15: null, comptes5xx15: null, erreursJs15: null, api5xx15: null });
+  const c = contenuBattement({ lectures, echelle: { connectes5: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300.7, api5xx15: 4, principales: ["texte d'un tiers"], evenements15: 9 } });
+  assert.deepEqual(c.echelle, { connectes5: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300, api5xx15: 4 }, "les clés de la liste, rien d'autre");
+  const h = contenuBattement({ lectures, echelle: { connectes5: "25000", comptesErreurs15: -1, comptes5xx15: NaN, erreursJs15: null, api5xx15: { x: 1 } } });
+  assert.deepEqual(h.echelle, { connectes5: null, comptesErreurs15: null, comptes5xx15: null, erreursJs15: null, api5xx15: null });
   assert.equal(contenuBattement({ lectures }).echelle, null);
   assert.equal(contenuBattement({ lectures, echelle: "25000" }).echelle, null);
   assert.deepEqual(Object.keys(c.lectures), ["sante", "signalements", "github", "parcours"]);

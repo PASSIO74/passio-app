@@ -1551,7 +1551,7 @@ test("T3-n Détails › Veille dit les seuils du voyant en TEXTE (phrases de la 
   const soucis = [];
   page.on("pageerror", (e) => soucis.push(e.message));
   const { resumeEchelle } = require("../../supabase/functions/_shared/pilotage.js");
-  const echelle = resumeEchelle({ connectes15: 25000 });
+  const echelle = resumeEchelle(25000);
   echelle.phrases.push(CHARGE);
   await poserSession(page);
   await routerFonction(page, [], etat({ echelle }));
@@ -1559,7 +1559,7 @@ test("T3-n Détails › Veille dit les seuils du voyant en TEXTE (phrases de la 
   await aller(page, "details");
   const zone = page.locator("#veilleBattement");
   await expect(zone).toContainText("Seuils du voyant en nombres absolus");
-  await expect(zone).toContainText("Comptes connectés sur 15 min : 25000.");
+  await expect(zone).toContainText("Comptes connectés sur 5 min : 25000.");
   await expect(zone).toContainText("placeraient le rouge à 500 comptes en erreur");
   await expect(zone).toContainText(CHARGE);
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();

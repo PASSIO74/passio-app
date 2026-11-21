@@ -2869,8 +2869,10 @@ tenu : pendant une lecture incomplète, une raison neuve venue d'une source lue 
 `memoireAlerte` garde les codes d'avant (sinon ils re-sonneraient à la lecture suivante). Un état
 d'avant ce lot (sans `codes`) n'invente aucune nouveauté et n'est pas réécrit pour ça ; un code hors
 liste ne sonne jamais ; une raison qui clignote se tait jusqu'au rappel. La veille réécrit l'état quand
-l'ensemble des codes change sous un rouge qui dure (`codesChange`) ; `lireHistorique` lit 40 lignes et
-n'en garde qu'une par couleur consécutive — la PREMIÈRE, celle du passage au rouge.
+l'ensemble des codes change sous un rouge qui dure (`codesChange`) ; quand c'est sa SEULE cause (même
+couleur, même disponibilité, rien n'a sonné), la ligne porte `motif: "codes"` et `lireHistorique` l'écarte
+en base. Des 40 lignes restantes, il garde la plus ancienne lue de chaque suite de même couleur ET même
+disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
 
 ⚠️ **L'ÉTAT MÉMORISÉ EST HOSTILE PAR HYPOTHÈSE.** Il est relu tel quel d'`analytics_events` : la règle
 neuve est sous `try`, `annonces` n'est lu que si c'est un objet simple, `codes` filtré par
@@ -2878,11 +2880,11 @@ neuve est sous `try`, `annonces` n'est lu que si c'est un objet simple, `codes` 
 `memoireAlerte` APRÈS `decideAlerte`, sous `try/catch` (repli : les codes mesurés, aucune annonce).
 
 ⚠️ **AUCUNE COULEUR DU VOYANT NE CHANGE AVANT LA MIGRATION** (contradiction bloquante du plan). Le seul
-dénominateur lisible sans migration, `pilotage_audience(900).comptes_connectes`, compte TOUS les
+dénominateur lisible sans migration, `comptes_connectes` de `pilotage_audience`, compte TOUS les
 connectés, comptes neufs et anonymes compris : cent un comptes qui envoient une ligne chacun auraient
 relevé le seuil et fait taire l'alarme, et une vague de lancement diluerait une panne des seuls comptes
-anciens. Il sert donc à MESURER : le battement note `echelle` (connectés, comptes touchés, lignes ;
-des nombres, `CLES_ECHELLE`), l'écran dit « seuils en nombres absolus » et où serait le seuil
+anciens. Il sert donc à MESURER : le battement note `echelle` (connectés sur 5 min, comptes touchés et
+lignes sur 15 min ; des nombres, `CLES_ECHELLE`), l'écran dit « seuils en nombres absolus » et où serait le seuil
 proportionnel (`resumeEchelle`, Détails › Veille). `TAUX_VOYANT_PM` (20 ‰ erreurs, 10 ‰ serveur) n'y
 sert qu'à cette phrase. T3-c rejoue toute une grille aux trois échelles : même verdict avec ou sans
 mesure. La retenue au taux, à DOUBLE règle (tous les connectés ET les comptes anciens), est B2.
@@ -2892,13 +2894,15 @@ mesure. La retenue au taux, à DOUBLE règle (tous les connectés ET les comptes
 touché par l'arrondi (balayage de 1 à 100 000), c'est une précaution épinglée par
 `seuilEchelle(1, 70, 100) === 7` (0,07 × 100 = 7,000000000000001).
 
-⚠️ **VEILLE GITHUB (`signalApi`) : LE DÉNOMINATEUR EST UNE IDENTITÉ SERVEUR, JAMAIS UN `device_id`.**
-Les planchers ne bougent pas (5 réponses ET 2 appareils ; 20 refus ET 3 appareils). L'alerte n'est
-RETENUE que si `anciensActifs` (comptes de plus de 7 jours, confirmés, non anonymes, non supprimés,
-actifs sur l'heure) est lu, que le seuil à l'échelle dépasse le plancher, et que 1 ≤ comptes anciens
-touchés < seuil (`retenueApi`). Aucun compte ancien derrière les lignes = jamais de retenue. Le texte
-part dans une issue PUBLIQUE : il ne cite ni le dénominateur ni le seuil. Pivot : 200 comptes anciens
-actifs (2 / 10 ‰), 200 pour les refus (3 / 15 ‰) ; à 23 000, 230 et 345.
+⚠️ **VEILLE GITHUB (`signalApi`) : UNE ALERTE 5XX RETENUE DEVIENT UNE ATTENTION, JAMAIS « RIEN ».**
+Les planchers ne bougent pas (5 réponses ET 2 appareils). L'alerte n'est ramenée à `warn` (`retenue5xx`)
+que si TOUT est lu et que, à la fois : les comptes ANCIENS touchés (identité serveur : plus de 7 jours,
+confirmés, non anonymes, non supprimés) sont au moins 1 et sous le taux des comptes anciens actifs
+(`seuilEchelle(2, 10 ‰, anciensActifs)` : pivot 200, 230 à 23 000) ; ET les lignes qui ne viennent PAS
+de comptes anciens (`n5xxAutres`, `app5xxAutres` : visiteurs, comptes neufs, lignes sans compte)
+restent, seules, sous les planchers d'avant. Le dénominateur ne compte jamais de `device_id`. Les refus
+ne sont pas retenus (leur palier est déjà une attention). Le texte part dans une issue PUBLIQUE : il ne
+cite ni le dénominateur ni le seuil.
 
 **Retrait du classement mort.** `erreursFrequentes` et `sante.principales` (300 dernières lignes de
 `client_errors`) n'avaient plus aucun lecteur — ni la page, ni les scripts, ni le dashboard ; seule la
@@ -2912,9 +2916,29 @@ problème » ; réparé, l'état suit ; rechute dans les 6 h : silence ; tout r�
 réduit au passage au rouge), T3-j (états hostiles), T3-k (25 000 connectés, 300 erreurs chez 120
 comptes : TOUJOURS rouge, mesure au battement et à l'écran), T3-o (mémoire qui lève, fonction SQL qui
 lève) ; `battement.test.mjs` T3-l ; `veille-production.test.mjs` T3-m ; e2e `pilotage-nuage.spec.js`
-T3-n. **Réinjections R150 à R189** dans `scripts/reinjections-pilotage.mjs` (182/182 rouges), dont les
-quatre d'`echelle.js` et cinq de la veille GitHub ; à la main, l'écran rendu par `insertAdjacentHTML`
-ou retiré rougit T3-n.
+T3-n ; contre-revue : T3-p (pur), T3-q (exécuté). **Réinjections R150 à R199** dans
+`scripts/reinjections-pilotage.mjs`, dont les quatre d'`echelle.js` et huit de la veille GitHub ; à la
+main, l'écran rendu par `insertAdjacentHTML` ou retiré rougit T3-n.
+
+**Ce que la contre-revue du lot a changé (B-1 à B-4).**
+- **B-1, veille GitHub.** La première version ne comparait que comptes anciens touchés / actifs :
+  5 000 réponses 5xx sur 3 000 appareils et UN compte ancien touché rendaient `ok` (sur main : alerte),
+  et une ligne 5xx se forge par tout compte (`telemetry_insert_own` ne contraint ni type ni statut).
+  Désormais les lignes hors comptes anciens doivent rester seules sous les planchers d'avant, et une
+  alerte retenue rend `warn`. La fiche disait « une panne des visiteurs ou des comptes neufs alerte
+  comme avant » : c'était faux pour une panne qui touche aussi un compte ancien.
+- **B-2, historique.** Chaque changement de l'ensemble des codes écrivait une ligne ; un code qui
+  clignote remplissait les 40 lignes lues en 3 h 20 et l'historique n'avait plus qu'une ligne. Marque
+  `motif: "codes"`, filtre en base ; le dédoublonnage distingue la disponibilité (survivant M11).
+- **B-3.** Une raison neuve arrivée en même temps que « PASSIO ne répond plus » se mémorisait sans
+  avoir été annoncée — jamais annoncée ensuite. Une sonnerie qui n'annonce aucun code ne mémorise que
+  les codes que l'état d'avant portait déjà.
+- **B-4.** La garde des annonces datées dans le futur n'était vue par aucun test (survivant M1).
+  `lireConnectes15` rappelait `pilotage_audience(900)`, qui refait tout le calcul lourd (aucune branche
+  courte à 900 s), AVANT le verdict et sans délai propre : retiré. Les connectés viennent de l'appel à
+  300 s déjà fait (veille : ses signaux ; écran : `utilisateurs.maintenant`), seulement s'il est exact.
+  Choisi plutôt qu'un `avecDelai` : aucun appel de plus, aucun retard du verdict ; le prix est une
+  fenêtre de 5 min au lieu de 15, dite partout (« sur 5 min »). B2 apportera la mesure sur 15 min.
 
 **Limites connues.**
 - La sonnerie est plus bavarde par construction : un « Nouveau problème » par code et par 6 h ; il remet

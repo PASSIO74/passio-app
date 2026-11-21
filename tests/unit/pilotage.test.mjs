@@ -2898,33 +2898,28 @@ test("T3-f memoireAlerte : hors rouge rien ; tenu, l'union avec l'état d'avant 
 });
 
 test("T3-g resumeEchelle : des phrases fixes — « nombres absolus » toujours, le dénominateur lu ou non, et où serait le seuil proportionnel sans l'appliquer", () => {
-  assert.equal(resumeEchelle(null), null);
-  const inconnu = resumeEchelle({ erreursJs15: 3 });
-  assert.equal(inconnu.connectes15, null); assert.equal(inconnu.actif, false);
+  const inconnu = resumeEchelle(null);
+  assert.equal(inconnu.connectes5, null); assert.equal(inconnu.actif, false);
   assert.match(inconnu.phrases[0], /^Seuils du voyant en nombres absolus/);
   assert.match(inconnu.phrases[1], /non lus/);
-  for (const v of ["25000", NaN, -3, {}]) assert.equal(resumeEchelle({ connectes15: v }).connectes15, null, String(v));
-  const petit = resumeEchelle({ connectes15: ECHELLES.petit.connectes15 });
-  assert.equal(petit.connectes15, 100);
-  assert.match(petit.phrases.join(" "), /Comptes connectés sur 15 min : 100\./);
+  for (const v of ["25000", NaN, -3, {}, undefined]) assert.equal(resumeEchelle(v).connectes5, null, String(v));
+  const petit = resumeEchelle(ECHELLES.petit.connectes15);
+  assert.equal(petit.connectes5, 100);
+  assert.match(petit.phrases.join(" "), /Comptes connectés sur 5 min : 100\./);
   assert.match(petit.phrases.join(" "), /Jusqu'à 100 comptes connectés, les nombres absolus restent la bonne règle/);
-  const grand = resumeEchelle({ connectes15: ECHELLES.grand.connectes15 });
+  const grand = resumeEchelle(ECHELLES.grand.connectes15);
   assert.equal(grand.actif, false, "le voyant ne juge pas au taux avant la migration");
   assert.match(grand.phrases.join(" "), /placeraient le rouge à 500 comptes en erreur et 250 comptes en panne serveur : ils ne sont pas encore en service/);
   for (const r of [inconnu, petit, grand]) for (const t of r.phrases) assert.equal(typeof t, "string");
 });
 
-test("T3-h la fonction : lireSante ne lit plus le classement mort, compte les connectés par la fonction SQL seule ; la veille code, mémorise et réécrit ; l'écran dit l'échelle", () => {
+test("T3-h la fonction : lireSante ne lit plus le classement mort ni ne rappelle la fonction SQL ; les connectés viennent de la mesure EXACTE déjà lue ; la veille code, mémorise et réécrit ; l'écran dit l'échelle", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const sante = fn.slice(fn.indexOf("async function lireSante"), fn.indexOf("async function lireErreurs7j"));
   assert.doesNotMatch(sante, /\.limit\(300\)/); assert.doesNotMatch(sante, /principales/);
-  assert.match(sante, /lireConnectes15\(admin\)/);
-  assert.match(sante, /erreurs24h, connectes15 \};/);
-  const c15 = fn.slice(fn.indexOf("async function lireConnectes15"), fn.indexOf("async function lireSante"));
-  assert.match(c15, /admin\.rpc\("pilotage_audience", \{ p_secondes: 900 \}\)/);
-  assert.match(c15, /\.comptes_connectes\)/);
-  assert.doesNotMatch(c15, /[^_]audience\(/, "jamais le repli par lignes (device_id écrits par le navigateur)");
-  assert.match(c15, /catch \{ return null; \}/);
+  assert.doesNotMatch(sante, /audience\(|\.rpc\(|connectes/, "aucun second appel lourd à pilotage_audience avant le verdict (contre-revue)");
+  assert.doesNotMatch(fn, /p_secondes: 900/);
+  assert.match(fn, /const connectes5 = \(a: Audience \| null \| undefined\): number \| null => \(a && a\.exact \? a\.connexions \?\? null : null\);/, "seulement la mesure EXACTE (jamais le repli par device_id)");
   const v = fn.slice(fn.indexOf("async function veille("), fn.indexOf("// Canari serveur"));
   assert.match(v, /const mesuree = \{ codes: v\.couleur === "rouge" \? v\.codes : \[\], rouges: v\.couleur === "rouge" \? v\.rouges : \[\] \};/, "les codes du verdict MESURÉ, jamais du voyant tenu");
   assert.match(v, /dispo: val\(dispo\) !== false, \.\.\.mesuree, tenu: !!vt\.tenu \};/);
@@ -2932,11 +2927,48 @@ test("T3-h la fonction : lireSante ne lit plus le classement mort, compte les co
   assert.ok(v.indexOf("const d = decideAlerte(prec, actuel);") < v.indexOf("memoireAlerte(prec, actuel, d)"));
   assert.match(v, /\|\| d\.sonner \|\| codesChange\);/);
   assert.match(v, /codes: memo\.codes, annonces: memo\.annonces,/);
-  assert.match(v, /echelle: e\.sante,/);
+  assert.match(v, /echelle: \{ \.\.\.\(e\.sante \|\| \{\}\), connectes5: connectes5\(signaux\) \},/);
   const etat = fn.slice(fn.indexOf("async function etat("), fn.indexOf("const ilYa ="));
-  assert.ok(etat.indexOf("out.echelle = resumeEchelle(out.sante);") > 0 && etat.indexOf("out.echelle = resumeEchelle(out.sante);") < etat.indexOf("const v = verdict(out"));
+  assert.ok(etat.indexOf("out.echelle = resumeEchelle(connectes5(maintenant));") > 0 && etat.indexOf("out.echelle = resumeEchelle(connectes5(maintenant));") < etat.indexOf("const v = verdict(out"));
   // L'écran : en TEXTE, rien quand le champ manque.
   const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
   assert.match(page, /if \(d\.echelle && Array\.isArray\(d\.echelle\.phrases\)\) \{/);
   assert.match(page, /ze\.append\(el\("p", "discret", String\(t\)\)\)/);
+});
+
+// ─── Contre-revue de B1 (2026-11-21) : B-3 et B-4 ───────────────────────────────────────────────────
+test("T3-p une raison neuve arrivée avec « PASSIO ne répond plus » sonne au passage où le site revient ; une annonce datée dans le FUTUR ne tait rien", () => {
+  const T = Date.parse("2026-11-21T12:00:00Z");
+  const min = (n) => T + n * 60e3;
+  const rouge = (codes, dispo = true) => ({ couleur: "rouge", dispo, raisons: codes.map((c) => "texte " + c), codes, rouges: codes.map((c) => ({ code: c, texte: "texte " + c })) });
+  // Passage 1 : rouge [humain], annoncé.
+  let prec = null;
+  const passage = (actuel, t) => {
+    const d = decideAlerte(prec, actuel, t);
+    const m = memoireAlerte(prec, actuel, d, t);
+    prec = { couleur: actuel.couleur, dispo: actuel.dispo, alerteLe: d.sonner ? new Date(t).toISOString() : prec && prec.alerteLe, ...m };
+    return d;
+  };
+  assert.equal(passage(rouge(["humain"]), min(0)).titre, "🔴 Problème sur PASSIO");
+  // Passage 2 : le site tombe ET un déploiement casse — la sonnerie « ne répond plus » prend la place.
+  assert.equal(passage(rouge(["humain", "deploiement"], false), min(5)).titre, "🔴 PASSIO ne répond plus");
+  assert.deepEqual(prec.codes, ["humain"], "un code arrivé avec une sonnerie qui n'annonce rien ne se mémorise pas");
+  // Passage 3 : le site revient — « répond de nouveau » sonne, le déploiement attend encore.
+  assert.equal(passage(rouge(["humain", "deploiement"]), min(10)).titre, "✅ PASSIO répond de nouveau");
+  assert.deepEqual(prec.codes, ["humain"]);
+  // Passage 4 : le déploiement cassé est enfin annoncé.
+  const d4 = passage(rouge(["humain", "deploiement"]), min(15));
+  assert.equal(d4.titre, "🔴 Nouveau problème sur PASSIO"); assert.equal(d4.texte, "texte deploiement");
+  // Le site tombe pendant le passage au rouge : rien n'est mémorisé, tout sera annoncé ensuite.
+  prec = { couleur: "vert", dispo: true };
+  passage(rouge(["erreurs"], false), min(20));
+  assert.deepEqual(prec.codes, []);
+  passage(rouge(["erreurs"]), min(25));
+  assert.equal(passage(rouge(["erreurs"]), min(30)).titre, "🔴 Nouveau problème sur PASSIO");
+  // B-4 : une annonce datée dans le futur (horloge, écriture forgée) n'est pas « récente » — la raison sonne.
+  const futur = { couleur: "rouge", dispo: true, alerteLe: new Date(T).toISOString(), codes: ["humain"], annonces: { humain: new Date(T).toISOString(), erreurs: new Date(T + 2 * 3600e3).toISOString() } };
+  assert.equal(decideAlerte(futur, rouge(["humain", "erreurs"]), T).titre, "🔴 Nouveau problème sur PASSIO");
+  // À une minute près (dérive d'horloge tolérée), elle reste récente.
+  const presque = { ...futur, annonces: { humain: futur.annonces.humain, erreurs: new Date(T + 30e3).toISOString() } };
+  assert.equal(decideAlerte(presque, rouge(["humain", "erreurs"]), T).sonner, false);
 });

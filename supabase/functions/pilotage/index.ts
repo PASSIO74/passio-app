@@ -251,6 +251,7 @@ async function veille(admin: Admin) {
   // Mémoire illisible : seul ce qui SONNE (un rouge, un site injoignable) s'écrit — l'alerte
   // d'abord, quitte à sonner deux fois. Tout autre voyant attend la lecture suivante.
   const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner || codesChange);
+  const seulCodes = !!prec && prec.couleur === actuel.couleur && prec.dispo === actuel.dispo && !d.sonner && codesChange;
   // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
   // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
   // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
@@ -269,6 +270,9 @@ async function veille(admin: Admin) {
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
       codes: memo.codes, annonces: memo.annonces,
+      // Réécrite pour ses seuls codes (même couleur, même dispo, rien n'a sonné) : marquée, et l'historique
+      // de l'écran l'écarte — un code qui clignote aurait rempli les lignes lues (contre-revue de B1).
+      ...(seulCodes ? { motif: "codes" } : {}),
     } });
     dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
@@ -304,7 +308,7 @@ async function veille(admin: Admin) {
       memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
     verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
     // La mesure d'échelle (2026-11-21, T3) : des NOMBRES, de quoi calibrer les taux (TAUX_VOYANT_PM).
-    echelle: e.sante,
+    echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
@@ -713,7 +717,7 @@ async function etat(admin: Admin, frais = false) {
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
   catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
   // Les seuils du voyant, dits au pilote (2026-11-21, T3) : nombres absolus, et où serait le seuil proportionnel.
-  out.echelle = resumeEchelle(out.sante);
+  out.echelle = resumeEchelle(connectes5(maintenant));
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
@@ -735,15 +739,12 @@ async function compter(q: PromiseLike<{ count: number | null; error: unknown }>)
   return count ?? 0;
 }
 
-// Les comptes connectés sur 15 min (2026-11-21, T3), comptés en base par identité serveur (auth_uid) —
-// appel DIRECT de la fonction SQL : jamais le repli par lignes, qui compte des device_id qu'écrit le
-// navigateur. Une mesure, jamais une décision : absente ou en échec, elle vaut null et rien ne lève.
-async function lireConnectes15(admin: Admin): Promise<number | null> {
-  try {
-    const { data, error } = await admin.rpc("pilotage_audience", { p_secondes: 900 });
-    return error || !data || typeof data !== "object" ? null : nombre((data as Record<string, unknown>).comptes_connectes);
-  } catch { return null; }
-}
+// Les comptes connectés (2026-11-21, T3) : `comptes_connectes` de l'appel à 300 s DÉJÀ fait (la veille
+// pour ses signaux, l'écran pour `utilisateurs.maintenant`), et seulement s'il est EXACT (fonction SQL,
+// identité serveur) — jamais le repli par lignes, qui compte des device_id qu'écrit le navigateur. Un
+// second appel à 900 s refaisait tout le calcul lourd et retardait le verdict sans délai propre
+// (contre-revue de B1). Une mesure sur 5 min, jamais une décision : inconnue, elle vaut null.
+const connectes5 = (a: Audience | null | undefined): number | null => (a && a.exact ? a.connexions ?? null : null);
 
 async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
@@ -761,10 +762,7 @@ async function lireSante(admin: Admin) {
   const depuis24 = ilYa(24 * 3600e3);
   // Le NOMBRE se compte en base. Le classement des 300 dernières lignes qui l'accompagnait n'avait
   // plus aucun lecteur (2026-11-21, T3) : le pilote lit celui de `erreurs.details` (lireErreurs7j).
-  const [erreurs24h, connectes15] = await Promise.all([
-    compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
-    lireConnectes15(admin),
-  ]);
+  const erreurs24h = await compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24));
   // Les COMPTES serveur derrière ces lignes (2026-11-07) : une erreur et une
   // panne 5xx se remontent avec la clé anon, publique — dix lignes forgées
   // faisaient sonner rouge. Seule l'identité posée par le serveur (`auth_uid`)
@@ -782,7 +780,7 @@ async function lireSante(admin: Admin) {
   // coupure réseau, un repli) ; seuls et d'un seul compte, ils ne colorent plus l'écran (verdict).
   const [lErreurs, l5xx, avertJs15] = await Promise.all([lignes("error", false), lignes("api", true), compter(prod().eq("type", "error").eq("severity", "warn"))]);
   const comptesErreurs15 = distincts(lErreurs), comptes5xx15 = distincts(l5xx), comptesAvert15 = distincts(lErreurs, (x) => x.severity === "warn");
-  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h, connectes15 };
+  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h };
 }
 
 async function lireErreurs7j(admin: Admin) {
@@ -821,12 +819,15 @@ async function lireMiseEnLigne(admin: Admin, etatGh: { runs?: { deploy?: RunResu
 // la veille (7 jours). Des raisons écrites par cette fonction, jamais un texte
 // de tiers ; bornées quand même.
 // Depuis le 2026-11-21 (T3), la veille réécrit aussi son état quand l'ensemble des raisons ROUGES change
-// sous un rouge qui dure : plusieurs lignes « rouge » de suite. L'historique n'en garde qu'une — la plus
-// ancienne, celle du passage au rouge — sinon douze réécritures chasseraient les vraies transitions.
+// sous un rouge qui dure. Ces réécritures portent `motif: "codes"` et sont écartées EN BASE (un code qui
+// clignote en écrirait douze par heure). Restent des lignes « rouge » de suite quand une sonnerie réécrit
+// l'état (« Nouveau problème », rappel) : on garde la plus ancienne lue de chaque suite de même couleur ET
+// même disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
 const HISTORIQUE_LU = 40;
 async function lireHistorique(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
-    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(HISTORIQUE_LU);
+    .eq("user_id", "systeme:pilotage").or("properties->>motif.is.null,properties->>motif.neq.codes")
+    .gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(HISTORIQUE_LU);
   if (error) throw error;
   const lignes = (data || []).map((r) => {
     const p = (r.properties || {}) as { couleur?: unknown; dispo?: unknown; raisons?: unknown };

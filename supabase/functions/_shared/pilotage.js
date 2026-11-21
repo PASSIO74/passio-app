@@ -268,7 +268,8 @@ export const SENTINELLE_MUETTE_MS = 8 * 3600e3;
 /** Comptes serveur distincts qu'il faut derrière des erreurs ou des 5xx pour sonner rouge. */
 export const COMPTES_ROUGE_MIN = 2;
 // ─── Les seuils À L'ÉCHELLE du voyant (2026-11-21, audit « 100 000 », T3) ────
-// Taux de départ, en ENTIERS pour mille des comptes connectés sur 15 min (_shared/echelle.js) :
+// Taux de départ, en ENTIERS pour mille des comptes connectés (_shared/echelle.js ; sur 15 min en B2 —
+// l'écran de B1 les rapporte aux connectés sur 5 min, la seule mesure exacte sans migration) :
 // rouge des erreurs à 20 ‰ (elles comptent les avertissements réseau, plus bruyants), du serveur
 // à 10 ‰. ⚠️ PAS ENCORE EN SERVICE : le voyant juge toujours sur les nombres absolus ci-dessus.
 // Le seul dénominateur lisible sans migration compte TOUS les connectés, comptes neufs et
@@ -1567,26 +1568,32 @@ export function memoireAlerte(prec, actuel, decision, maintenant = Date.now(), r
     if (decision && decision.sonner && Array.isArray(decision.annonce)) {
       for (const c of decision.annonce) if (estCodeRouge(c)) annonces[c] = new Date(maintenant).toISOString();
     }
+    // Une sonnerie qui n'annonce AUCUN code (le site ne répond plus, ou de nouveau) a pris la place de
+    // « Nouveau problème » : un code arrivé avec elle ne se mémorise pas, sinon il ne serait jamais
+    // annoncé (contre-revue de B1). Seuls restent ceux que l'état d'avant portait déjà.
+    if (decision && decision.sonner && !Array.isArray(decision.annonce)) {
+      const avant = precRouge ? codesValides(p) : [];
+      codes = codes.filter((c) => avant.includes(c));
+    }
     return { codes: [...new Set(codes)].slice(0, CODES_MEMOIRE_MAX), annonces: Object.fromEntries(Object.entries(annonces).slice(-CODES_MEMOIRE_MAX)) };
   } catch (_e) { return { codes: [], annonces: {} }; }
 }
 
 /**
  * Ce que l'écran dit des seuils du voyant (2026-11-21, T3) : des phrases FIXES et des nombres,
- * jamais un texte lu. `sante.connectes15` = comptes connectés sur 15 min (pilotage_audience,
- * comptés en base), ou absent. Le voyant juge toujours en nombres absolus : la phrase le dit,
+ * jamais un texte lu. `connectes5` = comptes connectés sur 5 min (pilotage_audience EXACTE,
+ * identité serveur), ou null. Le voyant juge toujours en nombres absolus : la phrase le dit,
  * et dit où serait le seuil proportionnel quand le taux le relèverait — sans l'appliquer.
  */
-export function resumeEchelle(sante) {
-  if (!sante || typeof sante !== "object") return null;
-  const n = sante.connectes15;
+export function resumeEchelle(connectes5) {
+  const n = connectes5;
   const d = typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
   const phrases = [`Seuils du voyant en nombres absolus : rouge à partir de 10 erreurs ou 5 pannes serveur en 15 min, chez au moins ${COMPTES_ROUGE_MIN} comptes.`];
   if (d === null) {
-    phrases.push("Comptes connectés sur 15 min : non lus à ce passage.");
-    return { connectes15: null, actif: false, phrases };
+    phrases.push("Comptes connectés sur 5 min : non lus à ce passage.");
+    return { connectes5: null, actif: false, phrases };
   }
-  phrases.push(`Comptes connectés sur 15 min : ${d}.`);
+  phrases.push(`Comptes connectés sur 5 min : ${d}.`);
   const sE = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge, d);
   const sS = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge, d);
   if (sE > COMPTES_ROUGE_MIN || sS > COMPTES_ROUGE_MIN) {
@@ -1595,7 +1602,7 @@ export function resumeEchelle(sante) {
     const pivot = Math.min(pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge), pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge));
     phrases.push(`Jusqu'à ${pivot} comptes connectés, les nombres absolus restent la bonne règle.`);
   }
-  return { connectes15: d, actif: false, phrases };
+  return { connectes5: d, actif: false, phrases };
 }
 
 /** Statuts qu'un signalement peut prendre depuis le téléphone. */

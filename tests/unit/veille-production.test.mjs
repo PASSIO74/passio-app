@@ -846,10 +846,10 @@ test("signalBattement : périmé = ALERTE avec le geste ; absent = attention ; l
 });
 
 // ─── T3 de l'audit « 100 000 » (2026-11-21) : la veille GitHub à l'échelle ───────────────────────────
-import { signalApi as signalApiT3, retenueApi, TAUX_API_PM, filtreCompteAncien, estSelectSeul as estSelectSeulT3 } from "../../scripts/veille-production.mjs";
-import { TOUTES_ECHELLES, ECHELLES } from "./lib/echelles.mjs";
+import { signalApi as signalApiT3, retenue5xx, TAUX_API_PM, filtreCompteAncien, estSelectSeul as estSelectSeulT3 } from "../../scripts/veille-production.mjs";
+import { ECHELLES } from "./lib/echelles.mjs";
 
-test("T3-m signalApi : planchers inchangés ; à grande échelle, un 5xx ou un refus chez une faible part des comptes ANCIENS actifs est du bruit — jamais par des appareils, jamais sans compte ancien touché", () => {
+test("T3-m signalApi : planchers inchangés ; à grande échelle, des 5xx chez une faible part des comptes ANCIENS, et presque aucun ailleurs, donnent une ATTENTION — jamais « rien », jamais par des appareils", () => {
   // Les sept cas d'avant : identiques sans mesure d'échelle et avec 100 comptes anciens actifs.
   const avant = [
     [{ n5xx: 5, app5xx: 2, nRefus: 0, appRefus: 0 }, "alert"], [{ n5xx: 5, app5xx: 1, nRefus: 0, appRefus: 0 }, "ok"],
@@ -859,38 +859,44 @@ test("T3-m signalApi : planchers inchangés ; à grande échelle, un 5xx ou un r
   ];
   for (const [m, attendu] of avant) {
     assert.equal(signalApiT3(m).etat, attendu, JSON.stringify(m));
-    assert.equal(signalApiT3({ ...m, anciensActifs: 100, anciens5xx: m.app5xx, anciensRefus: m.appRefus }).etat, attendu, "100 actifs : " + JSON.stringify(m));
+    assert.equal(signalApiT3({ ...m, anciensActifs: 100, anciens5xx: m.app5xx, n5xxAutres: 0, app5xxAutres: 0 }).etat, attendu, "100 actifs : " + JSON.stringify(m));
   }
-  // Petit : sous le pivot (200 actifs pour 2/10 ‰), les planchers décident seuls.
-  assert.equal(signalApiT3({ n5xx: 50, app5xx: 3, nRefus: 0, appRefus: 0, anciensActifs: ECHELLES.petit.anciensActifs1h, anciens5xx: 1 }).etat, "alert");
-  // Grand (23 000 anciens actifs) : seuil 5xx = 230 comptes, refus = 345.
-  const g = ECHELLES.grand.anciensActifs1h;
-  assert.equal(signalApiT3({ n5xx: 300, app5xx: 100, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: 100 }).etat, "ok", "100 comptes sur 23 000 : du bruit de fond");
-  assert.equal(signalApiT3({ n5xx: 900, app5xx: 300, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: 300 }).etat, "alert");
-  assert.equal(signalApiT3({ n5xx: 0, app5xx: 0, nRefus: 400, appRefus: 100, anciensActifs: g, anciensRefus: 100 }).etat, "ok");
-  assert.equal(signalApiT3({ n5xx: 0, app5xx: 0, nRefus: 1200, appRefus: 400, anciensActifs: g, anciensRefus: 400 }).etat, "warn");
-  // Des appareils forgés par milliers ne font rien taire : le dénominateur ne compte que des comptes anciens.
-  assert.equal(signalApiT3({ n5xx: 300, app5xx: 300, nRefus: 0, appRefus: 0, anciensActifs: 0, anciens5xx: 0, appActifs: 50000 }).etat, "alert");
-  // Aucun compte ancien derrière les lignes (visiteurs, comptes neufs) : jamais de retenue.
-  assert.equal(signalApiT3({ n5xx: 300, app5xx: 100, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: 0 }).etat, "alert");
+  const g = ECHELLES.grand.anciensActifs1h; // 23 000 → seuil 230 comptes anciens
+  // Les scénarios de la contre-revue : 5 000 réponses 5xx sur 3 000 appareils, et 0, 1 ou 9 comptes anciens touchés → ALERTE.
+  for (const anciens5xx of [0, 1, 9]) {
+    const m = { n5xx: 5000, app5xx: 3000, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx, n5xxAutres: 5000 - anciens5xx, app5xxAutres: 3000 - anciens5xx };
+    assert.equal(signalApiT3(m).etat, "alert", "anciens touchés : " + anciens5xx);
+  }
+  // La retenue légitime : 300 réponses chez 100 comptes anciens sur 23 000, 3 lignes ailleurs sur 1 appareil → attention, pas rien.
+  const bruit = { n5xx: 303, app5xx: 101, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: 100, n5xxAutres: 3, app5xxAutres: 1 };
+  assert.equal(signalApiT3(bruit).etat, "warn");
+  assert.match(signalApiT3(bruit).texte, /faible part des comptes anciens actifs/);
+  // Hors de la retenue : au seuil des anciens, ou les autres lignes seules au-dessus des planchers d'avant.
+  assert.equal(signalApiT3({ ...bruit, anciens5xx: 230 }).etat, "alert");
+  assert.equal(signalApiT3({ ...bruit, n5xxAutres: 5, app5xxAutres: 2 }).etat, "alert");
+  assert.equal(signalApiT3({ ...bruit, n5xxAutres: 5, app5xxAutres: 1 }).etat, "warn", "5 lignes d'un seul appareil : sous les planchers d'avant");
+  // Petit (95 anciens actifs, sous le pivot de 200) : jamais de retenue.
+  assert.equal(signalApiT3({ ...bruit, anciensActifs: ECHELLES.petit.anciensActifs1h, anciens5xx: 1 }).etat, "alert");
   // Vague (350 anciens actifs) : seuil 4 comptes anciens.
-  const v = ECHELLES.vague.anciensActifs1h;
-  assert.equal(signalApiT3({ n5xx: 40, app5xx: 30, nRefus: 0, appRefus: 0, anciensActifs: v, anciens5xx: 3 }).etat, "ok");
-  assert.equal(signalApiT3({ n5xx: 40, app5xx: 30, nRefus: 0, appRefus: 0, anciensActifs: v, anciens5xx: 4 }).etat, "alert");
-  // Mesures illisibles : les planchers seuls.
-  for (const x of [null, undefined, NaN, "23000", -1, {}]) {
-    assert.equal(signalApiT3({ n5xx: 300, app5xx: 100, nRefus: 0, appRefus: 0, anciensActifs: x, anciens5xx: 100 }).etat, "alert", "actifs " + String(x));
-    assert.equal(signalApiT3({ n5xx: 300, app5xx: 100, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: x }).etat, "alert", "touchés " + String(x));
+  const v = { ...bruit, anciensActifs: ECHELLES.vague.anciensActifs1h };
+  assert.equal(signalApiT3({ ...v, anciens5xx: 3 }).etat, "warn");
+  assert.equal(signalApiT3({ ...v, anciens5xx: 4 }).etat, "alert");
+  // Une mesure illisible, n'importe laquelle : pas de retenue.
+  for (const k of ["anciensActifs", "anciens5xx", "n5xxAutres", "app5xxAutres"]) {
+    for (const x of [null, undefined, NaN, "23000", -1, {}]) assert.equal(signalApiT3({ ...bruit, [k]: x }).etat, "alert", `${k} = ${String(x)}`);
   }
-  for (const e of TOUTES_ECHELLES) assert.equal(retenueApi(0, e.anciensActifs1h, 2, TAUX_API_PM.cinqCents), false);
+  assert.equal(retenue5xx(null), false);
+  // Les refus ne sont pas retenus : leur palier est déjà une attention.
+  assert.equal(signalApiT3({ n5xx: 0, app5xx: 0, nRefus: 1200, appRefus: 400, anciensActifs: g, anciens5xx: 0, n5xxAutres: 0, app5xxAutres: 0 }).etat, "warn");
   // Le texte part dans une issue PUBLIQUE : ni le dénominateur, ni le seuil.
-  const t = signalApiT3({ n5xx: 900, app5xx: 300, nRefus: 0, appRefus: 0, anciensActifs: g, anciens5xx: 300 }).texte;
-  assert.doesNotMatch(t, /23000|23 000|230|anciens/);
-  // La requête : un SELECT seul, les trois agrégats par identité SERVEUR, jamais un device_id au dénominateur.
+  for (const t of [signalApiT3(bruit).texte, signalApiT3({ ...bruit, anciens5xx: 230 }).texte]) assert.doesNotMatch(t, /23000|23 000|230/);
+  // La requête : un SELECT seul ; le dénominateur par identité SERVEUR ; les lignes hors comptes anciens comptées à part.
   assert.ok(estSelectSeulT3(SQL_VEILLE.api));
-  for (const k of ["anciensActifs", "anciens5xx", "anciensRefus"]) assert.match(SQL_VEILLE.api, new RegExp(`as "${k}"`));
+  for (const k of ["anciensActifs", "anciens5xx", "n5xxAutres", "app5xxAutres"]) assert.match(SQL_VEILLE.api, new RegExp(`as "${k}"`));
   assert.match(SQL_VEILLE.api, /count\(distinct t\.auth_uid\) from telemetry_events t join auth\.users u on u\.id = t\.auth_uid/);
   assert.match(SQL_VEILLE.api, /left join auth\.users x on x\.id = telemetry_events\.auth_uid/);
+  assert.match(SQL_VEILLE.api, /count\(\*\) filter \(where http_status >= 500 and x\.id is null\)::int as "n5xxAutres"/);
+  assert.match(SQL_VEILLE.api, /count\(distinct device_id\) filter \(where http_status >= 500 and x\.id is null\)::int as "app5xxAutres"/);
   assert.equal(filtreCompteAncien(), "u.deleted_at is null and u.email_confirmed_at is not null and not coalesce(u.is_anonymous, false) and u.created_at < now() - interval '7 days'");
-  assert.deepEqual(TAUX_API_PM, { cinqCents: 10, refus: 15 });
+  assert.deepEqual(TAUX_API_PM, { cinqCents: 10 });
 });
