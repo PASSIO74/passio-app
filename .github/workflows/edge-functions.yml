@@ -28,13 +28,17 @@ name: Edge Functions
 #      fonction dont un prérequis obligatoire manque reste celle d'avant ; les
 #      autres partent et sont éprouvées.
 #   ③ FUMÉE DE TOUT CE QUI EST SERVI : ce qui vient de partir, ET ce qui est à
-#      jour, à la révision que la sélection a lue. Sans cela, une fonction
-#      déployée dont la fumée échoue servait « ce commit » : au run suivant, ou
-#      au même run relancé, elle était « à jour » et le rouge verdissait sans que
-#      rien ne soit rééprouvé (relecture adverse du 21/11).
-#   ④ VERDICT : s'il y a eu une retenue, le run rougit APRÈS — le résumé nomme
-#      la fonction, l'objet et la migration, et le pilotage en fait une ligne
-#      « À faire » (un run « Edge Functions » en échec sur main).
+#      jour ou retenu, à la révision que la sélection a lue. Sans cela, une
+#      fonction déployée dont la fumée échoue servait « ce commit » : au run
+#      suivant, ou au même run relancé, elle était « à jour » et le rouge
+#      verdissait sans que rien ne soit rééprouvé (relecture adverse du 21/11).
+#      Chaque rouge est une annotation et une ligne du résumé du run.
+#   ④ VERDICT : s'il y a eu une retenue — ou une fonction EN SERVICE dont un
+#      prérequis manque —, le run rougit APRÈS : le résumé nomme la fonction,
+#      l'objet et la migration, et le pilotage en fait une ligne « À faire »
+#      (un run « Edge Functions » en échec sur main).
+# Chaque étape exige le témoin de celle d'avant (`selection=faite`, `plan=lu`) :
+# un script qui ne ferait rien ne passe pas pour « rien à faire ».
 # Banc : tests/unit/deploiement-fonctions.test.mjs (les étapes réelles, jouées
 # sous bash contre une fausse CLI), en tête des verrous avec le banc des imports.
 #
@@ -230,6 +234,12 @@ jobs:
       # (`etat_medias_proteges_actif`), dont la fumée a besoin pour éprouver une
       # private-media servie sans être redéployée. Et elle exige le témoin de la
       # sélection : une sélection muette ne passe pas pour « rien à faire ».
+      # ET LES FONCTIONS EN SERVICE (`--en-service`, seconde contre-revue du 21/11) : ne
+      # vérifier que ce qui part aurait cessé de relire les prérequis des autres —
+      # une dérive en base (une empreinte qui change, une table retirée) serait
+      # passée inaperçue tant que le code de la fonction ne bougeait pas. Leurs
+      # prérequis sont relus à chaque passage : absents, rien n'est retenu (rien ne
+      # part pour elles), mais c'est dit (`sans_prerequis`) et le Verdict rougit.
       # Bancs : tests/sql/prerequis-fonctions.test.sh (PostgreSQL réel),
       # tests/unit/deploiement-fonctions.test.mjs.
       - name: Retenue — prérequis SQL des fonctions sur la cible (lecture seule)
@@ -237,6 +247,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONCERNEES: ${{ steps.selection.outputs.concernees }}
+          EN_SERVICE: ${{ steps.selection.outputs.a_jour }}
           SELECTION: ${{ steps.selection.outputs.selection }}
         run: |
           set -euo pipefail
@@ -248,7 +259,7 @@ jobs:
             echo "::error::SUPABASE_ACCESS_TOKEN absent — la cible n'est pas lisible : déploiement RETENU."
             exit 1
           fi
-          node scripts/verifier-prerequis-fonctions.mjs --fonctions "$CONCERNEES" --projet "$PROJECT_REF" --partiel
+          node scripts/verifier-prerequis-fonctions.mjs --fonctions "$CONCERNEES" --en-service "${EN_SERVICE:-}" --projet "$PROJECT_REF" --partiel
 
       # La RÉVISION servie (dossier de livraison §6) : le SHA déployé est écrit
       # dans le bundle, chaque réponse le porte (X-Passio-Revision), la fumée le
@@ -294,11 +305,16 @@ jobs:
           echo "DEPLOYEES=$DEPLOYABLES" >> "$GITHUB_ENV"
 
       # ③ LA FUMÉE ÉPROUVE TOUT CE QUI EST SERVI (relecture adverse du 21/11) : les fonctions que ce run
-      # vient de déployer (révision attendue : ce commit), ET celles qui sont à jour (`servies` : la révision
-      # que la sélection a lue). Une fonction déployée dont la fumée échoue sert bien « ce commit » : sans
-      # cette seconde boucle, le run suivant — ou le même, relancé — la disait « à jour » et verdissait sans
-      # la rééprouver. Un contrat cassé reste donc rouge tant qu'il est cassé. À la demande, seule la
-      # fonction demandée est éprouvée (`servies` est vide).
+      # vient de déployer (révision attendue : ce commit), ET toutes les autres dont la révision se lit
+      # (`servies` : celle que la sélection a lue) — à jour, ou RETENUES. Une fonction déployée dont la
+      # fumée échoue sert bien « ce commit » : sans cette seconde boucle, le run suivant — ou le même,
+      # relancé — la disait « à jour » et verdissait sans la rééprouver. Un contrat cassé reste donc rouge
+      # tant qu'il est cassé. À la demande, seule la fonction demandée est éprouvée (`servies` est vide).
+      # ⚠️ UN ROUGE SE LIT SUR LA PAGE DU RUN, PAS DANS LE JOURNAL (seconde contre-revue du 21/11). La
+      # fumée n'écrivait son ❌ que dans le journal brut, et « Trace » est sautée dès qu'elle échoue : la
+      # ligne du pilotage menait à une page qui ne nommait ni la fonction ni la porte ouverte. Chaque rouge
+      # est une annotation et une ligne du résumé, écrites ICI. Et une requête qui n'aboutit pas (délai,
+      # réseau) rougit SA fonction — « 000 » — au lieu d'arrêter l'étape sans avoir éprouvé les suivantes.
       # `private-media` : la fumée exige l'état du réglage que la retenue vient de LIRE
       # (`etat_medias_proteges_actif`), ouvert ou fermé. Jusqu'au 19/11 elle exigeait « fermé », le contrôle
       # de la préparation : un courtier ouvert n'aurait pas pu être redéployé sans rougir.
@@ -306,42 +322,69 @@ jobs:
         env:
           MEDIAS_ACTIFS: ${{ steps.retenue.outputs.etat_medias_proteges_actif }}
           SERVIES: ${{ steps.selection.outputs.servies }}
+          RETENUES: ${{ steps.retenue.outputs.retenues }}
+          PLAN: ${{ steps.retenue.outputs.plan }}
         run: |
           set -euo pipefail
+          # Le témoin de la retenue, comme elle exige celui de la sélection : sans plan, « rien à déployer » et
+          # « rien à éprouver » ne se distinguent pas d'une retenue qui n'aurait rien fait.
+          if [ "${PLAN:-}" != "lu" ]; then
+            echo "::error::La retenue n'a rendu aucun plan — on ne sait ni ce qui devait partir ni ce qui est servi : fumée refusée."
+            exit 1
+          fi
           ko=0
+          eprouvees=0
+          echo "## Fumée de ce qui est servi" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          # Dix secondes, un nouvel essai : une panne passagère ne rougit pas le run, une fonction muette ne le fige pas.
+          requete() { curl -sS --max-time 10 --retry 1 "$@" || true; }
+          # $1 = la fonction, $2 = ce qu'elle est pour ce run, $3 = ce qui ne tient pas. Le titre d'une annotation
+          # ne porte que le nom : une virgule y serait lue comme un séparateur de propriétés.
+          rouge() {
+            echo "  ❌ $1 ($2) : $3"
+            echo "::error title=Fumée rouge — $1::$1 ($2) : $3"
+            echo "- ❌ **$1** ($2) : $3" >> "$GITHUB_STEP_SUMMARY"
+            ko=1
+          }
           eprouver() {
             f="$1"; attendue="$2"; quoi="$3"
+            eprouvees=$((eprouvees + 1))
             if [ "$f" = "private-media" ]; then
               if PASSIO_MEDIA_SMOKE_URL="$SUPABASE_URL" PASSIO_MEDIA_SMOKE_REVISION="$attendue" PASSIO_MEDIA_SMOKE_ACTIF="${MEDIAS_ACTIFS:-}" node scripts/fumee-private-media.mjs; then
                 echo "  ✅ $f ($quoi) : contrat des capacités, état du réglage et révision servie = $attendue"
               else
-                echo "  ❌ $f ($quoi) : la fumée du courtier refuse (contrat, état du réglage « ${MEDIAS_ACTIFS:-non lu} » ou révision $attendue)"
-                ko=1
+                rouge "$f" "$quoi" "la fumée du courtier refuse — contrat des capacités, état du réglage (lu : ${MEDIAS_ACTIFS:-non lu}) ou révision servie (attendu $attendue)"
               fi
               return 0
             fi
             url="$SUPABASE_URL/functions/v1/$f"
-            opt=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS "$url")
-            post=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' "$url")
-            rev=$(curl -sI -X OPTIONS "$url" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-passio-revision"{print $2}')
+            opt=$(requete -o /dev/null -w "%{http_code}" -X OPTIONS "$url")
+            post=$(requete -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' "$url")
+            rev=$(requete -I -X OPTIONS "$url" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-passio-revision"{r=$2} END{print r}')
             if [ "$opt" = "200" ] && [ "$post" = "401" ] && [ "$rev" = "$attendue" ]; then
               echo "  ✅ $f ($quoi) : OPTIONS $opt, POST sans jeton $post, révision servie = $attendue"
             else
-              echo "  ❌ $f ($quoi) : OPTIONS $opt (attendu 200), POST sans jeton $post (attendu 401), révision servie '$rev' (attendu $attendue)"
-              ko=1
+              rouge "$f" "$quoi" "OPTIONS ${opt:-sans réponse} (attendu 200), POST sans jeton ${post:-sans réponse} (attendu 401), révision servie '${rev:0:64}' (attendu $attendue)"
             fi
           }
           for f in ${DEPLOYEES:-}; do eprouver "$f" "${{ github.sha }}" "déployée"; done
           for paire in ${SERVIES:-}; do
             if ! [[ "$paire" =~ ^[a-z][a-z0-9-]*=[0-9a-f]{40}$ ]]; then echo "::error::Révision servie illisible dans le plan de la sélection."; exit 1; fi
-            eprouver "${paire%%=*}" "${paire#*=}" "à jour, non redéployée"
+            f="${paire%%=*}"
+            # Déjà éprouvée à ce commit ; retenue, elle sert sa version d'avant — éprouvée elle aussi.
+            case " ${DEPLOYEES:-} " in *" $f "*) continue ;; esac
+            case " ${RETENUES:-} " in *" $f "*) quoi="retenue, sert sa version d'avant" ;; *) quoi="à jour, non redéployée" ;; esac
+            eprouver "$f" "${paire#*=}" "$quoi"
           done
+          if [ "$ko" -eq 0 ]; then echo "- ✅ $eprouvees fonction(s) éprouvée(s) : chacune tient son contrat à la révision attendue." >> "$GITHUB_STEP_SUMMARY"; fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           [ "$ko" -eq 0 ]
 
       - name: Trace
         env:
           A_JOUR: ${{ steps.selection.outputs.a_jour }}
           RETENUES: ${{ steps.retenue.outputs.retenues }}
+          SANS_PREREQUIS: ${{ steps.retenue.outputs.sans_prerequis }}
         run: |
           {
             echo "## Edge Functions déployées"
@@ -350,18 +393,27 @@ jobs:
             echo "- Déployées : ${DEPLOYEES:-aucune}"
             echo "- Déjà à jour (non redéployées, éprouvées quand même) : ${A_JOUR:-aucune}"
             echo "- Retenues (un prérequis SQL obligatoire manque) : ${RETENUES:-aucune}"
+            echo "- En service sans un prérequis obligatoire : ${SANS_PREREQUIS:-aucune}"
             echo "- Cible : $PROJECT_REF"
             echo "- Fumée : contrat HTTP de tout ce qui est servi ; X-Passio-Revision = ${{ github.sha }} pour les déployées, la révision lue par la sélection pour les autres"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ④ LE VERDICT — la retenue ne bloque plus que SA fonction, mais elle ne passe pas pour un succès :
       # le code de `main` n'est pas celui qui tourne. Le run rougit ICI, une fois les autres déployées et
-      # éprouvées ; le pilotage lit ce run (« fonctions ») et en fait une ligne « À faire ». Le run suivant,
-      # ou ce workflow relancé une fois la migration appliquée, rattrape la fonction (sélection par l'état servi).
+      # éprouvées ; le pilotage lit ce run (« fonctions ») et en fait une ligne « À faire ». Le run de push
+      # suivant, ou celui-ci relancé une fois la migration appliquée, rattrape la fonction (sélection par
+      # l'état servi). De même pour une fonction EN SERVICE dont un prérequis obligatoire manque sur la
+      # cible : rien n'est retenu pour elle, mais la base a dérivé sous une fonction qui tourne.
       - name: Verdict — une fonction retenue rend le run rouge, après le déploiement des autres
-        if: steps.retenue.outputs.retenues != ''
+        if: steps.retenue.outputs.retenues != '' || steps.retenue.outputs.sans_prerequis != ''
         env:
           RETENUES: ${{ steps.retenue.outputs.retenues }}
+          SANS_PREREQUIS: ${{ steps.retenue.outputs.sans_prerequis }}
         run: |
-          echo "::error title=Fonction(s) retenue(s)::$RETENUES — un prérequis SQL obligatoire manque sur la cible : la version en service reste celle d'avant. Le résumé du run nomme l'objet et la migration ; l'appliquer (canal ③, avec preuve de revue), puis relancer le run de push le plus récent — il rattrape ce qui est en retard."
+          if [ -n "${RETENUES:-}" ]; then
+            echo "::error title=Fonction(s) retenue(s)::$RETENUES — un prérequis SQL obligatoire manque sur la cible : la version en service reste celle d'avant. Le résumé du run nomme l'objet et la migration ; l'appliquer (canal ③, avec preuve de revue), puis relancer le run de push le plus récent — il rattrape ce qui est en retard."
+          fi
+          if [ -n "${SANS_PREREQUIS:-}" ]; then
+            echo "::error title=Fonction(s) en service sans prérequis::$SANS_PREREQUIS — un prérequis SQL obligatoire manque sur la cible alors que la fonction tourne : la base a dérivé, ou le manifeste déclare un objet qui n'y est pas encore. Le résumé du run nomme l'objet ; rien n'a été redéployé pour elle."
+          fi
           exit 1

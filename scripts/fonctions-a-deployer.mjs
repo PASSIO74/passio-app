@@ -15,8 +15,9 @@
 // adverse du 21/11). Une fonction déployée dont la fumée échoue sert bien « ce
 // commit » : au run suivant elle est « à jour », et un run relancé verdissait sans
 // rien rééprouver. Ce script rend donc aussi `servies` — la révision de chaque
-// fonction à jour — et le workflow les éprouve à chaque passage, comme celles
-// qu'il vient de déployer : un contrat cassé reste rouge tant qu'il est cassé.
+// fonction dont elle se lit — et le workflow éprouve à chaque passage celles qu'il
+// ne redéploie pas (à jour, ou retenues), comme celles qu'il vient de déployer :
+// un contrat cassé reste rouge tant qu'il est cassé.
 //
 // CE QUE FAIT CE SCRIPT. Pour chaque fonction, il lit la révision qu'elle SERT
 // (l'en-tête `X-Passio-Revision`, posé sur toute réponse : le SHA de son dernier
@@ -131,34 +132,51 @@ export function selectionner({ noms, clotures, incertaines = new Map(), servies,
   return noms.map((fonction) => {
     const s = servies.get(fonction) || { revision: null, raison: "révision servie non lue" };
     const base = { fonction, revision: s.revision || null, changes: [] };
-    if (incertaines.has(fonction)) return { ...base, etat: "a_deployer", motif: "ce qu'elle emporte ne se calcule pas (" + incertaines.get(fonction)[0] + ")" };
-    if (!s.revision) return { ...base, etat: "a_deployer", motif: s.raison || "révision servie illisible" };
+    const incertaine = incertaines.has(fonction) ? "ce qu'elle emporte ne se calcule pas (" + incertaines.get(fonction)[0] + ")" : null;
+    if (!s.revision) return { ...base, etat: "a_deployer", motif: incertaine || s.raison || "révision servie illisible" };
     const c = comparer(s.revision);
-    if (c.relation === "absente") return { ...base, etat: "a_deployer", motif: `sert ${court(s.revision)}, un commit absent de l'historique de celui-ci` };
-    const changes = changementsQuiConcernent(fonction, c.changes || [], { noms, clotures });
-    if (!changes.length) return { ...base, etat: "a_jour", motif: `sert ${court(s.revision)} : rien de ce qu'elle emporte n'a changé depuis` };
+    if (c.relation === "absente") return { ...base, etat: "a_deployer", motif: incertaine || `sert ${court(s.revision)}, un commit absent de l'historique de celui-ci` };
+    // Une clôture INCALCULABLE n'est jamais lue « rien d'autre n'est emporté » : TOUT ce qui a changé la concerne
+    // (hors documentation). Mais elle se compare quand même à ce qu'elle sert : sans cela elle repartait à CHAQUE
+    // passage, pour toujours, même sur un push qui ne touchait qu'un test (seconde contre-revue du 21/11).
+    const changes = incertaine ? (c.changes || []).filter((f) => !/\.md$/i.test(f)) : changementsQuiConcernent(fonction, c.changes || [], { noms, clotures });
+    if (incertaine && changes.length && c.relation !== "descendante") return { ...base, etat: "a_deployer", changes, motif: `${incertaine} ; changé depuis ${court(s.revision)} : ${enBref(changes)}` };
+    if (!changes.length) return { ...base, etat: "a_jour", motif: incertaine ? `sert ${court(s.revision)} : rien n'a changé depuis sous supabase/ ni dans le workflow (${incertaine})` : `sert ${court(s.revision)} : rien de ce qu'elle emporte n'a changé depuis` };
     if (c.relation === "descendante") return { ...base, etat: "a_jour", changes, motif: `sert ${court(s.revision)}, plus récent que ce commit : un run ancien ne la fait pas reculer` };
     return { ...base, etat: "a_deployer", changes, motif: `sert ${court(s.revision)} ; changé depuis : ${enBref(changes)}` };
   });
 }
 
-/** La révision que sert une fonction : OPTIONS, sans jeton — toute réponse porte l'en-tête. */
-export async function lireRevisionServie(cible, fonction, fetchFn = globalThis.fetch) {
-  try {
-    const r = await fetchFn(`${cible}/functions/v1/${fonction}`, { method: "OPTIONS", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(DELAI_LECTURE_MS) });
-    const rev = String(r.headers.get("x-passio-revision") || "").trim();
-    if (SHA.test(rev)) return { revision: rev, raison: null };
-    // « dev » : un déploiement fait à la main depuis un poste (_shared/revision.js) — on ne sait pas quel code tourne.
-    return { revision: null, raison: rev ? "révision servie illisible (un déploiement fait hors de ce workflow)" : `aucune révision servie (HTTP ${r.status})` };
-  } catch (_e) {
-    return { revision: null, raison: "fonction injoignable : révision servie non lue" };
+/**
+ * La révision que sert une fonction : OPTIONS, sans jeton — toute réponse porte l'en-tête.
+ * Une lecture qui n'aboutit pas (réseau, délai, 5xx sans en-tête) se RETENTE une fois : « le doute déploie »,
+ * et une panne passagère redéployait une fonction en production sur un push qui ne la concernait pas.
+ */
+export async function lireRevisionServie(cible, fonction, fetchFn = globalThis.fetch, essais = 2) {
+  let dernier = { revision: null, raison: "fonction injoignable : révision servie non lue" };
+  for (let n = 0; n < essais; n++) {
+    try {
+      const r = await fetchFn(`${cible}/functions/v1/${fonction}`, { method: "OPTIONS", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(DELAI_LECTURE_MS) });
+      const rev = String(r.headers.get("x-passio-revision") || "").trim();
+      if (SHA.test(rev)) return { revision: rev, raison: null };
+      // « dev » : un déploiement fait à la main depuis un poste (_shared/revision.js) — on ne sait pas quel code tourne.
+      dernier = { revision: null, raison: rev ? "révision servie illisible (un déploiement fait hors de ce workflow)" : `aucune révision servie (HTTP ${r.status})` };
+      if (rev || r.status < 500) return dernier;   // une réponse nette : la relire ne changerait rien
+    } catch (_e) {
+      dernier = { revision: null, raison: "fonction injoignable : révision servie non lue" };
+    }
   }
+  return dernier;
 }
 
-/** La comparaison réelle : git, dans le dépôt cloné AVEC son historique (`fetch-depth: 0`). */
-export function comparateurGit(racine = RACINE) {
+/**
+ * La comparaison réelle : git, dans le dépôt cloné AVEC son historique (`fetch-depth: 0`).
+ * `tete` : le commit auquel comparer ce qui est servi — celui que ce run déploie (HEAD), ou un SHA
+ * candidat (scripts/controle-cible-pilote.mjs --attendu).
+ */
+export function comparateurGit(racine = RACINE, tete = "HEAD") {
   const git = (...a) => spawnSync("git", a, { cwd: racine, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  let tete = null;   // lu une fois : le commit que ce run déploie
+  let shaTete = null;   // lu une fois : le commit que ce run déploie
   const lues = new Map();   // plusieurs fonctions servent souvent la même révision : une comparaison chacune
   return (revision) => {
     if (lues.has(revision)) return lues.get(revision);
@@ -166,12 +184,12 @@ export function comparateurGit(racine = RACINE) {
     // Seul un SHA entre dans une commande git, et seul un COMMIT présent se compare : le reste est « absent ».
     if (!SHA.test(revision) || git("cat-file", "-e", revision + "^{commit}").status !== 0) return rendre({ relation: "absente", changes: [] });
     // `-z` : des chemins bruts, séparés par NUL — un nom de fichier hors ASCII n'est ni cité ni échappé.
-    const d = git("diff", "--name-only", "--no-renames", "-z", revision, "HEAD", "--", ...COMPARES);
+    const d = git("diff", "--name-only", "--no-renames", "-z", revision, tete, "--", ...COMPARES);
     if (d.status !== 0) return rendre({ relation: "absente", changes: [] });
     const changes = d.stdout.split("\0").filter(Boolean).sort();
     // HEAD est un ancêtre de la révision servie (code 0), et ce n'est pas elle : la fonction est EN AVANCE sur ce commit.
-    if (tete === null) tete = git("rev-parse", "HEAD").stdout.trim();
-    const descendante = tete !== revision && git("merge-base", "--is-ancestor", "HEAD", revision).status === 0;
+    if (shaTete === null) shaTete = git("rev-parse", "--verify", "-q", tete + "^{commit}").stdout.trim();
+    const descendante = shaTete !== revision && git("merge-base", "--is-ancestor", tete, revision).status === 0;
     return rendre({ relation: descendante ? "descendante" : "comparable", changes });
   };
 }
@@ -206,8 +224,9 @@ async function principal(args) {
 
   const concernees = lignes.filter((l) => l.etat === "a_deployer").map((l) => l.fonction);
   const aJour = lignes.filter((l) => l.etat === "a_jour").map((l) => l.fonction);
-  // Ce que la fumée éprouvera SANS le redéployer : chaque fonction à jour, à la révision qu'elle sert.
-  const servies = lignes.filter((l) => l.etat === "a_jour" && SHA.test(l.revision || "")).map((l) => `${l.fonction}=${l.revision}`);
+  // Ce que la fumée éprouvera si ce run ne le redéploie pas : toute fonction dont la révision se lit, à cette
+  // révision — à jour, ou concernée puis RETENUE (elle sert alors sa version d'avant, éprouvée elle aussi).
+  const servies = lignes.filter((l) => SHA.test(l.revision || "")).map((l) => `${l.fonction}=${l.revision}`);
   console.log(`── Sélection (${titre}) ──`);
   for (const l of lignes) console.log(`  ${l.etat === "a_deployer" ? "🚀" : "⏭ "} ${l.fonction} : ${l.etat === "a_deployer" ? "à déployer" : "à jour"} — ${l.motif}`);
   console.log(concernees.length ? `\n→ ${concernees.length} fonction(s) à vérifier puis déployer : ${concernees.join(", ")}` : "\n→ aucune fonction en retard sur ce commit : rien à déployer.");

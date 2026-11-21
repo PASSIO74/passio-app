@@ -805,18 +805,24 @@ export function aFaire(d, maintenant = Date.now()) {
   // 21/11, son run rouge ne se voyait nulle part : une fonction retenue (un prérequis SQL qui n'était plus vrai)
   // retenait les six, et personne ne lisait Actions. Depuis, une fonction retenue ne retient plus les autres, et le
   // run rougit APRÈS leur déploiement — c'est ce rouge qui devient cette ligne. Le pilotage ne sait pas QUELLE
-  // étape a cassé : le texte couvre donc les trois causes sans en affirmer une (relecture adverse : « elle sert
-  // sa version d'avant » était faux pour une fumée cassée — la fonction cassée EST en service). Ce qu'il attend
-  // est un geste HUMAIN (une migration par le canal ③ avec sa revue, un correctif, un jeton) : jamais « Régler »,
-  // aucune réparation (il n'est pas dans RUNS_REPARABLES), un lien vers le passage, dont le résumé nomme la cause.
-  // « Relance » est sûr : chaque passage rééprouve TOUT ce qui est servi, un contrat cassé reste rouge.
+  // étape a cassé : le texte couvre donc les causes sans en affirmer une (relecture adverse : « elle sert sa
+  // version d'avant » était faux pour une fumée cassée — la fonction cassée EST en service). C'est la PAGE DU RUN
+  // qui nomme la cause : une annotation par fonction retenue, par fonction dont la fumée est rouge, pour une cible
+  // non vérifiable ; un verrou unitaire rouge se lit au job « Valider ». Ce qu'il attend est un geste HUMAIN (une
+  // migration par le canal ③ avec sa revue, un correctif, un jeton) : jamais « Régler », aucune réparation (il
+  // n'est pas dans RUNS_REPARABLES), un lien vers le passage. « Relance » est sûr : chaque passage rééprouve TOUT
+  // ce qui est servi, un contrat cassé reste rouge. Un passage MANUEL ne compte pas (EVENEMENTS_RUNS) : il
+  // rattrape une fonction mais n'efface pas la ligne — le texte dit de relancer le passage, pas d'en lancer un.
   const fo = echecRun(runs.fonctions);
   if (fo) {
     const url = urlGithub(fo.run.url);
-    ajoute({ id: "fonctions:deploiement", prio: fo.nature === "echec" ? 1 : 2, etiquette: "À trier",
-      titre: fo.nature === "echec" ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
-      quoi: "Son résumé dit laquelle, et pourquoi.",
-      reference: "Trois causes, que le passage nomme. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction en service ne tient pas son contrat (la fumée) : elle EST en ligne, à corriger. Ou le jeton Supabase de la CI a expiré. La cause réglée, relance le passage : il rattrape ce qui est en retard et rééprouve tout ce qui est servi — un passage vert efface cette ligne.",
+    const echec = fo.nature === "echec";
+    ajoute({ id: "fonctions:deploiement", prio: echec ? 1 : 2, etiquette: "À trier",
+      titre: echec ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
+      quoi: echec ? "La page du passage nomme la cause." : "Annulé ou évincé : rien n'est cassé.",
+      reference: echec
+        ? "Quatre causes possibles, nommées en tête du passage. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction EN LIGNE ne tient pas son contrat (la fumée), ou n'a plus un prérequis en base : à corriger. Le jeton Supabase de la CI a expiré. Ou un verrou d'avant déploiement est rouge (job « Valider ») : rien n'est parti, il faut un commit qui le corrige. La cause réglée, relance CE passage (« Re-run failed jobs ») ou pousse le correctif : il rattrape ce qui est en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne ; un passage lancé à la main ne l'efface pas."
+        : "Le dernier passage a été annulé ou évincé de la file, et le précédent avait réussi. Relance-le (« Re-run all jobs ») : il rattrape ce qui serait en retard. Seul un passage de push vert efface cette ligne.",
       url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
   }
   // Les issues suivies.

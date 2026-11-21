@@ -36,12 +36,21 @@
 // Une cible SANS la table `reglages_distants` n'est pas une cible illisible : le
 // réglage y est absent, la fonction qui l'exige est retenue, les autres partent.
 //
+// LES FONCTIONS EN SERVICE SONT RELUES AUSSI (`--en-service`, seconde contre-revue
+// du 21/11). Ne vérifier que ce qui part cessait de relire les prérequis des
+// autres : une dérive en base (une empreinte qui change, une table retirée) sous
+// une fonction qui tourne ne se voyait plus tant que son code ne bougeait pas —
+// avant, chaque push relisait tout. Leurs prérequis sont relus à chaque passage :
+// absents, rien n'est retenu (rien ne part pour elles), mais c'est DIT, et la
+// sortie `sans_prerequis` fait rougir le Verdict du job.
+//
 //   node scripts/verifier-prerequis-fonctions.mjs --fonctions "delete-account export-account" \
 //        [--projet <ref>]            # via l'API de gestion (SUPABASE_ACCESS_TOKEN) — la CI
 //        [--psql "<conninfo>"]       # via psql — les bancs
 //        [--json <resultat.json>]    # à partir d'un résultat déjà lu (connecteur en lecture seule)
 //        [--sql]                     # imprime la requête, n'exécute rien
 //        [--partiel]                 # une fonction retenue ne retient pas les autres (voir plus haut)
+//        [--en-service "<noms>"]     # avec --partiel : fonctions servies non redéployées, relues sans être retenues
 //
 // Ce que ça ne fait PAS : appliquer quoi que ce soit (ADR-012 : aucun DDL depuis
 // la CI — la transaction est `read only`, un ordre d'écriture y ÉCHOUERAIT).
@@ -57,7 +66,14 @@ const args = process.argv.slice(2);
 const val = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
 const MANIFESTE = process.env.PASSIO_PREREQUIS ? resolve(process.env.PASSIO_PREREQUIS) : resolve(racine, ".passio", "deploiement", "prerequis-fonctions.json");
 
-function echec(msg) { console.error("❌ " + msg); process.exit(2); }
+/** Sort en 2 : NON VÉRIFIABLE. Dit sur la page du run et dans son résumé, pas seulement au journal (un jeton expiré se lisait nulle part). */
+function echec(msg) {
+  console.error("❌ " + msg);
+  const ligne = String(msg).replace(/[\r\n]+/g, " ").slice(0, 600);
+  if (process.env.GITHUB_ACTIONS) console.log("::error title=Retenue — cible non vérifiable::" + ligne);
+  if (process.env.GITHUB_STEP_SUMMARY) { try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## Prérequis SQL des Edge Functions (lecture seule de la cible)\n\n- ❌ **non vérifiable** : " + ligne + "\n\n"); } catch (_e) { /* le résumé est un confort : l'échec, lui, sort */ } }
+  process.exit(2);
+}
 function litteral(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
 
 /** Décompose "function:public.f(a,b)" etc. en { genre, schema, nom, args, colonne, motif }. */
@@ -170,8 +186,14 @@ async function lireLignes(sql) {
   const jeton = lireJeton();
   if (!jeton) echec("aucun jeton (SUPABASE_ACCESS_TOKEN) pour lire la cible " + ref + ".");
   // L'API de gestion exécute le texte tel quel dans une transaction : `set transaction read only` y vaut.
-  const r = await fetch("https://api.supabase.com/v1/projects/" + ref + "/database/query", { method: "POST", headers: { Authorization: "Bearer " + jeton, "Content-Type": "application/json" }, body: JSON.stringify({ query: "begin;\n" + sql + "\ncommit;" }) });
-  const t = await r.text();
+  let r, t;
+  try {
+    r = await fetch("https://api.supabase.com/v1/projects/" + ref + "/database/query", { method: "POST", headers: { Authorization: "Bearer " + jeton, "Content-Type": "application/json" }, body: JSON.stringify({ query: "begin;\n" + sql + "\ncommit;" }), signal: AbortSignal.timeout(30000) });
+    t = await r.text();
+  } catch (e) {
+    // Sans délai, une API muette tenait le job jusqu'à sa borne ; sans capture, la panne sortait en trace Node.
+    echec("lecture de la cible " + ref + " : " + (e && e.name === "TimeoutError" ? "aucune réponse en 30 s" : "réseau (" + String((e && e.message) || e).slice(0, 120) + ")") + " — NON VÉRIFIABLE, le déploiement est retenu.");
+  }
   if (!r.ok) echec("lecture de la cible " + ref + " : API " + r.status + " " + t.slice(0, 200) + " — NON VÉRIFIABLE, le déploiement est retenu.");
   try { const j = JSON.parse(t); return Array.isArray(j) ? j : (j.rows || []); } catch (e) { echec("réponse illisible de l'API : " + t.slice(0, 120)); }
 }
@@ -186,7 +208,10 @@ async function principal() {
   const noms = fonctionsDemandees.length ? fonctionsDemandees : listeVide ? [] : Object.keys(manifeste);
   // `Object.hasOwn` : « constructor » ou « toString » ne sont pas des fonctions déclarées (ils passaient `manifeste[f]`).
   for (const f of noms) if (!/^[a-z][a-z0-9-]*$/.test(f) || !Object.hasOwn(manifeste, f)) echec("fonction inconnue du manifeste des prérequis : " + f + " — la déclarer dans " + MANIFESTE + " (même sans prérequis) avant de la déployer.");
-  const specs = [...new Set(noms.flatMap((f) => manifeste[f].objets || []))];
+  // Les fonctions EN SERVICE que ce run ne redéploie pas : leurs prérequis sont relus, jamais retenus.
+  const enService = partiel ? [...new Set((val("--en-service") || "").split(/[\s,]+/).filter(Boolean))].filter((f) => !noms.includes(f)) : [];
+  for (const f of enService) if (!/^[a-z][a-z0-9-]*$/.test(f) || !Object.hasOwn(manifeste, f)) echec("fonction en service inconnue du manifeste des prérequis : " + f + ".");
+  const specs = [...new Set([...noms, ...enService].flatMap((f) => manifeste[f].objets || []))];
   // En mode partiel, les états de TOUT le manifeste : la fumée éprouve aussi les fonctions servies sans être redéployées.
   const etatsALire = partiel ? etatsLus(Object.values(manifeste).flatMap((d) => d.objets || [])) : etatsLus(specs);
   const sql = sqlPrerequis(normaliserSpecs(specs), etatsALire);
@@ -198,7 +223,10 @@ async function principal() {
   for (const s of [...specs, ...etatsALire]) if (!present.has(s)) echec("la cible n'a pas répondu pour « " + s + " » : NON VÉRIFIABLE, le déploiement est retenu.");
 
   const { resume, deployables, retenues, etats } = dresserPlan(manifeste, noms, present, etatsALire);
-  if (!noms.length) console.log("ℹ️  aucune fonction à vérifier : seuls les réglages sont lus, pour la fumée de ce qui est servi.");
+  if (!noms.length) console.log("ℹ️  aucune fonction à déployer : les réglages sont lus pour la fumée, et les prérequis de ce qui est en service sont relus.");
+  // Ce qui tourne déjà : un prérequis obligatoire absent n'y retient rien — il dit que la base a dérivé sous la fonction.
+  const servies = dresserPlan(manifeste, enService, present, []).resume;
+  const sansPrerequis = servies.filter((r) => r.etat === "RETENUE").map((r) => r.fonction);
   for (const r of resume) {
     const icone = r.etat === "RETENUE" ? "❌" : r.manquants.length ? "⚠️" : "✅";
     console.log(`${icone} ${r.fonction} : ${r.etat}${r.manquants.length ? " — manque : " + r.manquants.join(", ") : ""}`);
@@ -206,22 +234,32 @@ async function principal() {
     // Sur la page du run, sans ouvrir le journal : quelle fonction attend, et quoi.
     if (partiel && r.etat === "RETENUE" && process.env.GITHUB_ACTIONS) console.log(`::warning title=Fonction retenue — ${r.fonction}::manque sur la cible : ${r.manquants.join(", ")}${r.migration ? " — migration à appliquer d'abord : " + r.migration : ""}`);
   }
+  for (const r of servies) {
+    if (!r.manquants.length) continue;
+    const grave = r.etat === "RETENUE";
+    console.log(`${grave ? "❌" : "⚠️"} ${r.fonction} (en service, non redéployée) : ${grave ? "PRÉREQUIS ABSENT" : "facultatif absent"} — manque : ${r.manquants.join(", ")}`);
+    if (grave && process.env.GITHUB_ACTIONS) console.log(`::warning title=Fonction en service sans prérequis — ${r.fonction}::manque sur la cible : ${r.manquants.join(", ")} — la base a dérivé, ou le manifeste déclare un objet qui n'y est pas encore`);
+  }
   for (const [nom, v] of Object.entries(etats)) console.log(`ℹ️  réglage ${nom} lu sur la cible : ${v}`);
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## Prérequis SQL des Edge Functions (lecture seule de la cible)\n\n" + resume.map((r) => `- ${r.etat === "RETENUE" ? "❌" : r.manquants.length ? "⚠️" : "✅"} **${r.fonction}** : ${r.etat}${r.manquants.length ? " — manque : `" + r.manquants.join("`, `") + "`" : ""}`
-      + (r.etat === "RETENUE" ? `\n  - à faire : appliquer ${r.migration ? "`" + r.migration + "`" : "la migration qui crée ces objets"} (canal ③, avec preuve de revue), puis relancer ce workflow — il rattrape la fonction.${r.sans ? "\n  - pourquoi elle attend : " + r.sans : ""}` : "")).join("\n") + "\n\n");
+      + (r.etat === "RETENUE" ? `\n  - à faire : appliquer ${r.migration ? "`" + r.migration + "`" : "la migration qui crée ces objets"} (canal ③, avec preuve de revue), puis relancer le run de push le plus récent — il rattrape la fonction.${r.sans ? "\n  - pourquoi elle attend : " + r.sans : ""}` : "")).join("\n")
+      + servies.filter((r) => r.etat === "RETENUE").map((r) => `\n- ❌ **${r.fonction}** (en service, non redéployée) : PRÉREQUIS ABSENT — manque : \`${r.manquants.join("`, `")}\`\n  - elle tourne sans cet objet : la base a dérivé, ou le manifeste déclare un objet qui n'y est pas encore${r.migration ? " (`" + r.migration + "`)" : ""}. Rien n'a été redéployé pour elle.`).join("")
+      + "\n\n");
   }
   if (partiel) {
     // Le plan, pour les étapes suivantes : des noms du manifeste (lettres, chiffres, tirets), une ligne chacun.
     if (process.env.GITHUB_OUTPUT) {
-      appendFileSync(process.env.GITHUB_OUTPUT, `deployables=${deployables.join(" ")}\nretenues=${retenues.join(" ")}\n`
+      // `plan=lu` : le témoin que la fumée exige — une retenue qui ne ferait rien ne passe pas pour « rien à déployer ».
+    appendFileSync(process.env.GITHUB_OUTPUT, `plan=lu\ndeployables=${deployables.join(" ")}\nretenues=${retenues.join(" ")}\nsans_prerequis=${sansPrerequis.join(" ")}\n`
         + Object.entries(etats).map(([nom, v]) => `etat_${nom.replace(/[^a-z0-9]+/g, "_")}=${v}\n`).join(""));
     }
-    if (!retenues.length) console.log("\n✅ aucun prérequis obligatoire ne manque : le déploiement peut partir.");
-    else console.log(`\n⚠️ RETENUE PARTIELLE : ${retenues.join(", ")} ne part(ent) pas — ${deployables.length ? deployables.join(", ") + " part(ent)" : "aucune autre fonction à déployer"}. Le run finira ROUGE après le déploiement des autres : appliquer la migration (canal ③, avec preuve de revue), puis relancer le workflow.`);
+    if (!retenues.length) console.log(sansPrerequis.length ? "\n✅ rien n'est retenu : ce qui est à déployer peut partir." : "\n✅ aucun prérequis obligatoire ne manque : le déploiement peut partir.");
+    else console.log(`\n⚠️ RETENUE PARTIELLE : ${retenues.join(", ")} ne part(ent) pas — ${deployables.length ? deployables.join(", ") + " part(ent)" : "aucune autre fonction à déployer"}. Le run finira ROUGE après le déploiement des autres : appliquer la migration (canal ③, avec preuve de revue), puis relancer le run de push le plus récent.`);
+    if (sansPrerequis.length) console.log(`⚠️ EN SERVICE SANS PRÉREQUIS : ${sansPrerequis.join(", ")} — rien n'est retenu pour elle(s), mais le run finira ROUGE : la base a dérivé sous une fonction qui tourne.`);
     return;
   }
-  if (retenues.length) { console.error("\n❌ déploiement RETENU : une fonction exige une migration que la cible n'a pas. Appliquer la migration (canal ③, avec preuve de revue), puis relancer le workflow."); process.exit(1); }
+  if (retenues.length) { console.error("\n❌ déploiement RETENU : une fonction exige une migration que la cible n'a pas. Appliquer la migration (canal ③, avec preuve de revue), puis relancer le run de push le plus récent."); process.exit(1); }
   console.log("\n✅ aucun prérequis obligatoire ne manque : le déploiement peut partir.");
 }
 

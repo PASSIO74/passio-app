@@ -1519,14 +1519,17 @@ test("㊸ bis un déploiement de fonctions serveur en échec SE VOIT (le 20/11 r
   const l = ligneAFaire(r, "fonctions:deploiement");
   assert.ok(l, JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
   assert.deepEqual([l.titre, l.prio, l.etiquette], ["Le déploiement des fonctions serveur a échoué", 1, "À trier"]);
-  assert.equal(l.quoi, "Son résumé dit laquelle, et pourquoi.");
-  // Le pilotage ne sait pas quelle étape a cassé : les trois causes sont dites, aucune n'est affirmée. Une fumée
+  assert.equal(l.quoi, "La page du passage nomme la cause.");
+  // Le pilotage ne sait pas quelle étape a cassé : les quatre causes sont dites, aucune n'est affirmée. Une fumée
   // cassée n'est PAS « elle sert sa version d'avant » : la fonction cassée est en ligne (relecture adverse du 21/11).
   assert.match(l.reference, /Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties\./);
-  assert.match(l.reference, /Une fonction en service ne tient pas son contrat \(la fumée\) : elle EST en ligne, à corriger\./);
-  assert.match(l.reference, /Ou le jeton Supabase de la CI a expiré\./);
-  assert.match(l.reference, /relance le passage : il rattrape ce qui est en retard et rééprouve tout ce qui est servi — un passage vert efface cette ligne/);
-  assert.doesNotMatch(l.titre + l.reference, /n'ont pas été déployées|sert toujours sa version d'avant/, "rien qui affirme UNE cause");
+  assert.match(l.reference, /Une fonction EN LIGNE ne tient pas son contrat \(la fumée\), ou n'a plus un prérequis en base : à corriger\./);
+  assert.match(l.reference, /Le jeton Supabase de la CI a expiré\./);
+  // Un verrou unitaire rouge : relancer rejoue le même commit — il faut un commit (seconde contre-revue du 21/11).
+  assert.match(l.reference, /Ou un verrou d'avant déploiement est rouge \(job « Valider »\) : rien n'est parti, il faut un commit qui le corrige\./);
+  assert.match(l.reference, /relance CE passage \(« Re-run failed jobs »\) ou pousse le correctif : il rattrape ce qui est en retard et rééprouve tout ce qui est servi\./);
+  assert.match(l.reference, /Seul un passage de push vert efface cette ligne ; un passage lancé à la main ne l'efface pas\./);
+  assert.doesNotMatch(l.titre + l.quoi + l.reference, /n'ont pas été déployées|sert toujours sa version d'avant|[Ss]on résumé dit/, "rien qui affirme UNE cause, ni un résumé que tous les rouges n'écrivent pas");
   assert.match(String(l.url), /\/runs\/44831711346$/, "le lien mène au push en échec, pas au passage manuel");
   assert.equal(l.gestes.length, 1);
   assert.ok(l.gestes[0].ouvrir && !l.gestes[0].corps && l.gestes[0].libelle === "Ouvrir", "un lien, aucune action de la fonction");
@@ -1561,6 +1564,10 @@ test("㊸ bis un déploiement de fonctions serveur en échec SE VOIT (le 20/11 r
   banc.gh.runs["edge-functions.yml"] = [run({ conclusion: "cancelled", id: 8, le: ilYa(3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
   const annule = ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement");
   assert.deepEqual([annule && annule.titre, annule && annule.prio, annule && annule.etiquette], ["Le déploiement des fonctions serveur n'a pas abouti", 2, "À trier"]);
+  // Annulé n'est pas en échec : le texte n'annonce ni migration ni porte ouverte (seconde contre-revue du 21/11).
+  assert.equal(annule.quoi, "Annulé ou évincé : rien n'est cassé.");
+  assert.match(annule.reference, /annulé ou évincé de la file, et le précédent avait réussi\. Relance-le/);
+  assert.doesNotMatch(annule.reference, /migration|contrat|jeton/);
   // Aucun passage encore (un dépôt neuf) : rien à dire.
   await monter();
   banc.gh.runs["edge-functions.yml"] = [];

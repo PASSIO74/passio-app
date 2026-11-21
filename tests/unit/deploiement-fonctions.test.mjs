@@ -54,7 +54,9 @@ const SHARED = "supabase/functions/_shared/";
 const PROD = "njkiyoklssvefstljemx";
 const PRECHARGE = pathToFileURL(path.join(RACINE, "tests/unit/lib/faux-monde-fonctions.mjs")).href;
 const FICHIER_WORKFLOW = ".github/workflows/edge-functions.yml";
-const COPIES = ["supabase/functions", "scripts/fonctions-a-deployer.mjs", "scripts/verifier-prerequis-fonctions.mjs", "scripts/fumee-private-media.mjs", "scripts/lib/lecteur-imports.mjs", MANIFESTE, FICHIER_WORKFLOW];
+const COPIES = ["supabase/functions", "scripts/fonctions-a-deployer.mjs", "scripts/verifier-prerequis-fonctions.mjs", "scripts/fumee-private-media.mjs", "scripts/lib/lecteur-imports.mjs", "scripts/controle-cible-pilote.mjs", MANIFESTE, FICHIER_WORKFLOW];
+// Les pannes que le monde sait simuler, une par dossier de marqueurs (`<dossier>/<fonction>`).
+const PANNES = ["cli-echec", "cli-sans-effet", "porte-ouverte", "curl-echec", "options-503"];
 const FONCTION_ETAT = /\b(?:always|failure|cancelled|success)\s*\(/;
 
 // ── Le monde jetable : un dépôt git, un état servi, une fausse CLI ──────────
@@ -72,7 +74,7 @@ function nouveauMonde() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "deploiement-fonctions-"));
   BACS.push(base);
   const monde = { base, depot: path.join(base, "depot"), etat: path.join(base, "etat"), bin: path.join(base, "bin"), resume: path.join(base, "resume.md"), n: 0 };
-  for (const d of [monde.depot, path.join(monde.etat, "servies"), path.join(monde.etat, "cli-echec"), path.join(monde.etat, "porte-ouverte"), monde.bin]) fs.mkdirSync(d, { recursive: true });
+  for (const d of [monde.depot, path.join(monde.etat, "servies"), ...PANNES.map((x) => path.join(monde.etat, x)), monde.bin]) fs.mkdirSync(d, { recursive: true });
   for (const f of COPIES) fs.cpSync(path.join(RACINE, f), path.join(monde.depot, f), { recursive: true });
   // La fausse CLI : journalise, et « sert » la révision écrite dans le bundle (ce que lit la fumée).
   fs.writeFileSync(path.join(monde.bin, "supabase"), [
@@ -80,20 +82,25 @@ function nouveauMonde() {
     'echo "$*" >> "$PASSIO_FAUX_MONDE/cli.log"',
     'if [ "${1:-} ${2:-}" = "functions deploy" ]; then',
     '  if [ -e "$PASSIO_FAUX_MONDE/cli-echec/$3" ]; then echo "fausse CLI : déploiement de $3 refusé" >&2; exit 1; fi',
+    // Un déploiement qui « réussit » sans prendre : la CLI sort en 0, la fonction sert toujours l'ancienne révision.
+    '  if [ -e "$PASSIO_FAUX_MONDE/cli-sans-effet/$3" ]; then exit 0; fi',
     '  sed -n \'s/^export const REVISION = "\\(.*\\)";$/\\1/p\' supabase/functions/_shared/revision.js > "$PASSIO_FAUX_MONDE/servies/$3"',
     "fi",
     "exit 0",
   ].join("\n") + "\n");
   // Le faux curl de la fumée : 200 à OPTIONS, 401 à POST, et la révision servie en en-tête. Il note qui il
-  // éprouve ; `porte-ouverte/<fonction>` simule une fonction qui répond 200 SANS jeton (la porte ne tient plus).
+  // éprouve. Marqueurs : `porte-ouverte` (200 à un POST sans jeton), `options-503` (la fonction ne répond plus à
+  // OPTIONS), `curl-echec` (aucune réponse : « 000 » et code 7, comme le vrai curl sur un refus de connexion).
   fs.writeFileSync(path.join(monde.bin, "curl"), [
     "#!/usr/bin/env bash",
-    'url=""; tete=0; post=0',
-    'for a in "$@"; do case "$a" in -sI) tete=1 ;; POST) post=1 ;; https://*) url="$a" ;; esac; done',
+    'url=""; tete=0; post=0; code=0',
+    'for a in "$@"; do case "$a" in -I|-sI) tete=1 ;; POST) post=1 ;; -w) code=1 ;; https://*) url="$a" ;; esac; done',
     'f="${url##*/}"',
+    'if [ -e "$PASSIO_FAUX_MONDE/curl-echec/$f" ]; then if [ "$code" = 1 ]; then printf 000; fi; echo "curl: (7) Failed to connect" >&2; exit 7; fi',
     'rev="$(cat "$PASSIO_FAUX_MONDE/servies/$f" 2>/dev/null || true)"',
     'if [ "$tete" = 1 ]; then echo "$f" >> "$PASSIO_FAUX_MONDE/fumee.log"; printf \'HTTP/2 200\\r\\nx-passio-revision: %s\\r\\n\\r\\n\' "$rev"; exit 0; fi',
     'if [ "$post" = 1 ] && [ -e "$PASSIO_FAUX_MONDE/porte-ouverte/$f" ]; then printf 200; exit 0; fi',
+    'if [ "$post" = 0 ] && [ -e "$PASSIO_FAUX_MONDE/options-503/$f" ]; then printf 503; exit 0; fi',
     'if [ "$post" = 1 ]; then printf 401; else printf 200; fi',
   ].join("\n") + "\n");
   for (const f of ["supabase", "curl"]) fs.chmodSync(path.join(monde.bin, f), 0o755);
@@ -114,6 +121,8 @@ function servir(monde, revisions) {
   }
 }
 const servie = (monde, f) => { try { return fs.readFileSync(path.join(monde.etat, "servies", f), "utf8").trim(); } catch (_e) { return null; } };
+/** Pose ou retire une panne du monde : `panne(m, "porte-ouverte", "pilotage")`, puis `…, false)` pour la lever. */
+const panne = (monde, genre, fonction, posee = true) => { const f = path.join(monde.etat, genre, fonction); if (posee) fs.writeFileSync(f, ""); else fs.rmSync(f, { force: true }); };
 /** Un commit de plus : chaque fichier nommé reçoit une ligne. Rend son SHA. */
 function modifier(monde, fichiers, message = "changement") {
   for (const f of fichiers) fs.appendFileSync(path.join(monde.depot, f), `\n// ${message} ${++monde.n}\n`);
@@ -205,20 +214,26 @@ test("① le 20/11 rejoué : un module emporté par pilotage seul change, média
   assert.equal(r.code, 0, r.sortie);
   assert.deepEqual(r.deployees, ["pilotage"]);
   assert.deepEqual(r.cli, [`functions deploy pilotage --project-ref ${PROD} --yes`]);
-  // Vérifiée : pilotage seule. Aucun prérequis de private-media n'a été demandé à la cible.
+  // RETENABLE : pilotage seule. Les cinq autres, en service, sont RELUES (une dérive en base se verrait) mais
+  // rien ne peut être retenu pour elles : le plan ne porte que pilotage.
   assert.ok(r.specs.includes(SPEC_PILOTAGE), "prémisse : les prérequis de pilotage sont lus");
-  assert.ok(!r.specs.includes(SPEC_REGLAGE) && !r.specs.some((s) => /media_/.test(s)), "private-media n'est pas vérifiée : le changement ne la concerne pas");
+  assert.ok(r.specs.includes(SPEC_REGLAGE), "les prérequis de ce qui est en service sont relus à chaque passage");
+  assert.equal(r.sorties.retenue.deployables, "pilotage");
+  assert.equal(r.sorties.retenue.retenues, "");
+  assert.equal(r.sorties.retenue.sans_prerequis, "");
   assert.equal(r.sorties.selection.concernees, "pilotage");
   assert.equal(r.sorties.selection.a_jour, "ask-ai delete-account export-account notify-call private-media");
   assert.equal(servie(m, "pilotage"), B);
   for (const f of FONCTIONS.filter((x) => x !== "pilotage")) assert.equal(servie(m, f), m.A, f + " sert toujours sa version");
   assert.match(r.resume, /\*\*pilotage\*\* : à déployer — sert [0-9a-f]{7} ; changé depuis : supabase\/functions\/_shared\/politique-autonomie\.js/);
   assert.match(r.resume, /\*\*private-media\*\* : à jour/);
-  assert.match(r.resume, /- Déployées : pilotage\n- Déjà à jour \(non redéployées, éprouvées quand même\) : ask-ai delete-account export-account notify-call private-media\n- Retenues \(un prérequis SQL obligatoire manque\) : aucune/);
+  assert.match(r.resume, /- Déployées : pilotage\n- Déjà à jour \(non redéployées, éprouvées quand même\) : ask-ai delete-account export-account notify-call private-media\n- Retenues \(un prérequis SQL obligatoire manque\) : aucune\n- En service sans un prérequis obligatoire : aucune/);
   assert.equal(r.etat("Verdict"), "sautée");
   // Non redéployées, les cinq autres sont ÉPROUVÉES quand même, à la révision qu'elles servent.
   assert.deepEqual(r.eprouvees, FONCTIONS);
-  assert.equal(r.sorties.selection.servies, FONCTIONS.filter((f) => f !== "pilotage").map((f) => `${f}=${m.A}`).join(" "));
+  // `servies` : la révision de TOUTE fonction lisible — la fumée saute celles que ce run a déployées.
+  assert.equal(r.sorties.selection.servies, FONCTIONS.map((f) => `${f}=${m.A}`).join(" "));
+  assert.match(r.resume, /## Fumée de ce qui est servi\n\n- ✅ 6 fonction\(s\) éprouvée\(s\) : chacune tient son contrat à la révision attendue\./);
   assert.match(r.sortie, new RegExp(`✅ pilotage \\(déployée\\) : OPTIONS 200, POST sans jeton 401, révision servie = ${B}`));
   assert.match(r.sortie, new RegExp(`✅ ask-ai \\(à jour, non redéployée\\) : OPTIONS 200, POST sans jeton 401, révision servie = ${m.A}`));
   assert.match(r.sortie, new RegExp(`✅ private-media \\(à jour, non redéployée\\) : contrat des capacités, état du réglage et révision servie = ${m.A}`));
@@ -290,11 +305,23 @@ test("③ private-media retenue : les autres fonctions concernées partent et so
   assert.equal(r.code, 1, "une fonction retenue ne passe pas pour un succès");
   assert.equal(servie(m, "private-media"), m.A, "la version en service de private-media reste celle d'avant");
   assert.equal(servie(m, "pilotage"), B);
+  // Retenue, elle sert sa version d'avant — ÉPROUVÉE elle aussi : « tout ce qui est servi » vaut pour elle.
+  assert.match(r.sortie, new RegExp(`✅ private-media \\(retenue, sert sa version d'avant\\) : contrat des capacités, état du réglage et révision servie = ${m.A}`));
+  assert.deepEqual(r.eprouvees, FONCTIONS);
+  assert.equal(r.sorties.retenue.sans_prerequis, "");
   // Visible et expliquée : sur la page du run (annotations) et dans son résumé.
   assert.match(r.sortie, /::warning title=Fonction retenue — private-media::manque sur la cible : function:public\.media_resoudre\(text,text,uuid,text\) — migration à appliquer d'abord : migrations\/migration_medias_proteges_go_2026-11-16\.sql/);
   assert.match(r.sortie, /::error title=Fonction\(s\) retenue\(s\)::private-media — un prérequis SQL obligatoire manque sur la cible/);
-  assert.match(r.resume, /- ❌ \*\*private-media\*\* : RETENUE — manque : `function:public\.media_resoudre\(text,text,uuid,text\)`\n {2}- à faire : appliquer `migrations\/migration_medias_proteges_go_2026-11-16\.sql` \(canal ③, avec preuve de revue\), puis relancer ce workflow — il rattrape la fonction\.\n {2}- pourquoi elle attend : /);
+  assert.match(r.resume, /- ❌ \*\*private-media\*\* : RETENUE — manque : `function:public\.media_resoudre\(text,text,uuid,text\)`\n {2}- à faire : appliquer `migrations\/migration_medias_proteges_go_2026-11-16\.sql` \(canal ③, avec preuve de revue\), puis relancer le run de push le plus récent — il rattrape la fonction\.\n {2}- pourquoi elle attend : /);
   assert.match(r.resume, /- Retenues \(un prérequis SQL obligatoire manque\) : private-media/);
+  // Retenue ET porte ouverte : la fumée le dit, la retenue ne le masque pas (seconde contre-revue du 21/11).
+  panne(m, "porte-ouverte", "delete-account");
+  const masque = jouerJob(m);
+  assert.equal(masque.etat("Test de fumée"), "en échec");
+  assert.match(masque.sortie, /^::error title=Fumée rouge — delete-account::delete-account \(à jour, non redéployée\) : OPTIONS 200 \(attendu 200\), POST sans jeton 200 \(attendu 401\)/m);
+  assert.match(masque.resume, /- ❌ \*\*delete-account\*\* \(à jour, non redéployée\) : OPTIONS 200 \(attendu 200\), POST sans jeton 200 \(attendu 401\)/);
+  assert.match(masque.resume, /\*\*private-media\*\* : RETENUE/, "la retenue reste dite à côté");
+  panne(m, "porte-ouverte", "delete-account", false);
   // Le rattrapage : la migration appliquée, le même commit rejoué ne concerne plus que private-media.
   scenario(m, { absents: [], reglage: true });
   r = jouerJob(m);
@@ -355,15 +382,19 @@ test("⑥ rien n'est en retard : rien n'est vérifié ni déployé — mais l'é
   const r = jouerJob(m);
   assert.equal(r.code, 0, r.sortie);
   assert.deepEqual(r.cli, []);
-  assert.deepEqual(r.specs, ["etat:medias_proteges.actif"], "aucun prérequis n'est demandé : seul l'état du réglage, pour la fumée");
+  // Rien n'est RETENABLE (aucune fonction ne part) ; ce qui est en service est relu, et l'état du réglage aussi.
+  const tousLesPrerequis = [...new Set(FONCTIONS.flatMap((f) => manifeste[f].objets))];
+  assert.deepEqual([...r.specs].sort(), [...tousLesPrerequis, "etat:medias_proteges.actif"].sort());
+  assert.equal(r.sorties.retenue.plan, "lu");
   assert.equal(r.sorties.retenue.deployables, "");
   assert.equal(r.sorties.retenue.retenues, "");
+  assert.equal(r.sorties.retenue.sans_prerequis, "");
   assert.equal(r.sorties.retenue.etat_medias_proteges_actif, "true");
   for (const nom of ["Révision", "Déployer", "Verdict"]) assert.equal(r.etat(nom), "sautée", nom);
   for (const nom of ["Retenue", "Test de fumée", "Trace"]) assert.equal(r.etat(nom), "réussie", nom);
   assert.deepEqual(r.eprouvees, FONCTIONS, "ce qui est servi est éprouvé à chaque passage");
   assert.match(r.sortie, /aucune fonction en retard sur ce commit : rien à déployer/);
-  assert.match(r.sortie, /aucune fonction à vérifier : seuls les réglages sont lus/);
+  assert.match(r.sortie, /aucune fonction à déployer : les réglages sont lus pour la fumée, et les prérequis de ce qui est en service sont relus/);
   assert.match(r.resume, /- Déployées : aucune\n- Déjà à jour \(non redéployées, éprouvées quand même\) : ask-ai delete-account export-account notify-call pilotage private-media/);
   assert.equal(r.sale, "", "la révision n'est pas écrite dans le bundle quand rien ne part");
   // Une cible illisible n'est pas une cible calme, même sans rien à déployer : la fumée de private-media a besoin de l'état.
@@ -378,12 +409,18 @@ test("⑥ bis une fumée rouge RESTE rouge : la fonction déployée sert « ce c
   // Une porte qui ne tient plus : pilotage répond 200 à un POST sans jeton.
   const m = nouveauMonde();
   const B = modifier(m, ["supabase/functions/pilotage/index.ts"]);
-  fs.writeFileSync(path.join(m.etat, "porte-ouverte", "pilotage"), "");
+  panne(m, "porte-ouverte", "pilotage");
   let r = jouerJob(m);
   assert.deepEqual(r.deployees, ["pilotage"]);
   assert.equal(r.etat("Test de fumée"), "en échec");
   assert.match(r.sortie, /❌ pilotage \(déployée\) : OPTIONS 200 \(attendu 200\), POST sans jeton 200 \(attendu 401\)/);
   assert.equal(r.code, 1);
+  // Le rouge se lit SUR LA PAGE DU RUN — une annotation et une ligne du résumé —, pas seulement dans le journal :
+  // « Trace » est sautée dès que la fumée échoue, et la ligne du pilotage mène à cette page-là.
+  assert.equal(r.etat("Trace"), "non jouée");
+  assert.match(r.sortie, /^::error title=Fumée rouge — pilotage::pilotage \(déployée\) : OPTIONS 200 \(attendu 200\), POST sans jeton 200 \(attendu 401\), révision servie '[0-9a-f]{40}' \(attendu [0-9a-f]{40}\)$/m);
+  assert.match(r.resume, /## Fumée de ce qui est servi\n\n- ❌ \*\*pilotage\*\* \(déployée\) : OPTIONS 200 \(attendu 200\), POST sans jeton 200 \(attendu 401\)/);
+  assert.doesNotMatch(r.resume, /chacune tient son contrat/);
   assert.equal(servie(m, "pilotage"), B, "prémisse : la fonction cassée EST en service, à ce commit");
   // Le même run, relancé sans rien réparer : rien n'est en retard — et le rouge tient.
   r = jouerJob(m);
@@ -398,7 +435,7 @@ test("⑥ bis une fumée rouge RESTE rouge : la fonction déployée sert « ce c
   assert.equal(r.code, 1, "un push sans rapport ne fait pas disparaître le rouge");
   assert.deepEqual(r.eprouvees, FONCTIONS, "les autres sont éprouvées jusqu'au bout : une fonction rouge n'arrête pas la fumée des suivantes");
   // La porte refermée : vert.
-  fs.rmSync(path.join(m.etat, "porte-ouverte", "pilotage"));
+  panne(m, "porte-ouverte", "pilotage", false);
   assert.equal(jouerJob(m).code, 0);
   // Le courtier : un état divergent du réglage tient rouge de la même façon, déployé ou non.
   const c = nouveauMonde();
@@ -407,7 +444,9 @@ test("⑥ bis une fumée rouge RESTE rouge : la fonction déployée sert « ce c
   assert.equal(jouerJob(c).code, 1);
   const relance = jouerJob(c);
   assert.deepEqual(relance.deployees, []);
-  assert.match(relance.sortie, /❌ private-media \(à jour, non redéployée\) : la fumée du courtier refuse \(contrat, état du réglage « true » ou révision [0-9a-f]{40}\)/);
+  assert.match(relance.sortie, /❌ private-media \(à jour, non redéployée\) : la fumée du courtier refuse — contrat des capacités, état du réglage \(lu : true\) ou révision servie \(attendu [0-9a-f]{40}\)/);
+  assert.match(relance.sortie, /^::error title=Fumée rouge — private-media::private-media \(à jour, non redéployée\) : la fumée du courtier refuse/m);
+  assert.match(relance.resume, /- ❌ \*\*private-media\*\* \(à jour, non redéployée\) : la fumée du courtier refuse/);
   assert.equal(relance.code, 1);
   scenario(c, { absents: [], reglage: true });
   assert.equal(jouerJob(c).code, 0);
@@ -423,6 +462,81 @@ test("⑥ ter une sélection MUETTE ne passe pas pour « rien à faire » : sans
   assert.deepEqual(r.cli, []);
   assert.deepEqual(r.specs, [], "la cible n'est pas lue : le jeton ne sert pas");
   assert.equal(r.code, 1);
+  // Même garde un cran plus loin : une RETENUE qui ne rendrait rien (plan absent) — sans témoin, « rien à déployer »
+  // et « rien à éprouver » donnaient un run vert, six fonctions concernées et aucune partie.
+  const sansPlan = muter(WORKFLOW, 'node scripts/verifier-prerequis-fonctions.mjs --fonctions "$CONCERNEES" --en-service "${EN_SERVICE:-}" --projet "$PROJECT_REF" --partiel', "true");
+  const p = jouerJob(m, { workflow: sansPlan });
+  assert.equal(p.etat("Retenue"), "réussie");
+  assert.equal(p.etat("Test de fumée"), "en échec");
+  assert.match(p.sortie, /La retenue n'a rendu aucun plan — on ne sait ni ce qui devait partir ni ce qui est servi : fumée refusée/);
+  assert.deepEqual([p.cli, p.eprouvees, p.code], [[], [], 1]);
+});
+
+test("⑥ quater ce que la fumée exige VRAIMENT : la révision servie, OPTIONS 200, une réponse — et une requête sans réponse rougit sa fonction sans arrêter les autres", () => {
+  // Un déploiement qui « réussit » sans prendre (la CLI sort en 0, l'ancienne version sert toujours) : la révision le dit.
+  let m = nouveauMonde();
+  const B = modifier(m, ["supabase/functions/ask-ai/index.ts"]);
+  panne(m, "cli-sans-effet", "ask-ai");
+  let r = jouerJob(m);
+  assert.deepEqual(r.deployees, ["ask-ai"]);
+  assert.equal(r.etat("Déployer"), "réussie");
+  assert.match(r.sortie, new RegExp(`❌ ask-ai \\(déployée\\) : OPTIONS 200 \\(attendu 200\\), POST sans jeton 401 \\(attendu 401\\), révision servie '${m.A}' \\(attendu ${B}\\)`));
+  assert.equal(r.code, 1, "un déploiement sans effet ne passe pas pour une livraison");
+  panne(m, "cli-sans-effet", "ask-ai", false);
+  r = jouerJob(m);
+  assert.deepEqual(r.deployees, ["ask-ai"], "elle sert toujours A : le run suivant la redéploie");
+  assert.equal(r.code, 0, r.sortie);
+  // OPTIONS qui ne rend plus 200 : la porte CORS est éprouvée, pas supposée.
+  panne(m, "options-503", "notify-call");
+  r = jouerJob(m);
+  assert.match(r.sortie, /❌ notify-call \(à jour, non redéployée\) : OPTIONS 503 \(attendu 200\), POST sans jeton 401 \(attendu 401\)/);
+  assert.equal(r.code, 1);
+  panne(m, "options-503", "notify-call", false);
+  // Une requête SANS RÉPONSE (connexion refusée, délai) : « 000 » pour cette fonction, les suivantes éprouvées quand
+  // même, et un rouge nommé — l'étape s'arrêtait net (code 7), sans une ligne, après la première.
+  panne(m, "curl-echec", "delete-account");
+  r = jouerJob(m);
+  assert.equal(r.etat("Test de fumée"), "en échec");
+  assert.match(r.sortie, /^::error title=Fumée rouge — delete-account::delete-account \(à jour, non redéployée\) : OPTIONS 000 \(attendu 200\), POST sans jeton 000 \(attendu 401\), révision servie '' \(attendu [0-9a-f]{40}\)$/m);
+  for (const f of ["export-account", "notify-call", "pilotage", "private-media"]) assert.match(r.sortie, new RegExp("✅ " + f + " \\(à jour, non redéployée\\)"), f + " : éprouvée après la panne de delete-account");
+  assert.match(r.resume, /- ❌ \*\*delete-account\*\* \(à jour, non redéployée\) : OPTIONS 000/);
+  assert.equal(r.code, 1);
+  panne(m, "curl-echec", "delete-account", false);
+  assert.equal(jouerJob(m).code, 0);
+  // Une paire illisible dans le plan de la sélection arrête l'étape, nommée — elle n'est pas sautée.
+  const paireFausse = muter(WORKFLOW, 'node scripts/fonctions-a-deployer.mjs --cible "$SUPABASE_URL"', 'node scripts/fonctions-a-deployer.mjs --cible "$SUPABASE_URL"\n            echo "servies=pilotage=dev ask-ai=' + "a".repeat(40) + '" >> "$GITHUB_OUTPUT"');
+  r = jouerJob(m, { workflow: paireFausse });
+  assert.equal(r.etat("Test de fumée"), "en échec");
+  assert.match(r.sortie, /::error::Révision servie illisible dans le plan de la sélection\./);
+  assert.deepEqual(r.eprouvees, []);
+});
+
+test("⑥ quinquies une fonction EN SERVICE dont un prérequis manque : rien n'est retenu pour elle, les autres partent — et le run rougit en le disant (le 20/11 dans sa forme d'origine)", () => {
+  // Le 20/11 : private-media sert, son prérequis n'est plus vrai sur la cible, et un push ne concerne que pilotage.
+  const m = nouveauMonde();
+  const B = modifier(m, [SHARED + "politique-autonomie.js"]);
+  scenario(m, { absents: [ABSENT_MEDIAS], reglage: true });
+  const r = jouerJob(m);
+  assert.deepEqual(r.deployees, ["pilotage"], "pilotage part : le prérequis d'une autre ne la retient plus");
+  assert.equal(servie(m, "pilotage"), B);
+  assert.equal(r.sorties.retenue.deployables, "pilotage");
+  assert.equal(r.sorties.retenue.retenues, "", "rien n'est RETENU : rien ne devait partir pour private-media");
+  assert.equal(r.sorties.retenue.sans_prerequis, "private-media");
+  assert.equal(r.etat("Test de fumée"), "réussie");
+  assert.equal(r.etat("Verdict"), "en échec");
+  assert.equal(r.code, 1, "la base a dérivé sous une fonction qui tourne : le run ne passe pas pour sain");
+  assert.match(r.sortie, /❌ private-media \(en service, non redéployée\) : PRÉREQUIS ABSENT — manque : function:public\.media_resoudre\(text,text,uuid,text\)/);
+  assert.match(r.sortie, /^::warning title=Fonction en service sans prérequis — private-media::manque sur la cible : function:public\.media_resoudre/m);
+  assert.match(r.sortie, /^::error title=Fonction\(s\) en service sans prérequis::private-media — un prérequis SQL obligatoire manque sur la cible alors que la fonction tourne/m);
+  assert.doesNotMatch(r.sortie, /::error title=Fonction\(s\) retenue\(s\)/);
+  assert.match(r.resume, /- ❌ \*\*private-media\*\* \(en service, non redéployée\) : PRÉREQUIS ABSENT — manque : `function:public\.media_resoudre\(text,text,uuid,text\)`\n {2}- elle tourne sans cet objet/);
+  assert.match(r.resume, /- En service sans un prérequis obligatoire : private-media/);
+  // Un FACULTATIF absent sous une fonction en service : dit, sans rougir.
+  scenario(m, { absents: ["function:public.notifier_mentions(text,text,text[])"], reglage: true });
+  const f = jouerJob(m);
+  assert.equal(f.code, 0, f.sortie);
+  assert.match(f.sortie, /⚠️ notify-call \(en service, non redéployée\) : facultatif absent — manque : function:public\.notifier_mentions/);
+  assert.equal(f.sorties.retenue.sans_prerequis, "");
 });
 
 // ── ⑦ À la demande ──────────────────────────────────────────────────────────
@@ -489,7 +603,7 @@ function muter(texte, avant, apres) {
 
 test("⑩ réinjections : sans --partiel, une retenue retient TOUT ; la sélection remplacée par « toutes », un push vérifie les six ; sans « Verdict », la retenue passe pour un succès", () => {
   // Sans --partiel : le défaut du 20/11 — une fonction retenue, et rien ne part.
-  const sansPartiel = muter(WORKFLOW, '--fonctions "$CONCERNEES" --projet "$PROJECT_REF" --partiel', '--fonctions "$CONCERNEES" --projet "$PROJECT_REF"');
+  const sansPartiel = muter(WORKFLOW, '--en-service "${EN_SERVICE:-}" --projet "$PROJECT_REF" --partiel', '--en-service "${EN_SERVICE:-}" --projet "$PROJECT_REF"');
   let m = nouveauMonde();
   modifier(m, [SHARED + "plafond.js", SHARED + "medias-proteges.js"]);
   scenario(m, { absents: [ABSENT_MEDIAS], reglage: true });
@@ -517,14 +631,14 @@ test("⑩ réinjections : sans --partiel, une retenue retient TOUT ; la sélecti
 test("⑩ réinjection : la CLI qui refuse une fonction arrête le déploiement — la fumée et la trace ne disent pas « déployée » ce qui ne l'est pas", () => {
   const m = nouveauMonde();
   modifier(m, [SHARED + "plafond.js"]);
-  fs.writeFileSync(path.join(m.etat, "cli-echec", "export-account"), "");
+  panne(m, "cli-echec", "export-account");
   const r = jouerJob(m);
   assert.equal(r.code, 1);
   assert.equal(r.etat("Déployer"), "en échec");
   assert.deepEqual(r.deployees, ["ask-ai", "export-account"], "l'étape s'arrête à la première fonction refusée");
   assert.equal(r.etat("Test de fumée"), "non jouée");
   // Le run suivant rattrape ce qui n'est pas parti : l'état servi, pas le diff du push.
-  fs.rmSync(path.join(m.etat, "cli-echec", "export-account"));
+  panne(m, "cli-echec", "export-account", false);
   const suite = jouerJob(m);
   assert.equal(suite.code, 0, suite.sortie);
   assert.deepEqual(suite.deployees, ["export-account", "notify-call", "pilotage"]);
@@ -559,6 +673,21 @@ test("⑪ selectionner : à jour, à déployer, incertaine, descendante, documen
   const i = selectionner({ noms: ["a"], clotures, servies, comparer, incertaines: new Map([["a", [F("a") + " : import() ou require() au chemin calculé"]]]) });
   assert.equal(i[0].etat, "a_deployer");
   assert.match(i[0].motif, /ne se calcule pas \(supabase\/functions\/a\/index\.ts : import\(\) ou require\(\) au chemin calculé\)/);
+  // …mais elle se compare quand même à ce qu'elle sert : TOUT changement la concerne (ici le dossier d'une
+  // autre, qu'une clôture connue aurait écarté), et sans aucun changement elle est à jour — elle repartait à
+  // chaque passage, pour toujours, même sur un push qui ne touchait qu'un test (seconde contre-revue du 21/11).
+  assert.deepEqual(i[0].changes, [F("b"), SHARED + "g-seul.js"]);
+  const incertaineDeB = new Map([["b", [F("b") + " : importe « zod », ni relatif ni paquet"]]]);
+  const calme = selectionner({ noms: ["b"], clotures, servies, incertaines: incertaineDeB, comparer: () => ({ relation: "comparable", changes: [] }) })[0];
+  assert.equal(calme.etat, "a_jour");
+  assert.match(calme.motif, /rien n'a changé depuis sous supabase\/ ni dans le workflow \(ce qu'elle emporte ne se calcule pas/);
+  const docSeule = selectionner({ noms: ["b"], clotures, servies, incertaines: incertaineDeB, comparer: () => ({ relation: "comparable", changes: ["supabase/functions/b/README.md"] }) })[0];
+  assert.equal(docSeule.etat, "a_jour");
+  const plusRecente = selectionner({ noms: ["b"], clotures, servies, incertaines: incertaineDeB, comparer: () => ({ relation: "descendante", changes: [F("a")] }) })[0];
+  assert.equal(plusRecente.etat, "a_jour", "incertaine ou non, un run ancien ne fait pas reculer");
+  // Sans révision lisible, ou sur un commit absent, incertaine ou non : à déployer.
+  assert.equal(selectionner({ noms: ["c"], clotures, servies, incertaines: new Map([["c", ["x"]]]), comparer })[0].etat, "a_deployer");
+  assert.equal(selectionner({ noms: ["f"], clotures, servies, incertaines: new Map([["f", ["x"]]]), comparer })[0].etat, "a_deployer");
   // Une fonction que personne n'a lue.
   assert.equal(selectionner({ noms: ["z"], clotures, servies, comparer })[0].etat, "a_deployer");
   // Une révision servie très ancienne : le motif nomme les premiers fichiers, puis leur nombre.
@@ -611,8 +740,17 @@ test("⑪ comparateurGit et etablirSelection sur un vrai dépôt : la clôture r
   // Une fonction neuve dont un import ne se lit pas : incertaine, donc à déployer.
   fs.mkdirSync(path.join(m.depot, "supabase/functions/neuve"));
   fs.writeFileSync(path.join(m.depot, "supabase/functions/neuve/index.ts"), 'const m = await import("../_shared/" + nom + ".js");\n');
-  const avecNeuve = await etablirSelection({ mode: "etat", cible: `https://${PROD}.supabase.co`, racine: m.depot, fetchFn });
-  assert.match(avecNeuve.lignes.find((l) => l.fonction === "neuve").motif, /ne se calcule pas/);
+  // Elle « sert » A dans ce faux réseau, et reception.js a changé depuis : incertaine, TOUT changement sous
+  // supabase/ la concerne — à déployer. Servie à la tête, rien n'a changé : à jour, et c'est dit. Jamais servie : à déployer.
+  const avecNeuve = (await etablirSelection({ mode: "etat", cible: `https://${PROD}.supabase.co`, racine: m.depot, fetchFn })).lignes.find((l) => l.fonction === "neuve");
+  assert.equal(avecNeuve.etat, "a_deployer");
+  assert.match(avecNeuve.motif, /ne se calcule pas .* ; changé depuis [0-9a-f]{7} : .*reception\.js/);
+  const aLaTete = async () => new Response(null, { status: 200, headers: { "X-Passio-Revision": B } });
+  const calmeNeuve = (await etablirSelection({ mode: "etat", cible: `https://${PROD}.supabase.co`, racine: m.depot, fetchFn: aLaTete })).lignes.find((l) => l.fonction === "neuve");
+  assert.equal(calmeNeuve.etat, "a_jour", "incertaine, mais rien n'a changé depuis ce qu'elle sert : elle ne repart pas à chaque passage");
+  assert.match(calmeNeuve.motif, /rien n'a changé depuis sous supabase\/ ni dans le workflow \(ce qu'elle emporte ne se calcule pas/);
+  const jamaisServie = async (url, init) => (String(url).endsWith("/neuve") ? new Response(null, { status: 404 }) : fetchFn(url, init));
+  assert.equal((await etablirSelection({ mode: "etat", cible: `https://${PROD}.supabase.co`, racine: m.depot, fetchFn: jamaisServie })).lignes.find((l) => l.fonction === "neuve").etat, "a_deployer");
   // Un spécificateur NU (résolu par une carte d'imports vers _shared) : le lecteur ne le suit pas — il le DIT,
   // au lieu de ranger le module visé parmi « ceux qu'elle n'emporte pas » (relecture adverse du 21/11).
   fs.writeFileSync(path.join(m.depot, "supabase/functions/neuve/index.ts"), 'import { x } from "@partage/croissance.js";\nimport w from "npm:web-push@3.6.7";\nimport { c } from "https://esm.sh/@supabase/supabase-js@2.118.0";\nimport fs from "node:fs";\n');
@@ -638,6 +776,23 @@ test("⑪ comparateurGit et etablirSelection sur un vrai dépôt : la clôture r
     assert.deepEqual(r, { revision: null, raison: "révision servie illisible (un déploiement fait hors de ce workflow)" }, faux);
   }
   assert.equal((await lireRevisionServie("https://x", "f", avec({ "x-passio-revision": "  " + m.A + " " }))).revision, m.A, "des espaces autour ne changent rien");
+  // Une lecture qui n'aboutit pas se RETENTE une fois : « le doute déploie », et une panne passagère redéployait
+  // une fonction en production sur un push qui ne la concernait pas. Une réponse nette, elle, ne se relit pas.
+  const suite = (reponses) => { let n = 0; const f = async () => { const r = reponses[Math.min(n++, reponses.length - 1)]; if (r instanceof Error) throw r; return r; }; f.appels = () => n; return f; };
+  const ok200 = () => new Response(null, { status: 200, headers: { "x-passio-revision": m.A } });
+  let f = suite([new TypeError("fetch failed"), ok200()]);
+  assert.equal((await lireRevisionServie("https://x", "f", f)).revision, m.A);
+  assert.equal(f.appels(), 2);
+  f = suite([new Response(null, { status: 503 }), ok200()]);
+  assert.equal((await lireRevisionServie("https://x", "f", f)).revision, m.A, "un 5xx sans en-tête : la passerelle, pas la fonction");
+  f = suite([new TypeError("fetch failed")]);
+  assert.match((await lireRevisionServie("https://x", "f", f)).raison, /injoignable/);
+  assert.equal(f.appels(), 2, "deux essais, pas davantage");
+  for (const nette of [new Response(null, { status: 404 }), new Response(null, { status: 200 }), new Response(null, { status: 200, headers: { "x-passio-revision": "dev" } })]) {
+    f = suite([nette, ok200()]);
+    assert.equal((await lireRevisionServie("https://x", "f", f)).revision, null);
+    assert.equal(f.appels(), 1, "une réponse nette ne se relit pas");
+  }
   assert.match((await lireRevisionServie("https://x", "f", avec({}, 503))).raison, /aucune révision servie \(HTTP 503\)/);
   assert.match((await lireRevisionServie("https://x", "f", async () => { throw new TypeError("fetch failed"); })).raison, /injoignable/);
 });
@@ -713,16 +868,16 @@ test("⑬ le vérificateur en ligne de commande : --partiel sort en 0 et écrit 
   // La production du 21/11, lue par le connecteur en lecture seule : tout est présent, le réglage est à true.
   let r = verifier(["--fonctions", FONCTIONS.join(" "), "--partiel"], catalogue(FONCTIONS));
   assert.equal(r.code, 0, r.sortie);
-  assert.equal(r.sorties, `deployables=${FONCTIONS.join(" ")}\nretenues=\netat_medias_proteges_actif=true\n`);
+  assert.equal(r.sorties, `plan=lu\ndeployables=${FONCTIONS.join(" ")}\nretenues=\nsans_prerequis=\netat_medias_proteges_actif=true\n`);
   assert.match(r.sortie, /✅ private-media : prérequis présents/);
   assert.match(r.sortie, /réglage medias_proteges\.actif lu sur la cible : true/);
   // Une retenue : dite, le plan écrit, code 0 — c'est le job qui tranche, après le déploiement des autres.
   const absent = "function:public.media_reserver(text,text,jsonb,uuid)";
   r = verifier(["--fonctions", "pilotage private-media", "--partiel"], catalogue(["pilotage", "private-media"], [absent], false), { GITHUB_ACTIONS: "true" });
   assert.equal(r.code, 0, r.sortie);
-  assert.equal(r.sorties, "deployables=pilotage\nretenues=private-media\netat_medias_proteges_actif=false\n");
+  assert.equal(r.sorties, "plan=lu\ndeployables=pilotage\nretenues=private-media\nsans_prerequis=\netat_medias_proteges_actif=false\n");
   assert.match(r.sortie, /❌ private-media : RETENUE — manque : function:public\.media_reserver\(text,text,jsonb,uuid\)/);
-  assert.match(r.sortie, /RETENUE PARTIELLE : private-media ne part\(ent\) pas — pilotage part\(ent\)\. Le run finira ROUGE après le déploiement des autres/);
+  assert.match(r.sortie, /RETENUE PARTIELLE : private-media ne part\(ent\) pas — pilotage part\(ent\)\. Le run finira ROUGE après le déploiement des autres : appliquer la migration \(canal ③, avec preuve de revue\), puis relancer le run de push le plus récent\./);
   assert.match(r.sortie, /^::warning title=Fonction retenue — private-media::/m);
   // Sans --partiel : le contrat d'avant, que les bancs SQL et un contrôle à la main emploient.
   r = verifier(["--fonctions", "pilotage private-media"], catalogue(["pilotage", "private-media"], [absent]));
@@ -747,11 +902,36 @@ test("⑬ le vérificateur en ligne de commande : --partiel sort en 0 et écrit 
   assert.deepEqual(ETATS_MANIFESTE, ["etat:medias_proteges.actif"]);
   r = verifier(["--fonctions", "", "--partiel"], catalogue([], [], false));
   assert.equal(r.code, 0, r.sortie);
-  assert.equal(r.sorties, "deployables=\nretenues=\netat_medias_proteges_actif=false\n");
+  assert.equal(r.sorties, "plan=lu\ndeployables=\nretenues=\nsans_prerequis=\netat_medias_proteges_actif=false\n");
   assert.doesNotMatch(r.sortie, /prérequis présents|RETENUE/);
   // …et pilotage seule : l'état du réglage, qu'elle n'exige pas, est lu quand même (private-media sera éprouvée).
   r = verifier(["--fonctions", "pilotage", "--partiel"], catalogue(["pilotage"]));
-  assert.equal(r.sorties, "deployables=pilotage\nretenues=\netat_medias_proteges_actif=true\n");
+  assert.equal(r.sorties, "plan=lu\ndeployables=pilotage\nretenues=\nsans_prerequis=\netat_medias_proteges_actif=true\n");
+  // Les fonctions EN SERVICE (`--en-service`) : relues, jamais retenues, jamais dans le plan de déploiement.
+  const absentExport = "table:public.media_assets";   // exigé par export-account ET private-media
+  r = verifier(["--fonctions", "pilotage", "--en-service", "export-account private-media notify-call", "--partiel"],
+    catalogue(["pilotage", "export-account", "private-media", "notify-call"], [absentExport, "function:public.notifier_mentions(text,text,text[])"]), { GITHUB_ACTIONS: "true" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.equal(r.sorties, "plan=lu\ndeployables=pilotage\nretenues=\nsans_prerequis=export-account private-media\netat_medias_proteges_actif=true\n");
+  assert.match(r.sortie, /❌ export-account \(en service, non redéployée\) : PRÉREQUIS ABSENT — manque : table:public\.media_assets/);
+  assert.match(r.sortie, /⚠️ notify-call \(en service, non redéployée\) : facultatif absent/);
+  assert.match(r.sortie, /^::warning title=Fonction en service sans prérequis — private-media::/m);
+  assert.match(r.sortie, /✅ rien n'est retenu : ce qui est à déployer peut partir\./);
+  assert.match(r.sortie, /EN SERVICE SANS PRÉREQUIS : export-account, private-media — rien n'est retenu pour elle\(s\), mais le run finira ROUGE/);
+  assert.match(r.resume, /- ❌ \*\*export-account\*\* \(en service, non redéployée\) : PRÉREQUIS ABSENT — manque : `table:public\.media_assets`/);
+  // Une fonction à la fois concernée et « en service » n'est comptée qu'une fois, du côté qui RETIENT.
+  r = verifier(["--fonctions", "private-media", "--en-service", "private-media pilotage", "--partiel"], catalogue(["private-media", "pilotage"], [absentExport]));
+  assert.equal(r.sorties, "plan=lu\ndeployables=\nretenues=private-media\nsans_prerequis=\netat_medias_proteges_actif=true\n");
+  // Sans --partiel, --en-service n'a aucun effet (les bancs SQL gardent leur contrat) ; un nom inconnu sort en 2.
+  r = verifier(["--fonctions", "pilotage", "--en-service", "private-media"], catalogue(["pilotage"]));
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.sortie, /en service/);
+  assert.equal(verifier(["--fonctions", "pilotage", "--en-service", "constructor", "--partiel"], catalogue(["pilotage"])).code, 2);
+  // Une cible NON VÉRIFIABLE se lit sur la page du run et dans son résumé, pas seulement au journal.
+  r = verifier(["--fonctions", "pilotage", "--partiel"], { message: "JWT expired\n::error::forgé" }, { GITHUB_ACTIONS: "true" });
+  assert.equal(r.code, 2);
+  assert.match(r.sortie, /^::error title=Retenue — cible non vérifiable::résultat illisible : NON VÉRIFIABLE, le déploiement est retenu\.$/m);
+  assert.match(r.resume, /- ❌ \*\*non vérifiable\*\* : résultat illisible/);
   r = verifier(["--fonctions", "pilotage", "--partiel"], catalogue(["pilotage"]).filter((l) => !l.spec.startsWith("etat:")));
   assert.equal(r.code, 2, "sans l'état, NON VÉRIFIABLE : la fumée n'aurait rien à comparer");
   // Sans --partiel, une liste absente garde son sens d'avant : tout le manifeste (contrôle à la main).
@@ -787,6 +967,53 @@ test("⑬ bis appelés à travers un lien symbolique, les trois scripts du job A
   assert.match(fumee.stderr, /private_media_smoke_refused/);
 });
 
+test("⑬ ter la fumée du courtier, lancée comme le fait le job : sans état lu (vide, « TRUE », « 1 »), elle refuse AVANT toute requête", () => {
+  // « Sans valeur par défaut » n'était tenu qu'au niveau de la fonction : la garde de la ligne de commande, retirée,
+  // passait le banc (seconde contre-revue du 21/11).
+  const m = nouveauMonde();
+  const lancer = (actif) => {
+    fs.rmSync(path.join(m.etat, "reseau.log"), { force: true });
+    const r = spawnSync(process.execPath, [path.join(m.depot, "scripts/fumee-private-media.mjs")], { encoding: "utf8", cwd: m.depot,
+      env: { PATH: process.env.PATH, HOME: m.base, USERPROFILE: m.base, PASSIO_FAUX_MONDE: m.etat, NODE_OPTIONS: "--import=" + PRECHARGE,
+        PASSIO_MEDIA_SMOKE_URL: `https://${PROD}.supabase.co`, PASSIO_MEDIA_SMOKE_REVISION: m.A, ...(actif === undefined ? {} : { PASSIO_MEDIA_SMOKE_ACTIF: actif }) } });
+    let requetes = 0;
+    try { requetes = fs.readFileSync(path.join(m.etat, "reseau.log"), "utf8").split("\n").filter(Boolean).length; } catch (_e) { /* aucune requête */ }
+    return { code: r.status, requetes, sortie: (r.stdout || "") + (r.stderr || "") };
+  };
+  for (const [actif, attendu] of [["true", 0], ["false", 1]]) {   // le monde est OUVERT : « true » passe, « false » diverge
+    const r = lancer(actif);
+    assert.deepEqual([r.code, r.requetes], [attendu, attendu === 0 ? 5 : 1], actif + " : " + r.sortie);
+  }
+  for (const actif of [undefined, "", "TRUE", "1", " true", "oui"]) {
+    const r = lancer(actif);
+    assert.deepEqual([r.code, r.requetes], [1, 0], JSON.stringify(actif) + " : refusé sans une requête");
+    assert.match(r.sortie, /private_media_smoke_refused/);
+  }
+});
+
+test("⑬ quater le contrôle de cible du pilote suit la sélection : l'état d'un réglage est une information, et une fonction « à jour » vaut « sert le SHA attendu »", () => {
+  // scripts/controle-cible-pilote.mjs lit la requête du vérificateur : la ligne `etat:` (neuve) y était comptée
+  // comme un prérequis ABSENT dès que l'interrupteur est fermé — un écart et une sortie 1 sur une cible saine.
+  const m = nouveauMonde();
+  const dossier = path.join(m.base, "releve");
+  fs.mkdirSync(dossier);
+  fs.writeFileSync(path.join(dossier, "prerequis.json"), JSON.stringify([
+    { spec: "reglage:medias_proteges.actif:booleen", present: true }, { spec: "etat:medias_proteges.actif", present: false }, { spec: "table:public.media_assets", present: false }]));
+  const lancer = (args, env = {}) => { const r = spawnSync(process.execPath, [path.join(m.depot, "scripts/controle-cible-pilote.mjs"), ...args], { encoding: "utf8", cwd: m.depot, env: { PATH: process.env.PATH, HOME: m.base, USERPROFILE: m.base, ...env } }); return (r.stdout || "") + (r.stderr || ""); };
+  const json = lancer(["--json", dossier]);
+  assert.match(json, /✅ reglage:medias_proteges\.actif:booleen/);
+  assert.match(json, /ℹ medias_proteges\.actif lu sur la cible : false/);
+  assert.doesNotMatch(json, /❌ etat:/, "un interrupteur fermé n'est pas un écart");
+  assert.match(json, /❌ table:public\.media_assets/, "un vrai prérequis absent reste un écart");
+  // --attendu : depuis la sélection, une fonction sert légitimement un commit plus ancien.
+  const B = modifier(m, [SHARED + "plafond.js"]);   // concerne ask-ai, export-account, notify-call ; pas delete-account
+  const pub = lancer(["--public", "--attendu", B], { PASSIO_FAUX_MONDE: m.etat, NODE_OPTIONS: "--import=" + PRECHARGE, SUPABASE_URL: `https://${PROD}.supabase.co`, PASSIO_SITE: "https://site.invalid" });
+  assert.match(pub, new RegExp(`✅ delete-account sert ${m.A.slice(0, 12)}, à jour pour ${B.slice(0, 12)} : rien de ce qui la concerne n'a changé depuis`));
+  for (const f of ["ask-ai", "export-account", "notify-call"]) assert.match(pub, new RegExp(`❌ ${f} ne sert pas le SHA attendu \\(${m.A.slice(0, 12)}\\), et ce qui la concerne a changé depuis`), f);
+  servir(m, { "ask-ai": B });
+  assert.match(lancer(["--public", "--attendu", B], { PASSIO_FAUX_MONDE: m.etat, NODE_OPTIONS: "--import=" + PRECHARGE, SUPABASE_URL: `https://${PROD}.supabase.co`, PASSIO_SITE: "https://site.invalid" }), /✅ ask-ai sert le SHA attendu/);
+});
+
 // ── ⑭ ⑮ L'accord des listes, et la forme du job ─────────────────────────────
 test("⑭ une seule liste de fonctions : les dossiers, le manifeste et les deux listes fermées du workflow nomment les mêmes", () => {
   const dossiers = fs.readdirSync(path.join(RACINE, "supabase/functions"), { withFileTypes: true })
@@ -812,11 +1039,17 @@ test("⑮ la forme du job : la sélection et la retenue précèdent le déploiem
   assert.deepEqual(avecJeton, ["Retenue", "Déployer"]);
   // Ce qui DÉPLOIE dépend du plan ; ce qui LIT et ÉPROUVE tourne à chaque passage — sans fonction d'état.
   for (const nom of ["Révision", "Déployer"]) assert.equal(etapes[rang(nom)].if, "steps.retenue.outputs.deployables != ''", nom);
-  assert.equal(etapes[rang("Verdict")].if, "steps.retenue.outputs.retenues != ''");
+  assert.equal(etapes[rang("Verdict")].if, "steps.retenue.outputs.retenues != '' || steps.retenue.outputs.sans_prerequis != ''");
   for (const nom of ["Cible", "Sélection", "Retenue", "Test de fumée", "Trace"]) assert.equal(etapes[rang(nom)].if, undefined, nom);
   // La fumée reçoit ce que la sélection a lu (les révisions servies) et ce que la retenue a lu (l'état du réglage).
-  assert.deepEqual(etapes[rang("Test de fumée")].env, { MEDIAS_ACTIFS: "${{ steps.retenue.outputs.etat_medias_proteges_actif }}", SERVIES: "${{ steps.selection.outputs.servies }}" });
+  assert.deepEqual(etapes[rang("Test de fumée")].env, { MEDIAS_ACTIFS: "${{ steps.retenue.outputs.etat_medias_proteges_actif }}", SERVIES: "${{ steps.selection.outputs.servies }}",
+    RETENUES: "${{ steps.retenue.outputs.retenues }}", PLAN: "${{ steps.retenue.outputs.plan }}" });
+  // Chaque étape exige le témoin de celle d'avant, et la retenue relit ce qui est en service.
   assert.equal(etapes[rang("Retenue")].env.SELECTION, "${{ steps.selection.outputs.selection }}");
+  assert.equal(etapes[rang("Retenue")].env.EN_SERVICE, "${{ steps.selection.outputs.a_jour }}");
+  // Les requêtes de la fumée sont bornées et retentées une fois : une fonction muette ne fige pas le job.
+  assert.match(etapes[rang("Test de fumée")].run, /requete\(\) \{ curl -sS --max-time 10 --retry 1 "\$@" \|\| true; \}/);
+  assert.doesNotMatch(etapes[rang("Test de fumée")].run.replace(/requete\(\) \{[^\n]*/, ""), /\bcurl\b/, "toute requête de la fumée passe par requete()");
   // Le déclencheur : le manifeste et les scripts du job relancent la sélection.
   const chemins = doc.on.push.paths;
   // …et tout supabase/ : ce que la sélection compare est ce qui déclenche (un config.toml seul relance) ;

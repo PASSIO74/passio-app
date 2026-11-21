@@ -14,6 +14,8 @@
 #   ③ ter une cible SANS la table `reglages_distants` n'est pas une cible illisible :
 #      la fonction qui exige le réglage est retenue, les autres partent ; l'état du
 #      réglage se lit à chaque passage, même sans fonction à vérifier ;
+#   ③ quater `--en-service` : les prérequis d'une fonction servie non redéployée sont
+#      RELUS — absents, rien n'est retenu, mais c'est dit (`sans_prerequis`) ;
 #   ④ lecture seule : la requête ne peut pas écrire (read only) ;
 #   ⑤ une fonction hors manifeste ne se déploie pas ;
 #   ⑥ MUTATION : retirer l'objet obligatoire du manifeste → le banc rougit ici
@@ -141,6 +143,20 @@ Q "update public.reglages_distants set valeur = '{\"actif\": \"true\"}' where cl
 JOUER_PARTIEL "private-media"
 verifier "une chaîne « true » n'est pas un booléen : le réglage manque, et l'état est lu « false »" "1|etat_medias_proteges_actif=false" "$(printf '%s\n' "$SORTIE" | grep "❌ private-media : RETENUE" | grep -c "reglage:medias_proteges.actif:booleen" || true)|$(grep '^etat_' "$PLAN")"
 Q "drop table public.reglages_distants;" >/dev/null
+
+echo "── ③ quater --en-service : CE QUI TOURNE EST RELU, JAMAIS RETENU ─────────"
+# Ne vérifier que ce qui part cessait de relire les prérequis des autres : une dérive en base sous une
+# fonction en service ne se voyait plus (seconde contre-revue du 21/11).
+JOUER_SERVIES() { : > "$PLAN"; set +e; SORTIE="$(cd "$RACINE" && GITHUB_OUTPUT="$PLAN" node scripts/verifier-prerequis-fonctions.mjs --fonctions "$1" --en-service "$2" --psql "$CONN" --partiel 2>&1)"; CODE=$?; set -e; }
+JOUER_SERVIES "delete-account" "export-account notify-call"
+verifier "code 0 : delete-account part, rien n'est retenu" "0|deployables=delete-account|retenues=" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")"
+verifier "…export-account, en service sans son instantané, est dite" "sans_prerequis=export-account" "$(grep '^sans_prerequis=' "$PLAN")"
+verifier "…nommée avec ce qui manque" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account (en service, non redéployée) : PRÉREQUIS ABSENT" || true)"
+verifier "…notify-call (facultatif absent) : dite, sans compter" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ notify-call (en service, non redéployée) : facultatif absent" || true)"
+verifier "…et le run finira rouge, c'est annoncé" "1" "$(printf '%s\n' "$SORTIE" | grep -c "EN SERVICE SANS PRÉREQUIS : export-account" || true)"
+JOUER_SERVIES "" "delete-account"
+verifier "rien à déployer, delete-account en service et en règle : plan vide, rien à signaler" "0|deployables=|retenues=|sans_prerequis=" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")|$(grep '^sans_prerequis=' "$PLAN")"
+verifier "…le plan porte son témoin" "plan=lu" "$(grep '^plan=' "$PLAN")"
 
 echo "── ④ LECTURE SEULE ───────────────────────────────────────────────────────"
 verifier "une écriture dans la même forme de transaction est refusée" "REFUSE" "$(if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -1 -v ON_ERROR_STOP=1 -c "set transaction read only; create table public.tentative_ecriture (x int);" >/dev/null 2>&1; then echo OK; else echo REFUSE; fi)"
