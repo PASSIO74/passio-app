@@ -1732,6 +1732,13 @@ test("T2-n la mémoire du canari se lit dans SES marques : les plus récentes d'
   banc.base.semer("analytics_events", [marque(130), marque(20), marque(5)]);
   const f = await appeler({ action: "etat" });
   assert.deepEqual([f.corps.canari.suite, f.corps.canari.depuis], [2, "2026-11-21T10:00:00.000Z"]);
+  // Depuis la seconde relecture (un trou de plus de 35 min clôt la suite), ce cas-là tient AUSSI par l'écart : la fenêtre
+  // se prouve sur une suite CONTINUE (un refus par quart d'heure depuis 08:00) — relue sur deux heures, elle part de 08:30.
+  // RÉINJECTION R141 (la lecture sans fenêtre) → « depuis » 08:00, suite 10.
+  await monter({ battement: false });
+  banc.base.semer("analytics_events", Array.from({ length: 10 }, (_, i) => marque(140 - 15 * i)));
+  const fc = await appeler({ action: "etat" });
+  assert.deepEqual([fc.corps.canari.suite, fc.corps.canari.depuis, fc.corps.canari.rouge], [8, "2026-11-21T08:30:00.000Z", true]);
 
   // ── Des marques FORGÉES : la RLS `analytics_insert_own` laisse tout compte écrire cet événement sous SON identifiant. Deux
   // refus « table pleine » dans deux quarts d'heure, écrits par un compte : ni ligne, ni voyant, ni sonnerie. Seules comptent

@@ -2345,6 +2345,23 @@ test("T2-a bilanCanari : « deux fois de suite » = deux quarts d'heure DISTINCT
   assert.equal(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(34, MOTIF_DELAI), refus(49, MOTIF_DELAI)], T_CANARI).rouge, true, "à 34 min, le dernier refus grave tient encore");
   // Un succès borne aussi les refus graves : délai, SUCCÈS, délai, débit → un seul refus grave dans la suite.
   assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), succes(35), refus(50, MOTIF_DELAI)], T_CANARI)), [2, true, false, "debit"]);
+  // ── Seconde relecture (21/11) : deux refus ne sont « de suite » que séparés de CANARI_MEMOIRE_MS au plus.
+  // B-1 — deux refus graves à 1 h 45 d'écart, reliés par six refus de débit (qu'un tiers provoque) : pas rouge.
+  // RÉINJECTION R145 (le trou entre deux refus graves ne clôt plus les graves) → rouge.
+  const relies = bilanCanari([refus(5, MOTIF_DELAI), ...[20, 35, 50, 65, 80, 95].map((n) => refus(n, MOTIF_DEBIT)), refus(110, MOTIF_DELAI)], T_CANARI);
+  assert.deepEqual(vu(relies), [8, true, false, "debit"], "deux refus graves éloignés, reliés par du débit, ne font pas « deux fois de suite »");
+  assert.equal(relies.motif, MOTIF_DEBIT);
+  assert.equal(bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(40, MOTIF_DELAI)], T_CANARI).rouge, true, "35 min entre deux refus graves : encore de suite");
+  assert.equal(bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(41, MOTIF_DELAI)], T_CANARI).rouge, false, "36 min : plus de suite grave");
+  // B-2 — un refus isolé, la veille muette plus de 35 min (son succès n'a laissé aucune marque), un second refus isolé.
+  // RÉINJECTION R144 (le trou entre deux refus ne clôt plus la suite) → rouge.
+  assert.equal(marqueCanari({ emis: true }, bilanCanari([refus(45)], T_CANARI)), null, "prémisse : à 45 min, le bilan n'est plus « en cours », le succès ne se note pas");
+  const isoles = bilanCanari([refus(5), refus(95)], T_CANARI);
+  assert.deepEqual([isoles.enCours, isoles.suite, isoles.refuse, isoles.rouge, isoles.depuis], [true, 1, false, false, "2026-11-21T10:15:00.000Z"], "deux refus isolés à 1 h 30 ne font pas « deux fois de suite »");
+  assert.deepEqual(vu(bilanCanari([refus(5), refus(40)], T_CANARI)), [2, true, true, "table_pleine"], "35 min entre deux refus : encore de suite");
+  assert.deepEqual(vu(bilanCanari([refus(5), refus(41)], T_CANARI)), [1, false, false, "table_pleine"], "36 min : la suite est close");
+  // Le trou clôt aussi le débit d'avant : débit, débit, [trou de 50 min], table pleine, table pleine → la suite s'arrête au trou.
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(70), refus(85)], T_CANARI)), [2, true, false, "debit"]);
   // Une classe inconnue (marque d'une autre version) retombe sur la liste fermée ; le motif reste borné.
   const autre = bilanCanari([{ ...refus(5), properties: { ok: false, classe: "<script>", motif: "x".repeat(500) } }, refus(20)], T_CANARI);
   assert.deepEqual([autre.classe, autre.rouge, autre.motif.length], ["autre", true, 120]);
@@ -2720,6 +2737,8 @@ test("T2-m la migration des classes et le code se tiennent : le fichier que l'é
   assert.ok(manifeste.objets.includes("function:public.telemetrie_remplissage()"));
   assert.equal(manifeste.obligatoire, false, "obligatoire, il retiendrait le déploiement de la fonction tant que la migration n'est pas appliquée");
   assert.ok(manifeste.sans.includes(MIGRATION_TELEMETRIE_CLASSES));
+  // Le plan que la CI en tire est exécuté dans tests/unit/deploiement-fonctions.test.mjs (T2-p) : importé ici, le script de
+  // la retenue ferait de cette suite un banc du job qui déploie (edge-functions-verrous ⑩).
   // Le banc SQL existe, et tourne sans ligne dans le workflow (scripts/bancs-sql-restants.sh le ramasse).
   assert.ok(fs.existsSync("tests/sql/migration-telemetrie-classes.test.sh"));
   assert.match(fs.readFileSync("scripts/bancs-sql-restants.sh", "utf8"), /tests\/sql\/\*\.test\.sh/);

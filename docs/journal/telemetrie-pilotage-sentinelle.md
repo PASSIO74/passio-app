@@ -2309,6 +2309,12 @@ débit — que tout porteur de la clé publique provoque — sonnait « refusée
 seul refus de débit au milieu d'un vrai rouge sonnait « Problème résolu ». La classe et le motif
 rendus sont ceux de ce qui décide : le dernier refus grave si c'est rouge, le dernier refus de débit
 si la ligne est là sans être rouge.
+⚠️ **DEUX REFUS NE SONT « DE SUITE » QUE SÉPARÉS DE 35 MIN AU PLUS** (`CANARI_MEMOIRE_MS`, seconde
+relecture, B-1 et B-2). La suite s'arrête au premier trou plus long entre deux refus, et les refus
+graves au premier trou plus long entre deux refus GRAVES. Sans cela : une veille muette plus de 35 min
+après un refus isolé ne notait pas le succès d'entre-temps (le bilan n'était plus « en cours ») et un
+second refus isolé, une heure plus tard, faisait « refusée deux fois de suite » ; deux délais isolés à
+1 h 45 d'écart, reliés par des refus de débit qu'un tiers provoque, faisaient de même.
 
 ⚠️ **LE MOTIF EST UN TEXTE DU SERVEUR : IL NE SORT QUE DANS `reference`**, que la page rend en texte
 (borné à 120 caractères, sans caractère de contrôle). Titres, `quoi`, raisons du voyant, texte de la
@@ -2425,13 +2431,19 @@ session distante). Dans l'ordre, staging puis production (`.passio/migrations/RE
    l'instruction, pas la réponse HTTP de PostgREST ; sinon les clients en cache garderaient leur lot.
 Retour arrière : le bloc `--|` de l'en-tête, à l'éditeur SQL ; le pilotage retombe seul sur un compte.
 
-**Mise en service du temps 1** (après fusion) : le site (job « Déploiement production »), puis la
-fonction `pilotage` SEULE, par `edge-functions.yml` en `workflow_dispatch` (`fonction=pilotage`,
-`cible=production`). ⚠️ La fusion déclenche aussi le passage « toutes fonctions » (push sur
-`supabase/functions/**`), qui finit RETENU : c'est attendu, à ne pas « réparer » (constat de la
-contre-vérification du plan sur les passages précédents ; non relu depuis cette session, le
-connecteur GitHub n'y était pas joignable). Entre la fusion et ce déploiement, la page est neuve et
-la fonction ancienne : pas de clé `remplissage`, la page se rend comme avant. Preuve : l'en-tête
+**Mise en service du temps 1** (après fusion) : AUCUN geste depuis #1002. La fusion touche
+`supabase/functions/**` : le run « Edge Functions » de ce push sélectionne les fonctions dont le code
+servi n'est plus celui du commit — ici `pilotage` seule, la seule qui importe `_shared/pilotage.js`
+et `_shared/battement.js` —, vérifie ses prérequis (`--partiel`), la déploie et l'éprouve. La
+fonction SQL `telemetrie_remplissage()` y est déclarée FACULTATIVE (`obligatoire: false`) : sans la
+migration, `pilotage` sort « dégradée (facultatif absent) », dans `deployables`, jamais dans
+`retenues` — tenu par T2-p de `tests/unit/deploiement-fonctions.test.mjs` (le `dresserPlan` de la CI
+sur le manifeste réel ; R146 le rend obligatoire → rouge) et rejoué contre un PostgreSQL 16 jetable avec le script de la CI. Si ce run
+rougit, c'est pour une AUTRE fonction (une retenue, ou une fonction en service dont un prérequis
+obligatoire manque) : son résumé la nomme, `pilotage` est partie quand même. Le site part en
+parallèle (job « Déploiement production ») ; dans les deux ordres la page se rend : une fonction
+d'avant ne rend pas de clé `remplissage` (la page se rend comme avant, T2-g), une page d'avant
+rend les lignes « À faire » qu'elle reçoit et n'affiche pas la note « attendent la migration ». Preuve : l'en-tête
 `X-Passio-Revision` de la fonction porte le commit ; l'action `etat` rend `remplissage.migration` et
 la jauge « Table de télémétrie » ; au quart d'heure suivant, aucune marque `pilotage_canari`.
 
@@ -2522,6 +2534,11 @@ tests verts. T2-n les EXÉCUTE : quatorze marques (les deux récentes font le ro
 laisse tout compte écrire cet événement sous le sien : ni ligne, ni voyant, ni sonnerie). ③ A-4 :
 l'en-tête de la migration disait qu'aucun lecteur ne relit la classe courte au-delà de 26 h ; la
 médiane sur 9 jours du chien de garde le fait (limite 9) — l'en-tête le dit. ④ A-5 : limite 18.
+Seconde relecture (même jour) : aucune objection bloquante, deux mineurs soldés par une même règle
+d'écart (ci-dessus) — B-1, deux refus graves éloignés reliés par du débit ; B-2, deux refus isolés
+autour d'une veille muette. T2-a joue les deux cas et les bornes 35/36 min (R144, R145). Piège du
+registre : sous la règle d'écart, R141 (lecture sans fenêtre) restait VERT — le refus de 2 h 10 de
+T2-n était déjà écarté par le trou ; T2-n prouve désormais la fenêtre sur une suite CONTINUE.
 
 **Écarts au plan, et pourquoi.** ① `lireRemplissage` LÈVE sur un remplissage non mesuré (le plan
 rendait une jauge grise) : voir plus haut. ② Le banc SQL part de la structure de production
@@ -2534,8 +2551,9 @@ lieu de lever.
 
 Verrous : `tests/unit/pilotage.test.mjs` (T2-a à T2-g, T2-m), `tests/unit/pilotage-chemins.test.mjs`
 (T2-h à T2-l et T2-n, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
+`tests/unit/deploiement-fonctions.test.mjs` (T2-p, le plan de déploiement sans la migration),
 `tests/e2e/pilotage-nuage.spec.js` (㊹), `tests/sql/migration-telemetrie-classes.test.sh` (91
-contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R143 au registre
+contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R146 au registre
 (`scripts/reinjections-pilotage.mjs`), toutes rouges, plus trois à la main sur le test navigateur.
 
 **Hors lot** : compteur des lignes écartées ; recul plus long du client sur « table pleine »

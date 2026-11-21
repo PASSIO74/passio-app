@@ -1988,6 +1988,11 @@ export function marqueCanari(resultat, bilan) {
  * si c'est rouge ; le dernier refus de débit si la ligne est là sans être rouge (il
  * y en a toujours un : sans débit, deux quarts d'heure refusés sont deux graves) ;
  * le dernier refus tant qu'il n'y a pas de ligne.
+ * Deux refus ne sont « de suite » que séparés de CANARI_MEMOIRE_MS au plus (seconde
+ * relecture du 21/11, B-1 et B-2) : la suite s'arrête au premier trou plus long, et
+ * les refus graves au premier trou plus long ENTRE DEUX REFUS GRAVES — un succès
+ * qu'une veille muette n'a pas noté, ou des refus de débit forgés entre deux refus
+ * graves isolés, ne font plus « refusée deux fois de suite ».
  */
 export function bilanCanari(marques, maintenant = Date.now()) {
   const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
@@ -1999,14 +2004,24 @@ export function bilanCanari(marques, maintenant = Date.now()) {
   if (!derniere || derniere.p.ok !== false || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;
   const quart = (m) => Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3));
   const fenetres = new Set(), graves = new Set();
-  let depuis = derniere.t, grave = null, debit = null;
+  let depuis = derniere.t, grave = null, debit = null, precedent = derniere.t, precedentGrave = null, gravesClos = false;
   for (const m of lues) {
     if (m.p.ok !== false) break;
+    // Un trou de plus de CANARI_MEMOIRE_MS entre deux refus CLÔT la suite (seconde relecture, B-2) : une veille
+    // muette plus de 35 min ne noterait pas le succès d'entre-temps, et deux refus isolés feraient « de suite ».
+    if (precedent - m.t > CANARI_MEMOIRE_MS) break;
+    precedent = m.t;
     fenetres.add(quart(m));
     depuis = m.t;
     // Triées de la plus récente à la plus ancienne : la première rencontrée de chaque sorte est la dernière en date.
     if (classeCanari(m.p.classe) === "debit") debit = debit || m;
-    else { graves.add(quart(m)); grave = grave || m; }
+    else if (!gravesClos) {
+      // Même règle entre deux refus GRAVES (B-1) : des refus de débit, que tout porteur de la clé publique
+      // provoque, ne relient pas deux refus graves éloignés en « deux fois de suite ».
+      if (precedentGrave !== null && precedentGrave - m.t > CANARI_MEMOIRE_MS) { gravesClos = true; continue; }
+      precedentGrave = m.t;
+      graves.add(quart(m)); grave = grave || m;
+    }
   }
   const refuse = fenetres.size >= CANARI_SUITE_MIN;
   const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;

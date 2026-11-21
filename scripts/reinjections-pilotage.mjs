@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 131 depuis la contre-revue du lot
+//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 142 depuis le rebase sur #1003 et la seconde relecture du lot T2
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -180,6 +180,11 @@ const M = [
   ["R141 les marques du canari se lisent sans fenêtre (un refus de la veille allonge la suite)", FN, `\n    .gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, `\n    .order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, BANC, "T2-n"],
   ["R142 une marque du canari écrite par un compte est crue (tout compte ferait sonner)", FN, `.eq("event", EVT_CANARI).eq("user_id", "systeme:pilotage")`, `.eq("event", EVT_CANARI)`, BANC, "T2-n"],
   ["R143 un 42883 levé depuis la fonction SQL ouvre le repli (seuils d'avant migration sur une table protégée)", FN, `    if (error && !fonctionSqlAbsente(error)) throw error;\n    const n = await avecDelai(`, `    if (error && !estObjetAbsent(error)) throw error;\n    const n = await avecDelai(`, BANC, "T2-j"],
+  // Seconde relecture du lot (2026-11-21, B-1 et B-2) : deux refus ne sont « de suite » que séparés de 35 min au plus ;
+  // et le manifeste du déploiement laisse partir `pilotage` avant la migration.
+  ["R144 un trou de plus de 35 min entre deux refus ne clôt plus la suite (une veille muette fait « deux fois de suite » de deux refus isolés)", PJ, `    if (precedent - m.t > CANARI_MEMOIRE_MS) break;\n`, ``, PUR, "T2-a"],
+  ["R145 des refus de débit relient deux refus graves éloignés en « deux fois de suite »", PJ, `if (precedentGrave !== null && precedentGrave - m.t > CANARI_MEMOIRE_MS) { gravesClos = true; continue; }`, `if (false) { gravesClos = true; continue; }`, PUR, "T2-a"],
+  ["R146 telemetrie_remplissage() devient obligatoire : `pilotage` retenue tant que la migration n'est pas appliquée", ".passio/deploiement/prerequis-fonctions.json", `"obligatoire": false,\n      "sans": "aucun prérequis SQL propre : lit des tables de base`, `"obligatoire": true,\n      "sans": "aucun prérequis SQL propre : lit des tables de base`, "tests/unit/deploiement-fonctions.test.mjs", "T2-p"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
