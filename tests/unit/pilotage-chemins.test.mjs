@@ -1633,3 +1633,47 @@ test("veille : secret absent ou vide, clé anon et JWT pilote ne donnent aucun a
     assert.equal(banc.pushes.length,0);
   }
 });
+
+// ═══ T4 — « La Sentinelle n'a pas tout traité », de bout en bout (2026-11-21) ═══════════════════
+test("T4-k l'état « pas tout traité » : l'écran passe à l'orange avec SA ligne, même enfoui sous le bruit ; la veille ne sonne pas pour lui, et il ne TIENT pas le voyant — un rouge réglé sonne « résolu »", async () => {
+  // Un tiers peut provoquer cet état en gonflant un volume (150 lignes par minute et par compte). Il ne doit pouvoir ni
+  // faire sonner, ni figer la veille. RÉINJECTION : ajouter l'issue d'état au calcul de `incomplet` de la veille → le
+  // rouge mémorisé est TENU, « ✅ Problème résolu » ne part plus, rouge (c'est la DESCENTE qui casse : tenirVerdict laisse
+  // toujours monter).
+  await monter({ battement: false });
+  for (let n = 1; n <= 150; n++) banc.gh.issues.push(issue({ number: 1000 + n, title: "bruit " + n, user: { login: "inconnu" } }));
+  banc.gh.issues.push(issue({ number: 81, title: "[SENTINELLE PARTIELLE] pas tout traité : boutons", labels: [M_PILOTAGE.LABEL_SENTINELLE_PARTIELLE], created_at: ilYa(40 * 864e5) }));
+  // L'écran : orange, la raison dite, la ligne et son seul bouton.
+  const e = await appeler({ action: "etat" });
+  assert.equal(e.status, 200);
+  assert.equal(e.corps.verdict.couleur, "orange");
+  assert.ok(e.corps.verdict.raisons.includes("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé"), JSON.stringify(e.corps.verdict));
+  const l = ligneAFaire(e, "sentinelle:partielle");
+  assert.ok(l, "la ligne est rendue : " + (e.corps.aFaire || []).map((x) => x.id).join(", "));
+  assert.deepEqual([l.titre, l.prio, l.quoi], ["La Sentinelle n'a pas tout traité", 1, "Relance sa lecture maintenant."]);
+  assert.deepEqual(l.gestes.map((g) => [g.libelle, g.corps]), [["Régler", { action: "relancer", cible: "sentinelle" }]]);
+  assert.equal(ligneAFaire(e, "issue:81"), null, "jamais « Une note ouverte » avec un bouton Fermer");
+  assert.ok(!(e.corps.github.aReparer || []).some((x) => x.numero === 81), "un volume ne se répare pas");
+  // La veille : l'orange se note, rien ne sonne, la lecture est complète.
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "orange");
+  assert.equal(banc.pushes.length, 0, "l'orange ne sonne jamais");
+  assert.equal(evenements(BATTEMENT).at(-1).properties.lectures.github, "ok");
+  // Un sujet qui attend le pilote : rouge, et il sonne — l'état ouvert n'y change rien.
+  banc.gh.issues.push(issue({ number: 7, title: "[SENTINELLE] récidive", labels: ["humain"] }));
+  await passageSuivant();
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème sur PASSIO/);
+  const sonneries = banc.pushes.length;
+  // Le sujet est réglé, l'état « pas tout traité » est toujours ouvert : le voyant DESCEND à l'orange et le dit.
+  banc.gh.issues.find((i) => i.number === 7).state = "closed";
+  await passageSuivant();
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "orange", "le voyant mémorisé n'est pas tenu au rouge");
+  assert.ok(banc.pushes.length > sonneries, "« résolu » est parti");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+  assert.match(banc.pushes.at(-1).charge.texte, /quelques points à surveiller/);
+  assert.equal(evenements(BATTEMENT).at(-1).properties.lectures.github, "ok", "le battement ne dit pas une lecture incomplète");
+  assert.ok(!banc.console.some((x) => /lecture incomplète/.test(x)), banc.console.join("\n"));
+});

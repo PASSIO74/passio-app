@@ -58,6 +58,7 @@
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 - 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
 - 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
+- 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -2022,3 +2023,164 @@ des `perf`, avant et après.
 - `controle-cible-pilote.mjs --attendu` lit les clôtures de l'arbre de travail : à lancer dans un clone placé sur le SHA attendu. Une fonction en avance sur ce SHA, ou incertaine, y reste comptée en écart.
 - Restent sans épreuve : le délai de 30 s et la panne réseau du vérificateur (le faux monde ne lève pas pour l'API de gestion), et la lecture de la dernière révision quand deux blocs d'en-têtes arrivent.
 - Le lexeur perd un import dans deux formes artificielles, sur une seule ligne (`i++ / 2; import(…); c / 3`, et une expression régulière après `if (…)`). Aucun cas dans le dépôt ; ⓪ du banc des verrous rougirait pour un module de `_shared` devenu orphelin.
+
+## 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
+
+Trou T4 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (« la Sentinelle s'aveugle par ses plafonds de
+lecture »), dans sa part **sans migration**, plus le seul cas de T9 qui faisait mentir l'écran.
+Fichiers : `scripts/sentinelle-detecter.mjs`, `.github/workflows/sentinelle-autonome.yml`,
+`supabase/functions/_shared/pilotage.js` (et un mot `export` dans `_shared/parcours.js`).
+Fiche de la chaîne : `docs/SENTINELLE_AUTONOME.md`, section « Elle lit tout, ou elle dit ce qu'elle n'a pas lu ».
+
+**Le défaut, en une phrase** : quand il y avait trop à lire, la Sentinelle cessait de juger — des
+familles entières (boutons, parcours) ou tout ce qui dépassait les 1 000 lignes les plus récentes
+(erreurs JS, appels refusés) — et sans place d'enquête elle ne lisait même plus la production. Le run
+finissait VERT, et le pilote lisait « rien à corriger ».
+
+**Mesuré en lecture seule (canal ①) le 2026-11-21 à 07:12 UTC, production, 72 h** : 84 sessions ;
+1 909 « effets » (`action|nav|api|flow`), soit 22,7 par session — le plafond de 10 000 lignes mordait
+donc vers 435 à 440 sessions par 24 h, et la famille bouton entière ne désignait alors plus rien ; 984
+de ces effets (52 %) sont les six marqueurs de pose d'interface, 164 chacun, émis au chargement et
+jamais par un geste ; 60 effets au plus dans une session ; 243 clics, dont 183 avec un compte, venus de
+2 comptes distincts — aucun bouton ne réunit donc aujourd'hui les 3 comptes qu'exige une enquête.
+(Mesures de la conception, même jour 05:37 UTC, non refaites : 165 des 176 clics avec compte sont ceux
+de l'équipe ; les appels refusés avec compte pèsent 0,33 ligne par session au calme ; aucun identifiant
+de session hors de `^[A-Za-z0-9_-]{6,64}$`.)
+
+**Ce qui change.**
+- **Une lecture dit si elle est complète.** `lirePagine` s'arrête sur une page VIDE — l'ancien test
+  « moins de lignes que demandé = fini » était toujours vrai dès que le serveur sert moins que la
+  demande (`lireApi` demandait 2 000, la base en sert 1 000). Deux bornes de temps fixées avant la
+  première page, tri sur (colonne, id). Les trois lectures « devoir » lisent dix pages du plus récent
+  au plus ancien et rendent `{ lignes, complet }` ; tronquées, elles restent classées (compteurs
+  plancher). **Seule la première requête lève** : une page suivante refusée ou expirée (le rôle
+  `authenticator` porte `statement_timeout=8s`, relu dans `pg_roles` le 21/11) rend ce qui est lu avec `complet: false` — dix requêtes
+  par lecture au lieu d'une, faire échouer le passage sur la neuvième aurait ouvert [SENTINELLE MUETTE]
+  pour une lecture presque entière. Un délai de 20 s par requête.
+- **Les boutons en deux temps** (`lireFamilleBoutons`) : les clics de comptes, le classement rejoué
+  sans aucun effet (le pire cas), puis les effets des seules sessions des groupes suspects, par lots
+  de 40. Un groupe est relu en entier ou pas du tout. Plafond de durée de 2 minutes sur ce second temps.
+- **Les marqueurs de pose ne sauvent plus un clic** ; **les clics d'un robot ou d'une émulation ne
+  pèsent plus** (l'équipe reste).
+- **L'ancienneté par candidat** (30 comptes tirés, 60 pour un bouton ; 150 comptes DISTINCTS par groupe
+  de familles ; une mémoire pour le passage). Avant, une famille de 60 comptes mangeait tout le budget
+  et les suivantes n'étaient plus relues. Un refus du service d'authentification est COMPTÉ (il valait
+  « compte récent » en silence) ; dix refus de suite coupent la relecture pour tout le passage.
+- **Le passage lit toujours** : « Lire la production » et la dédup ne dépendent plus d'une place libre ;
+  seule « Ouvrir l'enquête » en dépend.
+- **Ce qui n'est pas lu se dit au pilote** : le verdict porte `lecture` (codes fermés), l'étape « État
+  de lecture » ouvre ou réécrit UNE issue `[SENTINELLE PARTIELLE]` (label `sentinelle-partielle`,
+  `github.token`), le pilotage affiche « La Sentinelle n'a pas tout traité » en orange, et les lignes
+  « erreurs » et « parcours » ne disent plus « rien à corriger » / « rien d'assez sûr » tant qu'elle
+  est ouverte.
+
+⚠️ **UN BUDGET N'EST PAS UNE LEVÉE.** Le seuil passe d'environ 435 à environ 2 000 sessions par jour ;
+au-delà, les boutons les plus cliqués ne sont plus jugés, c'est dit à l'écran, et seul l'agrégat SQL
+fermera le trou. Les 2 000 sessions valent pour l'UNION des groupes suspects, et le premier temps
+retient presque tout bouton populaire (sans effet, tout clic est mort) : passé ce volume, ce sont les
+petits groupes qui sont jugés.
+
+⚠️ **RETIRER LES SEULS « EFFETS » D'UN APPAREIL ÉLARGIT CE QUI DEVIENT UNE ENQUÊTE.** L'audit écrivait
+« exclure le trafic équipe, robot, émulation des effets ». Retirer les effets en gardant les clics fait
+de chaque clic de cet appareil un clic MORT. Ce sont donc les CLICS qui sortent. Et l'équipe ne sort
+pas : `CLAUDE.md` dit que `meta.trafic` sort un appareil de l'audience, jamais des erreurs ; la famille
+parcours la garde ; 94 % des clics avec compte du jour sont les siens (168 sur 179, mesure de la
+contre-vérification) ; et retirer des clics SAINS peut
+faire passer un bouton sous 20 % d'effet. `TRAFIC_ECARTE` est exporté de `_shared/parcours.js` et
+importé par le détecteur : une définition, pas une quatrième copie.
+
+⚠️ **UN FILTRE QU'ON NE PEUT PAS ÉPROUVER NE PART PAS.** Le premier plan filtrait les marqueurs de pose
+côté serveur (`or=(action.is.null,action.not.in.(…))`). Aucun `or=(` n'existe dans le dépôt, l'API est
+injoignable d'un bac, et aucune requête du second temps ne partira tant qu'aucun bouton ne réunit trois
+comptes : la syntaxe ne se serait révélée fausse que le jour où la famille aurait eu quelque chose à
+juger. L'exclusion ne vit que dans `indexEffets`, et une **lecture témoin** d'une ligne éprouve la forme
+exacte du second temps dès qu'un clic est lu (`sources.boutons.temoin`).
+
+⚠️ **LE CODE « ANCIENNETÉ » NE VAUT QUE POUR UN DÉFAUT ÉCARTÉ.** Un candidat RETENU sur un échantillon
+de 30 comptes parmi 200 est jugé (trois anciens suffisent) : le compter « lu en partie » aurait passé
+l'écran à l'orange à chaque vrai incident, le mieux prouvé de tous. `nonRetenusNonRelus` ne compte que
+les candidats non retenus qui gardent un compte jamais relu.
+
+⚠️ **L'ÉTAT NE TIENT JAMAIS LE VOYANT DE LA VEILLE.** N'importe quel compte peut gonfler un volume
+(150 lignes par minute) et provoquer l'orange. Il ne peut ni faire sonner (seul le rouge sonne), ni
+figer la veille : l'issue d'état n'entre pas dans `incomplet` (`pilotage/index.ts`). ⚠️ Le premier cas
+de banc écrit pour ça ne mordait pas — `tenirVerdict` laisse toujours MONTER le voyant, donc « un rouge
+suivant sonne » restait vrai avec le défaut ; c'est la DESCENTE qui casse (« ✅ Problème résolu » ne
+part plus). Le cas T4-k rejoue la descente.
+
+**Pièges d'écriture rencontrés.**
+- Aucune apostrophe dans un bloc `node --input-type=module -e '…'` du workflow : bash le cite entre
+  apostrophes simples, la première le referme. Tout le texte français de l'issue vit dans
+  `etatPartiel` ; le banc T4-w6 relit les deux blocs.
+- `PLACES` vaut « 0 » quand tout est pris, et l'ancienne lecture (`places > 0 ? places : 1`) en aurait
+  ouvert une : zéro est désormais zéro, illisible vaut 1 comme avant.
+- `for n in $(gh …)` ne voit pas l'échec de `gh` (le code d'une substitution dans l'en-tête d'une boucle
+  est perdu) : la liste à refermer se lit dans une variable AVANT la boucle.
+- Les clics se lisent du plus récent au plus ancien, donc les lots de sessions aussi : un banc qui
+  « refuse le premier lot » doit viser les sessions les plus récentes (le mien visait la mauvaise moitié
+  et restait vert sous sa réinjection).
+- Le banc ㉚⑥ lit trois instructions du bloc parcours dans le source, à 400 caractères près : elles sont
+  intactes. La relecture d'ancienneté de ce bloc reçoit seulement le compteur de refus du passage.
+- Sans hystérésis, une panne passagère ouvrait puis refermait l'issue d'état à chaque passage — un
+  e-mail et un changement de voyant par heure. Elle n'est refermée que 90 minutes après sa dernière
+  réécriture (le corps porte l'heure de sa mise à jour).
+
+**Des assertions de bancs EXISTANTS changent, et c'est voulu** (`sentinelle-detecter.test.mjs`) : les
+lecteurs rendent `{ lignes, complet }` et non plus une liste ; une lecture d'une page fait deux
+requêtes (la page, puis la page vide), celle du repli trois ; l'aide `avecFetchRendant` rend une page
+vide une fois son script épuisé (elle répétait sa dernière réponse) ; le `select` des clics porte
+`trafic:meta->>trafic` et l'identité serveur exigée. Leurs mutations d'origine mordent toujours.
+
+**Limites connues, non traitées ici.**
+- À l'échelle visée, l'état « lu en partie » sera DURABLE : appels refusés au-delà de 10 000 lignes par
+  jour (environ 2 000 sessions avec compte pendant un incident à 5 refus par session ; c'était 200
+  avant ce lot), boutons au-delà de 2 000 sessions. Voyant orange et ligne récurrente, avec un « Régler » qui ne peut pas régler un volume — il
+  se range après une relance (« Relue à HH:MM : toujours en partie »). C'est honnête et cela ne sonne
+  pas, mais c'est une fatigue d'alerte jusqu'au lot des agrégats SQL (`comptes_anciens(uuid[])`,
+  `sentinelle_familles`, `sentinelle_boutons`, `pilotage_parcours`), qui demande une migration.
+- La famille parcours tronquée ne désigne toujours rien au-delà de 10 000 étapes : c'est dit, pas levé.
+- `session_id` est écrit par le client : un seul compte peut gonfler un groupe au-delà de 2 000
+  sessions, ou une session au-delà de 5 000 effets, et rendre ce bouton « non jugé ». C'est dit
+  (orange), pas empêché.
+- Interaction avec la file priorisée du 20/11 (#997) : un clic LENT est prioritaire dans la file du
+  client, son effet (`action`, `nav`) ne l'est pas. Sous pression, la file peut jeter l'effet et garder
+  le clic, ce qui fabrique un clic mort. Les autres gardes tiennent (trois comptes anciens, clics
+  rageurs) ; c'est une source nouvelle de faux suspects, à mesurer.
+- **Tant que la fonction `pilotage` n'est pas redéployée, l'écran ne montre rien** : le label n'y est
+  pas encore suivi. L'issue existe sur GitHub (un e-mail), mais Benjamin ne lit pas ses e-mails : la
+  livraison n'est faite qu'après ce déploiement (`edge-functions.yml`, fonction `pilotage`).
+- Le banc T4-06 confronte `MARQUEURS_POSE` au code : tout futur lot d'interface qui émet un marqueur de
+  pose (`if (apply()) track("ui_v…")`) le fera rougir tant que le nom n'est pas inscrit dans la liste —
+  et l'inscrire touche `scripts/`, donc la contre-revue. C'est voulu ; c'est aussi écrit dans
+  `docs/lots-ui/INDEX.md`.
+- Le titre de l'issue d'état, public, nomme les familles tronquées : un tiers qui inonde y lit que cela
+  marche. Rien de neuf (le résumé du passage publie déjà ses sources), à garder en tête avant d'y
+  ajouter du détail.
+- Au-delà de 100 issues ouvertes, le pilotage lit un filtre par label suivi : un label de plus, donc
+  une requête GitHub de plus par lecture.
+- En pause, l'issue d'état reste ouverte (l'étape ne tourne plus) : sa ligne dit « En pause : elle ne
+  relit rien », sans bouton. Le filet générique « À vérifier » de l'écran, lui, garde son « Régler ».
+- Les autres effets ambiants (un appel réseau de fond dans les trois secondes) comptent toujours comme
+  l'effet d'un clic ; les clics des visiteurs sans compte ne sont plus lus du tout (ils ne pesaient déjà
+  rien dans une enquête).
+- Non vérifié contre le vrai PostgREST (API injoignable d'ici) : la double borne sur une même colonne
+  et le tri `order=<colonne>.desc,id.desc`. Pour un `offset` au-delà de la fin, les DEUX réponses
+  possibles valent « fini » : 200 et une liste vide (l'ordinaire, sans en-tête de comptage) ou 416.
+  **Ne pas ajouter d'en-tête `Prefer: count`.**
+
+**À vérifier après fusion** (résumé du premier passage, minute 23) : `lecture` vaut
+`{ "complet": true, "partiel": [] }` ; `sources.parcours` porte `lues` et non `erreur` ;
+`sources.boutons.temoin` vaut `"ok"`. **Critère de retour arrière** : un passage rouge, ou le moindre
+code dans `lecture.partiel` dès ce premier passage (les volumes du jour sont cent fois sous les
+plafonds), signifie une hypothèse PostgREST fausse — revert de la PR.
+
+Verrous : `sentinelle-detecter.test.mjs` T4-01 à T4-20 (dont `detecter()` exécutée de bout en bout),
+`sentinelle-workflows.test.mjs` T4-w1 à T4-w6 (les blocs `run:` réels rejoués), `pilotage.test.mjs`
+T4-a à T4-d, `pilotage-chemins.test.mjs` T4-k (la fonction exécutée). 111 réinjections, chaque garde
+retirée une à une et son cas vu rouge sur l'état final (67 pour le détecteur, 26 pour le workflow, 18
+pour la fonction) ; huit sont inscrites au registre (`scripts/reinjections-pilotage.mjs`, R120 à R127).
+⚠️ Trois réinjections sont d'abord restées VERTES, et c'est le banc qu'il a fallu reprendre : un repli
+« colonne absente » déclenché par n'importe quel refus (le cas faisait échouer le repli aussi), un
+classement du résumé qui aurait porté des groupes non jugés (aucun groupe non suspect n'avait dix
+clics), et la relecture d'ancienneté des parcours appelée sans le compteur de refus (aucun cas ne
+faisait échouer l'authentification sur un parcours).

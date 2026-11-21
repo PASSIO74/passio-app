@@ -62,8 +62,20 @@ export const RELANCES = {
   digest: { fichier: "digest.yml", libelle: "Digest (résumé du jour)" },
 };
 
+// L'ÉTAT « la Sentinelle n'a pas tout traité » (2026-11-21, audit « 100 000 », T4 et T9).
+// sentinelle-autonome.yml ouvre UNE issue sous ce label quand un passage n'a pas pu tout lire,
+// tout juger ou tout confier (lecture tronquée, boutons non jugés, ancienneté relue en partie,
+// budget d'enquêtes atteint avec des défauts en attente). Sans elle, l'écran disait « rien à
+// corriger ». Reconnue à son LABEL seul : il ne se pose qu'avec le droit d'écrire sur le dépôt.
+// ⚠️ Ce n'est PAS le label `sentinelle` : elle ne compte dans aucune enquête en cours, et elle
+// ne se répare pas (un volume n'est pas un défaut qu'un agent corrige).
+export const LABEL_SENTINELLE_PARTIELLE = "sentinelle-partielle";
+/** L'issue d'état ouverte, ou null. `issues` = les issues résumées de lireGithub. */
+export const sentinellePartielle = (issues) => (Array.isArray(issues) ? issues : [])
+  .find((i) => !!i && !i.pr && Array.isArray(i.labels) && i.labels.includes(LABEL_SENTINELLE_PARTIELLE)) || null;
+
 /** Les labels d'issues qui intéressent le pilote. */
-export const LABELS_SUIVIS = ["sentinelle", "veille", "humain", "moderation", "digest", "recidive", "reparation"];
+export const LABELS_SUIVIS = ["sentinelle", "veille", "humain", "moderation", "digest", "recidive", "reparation", LABEL_SENTINELLE_PARTIELLE];
 
 const borne = (s, n) => { const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n) + "…" : t; };
 
@@ -369,6 +381,10 @@ export function verdict(e) {
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
   if (enquetes) orange.push(`${enquetes} enquête(s) Sentinelle en cours`);
+  // La Sentinelle a dit ne pas avoir tout lu ou tout confié : orange, JAMAIS rouge (rien ne sonne),
+  // et jamais « incomplet » pour la veille — n'importe quel compte peut gonfler un volume, il ne
+  // doit pas pouvoir tenir le voyant (pilotage-chemins T4-k).
+  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé");
   const veille = issues.filter((i) => !i.pr && i.labels.includes("veille")).length;
   if (veille) orange.push("la veille signale un problème");
   const signal = Number(e && e.signalements && e.signalements.ouverts) || 0;
@@ -853,6 +869,21 @@ export function aFaire(d, maintenant = Date.now()) {
       }
       continue;
     }
+    // L'état « lu en partie » de la Sentinelle : SA ligne, jamais « Une note ouverte » avec un
+    // bouton Fermer (refermée à la main, elle rouvrirait au passage suivant), jamais réparable.
+    // « Régler » relance sa lecture — le seul geste utile si la cause est passagère. Relancée et
+    // toujours en partie : la cause est un volume, un bouton de plus n'y changerait rien — la
+    // ligne se range (même règle que les parcours analysés, plus bas). En pause, elle ne relit rien.
+    if (labels.includes(LABEL_SENTINELLE_PARTIELLE)) {
+      const ligne = { ...base, id: "sentinelle:partielle", etiquette: "Lu en partie", titre: "La Sentinelle n'a pas tout traité" };
+      const srE = suivi("sentinelle");
+      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });
+      else if (enVol(srE)) ajoute({ ...ligne, prio: 1, enCours: true, quoi: quoiVol(srE, "La Sentinelle") });
+      else if (srE && srE.etat === "faite") ajoute({ ...ligne, prio: 2, quoi: "Relue à " + heureMinute(srE.fini) + " : toujours en partie.",
+        gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
+      else ajoute({ ...ligne, prio: 1, quoi: quoiRate(srE, "Relance sa lecture maintenant."), gestes: relancer("sentinelle") });
+      continue;
+    }
     const x = reparation.get("issue:" + i.numero);
     const prise = !!(x && x.enCours);
     const quoiReparer = prise ? quoiClaudeEnCours(x.enCours) : QUOI_CLAUDE;
@@ -933,6 +964,9 @@ export function aFaire(d, maintenant = Date.now()) {
   // qu'elle a déjà vue passer sans rien ouvrir n'attend plus personne : sans cette
   // règle, la carte survivait 24 h au geste, et le bouton ne réglait jamais rien.
   const enquete = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle"));
+  // Tant que la Sentinelle dit ne pas avoir tout traité, « rien à corriger » et « rien d'assez
+  // sûr » ne sont pas prouvés : les deux lignes ci-dessous renvoient à la sienne.
+  const partielle = !!sentinellePartielle(issues);
   const erreurs = d && d.erreurs && Array.isArray(d.erreurs.details) ? d.erreurs.details : [];
   const recentes = erreurs.filter((x) => x.dernier && maintenant - dateUtc(x.dernier) < 864e5);
   if (recentes.length) {
@@ -949,7 +983,8 @@ export function aFaire(d, maintenant = Date.now()) {
     // Une enquête ouverte a déjà sa ligne « en cours » : celle-ci ne la redirait pas.
     if (enquete) ajoute({ ...base, prio: 2, quoi: "La Sentinelle enquête." });
     else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: enVol(sr) ? quoiVol(sr, "La Sentinelle") : "La Sentinelle l'analyse." });
-    else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue" + (sr && sr.etat === "faite" ? " à " + heureMinute(sr.fini) : "") + " : rien à corriger." });
+    else if (vue) ajoute({ ...base, prio: 2, quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."
+      : "La Sentinelle l'a vue" + (sr && sr.etat === "faite" ? " à " + heureMinute(sr.fini) : "") + " : rien à corriger." });
     else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: quoiRate(sr, "La Sentinelle s'en occupe."), gestes: relancer("sentinelle") });
   }
   // Les parcours critiques en échec (2026-11-06) : une ligne par parcours, du
@@ -975,7 +1010,7 @@ export function aFaire(d, maintenant = Date.now()) {
     // Analysé à la demande sans enquête ouverte : un « Régler » de plus n'y changerait
     // rien. Rangé dans Détails jusqu'à l'oubli de la relance (RELANCE_SUIVIE_MS), sauf
     // une panne urgente, qui garde sa place et son bouton.
-    else if (srP && srP.etat === "faite" && !urgent) ajoute({ ...base, prio: 2, quoi: "Analysé à " + heureMinute(srP.fini) + " : rien d'assez sûr pour ouvrir une enquête.",
+    else if (srP && srP.etat === "faite" && !urgent) ajoute({ ...base, prio: 2, quoi: "Analysé à " + heureMinute(srP.fini) + (partielle ? ", en partie : voir la ligne Sentinelle." : " : rien d'assez sûr pour ouvrir une enquête."),
       gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
     else ajoute({ ...base, prio: urgent ? 0 : 1, quoi: srP && srP.etat === "faite" ? "Analysé à " + heureMinute(srP.fini) + " sans enquête ouverte : relance, ou ouvre les détails."
       : quoiRate(srP, "La Sentinelle enquête sur ce parcours."), gestes: relancer("sentinelle") });
