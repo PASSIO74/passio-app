@@ -2807,7 +2807,7 @@ test("T3-c AVANT migration, AUCUNE couleur ne change : à 100, 25 000 connectés
   for (const ech of TOUTES_ECHELLES) {
     for (const s of grille) {
       const sans = verdict({ ...base, sante: s });
-      const avec = verdict({ ...base, sante: { ...s, connectes15: ech.connectes15, anciensConnectes15: ech.anciens15 } });
+      const avec = verdict({ ...base, sante: { ...s, connectes5: ech.connectes15, connectes15: ech.connectes15, anciensConnectes15: ech.anciens15 } });
       assert.equal(memeDecision(sans, avec), null, `${ech.nom} : ${JSON.stringify(s)}`);
     }
   }

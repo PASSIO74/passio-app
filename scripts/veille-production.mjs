@@ -366,7 +366,7 @@ export function retenue5xx(m) {
 
 /**
  * API vue par les clients : 5xx et refus 401/403 hors auth, dernière heure.
- * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number,anciensActifs?:number,anciens5xx?:number,anciensRefus?:number}} m
+ * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number,anciensActifs?:number,anciens5xx?:number,n5xxAutres?:number,app5xxAutres?:number}} m
  */
 export function signalApi(m) {
   const ko = inconnu(m, "api");
