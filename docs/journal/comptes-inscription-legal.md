@@ -724,7 +724,7 @@ Demande de Benjamin : relire le parcours d'un nouveau venu, du lien jusqu'au pre
 
 **Mesuré en production le 20/11, au canal ① (lecture seule).**
 - **Comptes.** 13 comptes hors comptes de test de Benjamin, dont **10 nés par le formulaire e-mail** et 3 par Google : le « 3 sur 4 par Google » de la fiche 📱 du 09/11 ne tient pas sur l'ensemble. 2 inscriptions e-mail sur 10 n'ont jamais été confirmées, sans aucun renvoi demandé ; 9 des confirmées l'ont été en moins de 10 minutes. 7 comptes sur 13 n'ont fait aucun geste (publication, commentaire, abonnement, inscription à une activité, message).
-- **Lien de confirmation.** Le lien expire au bout d'**une heure** (`mailer_otp_exp` = 3 600 s).
+- **Lien de confirmation.** Le lien expirait au bout d'**une heure** (`mailer_otp_exp` = 3 600 s). Il vaut **24 h depuis le 2026-11-21** (« Validité des liens », plus bas).
 - **Télémétrie.** Les 11 « visiteurs » des trois derniers jours ont l'allure d'un trafic automatisé (6 appareils Windows en 90 s, des sessions de 0 à 13 s, aucun lien d'origine, aucun geste) : la télémétrie récente ne dit rien d'un parcours humain.
 
 **Ce qui change**
@@ -780,7 +780,12 @@ Demande de Benjamin : relire le parcours d'un nouveau venu, du lien jusqu'au pre
 | Code non nettoyé | ④ ter rouge |
 | Adresse non nettoyée | ④ bis rouge |
 
+**Validité des liens : 24 h depuis le 2026-11-21, sur décision de Benjamin** (« Oui, passe à 24 h »)
+- `mailer_otp_exp` est passé de 3 600 à 86 400 s par l'API de gestion (`PATCH /v1/projects/<ref>/config/auth`, jeton de la CLI). Relu ensuite : c'est la seule clé changée de toute la configuration d'Auth.
+- ⚠️ **SUPABASE N'A QU'UN RÉGLAGE POUR TOUS LES LIENS ET CODES ENVOYÉS PAR E-MAIL.** Le lien de nouveau mot de passe et le code de vérification du changement de mot de passe valent donc 24 h, eux aussi.
+- `get_advisors` signale depuis `auth_otp_long_expiry` (WARN : moins d'une heure recommandé). **C'est voulu** : ne pas le « corriger » sans rouvrir la décision. Retour arrière : le même appel avec 3 600.
+- Aucun texte ne donne de durée chiffrée, ni l'app ni les gabarits d'e-mail. Ceux du lien magique (jamais envoyé par l'app) et du code de vérification disent encore « Il expire rapidement ».
+
 **Non fait, délibérément**
-- **Allonger la validité du lien (24 h).** C'est un réglage d'authentification de production, laissé à Benjamin.
 - **Garder les passions d'un visiteur quand le lien de confirmation s'ouvre dans un AUTRE navigateur.** Elles ne voyagent pas dans `user_metadata`, contrairement à l'année et à l'invitation : lot à part.
 - **Instrumenter l'affichage de la carte de bienvenue, l'intention Google et les étapes d'onboarding.** Sans quoi l'entonnoir de la première visite reste aveugle entre l'arrivée et la création du compte.
