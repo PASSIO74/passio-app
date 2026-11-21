@@ -141,6 +141,7 @@ Rendement = impact à 100k × probabilité ÷ effort. Les identifiants entre par
   - `js/telemetry.js:1496` — l'écouteur `error` n'est pas en capture, donc les erreurs de ressource ne lui arrivent pas.
   - `js/telemetry.js:1624` — le crochet fetch ignore `/private-media/`.
 - **Correctif :** compteur client et une ligne par session (plan au point 3, C) ; ensuite lecture par la veille en ratio, et ligne « Les photos ne s'affichent plus ».
+- **État au 2026-11-21 — volet client livré (lot D2), lecture à faire.** `js/telemetry.js` compte les médias affichés et en échec par capture au niveau du document et émet `media` / `bilan` `{famille, ko, vus, ko_av, vus_av}` : une ligne par période et par famille en échec, en delta, avec une gigue de ± 30 % par session sur le premier délai et sur la période (les sessions touchées par une même panne n'émettent plus au même instant) et, sous pression, un seul bilan notable par session et par famille. Le plan C ci-dessous a été remplacé (aucun `onerror` modifié, pas de `mediaKo`, cinq familles, crochet fetch inchangé) : contrat, limites et réinjections dans `docs/journal/telemetrie-pilotage-sentinelle.md`, fiche du 2026-11-21. **Le signal est émis, il n'est lu par aucune veille** : une panne de photos laisse aujourd'hui des lignes en base, pas encore une alerte.
 - **Risque :** normal tant que le signal ne nourrit qu'une ligne À faire · **Migration :** non · **Effort :** M.
 
 ### T6 — Plus personne ne peut entrer : invisible
@@ -343,6 +344,8 @@ Quatre pièces indépendantes, relues dans le code. Les numéros de ligne sont c
 **Preuve en production (canal ①) :** lignes par minute et par session, et part des `perf`, sur le seul trafic public, avant et après.
 
 ### C — Médias qui ne s'affichent pas : un compteur, une ligne par session (T5)
+
+> **Livré autrement le 2026-11-21 (lot D2)** — voir l'état sous T5. Les points 1, 2, 5 et 6 de ce plan n'ont pas été suivis (capture seule, sans appel depuis les `onerror`, sans `genre` ni hôte, sans élargir le crochet fetch) ; les points 3 et 4 le sont, avec une période de 5 min et un bilan par famille.
 
 **Fichiers :** `js/telemetry.js`, `js/app-02-state-utils.js`, `js/app-05-config-profil.js`.
 

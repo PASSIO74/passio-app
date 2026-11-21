@@ -1191,6 +1191,222 @@
   var VISITE = sourceVisite();
   premierContact(VISITE);
 
+  // ─── MÉDIAS QUI NE S'AFFICHENT PAS (2026-11-21, audit de surveillance, T5) ──
+  // Une photo ou une vidéo qui ne se charge pas ne laissait AUCUNE trace : les
+  // `onerror` en ligne du produit masquent ou remplacent l'élément (un seul,
+  // `imageFilIndisponible`, écrit « Image indisponible ») et se taisent tous.
+  // Ici, chaque appareil COMPTE les emplacements de média affichés
+  // et ceux qui échouent (écouteurs en capture sur `document`, section 8 plus
+  // bas — aucun `onerror` n'est modifié), puis envoie UN bilan par période et
+  // par famille EN ÉCHEC : `media` / `bilan`, meta `{famille, ko, vus, ko_av,
+  // vus_av}`. Des nombres et un mot d'une liste fermée — jamais une adresse,
+  // un hôte, un chemin ni un identifiant. Rien ne part sans échec.
+  //   · `ko` / `vus` : emplacements en échec / affichés depuis le bilan
+  //     précédent (un DELTA, jamais un cumul) ; `ko_av` / `vus_av` : leur part
+  //     audio ou vidéo (distingue une panne de codec d'une panne de stockage).
+  //     ⚠️ `vus` est un MINORANT (fenêtre de 60 s, images détachées avant la
+  //     fin de leur chargement) : `ko / vus` n'est pas un taux d'échec.
+  //   · `stockage` : chemin /storage/v1/ sur l'hôte EXACT du projet configuré.
+  //     Tout autre `*.supabase.co` est `externe` : n'importe qui peut publier
+  //     une image pointant vers un autre projet.
+  //   · `demo` (/demo/ de la même origine), `app` (reste de la même origine),
+  //     `local` (blob:, et data: pour l'audio et la vidéo), `externe` (le reste).
+  // ⚠️ SEULES `stockage` ET `demo` PEUVENT ÊTRE « NOTABLES » (`warn`, donc
+  // prioritaires et gardées 7 jours) : les trois autres sont bruyantes par
+  // nature (hôtes tiers, adresse refusée par `safeUrlAttr`, vocal illisible).
+  // Un notable reste soumis au plancher de période, au plafond client de
+  // `track`, et — sous pression (429) — à UN SEUL envoi par session et par
+  // famille : les suivants attendent comme le bruit de fond.
+  // ⚠️ GIGUE : le premier délai et la période sont multipliés par un facteur
+  // de 0,7 à 1,3 tiré UNE fois par session (`_mediaGigue`). Sans elle, toutes
+  // les sessions touchées par la même panne émettaient à 22 s, 322 s, 622 s —
+  // un pic contre le plafond serveur au pire moment.
+  // ⚠️ CE SIGNAL DIT CE QU'UN APPAREIL A VU, PAS L'ÉTAT DU STOCKAGE : une
+  // publication à image morte le fabrique chez tous ses lecteurs. Le lecteur
+  // ne doit jamais sonner sans recoupement serveur (fiche du journal).
+  var FAMILLES_MEDIA = ["stockage", "demo", "app", "local", "externe"];
+  var FAMILLES_MEDIA_PANNE = { stockage: 1, demo: 1 };
+  var MEDIA_VERDICT_MS = 2000;     // un échec n'est compté qu'après ce délai (iOS coupe AVANT d'annoncer l'arrière-plan)
+  var MEDIA_PREMIER_MS = 20000;    // premier bilan : le temps que la rafale d'un écran se pose
+  var MEDIA_PERIODE_MS = 300000;   // puis un bilan par période au plus (× le délestage)
+  var MEDIA_AVANT_MS = 60000;      // fenêtre du dénominateur tant qu'aucun échec n'attend
+  var MEDIA_SORTIE_MS = 30000;     // plancher court du bilan de sortie (allers-retours du cache aller-retour)
+  var MEDIA_GIGUE = 0.3;           // ± 30 % sur le premier délai et sur la période
+  var MEDIA_KO_NOTABLE = 3;
+  var MEDIA_BORNE = 9999;
+  var mediaCompte = {};            // famille → { ko, vus, ko_av, vus_av }
+  var mediaDebut = Date.now();
+  var mediaDernier = 0;            // dernier bilan PARTI
+  var mediaSortie = 0;             // dernier bilan PARTI À LA SORTIE (`pagehide`) : seul repère du plancher court
+  var mediaEssai = 0;              // dernier bilan périodique TENTÉ (parti ou retenu)
+  var mediaTimer = null;
+  var mediaAttente = 0;            // échecs dont le verdict (2 s) n'est pas encore rendu
+  var mediaEpoque = 0;             // avance à chaque refus de la mesure : un verdict d'avant le refus ne compte plus
+  var mediaGigue = 0;              // facteur de gigue de la session (0 = pas encore tiré)
+  var mediaNotable = {};           // famille → 1 dès qu'un bilan notable est parti dans cette session
+  var _mediaHote = null;           // { url, hote } : l'hôte du projet, relu si la configuration change
+
+  function _mediaHoteProjet() {
+    try {
+      var cfg = supaCfg(), u = cfg && cfg.url;
+      if (!u || typeof u !== "string") return null;
+      if (!_mediaHote || _mediaHote.url !== u) _mediaHote = { url: u, hote: new URL(u).host.toLowerCase() };
+      return _mediaHote.hote;
+    } catch (e) { return null; }
+  }
+  // Pure : rend une famille de la liste fermée, ou `null` (pas un média à
+  // compter). Ne garde et ne rend jamais l'adresse. Le schéma se lit sur les
+  // cinq premiers caractères AVANT toute autre opération : une adresse `data:`
+  // peut peser plusieurs Mo (les vocaux).
+  function familleMedia(url) {
+    if (typeof url !== "string" || !url) return null;
+    var tete = url.slice(0, 5).toLowerCase();
+    if (tete === "data:") return null;
+    if (tete === "blob:") return "local";
+    var u;
+    try { u = new URL(url, location.href); } catch (e) { return "externe"; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "externe";
+    var h = String(u.host || "").toLowerCase(), p = String(u.pathname || "");
+    var projet = _mediaHoteProjet();
+    if (projet && h === projet && p.indexOf("/storage/v1/") === 0) return "stockage";
+    if (h !== String(location.host || "").toLowerCase()) return "externe";
+    return p.indexOf("/demo/") === 0 ? "demo" : "app";
+  }
+  // L'élément d'un événement de ressource → { fam, av }, ou `null`. Ordre
+  // mesuré (sondes Chrome du 21/11) : un `src` PRÉSENT et blanc d'abord —
+  // `img.src` rend alors l'adresse de la PAGE, et une vidéo vidée par `src=""`
+  // garde son ANCIENNE adresse dans `currentSrc` ; puis `currentSrc`, sinon
+  // `src` (une <source> n'a pas de `currentSrc`). Une image `data:` n'est pas
+  // un média (le pixel neutre) ; un audio ou une vidéo `data:` est `local`.
+  function _mediaClasser(el) {
+    try {
+      var balise = el && el.tagName;
+      if (balise !== "IMG" && balise !== "VIDEO" && balise !== "AUDIO" && balise !== "SOURCE") return null;
+      var av = balise !== "IMG";
+      var attr = el.getAttribute("src");
+      if (attr != null && !/\S/.test(attr) && !el.getAttribute("srcset")) return null;
+      var url = el.currentSrc || el.src;
+      if (typeof url !== "string" || !url) return null;
+      if (url.slice(0, 5).toLowerCase() === "data:") return av ? { fam: "local", av: true } : null;
+      var fam = familleMedia(url);
+      return fam ? { fam: fam, av: av } : null;
+    } catch (e) { return null; }
+  }
+  function _mediaReste() {
+    for (var i = 0; i < FAMILLES_MEDIA.length; i++) {
+      var c = mediaCompte[FAMILLES_MEDIA[i]];
+      if (c && c.ko > 0) return true;
+    }
+    return false;
+  }
+  // Dénominateur fenêtré : sans échec compté NI échec en attente de verdict,
+  // les `vus` d'une longue session noieraient la première panne. Appelée à
+  // chaque comptage ET à l'événement `error`, avant que l'échec n'attende :
+  // un échec n'entre dans `mediaCompte` que 2 s plus tard, et sans
+  // `mediaAttente` son propre verdict effaçait les affichages qui le
+  // précédaient dès que la borne des 60 s tombait dans ces 2 s (vingt images
+  // affichées + trois échecs = « ko 3 / vus 0 », un faux `warn`).
+  function _mediaFenetre(t) {
+    if (t - mediaDebut > MEDIA_AVANT_MS && !mediaAttente && !_mediaReste()) { mediaCompte = {}; mediaDebut = t; }
+  }
+  // ⚠️ Le refus de la mesure ne se juge PAS ici : les deux écouteurs sortent
+  // en tête (`!ENABLED`) et un verdict d'avant le refus est périmé par
+  // `mediaEpoque`. Tout nouvel appelant doit porter la même garde.
+  function _mediaCompter(fam, av, echec) {
+    if (FAMILLES_MEDIA.indexOf(fam) < 0) return;
+    _mediaFenetre(Date.now());
+    var c = mediaCompte[fam] || (mediaCompte[fam] = { ko: 0, vus: 0, ko_av: 0, vus_av: 0 });
+    if (echec) { c.ko++; if (av) c.ko_av++; }
+    else { c.vus++; if (av) c.vus_av++; }
+  }
+  // Le facteur de délestage se lit à l'ARMEMENT, jamais en cache (même forme
+  // que `battementDelai`) : sous délestage, les répétitions s'espacent ; le
+  // PREMIER bilan d'une session garde ses 20 s (× la gigue).
+  function _mediaGigue() {
+    if (!mediaGigue) mediaGigue = 1 - MEDIA_GIGUE + 2 * MEDIA_GIGUE * Math.random();
+    return mediaGigue;
+  }
+  function _mediaPeriode() {
+    var f = (typeof delestageFacteur === "function") ? delestageFacteur() : 1;
+    return Math.round(MEDIA_PERIODE_MS * ((f === 2 || f === 4) ? f : 1) * _mediaGigue());
+  }
+  // Un bilan qui n'est pas notable est du bruit de fond : il attend sous
+  // délestage ou sous pression (429). Sous pression, un notable n'attend que
+  // si sa famille en a déjà envoyé un dans cette session.
+  function _mediaDeleste() {
+    try { return typeof delestageFacteur === "function" && delestageFacteur() > 1; } catch (e) { return false; }
+  }
+  function _mediaPression() {
+    try { return !!Telemetry.sousPression(); } catch (e) { return false; }
+  }
+  function _mediaNombre(n) { return Math.min(MEDIA_BORNE, Math.max(0, n | 0)); }
+  // Pose une ligne par famille EN ÉCHEC et remet les compteurs à zéro (delta).
+  // `raison` : "periode" (minuteur), "masque" (arrière-plan), "sortie"
+  // (`pagehide`). Rend le nombre de lignes.
+  //   · plancher : la période depuis le dernier bilan parti ; à la sortie,
+  //     `MEDIA_SORTIE_MS` depuis la dernière SORTIE seulement (`mediaSortie`).
+  //     Une page qui entre et sort du cache aller-retour émettait une ligne
+  //     par passage ; mais compté depuis N'IMPORTE QUEL bilan (période,
+  //     masquage), ce plancher perdait les échecs d'après — panne du stockage
+  //     comprise — quand la page se fermait moins de 30 s plus tard. Pas
+  //     `e.persisted` : il est vrai à toute sortie éligible au cache, la
+  //     première comprise, et ne distingue donc pas un aller-retour.
+  //     Une horloge qui RECULE (`t` avant le repère) vaut plancher échu : sans
+  //     cela la mesure se tait jusqu'à ce que l'horloge rattrape son retard.
+  //   · à la sortie, rien n'attend (ni pression, ni famille qui a déjà parlé) :
+  //     tout part — sauf le bruit de fond sous délestage, qui est JETÉ (la
+  //     consigne est la sobriété, et il n'y aura pas de plus tard), et sauf
+  //     une seconde sortie moins de 30 s après une première (plancher court).
+  function _mediaBilan(raison) {
+    var sortie = (raison === "sortie");
+    var t = Date.now();
+    var repere = sortie ? mediaSortie : mediaDernier;
+    if (repere && t >= repere && t - repere < (sortie ? MEDIA_SORTIE_MS : _mediaPeriode())) return 0;
+    if (raison === "periode") mediaEssai = t;
+    var garde = {}, n = 0, jete = 0, deleste = null, pression = null;
+    for (var i = 0; i < FAMILLES_MEDIA.length; i++) {
+      var f = FAMILLES_MEDIA[i], c = mediaCompte[f];
+      if (!c || !(c.ko > 0)) continue;
+      var notable = FAMILLES_MEDIA_PANNE[f] === 1 && c.ko >= MEDIA_KO_NOTABLE && c.ko >= c.vus;
+      if (!notable) {
+        if (deleste === null) deleste = _mediaDeleste();
+        if (sortie) {
+          if (deleste) { jete++; continue; }
+        } else {
+          if (!deleste && pression === null) pression = _mediaPression();
+          if (deleste || pression) { garde[f] = c; continue; }
+        }
+      } else if (!sortie && mediaNotable[f] === 1) {
+        if (pression === null) pression = _mediaPression();
+        if (pression) { garde[f] = c; continue; }
+      }
+      track("media", "bilan", {
+        severity: notable ? "warn" : "info", status: "ok",
+        meta: { famille: f, ko: _mediaNombre(c.ko), vus: _mediaNombre(c.vus), ko_av: _mediaNombre(c.ko_av), vus_av: _mediaNombre(c.vus_av) },
+      });
+      if (notable) mediaNotable[f] = 1;
+      n++;
+    }
+    if (n || jete) { mediaCompte = garde; mediaDebut = t; }
+    if (n) { mediaDernier = t; if (sortie) mediaSortie = t; }
+    return n;
+  }
+  function _mediaArmer() {
+    if (mediaTimer || !_mediaReste()) return;
+    var ref = Math.max(mediaDernier, mediaEssai);
+    var premier = Math.round(MEDIA_PREMIER_MS * _mediaGigue());
+    var periode = _mediaPeriode();
+    var delai = ref ? Math.max(premier, ref + periode - Date.now()) : premier;
+    // Jamais plus d'une période : une horloge qui recule laissait un délai de
+    // plusieurs jours (au-delà de 2^31 ms, `setTimeout` sonne tout de suite).
+    delai = Math.min(delai, periode);
+    mediaTimer = setTimeout(function () {
+      mediaTimer = null;
+      try { _mediaBilan("periode"); } catch (e) {}
+      _mediaArmer();
+    }, delai);
+  }
+
   // ─── API publique ───────────────────────────────────────────────────────────
   function track(type, action, fields) {
     if (!ENABLED) return;
@@ -1383,6 +1599,20 @@
     _queue: function () { return queue.slice(); },
     _estPrioritaire: _estPrioritaire,
     _bornerFile: function (q, max) { return _bornerFile(q.slice(), max); },
+    // Médias (T5) : la famille d'une adresse (pure), les compteurs en cours
+    // (copie) et le bilan, pour les bancs. Aucune n'écrit hors du module.
+    _familleMedia: familleMedia,
+    _medias: function () {
+      var o = {};
+      for (var f in mediaCompte) if (Object.prototype.hasOwnProperty.call(mediaCompte, f)) {
+        var c = mediaCompte[f];
+        o[f] = { ko: c.ko, vus: c.vus, ko_av: c.ko_av, vus_av: c.vus_av };
+      }
+      return o;
+    },
+    _mediaBilan: function (raison) { return _mediaBilan(raison); },
+    // Le facteur de gigue de la session (le tire s'il ne l'est pas encore).
+    _mediaGigue: function () { return _mediaGigue(); },
     // ── Contre-pression (2026-11-20) ────────────────────────────────────────
     // Vrai après un refus de débit (429) reçu par CET appareil : pendant
     // l'attente, puis tant qu'AUCUN envoi n'a réussi depuis (`limite` — le tuyau
@@ -1528,6 +1758,14 @@
         // Le refus vaut aussi pour ce qui attend d'être envoyé (audit 2026-11-06).
         queue = [];
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+        // … et pour ce qui était COMPTÉ en mémoire (médias, T5).
+        // Les verdicts en attente sont périmés (`mediaEpoque`) ; la gigue
+        // sera retirée à la reprise, et la réserve « un notable sous
+        // pression » repart de zéro.
+        mediaCompte = {};
+        mediaAttente = 0; mediaEpoque++; mediaGigue = 0;
+        mediaNotable = {};             // la reprise est une autre identité : son premier notable part
+        if (mediaTimer) { clearTimeout(mediaTimer); mediaTimer = null; }
         try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
       }
       else DEVICE_ID = _deviceIdRaw(true);
@@ -1575,7 +1813,11 @@
   })();
   document.addEventListener("visibilitychange", function () {
     track("lifecycle", document.hidden ? "hidden" : "visible");
-    if (document.hidden) flush({ keepalive: true });
+    // Le bilan des médias entre en file AVANT l'envoi de masquage (soumis au
+    // plancher de période) : un visiteur ne recharge jamais la page. Sous le
+    // plancher, les échecs restent en mémoire : perdus si l'onglet est tué
+    // sans `pagehide` (limite écrite dans la fiche, rien n'est persisté).
+    if (document.hidden) { _mediaBilan("masque"); flush({ keepalive: true }); }
     else {
       // Retour au premier plan : le backoff accumulé en arrière-plan n'a plus de
       // raison d'être (les envois y étaient annulés par le navigateur, pas refusés
@@ -1590,6 +1832,7 @@
   // premier et le burst de snapshots « exit » de perf-ios trouve le drapeau levé.
   window.addEventListener("pagehide", function () {
     unloading = true;
+    _mediaBilan("sortie");      // ce qui est compté part avec le lot de fermeture (plancher court entre deux sorties, bruit de fond jeté sous délestage)
     track("session", "end");
     flush({ keepalive: true });
   });
@@ -1932,4 +2175,59 @@
       } catch (e) {}
     }, 0);
   });
+
+  // 8) Médias : photos, vidéos et sons qui s'affichent ou échouent (T5 — le
+  // modèle et les règles sont au bloc « MÉDIAS QUI NE S'AFFICHENT PAS »).
+  // `error`, `load` et `loadedmetadata` ne remontent pas : seule la CAPTURE au
+  // niveau du document les voit, et elle passe AVANT le `onerror` en ligne qui
+  // remplace l'élément (mesuré). `loadedmetadata` et pas `loadeddata` : un
+  // `preload="metadata"` réussi n'émet que le premier.
+  // ⚠️ UN ÉCHEC N'EST COMPTÉ QU'APRÈS VERDICT (`MEDIA_VERDICT_MS`). À
+  // l'événement : rien si la page est masquée, ni dans la fenêtre qui SUIT un
+  // retour au premier plan ou une bascule réseau (les chargements coupés en
+  // arrière-plan tombent au réveil). Au verdict : rien si une occultation ou
+  // une bascule réseau est survenue depuis, ni hors ligne, ni en fermeture.
+  // Rien n'est classé ni armé tant que la mesure est refusée (`!ENABLED`).
+  var _mediaCoupure = -1;
+  (function suivreMedias() {
+    try {
+      var basculer = function () { _mediaCoupure = _horloge(); };
+      window.addEventListener("offline", basculer);
+      window.addEventListener("online", basculer);
+      var vu = function (e) {
+        if (!ENABLED) return;                              // refus de la mesure : pas même un classement
+        try { var c = _mediaClasser(e && e.target); if (c) _mediaCompter(c.fam, c.av, false); } catch (e2) {}
+      };
+      document.addEventListener("load", vu, true);
+      document.addEventListener("loadedmetadata", vu, true);
+      document.addEventListener("error", function (e) {
+        if (!ENABLED) return;
+        try {
+          // La famille se lit À L'ÉVÉNEMENT : l'élément sera remplacé une ligne plus tard.
+          var c = _mediaClasser(e && e.target);
+          if (!c) return;
+          if (contexteEchec().masquee) return;
+          var t = _horloge();
+          if (_occultation >= 0 && t - _occultation < MEDIA_VERDICT_MS) return;
+          if (_mediaCoupure >= 0 && t - _mediaCoupure < MEDIA_VERDICT_MS) return;
+          // La fenêtre du dénominateur se juge AVANT que l'échec n'attende,
+          // puis l'attente la tient ouverte jusqu'au verdict.
+          _mediaFenetre(Date.now());
+          var epoque = mediaEpoque;
+          mediaAttente++;
+          setTimeout(function () {
+            if (epoque !== mediaEpoque) return;            // la mesure a été refusée entre-temps
+            try {
+              if (_occultation >= t || _mediaCoupure >= t) return;
+              var ctx = contexteEchec();
+              if (ctx.hors_ligne || ctx.fermeture) return;
+              _mediaCompter(c.fam, c.av, true);
+              _mediaArmer();
+            } catch (e3) {
+            } finally { mediaAttente--; }
+          }, MEDIA_VERDICT_MS);
+        } catch (e1) {}
+      }, true);
+    } catch (e0) {}
+  })();
 })();
