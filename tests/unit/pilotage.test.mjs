@@ -1093,6 +1093,11 @@ test("㊹ un voyant orange ou rouge a toujours une ligne : pannes du serveur, Se
   assert.equal(v.couleur, "orange");
   assert.deepEqual(v.raisons, ["la Sentinelle n'a pas tourné depuis plus de 3 h"]);
   assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date(Date.now() - 2.5 * 3600e3).toISOString() } } } }).couleur, "vert");
+  // En PAUSE, ni ligne ni orange (contre-revue de #1007) : le filet recréait un « Régler » inutile.
+  // Mutation : retirer `!gh.pause` du voyant → rougit.
+  const enPause = { sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], pause: true, runs: { sentinelle: { le: new Date(Date.now() - 10 * 3600e3).toISOString() } } } };
+  assert.equal(verdict(enPause).couleur, "vert");
+  assert.equal(aFaire({ ...enPause, gestesGithub: true, verdict: verdict(enPause) }).find((x) => x.id === "sentinelle:muette" || x.id === "voyant"), undefined);
   // Le filet : une raison sans ligne dédiée (ici, la veille aveugle).
   const raisons = ["veille aveugle : la télémétrie est au plafond", "autre raison"];
   const filet = aFaire({ gestesGithub: true, verdict: { couleur: "orange", titre: "À surveiller", raisons }, github: { issues: [], runs: {}, aReparer: [] } }, MAINTENANT_AF);

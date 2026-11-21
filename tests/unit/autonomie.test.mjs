@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import {
-  REVEIL, RETOUR, CADENCE, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, empreinte, decideRetour, deploiementsProduction,
+  REVEIL, RETOUR, CADENCE, CONCLUSIONS_CASSEES, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, empreinte, decideRetour, deploiementsProduction,
   choisirPrecedent, continuerPagination, reveilsEpuises, idGeste, commitCourt, modeRetour, corpsProposition, TITRE_PROPOSITION,
   prendreCreneau,
 } from "../../supabase/functions/_shared/autonomie.js";
@@ -430,10 +430,19 @@ test("⑳ cadence : relancer dès que le dernier passage TERMINÉ a une heure ; 
   assert.equal(doitCadencerSentinelle({ dernierRun: fini(60), maintenant: T0 }).relancer, true, "une heure pile : c'est l'heure");
   assert.equal(doitCadencerSentinelle({ dernierRun: fini(59), maintenant: T0 }).raison, "run_recent");
   assert.equal(doitCadencerSentinelle({ dernierRun: fini(10 * 60), maintenant: T0 }).relancer, true, "le cas mesuré du 21/11 : 10 h sans passage");
-  // Un passage ÉCHOUÉ compte comme un passage : le relancer en boucle n'y changerait rien,
-  // et [SENTINELLE MUETTE] le dit déjà (run rouge du détecteur).
-  assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(30), conclusion: "failure" }, maintenant: T0 }).raison, "run_recent");
-  assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(90), conclusion: "failure" }, maintenant: T0 }).relancer, true);
+  // Un passage CASSÉ espace la cadence à 2 h (contre-revue de #1007) : chaque passage rouge commente
+  // [SENTINELLE MUETTE], un e-mail — un jeton expiré en envoyait ~22 par jour. Mutation : relancer à
+  // l'heure après un échec → rougit. Annulé ou sauté n'est pas cassé : l'heure normale.
+  for (const conclusion of CONCLUSIONS_CASSEES) {
+    assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(90), conclusion }, maintenant: T0 }).raison, "echec_recent", conclusion);
+    assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(119), conclusion }, maintenant: T0 }).relancer, false, conclusion);
+    assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(120), conclusion }, maintenant: T0 }).relancer, true, conclusion);
+  }
+  assert.match(doitCadencerSentinelle({ dernierRun: { ...fini(130), conclusion: "failure" }, maintenant: T0 }).raison, /en échec\) il y a 130 min/);
+  for (const conclusion of ["cancelled", "skipped", "neutral", null]) {
+    assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(61), conclusion }, maintenant: T0 }).relancer, true, String(conclusion));
+  }
+  assert.equal(CADENCE.apresEchecMs, 2 * 3600e3);
   assert.equal(doitCadencerSentinelle({ pause: true, dernierRun: fini(600), maintenant: T0 }).raison, "pause", "la pause du pilote gagne");
   for (const etat of ["queued", "in_progress", "waiting", "pending", undefined]) {
     assert.equal(doitCadencerSentinelle({ dernierRun: { etat, le: ilYa(600) }, maintenant: T0 }).raison, "run_en_cours", "un passage pas terminé (" + etat + ") : on attend");
@@ -448,7 +457,8 @@ test("⑳ cadence : relancer dès que le dernier passage TERMINÉ a une heure ; 
 test("㉑ cadence, câblage : après le réveil, sous la politique, un plafond EN BASE avant le dispatch, la marque après le 204 ; rien d'autre ne part vers GitHub", () => {
   const s = corpsDe("cadencerSentinelle");
   const jeton = position(s, "if (!JETON_GH) return { inactif: true };", "sans jeton, rien");
-  const apresReveil = position(s, 'if (reveil && reveil.lance) return { raison: "reveil" };', "un réveil vient de partir");
+  // Un réveil interrompu (délai, exception) a peut-être été accepté : pas de second passage (mutation : `reveil.lance` seul).
+  const apresReveil = position(s, 'if (reveil && (reveil.lance || reveil.erreur)) return { raison: "reveil" };', "un réveil vient de partir, ou peut-être");
   const pol = position(s, 'autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause })', "politique");
   const decision = position(s, "doitCadencerSentinelle({ pause: !!etatGh.pause, dernierRun: etatGh.runs.sentinelle || null })", "décision pure");
   const plafond = position(s, 'verifierPlafondEnBase(admin, "systeme:sentinelle-cadence", "sentinelle-cadence", { parMinute: 1, parHeure: CADENCE.parHeure })', "plafond horaire en base");
@@ -465,4 +475,23 @@ test("㉑ cadence, câblage : après le réveil, sous la politique, un plafond E
   const c = position(v, "const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));", "cadence");
   assert.ok(r < c, "la cadence lit ce que le réveil vient de faire");
   assert.match(v, /gestes: \{ delestage, reveil, cadence, retour, canari, essai \}/, "le battement dit ce que la cadence a fait");
+});
+
+// La cadence rend le dernier passage toujours récent (< ~65 min) : à 45 min de garde, le réveil ne
+// partait plus que 20 min par heure — jusqu'à 49 min après le début d'un incident (contre-revue de
+// #1007, simulation minute par minute). Mutation : remettre `runRecentMs` à 45 min → ㉒ rougit.
+import { CONCLUSIONS_ECHEC } from "../../supabase/functions/_shared/pilotage.js";
+test("㉒ avec la cadence, le réveil part dans le quart d'heure d'un incident, où qu'il tombe dans le cycle ; « cassé » a une seule définition", () => {
+  const tick = 5 * 60e3; // la veille (pg_cron)
+  // Le passage précédent a fini à 0 ; la cadence relance à `CADENCE.intervalleMs`, et ce passage-là
+  // voit l'incident lui aussi. L'incident commence à `debut` ; la veille le voit au tick suivant.
+  let pire = 0;
+  for (let debut = 0; debut < CADENCE.intervalleMs; debut += 60e3) {
+    let t = (Math.floor(debut / tick) + 1) * tick;
+    const reveil = (age) => doitReveillerSentinelle({ enquetes: 0, comptesErreurs: 3, dernierRun: { etat: "completed", le: new Date(T0 - age).toISOString() }, maintenant: T0 }).reveiller;
+    while (t < CADENCE.intervalleMs && !reveil(t)) t += tick;
+    pire = Math.max(pire, Math.min(t, CADENCE.intervalleMs) - debut);
+  }
+  assert.ok(pire <= 15 * 60e3, "pire délai avant un passage : " + pire / 60e3 + " min");
+  assert.deepEqual([...CONCLUSIONS_CASSEES], [...CONCLUSIONS_ECHEC], "un passage « cassé » se juge comme à l'écran");
 });

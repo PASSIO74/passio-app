@@ -1258,6 +1258,17 @@ test("㉟ ter cadence : calme, et plus d'une heure sans passage — la veille re
   await veille();
   assert.equal(evenements(EVT.cadence).length, 0);
   assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "refus_github_403");
+  // Un passage CASSÉ il y a 90 min : la cadence s'espace (un e-mail par passage rouge) ; à 2 h 10, elle relance.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ conclusion: "failure", le: ilYa(90 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "echec_recent");
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ conclusion: "failure", le: ilYa(130 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 1);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "fait");
   // Sans jeton GitHub : inactive, dit.
   await monter({ battement: false, env: { PILOTAGE_GITHUB_TOKEN: undefined } });
   banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(10 * 3600e3) })];

@@ -27,8 +27,8 @@
 //    faille qu'il fermait. La machine détecte et prévient ; un humain confirme.
 //
 // ③ FAIRE PASSER LA SENTINELLE CHAQUE HEURE (`doitCadencerSentinelle`, 2026-11-21) :
-//    son dernier passage est terminé depuis plus d'une heure, pas de pause →
-//    `workflow_dispatch` du même workflow. Le cron de GitHub reste un filet.
+//    son dernier passage est terminé depuis plus d'une heure (2 h s'il a cassé),
+//    pas de pause → `workflow_dispatch` du même workflow. Le cron de GitHub reste un filet.
 //
 // ⚠️ CE QUI DÉCIDE SE COMPTE EN BASE (contre-revue du 2026-10-13) : comptes
 // DISTINCTS par `auth_uid` (identité posée par le trigger serveur), créés
@@ -50,7 +50,11 @@
 // `enquetesMax` : la Sentinelle mène jusqu'à 3 enquêtes de front (2026-11-01) —
 // égal à `MAX_ENQUETES` de scripts/sentinelle-detecter.mjs (verrou dans
 // tests/unit/sentinelle-detecter.test.mjs). Saturée, on ne la réveille pas.
-export const REVEIL = Object.freeze({ comptesMin: 2, fenetreMs: 30 * 60e3, runRecentMs: 45 * 60e3, ancienneteMinMs: 24 * 3600e3, parJour: 12, enquetesMax: 3 });
+// `runRecentMs` : 45 min jusqu'au 2026-11-21. Avec la cadence ③, le dernier passage a toujours
+// moins de ~65 min : à 45, le réveil n'était plus permis que 20 min par heure et partait jusqu'à
+// 49 min après le début d'un incident (contre-revue de #1007, simulation sur chaque minute du
+// cycle). À 10 min, il part dans le quart d'heure ; ses plafonds (2 par heure, 12 par jour) bornent.
+export const REVEIL = Object.freeze({ comptesMin: 2, fenetreMs: 30 * 60e3, runRecentMs: 10 * 60e3, ancienneteMinMs: 24 * 3600e3, parJour: 12, enquetesMax: 3 });
 // `entreDeuxGestesMs` : un double appui retirerait DEUX versions (le second lit
 // la version remise comme courante) — un geste réussi ferme le bouton 10 min.
 // `exclusionMs` : une version retirée ne revient jamais par ce bouton dans les
@@ -115,7 +119,13 @@ export function doitReveillerSentinelle({ pause, enquetes, dernierRun, comptesEr
 // La veille (pg_cron, 5 min, 288 tours sur 288 en 24 h) relance donc le MÊME passage que le
 // cron dès que le dernier est terminé depuis `intervalleMs`. Aucun autre filtre : le passage
 // lit, classe et n'ouvre une enquête que sous ses propres règles (places, dédup, zones).
-export const CADENCE = Object.freeze({ intervalleMs: 60 * 60e3, parHeure: 1 });
+// ⚠️ APRÈS UN PASSAGE EN ÉCHEC, LA CADENCE S'ESPACE (`apresEchecMs`, contre-revue de #1007) : chaque
+// passage rouge commente l'issue [SENTINELLE MUETTE], donc un e-mail — relancé chaque heure, un
+// jeton expiré en envoyait ~22 par jour. À 2 h : ~11, et toujours SOUS le seuil « muette » (3 h,
+// SENTINELLE_MUETTE_MS) — l'échec garde sa ligne (« La Sentinelle s'est arrêtée »), sans une seconde.
+export const CADENCE = Object.freeze({ intervalleMs: 60 * 60e3, apresEchecMs: 2 * 3600e3, parHeure: 1 });
+/** Les conclusions d'un passage qui a CASSÉ (= CONCLUSIONS_ECHEC de pilotage.js, verrou ㉒). Annulé ou sauté n'en est pas. */
+export const CONCLUSIONS_CASSEES = Object.freeze(["failure", "timed_out", "startup_failure"]);
 
 /**
  * Faut-il relancer la Sentinelle parce qu'elle n'est pas passée depuis une heure ?
@@ -130,8 +140,9 @@ export function doitCadencerSentinelle({ pause, dernierRun, maintenant = Date.no
   const le = t(dernierRun.le);
   if (!Number.isFinite(le)) return { relancer: false, raison: "run_illisible" };
   const age = maintenant - le;
-  if (age < CADENCE.intervalleMs) return { relancer: false, raison: "run_recent" };
-  return { relancer: true, raison: `dernier passage il y a ${Math.round(age / 60e3)} min` };
+  const casse = CONCLUSIONS_CASSEES.includes(dernierRun.conclusion);
+  if (age < (casse ? CADENCE.apresEchecMs : CADENCE.intervalleMs)) return { relancer: false, raison: casse ? "echec_recent" : "run_recent" };
+  return { relancer: true, raison: `dernier passage${casse ? " (en échec)" : ""} il y a ${Math.round(age / 60e3)} min` };
 }
 
 /** Empreinte courte et stable d'un texte (FNV-1a 32 bits) : ce qui sort à la place du texte. */

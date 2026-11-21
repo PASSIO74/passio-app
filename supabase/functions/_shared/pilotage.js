@@ -396,7 +396,9 @@ export function verdict(e) {
   if (veille) orange.push("la veille signale un problème");
   const signal = Number(e && e.signalements && e.signalements.ouverts) || 0;
   if (signal) orange.push(`${signal} signalement(s) à traiter`);
-  if (runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push(TITRE_SENTINELLE_MUETTE.charAt(0).toLowerCase() + TITRE_SENTINELLE_MUETTE.slice(1));
+  // Pas pendant la PAUSE du pilote (contre-revue de #1007) : `aFaire` taisait déjà la ligne, et le
+  // filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause.
+  if (!gh.pause && runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push(TITRE_SENTINELLE_MUETTE.charAt(0).toLowerCase() + TITRE_SENTINELLE_MUETTE.slice(1));
   if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange) };
   if (orange.length) return { couleur: "orange", titre: "À surveiller", raisons: orange };
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };

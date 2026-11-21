@@ -127,6 +127,9 @@ test("⑩ cadence de la Sentinelle : intervalle et plafond déclarés = ceux que
   assert.equal(r.suspenduParPause, true);
   assert.equal(r.limites.intervalleMin * 60e3, CADENCE.intervalleMs);
   assert.equal(r.limites.parHeure, CADENCE.parHeure);
+  assert.equal(r.limites.apresEchecMin * 60e3, CADENCE.apresEchecMs);
+  // Espacée après un échec, elle reste SOUS le seuil « muette » : l'échec garde sa seule ligne.
+  assert.ok(CADENCE.apresEchecMs + 30 * 60e3 <= SENTINELLE_MUETTE_MS, "après un échec, la relance précède l'alarme « muette »");
   assert.match(r.appliquePar, /doitCadencerSentinelle/);
   assert.equal(autoriser(POLITIQUE, "cadence_sentinelle").ok, true);
   assert.equal(autoriser(POLITIQUE, "cadence_sentinelle", { pause: true }).raison, "pause");

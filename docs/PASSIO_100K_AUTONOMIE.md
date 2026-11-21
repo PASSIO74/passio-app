@@ -150,7 +150,7 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 ### Pour que la Sentinelle répare plus, plus vite (P2)
 5. ✅ **Réveil par la veille — livré le 2026-10-12, actif dès la migration.** Dès que 2 comptes réels
    (identité serveur, confirmés, créés depuis plus de 24 h) ont un échec en 30 min (erreur ou appel
-   refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min, la veille
+   refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min (10 min depuis le 2026-11-21), la veille
    (pg_cron, 5 min) lance la Sentinelle par `workflow_dispatch` — 2 réveils par heure et 12 par jour au plus. Avant :
    un cron GitHub servi 4 à 8 fois par jour.
    ✅ **Et depuis le 2026-11-21, la cadence** : la même veille relance le passage dès que le dernier est

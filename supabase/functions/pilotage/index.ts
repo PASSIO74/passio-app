@@ -889,8 +889,8 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 }
 
 // ─── Réveil de la Sentinelle (_shared/autonomie.js) ─────────────────────────
-// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 4 à 8
-// fois par jour. Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
+// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 3 à 4
+// fois par jour (d'où aussi la cadence, plus bas). Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
 // (comptés EN BASE : `comptes_echecs_30min` de pilotage_audience), aucune
 // enquête en cours, pas de pause, pas de run récent → workflow_dispatch.
 // Plafonné à 2 réveils par heure et 12 par jour EN BASE.
@@ -937,7 +937,9 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
 // enquête que sous ses propres règles. Ce qui sort vers GitHub : `ref: main`, rien d'autre.
 async function cadencerSentinelle(admin: Admin, etatGh: GhEtat | null, reveil: Record<string, unknown> | null) {
   if (!JETON_GH) return { inactif: true };
-  if (reveil && reveil.lance) return { raison: "reveil" };
+  // Un réveil INTERROMPU (délai de 10 s, exception) a peut-être été accepté par GitHub : on
+  // n'empile pas un second passage, la veille suivante (5 min) tranchera (contre-revue de #1007).
+  if (reveil && (reveil.lance || reveil.erreur)) return { raison: "reveil" };
   if (!etatGh || !etatGh.runs) return { illisible: true };
   const pol = autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause });
   if (!pol.ok) return { raison: "politique:" + pol.raison };
@@ -1557,7 +1559,7 @@ async function lireGithub() {
     const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
     // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
     // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
-    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis 8 h » disparaissait.
+    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis plus de 8 h » (3 h depuis le 21/11) disparaissait.
     const lectures = await Promise.all((EVENEMENTS_RUNS[cle] as string[]).map(async (ev) => {
       const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true&event=${ev}&per_page=10`).catch(() => null);
       const lu = r && r.ok ? await r.json().catch(() => null) : null;

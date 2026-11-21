@@ -2275,7 +2275,8 @@ défaut était connu (P1-7 du suivi, n° 11 de `docs/SENTINELLE_AUTONOME.md`) et
 **Le correctif — sans migration, sans toucher `.github/`.** La veille du pilotage tourne déjà toutes les
 5 min par pg_cron (288 tours sur 288 en 24 h) et sait lancer la Sentinelle (le réveil sur échecs du
 2026-10-12). Elle porte désormais un troisième geste, `cadence_sentinelle` (circuit A, suspendu par la
-pause) : dès que le dernier passage (planifié ou lancé, sur `main`) est **terminé depuis 1 h**, elle
+pause) : dès que le dernier passage (planifié ou lancé, sur `main`) est **terminé depuis 1 h** (2 h s'il a
+cassé), elle
 envoie un `workflow_dispatch` — le MÊME passage que le cron, avec ses propres filtres (places, dédup,
 zones). Règle pure : `doitCadencerSentinelle` (`_shared/autonomie.js`) ; câblage : `cadencerSentinelle`
 (`pilotage/index.ts`), APRÈS le réveil (un passage que le réveil vient de lancer suffit), sous la
@@ -2288,14 +2289,42 @@ battement dit son résultat (`gestes.cadence` : `fait`, `run_recent`, `run_en_co
   GitHub, politique). Le titre de la ligne et la raison du voyant se DÉDUISENT de la constante
   (`TITRE_SENTINELLE_MUETTE`) — la phrase « plus de 8 h » écrite à la main en trois endroits aurait
   menti dès le premier changement.
-- ⚠️ **Un passage ÉCHOUÉ compte comme un passage.** Le relancer chaque heure n'y changerait rien :
-  `[SENTINELLE MUETTE]` le dit déjà. Un passage EN COURS ou en file (quelle que soit son ancienneté)
-  n'est jamais doublé : la cadence attend.
+- ⚠️ **Un passage CASSÉ espace la cadence à 2 h** (`apresEchecMs`). Chaque passage rouge COMMENTE
+  l'issue `[SENTINELLE MUETTE]` — un e-mail à Benjamin : relancé chaque heure, un `SENTINELLE_TOKEN`
+  expiré (tous les 90 jours) en enverrait ~22 par jour. À 2 h, ~11, et toujours sous le seuil
+  « muette » : l'échec garde sa seule ligne (« La Sentinelle s'est arrêtée »). Annulé ou sauté n'est pas
+  cassé. Un passage EN COURS ou en file (quelle que soit son ancienneté) n'est jamais doublé.
 - ⚠️ **Deux gestes, deux comptes.** Le quota du réveil (12 par jour) n'arrête pas le passage de l'heure,
   et la cadence ne consomme rien du réveil — sinon 24 cadences épuiseraient les réveils dès midi.
 - Coût : le dépôt est public, les minutes d'Actions ne se paient pas ; un passage sans enquête dure ~20 s.
+  Cadence réelle : la veille avance par pas de 5 min, un cycle dure ~65 min — **~22 passages par jour**,
+  pas 24 (un intervalle de 55 min se heurterait au plafond d'une heure GLISSANTE).
 
-Verrous : `autonomie.test.mjs` ⑳ (bornes de la règle) et ㉑ (ordre du câblage : jeton → réveil →
+**Contre-revue adversariale (autre instance, lecture seule) : « à corriger avant fusion », six constats,
+cinq corrigés.**
+- **La cadence ralentissait le réveil sur échecs — le seul chemin rapide d'un incident.** Le réveil
+  refusait un passage de moins de 45 min ; avec la cadence, le dernier passage a toujours moins de
+  ~65 min : le réveil n'était plus permis que 20 min par heure. Simulé minute par minute du cycle :
+  médiane 17 min, pire 49 min (contre 2 et 4 avant). `REVEIL.runRecentMs` passe à **10 min** (runbook
+  et plan 100K suivis) ; ses plafonds (2 par heure, 12 par jour) bornent. Verrou `autonomie.test.mjs` ㉒
+  (la même simulation : pire ≤ 15 min ; à 45 min, rouge). **Règle : un geste qui rend un passage plus
+  fréquent change le sens de tout seuil « pas de passage récent » des autres gestes.**
+- **En pause, le voyant passait orange** : `aFaire` taisait la ligne « muette », pas `verdict` — et le
+  filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause. Défaut d'avant,
+  que le seuil de 3 h multipliait par ~14 (53,7 % du temps de pause, sur les écarts réels du cron).
+  Le voyant ignore la « muette » en pause (`pilotage.test.mjs` ㊹).
+- **Le passage cassé relancé chaque heure** : l'espacement à 2 h ci-dessus (`autonomie.test.mjs` ⑳,
+  `pilotage-chemins` ㉟ ter ; `CONCLUSIONS_CASSEES` = `CONCLUSIONS_ECHEC`, verrou ㉒).
+- **Un réveil INTERROMPU** (délai de 10 s : GitHub a peut-être accepté) laissait partir la cadence : deux
+  passages. `reveil.erreur` bloque aussi la cadence pour ce tour (㉑).
+- Trois commentaires et la carte « Inactif » à l'ancienne mesure.
+- **Laissé, borné** : la « muette » se calcule sur le passage le plus RÉCENT quel que soit son état — un
+  passage bloqué en file bloque la cadence (voulu, dit à 3 h), mais chaque « Régler » en crée un neuf qui
+  remet le voyant vert ; GitHub annule un passage en file après 24 h. Les seuils de 8 h du poste
+  (`dashboard/server/chaine-autonome.js`) et de `scripts/veille-production.mjs` restent : instruments
+  distincts, désormais seulement larges.
+
+Verrous : `autonomie.test.mjs` ⑳ (bornes de la règle), ㉒ (délai du réveil) et ㉑ (ordre du câblage : jeton → réveil →
 politique → décision → plafond → dispatch → 204 → marque), `politique-autonomie.test.mjs` ⑩ (bornes
 déclarées = celles du code, escalade = seuil « muette »), `pilotage.test.mjs` ㉿④ et ㊹ (3 h, phrase
 déduite), `pilotage-chemins.test.mjs` ㉟ ter (la fonction EXÉCUTÉE : relance, une seule par heure,
