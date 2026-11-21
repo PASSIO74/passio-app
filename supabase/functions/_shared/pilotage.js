@@ -1976,7 +1976,18 @@ export function marqueCanari(resultat, bilan) {
  * « Deux fois de suite » = des refus dans au moins CANARI_SUITE_MIN quarts d'heure
  * DISTINCTS, sans succès entre eux, le dernier ayant moins de CANARI_MEMOIRE_MS :
  * deux ordonnanceurs à quelques secondes d'écart comptent pour un refus.
- * `rouge` : la ligne est une urgence et le voyant sonne — jamais pour « debit ».
+ * `refuse` (la ligne « À faire ») se décide sur la suite ENTIÈRE, débit compris.
+ * `rouge` (l'urgence, la sonnerie) se décide sur les seuls refus GRAVES de la suite —
+ * ceux qui ne sont pas de débit : CANARI_SUITE_MIN quarts d'heure distincts de
+ * ceux-là, le plus récent ayant moins de CANARI_MEMOIRE_MS. Contre-revue du 21/11 :
+ * jugé sur la classe du DERNIER refus seul, un unique refus grave (un délai isolé)
+ * précédé de refus de débit — que tout porteur de la clé publique provoque — faisait
+ * sonner « refusée deux fois de suite », et un seul refus de débit au milieu d'un
+ * vrai rouge faisait sonner « Problème résolu ».
+ * La classe et le motif rendus sont ceux de ce qui DÉCIDE : le dernier refus grave
+ * si c'est rouge ; le dernier refus de débit si la ligne est là sans être rouge (il
+ * y en a toujours un : sans débit, deux quarts d'heure refusés sont deux graves) ;
+ * le dernier refus tant qu'il n'y a pas de ligne.
  */
 export function bilanCanari(marques, maintenant = Date.now()) {
   const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
@@ -1986,16 +1997,21 @@ export function bilanCanari(marques, maintenant = Date.now()) {
     .sort((a, b) => b.t - a.t);
   const derniere = lues[0];
   if (!derniere || derniere.p.ok !== false || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;
-  const fenetres = new Set();
-  let depuis = derniere.t;
+  const quart = (m) => Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3));
+  const fenetres = new Set(), graves = new Set();
+  let depuis = derniere.t, grave = null, debit = null;
   for (const m of lues) {
     if (m.p.ok !== false) break;
-    fenetres.add(Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3)));
+    fenetres.add(quart(m));
     depuis = m.t;
+    // Triées de la plus récente à la plus ancienne : la première rencontrée de chaque sorte est la dernière en date.
+    if (classeCanari(m.p.classe) === "debit") debit = debit || m;
+    else { graves.add(quart(m)); grave = grave || m; }
   }
-  const classe = classeCanari(derniere.p.classe);
   const refuse = fenetres.size >= CANARI_SUITE_MIN;
-  return { enCours: true, suite: fenetres.size, refuse, rouge: refuse && classe !== "debit", classe, motif: sansControle(derniere.p.motif, 120),
+  const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;
+  const montree = rouge ? grave : (refuse && debit) || derniere;
+  return { enCours: true, suite: fenetres.size, refuse, rouge, classe: classeCanari(montree.p.classe), motif: sansControle(montree.p.motif, 120),
     depuis: new Date(depuis).toISOString(), dernier: new Date(derniere.t).toISOString() };
 }
 

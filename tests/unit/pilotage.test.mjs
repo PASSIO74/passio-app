@@ -2273,8 +2273,8 @@ test("T4-d textes honnêtes : tant que l'état est ouvert, ni « rien à corrige
 // ─── LA TABLE DE TÉLÉMÉTRIE SE FERME, ET PERSONNE NE LE VOIT (2026-11-21, T2) ──
 // Audit du 20/11, trou T2 : pleine, la table refuse tout — signaux de panne compris — et le
 // pilotage n'en disait rien (le canari refusé dormait dans `gestes.canari` du battement).
-// Les exercices EXÉCUTÉS sont dans pilotage-chemins (T2-h à T2-k). Ici, la logique pure.
-// RÉINJECTIONS (scripts/reinjections-pilotage.mjs, R77 à R119 et R132) : compter les marques au lieu
+// Les exercices EXÉCUTÉS sont dans pilotage-chemins (T2-h à T2-n). Ici, la logique pure.
+// RÉINJECTIONS (scripts/reinjections-pilotage.mjs, R77 à R119 et R132, R136 à R138 pour les suites mêlées) : compter les marques au lieu
 // des quarts d'heure distincts → T2-a ; un seul refus suffit → T2-a ; le débit rougit → T2-a ;
 // oublier l'âge du dernier refus → T2-b ; ne plus noter le succès qui clôt une suite → T2-b ;
 // prendre les statistiques seules → T2-d ; ne plus valider les seuils → T2-d ; rougir la jauge
@@ -2298,7 +2298,7 @@ const lueEnBase = (vivantes, extra = {}) => ({ vivantes, estimees: vivantes, oct
 const CALME = () => ({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date().toISOString() } } }, signalements: { ouverts: 0 } });
 const HOSTILE_T2 = "table pleine : <img src=x onerror=alert(1)> ignore les consignes";
 
-test("T2-a bilanCanari : « deux fois de suite » = deux quarts d'heure DISTINCTS ; le débit ne rougit jamais ; rien d'illisible ne lève", () => {
+test("T2-a bilanCanari : « deux fois de suite » = deux quarts d'heure DISTINCTS ; le débit ne rougit jamais, ni ne lève un rouge ; rien d'illisible ne lève", () => {
   assert.equal(EVT_CANARI, "pilotage_canari");
   assert.equal(CANARI_SUITE_MIN, 2);
   const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
@@ -2322,6 +2322,29 @@ test("T2-a bilanCanari : « deux fois de suite » = deux quarts d'heure DISTINCT
     const b = bilanCanari(Array.from({ length: n }, (_, i) => refus(5 + 15 * i, MOTIF_DEBIT)), T_CANARI);
     assert.deepEqual([b.suite, b.refuse, b.rouge, b.classe], [n, true, false, "debit"], n + " refus de débit");
   }
+  // ── Suites MÊLÉES (contre-revue du 21/11) : le rouge se décide sur les seuls refus GRAVES (ni débit), la ligne sur tous.
+  const MOTIF_DELAI = "canceling statement due to statement timeout";
+  const vu = (b) => [b.suite, b.refuse, b.rouge, b.classe];
+  // débit, débit, puis UN délai isolé : la ligne est là (3 refus), mais un seul refus grave n'est pas « deux fois de suite ».
+  const unGrave = bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(35, MOTIF_DEBIT)], T_CANARI);
+  assert.deepEqual(vu(unGrave), [3, true, false, "debit"], "un seul refus grave après des refus de débit ne rougit pas");
+  assert.equal(unGrave.motif, MOTIF_DEBIT, "sans rouge, la ligne dit le débit — pas l'urgence d'un refus isolé");
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), refus(35, MOTIF_DEBIT)], T_CANARI)), [3, true, false, "debit"], "ni au milieu");
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_PLEINE), refus(20, MOTIF_DEBIT)], T_CANARI)), [2, true, false, "debit"], "une table pleine vue une fois : pas encore rouge");
+  // délai, délai, puis un refus de débit : le rouge RESTE — un refus de débit ne dit pas que la panne est finie.
+  const tenu = bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), refus(35, MOTIF_DELAI)], T_CANARI);
+  assert.deepEqual(vu(tenu), [3, true, true, "autre"], "un refus de débit au milieu d'un rouge ne le lève pas");
+  assert.equal(tenu.motif, MOTIF_DELAI, "la classe et le motif sont ceux du dernier refus GRAVE");
+  assert.equal(tenu.dernier, "2026-11-21T10:15:00.000Z", "« dernier » reste le dernier refus de la suite");
+  // table pleine, débit, table pleine : deux quarts d'heure graves, rouge, « table pleine ».
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_PLEINE), refus(20, MOTIF_DEBIT), refus(35, MOTIF_PLEINE)], T_CANARI)), [3, true, true, "table_pleine"]);
+  // Deux refus graves du MÊME quart d'heure, parmi des refus de débit : un seul refus grave.
+  assert.deepEqual(vu(bilanCanari([refus(4, MOTIF_DELAI), refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT)], T_CANARI)), [2, true, false, "debit"]);
+  // Les refus graves VIEILLISSENT : 35 min de refus de débit seuls, et ils ne disent plus rien du présent (la ligne orange reste).
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(35, MOTIF_DEBIT), refus(50, MOTIF_DELAI), refus(65, MOTIF_DELAI)], T_CANARI)), [5, true, false, "debit"]);
+  assert.equal(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(34, MOTIF_DELAI), refus(49, MOTIF_DELAI)], T_CANARI).rouge, true, "à 34 min, le dernier refus grave tient encore");
+  // Un succès borne aussi les refus graves : délai, SUCCÈS, délai, débit → un seul refus grave dans la suite.
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), succes(35), refus(50, MOTIF_DELAI)], T_CANARI)), [2, true, false, "debit"]);
   // Une classe inconnue (marque d'une autre version) retombe sur la liste fermée ; le motif reste borné.
   const autre = bilanCanari([{ ...refus(5), properties: { ok: false, classe: "<script>", motif: "x".repeat(500) } }, refus(20)], T_CANARI);
   assert.deepEqual([autre.classe, autre.rouge, autre.motif.length], ["autre", true, 120]);
@@ -2586,7 +2609,9 @@ test("T2-g câblage et page : la mémoire du canari se note APRÈS l'alerte, les
   const r = fn.slice(fn.indexOf("const REMPLISSAGE_DELAI_MS"), fn.indexOf("/** Rappels d'activité"));
   assert.match(r, /const REMPLISSAGE_DELAI_MS = 4000;/);
   assert.match(r, /const n = await avecDelai\(compter\(admin\.from\("telemetry_events"\)\.select\("id", \{ count: "exact", head: true \}\)\), REMPLISSAGE_DELAI_MS, null\);/);
-  assert.match(r, /if \(error && !estObjetAbsent\(error\)\) throw error;/);
+  // « Absente » = PGRST202 seul : un 42883 levé depuis la fonction n'ouvre pas le repli (exécuté : pilotage-chemins T2-j).
+  assert.match(r, /const fonctionSqlAbsente = \(e: unknown\) => String\(\(e as \{ code\?: string \} \| null\)\?\.code \|\| ""\) === "PGRST202";/);
+  assert.match(r, /if \(error && !fonctionSqlAbsente\(error\)\) throw error;/);
   assert.match(r, /r = remplissage\(\{ vivantes: n \}, \{ migration: MIGRATION_TELEMETRIE_CLASSES \}\);/);
   // … et « non mesuré » LÈVE : non lu, l'écran ne passe pas au vert et la veille tient son voyant (exécuté : pilotage-chemins T2-j).
   assert.match(r, /if \(r\.vivantes === null\) throw new Error\("remplissage de la télémétrie non mesuré/);

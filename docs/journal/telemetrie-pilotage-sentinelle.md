@@ -2301,6 +2301,15 @@ porteur de la clé publique le moyen de faire sonner le téléphone — et le r�
 minute, le voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs forgées du
 07/11. `debit` : orange, priorité 1. `table_pleine` et `autre` : rouge dès deux quarts d'heure.
 
+⚠️ **DANS UNE SUITE MÊLÉE, LE ROUGE SE DÉCIDE SUR LES SEULS REFUS GRAVES** (contre-revue du lot, A-1).
+La ligne « À faire » (`refuse`) compte tous les refus de la suite, débit compris ; l'urgence (`rouge`)
+exige deux quarts d'heure distincts de refus qui ne sont PAS de débit, le plus récent de moins de
+35 min. Le premier jet jugeait la classe du DERNIER refus seul : un délai isolé précédé de refus de
+débit — que tout porteur de la clé publique provoque — sonnait « refusée deux fois de suite », et un
+seul refus de débit au milieu d'un vrai rouge sonnait « Problème résolu ». La classe et le motif
+rendus sont ceux de ce qui décide : le dernier refus grave si c'est rouge, le dernier refus de débit
+si la ligne est là sans être rouge.
+
 ⚠️ **LE MOTIF EST UN TEXTE DU SERVEUR : IL NE SORT QUE DANS `reference`**, que la page rend en texte
 (borné à 120 caractères, sans caractère de contrôle). Titres, `quoi`, raisons du voyant, texte de la
 sonnerie, état mémorisé et journaux de la fonction : des textes fixes ou des codes.
@@ -2487,6 +2496,33 @@ la jauge « Table de télémétrie » ; au quart d'heure suivant, aucune marque 
     par défaut de `public` ne donnent plus EXECUTE aux clients (lu en production le 21/11). Le banc
     les éprouve donc sur les droits par défaut d'avant ce lot.
 
+17. **Un rouge du canari ne survit pas à 35 min de refus de débit SEULS.** Tant que le réservoir
+    anonyme est plein, la sonde ne passe pas jusqu'à la panne qu'elle signalait : après 35 min sans
+    refus grave, le voyant repasse à l'orange (« débit saturé : à confirmer ») et « résolu » sonne,
+    sans preuve que ce soit résolu. La ligne orange reste à l'écran. La table pleine n'est pas
+    masquable ainsi (`aa_table_bornee` passe avant le débit) ; un refus `autre` l'est par qui peut
+    tenir le réservoir plein 35 min. Tenir le rouge jusqu'au premier succès donnerait au même tiers
+    le moyen de le figer : hors lot, avec l'hystérésis de `decideAlerte`.
+18. **`lireRemplissage` ne prend plus pour « migration absente » que PGRST202** (contre-revue, A-5) :
+    un 42883 levé depuis la fonction SQL est « non lu ». Reste le cas où PostgREST perd son cache de
+    schéma APRÈS la migration : il répond PGRST202, le repli compte la table et la juge sur les seuils
+    d'avant — au-dessus de 90 %, un rouge et une sonnerie le temps d'un passage, avec une ligne qui
+    demande une migration déjà en base. Rare et bref (le cache se recharge seul) ; s'en souvenir dans
+    l'isolat ne tiendrait pas (« la mémoire d'une Edge Function n'est pas une mémoire »).
+19. **Les marques du canari se relisent par 12 sur deux heures, les plus récentes d'abord** : au-delà
+    (deux ordonnanceurs, veilles à la main), la suite affichée plafonne à ce qui est relu. Mesuré en
+    production par la contre-revue : 326 canaris du pilotage depuis le 18/11, aucun quart d'heure
+    doublé, écart maximal 30 min.
+
+**Contre-revue du lot (21/11), ce qu'elle a changé.** ① A-1 : le rouge sur les seuls refus graves
+(ci-dessus, `bilanCanari`). ② A-2 et A-3 : le tri, la fenêtre et le filtre d'auteur de `lireCanari`
+n'étaient tenus que par une épingle de texte — inverser le tri ou retirer le filtre laissait 167
+tests verts. T2-n les EXÉCUTE : quatorze marques (les deux récentes font le rouge), un refus de
+2 h 10 (hors fenêtre), des marques forgées sous l'identifiant d'un compte (`analytics_insert_own`
+laisse tout compte écrire cet événement sous le sien : ni ligne, ni voyant, ni sonnerie). ③ A-4 :
+l'en-tête de la migration disait qu'aucun lecteur ne relit la classe courte au-delà de 26 h ; la
+médiane sur 9 jours du chien de garde le fait (limite 9) — l'en-tête le dit. ④ A-5 : limite 18.
+
 **Écarts au plan, et pourquoi.** ① `lireRemplissage` LÈVE sur un remplissage non mesuré (le plan
 rendait une jauge grise) : voir plus haut. ② Le banc SQL part de la structure de production
 (`socle-production-2026-11-06.sql` + les migrations du dépôt jusqu'au 15/11) au lieu d'un décor écrit
@@ -2497,9 +2533,9 @@ jugée dans cet environnement. ④ La lecture SQL rend NULL pour un seuil qui n'
 lieu de lever.
 
 Verrous : `tests/unit/pilotage.test.mjs` (T2-a à T2-g, T2-m), `tests/unit/pilotage-chemins.test.mjs`
-(T2-h à T2-l, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
+(T2-h à T2-l et T2-n, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
 `tests/e2e/pilotage-nuage.spec.js` (㊹), `tests/sql/migration-telemetrie-classes.test.sh` (91
-contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R135 au registre
+contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R143 au registre
 (`scripts/reinjections-pilotage.mjs`), toutes rouges, plus trois à la main sur le test navigateur.
 
 **Hors lot** : compteur des lignes écartées ; recul plus long du client sur « table pleine »

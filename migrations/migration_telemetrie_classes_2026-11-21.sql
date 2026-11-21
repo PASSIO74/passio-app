@@ -19,7 +19,10 @@
 --   · 10,5 % de lignes « protégées » (définition ci-dessous), 84,5 % dans la classe courte
 --     (perf, click, action, lifecycle non protégés), dont les `perf` seules : 60 % du flux d'un jour ;
 --   · 60,1 % de la table (8 867 lignes) est de la classe courte ET a plus de 26 heures : aucun
---     lecteur ne les relit (Sentinelle et audience : 24 h au plus ; la croissance est agrégée).
+--     lecteur ne les relit (Sentinelle et audience : 24 h au plus ; la croissance est agrégée),
+--     SAUF la médiane du flux sur 9 jours du chien de garde GitHub (`fluxHeures`,
+--     scripts/veille-production.mjs), dont le critère « journée ouvrée quasi vide » cesse de jouer
+--     dès l'application — jamais une fausse alerte, une alerte en moins : voir la fiche, limite 9.
 --
 -- CE QUI CHANGE (et rien d'autre) :
 --  ① `telemetrie_protegee(type, action, status, severity, http_status, correlation_id)` : UNE

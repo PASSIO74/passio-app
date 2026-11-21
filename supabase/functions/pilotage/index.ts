@@ -344,13 +344,18 @@ async function noterCanari(admin: Admin, resultat: Record<string, unknown>, bila
 // Une erreur de la fonction qui n'est PAS une absence (délai, panne) LÈVE, et un remplissage NON MESURÉ aussi
 // (compte abandonné, réponse sans nombre) : une lecture non lue n'est pas une table vide — l'écran ne passe pas
 // au vert, la veille tient son voyant (sinon un rouge « télémétrie pleine » sonnait « résolu » sur un compte lent).
+// ⚠️ « Absente » = PGRST202 SEUL (PostgREST ne trouve pas la fonction), pas `estObjetAbsent` (contre-revue du 21/11) : un
+// 42883 levé DEPUIS la fonction (un objet qu'elle appelle a disparu) ouvrait le repli, et une table qui stationne à 91 %
+// — orange, le régime normal après migration — était jugée sur les seuils d'AVANT : rouge, sonnerie, et une ligne qui
+// demandait d'appliquer une migration déjà en base. Reste PGRST202 quand PostgREST perd son cache de schéma : fiche, limite 18.
 const REMPLISSAGE_DELAI_MS = 4000;
+const fonctionSqlAbsente = (e: unknown) => String((e as { code?: string } | null)?.code || "") === "PGRST202";
 async function lireRemplissage(admin: Admin) {
   const { data, error } = await admin.rpc("telemetrie_remplissage");
   let r: ReturnType<typeof remplissage>;
   if (!error && data && typeof data === "object") r = remplissage(data as Record<string, unknown>);
   else {
-    if (error && !estObjetAbsent(error)) throw error;
+    if (error && !fonctionSqlAbsente(error)) throw error;
     const n = await avecDelai(compter(admin.from("telemetry_events").select("id", { count: "exact", head: true })), REMPLISSAGE_DELAI_MS, null);
     r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });
   }

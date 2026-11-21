@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11)
+//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 131 depuis la contre-revue du lot
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -120,13 +120,13 @@ const M = [
   ["R126 en pause, la ligne de l'état garde un bouton qui ne lit rien", PJ, `      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });\n      else if (enVol(srE))`, `      if (enVol(srE))`, "tests/unit/pilotage.test.mjs", "T4-c"],
   ["R127 « rien à corriger » revient alors que la Sentinelle n'a pas tout traité", PJ, `quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, `quoi: false ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, "tests/unit/pilotage.test.mjs", "T4-d"],
   // La table de télémétrie se ferme, et personne ne le voit (2026-11-21, audit du 20/11, trou T2).
-  // Logique pure (pilotage.test.mjs, T2-a à T2-g), fonction exécutée (ce banc, T2-h à T2-l), battement (⑧).
+  // Logique pure (pilotage.test.mjs, T2-a à T2-g), fonction exécutée (ce banc, T2-h à T2-n), battement (⑧).
   // R96, R98 et R119 sont des épingles de TEXTE (l'ordre d'un appel, la valeur d'un dépassement de délai) : le banc
   // exécuté ne sait pas faire durer un compte 4 s, ni voir qu'une marque est écrite trop tôt.
-  ["R77 les marques du canari se comptent, pas les quarts d'heure distincts", PJ, `fenetres.add(Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3)));`, `fenetres.add(m.t);`, PUR, "T2-a"],
+  ["R77 les marques du canari se comptent, pas les quarts d'heure distincts", PJ, `const quart = (m) => Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3));`, `const quart = (m) => m.t;`, PUR, "T2-a"],
   ["R78 un seul refus du canari fait déjà une ligne", PJ, `export const CANARI_SUITE_MIN = 2;`, `export const CANARI_SUITE_MIN = 1;`, PUR, "T2-a"],
-  ["R79 le débit saturé rougit (tout porteur de la clé publique ferait sonner)", PJ, `rouge: refuse && classe !== "debit",`, `rouge: refuse,`, PUR, "T2-a"],
-  ["R80 le débit saturé fait sonner la veille", PJ, `rouge: refuse && classe !== "debit",`, `rouge: refuse,`, BANC, "T2-l"],
+  ["R79 le débit saturé rougit (tout porteur de la clé publique ferait sonner)", PJ, `if (classeCanari(m.p.classe) === "debit") debit = debit || m;`, `if (false) debit = debit || m;`, PUR, "T2-a"],
+  ["R80 le débit saturé fait sonner la veille", PJ, `if (classeCanari(m.p.classe) === "debit") debit = debit || m;`, `if (false) debit = debit || m;`, BANC, "T2-l"],
   ["R81 un refus de 40 min tient encore la ligne", PJ, ` || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;`, `) return rien;`, PUR, "T2-b"],
   ["R82 le succès qui clôt une suite de refus ne se note plus", PJ, `  if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };\n`, ``, BANC, "T2-h"],
   ["R83 les statistiques vivantes seules (0 après un arrêt brutal)", PJ, `const lus = [compte(s.vivantes), compte(s.estimees)].filter((x) => x !== null);`, `const lus = [compte(s.vivantes)].filter((x) => x !== null);`, PUR, "T2-d"],
@@ -145,7 +145,7 @@ const M = [
   ["R96 la marque du canari s'écrit avant l'alerte (épingle de texte)", FN, `  const d = decideAlerte(prec, actuel);\n`, `  await noterCanari(admin, { emis: false }, null).catch(() => null);\n  const d = decideAlerte(prec, actuel);\n`, PUR, "T2-g"],
   ["R97 le repli sans migration ne nomme plus le fichier à appliquer", FN, `r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });`, `r = remplissage({ vivantes: n });`, BANC, "T2-i"],
   ["R98 un compte abandonné après 4 s se lit « 0 ligne » (épingle de texte)", FN, `REMPLISSAGE_DELAI_MS, null);`, `REMPLISSAGE_DELAI_MS, 0);`, PUR, "T2-g"],
-  ["R99 une erreur de la fonction SQL est avalée par le repli", FN, `    if (error && !estObjetAbsent(error)) throw error;\n    const n = await avecDelai(`, `    const n = await avecDelai(`, BANC, "T2-j"],
+  ["R99 une erreur de la fonction SQL est avalée par le repli", FN, `    if (error && !fonctionSqlAbsente(error)) throw error;\n    const n = await avecDelai(`, `    const n = await avecDelai(`, BANC, "T2-j"],
   ["R100 le remplissage illisible ne tient plus le voyant de la veille", FN, `[sante, signalements, github, parc, rempl, can].some(`, `[sante, signalements, github, parc, can].some(`, BANC, "T2-j"],
   ["R101 la mémoire du canari illisible ne tient plus le voyant de la veille", FN, `[sante, signalements, github, parc, rempl, can].some(`, `[sante, signalements, github, parc, rempl].some(`, BANC, "T2-j"],
   ["R102 la mémoire du canari illisible se lit « aucun refus »", FN, `  if (error) throw error;\n  return bilanCanari(data || []);`, `  return bilanCanari(data || []);`, BANC, "T2-j"],
@@ -171,6 +171,15 @@ const M = [
   ["R133 la base ne protège plus un type que le client ne jette jamais", MG, `'flow', 'link', 'rt_recv', 'push'`, `'flow', 'link', 'push'`, PUR, "T2-m"],
   ["R134 la lecture SQL rend une clé que le pilotage ne lit pas", MG, `    'vivantes', pg_catalog.pg_stat_get_live_tuples(`, `    'lignes', pg_catalog.pg_stat_get_live_tuples(`, PUR, "T2-m"],
   ["R135 un seuil de classe n'est plus 60 % de sa borne", MG, `telemetrie_classe_bornee('480000', '720000', '720000', '1080000');`, `telemetrie_classe_bornee('500000', '720000', '720000', '1080000');`, PUR, "T2-m"],
+  // Contre-revue du lot (2026-11-21) : les suites de refus mêlées, la lecture des marques, la fonction SQL qui lève.
+  ["R136 le rouge se décide sur la classe du DERNIER refus (un délai isolé après des refus de débit sonne ; un refus de débit sonne « résolu »)", PJ, `const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;`, `const rouge = refuse && classeCanari(derniere.p.classe) !== "debit";`, PUR, "T2-a"],
+  ["R137 de vieux refus graves tiennent le rouge sous des refus de débit", PJ, `const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;`, `const rouge = graves.size >= CANARI_SUITE_MIN;`, PUR, "T2-a"],
+  ["R138 la ligne montre la classe du dernier refus (une ligne orange au titre d'une urgence, un rouge au titre du débit)", PJ, `const montree = rouge ? grave : (refuse && debit) || derniere;`, `const montree = derniere;`, PUR, "T2-a"],
+  ["R139 les marques du canari se lisent des plus vieilles aux plus récentes (au-delà de 12, les refus récents ne sont plus lus)", FN, `.gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, `.gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: true }).limit(CANARI_MARQUES_MAX);`, BANC, "T2-n"],
+  ["R140 les marques du canari se lisent sans tri", FN, `.gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, `.gte("created_at", ilYa(CANARI_LECTURE_MS)).limit(CANARI_MARQUES_MAX);`, BANC, "T2-n"],
+  ["R141 les marques du canari se lisent sans fenêtre (un refus de la veille allonge la suite)", FN, `\n    .gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, `\n    .order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);`, BANC, "T2-n"],
+  ["R142 une marque du canari écrite par un compte est crue (tout compte ferait sonner)", FN, `.eq("event", EVT_CANARI).eq("user_id", "systeme:pilotage")`, `.eq("event", EVT_CANARI)`, BANC, "T2-n"],
+  ["R143 un 42883 levé depuis la fonction SQL ouvre le repli (seuils d'avant migration sur une table protégée)", FN, `    if (error && !fonctionSqlAbsente(error)) throw error;\n    const n = await avecDelai(`, `    if (error && !estObjetAbsent(error)) throw error;\n    const n = await avecDelai(`, BANC, "T2-j"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
