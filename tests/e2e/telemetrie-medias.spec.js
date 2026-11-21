@@ -3,7 +3,7 @@
 // (2026-11-21, audit de surveillance, trou T5)
 //
 // Avant ce lot, si toutes les photos cessaient de s'afficher, rien ne partait :
-// les `onerror` du produit écrivent « Image indisponible » et se taisent.
+// les `onerror` du produit masquent ou remplacent l'élément et se taisent.
 // `js/telemetry.js` compte désormais, par capture au niveau du document, les
 // emplacements de média affichés et ceux qui échouent, puis envoie UN bilan
 // par période et par famille EN ÉCHEC : `media` / `bilan`, meta
@@ -33,7 +33,18 @@
 //   ⑪  `setEnabled(false)` remet les compteurs à zéro et plus rien ne se compte ;
 //   ⑫  vidéo et son : `loadedmetadata`, `error` sur l'élément et sur <source> ;
 //      une vidéo vidée par `src=""` n'est pas un échec ;
-//   ⑬  chaque nombre est borné.
+//   ⑬  chaque nombre est borné ;
+// et, depuis la contre-revue du lot (2026-11-21) :
+//   ⑧b un échec EN ATTENTE de verdict tient la fenêtre ouverte (vingt images
+//      affichées + trois échecs ne font pas « ko 3 / vus 0 ») ; la fenêtre se
+//      juge aussi à l'événement d'échec ; elle repart au bilan ;
+//   ⑨c sous pression, un seul bilan notable par session et par famille ;
+//   ⑨d à la sortie sous délestage, le bruit de fond est jeté ;
+//   ⑩b le bilan de sortie a un plancher court (cache aller-retour) ;
+//   ⑪b un refus pendant la fenêtre du verdict périme les échecs en attente ;
+//   ⑫b `currentSrc` avant `src` (srcset, <source>) ;
+//   ⑭  la gigue : ± 30 %, tirée une fois par session ;
+//   ⑮  une horloge qui recule ne fait ni taire ni attendre des jours.
 //
 // ⚠️ AUCUN OCTET NE PART VERS LA PRODUCTION : les POST vers `telemetry_events`
 // sont interceptés, le démarrage vise le projet Supabase VIDE, et chaque média
@@ -101,13 +112,14 @@ function installerBanc(wavB64) {
       if (s.onerror) el.setAttribute("onerror", s.onerror);
       if (s.tag === "video" || s.tag === "audio") { el.preload = "auto"; el.muted = true; }
       if (s.tag === "link") el.rel = "stylesheet";
+      if (s.srcset != null) el.setAttribute("srcset", s.srcset);
       if (s.source) {
         cible = document.createElement("source");
         cible.addEventListener("error", () => ok("error"));
         cible.setAttribute("src", s.src);
         el.appendChild(cible);
       } else if (s.tag === "link") el.setAttribute("href", s.src);
-      else el.setAttribute("src", s.src);
+      else if (s.src != null) el.setAttribute("src", s.src);
       if (s.id) el.id = s.id;
       boite.appendChild(el);
     }))),
@@ -122,7 +134,9 @@ function installerBanc(wavB64) {
 
 // Charge la page d'accueil, mesure active, horloge simulée ; puis part de
 // compteurs VIDES (l'opposition suivie de la reprise les remet à zéro — c'est
-// le cas ⑪ qui le prouve).
+// le cas ⑪ qui le prouve). La gigue de la session (± 30 %, tirée une fois) est
+// FIXÉE à 1 : `Math.random` rend 0,5 le temps du tirage, puis reprend — le
+// laisser figé donnerait le même `event_id` à toutes les lignes.
 async function charger(page) {
   const etat = await intercepter(page);
   await poserGateSansPremiereVisite(page);
@@ -132,7 +146,13 @@ async function charger(page) {
   expect(await page.evaluate(() => !!(window.tel && window.tel.enabled)), "télémétrie active").toBe(true);
   await page.evaluate(installerBanc, WAV.toString("base64"));
   await page.clock.fastForward(3000);
-  await page.evaluate(() => { window.tel.setEnabled(false); window.tel.setEnabled(true); });
+  const gigue = await page.evaluate(() => {
+    const hasard = Math.random;
+    Math.random = () => 0.5;
+    try { window.tel.setEnabled(false); window.tel.setEnabled(true); return window.tel._mediaGigue(); }
+    finally { Math.random = hasard; }
+  });
+  expect(gigue, "gigue fixée à 1 pour le banc").toBe(1);
   expect(await medias(page), "le banc part de compteurs vides").toEqual({});
   return etat;
 }
@@ -311,6 +331,7 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
       expect(r.n, fam + " ko " + ko + " vus " + vus).toBe(1);
       const l = r.lignes[0];
       expect([l.meta.famille, l.meta.ko, l.meta.vus]).toEqual([fam, ko, vus]);
+      await page.clock.fastForward(31000);                   // le tour suivant passe le plancher court du bilan de sortie
       return [l.severity, await page.evaluate((e) => window.tel._estPrioritaire(e), l)];
     };
     expect(await tour("stockage", 2, 0), "(a) deux échecs : sous le seuil").toEqual(["info", false]);
@@ -408,10 +429,14 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     expect((await bilan(page, "masque")).n, "plancher : un masquage à 1 min ne pose rien").toBe(0);
     await page.clock.fastForward(180000);
     expect((await bilans(page, etat)).length, "toujours une ligne à 4 min").toBe(1);
+    // Une image s'affiche plus d'une minute après le début de la fenêtre : les
+    // trois échecs qui ATTENDENT leur bilan ne doivent pas être effacés.
+    await succes(page, 1);
+    expect(await medias(page), "un échec compté tient la fenêtre ouverte").toEqual({ stockage: C(3, 1) });
     await page.clock.fastForward(65000);
     b = await bilans(page, etat);
     expect(b.length, "la seconde ligne part à la période").toBe(2);
-    expect(metaNue(b[1]), "un delta, pas un cumul").toEqual({ famille: "stockage", ko: 3, vus: 0, ko_av: 0, vus_av: 0 });
+    expect(metaNue(b[1]), "un delta, pas un cumul — et les trois échecs y sont").toEqual({ famille: "stockage", ko: 3, vus: 1, ko_av: 0, vus_av: 0 });
   });
 
   test("T5-⑧ fenêtre du dénominateur : sans échec en attente, les affichages de plus d'une minute ne diluent pas la panne", async ({ page }) => {
@@ -436,8 +461,9 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     let r = await bilan(page, "periode");
     expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "seule la panne part").toEqual([["stockage", "warn"]]);
     expect(await medias(page), "le bruit de fond reste compté").toEqual({ demo: C(1, 0) });
+    await page.clock.fastForward(31000);                     // plancher court du bilan de sortie
     r = await bilan(page, "sortie");
-    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "à la sortie, tout part").toEqual([["demo", "info"]]);
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "à la sortie, sous pression, tout part").toEqual([["demo", "info"]]);
 
     // Bilan retenu : le réveil suivant est à une PÉRIODE, pas 20 s plus tard.
     await page.clock.fastForward(310000);                    // passe le plancher du bilan précédent
@@ -489,7 +515,7 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     await page.clock.fastForward(5000);
     await echecs(page, 3);
     await verdict(page);
-    await page.clock.fastForward(5000);   // encore sous le plancher de 5 min : seul le départ fait partir
+    await page.clock.fastForward(30000);  // encore sous le plancher de 5 min : seul le départ fait partir
     await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
     await expect.poll(() => etat.lots.flat().filter((r) => r.type === "media").length, { message: "le bilan n'est pas parti à la fermeture" }).toBe(2);
     expect(etat.lots.flat().some((r) => r.type === "session" && r.action === "end")).toBe(true);
@@ -514,7 +540,11 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     expect(await medias(page), "rien ne se compte pendant le refus").toEqual({});
 
     // Reprise : le minuteur d'AVANT le refus ne doit pas faire partir le bilan plus tôt.
-    await page.evaluate(() => window.tel.setEnabled(true));
+    // (la reprise retire la gigue : fixée à 1, comme dans `charger`)
+    await page.evaluate(() => {
+      const hasard = Math.random; Math.random = () => 0.5;
+      try { window.tel.setEnabled(true); window.tel._mediaGigue(); } finally { Math.random = hasard; }
+    });
     await echecs(page, 3);
     await verdict(page);
     await page.clock.fastForward(9000);                      // l'ancien minuteur aurait sonné ici
@@ -557,5 +587,216 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     expect(await medias(page)).toEqual({ stockage: C(3, 10051) });
     const r = await bilan(page, "sortie");
     expect(metaNue(r.lignes[0])).toEqual({ famille: "stockage", ko: 3, vus: 9999, ko_av: 0, vus_av: 0 });
+  });
+
+  // ── Contre-revue du lot (2026-11-21) ──────────────────────────────────────
+  test("T5-⑧b un échec en attente de verdict tient la fenêtre : 20 images affichées à 59 s + 3 échecs → info, vus 20", async ({ page }) => {
+    await charger(page);
+    // Point de départ CONNU de la fenêtre : un affichage (autre famille) plus
+    // d'une minute après le chargement la fait repartir ici.
+    await page.clock.fastForward(61000);
+    await succes(page, 1, "demo");
+    expect(await medias(page)).toEqual({ demo: C(0, 1) });
+    // (a) à 59 s de la fenêtre : vingt images affichées, trois en échec. Le
+    // verdict des échecs tombe à 61 s — APRÈS la borne des 60 s.
+    await page.clock.fastForward(59000);
+    await succes(page, 20);
+    await echecs(page, 3);
+    await verdict(page);
+    expect(await medias(page), "(a) le verdict n'efface pas les affichages qui le précèdent").toEqual({ demo: C(0, 1), stockage: C(3, 20) });
+    let r = await bilan(page, "banc");
+    expect(r.lignes.map((l) => [l.severity, metaNue(l)]), "(a) un bruit de fond, pas une panne").toEqual([
+      ["info", { famille: "stockage", ko: 3, vus: 20, ko_av: 0, vus_av: 0 }],
+    ]);
+
+    // (c) la fenêtre REPART au bilan. Départ connu (W) : un affichage d'une
+    // autre famille, plus d'une minute après. Trois échecs à W + 10 s, bilan à
+    // W + 12 s ; cinq affichages à W + 20 s ; trois échecs à W + 65 s. Comptée
+    // depuis le BILAN, la fenêtre est encore ouverte (53 s) : les cinq
+    // affichages restent. Comptée depuis W, elle serait échue et les effacerait.
+    await page.clock.fastForward(61000);
+    await succes(page, 1, "demo");
+    await page.clock.fastForward(10000);
+    await echecs(page, 3);
+    await verdict(page);
+    r = await bilan(page, "sortie");
+    expect(r.lignes.map((l) => [l.severity, l.meta.ko, l.meta.vus]), "(c) le bilan qui fait repartir la fenêtre").toEqual([["warn", 3, 0]]);
+    await page.clock.fastForward(8000);
+    await succes(page, 5);
+    await page.clock.fastForward(45000);
+    await echecs(page, 3);
+    await verdict(page);
+    expect(await medias(page), "(c) la fenêtre repart au bilan").toEqual({ stockage: C(3, 5) });
+    await page.clock.fastForward(300000);                    // le bilan de période part, compteurs vides
+    expect(await medias(page)).toEqual({});
+
+    // (b) la fenêtre se juge AUSSI à l'événement d'échec : dix affichages, plus
+    // rien pendant deux minutes, puis trois échecs seuls (aucun affichage ne
+    // vient rouvrir la fenêtre) — les vieux affichages ne diluent pas la panne.
+    await succes(page, 10);
+    await page.clock.fastForward(120000);
+    await echecs(page, 3);
+    await verdict(page);
+    expect(await medias(page), "(b) de vieux affichages ne noient pas des échecs seuls").toEqual({ stockage: C(3, 0) });
+  });
+
+  test("T5-⑨c sous pression, un seul bilan notable par session et par famille : le suivant attend, une autre famille part", async ({ page }) => {
+    const etat = await charger(page);
+    await page.evaluate(() => { window.__pression = true; window.tel.sousPression = () => !!window.__pression; });
+    await echecs(page, 3, "stockage");
+    await verdict(page);
+    let r = await bilan(page, "periode");
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "le premier notable part, même sous pression").toEqual([["stockage", "warn"]]);
+
+    await page.clock.fastForward(301000);
+    await echecs(page, 4, "stockage");
+    await echecs(page, 3, "demo");
+    await verdict(page);
+    r = await bilan(page, "periode");
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "stockage a déjà parlé : seul demo part").toEqual([["demo", "warn"]]);
+    expect(await medias(page), "le second notable de stockage attend, compté").toEqual({ stockage: C(4, 0) });
+
+    // La pression retombe : le bilan retenu part à la période suivante, entier.
+    await page.evaluate(() => { window.__pression = false; });
+    await page.clock.fastForward(301000);
+    const b = (await bilans(page, etat)).filter((l) => l.meta.famille === "stockage");
+    expect(b.map((l) => [l.severity, l.meta.ko]), "rien n'est perdu").toEqual([["warn", 3], ["warn", 4]]);
+
+    // De nouveau sous pression : retenu à la période, mais à la SORTIE rien n'attend.
+    await page.evaluate(() => { window.__pression = true; });
+    await page.clock.fastForward(301000);
+    await echecs(page, 5, "stockage");
+    await verdict(page);
+    expect((await bilan(page, "periode")).n, "retenu à la période").toBe(0);
+    r = await bilan(page, "sortie");
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity, l.meta.ko]), "à la sortie, la panne part").toEqual([["stockage", "warn", 5]]);
+  });
+
+  test("T5-⑨d à la sortie sous délestage, le bruit de fond est jeté et la panne part", async ({ page }) => {
+    await charger(page);
+    await page.evaluate(() => { window.__delestageNiveau = () => 1; });
+    await echecs(page, 1, "demo");
+    await echecs(page, 2, "externe");
+    await echecs(page, 3, "stockage");
+    await verdict(page);
+    const r = await bilan(page, "sortie");
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "seule la panne part").toEqual([["stockage", "warn"]]);
+    expect(await medias(page), "le bruit de fond est jeté, pas gardé").toEqual({});
+
+    // Rien que du bruit de fond : aucune ligne, et rien ne reste en mémoire.
+    await page.clock.fastForward(31000);
+    await echecs(page, 2, "externe");
+    await verdict(page);
+    expect((await bilan(page, "sortie")).n).toBe(0);
+    expect(await medias(page), "jeté même sans ligne partie").toEqual({});
+
+    // Témoin : sans délestage, le même bruit de fond part à la sortie.
+    await page.evaluate(() => { window.__delestageNiveau = () => 0; });
+    await echecs(page, 2, "externe");
+    await verdict(page);
+    expect((await bilan(page, "sortie")).lignes.map((l) => [l.meta.famille, l.meta.ko])).toEqual([["externe", 2]]);
+  });
+
+  test("T5-⑩b le bilan de sortie a un plancher court : une page qui entre et sort du cache aller-retour n'émet pas une ligne par passage", async ({ page }) => {
+    const etat = await charger(page);
+    for (let k = 0; k < 4; k++) {
+      await echecs(page, 3);
+      await verdict(page);
+      await page.evaluate(() => { window.dispatchEvent(new Event("pagehide")); window.dispatchEvent(new Event("pageshow")); });
+      await page.clock.fastForward(3000);
+    }
+    expect((await bilans(page, etat)).length, "quatre sorties en 20 s : une seule ligne").toBe(1);
+    expect(await medias(page), "les échecs suivants restent comptés").toEqual({ stockage: C(9, 0) });
+    await page.clock.fastForward(15000);                     // 30 s après la première sortie
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    const b = await bilans(page, etat);
+    expect(b.map((l) => l.meta.ko), "le plancher passé, la sortie emporte le reste").toEqual([3, 9]);
+  });
+
+  test("T5-⑪b un refus de la mesure pendant la fenêtre du verdict périme les échecs en attente", async ({ page }) => {
+    await charger(page);
+    await echecs(page, 3);
+    await page.clock.fastForward(500);
+    await page.evaluate(() => { window.tel.setEnabled(false); window.tel.setEnabled(true); });
+    await verdict(page);
+    expect(await medias(page), "un verdict d'avant le refus ne compte pas après la reprise").toEqual({});
+    // Le compteur d'attente est reparti de zéro : la fenêtre se referme normalement.
+    await succes(page, 5);
+    await page.clock.fastForward(61000);
+    await succes(page, 1);
+    expect(await medias(page), "aucune attente fantôme ne tient la fenêtre ouverte").toEqual({ stockage: C(0, 1) });
+  });
+
+  test("T5-⑫b l'adresse jugée est celle que le navigateur a retenue (currentSrc) : srcset, src blanc + srcset, <source> lue", async ({ page }) => {
+    await charger(page);
+    await page.evaluate(() => window.__banc.poser([
+      // `src` de la même origine, candidat RETENU dans le stockage, mort : c'est le stockage qui échoue.
+      { src: "/banc/ok-repli.png", srcset: window.__banc.stockage("ko-candidat.jpg") + " 1x" },
+      // `src` présent et blanc, mais un srcset : c'est un média, pas un emplacement vidé.
+      { src: "", srcset: window.__banc.stockage("ko-candidat-2.jpg") + " 1x" },
+      // Une vidéo sans attribut `src`, lue par sa <source> : `video.src` est vide, `currentSrc` dit le stockage.
+      { tag: "video", source: true, src: window.__banc.stockage("ok-son-3.wav") },
+    ]));
+    await verdict(page);
+    expect(await medias(page)).toEqual({ stockage: C(2, 1, 0, 1) });
+  });
+
+  test("T5-⑭ gigue : le premier délai et la période sont multipliés par un facteur de 0,7 à 1,3 tiré UNE fois par session", async ({ page }) => {
+    const etat = await charger(page);
+    // Refus puis reprise : la gigue est retirée. `Math.random` rend 0 le temps du tirage.
+    const g = await page.evaluate(() => {
+      const hasard = Math.random;
+      window.tel.setEnabled(false); window.tel.setEnabled(true);
+      Math.random = () => 0;
+      try { return window.tel._mediaGigue(); } finally { Math.random = hasard; }
+    });
+    expect(g, "borne basse").toBeCloseTo(0.7, 10);
+    expect(await page.evaluate(() => {
+      const hasard = Math.random; Math.random = () => 0.999999;
+      try { return window.tel._mediaGigue(); } finally { Math.random = hasard; }
+    }), "tirée une fois : un second tirage ne la change pas").toBeCloseTo(0.7, 10);
+
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(13500);
+    expect((await bilans(page, etat)).length, "rien à 13,5 s").toBe(0);
+    await page.clock.fastForward(1000);
+    expect((await bilans(page, etat)).length, "premier bilan à 14 s (20 s × 0,7)").toBe(1);
+
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(205000);
+    expect((await bilans(page, etat)).length, "rien à 208 s du premier bilan").toBe(1);
+    await page.clock.fastForward(4000);
+    expect((await bilans(page, etat)).length, "second bilan à 210 s (5 min × 0,7)").toBe(2);
+
+    // Borne haute, sur une autre « session ».
+    expect(await page.evaluate(() => {
+      const hasard = Math.random;
+      window.tel.setEnabled(false); window.tel.setEnabled(true);
+      Math.random = () => 0.999999;
+      try { return window.tel._mediaGigue(); } finally { Math.random = hasard; }
+    }), "borne haute").toBeCloseTo(1.3, 5);
+  });
+
+  test("T5-⑮ une horloge qui recule ne fait ni taire la mesure ni armer un minuteur de plusieurs jours", async ({ page }) => {
+    const etat = await charger(page);
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(20500);
+    expect((await bilans(page, etat)).length, "premier bilan").toBe(1);
+
+    // L'horloge de l'appareil recule de trente jours (réglage manuel, synchronisation).
+    const recul = await page.evaluate(() => Date.now() - 30 * 86400000);
+    await page.clock.setSystemTime(recul);
+    expect(await page.evaluate((r) => Math.abs(Date.now() - r) < 5000, recul), "l'horloge du banc a bien reculé").toBe(true);
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(290000);
+    expect((await bilans(page, etat)).length, "pas de bilan immédiat : le délai est borné à une période, pas débordé").toBe(1);
+    await page.clock.fastForward(12000);
+    const b = await bilans(page, etat);
+    expect(b.length, "le bilan part à la période, pas dans trente jours").toBe(2);
+    expect(b.map((l) => l.meta.ko).sort()).toEqual([3, 3]);
   });
 });

@@ -2569,7 +2569,9 @@ et plafond propre aux lignes protégées ; un geste « purger maintenant » depu
 
 Trou T5 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (lot D2 ; le volet « connexion », D1, est livré
 à part dans app-02). Avant ce lot, si toutes les photos cessaient de s'afficher, **rien ne partait** :
-dix-neuf `onerror` du produit écrivent « Image indisponible » et se taisent, l'écouteur `error` de la
+les `onerror` en ligne du produit masquent ou remplacent l'élément et se taisent (18 lignes de code en
+posent un — `grep -n 'onerror=' js/app-*.js js/ui-v7-lot.js index.html | grep -v '^[^:]*:[0-9]*: *//' | wc -l`,
+compté le 21/11 — dont un seul, `imageFilIndisponible`, écrit « Image indisponible »), l'écouteur `error` de la
 télémétrie n'est pas en capture (il ne voit aucune ressource), le crochet `fetch` ne voit jamais un
 `<img>`. Le voyant restait vert.
 
@@ -2582,6 +2584,8 @@ ultérieur, et cette fiche est son contrat.
 `{famille, ko, vus, ko_av, vus_av}` (plus `mode`, `trafic`, posés par `track` sur toute ligne) :
 - `ko` / `vus` : EMPLACEMENTS en échec / affichés depuis le bilan précédent de la session — un **delta**,
   jamais un cumul ; `ko_av` / `vus_av` : leur part audio ou vidéo. Chaque nombre est borné à 9 999.
+  **`vus` est un MINORANT** (fenêtre de 60 s, images détachées avant la fin de leur chargement, médias
+  servis avant le bilan précédent) : `ko ≥ vus` est un seuil de tri, `ko / vus` n'est PAS un taux d'échec.
 - `famille`, liste FERMÉE de cinq valeurs, calculée puis oubliée (aucune adresse, aucun hôte, aucun
   chemin ne part) : `stockage` (chemin `/storage/v1/` sur l'hôte **strictement égal** à celui de
   `window.PASSIO_SUPABASE.url`), `demo` (`/demo/` de la même origine), `app` (reste de la même origine,
@@ -2591,13 +2595,24 @@ ultérieur, et cette fiche est son contrat.
 - Une ligne **par session, par période et par famille EN ÉCHEC** ; rien sans échec. Premier bilan 20 s
   après le premier échec compté (`MEDIA_PREMIER_MS`), puis un par période de 5 min au plus
   (`MEDIA_PERIODE_MS` × le facteur de délestage, lu à l'armement : `_mediaPeriode`), un au masquage
-  (soumis au même plancher) et un à `pagehide` (toujours, il voyage avec le lot de fermeture).
+  (soumis au même plancher) et un à `pagehide` (il voyage avec le lot de fermeture ; plancher court de
+  30 s après le bilan précédent, `MEDIA_SORTIE_MS`).
+- **Gigue** : le premier délai ET la période sont multipliés par un facteur de 0,7 à 1,3, tiré UNE fois
+  par session (`_mediaGigue`, retiré après un refus de la mesure). Les bilans d'une session tombent donc
+  entre 14 et 26 s, puis toutes les 3 min 30 à 6 min 30. Le banc la fixe à 1 (`Math.random` rend 0,5 le
+  temps du tirage, puis reprend — figé, il donnerait le même `event_id` à toutes les lignes).
 - **Notable** = famille `stockage` ou `demo` ET `ko ≥ 3` (`MEDIA_KO_NOTABLE`) ET `ko ≥ vus` →
-  `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours, jamais retenu.
+  `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours. Il n'attend ni le
+  délestage ni la pression — **à une réserve près : sous pression (429), un seul notable par session et
+  par famille** ; les suivants attendent, comptés, comme le bruit de fond, et partent entiers quand la
+  pression retombe ou à la sortie. Il reste soumis au plancher de période et au plafond client de `track`
+  (400 lignes par minute et par onglet).
   Tout le reste part en `info` et ATTEND sous pression (`tel.sousPression()`) ou sous délestage ; un
   bilan retenu ne réveille l'appareil qu'une fois par période (`mediaEssai`), pas toutes les 20 s.
-- Dénominateur fenêtré : sans échec en attente, les compteurs repartent de zéro dès qu'un événement
-  arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`).
+  **À la sortie rien n'attend** : tout part, sauf le bruit de fond sous délestage, qui est JETÉ.
+- Dénominateur fenêtré : sans échec compté ni échec en attente de verdict, les compteurs repartent de
+  zéro dès qu'un événement arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`,
+  `_mediaFenetre`) ; la fenêtre repart à chaque bilan.
 
 **Comment c'est compté.** Tout vit dans `js/telemetry.js`, **aucun `onerror` n'est modifié** : trois
 écouteurs en CAPTURE sur `document` (`error`, `load`, `loadedmetadata` — pas `loadeddata`, qu'un
@@ -2608,8 +2623,13 @@ Un échec n'est compté qu'après un **verdict différé de 2 s** (`MEDIA_VERDIC
   ou une bascule réseau (les chargements coupés en arrière-plan tombent au réveil) ;
 - au verdict : rien si une occultation (`_occultation`) ou une bascule réseau (`_mediaCoupure`) est
   survenue depuis, ni hors ligne, ni en fermeture (`contexteEchec`).
-`setEnabled(false)` remet les compteurs à zéro et annule le minuteur ; `_mediaCompter` sort si la mesure
-est refusée. Fenêtres de banc : `tel._familleMedia`, `tel._medias()`, `tel._mediaBilan(raison)`.
+Entre l'événement et son verdict, l'échec est « en attente » (`mediaAttente`) : il tient la fenêtre du
+dénominateur ouverte, et la fenêtre se juge à l'événement, avant qu'il n'attende.
+`setEnabled(false)` remet les compteurs et l'attente à zéro, périme les verdicts en cours
+(`mediaEpoque`) et annule le minuteur ; mesure refusée, les écouteurs sortent AVANT tout classement
+(aucune lecture de l'élément, aucun minuteur armé). ⚠️ `_mediaCompter` ne porte PAS cette garde (elle
+y était redondante, donc sans verrou) : tout nouvel appelant doit la porter. Fenêtres de banc :
+`tel._familleMedia`, `tel._medias()`, `tel._mediaBilan(raison)`, `tel._mediaGigue()`.
 
 **Écarts au plan de l'audit (point 3, C), décidés à la conception puis à sa contradiction** : pas de
 `mediaKo` appelé depuis les `onerror` (un second chemin et un dédoublonnage pour rien), pas de famille
@@ -2623,8 +2643,11 @@ des requêtes qu'un filtre élargi peindrait en pannes).
    chez TOUS ses lecteurs, comptes anciens et honnêtes compris (à 4 publications en production, trois
    suffisent pour un `warn`). Un bilan dit ce qu'un appareil a vu, pas l'état du stockage. **Ne jamais
    sonner sans recoupement serveur** (lecture d'un objet témoin par la veille).
-2. **Les avatars ne sont pas comptés** : `avatarBg` les peint en fond CSS, qu'aucun écouteur ne voit.
-   Sont couverts : images du fil, couvertures, stories, vidéos, sons.
+2. **Les avatars ne sont comptés qu'en partie** : ceux que `avatarBg` peint en fond CSS échappent à
+   tout écouteur ; ceux qui sont des `<img>` sont comptés comme n'importe quelle image
+   (`js/app-05-config-profil.js:4391`, `js/app-07-ia-explore-irl.js:365`,
+   `js/app-08-ui-modals-tour.js:716` et `:740`). Sont couverts : images du fil, couvertures, stories,
+   vidéos, sons, et ces avatars-là.
 3. **Un bilan peut arriver très tard** : la file est persistée (`passio_tel_backlog`) et rejouée au
    chargement suivant. Fenêtrer sur `client_ts`, et écarter les lignes où `received_at − client_ts`
    dépasse 10 min — une fenêtre sur `received_at` prendrait la panne d'hier pour celle d'aujourd'hui.
@@ -2643,7 +2666,32 @@ des requêtes qu'un filtre élargi peindrait en pannes).
    les images. Premier contrôle après déploiement : la part des bilans `warn` venant d'iOS.
 9. En banc local, `/demo/u/…` répond 404 : toute suite à télémétrie active qui affiche le fil
    d'exemples émet désormais une ligne `media` (`demo`, souvent `warn`) dans ses lots.
-10. Une ligne refusée par le plafond client (400/min/onglet) est perdue avec ses compteurs.
+10. Une ligne refusée par le plafond client (400/min/onglet) est perdue avec ses compteurs — un
+    `warn` comme les autres.
+11. **Sous le plancher, rien n'est persisté.** Un masquage dans les 5 min qui suivent un bilan ne pose
+    rien : les échecs comptés depuis restent en mémoire et sont PERDUS si l'onglet est tué sans
+    `pagehide` (le cas ordinaire sur mobile). De même une sortie dans les 30 s qui suivent un bilan
+    (`MEDIA_SORTIE_MS`), et le bruit de fond d'une sortie sous délestage (jeté, délibérément). Accepté :
+    le premier bilan de la session, lui, est déjà parti ; écrire les compteurs sur disque à chaque
+    échec coûterait plus que ce delta ne vaut.
+12. Une `<source type="…">` que le navigateur ne sait pas lire lève `error` sur la `<source>` et
+    compterait un échec alors qu'aucune requête n'est partie. L'application n'émet aujourd'hui ni
+    `<source>`, ni `srcset`, ni `<picture>` (`grep -n 'srcset\|<picture\|<source' js/*.js index.html` :
+    seul `telemetry.js` répond) ; les deux premiers sont tenus par le banc (T5-⑫, T5-⑫b) pour le jour
+    où elle en émettra.
+13. Ne sont pas vus : un média dans un shadow DOM (`error` et `load` ne sortent pas de l'arbre), et un
+    `new Image()` ou un `<video>` jamais attaché au document (les préchargements, la compression avant
+    envoi).
+14. **Aucune coupure distante propre à cette mesure** : `reglages_distants` ne sait pas l'éteindre
+    seule. Les recours sont le délestage (période ×2 ou ×4, bruit de fond retenu), le plafond serveur
+    par lot, et `?telemetry=0` appareil par appareil. Si le signal se révèle trop bruyant à l'échelle,
+    c'est un déploiement, pas un réglage.
+15. Une horloge d'appareil qui RECULE ne fait plus taire la mesure (plancher tenu pour échu, délai borné
+    à une période), mais la fenêtre du dénominateur reste figée jusqu'au bilan suivant (ou jusqu'à ce que
+    l'horloge rattrape son retard) : les `vus` sont surestimés pendant ce temps — aucun faux `warn`
+    possible, un `warn` rétrogradé en `info` oui.
+16. Chaque échec arme un minuteur de 2 s (cinq mille images mortes d'un coup = cinq mille minuteurs
+    brefs, mesuré à la sonde) ; rien ne les regroupe.
 
 **Contrôle après déploiement (canal ①)** — le taux de fond qui servira à régler les seuils du lecteur :
 ```sql
@@ -2659,9 +2707,10 @@ group by 1, 2 order by 1, 2;
 Preuve de déploiement : le nom `_mediaBilan` dans la page servie, ouverte avec `?equipe=1` (les
 littéraux `"media"` et `"bilan"` existent ailleurs dans la page).
 
-**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (quatorze cas « T5- », service worker bloqué, horloge
-simulée, tous les envois interceptés) et trois cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
-(table d'adresses hostiles, câblage en capture — joués par `npm run verif`).
+**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (vingt-deux cas « T5- », service worker bloqué, horloge
+simulée, tous les envois interceptés) et quatre cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
+(table d'adresses hostiles et hôte qui suit la configuration, câblage en capture, sortie avant tout
+classement quand la mesure est refusée — joués par `npm run verif`).
 
 **Réinjections** (garde retirée → cas rouge ; chacune restaurée à l'identique) :
 | Garde retirée | Cas rouges |
@@ -2677,7 +2726,7 @@ simulée, tous les envois interceptés) et trois cas « médias » de `tests/uni
 | fenêtre après une bascule réseau | T5-⑤ |
 | verdict différé (échec compté tout de suite) | T5-①, T5-⑤ |
 | delta (compteurs non remis à zéro après un bilan) | T5-①, ③, ④, ⑦, ⑨, ⑨b |
-| `!ENABLED` dans `_mediaCompter` | T5-⑪ |
+| `!ENABLED` dans `_mediaCompter` (déplacée en tête des écouteurs par la contre-revue, voir plus bas) | T5-⑪ |
 | remise à zéro des compteurs dans `setEnabled(false)` | T5-⑪ |
 | minuteur annulé dans `setEnabled(false)` | T5-⑪ |
 | seuil notable : trois échecs | T5-④, ⑨, ⑨b |
@@ -2693,7 +2742,7 @@ simulée, tous les envois interceptés) et trois cas « médias » de `tests/uni
 | plancher de période dans `_mediaBilan` | T5-⑦ |
 | instant du dernier essai (`mediaEssai`, bilan retenu) | T5-⑨ |
 | le bruit de fond attend | T5-⑨, ⑨b |
-| branche délestage / branche pression de `_mediaDoitAttendre` | T5-⑨b / T5-⑨ |
+| branche délestage / branche pression de `_mediaDoitAttendre` (scindée depuis en `_mediaDeleste` / `_mediaPression`) | T5-⑨b / T5-⑨ |
 | la panne n'attend jamais (un notable retenu) | T5-⑨, ⑨b |
 | aucune ligne pour une famille sans échec | T5-③ |
 | une image `data:` n'est pas un média | T5-② |
@@ -2713,6 +2762,50 @@ test par famille et la remise à zéro du refus ; elle a été retirée plutôt 
 (2) Le délai de `_mediaArmer` après un premier bilan n'a pas de réinjection propre : le plancher de
 `_mediaBilan` rend le même résultat observable (des réveils de trop, aucune ligne de trop) ; seul le
 cas « bilan retenu » (`mediaEssai`, T5-⑨) le voit.
+
+**Contre-revue du lot (2026-11-21, une autre instance de Claude Code, en lecture seule, sondes et
+réinjections jouées).** Ce qu'elle a changé :
+- **D2-1, faux `warn` (sérieux)** : un échec n'entrait dans `mediaCompte` qu'au verdict (2 s) ; si la
+  borne des 60 s tombait dans ces 2 s, son propre comptage effaçait les affichages d'avant — vingt
+  images affichées à 59 s + trois échecs donnaient « ko 3 / vus 0 », `warn`. Corrigé : compteur
+  `mediaAttente` (`++` à l'événement, `--` au verdict, remis à 0 et périmé par `mediaEpoque` au refus),
+  fenêtre jugée à l'événement (`_mediaFenetre`). Cas T5-⑧b.
+- **D2-2** : retirer `!_mediaReste()` de la fenêtre laissait tout vert ; T5-⑦ affiche désormais une image
+  entre le second lot d'échecs et la période, et exige `ko: 3`.
+- **D2-3, échelle** : gigue ± 30 % tirée une fois par session (premier délai et période, T5-⑭) ; sous
+  pression, un seul notable par session et par famille (T5-⑨c).
+- **D2-4, horloge qui recule** : délai d'armement borné à une période, plancher tenu pour échu (T5-⑮).
+- **D2-5** : échecs sous le plancher perdus si l'onglet est tué — limite 11, rien n'est persisté.
+- **D2-6, gardes vertes sous mutation** : `srcset` gardé et testé (T5-⑫b, l'app n'en émet pas
+  aujourd'hui), ordre `currentSrc || src` verrouillé (T5-⑫b, les deux mutations rougissent), hôte du
+  projet qui suit la configuration (unitaire), `mediaDebut` remis au bilan (T5-⑧b c).
+- **D2-7** : commentaires et fiche corrigés — avatars `<img>` comptés, nombre de `onerror` recompté
+  avec sa commande, un `warn` reste soumis au plancher et au plafond client, `vus` est un minorant,
+  `!ENABLED` en tête des deux écouteurs (avant tout classement, banc unitaire).
+- **D2-8** : limites 12 à 14 écrites ; plancher court de 30 s à `pagehide` (T5-⑩b) ; sous délestage, à la
+  sortie, le bruit de fond est JETÉ (T5-⑨d).
+
+Réinjections de l'état final (`revue-D2/reinj2.py`, hors dépôt) : **41 jouées, 41 rouges, aucune
+verte**, fichier restauré à l'identique après chacune (empreinte vérifiée). Les quinze d'origine,
+adaptées au code actuel, plus :
+| Garde retirée | Cas rouges |
+|---|---|
+| compteur d'attente dans la fenêtre / décrément au verdict | T5-⑧b / T5-⑧b |
+| `!_mediaReste()` dans la fenêtre | T5-⑦ |
+| fenêtre jugée à l'événement d'échec | T5-⑧b |
+| époque du verdict / attente remise à 0 au refus | T5-⑪b / T5-⑪b |
+| gigue sur le premier délai / sur la période / retirée au refus | T5-⑭ / T5-⑭ / T5-⑭ |
+| gigue tirée une seule fois | T5-⑦, ⑨b, ⑨c, ⑭, ⑮ |
+| un seul notable sous pression / notable marqué | T5-⑨c / T5-⑨c |
+| délai borné à une période / horloge reculée = plancher échu | T5-⑮ / T5-⑮ |
+| plancher court à `pagehide` | T5-⑩b |
+| bruit de fond jeté à la sortie sous délestage / mémoire vidée | T5-⑨d / T5-⑨d |
+| sortie retenue sous pression | T5-⑨ |
+| `srcset` avec `src` blanc | T5-⑫b |
+| `currentSrc` ignoré / `src` avant `currentSrc` | T5-⑫b / T5-⑫b |
+| hôte du projet mis en cache sans suivre la configuration | unitaire « liste fermée » |
+| `mediaDebut` non remis au bilan | T5-⑧b |
+| `!ENABLED` en tête de l'écouteur `load` / `error` | T5-⑪, unitaire « refus » |
 
 **Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
 rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.

@@ -56,13 +56,13 @@ function demarrer({ uid = null, label = null, search = "" } = {}) {
     removeItem: (k) => memoire.delete(k),
   };
   const envois = [];
-  const ecoutes = [];   // les écouteurs posés sur `document` : [type, capture]
+  const ecoutes = [];   // les écouteurs posés sur `document` : [type, capture, fonction]
   const ctx = {
     navigator: { userAgent: "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 Chrome/141.0.0.0 Mobile Safari/537.36", onLine: true },
     location: { search, hostname: "passio-app.netlify.app", host: "passio-app.netlify.app", pathname: "/", hash: "", href: "https://passio-app.netlify.app/" + search },
     localStorage: stockage, sessionStorage: stockage,
     history: { state: null, replaceState() {} },
-    document: { referrer: "", hidden: false, visibilityState: "visible", addEventListener(type, f, capture) { ecoutes.push([type, capture]); }, querySelector: () => null },
+    document: { referrer: "", hidden: false, visibilityState: "visible", addEventListener(type, f, capture) { ecoutes.push([type, capture, f]); }, querySelector: () => null },
     screen: { width: 390, height: 844 },
     matchMedia: () => ({ matches: false }),
     addEventListener() {},
@@ -316,9 +316,15 @@ test("médias : une adresse ne rend qu'une famille de la liste fermée ; « stoc
     assert.ok(LISTE.includes(rendu), "hors liste fermée : " + String(rendu));
     assert.equal(rendu, attendu, String(adresse).slice(0, 80));
   }
+  // L'hôte du projet SUIT la configuration : un autre projet posé après coup
+  // (bascule de configuration au démarrage) devient le stockage, l'ancien non.
+  const AUTRE = "https://zzzzzzzzzzzzzzzzzzzz.supabase.co";
+  b.ctx.PASSIO_SUPABASE = { url: AUTRE, anon: "k" };
+  assert.equal(f(AUTRE + "/storage/v1/object/public/content/u1/photo.jpg"), "stockage");
+  assert.equal(f(PROJET + "/storage/v1/object/public/content/u1/photo.jpg"), "externe", "l'hôte mémorisé ne survit pas à un changement de configuration");
   // Tant que la configuration du projet n'est pas posée, rien n'est « stockage ».
   delete b.ctx.PASSIO_SUPABASE;
-  assert.equal(f(PROJET + "/storage/v1/object/public/content/u1/photo.jpg"), "externe");
+  assert.equal(f(AUTRE + "/storage/v1/object/public/content/u1/photo.jpg"), "externe");
 });
 
 test("médias : l'écoute est en CAPTURE sur le document (error, load, loadedmetadata), sans quoi rien n'est vu", () => {
@@ -327,6 +333,30 @@ test("médias : l'écoute est en CAPTURE sur le document (error, load, loadedmet
     assert.ok(b.ecoutes.some(([t, capture]) => t === type && capture === true), type + " doit être écouté en capture");
   }
   assert.ok(!b.ecoutes.some(([t]) => t === "loadeddata"), "loadeddata n'est pas le signal retenu");
+});
+
+test("médias : mesure refusée, les écouteurs sortent AVANT tout classement (aucune lecture de l'élément, aucun minuteur)", () => {
+  const b = demarrer();
+  const P = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/";
+  let lectures = 0;
+  const cible = {
+    get tagName() { lectures++; return "IMG"; },
+    getAttribute() { lectures++; return P + "a.jpg"; },
+    get currentSrc() { lectures++; return P + "a.jpg"; },
+    get src() { lectures++; return P + "a.jpg"; },
+  };
+  const emettre = (type) => { for (const [t, capture, f] of b.ecoutes) if (t === type && capture === true) f({ target: cible }); };
+  // Témoin : mesure active, l'élément est bien lu et l'affichage compté.
+  emettre("load");
+  assert.ok(lectures > 0, "témoin : le classement lit l'élément");
+  assert.equal(b.tel._medias().stockage.vus, 1);
+  b.tel.setEnabled(false);
+  for (const type of ["load", "loadedmetadata", "error"]) {
+    lectures = 0;
+    emettre(type);
+    assert.equal(lectures, 0, type + " : l'élément ne doit pas être lu quand la mesure est refusée");
+  }
+  assert.deepEqual(Object.keys(b.tel._medias()), []);
 });
 
 test("médias : un bilan demandé sans rien de compté ne pose aucune ligne", async () => {
