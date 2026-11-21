@@ -109,6 +109,14 @@ export function resumerBattement(ligne, n24 = null, maintenant = Date.now()) {
   // sonne encore un rouge, mais ne peut dire ni « résolu » ni « toujours ». Même règle que les
   // rappels : un battement d'avant ce lot, sans la clé, n'en dit rien.
   if (lectures.memoire === "ko") raisons.push("la veille n'a pas pu relire son dernier voyant : à ce passage elle ne pouvait que sonner une alerte, pas annoncer un retour au calme");
+  // La table de télémétrie (2026-11-21, T2) : son remplissage et la mémoire de la sonde entrent dans le
+  // voyant de la veille, qui se TIENT quand l'une de ces lectures manque — sans cette raison, le battement
+  // disait « toutes les lectures abouties » pendant qu'une table pleine ne se serait pas vue. Même règle que
+  // les rappels : clé absente = rien. ⚠️ Ces deux noms n'entrent PAS dans LECTURES_BATTEMENT : entre la
+  // fusion et le déploiement de la fonction, les battements de l'ancienne version n'ont pas la clé, et le
+  // chien de garde GitHub (signalBattement) lirait « n'a pas pu lire » sur une veille qui a tout lu.
+  const telemetrieKo = [lectures.remplissage === "ko" ? "le remplissage de la télémétrie" : null, lectures.canari === "ko" ? "la mémoire de sa sonde" : null].filter(Boolean);
+  if (telemetrieKo.length) raisons.push("la veille n'a pas pu lire " + telemetrieKo.join(" ni ") + " : à ce passage, une table de télémétrie pleine ne se serait pas vue");
   if (politiqueInvalide) raisons.push("politique d'automatisation invalide : aucun geste automatique");
   if (raisons.length) return { ...base, etat: "incomplet", frais: true, raisons };
   return { ...base, etat: "vivant", frais: true, raisons: [`battement il y a ${Math.round(ageMs / 60e3)} min, toutes les lectures abouties`] };

@@ -194,3 +194,25 @@ test("⑦ le voyant mémorisé ILLISIBLE rend la veille « incomplète », et un
   assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: avant }).etat, "vivant");
   assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: contenuBattement({ lectures: { ...lues, memoire: ok } }) }).etat, "vivant");
 });
+
+// ─── ⑧ La table de télémétrie (2026-11-21, audit du 20/11, trou T2) ──────────
+// La veille tient son voyant quand elle ne peut lire ni le remplissage ni la mémoire du canari ; le
+// battement doit le DIRE. MUTATIONS éprouvées : retirer la raison de `resumerBattement` → rouge ;
+// ajouter « remplissage » à LECTURES_BATTEMENT → rouge (un battement d'avant ce lot deviendrait « incomplet »).
+test("⑧ le remplissage ou la mémoire du canari ILLISIBLES rendent la veille « incomplète », et le disent ; un battement d'avant, sans ces clés, reste vivant", () => {
+  const ok = { status: "fulfilled" }, ko = { status: "rejected" };
+  const lues = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  const frais = (lectures) => resumerBattement({ created_at: new Date(T - 5 * 60e3).toISOString(), properties: contenuBattement({ lectures }) }, 96, T);
+  const r = frais({ ...lues, remplissage: ko, canari: ok });
+  assert.equal(r.etat, "incomplet");
+  assert.match(r.raisons.join(" "), /n'a pas pu lire le remplissage de la télémétrie : .*table de télémétrie pleine ne se serait pas vue/);
+  assert.doesNotMatch(r.raisons.join(" "), /mémoire de sa sonde/, "seule la lecture manquée est nommée");
+  assert.match(frais({ ...lues, remplissage: ok, canari: ko }).raisons.join(" "), /n'a pas pu lire la mémoire de sa sonde/);
+  assert.match(frais({ ...lues, remplissage: ko, canari: ko }).raisons.join(" "), /le remplissage de la télémétrie ni la mémoire de sa sonde/);
+  assert.equal(frais({ ...lues, remplissage: ok, canari: ok }).etat, "vivant");
+  // Entre la fusion et le déploiement de la fonction, l'ancienne version bat sans ces clés : vivant, et rien à dire.
+  const avant = frais(lues);
+  assert.equal(avant.etat, "vivant");
+  assert.deepEqual(avant.lecturesKo, []);
+  assert.deepEqual([...LECTURES_BATTEMENT], ["sante", "signalements", "github", "parcours"], "les lectures EXIGÉES ne changent pas : une clé de plus rendrait « incomplet » tout battement d'avant ce lot");
+});

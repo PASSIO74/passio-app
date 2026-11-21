@@ -847,6 +847,16 @@ test("⑫ dresserPlan : obligatoire absent → retenue ; facultatif absent → d
   assert.deepEqual(dresserPlan(manifeste, ["pilotage"], new Map(manifeste.pilotage.objets.map((s) => [s, true]))).etats, {}, "pas de réglage exigé : aucun état lu");
 });
 
+test("T2-p sans la migration des classes de télémétrie, `pilotage` part dégradée, jamais retenue : elle se déploie AVANT la migration (2026-11-21)", () => {
+  // `telemetrie_remplissage()` (migrations/migration_telemetrie_classes_2026-11-21.sql) est un prérequis FACULTATIF : le code a
+  // son repli (un compte exact, la migration nommée à l'écran). Obligatoire, il retiendrait la fonction tant que la migration
+  // n'est pas appliquée — et avec elle la ligne « À faire » du canari refusé, qui n'en dépend pas. RÉINJECTION R146.
+  const SQL = "function:public.telemetrie_remplissage()";
+  assert.ok(manifeste.pilotage.objets.includes(SQL), "prémisse : la fonction SQL est déclarée");
+  const p = dresserPlan(manifeste, ["pilotage"], new Map(manifeste.pilotage.objets.map((s) => [s, s !== SQL])), []);
+  assert.deepEqual([p.deployables, p.retenues, p.resume[0].etat, p.resume[0].manquants], [["pilotage"], [], "dégradée (facultatif absent)", [SQL]]);
+});
+
 /** Le vérificateur réel, en ligne de commande, sur un résultat déjà lu (`--json`). */
 function verifier(args, lignes, env = {}) {
   const bac = fs.mkdtempSync(path.join(os.tmpdir(), "prerequis-"));
