@@ -336,8 +336,9 @@ jobs:
           eprouvees=0
           echo "## Fumée de ce qui est servi" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          # Dix secondes, un nouvel essai : une panne passagère ne rougit pas le run, une fonction muette ne le fige pas.
-          requete() { curl -sS --max-time 10 --retry 1 "$@" || true; }
+          # Dix secondes, un nouvel essai, vingt-cinq secondes en tout : une panne passagère ne rougit pas le run, une
+          # fonction muette ne le fige pas — ni un `Retry-After` long, attendu sans plafond si rien ne le borne.
+          requete() { curl -sS --max-time 10 --retry 1 --retry-max-time 25 "$@" || true; }
           # $1 = la fonction, $2 = ce qu'elle est pour ce run, $3 = ce qui ne tient pas. Le titre d'une annotation
           # ne porte que le nom : une virgule y serait lue comme un séparateur de propriétés.
           rouge() {
@@ -376,7 +377,12 @@ jobs:
             case " ${RETENUES:-} " in *" $f "*) quoi="retenue, sert sa version d'avant" ;; *) quoi="à jour, non redéployée" ;; esac
             eprouver "$f" "${paire#*=}" "$quoi"
           done
-          if [ "$ko" -eq 0 ]; then echo "- ✅ $eprouvees fonction(s) éprouvée(s) : chacune tient son contrat à la révision attendue." >> "$GITHUB_STEP_SUMMARY"; fi
+          # Une fonction retenue dont la révision ne se lit pas n'a pas pu être éprouvée : c'est dit, pas tu.
+          for f in ${RETENUES:-}; do
+            case " ${SERVIES:-} " in *" $f="*) ;; *) echo "- ⚠️ **$f** (retenue) : non éprouvée — la révision qu'elle sert ne se lit pas." >> "$GITHUB_STEP_SUMMARY" ;; esac
+          done
+          if [ "$ko" -eq 0 ] && [ "$eprouvees" -gt 0 ]; then echo "- ✅ $eprouvees fonction(s) éprouvée(s) : chacune tient son contrat à la révision attendue." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ "$eprouvees" -eq 0 ]; then echo "- Aucune fonction éprouvée par ce passage." >> "$GITHUB_STEP_SUMMARY"; fi
           echo "" >> "$GITHUB_STEP_SUMMARY"
           [ "$ko" -eq 0 ]
 

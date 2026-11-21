@@ -788,6 +788,10 @@ test("⑪ comparateurGit et etablirSelection sur un vrai dépôt : la clôture r
   f = suite([new TypeError("fetch failed")]);
   assert.match((await lireRevisionServie("https://x", "f", f)).raison, /injoignable/);
   assert.equal(f.appels(), 2, "deux essais, pas davantage");
+  for (const passager of [429, 408]) {
+    f = suite([new Response(null, { status: passager }), ok200()]);
+    assert.equal((await lireRevisionServie("https://x", "f", f)).revision, m.A, passager + " : passager, relu");
+  }
   for (const nette of [new Response(null, { status: 404 }), new Response(null, { status: 200 }), new Response(null, { status: 200, headers: { "x-passio-revision": "dev" } })]) {
     f = suite([nette, ok200()]);
     assert.equal((await lireRevisionServie("https://x", "f", f)).revision, null);
@@ -1048,7 +1052,7 @@ test("⑮ la forme du job : la sélection et la retenue précèdent le déploiem
   assert.equal(etapes[rang("Retenue")].env.SELECTION, "${{ steps.selection.outputs.selection }}");
   assert.equal(etapes[rang("Retenue")].env.EN_SERVICE, "${{ steps.selection.outputs.a_jour }}");
   // Les requêtes de la fumée sont bornées et retentées une fois : une fonction muette ne fige pas le job.
-  assert.match(etapes[rang("Test de fumée")].run, /requete\(\) \{ curl -sS --max-time 10 --retry 1 "\$@" \|\| true; \}/);
+  assert.match(etapes[rang("Test de fumée")].run, /requete\(\) \{ curl -sS --max-time 10 --retry 1 --retry-max-time 25 "\$@" \|\| true; \}/);
   assert.doesNotMatch(etapes[rang("Test de fumée")].run.replace(/requete\(\) \{[^\n]*/, ""), /\bcurl\b/, "toute requête de la fumée passe par requete()");
   // Le déclencheur : le manifeste et les scripts du job relancent la sélection.
   const chemins = doc.on.push.paths;

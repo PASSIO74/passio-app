@@ -819,10 +819,12 @@ export function aFaire(d, maintenant = Date.now()) {
     const echec = fo.nature === "echec";
     ajoute({ id: "fonctions:deploiement", prio: echec ? 1 : 2, etiquette: "À trier",
       titre: echec ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
-      quoi: echec ? "La page du passage nomme la cause." : "Annulé ou évincé : rien n'est cassé.",
+      quoi: echec ? "La page du passage nomme la cause." : "Annulé ou évincé : à relancer.",
       reference: echec
         ? "Quatre causes possibles, nommées en tête du passage. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction EN LIGNE ne tient pas son contrat (la fumée), ou n'a plus un prérequis en base : à corriger. Le jeton Supabase de la CI a expiré. Ou un verrou d'avant déploiement est rouge (job « Valider ») : rien n'est parti, il faut un commit qui le corrige. La cause réglée, relance CE passage (« Re-run failed jobs ») ou pousse le correctif : il rattrape ce qui est en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne ; un passage lancé à la main ne l'efface pas."
-        : "Le dernier passage a été annulé ou évincé de la file, et le précédent avait réussi. Relance-le (« Re-run all jobs ») : il rattrape ce qui serait en retard. Seul un passage de push vert efface cette ligne.",
+        // Le pilotage ne sait pas OÙ le passage s'est arrêté : annulé pendant « Déployer », des fonctions servent le
+        // nouveau commit sans avoir été éprouvées. Le texte ne dit donc pas « rien n'est cassé » (relecture du delta).
+        : "Le dernier passage s'est terminé sans trancher (annulé, évincé de la file ou en attente), et le précédent avait réussi. S'il s'est arrêté en cours de déploiement, ce qui est en ligne n'a peut-être pas été éprouvé. Relance-le (« Re-run all jobs ») : il rattrape ce qui serait en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne.",
       url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
   }
   // Les issues suivies.

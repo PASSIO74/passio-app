@@ -68,8 +68,10 @@ const MANIFESTE = process.env.PASSIO_PREREQUIS ? resolve(process.env.PASSIO_PRER
 
 /** Sort en 2 : NON VÉRIFIABLE. Dit sur la page du run et dans son résumé, pas seulement au journal (un jeton expiré se lisait nulle part). */
 function echec(msg) {
-  console.error("❌ " + msg);
+  // UNE ligne, bornée, y compris au journal : le message peut citer la réponse de l'API, et le runner lit les
+  // commandes de workflow (`::error::`, `::add-mask::`) sur stderr comme sur stdout, en début de ligne.
   const ligne = String(msg).replace(/[\r\n]+/g, " ").slice(0, 600);
+  console.error("❌ " + ligne);
   if (process.env.GITHUB_ACTIONS) console.log("::error title=Retenue — cible non vérifiable::" + ligne);
   if (process.env.GITHUB_STEP_SUMMARY) { try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## Prérequis SQL des Edge Functions (lecture seule de la cible)\n\n- ❌ **non vérifiable** : " + ligne + "\n\n"); } catch (_e) { /* le résumé est un confort : l'échec, lui, sort */ } }
   process.exit(2);

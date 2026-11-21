@@ -1565,9 +1565,12 @@ test("㊸ bis un déploiement de fonctions serveur en échec SE VOIT (le 20/11 r
   const annule = ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement");
   assert.deepEqual([annule && annule.titre, annule && annule.prio, annule && annule.etiquette], ["Le déploiement des fonctions serveur n'a pas abouti", 2, "À trier"]);
   // Annulé n'est pas en échec : le texte n'annonce ni migration ni porte ouverte (seconde contre-revue du 21/11).
-  assert.equal(annule.quoi, "Annulé ou évincé : rien n'est cassé.");
-  assert.match(annule.reference, /annulé ou évincé de la file, et le précédent avait réussi\. Relance-le/);
-  assert.doesNotMatch(annule.reference, /migration|contrat|jeton/);
+  assert.equal(annule.quoi, "Annulé ou évincé : à relancer.");
+  assert.match(annule.reference, /terminé sans trancher \(annulé, évincé de la file ou en attente\), et le précédent avait réussi\./);
+  // Annulé pendant « Déployer », des fonctions servent le nouveau commit sans avoir été éprouvées : le pilotage ne
+  // sait pas où le passage s'est arrêté, il ne dit donc pas que rien n'est cassé (relecture du delta).
+  assert.match(annule.reference, /ce qui est en ligne n'a peut-être pas été éprouvé\. Relance-le/);
+  assert.doesNotMatch(annule.quoi + annule.reference, /rien n'est cassé|migration|jeton/);
   // Aucun passage encore (un dépôt neuf) : rien à dire.
   await monter();
   banc.gh.runs["edge-functions.yml"] = [];

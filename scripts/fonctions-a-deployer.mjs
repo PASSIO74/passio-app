@@ -139,6 +139,8 @@ export function selectionner({ noms, clotures, incertaines = new Map(), servies,
     // Une clôture INCALCULABLE n'est jamais lue « rien d'autre n'est emporté » : TOUT ce qui a changé la concerne
     // (hors documentation). Mais elle se compare quand même à ce qu'elle sert : sans cela elle repartait à CHAQUE
     // passage, pour toujours, même sur un push qui ne touchait qu'un test (seconde contre-revue du 21/11).
+    // ⚠️ Git ne compare que supabase/ et le workflow : une incertaine qui importerait HORS de supabase/ ne verrait
+    // pas ce code-là changer (relecture du delta). Le banc des verrous refuse un tel import sur main ; limite consignée.
     const changes = incertaine ? (c.changes || []).filter((f) => !/\.md$/i.test(f)) : changementsQuiConcernent(fonction, c.changes || [], { noms, clotures });
     if (incertaine && changes.length && c.relation !== "descendante") return { ...base, etat: "a_deployer", changes, motif: `${incertaine} ; changé depuis ${court(s.revision)} : ${enBref(changes)}` };
     if (!changes.length) return { ...base, etat: "a_jour", motif: incertaine ? `sert ${court(s.revision)} : rien n'a changé depuis sous supabase/ ni dans le workflow (${incertaine})` : `sert ${court(s.revision)} : rien de ce qu'elle emporte n'a changé depuis` };
@@ -161,7 +163,7 @@ export async function lireRevisionServie(cible, fonction, fetchFn = globalThis.f
       if (SHA.test(rev)) return { revision: rev, raison: null };
       // « dev » : un déploiement fait à la main depuis un poste (_shared/revision.js) — on ne sait pas quel code tourne.
       dernier = { revision: null, raison: rev ? "révision servie illisible (un déploiement fait hors de ce workflow)" : `aucune révision servie (HTTP ${r.status})` };
-      if (rev || r.status < 500) return dernier;   // une réponse nette : la relire ne changerait rien
+      if (rev || (r.status < 500 && r.status !== 429 && r.status !== 408)) return dernier;   // une réponse nette : la relire ne changerait rien
     } catch (_e) {
       dernier = { revision: null, raison: "fonction injoignable : révision servie non lue" };
     }
