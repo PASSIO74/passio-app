@@ -804,16 +804,19 @@ export function aFaire(d, maintenant = Date.now()) {
   // Le déploiement des fonctions serveur (`edge-functions.yml`, ses passages sur push — 2026-11-21). Du 20 au
   // 21/11, son run rouge ne se voyait nulle part : une fonction retenue (un prérequis SQL qui n'était plus vrai)
   // retenait les six, et personne ne lisait Actions. Depuis, une fonction retenue ne retient plus les autres, et le
-  // run rougit APRÈS leur déploiement — c'est ce rouge qui devient cette ligne. Ce qu'il attend est un geste
-  // HUMAIN (une migration à appliquer par le canal ③ avec sa revue, un jeton de la CI expiré) : jamais « Régler »,
+  // run rougit APRÈS leur déploiement — c'est ce rouge qui devient cette ligne. Le pilotage ne sait pas QUELLE
+  // étape a cassé : le texte couvre donc les trois causes sans en affirmer une (relecture adverse : « elle sert
+  // sa version d'avant » était faux pour une fumée cassée — la fonction cassée EST en service). Ce qu'il attend
+  // est un geste HUMAIN (une migration par le canal ③ avec sa revue, un correctif, un jeton) : jamais « Régler »,
   // aucune réparation (il n'est pas dans RUNS_REPARABLES), un lien vers le passage, dont le résumé nomme la cause.
+  // « Relance » est sûr : chaque passage rééprouve TOUT ce qui est servi, un contrat cassé reste rouge.
   const fo = echecRun(runs.fonctions);
   if (fo) {
     const url = urlGithub(fo.run.url);
     ajoute({ id: "fonctions:deploiement", prio: fo.nature === "echec" ? 1 : 2, etiquette: "À trier",
-      titre: fo.nature === "echec" ? "Des fonctions serveur n'ont pas été déployées" : "Le déploiement des fonctions serveur n'a pas abouti",
+      titre: fo.nature === "echec" ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
       quoi: "Son résumé dit laquelle, et pourquoi.",
-      reference: "Le plus souvent : une migration à appliquer avant la fonction (le résumé la nomme), ou le jeton Supabase de la CI expiré. Les fonctions en règle sont déjà parties ; celle qui attend sert toujours sa version d'avant. La cause réglée, relance ce passage (« Re-run failed jobs ») : il rattrape ce qui est en retard, et un passage vert efface cette ligne.",
+      reference: "Trois causes, que le passage nomme. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction en service ne tient pas son contrat (la fumée) : elle EST en ligne, à corriger. Ou le jeton Supabase de la CI a expiré. La cause réglée, relance le passage : il rattrape ce qui est en retard et rééprouve tout ce qui est servi — un passage vert efface cette ligne.",
       url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
   }
   // Les issues suivies.

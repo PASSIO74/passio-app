@@ -2115,6 +2115,7 @@ Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `priva
 - La valeur est LUE en lecture seule (`etat:medias_proteges.actif`) ; la fumée exige que la fonction déployée serve exactement cet état. Les trois registres et les cinq fonctions SQL restent obligatoires.
 - Rien ne change côté base : aucune migration, aucun droit, la coupure reste l'autorité (`reglages_distants`, lue à chaque résolution, réservation et INSERT Storage).
 - Mesuré au canal ① le 21/11 : les 49 prérequis des six fonctions sont présents en production avec le nouveau manifeste ; le réglage est lu à true.
+- La requête ne nomme `public.reglages_distants` que dans une requête différée (`query_to_xml`), derrière `to_regclass` : une cible qui n'a pas la table retient la fonction qui exige le réglage, sans faire échouer toute la lecture. Banc : `tests/sql/prerequis-fonctions.test.sh` ③ ter.
 
 ⚠️ **UN PRÉREQUIS DE DÉPLOIEMENT DIT CE QUE LA CIBLE SAIT FAIRE, PAS DANS QUEL ÉTAT ELLE EST.** Une table, une fonction SQL, une empreinte. La valeur d'un réglage que l'exploitation change n'en est pas un : le jour où elle change, le déploiement s'arrête pour une raison que plus personne ne cherche. `tests/unit/deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
 

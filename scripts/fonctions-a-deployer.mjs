@@ -11,6 +11,13 @@
 // par `pilotage`, a été RETENU EN ENTIER (run 44831711346) — cinq fonctions
 // retenues pour une sixième que le changement ne concernait pas.
 //
+// LA FUMÉE ÉPROUVE TOUT CE QUI EST SERVI, PAS SEULEMENT CE QUI PART (relecture
+// adverse du 21/11). Une fonction déployée dont la fumée échoue sert bien « ce
+// commit » : au run suivant elle est « à jour », et un run relancé verdissait sans
+// rien rééprouver. Ce script rend donc aussi `servies` — la révision de chaque
+// fonction à jour — et le workflow les éprouve à chaque passage, comme celles
+// qu'il vient de déployer : un contrat cassé reste rouge tant qu'il est cassé.
+//
 // CE QUE FAIT CE SCRIPT. Pour chaque fonction, il lit la révision qu'elle SERT
 // (l'en-tête `X-Passio-Revision`, posé sur toute réponse : le SHA de son dernier
 // déploiement) et demande à git ce qui a changé sous `supabase/` entre ce
@@ -20,7 +27,11 @@
 //     (scripts/lib/lecteur-imports.mjs, le lecteur du banc des verrous) ;
 //   · tout ce qui n'est attribuable à personne : `supabase/config.toml`, un
 //     fichier à la racine des fonctions (carte d'imports, `deno.json`), une donnée
-//     de `_shared/` — on ne sait pas qui le lit, donc toutes les fonctions.
+//     de `_shared/` — on ne sait pas qui le lit, donc toutes les fonctions ;
+//   · le workflow lui-même (`.github/workflows/edge-functions.yml`) : il porte la
+//     FAÇON de déployer (`--no-verify-jwt`, la version de la CLI). Le changer
+//     redéploie les six, comme avant — sinon un drapeau retiré ne partirait qu'au
+//     prochain changement de code de la fonction.
 // Elle ne l'est PAS par le dossier d'une autre fonction, par un module partagé
 // qu'elle n'emporte pas, ni par de la documentation (`.md`).
 //   · rien ne la concerne      → à jour : ni vérifiée, ni déployée ;
@@ -34,10 +45,17 @@
 // en retard jusqu'au prochain push qui la touche. L'état servi, lui, se relit :
 // le run suivant rattrape ce que le précédent n'a pas livré.
 //
-// ⚠️ UN RUN ANCIEN NE FAIT PAS RECULER UNE FONCTION. Relancer un vieux run rouge
-// (`gh run rerun --failed`) redéployait l'ancien code par-dessus le nouveau. Si
-// la révision servie DESCEND de ce commit, la fonction est tenue pour à jour.
-// Un retour arrière voulu passe par un commit de `main`, puis ce workflow.
+// ⚠️ UN VIEUX RUN DE PUSH RELANCÉ NE FAIT PAS RECULER UNE FONCTION DONT LA
+// RÉVISION SE LIT. Relancer un vieux run rouge (`gh run rerun --failed`)
+// redéployait l'ancien code par-dessus le nouveau. Si la révision servie DESCEND
+// de ce commit, la fonction est tenue pour à jour. Un retour arrière voulu passe
+// par un commit de `main`, puis ce workflow.
+// CE QUE CETTE RÈGLE NE COUVRE PAS (relecture adverse du 21/11) : une révision
+// illisible sur un vieux run (le doute déploie CE commit, donc l'ancien code), et
+// un vieux passage MANUEL relancé (il ne lit pas l'état servi). Les deux
+// déployaient déjà l'ancien code avant ce script ; savoir qu'un run n'est plus la
+// tête de `main` demande de lire GitHub au moment du run (le clone seul ne le dit
+// pas de façon sûre) — reste à faire, consigné dans la fiche du journal.
 //
 //   node scripts/fonctions-a-deployer.mjs --cible https://<ref>.supabase.co   # un push : par l'état servi
 //   node scripts/fonctions-a-deployer.mjs --toutes                            # à la demande : toutes
@@ -48,14 +66,15 @@
 // qui est sélectionné se vérifient ensuite : scripts/verifier-prerequis-fonctions.mjs.
 // Banc : tests/unit/deploiement-fonctions.test.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
-import { readFileSync, readdirSync, appendFileSync } from "node:fs";
+import { readFileSync, readdirSync, appendFileSync, realpathSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { clotureFonctions } from "./lib/lecteur-imports.mjs";
 
 const RACINE = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const SUPABASE = "supabase/";   // ce que git compare : tout ce qui peut entrer dans un déploiement
+// Ce que git compare : tout ce qui peut entrer dans un déploiement, et le workflow qui dit COMMENT déployer.
+const COMPARES = ["supabase/", ".github/workflows/edge-functions.yml"];
 const DOSSIER = "supabase/functions";
 const PARTAGE = DOSSIER + "/_shared/";
 const CODE = /\.(ts|js|mjs)$/;
@@ -86,8 +105,8 @@ export function lireFonctions(racine = RACINE) {
 }
 
 /**
- * Parmi les fichiers changés sous `supabase/`, ceux qui CONCERNENT une fonction. Tout ce qui
- * n'est attribuable ni à elle, ni sûrement à une autre, la concerne : le doute déploie.
+ * Parmi les fichiers changés (sous `supabase/`, ou le workflow), ceux qui CONCERNENT une fonction.
+ * Tout ce qui n'est attribuable ni à elle, ni sûrement à une autre, la concerne : le doute déploie.
  */
 export function changementsQuiConcernent(fonction, changes, { noms, clotures }) {
   const dossier = `${DOSSIER}/${fonction}/`;
@@ -98,7 +117,7 @@ export function changementsQuiConcernent(fonction, changes, { noms, clotures }) 
     if (f.startsWith(dossier) || cloture.has(f)) return true;        // son dossier, ou un module qu'elle emporte
     if (autres.some((d) => f.startsWith(d))) return false;           // le dossier d'une AUTRE fonction
     if (f.startsWith(PARTAGE) && CODE.test(f)) return false;         // un module partagé qu'elle n'emporte pas
-    return true;                                                     // commun : config, carte d'imports, donnée
+    return true;                                                     // commun : config, carte d'imports, donnée, workflow
   });
 }
 
@@ -147,7 +166,7 @@ export function comparateurGit(racine = RACINE) {
     // Seul un SHA entre dans une commande git, et seul un COMMIT présent se compare : le reste est « absent ».
     if (!SHA.test(revision) || git("cat-file", "-e", revision + "^{commit}").status !== 0) return rendre({ relation: "absente", changes: [] });
     // `-z` : des chemins bruts, séparés par NUL — un nom de fichier hors ASCII n'est ni cité ni échappé.
-    const d = git("diff", "--name-only", "--no-renames", "-z", revision, "HEAD", "--", SUPABASE);
+    const d = git("diff", "--name-only", "--no-renames", "-z", revision, "HEAD", "--", ...COMPARES);
     if (d.status !== 0) return rendre({ relation: "absente", changes: [] });
     const changes = d.stdout.split("\0").filter(Boolean).sort();
     // HEAD est un ancêtre de la révision servie (code 0), et ce n'est pas elle : la fonction est EN AVANCE sur ce commit.
@@ -187,15 +206,21 @@ async function principal(args) {
 
   const concernees = lignes.filter((l) => l.etat === "a_deployer").map((l) => l.fonction);
   const aJour = lignes.filter((l) => l.etat === "a_jour").map((l) => l.fonction);
+  // Ce que la fumée éprouvera SANS le redéployer : chaque fonction à jour, à la révision qu'elle sert.
+  const servies = lignes.filter((l) => l.etat === "a_jour" && SHA.test(l.revision || "")).map((l) => `${l.fonction}=${l.revision}`);
   console.log(`── Sélection (${titre}) ──`);
   for (const l of lignes) console.log(`  ${l.etat === "a_deployer" ? "🚀" : "⏭ "} ${l.fonction} : ${l.etat === "a_deployer" ? "à déployer" : "à jour"} — ${l.motif}`);
   console.log(concernees.length ? `\n→ ${concernees.length} fonction(s) à vérifier puis déployer : ${concernees.join(", ")}` : "\n→ aucune fonction en retard sur ce commit : rien à déployer.");
 
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `concernees=${concernees.join(" ")}\na_jour=${aJour.join(" ")}\n`);
+  // `selection=faite` : le témoin que l'étape suivante exige — un script qui ne ferait rien ne passe pas pour « rien à faire ».
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `selection=faite\nconcernees=${concernees.join(" ")}\na_jour=${aJour.join(" ")}\nservies=${servies.join(" ")}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Sélection des Edge Functions (${titre})\n\n`
       + lignes.map((l) => `- ${l.etat === "a_deployer" ? "🚀" : "⏭️"} **${l.fonction}** : ${l.etat === "a_deployer" ? "à déployer" : "à jour"} — ${l.motif}`).join("\n") + "\n\n");
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await principal(process.argv.slice(2));
+// Lancé en direct, par son chemin RÉEL : appelé à travers un lien symbolique, l'ancienne garde (comparer deux
+// URL) ne se reconnaissait pas, ne faisait rien et sortait en 0 — un silence que le job lirait « rien à faire ».
+const lanceEnDirect = () => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch (_e) { return false; } };
+if (lanceEnDirect()) await principal(process.argv.slice(2));

@@ -30,6 +30,11 @@
 // serveur le tient pour fermé, mais personne ne l'a décidé). Sa VALEUR n'est plus
 // une condition : elle est LUE (`etat:<cle>.<champ>`, sortie `etat_<cle>_<champ>`)
 // et la fumée exige que la fonction déployée serve exactement cet état.
+// Avec `--partiel`, les états de TOUT le manifeste sont lus à chaque passage, même
+// quand aucune fonction n'est à vérifier (`--fonctions ""`) : la fumée éprouve
+// aussi ce qui est servi sans être redéployé (relecture adverse du 21/11).
+// Une cible SANS la table `reglages_distants` n'est pas une cible illisible : le
+// réglage y est absent, la fonction qui l'exige est retenue, les autres partent.
 //
 //   node scripts/verifier-prerequis-fonctions.mjs --fonctions "delete-account export-account" \
 //        [--projet <ref>]            # via l'API de gestion (SUPABASE_ACCESS_TOKEN) — la CI
@@ -41,11 +46,11 @@
 // Ce que ça ne fait PAS : appliquer quoi que ce soit (ADR-012 : aucun DDL depuis
 // la CI — la transaction est `read only`, un ordre d'écriture y ÉCHOUERAIT).
 // ═══════════════════════════════════════════════════════════════════════════
-import { readFileSync, existsSync, appendFileSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const racine = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 const args = process.argv.slice(2);
@@ -72,9 +77,15 @@ export function etatsLus(specs) {
   return [...new Set(specs.map(lireObjet).filter((o) => o.genre === "reglage_booleen").map((o) => `etat:${o.cle}.${o.champ}`))];
 }
 
-/** Une requête EN LECTURE SEULE qui rend, pour chaque spec et chaque état lu, { spec, present }. */
-export function sqlPrerequis(specs) {
-  const reglage = (o, test) => `exists (select 1 from public.reglages_distants where cle = ${litteral(o.cle)} and ${test})`;
+/**
+ * Une requête EN LECTURE SEULE qui rend, pour chaque spec et chaque état lu, { spec, present }.
+ * `etats` : les états à lire — par défaut ceux des specs ; la CI lit ceux de tout le manifeste.
+ */
+export function sqlPrerequis(specs, etats = etatsLus(specs)) {
+  // La table est nommée dans une requête évaluée À L'EXÉCUTION (query_to_xml), derrière to_regclass : écrite
+  // en clair, son absence ferait échouer TOUTE la requête à l'analyse — la retenue d'une fonction
+  // redeviendrait totale sur une cible qui n'a pas `reglages_distants` (facultative pour pilotage).
+  const reglage = (o, test) => `(case when to_regclass('public.reglages_distants') is null then false else (xpath('/row/v/text()', query_to_xml(${litteral(`select exists (select 1 from public.reglages_distants where cle = ${litteral(o.cle)} and ${test}) as v`)}, false, true, '')))[1]::text = 'true' end)`;
   const parts = specs.map((spec) => {
     const o = lireObjet(spec);
     let cond;
@@ -99,10 +110,12 @@ export function sqlPrerequis(specs) {
     }
     return `select ${litteral(spec)} as spec, (${cond}) as present`;
   });
-  for (const etat of etatsLus(specs)) {
+  for (const etat of etats) {
     const [cle, champ] = etat.slice("etat:".length).split(".");
     parts.push(`select ${litteral(etat)} as spec, (${reglage({ cle }, `valeur->${litteral(champ)} = 'true'::jsonb`)}) as present`);
   }
+  // Rien à demander (aucune fonction à vérifier, aucun réglage déclaré) : une requête qui ne rend aucune ligne.
+  if (!parts.length) return "set transaction read only;\nselect null::text as spec, null::boolean as present where false;";
   return "set transaction read only;\n" + parts.join("\nunion all\n") + ";";
 }
 
@@ -111,7 +124,7 @@ export function sqlPrerequis(specs) {
  * manifeste. `deployables` : prérequis présents, ou seul un facultatif manque ;
  * `retenues` : un prérequis obligatoire manque. `etats` : les réglages lus.
  */
-export function dresserPlan(manifeste, noms, present) {
+export function dresserPlan(manifeste, noms, present, etatsALire = etatsLus(noms.flatMap((f) => manifeste[f].objets || []))) {
   const resume = noms.map((fonction) => {
     const d = manifeste[fonction];
     const manquants = (d.objets || []).filter((s) => !present.get(s));
@@ -119,7 +132,7 @@ export function dresserPlan(manifeste, noms, present) {
     return { fonction, etat, manquants, migration: d.migration || null, sans: d.sans || null };
   });
   const etats = {};
-  for (const e of etatsLus(noms.flatMap((f) => manifeste[f].objets || []))) etats[e.slice("etat:".length)] = present.get(e) === true;
+  for (const e of etatsALire) etats[e.slice("etat:".length)] = present.get(e) === true;
   return { resume, deployables: resume.filter((r) => r.etat !== "RETENUE").map((r) => r.fonction), retenues: resume.filter((r) => r.etat === "RETENUE").map((r) => r.fonction), etats };
 }
 
@@ -164,22 +177,28 @@ async function lireLignes(sql) {
 }
 
 async function principal() {
+  const partiel = args.includes("--partiel");
   const fonctionsDemandees = (val("--fonctions") || "").split(/[\s,]+/).filter(Boolean);
   const manifeste = chargerManifeste();
-  const noms = fonctionsDemandees.length ? fonctionsDemandees : Object.keys(manifeste);
+  // `--partiel --fonctions ""` : AUCUNE fonction à vérifier (rien n'est en retard) — jamais « toutes ». Sans
+  // `--partiel`, ou sans `--fonctions` du tout, l'absence de liste garde son sens d'avant : tout le manifeste.
+  const listeVide = partiel && args.includes("--fonctions") && !fonctionsDemandees.length;
+  const noms = fonctionsDemandees.length ? fonctionsDemandees : listeVide ? [] : Object.keys(manifeste);
   // `Object.hasOwn` : « constructor » ou « toString » ne sont pas des fonctions déclarées (ils passaient `manifeste[f]`).
   for (const f of noms) if (!/^[a-z][a-z0-9-]*$/.test(f) || !Object.hasOwn(manifeste, f)) echec("fonction inconnue du manifeste des prérequis : " + f + " — la déclarer dans " + MANIFESTE + " (même sans prérequis) avant de la déployer.");
   const specs = [...new Set(noms.flatMap((f) => manifeste[f].objets || []))];
-  const sql = sqlPrerequis(normaliserSpecs(specs));
+  // En mode partiel, les états de TOUT le manifeste : la fumée éprouve aussi les fonctions servies sans être redéployées.
+  const etatsALire = partiel ? etatsLus(Object.values(manifeste).flatMap((d) => d.objets || [])) : etatsLus(specs);
+  const sql = sqlPrerequis(normaliserSpecs(specs), etatsALire);
   if (args.includes("--sql")) { process.stdout.write(sql + "\n"); return; }
 
   const lignes = await lireLignes(sql);
   if (!Array.isArray(lignes)) echec("résultat illisible : NON VÉRIFIABLE, le déploiement est retenu.");
   const present = new Map(lignes.map((l) => [String(l.spec), l.present === true || l.present === "t" || l.present === "true"]));
-  for (const s of [...specs, ...etatsLus(specs)]) if (!present.has(s)) echec("la cible n'a pas répondu pour « " + s + " » : NON VÉRIFIABLE, le déploiement est retenu.");
+  for (const s of [...specs, ...etatsALire]) if (!present.has(s)) echec("la cible n'a pas répondu pour « " + s + " » : NON VÉRIFIABLE, le déploiement est retenu.");
 
-  const partiel = args.includes("--partiel");
-  const { resume, deployables, retenues, etats } = dresserPlan(manifeste, noms, present);
+  const { resume, deployables, retenues, etats } = dresserPlan(manifeste, noms, present, etatsALire);
+  if (!noms.length) console.log("ℹ️  aucune fonction à vérifier : seuls les réglages sont lus, pour la fumée de ce qui est servi.");
   for (const r of resume) {
     const icone = r.etat === "RETENUE" ? "❌" : r.manquants.length ? "⚠️" : "✅";
     console.log(`${icone} ${r.fonction} : ${r.etat}${r.manquants.length ? " — manque : " + r.manquants.join(", ") : ""}`);
@@ -206,5 +225,7 @@ async function principal() {
   console.log("\n✅ aucun prérequis obligatoire ne manque : le déploiement peut partir.");
 }
 
-// Importé (bancs), ce module ne lit ni argument ni cible : seules ses fonctions pures servent.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await principal();
+// Importé (bancs), ce module ne lit ni argument ni cible : seules ses fonctions pures servent. Lancé en direct,
+// il se reconnaît à son chemin RÉEL : à travers un lien symbolique, comparer deux URL ne faisait rien et sortait en 0.
+const lanceEnDirect = () => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch (_e) { return false; } };
+if (lanceEnDirect()) await principal();

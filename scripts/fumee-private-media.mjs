@@ -3,7 +3,8 @@
 // exigeait des capacités fermées — le contrôle de la préparation — et aurait rougi tout redéploiement d'un
 // courtier ouvert. Elle exige désormais que la fonction déployée serve EXACTEMENT le réglage en base, ouvert
 // ou fermé : un courtier qui dirait « ouvert » quand la coupure est posée, ou l'inverse, ne passe pas.
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const TARGETS = new Set([
   'https://njkiyoklssvefstljemx.supabase.co',
@@ -78,7 +79,9 @@ export async function verifierMediaPrive({ baseUrl, revision, actif, fetchFn = g
   return { status: 'PRIVATE_MEDIA_VERIFIED', requests: PROBES.length, revision, uploads_enabled: actif, reads_enabled: actif };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Par son chemin RÉEL : appelée à travers un lien symbolique, l'ancienne garde ne faisait rien et sortait en 0 — une fumée muette.
+const lanceeEnDirect = () => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } };
+if (lanceeEnDirect()) {
   try {
     if (process.argv.length !== 2) refuse();
     const etat = process.env.PASSIO_MEDIA_SMOKE_ACTIF;

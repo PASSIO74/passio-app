@@ -11,6 +11,9 @@
 #   ③ v3 appliquée : autorisé ; export médias absent : retenu ; notify-call reste facultatif ;
 #   ③ bis `--partiel` (2026-11-21) : la retenue d'UNE fonction ne retient plus les
 #      autres — code 0, le plan part dans $GITHUB_OUTPUT (deployables, retenues) ;
+#   ③ ter une cible SANS la table `reglages_distants` n'est pas une cible illisible :
+#      la fonction qui exige le réglage est retenue, les autres partent ; l'état du
+#      réglage se lit à chaque passage, même sans fonction à vérifier ;
 #   ④ lecture seule : la requête ne peut pas écrire (read only) ;
 #   ⑤ une fonction hors manifeste ne se déploie pas ;
 #   ⑥ MUTATION : retirer l'objet obligatoire du manifeste → le banc rougit ici
@@ -118,6 +121,26 @@ JOUER "delete-account export-account notify-call"
 verifier "sans --partiel, le contrat d'avant tient : code 1" "1" "$CODE"
 JOUER_PARTIEL "fonction-inconnue"
 verifier "--partiel n'ouvre rien : une fonction hors manifeste sort en 2, sans plan" "2|" "$CODE|$(cat "$PLAN")"
+
+echo "── ③ ter SANS reglages_distants : UN RÉGLAGE ABSENT, PAS UNE CIBLE ILLISIBLE ─"
+# Écrite en clair dans la requête, une table absente la faisait échouer EN ENTIER : la retenue d'une fonction
+# redevenait totale sur une cible neuve (relecture adverse du 21/11). Elle est nommée dans une requête différée.
+verifier "prémisse : cette base n'a pas la table" "" "$(Q "select to_regclass('public.reglages_distants');")"
+JOUER_PARTIEL "delete-account private-media"
+verifier "code 0 : la lecture n'échoue pas en entier" "0" "$CODE"
+verifier "…private-media retenue, le réglage nommé parmi ce qui manque" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ private-media : RETENUE — manque : reglage:medias_proteges.actif:booleen" || true)"
+verifier "…delete-account part" "deployables=delete-account" "$(grep '^deployables=' "$PLAN")"
+verifier "…l'état est lu « false » : absent vaut fermé, comme pour le serveur" "etat_medias_proteges_actif=false" "$(grep '^etat_' "$PLAN")"
+Q "create table public.reglages_distants (cle text primary key, valeur jsonb not null); insert into public.reglages_distants values ('medias_proteges', '{\"actif\": true}');" >/dev/null
+JOUER_PARTIEL ""
+verifier "rien n'est en retard (--fonctions \"\") : aucune fonction — jamais « toutes » —, l'état est lu pour la fumée" "0|deployables=|retenues=|etat_medias_proteges_actif=true" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")|$(grep '^etat_' "$PLAN")"
+verifier "…et aucune fonction n'est dite vérifiée" "0" "$(printf '%s\n' "$SORTIE" | grep -c "prérequis présents\|RETENUE" || true)"
+JOUER_PARTIEL "private-media"
+verifier "réglage posé à true : il ne manque plus à private-media (restent ses registres)" "0" "$(printf '%s\n' "$SORTIE" | grep "❌ private-media : RETENUE" | grep -c "reglage:medias_proteges.actif:booleen" || true)"
+Q "update public.reglages_distants set valeur = '{\"actif\": \"true\"}' where cle = 'medias_proteges';" >/dev/null
+JOUER_PARTIEL "private-media"
+verifier "une chaîne « true » n'est pas un booléen : le réglage manque, et l'état est lu « false »" "1|etat_medias_proteges_actif=false" "$(printf '%s\n' "$SORTIE" | grep "❌ private-media : RETENUE" | grep -c "reglage:medias_proteges.actif:booleen" || true)|$(grep '^etat_' "$PLAN")"
+Q "drop table public.reglages_distants;" >/dev/null
 
 echo "── ④ LECTURE SEULE ───────────────────────────────────────────────────────"
 verifier "une écriture dans la même forme de transaction est refusée" "REFUSE" "$(if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -1 -v ON_ERROR_STOP=1 -c "set transaction read only; create table public.tentative_ecriture (x int);" >/dev/null 2>&1; then echo OK; else echo REFUSE; fi)"

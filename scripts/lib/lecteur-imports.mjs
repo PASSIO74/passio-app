@@ -186,14 +186,16 @@ export function resoudre(depuis, spec) {
 
 // ── Ce que chaque fonction emporte ──────────────────────────────────────────
 const ENTREE_FONCTION = /^supabase\/functions\/([^/_][^/]*)\/index\.(?:ts|js)$/;
+const HORS_DEPOT = /^(?:npm:|jsr:|node:|https?:\/\/)/;
 
 /**
  * La clôture des imports relatifs de chaque `supabase/functions/<nom>/index.ts` :
  * ce que la CLI met dans le bundle de la fonction. `fichiers` : { chemin relatif à
  * la racine du dépôt → source }.
  * Rend `parFonction` (nom → chemins triés, entrée comprise) et `incertaines`
- * (nom → raisons) : un import au chemin calculé ou une cible introuvable rendent
- * la clôture INCALCULABLE — ce n'est jamais lu comme « rien d'autre n'est emporté ».
+ * (nom → raisons) : un import au chemin calculé, une cible introuvable ou un
+ * spécificateur nu (résolu par une carte d'imports) rendent la clôture
+ * INCALCULABLE — ce n'est jamais lu comme « rien d'autre n'est emporté ».
  */
 export function clotureFonctions(fichiers) {
   const parFonction = new Map();
@@ -212,7 +214,13 @@ export function clotureFonctions(fichiers) {
       if (calcules > 0) raisons.push(`${f} : import() ou require() au chemin calculé`);
       for (const spec of specs) {
         const cible = resoudre(f, spec);
-        if (cible === null) continue;
+        if (cible === null) {
+          // Un paquet ou une URL, épinglés dans le fichier qui les importe : rien à suivre. Tout autre
+          // spécificateur (« @partage/x.js », un chemin absolu) passe par une carte d'imports ou le système :
+          // il peut désigner un module du dépôt que ce lecteur ne suivrait pas.
+          if (!HORS_DEPOT.test(spec)) raisons.push(`${f} : importe « ${spec} », ni relatif ni paquet — résolu par une carte d'imports que ce lecteur ne suit pas`);
+          continue;
+        }
         if (!(cible in fichiers)) { raisons.push(`${f} : importe « ${spec} », introuvable`); continue; }
         pile.push(cible);
       }
