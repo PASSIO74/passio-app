@@ -872,14 +872,17 @@ export function aFaire(d, maintenant = Date.now()) {
     // L'état « lu en partie » de la Sentinelle : SA ligne, jamais « Une note ouverte » avec un
     // bouton Fermer (refermée à la main, elle rouvrirait au passage suivant), jamais réparable.
     // « Régler » relance sa lecture — le seul geste utile si la cause est passagère. Relancée et
-    // toujours en partie : la cause est un volume, un bouton de plus n'y changerait rien — la
-    // ligne se range (même règle que les parcours analysés, plus bas). En pause, elle ne relit rien.
+    // encore ouverte : soit la cause est un volume (un bouton de plus n'y changerait rien), soit
+    // tout est relu et le workflow attend 90 min sans passage incomplet avant de refermer. Le
+    // pilotage ne distingue pas les deux : la phrase ne dit donc QUE ce qui est vrai des deux
+    // (l'heure, et que la note se referme seule), jamais « toujours en partie ». La ligne se
+    // range (même règle que les parcours analysés, plus bas). En pause, elle ne relit rien.
     if (labels.includes(LABEL_SENTINELLE_PARTIELLE)) {
       const ligne = { ...base, id: "sentinelle:partielle", etiquette: "Lu en partie", titre: "La Sentinelle n'a pas tout traité" };
       const srE = suivi("sentinelle");
       if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });
       else if (enVol(srE)) ajoute({ ...ligne, prio: 1, enCours: true, quoi: quoiVol(srE, "La Sentinelle") });
-      else if (srE && srE.etat === "faite") ajoute({ ...ligne, prio: 2, quoi: "Relue à " + heureMinute(srE.fini) + " : toujours en partie.",
+      else if (srE && srE.etat === "faite") ajoute({ ...ligne, prio: 2, quoi: "Relue à " + heureMinute(srE.fini) + ". Se referme seule une fois tout lu.",
         gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
       else ajoute({ ...ligne, prio: 1, quoi: quoiRate(srE, "Relance sa lecture maintenant."), gestes: relancer("sentinelle") });
       continue;

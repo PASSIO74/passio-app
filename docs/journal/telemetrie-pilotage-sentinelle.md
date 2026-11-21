@@ -2135,7 +2135,7 @@ vide une fois son script épuisé (elle répétait sa dernière réponse) ; le `
 - À l'échelle visée, l'état « lu en partie » sera DURABLE : appels refusés au-delà de 10 000 lignes par
   jour (environ 2 000 sessions avec compte pendant un incident à 5 refus par session ; c'était 200
   avant ce lot), boutons au-delà de 2 000 sessions. Voyant orange et ligne récurrente, avec un « Régler » qui ne peut pas régler un volume — il
-  se range après une relance (« Relue à HH:MM : toujours en partie »). C'est honnête et cela ne sonne
+  se range après une relance (« Relue à HH:MM. Se referme seule une fois tout lu. »). C'est honnête et cela ne sonne
   pas, mais c'est une fatigue d'alerte jusqu'au lot des agrégats SQL (`comptes_anciens(uuid[])`,
   `sentinelle_familles`, `sentinelle_boutons`, `pilotage_parcours`), qui demande une migration.
 - La famille parcours tronquée ne désigne toujours rien au-delà de 10 000 étapes : c'est dit, pas levé.
@@ -2176,11 +2176,49 @@ plafonds), signifie une hypothèse PostgREST fausse — revert de la PR.
 
 Verrous : `sentinelle-detecter.test.mjs` T4-01 à T4-20 (dont `detecter()` exécutée de bout en bout),
 `sentinelle-workflows.test.mjs` T4-w1 à T4-w6 (les blocs `run:` réels rejoués), `pilotage.test.mjs`
-T4-a à T4-d, `pilotage-chemins.test.mjs` T4-k (la fonction exécutée). 111 réinjections, chaque garde
-retirée une à une et son cas vu rouge sur l'état final (67 pour le détecteur, 26 pour le workflow, 18
-pour la fonction) ; huit sont inscrites au registre (`scripts/reinjections-pilotage.mjs`, R120 à R127).
+T4-a à T4-d, `pilotage-chemins.test.mjs` T4-k (la fonction exécutée). 111 réinjections jouées à la
+livraison, chacune vue rouge sur l'état d'alors (67 pour le détecteur, 26 pour le workflow, 18 pour la
+fonction) ; huit sont inscrites au registre (`scripts/reinjections-pilotage.mjs`, R120 à R127).
+⚠️ « 111 réinjections » ne voulait PAS dire « chaque garde » : la contre-revue en a trouvé huit autres
+qui restaient vertes (paragraphe « Contre-revue », plus bas). La phrase d'origine le prétendait.
 ⚠️ Trois réinjections sont d'abord restées VERTES, et c'est le banc qu'il a fallu reprendre : un repli
 « colonne absente » déclenché par n'importe quel refus (le cas faisait échouer le repli aussi), un
 classement du résumé qui aurait porté des groupes non jugés (aucun groupe non suspect n'avait dix
 clics), et la relecture d'ancienneté des parcours appelée sans le compteur de refus (aucun cas ne
 faisait échouer l'authentification sur un parcours).
+
+**Contre-revue adversariale du lot (2026-11-21) : le code était juste, c'est le banc qui ne le tenait
+pas.** Le relecteur a joué 31 réinjections de son cru ; huit restaient vertes, une phrase de l'écran
+pouvait mentir.
+- **Le dernier filtre de la famille bouton n'avait aucun cas** (`second.candidates.filter(estJuge)`).
+  T4-13 ne mordait que sur la définition de `juges` : son groupe non jugé n'avait aucun compte ancien
+  connu, il tombait donc de toute façon au second passage. Scénario qui passe au travers sans le
+  filtre : un bouton MORT jugé (quatre comptes anciens) et un bouton VIVANT dont le lot d'effets est
+  refusé, cliqué par trois des mêmes comptes — le premier fait reconnaître les comptes anciens, le
+  second paraît mort faute d'effets lus, et part en enquête. Cas **T4-13 bis** ; il tient aussi le
+  filtre du PREMIER passage (un groupe non jugé ne dépense pas le budget d'ancienneté). **Règle : une
+  garde en deux temps se teste avec des groupes qui PARTAGENT ce que le premier temps apprend.**
+- **Deux parts du code « ancienneté » pouvaient disparaître sans rougir** — celle des parcours et celle
+  des boutons : seule la part des erreurs en texte libre avait son cas. T4-20 les lève désormais une à
+  une (40 comptes sur un parcours, 70 sur un bouton, aucun ancien).
+- **La session de la lecture témoin** (écrite par un navigateur, envoyée dans une URL appelée avec la
+  clé de service) n'était éprouvée qu'avec des sessions sages : T4-12 (e) place en tête un clic dont la
+  session porte virgule, parenthèse et `&`, et relit toutes les URL émises.
+- Trois petites : le coupe-circuit réservé aux paquets PLEINS (T4-16, neuf refus sur neuf), une session
+  partagée par deux groupes comptée une fois (T4-10), les clics de robot hors du classement du résumé
+  (T4-12 (f)).
+- **Une garde retirée plutôt que testée** : la coupe du titre de l'issue d'état à 160 caractères ne
+  pouvait pas mordre (le titre n'est fait que de six noms fixes, dédoublonnés : 130 caractères au
+  plus). Une garde qu'aucune entrée n'atteint n'a pas de test qui rougit ; elle est remplacée par
+  l'invariant, tenu dans T4-18 : le plus long titre possible fait moins de 160 caractères.
+- **« Relue à HH:MM : toujours en partie » pouvait être faux jusqu'à deux heures.** Après une relance
+  qui a TOUT relu, l'issue d'état reste ouverte : le workflow ne la referme que 90 minutes après sa
+  dernière réécriture, et un passage complet ne la réécrit pas. Le pilotage ne sait pas distinguer
+  « encore partielle » de « complète, fermeture en attente ». La ligne dit désormais ce qui est vrai
+  des deux : « Relue à HH:MM. Se referme seule une fois tout lu. » (49 caractères, une ligne de
+  téléphone). **Limite assumée** : le voyant reste orange pendant cette attente — c'est le prix de
+  l'hystérésis (sans elle, un e-mail et un changement de voyant par heure). Faire lire au pilotage la
+  ligne « Mis à jour » du corps de l'issue le lèverait ; non fait ici (le corps d'une issue publique
+  n'est pas une source que la fonction lit aujourd'hui).
+Après correction : les 31 réinjections du relecteur rougissent toutes (30 rejouées, la 31ᵉ visait la
+coupe retirée).

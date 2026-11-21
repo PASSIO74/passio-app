@@ -1552,6 +1552,9 @@ test("T4-10 sessionsALire prend un groupe EN ENTIER ou pas du tout, dans l'ordre
   assert.deepEqual(tout, { sessions: ["a1", "b1"], juges: ["A", "B"], nonJuges: 0 });
   assert.equal(SD.BOUTONS_LECTURE.sessionsMax, 2000);
   assert.deepEqual(SD.sessionsALire(null), { sessions: [], juges: [], nonJuges: 0 });
+  // Une session partagée par deux groupes ne coûte qu'UNE place : A en prend trois, il en reste une, et C n'en demande
+  // qu'une neuve. RÉINJECTION : retirer `.filter((s) => !choisies.has(s))` → C (deux sessions pour une place) n'est plus jugé, rouge.
+  assert.deepEqual(SD.sessionsALire([g("A", "a1", "a2", "a3"), g("C", "c1", "a1", "a1")], { total: 4 }), { sessions: ["a1", "a2", "a3", "c1"], juges: ["A", "C"], nonJuges: 0 });
 });
 
 test("T4-11 propriété du premier temps : tout candidat jugé AVEC les effets est candidat SANS aucun effet", () => {
@@ -1640,6 +1643,23 @@ test("T4-12 la famille bouton en deux temps : les effets ne sont demandés que p
   // comptes) n'y est pas. RÉINJECTION : `const clicsJuges = clics.lignes;` → rouge (ses effets n'ont pas été lus : 0 %).
   assert.equal(resultat.suspects.portee, "groupes jugés, comptes seulement");
   assert.deepEqual(resultat.suspects.classement.map((g) => [g.cle, g.tauxEffet]), [["irl · Participer", 0], ["irl · Fermer", 100]]);
+  // (e) La session de la lecture témoin est écrite par un NAVIGATEUR et part dans une URL appelée avec la clé de service :
+  // le clic le plus récent dont la session porte une virgule, une parenthèse ou un `&` n'est jamais choisi.
+  // RÉINJECTION : `const recent = clics.lignes[0];` → l'identifiant hostile part tel quel dans l'URL, rouge.
+  const hostile = { ...clicU("Participer", U(0), "sessX,sessP0)&select=*", t4iso(T4_MAINT - 600_000)), id: "hostile" };
+  const h = await avecPostgrest({ clics: [...T4_CLICS, hostile], effets: T4_EFFETS, comptes: t4anciens(0, 1, 2, 3) }, () => t4famille());
+  const temoinH = h.vues.filter((v) => estEffets(v) && t4param(v, "limit") === "1");
+  assert.equal(temoinH.length, 1);
+  assert.match(t4param(temoinH[0], "session_id"), /^in\.\(sess[PFC]\d\)$/, "le témoin prend le clic le plus récent dont la session est sûre");
+  for (const v of h.vues) assert.doesNotMatch(v.href, /sessX|select=\*/, "rien de l'identifiant hostile dans une URL : " + v.href);
+  assert.equal(h.resultat.lecture.temoin, "ok");
+  assert.equal(h.resultat.lecture.sessionsInvalides, 1);
+  // (f) Le classement du résumé ne compte que des clics de COMPTES : douze clics de robot sur Participer n'y pèsent pas.
+  // RÉINJECTION : retirer `&& !estHorsPublic(c)` de `clicsJuges` → 24 clics au lieu de 12, rouge.
+  const robots = t4rageurs("Participer", "sessP").map((c) => ({ ...c, id: "r" + c.id, trafic: "robot" }));
+  const r = await avecPostgrest({ clics: [...T4_CLICS, ...robots], effets: T4_EFFETS, comptes: t4anciens(0, 1, 2, 3) }, () => t4famille());
+  assert.equal(r.resultat.lecture.horsPublic, 12);
+  assert.equal(r.resultat.suspects.classement.find((g) => g.cle === "irl · Participer").clics, 12, "les robots sont lus, comptés à part, jamais classés");
 });
 
 test("T4-13 un groupe lu À MOITIÉ, ou trop grand pour le budget, ne désigne RIEN — et c'est compté ; des clics tronqués laissent juger les plus récents", async () => {
@@ -1682,6 +1702,39 @@ test("T4-13 un groupe lu À MOITIÉ, ou trop grand pour le budget, ne désigne R
   assert.deepEqual(bilanDe(recents.resultat.lecture), ["boutons_clics"]);
 });
 const bilanDe = (boutons) => SD.bilanLecture({ boutons }).partiel.map((p) => p.code);
+
+test("T4-13 bis un bouton dont les effets n'ont PAS été relus ne devient jamais une enquête, même porté par des comptes déjà reconnus anciens", async () => {
+  // Contre-revue du 2026-11-21. T4-13 ne tenait que la DÉFINITION de `juges` : son groupe non jugé n'avait aucun compte
+  // ancien connu, il tombait donc de toute façon au second passage. Ici les deux boutons PARTAGENT trois comptes :
+  //  · Participer est MORT — quatre comptes anciens, dix sessions chacun (40 sessions : un lot entier), deux clics rageurs ;
+  //  · Fermer est VIVANT — chaque clic a son effet —, cliqué par trois des mêmes comptes et par un quatrième, U(9).
+  // Le lot d'effets de Fermer est refusé. Participer, jugé, fait relire ses comptes : ils sont anciens. Sans le dernier
+  // filtre, Fermer (qui paraît mort, ses effets n'étant pas lus) passerait le second passage avec ces comptes-là.
+  // RÉINJECTION : `const candidates = second.candidates;` → Fermer, vivant, part en enquête, rouge.
+  const t0 = Date.parse("2026-11-01T08:00:00Z");
+  const mort = [], vivant = [], sesEffets = [];
+  for (let u = 0; u < 4; u++) for (let s = 0; s < 10; s++) for (let k = 0; k < 2; k++) {
+    mort.push({ ...clicU("Participer", U(u), `sessA${u}x${s}`, t4iso(t0 + u * 600_000 + s * 10_000 + k * 800)), id: `a${u}-${s}-${k}` });
+  }
+  for (const u of [0, 1, 2, 9]) for (let k = 0; k < 4; k++) {
+    const t = t0 + 3600_000 + u * 60_000 + k * 900;
+    vivant.push({ ...clicU("Fermer", U(u), "sessB" + u, t4iso(t)), id: `b${u}-${k}` });
+    sesEffets.push({ id: `eb${u}-${k}`, session_id: "sessB" + u, client_ts: t4iso(t + 100), received_at: t4iso(t + 100), action: "nav" });
+  }
+  const clics = [...mort, ...vivant];
+  assert.deepEqual(SD.classerBoutonsMorts(clics, sesEffets, { ...OPTS, comptesAnciens: "tous" }).candidates.map((c) => c.cle), ["bouton irl · Participer"], "lu en entier : Fermer est vivant");
+  assert.deepEqual(SD.classerBoutonsMorts(clics, [], { ...OPTS, comptesAnciens: "tous" }).candidates.map((c) => c.cle), ["bouton irl · Participer", "bouton irl · Fermer"], "sans aucun effet, les deux sont suspects");
+  const { vues, resultat } = await avecPostgrest({ clics, effets: sesEffets, comptes: t4anciens(0, 1, 2, 3, 9),
+    panne: (u) => (estEffets({ url: u }) && u.searchParams.get("limit") !== "1" && /sessB/.test(u.searchParams.get("session_id")) ? { status: 503 } : null) }, () => t4famille());
+  assert.deepEqual(resultat.morts.candidates.map((c) => c.cle), ["bouton irl · Participer"], "le bouton non relu ne désigne rien");
+  assert.deepEqual([resultat.lecture.groupesSuspects, resultat.lecture.groupesJuges, resultat.lecture.groupesNonJuges, resultat.lecture.lotsNonLus, resultat.lecture.sessionsLues], [2, 1, 1, 1, 40]);
+  assert.deepEqual(bilanDe(resultat.lecture), ["boutons_non_juges"], "et c'est dit au pilote");
+  assert.deepEqual(resultat.suspects.classement.map((g) => g.cle), ["irl · Participer"]);
+  // Un groupe non jugé ne dépense pas non plus le budget d'ancienneté : U(9), qui n'a cliqué que Fermer, n'est jamais relu.
+  // RÉINJECTION : retirer `.filter(estJuge)` du PREMIER passage → une cinquième lecture de compte, rouge.
+  assert.deepEqual(vues.filter((v) => v.url.pathname.startsWith("/auth/")).map((v) => v.url.pathname.split("/").pop()).sort(), [U(0), U(1), U(2), U(3)]);
+  assert.equal(resultat.lecture.ancienneteNonRelus, 0);
+});
 
 test("T4-14 fenêtres : les clics s'arrêtent deux minutes AVANT l'instant du passage, les effets commencent deux minutes plus tôt et vont jusqu'à lui", async () => {
   // RÉINJECTION : donner aux clics la borne haute des effets (retirer `jusqua`) → rouge : un clic dont l'effet est encore
@@ -1766,6 +1819,15 @@ test("T4-16 un refus du service d'authentification se COMPTE, et dix refus de su
     assert.deepEqual([...a], [U(0)], "la garde se ferme toujours : refusé = pas ancien");
     assert.equal(echecs.n, 3, "500, 429 et réseau ; un 404 est une réponse (compte supprimé), pas un refus");
     assert.ok(!echecs.coupe, "trois refus sur cinq : le service répond");
+    // Neuf refus sur un paquet de NEUF ne coupent rien : le coupe-circuit ne se lève que sur un paquet PLEIN de dix. Un
+    // petit dernier paquet refusé ne prouve pas que le service est tombé, et le compteur est commun à tout le passage —
+    // levé à tort, il compterait refusée toute la relecture des parcours et des boutons qui suit.
+    // RÉINJECTION : `if (echecs.n - avant === paquet.length) echecs.coupe = true;` → rouge.
+    const neuf = { n: 0 };
+    await SD.lireComptesAnciens({ url: T4_URL, cle: "k", uids: Array.from({ length: 9 }, (_, i) => U(6000 + i)), maintenant: T4_MAINT, echecs: neuf });
+    assert.equal(neuf.n, 9);
+    assert.ok(!neuf.coupe, "neuf refus sur neuf : comptés, mais la relecture suivante est tentée");
+    assert.deepEqual([...await SD.lireComptesAnciens({ url: T4_URL, cle: "k", uids: [U(0)], maintenant: T4_MAINT, echecs: neuf })], [U(0)]);
     // Le coupe-circuit : 150 comptes, le service refuse tout. RÉINJECTION : retirer
     // `if (paquet.length === 10 && echecs.n - avant === 10) echecs.coupe = true;` → 150 lectures tentées au lieu de 10, rouge.
     appels = 0;
@@ -1833,7 +1895,11 @@ test("T4-18 ce qui n'a pas été lu devient des CODES FERMÉS, puis une issue d'
   assert.equal(e.partiel, true);
   assert.equal(e.titre, "[SENTINELLE PARTIELLE] pas tout traité : erreurs JS, appels refusés, boutons, parcours, ancienneté des comptes", "des noms courts, dédoublonnés");
   assert.ok(e.titre.startsWith(SD.PREFIXE_PARTIELLE + " "));
-  assert.ok(e.titre.length <= 160);
+  // Le titre n'est fait que de noms FIXES, dédoublonnés : le plus long possible (tous les codes, et des défauts en attente)
+  // tient sous 160 caractères sans être coupé. Un nom ajouté à PHRASES_PARTIEL qui le ferait déborder rougit ici.
+  const long = SD.etatPartiel({ lecture: { complet: false, partiel } }, { attente: 3, budgetAtteint: true });
+  assert.equal(long.titre, "[SENTINELLE PARTIELLE] pas tout traité : erreurs JS, appels refusés, boutons, parcours, ancienneté des comptes, défauts en attente");
+  assert.ok(long.titre.length <= 160, "le plus long titre possible : " + long.titre.length + " caractères");
   assert.equal(e.corps.split("\n").filter((l) => l.startsWith("- ")).length, partiel.length, "une phrase par code");
   assert.match(e.corps, /Appels refusés : seuls les 10000 plus récents ont été lus\./);
   assert.match(e.corps, /Elle ne déclenche aucune correction automatique\.$/);
@@ -1934,6 +2000,22 @@ test("T4-20 detecter() de bout en bout : un verdict complet le DIT, une famille 
   const parcoursMuet = await jouer({ flux: refuses, panne: (u) => (u.pathname.startsWith("/auth/") ? { status: 503 } : null) });
   assert.equal(parcoursMuet.resultat.parFamille.parcours, 0);
   assert.deepEqual(parcoursMuet.resultat.lecture.partiel, [{ code: "anciennete_illisible", n: 2 }]);
+  // Le code « ancienneté » additionne TROIS parts (texte libre, parcours, boutons) : chacune, seule, doit le lever — une
+  // part oubliée ferait dire « tout est lu » d'un défaut écarté sur un échantillon.
+  // RÉINJECTION : retirer `+ parcoursNonRelus` → rouge. Quarante comptes sur un parcours, trente relus, aucun ancien.
+  const foule = Array.from({ length: 40 }, (_, i) => t4flux("send_message", U(3000 + i), 100 + i)).flat();
+  const parcoursEcarte = await jouer({ flux: foule });
+  assert.equal(parcoursEcarte.resultat.parFamille.parcours, 0);
+  assert.equal(parcoursEcarte.resultat.sources.parcours.verificationsIncompletes, 10);
+  assert.deepEqual(parcoursEcarte.resultat.lecture.partiel, [{ code: "anciennete", n: 1 }], "un parcours écarté sans que tous ses comptes aient été relus");
+  // RÉINJECTION : retirer `+ ((boutonsLecture && boutonsLecture.ancienneteNonRelus) || 0)` → rouge. Soixante-dix comptes
+  // sur un bouton mort, soixante relus, aucun ancien.
+  const nuee = Array.from({ length: 70 }, (_, i) => [0, 800].map((d, k) => ({ ...clicU("Participer", U(4000 + i), "sessN" + i, t4iso(T4_MAINT - 7200_000 + i * 5000 + d)), id: `n${i}-${k}` }))).flat();
+  const boutonEcarte = await jouer({ clics: nuee });
+  assert.equal(boutonEcarte.resultat.parFamille.bouton, 0);
+  assert.equal(boutonEcarte.resultat.sources.boutons.groupesJuges, 1, "le bouton est jugé sur ses effets : c'est l'ancienneté qui n'est pas lue en entier");
+  assert.equal(boutonEcarte.resultat.sources.boutons.ancienneteNonRelus, 1);
+  assert.deepEqual(boutonEcarte.resultat.lecture.partiel, [{ code: "anciennete", n: 1 }], "un bouton écarté sans que tous ses comptes aient été relus");
   // Un candidat écarté dont tous les comptes n'ont pas été relus : le code « ancienneté ». Retenu, il ne le lève pas.
   const beaucoup = Array.from({ length: 40 }, (_, i) => ({ id: "m" + i, message: "RangeError: trop", stack: "at g", session_id: "sessM" + i, auth_uid: U(2000 + i), received_at: t4iso(T4_MAINT - 7200_000 - i) }));
   const ecarte = await jouer({ erreurs: beaucoup });

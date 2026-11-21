@@ -113,7 +113,7 @@ const M = [
   ["R122 l'état ne colore pas le voyant : « rien à corriger » sur fond vert", PJ, `  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé");\n`, ``, BANC, "T4-k"],
   ["R123 l'état tombe dans « Une note ouverte », avec un bouton Fermer", PJ, `    if (labels.includes(LABEL_SENTINELLE_PARTIELLE)) {`, `    if (false) {`, BANC, "T4-k"],
   ["R124 l'état passe le voyant au rouge (le téléphone sonne pour un volume)", PJ, `  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité`, `  if (sentinellePartielle(issues)) rouge.push("la Sentinelle n'a pas tout traité`, "tests/unit/pilotage.test.mjs", "T4-b"],
-  ["R125 relue et toujours en partie : un « Régler » principal qui ne règle rien", PJ, `      else if (srE && srE.etat === "faite") ajoute(`, `      else if (false) ajoute(`, "tests/unit/pilotage.test.mjs", "T4-c"],
+  ["R125 relue et encore ouverte : un « Régler » principal qui ne règle rien", PJ, `      else if (srE && srE.etat === "faite") ajoute(`, `      else if (false) ajoute(`, "tests/unit/pilotage.test.mjs", "T4-c"],
   ["R126 en pause, la ligne de l'état garde un bouton qui ne lit rien", PJ, `      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });\n      else if (enVol(srE))`, `      if (enVol(srE))`, "tests/unit/pilotage.test.mjs", "T4-c"],
   ["R127 « rien à corriger » revient alors que la Sentinelle n'a pas tout traité", PJ, `quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, `quoi: false ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, "tests/unit/pilotage.test.mjs", "T4-d"],
 ];

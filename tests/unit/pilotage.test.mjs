@@ -2214,7 +2214,12 @@ test("T4-c aFaire : la ligne « La Sentinelle n'a pas tout traité » — un seu
   // ⚠️ Relancée et TOUJOURS en partie : la cause est un volume. La ligne se range, le bouton n'est plus principal.
   // RÉINJECTION : retirer la branche `srE.etat === "faite"` → rouge (un « Régler » qui ne règle rien, en tête de liste).
   const faite = ligne({ relances: { sentinelle: t4Iso(T4_T) }, github: { issues: [t4Etat()], runs: { sentinelle: T4_FINI }, aReparer: [] } }, T4_T + 30e3);
-  assert.deepEqual([faite.prio, faite.enCours, faite.quoi], [2, false, "Relue à 08:54 : toujours en partie."]);
+  // ⚠️ La phrase doit rester VRAIE dans les deux cas que le pilotage ne distingue pas (contre-revue du 2026-11-21) :
+  // relue et encore partielle, ou relue EN ENTIER — l'issue reste alors ouverte jusqu'à 90 minutes après sa dernière
+  // réécriture (hystérésis du workflow). « Toujours en partie » mentait dans le second, jusqu'à deux heures durant.
+  assert.deepEqual([faite.prio, faite.enCours, faite.quoi], [2, false, "Relue à 08:54. Se referme seule une fois tout lu."]);
+  assert.doesNotMatch(faite.quoi, /toujours|en partie/, "aucun verdict sur ce que la relance a lu : le pilotage ne le sait pas");
+  assert.ok(faite.quoi.length <= 50, "tient sur une ligne de téléphone");
   assert.deepEqual(faite.gestes, [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }], "relancer reste possible, rangé, jamais principal");
   // Relance perdue ou en échec : la ligne le dit et rend son bouton.
   const perdue = ligne({ relances: { sentinelle: t4Iso(T4_T) } }, T4_T + T4P.RELANCE_DEMARRAGE_MS + 1e3);

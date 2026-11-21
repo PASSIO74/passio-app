@@ -1900,7 +1900,8 @@ export function etatPartiel(verdict, { attente = 0, budgetAtteint = false } = {}
     lignes.push(`${enAttente} défaut(s) retenu(s) attendent : le budget d'enquêtes par 24 h est atteint.`);
     noms.push("défauts en attente");
   }
-  const titre = (PREFIXE_PARTIELLE + " pas tout traité : " + noms.join(", ")).slice(0, 160);
+  // Aucune coupe : `noms` ne porte que des noms fixes, dédoublonnés — le plus long titre possible est tenu par le banc (T4-18).
+  const titre = PREFIXE_PARTIELLE + " pas tout traité : " + noms.join(", ");
   const corps = [
     "La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier :",
     "",
