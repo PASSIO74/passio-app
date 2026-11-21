@@ -2211,7 +2211,7 @@ test("T4-c aFaire : la ligne « La Sentinelle n'a pas tout traité » — un seu
   // Relance en vol : « démarre », sans bouton.
   const vol = ligne({ relances: { sentinelle: t4Iso(T4_T - 1e3) } });
   assert.deepEqual([vol.prio, vol.enCours, vol.gestes.length, vol.quoi], [1, true, 0, "La Sentinelle démarre (lancée à 08:53)."]);
-  // ⚠️ Relancée et TOUJOURS en partie : la cause est un volume. La ligne se range, le bouton n'est plus principal.
+  // ⚠️ Relancée et encore ouverte : la ligne se range, le bouton n'est plus principal.
   // RÉINJECTION : retirer la branche `srE.etat === "faite"` → rouge (un « Régler » qui ne règle rien, en tête de liste).
   const faite = ligne({ relances: { sentinelle: t4Iso(T4_T) }, github: { issues: [t4Etat()], runs: { sentinelle: T4_FINI }, aReparer: [] } }, T4_T + 30e3);
   // ⚠️ La phrase doit rester VRAIE dans les deux cas que le pilotage ne distingue pas (contre-revue du 2026-11-21) :

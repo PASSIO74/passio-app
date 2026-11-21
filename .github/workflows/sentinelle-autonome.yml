@@ -510,6 +510,10 @@ jobs:
       # envoient un e-mail et changent le voyant ; sans cette attente, une panne
       # passagère en produirait une paire par heure. Le corps porte l'heure de sa
       # mise à jour : chaque passage partiel repousse la fermeture.
+      # ⚠️ C'EST CETTE HEURE DU CORPS QUI DÉCIDE (`etatsAFermer`), jamais `updatedAt` :
+      # un commentaire avance `updatedAt`, et le dépôt est public — un tiers tenait
+      # l'issue ouverte, donc le voyant orange, en commentant toutes les heures. La
+      # conversation est en outre VERROUILLÉE à chaque écriture (`gh issue lock`).
       - name: État de lecture (le dire au pilote)
         if: github.event_name != 'pull_request' && steps.detect.outcome == 'success'
         id: lecture
@@ -557,11 +561,18 @@ jobs:
                          --body-file /tmp/partiel-corps.md --label sentinelle-partielle | grep -oE '[0-9]+$')"
               echo "État de lecture publié : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
             fi
+            # Verrouillée : seul un compte ayant le droit d'écrire y commente. Rejoué à chaque écriture (une issue
+            # ouverte avant ce verrou, ou un verrou refusé la fois d'avant) ; son échec ne retire rien à l'état publié.
+            gh issue lock "${existante:-${numero}}" --repo "${R}" >/dev/null 2>&1 || true
           else
             # Tout est lu et confié : refermer — mais seulement une note que plus aucun passage n'a réécrite depuis 90 min.
-            limite="$(date -u -d '90 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
-            a_fermer="$(gh issue list --repo "${R}" --state open --label sentinelle-partielle --limit 20 --json number,title,updatedAt \
-                          --jq "[.[] | select(.title | startswith(\"[SENTINELLE PARTIELLE]\")) | select(.updatedAt < \"${limite}\")] | .[].number")"
+            # L'heure lue est la ligne « - Mis à jour : … » du CORPS, pas updatedAt (`etatsAFermer`, qui filtre aussi le titre).
+            gh issue list --repo "${R}" --state open --label sentinelle-partielle --limit 20 --json number,title,updatedAt,body > /tmp/partielles.json
+            a_fermer="$(node --input-type=module -e '
+              import fs from "node:fs";
+              const { etatsAFermer } = await import("./scripts/sentinelle-detecter.mjs");
+              process.stdout.write(etatsAFermer(JSON.parse(fs.readFileSync("/tmp/partielles.json", "utf8"))).join(" "));
+            ')"
             for n in ${a_fermer}; do
               gh issue comment "${n}" --repo "${R}" --body "✅ La Sentinelle a de nouveau tout lu et tout confié — ${run_url}" >/dev/null
               gh issue close "${n}" --repo "${R}" --reason completed >/dev/null

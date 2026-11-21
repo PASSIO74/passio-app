@@ -61,7 +61,7 @@ plus récentes `{at, app_version}` : c'est ce qui permet la dédup ci-dessous.
 | `recidive` | sentinelle-autonome (A4) | `github.token` | ≥ 2 correctifs déployés sur le même titre |
 | `sentinelle-relancee` | veilleur | `github.token` | le run Claude a été relancé une fois ; jamais deux |
 | `disponibilite` | sentinelle-autonome (`[SENTINELLE MUETTE]`), disponibilite.yml (`[DISPONIBILITÉ]`) | `github.token` | alerte de disponibilité, jamais de correctif automatique ; chaque workflow ne referme que SON préfixe de titre |
-| `sentinelle-partielle` | sentinelle-autonome, étape « État de lecture » | `github.token` | UNE issue d'ÉTAT `[SENTINELLE PARTIELLE]` : le passage n'a pas tout lu, tout jugé ou tout confié. Réécrite à chaque passage partiel, refermée seule quand tout est relu (au plus tôt 90 min après sa dernière réécriture). Jamais `claude`, jamais `sentinelle` : elle ne compte dans aucune enquête et ne déclenche aucune correction |
+| `sentinelle-partielle` | sentinelle-autonome, étape « État de lecture » | `github.token` | UNE issue d'ÉTAT `[SENTINELLE PARTIELLE]` : le passage n'a pas tout lu, tout jugé ou tout confié. Réécrite à chaque passage partiel, refermée seule quand tout est relu (au plus tôt 90 min après sa dernière réécriture, lue dans la ligne « Mis à jour » du CORPS et non dans `updatedAt`, qu'un commentaire avance ; conversation verrouillée). Jamais `claude`, jamais `sentinelle` : elle ne compte dans aucune enquête et ne déclenche aucune correction |
 | `veille`, `digest` | lot B | `github.token` | veille production et digest quotidien (voir `docs/VEILLE_PRODUCTION.md` quand il existe) |
 
 Coupe-circuit : une issue ouverte par PASSIO74 dont le titre contient `[SENTINELLE PAUSE]`
@@ -75,7 +75,7 @@ Coupe-circuit : une issue ouverte par PASSIO74 dont le titre contient `[SENTINEL
 | « ✅ Déployé en production » | rien |
 | Issue ou commentaire avec label `humain` (bilan du veilleur, refus de gouvernance, non déployé, récidive) | lire les liens, décider : correctif à la main (contre-revue si périmètre critique) ou fermeture motivée ; refermer l'issue |
 | `[SENTINELLE MUETTE]` | ouvrir le run rouge : jeton, clé, Supabase, verrous |
-| `[SENTINELLE PARTIELLE]` (aussi à l'écran du pilotage : « La Sentinelle n'a pas tout traité ») | « Régler » relance sa lecture ; si elle reste « en partie », la cause est un volume : rien à faire d'un toucher, lire la liste de l'issue |
+| `[SENTINELLE PARTIELLE]` (aussi à l'écran du pilotage : « La Sentinelle n'a pas tout traité ») | « Régler » relance sa lecture ; si elle reste ouverte après une relance, soit la cause est un volume (rien à faire d'un toucher, lire la liste de l'issue), soit tout est relu et elle se refermera seule (au plus tôt 90 min après sa dernière réécriture) |
 
 Fermer une enquête `humain` ou `recidive` à la main est un geste compris : la dédup tait
 toutes les occurrences ANTÉRIEURES à la fermeture (elle n'est pas recréée au run suivant),

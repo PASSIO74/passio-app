@@ -1913,6 +1913,36 @@ export function etatPartiel(verdict, { attente = 0, budgetAtteint = false } = {}
   return { partiel: lignes.length > 0, titre, corps };
 }
 
+/** L'attente avant de refermer l'issue d'état : chaque passage partiel la réécrit, donc la repousse. */
+export const ETAT_FERMETURE_MS = 90 * 60_000;
+const RE_MIS_A_JOUR = /^- Mis à jour : (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)$/;
+
+/**
+ * Quelles issues d'état refermer, tout étant de nouveau lu ? Celles qu'aucun
+ * passage n'a réécrites depuis `ETAT_FERMETURE_MS`.
+ * ⚠️ L'HEURE SE LIT DANS LE CORPS (« - Mis à jour : <ISO> », écrite par l'étape
+ * « État de lecture »), JAMAIS dans `updatedAt` : GitHub avance `updatedAt` à
+ * chaque commentaire, et le dépôt est public — un compte quelconque qui
+ * commentait toutes les heures tenait l'issue ouverte, donc le voyant orange.
+ * Le corps, lui, ne se modifie qu'avec le droit d'écrire. Plusieurs lignes : la
+ * plus récente. Un corps SANS date lisible (retouché à la main) : `updatedAt`
+ * décide, faute de mieux — la conversation est verrouillée à la création — et
+ * une issue dont ni l'un ni l'autre ne se lit reste ouverte. FONCTION PURE.
+ */
+export function etatsAFermer(issues, maintenant = Date.now()) {
+  const limite = maintenant - ETAT_FERMETURE_MS;
+  const numeros = [];
+  for (const i of Array.isArray(issues) ? issues : []) {
+    if (!i || typeof i.title !== "string" || !i.title.startsWith(PREFIXE_PARTIELLE)) continue;
+    if (!Number.isInteger(i.number) || i.number <= 0) continue;
+    const dates = String(typeof i.body === "string" ? i.body : "").split("\n")
+      .map((l) => RE_MIS_A_JOUR.exec(l.replace(/\r$/, ""))).filter(Boolean).map((m) => Date.parse(m[1])).filter(Number.isFinite);
+    const reference = dates.length ? Math.max(...dates) : Date.parse(String(i.updatedAt || ""));
+    if (Number.isFinite(reference) && reference < limite) numeros.push(i.number);
+  }
+  return numeros;
+}
+
 /** Le texte de l'interface (index.html + js/*.js) : le seul où un libellé de bouton peut être retrouvé. */
 export async function lireCodeInterface(racine = ".") {
   const { readFile, readdir } = await import("node:fs/promises");

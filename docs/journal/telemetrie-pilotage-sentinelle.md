@@ -2123,7 +2123,8 @@ part plus). Le cas T4-k rejoue la descente.
   intactes. La relecture d'ancienneté de ce bloc reçoit seulement le compteur de refus du passage.
 - Sans hystérésis, une panne passagère ouvrait puis refermait l'issue d'état à chaque passage — un
   e-mail et un changement de voyant par heure. Elle n'est refermée que 90 minutes après sa dernière
-  réécriture (le corps porte l'heure de sa mise à jour).
+  réécriture (le corps porte l'heure de sa mise à jour, et c'est elle qui décide — voir la seconde
+  relecture, plus bas).
 
 **Des assertions de bancs EXISTANTS changent, et c'est voulu** (`sentinelle-detecter.test.mjs`) : les
 lecteurs rendent `{ lignes, complet }` et non plus une liste ; une lecture d'une page fait deux
@@ -2222,3 +2223,33 @@ pouvait mentir.
   n'est pas une source que la fonction lit aujourd'hui).
 Après correction : les 31 réinjections du relecteur rougissent toutes (30 rejouées, la 31ᵉ visait la
 coupe retirée).
+
+**Seconde relecture (2026-11-21) : trois remarques mineures, soldées.**
+- **La fermeture de l'issue d'état se décidait sur `updatedAt`, qu'un tiers avance.** GitHub avance
+  `updatedAt` à chaque commentaire, et le dépôt est public : un compte quelconque qui commentait
+  l'issue plus souvent que toutes les 90 minutes la tenait ouverte — voyant orange et « voir sa
+  ligne » à la place de « rien à corriger », alors que tout était relu. Le même genre de signal tenu
+  par un tiers que R120 interdit pour la veille. Désormais `etatsAFermer` (détecteur, fonction pure)
+  lit la ligne « - Mis à jour : <ISO> » du CORPS, que seul un compte ayant le droit d'écrire modifie ;
+  plusieurs lignes : la plus récente. Un corps sans date lisible (retouché à la main) : `updatedAt`
+  décide, faute de mieux — ne jamais refermer laisserait le voyant orange pour toujours sur une note
+  que plus rien ne réécrit ; et quand ni l'un ni l'autre ne se lit, l'issue reste ouverte. En plus,
+  la conversation est **verrouillée** (`gh issue lock`, en `|| true`) à la création et à chaque
+  réécriture — une issue ouverte avant ce verrou le reçoit au passage partiel suivant. Cas T4-21
+  (la fonction) et T4-w5 (le bloc rejoué : `updatedAt` d'il y a 2 min, corps d'il y a 91 → refermée ;
+  `updatedAt` ancien, corps récent → tenue). **Règle : `updatedAt` d'une issue publique n'est pas une
+  horloge — tout le monde peut la remettre à l'heure.**
+- **Le drapeau `complet` n'était tenu de bout en bout que pour les appels refusés.** Forcer
+  `complet: true` dans `detecter()` pour les erreurs JS (deux sources) ou pour les parcours, ou sur
+  le retour des trois chemins de repli, laissait tout vert ; retirer le tri des candidats avant la
+  relecture d'ancienneté aussi. T4-20 joue désormais plus de 10 000 lignes sur chacune des trois
+  lectures et affirme son code ; T4-05 fait dépasser le plafond au repli ; un cas met en concurrence
+  cinq erreurs JS à 30 comptes et un appel refusé à 40 comptes, placé après elles : c'est lui qui doit
+  être relu (budget de 150 comptes). La borne à 160 caractères de `boutonsSuspects.erreur` est
+  **gardée et testée**, contrairement à celle du titre : elle est atteignable — la lecture du code de
+  l'interface peut lever une erreur du système de fichiers, dont le message porte un chemin de
+  longueur quelconque, et le verdict part dans un résumé public.
+- Deux phrases périmées (« si elle reste "en partie", la cause est un volume ») dans
+  `docs/SENTINELLE_AUTONOME.md` et dans un commentaire de `pilotage.test.mjs`.
+⚠️ Piège du banc, encore : le cas « corps en CRLF » restait vert sous sa réinjection — la ligne de date
+était la DERNIÈRE du corps, donc sans `\r` à sa suite. Seize réinjections jouées, seize rouges.

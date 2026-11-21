@@ -105,7 +105,7 @@ case "$tout" in
   "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
-  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"label create"*|"pr merge"*)
+  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"issue lock"*|"label create"*|"pr merge"*)
     ligne="$tout"
     for ((k=0; k<\${#args[@]}; k++)); do if [ "\${args[$k]}" = "--body-file" ]; then ligne="$ligne :: $(tr '\\n' ' ' < "\${args[$((k+1))]}")"; fi; done
     printf '%s :: jeton=%s\\n' "$ligne" "\${GH_TOKEN:-}" >> "$LOG"; exit 0 ;;
@@ -1577,7 +1577,14 @@ test("T4-w4 « État de lecture » : lecture partielle → UNE issue `sentinelle
   const iCreate = r.lignes.findIndex((x) => x.startsWith("issue create"));
   assert.ok(iLabel >= 0 && iCreate > iLabel, "le label est créé (--force) AVANT l'issue\n" + r.log);
   assert.match(r.lignes[iCreate], /^issue create --repo o\/r --title \[SENTINELLE PARTIELLE\] pas tout traité : boutons, appels refusés --body-file \S+\/partiel-corps\.md --label sentinelle-partielle :: jeton=integre$/, r.log);
-  assert.equal(r.lignes.filter((x) => x.startsWith("issue ")).length, 1, "une création, rien d'autre\n" + r.log);
+  // La conversation est VERROUILLÉE dès la création : le dépôt est public, et un commentaire de n'importe quel compte
+  // ferait du bruit sur une issue que seule la Sentinelle écrit. RÉINJECTION : retirer la ligne `gh issue lock` → rouge.
+  assert.deepEqual(r.lignes.filter((x) => x.startsWith("issue ")).slice(1), ["issue lock 999 --repo o/r :: jeton=integre"], "une création, son verrou, rien d'autre\n" + r.log);
+  // Un verrou refusé ne retire rien : l'état est publié, l'étape réussit, aucune annonce d'échec.
+  const sansVerrou = jouerEtat({ FAUX_ECHEC: "issue lock" });
+  assert.equal(sansVerrou.code, 0, sansVerrou.sortie);
+  assert.ok(sansVerrou.summary.includes("État de lecture publié : #999") && !sansVerrou.summary.includes("NON publié"), sansVerrou.summary);
+  assert.ok(!annotations(sansVerrou).some((l) => l.includes("non publié")), sansVerrou.flux);
   assert.doesNotMatch(r.log, /--label claude|--label sentinelle( |$)|--label humain/m, r.log);
   const corps = fs.readFileSync(BAC + "/partiel-corps.md", "utf8");
   assert.match(corps, /^- Boutons : 2 bouton\(s\) suspect\(s\) non jugé\(s\)/m, corps);
@@ -1591,15 +1598,19 @@ test("T4-w4 « État de lecture » : lecture partielle → UNE issue `sentinelle
   fixtures({ "issues-partielle": [{ number: 76, title: "note à part", updatedAt: iso(300) }, { number: 77, title: "[SENTINELLE PARTIELLE] pas tout traité : parcours", updatedAt: iso(61) }] });
   const r2 = jouerEtat();
   assert.equal(r2.code, 0, r2.sortie);
-  assert.deepEqual(r2.lignes.filter((x) => x.startsWith("issue ")).map((x) => x.split(" --body-file ")[0]), ["issue edit 77 --repo o/r --title " + TITRE_PARTIEL], r2.log);
+  // Le verrou est rejoué à la réécriture : une issue ouverte avant lui, ou un verrou refusé la fois d'avant, le reçoit.
+  assert.deepEqual(r2.lignes.filter((x) => x.startsWith("issue ")).map((x) => x.split(" --body-file ")[0]), ["issue edit 77 --repo o/r --title " + TITRE_PARTIEL, "issue lock 77 --repo o/r :: jeton=integre"], r2.log);
   assert.ok(r2.lignes[0].includes(" :: La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier") && r2.lignes[0].endsWith(":: jeton=integre"), r2.log);
   assert.ok(r2.summary.includes("État de lecture mis à jour : #77"), r2.summary);
 });
 
-test("T4-w5 « État de lecture » : tout est lu → l'issue n'est refermée que si elle n'a pas été réécrite depuis 90 min ; « en attente » seulement budget atteint ; un échec s'annonce", () => {
+// Le corps tel que l'étape l'écrit : sa dernière ligne porte l'heure de la réécriture, à la seconde.
+const corpsEtat = (minutes) => "La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier :\n\n- Boutons : 2 bouton(s) suspect(s) non jugé(s).\n\n- Passage : https://github.com/o/r/actions/runs/1\n- Mis à jour : " + iso(minutes).replace(/\.\d{3}Z$/, "Z") + "\n";
+
+test("T4-w5 « État de lecture » : tout est lu → l'issue n'est refermée que si son CORPS n'a pas été réécrit depuis 90 min (updatedAt, qu'un commentaire avance, ne décide pas) ; « en attente » seulement budget atteint ; un échec s'annonce", () => {
   // Refermée : commentaire puis fermeture. RÉINJECTION : retirer la branche de fermeture → rouge.
   verdict(null, [], TOUT_LU);
-  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(125) }, { number: 76, title: "note à part", updatedAt: iso(900) }] });
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(125), body: corpsEtat(125) }, { number: 76, title: "note à part", updatedAt: iso(900), body: corpsEtat(900) }] });
   const ferme = jouerEtat();
   assert.equal(ferme.code, 0, ferme.sortie);
   assert.deepEqual(ferme.lignes.map((x) => x.replace(/ — https:\S+/, "")), [
@@ -1607,16 +1618,28 @@ test("T4-w5 « État de lecture » : tout est lu → l'issue n'est refermée que
     "issue close 77 --repo o/r --reason completed :: jeton=integre",
   ], ferme.log);
   assert.ok(ferme.summary.includes("État de lecture refermé : #77"), ferme.summary);
-  // ⚠️ HYSTÉRÉSIS. RÉINJECTION : retirer `| select(.updatedAt < \"${limite}\")` → rouge : une panne passagère ouvrirait puis
-  // refermerait l'issue à chaque passage — un e-mail et un changement de voyant par heure.
+  // ⚠️ HYSTÉRÉSIS. RÉINJECTION : dans `etatsAFermer`, `reference < limite` → `true` → rouge : une panne passagère ouvrirait
+  // puis refermerait l'issue à chaque passage — un e-mail et un changement de voyant par heure.
+  // L'heure lue est celle du CORPS : `updatedAt` est ici ANCIEN partout, et l'issue tient quand même.
   for (const minutes of [5, 61, 89]) {
-    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(minutes) }] });
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(600), body: corpsEtat(minutes) }] });
     const tenue = jouerEtat();
     assert.equal(tenue.code, 0, tenue.sortie);
-    assert.equal(tenue.log.trim(), "", "réécrite il y a " + minutes + " min : elle reste ouverte\n" + tenue.log);
+    assert.equal(tenue.log.trim(), "", "réécrite il y a " + minutes + " min (updatedAt ancien) : elle reste ouverte\n" + tenue.log);
   }
-  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(91) }] });
-  assert.ok(jouerEtat().log.includes("issue close 77"), "91 minutes sans réécriture : refermée");
+  // ⚠️ UN TIERS NE LA TIENT PAS OUVERTE : un commentaire avance `updatedAt` (dépôt public), pas le corps.
+  // RÉINJECTION : revenir à `updatedAt` (`const reference = Date.parse(String(i.updatedAt || ""));`) → rouge, ici et au-dessus.
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(2), body: corpsEtat(91) }] });
+  const commentee = jouerEtat();
+  assert.equal(commentee.code, 0, commentee.sortie);
+  assert.ok(commentee.log.includes("issue close 77"), "commentée il y a 2 min, réécrite il y a 91 : refermée\n" + commentee.log);
+  // Un corps SANS date lisible (retouché à la main) : `updatedAt` décide, faute de mieux — récent, elle reste ouverte.
+  for (const body of ["", "note retouchée à la main", "- Mis à jour : hier soir", "- Mis à jour : 2026-13-45T99:99:99Z"]) {
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(30), body }] });
+    assert.equal(jouerEtat().log.trim(), "", "corps sans date, activité il y a 30 min : elle reste ouverte — " + JSON.stringify(body));
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(91), body }] });
+    assert.ok(jouerEtat().log.includes("issue close 77"), "corps sans date, aucune activité depuis 91 min : refermée — " + JSON.stringify(body));
+  }
   // Aucune issue, tout est lu : rien n'est écrit.
   fixtures({ "issues-partielle": [] });
   const calme = jouerEtat();

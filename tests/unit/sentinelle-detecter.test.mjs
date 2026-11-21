@@ -1438,6 +1438,10 @@ test("T4-05 les trois lectures « devoir » rendent { lignes, complet }, du plus
     const repli = await avecPostgrest({ ...donnees, panne: (u, n) => (n === 1 ? { status: 400 } : null) }, () => lire({ url: T4_URL, cle: "k", heures: 24, maintenant: T4_MAINT }));
     assert.ok(repli.resultat.lignes.length > 0 && repli.resultat.lignes.every((l) => l._origineNonVerifiee === true), nom + " : le repli est signalé sur chaque ligne");
     assert.doesNotMatch(repli.vues[1].href, /auth_uid/, nom + " : le repli ne demande plus la colonne absente");
+    // Le repli passe le MÊME plafond et le dit : onze pages de données, dix lues, donc incomplet.
+    // RÉINJECTION : `complet: true` sur le retour du repli (dans chacune des trois lectures) → rouge.
+    assert.equal(repli.resultat.lignes.length, 10_000, nom + " : le repli s'arrête au plafond");
+    assert.equal(repli.resultat.complet, false, nom + " : un repli tronqué n'est pas une lecture complète");
     // RÉINJECTION : accepter le repli sur un 400 TARDIF (retirer `e.premiere === true`) est sans objet depuis que la page
     // suivante ne lève plus ; ce qui se vérifie ici : un 400 tardif garde les lignes d'identité SERVEUR, sans repli.
     const tard = await avecPostgrest({ ...donnees, panne: (u, n) => (n === 3 ? { status: 400 } : null) }, () => lire({ url: T4_URL, cle: "k", heures: 24, maintenant: T4_MAINT }));
@@ -1921,6 +1925,38 @@ test("T4-18 ce qui n'a pas été lu devient des CODES FERMÉS, puis une issue d'
   for (const v of [null, undefined, {}, { lecture: "x" }, { lecture: { partiel: "x" } }]) assert.equal(SD.etatPartiel(v).partiel, false, "un verdict d'avant ce lot, ou illisible, n'ouvre rien");
 });
 
+test("T4-21 etatsAFermer : l'heure du CORPS décide, la plus récente ; updatedAt seulement faute de date ; rien d'illisible ne se referme", () => {
+  const M = Date.parse("2026-11-21T12:00:00Z");
+  const il = (min) => new Date(M - min * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const t = SD.PREFIXE_PARTIELLE + " pas tout traité : boutons";
+  const corps = (...min) => ["La Sentinelle a lu la production…", "", "- Passage : https://x", ...min.map((m) => "- Mis à jour : " + il(m))].join("\n");
+  const f = (i) => SD.etatsAFermer([{ number: 7, title: t, ...i }], M);
+  assert.equal(SD.ETAT_FERMETURE_MS, 90 * 60_000);
+  // RÉINJECTION : `const reference = Date.parse(String(i.updatedAt || ""));` → rouge (les quatre premières lignes).
+  assert.deepEqual(f({ body: corps(91), updatedAt: il(1) }), [7], "un commentaire récent ne la tient pas ouverte");
+  assert.deepEqual(f({ body: corps(89), updatedAt: il(600) }), [], "réécrite il y a 89 min : tenue, quel que soit updatedAt");
+  assert.deepEqual(f({ body: corps(90), updatedAt: il(600) }), [], "à 90 min pile : pas encore");
+  assert.deepEqual(f({ body: corps(91) }), [7], "sans updatedAt du tout");
+  // Plusieurs lignes : la plus récente. RÉINJECTION : `Math.max` → `Math.min` → rouge.
+  assert.deepEqual(f({ body: corps(300, 10), updatedAt: il(600) }), []);
+  assert.deepEqual(f({ body: corps(300, 95), updatedAt: il(1) }), [7]);
+  // Un corps rendu en CRLF (réécrit depuis le site) se lit pareil. RÉINJECTION : retirer `.replace(/\r$/, "")` → rouge.
+  assert.deepEqual(f({ body: (corps(10) + "\n").split("\n").join("\r\n"), updatedAt: il(600) }), []);
+  // La ligne entière, rien d'autre : une date citée ailleurs dans le corps n'est pas l'heure de mise à jour.
+  for (const body of ["", null, undefined, 12, "Mis à jour : " + il(500), "> - Mis à jour : " + il(500), "- Mis à jour : " + il(500) + " (à la main)", "- Mis à jour : 2026-13-45T99:99:99Z"]) {
+    assert.deepEqual(f({ body, updatedAt: il(30) }), [], "sans date lisible, activité récente : ouverte — " + JSON.stringify(body));
+    assert.deepEqual(f({ body, updatedAt: il(91) }), [7], "sans date lisible, calme depuis 91 min : refermée — " + JSON.stringify(body));
+    // RÉINJECTION : retirer `Number.isFinite(reference) &&` et comparer `!(reference >= limite)` → rouge.
+    for (const updatedAt of [undefined, null, "", "bientôt", {}]) assert.deepEqual(f({ body, updatedAt }), [], "ni date ni activité lisibles : jamais refermée à l'aveugle");
+  }
+  // Seules les issues d'état, par leur préfixe ; un numéro qui n'en est pas un ne sort pas (il part dans une commande).
+  assert.deepEqual(SD.etatsAFermer([
+    { number: 1, title: "note à part", body: corps(500), updatedAt: il(500) }, { number: 2, title: t, body: corps(500) }, { number: "3; rm -rf /", title: t, body: corps(500) },
+    { number: -4, title: t, body: corps(500) }, { number: 5.5, title: t, body: corps(500) }, null, "x", { number: 6, title: 12, body: corps(500) }, { number: 8, title: t, body: corps(200) },
+  ], M), [2, 8]);
+  for (const v of [null, undefined, {}, "x", 3]) assert.deepEqual(SD.etatsAFermer(v, M), []);
+});
+
 test("T4-19 choisirCibles est stable par préfixe : couper la liste des cibles vivantes aux places libres EST la sélection", () => {
   // Le workflow compte désormais les défauts en attente : choisirCibles(tout) puis `.slice(0, places)`.
   // RÉINJECTION : faire dépendre une zone du nombre de places (`if (zone && zones.has(zone) && n < 99) continue;`) → rouge.
@@ -1957,6 +1993,17 @@ test("T4-20 detecter() de bout en bout : un verdict complet le DIT, une famille 
   assert.equal(tronque.sources.api, 10_000);
   assert.equal(tronque.cible.cle, "POST /rest/v1/posts 500");
   assert.equal(tronque.cible.n, 10_000);
+  // Les TROIS autres lectures plafonnées donnent chacune LEUR code : le drapeau `complet` de chaque lecture arrive au verdict.
+  // RÉINJECTION : dans detecter(), `complet: true` à la place de `rClient.complet`, de `rTelemetrie.complet`, ou dans
+  // `parcoursSource = { lues: fl.lignes.length, complet: true }` → rouge, une réinjection par ligne.
+  const { resultat: tropClient } = await jouer({ clientErrors: t4lignes(10_500, { message: "boum", auth_uid: U(1) }) });
+  assert.deepEqual(tropClient.lecture, { complet: false, partiel: [{ code: "js_client_errors", lues: 10_000 }] });
+  const { resultat: tropTelemetrie } = await jouer({ erreurs: t4lignes(10_500, { message: "boum", auth_uid: U(1) }) });
+  assert.deepEqual(tropTelemetrie.lecture, { complet: false, partiel: [{ code: "js_telemetrie", lues: 10_000 }] });
+  const { resultat: tropFlux } = await jouer({ flux: t4lignes(10_500, { action: "step", status: "ok", correlation_id: "fl_t4trop", auth_uid: U(1), meta: {} }) });
+  assert.deepEqual(tropFlux.lecture, { complet: false, partiel: [{ code: "parcours_tronques", lues: 10_000 }] });
+  assert.deepEqual(tropFlux.sources.parcours, { lues: 10_000, complet: false }, "tronqué, le flux n'est pas classé : une page manquante pourrait porter la confirmation");
+  assert.equal(tropFlux.parFamille.parcours, 0);
   // (c) Un passage plein : une erreur JS chez trois comptes anciens, un bouton mort chez quatre, des sessions partout.
   const erreursJs = [0, 1, 2].map((i) => ({ id: "j" + i, message: "TypeError: y is not a function", stack: "at f (app.js:1)", action: "window_error", screen: "feed", app_version: "abcd1234", session_id: "sessJ" + i, auth_uid: U(i), received_at: t4iso(T4_MAINT - 3600_000 - i) }));
   const { resultat: plein, vues } = await jouer({ clics: T4_CLICS, effets: T4_EFFETS, erreurs: erreursJs, comptes: t4anciens(0, 1, 2, 3) });
@@ -2023,6 +2070,27 @@ test("T4-20 detecter() de bout en bout : un verdict complet le DIT, une famille 
   const retenu = await jouer({ erreurs: beaucoup, comptes: t4anciens(...Array.from({ length: 40 }, (_, i) => 2000 + i)) });
   assert.deepEqual(retenu.resultat.lecture, { complet: true, partiel: [] }, "retenu sur son échantillon : jugé, pas « lu en partie »");
   assert.equal(retenu.resultat.cible.famille, "js");
+  // Les candidats en texte libre sont TRIÉS avant la relecture d'ancienneté : quand le budget (150 comptes distincts,
+  // 30 par défaut) manque, c'est le moins répandu qui reste non relu. Cinq erreurs JS à 30 comptes épuisent le budget ;
+  // l'appel refusé, à 40 comptes, arrive APRÈS elles dans la liste — il doit être relu le premier.
+  // RÉINJECTION : retirer le `.sort(…)` de `libres` → rouge (l'appel refusé le plus répandu n'est jamais relu, ni retenu).
+  const cinq = ["alpha", "bravo", "charlie", "delta", "echo"].flatMap((nom, k) => Array.from({ length: 30 }, (_, i) => (
+    { id: `t${k}-${i}`, message: `TypeError: ${nom} is not a function`, stack: "at h", session_id: `sessT${k}x${i}`, auth_uid: U(6000 + k * 100 + i), received_at: t4iso(T4_MAINT - 7200_000 - k * 100 - i) })));
+  const repandu = Array.from({ length: 40 }, (_, i) => ({ id: "r" + i, session_id: "x", received_at: t4iso(T4_MAINT - 3600_000 - i), endpoint: "x.supabase.co/rest/v1/posts", http_status: 500, action: "POST /rest/v1/posts", auth_uid: U(7000 + i), severity: "error", meta: {} }));
+  const tousAnciens = t4anciens(...Array.from({ length: 500 }, (_, i) => 6000 + i), ...Array.from({ length: 40 }, (_, i) => 7000 + i));
+  const { resultat: trie } = await jouer({ erreurs: cinq, api: repandu, comptes: tousAnciens });
+  assert.deepEqual(trie.parFamille, { js: 5, api: 1, bouton: 0, parcours: 0 });
+  assert.equal(trie.cible.famille, "api", "le défaut le plus répandu est relu d'abord, donc retenu");
+  assert.equal(trie.cible.comptes, 40);
+  assert.deepEqual(trie.candidats.map((c) => c.famille), ["api", "js", "js", "js", "js"], "le budget s'épuise sur la cinquième erreur JS, la moins bien classée");
+  assert.equal(trie.sousLeSeuil, 1);
+  assert.deepEqual(trie.lecture.partiel, [{ code: "anciennete", n: 1 }]);
+  // Le message d'une famille qui lève est BORNÉ dans le verdict (public) : la lecture du code de l'interface peut lever
+  // une erreur du système de fichiers, dont le message porte un chemin de longueur quelconque.
+  // RÉINJECTION : retirer `.slice(0, 160)` de `boutonsSuspects = { erreur: … }` → rouge.
+  const bavard = await jouer({}, { lireCode: async () => { throw new Error("ENOENT: " + "x".repeat(400)); } });
+  assert.equal(bavard.resultat.boutonsSuspects.erreur.length, 160);
+  assert.deepEqual(bavard.resultat.lecture.partiel, [{ code: "boutons_illisibles", n: 1 }]);
   // (e) Les trois lectures « devoir » : la première requête refusée fait échouer le passage — jamais un verdict vide.
   for (const type of ["eq.api", "eq.error"]) await assert.rejects(() => jouer({ panne: (u) => (u.searchParams.get("type") === type ? { status: 500 } : null) }), /telemetry_events: HTTP 500/, type);
   await assert.rejects(() => jouer({ panne: (u) => (u.pathname.endsWith("/client_errors") ? { status: 500 } : null) }), /client_errors: HTTP 500/);
