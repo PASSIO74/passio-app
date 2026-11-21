@@ -855,6 +855,12 @@ le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la 
 et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
 ajoutant une policy.
 
+⚠️ `auth_otp_long_expiry` (WARN, depuis le 2026-11-21) est **voulu** lui aussi : les liens envoyés
+par e-mail valent 24 h (`mailer_otp_exp` = 86 400), sur décision de Benjamin, pour qu'un lien de
+confirmation ouvert le lendemain marche encore. Supabase n'a qu'un réglage pour tous les liens et
+codes e-mail, nouveau mot de passe compris. Ne pas le ramener à 3 600 sans rouvrir la décision
+(fiche « PARCOURS DU NOUVEL INSCRIT » de `docs/journal/comptes-inscription-legal.md`).
+
 ## 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
 
 Aucun de ces défauts ne lève d'erreur. Ils ont en commun d'être sur des chemins que **plus personne
