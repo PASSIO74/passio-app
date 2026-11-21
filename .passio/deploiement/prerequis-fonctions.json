@@ -1,5 +1,5 @@
 {
-  "_commentaire": "La CI consulte ces prérequis en lecture seule avant de déployer une Edge Function. Un prérequis obligatoire absent retient le déploiement. function, column et table vérifient le catalogue, source cherche un marqueur dans prosrc, empreinte vérifie la définition de la signature complète. reglage:medias_proteges.actif=false exige le booléen JSON false dans le réglage serveur.",
+  "_commentaire": "La CI consulte ces prérequis en lecture seule avant de déployer une Edge Function. Un prérequis obligatoire absent retient LA FONCTION qui l'exige, plus les autres (verifier-prerequis-fonctions.mjs --partiel, 2026-11-21) : elles sont déployées, puis le run rougit. function, column et table vérifient le catalogue, source cherche un marqueur dans prosrc, empreinte vérifie la définition de la signature complète. reglage:<cle>.<champ>:booleen exige que le réglage serveur existe et porte un booléen JSON ; sa VALEUR n'est pas une condition : elle est lue, et la fumée exige que la fonction déployée serve cet état. « reglage:medias_proteges.actif=false » était le contrôle de la PRÉPARATION du serveur de médias (ADR-014, étape 1 de l'ordre de livraison) : il est retiré depuis l'ouverture du 2026-11-19, où il retenait tout déploiement.",
   "fonctions": {
     "delete-account": {
       "migration": "migrations/migration_barriere_suppression_2026-09-15.sql",
@@ -31,9 +31,9 @@
     "private-media": {
       "migration": "migrations/migration_medias_proteges_go_2026-11-16.sql",
       "obligatoire": true,
-      "sans": "serveur médias non préparé : conserver les médias protégés désactivés et retenir le déploiement",
+      "sans": "registres, fonctions SQL ou interrupteur des médias protégés absents de la cible : le courtier ne saurait ni résoudre un média ni lire sa coupure — retenir private-media jusqu'à la primaire médias",
       "objets": [
-        "reglage:medias_proteges.actif=false",
+        "reglage:medias_proteges.actif:booleen",
         "table:public.media_reservations",
         "table:public.media_assets",
         "table:public.media_objects",

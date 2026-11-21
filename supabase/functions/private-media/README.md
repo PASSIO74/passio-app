@@ -1,4 +1,6 @@
-# private-media — lot serveur local, non déployé
+# private-media — courtier des médias protégés
+
+> Ce document décrit le lot serveur tel qu'il a été préparé (16–17 novembre). Le courtier est déployé, et le réglage `medias_proteges` est ouvert en production depuis le 19 novembre : pour l'état du déploiement, lire ADR-014, « Après l'ouverture », et la fiche du 21 novembre de `docs/journal/telemetrie-pilotage-sentinelle.md`.
 
 Contrat : `GET|HEAD /functions/v1/private-media/{posts|stories}/{affichant_id}/{asset_uuid}/{original|v720|poster}`. Aucun paramètre query, cookie d'authentification, URL distante ou chemin Storage fourni librement. Une clé anon exactement égale à celle du runtime représente explicitement la voie anon ; tout autre Authorization fourni doit être un bearer utilisateur valide. Un bearer malformé, invalide ou révoqué ne retombe jamais vers anon.
 
@@ -20,7 +22,7 @@ La préautorisation Storage actuelle documentée fournit `mimetype/contentLength
 
 `GET|HEAD /private-media/capabilities` (ou préfixe `/functions/v1`) expose seulement `{protocol:1,uploads_enabled,reads_enabled,min_client:1,max_bytes:27262976}`, sans cache. Le booléen provient du RPC invoker `media_proteges_actifs()` qui ne lit que cle/valeur dans `reglages_distants`. La migration étend sa whitelist après garde RAW du CHECK réel et crée `medias_proteges={actif:false}` ; aucun droit DML client n'est ajouté. Seul le booléen JSON true active les usages. La coupure ferme réservation, INSERT Storage, registres et résolveur, même pour un client qui ignore capabilities. Le helper de session ferme aussi les comptes en suppression (`en_cours`, `purgee`, `supprimee`) et les bans du helper canonique ; un JWT fourni invalide ne devient jamais anon.
 
-Le lot préparatoire conserve le client en service et ses publications. Après accord sur la cible staging, appliquer la primaire puis la migration export. Le workflow Edge exige les trois registres et leurs prérequis, vérifie le réglage explicitement désactivé avant de livrer `private-media`, puis contrôle les deux booléens de capacités et la révision servie. Un rejeu SQL conserve une valeur préexistante du drapeau.
+Le lot préparatoire conserve le client en service et ses publications. Après accord sur la cible staging, appliquer la primaire puis la migration export. Le workflow Edge exige les trois registres et leurs prérequis. Jusqu'à l'ouverture du 19 novembre, il exigeait aussi le réglage explicitement désactivé, et la fumée des capacités fermées : c'était le contrôle de cette préparation. Depuis le 21 novembre, il exige que le réglage soit POSÉ (un booléen JSON), lit sa valeur, puis contrôle que les deux booléens de capacités servis valent exactement cette valeur, et la révision servie : le courtier se redéploie pendant qu'il sert (ADR-014, « Après l'ouverture »). Un rejeu SQL conserve une valeur préexistante du drapeau.
 
 Le client privé et la clôture historique ont une livraison ultérieure coordonnée. Le client privé exige des capacités actives pour publier. La clôture coupe les anciens uploads même quand le drapeau est désactivé. Avant promotion, qualifier le client et les relais sur staging, éprouver le cycle de vie des fichiers puis coordonner version minimale, quiescence, fermeture et activation. La coupure conserve les objets privés.
 

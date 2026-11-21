@@ -28,9 +28,17 @@ async function load({missing=false,active=false,user=false,session=false}={}){
 }
 test('vrai index : capabilities désactivées et cinq probes sans données ni réseau',async()=>{
   const {handler,calls}=await load();let n=0;
-  const result=await verifierMediaPrive({baseUrl:BASE,revision:REVISION,fetchFn:(url,init)=>{n++;return handler(new Request(url,init));}});
-  assert.equal(result.status,'PRIVATE_MEDIA_PREPARATION_VERIFIED');assert.equal(n,5);
+  const result=await verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif:false,fetchFn:(url,init)=>{n++;return handler(new Request(url,init));}});
+  assert.equal(result.status,'PRIVATE_MEDIA_VERIFIED');assert.equal(n,5);
   assert.equal(result.uploads_enabled,false);assert.equal(calls.filter(c=>c.kind==='rpc').length,2);
+  assert.ok(calls.filter(c=>c.kind==='client').every(c=>c.key==='SYNTHETIC_ANON'&&!Object.values(c.options.global.headers).includes('SYNTHETIC_SERVICE')));
+});
+// Depuis l'ouverture du 19/11, le courtier se redéploie pendant qu'il sert : la fumée attend l'état LU en base.
+test('vrai index : capabilities OUVERTES, mêmes cinq probes — le courtier ouvert passe la fumée quand le réglage lu est ouvert',async()=>{
+  const {handler,calls}=await load({active:true});let n=0;
+  const result=await verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif:true,fetchFn:(url,init)=>{n++;return handler(new Request(url,init));}});
+  assert.equal(result.status,'PRIVATE_MEDIA_VERIFIED');assert.equal(n,5);
+  assert.equal(result.uploads_enabled,true);assert.equal(result.reads_enabled,true);
   assert.ok(calls.filter(c=>c.kind==='client').every(c=>c.key==='SYNTHETIC_ANON'&&!Object.values(c.options.global.headers).includes('SYNTHETIC_SERVICE')));
 });
 test('JWT fourni invalide : aucun repli anon, vérification utilisateur requise',async()=>{
@@ -48,16 +56,25 @@ test('configuration absente : 503, révision et journaux fermés',async()=>{
     assert.deepEqual(logs,[{event:'private_media_unavailable',status:503}]);
   }finally{console.warn=previous;}
 });
-test('la fumée refuse activation prématurée, mauvaise révision ou cache permissif',async()=>{
-  const {handler}=await load({active:true});await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,fetchFn:(u,i)=>handler(new Request(u,i))}));
+test('la fumée refuse un état qui diverge du réglage lu, un état non lu, une mauvaise révision ou un cache permissif',async()=>{
+  // Dans les deux sens : un courtier ouvert quand la coupure est posée, un courtier fermé quand elle est levée.
+  for(const [active,actif] of [[true,false],[false,true]]){
+    const {handler}=await load({active});await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif,fetchFn:(u,i)=>handler(new Request(u,i))}),`courtier ${active}, réglage lu ${actif}`);
+  }
+  // Un état non lu ne se devine pas : ni « fermé » par défaut, ni une chaîne.
+  for(const actif of [undefined,null,'true','false',0,1]){
+    let n=0;const {handler}=await load();
+    await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif,fetchFn:(u,i)=>{n++;return handler(new Request(u,i));}}),String(actif));
+    assert.equal(n,0,'aucune requête ne part sans état attendu');
+  }
   for(const change of [r=>r.headers.set('X-Passio-Revision','2'.repeat(40)),r=>r.headers.delete('Cache-Control')]){
-    const {handler:h}=await load();await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,fetchFn:async(u,i)=>{const r=await h(new Request(u,i));change(r);return r;}}));
+    const {handler:h}=await load();await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif:false,fetchFn:async(u,i)=>{const r=await h(new Request(u,i));change(r);return r;}}));
   }
 });
 test('la fumée refuse cible libre et surplus de contenu public avant de qualifier',async()=>{
-  let calls=0;await assert.rejects(verifierMediaPrive({baseUrl:'https://outside.invalid',revision:REVISION,fetchFn:()=>{calls++;}}));assert.equal(calls,0);
+  let calls=0;await assert.rejects(verifierMediaPrive({baseUrl:'https://outside.invalid',revision:REVISION,actif:false,fetchFn:()=>{calls++;}}));assert.equal(calls,0);
   const headers={'Cache-Control':'no-store','CDN-Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store','X-Passio-Revision':REVISION};
-  await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,fetchFn:async()=>new Response('x'.repeat(8193),{headers})}));
+  await assert.rejects(verifierMediaPrive({baseUrl:BASE,revision:REVISION,actif:false,fetchFn:async()=>new Response('x'.repeat(8193),{headers})}));
 });
 test('cible Edge : seuls deux couples fixes, staging seulement sur demande manuelle',()=>{
   const w=parse(fs.readFileSync('.github/workflows/edge-functions.yml','utf8'));
@@ -90,11 +107,21 @@ test('la commande de déploiement réserve la vérification JWT dans le handler 
   const deploy = workflow.jobs.deployer.steps.find(step => step.name === 'Déployer');
   // CLI synthétique, aucun exécutable ni secret de déploiement accessible dans ce shell.
   const local = 'PATH=/nonexistent\nsupabase() { printf "CLI %s\\n" "$*"; }\n' + deploy.run;
-  const result = runBash(local, { PROJECT_REF: 'fixture', SUPABASE_ACCESS_TOKEN: 'fixture', GITHUB_ENV: '/dev/null' });
+  const functions = Object.keys(JSON.parse(fs.readFileSync('.passio/deploiement/prerequis-fonctions.json', 'utf8')).fonctions);
+  // Depuis le 2026-11-21 l'étape déploie le PLAN de la retenue (DEPLOYABLES), plus une liste écrite en dur.
+  const jouer = plan => runBash(local, { PROJECT_REF: 'fixture', SUPABASE_ACCESS_TOKEN: 'fixture', GITHUB_ENV: '/dev/null', DEPLOYABLES: plan });
+  const result = jouer(functions.join(' '));
   assert.equal(result.status, 0, result.stderr);
   const calls = result.stdout.split(/\r?\n/).filter(line => line.startsWith('CLI '));
-  const functions = Object.keys(JSON.parse(fs.readFileSync('.passio/deploiement/prerequis-fonctions.json', 'utf8')).fonctions);
   assert.deepEqual(calls.sort(), functions.map(name =>
     'CLI functions deploy ' + name + ' --project-ref fixture --yes' + (name === 'private-media' ? ' --no-verify-jwt' : '')
   ).sort());
+  assert.deepEqual(jouer('pilotage private-media').stdout.split(/\r?\n/).filter(line => line.startsWith('CLI ')),
+    ['CLI functions deploy pilotage --project-ref fixture --yes', 'CLI functions deploy private-media --project-ref fixture --yes --no-verify-jwt']);
+  // La liste reste fermée là où est le jeton : un nom hors liste arrête l'étape AVANT le premier déploiement.
+  for (const plan of ['pilotage inconnue', 'private-media-bis', '--help pilotage']) {
+    const refuse = jouer(plan);
+    assert.equal(refuse.status, 1, plan);
+    assert.doesNotMatch(refuse.stdout, /^CLI /m, plan);
+  }
 });

@@ -168,6 +168,11 @@ export const EVENEMENTS_RUNS = Object.freeze({
   // frais (contre-revue de #863) : elles ne comptent pas. Un passage manuel réussi APRÈS un tri
   // efface donc la ligne, sans attendre le lundi.
   securite: Object.freeze(["schedule", "workflow_dispatch"]),
+  // Le déploiement des fonctions serveur (`edge-functions.yml`, 2026-11-21) : ses passages sur `push`, et eux
+  // seuls. Un push relit l'état SERVI de chaque fonction : vert, tout ce qui devait partir est parti. Un passage
+  // lancé à la main ne dit rien du reste (une seule fonction, ou le staging) : il ne doit ni cacher un push
+  // rouge, ni en inventer un. Le run rouge se RELANCE (même identifiant, tentativesARelire) : il rattrape.
+  fonctions: Object.freeze(["push"]),
 });
 // Les exécutions qui comptent, de la plus récente à la plus ancienne. Tri STABLE : à date égale
 // l'ordre reçu tient — la tentative précédente d'une relance (même date de création) suit sa relance.
@@ -243,7 +248,7 @@ const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup
 // label ne se pose qu'avec le droit d'écrire, `creator` est le pilote. Ce qui dépasse encore
 // (plus de ISSUES_PAR_FILTRE_MAX sous UN filtre : des résumés jamais refermés) se dit à l'écran.
 export const ISSUES_PAR_FILTRE_MAX = 300;
-const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité" });
+const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité", fonctions: "le déploiement des fonctions serveur" });
 /**
  * Les exécutions que le VOYANT lit (`verdict` : `runs.deploy`, `runs.sentinelle`). Seules celles-là,
  * non lues, TIENNENT la veille (`tenirVerdict`) : un scan de sécurité illisible figeait le voyant — plus
@@ -795,6 +800,32 @@ export function aFaire(d, maintenant = Date.now()) {
   } else if (runs.securite && runs.securite.le && maintenant - dateUtc(runs.securite.le) > SCAN_MUET_MS) {
     ajoute({ id: "scan:securite", prio: 2, etiquette: "À trier", titre: "Le scan de sécurité n'a pas tourné depuis plus de 8 jours",
       quoi: "Un lundi manqué.", reference: "Vérifie que « Sécurité de la chaîne » est actif sur GitHub (Actions).", url: urlGithub(runs.securite.url), gestes: [] });
+  }
+  // Le déploiement des fonctions serveur (`edge-functions.yml`, ses passages sur push — 2026-11-21). Du 20 au
+  // 21/11, son run rouge ne se voyait nulle part : une fonction retenue (un prérequis SQL qui n'était plus vrai)
+  // retenait les six, et personne ne lisait Actions. Depuis, une fonction retenue ne retient plus les autres, et le
+  // run rougit APRÈS leur déploiement — c'est ce rouge qui devient cette ligne. Le pilotage ne sait pas QUELLE
+  // étape a cassé : le texte couvre donc les causes sans en affirmer une (relecture adverse : « elle sert sa
+  // version d'avant » était faux pour une fumée cassée — la fonction cassée EST en service). C'est la PAGE DU RUN
+  // qui nomme la cause : une annotation par fonction retenue, par fonction dont la fumée est rouge, pour une cible
+  // non vérifiable ; un verrou unitaire rouge se lit au job « Valider ». Ce qu'il attend est un geste HUMAIN (une
+  // migration par le canal ③ avec sa revue, un correctif, un jeton) : jamais « Régler », aucune réparation (il
+  // n'est pas dans RUNS_REPARABLES), un lien vers le passage. « Relance » est sûr : chaque passage rééprouve TOUT
+  // ce qui est servi, un contrat cassé reste rouge. Un passage MANUEL ne compte pas (EVENEMENTS_RUNS) : il
+  // rattrape une fonction mais n'efface pas la ligne — le texte dit de relancer le passage, pas d'en lancer un.
+  const fo = echecRun(runs.fonctions);
+  if (fo) {
+    const url = urlGithub(fo.run.url);
+    const echec = fo.nature === "echec";
+    ajoute({ id: "fonctions:deploiement", prio: echec ? 1 : 2, etiquette: "À trier",
+      titre: echec ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
+      quoi: echec ? "La page du passage nomme la cause." : "Annulé ou évincé : à relancer.",
+      reference: echec
+        ? "Quatre causes possibles, nommées en tête du passage. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction EN LIGNE ne tient pas son contrat (la fumée), ou n'a plus un prérequis en base : à corriger. Le jeton Supabase de la CI a expiré. Ou un verrou d'avant déploiement est rouge (job « Valider ») : rien n'est parti, il faut un commit qui le corrige. La cause réglée, relance CE passage (« Re-run failed jobs ») ou pousse le correctif : il rattrape ce qui est en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne ; un passage lancé à la main ne l'efface pas."
+        // Le pilotage ne sait pas OÙ le passage s'est arrêté : annulé pendant « Déployer », des fonctions servent le
+        // nouveau commit sans avoir été éprouvées. Le texte ne dit donc pas « rien n'est cassé » (relecture du delta).
+        : "Le dernier passage s'est terminé sans trancher (annulé, évincé de la file ou en attente), et le précédent avait réussi. S'il s'est arrêté en cours de déploiement, ce qui est en ligne n'a peut-être pas été éprouvé. Relance-le (« Re-run all jobs ») : il rattrape ce qui serait en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne.",
+      url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
   }
   // Les issues suivies.
   for (const i of issues) {

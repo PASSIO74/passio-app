@@ -33,6 +33,7 @@
 - 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
 - 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
+- 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
 
 ---
 
@@ -2111,3 +2112,17 @@ Une revue de ChatGPT (codex) sur le diff complet, faite après la mise en produc
   - Le déclencheur `aa_stockage_remplacement_borne` compte donc le propriétaire, et n'exempte que la session `postgres`.
   - Mesure finale : 20 remplacements acceptés, puis 5 refusés, en une minute ; lectures et dépôt, remplacement, suppression normaux inchangés.
   - Le contrôle de taille à 2 Gio n'a pas été atteint par le banc (limite de 26 Mo par objet).
+
+## 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+
+Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `private-media` : `reglage:medias_proteges.actif=false`. C'était le contrôle de la PRÉPARATION du serveur de médias (ADR-014, étape 1 de l'ordre de livraison : livrer le courtier sur un serveur fermé). Le pilote a ouvert les médias protégés le 19/11 à 10:43 UTC ; depuis, ce prérequis retenait tout redéploiement du courtier — et, le workflow vérifiant alors les six fonctions ensemble, tout déploiement de fonction (run 44831711346 du 20/11).
+
+- Il est remplacé par `reglage:medias_proteges.actif:booleen` : la ligne existe et porte un booléen JSON. Absent, `{}`, `"true"`, `1` : retenue (le serveur le tient pour fermé, personne ne l'a décidé).
+- La valeur est LUE en lecture seule (`etat:medias_proteges.actif`) ; la fumée exige que la fonction déployée serve exactement cet état. Les trois registres et les cinq fonctions SQL restent obligatoires.
+- Rien ne change côté base : aucune migration, aucun droit, la coupure reste l'autorité (`reglages_distants`, lue à chaque résolution, réservation et INSERT Storage).
+- Mesuré au canal ① le 21/11 : les 49 prérequis des six fonctions sont présents en production avec le nouveau manifeste ; le réglage est lu à true.
+- La requête ne nomme `public.reglages_distants` que dans une requête différée (`query_to_xml`), derrière `to_regclass` : une cible qui n'a pas la table retient la fonction qui exige le réglage, sans faire échouer toute la lecture. Banc : `tests/sql/prerequis-fonctions.test.sh` ③ ter.
+
+⚠️ **UN PRÉREQUIS DE DÉPLOIEMENT DIT CE QUE LA CIBLE SAIT FAIRE, PAS DANS QUEL ÉTAT ELLE EST.** Une table, une fonction SQL, une empreinte. La valeur d'un réglage que l'exploitation change n'en est pas un : le jour où elle change, le déploiement s'arrête pour une raison que plus personne ne cherche. `tests/unit/deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
+
+Le récit complet (la sélection par l'état servi, la retenue partielle, la ligne du pilotage, les verrous) : fiche du 21/11 de `docs/journal/telemetrie-pilotage-sentinelle.md`. Banc PostgreSQL : `tests/sql/medias-proteges-runner.mjs` (réglage ouvert : autorisé ; quatre formes non booléennes : retenu).
