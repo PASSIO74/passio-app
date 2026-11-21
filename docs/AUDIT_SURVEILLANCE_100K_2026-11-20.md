@@ -114,6 +114,13 @@ Rendement = impact à 100k × probabilité ÷ effort. Les identifiants entre par
   - Faire remonter « la Sentinelle ne lit plus X » à l'écran du pilote.
 - **Correctif ensuite (migration) :** agrégats SQL `comptes_anciens(uuid[])`, `sentinelle_familles`, `sentinelle_boutons`, `pilotage_parcours`, avec plafond par compte dans l'agrégat.
 - **Risque :** critical (sélection de ce qu'un agent répare) · **Effort :** S puis L.
+- **État au 2026-11-21 — « correctif d'abord » LIVRÉ** (fiche « LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU » de `docs/journal/telemetrie-pilotage-sentinelle.md`), point par point, avec ce qui diffère de ce qui est écrit ci-dessus (motivé dans la fiche) :
+  - le drapeau `complet` vaut pour les trois lectures, qui lisent en plus dix pages au lieu d'une ;
+  - les boutons se lisent en deux temps (clics, puis effets des seules sessions suspectes) : **le seuil passe d'environ 435 à environ 2 000 sessions par jour ; au-delà, les boutons les plus cliqués ne sont plus jugés, c'est dit à l'écran, et seul l'agrégat SQL fermera le trou** ;
+  - ce n'est pas le motif `ui_v*` qui sort des effets mais une liste FERMÉE de six marqueurs de pose (`ui_v2_nav` est un vrai effet) ; et ce sont les CLICS des robots et des émulations qui sortent, pas leurs seuls effets — **l'équipe reste** (retirer ses clics sains pouvait faire passer un bouton sous le seuil, donc élargir ce qui devient une enquête) ;
+  - l'ancienneté se relit par candidat, boutons compris, et un refus du service d'authentification se compte ;
+  - « la Sentinelle ne lit plus X » remonte à l'écran : issue d'état `[SENTINELLE PARTIELLE]`, ligne « La Sentinelle n'a pas tout traité », voyant orange.
+  - **Reste ouvert** : « un seul compte peut figer le voyant en lecture partielle » (la lecture des parcours par la fonction `pilotage` elle-même, `index.ts:223`) et tout le « correctif ensuite » — les agrégats SQL, qui demandent une migration. À l'échelle visée, l'état « lu en partie » sera durable tant qu'ils ne sont pas livrés.
 
 ### T5 — Photos et vidéos qui ne s'affichent pas : aucun signal
 *(AFF-04, CONT-05, REP-09, cas 16 de la matrice)*
@@ -183,6 +190,7 @@ Rendement = impact à 100k × probabilité ÷ effort. Les identifiants entre par
   - Score de priorité : part des actifs touchés × criticité du parcours.
   - Ne pas compter les issues `humain` dans le budget.
 - **Risque :** critical · **Migration :** non · **Effort :** M.
+- **État au 2026-11-21 — en partie livré** avec T4 : le passage lit TOUJOURS (seule l'ouverture d'une enquête dépend d'une place), et des défauts vivants qui attendent parce que le budget du jour est atteint se disent au pilote (issue d'état `[SENTINELLE PARTIELLE]`). **Reste ouvert** : publier la file et le budget restant, le score de priorité, ne plus compter les issues `humain` dans le budget, et dire l'attente quand trois enquêtes sont en cours (aujourd'hui écrite au seul résumé du passage).
 
 ### T10 — Clics que la capture ne voit pas
 *(CLIC-02, CLIC-07, CLIC-03, plus l'oubli « bouton désactivé »)*

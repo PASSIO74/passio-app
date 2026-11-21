@@ -89,6 +89,8 @@ case "$tout" in
   "issue list"*"--label sentinelle --label humain"*) corps="$(cat "$FX/issues-open-humain.json")" ;;
   # Les tableaux (lot F) : AVANT la forme générique --state open, qui l'avalerait.
   "issue list"*"--label tableau"*) corps="$(cat "$FX/issues-tableau.json")" ;;
+  # L'issue d'état de la Sentinelle (2026-11-21) : AVANT la forme générique aussi. Absente = aucune issue.
+  "issue list"*"--label sentinelle-partielle"*) corps="$(cat "$FX/issues-partielle.json" 2>/dev/null || echo "[]")" ;;
   "issue list"*"--state open"*) corps="$(cat "$FX/issues-open.json")" ;;
   "pr list"*"--state merged"*) corps="$(cat "$FX/prs-merged.json")" ;;
   "pr list"*) corps="$(cat "$FX/prs-all.json")" ;;
@@ -103,7 +105,7 @@ case "$tout" in
   "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
-  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"label create"*|"pr merge"*)
+  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"issue lock"*|"label create"*|"pr merge"*)
     ligne="$tout"
     for ((k=0; k<\${#args[@]}; k++)); do if [ "\${args[$k]}" = "--body-file" ]; then ligne="$ligne :: $(tr '\\n' ' ' < "\${args[$((k+1))]}")"; fi; done
     printf '%s :: jeton=%s\\n' "$ligne" "\${GH_TOKEN:-}" >> "$LOG"; exit 0 ;;
@@ -1431,4 +1433,261 @@ test("sentinelle-autonome.yml : le `sleep 8` et le veilleur restent, et leur rai
   assert.ok(etape(SA, "detecter", "Veilleur").run.includes("sleep 8"), "le `sleep 8` de la relance");
   assert.match(texte, /DEPUIS LE 2026-11-04, CETTE FILE NE PERD PLUS RIEN/);
   assert.match(texte, /aucune enquête n'a tourné\n# depuis #370/);
+});
+
+// ═══ T4 — La Sentinelle lit toujours, et dit ce qu'elle n'a pas lu ou pas confié (2026-11-21) ═══
+// Audit « la surveillance tient-elle à 100 000 ? », T4 et T9. Avant : sans place d'enquête, le run finissait vert sans
+// avoir lu la production, et une lecture tronquée ne se disait nulle part — le pilote lisait « rien à corriger ».
+const ETAPE_LECTURE = "État de lecture";
+const ctxSteps = ({ pr = false, actif = "true", libre = "true", cible = "oui", deja = "non", detect = "success" } = {}) => ({
+  github: { event_name: pr ? "pull_request" : "schedule" },
+  steps: { pause: { outputs: { actif } }, encours: { outputs: { libre } }, detect: { outputs: { cible }, outcome: detect }, dedup: { outputs: { deja } } },
+});
+
+test("T4-w1 conditions : le passage LIT et DÉDOUBLONNE même sans place ; seule l'ouverture d'une enquête exige une place ; l'état de lecture exige un verdict rendu", () => {
+  const lire = String(etape(SA, "detecter", "Lire la production").if);
+  const dedup = String(etape(SA, "detecter", "Ce défaut a-t-il").if);
+  const ouvrir = String(etape(SA, "detecter", "Ouvrir l'enquête").if);
+  const etat = String(etape(SA, "detecter", ETAPE_LECTURE).if);
+  // RÉINJECTION : remettre `&& steps.encours.outputs.libre == 'true'` sur « Lire la production » → rouge
+  // (six enquêtes dans la journée, et plus rien n'est lu pendant 24 h, run vert).
+  assert.equal(decide(lire, ctxSteps({ libre: "false" })), true, "sans place : la production est lue quand même");
+  assert.equal(decide(dedup, ctxSteps({ libre: "false" })), true, "sans place : les défauts vivants sont comptés quand même");
+  // RÉINJECTION : retirer `steps.encours.outputs.libre == 'true'` d'« Ouvrir l'enquête » → rouge (le plafond ne borne plus rien).
+  assert.equal(decide(ouvrir, ctxSteps({ libre: "false" })), false, "sans place : AUCUNE enquête n'est ouverte");
+  assert.equal(decide(ouvrir, ctxSteps()), true);
+  assert.equal(decide(ouvrir, ctxSteps({ deja: "oui" })), false);
+  // La pause arrête tout, PR comprise.
+  for (const expr of [lire, dedup]) {
+    assert.equal(decide(expr, ctxSteps({ actif: "false" })), false, expr);
+    assert.equal(decide(expr, ctxSteps({ pr: true })), false, expr);
+    assert.equal(decide(expr, ctxSteps()), true, expr);
+  }
+  assert.equal(decide(dedup, ctxSteps({ cible: "non" })), false, "aucun candidat : rien à dédoublonner");
+  // RÉINJECTION : retirer `&& steps.detect.outcome == 'success'` de « État de lecture » → rouge (une issue refermée, ou
+  // écrite, sur un passage qui n'a rendu aucun verdict).
+  assert.equal(decide(etat, ctxSteps()), true);
+  assert.equal(decide(etat, ctxSteps({ libre: "false", cible: "non" })), true, "sans place et sans cible : l'état se dit quand même");
+  assert.equal(decide(etat, ctxSteps({ detect: "skipped" })), false, "en pause, « Lire la production » est sautée : aucun état n'est écrit ni refermé");
+  assert.equal(decide(etat, ctxSteps({ detect: "failure" })), false);
+  assert.equal(decide(etat, ctxSteps({ pr: true })), false);
+  // Le commentaire qui disait « sautée (une enquête en cours, pause) » ne ment plus.
+  assert.doesNotMatch(workflowsReels()["sentinelle-autonome.yml"], /a été sautée \(une enquête en cours, pause\)/);
+});
+
+test("T4-w2 « Enquêtes en parallèle » dit POURQUOI il n'y a plus de place : budget=atteint à six enquêtes en 24 h, budget=libre sinon", () => {
+  // RÉINJECTION : retirer `echo "budget=${budget}" >> "${GITHUB_OUTPUT}"` → rouge. RÉINJECTION 2 : retirer `budget=atteint` → rouge.
+  const recent = new Date(Date.now() - 3_600_000).toISOString();
+  const recentes = (n) => Array.from({ length: n }, () => ({ createdAt: recent }));
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": recentes(6) });
+  const plein = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.equal(plein.code, 0, plein.sortie);
+  assert.match(plein.out, /^budget=atteint$/m, plein.out);
+  assert.match(plein.out, /^places=0$/m, plein.out);
+  assert.match(plein.out, /^libre=false$/m, plein.out);
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": recentes(5) });
+  const ok = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.match(ok.out, /^budget=libre$/m, ok.out);
+  assert.match(ok.out, /^libre=true$/m, ok.out);
+  // Trois enquêtes en cours : plus de place, mais le budget n'est pas atteint — la file se vide seule.
+  fixtures({ "issues-open": [1, 2, 3].map((number) => ({ number, labels: L("sentinelle", "claude") })), "issues-open-humain": [], "issues-recentes": recentes(3) });
+  const sature = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.match(sature.out, /^budget=libre$/m, sature.out);
+  assert.match(sature.out, /^places=0$/m, sature.out);
+});
+
+test("T4-w3 dédup sans place : PLACES=0 ne retient AUCUNE cible et compte les défauts vivants ; PLACES=1 en retient une ; illisible vaut 1 comme avant", () => {
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  const calme = { "issues-closed": [], "issues-open": [], "prs-merged": [], "runs-deploy": [], "compare": { commits: [] } };
+  // RÉINJECTION : remettre `Number.isInteger(places) && places > 0 ? places : 1` → deja=non avec PLACES=0, rouge
+  // (une enquête ouverte alors que le budget du jour est atteint).
+  verdict(A, [A, B]);
+  fixtures(calme);
+  const zero = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "0" });
+  assert.equal(zero.code, 0, zero.sortie);
+  assert.match(zero.out, /^deja=oui$/m, zero.out);
+  assert.match(zero.out, /^n=0$/m, zero.out);
+  assert.match(zero.out, /^attente=2$/m, zero.out);
+  assert.equal(lireVerdict().cibles, undefined, "le verdict ne reçoit aucune cible à ouvrir");
+  assert.ok(zero.summary.includes("aucune cible retenue faute de place ; 2 défaut(s) vivant(s) en attente d une place"), zero.summary);
+  assert.ok(!zero.summary.includes("aucune cible vivante"), "des défauts attendent : le bilan ne dit pas qu'il n'y en a aucun\n" + zero.summary);
+  // RÉINJECTION : `const attente = 0;` → rouge.
+  verdict(A, [A, B, C]);
+  fixtures(calme);
+  const une = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "1" });
+  assert.match(une.out, /^deja=non$/m, une.out);
+  assert.match(une.out, /^n=1$/m, une.out);
+  assert.match(une.out, /^attente=2$/m, une.out);
+  assert.deepEqual(lireVerdict().cibles.map((x) => x.cible.cle), [A.cle], "la première du classement, comme avant");
+  assert.ok(une.summary.includes("1 cible(s) retenue(s) ; 2 défaut(s) vivant(s) en attente d une place"), une.summary);
+  // Un titre déjà ouvert ne compte pas comme « en attente » : il a son enquête.
+  verdict(A, [A, B]);
+  fixtures({ ...calme, "issues-open": [{ number: 400, title: mod.titreIssue(A) }] });
+  const ouvert = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "0" });
+  assert.match(ouvert.out, /^attente=1$/m, ouvert.out);
+  // Absent ou illisible : une place, comme avant ce lot (jamais zéro par accident, jamais « toutes »).
+  for (const PLACES of [undefined, "", "abc", "-1", "1.5"]) {
+    verdict(A, [A, B, C]);
+    fixtures(calme);
+    const r = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, PLACES === undefined ? {} : { PLACES });
+    assert.match(r.out, /^n=1$/m, JSON.stringify(PLACES) + "\n" + r.out);
+    assert.match(r.out, /^attente=2$/m, JSON.stringify(PLACES) + "\n" + r.out);
+  }
+  // Rien à attendre : le bilan d'avant, mot pour mot.
+  verdict(A, [A]);
+  fixtures({ ...calme, "issues-open": [{ number: 400, title: mod.titreIssue(A) }] });
+  const rien = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "3" });
+  assert.match(rien.out, /^attente=0$/m, rien.out);
+  assert.ok(rien.summary.includes("aucune cible vivante (occurrences antérieures au correctif, titre déjà ouvert, ou correctif en vol)"), rien.summary);
+});
+
+const PARTIEL_BOUTONS = { lecture: { complet: false, partiel: [{ code: "boutons_non_juges", n: 2 }, { code: "api", lues: 10000 }] } };
+const TOUT_LU = { lecture: { complet: true, partiel: [] } };
+const TITRE_PARTIEL = "[SENTINELLE PARTIELLE] pas tout traité : boutons, appels refusés";
+const jouerEtat = (env = {}) => jouer(etape(SA, "detecter", ETAPE_LECTURE).run, { GH_TOKEN: "integre", ATTENTE: "", BUDGET: "libre", ...env });
+
+test("T4-w4 « État de lecture » : lecture partielle → UNE issue `sentinelle-partielle` (github.token, jamais claude ni sentinelle) ; déjà ouverte → réécrite, sans doublon ni commentaire", () => {
+  // Verrous statiques, recopiés de l'étape « Tableau » de veille-production.yml.
+  const t = etape(SA, "detecter", ETAPE_LECTURE);
+  // RÉINJECTION : retirer `continue-on-error: true` → rouge (un état non publié ferait un run rouge, donc [SENTINELLE MUETTE]).
+  assert.equal(String(t["continue-on-error"]), "true");
+  // RÉINJECTION : `GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}` → rouge (une issue de PASSIO74, éligible à claude-code.yml).
+  assert.equal(t.env.GH_TOKEN, "${{ github.token }}");
+  assert.deepEqual(Object.keys(t.env).sort(), ["ATTENTE", "BUDGET", "GH_TOKEN"], "les sorties des étapes passent par l'environnement, jamais dans le bloc");
+  assert.equal(t.env.ATTENTE, "${{ steps.dedup.outputs.attente }}");
+  assert.equal(t.env.BUDGET, "${{ steps.encours.outputs.budget }}");
+  assert.ok(!t.run.includes("SENTINELLE_TOKEN") && !t.run.includes("--search") && !t.run.includes("--label claude") && !t.run.includes("${{"), "ni jeton personnel, ni --search, ni label claude, ni expression dans le bloc");
+  assert.ok(t.run.includes("--body-file /tmp/partiel-corps.md"), "le corps passe par un fichier, jamais interpolé");
+  // RÉINJECTION : retirer le `trap … ERR` → rouge (test T4-w5 : l'échec ne s'annoncerait nulle part).
+  assert.ok(/trap '[^\n]*::warning title=État de lecture non publié::[^\n]*GITHUB_STEP_SUMMARY[^\n]*' ERR/.test(t.run));
+  assert.ok(t.run.includes('startswith("' + mod.PREFIXE_PARTIELLE + '")'), "le workflow retrouve l'issue par le préfixe que `etatPartiel` écrit");
+  const steps = SA.jobs.detecter.steps;
+  const rang = (nom) => steps.findIndex((x) => String(x.name || "").startsWith(nom));
+  assert.ok(rang(ETAPE_LECTURE) > steps.findIndex((x) => x.id === "detect") && rang(ETAPE_LECTURE) > steps.findIndex((x) => x.id === "dedup"), "après le verdict et la dédup, dont elle lit les sorties");
+  assert.ok(rang(ETAPE_LECTURE) < rang("Ouvrir l'enquête"), "avant l'ouverture : un échec à l'ouverture ne tait pas l'état");
+  assert.ok(steps.some((x) => x.id === "encours") && /budget=\$\{budget\}/.test(etape(SA, "detecter", "Enquêtes en parallèle").run), "la sortie `budget` que l'étape lit existe");
+
+  // Aucune issue d'état : le label, puis la création. RÉINJECTION : `--label sentinelle-partielle` → `--label sentinelle`
+  // → rouge (l'issue compterait comme une enquête, prendrait une place, et le pilote lirait « La Sentinelle enquête »).
+  verdict(null, [], PARTIEL_BOUTONS);
+  fixtures({ "issues-partielle": [] });
+  const r = jouerEtat();
+  assert.equal(r.code, 0, r.sortie);
+  const iLabel = r.lignes.findIndex((x) => x.startsWith("label create sentinelle-partielle "));
+  const iCreate = r.lignes.findIndex((x) => x.startsWith("issue create"));
+  assert.ok(iLabel >= 0 && iCreate > iLabel, "le label est créé (--force) AVANT l'issue\n" + r.log);
+  assert.match(r.lignes[iCreate], /^issue create --repo o\/r --title \[SENTINELLE PARTIELLE\] pas tout traité : boutons, appels refusés --body-file \S+\/partiel-corps\.md --label sentinelle-partielle :: jeton=integre$/, r.log);
+  // La conversation est VERROUILLÉE dès la création : le dépôt est public, et un commentaire de n'importe quel compte
+  // ferait du bruit sur une issue que seule la Sentinelle écrit. RÉINJECTION : retirer la ligne `gh issue lock` → rouge.
+  assert.deepEqual(r.lignes.filter((x) => x.startsWith("issue ")).slice(1), ["issue lock 999 --repo o/r :: jeton=integre"], "une création, son verrou, rien d'autre\n" + r.log);
+  // Un verrou refusé ne retire rien : l'état est publié, l'étape réussit, aucune annonce d'échec.
+  const sansVerrou = jouerEtat({ FAUX_ECHEC: "issue lock" });
+  assert.equal(sansVerrou.code, 0, sansVerrou.sortie);
+  assert.ok(sansVerrou.summary.includes("État de lecture publié : #999") && !sansVerrou.summary.includes("NON publié"), sansVerrou.summary);
+  assert.ok(!annotations(sansVerrou).some((l) => l.includes("non publié")), sansVerrou.flux);
+  assert.doesNotMatch(r.log, /--label claude|--label sentinelle( |$)|--label humain/m, r.log);
+  const corps = fs.readFileSync(BAC + "/partiel-corps.md", "utf8");
+  assert.match(corps, /^- Boutons : 2 bouton\(s\) suspect\(s\) non jugé\(s\)/m, corps);
+  assert.match(corps, /^- Appels refusés : seuls les 10000 plus récents ont été lus\.$/m, corps);
+  assert.match(corps, /^- Passage : https:\/\/github\.com\/o\/r\/actions\/runs\/1$/m, corps);
+  assert.match(corps, /^- Mis à jour : \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/m, "l'heure de mise à jour : c'est elle qui repousse la fermeture");
+  assert.ok(r.summary.includes("## La Sentinelle n'a pas tout traité") && r.summary.includes("État de lecture publié : #999"), r.summary);
+
+  // Déjà ouverte : réécrite (titre et corps), jamais doublée, jamais commentée (un commentaire = un e-mail par heure).
+  // RÉINJECTION : le jq → `.[0].number // empty` sans filtre de titre → rouge (#76, une autre issue du même label, serait réécrite).
+  fixtures({ "issues-partielle": [{ number: 76, title: "note à part", updatedAt: iso(300) }, { number: 77, title: "[SENTINELLE PARTIELLE] pas tout traité : parcours", updatedAt: iso(61) }] });
+  const r2 = jouerEtat();
+  assert.equal(r2.code, 0, r2.sortie);
+  // Le verrou est rejoué à la réécriture : une issue ouverte avant lui, ou un verrou refusé la fois d'avant, le reçoit.
+  assert.deepEqual(r2.lignes.filter((x) => x.startsWith("issue ")).map((x) => x.split(" --body-file ")[0]), ["issue edit 77 --repo o/r --title " + TITRE_PARTIEL, "issue lock 77 --repo o/r :: jeton=integre"], r2.log);
+  assert.ok(r2.lignes[0].includes(" :: La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier") && r2.lignes[0].endsWith(":: jeton=integre"), r2.log);
+  assert.ok(r2.summary.includes("État de lecture mis à jour : #77"), r2.summary);
+});
+
+// Le corps tel que l'étape l'écrit : sa dernière ligne porte l'heure de la réécriture, à la seconde.
+const corpsEtat = (minutes) => "La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier :\n\n- Boutons : 2 bouton(s) suspect(s) non jugé(s).\n\n- Passage : https://github.com/o/r/actions/runs/1\n- Mis à jour : " + iso(minutes).replace(/\.\d{3}Z$/, "Z") + "\n";
+
+test("T4-w5 « État de lecture » : tout est lu → l'issue n'est refermée que si son CORPS n'a pas été réécrit depuis 90 min (updatedAt, qu'un commentaire avance, ne décide pas) ; « en attente » seulement budget atteint ; un échec s'annonce", () => {
+  // Refermée : commentaire puis fermeture. RÉINJECTION : retirer la branche de fermeture → rouge.
+  verdict(null, [], TOUT_LU);
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(125), body: corpsEtat(125) }, { number: 76, title: "note à part", updatedAt: iso(900), body: corpsEtat(900) }] });
+  const ferme = jouerEtat();
+  assert.equal(ferme.code, 0, ferme.sortie);
+  assert.deepEqual(ferme.lignes.map((x) => x.replace(/ — https:\S+/, "")), [
+    "issue comment 77 --repo o/r --body ✅ La Sentinelle a de nouveau tout lu et tout confié :: jeton=integre",
+    "issue close 77 --repo o/r --reason completed :: jeton=integre",
+  ], ferme.log);
+  assert.ok(ferme.summary.includes("État de lecture refermé : #77"), ferme.summary);
+  // ⚠️ HYSTÉRÉSIS. RÉINJECTION : dans `etatsAFermer`, `reference < limite` → `true` → rouge : une panne passagère ouvrirait
+  // puis refermerait l'issue à chaque passage — un e-mail et un changement de voyant par heure.
+  // L'heure lue est celle du CORPS : `updatedAt` est ici ANCIEN partout, et l'issue tient quand même.
+  for (const minutes of [5, 61, 89]) {
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(600), body: corpsEtat(minutes) }] });
+    const tenue = jouerEtat();
+    assert.equal(tenue.code, 0, tenue.sortie);
+    assert.equal(tenue.log.trim(), "", "réécrite il y a " + minutes + " min (updatedAt ancien) : elle reste ouverte\n" + tenue.log);
+  }
+  // ⚠️ UN TIERS NE LA TIENT PAS OUVERTE : un commentaire avance `updatedAt` (dépôt public), pas le corps.
+  // RÉINJECTION : revenir à `updatedAt` (`const reference = Date.parse(String(i.updatedAt || ""));`) → rouge, ici et au-dessus.
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(2), body: corpsEtat(91) }] });
+  const commentee = jouerEtat();
+  assert.equal(commentee.code, 0, commentee.sortie);
+  assert.ok(commentee.log.includes("issue close 77"), "commentée il y a 2 min, réécrite il y a 91 : refermée\n" + commentee.log);
+  // Un corps SANS date lisible (retouché à la main) : `updatedAt` décide, faute de mieux — récent, elle reste ouverte.
+  for (const body of ["", "note retouchée à la main", "- Mis à jour : hier soir", "- Mis à jour : 2026-13-45T99:99:99Z"]) {
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(30), body }] });
+    assert.equal(jouerEtat().log.trim(), "", "corps sans date, activité il y a 30 min : elle reste ouverte — " + JSON.stringify(body));
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(91), body }] });
+    assert.ok(jouerEtat().log.includes("issue close 77"), "corps sans date, aucune activité depuis 91 min : refermée — " + JSON.stringify(body));
+  }
+  // Aucune issue, tout est lu : rien n'est écrit.
+  fixtures({ "issues-partielle": [] });
+  const calme = jouerEtat();
+  assert.equal(calme.code, 0, calme.sortie);
+  assert.equal(calme.log.trim(), "", calme.log);
+  assert.ok(!calme.summary.includes("n'a pas tout traité"), calme.summary);
+  // Des défauts vivants attendent : dit SEULEMENT si le budget du jour est atteint.
+  // RÉINJECTION : `budgetAtteint: true` en dur dans le bloc → rouge.
+  const libre = jouerEtat({ ATTENTE: "2", BUDGET: "libre" });
+  assert.equal(libre.log.trim(), "", "trois enquêtes en cours : la file se vide seule, rien à dire\n" + libre.log);
+  const atteint = jouerEtat({ ATTENTE: "2", BUDGET: "atteint" });
+  assert.equal(atteint.code, 0, atteint.sortie);
+  assert.match(atteint.lignes.find((x) => x.startsWith("issue create")) || "", /--title \[SENTINELLE PARTIELLE\] pas tout traité : défauts en attente /, atteint.log);
+  assert.match(fs.readFileSync(BAC + "/partiel-corps.md", "utf8"), /^- 2 défaut\(s\) retenu\(s\) attendent : le budget d'enquêtes par 24 h est atteint\.$/m);
+  for (const ATTENTE of ["", "abc", "2; rm -rf /", "-3"]) assert.equal(jouerEtat({ ATTENTE, BUDGET: "atteint" }).log.trim(), "", "ATTENTE illisible = 0 : " + JSON.stringify(ATTENTE));
+  // Un verdict d'avant ce lot (sans `lecture`) n'ouvre rien et ne casse rien.
+  verdict(A, [A]);
+  assert.equal(jouerEtat().code, 0);
+  // Un gh en échec : l'étape échoue (continue-on-error la laisse sans effet sur le run) ET l'annonce.
+  verdict(null, [], PARTIEL_BOUTONS);
+  fixtures({ "issues-partielle": [] });
+  const casse = jouerEtat({ FAUX_ECHEC: "issue create" });
+  assert.notEqual(casse.code, 0);
+  assert.ok(annotations(casse).some((l) => l.startsWith("::warning title=État de lecture non publié::")), casse.flux);
+  assert.ok(casse.summary.includes("État de lecture NON publié"), casse.summary);
+  const liste = jouerEtat({ FAUX_ECHEC: "issue list" });
+  assert.notEqual(liste.code, 0, "la lecture des issues en échec ne passe pas pour « aucune issue »");
+  assert.ok(!liste.log.includes("issue create"), liste.log);
+  verdict(null, [], TOUT_LU);
+  const fermeture = jouerEtat({ FAUX_ECHEC: "issue list" });
+  assert.notEqual(fermeture.code, 0, "côté fermeture aussi : la liste se lit AVANT la boucle, pas dans son en-tête");
+  assert.ok(annotations(fermeture).some((l) => l.startsWith("::warning title=État de lecture non publié::")), fermeture.flux);
+});
+
+test("T4-w6 le label du canal existe avant qu'on en ait besoin, et le résumé du passage imprime ce qui n'a pas été lu", () => {
+  // RÉINJECTION : retirer `gh label create sentinelle-partielle` de « Labels du canal » → rouge.
+  fixtures({});
+  const l = jouer(etape(SA, "detecter", "Labels du canal").run, { GH_TOKEN: "integre" });
+  assert.equal(l.code, 0, l.sortie);
+  assert.ok(l.lignes.some((x) => x.startsWith("label create sentinelle-partielle --repo o/r ") && x.includes("--force") && x.endsWith(":: jeton=integre")), l.log);
+  // RÉINJECTION : retirer `lecture: v.lecture, ` du résumé de « Lire la production » → rouge (le run ne dirait plus ce qu'il n'a pas lu).
+  assert.match(etape(SA, "detecter", "Lire la production").run, /sources: v\.sources, lecture: v\.lecture, boutonsSuspects: v\.boutonsSuspects/);
+  // Aucune apostrophe dans les blocs Node cités entre apostrophes simples par bash (vécu : le bloc se referme au milieu).
+  for (const nom of ["Ce défaut a-t-il", ETAPE_LECTURE]) {
+    const run = etape(SA, "detecter", nom).run;
+    const debut = run.indexOf("node --input-type=module -e '") + "node --input-type=module -e '".length;
+    const bloc = run.slice(debut, run.indexOf("\n'", debut) < 0 ? undefined : run.indexOf("\n'", debut));
+    assert.ok(debut > 30 && bloc.includes("import fs from"), nom + " : le bloc Node est retrouvé");
+    assert.ok(!bloc.includes("'"), nom + " : une apostrophe refermerait le bloc");
+  }
 });

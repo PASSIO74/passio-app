@@ -86,7 +86,7 @@ const M = [
   ["R57 le scan en échec ne se dit pas", PJ, `  if (sc) {\n`, `  if (false) {\n`, BANC, "㊸"],
   ["R58 le scan devient réparable (un agent trierait les secrets)", PJ, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n};`, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n  securite: { fichier: "securite.yml", libelle: "Scan de sécurité" },\n};`, BANC, "㊸"],
   ["R59 les exécutions de PR du scan comptent", PJ, `securite: Object.freeze(["schedule", "workflow_dispatch"]),`, `securite: Object.freeze(["schedule", "workflow_dispatch", "pull_request"]),`, BANC, "㊸"],
-  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité" });`, ` });`, BANC, "㊸"],
+  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité", fonctions:`, `, fonctions:`, BANC, "㊸"],
   // Relecture indépendante de #866 (2026-11-13).
   ["R61 une SyntaxError (un corps qui n'est pas du JSON) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "SyntaxError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
   ["R62 une RangeError (une date illisible) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "RangeError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
@@ -106,6 +106,16 @@ const M = [
   ["R74 une page ILLISIBLE jette les pages lues", FN, `if (!Array.isArray(lot)) return { ok: false, lignes, raison:`, `if (!Array.isArray(lot)) return { ok: false, lignes: [], raison:`, BANC, "㊵"],
   ["R75 verdict lit runs[\"veille\"] sans que la liste du voyant le sache", PJ, `  const runs = gh.runs || {};\n`, `  const runs = gh.runs || {};\n  if (runs["veille"] && false) orange.push("x");\n`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
   ["R76 verdict déstructure runs (le relevé ne la voit pas)", PJ, `  const runs = gh.runs || {};\n`, `  const runs = gh.runs || {};\n  const { veille: _v } = runs;\n`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
+
+  // T4 de l'audit « 100 000 » (2026-11-21) : l'état « la Sentinelle n'a pas tout traité ». Numérotées à partir de R120.
+  ["R120 l'état « pas tout traité » tient le voyant de la veille (un tiers la fige en gonflant un volume)", FN, `|| !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;`, `|| !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0 || (((e.github as { issues?: { labels: string[] }[] } | null)?.issues) || []).some((i) => i.labels.includes("sentinelle-partielle"));`, BANC, "T4-k"],
+  ["R121 le label de l'état n'est pas suivi : l'issue n'atteint jamais l'écran", PJ, `"recidive", "reparation", LABEL_SENTINELLE_PARTIELLE];`, `"recidive", "reparation"];`, BANC, "T4-k"],
+  ["R122 l'état ne colore pas le voyant : « rien à corriger » sur fond vert", PJ, `  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé");\n`, ``, BANC, "T4-k"],
+  ["R123 l'état tombe dans « Une note ouverte », avec un bouton Fermer", PJ, `    if (labels.includes(LABEL_SENTINELLE_PARTIELLE)) {`, `    if (false) {`, BANC, "T4-k"],
+  ["R124 l'état passe le voyant au rouge (le téléphone sonne pour un volume)", PJ, `  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité`, `  if (sentinellePartielle(issues)) rouge.push("la Sentinelle n'a pas tout traité`, "tests/unit/pilotage.test.mjs", "T4-b"],
+  ["R125 relue et encore ouverte : un « Régler » principal qui ne règle rien", PJ, `      else if (srE && srE.etat === "faite") ajoute(`, `      else if (false) ajoute(`, "tests/unit/pilotage.test.mjs", "T4-c"],
+  ["R126 en pause, la ligne de l'état garde un bouton qui ne lit rien", PJ, `      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });\n      else if (enVol(srE))`, `      if (enVol(srE))`, "tests/unit/pilotage.test.mjs", "T4-c"],
+  ["R127 « rien à corriger » revient alors que la Sentinelle n'a pas tout traité", PJ, `quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, `quoi: false ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, "tests/unit/pilotage.test.mjs", "T4-d"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");

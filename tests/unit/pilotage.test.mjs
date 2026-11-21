@@ -2139,3 +2139,121 @@ test("veille : le script officiel journalise la migration sur chaque cible sans 
     assert.ok(envoye.includes("('https://' || projet || '.supabase.co')"));
   }
 });
+
+// ═══ T4 — « La Sentinelle n'a pas tout traité » se lit à l'écran (2026-11-21) ═══════════════════
+// Audit « la surveillance tient-elle à 100 000 ? », T4 et T9. La Sentinelle ouvre UNE issue d'état
+// (label `sentinelle-partielle`) quand un passage n'a pas tout lu, tout jugé ou tout confié ; l'écran
+// la montre au lieu de « rien à corriger ». Chaque cas nomme la réinjection qui le fait rougir.
+import * as T4P from "../../supabase/functions/_shared/pilotage.js";
+import { enquetesEnCours as t4EnquetesEnCours } from "../../supabase/functions/_shared/autonomie.js";
+const t4Etat = (numero = 81, extra = {}) => iss(numero, [T4P.LABEL_SENTINELLE_PARTIELLE], { titre: "[SENTINELLE PARTIELLE] pas tout traité : boutons", ...extra });
+const T4_T = Date.parse("2026-11-07T07:53:40Z");
+const t4Iso = (ms) => new Date(ms).toISOString();
+const T4_ANCIEN = { etat: "completed", conclusion: "success", cree: "2026-11-07T02:02:27Z", le: "2026-11-07T02:02:47Z" };
+const T4_FINI = { etat: "completed", conclusion: "success", cree: t4Iso(T4_T + 1e3), le: t4Iso(T4_T + 20e3) };
+
+test("T4-a le label de l'état est SUIVI, jamais réparable, jamais compté comme une enquête — et c'est celui que le workflow pose", () => {
+  // RÉINJECTION : retirer LABEL_SENTINELLE_PARTIELLE de LABELS_SUIVIS → rouge (l'issue n'atteint jamais l'écran).
+  assert.equal(T4P.LABEL_SENTINELLE_PARTIELLE, "sentinelle-partielle");
+  assert.ok(T4P.LABELS_SUIVIS.includes(T4P.LABEL_SENTINELLE_PARTIELLE));
+  assert.equal(T4P.issueSuivie(t4Etat()), true);
+  // Un volume n'est pas un défaut qu'un agent corrige : aucun « Réparer », aucune réparation possible.
+  assert.equal(T4P.issueReparable(t4Etat()), false);
+  assert.deepEqual(T4P.aReparer({ issues: [t4Etat()], runs: {} }).filter((x) => x.cible === "issue"), []);
+  // RÉINJECTION : nommer le label « sentinelle » d'un seul côté → rouge. Les comparaisons sont des ÉGALITÉS :
+  // `sentinelle-partielle` n'est jamais pris pour `sentinelle`.
+  assert.equal(t4EnquetesEnCours([t4Etat()]), 0, "elle ne prend aucune place d'enquête, et ne retient pas le réveil de la veille");
+  const v = T4P.verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [t4Etat()], runs: {} }, signalements: { ouverts: 0 } });
+  assert.ok(!v.raisons.some((r) => /enquête\(s\) Sentinelle en cours/.test(r)), v.raisons.join(" | "));
+  // Le même mot des deux côtés : ce que le workflow pose est ce que l'écran cherche.
+  const wf = fs.readFileSync(".github/workflows/sentinelle-autonome.yml", "utf8");
+  assert.ok(wf.includes("--label " + T4P.LABEL_SENTINELLE_PARTIELLE + " | grep"), "l'issue est créée sous ce label");
+  assert.ok(wf.includes("--state open --label " + T4P.LABEL_SENTINELLE_PARTIELLE + " "), "et retrouvée par lui");
+  assert.ok(wf.includes("gh label create " + T4P.LABEL_SENTINELLE_PARTIELLE + " "));
+  // sentinellePartielle : la première issue ouverte sous ce label ; jamais une PR, jamais un autre label.
+  assert.equal(T4P.sentinellePartielle([iss(1, ["sentinelle"]), t4Etat(81), t4Etat(82)]).numero, 81);
+  assert.equal(T4P.sentinellePartielle([iss(1, ["sentinelle"]), iss(2, ["humain"]), t4Etat(83, { pr: true })]), null);
+  for (const rien of [null, undefined, [], [null], [{ labels: "sentinelle-partielle" }], "x"]) assert.equal(T4P.sentinellePartielle(rien), null);
+});
+
+test("T4-b verdict : l'état « pas tout traité » rend le voyant ORANGE, jamais rouge ; sans lui, le vert est inchangé", () => {
+  // RÉINJECTION : retirer la ligne `if (sentinellePartielle(issues)) orange.push(…)` de verdict() → rouge.
+  const base = { sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date().toISOString() } } }, signalements: { ouverts: 0 } };
+  assert.equal(T4P.verdict(base).couleur, "vert");
+  const v = T4P.verdict({ ...base, github: { ...base.github, issues: [t4Etat()] } });
+  assert.equal(v.couleur, "orange", "le calme n'est pas prouvé : pas de vert");
+  assert.deepEqual(v.raisons, ["la Sentinelle n'a pas tout traité : le calme n'est pas prouvé"]);
+  // RÉINJECTION : `rouge.push` au lieu de `orange.push` → rouge (le téléphone sonnerait pour un volume).
+  assert.equal(T4P.decideAlerte({ couleur: "vert", dispo: true, alerteLe: null }, { couleur: v.couleur, raisons: v.raisons, dispo: true }).sonner, false, "l'orange ne sonne jamais");
+  // Un vrai rouge reste rouge, et l'état s'ajoute à ses raisons.
+  const rouge = T4P.verdict({ ...base, github: { ...base.github, issues: [t4Etat(), iss(2, ["humain"])] } });
+  assert.equal(rouge.couleur, "rouge");
+  assert.ok(rouge.raisons.includes("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé"));
+  // Une PR qui porterait le label ne colore rien.
+  assert.equal(T4P.verdict({ ...base, github: { ...base.github, issues: [t4Etat(81, { pr: true })] } }).couleur, "vert");
+});
+
+test("T4-c aFaire : la ligne « La Sentinelle n'a pas tout traité » — un seul « Régler » qui relance sa lecture, jamais Fermer ni Réparer", () => {
+  const etat = (extra = {}, m = T4_T) => T4P.aFaire({ gestesGithub: true, relances: {}, github: { issues: [t4Etat()], runs: { sentinelle: T4_ANCIEN }, aReparer: [] }, ...extra }, m);
+  const ligne = (...a) => etat(...a).find((x) => x.id === "sentinelle:partielle");
+  // RÉINJECTION : retirer la branche dédiée de la boucle des issues → l'issue tombe dans « Une note ouverte » avec un
+  // bouton Fermer, rouge.
+  const l = ligne();
+  assert.ok(l, "la ligne existe : " + etat().map((x) => x.id).join(", "));
+  assert.deepEqual([l.titre, l.prio, l.etiquette, l.enCours], ["La Sentinelle n'a pas tout traité", 1, "Lu en partie", false]);
+  assert.equal(l.quoi, "Relance sa lecture maintenant.");
+  assert.ok(l.quoi.length <= 50);
+  assert.equal(l.reference, "#81 · [SENTINELLE PARTIELLE] pas tout traité : boutons");
+  assert.equal(l.url, "https://github.com/P/p/issues/81");
+  assert.deepEqual(l.gestes, [{ libelle: "Régler", principal: true, tout: true, corps: { action: "relancer", cible: "sentinelle" } }]);
+  assert.ok(!etat().some((x) => x.id === "issue:81"), "elle n'a QUE sa ligne : jamais « Une note ouverte »");
+  assert.ok(!etat().some((x) => x.gestes.some((g) => g.corps && (g.corps.action === "fermer" || g.corps.action === "reparer"))), "ni Fermer ni Réparer : refermée à la main, elle rouvrirait au passage suivant");
+  // Relance en vol : « démarre », sans bouton.
+  const vol = ligne({ relances: { sentinelle: t4Iso(T4_T - 1e3) } });
+  assert.deepEqual([vol.prio, vol.enCours, vol.gestes.length, vol.quoi], [1, true, 0, "La Sentinelle démarre (lancée à 08:53)."]);
+  // ⚠️ Relancée et encore ouverte : la ligne se range, le bouton n'est plus principal.
+  // RÉINJECTION : retirer la branche `srE.etat === "faite"` → rouge (un « Régler » qui ne règle rien, en tête de liste).
+  const faite = ligne({ relances: { sentinelle: t4Iso(T4_T) }, github: { issues: [t4Etat()], runs: { sentinelle: T4_FINI }, aReparer: [] } }, T4_T + 30e3);
+  // ⚠️ La phrase doit rester VRAIE dans les deux cas que le pilotage ne distingue pas (contre-revue du 2026-11-21) :
+  // relue et encore partielle, ou relue EN ENTIER — l'issue reste alors ouverte jusqu'à 90 minutes après sa dernière
+  // réécriture (hystérésis du workflow). « Toujours en partie » mentait dans le second, jusqu'à deux heures durant.
+  assert.deepEqual([faite.prio, faite.enCours, faite.quoi], [2, false, "Relue à 08:54. Se referme seule une fois tout lu."]);
+  assert.doesNotMatch(faite.quoi, /toujours|en partie/, "aucun verdict sur ce que la relance a lu : le pilotage ne le sait pas");
+  assert.ok(faite.quoi.length <= 50, "tient sur une ligne de téléphone");
+  assert.deepEqual(faite.gestes, [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }], "relancer reste possible, rangé, jamais principal");
+  // Relance perdue ou en échec : la ligne le dit et rend son bouton.
+  const perdue = ligne({ relances: { sentinelle: t4Iso(T4_T) } }, T4_T + T4P.RELANCE_DEMARRAGE_MS + 1e3);
+  assert.match(perdue.quoi, /^La relance de 08:53 n'est pas partie/);
+  assert.ok(perdue.gestes[0].principal);
+  // ⚠️ EN PAUSE : la Sentinelle ne relit rien, l'issue reste ouverte, et relancer ne lirait rien — aucun bouton.
+  // RÉINJECTION : retirer la branche `gh.pause` → rouge.
+  const pause = ligne({ github: { issues: [t4Etat()], runs: { sentinelle: T4_ANCIEN }, aReparer: [], pause: true } });
+  assert.deepEqual([pause.prio, pause.quoi, pause.gestes.length, pause.enCours], [2, "En pause : elle ne relit rien.", 0, false]);
+  // Sans jeton GitHub : aucun bouton, et la ligne dit pourquoi.
+  const sansJeton = ligne({ gestesGithub: false });
+  assert.deepEqual([sansJeton.gestes.length, sansJeton.quoi], [0, "Il faut d'abord le jeton GitHub."]);
+  // Une ligne de priorité 1 : le filet générique « voyant » ne la double pas.
+  const avecVoyant = etat({ verdict: { couleur: "orange", titre: "À surveiller", raisons: ["la Sentinelle n'a pas tout traité : le calme n'est pas prouvé"] } });
+  assert.ok(!avecVoyant.some((x) => x.id === "voyant"), avecVoyant.map((x) => x.id).join(", "));
+});
+
+test("T4-d textes honnêtes : tant que l'état est ouvert, ni « rien à corriger » ni « rien d'assez sûr » — les deux lignes renvoient à celle de la Sentinelle", () => {
+  const det = [{ message: "A", n: 3, comptes: 1, dernier: t4Iso(T4_T - 60e3) }];
+  const erreurs = (issues) => T4P.aFaire({ gestesGithub: true, relances: { sentinelle: t4Iso(T4_T) }, erreurs: { details: det }, github: { issues, runs: { sentinelle: T4_FINI }, aReparer: [] } }, T4_T + 30e3).find((x) => x.id === "erreurs");
+  assert.equal(erreurs([]).quoi, "La Sentinelle l'a vue à 08:54 : rien à corriger.", "sans l'état : le texte d'origine");
+  // RÉINJECTION : retirer `partielle ?` de la ligne « erreurs » → « rien à corriger » revient, rouge.
+  const e = erreurs([t4Etat()]);
+  assert.equal(e.quoi, "La Sentinelle n'a pas tout traité : voir sa ligne.");
+  assert.equal(e.prio, 2);
+  assert.ok(e.quoi.length <= 50);
+  assert.doesNotMatch(e.quoi, /rien à corriger/);
+  const degrade = { id: "message", libelle: "Envoyer un message", etat: "degrade", criticite: "critique", raisons: ["3 échecs"], codes: [] };
+  const parcours = (issues) => T4P.aFaire({ gestesGithub: true, relances: { sentinelle: t4Iso(T4_T) }, parcours: { recent: { parcours: [degrade] } }, github: { issues, runs: { sentinelle: T4_FINI }, aReparer: [] } }, T4_T + 30e3).find((x) => x.id === "parcours:message");
+  assert.equal(parcours([]).quoi, "Analysé à 08:54 : rien d'assez sûr pour ouvrir une enquête.", "sans l'état : le texte d'origine");
+  // RÉINJECTION : retirer `partielle ?` de la ligne « parcours » → rouge.
+  const p = parcours([t4Etat()]);
+  assert.equal(p.quoi, "Analysé à 08:54, en partie : voir la ligne Sentinelle.");
+  assert.ok(p.quoi.length <= 55);
+  assert.doesNotMatch(p.quoi, /rien d'assez sûr/);
+  assert.equal(p.prio, 2);
+});

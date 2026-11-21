@@ -24,7 +24,7 @@ avec le geste à faire** : une issue ou un commentaire écrit avec `github.token
 | Erreurs JS de la télémétrie | `telemetry_events` type `error`, env `production`, `auth_uid` non nul | famille `js` — la SOURCE (elle porte `app_version` et `session_id`), 5 occurrences d'une même empreinte par session au plus |
 | Erreurs JS des visiteurs identifiés | `client_errors` (`auth_uid` non nul) | famille `js` — le REPLI : une ligne dont l'empreinte est déjà connue de la télémétrie est le doublon (même erreur, deux moniteurs) ; `uid` = `auth_uid` (identité serveur), jamais le `uid` écrit par le client |
 | Appels refusés | `telemetry_events` type `api`, status `error`, env `production` | famille `api`, avec `app_version`, `severity`, `meta` |
-| Boutons sans effet | clics / effets | suspects seulement, jamais une cible |
+| Boutons sans effet | clics (comptes seulement), puis effets des seules sessions suspectes | famille `bouton` (clics rageurs de comptes anciens) et un classement de suspects pour le résumé — voir « Elle lit tout, ou elle dit ce qu'elle n'a pas lu » |
 
 Bruit lu sur ce que le client a **prouvé** : un statut 0 est du bruit sauf `severity =
 error` sans `meta.masquee|hors_ligne|fermeture` (et alors ≥ 2 comptes) ; un 4xx avec
@@ -49,6 +49,7 @@ plus récentes `{at, app_version}` : c'est ce qui permet la dédup ci-dessous.
 | 10 | Clé `service_role` changée | — | `exit 2` du détecteur, puis A8 |
 | 11 | GitHub désactive les crons après 60 j sans commit ; les crons sont servis 4 à 23× moins souvent qu'annoncé | 41 % des créneaux | hors de ce lot : le poste (lot D) et la veille (lot B) mesurent l'âge des runs |
 | 12 | **L'angle mort** : bouton mort, HTTP 200 faux, télémétrie interrompue | permanent | aucune : le silence n'est jamais une preuve de santé |
+| 13 | **Lecture tronquée ou budget épuisé, run vert** : une famille ne juge plus, ou le passage ne lit même plus, et l'écran dit « rien à corriger » | mesuré le 21/11 : la famille bouton se taisait vers 435 sessions par jour ; six enquêtes dans la journée, et plus rien n'était lu pendant 24 h | le passage lit TOUJOURS ; chaque lecture dit si elle est complète ; ce qui n'est pas lu, jugé ou confié ouvre `[SENTINELLE PARTIELLE]` (label `sentinelle-partielle`), que le pilotage affiche en orange |
 
 ## Les labels
 
@@ -60,6 +61,7 @@ plus récentes `{at, app_version}` : c'est ce qui permet la dédup ci-dessous.
 | `recidive` | sentinelle-autonome (A4) | `github.token` | ≥ 2 correctifs déployés sur le même titre |
 | `sentinelle-relancee` | veilleur | `github.token` | le run Claude a été relancé une fois ; jamais deux |
 | `disponibilite` | sentinelle-autonome (`[SENTINELLE MUETTE]`), disponibilite.yml (`[DISPONIBILITÉ]`) | `github.token` | alerte de disponibilité, jamais de correctif automatique ; chaque workflow ne referme que SON préfixe de titre |
+| `sentinelle-partielle` | sentinelle-autonome, étape « État de lecture » | `github.token` | UNE issue d'ÉTAT `[SENTINELLE PARTIELLE]` : le passage n'a pas tout lu, tout jugé ou tout confié. Réécrite à chaque passage partiel, refermée seule quand tout est relu (au plus tôt 90 min après sa dernière réécriture, lue dans la ligne « Mis à jour » du CORPS et non dans `updatedAt`, qu'un commentaire avance ; conversation verrouillée). Jamais `claude`, jamais `sentinelle` : elle ne compte dans aucune enquête et ne déclenche aucune correction |
 | `veille`, `digest` | lot B | `github.token` | veille production et digest quotidien (voir `docs/VEILLE_PRODUCTION.md` quand il existe) |
 
 Coupe-circuit : une issue ouverte par PASSIO74 dont le titre contient `[SENTINELLE PAUSE]`
@@ -73,6 +75,7 @@ Coupe-circuit : une issue ouverte par PASSIO74 dont le titre contient `[SENTINEL
 | « ✅ Déployé en production » | rien |
 | Issue ou commentaire avec label `humain` (bilan du veilleur, refus de gouvernance, non déployé, récidive) | lire les liens, décider : correctif à la main (contre-revue si périmètre critique) ou fermeture motivée ; refermer l'issue |
 | `[SENTINELLE MUETTE]` | ouvrir le run rouge : jeton, clé, Supabase, verrous |
+| `[SENTINELLE PARTIELLE]` (aussi à l'écran du pilotage : « La Sentinelle n'a pas tout traité ») | « Régler » relance sa lecture ; si elle reste ouverte après une relance, soit la cause est un volume (rien à faire d'un toucher, lire la liste de l'issue), soit tout est relu et elle se refermera seule (au plus tôt 90 min après sa dernière réécriture) |
 
 Fermer une enquête `humain` ou `recidive` à la main est un geste compris : la dédup tait
 toutes les occurrences ANTÉRIEURES à la fermeture (elle n'est pas recréée au run suivant),
@@ -188,3 +191,65 @@ leurre, un absent de la politique, un absent de la consigne, principe « jamais 
 exempterait un instrument lui échappe — c'est `sentinelle-workflows`, qui EXÉCUTE le `case`, qui la voit.
 Les deux bancs vont ensemble. ⚠️ La première version de l'assertion de périmètre ne vérifiait que l'échec du job : un
 instrument sorti du périmètre restait refusé… par la seule contre-revue manquante, issue muette.
+
+## Elle lit tout, ou elle dit ce qu'elle n'a pas lu (2026-11-21)
+
+Audit « la surveillance tient-elle à 100 000 ? » (`docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`), trou T4,
+part sans migration, et le cas de T9 qui faisait mentir l'écran. Avant ce lot, trois silences :
+les erreurs JS et les appels refusés n'étaient lus que sur leurs 1 000 lignes les plus récentes, sans
+drapeau ; les familles bouton et parcours ne désignaient plus rien au-delà de 10 000 lignes ; et sans
+place d'enquête le passage ne lisait même plus la production. Dans les trois cas le run finissait vert
+et le pilote lisait « rien à corriger ».
+
+**Ce qui change dans le détecteur** (`scripts/sentinelle-detecter.mjs`) :
+
+- `lirePagine` lit jusqu'à la page VIDE — ou un 416, qui dit la même chose — (plus jamais « une page plus courte que demandé »), entre deux
+  bornes de temps fixées avant la première page, triée sur (colonne, id). Seule la PREMIÈRE requête
+  lève ; une page suivante refusée ou expirée rend ce qui est lu avec `complet: false`. Chaque requête
+  a son délai (20 s). Le message d'une erreur ne porte que le nom de la table.
+- Les trois lectures « devoir » (`lireErreurs`, `lireErreursTelemetrie`, `lireApi`) lisent dix pages du
+  plus récent au plus ancien et rendent `{ lignes, complet }`. Tronquée, une lecture reste classée :
+  ses compteurs sont un plancher, jamais un faux positif.
+- **La famille bouton se lit en deux temps** (`lireFamilleBoutons`). ① Les clics de comptes seulement,
+  puis le classement existant rejoué SANS AUCUN effet : c'est le pire cas, donc un groupe qui ne passe
+  pas ce filtre ne peut pas devenir une enquête. ② Les effets des seules sessions de ces groupes, par
+  lots de 40 sessions. Un groupe est relu en entier ou pas du tout, et n'est jugé que si toutes ses
+  sessions ont été relues complètement. Dès qu'un clic est lu, une lecture TÉMOIN d'une ligne éprouve la
+  forme exacte de la requête du second temps (sinon elle ne tournerait pas avant qu'un bouton réunisse
+  trois comptes).
+- Les six marqueurs de pose d'interface (`MARQUEURS_POSE` : `ui_v4a4_pose`, `ui_v6_composer`,
+  `ui_v6a_inbox`, `ui_v6b_profil`, `ui_v6c_pose`, `ui_v7_lot`) ne comptent plus comme l'effet d'un clic.
+  Liste FERMÉE, confrontée au code par le banc ; pas le motif `ui_v*` (`ui_v2_nav` est un vrai effet).
+- Les clics d'un robot ou d'une émulation ne pèsent pas (`TRAFIC_ECARTE`, importé de
+  `_shared/parcours.js` : la même règle que la famille parcours). **L'équipe reste.**
+- L'ancienneté se relit PAR candidat (30 comptes tirés au hasard, 60 pour un bouton), sous un budget de
+  150 comptes DISTINCTS par groupe de familles, avec une mémoire pour le passage. Un refus du service
+  d'authentification est compté au lieu de valoir « compte récent » en silence ; dix refus de suite
+  coupent la relecture.
+- `detecter()` porte désormais tout le passage (`principal()` ne fait que lire l'environnement et
+  imprimer) : le banc l'exécute de bout en bout. Le verdict gagne `lecture` (`{ complet, partiel }`, des
+  codes fermés) et `sources.boutons` (des nombres).
+
+**Ce qui change dans le workflow** : « Lire la production » et la dédup tournent même sans place libre
+(seule « Ouvrir l'enquête » exige une place) ; l'étape « État de lecture » publie l'issue d'état.
+
+**Le classement `boutonsSuspects` du résumé a changé de sens** : il porte `portee: "groupes jugés,
+comptes seulement"`. Il ne classe plus tous les libellés d'au moins dix clics, visiteurs compris.
+
+### ⚠️ Ce que ce lot ne ferme PAS
+
+- **Le seuil passe d'environ 435 à environ 2 000 sessions par jour ; au-delà, les boutons les plus
+  cliqués ne sont plus jugés, c'est dit à l'écran, et seul l'agrégat SQL fermera le trou.** Le budget
+  de 2 000 sessions vaut pour l'UNION des groupes suspects, et le premier temps (aucun effet) retient
+  presque tout bouton populaire : passé ce volume, ce sont les petits groupes qui sont jugés, pas les gros.
+- À l'échelle visée, l'état « lu en partie » sera DURABLE (appels refusés au-delà de 10 000 lignes par
+  jour, boutons au-delà de 2 000 sessions) : voyant orange et ligne récurrente jusqu'au lot des agrégats
+  SQL (`comptes_anciens(uuid[])`, `sentinelle_familles`, `sentinelle_boutons`, `pilotage_parcours`), qui
+  demande une migration.
+- La famille parcours tronquée ne désigne toujours rien au-delà de 10 000 étapes par 24 h : c'est
+  maintenant DIT, pas levé.
+- Détail des limites, des mesures et des pièges : fiche « LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A
+  PAS LU » de `docs/journal/telemetrie-pilotage-sentinelle.md`.
+
+Verrous : `tests/unit/sentinelle-detecter.test.mjs` (T4-01 à T4-20), `tests/unit/sentinelle-workflows.test.mjs`
+(T4-w1 à T4-w6), `tests/unit/pilotage.test.mjs` (T4-a à T4-d), `tests/unit/pilotage-chemins.test.mjs` (T4-k).

@@ -74,7 +74,9 @@ const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 // Trafic hors public (meta.trafic, telemetry.js) : les robots et les émulations
 // ne pèsent pas dans un parcours (comptés à part) ; l'équipe, si — ce sont de
 // vraies actions, et un échec de l'équipe est un échec.
-const TRAFIC_ECARTE = new Set(["robot", "emulation"]);
+// Exporté (2026-11-21) : la famille « bouton » de la Sentinelle applique la MÊME
+// règle (scripts/sentinelle-detecter.mjs) — une définition, jamais une copie.
+export const TRAFIC_ECARTE = new Set(["robot", "emulation"]);
 
 /**
  * Regroupe les lignes par corrélation. Rend { flux: Map(cid → flux), doublons }.

@@ -56,6 +56,13 @@
 # ROUGE du détecteur ouvre [SENTINELLE MUETTE] (label `disponibilite`) : le
 # silence d'une sentinelle en panne ne doit jamais ressembler au calme.
 #
+# ⚠️ ET UN PASSAGE VERT N'EST PLUS UN PASSAGE QUI A TOUT LU SANS LE DIRE
+# (2026-11-21). Il lit la production À CHAQUE FOIS, même sans place d'enquête
+# (seule l'ouverture en dépend), et ce qu'il n'a pas pu lire, juger ou confier
+# part dans UNE issue `[SENTINELLE PARTIELLE]` (label `sentinelle-partielle`,
+# `github.token`, jamais `claude`) que le centre de pilotage affiche. Avant, une
+# lecture tronquée ou un budget épuisé laissaient « rien à corriger » à l'écran.
+#
 # Fiche : docs/SENTINELLE_AUTONOME.md (la chaîne, ses façons de mourir, les labels).
 # ═══════════════════════════════════════════════════════════════════════════
 name: Sentinelle autonome
@@ -196,6 +203,8 @@ jobs:
             --description "Run Claude perdu, relancé une fois par le veilleur" >/dev/null 2>&1 || true
           gh label create disponibilite --repo "${GITHUB_REPOSITORY}" --color "B60205" --force \
             --description "Sonde de disponibilité du site servi" >/dev/null 2>&1 || true
+          gh label create sentinelle-partielle --repo "${GITHUB_REPOSITORY}" --color "FBCA04" --force \
+            --description "La Sentinelle n'a pas tout lu ou tout confié (état, jamais de correctif automatique)" >/dev/null 2>&1 || true
 
       # ⚠️ VEILLEUR D'ENQUÊTE (A2). Pour chaque issue `sentinelle` OUVERTE non
       # remise à un humain :
@@ -322,17 +331,30 @@ jobs:
           depuis="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           recentes="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state all --label sentinelle --limit 100 \
                 --json createdAt --jq "[.[] | select(.createdAt >= \"${depuis}\")] | length")"
+          # `budget` dit POURQUOI il n'y a plus de place : « atteint », un défaut vivant attendra jusqu'à 24 h et le
+          # pilote doit le savoir (étape « État de lecture ») ; « libre », la file se vide seule au fil des enquêtes.
+          budget=libre
           if [ "${recentes:-0}" -ge 6 ]; then
             places=0
+            budget=atteint
             echo "Budget atteint : ${recentes} enquêtes ouvertes en 24 h, aucune nouvelle." >> "${GITHUB_STEP_SUMMARY}"
           fi
+          echo "budget=${budget}" >> "${GITHUB_OUTPUT}"
           echo "places=${places}" >> "${GITHUB_OUTPUT}"
           echo "libre=$([ "${places}" -gt 0 ] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
           echo "Enquêtes confiées à la machine : ${n}/${max} — ${places} place(s) libre(s)." >> "${GITHUB_STEP_SUMMARY}"
           [ "${h}" -eq 0 ] || echo "${h} enquête(s) attendent une décision humaine (label \`humain\`)." >> "${GITHUB_STEP_SUMMARY}"
 
+      # ⚠️ LE PASSAGE LIT TOUJOURS LA PRODUCTION (2026-11-21, audit « 100 000 », T4 et T9).
+      # Cette étape ne tournait que s'il restait une place d'enquête. Trois enquêtes
+      # en cours, ou le budget de six par 24 h atteint, et le run finissait VERT
+      # sans avoir rien lu : le pilote lisait « rien à corriger », et un défaut neuf
+      # restait invisible jusqu'à 24 h. Seule l'OUVERTURE d'une enquête dépend des
+      # places (« Ouvrir l'enquête » garde `libre == 'true'`) : lire ne coûte ni
+      # agent ni abonnement, et c'est ce qui permet de DIRE ce qui attend
+      # (étape « État de lecture »). Seule la pause empêche encore de lire.
       - name: Lire la production
-        if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true' && steps.encours.outputs.libre == 'true'
+        if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true'
         id: detect
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
@@ -347,7 +369,7 @@ jobs:
             const v = JSON.parse(require('fs').readFileSync('/tmp/verdict.json', 'utf8'));
             // Le résumé d'un run est PUBLIC : ni message, ni pile, ni source (E-10). Le détail reste dans /tmp.
             const r = (c) => c && { famille: c.famille, n: c.n, comptes: c.comptes, cle: require('crypto').createHash('sha256').update(String(c.cle)).digest('hex').slice(0, 8) };
-            process.stdout.write('## Verdict\n\n\`\`\`json\n' + JSON.stringify({ fenetreHeures: v.fenetreHeures, lues: v.lues, ecartees: v.ecartees, retenues: v.retenues, sousLeSeuil: v.sousLeSeuil, parFamille: v.parFamille, sources: v.sources, boutonsSuspects: v.boutonsSuspects, identitesNonVerifiees: v.identitesNonVerifiees, cible: r(v.cible), candidats: (v.candidats || []).map(r) }, null, 2) + '\n\`\`\`\n');
+            process.stdout.write('## Verdict\n\n\`\`\`json\n' + JSON.stringify({ fenetreHeures: v.fenetreHeures, lues: v.lues, ecartees: v.ecartees, retenues: v.retenues, sousLeSeuil: v.sousLeSeuil, parFamille: v.parFamille, sources: v.sources, lecture: v.lecture, boutonsSuspects: v.boutonsSuspects, identitesNonVerifiees: v.identitesNonVerifiees, cible: r(v.cible), candidats: (v.candidats || []).map(r) }, null, 2) + '\n\`\`\`\n');
           " >> "${GITHUB_STEP_SUMMARY}"
           cible="$(node -e "const v=require('/tmp/verdict.json');process.stdout.write(v.cible?'oui':'non')")"
           echo "cible=${cible}" >> "${GITHUB_OUTPUT}"
@@ -378,8 +400,14 @@ jobs:
       # ⚠️ ON AVANCE DANS LES CANDIDATS (ASTRA-08) et on SAUTE les titres encore
       # ouverts (dont `humain`) ; ≥ 2 correctifs déployés sur le même titre =
       # RÉCIDIVE → issue `humain` sans `claude` (A4).
+      # ⚠️ ELLE TOURNE MÊME SANS PLACE LIBRE (2026-11-21) : elle compte alors les
+      # défauts VIVANTS et n'en retient aucun (`attente`). `choisirCibles` est
+      # stable par préfixe (banc T4-19) : couper la liste des vivants aux places
+      # libres EST la sélection d'avant. ⚠️ `PLACES` vaut « 0 » quand tout est
+      # pris : l'ancienne lecture (`places > 0 ? places : 1`) en aurait ouvert une.
+      # Illisible ou absent, il vaut 1 comme avant.
       - name: Ce défaut a-t-il déjà été corrigé ?
-        if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true' && steps.encours.outputs.libre == 'true' && steps.detect.outputs.cible == 'oui'
+        if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true' && steps.detect.outputs.cible == 'oui'
         id: dedup
         env:
           GH_TOKEN: ${{ github.token }}
@@ -434,23 +462,123 @@ jobs:
               enrichies++;
             }
             fs.writeFileSync("/tmp/fermees-enrichies.json", JSON.stringify(fermees, null, 2));
-            const places = Number.parseInt(process.env.PLACES || "1", 10);
-            const cibles = choisirCibles(liste, fermees, ouvertes, Number.isInteger(places) && places > 0 ? places : 1)
-              .map((c) => ({ cible: c, escalade: escaladeRecidive(c, fermees) }));
+            // Places : un entier écrit par « Enquêtes en parallèle », zéro compris ; tout autre texte vaut 1.
+            const brut = String(process.env.PLACES || "");
+            const places = /^[0-9]+$/.test(brut) ? Number(brut) : 1;
+            // Tous les défauts VIVANTS d abord, puis la coupe aux places libres : ce qui dépasse attend, et se compte.
+            const vivantes = choisirCibles(liste, fermees, ouvertes, Math.max(liste.length, 1));
+            const cibles = vivantes.slice(0, places).map((c) => ({ cible: c, escalade: escaladeRecidive(c, fermees) }));
+            const attente = vivantes.length - cibles.length;
             const cible = cibles.length ? cibles[0].cible : null;
             const escalade = cibles.length ? cibles[0].escalade : null;
             const recidives = cibles.filter((x) => x.escalade && x.escalade.recidive).length;
             if (cible) { v.cible = cible; v.escalade = escalade; v.cibles = cibles; fs.writeFileSync("/tmp/verdict.json", JSON.stringify(v, null, 2)); }
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, "deja=" + (cible ? "non" : "oui") + "\nrecidive=" + (escalade && escalade.recidive ? "oui" : "non") + "\nn=" + cibles.length + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "deja=" + (cible ? "non" : "oui") + "\nrecidive=" + (escalade && escalade.recidive ? "oui" : "non") + "\nn=" + cibles.length + "\nattente=" + attente + "\n");
+            const issue = cible ? cibles.length + " cible(s) retenue(s)"
+              : attente ? "aucune cible retenue faute de place"
+                : "aucune cible vivante (occurrences antérieures au correctif, titre déjà ouvert, ou correctif en vol)";
             const bilan = [
               "## Dédup datée sur le déploiement", "",
               fermees.length + " enquête(s) fermée(s) lue(s), " + enrichies + " datée(s) sur un déploiement vert, " + enVol + " correctif(s) fusionné(s) dont le déploiement est en cours (on attend), " + (ouvertes.length - enVol) + " ouverte(s) ; "
-                + liste.length + " candidat(s) -> " + (cible ? cibles.length + " cible(s) retenue(s)" : "aucune cible vivante (occurrences antérieures au correctif, titre déjà ouvert, ou correctif en vol)")
+                + liste.length + " candidat(s) -> " + issue
+                + (attente ? " ; " + attente + " défaut(s) vivant(s) en attente d une place" : "")
                 + (recidives ? " ; RÉCIDIVE : " + recidives + " défaut(s) déjà corrigé(s) au moins deux fois, remis à un humain" : ""),
               "",
             ];
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, bilan.join("\n"));
           '
+
+      # ⚠️ CE QUE LE PASSAGE N'A PAS LU OU PAS CONFIÉ SE DIT AU PILOTE (2026-11-21, T4 et T9).
+      # Une lecture tronquée, une famille qui n'a pas pu juger, une ancienneté relue
+      # en partie, ou des défauts vivants qui attendent parce que le budget du jour
+      # est atteint : dans ces cas « rien à corriger » ne prouve pas le calme. UNE
+      # issue `[SENTINELLE PARTIELLE]`, label `sentinelle-partielle` SEUL, que le
+      # centre de pilotage affiche (« La Sentinelle n'a pas tout traité », voyant
+      # orange). Même patron que l'étape « Tableau » de veille-production.yml :
+      #  · `github.token`, jamais SENTINELLE_TOKEN : l'issue ne déclenche aucun
+      #    workflow et n'est jamais confiée à un agent — un volume ne se « répare »
+      #    pas par une PR. Ni `claude`, ni `sentinelle` (elle compterait comme une
+      #    enquête et prendrait une place) ;
+      #  · par LABEL puis titre filtré localement, jamais `--search` (index en retard, #316) ;
+      #  · `continue-on-error` + `trap … ERR` : un état non publié n'est pas une
+      #    Sentinelle muette, mais il doit se VOIR (annotation et résumé).
+      # Titre et corps viennent de `etatPartiel` (scripts/sentinelle-detecter.mjs) :
+      # des phrases FIXES et des nombres, composés de codes fermés — rien de ce
+      # qu'un navigateur a envoyé n'y entre.
+      # ⚠️ HYSTÉRÉSIS À LA FERMETURE : l'issue n'est refermée que si elle n'a pas été
+      # réécrite depuis plus de 90 minutes. Chaque ouverture et chaque fermeture
+      # envoient un e-mail et changent le voyant ; sans cette attente, une panne
+      # passagère en produirait une paire par heure. Le corps porte l'heure de sa
+      # mise à jour : chaque passage partiel repousse la fermeture.
+      # ⚠️ C'EST CETTE HEURE DU CORPS QUI DÉCIDE (`etatsAFermer`), jamais `updatedAt` :
+      # un commentaire avance `updatedAt`, et le dépôt est public — un tiers tenait
+      # l'issue ouverte, donc le voyant orange, en commentant toutes les heures. La
+      # conversation est en outre VERROUILLÉE à chaque écriture (`gh issue lock`).
+      - name: État de lecture (le dire au pilote)
+        if: github.event_name != 'pull_request' && steps.detect.outcome == 'success'
+        id: lecture
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTENTE: ${{ steps.dedup.outputs.attente }}
+          BUDGET: ${{ steps.encours.outputs.budget }}
+        run: |
+          set -euo pipefail
+          # Sous continue-on-error, un échec ici laisse le run vert : il doit quand même se VOIR (annotation + résumé).
+          trap 'echo "::warning title=État de lecture non publié::Issue [SENTINELLE PARTIELLE] non écrite : gh, label ou API en échec ; le pilotage affiche encore son état précédent" ; echo "État de lecture NON publié (voir l annotation)" >> "${GITHUB_STEP_SUMMARY}"' ERR
+          R="${GITHUB_REPOSITORY}"
+          run_url="${GITHUB_SERVER_URL}/${R}/actions/runs/${GITHUB_RUN_ID}"
+          # ATTENTE est vide quand la dédup a été sautée (aucune cible) : zéro. Pas d apostrophe dans ce bloc.
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const { etatPartiel } = await import("./scripts/sentinelle-detecter.mjs");
+            const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
+            const brut = String(process.env.ATTENTE || "");
+            const e = etatPartiel(v, { attente: /^[0-9]+$/.test(brut) ? Number(brut) : 0, budgetAtteint: process.env.BUDGET === "atteint" });
+            fs.writeFileSync("/tmp/partiel-etat.txt", e.partiel ? "oui" : "non");
+            fs.writeFileSync("/tmp/partiel-titre.txt", e.titre);
+            fs.writeFileSync("/tmp/partiel.md", e.corps + "\n");
+          '
+          if [ "$(cat /tmp/partiel-etat.txt)" = "oui" ]; then
+            # Le corps est écrit dans un fichier puis passé par --body-file : rien n'est interpolé dans une commande.
+            {
+              cat /tmp/partiel.md
+              echo
+              echo "- Passage : ${run_url}"
+              echo "- Mis à jour : $(date -u +%FT%TZ)"
+            } > /tmp/partiel-corps.md
+            { echo "## La Sentinelle n'a pas tout traité"; echo; cat /tmp/partiel.md; echo; } >> "${GITHUB_STEP_SUMMARY}"
+            existante="$(gh issue list --repo "${R}" --state open --label sentinelle-partielle --limit 20 --json number,title \
+                          --jq '[.[] | select(.title | startswith("[SENTINELLE PARTIELLE]"))] | .[0].number // empty')"
+            if [ -n "${existante}" ]; then
+              gh issue edit "${existante}" --repo "${R}" --title "$(cat /tmp/partiel-titre.txt)" --body-file /tmp/partiel-corps.md >/dev/null
+              echo "État de lecture mis à jour : #${existante}" >> "${GITHUB_STEP_SUMMARY}"
+            else
+              # Le label peut manquer si « Labels du canal » n'a pas pu le créer.
+              gh label create sentinelle-partielle --repo "${R}" --color "FBCA04" --force \
+                --description "La Sentinelle n'a pas tout lu ou tout confié (état, jamais de correctif automatique)" >/dev/null 2>&1 || true
+              numero="$(gh issue create --repo "${R}" --title "$(cat /tmp/partiel-titre.txt)" \
+                         --body-file /tmp/partiel-corps.md --label sentinelle-partielle | grep -oE '[0-9]+$')"
+              echo "État de lecture publié : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
+            fi
+            # Verrouillée : seul un compte ayant le droit d'écrire y commente. Rejoué à chaque écriture (une issue
+            # ouverte avant ce verrou, ou un verrou refusé la fois d'avant) ; son échec ne retire rien à l'état publié.
+            gh issue lock "${existante:-${numero}}" --repo "${R}" >/dev/null 2>&1 || true
+          else
+            # Tout est lu et confié : refermer — mais seulement une note que plus aucun passage n'a réécrite depuis 90 min.
+            # L'heure lue est la ligne « - Mis à jour : … » du CORPS, pas updatedAt (`etatsAFermer`, qui filtre aussi le titre).
+            gh issue list --repo "${R}" --state open --label sentinelle-partielle --limit 20 --json number,title,updatedAt,body > /tmp/partielles.json
+            a_fermer="$(node --input-type=module -e '
+              import fs from "node:fs";
+              const { etatsAFermer } = await import("./scripts/sentinelle-detecter.mjs");
+              process.stdout.write(etatsAFermer(JSON.parse(fs.readFileSync("/tmp/partielles.json", "utf8"))).join(" "));
+            ')"
+            for n in ${a_fermer}; do
+              gh issue comment "${n}" --repo "${R}" --body "✅ La Sentinelle a de nouveau tout lu et tout confié — ${run_url}" >/dev/null
+              gh issue close "${n}" --repo "${R}" --reason completed >/dev/null
+              echo "État de lecture refermé : #${n}" >> "${GITHUB_STEP_SUMMARY}"
+            done
+          fi
 
       # ⚠️ Le corps de l'issue contient des messages d'erreur venus des
       # NAVIGATEURS des utilisateurs : c'est de la donnée hostile. `corpsIssue`
@@ -628,9 +756,10 @@ jobs:
 
       # ⚠️ Refermée seulement quand le détecteur a VRAIMENT rendu un verdict
       # (`steps.detect.outcome == 'success'`) : un run vert où « Lire la
-      # production » a été sautée (une enquête en cours, pause) ne prouve rien
-      # sur le détecteur, et refermer l'alerte sur ce vert-là serait un silence
-      # de plus qui ressemble au calme.
+      # production » a été sautée ne prouve rien sur le détecteur, et refermer
+      # l'alerte sur ce vert-là serait un silence de plus qui ressemble au calme.
+      # Depuis le 2026-11-21 le passage lit même sans place d'enquête : il ne
+      # reste que la PAUSE pour sauter la lecture.
       - name: Sentinelle de nouveau vivante (refermer l'alerte)
         if: success() && github.event_name != 'pull_request' && steps.detect.outcome == 'success'
         env:

@@ -21,7 +21,7 @@
 // La quatrième famille (2026-11-06) juge les parcours avec le MÊME registre et
 // la MÊME règle que le pilotage du nuage — jamais une copie.
 import { CONTRATS, contratDe } from "../supabase/functions/_shared/contrats-actions.js";
-import { regrouperFlux, issueFlux, melanger } from "../supabase/functions/_shared/parcours.js";
+import { regrouperFlux, issueFlux, melanger, TRAFIC_ECARTE } from "../supabase/functions/_shared/parcours.js";
 
 // Messages qui ne portent AUCUNE information exploitable : les corriger est
 // impossible, les compter fait du bruit qui masque le vrai signal.
@@ -503,10 +503,13 @@ export const PARCOURS_VERIFICATION = Object.freeze({ parAction: 30, total: 150 }
 export function uidsAVerifier(candidats, { parAction = PARCOURS_VERIFICATION.parAction, total = PARCOURS_VERIFICATION.total, aleatoire = null } = {}) {
   const parA = new Map();
   for (const c of Array.isArray(candidats) ? candidats : []) {
-    if (!c || !c.action) continue;
-    const e = parA.get(c.action) || new Set();
+    // Un parcours se range par ACTION ; une erreur JS, un appel refusé ou un bouton n'en ont pas
+    // et se rangent par leur clé (2026-11-21) — sans elle, ces trois familles n'avaient aucun lot.
+    const cle = c && (c.action || c.cle);
+    if (!cle) continue;
+    const e = parA.get(cle) || new Set();
     for (const u of c._uids || []) e.add(u);
-    parA.set(c.action, e);
+    parA.set(cle, e);
   }
   const lots = [];
   let reste = total, nonVerifies = 0;
@@ -562,6 +565,81 @@ const BOUTON_MIN_CLICS = Number(process.env.SENTINELLE_BOUTON_MIN || 10);
 const BOUTON_AVANCE_MS = 1100;
 const aSonEffet = (suite, t, fenetre) => suite.some((te) => te > t - BOUTON_AVANCE_MS && te <= t + fenetre);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CE QUI N'EST PAS L'EFFET D'UN CLIC, ET CE QUI N'EST PAS UN CLIC DU PUBLIC
+// (2026-11-21, audit « la surveillance tient-elle à 100 000 ? », T4)
+//
+// ① LES MARQUEURS DE POSE. Six lots d'interface émettent une `action` quand ils
+// se POSENT sur la page (`if (apply()) track("ui_v…")`), deux fois par
+// chargement, jamais sur un geste. Mesuré le 21/11 sur 72 h : 984 des 1 909
+// « effets » lus (52 %). Un marqueur tombé dans les 3 s d'un clic le sauvait
+// donc à tort, et la moitié du budget de lecture partait dans du bruit.
+// ⚠️ LISTE FERMÉE, PAS LE MOTIF « ui_v* » : `ui_v2_nav`, `ui_v4a5_ouvre` ou
+// `ui_v7_profil_onglet` sont de VRAIS effets d'un clic. Le banc confronte cette
+// liste au code (`js/*.js`) : un marqueur de pose ajouté sans l'inscrire ici le
+// fait rougir, et c'est voulu — l'inscrire touche `scripts/`, donc la contre-revue.
+// ⚠️ C'EST LE SEUL CHANGEMENT DU LOT QUI PEUT AJOUTER UN CLIC MORT. Les autres
+// gardes (identité serveur, comptes anciens, libellé du code, écran réel, clics
+// rageurs, une seule enquête bouton) sont intactes.
+// L'exclusion ne vit QUE dans `indexEffets` : un filtre côté serveur
+// (`or=(…)`) n'aurait pu être éprouvé qu'en production, le jour où la famille
+// aurait enfin eu quelque chose à juger.
+//
+// ② LE TRAFIC HORS PUBLIC. Un robot ou une émulation (`meta.trafic`, posé par
+// js/telemetry.js) ne pèse pas : même règle et MÊME ensemble que la famille
+// parcours (`TRAFIC_ECARTE`, parcours.js). L'équipe RESTE — ses clics sont de
+// vrais clics, et une panne vue par l'équipe est une panne. Ce sont les CLICS
+// qui sortent, jamais les seuls « effets » : retirer les effets d'un appareil en
+// gardant ses clics ferait de chacun d'eux un clic mort.
+// ═══════════════════════════════════════════════════════════════════════════
+export const MARQUEURS_POSE = Object.freeze(["ui_v4a4_pose", "ui_v6_composer", "ui_v6a_inbox", "ui_v6b_profil", "ui_v6c_pose", "ui_v7_lot"]);
+const ENSEMBLE_MARQUEURS = new Set(MARQUEURS_POSE);
+/** Un marqueur de pose : émis par le chargement de la page, jamais par un geste. */
+export const estEffetAmbiant = (e) => ENSEMBLE_MARQUEURS.has(String((e && e.action) || ""));
+/** Le clic vient-il d'un robot ou d'une émulation ? (`trafic` à plat dans la lecture, `meta.trafic` sinon.) */
+export const estHorsPublic = (c) => TRAFIC_ECARTE.has(String((c && (c.trafic || lireMeta(c.meta).trafic)) || ""));
+
+/**
+ * Index session → instants des effets, triés. Sans lui, chaque clic balaierait
+ * TOUS les effets. Les marqueurs de pose n'y entrent pas. FONCTION PURE, seule
+ * source des deux classements (`classerBoutons`, `classerBoutonsMorts`).
+ */
+export function indexEffets(effets = []) {
+  const parSession = new Map();
+  for (const e of Array.isArray(effets) ? effets : []) {
+    const k = String((e && e.session_id) || "");
+    if (!k || estEffetAmbiant(e)) continue;
+    if (!parSession.has(k)) parSession.set(k, []);
+    parSession.get(k).push(Date.parse(e.client_ts));
+  }
+  for (const liste of parSession.values()) liste.sort((a, b) => a - b);
+  return parSession;
+}
+
+// Un identifiant de session part dans une URL (`session_id=in.(…)`) : il est
+// écrit par le NAVIGATEUR, donc borné à une forme sûre — ni virgule, ni
+// parenthèse, ni longueur libre. Mesuré le 21/11 : 27 caractères au plus,
+// aucune ligne hors de cette forme. Un clic dont la session n'a pas cette forme
+// ne pèse rien : son effet ne pourrait pas être relu.
+const RE_SESSION = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * La lecture de la famille bouton, en deux temps (voir `lireFamilleBoutons`).
+ *  · sessionsMax : sessions relues par passage, tous groupes suspects confondus ;
+ *  · sessionsParRequete × 65 caractères = 2 600 au plus dans le filtre d'une URL ;
+ *  · pagesParRequete : au-delà, le lot est dit « non lu » (jamais lu à moitié) ;
+ *  · margeMs : un effet encore en route ne doit pas faire passer un clic récent
+ *    pour mort — les clics s'arrêtent deux minutes avant l'instant du passage,
+ *    les effets commencent deux minutes plus tôt et vont jusqu'à l'instant ;
+ *  · dureeMaxMs : le job a 15 minutes, et un job tué par son délai ne laisse ni
+ *    verdict ni alerte. Passé ce délai, on ne lit plus de nouveau lot.
+ */
+export const BOUTONS_LECTURE = Object.freeze({ sessionsMax: 2000, sessionsParRequete: 40, pagesParRequete: 5, margeMs: 120_000, dureeMaxMs: 120_000 });
+/** Ce que le classement du résumé couvre désormais — écrit DANS le classement, pour qu'il ne soit pas lu pour plus. */
+export const PORTEE_SUSPECTS = "groupes jugés, comptes seulement";
+/** La clé de groupe d'un clic — une seule composition, pour le classement et pour ceux qui le filtrent. */
+const cleBouton = (c) => `bouton ${String((c && c.screen) || "")} · ${String((c && c.action) || "").trim().slice(0, 60)}`;
+
 /**
  * Range les libellés de clic par TAUX D'EFFET OBSERVÉ, du plus suspect au moins.
  * FONCTION PURE — éprouvée sans base et sans réseau, comme ses deux sœurs.
@@ -573,15 +651,7 @@ export function classerBoutons(clics = [], effets = [], options = {}) {
   const fenetre = options.fenetreMs ?? BOUTON_FENETRE_MS;
   const min = options.min ?? BOUTON_MIN_CLICS;
 
-  // Index par session : sans lui, chaque clic balaierait TOUS les effets.
-  const parSession = new Map();
-  for (const e of effets) {
-    const k = String(e.session_id || "");
-    if (!k) continue;
-    if (!parSession.has(k)) parSession.set(k, []);
-    parSession.get(k).push(Date.parse(e.client_ts));
-  }
-  for (const liste of parSession.values()) liste.sort((a, b) => a - b);
+  const parSession = indexEffets(effets);
 
   const groupes = new Map();
   for (const c of clics) {
@@ -679,11 +749,15 @@ export function libelleDuCode(libelle, libelles) {
 
 /**
  * Candidats « bouton mort », de la même forme que ceux de `classer`/`classerApi`.
- * FONCTION PURE. `clics` : [{action, screen, session_id, client_ts, received_at, auth_uid, app_version}].
+ * FONCTION PURE. `clics` : [{action, screen, session_id, client_ts, received_at, auth_uid, app_version, trafic}].
  * `options` : { libelles: Set, ecrans: Set, comptesAnciens: Set | "tous", avecUids }.
  * Sans `libelles`, `ecrans` ou `comptesAnciens`, rien n'est retenu : l'absence
- * de preuve n'est jamais une preuve. `comptesAnciens: "tous"` ne sert qu'au
- * premier passage de `principal`, qui collecte les comptes à vérifier.
+ * de preuve n'est jamais une preuve. `comptesAnciens: "tous"` ne sert qu'aux
+ * premiers passages de `lireFamilleBoutons`, qui désignent les sessions puis
+ * les comptes à relire ; `avecUids` y ajoute `_uids` et `_sessions`, qui ne
+ * sortent jamais du détecteur.
+ * Rend aussi `horsPublic` (clics de robots et d'émulations, écartés) et
+ * `sessionsInvalides` (clics dont la session ne peut pas être relue).
  */
 export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
   const fenetre = options.fenetreMs ?? BOUTON_FENETRE_MS;
@@ -692,34 +766,37 @@ export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
   const ecrans = options.ecrans instanceof Set ? options.ecrans : new Set();
   const anciens = options.comptesAnciens;
   const estAncien = (uid) => anciens === "tous" || (anciens instanceof Set && anciens.has(uid));
-  const parSession = new Map();
-  for (const e of effets) {
-    const k = String(e.session_id || "");
-    if (!k) continue;
-    if (!parSession.has(k)) parSession.set(k, []);
-    parSession.get(k).push(Date.parse(e.client_ts));
-  }
+  const parSession = indexEffets(effets);
   const groupes = new Map();
   let nonVerifiees = 0;
   let recents = 0;
+  let horsPublic = 0;
+  let sessionsInvalides = 0;
   for (const c of clics) {
     const t = Date.parse(c.client_ts);
     const recu = Date.parse(c.received_at);
     if (!Number.isFinite(t) || !Number.isFinite(recu)) continue;
     const uid = String(c.auth_uid || "");
     if (!RE_COMPTE.test(uid)) { nonVerifiees++; continue; }
+    // Robot ou émulation : le clic ne pèse pas, et il est compté (voir l'en-tête « hors public »).
+    if (estHorsPublic(c)) { horsPublic++; continue; }
     if (!estAncien(uid)) { recents++; continue; }
     const ecran = String(c.screen || "");
     const libelle = String(c.action || "").trim().slice(0, 60);
     if (!ecrans.has(ecran) || !libelleDuCode(libelle, libelles)) continue;
-    const cle = `bouton ${ecran} · ${libelle}`;
+    // Une session dont l'identifiant ne peut pas partir dans une URL ne peut pas être relue : le
+    // clic ne pèse rien. Compté À PART des identités (`nonVerifiees` compte des COMPTES).
+    const sess = String(c.session_id || "");
+    if (!RE_SESSION.test(sess)) { sessionsInvalides++; continue; }
+    const cle = cleBouton(c);
     if (!groupes.has(cle)) {
       groupes.set(cle, { cle, famille: "bouton", ecran, libelle, message: `Clic sans effet : « ${libelle} » (écran ${ecran})`,
-        n: 0, clics: 0, avecEffet: 0, comptes: new Set(), rageurs: new Set(), morts: new Map(), dernier: null, exemple: null, versions: {}, occurrences: [] });
+        n: 0, clics: 0, avecEffet: 0, comptes: new Set(), rageurs: new Set(), morts: new Map(), sessions: new Set(), dernier: null, exemple: null, versions: {}, occurrences: [] });
     }
     const g = groupes.get(cle);
+    // TOUTES les sessions du groupe, effet ou non : ce sont elles qu'il faut relire pour le juger.
+    g.sessions.add(sess);
     g.clics++;
-    const sess = String(c.session_id || "");
     if (aSonEffet(parSession.get(sess) || [], t, fenetre)) { g.avecEffet++; continue; }
     g.comptes.add(uid);
     // L'instant d'une occurrence est celui du SERVEUR (voir l'en-tête).
@@ -734,14 +811,14 @@ export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
     g.morts.set(sess, precedents);
   }
   const candidates = [...groupes.values()]
-    .map(({ morts, ...g }) => ({ ...g, comptes: g.comptes.size, rageurs: g.rageurs.size, _uids: [...g.comptes],
+    .map(({ morts, sessions, ...g }) => ({ ...g, comptes: g.comptes.size, rageurs: g.rageurs.size, _uids: [...g.comptes], _sessions: [...sessions],
       tauxEffet: Math.round((100 * g.avecEffet) / g.clics), occurrences: bornerOccurrences(g.occurrences) }))
     .filter((g) => g.clics >= seuils.clicsMin && g.comptes >= seuils.comptesMin
       && g.rageurs >= seuils.rageursMin && g.tauxEffet <= seuils.tauxEffetMax)
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
-    // Les identifiants ne sortent JAMAIS du détecteur (le verdict paraît dans un résumé public).
-    .map(({ _uids, ...g }) => (options.avecUids ? { ...g, _uids } : g));
-  return { candidates, nonVerifiees, recents };
+    // Les identifiants — comptes ET sessions — ne sortent JAMAIS du détecteur (le verdict paraît dans un résumé public).
+    .map(({ _uids, _sessions, ...g }) => (options.avecUids ? { ...g, _uids, _sessions } : g));
+  return { candidates, nonVerifiees, recents, horsPublic, sessionsInvalides };
 }
 
 /**
@@ -763,23 +840,124 @@ export function masquerSuspects(liste, { libelles, ecrans } = {}) {
  * Comptes créés depuis au moins `ancienneteMinMs`, lus sur l'API d'administration
  * de l'authentification (`auth.users.created_at`, jamais `profiles`). Bornés à
  * `comptesLusMax` lectures ; un compte illisible n'est pas ancien.
+ *
+ * ⚠️ UN REFUS N'EST PLUS UN « COMPTE RÉCENT » MUET (2026-11-21). La garde se ferme
+ * toujours — illisible = pas ancien — mais chaque lecture refusée (429, 5xx,
+ * délai, réseau) est COMPTÉE dans `echecs.n`, que le verdict publie. Un 404
+ * n'en est pas un : le compte a été supprimé, la réponse est lue.
+ * ⚠️ COUPE-CIRCUIT : un paquet ENTIER de dix lectures refusées dit que le service
+ * ne répond plus ; `echecs.coupe` se lève, et plus rien n'est lu avec ce même
+ * compteur — le reste est compté refusé. Sans lui : jusqu'à 450 lectures par
+ * paquets de dix, dix secondes de délai chacun, soit sept minutes et demie dans
+ * un job de 15 minutes dont le dépassement ne laisse aucun verdict.
  */
-export async function lireComptesAnciens({ url, cle, uids, maintenant = Date.now() }) {
+export async function lireComptesAnciens({ url, cle, uids, maintenant = Date.now(), echecs = { n: 0 } }) {
   const anciens = new Set();
   const liste = [...new Set(uids)].filter((u) => RE_COMPTE.test(u)).slice(0, BOUTON_MORT.comptesLusMax);
   for (let i = 0; i < liste.length; i += 10) {
-    await Promise.all(liste.slice(i, i + 10).map(async (uid) => {
+    const paquet = liste.slice(i, i + 10);
+    if (echecs.coupe) { echecs.n += paquet.length; continue; }
+    const avant = echecs.n;
+    await Promise.all(paquet.map(async (uid) => {
       try {
         // Délai borné : la famille bouton est un confort, elle ne bloque jamais la détection.
         const r = await fetch(`${url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cle, Authorization: "Bearer " + cle }, signal: AbortSignal.timeout(10_000) });
-        if (!r.ok) return;
+        if (!r.ok) { if (r.status !== 404) echecs.n++; return; }
         const u = await r.json();
         const cree = Date.parse(u && u.created_at);
         if (Number.isFinite(cree) && maintenant - cree >= BOUTON_MORT.ancienneteMinMs) anciens.add(uid);
-      } catch (e) { /* illisible = pas ancien : la garde se ferme, elle ne s'ouvre jamais */ }
+      } catch (e) { echecs.n++; /* illisible = pas ancien : la garde se ferme, elle ne s'ouvre jamais */ }
     }));
+    if (paquet.length === 10 && echecs.n - avant === 10) echecs.coupe = true;
   }
   return anciens;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'ANCIENNETÉ SE RELIT PAR CANDIDAT, AVEC UNE MÉMOIRE (2026-11-21, T4)
+//
+// Avant : les comptes de TOUS les candidats mis bout à bout, puis les 60
+// premiers relus. Dès qu'un défaut touchait 60 comptes, les suivants n'étaient
+// plus relus du tout — donc jamais retenus — et rien ne le disait.
+// Désormais : un tirage par candidat (`uidsAVerifier`), un budget compté en
+// comptes DISTINCTS réellement lus (un compte déjà relu dans ce passage ne
+// coûte rien), et ce qui manque est rendu à l'appelant, qui le publie.
+// ═══════════════════════════════════════════════════════════════════════════
+export const ANCIENNETE = Object.freeze({ parCandidat: 30, total: 150 });
+
+/**
+ * Rend `anciensDe(candidats, { parAction })` → `{ anciens, lus, illisibles }` :
+ * `anciens` et `lus` sont la mémoire PARTAGÉE du passage (les trois familles en
+ * texte libre et les boutons s'y servent), `illisibles` les lectures refusées
+ * pendant cet appel. `echecs` est le compteur commun au passage : c'est lui qui
+ * porte le coupe-circuit de `lireComptesAnciens`.
+ */
+export function relecteurAnciennete({ url, cle, maintenant = Date.now(), lire = lireComptesAnciens, total = ANCIENNETE.total, aleatoire = null, echecs = { n: 0 } } = {}) {
+  const lus = new Set();
+  const anciens = new Set();
+  return async function anciensDe(candidats, { parAction = ANCIENNETE.parCandidat } = {}) {
+    // L'échantillon se tire PAR candidat, sans budget ici : le budget se compte plus bas,
+    // en comptes distincts, une fois la mémoire consultée.
+    const choix = uidsAVerifier(candidats, { parAction, total: Infinity, aleatoire });
+    const aLire = [];
+    const pris = new Set();
+    for (const lot of choix.lots) for (const u of lot.uids) {
+      if (lus.has(u) || pris.has(u)) continue;
+      // Un identifiant qui n'a pas la forme d'un compte ne sera jamais ancien : inutile de le lire.
+      if (!RE_COMPTE.test(String(u))) { lus.add(u); continue; }
+      if (aLire.length >= total) continue;
+      pris.add(u);
+      aLire.push(u);
+    }
+    const avant = echecs.n;
+    for (let i = 0; i < aLire.length; i += 10) {
+      const paquet = aLire.slice(i, i + 10);
+      for (const u of await lire({ url, cle, uids: paquet, maintenant, echecs })) anciens.add(u);
+      // Lu, ou refusé et COMPTÉ : dans les deux cas le compte n'est pas relu une seconde fois.
+      for (const u of paquet) lus.add(u);
+    }
+    return { anciens, lus, illisibles: echecs.n - avant };
+  };
+}
+
+/**
+ * Combien de candidats NON retenus gardent au moins un compte jamais relu ?
+ * Ce sont les seuls pour qui « l'ancienneté n'a pas été lue en entier » change
+ * quelque chose : un défaut RETENU sur un échantillon est jugé (trois comptes
+ * anciens suffisent), il n'est pas « lu en partie ». Compter tout compte non
+ * relu aurait passé l'écran à l'orange à chaque vrai incident. FONCTION PURE.
+ */
+export function nonRetenusNonRelus(premiers, retenus, lus) {
+  const cles = new Set((Array.isArray(retenus) ? retenus : []).map((c) => c && c.cle));
+  const relus = lus instanceof Set ? lus : new Set();
+  return (Array.isArray(premiers) ? premiers : []).filter((c) => c && !cles.has(c.cle) && (c._uids || []).some((u) => !relus.has(u))).length;
+}
+
+/** Découpe des sessions en lots sûrs pour une URL : dédoublonnées, de forme bornée, 40 au plus. FONCTION PURE. */
+export function lotsSessions(sessions, parLot = BOUTONS_LECTURE.sessionsParRequete) {
+  const valides = [...new Set([...(sessions || [])].map(String))].filter((s) => RE_SESSION.test(s));
+  const lots = [];
+  for (let i = 0; i < valides.length; i += parLot) lots.push(valides.slice(i, i + parLot));
+  return lots;
+}
+
+/**
+ * Quelles sessions relire, sous un budget : un groupe est pris EN ENTIER ou pas
+ * du tout, dans l'ordre reçu (les comptes d'abord). Un groupe coupé au budget
+ * serait jugé sur une partie de ses sessions — des effets manqueraient, et un
+ * bouton vivant passerait pour mort. FONCTION PURE.
+ */
+export function sessionsALire(groupes, { total = BOUTONS_LECTURE.sessionsMax } = {}) {
+  const choisies = new Set();
+  const juges = [];
+  let nonJuges = 0;
+  for (const g of Array.isArray(groupes) ? groupes : []) {
+    const nouvelles = [...new Set((g && g._sessions) || [])].filter((s) => !choisies.has(s));
+    if (nouvelles.length > total - choisies.size) { nonJuges++; continue; }
+    for (const s of nouvelles) choisies.add(s);
+    juges.push(g.cle);
+  }
+  return { sessions: [...choisies], juges, nonJuges };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1282,6 +1460,17 @@ export function corpsIssue(v, c, options = {}) {
   return L.join("\n");
 }
 
+// ⚠️ LES TROIS LECTURES « DEVOIR » DISENT SI ELLES ONT TOUT LU (2026-11-21, T4).
+// Elles demandaient les 1 000 (ou « 2 000 », servis 1 000) lignes les plus
+// récentes et s'arrêtaient là, sans drapeau : au-delà, le classement portait
+// sur une fraction de la fenêtre et le verdict n'en disait rien. Elles lisent
+// désormais dix pages, du PLUS RÉCENT au plus ancien, et rendent
+// `{ lignes, complet }`. Tronquée, la lecture reste classée : ses compteurs sont
+// un PLANCHER (jamais un faux positif), et le verdict le dit (`lecture`).
+// Le repli « colonne absente » ne joue que sur un 400 de la PREMIÈRE requête
+// (`e.premiere`) : c'est là seulement qu'une colonne manquante se manifeste.
+const estColonneAbsente = (e) => !!e && e.status === 400 && e.premiere === true;
+
 /**
  * Lit les erreurs récentes via PostgREST. Isolé pour rester testable.
  *
@@ -1301,35 +1490,30 @@ export function corpsIssue(v, c, options = {}) {
  * le client, et les uuid des comptes sont publics (`profiles` est en lecture
  * publique) — la recopier est à la portée de quiconque.
  */
-export async function lireErreurs({ url, cle, heures }) {
-  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const entetes = { headers: { apikey: cle, Authorization: "Bearer " + cle } };
-  const base = `${url}/rest/v1/client_errors?select=message,source,line,stack,url,uid,created_at`;
+export async function lireErreurs({ url, cle, heures, maintenant = Date.now() }) {
+  const base = "client_errors?select=message,source,line,stack,url,uid,created_at";
+  const commun = { url, cle, heures, maintenant, colonne: "created_at", ordre: "desc" };
 
   // Chemin nominal : identité vérifiée par le serveur exigée.
-  const rAuth = await fetch(
-    `${base},auth_uid&auth_uid=not.is.null&created_at=gt.${depuis}&order=created_at.desc&limit=1000`,
-    entetes);
-  if (rAuth.ok) {
-    const lignes = await rAuth.json();
+  let r = null;
+  try { r = await lirePagine({ ...commun, chemin: `${base},auth_uid&auth_uid=not.is.null` }); }
+  // 400 = colonne absente : la migration n'est pas encore appliquée. Toute autre erreur remonte.
+  catch (e) { if (!estColonneAbsente(e)) throw e; }
+  if (r) {
     // ⚠️ LES COMPTES SE COMPTENT SUR L'IDENTITÉ POSÉE PAR LE SERVEUR (2026-09-18),
     // comme `lireApi` le fait déjà pour `user_id`. `uid` est écrit par le client
     // (`window.MY_UID || null`) : fabricable, et souvent vide pour un compte
     // réel — une erreur authentifiée sortait avec `comptes = 0` et perdait sa
     // place dans le classement.
-    for (const l of lignes) l.uid = l.auth_uid;
-    return lignes;
+    for (const l of r.lignes) l.uid = l.auth_uid;
+    return { lignes: r.lignes, complet: r.complet };
   }
-  // 400 = colonne absente : la migration n'est pas encore appliquée.
-  if (rAuth.status !== 400) throw new Error(`client_errors: HTTP ${rAuth.status}`);
 
-  const r = await fetch(`${base}&created_at=gt.${depuis}&order=created_at.desc&limit=1000`, entetes);
-  if (!r.ok) throw new Error(`client_errors: HTTP ${r.status}`);
-  const lignes = await r.json();
+  const repli = await lirePagine({ ...commun, chemin: base });
   // Le repli est SIGNALÉ : sans cette marque, on ne saurait pas que la chaîne
   // travaille encore sur des lignes d'origine non vérifiée.
-  for (const l of lignes) l._origineNonVerifiee = true;
-  return lignes;
+  for (const l of repli.lignes) l._origineNonVerifiee = true;
+  return { lignes: repli.lignes, complet: repli.complet };
 }
 
 // ⚠️ LA TÉLÉMÉTRIE N'EST PAS QUE DE LA PRODUCTION. Les suites e2e écrivent dans
@@ -1345,10 +1529,16 @@ export async function lireErreurs({ url, cle, heures }) {
 // une rendrait un classement mêlant tests et utilisateurs.
 export const FILTRE_PRODUCTION = "&env=eq.production";
 
-/** Chemins des deux lectures « boutons morts » — exportés pour être vérifiés. */
+/**
+ * Chemins des deux lectures « boutons morts » — exportés pour être vérifiés.
+ * Clics (2026-11-21) : identité SERVEUR exigée dès la requête — un clic sans
+ * compte ne pesait déjà rien, et il occupait des pages — et `meta.trafic` à
+ * plat (jamais `meta` entier). Effets : le nom de l'action, pour écarter les
+ * marqueurs de pose (`indexEffets`) ; AUCUN filtre de marqueur ici.
+ */
 export const CHEMINS_BOUTONS = {
-  clics: "telemetry_events?select=action,screen,session_id,client_ts,received_at,auth_uid,app_version&type=eq.click" + FILTRE_PRODUCTION,
-  effets: "telemetry_events?select=session_id,client_ts&type=in.(action,nav,api,flow)" + FILTRE_PRODUCTION,
+  clics: "telemetry_events?select=action,screen,session_id,client_ts,received_at,auth_uid,app_version,trafic:meta->>trafic&auth_uid=not.is.null&type=eq.click" + FILTRE_PRODUCTION,
+  effets: "telemetry_events?select=session_id,client_ts,action&type=in.(action,nav,api,flow)" + FILTRE_PRODUCTION,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1370,11 +1560,8 @@ export const CHEMIN_ERREURS_TELEMETRIE =
   "telemetry_events?select=message,stack,action,screen,app_version,session_id,received_at&type=eq.error" + FILTRE_PRODUCTION;
 
 /** Lit les erreurs JS de la télémétrie — EN PRODUCTION SEULEMENT, comptes réels d'abord. Exporté pour le verrou. */
-export async function lireErreursTelemetrie({ url, cle, heures }) {
-  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const entetes = { headers: { apikey: cle, Authorization: "Bearer " + cle } };
-  const fin = `&received_at=gt.${depuis}&order=received_at.desc&limit=1000`;
-  const base = `${url}/rest/v1/${CHEMIN_ERREURS_TELEMETRIE}`;
+export async function lireErreursTelemetrie({ url, cle, heures, maintenant = Date.now() }) {
+  const commun = { url, cle, heures, maintenant, ordre: "desc" };
   const versLigne = (l, uid) => ({
     message: l.message, stack: l.stack,
     source: l.screen ? `écran ${String(l.screen).slice(0, 60)}` : null, line: null, url: null,
@@ -1382,12 +1569,12 @@ export async function lireErreursTelemetrie({ url, cle, heures }) {
   });
 
   // Même double requête que `lireApi` : identité serveur d'abord, repli SIGNALÉ.
-  const rAuth = await fetch(`${base.replace("select=", "select=auth_uid,")}&auth_uid=not.is.null${fin}`, entetes);
-  if (rAuth.ok) return (await rAuth.json()).map((l) => versLigne(l, l.auth_uid));
-  if (rAuth.status !== 400) throw new Error(`telemetry_events(error): HTTP ${rAuth.status}`);
-  const r = await fetch(`${base.replace("select=", "select=user_id,")}${fin}`, entetes);
-  if (!r.ok) throw new Error(`telemetry_events(error): HTTP ${r.status}`);
-  return (await r.json()).map((l) => ({ ...versLigne(l, l.user_id), _origineNonVerifiee: true }));
+  let r = null;
+  try { r = await lirePagine({ ...commun, chemin: `${CHEMIN_ERREURS_TELEMETRIE.replace("select=", "select=auth_uid,")}&auth_uid=not.is.null` }); }
+  catch (e) { if (!estColonneAbsente(e)) throw e; }
+  if (r) return { lignes: r.lignes.map((l) => versLigne(l, l.auth_uid)), complet: r.complet };
+  const repli = await lirePagine({ ...commun, chemin: CHEMIN_ERREURS_TELEMETRIE.replace("select=", "select=user_id,") });
+  return { lignes: repli.lignes.map((l) => ({ ...versLigne(l, l.user_id), _origineNonVerifiee: true })), complet: repli.complet };
 }
 
 /**
@@ -1429,59 +1616,331 @@ export function fusionnerErreursJs(clientErrors = [], telemetrie = [], options =
 }
 
 /** Lit les appels réseau refusés — EN PRODUCTION SEULEMENT. Exporté pour le verrou. */
-export async function lireApi({ url, cle, heures }) {
-  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const entetes = { headers: { apikey: cle, Authorization: "Bearer " + cle } };
+export async function lireApi({ url, cle, heures, maintenant = Date.now() }) {
+  const commun = { url, cle, heures, maintenant, ordre: "desc" };
   // `app_version` : le build du client (dédup datée sur le déploiement) ;
   // `severity` et `meta` : ce que le client a prouvé sur un statut 0 ou un refus
   // attendu (voir `estDuBruitApi`). Sans ces trois colonnes, le détecteur
   // jugeait sur la cause supposée, jamais sur ce que le client avait mesuré.
-  const base = `${url}/rest/v1/telemetry_events?select=endpoint,http_status,action,user_id,received_at,app_version,severity,meta`;
-  const filtre = `&type=eq.api${FILTRE_PRODUCTION}&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`;
+  const base = "telemetry_events?select=endpoint,http_status,action,user_id,received_at,app_version,severity,meta";
+  const filtre = `&type=eq.api${FILTRE_PRODUCTION}&status=eq.error`;
   // ⚠️ IDENTITÉ POSÉE PAR LE SERVEUR D'ABORD (ASTRA-06, 2026-09-14) : `auth_uid`
   // (migration_debit_et_identite_serveur) — `user_id` est écrit par le client.
   // Même double requête que `lireErreurs` : tant que la colonne n'existe pas,
   // PostgREST rend 400 et l'on retombe sur `user_id`, en le SIGNALANT sur chaque
   // ligne — jamais en silence. Une fois la colonne là, `user_id` prend la valeur
   // de `auth_uid` : `classerApi` continue de compter sur `user_id`.
-  const rAuth = await fetch(`${base},auth_uid&auth_uid=not.is.null${filtre}`, entetes);
-  if (rAuth.ok) {
-    const lignes = await rAuth.json();
-    for (const l of lignes) l.user_id = l.auth_uid;
-    return lignes;
+  let r = null;
+  try { r = await lirePagine({ ...commun, chemin: `${base},auth_uid&auth_uid=not.is.null${filtre}` }); }
+  catch (e) { if (!estColonneAbsente(e)) throw e; }
+  if (r) {
+    for (const l of r.lignes) l.user_id = l.auth_uid;
+    return { lignes: r.lignes, complet: r.complet };
   }
-  if (rAuth.status !== 400) throw new Error(`telemetry_events: HTTP ${rAuth.status}`);
-  const r = await fetch(`${base}${filtre}`, entetes);
-  // ⚠️ On N'AVALE PAS cet échec : une source muette rendrait « rien à signaler »
-  // alors que c'est l'accès qui manque — la panne silencieuse, encore.
-  if (!r.ok) throw new Error(`telemetry_events: HTTP ${r.status}`);
-  const lignes = await r.json();
-  for (const l of lignes) l._origineNonVerifiee = true;
-  return lignes;
+  // ⚠️ On N'AVALE PAS l'échec du repli : une source muette rendrait « rien à signaler »
+  // alors que c'est l'accès qui manque — la panne silencieuse, encore. `lirePagine`
+  // lève sur sa première requête.
+  const repli = await lirePagine({ ...commun, chemin: `${base}${filtre}` });
+  for (const l of repli.lignes) l._origineNonVerifiee = true;
+  return { lignes: repli.lignes, complet: repli.complet };
 }
 
 /**
- * Lit une table de télémétrie EN ENTIER sur la fenêtre, page par page.
+ * Lit une table SUR LA FENÊTRE, page par page, et dit si elle a tout lu.
  *
  * ⚠️ UNE LECTURE PARTIELLE FABRIQUE DE FAUX BOUTONS MORTS : il manquerait des
  * EFFETS, donc des clics paraîtraient sans suite alors qu'ils en avaient une.
- * On rend donc `{ lignes, complet }`, et l'appelant REFUSE de publier un
- * classement incomplet. Mieux vaut ne rien dire que désigner un innocent.
+ * On rend donc `{ lignes, complet }`, et l'appelant décide de ce qu'il a le
+ * droit de conclure d'une lecture incomplète.
+ *
+ * Quatre règles, une par piège (2026-11-21, T4) :
+ *  · LA FIN SE LIT SUR UNE PAGE VIDE, jamais sur « une page plus courte que
+ *    demandé » : `complet` ne doit dépendre d'aucun réglage du serveur. L'ancien
+ *    test (« moins que la taille demandée = fini ») était toujours vrai dès que
+ *    le serveur servait moins que la demande — `lireApi` demandait 2 000, la
+ *    base en sert 1 000. L'`offset` avance du nombre de lignes REÇUES. Coût :
+ *    une requête de plus par lecture. Un 416 sur une page suivante dit la même
+ *    chose qu'une page vide (l'offset dépasse la fin) : fini aussi.
+ *  · DEUX BORNES ET UN TRI STABLE : `> depuis` ET `<= fin`, `fin` figé avant la
+ *    première page, tri sur (colonne, id). Un lot de télémétrie partage le même
+ *    `received_at`, et une lecture du plus récent au plus ancien glisse quand
+ *    des lignes arrivent pendant la pagination.
+ *  · SEULE LA PREMIÈRE REQUÊTE LÈVE. Une page suivante refusée, expirée
+ *    (`statement_timeout` de 8 s côté base) ou coupée rend ce qui est lu avec
+ *    `complet: false` — la même chose qu'un plafond atteint : des compteurs
+ *    plancher, et un drapeau qui le dit. Dix pages par lecture au lieu d'une :
+ *    faire échouer tout le passage sur la neuvième ouvrirait [SENTINELLE MUETTE]
+ *    pour une lecture aux neuf dixièmes réussie.
+ *  · LE MESSAGE D'UNE ERREUR NE PORTE QUE LA TABLE, jamais la requête : elle
+ *    porte des identifiants de session, et le message paraît dans le résumé
+ *    PUBLIC du passage.
+ * Chaque requête a son délai (`LECTURE.delaiMs`). Au plafond exact, la lecture
+ * se dit incomplète sans sonder plus loin : dire « partiel » à tort pendant un
+ * passage ne coûte rien.
  */
-export async function lirePagine({ url, cle, chemin, heures, pagesMax = 10 }) {
-  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const taille = 1000;
+export const LECTURE = Object.freeze({ page: 1000, pagesMax: 10, delaiMs: 20_000 });
+
+export async function lirePagine({ url, cle, chemin, heures, pagesMax = LECTURE.pagesMax, page = LECTURE.page, ordre = "asc", colonne = "received_at", jusqua = null, avanceMs = 0, maintenant = Date.now() }) {
+  const depuis = new Date(maintenant - heures * 3600_000 - avanceMs).toISOString();
+  const fin = jusqua || new Date(maintenant).toISOString();
+  const sens = ordre === "desc" ? "desc" : "asc";
+  const table = String(chemin).split("?")[0];
+  const plafond = pagesMax * page;
   const lignes = [];
-  for (let page = 0; page < pagesMax; page++) {
-    const r = await fetch(`${url}/rest/v1/${chemin}&received_at=gt.${depuis}` +
-      `&order=received_at.asc&limit=${taille}&offset=${page * taille}`,
-      { headers: { apikey: cle, Authorization: "Bearer " + cle } });
-    if (!r.ok) throw new Error(`${chemin}: HTTP ${r.status}`);
-    const lot = await r.json();
+  // Garde-fou : un serveur qui rendrait des pages minuscules ne fait pas tourner la boucle sans fin.
+  const requetesMax = pagesMax * 4 + 2;
+  for (let requetes = 0; lignes.length < plafond && requetes < requetesMax; requetes++) {
+    let lot = null, statut = 0, panne = null;
+    try {
+      const r = await fetch(`${url}/rest/v1/${chemin}&${colonne}=gt.${depuis}&${colonne}=lte.${fin}` +
+        `&order=${colonne}.${sens},id.${sens}&limit=${Math.min(page, plafond - lignes.length)}&offset=${lignes.length}`,
+        { headers: { apikey: cle, Authorization: "Bearer " + cle }, signal: AbortSignal.timeout(LECTURE.delaiMs) });
+      statut = Number(r.status) || 0;
+      if (r.ok) lot = await r.json();
+    } catch (e) { panne = e; }
+    // 416 = « l'offset demandé dépasse la fin » (PostgREST, PGRST103) : une page vide, dite autrement.
+    // Sans en-tête de comptage PostgREST rend d'ordinaire 200 et une liste vide — non vérifiable
+    // d'un bac sans accès à l'API. Les DEUX formes valent « fini » : lire un 416 comme une lecture
+    // interrompue rendrait « partielle » toute lecture d'au moins une ligne.
+    if (statut === 416 && requetes > 0 && !panne) return { lignes, complet: true };
+    if (!Array.isArray(lot)) {
+      if (requetes > 0) return { lignes, complet: false, interrompue: statut };
+      const quoi = panne ? `lecture impossible (${String(panne.name || "Error").slice(0, 40)})` : lot === null ? `HTTP ${statut}` : "réponse illisible";
+      const e = new Error(`${table}: ${quoi}`);
+      e.status = panne ? 0 : statut;
+      e.premiere = true;
+      throw e;
+    }
+    if (lot.length === 0) return { lignes, complet: true };
     lignes.push(...lot);
-    if (lot.length < taille) return { lignes, complet: true };
   }
   return { lignes, complet: false };
+}
+
+/**
+ * Second temps de la famille bouton : les effets des SEULES sessions suspectes,
+ * par lots de sessions. Un lot refusé, tronqué (plus de `pagesParRequete`
+ * pages) ou arrivé après `dureeMaxMs` ne rend NI ses effets NI ses sessions :
+ * un groupe n'est jugé que si toutes ses sessions sont dans `lues`.
+ * `horloge` mesure la durée réelle ; `maintenant` est l'instant figé du passage.
+ */
+export async function lireEffetsSessions({ url, cle, heures, sessions, maintenant = Date.now(), horloge = Date.now }) {
+  const effets = [];
+  const lues = new Set();
+  let lotsNonLus = 0;
+  const depart = horloge();
+  for (const lot of lotsSessions(sessions)) {
+    if (horloge() - depart > BOUTONS_LECTURE.dureeMaxMs) { lotsNonLus++; continue; }
+    let r = null;
+    try {
+      r = await lirePagine({ url, cle, heures, maintenant, avanceMs: BOUTONS_LECTURE.margeMs, pagesMax: BOUTONS_LECTURE.pagesParRequete,
+        chemin: CHEMINS_BOUTONS.effets + "&session_id=in.(" + lot.join(",") + ")" });
+    } catch (e) { r = null; }
+    if (!r || !r.complet) { lotsNonLus++; continue; }
+    effets.push(...r.lignes);
+    for (const s of lot) lues.add(s);
+  }
+  return { effets, lues, lotsNonLus };
+}
+
+/**
+ * LA FAMILLE BOUTON SE LIT EN DEUX TEMPS (2026-11-21, T4).
+ *
+ * Avant : tous les clics ET tous les effets de la fenêtre, dix pages chacun.
+ * Mesuré le 21/11 : 22,7 effets par session — le plafond de 10 000 mordait vers
+ * 435 sessions par jour, et la famille entière ne désignait alors plus rien,
+ * sans le dire.
+ *
+ * ① Les clics seuls, puis le classement existant rejoué SANS AUCUN EFFET : c'est
+ *   le pire cas. Tout effet ajouté ne peut que retirer un clic mort, donc un
+ *   groupe qui ne passe pas ce filtre ne peut pas devenir une enquête (propriété
+ *   tenue par le banc). Aucune règle d'éligibilité n'est recopiée.
+ * ② Les effets des seules sessions de ces groupes. Un groupe est relu EN ENTIER
+ *   ou pas du tout, et n'est jugé que si toutes ses sessions ont été relues
+ *   complètement : un échantillon ne désigne jamais (il laisserait un tirage
+ *   choisir une enquête).
+ *
+ * Le seuil passe ainsi d'environ 435 à environ 2 000 sessions par jour
+ * (`sessionsMax`, pour l'UNION des groupes suspects). Au-delà, les boutons les
+ * plus cliqués ne sont plus jugés : c'est COMPTÉ (`groupesNonJuges`) et dit au
+ * pilote. Seul un agrégat SQL fermera ce trou.
+ *
+ * ⚠️ LECTURE TÉMOIN. Tant qu'aucun bouton ne réunit trois comptes, le second
+ * temps n'envoie aucune requête : sa syntaxe (`session_id=in.(…)`, deux bornes,
+ * tri) ne serait éprouvée que le jour où la famille a enfin quelque chose à
+ * juger. Dès qu'un clic est lu, UNE ligne est donc demandée sous cette forme
+ * exacte ; son échec se dit (`temoin: "echec"`).
+ *
+ * Des clics tronqués laissent juger les plus récents : c'est une fenêtre plus
+ * courte, pas un échantillon (`clicsComplets: false`).
+ */
+export async function lireFamilleBoutons({ url, cle, heures, opts, anciensDe, maintenant = Date.now(), horloge = Date.now }) {
+  // Les clics s'arrêtent `margeMs` AVANT l'instant du passage ; les effets vont jusqu'à lui.
+  const clics = await lirePagine({ url, cle, heures, maintenant, ordre: "desc", chemin: CHEMINS_BOUTONS.clics,
+    jusqua: new Date(maintenant - BOUTONS_LECTURE.margeMs).toISOString() });
+  let temoin = "sans_objet";
+  const recent = clics.lignes.find((c) => RE_SESSION.test(String((c && c.session_id) || "")));
+  if (recent) {
+    try {
+      await lirePagine({ url, cle, heures, maintenant, avanceMs: BOUTONS_LECTURE.margeMs, page: 1, pagesMax: 1,
+        chemin: CHEMINS_BOUTONS.effets + "&session_id=in.(" + String(recent.session_id) + ")" });
+      temoin = "ok";
+    } catch (e) { temoin = "echec"; }
+  }
+  // ① Le pire cas : aucun effet.
+  const pre = classerBoutonsMorts(clics.lignes, [], { ...opts, comptesAnciens: "tous", avecUids: true });
+  const choix = sessionsALire(pre.candidates);
+  // ② Les effets des sessions suspectes, et rien d'autre.
+  const lu = choix.sessions.length
+    ? await lireEffetsSessions({ url, cle, heures, sessions: choix.sessions, maintenant, horloge })
+    : { effets: [], lues: new Set(), lotsNonLus: 0 };
+  const juges = new Set(pre.candidates.filter((g) => choix.juges.includes(g.cle) && g._sessions.every((s) => lu.lues.has(s))).map((g) => g.cle));
+  const estJuge = (c) => juges.has(c.cle);
+  // Deux passages, comme avant : le premier désigne les comptes à relire, le second ne compte que les ANCIENS.
+  const premier = classerBoutonsMorts(clics.lignes, lu.effets, { ...opts, comptesAnciens: "tous", avecUids: true }).candidates.filter(estJuge);
+  const relus = premier.length
+    ? await anciensDe(premier, { parAction: BOUTON_MORT.comptesLusMax })
+    : { anciens: new Set(), lus: new Set(), illisibles: 0 };
+  const second = classerBoutonsMorts(clics.lignes, lu.effets, { ...opts, comptesAnciens: relus.anciens });
+  const candidates = second.candidates.filter(estJuge);
+  // ⚠️ Le résumé du run est PUBLIC (dépôt public) : un libellé hors code y est masqué (contre-revue du 2026-11-03).
+  const clicsJuges = clics.lignes.filter((c) => juges.has(cleBouton(c)) && !estHorsPublic(c));
+  return {
+    morts: { candidates, nonVerifiees: second.nonVerifiees, recents: second.recents },
+    suspects: { portee: PORTEE_SUSPECTS, classement: masquerSuspects(classerBoutons(clicsJuges, lu.effets).slice(0, 5), opts) },
+    // Des NOMBRES et des mots fixes seulement : ce bloc part dans le résumé public du passage.
+    lecture: {
+      clicsLus: clics.lignes.length, clicsComplets: clics.complet, temoin,
+      groupesSuspects: pre.candidates.length, groupesJuges: juges.size, groupesNonJuges: pre.candidates.length - juges.size,
+      sessionsLues: lu.lues.size, lotsNonLus: lu.lotsNonLus, sessionsInvalides: pre.sessionsInvalides, horsPublic: pre.horsPublic,
+      ancienneteNonRelus: nonRetenusNonRelus(premier, candidates, relus.lus), ancienneteIllisibles: relus.illisibles,
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CE QUE LE PASSAGE N'A PAS LU, EN CODES FERMÉS (2026-11-21, T4)
+//
+// « Rien à corriger » mentait de trois façons : une lecture tronquée, une
+// famille qui ne juge plus, une ancienneté relue en partie. `bilanLecture` en
+// fait une liste de CODES ; `etatPartiel` en fait le titre et le corps de
+// l'issue d'état que le pilote lit (label `sentinelle-partielle`).
+// ⚠️ DES CODES ET DES NOMBRES, JAMAIS UN TEXTE VENU D'AILLEURS. L'issue est
+// publique : chaque phrase est écrite ICI, un code inconnu est ignoré, un nombre
+// est forcé en entier. Rien de ce qu'un navigateur a envoyé n'y entre.
+// ═══════════════════════════════════════════════════════════════════════════
+const entier = (x) => { const n = Math.trunc(Number(x)); return Number.isFinite(n) && n > 0 ? n : 0; };
+
+/**
+ * Les correspondances, une par code :
+ *  · js_client_errors, js_telemetrie, api : la lecture n'est pas complète (`lues` = lignes lues) ;
+ *  · boutons_clics : les clics ne sont pas complets ; boutons_non_juges : des groupes suspects
+ *    n'ont pas été jugés ; boutons_illisibles : la famille a levé, ou la lecture témoin a échoué ;
+ *  · parcours_tronques : le flux n'est pas complet ; parcours_illisibles : la famille a levé ;
+ *  · anciennete : `n` candidats NON retenus gardent des comptes jamais relus (un candidat
+ *    retenu ne compte jamais) ; anciennete_illisible : lectures refusées par l'authentification.
+ * FONCTION PURE.
+ */
+export function bilanLecture({ clientErrors, telemetrieErreurs, api, boutons, parcours, anciennete } = {}) {
+  const partiel = [];
+  const tronquee = (code, s) => { if (s && s.complet === false) partiel.push({ code, lues: entier(s.lues) }); };
+  tronquee("js_client_errors", clientErrors);
+  tronquee("js_telemetrie", telemetrieErreurs);
+  tronquee("api", api);
+  if (boutons) {
+    if (boutons.erreur || boutons.temoin === "echec") partiel.push({ code: "boutons_illisibles", n: 1 });
+    if (boutons.clicsComplets === false) partiel.push({ code: "boutons_clics", lues: entier(boutons.clicsLus) });
+    if (entier(boutons.groupesNonJuges) > 0) partiel.push({ code: "boutons_non_juges", n: entier(boutons.groupesNonJuges) });
+  }
+  if (parcours) {
+    if (parcours.erreur) partiel.push({ code: "parcours_illisibles", n: 1 });
+    else tronquee("parcours_tronques", parcours);
+  }
+  if (anciennete) {
+    if (entier(anciennete.nonRelus) > 0) partiel.push({ code: "anciennete", n: entier(anciennete.nonRelus) });
+    if (entier(anciennete.illisibles) > 0) partiel.push({ code: "anciennete_illisible", n: entier(anciennete.illisibles) });
+  }
+  return { complet: partiel.length === 0, partiel };
+}
+
+/** Préfixe du titre de l'issue d'état : le workflow la retrouve par son label PUIS par ce préfixe. */
+export const PREFIXE_PARTIELLE = "[SENTINELLE PARTIELLE]";
+// Une phrase FIXE et un nom court par code. `x` ne porte que des nombres déjà forcés.
+const PHRASES_PARTIEL = Object.freeze({
+  js_client_errors: { nom: "erreurs JS", phrase: (x) => `Erreurs JavaScript (client_errors) : seules les ${x.lues} lignes les plus récentes ont été lues.` },
+  js_telemetrie: { nom: "erreurs JS", phrase: (x) => `Erreurs JavaScript (télémétrie) : seules les ${x.lues} lignes les plus récentes ont été lues.` },
+  api: { nom: "appels refusés", phrase: (x) => `Appels refusés : seuls les ${x.lues} plus récents ont été lus.` },
+  boutons_clics: { nom: "boutons", phrase: (x) => `Boutons : seuls les ${x.lues} clics les plus récents ont été lus.` },
+  boutons_non_juges: { nom: "boutons", phrase: (x) => `Boutons : ${x.n} bouton(s) suspect(s) non jugé(s) — trop de sessions à relire, ou une lecture incomplète.` },
+  boutons_illisibles: { nom: "boutons", phrase: () => "Boutons : la lecture a échoué, la famille n'a pas pu juger." },
+  parcours_tronques: { nom: "parcours", phrase: (x) => `Parcours : trop d'étapes sur la fenêtre (${x.lues} lues), la famille n'a rien jugé.` },
+  parcours_illisibles: { nom: "parcours", phrase: () => "Parcours : la lecture a échoué, la famille n'a rien jugé." },
+  anciennete: { nom: "ancienneté des comptes", phrase: (x) => `Ancienneté des comptes : ${x.n} défaut(s) écarté(s) sans que tous leurs comptes aient été relus.` },
+  anciennete_illisible: { nom: "ancienneté des comptes", phrase: (x) => `Ancienneté des comptes : ${x.n} lecture(s) refusée(s) par le service d'authentification.` },
+});
+
+/**
+ * L'issue d'état « la Sentinelle n'a pas tout traité » : `{ partiel, titre, corps }`.
+ * « En attente » n'est dit que si le budget d'enquêtes du jour est ATTEINT et
+ * qu'il reste des défauts vivants : c'est le seul cas où « rien à corriger »
+ * mentirait (la file ordinaire, trois enquêtes en cours, se vide seule).
+ * FONCTION PURE : ni horloge, ni réseau, ni texte reçu.
+ */
+export function etatPartiel(verdict, { attente = 0, budgetAtteint = false } = {}) {
+  const lecture = verdict && verdict.lecture && Array.isArray(verdict.lecture.partiel) ? verdict.lecture.partiel : [];
+  const lignes = [], noms = [];
+  for (const p of lecture) {
+    const code = p && typeof p.code === "string" ? p.code : "";
+    if (!Object.hasOwn(PHRASES_PARTIEL, code)) continue;
+    lignes.push(PHRASES_PARTIEL[code].phrase({ lues: entier(p.lues), n: entier(p.n) }));
+    if (!noms.includes(PHRASES_PARTIEL[code].nom)) noms.push(PHRASES_PARTIEL[code].nom);
+  }
+  const enAttente = budgetAtteint === true ? entier(attente) : 0;
+  if (enAttente > 0) {
+    lignes.push(`${enAttente} défaut(s) retenu(s) attendent : le budget d'enquêtes par 24 h est atteint.`);
+    noms.push("défauts en attente");
+  }
+  // Aucune coupe : `noms` ne porte que des noms fixes, dédoublonnés — le plus long titre possible est tenu par le banc (T4-18).
+  const titre = PREFIXE_PARTIELLE + " pas tout traité : " + noms.join(", ");
+  const corps = [
+    "La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier :",
+    "",
+    ...lignes.map((l) => "- " + l),
+    "",
+    "Tant que cette note est ouverte, « rien à corriger » ne prouve pas le calme : un défaut peut se trouver dans ce qui n'a pas été lu.",
+    "Elle se met à jour à chaque passage et se referme seule quand tout est de nouveau lu. Elle ne déclenche aucune correction automatique.",
+  ].join("\n");
+  return { partiel: lignes.length > 0, titre, corps };
+}
+
+/** L'attente avant de refermer l'issue d'état : chaque passage partiel la réécrit, donc la repousse. */
+export const ETAT_FERMETURE_MS = 90 * 60_000;
+const RE_MIS_A_JOUR = /^- Mis à jour : (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)$/;
+
+/**
+ * Quelles issues d'état refermer, tout étant de nouveau lu ? Celles qu'aucun
+ * passage n'a réécrites depuis `ETAT_FERMETURE_MS`.
+ * ⚠️ L'HEURE SE LIT DANS LE CORPS (« - Mis à jour : <ISO> », écrite par l'étape
+ * « État de lecture »), JAMAIS dans `updatedAt` : GitHub avance `updatedAt` à
+ * chaque commentaire, et le dépôt est public — un compte quelconque qui
+ * commentait toutes les heures tenait l'issue ouverte, donc le voyant orange.
+ * Le corps, lui, ne se modifie qu'avec le droit d'écrire. Plusieurs lignes : la
+ * plus récente. Un corps SANS date lisible (retouché à la main) : `updatedAt`
+ * décide, faute de mieux — la conversation est verrouillée à la création — et
+ * une issue dont ni l'un ni l'autre ne se lit reste ouverte. FONCTION PURE.
+ */
+export function etatsAFermer(issues, maintenant = Date.now()) {
+  const limite = maintenant - ETAT_FERMETURE_MS;
+  const numeros = [];
+  for (const i of Array.isArray(issues) ? issues : []) {
+    if (!i || typeof i.title !== "string" || !i.title.startsWith(PREFIXE_PARTIELLE)) continue;
+    if (!Number.isInteger(i.number) || i.number <= 0) continue;
+    const dates = String(typeof i.body === "string" ? i.body : "").split("\n")
+      .map((l) => RE_MIS_A_JOUR.exec(l.replace(/\r$/, ""))).filter(Boolean).map((m) => Date.parse(m[1])).filter(Number.isFinite);
+    const reference = dates.length ? Math.max(...dates) : Date.parse(String(i.updatedAt || ""));
+    if (Number.isFinite(reference) && reference < limite) numeros.push(i.number);
+  }
+  return numeros;
 }
 
 /** Le texte de l'interface (index.html + js/*.js) : le seul où un libellé de bouton peut être retrouvé. */
@@ -1494,72 +1953,70 @@ export async function lireCodeInterface(racine = ".") {
   return morceaux.join("\n");
 }
 
-async function principal() {
-  const url = process.env.SUPABASE_URL;
-  const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const heures = Number(process.env.SENTINELLE_FENETRE_H || 24);
-  if (!url || !cle) {
-    // ⚠️ On ÉCHOUE, on ne rend pas « rien à signaler ». Une sentinelle sans
-    // accès qui rend un verdict vide est indiscernable d'une prod saine —
-    // c'est la panne silencieuse que tout ce chantier corrige.
-    console.error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant : la détection ne peut pas s'exécuter.");
-    process.exit(2);
-  }
+/**
+ * UN PASSAGE DE DÉTECTION : lit, classe, et rend le verdict. Rien d'autre.
+ *
+ * Exporté (2026-11-21) pour être EXÉCUTÉ par le banc de bout en bout : tant que
+ * ce corps vivait dans `principal()`, sa première exécution après une retouche
+ * avait lieu en production, à la minute 23 — et une faute de câblage y donnait
+ * un passage rouge, donc [SENTINELLE MUETTE].
+ * `maintenant` est fixé UNE fois et passé à toutes les lectures : leurs bornes
+ * désignent le même instant. `horloge` mesure les durées ; `lireCode` rend le
+ * texte de l'interface (doublé par le banc).
+ */
+export async function detecter({ url, cle, heures = 24, maintenant = Date.now(), horloge = Date.now, lireCode = lireCodeInterface } = {}) {
   // ⚠️ Les TROIS lectures sont un devoir : l'échec de l'une fait échouer le run
   // (bruyamment — le workflow ouvre alors [SENTINELLE MUETTE]). Une source
   // muette qui rendrait « rien à signaler » serait la panne silencieuse.
-  const [erreursClient, appels, erreursTelemetrie] = await Promise.all([
-    lireErreurs({ url, cle, heures }),
-    lireApi({ url, cle, heures }),
-    lireErreursTelemetrie({ url, cle, heures }),
+  // Tronquée, une lecture reste classée et se dit (`lecture`, plus bas).
+  const [rClient, rApi, rTelemetrie] = await Promise.all([
+    lireErreurs({ url, cle, heures, maintenant }),
+    lireApi({ url, cle, heures, maintenant }),
+    lireErreursTelemetrie({ url, cle, heures, maintenant }),
   ]);
+  const erreursClient = rClient.lignes, appels = rApi.lignes, erreursTelemetrie = rTelemetrie.lignes;
   const fusion = fusionnerErreursJs(erreursClient, erreursTelemetrie);
   const lignes = fusion.lignes;
+  // L'ancienneté : une mémoire et un compteur de refus pour TOUT le passage.
+  const echecs = { n: 0 };
+  const anciensDe = relecteurAnciennete({ url, cle, maintenant, echecs });
 
   // ⚠️ LA TROISIÈME FAMILLE NE DOIT JAMAIS FAIRE ÉCHOUER LA DÉTECTION. Elle est
   // un CONFORT (un classement de suspects) ; les deux autres sont le devoir.
-  // Si sa lecture échoue ou revient incomplète, on se tait sur elle et le reste
-  // du verdict part quand même.
+  // Si sa lecture échoue, on se tait sur elle, on le DIT (`lecture`), et le
+  // reste du verdict part quand même.
   let boutonsSuspects = null;
+  let boutonsLecture = null;
   let morts = { candidates: [], nonVerifiees: 0 };
   try {
-    const [clics, effets] = await Promise.all([
-      lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.clics }),
-      lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.effets }),
-    ]);
-    const code = await lireCodeInterface();
+    const code = await lireCode();
     const opts = { libelles: libellesDuCode(code), ecrans: ecransDuCode(code) };
-    // ⚠️ Le résumé du run est PUBLIC (dépôt public) : un libellé hors code y est masqué (contre-revue du 2026-11-03).
-    boutonsSuspects = (clics.complet && effets.complet)
-      ? masquerSuspects(classerBoutons(clics.lignes, effets.lignes).slice(0, 5), opts)
-      : { incomplet: true, note: "Lecture tronquée : un classement partiel désignerait des innocents." };
-    // Une lecture tronquée ne désigne aucun bouton : l'effet manquant peut être sur la page suivante.
-    if (clics.complet && effets.complet) {
-      // Deux passages : le premier désigne les comptes à vérifier, le second ne compte que les ANCIENS.
-      const premier = classerBoutonsMorts(clics.lignes, effets.lignes, { ...opts, comptesAnciens: "tous", avecUids: true });
-      const uids = premier.candidates.flatMap((c) => c._uids || []);
-      const comptesAnciens = uids.length ? await lireComptesAnciens({ url, cle, uids }) : new Set();
-      morts = classerBoutonsMorts(clics.lignes, effets.lignes, { ...opts, comptesAnciens });
-    }
+    const b = await lireFamilleBoutons({ url, cle, heures, opts, anciensDe, maintenant, horloge });
+    morts = b.morts;
+    boutonsSuspects = b.suspects;
+    boutonsLecture = b.lecture;
   } catch (e) {
-    boutonsSuspects = { erreur: String(e.message || e) };
+    boutonsSuspects = { erreur: String(e.message || e).slice(0, 160) };
+    boutonsLecture = { erreur: true };
   }
   // Quatrième famille (2026-11-06) : les parcours en échec. Un confort, comme
   // les boutons — sa lecture qui échoue ou se tronque ne fait rien échouer et
   // ne désigne rien (une page manquante pourrait porter la confirmation).
   let parcours = { candidates: [], ecartees: 0, nonVerifiees: 0 };
   let parcoursSource = null;
+  let parcoursNonRelus = 0;
   try {
-    const fl = await lirePagine({ url, cle, heures, chemin: CHEMIN_FLUX + FILTRE_PRODUCTION });
+    const fl = await lirePagine({ url, cle, heures, maintenant, chemin: CHEMIN_FLUX + FILTRE_PRODUCTION });
     parcoursSource = { lues: fl.lignes.length, complet: fl.complet };
     if (fl.complet) {
       // Deux passages, comme les boutons : seuls les comptes ANCIENS décident.
       const premier = classerParcours(fl.lignes, { comptesAnciens: "tous", avecUids: true });
       const choix = uidsAVerifier(premier.candidates);
       const anciens = new Set();
-      for (const lot of choix.lots) for (const u of await lireComptesAnciens({ url, cle, uids: lot.uids })) anciens.add(u);
+      for (const lot of choix.lots) for (const u of await lireComptesAnciens({ url, cle, uids: lot.uids, maintenant, echecs })) anciens.add(u);
       parcours = classerParcours(fl.lignes, { comptesAnciens: anciens });
       parcoursSource.verificationsIncompletes = choix.nonVerifies;
+      parcoursNonRelus = nonRetenusNonRelus(premier.candidates, parcours.candidates, new Set(choix.lots.flatMap((l) => l.uids)));
     }
   } catch (e) {
     parcoursSource = { erreur: String(e.message || e).slice(0, 160) };
@@ -1571,10 +2028,11 @@ async function principal() {
   // principe : une erreur JavaScript n'est pas plus grave qu'un envoi de
   // message refusé 798 fois. C'est ce que subissent les gens qui tranche.
   // Les boutons morts (2026-11-01) entrent dans la MÊME concurrence.
-  const libres = [...js.candidates, ...api.candidates];
-  const uidsLibres = libres.flatMap((c) => c._uids || []);
-  const anciens = uidsLibres.length ? await lireComptesAnciens({ url, cle, uids: uidsLibres }) : new Set();
-  const preuves = retenirPreuves(libres, anciens);
+  // Triées AVANT la relecture d'ancienneté : si le budget manque, c'est le défaut
+  // le moins répandu qui reste non relu, pas celui que le hasard a mis en queue.
+  const libres = [...js.candidates, ...api.candidates].sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
+  const relus = libres.length ? await anciensDe(libres) : { anciens: new Set(), lus: new Set(), illisibles: 0 };
+  const preuves = retenirPreuves(libres, relus.anciens);
   const candidates = [...preuves.retenus, ...morts.candidates, ...parcours.candidates]
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
   const verdict = {
@@ -1594,11 +2052,13 @@ async function principal() {
       doublonsJs: fusion.doublons,
       plafonneesJs: fusion.plafonnees,
       parcours: parcoursSource,
+      boutons: boutonsLecture,
     },
     // ⚠️ HORS `cible`, DÉLIBÉRÉMENT : ce classement-ci n'ouvre aucune issue — un
     // taux bas seul peut être un bouton mort comme un effet non instrumenté.
     // Ce qui devient une enquête passe par `classerBoutonsMorts` (clics rageurs,
     // comptes serveur, libellé du code) et figure dans `candidats`.
+    // Il ne porte plus que les groupes JUGÉS, clics de comptes seulement (`portee`).
     boutonsSuspects,
     cible: candidates[0] || null,
     // ASTRA-08 : les suivants, pour que la dédup du workflow puisse AVANCER
@@ -1607,8 +2067,35 @@ async function principal() {
     // masquaient le sixième, actif. La liste reste bornée par le classement lui-même.
     candidats: candidates.slice(),
     identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0) + (morts.nonVerifiees || 0) + (parcours.nonVerifiees || 0),
+    // Ce que ce passage n'a PAS lu ou pas pu juger, en codes fermés : c'est ce que
+    // l'étape « État de lecture » du workflow dit au pilote (`etatPartiel`).
+    lecture: bilanLecture({
+      clientErrors: { lues: erreursClient.length, complet: rClient.complet },
+      telemetrieErreurs: { lues: erreursTelemetrie.length, complet: rTelemetrie.complet },
+      api: { lues: appels.length, complet: rApi.complet },
+      boutons: boutonsLecture,
+      parcours: parcoursSource,
+      anciennete: {
+        nonRelus: nonRetenusNonRelus(libres, preuves.retenus, relus.lus) + ((boutonsLecture && boutonsLecture.ancienneteNonRelus) || 0) + parcoursNonRelus,
+        illisibles: echecs.n,
+      },
+    }),
   };
-  console.log(JSON.stringify(verdict, null, 2));
+  return verdict;
+}
+
+async function principal() {
+  const url = process.env.SUPABASE_URL;
+  const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const heures = Number(process.env.SENTINELLE_FENETRE_H || 24);
+  if (!url || !cle) {
+    // ⚠️ On ÉCHOUE, on ne rend pas « rien à signaler ». Une sentinelle sans
+    // accès qui rend un verdict vide est indiscernable d'une prod saine —
+    // c'est la panne silencieuse que tout ce chantier corrige.
+    console.error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant : la détection ne peut pas s'exécuter.");
+    process.exit(2);
+  }
+  console.log(JSON.stringify(await detecter({ url, cle, heures }), null, 2));
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {
