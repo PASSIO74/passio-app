@@ -958,7 +958,9 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
   // MUTATIONS : retirer `tel.action("google_refused", …)` → rouge ; retirer
   // `signalerExceptionAuth("google", e)` du catch → rouge ; retirer
-  // `messagePanneAuth(rc, "google") ||` → le texte brut du 5xx s'affiche, rouge.
+  // `messagePanneAuth(rc, "google") ||` → le texte brut du 5xx s'affiche, rouge ;
+  // retirer l'argument de porte (`messagePanneAuth(rc) ||`) → le volet « envoi »
+  // propose « Continuer avec Google » à qui vient de le toucher, rouge.
   test("⑪ départ vers Google : google_refused {rc} sur refus, auth_exception {kind:google} si ça lève, le drapeau retiré", async ({ page }) => {
     await ouvrirAuth(page);
     // En CONNEXION : le bouton n'exige pas la case de consentement.
@@ -984,6 +986,22 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     expect(await capture(page)).toEqual([{ name: "google_refused", meta: { rc: "serveur" } }]);
     await expect(page.locator("#authMsg")).toContainText("ne répond pas");
     await expect(page.locator("#authMsg")).not.toContainText("upstream");
+
+    // La PORTE compte : sur un code « envoi », les autres portes désignent
+    // « Continuer avec Google » comme sortie. Ici, la personne vient de le
+    // toucher — on ne le lui propose pas. (signInWithOAuth ne rend pas ce
+    // texte aujourd'hui : le volet verrouille l'argument au point d'appel.)
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signInWithOAuth = async () => ({ data: null, error: { status: 500, message: "Error sending confirmation email" } });
+    });
+    await page.locator("#authGoogleBtn").click();
+    await attendreSignal(page, "google_refused");
+    expect(await capture(page)).toEqual([{ name: "google_refused", meta: { rc: "envoi" } }]);
+    await expect(page.locator("#authMsg")).toHaveText(await page.evaluate(() => messagePanneAuth("serveur")));
+    await expect(page.locator("#authMsg")).toContainText("ne répond pas");
+    await expect(page.locator("#authMsg")).not.toContainText("Continuer avec Google");
+    await expect(page.locator("#authMsg")).not.toContainText("Error sending");
 
     await viderCapture(page);
     await page.evaluate(() => {
@@ -1087,6 +1105,13 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     // hors ligne : par `authHorsLigne()` avant l'envoi, et par `messagePanneAuth`
     // — qui lit `navigator.onLine` lui aussi — pour un code « reseau ». Aucun
     // `catch` ne choisit plus ce texte lui-même (comportement : ③ ter).
+    // `traduireRefusCaptcha` était le TROISIÈME chemin : il rendait ce texte à
+    // tout échec réseau sans rien lire. Il passe par `messagePanneAuth` aussi
+    // (comportement : lot13-entree ⑥), et la constante n'est plus RENDUE qu'à
+    // un seul endroit.
+    expect((app02.match(/return AUTH_HORS_LIGNE;/g) || []).length).toBe(0);
+    expect((app02.match(/\bAUTH_HORS_LIGNE\b/g) || []).length).toBe(3);
+    expect(corps("function traduireRefusCaptcha(m) {", "function authHorsLigne() {")).toContain('return messagePanneAuth("reseau");');
     expect((app02.match(/_showAuthMsg\(AUTH_HORS_LIGNE, "error"\)/g) || []).length).toBe(1);
     expect(app02).not.toMatch(/_showPanneAuth\(AUTH_HORS_LIGNE\)/);
     expect(app02).not.toMatch(/\? AUTH_HORS_LIGNE : AUTH_IMPREVU/);

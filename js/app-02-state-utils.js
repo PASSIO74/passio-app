@@ -6593,7 +6593,11 @@ function traduireRefusCaptcha(m) {
   // levée) passait par cette chaîne, qui ne reconnaissait pas l'échec réseau :
   // « Failed to fetch » (Chromium), « Load failed » (WebKit), « NetworkError »
   // (Firefox) s'affichaient en anglais.
-  if (/failed to fetch|load failed|networkerror|network request failed/i.test(m)) return AUTH_HORS_LIGNE;
+  // (2026-11-21) Par `messagePanneAuth`, qui LIT `navigator.onLine` : cette
+  // ligne rendait « Pas de connexion internet » à tout échec réseau, appareil
+  // en ligne compris. Ses trois appelants passent par `messagePanneAuth`
+  // d'abord, mais rien n'y oblige le quatrième.
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(m)) return messagePanneAuth("reseau");
   return m;
 }
 

@@ -831,7 +831,7 @@ Trou T6 de l'audit « la surveillance tient-elle à 100 000 utilisateurs ? » (`
 - **`envoi`** : le service a répondu qu'il n'a pas pu remettre l'e-mail au relais.
 
 **Pièges**
-- ⚠️ **« Pas de connexion internet » ne se dit qu'à un appareil qui se dit hors ligne.** La première version l'affichait pour tout code `reseau` : à un appareil en ligne, devant un service injoignable, elle faisait vérifier un Wi-Fi qui marche.
+- ⚠️ **« Pas de connexion internet » ne se dit qu'à un appareil qui se dit hors ligne.** La première version l'affichait pour tout code `reseau` : à un appareil en ligne, devant un service injoignable, elle faisait vérifier un Wi-Fi qui marche. **Trois chemins rendaient ce texte, pas deux** : `authHorsLigne()` (qui lit `navigator.onLine`), `messagePanneAuth("reseau")` (qui le lit depuis la contre-revue) et `traduireRefusCaptcha`, qui le rendait à tout message d'échec réseau sans rien lire. Ce troisième était inatteignable — ses trois appelants passent par `messagePanneAuth` d'abord — mais rien n'y obligeait un quatrième appelant : il rend désormais `messagePanneAuth("reseau")`, et la constante n'est plus rendue qu'à un endroit (cas ⑬).
 - ⚠️ **À la récupération, Google est une sortie SOUS CONDITION.** La personne a déjà un compte ; Google ouvre celui qui porte son adresse Google et en CRÉE un autre sinon (leçon AUTH-03). Mesuré le 21/11 : 17 comptes, 12 par e-mail, dont 4 à une adresse hors Gmail. À l'inscription la forme sans condition est juste ; au renvoi du lien elle est gardée (le compte en attente n'a aucun contenu).
 - ⚠️ **`!!supa` ne dit pas que le SDK est là** : le client de repli est un objet lui aussi. Le harnais du banc attend `window._supaReal` (ou son absence, cas ⑭).
 - ⚠️ **« Continuer avec Google » est SOUS le message, pas au-dessus.** Le texte dit « un peu plus bas » (la case de consentement et le bloc de renvoi peuvent s'intercaler). Le banc mesure la géométrie dans les trois formulaires où ce texte s'affiche, et refuse « au-dessus » dans le texte : c'est la même faute que le « ci-dessus » du 20/11.
@@ -887,6 +887,13 @@ Douze mutations de plus à la contre-revue, même protocole (le fichier produit 
 | `_authMode` au lieu de `_mode` dans le `catch` d'`onbDoAuth` | ⑨ et ⑬ rouges |
 | `messagePanneAuth` retiré du départ vers Google | ⑪ et ⑭ rouges |
 
+Deux mutations de plus à la seconde relecture, même protocole.
+
+| Mutation | Effet |
+|---|---|
+| Argument de porte retiré au départ vers Google (`messagePanneAuth(rc)`) | ⑪ rouge (le message nomme « Continuer avec Google ») |
+| `traduireRefusCaptcha` rend de nouveau `AUTH_HORS_LIGNE` | `lot13-entree` ⑥ et ⑬ rouges |
+
 **Limites connues**
 - **Ces signaux ne font encore rien sonner.** Aucune veille ne lit `auth_exception`, `google_refused`, `password_reset_*` ni les codes `serveur`, `envoi`, `reseau` : ils existent en base, la lecture en taux et la ligne « À faire » sont le lot suivant. Une panne de connexion demain laisserait des lignes, pas une alerte.
 - **Une exception APRÈS une connexion réussie émet `signin_ok` PUIS `auth_exception`** (l'adoption du compte, l'enregistrement de l'état et la suite de l'onboarding sont dans le même `try`). Le futur lecteur ne doit pas additionner les deux comme deux personnes bloquées.
@@ -915,5 +922,9 @@ Douze mutations de plus à la contre-revue, même protocole (le fichier produit 
 - **Deux gardes n'avaient aucun test** (`console.warn`, pas de « Recharge la page » au nouveau mot de passe) : volets ajoutés en ⑨ et ⑫, réinjections rejouées.
 - **Trois phrases fausses** (« {} » pour un corps illisible, « le pilotage le compte », « statut 0 = jamais arrivée ») : réécrites d'après la mesure.
 - **`kind` lu dans `_authMode` au moment du `catch`** : figé en tête de fonction (`_mode`).
+
+**Seconde relecture (même jour).** Aucune objection bloquante ; deux remarques mineures, justes toutes les deux, soldées.
+- **La porte « google » n'était verrouillée qu'au niveau de la fonction** : retirer l'argument au point d'appel laissait les 24 cas verts. Le cas ⑪ joue désormais un `signInWithOAuth` qui rend un 500 « Error sending confirmation email » : le message est celui du service en panne, sans « Continuer avec Google », signal `google_refused { rc: "envoi" }`. Le SDK ne rend pas ce texte à cette porte aujourd'hui : le volet tient l'argument, pas un cas vu.
+- **`traduireRefusCaptcha` rendait encore « Pas de connexion internet » sans lire `navigator.onLine`.** Il passe par `messagePanneAuth("reseau")`. ⚠️ Le relecteur écrivait que `lot13-entree` resterait vert : faux. Son cas ⑥ appelait la fonction AVANT de couper le réseau, appareil en ligne, et exigeait le message hors ligne — il verrouillait le défaut. Il mesure maintenant les deux états : en ligne, « Impossible de joindre PASSIO… » et jamais « Pas de connexion internet » ; hors ligne, le texte d'avant, à l'identique. Le parcours du formulaire hors ligne (`authHorsLigne()`) n'a pas bougé.
 
 **Contre-vérification.** Le plan a été contredit contre le code avant l'écriture. Corrections reprises : la porte « Renvoyer le lien », oubliée ; le code `envoi` et son message ; `rcExceptionAuth(null)` ; la garde `!_panne` ; les textes affirmés par le cas ⑩. Deux écarts au plan, nés de la mesure dans le navigateur : la sortie Google est dite « plus bas » (et non « juste au-dessus »), et `_showPanneAuth` amène le message à l'écran.
