@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import {
-  REVEIL, RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, empreinte, decideRetour, deploiementsProduction,
+  REVEIL, RETOUR, CADENCE, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, empreinte, decideRetour, deploiementsProduction,
   choisirPrecedent, continuerPagination, reveilsEpuises, idGeste, commitCourt, modeRetour, corpsProposition, TITRE_PROPOSITION,
   prendreCreneau,
 } from "../../supabase/functions/_shared/autonomie.js";
@@ -222,8 +222,8 @@ test("⑪ lirePrecedent pagine comme la référence et saute les versions retir�
 });
 
 test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constantes ; le réveil respecte ses deux plafonds (mutations : lire « retour_arriere », ignorer le plafond)", () => {
-  assert.doesNotMatch(FN, /"(sentinelle_reveil|retour_propose|retour_manuel|retour_echec|retour_incertain)"/, "jamais une marque écrite en dur");
-  assert.deepEqual(Object.values(EVT), ["sentinelle_reveil", "retour_propose", "retour_manuel", "retour_echec", "retour_incertain"]);
+  assert.doesNotMatch(FN, /"(sentinelle_reveil|sentinelle_cadence|retour_propose|retour_manuel|retour_echec|retour_incertain)"/, "jamais une marque écrite en dur");
+  assert.deepEqual(Object.values(EVT), ["sentinelle_reveil", "sentinelle_cadence", "retour_propose", "retour_manuel", "retour_echec", "retour_incertain"]);
   const s = corpsDe("reveillerSentinelle");
   const plafond = position(s, 'if (!plafond.ok) return { raison: "plafond" };', "plafond horaire");
   const quota = position(s, 'if (er || reveilsEpuises(reveils24h ?? NaN)) return { raison: "quota_du_jour" };', "quota du jour");
@@ -253,7 +253,7 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.equal(reveilsEpuises(12), true);
   assert.equal(reveilsEpuises(NaN), true, "comptage illisible : on ne réveille pas");
   // Un paramètre nommé `gh` masquerait la fonction `gh()` (trouvé par ce verrou, 2026-10-12).
-  for (const nom of ["reveillerSentinelle", "proposerRetour", "remettrePrecedent", "retourManuel", "lirePrecedent", "retourApercu"]) {
+  for (const nom of ["reveillerSentinelle", "cadencerSentinelle", "proposerRetour", "remettrePrecedent", "retourManuel", "lirePrecedent", "retourApercu"]) {
     const corps = corpsDe(nom);
     assert.doesNotMatch(corps.slice(0, corps.indexOf("{")), /\bgh\s*:/, nom + " : un paramètre gh masquerait gh()");
   }
@@ -415,4 +415,54 @@ test("⑲ un geste prend son créneau sur une AUTRE période, qui entre dans la 
   // Une période absurde retombe sur la minute.
   const absurde = await prendreCreneau(admin, "systeme:x", "y", SC, T, 5);
   assert.equal(absurde.ids[0], await idGeste("creneau:y:systeme:x:" + Math.floor(T / 60e3), SC));
+});
+
+// ─── ③ La cadence (2026-11-21) ───────────────────────────────────────────────
+// « Elle est censée être activée constamment » : le cron horaire n'était servi que 3 à 4 fois
+// par jour. Mutations éprouvées : `<` → `<=` sur l'intervalle (⑳ rougit à 60 min pile) ; relancer
+// pendant un passage en cours, ou sur une lecture illisible (⑳) ; relancer derrière un réveil,
+// retirer la politique ou le plafond, noter avant le 204 (㉑).
+test("⑳ cadence : relancer dès que le dernier passage TERMINÉ a une heure ; jamais en pause, en cours, ni à l'aveugle", () => {
+  const fini = (min) => ({ etat: "completed", conclusion: "success", le: ilYa(min) });
+  assert.equal(CADENCE.intervalleMs, 60 * 60e3);
+  assert.equal(doitCadencerSentinelle({ dernierRun: fini(61), maintenant: T0 }).relancer, true);
+  assert.match(doitCadencerSentinelle({ dernierRun: fini(61), maintenant: T0 }).raison, /il y a 61 min/);
+  assert.equal(doitCadencerSentinelle({ dernierRun: fini(60), maintenant: T0 }).relancer, true, "une heure pile : c'est l'heure");
+  assert.equal(doitCadencerSentinelle({ dernierRun: fini(59), maintenant: T0 }).raison, "run_recent");
+  assert.equal(doitCadencerSentinelle({ dernierRun: fini(10 * 60), maintenant: T0 }).relancer, true, "le cas mesuré du 21/11 : 10 h sans passage");
+  // Un passage ÉCHOUÉ compte comme un passage : le relancer en boucle n'y changerait rien,
+  // et [SENTINELLE MUETTE] le dit déjà (run rouge du détecteur).
+  assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(30), conclusion: "failure" }, maintenant: T0 }).raison, "run_recent");
+  assert.equal(doitCadencerSentinelle({ dernierRun: { ...fini(90), conclusion: "failure" }, maintenant: T0 }).relancer, true);
+  assert.equal(doitCadencerSentinelle({ pause: true, dernierRun: fini(600), maintenant: T0 }).raison, "pause", "la pause du pilote gagne");
+  for (const etat of ["queued", "in_progress", "waiting", "pending", undefined]) {
+    assert.equal(doitCadencerSentinelle({ dernierRun: { etat, le: ilYa(600) }, maintenant: T0 }).raison, "run_en_cours", "un passage pas terminé (" + etat + ") : on attend");
+  }
+  assert.equal(doitCadencerSentinelle({ dernierRun: null, maintenant: T0 }).raison, "run_illisible", "GitHub illisible : rien à l'aveugle");
+  assert.equal(doitCadencerSentinelle({ dernierRun: { etat: "completed", le: "pas une date" }, maintenant: T0 }).raison, "run_illisible");
+  assert.equal(doitCadencerSentinelle({ dernierRun: { etat: "completed" }, maintenant: T0 }).raison, "run_illisible");
+  assert.equal(doitCadencerSentinelle({}).relancer, false);
+  assert.equal(doitCadencerSentinelle().relancer, false);
+});
+
+test("㉑ cadence, câblage : après le réveil, sous la politique, un plafond EN BASE avant le dispatch, la marque après le 204 ; rien d'autre ne part vers GitHub", () => {
+  const s = corpsDe("cadencerSentinelle");
+  const jeton = position(s, "if (!JETON_GH) return { inactif: true };", "sans jeton, rien");
+  const apresReveil = position(s, 'if (reveil && reveil.lance) return { raison: "reveil" };', "un réveil vient de partir");
+  const pol = position(s, 'autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause })', "politique");
+  const decision = position(s, "doitCadencerSentinelle({ pause: !!etatGh.pause, dernierRun: etatGh.runs.sentinelle || null })", "décision pure");
+  const plafond = position(s, 'verifierPlafondEnBase(admin, "systeme:sentinelle-cadence", "sentinelle-cadence", { parMinute: 1, parHeure: CADENCE.parHeure })', "plafond horaire en base");
+  const refus = position(s, 'if (!plafond.ok) return { raison: "plafond" };', "plafond refusé");
+  const dispatch = position(s, "/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches", "dispatch du workflow de la Sentinelle");
+  const ok204 = position(s, 'if (r.status !== 204) return { raison: "refus_github_" + r.status };', "seul un 204 est un départ");
+  const marque = position(s, "event: EVT.cadence", "marque");
+  assert.ok(jeton < apresReveil && apresReveil < pol && pol < decision && decision < plafond && plafond < refus && refus < dispatch && dispatch < ok204 && ok204 < marque);
+  assert.match(s, /body: JSON\.stringify\(\{ ref: "main" \}\)/, "seule la branche part : aucune donnée de production vers GitHub");
+  assert.equal((s.match(/await gh\(/g) || []).length, 1, "un seul appel à GitHub");
+  // Dans la veille : après le réveil, avec son résultat ; et dans le battement.
+  const v = FN.slice(FN.indexOf("async function veille("), FN.indexOf("/** Rappels d'activité"));
+  const r = position(v, "const reveil = await etape(() => reveillerSentinelle(", "réveil");
+  const c = position(v, "const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));", "cadence");
+  assert.ok(r < c, "la cadence lit ce que le réveil vient de faire");
+  assert.match(v, /gestes: \{ delestage, reveil, cadence, retour, canari, essai \}/, "le battement dit ce que la cadence a fait");
 });

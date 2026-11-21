@@ -4,7 +4,7 @@
 // revu le 2026-10-13 après contre-revue adversariale)
 //
 // La veille `pilotage` tourne toutes les 5 min (pg_cron, tenu à la minute) ;
-// la Sentinelle, elle, attend un cron GitHub servi 4 à 8 fois par jour. Deux
+// la Sentinelle, elle, attend un cron GitHub servi 3 à 4 fois par jour. Trois
 // décisions passent donc de « quand GitHub voudra bien » à « dans les 5 min » :
 //
 // ① RÉVEILLER LA SENTINELLE (`doitReveillerSentinelle`) : des échecs chez au
@@ -25,6 +25,10 @@
 //    automatique laisserait quiconque contrôle quelques comptes anciens retirer
 //    la version servie — y compris un CORRECTIF DE SÉCURITÉ, et rouvrir la
 //    faille qu'il fermait. La machine détecte et prévient ; un humain confirme.
+//
+// ③ FAIRE PASSER LA SENTINELLE CHAQUE HEURE (`doitCadencerSentinelle`, 2026-11-21) :
+//    son dernier passage est terminé depuis plus d'une heure, pas de pause →
+//    `workflow_dispatch` du même workflow. Le cron de GitHub reste un filet.
 //
 // ⚠️ CE QUI DÉCIDE SE COMPTE EN BASE (contre-revue du 2026-10-13) : comptes
 // DISTINCTS par `auth_uid` (identité posée par le trigger serveur), créés
@@ -59,7 +63,7 @@ export const RETOUR = Object.freeze({
 // Les marques écrites dans `analytics_events` (user_id "systeme:pilotage") :
 // une SEULE orthographe, lue et écrite par les mêmes constantes (verrou ⑪).
 export const EVT = Object.freeze({
-  reveil: "sentinelle_reveil", propose: "retour_propose", manuel: "retour_manuel",
+  reveil: "sentinelle_reveil", cadence: "sentinelle_cadence", propose: "retour_propose", manuel: "retour_manuel",
   echec: "retour_echec", incertain: "retour_incertain",
 });
 
@@ -98,6 +102,36 @@ export function doitReveillerSentinelle({ pause, enquetes, dernierRun, comptesEr
   const le = t(dernierRun && dernierRun.le);
   if (Number.isFinite(le) && maintenant - le < REVEIL.runRecentMs) return { reveiller: false, raison: "run_recent" };
   return { reveiller: true, raison: `${comptesErreurs} comptes en échec en 30 min, ${enquetes}/${REVEIL.enquetesMax} enquête(s) en cours` };
+}
+
+// ─── ③ LA CADENCE : LA SENTINELLE PASSE CHAQUE HEURE, QUE GITHUB SERVE SON CRON OU NON (2026-11-21) ──
+// « Pourquoi la Sentinelle s'arrête de tourner ? Elle est censée être activée constamment »
+// (Benjamin, 21/11, devant « n'a pas tourné depuis plus de 8 h »). Elle ne s'arrêtait pas :
+// son cron horaire (`23 * * * *`) n'était pas servi. Mesuré le 21/11 sur les 100 derniers passages
+// planifiés (25/10 → 21/11) : 3,7 par jour sur 24 demandés, écart médian 6,5 h, P95 9,9 h, pire
+// 10,8 h. Et le veilleur des enquêtes (relance à 20 min, `humain`
+// à 6 h) ne tourne qu'avec elle. Le réveil ① ne la lançait que sur des échecs ; une Sentinelle
+// qui ne passe que quand ça casse déjà ne voit rien venir.
+// La veille (pg_cron, 5 min, 288 tours sur 288 en 24 h) relance donc le MÊME passage que le
+// cron dès que le dernier est terminé depuis `intervalleMs`. Aucun autre filtre : le passage
+// lit, classe et n'ouvre une enquête que sous ses propres règles (places, dédup, zones).
+export const CADENCE = Object.freeze({ intervalleMs: 60 * 60e3, parHeure: 1 });
+
+/**
+ * Faut-il relancer la Sentinelle parce qu'elle n'est pas passée depuis une heure ?
+ * `dernierRun` = resumerRuns() du dernier sentinelle-autonome.yml (planifié ou lancé) sur main.
+ * Illisible = on ne lance rien à l'aveugle ; un passage en cours ou en file = on attend.
+ * Rend { relancer, raison }.
+ */
+export function doitCadencerSentinelle({ pause, dernierRun, maintenant = Date.now() } = {}) {
+  if (pause) return { relancer: false, raison: "pause" };
+  if (!dernierRun || typeof dernierRun !== "object") return { relancer: false, raison: "run_illisible" };
+  if (dernierRun.etat !== "completed") return { relancer: false, raison: "run_en_cours" };
+  const le = t(dernierRun.le);
+  if (!Number.isFinite(le)) return { relancer: false, raison: "run_illisible" };
+  const age = maintenant - le;
+  if (age < CADENCE.intervalleMs) return { relancer: false, raison: "run_recent" };
+  return { relancer: true, raison: `dernier passage il y a ${Math.round(age / 60e3)} min` };
 }
 
 /** Empreinte courte et stable d'un texte (FNV-1a 32 bits) : ce qui sort à la place du texte. */

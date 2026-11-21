@@ -153,6 +153,8 @@ les relire sur la page Pricing de chaque service le jour du geste.**
    refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min, la veille
    (pg_cron, 5 min) lance la Sentinelle par `workflow_dispatch` — 2 réveils par heure et 12 par jour au plus. Avant :
    un cron GitHub servi 4 à 8 fois par jour.
+   ✅ **Et depuis le 2026-11-21, la cadence** : la même veille relance le passage dès que le dernier est
+   terminé depuis 1 h (runbook `cadence_sentinelle`) — le cron horaire n'était servi que 3,7 fois par jour.
 6. ✅ **Priorité par personnes touchées — c'était déjà le cas** : `classer()` et `classerApi()`
    (`scripts/sentinelle-detecter.mjs`) trient les candidats par comptes distincts, puis par occurrences.
    La première version de ce plan le comptait à tort comme « à faire ».

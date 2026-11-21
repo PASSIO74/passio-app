@@ -1256,7 +1256,8 @@ test("㊵ « Régler » se voit : « Lancé ✓ », relu AU FRAIS, la ligne pass
   await poserSession(page);
   await page.addInitScript(() => { window.PILOTAGE_SUIVI_RELANCE_MS = [400, 900]; });
   const T0 = Date.now();
-  const ancien = { etat: "completed", conclusion: "success", cree: new Date(T0 - 6 * 3600e3).toISOString(), le: new Date(T0 - 6 * 3600e3 + 20e3).toISOString(), url: null };
+  // Le passage d'avant : sous le seuil « muette » (3 h depuis le 2026-11-21), sinon sa ligne dédiée porterait l'orange.
+  const ancien = { etat: "completed", conclusion: "success", cree: new Date(T0 - 2 * 3600e3).toISOString(), le: new Date(T0 - 2 * 3600e3 + 20e3).toISOString(), url: null };
   const orange = { couleur: "orange", titre: "À surveiller", raisons: ["2 erreur(s) dans l'app en 15 min"] };
   const calme = { signalements: { ouverts: 0, liste: [] }, erreurs: { ...BASE.erreurs, details: [] }, capacite: { mesuresServeur: true, jauges: [] }, verdict: orange };
   const gh = (sentinelle) => ({ ...GH, issues: [], aReparer: [], runs: { ...GH.runs, sentinelle } });
