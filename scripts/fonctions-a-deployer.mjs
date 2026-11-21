@@ -13,11 +13,18 @@
 //
 // CE QUE FAIT CE SCRIPT. Pour chaque fonction, il lit la révision qu'elle SERT
 // (l'en-tête `X-Passio-Revision`, posé sur toute réponse : le SHA de son dernier
-// déploiement) et demande à git si, entre ce commit-là et celui-ci, un fichier
-// qu'elle EMPORTE a changé — son dossier, et la clôture des imports de son
-// `index.ts` (scripts/lib/lecteur-imports.mjs, le lecteur du banc des verrous).
-//   · rien n'a changé          → à jour : ni vérifiée, ni déployée ;
-//   · quelque chose a changé   → à déployer ;
+// déploiement) et demande à git ce qui a changé sous `supabase/` entre ce
+// commit-là et celui-ci. La fonction est concernée par :
+//   · son dossier ;
+//   · un module de la clôture des imports de son `index.ts`
+//     (scripts/lib/lecteur-imports.mjs, le lecteur du banc des verrous) ;
+//   · tout ce qui n'est attribuable à personne : `supabase/config.toml`, un
+//     fichier à la racine des fonctions (carte d'imports, `deno.json`), une donnée
+//     de `_shared/` — on ne sait pas qui le lit, donc toutes les fonctions.
+// Elle ne l'est PAS par le dossier d'une autre fonction, par un module partagé
+// qu'elle n'emporte pas, ni par de la documentation (`.md`).
+//   · rien ne la concerne      → à jour : ni vérifiée, ni déployée ;
+//   · quelque chose la concerne → à déployer ;
 //   · on ne sait pas           → à déployer (révision illisible, « dev », commit
 //     absent de l'historique, clôture incalculable) : le doute déploie.
 //
@@ -48,15 +55,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { clotureFonctions } from "./lib/lecteur-imports.mjs";
 
 const RACINE = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const SUPABASE = "supabase/";   // ce que git compare : tout ce qui peut entrer dans un déploiement
 const DOSSIER = "supabase/functions";
+const PARTAGE = DOSSIER + "/_shared/";
+const CODE = /\.(ts|js|mjs)$/;
 const SHA = /^[0-9a-f]{40}$/;
 const CIBLE = /^https:\/\/[a-z]{20}\.supabase\.co$/;
 const DELAI_LECTURE_MS = 15000;
 const court = (sha) => String(sha).slice(0, 7);
+/** Les premiers fichiers changés, puis leur nombre : une révision servie très ancienne ne noie pas le résumé. */
+const enBref = (fichiers, max = 4) => fichiers.slice(0, max).join(", ") + (fichiers.length > max ? ` … (${fichiers.length} fichiers)` : "");
 
 /**
- * Ce que chaque fonction emporte, lu dans le dépôt : `noms` (triés), `chemins`
- * (nom → son dossier, puis les modules de sa clôture qui vivent ailleurs) et
+ * Ce que chaque fonction emporte, lu dans le dépôt : `noms` (triés), `clotures`
+ * (nom → les fichiers de la clôture de ses imports, entrée comprise) et
  * `incertaines` (nom → raisons : la clôture ne se calcule pas).
  */
 export function lireFonctions(racine = RACINE) {
@@ -65,39 +77,49 @@ export function lireFonctions(racine = RACINE) {
     for (const e of readdirSync(join(racine, dir), { withFileTypes: true })) {
       const p = dir + "/" + e.name;
       if (e.isDirectory()) parcourir(p);
-      else if (/\.(ts|js|mjs)$/.test(e.name)) sources[p] = readFileSync(join(racine, p), "utf8");
+      else if (CODE.test(e.name)) sources[p] = readFileSync(join(racine, p), "utf8");
     }
   };
   parcourir(DOSSIER);
   const { parFonction, incertaines } = clotureFonctions(sources);
-  const chemins = new Map();
-  for (const [nom, cloture] of parFonction) {
-    const dossier = `${DOSSIER}/${nom}/`;
-    chemins.set(nom, [dossier, ...cloture.filter((f) => !f.startsWith(dossier))]);
-  }
-  return { noms: [...parFonction.keys()].sort(), chemins, incertaines };
+  return { noms: [...parFonction.keys()].sort(), clotures: parFonction, incertaines };
 }
 
-/** Un fichier qui n'entre dans aucun bundle : la documentation d'une fonction. */
-const horsBundle = (f) => /\.md$/i.test(f);
+/**
+ * Parmi les fichiers changés sous `supabase/`, ceux qui CONCERNENT une fonction. Tout ce qui
+ * n'est attribuable ni à elle, ni sûrement à une autre, la concerne : le doute déploie.
+ */
+export function changementsQuiConcernent(fonction, changes, { noms, clotures }) {
+  const dossier = `${DOSSIER}/${fonction}/`;
+  const cloture = new Set(clotures.get(fonction) || []);
+  const autres = noms.filter((n) => n !== fonction).map((n) => `${DOSSIER}/${n}/`);
+  return changes.filter((f) => {
+    if (/\.md$/i.test(f)) return false;                              // de la documentation : dans aucun bundle
+    if (f.startsWith(dossier) || cloture.has(f)) return true;        // son dossier, ou un module qu'elle emporte
+    if (autres.some((d) => f.startsWith(d))) return false;           // le dossier d'une AUTRE fonction
+    if (f.startsWith(PARTAGE) && CODE.test(f)) return false;         // un module partagé qu'elle n'emporte pas
+    return true;                                                     // commun : config, carte d'imports, donnée
+  });
+}
 
 /**
- * La décision, PURE. `servies` : nom → { revision, raison } ; `comparer(revision,
- * chemins)` → { relation: "absente" | "descendante" | "comparable", changes }.
+ * La décision, PURE. `servies` : nom → { revision, raison } ; `comparer(revision)` →
+ * { relation: "absente" | "descendante" | "comparable", changes } — `changes` : les
+ * fichiers changés sous `supabase/` entre la révision servie et ce commit.
  * Rend, par fonction : { fonction, etat: "a_jour" | "a_deployer", revision, motif, changes }.
  */
-export function selectionner({ noms, chemins, incertaines = new Map(), servies, comparer }) {
+export function selectionner({ noms, clotures, incertaines = new Map(), servies, comparer }) {
   return noms.map((fonction) => {
     const s = servies.get(fonction) || { revision: null, raison: "révision servie non lue" };
     const base = { fonction, revision: s.revision || null, changes: [] };
     if (incertaines.has(fonction)) return { ...base, etat: "a_deployer", motif: "ce qu'elle emporte ne se calcule pas (" + incertaines.get(fonction)[0] + ")" };
     if (!s.revision) return { ...base, etat: "a_deployer", motif: s.raison || "révision servie illisible" };
-    const c = comparer(s.revision, chemins.get(fonction) || []);
+    const c = comparer(s.revision);
     if (c.relation === "absente") return { ...base, etat: "a_deployer", motif: `sert ${court(s.revision)}, un commit absent de l'historique de celui-ci` };
-    const changes = (c.changes || []).filter((f) => !horsBundle(f));
+    const changes = changementsQuiConcernent(fonction, c.changes || [], { noms, clotures });
     if (!changes.length) return { ...base, etat: "a_jour", motif: `sert ${court(s.revision)} : rien de ce qu'elle emporte n'a changé depuis` };
     if (c.relation === "descendante") return { ...base, etat: "a_jour", changes, motif: `sert ${court(s.revision)}, plus récent que ce commit : un run ancien ne la fait pas reculer` };
-    return { ...base, etat: "a_deployer", changes, motif: `sert ${court(s.revision)} ; changé depuis : ${changes.join(", ")}` };
+    return { ...base, etat: "a_deployer", changes, motif: `sert ${court(s.revision)} ; changé depuis : ${enBref(changes)}` };
   });
 }
 
@@ -118,16 +140,20 @@ export async function lireRevisionServie(cible, fonction, fetchFn = globalThis.f
 export function comparateurGit(racine = RACINE) {
   const git = (...a) => spawnSync("git", a, { cwd: racine, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   let tete = null;   // lu une fois : le commit que ce run déploie
-  return (revision, chemins) => {
+  const lues = new Map();   // plusieurs fonctions servent souvent la même révision : une comparaison chacune
+  return (revision) => {
+    if (lues.has(revision)) return lues.get(revision);
+    const rendre = (r) => { lues.set(revision, r); return r; };
     // Seul un SHA entre dans une commande git, et seul un COMMIT présent se compare : le reste est « absent ».
-    if (!SHA.test(revision) || git("cat-file", "-e", revision + "^{commit}").status !== 0) return { relation: "absente", changes: [] };
-    const d = git("diff", "--name-only", "--no-renames", revision, "HEAD", "--", ...chemins);
-    if (d.status !== 0) return { relation: "absente", changes: [] };
-    const changes = d.stdout.split("\n").filter(Boolean).sort();
+    if (!SHA.test(revision) || git("cat-file", "-e", revision + "^{commit}").status !== 0) return rendre({ relation: "absente", changes: [] });
+    // `-z` : des chemins bruts, séparés par NUL — un nom de fichier hors ASCII n'est ni cité ni échappé.
+    const d = git("diff", "--name-only", "--no-renames", "-z", revision, "HEAD", "--", SUPABASE);
+    if (d.status !== 0) return rendre({ relation: "absente", changes: [] });
+    const changes = d.stdout.split("\0").filter(Boolean).sort();
     // HEAD est un ancêtre de la révision servie (code 0), et ce n'est pas elle : la fonction est EN AVANCE sur ce commit.
     if (tete === null) tete = git("rev-parse", "HEAD").stdout.trim();
     const descendante = tete !== revision && git("merge-base", "--is-ancestor", "HEAD", revision).status === 0;
-    return { relation: descendante ? "descendante" : "comparable", changes };
+    return rendre({ relation: descendante ? "descendante" : "comparable", changes });
   };
 }
 
@@ -136,7 +162,7 @@ export function comparateurGit(racine = RACINE) {
  * "toutes" ou "fonction" (à la demande). Lève sur une demande illisible.
  */
 export async function etablirSelection({ mode, fonction = null, cible = null, racine = RACINE, fetchFn = globalThis.fetch }) {
-  const { noms, chemins, incertaines } = lireFonctions(racine);
+  const { noms, clotures, incertaines } = lireFonctions(racine);
   if (!noms.length) throw new Error(`aucune fonction sous ${DOSSIER}/ : rien à sélectionner.`);
   const demandee = (f, motif) => ({ fonction: f, etat: "a_deployer", revision: null, changes: [], motif });
   if (mode === "toutes") return { titre: "à la demande : toutes les fonctions", lignes: noms.map((f) => demandee(f, "demandé à la main (toutes)")) };
@@ -146,7 +172,7 @@ export async function etablirSelection({ mode, fonction = null, cible = null, ra
   }
   if (mode !== "etat" || !cible || !CIBLE.test(cible)) throw new Error("cible : --cible https://<ref>.supabase.co (ou --toutes, ou --fonction <nom>).");
   const lues = await Promise.all(noms.map(async (f) => [f, await lireRevisionServie(cible, f, fetchFn)]));
-  return { titre: "ce que sert " + cible + ", contre ce commit", lignes: selectionner({ noms, chemins, incertaines, servies: new Map(lues), comparer: comparateurGit(racine) }) };
+  return { titre: "ce que sert " + cible + ", contre ce commit", lignes: selectionner({ noms, clotures, incertaines, servies: new Map(lues), comparer: comparateurGit(racine) }) };
 }
 
 async function principal(args) {

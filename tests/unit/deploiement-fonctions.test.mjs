@@ -19,7 +19,8 @@
 // `curl` (deux scripts qui journalisent), et le réseau (`tests/unit/lib/
 // faux-monde-fonctions.mjs`, chargé par NODE_OPTIONS — aucun crochet de test
 // dans le code de production).
-//   ① ② la sélection : seules les fonctions qu'un changement concerne ;
+//   ① ② la sélection : seules les fonctions qu'un changement concerne ; ce
+//       qui n'est attribuable à personne (config, carte d'imports) les concerne toutes ;
 //   ③ la retenue partielle, dite et expliquée, puis le rattrapage ;
 //   ④ private-media ouverte se redéploie ; la fumée exige l'état lu en base ;
 //   ⑤ une cible illisible arrête tout ; ⑥ rien en retard, rien ne part ;
@@ -39,7 +40,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
 import { evaluer, decide } from "./lib/expression-github.mjs";
-import { selectionner, lireRevisionServie, comparateurGit, lireFonctions, etablirSelection } from "../../scripts/fonctions-a-deployer.mjs";
+import { selectionner, changementsQuiConcernent, lireRevisionServie, comparateurGit, lireFonctions, etablirSelection } from "../../scripts/fonctions-a-deployer.mjs";
 import { lireObjet, sqlPrerequis, etatsLus, dresserPlan } from "../../scripts/verifier-prerequis-fonctions.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -228,6 +229,23 @@ test("② un push qui touche _shared déploie les fonctions qui l'emportent, et 
   assert.equal(r.code, 0, r.sortie);
   assert.deepEqual(r.deployees, []);
   assert.equal(r.sorties.selection.concernees, "");
+});
+
+test("② ce qui n'est attribuable à personne concerne TOUTES les fonctions : un supabase/config.toml, une carte d'imports à la racine des fonctions, une donnée de _shared — jamais « personne »", () => {
+  for (const commun of ["supabase/config.toml", "supabase/functions/deno.json", "supabase/functions/import_map.json", SHARED + "donnees.json", "supabase/functions/.env.exemple"]) {
+    const m = nouveauMonde();
+    modifier(m, [commun]);
+    const r = jouerJob(m);
+    assert.equal(r.code, 0, commun + "\n" + r.sortie);
+    assert.deepEqual(r.deployees, FONCTIONS, commun + " : on ne sait pas qui le lit, les six partent");
+    assert.match(r.resume, new RegExp("\\*\\*ask-ai\\*\\* : à déployer — sert [0-9a-f]{7} ; changé depuis : " + commun.replace(/[.]/g, "\\.")), commun);
+    // Parties, elles servent ce commit : le run suivant n'a plus rien à faire.
+    assert.deepEqual(jouerJob(m).deployees, [], commun);
+  }
+  // Hors de supabase/, rien ne concerne une fonction : ni un script, ni le workflow, ni le manifeste.
+  const m = nouveauMonde();
+  modifier(m, ["scripts/fumee-private-media.mjs", MANIFESTE]);
+  assert.deepEqual(jouerJob(m).deployees, []);
 });
 
 // ── ③ La retenue partielle ──────────────────────────────────────────────────
@@ -426,46 +444,68 @@ test("⑩ réinjection : la CLI qui refuse une fonction arrête le déploiement 
 });
 
 // ── ⑪ La sélection, fonction par fonction ───────────────────────────────────
-test("⑪ selectionner : à jour, à déployer, incertaine, descendante, documentation seule", () => {
-  const noms = ["a", "b", "c", "d", "e", "f"];
-  const chemins = new Map(noms.map((n) => [n, [`supabase/functions/${n}/`]]));
-  const R = "1".repeat(40);
-  const servies = new Map([["a", { revision: R }], ["b", { revision: R }], ["c", { revision: null, raison: "fonction injoignable : révision servie non lue" }], ["d", { revision: R }], ["e", { revision: R }], ["f", { revision: R }]]);
+test("⑪ selectionner : à jour, à déployer, incertaine, descendante, documentation seule, fichier commun, dossier d'une autre", () => {
+  const noms = ["a", "b", "c", "d", "e", "f", "g"];
+  const F = (n, f = "index.ts") => `supabase/functions/${n}/${f}`;
+  const clotures = new Map(noms.map((n) => [n, [F(n), SHARED + "revision.js", ...(n === "g" ? [SHARED + "g-seul.js"] : [])]]));
+  const R = Object.fromEntries(noms.map((n, i) => [n, String(i + 1).repeat(40)]));
+  const servies = new Map(noms.map((n) => [n, n === "c" ? { revision: null, raison: "fonction injoignable : révision servie non lue" } : { revision: R[n] }]));
+  // Ce que git rend pour chaque révision servie : TOUT ce qui a changé sous supabase/ depuis.
   const reponses = {
-    a: { relation: "comparable", changes: [] },
-    b: { relation: "comparable", changes: ["supabase/functions/b/index.ts"] },
-    d: { relation: "descendante", changes: ["supabase/functions/d/index.ts"] },
-    e: { relation: "comparable", changes: ["supabase/functions/e/README.md"] },
-    f: { relation: "absente", changes: [] },
+    [R.a]: { relation: "comparable", changes: [F("b"), SHARED + "g-seul.js"] },   // le dossier d'une autre, un module qu'elle n'emporte pas
+    [R.b]: { relation: "comparable", changes: [F("b")] },
+    [R.d]: { relation: "descendante", changes: [F("d")] },
+    [R.e]: { relation: "comparable", changes: [F("e", "README.md"), F("a")] },
+    [R.f]: { relation: "absente", changes: [] },
+    [R.g]: { relation: "comparable", changes: [SHARED + "g-seul.js"] },
   };
   const demandes = [];
-  const comparer = (rev, ch) => { demandes.push(ch[0]); return reponses[ch[0].split("/")[2]]; };
-  const l = selectionner({ noms, chemins, servies, comparer, incertaines: new Map() });
-  assert.deepEqual(l.map((x) => [x.fonction, x.etat]), [["a", "a_jour"], ["b", "a_deployer"], ["c", "a_deployer"], ["d", "a_jour"], ["e", "a_jour"], ["f", "a_deployer"]]);
-  assert.ok(!demandes.includes("supabase/functions/c/"), "sans révision, rien à comparer");
+  const comparer = (rev) => { demandes.push(rev); return reponses[rev]; };
+  const l = selectionner({ noms, clotures, servies, comparer, incertaines: new Map() });
+  assert.deepEqual(l.map((x) => [x.fonction, x.etat]), [["a", "a_jour"], ["b", "a_deployer"], ["c", "a_deployer"], ["d", "a_jour"], ["e", "a_jour"], ["f", "a_deployer"], ["g", "a_deployer"]]);
+  assert.equal(demandes.length, 6, "sans révision, rien à comparer");
+  assert.deepEqual(l.find((x) => x.fonction === "g").changes, [SHARED + "g-seul.js"]);
   // Une clôture incalculable n'est jamais lue « rien d'autre n'est emporté ».
-  const i = selectionner({ noms: ["a"], chemins, servies, comparer, incertaines: new Map([["a", ["supabase/functions/a/index.ts : import() ou require() au chemin calculé"]]]) });
+  const i = selectionner({ noms: ["a"], clotures, servies, comparer, incertaines: new Map([["a", [F("a") + " : import() ou require() au chemin calculé"]]]) });
   assert.equal(i[0].etat, "a_deployer");
   assert.match(i[0].motif, /ne se calcule pas \(supabase\/functions\/a\/index\.ts : import\(\) ou require\(\) au chemin calculé\)/);
   // Une fonction que personne n'a lue.
-  assert.equal(selectionner({ noms: ["z"], chemins, servies, comparer })[0].etat, "a_deployer");
+  assert.equal(selectionner({ noms: ["z"], clotures, servies, comparer })[0].etat, "a_deployer");
+  // Une révision servie très ancienne : le motif nomme les premiers fichiers, puis leur nombre.
+  const beaucoup = selectionner({ noms: ["a"], clotures, servies, comparer: () => ({ relation: "comparable", changes: Array.from({ length: 30 }, (_x, k) => F("a", `m${String(k).padStart(2, "0")}.ts`)) }) })[0];
+  assert.equal(beaucoup.changes.length, 30);
+  assert.match(beaucoup.motif, /changé depuis : supabase\/functions\/a\/m00\.ts, .*m03\.ts … \(30 fichiers\)$/);
+  // Le classement d'un fichier changé, cas par cas — le doute concerne.
+  const pour = (fn, f) => changementsQuiConcernent(fn, [f], { noms, clotures }).length === 1;
+  assert.deepEqual([pour("a", F("a")), pour("a", F("a", "aide/x.ts")), pour("a", SHARED + "revision.js")], [true, true, true]);
+  assert.deepEqual([pour("a", F("b")), pour("a", SHARED + "g-seul.js"), pour("a", F("a", "README.md")), pour("a", "supabase/NOTES.MD")], [false, false, false, false]);
+  for (const commun of ["supabase/config.toml", "supabase/functions/deno.json", SHARED + "donnees.json", SHARED + "sous/dossier.txt", "supabase/functions/ancienne-fonction/index.ts", "supabase/migrations/x.sql"]) {
+    assert.equal(pour("a", commun), true, commun + " : attribuable à personne, donc à toutes");
+  }
+  // Un dossier dont le nom PROLONGE celui d'une fonction n'est pas le sien (« a » et « a-bis »).
+  assert.equal(changementsQuiConcernent("a", ["supabase/functions/a-bis/index.ts"], { noms: ["a", "a-bis"], clotures }).length, 0);
 });
 
 test("⑪ comparateurGit et etablirSelection sur un vrai dépôt : la clôture réelle, le commit absent, la descendance ; lireRevisionServie ne rend qu'un SHA", async () => {
   const m = nouveauMonde();
-  const comparer = comparateurGit(m.depot);
-  const { noms, chemins, incertaines } = lireFonctions(m.depot);
+  const { noms, clotures, incertaines } = lireFonctions(m.depot);
   assert.deepEqual(noms, FONCTIONS);
   assert.equal(incertaines.size, 0);
-  assert.deepEqual(chemins.get("ask-ai"), ["supabase/functions/ask-ai/", SHARED + "plafond.js", SHARED + "revision.js"]);
-  assert.deepEqual(comparer(m.A, chemins.get("pilotage")), { relation: "comparable", changes: [] });
-  const B = modifier(m, [SHARED + "reception.js"]);
-  assert.deepEqual(comparer(m.A, chemins.get("pilotage")).changes, [SHARED + "reception.js"]);
-  assert.deepEqual(comparer(m.A, chemins.get("ask-ai")).changes, []);
-  assert.equal(comparer("0".repeat(40), chemins.get("pilotage")).relation, "absente");
-  assert.equal(comparer("HEAD; echo x", chemins.get("pilotage")).relation, "absente", "seul un SHA se compare");
+  assert.deepEqual(clotures.get("ask-ai"), [SHARED + "plafond.js", SHARED + "revision.js", "supabase/functions/ask-ai/index.ts"]);
+  assert.deepEqual(comparateurGit(m.depot)(m.A), { relation: "comparable", changes: [] });
+  // Un nom de fichier accentué, un script hors de supabase/ : git rend le premier tel quel, pas le second.
+  fs.writeFileSync(path.join(m.depot, SHARED + "réglé.js"), "export const x = 1;\n");
+  const B = modifier(m, [SHARED + "reception.js", "scripts/fumee-private-media.mjs"]);
+  const comparer = comparateurGit(m.depot);   // un comparateur par run : HEAD y est lu une fois
+  assert.deepEqual(comparer(m.A).changes, [SHARED + "reception.js", SHARED + "réglé.js"]);
+  assert.deepEqual(changementsQuiConcernent("ask-ai", comparer(m.A).changes, { noms, clotures }), []);
+  assert.deepEqual(changementsQuiConcernent("pilotage", comparer(m.A).changes, { noms, clotures }), [SHARED + "reception.js"]);
+  assert.equal(comparer("0".repeat(40)).relation, "absente");
+  assert.equal(comparer("HEAD; echo x").relation, "absente", "seul un SHA se compare");
+  assert.equal(comparer(B).relation, "comparable");
+  assert.deepEqual(comparer(B).changes, []);
   git(m, "checkout", "-q", "--detach", m.A);
-  assert.equal(comparer(B, chemins.get("pilotage")).relation, "descendante");
+  assert.equal(comparateurGit(m.depot)(B).relation, "descendante");
   git(m, "checkout", "-q", "main");
   // Le chemin entier, par un faux réseau : reception.js est emporté par notify-call et pilotage.
   const fetchFn = async (url, init) => {
