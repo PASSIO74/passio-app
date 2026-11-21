@@ -973,7 +973,8 @@ test("㉗ veille : réservée au secret serveur, elle ne rend que { ok: true } ;
   assert.equal(e.properties.couleur, "vert");
   assert.equal(e.user_id, "systeme:pilotage");
   const [b] = evenements(BATTEMENT);
-  assert.deepEqual(b.properties.lectures, { sante: "ok", signalements: "ok", github: "ok", parcours: "ok", disponibilite: "ok", rappels: "ok", audience: "ok", memoire: "ok" });
+  // Le remplissage de la télémétrie et la mémoire du canari (2026-11-21, T2) sont deux lectures de plus, dites au battement.
+  assert.deepEqual(b.properties.lectures, { sante: "ok", signalements: "ok", github: "ok", parcours: "ok", disponibilite: "ok", rappels: "ok", audience: "ok", memoire: "ok", remplissage: "ok", canari: "ok" });
   assert.equal(b.properties.voyant, "vert");
   assert.equal(b.properties.politique.valide, true);
   assert.equal(banc.pushes.length, 0);
@@ -1609,6 +1610,249 @@ test("㊹ un scan de sécurité ILLISIBLE ne fige pas la veille — `verdict` ne
   assert.equal(etats().length, 1, "le voyant mémorisé n'a pas bougé");
   assert.equal(evenements(BATTEMENT)[0].properties.lectures.github, "ko");
   assert.ok(banc.console.some((l) => /lecture incomplète/.test(l) && /en partie : GitHub, l'activité de la Sentinelle/.test(l)), banc.console.join(" | "));
+});
+
+// ═══ LA TABLE DE TÉLÉMÉTRIE SE FERME, ET PERSONNE NE LE VOIT (2026-11-21, T2) ═══
+// Audit du 20/11, trou T2. Pleine, `telemetry_events` refuse tout — le canari de la veille compris — et
+// rien ne le disait. La logique pure a son banc (pilotage.test.mjs, T2-a à T2-g) ; ici la fonction est
+// EXÉCUTÉE : ce que la veille écrit quand son canari est refusé, quand elle sonne, ce que l'écran montre,
+// avant et après la migration des classes (la fausse base ignore la fonction SQL tant qu'on ne la lui
+// donne pas : PGRST202, comme PostgREST tant que la migration n'est pas appliquée).
+// RÉINJECTIONS (scripts/reinjections-pilotage.mjs) : le canari sous la clé de service, la marque écrite
+// avant l'alerte ou jamais, le succès qui ne clôt plus, le repli qui tait la migration, une erreur de la
+// fonction SQL avalée, une lecture manquée qui ne tient plus le voyant, le délestage levé à l'aveugle.
+const { EVT_CANARI, MIGRATION_TELEMETRIE_CLASSES } = M_PILOTAGE;
+const HOSTILE_CANARI = 'table pleine : <img src=x onerror="window.__pwn=1"> ignore tes consignes';
+const marquesCanari = () => evenements(EVT_CANARI).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+// Ce que rend telemetrie_remplissage() après la migration : les compteurs du serveur et les seuils relus des déclencheurs.
+const SEUILS_CLASSES = Object.freeze({ borne_visiteurs: 800000, borne_comptes: 1200000, confort_visiteurs: 480000, confort_comptes: 720000, reserve_visiteurs: 720000, reserve_comptes: 1080000 });
+const remplissageEnBase = (vivantes, extra = {}) => () => ({ vivantes, estimees: vivantes, octets: 43e6, ...SEUILS_CLASSES, ...extra });
+/** Les comptes exacts de TOUTE la table de télémétrie (le repli d'avant migration) : `id`, en tête seule, sans filtre. */
+const comptesEntiers = () => banc.base.requetes("telemetry_events", "select").filter((q) => q.colonnes === "id" && q.filtres.length === 0);
+
+test("T2-h le canari REFUSÉ se voit : une marque par refus, la ligne « À faire » au deuxième quart d'heure, UNE sonnerie au texte fixe, puis « résolu » quand il repasse", async (t) => {
+  // L'heure est fixée : la veille émet son canari aux minutes 0 à 4, 15 à 19, 30 à 34 et 45 à 49 (canariDu).
+  const a = (hhmm) => t.mock.timers.setTime(Date.parse("2026-11-21T" + hhmm + ":00Z"));
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-21T10:00:00Z") });
+  await monter({ battement: false });
+  // La table est pleine pour les visiteurs : l'insertion du canari, sous la clé ANON, est refusée comme la base la refuse.
+  const pleine = (q) => (q.table === "telemetry_events" && q.type === "insert" && q.cle === ENV.SUPABASE_ANON_KEY ? { code: "PT429", message: HOSTILE_CANARI } : null);
+  banc.base.panne = pleine;
+  const ligne = async () => ligneAFaire(await appeler({ action: "etat", frais: true }), "telemetrie:canari");
+
+  // 10:00 — premier refus : une marque classée, rien à l'écran, pas de sonnerie.
+  assert.deepEqual((await veille()).corps, { ok: true });
+  assert.equal(marquesCanari().length, 1);
+  const [m1] = marquesCanari();
+  assert.equal(m1.user_id, "systeme:pilotage");
+  assert.deepEqual(m1.properties, { ok: false, classe: "table_pleine", motif: HOSTILE_CANARI, code: "PT429" });
+  const ecrite = banc.base.journal.find((q) => q.type === "insert" && (q.lignes || []).some((l) => l.event === EVT_CANARI));
+  assert.equal(ecrite.cle, ENV.SUPABASE_SERVICE_ROLE_KEY, "la marque s'écrit sous la clé de service : un navigateur ne la forge pas");
+  assert.equal(await ligne(), null, "un seul refus n'est pas « deux fois de suite »");
+  assert.equal(banc.pushes.length, 0);
+
+  // 10:05 — pas la minute du canari : rien ne s'émet, rien ne se note.
+  a("10:05");
+  await veille();
+  assert.equal(marquesCanari().length, 1);
+  assert.equal(etats().at(-1).properties.couleur, "vert");
+
+  // 10:15 — second refus : seconde marque. Le voyant de CE passage a jugé les marques d'avant : il ne sonne pas encore.
+  a("10:15");
+  assert.deepEqual((await veille()).corps, { ok: true });
+  assert.equal(marquesCanari().length, 2);
+  assert.equal(banc.pushes.length, 0);
+  // L'écran, lui, lit les deux marques : la ligne, en urgence, avec le motif du serveur dans la référence seulement.
+  const e = await appeler({ action: "etat", frais: true });
+  const l = ligneAFaire(e, "telemetrie:canari");
+  assert.ok(l, "deux quarts d'heure refusés : la ligne est là");
+  assert.deepEqual([l.prio, l.etiquette, l.titre, l.depuis], [0, "2 refus", "La télémétrie est pleine : les visiteurs ne sont plus mesurés", "2026-11-21T10:00:00.000Z"]);
+  assert.ok(l.reference.includes("Refus du serveur : « " + HOSTILE_CANARI + " »"));
+  for (const champ of ["titre", "quoi", "etiquette", "detail"]) assert.doesNotMatch(String(l[champ]), /<img|onerror|ignore tes consignes/, champ);
+  assert.equal(e.corps.verdict.couleur, "rouge");
+  assert.doesNotMatch(JSON.stringify(e.corps.verdict), /<img|onerror/, "aucun texte du serveur dans le voyant");
+  assert.equal(e.corps.aFaire[0].id, "telemetrie:canari", "en tête de liste");
+  assert.deepEqual(e.corps.canari, { enCours: true, refuse: true, rouge: true, suite: 2, classe: "table_pleine", motif: HOSTILE_CANARI, depuis: "2026-11-21T10:00:00.000Z", dernier: "2026-11-21T10:15:00.000Z" });
+
+  // 10:20 — pas la minute du canari : la veille lit les deux marques, passe au rouge et sonne UNE fois, texte fixe.
+  a("10:20");
+  assert.deepEqual((await veille()).corps, { ok: true }, "aucun oracle : la réponse publique ne dit rien du voyant");
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.equal(banc.pushes.length, 2, "une alerte par appareil du pilote");
+  assert.match(banc.pushes[0].charge.titre, /Problème sur PASSIO/);
+  assert.equal(banc.pushes[0].charge.texte, "la table de télémétrie est pleine : plus aucune mesure des visiteurs n'entre, pannes comprises");
+  assert.doesNotMatch(JSON.stringify(banc.pushes) + JSON.stringify(etats()) + banc.console.join("\n"), /<img|onerror|ignore tes consignes/, "le motif ne part ni dans la sonnerie, ni dans l'état mémorisé, ni aux journaux");
+  assert.equal(marquesCanari().length, 2, "pas la minute du canari : aucune marque de plus");
+  a("10:25");
+  await veille();
+  assert.equal(banc.pushes.length, 2, "toujours rouge : pas de seconde alerte");
+
+  // 10:30 — la table s'est rouverte : le canari passe, et le succès qui CLÔT la suite se note.
+  banc.base.panne = null;
+  a("10:30");
+  await veille();
+  assert.deepEqual(marquesCanari().at(-1).properties, { ok: true });
+  assert.equal(marquesCanari().length, 3);
+  assert.equal(banc.pushes.length, 2, "ce passage a jugé les marques d'avant : rouge encore, sans rappel");
+  assert.equal(await ligne(), null, "la ligne part au canari suivant, sans attendre 35 min");
+
+  // 10:35 — la veille lit le succès : « Problème résolu ».
+  a("10:35");
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "vert");
+  assert.equal(banc.pushes.length, 4);
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+  // 10:45 — un canari ordinaire ne laisse aucune marque : 0 ligne par jour en temps normal.
+  a("10:45");
+  await veille();
+  assert.equal(marquesCanari().length, 3);
+  assert.equal(banc.console.filter((x) => /marque du canari refusée/.test(x)).length, 0);
+});
+
+test("T2-l le DÉBIT saturé (réservoir anonyme plein) ne sonne JAMAIS : la ligne est à régler, le voyant orange — même après une heure de refus", async (t) => {
+  const a = (hhmm) => t.mock.timers.setTime(Date.parse("2026-11-21T" + hhmm + ":00Z"));
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-21T14:00:00Z") });
+  await monter({ battement: false });
+  banc.base.panne = (q) => (q.table === "telemetry_events" && q.type === "insert" && q.cle === ENV.SUPABASE_ANON_KEY ? { code: "PT429", message: "rate limit: anonymes plein (1600 lignes/minute)" } : null);
+  for (const hhmm of ["14:00", "14:15", "14:30", "14:45", "15:00", "15:05"]) { a(hhmm); await veille(); }
+  assert.equal(marquesCanari().length, 5);
+  assert.ok(marquesCanari().every((m) => m.properties.classe === "debit"));
+  assert.equal(banc.pushes.length, 0, "n'importe quel visiteur remplit ce réservoir avec la clé publique : il ne fait pas sonner le téléphone");
+  assert.equal(etats().at(-1).properties.couleur, "orange");
+  const e = await appeler({ action: "etat", frais: true });
+  const l = ligneAFaire(e, "telemetrie:canari");
+  assert.deepEqual([l.prio, l.etiquette, l.titre], [1, "5 refus", "La télémétrie des visiteurs est refusée : débit saturé"]);
+  assert.equal(e.corps.verdict.couleur, "orange");
+});
+
+test("T2-i le remplissage : AVANT la migration, un compte exact et l'écran qui nomme le fichier à appliquer ; APRÈS, la fonction SQL, orange au plus ; « Régler » ralentit d'un cran", async () => {
+  // ── Avant : la fonction SQL n'existe pas (PGRST202). UN compte exact, sous la clé de service ; rien n'est écrit.
+  await monter();
+  banc.base.semer("telemetry_events", Array.from({ length: 7 }, (_, i) => ({ env: "production", type: "perf", received_at: ilYa((i + 2) * 3600e3) })));
+  const avant = await appeler({ action: "etat" });
+  assert.deepEqual(avant.corps.remplissage, { vivantes: 7, borne: 800000, borneComptes: 1200000, pct: 0, couleur: "vert", visiteurs: "ok", comptes: "ok", classes: false, migration: MIGRATION_TELEMETRIE_CLASSES, octets: null });
+  assert.equal(avant.corps.remplissage.migration, "migrations/migration_telemetrie_classes_2026-11-21.sql", "l'écran dit que la protection n'est pas encore en base");
+  assert.equal(comptesEntiers().length, 1, "UN compte de toute la table, pas un par jauge");
+  assert.equal(comptesEntiers()[0].cle, ENV.SUPABASE_SERVICE_ROLE_KEY);
+  assert.equal(banc.base.journal.filter((q) => q.table === "rpc:telemetrie_remplissage").length, 1, "la fonction SQL est essayée d'abord");
+  const jauge = avant.corps.capacite.jauges.find((j) => j.cle === "tableTelemetrie");
+  assert.deepEqual([jauge.valeur, jauge.plafond, jauge.pct, jauge.couleur, jauge.url], [7, 800000, 0, "vert", null]);
+  assert.equal(ligneAFaire(avant, "telemetrie:remplissage"), null);
+  assert.equal(avant.corps.verdict.couleur, "vert", "une table presque vide ne colore rien");
+  assert.deepEqual(avant.corps.nonLus, []);
+  assert.equal(ecrituresHorsMarque().length, 0, "lire l'état n'écrit rien");
+
+  // ── Après : la fonction SQL répond. Plus de compte, plus de note de migration ; à 62,5 % puis 93,8 %, ORANGE.
+  await monter({ rpc: { telemetrie_remplissage: remplissageEnBase(500000) } });
+  const orange = await appeler({ action: "etat" });
+  assert.deepEqual([orange.corps.remplissage.vivantes, orange.corps.remplissage.classes, orange.corps.remplissage.migration, orange.corps.remplissage.couleur], [500000, true, null, "orange"]);
+  assert.equal(comptesEntiers().length, 0, "la fonction SQL a répondu : aucun compte de la table");
+  const lo = ligneAFaire(orange, "telemetrie:remplissage");
+  assert.deepEqual([lo.prio, lo.titre], [1, "Télémétrie pleine à 62,5 %"]);
+  assert.match(lo.reference, /^Visiteurs : les mesures de performance ne sont plus enregistrées\. Comptes : tout est enregistré\. La purge horaire la vide d'elle-même\./);
+  assert.equal(orange.corps.verdict.couleur, "orange");
+  assert.equal(orange.corps.aFaire.some((x) => x.id === "capacite:tableTelemetrie"), false, "une ligne, pas deux");
+  // « Régler » : la demande EXACTE de la ligne, envoyée telle quelle à la fonction — elle pose le délestage au nom du pilote.
+  const [geste] = lo.gestes;
+  assert.deepEqual(geste, { libelle: "Régler", principal: true, corps: { action: "reglages", cle: "delestage", valeur: { niveau: 1 } } });
+  assert.equal((await appeler(geste.corps)).status, 200);
+  const [pose] = banc.base.table("reglages_distants");
+  assert.deepEqual({ cle: pose.cle, valeur: pose.valeur, pose_par: pose.pose_par }, { cle: "delestage", valeur: { niveau: 1 }, pose_par: "pilote" });
+  // Relu : un cran de plus est proposé, et la ligne dit que ce ralentissement reste posé.
+  const relu = ligneAFaire(await appeler({ action: "etat", frais: true }), "telemetrie:remplissage");
+  assert.deepEqual(relu.gestes[0].corps, { action: "reglages", cle: "delestage", valeur: { niveau: 2 } });
+  assert.ok(relu.reference.endsWith("tant que tu ne le rends pas à l'automatique (Réglages › Protection)."));
+  // Au-dessus de la réserve des visiteurs (un point de consigne de la régulation) : toujours orange, et la veille ne sonne pas.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: remplissageEnBase(750000) } });
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "orange");
+  assert.deepEqual(etats().at(-1).properties.raisons, ["télémétrie pleine à 93,8 %"]);
+  assert.equal(banc.pushes.length, 0, "après migration, la jauge ne sonne jamais : le rouge vient du canari « table pleine »");
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "telemetrie:remplissage").prio, 1);
+
+  // ── Sans les seuils de classe (la protection n'est pas en base) : au-dessus de 90 %, ROUGE — la veille sonne, une fois.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: () => ({ vivantes: 750000, estimees: 750000 }) } });
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.equal(banc.pushes.length, 2);
+  assert.equal(banc.pushes[0].charge.texte, "télémétrie pleine à 93,8 %");
+  minuteSuivante();
+  await veille();
+  assert.equal(banc.pushes.length, 2, "le rouge qui dure ne re-sonne pas");
+  const rouge = ligneAFaire(await appeler({ action: "etat" }), "telemetrie:remplissage");
+  assert.deepEqual([rouge.prio, rouge.titre], [0, "Télémétrie pleine à 93,8 %"]);
+});
+
+test("T2-j une lecture MANQUÉE n'est pas une table vide : la fonction SQL en erreur, ou la mémoire du canari illisible → « non lu », jamais vert, et la veille tient son voyant", async () => {
+  const rougeMemorise = { user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["télémétrie pleine à 93,8 %"], alerteLe: ilYa(30 * 60e3) } };
+  // ── La fonction SQL répond une ERREUR qui n'est pas une absence (délai dépassé) : aucun repli silencieux sur un compte.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: () => ({ error: { code: "57014", message: "canceling statement due to statement timeout" } }) } });
+  banc.base.semer("analytics_events", [rougeMemorise]);
+  const e = await appeler({ action: "etat" });
+  assert.ok(e.corps.nonLus.includes("remplissage"));
+  assert.equal(e.corps.remplissage, null);
+  assert.match(e.corps.erreursLecture.remplissage, /statement timeout/);
+  assert.notEqual(e.corps.verdict.couleur, "vert");
+  assert.match(e.corps.verdict.raisons.join(" "), /non lu : .*remplissage de la télémétrie/);
+  assert.ok(ligneAFaire(e, "lecture:autres"), "une ligne propose de relire");
+  assert.equal(comptesEntiers().length, 0, "une fonction en panne n'est pas une fonction absente : pas de compte à sa place");
+  assert.equal(e.corps.capacite.jauges.some((j) => j.cle === "tableTelemetrie"), false, "pas de jauge inventée");
+  // La veille : tout le reste est calme, mais le remplissage n'a pas été lu — le rouge mémorisé est TENU, pas de « résolu ».
+  await veille();
+  assert.equal(banc.pushes.length, 0, "une lecture manquée ne sonne pas « Problème résolu »");
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.ok(banc.console.some((x) => /lecture incomplète/.test(x) && /"remplissage":"canceling statement/.test(x)), "la raison part aux journaux");
+  const [b] = evenements(BATTEMENT);
+  assert.equal(b.properties.lectures.remplissage, "ko");
+  assert.equal(b.properties.lectures.canari, "ok");
+  // La lecture revient : la veille croit ce qu'elle lit, et le dit.
+  banc.base.rpc.telemetrie_remplissage = remplissageEnBase(1000);
+  await passageSuivant();
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "vert");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+
+  // ── La fonction SQL répond SANS nombre (ni statistiques ni estimation) : non mesuré n'est pas « vide » — non lu aussi.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: () => ({ octets: 43e6 }) } });
+  banc.base.semer("analytics_events", [rougeMemorise]);
+  const e1 = await appeler({ action: "etat" });
+  assert.ok(e1.corps.nonLus.includes("remplissage"));
+  assert.match(e1.corps.erreursLecture.remplissage, /non mesuré/);
+  assert.notEqual(e1.corps.verdict.couleur, "vert");
+  await veille();
+  assert.equal(banc.pushes.length, 0, "non mesuré : le rouge mémorisé est tenu, pas de « résolu »");
+  assert.equal(evenements(BATTEMENT)[0].properties.lectures.remplissage, "ko");
+
+  // ── La mémoire du canari illisible : même règle.
+  await monter({ battement: false });
+  banc.base.semer("analytics_events", [{ ...rougeMemorise, properties: { ...rougeMemorise.properties, raisons: ["la table de télémétrie est pleine"] } }]);
+  banc.base.panne = (q) => (q.table === "analytics_events" && q.type === "select" && q.filtres.some((f) => f[0] === "eq" && f[1] === "event" && f[2] === EVT_CANARI) ? { code: "57014", message: "timeout" } : null);
+  const e2 = await appeler({ action: "etat" });
+  assert.ok(e2.corps.nonLus.includes("canari"));
+  assert.match(e2.corps.verdict.raisons.join(" "), /non lu : .*sonde de télémétrie/);
+  await veille();
+  assert.equal(banc.pushes.length, 0, "mémoire du canari illisible : le rouge « table pleine » ne se lit pas « résolu »");
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.equal(evenements(BATTEMENT)[0].properties.lectures.canari, "ko");
+});
+
+test("T2-k le délestage ne se LÈVE pas à l'aveugle : quand la table écarte les battements des comptes (palier 2), le niveau posé par la veille reste ; la table redescendue, il se lève", async () => {
+  const pose = () => ({ cle: "delestage", valeur: { niveau: 1 }, pose_par: "veille", motif: "Délestage automatique : connexions temps réel à 82 %", maj: ilYa(40 * 60e3) });
+  // 1 100 000 lignes : au-dessus de la réserve des comptes (1 080 000). Leurs battements ne sont plus écrits : l'audience « calme » ne prouve rien.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: remplissageEnBase(1100000) }, tables: { reglages_distants: [pose()] } });
+  await veille();
+  assert.equal(banc.base.table("reglages_distants")[0].valeur.niveau, 1, "le niveau reste posé");
+  assert.equal(banc.base.ecritures("reglages_distants").length, 0, "aucune écriture dans les réglages");
+  assert.equal(evenements("delestage_auto").length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.delestage, "niveau:1");
+  assert.equal(banc.pushes.length, 0);
+  // Le même décor, table à 100 000 lignes : 40 min de calme mesuré, la veille lève son délestage.
+  await monter({ battement: false, rpc: { telemetrie_remplissage: remplissageEnBase(100000) }, tables: { reglages_distants: [pose()] } });
+  await veille();
+  assert.equal(banc.base.table("reglages_distants")[0].valeur.niveau, 0);
+  assert.equal(evenements("delestage_auto").length, 1);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.delestage, "niveau:0");
+  assert.match(banc.pushes.at(-1).charge.titre, /Délestage levé/);
 });
 
 test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au bout au moins une fois — une action neuve sans exercice, ou seulement refusée, rougit ici", () => {

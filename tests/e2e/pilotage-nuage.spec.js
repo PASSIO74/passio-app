@@ -1469,3 +1469,79 @@ test("㊸ les notifications sociales : un taux qui se dit ÉCHANTILLON, sur 24 h
   await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" })).toBeVisible();
   await expect(titres(page)).toHaveCount(0);
 });
+
+// ─── La table de télémétrie se ferme, et personne ne le voit (2026-11-21) ────
+// Audit du 20/11, trou T2 : pleine, la table refuse tout — signaux de panne compris — et le pilotage
+// n'en disait rien. La ligne et la jauge sont celles que la VRAIE fonction `aFaire` construit ; le motif
+// du refus est un texte du SERVEUR : il doit rester du texte, dans la référence repliée seulement.
+// RÉINJECTIONS éprouvées (21/11) : retirer la ligne `telemetrie:canari` d'`aFaire` → rouge ; rendre la
+// référence d'une ligne par `innerHTML` dans la page → `__pwn` défini, rouge ; retirer la note de
+// capacité → rouge.
+test("㊹ télémétrie pleine : la sonde refusée est EN TÊTE, son motif reste du texte, « Régler » ralentit d'un cran ; la capacité nomme la migration qui manque", async ({ page }) => {
+  const { remplissage, jaugeRemplissage, MIGRATION_TELEMETRIE_CLASSES } = require("../../supabase/functions/_shared/pilotage.js");
+  const soucis = [];
+  page.on("pageerror", (e) => soucis.push(e.message));
+  let dialogues = 0;
+  page.on("dialog", (d) => { dialogues++; d.dismiss(); });
+  const sansDelestage = { ...REGLAGES, delestage: { niveau: 0, pose_par: null, maj: null, motif: null }, coupures: { cles: [], maj: null }, bandeau: null };
+  // Avant la migration des classes : 810 000 lignes comptées (borne des visiteurs : 800 000), la sonde refusée deux fois.
+  const pleine = remplissage({ vivantes: 810000 }, { migration: MIGRATION_TELEMETRIE_CLASSES });
+  const MOTIF = "table pleine : " + CHARGE;
+  const e = etat({
+    verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["la table de télémétrie est pleine : plus aucune mesure des visiteurs n'entre, pannes comprises"] },
+    canari: { enCours: true, refuse: true, rouge: true, suite: 2, classe: "table_pleine", motif: MOTIF, depuis: IL_Y_A_3H, dernier: MAINTENANT },
+    remplissage: pleine, reglages: sansDelestage,
+    capacite: { mesuresServeur: true, jauges: [...BASE.capacite.jauges, jaugeRemplissage(pleine)] },
+  });
+  expect(e.aFaire[0].id, "la vraie fonction la met en tête").toBe("telemetrie:canari");
+  const envois = [];
+  await poserSession(page);
+  await routerFonction(page, envois, e);
+  await page.goto("/pilotage/");
+  await expect(page.locator("#verdictTitre")).toHaveText("Problème en cours");
+  const ligne = page.locator("#afaire article").first();
+  await expect(ligne.locator(".ligne-titre")).toHaveText("La télémétrie est pleine : les visiteurs ne sont plus mesurés");
+  await expect(ligne.locator(".ligne-quoi")).toHaveText("Ralentit l'app d'un cran.");
+  // Le motif du serveur : dans la référence repliée, en TEXTE — jamais un élément, jamais un script.
+  await ligne.locator("summary").click();
+  const reference = await ligne.locator(".ligne-reference").textContent();
+  expect(reference).toContain("Refus du serveur : « " + MOTIF + " »");
+  expect(reference).toContain("Table à 101,3 % de la borne des visiteurs.");
+  expect(reference.endsWith("Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages › Protection).")).toBe(true);
+  expect(await ligne.locator("img").count(), "la charge n'est pas devenue un élément").toBe(0);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  // La sonde dit déjà « table pleine » : pas de seconde ligne pour la jauge, ni de ligne « capacité » sans bouton.
+  if (await page.locator("#afaireSuite").isVisible()) await page.click("#afaireSuite");
+  await expect(page.locator("#afaire")).not.toContainText("Télémétrie pleine à");
+  await expect(page.locator("#afaire")).not.toContainText("Table de télémétrie");
+  // « Régler » : EXACTEMENT la demande de délestage, après le délai d'annulation, sans boîte de dialogue.
+  await ligne.locator(".btn-regler").click();
+  await expect.poll(() => gestes(envois).map((x) => x.corps)).toEqual([{ action: "reglages", cle: "delestage", valeur: { niveau: 1 } }]);
+  expect(gestes(envois)[0].auth).toMatch(/^Bearer ey/);
+  expect(dialogues).toBe(0);
+  // La capacité : la jauge parmi les autres, et la note qui nomme le fichier tant que la protection n'est pas en base.
+  await aller(page, "details");
+  const jauge = page.locator("#jauges article", { hasText: "Table de télémétrie" });
+  await expect(jauge).toContainText("101,3 %");
+  await expect(jauge).toContainText("810000 sur 800000");
+  await expect(jauge).toContainText("À faire : Appliquer la migration des classes de télémétrie (geste au poste).");
+  await expect(jauge.locator("a")).toHaveCount(0);
+  await expect(page.locator("#jauges")).toContainText("Table de télémétrie : compte exact ; la protection par classe et la purge courte attendent la migration « migrations/migration_telemetrie_classes_2026-11-21.sql » (npm run migration:appliquer).");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+
+  // Après la migration (la base rend ses seuils) : orange, « à régler », la purge horaire dite — et plus de note.
+  const apres = remplissage({ vivantes: 500000, estimees: 500000, borne_visiteurs: 800000, borne_comptes: 1200000, confort_visiteurs: 480000, confort_comptes: 720000, reserve_visiteurs: 720000, reserve_comptes: 1080000 });
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], etat({ verdict: { couleur: "orange", titre: "À surveiller", raisons: ["télémétrie pleine à 62,5 %"] }, github: { ...GH, issues: [], aReparer: [] }, signalements: { ouverts: 0, liste: [] },
+    remplissage: apres, reglages: sansDelestage, capacite: { mesuresServeur: true, jauges: [...BASE.capacite.jauges, jaugeRemplissage(apres)] } }));
+  await page.click("#actualiser");
+  await expect(page.locator("#jauges article", { hasText: "Table de télémétrie" })).toContainText("62,5 %");
+  await expect(page.locator("#jauges")).not.toContainText("attendent la migration");
+  await accueil(page);
+  const orange = page.locator("#afaire article", { hasText: "Télémétrie pleine à 62,5 %" });
+  await expect(orange).toBeVisible();
+  await orange.locator("summary").click();
+  await expect(orange.locator(".ligne-reference")).toContainText("Visiteurs : les mesures de performance ne sont plus enregistrées. Comptes : tout est enregistré. La purge horaire la vide d'elle-même.");
+  await expect(orange.locator("button.btn-regler")).toHaveText("Régler");
+  expect(soucis).toEqual([]);
+});

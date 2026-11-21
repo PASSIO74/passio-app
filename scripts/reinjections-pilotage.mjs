@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~2 min 30
+//   node scripts/reinjections-pilotage.mjs          # ~3 min (120 réinjections au 2026-11-21)
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -22,7 +22,9 @@ import { spawnSync } from "node:child_process";
 const FN = "supabase/functions/pilotage/index.ts";
 const PJ = "supabase/functions/_shared/pilotage.js";
 const BT = "supabase/functions/_shared/battement.js";
+const PG = "pilotage/pilotage.js";
 const BANC = "tests/unit/pilotage-chemins.test.mjs";
+const PUR = "tests/unit/pilotage.test.mjs";
 const M = [
   ["R01 une seule exécution lue (per_page=1)", FN, "&event=${ev}&per_page=10", "&event=${ev}&per_page=1", BANC, "⑫"],
   ["R02 seule « failure » est un échec", PJ, `Object.freeze(["failure", "timed_out", "startup_failure"])`, `Object.freeze(["failure"])`, BANC, "⑪"],
@@ -116,6 +118,54 @@ const M = [
   ["R125 relue et encore ouverte : un « Régler » principal qui ne règle rien", PJ, `      else if (srE && srE.etat === "faite") ajoute(`, `      else if (false) ajoute(`, "tests/unit/pilotage.test.mjs", "T4-c"],
   ["R126 en pause, la ligne de l'état garde un bouton qui ne lit rien", PJ, `      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });\n      else if (enVol(srE))`, `      if (enVol(srE))`, "tests/unit/pilotage.test.mjs", "T4-c"],
   ["R127 « rien à corriger » revient alors que la Sentinelle n'a pas tout traité", PJ, `quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, `quoi: false ? "La Sentinelle n'a pas tout traité : voir sa ligne."`, "tests/unit/pilotage.test.mjs", "T4-d"],
+  // La table de télémétrie se ferme, et personne ne le voit (2026-11-21, audit du 20/11, trou T2).
+  // Logique pure (pilotage.test.mjs, T2-a à T2-g), fonction exécutée (ce banc, T2-h à T2-l), battement (⑧).
+  // R96, R98 et R119 sont des épingles de TEXTE (l'ordre d'un appel, la valeur d'un dépassement de délai) : le banc
+  // exécuté ne sait pas faire durer un compte 4 s, ni voir qu'une marque est écrite trop tôt.
+  ["R77 les marques du canari se comptent, pas les quarts d'heure distincts", PJ, `fenetres.add(Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3)));`, `fenetres.add(m.t);`, PUR, "T2-a"],
+  ["R78 un seul refus du canari fait déjà une ligne", PJ, `export const CANARI_SUITE_MIN = 2;`, `export const CANARI_SUITE_MIN = 1;`, PUR, "T2-a"],
+  ["R79 le débit saturé rougit (tout porteur de la clé publique ferait sonner)", PJ, `rouge: refuse && classe !== "debit",`, `rouge: refuse,`, PUR, "T2-a"],
+  ["R80 le débit saturé fait sonner la veille", PJ, `rouge: refuse && classe !== "debit",`, `rouge: refuse,`, BANC, "T2-l"],
+  ["R81 un refus de 40 min tient encore la ligne", PJ, ` || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;`, `) return rien;`, PUR, "T2-b"],
+  ["R82 le succès qui clôt une suite de refus ne se note plus", PJ, `  if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };\n`, ``, BANC, "T2-h"],
+  ["R83 les statistiques vivantes seules (0 après un arrêt brutal)", PJ, `const lus = [compte(s.vivantes), compte(s.estimees)].filter((x) => x !== null);`, `const lus = [compte(s.vivantes)].filter((x) => x !== null);`, PUR, "T2-d"],
+  ["R84 les seuils de classe ne sont plus validés", PJ, `const classes = !!(cv && rv && cc && rc && cv < rv && rv <= borne && cc < rc && rc <= borneComptes);`, `const classes = !!(cv && rv && cc && rc);`, PUR, "T2-d"],
+  ["R85 la jauge rougit après migration (sur un point de consigne)", PJ, `const seuilRouge = classes ? Infinity : REMPLISSAGE_SANS_SEUILS.rouge * borne;`, `const seuilRouge = classes ? rv : REMPLISSAGE_SANS_SEUILS.rouge * borne;`, PUR, "T2-d"],
+  ["R86 après migration, la jauge fait sonner la veille", PJ, `const seuilRouge = classes ? Infinity : REMPLISSAGE_SANS_SEUILS.rouge * borne;`, `const seuilRouge = classes ? rv : REMPLISSAGE_SANS_SEUILS.rouge * borne;`, BANC, "T2-i"],
+  ["R87 le motif du serveur part dans une raison du voyant (donc dans la sonnerie)", PJ, `(cn.rouge ? rouge : orange).push(RAISONS_CANARI[classeCanari(cn.classe)]);`, `(cn.rouge ? rouge : orange).push(RAISONS_CANARI[classeCanari(cn.classe)] + " : " + cn.motif);`, PUR, "T2-e"],
+  ["R88 le remplissage et la sonde non lus laissent l'écran vert", PJ, `  remplissage: "remplissage de la télémétrie", canari: "sonde de télémétrie",\n`, ``, PUR, "T2-e"],
+  ["R89 le motif du serveur dans le titre de la ligne", PJ, `titre: TITRES_CANARI[classe],`, `titre: TITRES_CANARI[classe] + " " + cn.motif,`, PUR, "T2-f"],
+  ["R90 deux lignes pour une même table pleine", PJ, ` && !(cn && cn.refuse && cn.classe === "table_pleine")) {`, `) {`, PUR, "T2-f"],
+  ["R91 la ligne tait que le ralentissement reste posé", PJ, `, averti: RALENTI_RESTE }`, `, averti: "" }`, PUR, "T2-f"],
+  ["R92 la jauge de la table dans la boucle des jauges : un problème sans bouton", PJ, `x.cle !== "emails" && x.cle !== "tableTelemetrie" && (x.couleur`, `x.cle !== "emails" && (x.couleur`, PUR, "㊴"],
+  ["R93 ralentir l'app entre dans « Tout régler »", PJ, `valeur: { niveau: niveau + 1 } }, false)], averti:`, `valeur: { niveau: niveau + 1 } }, true)], averti:`, PUR, "㊽"],
+  ["R94 le canari part sous la clé de service (le refus fait aux visiteurs ne se voit plus)", FN, `const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });`, `const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });`, BANC, "T2-h"],
+  ["R95 la marque du canari n'est jamais écrite", FN, `  await etape(() => noterCanari(admin, canari, e.canari));\n`, ``, BANC, "T2-h"],
+  ["R96 la marque du canari s'écrit avant l'alerte (épingle de texte)", FN, `  const d = decideAlerte(prec, actuel);\n`, `  await noterCanari(admin, { emis: false }, null).catch(() => null);\n  const d = decideAlerte(prec, actuel);\n`, PUR, "T2-g"],
+  ["R97 le repli sans migration ne nomme plus le fichier à appliquer", FN, `r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });`, `r = remplissage({ vivantes: n });`, BANC, "T2-i"],
+  ["R98 un compte abandonné après 4 s se lit « 0 ligne » (épingle de texte)", FN, `REMPLISSAGE_DELAI_MS, null);`, `REMPLISSAGE_DELAI_MS, 0);`, PUR, "T2-g"],
+  ["R99 une erreur de la fonction SQL est avalée par le repli", FN, `    if (error && !estObjetAbsent(error)) throw error;\n    const n = await avecDelai(`, `    const n = await avecDelai(`, BANC, "T2-j"],
+  ["R100 le remplissage illisible ne tient plus le voyant de la veille", FN, `[sante, signalements, github, parc, rempl, can].some(`, `[sante, signalements, github, parc, can].some(`, BANC, "T2-j"],
+  ["R101 la mémoire du canari illisible ne tient plus le voyant de la veille", FN, `[sante, signalements, github, parc, rempl, can].some(`, `[sante, signalements, github, parc, rempl].some(`, BANC, "T2-j"],
+  ["R102 la mémoire du canari illisible se lit « aucun refus »", FN, `  if (error) throw error;\n  return bilanCanari(data || []);`, `  return bilanCanari(data || []);`, BANC, "T2-j"],
+  ["R103 la veille lève son délestage quand la table écarte les battements des comptes", FN, `  if (remplissageAveugle(rp)) aveugle = true;\n`, ``, BANC, "T2-k"],
+  ["R104 le délestage ne reçoit plus le remplissage", FN, `delestageAuto(admin, signaux, e.remplissage)`, `delestageAuto(admin, signaux)`, BANC, "T2-k"],
+  ["R105 la jauge de la table n'est plus dans la capacité", FN, `    if (rp) cap.jauges.push(jaugeRemplissage(rp));\n`, ``, BANC, "T2-i"],
+  ["R106 le voyant de la veille ne reçoit ni le remplissage ni la mémoire du canari", FN, `    remplissage: val(rempl), canari: val(can) };`, `    remplissage: null, canari: null };`, BANC, "T2-h"],
+  ["R107 une lecture manquée du remplissage ne se dit pas au battement", BT, `  if (telemetrieKo.length) raisons.push(`, `  if (false) raisons.push(`, "tests/unit/battement.test.mjs", "⑧"],
+  ["R108 la page ne nomme plus la migration qui manque", PG, `if (d.remplissage && d.remplissage.migration) ja.append(`, `if (false) ja.append(`, PUR, "T2-g"],
+  ["R109 la classe d'une marque sort telle qu'elle est écrite (liste ouverte)", PJ, `const classeCanari = (c) => (CLASSES_REFUS_CANARI.includes(c) ? c : "autre");`, `const classeCanari = (c) => c;`, PUR, "T2-a"],
+  ["R110 le motif du serveur n'est ni borné ni nettoyé", PJ, `  const motif = sansControle(erreur, 120);\n`, `  const motif = String(erreur == null ? "" : erreur);\n`, PUR, "T2-c"],
+  ["R111 un remplissage non mesuré se lit 0 ligne", PJ, `const compte = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);`, `const compte = (x) => Number(x) || 0;`, PUR, "T2-d"],
+  ["R112 le voyant dit deux fois la même table pleine", PJ, `const pleineDite = !!(cn && cn.refuse && cn.classe === "table_pleine");`, `const pleineDite = false;`, PUR, "T2-e"],
+  ["R113 « Télémétrie pleine à 137,5 % » (rapporté aux visiteurs quand les comptes écrivent encore)", PJ, `(Number(r.pct) > 100 ? "Télémétrie pleine" : "Télémétrie pleine à " + pctRemplissage(r));`, `("Télémétrie pleine à " + pctRemplissage(r));`, PUR, "T2-e"],
+  ["R114 un refus qui n'est ni la borne ni le débit propose de ralentir l'app", PJ, `const geste = classe === "autre" ? `, `const geste = false ? `, PUR, "T2-f"],
+  ["R115 « Régler » propose un niveau de délestage qui n'existe pas, ou sans table des réglages", PJ, `const peutRalentir = !!(d && d.reglages && !d.reglages.absente) && niveau < 2;`, `const peutRalentir = true;`, PUR, "T2-f"],
+  ["R116 l'écran ne lit ni le remplissage ni la mémoire du canari", FN, `    remplissage: lireRemplissage(admin), canari: lireCanari(admin),\n`, ``, BANC, "T2-h"],
+  ["R117 le remplissage devient une lecture EXIGÉE du battement (les battements d'avant ce lot passent « incomplets »)", BT, `export const LECTURES_BATTEMENT = Object.freeze(["sante", "signalements", "github", "parcours"]);`, `export const LECTURES_BATTEMENT = Object.freeze(["sante", "signalements", "github", "parcours", "remplissage"]);`, "tests/unit/battement.test.mjs", "⑧"],
+  ["R118 chaque canari réussi laisse une marque (96 lignes par jour pour rien)", PJ, `if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };`, `if (resultat.emis === true) return { ok: true };`, BANC, "T2-h"],
+  ["R119 le motif du serveur part aux journaux de la fonction (épingle de texte)", FN, `console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?") }));`, `console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?"), motif: m.motif }));`, PUR, "T2-g"],
+  ["R132 un remplissage non mesuré passe pour une table vide (la veille lâche son voyant)", FN, `  if (r.vivantes === null) throw new Error("remplissage de la télémétrie non mesuré`, `  if (false) throw new Error("remplissage de la télémétrie non mesuré`, BANC, "T2-j"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
@@ -135,7 +185,9 @@ for (const [nom, fichier, de, vers, suite, motif] of M) {
   let code = null, sortie = "";
   try {
     fs.writeFileSync(fichier, origine.replace(de, () => vers));
-    const r = spawnSync(process.execPath, ["--test", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8", timeout: 300_000 });
+    // Le rapporteur est NOMMÉ (2026-11-21) : sans TTY, Node 22 (celui de la CI) rend du TAP (« # fail 1 ») et non
+    // « ℹ fail 1 » — le verdict ci-dessous ne reconnaissait alors aucun rouge, et tout sortait « VERT (? test joué) ».
+    const r = spawnSync(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8", timeout: 300_000 });
     code = r.status; sortie = (r.stdout || "") + (r.stderr || "");
     if (r.error || r.signal) sortie = "BLOQUÉ (" + ((r.error && r.error.code) || r.signal) + ")\n" + sortie;
   } finally { fs.writeFileSync(fichier, origine); }

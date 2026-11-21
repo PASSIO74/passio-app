@@ -989,6 +989,9 @@
     } else co.append(carte("Coût", "Non lu", "La facture est absente ou illisible : aucun supplément fiable ne peut être affiché.", "gris"));
     if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
     if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
+    // La table de télémétrie (2026-11-21) : tant que la migration des classes n'est pas en base, la jauge est un
+    // compte exact et RIEN ne déleste la table — l'écran nomme le fichier, au lieu de laisser croire à une protection.
+    if (d.remplissage && d.remplissage.migration) ja.append(el("p", "discret", "Table de télémétrie : compte exact ; la protection par classe et la purge courte attendent la migration « " + d.remplissage.migration + " » (npm run migration:appliquer)."));
     ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
   }
 
