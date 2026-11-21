@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🚧 CONNEXION — CHAQUE IMPASSE LAISSE UNE TRACE ET DIT VRAI (2026-11-21)
 - 🧭 PARCOURS DU NOUVEL INSCRIT — cinq frictions retirées avant les premiers testeurs (2026-11-20)
 - 🧪 FIXTURES À COMPTES RÉELS — reprise bornée des429 et adhésion vérifiée (2026-11-17)
 - 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
@@ -789,3 +790,141 @@ Demande de Benjamin : relire le parcours d'un nouveau venu, du lien jusqu'au pre
 **Non fait, délibérément**
 - **Garder les passions d'un visiteur quand le lien de confirmation s'ouvre dans un AUTRE navigateur.** Elles ne voyagent pas dans `user_metadata`, contrairement à l'année et à l'invitation : lot à part.
 - **Instrumenter l'affichage de la carte de bienvenue, l'intention Google et les étapes d'onboarding.** Sans quoi l'entonnoir de la première visite reste aveugle entre l'arrivée et la création du compte.
+
+## 🚧 CONNEXION — CHAQUE IMPASSE LAISSE UNE TRACE ET DIT VRAI (2026-11-21)
+
+Trou T6 de l'audit « la surveillance tient-elle à 100 000 utilisateurs ? » (`docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`), volet client. Le retour d'un lien d'e-mail en erreur est traité depuis la veille (fiche 🧭 ci-dessus, point ④) ; ce lot ferme ce qui restait muet autour : une connexion qui plante, un service de connexion en panne, un e-mail qui ne part pas, « Mot de passe oublié ? », le départ vers Google, le nouveau mot de passe et le renvoi du lien. Un seul fichier produit, `js/app-02-state-utils.js`. Aucune migration, aucun geste de Benjamin.
+
+**Mesuré le 21/11, en lecture seule.**
+- **Télémétrie de production** (`telemetry_events`, fenêtre conservée). `auth_submitted` 4, `signin_ok` 6, aucun `signin_refused`, `signup_refused` ni `auth_link_refused`. Côté requêtes : `POST /auth/v1/token` en statut 0, 10 lignes, toutes du 15/11 ; `/auth/v1/signup`, un 400 et un 422 le 16/11 ; aucun 5xx.
+- **Journaux d'authentification Supabase**, sept tranches de 24 h (du 14 au 21/11). Aucune ligne « error sending » ni « smtp » ; un seul 500, sur le chemin `/`. **Le libellé du 5xx d'envoi d'e-mail n'a donc pas été vu en production**, et la recherche dans la documentation Supabase ne le donne pas non plus.
+- **SDK embarqué** (`js/vendor/supabase-js-2.116.0.js`). Statut 0 (`AuthRetryableFetchError`) : aucune réponse lisible — requête jamais arrivée, réponse bloquée par le navigateur (page d'erreur d'une passerelle sans en-têtes CORS), ou 2xx qui n'est pas du JSON. Statut 500 à 504 ou 520 à 530 : la même classe, avec le statut HTTP ; son message est le champ connu du corps JSON, le corps JSON ENTIER s'il n'a aucun champ connu (« {} » pour un corps `{}`, et une adresse s'il en cite une), `statusText` ou « HTTP n » si le corps est illisible. Toute autre réponse illisible (403 ou 429 en HTML d'un pare-feu, 5xx hors liste comme 540) : `AuthUnknownError`, SANS statut, dont le message est l'erreur d'analyse, en anglais. Toutes sont RENDUES dans `{ error }`, pas levées. Mesuré par le banc ③ quater, qui fait répondre le vrai SDK.
+- **Géométrie du formulaire** (Chromium, hauteurs utiles d'un iPhone sous Safari). « Continuer avec Google » est SOUS `#authMsg` dans les deux onglets. Après « Créer mon compte », tout en bas du formulaire de création, `#authMsg` est à −165…−87 px sur 390 × 664 et à −338…−245 px sur 320 × 568 : au-dessus de l'écran. Sur le formulaire de connexion, le message de « Mot de passe oublié ? » reste entier à l'écran (haut à 145 px au plus serré) ; par le lien de renvoi du BAS, à 320 × 568, son haut sort de 20 px.
+
+**Ce qui était muet, ou faux**
+- Le `catch` d'`onbDoAuth` n'émettait rien et affichait « Pas de connexion internet » pour TOUTE exception, défaut de code compris. Ceux de « Mot de passe oublié ? » et du renvoi du lien disaient la même chose.
+- `rcRefusAuth` ne lisait pas `error.status` : un 5xx et une requête jamais arrivée tombaient en `autre` (ou en `mdp` si le texte citait « password »), et le message brut du serveur partait à l'écran — de l'anglais, « {} », parfois une adresse technique.
+- « Mot de passe oublié ? », le départ vers Google et le formulaire de nouveau mot de passe n'émettaient rien, réussite comprise.
+
+**Ce qui change**
+- **① `rcRefusAuth` lit le statut avant le texte**, juste après `captcha`. Quatre codes de plus dans la liste fermée : `sdk` (le SDK n'a pas pu se charger, `window._supaReal` faux — lu sur l'état, pas sur le texte du client de repli), `reseau` (statut 0, ou pas de statut et un message d'échec réseau selon `estEchecReseau`), `envoi` (statut ≥ 500 ET un message « Error sending… ») et `serveur` (tout autre 5xx, et toute `AuthUnknownError` : une réponse illisible). Liste complète : captcha · sdk · reseau · envoi · serveur · banni · non_confirme · deja_utilise · quota · mdp · autre. Les seize cas du banc ③ bis, sans statut, rendent ce qu'ils rendaient.
+- **② Une panne a son message, et sa sortie existe** (`messagePanneAuth(rc, porte)`). `serveur` : « Le service de connexion ne répond pas pour l'instant. Réessaie dans quelques minutes — rien n'est perdu. » `envoi` : « L'e-mail n'a pas pu partir pour l'instant. Réessaie plus tard, ou passe par « Continuer avec Google », un peu plus bas : ce chemin n'a pas besoin d'e-mail. » — et, sur la porte `recover`, la forme SOUS CONDITION : « … Réessaie plus tard. Si ton compte PASSIO porte ton adresse Google, « Continuer avec Google », un peu plus bas, y entre sans e-mail. » `reseau` : « Impossible de joindre PASSIO pour l'instant. Vérifie ta connexion, puis réessaie dans un instant. » (le message hors ligne seulement si `navigator.onLine` est faux). `sdk` : « Ça n'a pas abouti de notre côté. Recharge la page, puis réessaie. » — recharger est ici la vraie sortie. Tout autre code rend `null` et l'appelant garde sa traduction du refus. Branché dans `onbDoAuth`, `onbForgotPassword`, `onbResendConfirmation` et le départ vers Google (où `envoi`, qui n'a pas de sens, rend le texte de `serveur`).
+- **③ Une exception se classe et se signale en un seul point.** `rcExceptionAuth(e)` rend `reseau`, `code` (TypeError, ReferenceError, RangeError, SyntaxError) ou `autre` ; `signalerExceptionAuth(kind, e)` émet `auth_exception { kind, rc }`, écrit l'exception dans la console quand ce n'est pas une coupure, et rend `rc`. Le texte est choisi par `messageExceptionAuth` : celui de `reseau` pour une coupure, sinon « Ça n'a pas abouti de notre côté. Recharge la page, puis réessaie. » Cinq appels : `onbDoAuth` (`kind` = la porte POUSSÉE, figée dans `_mode` en tête de fonction — `switchAuthTab("signin")` change `_authMode` dans le même `try` après une inscription réussie), `recover`, `resend`, `google`, `reset`.
+- **④ Une panne se LIT** (`_showPanneAuth`). Le message est calé en haut de l'écran (`scrollIntoView`, `block: "start"`, la règle de `_showResendConfirmation`) : Google se retrouve dessous, sur le même écran. Employé par `onbDoAuth` et par le renvoi du lien, les deux endroits où la mesure montre un message hors champ.
+- **⑤ Dans `onbDoAuth`, une panne ne déclenche aucun effet de bord décidé sur le TEXTE du refus** (`_panne` calculé juste après `_rc`, trois gardes `!_panne`) : ni l'aide au mot de passe (un 5xx dont le texte cite « password »), ni le bloc « Renvoyer le lien » (un 5xx dont le corps cite « Email not confirmed »), ni l'erreur prioritaire `signup_quota_email` (un 503 « too many connections » est une saturation du service, pas le quota d'e-mails).
+
+**Les signaux** — tous des `tel.action` (type `action`, gravité `info`, gardés 3 jours), sans jamais le message ni l'adresse.
+
+| Signal | Meta | Émis quand |
+|---|---|---|
+| `signin_refused`, `signup_refused` | `rc` (gagne `sdk`, `reseau`, `envoi`, `serveur`) | inchangé : l'appel a RENDU une erreur |
+| `auth_exception` | `kind` : signin · signup · recover · reset · google · resend, sinon `autre` ; `rc` : reseau · code · autre | le `catch` d'une de ces portes |
+| `password_reset_requested` | `ok`, et `rc` si refus | « Mot de passe oublié ? » a répondu |
+| `password_reset_done` | `ok`, et `rc` si refus | le formulaire de nouveau mot de passe a répondu ; `flush` keepalive à la réussite (la page recharge 900 ms plus loin) |
+| `google_refused` | `rc` | le départ vers Google a rendu une erreur |
+| `confirmation_resent` | `ok` — forme INCHANGÉE | une ligne par tentative de renvoi, exception comprise |
+
+**Contrat de lecture des codes — pour le lot qui les fera sonner**
+- **`sdk`** : le SDK ne s'est pas chargé sur cet appareil, AUCUNE requête d'authentification n'est partie. Le crochet réseau ne voit rien : ce code est la seule trace. Un appareil isolé = une coupure à la première visite ; plusieurs appareils d'un même build = un fichier absent après un déploiement.
+- **`reseau`** : requête restée sans réponse lisible alors que l'appareil se disait EN LIGNE (`authHorsLigne()` sort avant toute émission quand il se dit hors ligne). Coupure locale OU service injoignable — passerelle en panne dont la page d'erreur n'a pas d'en-têtes CORS, DNS, 2xx qui n'est pas du JSON. **Ne jamais l'écarter comme du bruit de réseau mobile : c'est son TAUX sur des appareils distincts qui sonne.** C'est la seule forme que prend « GoTrue cassé derrière la passerelle ». En production, 10 lignes `/auth/v1/token` en statut 0 le seul 15/11, cause inconnue : exactement cette ambiguïté.
+- **`serveur`** : le service a répondu, en 5xx ou par une réponse illisible (pare-feu, 5xx hors liste du SDK).
+- **`envoi`** : le service a répondu qu'il n'a pas pu remettre l'e-mail au relais.
+
+**Pièges**
+- ⚠️ **« Pas de connexion internet » ne se dit qu'à un appareil qui se dit hors ligne.** La première version l'affichait pour tout code `reseau` : à un appareil en ligne, devant un service injoignable, elle faisait vérifier un Wi-Fi qui marche. **Trois chemins rendaient ce texte, pas deux** : `authHorsLigne()` (qui lit `navigator.onLine`), `messagePanneAuth("reseau")` (qui le lit depuis la contre-revue) et `traduireRefusCaptcha`, qui le rendait à tout message d'échec réseau sans rien lire. Ce troisième était inatteignable — ses trois appelants passent par `messagePanneAuth` d'abord — mais rien n'y obligeait un quatrième appelant : il rend désormais `messagePanneAuth("reseau")`, et la constante n'est plus rendue qu'à un endroit (cas ⑬).
+- ⚠️ **À la récupération, Google est une sortie SOUS CONDITION.** La personne a déjà un compte ; Google ouvre celui qui porte son adresse Google et en CRÉE un autre sinon (leçon AUTH-03). Mesuré le 21/11 : 17 comptes, 12 par e-mail, dont 4 à une adresse hors Gmail. À l'inscription la forme sans condition est juste ; au renvoi du lien elle est gardée (le compte en attente n'a aucun contenu).
+- ⚠️ **`!!supa` ne dit pas que le SDK est là** : le client de repli est un objet lui aussi. Le harnais du banc attend `window._supaReal` (ou son absence, cas ⑭).
+- ⚠️ **« Continuer avec Google » est SOUS le message, pas au-dessus.** Le texte dit « un peu plus bas » (la case de consentement et le bloc de renvoi peuvent s'intercaler). Le banc mesure la géométrie dans les trois formulaires où ce texte s'affiche, et refuse « au-dessus » dans le texte : c'est la même faute que le « ci-dessus » du 20/11.
+- ⚠️ **Aucune durée dans le message d'envoi.** Un e-mail qui ne part pas, c'est le relais ou son quota du jour : des heures, que le texte ne connaît pas.
+- ⚠️ **Un message écrit n'est pas un message lu.** Sans `_showPanneAuth`, les textes de ce lot auraient été posés au-dessus de l'écran sur le formulaire par lequel naissent 10 comptes sur 13.
+- ⚠️ **Le formulaire de nouveau mot de passe ne propose jamais de recharger.** Recharger pendant qu'il est affiché condamne un lien à usage unique : son `catch` garde « Erreur réseau. » et n'emploie pas le texte « Recharge la page ».
+- ⚠️ **Un `fetch` coupé est un TypeError** : `rcExceptionAuth` teste le réseau AVANT le nom, sinon toute coupure devient un défaut de code.
+- ⚠️ **Le statut avant le texte, mais après `captcha`** : un captcha refusé peut accompagner n'importe quelle réponse, 5xx compris.
+- ⚠️ **`kind` est une liste fermée à l'émission** (`PORTES_EXCEPTION_AUTH`) : `_authMode` reçoit ce que reçoit `switchAuthTab`, et une valeur de forme libre voyagerait jusqu'au pilotage.
+- ⚠️ **`confirmation_resent { ok }` n'a pas bougé** : le renvoi qui lève émet toujours `{ ok: false }`, et `auth_exception` en plus.
+
+**Verrou** : `tests/e2e/telemetrie-inscription.spec.js`, 24 cas dont 16 neufs — ③ ter (table du statut et des textes), ③ quater (le VRAI SDK face à des réponses illisibles, servies par une route vers un hôte de banc), ④ bis et ④ ter (renvoi en panne, et lisible à 320 × 568), ⑧, ⑧ bis, ⑧ ter et ⑧ quater (service en panne, inscription en panne, lisible à 390 × 664 et 320 × 568, aucun effet de bord sous une panne), ⑨ et ⑨ bis (exception), ⑩ (mot de passe oublié), ⑪ (Google), ⑫ (nouveau mot de passe), ⑬ (contrat de source), ⑭ (SDK non chargé : le client de repli, sans double). Aucun compte créé, aucun e-mail envoyé : `supa.auth` est doublé dans la page, sauf en ③ quater et ⑭.
+
+**Réinjection** : 38 mutations du produit et une du balisage à l'écriture, douze de plus à la contre-revue, chacune jouée, constatée rouge sur le cas visé, puis le fichier restauré à l'octet près (empreinte comparée) ; les témoins restent verts.
+
+| Mutation | Effet |
+|---|---|
+| Ligne `serveur` retirée de `rcRefusAuth` | ③ ter et ⑧ rouges |
+| Statut 0 non lu ; échec réseau sans statut non lu (une mutation chacun) | ③ ter rouge (et ⑧ pour le statut 0) |
+| Ligne `envoi` retirée | ③ ter, ④ bis, ⑧ bis, ⑧ ter, ⑩ rouges |
+| Statut lu après `mdp` ; statut lu avant `captcha` | ③ ter rouge, ③ bis vert |
+| `onbDoAuth` affiche le message brut malgré la panne | ⑧, ⑧ bis, ⑧ ter rouges |
+| Garde `!_panne` retirée | ⑧ bis rouge |
+| `_showPanneAuth` sans défilement | ⑧ ter (deux tailles) et ④ ter rouges |
+| Panne ou exception affichée par `_showAuthMsg` (`onbDoAuth`, son `catch`, le renvoi, son `catch`) | ⑧ ter ou ④ ter rouge |
+| `signalerExceptionAuth` retiré d'une des cinq portes | le cas de la porte (④ bis, ⑨, ⑩, ⑪, ⑫) et ⑬ rouges |
+| « Hors ligne » sans condition dans un des trois `catch` | ④ bis, ⑨ ou ⑩ rouge, et ⑬ |
+| Nom testé avant le réseau | ④ bis, ⑨, ⑨ bis, ⑩ rouges |
+| `rcExceptionAuth` rend le message ; ne tolère plus `null` | ⑨ et ⑨ bis rouges ; ⑨ bis rouge |
+| Filtre de porte retiré ; liste des portes amputée | ⑨ bis rouge ; ④ bis et ⑬ rouges |
+| Une émission `password_reset_requested` retirée (deux mutations) | ⑩ rouge |
+| `messagePanneAuth` retiré de « Mot de passe oublié ? » ou du renvoi | ⑩ rouge ; ④ bis rouge, ④ vert |
+| `google_refused` retiré | ⑪ rouge |
+| Une émission `password_reset_done` retirée ; `flush` retiré | ⑫ rouge |
+| Texte d'envoi « juste au-dessus » ; texte d'envoi avec une durée chiffrée | ③ ter rouge ; ⑧ bis rouge |
+| `messagePanneAuth` sans `reseau` | ③ ter et ⑧ rouges |
+| Émission `signin_refused` retirée (mutation du banc existant) | ③ et ⑧ rouges |
+| Balisage : bloc Google caché | ④ bis, ⑧ bis, ⑧ ter, ⑩ rouges |
+
+Douze mutations de plus à la contre-revue, même protocole (le fichier produit restauré à l'octet, 24 cas verts ensuite). Le produit d'AVANT la contre-revue, rejoué contre le banc d'après : 10 cas rouges (③ ter, ③ quater, ④ bis, ⑧, ⑧ quater, ⑨, ⑩, ⑪, ⑬, ⑭).
+
+| Mutation | Effet |
+|---|---|
+| Ligne `sdk` retirée de `rcRefusAuth` | ③ ter et ⑭ rouges |
+| `reseau` rend le message hors ligne sans lire `navigator.onLine` | ③ ter, ③ quater, ④ bis, ⑧, ⑨, ⑩, ⑬ rouges |
+| Une exception `reseau` rend le message hors ligne sans condition | ③ ter, ④ bis, ⑨, ⑩, ⑬ rouges |
+| Porte `recover` : Google sans condition | ③ ter et ⑩ rouges |
+| Porte `google` : le texte d'envoi, qui nomme Google | ③ ter rouge |
+| Ligne `AuthUnknownError` retirée | ③ ter et ③ quater rouges |
+| `!_panne` retiré de « Email not confirmed » ; du quota (une mutation chacun) | ⑧ quater rouge |
+| `console.warn` retiré de `signalerExceptionAuth` | ⑨ rouge |
+| « Recharge la page » dans le `catch` du nouveau mot de passe | ⑫ rouge |
+| `_authMode` au lieu de `_mode` dans le `catch` d'`onbDoAuth` | ⑨ et ⑬ rouges |
+| `messagePanneAuth` retiré du départ vers Google | ⑪ et ⑭ rouges |
+
+Deux mutations de plus à la seconde relecture, même protocole.
+
+| Mutation | Effet |
+|---|---|
+| Argument de porte retiré au départ vers Google (`messagePanneAuth(rc)`) | ⑪ rouge (le message nomme « Continuer avec Google ») |
+| `traduireRefusCaptcha` rend de nouveau `AUTH_HORS_LIGNE` | `lot13-entree` ⑥ et ⑬ rouges |
+
+**Limites connues**
+- **Ces signaux ne font encore rien sonner.** Aucune veille ne lit `auth_exception`, `google_refused`, `password_reset_*` ni les codes `serveur`, `envoi`, `reseau` : ils existent en base, la lecture en taux et la ligne « À faire » sont le lot suivant. Une panne de connexion demain laisserait des lignes, pas une alerte.
+- **Une exception APRÈS une connexion réussie émet `signin_ok` PUIS `auth_exception`** (l'adoption du compte, l'enregistrement de l'état et la suite de l'onboarding sont dans le même `try`). Le futur lecteur ne doit pas additionner les deux comme deux personnes bloquées.
+- **`google_refused` et `password_reset_requested` sont des « effets »** pour la détection des boutons morts (`scripts/sentinelle-detecter.mjs` retient le type `action`) : un bouton Google qui échoue ne sera plus jamais vu comme un bouton mort. « Mot de passe oublié ? » y gagne au contraire un effet mesuré.
+- **`rc: "code"` dit le NOM de l'exception, pas sa cause.** Une TypeError, une RangeError ou une SyntaxError naissent aussi de données illisibles (une réponse qui n'est pas du JSON, un état local abîmé) : la leçon du pilotage vaut ici (`supabase/functions/pilotage/index.ts`, « seule la ReferenceError le prouve »). Le texte à l'écran n'en dépend pas — `code` et `autre` affichent la même phrase —, mais le futur lecteur ne devra pas lire `code` comme la preuve d'un défaut.
+- **Signal forgeable** : n'importe quel client, même sans compte, peut insérer un faux `auth_exception`. Le lecteur devra pondérer par compte ancien ou s'appuyer sur une vérité serveur, comme l'audit l'exige pour T6.
+- **Le motif « Error sending » n'a pas été vu en production** (aucun cas en sept jours de journaux). Il couvre les libellés connus de GoTrue (« Error sending confirmation email », « … confirmation mail », « Error sending recovery email ») ; un 5xx d'envoi libellé autrement tombe en `serveur` — message vrai, la mention de Google en moins.
+- **Des textes restent bruts, et ce lot ne promet pas le contraire** : le quota sur « Mot de passe oublié ? » (anglais, avec des secondes) ; tout REFUS rendu au départ vers Google (ses pannes ont désormais leur message) ; toute erreur rendue au nouveau mot de passe, panne comprise (ce formulaire ne peut pas dire « Recharge la page », et « Erreur réseau. » y répond à toute exception) ; et, à chaque porte, un refus de code `autre` — dont le message peut être un corps JSON sans champ connu, recopié entier par le SDK en 4xx. Ce lot pose leur trace, pas leur traduction.
+- **Le renvoi du lien ne dit pas `sdk`** : `confirmation_resent` garde sa forme `{ ok }`, sans `rc`. Sur cette porte, un SDK non chargé se lit à l'écran (« Recharge la page ») mais pas dans le signal ; les quatre autres portes le portent.
+- **Une exception levée APRÈS « ✅ Compte créé » remplace ce message par « Ça n'a pas abouti de notre côté… »** alors que le compte existe (la tentative suivante répondra « déjà utilisé », avec le renvoi du lien). La porte émise est désormais la bonne (`kind: "signup"`), le texte non : il faudrait savoir ce qui a déjà été écrit à l'écran. Entre la création et la fin du `try` il n'y a que de l'affichage ; aucun cas vu.
+- **Trouvé en mesurant, non corrigé ici** : sur le formulaire de CRÉATION, aux hauteurs d'iPhone, tout refus écrit dans `#authMsg` seul est au-dessus de l'écran. « Adresse e-mail invalide. » : −120…−87 px (390 × 664), −278…−245 px (320 × 568). Le message de quota « Beaucoup de monde s'inscrit… » : −150…−87 px et −323…−245 px. `authHorsLigne()` passe par le même appel. Seuls les refus qui ont leur écho près du champ (mot de passe, consentement) ou leur défilement (« confirme ton e-mail », et désormais les pannes) sont lus. Lot à part : il touche tous les refus du formulaire et les bancs qui en mesurent la position.
+- **Géométrie mesurée sous Chromium seulement**, pas sous WebKit.
+- **Le dashboard local n'est pas mis à jour** (`RC_REFUS_SIGNAL` de `dashboard/server/alerts.js`, liste des actions de `dashboard/server/traces.js`) : sans effet sur la production, et `auth_link_refused` n'y est pas non plus.
+
+**Non fait, délibérément**
+- **La vérité serveur de T6** (une lecture d'état de l'authentification côté base, un contrôle de fumée en production) : classée critique par l'audit, hors du volet client.
+- **La voie prioritaire (`warn`) pour ces signaux** : il faudrait passer par `tel.track`, et personne ne les lit encore.
+- **L'intention Google** (`auth_submitted` avec un `kind` google) : changer la sémantique d'`auth_submitted` toucherait les compteurs d'inscriptions.
+
+**Contre-revue du lot (même jour).** Huit constats, tous justes, vérifiés contre le code puis corrigés ; aucun réfuté.
+- **Le SDK non chargé restait dit en jargon** (« Supabase non disponible ») et rangé en `autre` — l'impasse où plus personne n'entre, et où aucune requête ne part. Code `sdk`, texte « Recharge la page », cas ⑭ sur le vrai client de repli. Aucun des 21 cas ne le jouait : le harnais attendait `!!supa`, vrai pour le repli aussi.
+- **`reseau` affichait « Pas de connexion internet » à un appareil en ligne**, pour ce qui est aussi la seule forme d'une passerelle en panne. Texte neuf, et contrat de lecture écrit plus haut.
+- **Sur « Mot de passe oublié ? », Google était désigné comme LA sortie** : pour un compte ouvert avec une autre adresse, ce chemin crée un second compte. Forme sous condition sur cette porte.
+- **Une réponse illisible hors de la liste du SDK** (`AuthUnknownError`) restait brute, en anglais : désormais `serveur`. Le cas ③ quater fait répondre le vrai SDK plutôt que de l'imiter.
+- **Deux effets de bord se déclenchaient sous une panne** (bloc de renvoi, `signup_quota_email`) : `_panne` est calculé avant eux.
+- **Deux gardes n'avaient aucun test** (`console.warn`, pas de « Recharge la page » au nouveau mot de passe) : volets ajoutés en ⑨ et ⑫, réinjections rejouées.
+- **Trois phrases fausses** (« {} » pour un corps illisible, « le pilotage le compte », « statut 0 = jamais arrivée ») : réécrites d'après la mesure.
+- **`kind` lu dans `_authMode` au moment du `catch`** : figé en tête de fonction (`_mode`).
+
+**Seconde relecture (même jour).** Aucune objection bloquante ; deux remarques mineures, justes toutes les deux, soldées.
+- **La porte « google » n'était verrouillée qu'au niveau de la fonction** : retirer l'argument au point d'appel laissait les 24 cas verts. Le cas ⑪ joue désormais un `signInWithOAuth` qui rend un 500 « Error sending confirmation email » : le message est celui du service en panne, sans « Continuer avec Google », signal `google_refused { rc: "envoi" }`. Le SDK ne rend pas ce texte à cette porte aujourd'hui : le volet tient l'argument, pas un cas vu.
+- **`traduireRefusCaptcha` rendait encore « Pas de connexion internet » sans lire `navigator.onLine`.** Il passe par `messagePanneAuth("reseau")`. ⚠️ Le relecteur écrivait que `lot13-entree` resterait vert : faux. Son cas ⑥ appelait la fonction AVANT de couper le réseau, appareil en ligne, et exigeait le message hors ligne — il verrouillait le défaut. Il mesure maintenant les deux états : en ligne, « Impossible de joindre PASSIO… » et jamais « Pas de connexion internet » ; hors ligne, le texte d'avant, à l'identique. Le parcours du formulaire hors ligne (`authHorsLigne()`) n'a pas bougé.
+
+**Contre-vérification.** Le plan a été contredit contre le code avant l'écriture. Corrections reprises : la porte « Renvoyer le lien », oubliée ; le code `envoi` et son message ; `rcExceptionAuth(null)` ; la garde `!_panne` ; les textes affirmés par le cas ⑩. Deux écarts au plan, nés de la mesure dans le navigateur : la sortie Google est dite « plus bas » (et non « juste au-dessus »), et `_showPanneAuth` amène le message à l'écran.
