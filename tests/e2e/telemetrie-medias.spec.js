@@ -40,7 +40,10 @@
 //      juge aussi à l'événement d'échec ; elle repart au bilan ;
 //   ⑨c sous pression, un seul bilan notable par session et par famille ;
 //   ⑨d à la sortie sous délestage, le bruit de fond est jeté ;
-//   ⑩b le bilan de sortie a un plancher court (cache aller-retour) ;
+//   ⑩b une sortie qui suit une SORTIE a un plancher court (cache aller-retour) ;
+//   ⑩c ⑩d une sortie qui suit un bilan périodique ou un masquage (même sous
+//      pression) emporte tout ce qui reste ;
+//   ⑨e la réserve « un notable sous pression » repart de zéro au refus ;
 //   ⑪b un refus pendant la fenêtre du verdict périme les échecs en attente ;
 //   ⑫b `currentSrc` avant `src` (srcset, <source>) ;
 //   ⑭  la gigue : ± 30 %, tirée une fois par session ;
@@ -135,8 +138,10 @@ function installerBanc(wavB64) {
 // Charge la page d'accueil, mesure active, horloge simulée ; puis part de
 // compteurs VIDES (l'opposition suivie de la reprise les remet à zéro — c'est
 // le cas ⑪ qui le prouve). La gigue de la session (± 30 %, tirée une fois) est
-// FIXÉE à 1 : `Math.random` rend 0,5 le temps du tirage, puis reprend — le
-// laisser figé donnerait le même `event_id` à toutes les lignes.
+// FIXÉE à 1 : `Math.random` rend 0,5 le temps du SEUL tirage de la gigue —
+// le refus et la reprise passent AVANT, avec le vrai hasard (la reprise crée
+// l'identifiant d'appareil) ; le laisser figé ensuite donnerait le même
+// `event_id` à toutes les lignes.
 async function charger(page) {
   const etat = await intercepter(page);
   await poserGateSansPremiereVisite(page);
@@ -147,9 +152,10 @@ async function charger(page) {
   await page.evaluate(installerBanc, WAV.toString("base64"));
   await page.clock.fastForward(3000);
   const gigue = await page.evaluate(() => {
+    window.tel.setEnabled(false); window.tel.setEnabled(true);
     const hasard = Math.random;
     Math.random = () => 0.5;
-    try { window.tel.setEnabled(false); window.tel.setEnabled(true); return window.tel._mediaGigue(); }
+    try { return window.tel._mediaGigue(); }
     finally { Math.random = hasard; }
   });
   expect(gigue, "gigue fixée à 1 pour le banc").toBe(1);
@@ -461,7 +467,6 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     let r = await bilan(page, "periode");
     expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "seule la panne part").toEqual([["stockage", "warn"]]);
     expect(await medias(page), "le bruit de fond reste compté").toEqual({ demo: C(1, 0) });
-    await page.clock.fastForward(31000);                     // plancher court du bilan de sortie
     r = await bilan(page, "sortie");
     expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "à la sortie, sous pression, tout part").toEqual([["demo", "info"]]);
 
@@ -515,7 +520,7 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     await page.clock.fastForward(5000);
     await echecs(page, 3);
     await verdict(page);
-    await page.clock.fastForward(30000);  // encore sous le plancher de 5 min : seul le départ fait partir
+    await page.clock.fastForward(5000);   // encore sous le plancher de 5 min, 12 s après le masquage : seul le départ fait partir
     await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
     await expect.poll(() => etat.lots.flat().filter((r) => r.type === "media").length, { message: "le bilan n'est pas parti à la fermeture" }).toBe(2);
     expect(etat.lots.flat().some((r) => r.type === "session" && r.action === "end")).toBe(true);
@@ -540,10 +545,12 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     expect(await medias(page), "rien ne se compte pendant le refus").toEqual({});
 
     // Reprise : le minuteur d'AVANT le refus ne doit pas faire partir le bilan plus tôt.
-    // (la reprise retire la gigue : fixée à 1, comme dans `charger`)
+    // (la reprise retire la gigue : fixée à 1 comme dans `charger`, le hasard
+    // figé seulement le temps de son tirage, APRÈS la reprise)
     await page.evaluate(() => {
+      window.tel.setEnabled(true);
       const hasard = Math.random; Math.random = () => 0.5;
-      try { window.tel.setEnabled(true); window.tel._mediaGigue(); } finally { Math.random = hasard; }
+      try { window.tel._mediaGigue(); } finally { Math.random = hasard; }
     });
     await echecs(page, 3);
     await verdict(page);
@@ -697,7 +704,7 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     expect((await bilan(page, "sortie")).lignes.map((l) => [l.meta.famille, l.meta.ko])).toEqual([["externe", 2]]);
   });
 
-  test("T5-⑩b le bilan de sortie a un plancher court : une page qui entre et sort du cache aller-retour n'émet pas une ligne par passage", async ({ page }) => {
+  test("T5-⑩b une sortie qui suit une sortie a un plancher court : une page qui entre et sort du cache aller-retour n'émet pas une ligne par passage", async ({ page }) => {
     const etat = await charger(page);
     for (let k = 0; k < 4; k++) {
       await echecs(page, 3);
@@ -711,6 +718,55 @@ test.describe("Télémétrie — médias qui ne s'affichent pas (T5)", () => {
     await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
     const b = await bilans(page, etat);
     expect(b.map((l) => l.meta.ko), "le plancher passé, la sortie emporte le reste").toEqual([3, 9]);
+  });
+
+  test("T5-⑩c la sortie qui suit un bilan PÉRIODIQUE emporte tout ce qui est venu après, panne du stockage comprise", async ({ page }) => {
+    const etat = await charger(page);
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(20500);
+    expect((await bilans(page, etat)).length, "le bilan périodique est parti").toBe(1);
+    await echecs(page, 4, "externe");
+    await echecs(page, 3);
+    await verdict(page);
+    await page.clock.fastForward(10000);                     // la page se ferme 15 s après le bilan périodique
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    const b = await bilans(page, etat);
+    expect(b.map((l) => [l.meta.famille, l.severity, l.meta.ko]), "le second delta n'est pas perdu").toEqual([
+      ["stockage", "warn", 3], ["stockage", "warn", 3], ["externe", "info", 4],
+    ]);
+    expect(await medias(page)).toEqual({});
+  });
+
+  test("T5-⑩d sous pression, le masquage envoie la panne et retient le bruit de fond ; la sortie qui suit aussitôt l'emporte", async ({ page }) => {
+    const etat = await charger(page);
+    await page.evaluate(() => { window.tel.sousPression = () => true; });
+    await echecs(page, 2, "externe");
+    await echecs(page, 3);
+    await verdict(page);
+    await page.evaluate(() => window.__occulter(true));
+    expect(await medias(page), "retenu au masquage").toEqual({ externe: C(2, 0) });
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    const b = await bilans(page, etat);
+    expect(b.map((l) => [l.meta.famille, l.meta.ko]).sort(), "rien n'est perdu à la sortie").toEqual([["externe", 2], ["stockage", 3]]);
+    expect(await medias(page)).toEqual({});
+  });
+
+  test("T5-⑨e la réserve « un notable sous pression » repart de zéro après un refus de la mesure", async ({ page }) => {
+    await charger(page);
+    await page.evaluate(() => { window.tel.sousPression = () => true; });
+    await echecs(page, 3);
+    await verdict(page);
+    expect((await bilan(page, "periode")).n, "premier notable").toBe(1);
+    await page.evaluate(() => { window.tel.setEnabled(false); window.tel.setEnabled(true); });
+    // Le plancher de période, lui, survit au refus (un aller-retour de la
+    // mesure ne doit pas permettre d'émettre plus souvent) : on le passe,
+    // gigue de la reprise comprise (au plus 5 min × 1,3).
+    await page.clock.fastForward(391000);
+    await echecs(page, 3);
+    await verdict(page);
+    const r = await bilan(page, "periode");
+    expect(r.lignes.map((l) => [l.meta.famille, l.severity]), "après la reprise, le premier notable part").toEqual([["stockage", "warn"]]);
   });
 
   test("T5-⑪b un refus de la mesure pendant la fenêtre du verdict périme les échecs en attente", async ({ page }) => {

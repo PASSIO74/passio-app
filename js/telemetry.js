@@ -1237,6 +1237,7 @@
   var mediaCompte = {};            // famille → { ko, vus, ko_av, vus_av }
   var mediaDebut = Date.now();
   var mediaDernier = 0;            // dernier bilan PARTI
+  var mediaSortie = 0;             // dernier bilan PARTI À LA SORTIE (`pagehide`) : seul repère du plancher court
   var mediaEssai = 0;              // dernier bilan périodique TENTÉ (parti ou retenu)
   var mediaTimer = null;
   var mediaAttente = 0;            // échecs dont le verdict (2 s) n'est pas encore rendu
@@ -1342,17 +1343,25 @@
   // Pose une ligne par famille EN ÉCHEC et remet les compteurs à zéro (delta).
   // `raison` : "periode" (minuteur), "masque" (arrière-plan), "sortie"
   // (`pagehide`). Rend le nombre de lignes.
-  //   · plancher : la période, ou `MEDIA_SORTIE_MS` à la sortie (une page qui
-  //     entre et sort du cache aller-retour émettait une ligne par passage).
-  //     Une horloge qui RECULE (`t < mediaDernier`) vaut plancher échu : sans
+  //   · plancher : la période depuis le dernier bilan parti ; à la sortie,
+  //     `MEDIA_SORTIE_MS` depuis la dernière SORTIE seulement (`mediaSortie`).
+  //     Une page qui entre et sort du cache aller-retour émettait une ligne
+  //     par passage ; mais compté depuis N'IMPORTE QUEL bilan (période,
+  //     masquage), ce plancher perdait les échecs d'après — panne du stockage
+  //     comprise — quand la page se fermait moins de 30 s plus tard. Pas
+  //     `e.persisted` : il est vrai à toute sortie éligible au cache, la
+  //     première comprise, et ne distingue donc pas un aller-retour.
+  //     Une horloge qui RECULE (`t` avant le repère) vaut plancher échu : sans
   //     cela la mesure se tait jusqu'à ce que l'horloge rattrape son retard.
-  //   · à la sortie, rien n'attend : tout part — sauf le bruit de fond sous
-  //     délestage, qui est JETÉ (la consigne est la sobriété, et il n'y aura
-  //     pas de plus tard).
+  //   · à la sortie, rien n'attend (ni pression, ni famille qui a déjà parlé) :
+  //     tout part — sauf le bruit de fond sous délestage, qui est JETÉ (la
+  //     consigne est la sobriété, et il n'y aura pas de plus tard), et sauf
+  //     une seconde sortie moins de 30 s après une première (plancher court).
   function _mediaBilan(raison) {
     var sortie = (raison === "sortie");
     var t = Date.now();
-    if (mediaDernier && t >= mediaDernier && t - mediaDernier < (sortie ? MEDIA_SORTIE_MS : _mediaPeriode())) return 0;
+    var repere = sortie ? mediaSortie : mediaDernier;
+    if (repere && t >= repere && t - repere < (sortie ? MEDIA_SORTIE_MS : _mediaPeriode())) return 0;
     if (raison === "periode") mediaEssai = t;
     var garde = {}, n = 0, jete = 0, deleste = null, pression = null;
     for (var i = 0; i < FAMILLES_MEDIA.length; i++) {
@@ -1379,7 +1388,7 @@
       n++;
     }
     if (n || jete) { mediaCompte = garde; mediaDebut = t; }
-    if (n) mediaDernier = t;
+    if (n) { mediaDernier = t; if (sortie) mediaSortie = t; }
     return n;
   }
   function _mediaArmer() {
@@ -1751,9 +1760,11 @@
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
         // … et pour ce qui était COMPTÉ en mémoire (médias, T5).
         // Les verdicts en attente sont périmés (`mediaEpoque`) ; la gigue
-        // sera retirée à la reprise.
+        // sera retirée à la reprise, et la réserve « un notable sous
+        // pression » repart de zéro.
         mediaCompte = {};
         mediaAttente = 0; mediaEpoque++; mediaGigue = 0;
+        mediaNotable = {};             // la reprise est une autre identité : son premier notable part
         if (mediaTimer) { clearTimeout(mediaTimer); mediaTimer = null; }
         try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
       }
@@ -1821,7 +1832,7 @@
   // premier et le burst de snapshots « exit » de perf-ios trouve le drapeau levé.
   window.addEventListener("pagehide", function () {
     unloading = true;
-    _mediaBilan("sortie");      // ce qui est compté part avec le lot de fermeture (plancher court, bruit de fond jeté sous délestage)
+    _mediaBilan("sortie");      // ce qui est compté part avec le lot de fermeture (plancher court entre deux sorties, bruit de fond jeté sous délestage)
     track("session", "end");
     flush({ keepalive: true });
   });

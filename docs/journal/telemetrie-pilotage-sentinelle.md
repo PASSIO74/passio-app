@@ -2595,21 +2595,29 @@ ultérieur, et cette fiche est son contrat.
 - Une ligne **par session, par période et par famille EN ÉCHEC** ; rien sans échec. Premier bilan 20 s
   après le premier échec compté (`MEDIA_PREMIER_MS`), puis un par période de 5 min au plus
   (`MEDIA_PERIODE_MS` × le facteur de délestage, lu à l'armement : `_mediaPeriode`), un au masquage
-  (soumis au même plancher) et un à `pagehide` (il voyage avec le lot de fermeture ; plancher court de
-  30 s après le bilan précédent, `MEDIA_SORTIE_MS`).
+  (soumis au même plancher) et un à `pagehide` (il voyage avec le lot de fermeture, et ne connaît PAS le
+  plancher de période : seulement un plancher court de 30 s après la SORTIE précédente, `MEDIA_SORTIE_MS`
+  compté depuis `mediaSortie`, contre les allers-retours du cache aller-retour. Compté depuis n'importe
+  quel bilan, il perdait les échecs d'une page fermée moins de 30 s après un bilan de période ou de
+  masquage — contre-revue, second tour. `e.persisted` n'a pas été retenu : il est vrai à toute sortie
+  éligible au cache, la première comprise).
 - **Gigue** : le premier délai ET la période sont multipliés par un facteur de 0,7 à 1,3, tiré UNE fois
   par session (`_mediaGigue`, retiré après un refus de la mesure). Les bilans d'une session tombent donc
   entre 14 et 26 s, puis toutes les 3 min 30 à 6 min 30. Le banc la fixe à 1 (`Math.random` rend 0,5 le
-  temps du tirage, puis reprend — figé, il donnerait le même `event_id` à toutes les lignes).
+  temps du SEUL tirage de la gigue, après le refus et la reprise qui créent l'identifiant d'appareil —
+  figé plus longtemps, il donnerait le même `event_id` à toutes les lignes).
 - **Notable** = famille `stockage` ou `demo` ET `ko ≥ 3` (`MEDIA_KO_NOTABLE`) ET `ko ≥ vus` →
   `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours. Il n'attend ni le
   délestage ni la pression — **à une réserve près : sous pression (429), un seul notable par session et
-  par famille** ; les suivants attendent, comptés, comme le bruit de fond, et partent entiers quand la
-  pression retombe ou à la sortie. Il reste soumis au plancher de période et au plafond client de `track`
+  par famille** (réserve remise à zéro par un refus de la mesure) ; les suivants attendent, comptés,
+  comme le bruit de fond, et partent entiers quand la pression retombe ou à la sortie — sauf une sortie
+  qui suit une autre sortie de moins de 30 s (ils restent alors en mémoire). Il reste soumis au plancher de période et au plafond client de `track`
   (400 lignes par minute et par onglet).
   Tout le reste part en `info` et ATTEND sous pression (`tel.sousPression()`) ou sous délestage ; un
   bilan retenu ne réveille l'appareil qu'une fois par période (`mediaEssai`), pas toutes les 20 s.
-  **À la sortie rien n'attend** : tout part, sauf le bruit de fond sous délestage, qui est JETÉ.
+  **À la sortie, ni la pression ni le plancher de période ne retiennent rien** : tout part, sauf le
+  bruit de fond sous délestage, qui est JETÉ, et sauf si une autre sortie a émis il y a moins de 30 s
+  (tout reste alors compté en mémoire, pour la sortie suivante ou perdu avec la page).
 - Dénominateur fenêtré : sans échec compté ni échec en attente de verdict, les compteurs repartent de
   zéro dès qu'un événement arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`,
   `_mediaFenetre`) ; la fenêtre repart à chaque bilan.
@@ -2670,8 +2678,10 @@ des requêtes qu'un filtre élargi peindrait en pannes).
     `warn` comme les autres.
 11. **Sous le plancher, rien n'est persisté.** Un masquage dans les 5 min qui suivent un bilan ne pose
     rien : les échecs comptés depuis restent en mémoire et sont PERDUS si l'onglet est tué sans
-    `pagehide` (le cas ordinaire sur mobile). De même une sortie dans les 30 s qui suivent un bilan
-    (`MEDIA_SORTIE_MS`), et le bruit de fond d'une sortie sous délestage (jeté, délibérément). Accepté :
+    `pagehide` (le cas ordinaire sur mobile). De même une sortie dans les 30 s qui suivent une AUTRE
+    sortie (`MEDIA_SORTIE_MS` : retour du cache aller-retour puis départ — si la page meurt ensuite, ce
+    qui a été compté entre les deux est perdu), et le bruit de fond d'une sortie sous délestage (jeté,
+    délibérément). Une sortie qui suit un bilan de période ou de masquage, elle, emporte tout. Accepté :
     le premier bilan de la session, lui, est déjà parti ; écrire les compteurs sur disque à chaque
     échec coûterait plus que ce delta ne vaut.
 12. Une `<source type="…">` que le navigateur ne sait pas lire lève `error` sur la `<source>` et
@@ -2707,7 +2717,7 @@ group by 1, 2 order by 1, 2;
 Preuve de déploiement : le nom `_mediaBilan` dans la page servie, ouverte avec `?equipe=1` (les
 littéraux `"media"` et `"bilan"` existent ailleurs dans la page).
 
-**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (vingt-deux cas « T5- », service worker bloqué, horloge
+**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (vingt-cinq cas « T5- », service worker bloqué, horloge
 simulée, tous les envois interceptés) et quatre cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
 (table d'adresses hostiles et hôte qui suit la configuration, câblage en capture, sortie avant tout
 classement quand la mesure est refusée — joués par `npm run verif`).
@@ -2784,6 +2794,20 @@ réinjections jouées).** Ce qu'elle a changé :
   `!ENABLED` en tête des deux écouteurs (avant tout classement, banc unitaire).
 - **D2-8** : limites 12 à 14 écrites ; plancher court de 30 s à `pagehide` (T5-⑩b) ; sous délestage, à la
   sortie, le bruit de fond est JETÉ (T5-⑨d).
+
+**Second tour de contre-revue (même jour).** Le plancher court de `pagehide` se comptait depuis
+`mediaDernier`, donc depuis N'IMPORTE QUEL bilan : une page fermée 12 s après un masquage, ou 15 s après
+un bilan de période, perdait tout le delta suivant, panne du stockage comprise ; et sous pression, une
+sortie juste après un masquage perdait le bruit de fond retenu. Le banc avait été AFFAIBLI pour ne pas
+le voir (T5-⑩ porté de 5 s à 30 s, un saut de 31 s glissé dans T5-⑨) : rétabli. Corrigé par un repère
+propre, `mediaSortie`, posé seulement par une sortie qui a émis ; cas T5-⑩c (après un bilan périodique)
+et T5-⑩d (sous pression, après un masquage). Aussi : `mediaNotable` remis à zéro par un refus (T5-⑨e —
+le plancher de période, lui, survit délibérément au refus : un aller-retour de la mesure ne doit pas
+permettre d'émettre plus souvent) ; le banc ne fige plus `Math.random` pendant la reprise qui crée
+l'identifiant d'appareil. Réinjections de ce tour (`revue-D2/reinj3.py`) : 8 jouées, 8 rouges —
+repère de sortie remplacé par `mediaDernier` (T5-⑨, ⑩, ⑩c, ⑩d), `mediaSortie` jamais posé (T5-⑩b),
+posé à tout bilan (T5-⑨, ⑩, ⑩c, ⑩d), `mediaNotable` non remis au refus (T5-⑨e), plancher court nul
+(T5-⑩b), bruit de fond non jeté (T5-⑨d), plancher de période nul (T5-⑦), horloge reculée (T5-⑮).
 
 Réinjections de l'état final (`revue-D2/reinj2.py`, hors dépôt) : **41 jouées, 41 rouges, aucune
 verte**, fichier restauré à l'identique après chacune (empreinte vérifiée). Les quinze d'origine,
