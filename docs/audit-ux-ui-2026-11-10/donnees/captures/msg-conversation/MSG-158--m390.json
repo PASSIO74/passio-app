@@ -1,0 +1,185 @@
+{
+ "id": "MSG-158",
+ "domaine": "msg-conversation",
+ "scenario": "pieces-jointes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Position refusée : rien n'est envoyé, rien n'est dit",
+ "note": "SIMULÉ : getCurrentPosition répond « permission refusée ». Rien n'est envoyé (correct) ; les toasts « 📍 Localisation en cours… » puis « ❌ Impossible d'obtenir la position » sont caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10).",
+ "prisLe": "2026-11-10T19:00:51.913Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-158--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42598,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le menu reste ouvert, aucune explication visible.",
+   "x": 0.269,
+   "y": 0.69,
+   "w": 0.538,
+   "h": 0.472,
+   "sel": "#convAttachMenu",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div.conv-bubble.me > div > div > div",
+     "texte": "Feuille-de-route-developpement-argentique.pdf",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "div.conv-bubble.me > div > div > div",
+     "texte": "PDF · 48 KB",
+     "ratio": 1.05,
+     "seuil": 4.5,
+     "couleur": "#fcfbfe",
+     "fond": "#f7f5fc",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"data:image/webp;base64,UklGRjApAABXRUJQVlA4WAoAAAAgAAAArwQAHwMASUNDU"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div.conv-bubble.me > div > div > div",
+    "texte": "Feuille-de-route-developpement-argentique.pdf",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-158--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52340,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Message visible au-dessus de la conversation, qui dit quoi faire.",
+   "x": 0.5,
+   "y": 0.123,
+   "w": 0.92,
+   "h": 0.066,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

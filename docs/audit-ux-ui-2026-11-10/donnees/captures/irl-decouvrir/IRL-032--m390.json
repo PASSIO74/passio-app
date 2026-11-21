@@ -1,0 +1,215 @@
+{
+ "id": "IRL-032",
+ "domaine": "irl-decouvrir",
+ "scenario": "demo-carte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Vue Carte — plein écran",
+ "note": "",
+ "prisLe": "2026-11-10T18:14:34.475Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#carte"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-032--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 200818,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Seule sortie : la même icône, sans libellé",
+   "x": 0.923,
+   "y": 0.036,
+   "w": 0.097,
+   "h": 0.045,
+   "sel": ".irl-map-expand",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Fermeture de bulle minuscule",
+   "x": 0.835,
+   "y": 0.597,
+   "w": 0.058,
+   "h": 0.024,
+   "sel": ".maplibregl-popup-close-button, .leaflet-popup-close-button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 15,
+   "sous44": [
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 25,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 30,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 28,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-in",
+     "texte": "Zoom in",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-out",
+     "texte": "Zoom out",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-bottom-right > div.maplibregl-ctrl.maplibregl-ctrl-attrib > a",
+     "texte": "OpenFreeMap",
+     "w": 57.2,
+     "h": 10,
+     "enLigne": true
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-bottom-right > div.maplibregl-ctrl.maplibregl-ctrl-attrib > a",
+     "texte": "© OpenStreetMap",
+     "w": 71.5,
+     "h": 10,
+     "enLigne": true
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-popup.maplibregl-popup-anchor-right > div.maplibregl-popup-content > button.irl-popup-btn",
+     "texte": "Voir l'événement",
+     "w": 118.7,
+     "h": 32,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-popup.maplibregl-popup-anchor-right > div.maplibregl-popup-content > button.maplibregl-popup-close-button",
+     "texte": "Close popup",
+     "w": 22.5,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlMapExpandBtn",
+     "texte": "Carte en plein écran",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 14
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-032--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 200106,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Sortie nommée, 44 px",
+   "x": 0.774,
+   "y": 0.041,
+   "w": 0.386,
+   "h": 0.052,
+   "sel": "#maqFermerCarte",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Croix de bulle 44 px",
+   "x": 0.808,
+   "y": 0.611,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": ".maplibregl-popup-close-button, .leaflet-popup-close-button",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

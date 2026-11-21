@@ -1,0 +1,170 @@
+{
+ "id": "ENT-015",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Envoi à vide — le refus s'écrit en haut, sous le bouton « Continuer à explorer »",
+ "note": "",
+ "prisLe": "2026-11-10T19:30:09.181Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-015--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 61524,
+  "zooms": [
+   {
+    "nom": "message",
+    "titre": "Message d'erreur et sortie flottante",
+    "fichier": "captures/entree/ENT-015--m390--avant-zoom-message.webp",
+    "largeur": 732,
+    "hauteur": 188,
+    "octets": 11136
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La sortie flottante recouvre le message d'erreur.",
+   "x": 0.236,
+   "y": 0.038,
+   "w": 0.42,
+   "h": 0.052,
+   "sel": "#frBackToExplore",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le champ fautif n'est pas désigné ; un seul défaut est dit à la fois.",
+   "x": 0.5,
+   "y": 0.352,
+   "w": 0.785,
+   "h": 0.058,
+   "sel": "#authName",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 16,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 146,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "input#authConsent",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "span#authCguLink",
+     "texte": "conditions générales",
+     "w": 115,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 5,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-015--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 61612,
+  "zooms": [
+   {
+    "nom": "message",
+    "titre": "Message d'erreur",
+    "fichier": "captures/entree/ENT-015--m390--apres-zoom-message.webp",
+    "largeur": 732,
+    "hauteur": 188,
+    "octets": 9066
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La sortie devient une barre qui ne recouvre plus rien.",
+   "x": 0.5,
+   "y": 0.026,
+   "w": 1,
+   "h": 0.052,
+   "sel": "#frBackToExplore",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le champ fautif est entouré et son défaut écrit dessous.",
+   "x": 0.5,
+   "y": 0.416,
+   "w": 0.785,
+   "h": 0.058,
+   "sel": "#authName",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

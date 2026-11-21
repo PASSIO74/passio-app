@@ -1,0 +1,111 @@
+{
+ "id": "PAR-003",
+ "domaine": "partage",
+ "scenario": "publication",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Après « Partager en dehors » (copie réussie) — le toast « Lien copié » est sous la feuille",
+ "note": "Toast figé (contournement ①). Il est émis (journal) mais peint sous .modal-backdrop (z-index 200 < 10001).",
+ "prisLe": "2026-11-10T17:44:16.009Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Partager ce post",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-003--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 25010,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Aucun retour visible ; la feuille reste ouverte",
+   "x": 0.5,
+   "y": 0.947,
+   "w": 0.908,
+   "h": 0.05,
+   "sel": "#_shareOutBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#_shareInFeedBtn",
+     "texte": "Partager dans mon feed",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#_shareOutBtn",
+     "texte": "Partager en dehors",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-003--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52476,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Confirmation DANS la feuille (et toast repassé au-dessus des feuilles)",
+   "x": 0.5,
+   "y": 0.947,
+   "w": 0.908,
+   "h": 0.049,
+   "sel": "[data-mq='ok']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,193 @@
+{
+ "id": "MSG-198",
+ "domaine": "msg-conversation",
+ "scenario": "fond-retour",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil sur le fond « Nuit »",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:10.231Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-198--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28596,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Heures et séparateurs en gris moyen sur fond presque noir.",
+   "x": 0.1,
+   "y": 0.48,
+   "w": 0.097,
+   "h": 0.018,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble-time",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#convFpThread > div > span",
+     "texte": "Aujourd'hui",
+     "ratio": 3.79,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#0a0a0f",
+     "px": 11
+    },
+    {
+     "el": "div#convFpThread > div.conv-bubble-wrap.them > span.conv-bubble-time",
+     "texte": "09:14",
+     "ratio": 3.79,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#0a0a0f",
+     "px": 11
+    },
+    {
+     "el": "div#convFpThread > div.conv-bubble-wrap.me > span.conv-bubble-time",
+     "texte": "09:24",
+     "ratio": 3.79,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#0a0a0f",
+     "px": 11
+    },
+    {
+     "el": "div#convFpThread > div.conv-bubble-wrap.them > span.conv-bubble-time",
+     "texte": "09:34",
+     "ratio": 3.79,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#0a0a0f",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 4
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:50162/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-198--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28918,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "À défaut de remplacer les fonds sombres par des lavis clairs : heures et séparateurs éclaircis.",
+   "x": 0.1,
+   "y": 0.48,
+   "w": 0.097,
+   "h": 0.018,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble-time",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

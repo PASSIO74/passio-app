@@ -1,0 +1,152 @@
+{
+ "id": "FIL-091",
+ "domaine": "fil",
+ "scenario": "volume",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Bas de fil — « Charger plus de posts » (fil de 80 publications)",
+ "note": "",
+ "prisLe": "2026-11-10T17:47:08.766Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-091--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 68188,
+  "zooms": [
+   {
+    "nom": "bouton",
+    "titre": "Bouton de pagination",
+    "fichier": "captures/fil/FIL-091--m390--avant-zoom-bouton.webp",
+    "largeur": 408,
+    "hauteur": 124,
+    "octets": 2832
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« ⤵ Charger plus de posts » : geste manuel, mot « posts »",
+   "x": 0.5,
+   "y": 0.755,
+   "w": 0.472,
+   "h": 0.05,
+   "sel": "#feedLoadMoreBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "🧘",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Emma Wright",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "button#feedLoadMoreBtn",
+     "texte": "⤵ Charger plus de posts",
+     "w": 184.1,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 9
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

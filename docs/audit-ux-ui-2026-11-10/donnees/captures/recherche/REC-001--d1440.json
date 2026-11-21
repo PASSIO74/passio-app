@@ -1,0 +1,255 @@
+{
+ "id": "REC-001",
+ "domaine": "recherche",
+ "scenario": "ecran",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rechercher — haut de l'écran (champ, « Passions tendance »)",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:06.573Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-001--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 31938,
+  "zooms": [
+   {
+    "nom": "champ",
+    "titre": "Champ et bouton « OK »",
+    "fichier": "captures/recherche/REC-001--d1440--avant-zoom-champ.webp",
+    "largeur": 416,
+    "hauteur": 181,
+    "octets": 6854
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« OK » : 40,9 × 28 px ; le champ est un type=text sans étiquette ni croix d'effacement.",
+   "x": 0.604,
+   "y": 0.254,
+   "w": 0.028,
+   "h": 0.031,
+   "sel": "#exPanel_search .explorer-hero button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« tout le référentiel des passions » : un mot d'équipe, pas d'utilisateur.",
+   "x": 0.5,
+   "y": 0.196,
+   "w": 0.257,
+   "h": 0.04,
+   "sel": "#exPanel_search .explorer-hero p",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Tuile sans publication, posée là par ordre alphabétique sous l'étiquette « Hot ».",
+   "x": 0.572,
+   "y": 0.681,
+   "w": 0.139,
+   "h": 0.116,
+   "sel": "#trendingGrid .trending-tile:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 28,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 241,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   },
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-001--d1440--apres.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 28554,
+  "zooms": [
+   {
+    "nom": "champ",
+    "titre": "Champ et bouton « OK »",
+    "fichier": "captures/recherche/REC-001--d1440--apres-zoom-champ.webp",
+    "largeur": 416,
+    "hauteur": 167,
+    "octets": 5826
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« OK » porté à 44 px de haut ; le champ reçoit un nom accessible.",
+   "x": 0.607,
+   "y": 0.237,
+   "w": 0.036,
+   "h": 0.049,
+   "sel": "#exPanel_search .explorer-hero button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Accroche en mots simples : une passion ou une personne.",
+   "x": 0.5,
+   "y": 0.186,
+   "w": 0.257,
+   "h": 0.02,
+   "sel": "#exPanel_search .explorer-hero p",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Seules les passions qui ont des publications ; le titre dit ce qu'on mesure, sans « Hot ».",
+   "x": 0.5,
+   "y": 0.327,
+   "w": 0.281,
+   "h": 0.033,
+   "sel": "#exploreNormalContent .section-title",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

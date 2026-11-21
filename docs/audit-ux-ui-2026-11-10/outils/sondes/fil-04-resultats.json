@@ -1,0 +1,141 @@
+{
+ "clavier": [
+  [
+   "div",
+   "Mon profil",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Explorer",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Notifications",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Paramètres",
+   true,
+   true
+  ],
+  [
+   "div",
+   "👥 Suivis",
+   true,
+   true
+  ],
+  [
+   "div",
+   "🎸 49 Musique",
+   true,
+   true
+  ],
+  [
+   "div",
+   "🏋️ 34 Sport",
+   true,
+   true
+  ],
+  [
+   "div",
+   "🍳 32 Cuisine",
+   true,
+   true
+  ],
+  [
+   "button",
+   "Explorer",
+   true,
+   true
+  ],
+  [
+   "button",
+   "Apprendre",
+   true,
+   true
+  ],
+  [
+   "button",
+   "Idées",
+   true,
+   true
+  ],
+  [
+   "button",
+   "Rencontrer",
+   true,
+   true
+  ],
+  [
+   "div",
+   "🎵 Ta story",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Léa",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Clara",
+   true,
+   true
+  ],
+  [
+   "div",
+   "Noa",
+   true,
+   true
+  ]
+ ],
+ "doubleAppui": {
+  "ecritures": 1,
+  "dansLaListe": 1
+ },
+ "suppressionRefusee": {
+  "toasts": [
+   "Commentaire supprimé"
+  ],
+  "encoreEnBase": true,
+  "encoreAffiche": false
+ },
+ "masque": {
+  "affiche": false
+ },
+ "apresRelecture": {
+  "masqueRevenu": true,
+  "supprimeRevenu": true,
+  "titre": "Discussion (36)"
+ },
+ "copie": {
+  "toasts": [
+   "Texte copié"
+  ],
+  "rejets": [
+   "NotAllowedError"
+  ]
+ },
+ "blocage": {
+  "toasts": [
+   "🚫 Utilisateur bloqué"
+  ],
+  "bloques": 1,
+  "suivis": 2,
+  "modale": false,
+  "texteModale": "×\n    \n    Discussion (36)\n    Réponds à cette publication.\n    PertinentsRécents\n      🎧\n      \n      \n        \n        Camille Audit\n        \n        Comment",
+  "toastDom": [
+   "Texte copié",
+   "🚫 Utilisateur bloqué"
+  ]
+ },
+ "blocageServeur": 1
+}

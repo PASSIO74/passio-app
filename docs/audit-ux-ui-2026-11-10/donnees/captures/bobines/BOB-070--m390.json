@@ -1,0 +1,50 @@
+{
+ "id": "BOB-070",
+ "domaine": "bobines",
+ "scenario": "mouvement-reduit",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — « réduire les animations » activé : la vidéo démarre et boucle quand même",
+ "note": "Contexte Playwright reducedMotion: reduce. `videoPubliqueAutoplay` (app-02:4163) ne lit que les réglages de lecture et l'économie de données.",
+ "prisLe": "2026-11-10T19:21:07.890Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-070--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41614,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Lecture automatique en boucle, sans pause possible",
+   "x": 0.5,
+   "y": 0.45,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": null,
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

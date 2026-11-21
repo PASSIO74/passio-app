@@ -1,0 +1,178 @@
+{
+ "id": "MSG-020",
+ "domaine": "msg-liste",
+ "scenario": "parametres",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Conversation 1:1 — en-tête (production : appels désactivés)",
+ "note": "",
+ "prisLe": "2026-11-10T17:41:18.412Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-020--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 21634,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-liste/MSG-020--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 120,
+    "octets": 4512
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Retour : 36 × 36 px visibles",
+   "x": 0.082,
+   "y": 0.035,
+   "w": 0.092,
+   "h": 0.043,
+   "sel": "#convFpHead .conv-fp-back",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "⋮ : zone touchable 38 × 46 px, nommé par « title » seulement",
+   "x": 0.921,
+   "y": 0.035,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": "#convFpHead .conv-action-btn[title=\"Paramètres\"]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Voir le profil » en 11 px",
+   "x": 0.564,
+   "y": 0.047,
+   "w": 0.574,
+   "h": 0.018,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Malik Benali Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61523/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-020--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 21894,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-liste/MSG-020--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 130,
+    "octets": 4346
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "44 × 44 px",
+   "x": 0.092,
+   "y": 0.038,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead .conv-fp-back",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 × 44 px, nom accessible « Options de la conversation »",
+   "x": 0.908,
+   "y": 0.038,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead .conv-action-btn[title=\"Paramètres\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

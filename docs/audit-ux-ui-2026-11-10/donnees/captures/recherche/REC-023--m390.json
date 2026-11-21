@@ -1,0 +1,106 @@
+{
+ "id": "REC-023",
+ "domaine": "recherche",
+ "scenario": "hors-ligne",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Hors ligne : l'écran (référentiel jamais chargé)",
+ "note": "Simulé : context.setOffline(true) avant la première ouverture de l'écran.",
+ "prisLe": "2026-11-10T19:46:11.255Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-023--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 55354,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Compteur muet et grille réduite au socle de 19 : le choix de se taire est juste.",
+   "x": 0.5,
+   "y": 1.324,
+   "w": 0.918,
+   "h": 1.002,
+   "sel": "#allPassions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 218.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#offlineBanner > button",
+     "texte": "×",
+     "w": 23.1,
+     "h": 23,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

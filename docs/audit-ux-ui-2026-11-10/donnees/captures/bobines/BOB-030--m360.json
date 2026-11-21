@@ -1,0 +1,201 @@
+{
+ "id": "BOB-030",
+ "domaine": "bobines",
+ "scenario": "stories",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story d'un compte suivi (texte) — en-tête, progression, fermeture",
+ "note": "Story réelle du faux serveur. La plus RÉCENTE des deux stories de Léa passe en premier (aucun `createdAt` repris de Supabase).",
+ "prisLe": "2026-11-10T19:19:37.004Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#story"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-030--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 21492,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et barres de progression",
+    "fichier": "captures/bobines/BOB-030--m360--avant-zoom-entete.webp",
+    "largeur": 720,
+    "hauteur": 168,
+    "octets": 4406
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ni heure ni passion : `#storyTime` vide",
+   "x": 0.256,
+   "y": 0.063,
+   "w": 0.213,
+   "h": 0.027,
+   "sel": "#storyAuthor",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Piste des barres presque invisible (violet 18 % sur noir)",
+   "x": 0.5,
+   "y": 0.018,
+   "w": 0.944,
+   "h": 0.005,
+   "sel": "#storyProgressRow",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » flotte au milieu de l'en-tête",
+   "x": 0.617,
+   "y": 0.063,
+   "w": 0.092,
+   "h": 0.044,
+   "sel": "#storyReportBtn",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "✕ de 32 px (zone 44 px par pseudo-élément), sans nom accessible",
+   "x": 0.917,
+   "y": 0.063,
+   "w": 0.089,
+   "h": 0.05,
+   "sel": ".story-viewer-close",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "Une question posée… et aucun moyen d'y répondre",
+   "x": 0.5,
+   "y": 0.533,
+   "w": 0.878,
+   "h": 0.878,
+   "sel": "#storyCard",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#storyReportBtn",
+     "texte": "Signaler cette story",
+     "w": 33.1,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-prev",
+    "html": "<div class=\"story-viewer-tap story-tap-prev\" onclick=\"storyPrev()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   },
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-next",
+    "html": "<div class=\"story-viewer-tap story-tap-next\" onclick=\"storyNext()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-030--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 25892,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et barres de progression",
+    "fichier": "captures/bobines/BOB-030--m360--apres-zoom-entete.webp",
+    "largeur": 720,
+    "hauteur": 192,
+    "octets": 6242
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Quand, et dans quelle passion",
+   "x": 0.324,
+   "y": 0.085,
+   "w": 0.347,
+   "h": 0.023,
+   "sel": "[data-mq=\"temps\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Piste blanche à 35 % : on voit combien il en reste",
+   "x": 0.5,
+   "y": 0.018,
+   "w": 0.944,
+   "h": 0.005,
+   "sel": "#storyProgressRow",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » rangé à côté de ✕, 44 px",
+   "x": 0.75,
+   "y": 0.072,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": "#storyReportBtn",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Répondre ouvre la conversation existante avec Léa",
+   "x": 0.5,
+   "y": 0.941,
+   "w": 0.878,
+   "h": 0.075,
+   "sel": "[data-mq=\"repondre\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

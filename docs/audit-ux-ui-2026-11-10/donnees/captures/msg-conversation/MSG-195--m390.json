@@ -1,0 +1,181 @@
+{
+ "id": "MSG-195",
+ "domaine": "msg-conversation",
+ "scenario": "irl",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "En-tête avec « Proposer un moment IRL » et son aide contextuelle",
+ "note": "SIMULÉ : la RPC `irl_interaction_allowed` (absente du faux serveur) est répondue « true » par une route. Aide `conversation_irl` affichée (première ouverture).",
+ "prisLe": "2026-11-10T18:14:28.975Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-195--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36490,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-195--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 130,
+    "octets": 5592
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "44 × 44 px, nommé — mais violet, et différent de l'entrée « Proposer un IRL » du menu « + ».",
+   "x": 0.81,
+   "y": 0.038,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead [data-irl-proposal-action]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "html.passio-flat-passions.passio-ui-v2 > body > div.passio-hint > button.passio-hint-ok",
+     "texte": "Compris",
+     "w": 70.8,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:49975/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-195--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36016,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête",
+    "fichier": "captures/msg-conversation/MSG-195--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 122,
+    "octets": 5374
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Teinte corail (passage au réel), même nom et même chemin que l'entrée du menu « + ».",
+   "x": 0.795,
+   "y": 0.036,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead [data-irl-proposal-action]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

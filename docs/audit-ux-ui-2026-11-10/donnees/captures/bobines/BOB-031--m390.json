@@ -1,0 +1,96 @@
+{
+ "id": "BOB-031",
+ "domaine": "bobines",
+ "scenario": "stories",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story photo de Léa (la plus ancienne, jouée en second)",
+ "note": "Si le toucher « précédent » a fermé la visionneuse (première story du premier groupe), la story est rouverte et placée par appel de fonction (simulé).",
+ "prisLe": "2026-11-10T19:19:12.363Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#story"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-031--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 13414,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Texte posé sur la photo, ombre légère : lisible ici",
+   "x": 0.5,
+   "y": 0.813,
+   "w": 0.754,
+   "h": 0.033,
+   "sel": "#storyContent",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#storyReportBtn",
+     "texte": "Signaler cette story",
+     "w": 33.1,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-prev",
+    "html": "<div class=\"story-viewer-tap story-tap-prev\" onclick=\"storyPrev()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   },
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-next",
+    "html": "<div class=\"story-viewer-tap story-tap-next\" onclick=\"storyNext()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

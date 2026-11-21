@@ -1,0 +1,173 @@
+{
+ "id": "BOB-002",
+ "domaine": "bobines",
+ "scenario": "portes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil — rail « Bobines à découvrir » : les bobines vidéo n'ont aucune vignette",
+ "note": "Les vidéos des comptes n'ont ni `poster` ni image : la tuile retombe sur un aplat violet (`v2-reel-thumb-empty`). La 3ᵉ tuile (bobine PHOTO) montre sa photo.",
+ "prisLe": "2026-11-10T19:14:59.867Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-002--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 49472,
+  "zooms": [
+   {
+    "nom": "rail",
+    "titre": "Le rail",
+    "fichier": "captures/bobines/BOB-002--m390--avant-zoom-rail.webp",
+    "largeur": 732,
+    "hauteur": 504,
+    "octets": 16378
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Aucune image : rien ne dit ce que montre la bobine",
+   "x": 0.213,
+   "y": 0.489,
+   "w": 0.241,
+   "h": 0.148,
+   "sel": "[data-v2-module=\"reel\"] .v2-reel-tile:nth-child(1) .v2-reel-thumb",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seule une bobine photo a une vignette",
+   "x": 0.808,
+   "y": 0.489,
+   "w": 0.241,
+   "h": 0.148,
+   "sel": "[data-v2-module=\"reel\"] .v2-reel-tile:nth-child(3) .v2-reel-thumb",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Camille Audit",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Camille Audit 🎸 Musique · 1 j",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Ma première compo, soyez indulgents.",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "section.v2-feed-card.v2-reels > div.v2-reels-row > button.v2-reel-tile > span.v2-reel-name",
+    "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-002--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 51604,
+  "zooms": [
+   {
+    "nom": "rail",
+    "titre": "Le rail",
+    "fichier": "captures/bobines/BOB-002--m390--apres-zoom-rail.webp",
+    "largeur": 732,
+    "hauteur": 504,
+    "octets": 18554
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une image de la vidéo sert de vignette (poster calculé à la publication)",
+   "x": 0.213,
+   "y": 0.489,
+   "w": 0.241,
+   "h": 0.148,
+   "sel": "[data-mq=\"vignette\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

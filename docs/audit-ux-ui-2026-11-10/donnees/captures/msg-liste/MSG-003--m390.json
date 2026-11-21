@@ -1,0 +1,110 @@
+{
+ "id": "MSG-003",
+ "domaine": "msg-liste",
+ "scenario": "nouveau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Menu « + » : Nouveau message / Nouveau groupe",
+ "note": "",
+ "prisLe": "2026-11-10T17:38:47.021Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-003--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 70320,
+  "zooms": [
+   {
+    "nom": "menu",
+    "titre": "Menu",
+    "fichier": "captures/msg-liste/MSG-003--m390--avant-zoom-menu.webp",
+    "largeur": 456,
+    "hauteur": 244,
+    "octets": 5378
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 24,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Tu viens samedi à l'atelier ? J'apporte les cordes.",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Bonjour Camille, je vous confirme la répétition ouverte de samedi : no",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

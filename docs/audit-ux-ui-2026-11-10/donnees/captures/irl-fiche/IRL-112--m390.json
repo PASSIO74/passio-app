@@ -1,0 +1,216 @@
+{
+ "id": "IRL-112",
+ "domaine": "irl-fiche",
+ "scenario": "participer",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Inscrit·e → « Discussion des participants » : « indisponible hors connexion », en ligne",
+ "note": "L'activité n'a pas encore de discussion (conv_id nul : l'organisatrice ne l'a pas ouverte). Seul un gestionnaire peut la créer (`_joinEventConversation`, app-07:3845-3851) ; le participant reçoit « Ouverture de la discussion… » puis « Discussion indisponible hors connexion » (app-07:3907-3910) alors que l'appareil est en ligne. Toasts : [\"Ouverture de la discussion…\",\"Discussion indisponible hors connexion\"]",
+ "prisLe": "2026-11-10T17:57:47.148Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(3) PASSIO",
+  "hash": "#event-ev_if_payante"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-112--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 55196,
+  "zooms": [
+   {
+    "nom": "toast",
+    "titre": "Message affiché",
+    "fichier": "captures/irl-fiche/IRL-112--m390--avant-zoom-toast.webp",
+    "largeur": 438,
+    "hauteur": 102,
+    "octets": 4726
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div.event-detail-info-row > div > div.event-detail-info-value > a.event-detail-info-link",
+     "texte": "billetterie.exemple.test/cordes-sensibles/mas",
+     "w": 241,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
+     "texte": "Discussion des participants",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "input#eventCommentInput",
+     "texte": "Écris un commentaire…",
+     "w": 228.5,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 79.5,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Ajouter au calendrier",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Participants (3 / 20 max)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > span",
+     "texte": "17 places disponibles",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Album de l'événement",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventAlbum > div.event-album-empty",
+     "texte": "Aucune photo pour l'instant — sois le premier à pa",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Échanges",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12.5
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Commentaires",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventCommentsList > div",
+     "texte": "Aucun commentaire — lance la conversation !",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Autres actions",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailCta > div.v4b-rsvp > button.v4b-rsvp-retirer",
+     "texte": "Retirer ma participation",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventCommentInput",
+    "placeholder": "Écris un commentaire…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

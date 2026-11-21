@@ -1,0 +1,251 @@
+{
+ "id": "MSG-013",
+ "domaine": "msg-liste",
+ "scenario": "groupes",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Groupe — fenêtre « membres » (je suis la créatrice)",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:43.848Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "👥 Grimpe du jeudi",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-013--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 34102,
+  "zooms": [
+   {
+    "nom": "ligne-membre",
+    "titre": "Ligne d'un membre",
+    "fichier": "captures/msg-liste/MSG-013--m360--avant-zoom-ligne-membre.webp",
+    "largeur": 664,
+    "hauteur": 138,
+    "octets": 4976
+   },
+   {
+    "nom": "tete",
+    "titre": "Tête de la fenêtre",
+    "fichier": "captures/msg-liste/MSG-013--m360--avant-zoom-tete.webp",
+    "largeur": 720,
+    "hauteur": 162,
+    "octets": 5416
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 5 membres » ; l'en-tête et la liste disent 4",
+   "x": 0.5,
+   "y": 0.384,
+   "w": 0.9,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title + div",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Admin · En ligne » : écrit en dur, quel que soit mon rôle",
+   "x": 0.5,
+   "y": 0.663,
+   "w": 0.9,
+   "h": 0.095,
+   "sel": "#grpPanel_members > div > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Retirer » : 55 × 26 px, sans confirmation ni annulation",
+   "x": 0.874,
+   "y": 0.758,
+   "w": 0.152,
+   "h": 0.041,
+   "sel": "#grpPanel_members button",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« ✨ Passion » : libellé de remplissage",
+   "x": 0.5,
+   "y": 0.758,
+   "w": 0.9,
+   "h": 0.095,
+   "sel": "#grpPanel_members > div > div:nth-child(2)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "div#modalContent > div",
+     "texte": "Ajouter une description…",
+     "w": 241,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_members",
+     "texte": "Membres (5)",
+     "w": 162,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_add",
+     "texte": "Ajouter",
+     "w": 162,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 3
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-013--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 32958,
+  "zooms": [
+   {
+    "nom": "ligne-membre",
+    "titre": "Ligne d'un membre",
+    "fichier": "captures/msg-liste/MSG-013--m360--apres-zoom-ligne-membre.webp",
+    "largeur": 664,
+    "hauteur": 146,
+    "octets": 4784
+   },
+   {
+    "nom": "tete",
+    "titre": "Tête de la fenêtre",
+    "fichier": "captures/msg-liste/MSG-013--m360--apres-zoom-tete.webp",
+    "largeur": 720,
+    "hauteur": 162,
+    "octets": 6174
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un seul nombre, le même que dans l'en-tête",
+   "x": 0.5,
+   "y": 0.384,
+   "w": 0.9,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title + div",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Rôle réel ; plus de fausse présence « En ligne »",
+   "x": 0.5,
+   "y": 0.627,
+   "w": 0.9,
+   "h": 0.095,
+   "sel": "#grpPanel_members > div > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Retirer » en 44 px ; confirmation avant d'agir",
+   "x": 0.849,
+   "y": 0.725,
+   "w": 0.202,
+   "h": 0.069,
+   "sel": "#grpPanel_members button",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

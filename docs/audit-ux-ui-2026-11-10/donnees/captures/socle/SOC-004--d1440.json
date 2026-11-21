@@ -1,0 +1,171 @@
+{
+ "id": "SOC-004",
+ "domaine": "socle",
+ "scenario": "ecrans-principaux",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — écran principal, haut de page",
+ "note": "",
+ "prisLe": "2026-11-10T17:10:34.743Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/socle/SOC-004--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 35276,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 25,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse \ud83c",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Photo · Mardi 19h, atelier rue Vauban. Apporte un négatif que tu aimes",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Littérature · Justement je viens de finir. Book club mensuel chez moi ",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   },
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

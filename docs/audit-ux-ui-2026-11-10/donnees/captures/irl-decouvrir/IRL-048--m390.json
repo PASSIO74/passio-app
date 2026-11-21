@@ -1,0 +1,76 @@
+{
+ "id": "IRL-048",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-selecteurs",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Sélecteur de ville — saisie « Grenoble » et suggestions (BAN / Photon)",
+ "note": "",
+ "prisLe": "2026-11-10T18:10:11.998Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": "Changer de lieu",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-048--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 25364,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.secondary",
+     "texte": "Fermer",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

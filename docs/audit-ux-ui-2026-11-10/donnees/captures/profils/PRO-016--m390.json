@@ -1,0 +1,129 @@
+{
+ "id": "PRO-016",
+ "domaine": "profils",
+ "scenario": "recadreur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Recadreur de la photo de profil (cercle, zoom, Annuler / Valider)",
+ "note": "",
+ "prisLe": "2026-11-10T19:16:13.074Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-016--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 35584,
+  "zooms": [
+   {
+    "nom": "curseur",
+    "titre": "Curseur de zoom",
+    "fichier": "captures/profils/PRO-016--m390--avant-zoom-curseur.webp",
+    "largeur": 684,
+    "hauteur": 88,
+    "octets": 970
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Curseur de 16 px de haut",
+   "x": 0.531,
+   "y": 0.682,
+   "w": 0.805,
+   "h": 0.019,
+   "sel": "#pcropZoom",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Valider 42 px",
+   "x": 0.726,
+   "y": 0.741,
+   "w": 0.426,
+   "h": 0.05,
+   "sel": "#pcropOk",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [
+    {
+     "el": "input#pcropZoom",
+     "texte": "",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "button#pcropCancel",
+     "texte": "Annuler",
+     "w": 166,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#pcropOk",
+     "texte": "Valider",
+     "w": 166,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 4,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#pcropZoom",
+    "placeholder": ""
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

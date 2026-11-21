@@ -1,0 +1,83 @@
+{
+ "id": "TRA-021",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Limites de cette version pilote",
+ "note": "",
+ "prisLe": "2026-11-10T19:53:43.359Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Limites de cette version pilote",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-021--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 84598,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#modalContent > ul > li > span",
+     "texte": "politique de confidentialité",
+     "w": 164,
+     "h": 17,
+     "enLigne": true
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Compris",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,209 @@
+{
+ "id": "PAR-032",
+ "domaine": "partage",
+ "scenario": "profil-invitation",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Mon profil — « Inviter des amis » au fond du menu du crayon",
+ "note": "",
+ "prisLe": "2026-11-10T17:51:32.518Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-032--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53942,
+  "zooms": [
+   {
+    "nom": "menu",
+    "titre": "Le menu",
+    "fichier": "captures/partage/PAR-032--m390--avant-zoom-menu.webp",
+    "largeur": 460,
+    "hauteur": 560,
+    "octets": 12536
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Bouton nommé « Modifier le profil »",
+   "x": 0.892,
+   "y": 0.126,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#screen-profiles .v6b-modifier",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "6e entrée : inviter n'est pas « modifier »",
+   "x": 0.679,
+   "y": 0.436,
+   "w": 0.503,
+   "h": 0.045,
+   "sel": ".profile-dots-menu button:last-of-type",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 29,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#myPosts > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Camille Audit",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Modifier le profil",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Photo de profil",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Photo de couverture",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Gérer mes passions",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Apparence & thème",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Inviter des amis",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 19,
+   "indetermines": 9,
+   "sousSeuil": [
+    {
+     "el": "div.post-header > div.post-author > div.post-author-meta > span",
+     "texte": "En ligne",
+     "ratio": 2.28,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#ffffff",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-032--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42202,
+  "zooms": [
+   {
+    "nom": "menu",
+    "manquant": true,
+    "sel": ".profile-dots-menu"
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Porte visible sur le profil, nommée pour ce qu'elle envoie (le lien de MON profil)",
+   "x": 0.5,
+   "y": 0.519,
+   "w": 0.918,
+   "h": 0.057,
+   "sel": "[data-mq='inviter']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

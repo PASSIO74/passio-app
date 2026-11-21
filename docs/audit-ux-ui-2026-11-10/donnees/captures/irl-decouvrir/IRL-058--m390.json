@@ -1,0 +1,155 @@
+{
+ "id": "IRL-058",
+ "domaine": "irl-decouvrir",
+ "scenario": "tuiles-echec",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Vue Carte — tuiles et style refusés (réseau simulé)",
+ "note": "Requêtes vers tiles.openfreemap.org interrompues par une route du scénario.",
+ "prisLe": "2026-11-10T18:07:23.207Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-058--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 64154,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 26,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 22,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-in",
+     "texte": "Zoom in",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-out",
+     "texte": "Zoom out",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlMapCollapseBtn",
+     "texte": "Replier la carte",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlMapExpandBtn",
+     "texte": "Carte en plein écran",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 12
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "TypeError: Failed to fetch\n    at window.fetch (<anonymous>:19:20)\n    at enveloppe (http://127.0.0.1:63045/js/app-02-state-utils.js:970:20)\n    at http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:7068\n    at Generator.next (<anonymous>)\n    at http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:343\n    at new Promise (<anonymous>)\n    at e (http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:82)\n    at http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:6784\n    at O (http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:7394)\n    at t.h (http://127.0.0.1:63045/js/vendor/maplibre-gl-4.7.1.js:42:333505)"
+  ]
+ },
+ "reseauRefuse": []
+}

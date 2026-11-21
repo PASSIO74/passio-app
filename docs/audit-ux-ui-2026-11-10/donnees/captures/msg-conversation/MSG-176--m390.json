@@ -1,0 +1,297 @@
+{
+ "id": "MSG-176",
+ "domaine": "msg-conversation",
+ "scenario": "vocal-lecture",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Vocal reçu en lecture, vitesse 1,5×",
+ "note": "Fichier WAV généré (20 s) servi par une route du scénario. La vitesse choisie s'applique à tous les vocaux.",
+ "prisLe": "2026-11-10T18:12:37.503Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-176--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37042,
+  "zooms": [
+   {
+    "nom": "lecteur",
+    "titre": "Lecteur en lecture",
+    "fichier": "captures/msg-conversation/MSG-176--m390--avant-zoom-lecteur.webp",
+    "largeur": 424,
+    "hauteur": 154,
+    "octets": 2122
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Pause : 34 × 34 px, nommée « ⏸ ».",
+   "x": 0.097,
+   "y": 0.235,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Vitesse : 24 × 18 px.",
+   "x": 0.473,
+   "y": 0.235,
+   "w": 0.085,
+   "h": 0.021,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] .voice-speed-btn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Fontaine Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea10",
+     "texte": "⏸",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+     "texte": "",
+     "w": 58.8,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > button.voice-speed-btn",
+     "texte": "1,5×",
+     "w": 33.2,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea11",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+     "texte": "",
+     "w": 58.8,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1,5×",
+     "w": 33.2,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 22,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "span#dur_aud_mlea11",
+     "texte": "0:07",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfdfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1,5×",
+     "ratio": 1.07,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f8f7fd",
+     "px": 10
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "tablature-pont-re-mineur.pdf",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "Télécharger",
+     "ratio": 1.05,
+     "seuil": 4.5,
+     "couleur": "#fcfbfe",
+     "fond": "#f7f5fc",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 4
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63843/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:point"
+   },
+   {
+    "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;cursor:point"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "a > div > div > div",
+    "texte": "Programme-stage-lutherie-novembre-2026.pdf",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "maquette-pont-re-mineur.mp3",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "tablature-pont-re-mineur.pdf",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-176--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 45448,
+  "zooms": [
+   {
+    "nom": "lecteur",
+    "titre": "Lecteur en lecture",
+    "fichier": "captures/msg-conversation/MSG-176--m390--apres-zoom-lecteur.webp",
+    "largeur": 576,
+    "hauteur": 206,
+    "octets": 2776
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "44 px (nom : « Mettre en pause le message vocal »).",
+   "x": 0.141,
+   "y": 0.25,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 × 36 px (nom : « Vitesse de lecture : 1,5× »).",
+   "x": 0.623,
+   "y": 0.25,
+   "w": 0.113,
+   "h": 0.043,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] .voice-speed-btn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

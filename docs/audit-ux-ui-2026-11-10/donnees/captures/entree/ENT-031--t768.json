@@ -1,0 +1,235 @@
+{
+ "id": "ENT-031",
+ "domaine": "entree",
+ "scenario": "compte-navigation",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Compte connecté — Fil (Découvrir) : barres supérieure et inférieure",
+ "note": "",
+ "prisLe": "2026-11-10T19:33:19.627Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-031--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 61556,
+  "zooms": [
+   {
+    "nom": "barre-basse",
+    "titre": "Barre de navigation",
+    "fichier": "captures/entree/ENT-031--t768--avant-zoom-barre-basse.webp",
+    "largeur": 810,
+    "hauteur": 99,
+    "octets": 5310
+   },
+   {
+    "nom": "envies",
+    "titre": "Envies du Fil",
+    "fichier": "captures/entree/ENT-031--t768--avant-zoom-envies.webp",
+    "largeur": 774,
+    "hauteur": 78,
+    "octets": 2124
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Onglet « Découvrir » ; l'écran n'a pas de titre et l'ancienne barre l'appelait « Fil ».",
+   "x": 0.219,
+   "y": 0.968,
+   "w": 0.141,
+   "h": 0.063,
+   "sel": "#appNavV2 [data-v2-key=\"discover\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Envie « Explorer » = le nom de la loupe.",
+   "x": 0.254,
+   "y": 0.17,
+   "w": 0.159,
+   "h": 0.043,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=discover]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Envie « Rencontrer » = le nom de l'onglet voisin.",
+   "x": 0.737,
+   "y": 0.17,
+   "w": 0.176,
+   "h": 0.043,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=meet]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 40,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 241,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'ach",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Répétition ouverte samedi.",
+     "w": 241,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-031--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 62188,
+  "zooms": [
+   {
+    "nom": "envies",
+    "titre": "Envies du Fil",
+    "fichier": "captures/entree/ENT-031--t768--apres-zoom-envies.webp",
+    "largeur": 774,
+    "hauteur": 78,
+    "octets": 2594
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 2,
+   "texte": "« Nouveau pour toi » dit ce que l'envie calcule (auteurs et passions hors de tes choix).",
+   "x": 0.275,
+   "y": 0.17,
+   "w": 0.2,
+   "h": 0.043,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=discover]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Rendez-vous » : l'envie ne double plus l'onglet « Rencontrer ».",
+   "x": 0.74,
+   "y": 0.17,
+   "w": 0.171,
+   "h": 0.043,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=meet]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

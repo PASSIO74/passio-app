@@ -1,0 +1,150 @@
+{
+ "id": "IRL-111",
+ "domaine": "irl-fiche",
+ "scenario": "participer",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Second appui au même endroit (≈ 0,5 s plus tard) : désinscrit·e",
+ "note": "Mesuré : toasts [\"Désinscrit\"] ; lignes serveur après coup : []. Requêtes : PATCH puis POST (inscription) puis DELETE (retrait).",
+ "prisLe": "2026-11-10T17:57:42.351Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#event-ev_if_payante"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-111--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 67742,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied de fiche revenu à « Je participe »",
+    "fichier": "captures/irl-fiche/IRL-111--m390--avant-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 170,
+    "octets": 3294
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Cours",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Masterclass de musique de chambre : interpréter le",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.normal",
+     "texte": "Dans 8 jours",
+     "ratio": 1.76,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#d5e5eb",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 8
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

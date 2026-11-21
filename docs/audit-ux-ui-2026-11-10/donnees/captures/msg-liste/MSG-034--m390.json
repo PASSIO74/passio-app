@@ -1,0 +1,143 @@
+{
+ "id": "MSG-034",
+ "domaine": "msg-liste",
+ "scenario": "recherche",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Recherche « capodastre » : « Aucun résultat » alors que le mot figure dans un message plus ancien",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:59.598Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-034--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27596,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Seul le dernier message de chaque conversation est connu de la recherche",
+   "x": 0.5,
+   "y": 0.424,
+   "w": 0.785,
+   "h": 0.025,
+   "sel": "#messagesEmpty .empty-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Pas de bouton pour effacer ; la recherche reste posée quand on quitte l'écran",
+   "x": 0.5,
+   "y": 0.188,
+   "w": 0.918,
+   "h": 0.058,
+   "sel": "#convGlobalSearch",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-034--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 34256,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Effacer en un geste (44 px)",
+   "x": 0.892,
+   "y": 0.188,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": ".mq-x",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le message dit ce qui a été cherché, et où chercher plus loin",
+   "x": 0.5,
+   "y": 0.485,
+   "w": 0.641,
+   "h": 0.085,
+   "sel": "#messagesEmpty .empty-text",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

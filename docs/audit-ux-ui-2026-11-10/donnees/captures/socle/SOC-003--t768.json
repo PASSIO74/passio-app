@@ -1,0 +1,134 @@
+{
+ "id": "SOC-003",
+ "domaine": "socle",
+ "scenario": "ecrans-principaux",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rechercher — écran principal, haut de page",
+ "note": "",
+ "prisLe": "2026-11-10T17:09:46.441Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/socle/SOC-003--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 50190,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 26,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 241,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 16,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   },
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

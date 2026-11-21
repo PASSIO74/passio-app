@@ -1,0 +1,246 @@
+{
+ "id": "FIL-039",
+ "domaine": "fil",
+ "scenario": "discussion",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau emoji du composeur de commentaire",
+ "note": "",
+ "prisLe": "2026-11-10T17:48:25.035Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Discussion (38)",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-039--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 49068,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau",
+    "fichier": "captures/fil/FIL-039--m360--avant-zoom-panneau.webp",
+    "largeur": 600,
+    "hauteur": 650,
+    "octets": 34298
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Emojis de 18 px dans des cases de 28 px ; onglets « Emoji | GIF » de 31 px de haut",
+   "x": 0.422,
+   "y": 0.643,
+   "w": 0.8,
+   "h": 0.489,
+   "sel": "#cmt-emoji-composer",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#commentsBox > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 266,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 34,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 239,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 34,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 24,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "Publier",
+     "w": 280,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-emoji-composer > div > button",
+     "texte": "Emoji",
+     "w": 128,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-emoji-composer > div > button",
+     "texte": "GIF",
+     "w": 128,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-emoji-composer > div > input",
+     "texte": "Rechercher un emoji",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 18
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#commentsBox > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:60953/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-039--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 48702,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau",
+    "fichier": "captures/fil/FIL-039--m360--apres-zoom-panneau.webp",
+    "largeur": 712,
+    "hauteur": 670,
+    "octets": 35438
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Cases de 40 px, emojis de 24 px, onglets de 40 px",
+   "x": 0.5,
+   "y": 0.635,
+   "w": 0.956,
+   "h": 0.505,
+   "sel": "#cmt-emoji-composer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

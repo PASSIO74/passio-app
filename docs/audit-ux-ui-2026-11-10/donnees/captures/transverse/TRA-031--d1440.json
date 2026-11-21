@@ -1,0 +1,169 @@
+{
+ "id": "TRA-031",
+ "domaine": "transverse",
+ "scenario": "notifications",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau Notifications — haut (non lues)",
+ "note": "",
+ "prisLe": "2026-11-10T19:59:17.490Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Notifications",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-031--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 36466,
+  "zooms": [
+   {
+    "nom": "demande",
+    "titre": "Demande d'abonnement",
+    "fichier": "captures/transverse/TRA-031--d1440--avant-zoom-demande.webp",
+    "largeur": 1427,
+    "hauteur": 149,
+    "octets": 7210
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« ton post » ; plus bas « ton événement », « ton activité » : trois mots pour deux objets",
+   "x": 0.51,
+   "y": 0.27,
+   "w": 0.918,
+   "h": 0.019,
+   "sel": ".notif-row:first-child .notif-text",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Accepter » / « Refuser » : 29 px de haut",
+   "x": 0.51,
+   "y": 0.67,
+   "w": 0.918,
+   "h": 0.032,
+   "sel": ".notif-demande-actions",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Après une heure, l'heure seule (« 19:25 ») : hier ou aujourd'hui ?",
+   "x": 0.51,
+   "y": 0.853,
+   "w": 0.918,
+   "h": 0.017,
+   "sel": ".notif-row:nth-child(8) .notif-meta",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div.notif-row.unread > div.notif-body > div.notif-demande-actions > button.btn.small",
+     "texte": "Accepter",
+     "w": 69.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.notif-row.unread > div.notif-body > div.notif-demande-actions > button.btn.small",
+     "texte": "Refuser",
+     "w": 63,
+     "h": 29,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 23,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-031--d1440--apres.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 37172,
+  "zooms": [
+   {
+    "nom": "demande",
+    "titre": "Demande d'abonnement",
+    "fichier": "captures/transverse/TRA-031--d1440--apres-zoom-demande.webp",
+    "largeur": 1427,
+    "hauteur": 164,
+    "octets": 7976
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un seul mot par objet : « publication », « activité »",
+   "x": 0.51,
+   "y": 0.299,
+   "w": 0.918,
+   "h": 0.019,
+   "sel": ".notif-list > .notif-row .notif-text",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Accepter / Refuser à 44 px",
+   "x": 0.51,
+   "y": 0.707,
+   "w": 0.918,
+   "h": 0.049,
+   "sel": ".notif-demande-actions",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Aujourd'hui, 19:25 » / « Hier, … »",
+   "x": 0.51,
+   "y": 0.899,
+   "w": 0.918,
+   "h": 0.017,
+   "sel": ".notif-row:nth-child(9) .notif-meta",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

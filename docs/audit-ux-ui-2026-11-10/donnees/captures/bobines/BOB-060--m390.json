@@ -1,0 +1,101 @@
+{
+ "id": "BOB-060",
+ "domaine": "bobines",
+ "scenario": "vide",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — aucune bobine (état vide)",
+ "note": "Simulé : les bobines d'exemple et de comptes sont retirées de l'état, puis `openReels()` est appelé (en compte connecté, les 20 bobines d'exemple rendent cet état inatteignable).",
+ "prisLe": "2026-11-10T19:20:59.612Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-060--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 17492,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« ➕ → Studio → onglet Bobine » : chemin d'avant la barre actuelle",
+   "x": 0.5,
+   "y": 0.533,
+   "w": 0.718,
+   "h": 0.046,
+   "sel": ".reels-empty-text",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reels-empty > button.btn.primary",
+     "texte": "Créer une bobine",
+     "w": 144.1,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsPrevBtn",
+     "texte": "Bobine précédente",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsNextBtn",
+     "texte": "Bobine suivante",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 3,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

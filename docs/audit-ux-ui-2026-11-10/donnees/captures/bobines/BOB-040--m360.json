@@ -1,0 +1,219 @@
+{
+ "id": "BOB-040",
+ "domaine": "bobines",
+ "scenario": "live",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Live — visionneuse spectateur (aucun flux dans le banc)",
+ "note": "② : pas de WebRTC ici, « Connexion au direct… » reste affiché. La barre du haut, le chat et les réactions sont ceux de l'application.",
+ "prisLe": "2026-11-10T19:23:02.877Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-040--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 18598,
+  "zooms": [
+   {
+    "nom": "haut",
+    "titre": "Barre du haut",
+    "fichier": "captures/bobines/BOB-040--m360--avant-zoom-haut.webp",
+    "largeur": 720,
+    "hauteur": 152,
+    "octets": 8018
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le nom de Tom n'apparaît pas : écrasé à 0 px",
+   "x": null,
+   "y": null,
+   "w": null,
+   "h": null,
+   "sel": ".vlive-name",
+   "trouve": false
+  },
+  {
+   "n": 2,
+   "texte": "« EN DIRECT » coupé sur deux lignes",
+   "x": 0.125,
+   "y": 0.053,
+   "w": 0.184,
+   "h": 0.063,
+   "sel": ".vlive-badge",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Suivre : 34 px de haut",
+   "x": 0.62,
+   "y": 0.053,
+   "w": 0.17,
+   "h": 0.053,
+   "sel": "#vliveFollowBtn",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« ↗ » 40 px : partager, sans mot",
+   "x": 0.782,
+   "y": 0.053,
+   "w": 0.111,
+   "h": 0.063,
+   "sel": ".vlive-icon-btn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "button#vliveFollowBtn",
+     "texte": "Suivre ce compte",
+     "w": 61.1,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-topbar > button.vlive-icon-btn",
+     "texte": "Partager le live",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-bottom > div.vlive-react-rail > button.vlive-react-btn",
+     "texte": "Réagir ❤️",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-bottom > div.vlive-react-rail > button.vlive-react-btn",
+     "texte": "Réagir 🔥",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-bottom > div.vlive-react-rail > button.vlive-react-btn",
+     "texte": "Réagir 👏",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-bottom > div.vlive-react-rail > button.vlive-react-btn",
+     "texte": "Réagir 😂",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#vliveOverlay > div.vlive-bottom > div.vlive-react-rail > button.vlive-react-btn",
+     "texte": "Réagir 😮",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#vliveChatInput",
+    "placeholder": "Commenter…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-040--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 19636,
+  "zooms": [
+   {
+    "nom": "haut",
+    "titre": "Barre du haut",
+    "fichier": "captures/bobines/BOB-040--m360--apres-zoom-haut.webp",
+    "largeur": 720,
+    "hauteur": 252,
+    "octets": 7938
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Qui est en direct, en clair",
+   "x": 0.393,
+   "y": 0.131,
+   "w": 0.719,
+   "h": 0.033,
+   "sel": ".vlive-name",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« EN DIRECT » sur une ligne",
+   "x": 0.183,
+   "y": 0.053,
+   "w": 0.3,
+   "h": 0.038,
+   "sel": ".vlive-badge",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Suivre à 44 px",
+   "x": 0.871,
+   "y": 0.131,
+   "w": 0.192,
+   "h": 0.069,
+   "sel": "#vliveFollowBtn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

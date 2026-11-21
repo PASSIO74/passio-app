@@ -1,0 +1,108 @@
+{
+ "id": "ENT-007",
+ "domaine": "entree",
+ "scenario": "visiteur-destinations",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — Messages : conversations d'exemple et repère",
+ "note": "",
+ "prisLe": "2026-11-10T19:47:48.168Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-007--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 73118,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Quatrième repère en quatre écrans.",
+   "x": 0.426,
+   "y": 0.084,
+   "w": 0.769,
+   "h": 0.14,
+   "sel": ".fr-tip",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 16,
+   "sous44": [
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 22,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 29,
+   "indetermines": 5,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse \ud83c",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Photo · Mardi 19h, atelier rue Vauban. Apporte un négatif que tu aimes",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Littérature · Justement je viens de finir. Book club mensuel chez moi ",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
