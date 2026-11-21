@@ -165,7 +165,9 @@ verifier "…la table n'existe pas" "" "$(Q "select 1 from information_schema.ta
 echo "── ⑤ UNE FONCTION HORS MANIFESTE NE SE DÉPLOIE PAS ────────────────────"
 JOUER "fonction-inconnue"
 verifier "code 2" "2" "$CODE"
-verifier "…nommée" "1" "$(printf '%s\n' "$SORTIE" | grep -c "fonction inconnue du manifeste" || true)"
+# Sous GitHub Actions le refus est dit DEUX fois (le journal, et l'annotation `::error` de la page du run) : on compte chacune.
+verifier "…nommée" "1" "$(printf '%s\n' "$SORTIE" | grep -c "^❌ fonction inconnue du manifeste" || true)"
+verifier "…et sous GitHub Actions, dite aussi sur la page du run" "1" "$(cd "$RACINE" && GITHUB_ACTIONS=true node scripts/verifier-prerequis-fonctions.mjs --fonctions fonction-inconnue --psql "$CONN" 2>&1 | grep -c "^::error title=Retenue — cible non vérifiable::fonction inconnue du manifeste" || true)"
 
 echo "── ⑥ MUTATION : un manifeste sans l'objet obligatoire laisserait partir la fonction ─"
 MUT="$BASE/prerequis-mute.json"
