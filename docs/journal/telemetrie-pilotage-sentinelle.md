@@ -59,6 +59,7 @@
 - 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
 - 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
 - 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
+- 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -2253,3 +2254,258 @@ coupe retirée).
   `docs/SENTINELLE_AUTONOME.md` et dans un commentaire de `pilotage.test.mjs`.
 ⚠️ Piège du banc, encore : le cas « corps en CRLF » restait vert sous sa réinjection — la ligne de date
 était la DERNIÈRE du corps, donc sans `\r` à sa suite. Seize réinjections jouées, seize rouges.
+
+## 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+
+Trou T2 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`. Une PR, deux temps : ① sans migration, le
+pilotage DIT le remplissage et le canari refusé ; ② une migration — écrite, éprouvée, **pas encore
+appliquée : geste de Benjamin au poste** — apprend à la table à faire de la place seule.
+
+**Le défaut.** Depuis le 15/11 la table `telemetry_events` est bornée en lignes vivantes (800 000
+pour les visiteurs, 1 200 000 pour les comptes). Atteinte, la borne refuse le lot ENTIER — erreurs,
+parcours et canari compris — et la purge ne retire rien avant J-3. Le pilotage n'en disait rien : le
+canari de la veille, refusé, rendait `{ emis: false, erreur }`, rangé dans `gestes.canari` du
+battement, que personne ne lit. Seul le chien de garde GitHub finissait par voir « 0 canari en 2 h »,
+des heures plus tard et sans le motif.
+
+**Mesuré en production (canal ①, lecture seule, 21/11 à 08:30 UTC)** — le trafic y est surtout le
+nôtre (73,8 % d'appareils d'équipe) : des ordres de grandeur. 14 760 lignes, soit 1,8 % de la borne
+des visiteurs, 43 Mo index compris. 1 549 lignes « protégées » (10,5 %) ; 12 475 dans la classe
+courte (84,5 % : `perf`, `click`, `action`, `lifecycle` non protégés), dont 8 867 de plus de 26 h
+(60,1 % de la table). Flux des dernières 24 h : 3 919 lignes, 84,0 % dans la classe courte, 60,5 %
+de `perf`. Les `lifecycle` non protégés ne pèsent que 252 lignes aujourd'hui (1,7 %), mais un onglet
+visible bat une fois par minute sans échantillonnage : à l'échelle c'est le premier volume. Sept
+déclencheurs, quatre tâches de télémétrie, minute 52 libre, PostgreSQL 17.6,
+`stats_fetch_consistency = cache`, coupure de 3 s pour `anon`. Le compte exact de la table : 6 à 7 ms
+(deux mesures du jour, `explain analyze`).
+
+### Temps 1 — sans migration (fonction `pilotage`, `_shared/pilotage.js`, page)
+
+⚠️ **LA MÉMOIRE DU CANARI EST DANS `analytics_events`, PAS DANS LE BATTEMENT** (`EVT_CANARI`,
+`marqueCanari`, `bilanCanari`, `noterCanari`). Le battement s'écrit au plus toutes les 14 min, le
+canari part un passage sur trois : rien ne garantit qu'ils coïncident. Chaque refus laisse une marque
+`pilotage_canari` (auteur `systeme:pilotage`, clé de service : un navigateur ne la forge pas) ; le
+succès qui CLÔT une suite aussi — sans lui la ligne tiendrait 35 min après le retour. En temps
+normal : aucune marque (0 ligne par jour ; 96 au pire d'un incident). La marque s'écrit APRÈS
+l'alerte et après l'émission : le voyant d'un passage juge les marques d'avant, la sonnerie arrive
+donc au passage qui SUIT le deuxième refus (20 min après le premier).
+
+⚠️ **« DEUX FOIS DE SUITE » = DEUX QUARTS D'HEURE DISTINCTS**, sans succès entre eux, le dernier de
+moins de 35 min (`CANARI_MEMOIRE_MS`, le délai du battement périmé). Deux ordonnanceurs à quelques
+secondes comptent pour un refus.
+
+⚠️ **LE REFUS DE DÉBIT NE SONNE JAMAIS.** Trois classes en liste FERMÉE, lues dans le message du
+serveur : `table_pleine`, `debit`, `autre`. Le canari part sous la clé anon : son refus de débit
+vient des réservoirs que n'importe quel visiteur remplit (1 600 lignes/min). Rouge, il donnait à tout
+porteur de la clé publique le moyen de faire sonner le téléphone — et le réservoir se vidant chaque
+minute, le voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs forgées du
+07/11. `debit` : orange, priorité 1. `table_pleine` et `autre` : rouge dès deux quarts d'heure.
+
+⚠️ **LE MOTIF EST UN TEXTE DU SERVEUR : IL NE SORT QUE DANS `reference`**, que la page rend en texte
+(borné à 120 caractères, sans caractère de contrôle). Titres, `quoi`, raisons du voyant, texte de la
+sonnerie, état mémorisé et journaux de la fonction : des textes fixes ou des codes.
+
+⚠️ **LE REMPLISSAGE SE RAPPORTE À LA BORNE DES VISITEURS**, premier mur où des signaux de panne
+meurent (`remplissage`, `lireRemplissage`). Après la migration : la fonction SQL
+`telemetrie_remplissage()`, et le plus grand de deux compteurs — les statistiques vivantes (ce que la
+borne juge) repartent de zéro après un arrêt brutal, l'estimation du catalogue non. Avant : UN compte
+exact sous la clé de service, borné à 4 s. **Non mesuré, ou fonction SQL en erreur : « non lu »,
+jamais 0** — l'écran ne passe pas au vert et la veille tient son voyant (`incomplet`). Le premier
+jet rendait une jauge grise sur un compte abandonné : un rouge « télémétrie pleine » aurait sonné
+« résolu » sur un compte lent.
+
+⚠️ **APRÈS MIGRATION, LA JAUGE EST ORANGE AU PLUS.** Les seuils de classe sont des points de consigne
+de la régulation : au-dessus, l'entrée chute, en dessous elle reprend — la table stationne dessus, et
+la purge horaire y ajoute une dent de scie. Un rouge posé là aurait fait sonner à chaque passage. Le
+rouge d'après migration vient du canari `table_pleine`, qui porte son hystérésis. AVANT migration,
+90 % de 800 000 n'est pas un point de consigne : orange à 70 %, rouge à 90 % — le voyant sonne avant
+la fermeture, et la ligne nomme le fichier à appliquer. Au-delà de 100 %, le titre dit « Télémétrie
+pleine » sans pourcentage (il se rapporte aux visiteurs alors que les comptes écrivent encore).
+
+⚠️ **« RÉGLER » POSE UN DÉLESTAGE AU NOM DU PILOTE, QUE LA VEILLE NE LÈVERA JAMAIS SEULE**
+(`decideDelestage` rend la main dès `pose_par = pilote`). C'est le seul levier du téléphone qui
+réduit ce qui ENTRE ; il n'est jamais dans « Tout régler ». La `reference` des deux lignes finit
+donc par : « Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages ›
+Protection). » Déjà au niveau 2, ou sans la table des réglages : le bouton ouvre les tâches
+planifiées ; refus de classe `autre` (RLS, délai) : les journaux de la fonction.
+
+⚠️ **LA VEILLE NE LÈVE PLUS UN DÉLESTAGE QUAND LA TABLE ÉCARTE LES BATTEMENTS DES COMPTES**
+(`remplissageAveugle`, une ligne après le bloc existant de `delestageAuto`) : au palier 2 des comptes
+le nombre de comptes connectés BAISSE sans que la charge baisse. Sens conservateur seulement — on
+peut monter, pas descendre, et 2 h au plus (`aveugleMaxMs`).
+
+⚠️ **LE BATTEMENT DIT UNE LECTURE MANQUÉE, SANS L'EXIGER** (`resumerBattement`) : `remplissage` et
+`canari` en « ko » ajoutent une raison, mais n'entrent PAS dans `LECTURES_BATTEMENT`. Entre la fusion
+et le déploiement de la fonction, les battements de l'ancienne version n'ont pas ces clés : exigées,
+le chien de garde GitHub aurait lu « n'a pas pu lire » sur une veille qui a tout lu.
+
+### Temps 2 — `migrations/migration_telemetrie_classes_2026-11-21.sql` (à appliquer)
+
+⚠️ **« PROTÉGÉE » EST UNE DÉFINITION, LUE PAR LA BORNE ET PAR LA PURGE** (`telemetrie_protegee`) :
+types `error`, `connectivity`, `flow`, `link`, `rt_recv` (ceux que le client ne jette jamais),
+`push` et `release` (preuves), `session` (lue par la croissance) ; toute ligne corrélée ; statut
+`error` ; HTTP ≥ 400 ; gravité `warn` et au-delà ; actions `acq_signup` et canari. Même contrat que
+`_estPrioritaire` (js/telemetry.js) — `pilotage.test` T2-m les confronte.
+
+⚠️ **LA BORNE PAR CLASSE ÉCARTE LA LIGNE, ELLE NE REFUSE PAS LE LOT** (`zz_classe_bornee`, BEFORE
+INSERT par ligne, `RETURN NULL`). Un lot mêlé garde ses lignes critiques, et tous les clients déjà en
+cache sont compatibles : ils reçoivent un succès et vident leur file. DEUX paliers par rôle : à 60 %
+de la borne du rôle (480 000 / 720 000) seules les `perf` non protégées sont écartées — aucun lecteur
+n'apparie une perf à autre chose ; à 90 % (720 000 / 1 080 000) tout le non-protégé ; 100 % reste le
+refus du 15/11. Un palier unique à 60 % aurait aveuglé la famille « boutons » de la Sentinelle (des
+clics sans leurs effets) et le compte des comptes connectés sur toute la plage 60–100 %.
+`lifecycle` n'est JAMAIS écarté au palier 1 : il fait le compte des comptes connectés.
+
+⚠️ **`zz_` : LE DERNIER DES DÉCLENCHEURS PAR LIGNE.** Une ligne écartée a d'abord subi la taille de
+ligne, les 120 lignes par lot, l'identité et la barrière de suppression : la classe ne desserre aucun
+refus. L'ordre tient au NOM ; le verdict le vérifie le jour de l'application seulement.
+
+⚠️ **LA PURGE COURTE AGRÈGE D'ABORD, ET NE SUPPRIME QUE DANS CE QU'ELLE A AGRÉGÉ**
+(`purge_telemetrie_breve`, chaque heure à :52). Les `perf`, `click`, `action` et `lifecycle` non
+protégés de plus de 26 h (24 h de fenêtre des lecteurs + 2 h) partent par lots de 5 000. Elle agrège
+les deux jours qu'elle entame, puis ne supprime que dans ces deux jours : « jamais une ligne ne part
+sans avoir été comptée » (15/11) tient par construction ; ce qui est plus vieux reste à la purge
+quotidienne. **Le budget de 45 s démarre APRÈS les agrégations, et la sortie se juge APRÈS le lot** :
+le premier jet du plan démarrait le chronomètre avant, et testait avant de supprimer — à l'échelle,
+deux agrégations lentes et plus rien ne partait jamais. La migration n'appelle PAS la purge.
+
+⚠️ **LES SEUILS SONT DES ARGUMENTS DE DÉCLENCHEUR, RELUS PAR LA LECTURE** (`telemetrie_remplissage`
+lit `tgargs` de `aa_table_bornee` et de `zz_classe_bornee`) : une seule source. Pas de
+`min(received_at)` : après une purge, le bout ancien de l'index porte des entrées mortes.
+
+**Ce que ça change en capacité** (ordres de grandeur, trafic surtout interne). Avec 84 % du flux
+d'un jour dans la classe courte, les lignes vivantes passent d'environ 4,3 jours de flux à environ
+1,8 : le même carnet tient **≈ 2,4 fois plus de trafic avant la fermeture, ≈ 1,5 fois avant le premier
+délestage** (le palier 1 est à 60 % : 2,4 × 0,6). Sans `lifecycle` dans la purge, le gain réel à
+l'échelle tombait vers 1,5 avant la fermeture (un onglet visible garde 1 560 perf mais 4 560 à 6 000
+battements). Premier passage après application : ≈ 5 650 lignes (mesuré : 5 658) ; les ≈ 3 200
+lignes de la classe plus vieilles que les deux jours agrégés partent avec la purge quotidienne.
+
+**Avant / après.** Tant que la migration n'est pas appliquée : la fonction SQL répond « absente »
+(PGRST202), la fonction `pilotage` compte la table, `remplissage.classes` vaut `false` et
+`remplissage.migration` porte le chemin du fichier — la page Capacité l'écrit, et la ligne
+« Télémétrie pleine à x % », si elle apparaît, finit par « Protection par classe absente : appliquer
+… (geste au poste) ». La base se comporte comme le 15/11. Le canari, sa mémoire, sa ligne et la
+sonnerie ne dépendent PAS de la migration. Après : lecture en temps constant, la note disparaît,
+orange au plus, la purge de :52 tourne. Aucun changement côté client dans les deux états.
+
+**Le geste d'application — à Benjamin, au poste, après fusion et contre-revue** (seul contrôle humain
+entre ce canal et la production ; une session au poste peut tenir la main, jamais la CI, jamais une
+session distante). Dans l'ordre, staging puis production (`.passio/migrations/README.md`) :
+1. Avant, au canal ① sur CHAQUE cible : les tâches `agreger_croissance`, `purge_telemetrie_paliers`,
+   `purge_telemetrie_rattrapage` et `purge_telemetrie_debit` existent et sont actives (le verdict
+   refuse sinon — lu en production le 21/11 : elles y sont, minute 52 libre ; **le staging n'a pas pu
+   être lu d'ici**).
+2. La revue de mainteneur unique sur la PR (commentaire portant « Contre-revue technique
+   indépendante », « revue de mainteneur unique : j'assume l'application de cette migration », le
+   chemin du fichier et `cible: <ref>` pour chaque cible), puis l'attestation, dans un worktree
+   détaché d'`origin/main` :
+   `node scripts/attester-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --cible <ref> --pr '#<n>' --commit <sha de la revue> --revue <id de la revue> --relecteur PASSIO74 --source <lien de la revue>`
+3. `node scripts/appliquer-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --projet fcksxofaelcdmmifnwjo`
+   (staging), puis `--projet njkiyoklssvefstljemx` (production). Équivalent :
+   `npm run migration:appliquer -- migrations/… --projet <ref>` (sous PowerShell, préférer `node`).
+   Verdict attendu : 8 × OK, deux lignes d'information.
+4. **Mesurer au canal ①, jamais le tableau** : `select public.telemetrie_remplissage();` ; les 8
+   déclencheurs triés par nom (`zz_classe_bornee` en dernier) ; les tâches `purge_telemetrie%`
+   actives ; après le passage de :52, 0 ligne perf/click/action/lifecycle non protégée de plus de
+   27 h dans les deux jours agrégés, et le statut de la tâche dans `cron.job_run_details` ;
+   `activite_jour` et `croissance_jour` de J-1 inchangés. Puis rouvrir le pilotage
+   (`?equipe=1`) : la note « attendent la migration » a disparu.
+5. Sur le staging, AVANT la production : vérifier qu'un lot dont toutes les lignes sont écartées
+   reçoit bien un succès avec `Prefer: return=minimal` (js/telemetry.js) — le banc SQL prouve
+   l'instruction, pas la réponse HTTP de PostgREST ; sinon les clients en cache garderaient leur lot.
+Retour arrière : le bloc `--|` de l'en-tête, à l'éditeur SQL ; le pilotage retombe seul sur un compte.
+
+**Mise en service du temps 1** (après fusion) : le site (job « Déploiement production »), puis la
+fonction `pilotage` SEULE, par `edge-functions.yml` en `workflow_dispatch` (`fonction=pilotage`,
+`cible=production`). ⚠️ La fusion déclenche aussi le passage « toutes fonctions » (push sur
+`supabase/functions/**`), qui finit RETENU : c'est attendu, à ne pas « réparer » (constat de la
+contre-vérification du plan sur les passages précédents ; non relu depuis cette session, le
+connecteur GitHub n'y était pas joignable). Entre la fusion et ce déploiement, la page est neuve et
+la fonction ancienne : pas de clé `remplissage`, la page se rend comme avant. Preuve : l'en-tête
+`X-Passio-Revision` de la fonction porte le commit ; l'action `etat` rend `remplissage.migration` et
+la jauge « Table de télémétrie » ; au quart d'heure suivant, aucune marque `pilotage_canari`.
+
+**Limites connues.**
+1. **Le délestage par classe est SILENCIEUX côté client** (succès pour un lot dont des lignes sont
+   écartées). Pendant qu'il joue, comptages pondérés (`meta.ech`) et audience sous-estiment ; l'écran
+   le dit, aucun compteur ne dit combien.
+2. **Les lignes écartées ne comptent pas au débit** (`trg_debit_lot` ne compte que la table de
+   transition). Au-dessus d'un palier, un visiteur peut envoyer des lots de `perf` sans remplir son
+   réservoir ni recevoir de 429 ; ni la jauge « Télémétrie reçue » ni `pilotage_audience` ne le
+   voient. Le coût reste borné à 120 lignes par requête, mais c'est un contournement du limiteur.
+3. **Au palier 2 des comptes, un compte dont l'onglet est resté ouvert n'écrit plus que des lignes
+   écartées** : il n'entre pas dans `activite_jour` ce jour-là. Actifs du jour et rétention
+   sous-estiment, pas seulement l'audience en direct.
+4. **La classe n'est pas une frontière de sécurité.** Un flot anonyme de lignes « error » forgées
+   remplit la table jusqu'à 800 000 comme avant, et ces lignes vivent 7 jours. Ce qui change : c'est
+   visible en moins de 35 min, et le téléphone sonne — donc un tiers peut le faire sonner une fois
+   par incident en remplissant la table : c'est un incident réel.
+5. **Le canari « table pleine » peut clignoter** quand la table stationne près de 800 000 : la purge
+   de :52 la fait repasser dessous, le canari de :00 passe, puis deux refus, puis « résolu ». Ce lot
+   n'ajoute aucune hystérésis à `decideAlerte` : à l'échelle, jusqu'à une paire de sonneries par heure.
+6. **La classe `autre` peut être un délai, pas un refus** : l'insertion du canari se fait sous
+   `anon`, coupé à 3 s. Sous forte charge de la base, deux délais à un quart d'heure d'écart font
+   rouge et sonnerie avec le titre « la sonde est refusée » — vrai symptôme, motif trompeur.
+7. **Le seuil orange (480 000 après migration) est aussi un point de consigne** : le voyant peut
+   alterner orange et vert, et chaque changement écrit une ligne `pilotage_etat`. Pas de sonnerie,
+   un historique bruité.
+8. **À 100 000 utilisateurs, la table entre 60 % et 90 % sera le RÉGIME NORMAL.** Ce lot rend l'état
+   visible et protège les signaux de panne ; il n'augmente pas la capacité au-delà du facteur
+   ci-dessus. La ligne orange sera permanente et son bouton ne la fera pas disparaître : ce n'est pas
+   un défaut du lot.
+9. **Le critère « journée ouvrée quasi vide » du chien de garde GitHub CESSERA de jouer dès
+   l'application**, au volume d'aujourd'hui : avec les jours mesurés (61, 31, 3 674, 6 249, 3 314
+   lignes) ramenés à environ 16 % au-delà de 26 h, la médiane des jours ouvrés tombe vers 300, sous
+   `JOURNEE_MEDIANE_MIN` = 500 (`scripts/veille-production.mjs`). Jamais l'inverse (aucune fausse
+   alerte). Les heures vides consécutives, le canari sur 2 h et le battement ne sont pas touchés ;
+   `usage7j` ne compte déjà que ce qui reste (les sessions, gardées 3 jours). À recalibrer : hors lot.
+10. **Borne et classe jugent sur les statistiques du serveur** : après un arrêt brutal de PostgreSQL
+    elles repartent de zéro jusqu'au prochain passage de l'autovacuum, et plus rien n'est délesté ni
+    refusé pendant ce temps (préexistant pour la borne). La jauge prend le plus grand des deux
+    compteurs pour ne pas afficher 0 %, mais les états par rôle décrivent alors un délestage qui ne
+    joue pas. Sur une grande table, ces statistiques sont une ESTIMATION (le banc encadre chaque
+    seuil de 2 000 lignes).
+11. **Le banc tourne sur PostgreSQL 16, la production est en 17.6** : la lecture de
+    `pg_stat_get_live_tuples` dans un déclencheur par ligne (`stats_fetch_consistency = cache`) n'est
+    éprouvée que sur 16. Et le banc prouve l'instruction SQL, pas la réponse HTTP (point 5 du geste).
+12. **Au palier 2, un clic LENT (protégé) survit à son effet `nav` ou `action` écarté** : la famille
+    « boutons » de la Sentinelle peut le lire « sans effet ». Dans cette zone l'écran est orange ou
+    rouge. Faire sauter cette famille quand la table était au palier 2 : hors lot (T4).
+13. **Avant migration, chaque veille et chaque ouverture de l'écran font un appel qui répond 404**
+    (PGRST202) puis un compte : sans effet, mais visible dans les journaux de l'API, 288 fois par jour
+    au moins ; le compte est linéaire (≈ 0,35 s à 800 000 lignes) — la migration doit être appliquée
+    bien avant 100 000 lignes.
+14. **La purge courte ajoute deux agrégations par heure** : à grande échelle, un jour plein de lignes
+    est relu une fois de plus par heure. Si `agreger_croissance` lève, rien n'est supprimé (fermé) et
+    la table se remplit — visible à la jauge. Mesuré au banc, sur une machine jetable : 1,2 million de
+    lignes d'un même jour, deux agrégations et 241 lots en ≈ 15 s, contre la coupure de 120 s.
+15. **`CREATE TRIGGER` verrouille la table** le temps de la fin de la migration (`lock_timeout` 5 s) :
+    pendant ce court instant les clients reçoivent une erreur et gardent leur lot. Les lectures
+    lourdes du verdict sont faites AVANT de poser le déclencheur.
+16. **Les `revoke` de la migration sont une seconde ceinture** : depuis le lot 1 du 06/11 les droits
+    par défaut de `public` ne donnent plus EXECUTE aux clients (lu en production le 21/11). Le banc
+    les éprouve donc sur les droits par défaut d'avant ce lot.
+
+**Écarts au plan, et pourquoi.** ① `lireRemplissage` LÈVE sur un remplissage non mesuré (le plan
+rendait une jauge grise) : voir plus haut. ② Le banc SQL part de la structure de production
+(`socle-production-2026-11-06.sql` + les migrations du dépôt jusqu'au 15/11) au lieu d'un décor écrit
+à la main, et éprouve AUSSI les vrais seuils à 1,2 million de lignes. ③ Le lanceur des réinjections
+nomme son rapporteur : sous Node 22 sans TTY, `node --test` rend du TAP, le lanceur cherchait
+« ℹ fail » et sortait « VERT (? test joué) » pour tout — aucune réinjection n'était réellement
+jugée dans cet environnement. ④ La lecture SQL rend NULL pour un seuil qui n'est pas un entier, au
+lieu de lever.
+
+Verrous : `tests/unit/pilotage.test.mjs` (T2-a à T2-g, T2-m), `tests/unit/pilotage-chemins.test.mjs`
+(T2-h à T2-l, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
+`tests/e2e/pilotage-nuage.spec.js` (㊹), `tests/sql/migration-telemetrie-classes.test.sh` (91
+contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R135 au registre
+(`scripts/reinjections-pilotage.mjs`), toutes rouges, plus trois à la main sur le test navigateur.
+
+**Hors lot** : compteur des lignes écartées ; recul plus long du client sur « table pleine »
+(js/telemetry.js réessaie chaque minute) ; alignement du centre de pilotage local (il range « table
+pleine » avec les refus de débit) ; hystérésis de `decideAlerte` ; index dédié à la purge courte et
+son plan mesuré à l'échelle (staging, après une campagne de charge) ; durée de vie des lignes d'échec
+et plafond propre aux lignes protégées ; un geste « purger maintenant » depuis le téléphone ;
+`migrations/SCHEMA_PROD_REFERENCE.sql` à régénérer après application ; une ligne de règle dans
+`CLAUDE.md` (aucune marge aujourd'hui : 39 989 caractères sur 40 000).

@@ -2282,6 +2282,7 @@ test("T4-d textes honnêtes : tant que l'état est ouvert, ni « rien à corrige
 // deux sources du voyant → T2-e ; le motif dans le titre → T2-f ; deux lignes pour une table
 // pleine → T2-f ; taire que le ralentissement reste posé → T2-f ; la jauge dans la boucle
 // générique → ㊴ ; un dépassement de délai lu « 0 ligne » → T2-g ; la note de la page → T2-g.
+import { createRequire as createRequireT2 } from "node:module";
 import { EVT_CANARI, CANARI_SUITE_MIN, CANARI_MEMOIRE_MS, CANARI_TOUTES_MIN, CLASSES_REFUS_CANARI, classerRefusCanari, marqueCanari, bilanCanari,
   MIGRATION_TELEMETRIE_CLASSES, BORNES_TELEMETRIE, REMPLISSAGE_SANS_SEUILS, remplissage, remplissageAveugle, jaugeRemplissage } from "../../supabase/functions/_shared/pilotage.js";
 
@@ -2634,4 +2635,67 @@ test("T2-g câblage et page : la mémoire du canari se note APRÈS l'alerte, les
   // Une fonction d'avant ce lot (pas de clé `remplissage`) : la page se rend comme avant, sans note.
   navigateur.api.rendreCapacite({ capacite: { mesuresServeur: true, jauges: [], cout: { actuel: 25, aPrevoir: 0, lignes: [] } } });
   assert.doesNotMatch(texte(zone("jauges")), /Table de télémétrie/);
+});
+
+// ─── T2, temps 2 : la migration des classes et le code se tiennent (2026-11-21) ──
+// La migration s'éprouve sur un PostgreSQL jetable (tests/sql/migration-telemetrie-classes.test.sh).
+// Ici, ce que DEUX fichiers doivent dire ensemble — une dérive de l'un ne rougirait nulle part ailleurs.
+// RÉINJECTIONS (R133 à R135) : retirer un type critique du client de la liste protégée en base ;
+// renommer une clé de la lecture SQL ; poser un seuil qui n'est plus 60 % de sa borne.
+test("T2-m la migration des classes et le code se tiennent : le fichier que l'écran nomme existe, la lecture SQL rend ce que le pilotage lit, les seuils sont 60 % et 90 % des bornes, et la base protège ce que le client ne jette jamais", () => {
+  assert.ok(fs.existsSync(MIGRATION_TELEMETRIE_CLASSES), "l'écran nomme ce fichier : il existe dans le dépôt");
+  const sql = fs.readFileSync(MIGRATION_TELEMETRIE_CLASSES, "utf8");
+  // Une transaction, rejouable ; le tableau de verdict AVANT `commit;` ; le cache de PostgREST rechargé avant lui.
+  assert.ok(sql.replace(/^--[^\n]*\n/gm, "").trimStart().startsWith("begin;"));
+  assert.ok(sql.trimEnd().endsWith("commit;"));
+  const [gardeFou, tableau, recharge, fin] = ["raise exception 'classes de télémétrie", "select controle, valeur from pg_temp.passio_tc_verdict order by n;", "notify pgrst, 'reload schema';", "\ncommit;"].map((x) => sql.lastIndexOf(x));
+  assert.ok(recharge > 0 && recharge < gardeFou && gardeFou < tableau && tableau < fin, "rechargement du schéma, garde-fou qui lève, tableau, puis commit");
+  assert.doesNotMatch(sql, /PREREQUIS-CLIENT:/, "aucun prérequis client : la migration s'applique avant ou après le déploiement du code");
+  // La forme qu'exige l'outil d'application (scripts/appliquer-migration.mjs), relue hors ligne : rien n'est envoyé nulle part.
+  const corpsSql = sql.replace(/--[^\n]*/g, "").trim().toLowerCase();
+  assert.ok(corpsSql.startsWith("begin;") && corpsSql.endsWith("commit;") && !/\bvacuum\b/.test(corpsSql));
+  const barriere = createRequireT2(import.meta.url)("../../scripts/lib/barriere-migration.js");
+  assert.deepEqual(barriere.prerequisClient(sql), []);
+  const envoye = barriere.sqlAvecJournal(sql, { fichier: MIGRATION_TELEMETRIE_CLASSES, cible: "njkiyoklssvefstljemx", outil: "appliquer-migration.mjs" });
+  assert.ok(envoye.indexOf("insert into public.migrations_appliquees") > envoye.indexOf("begin;") && envoye.indexOf("insert into public.migrations_appliquees") < envoye.indexOf("set local lock_timeout"), "le journal s'écrit dans la transaction, juste après son begin");
+  assert.ok(envoye.trimEnd().endsWith("commit;") && envoye.lastIndexOf("select controle, valeur from pg_temp.passio_tc_verdict") > envoye.indexOf("insert into public.migrations_appliquees"), "le tableau reste la dernière instruction qui rend des lignes");
+  // Ce que le pilotage LIT (remplissage) est ce que la fonction SQL REND, clé pour clé.
+  const lecture = sql.slice(sql.indexOf("create or replace function public.telemetrie_remplissage()"), sql.indexOf("grant execute on function public.telemetrie_remplissage()"));
+  const rendues = [...lecture.slice(lecture.indexOf("jsonb_build_object(")).matchAll(/'([a-z_]+)',/g)].map((m) => m[1]);
+  assert.deepEqual(rendues.sort(), ["borne_comptes", "borne_visiteurs", "confort_comptes", "confort_visiteurs", "estimees", "octets", "reserve_comptes", "reserve_visiteurs", "vivantes"]);
+  const partage = fs.readFileSync("supabase/functions/_shared/pilotage.js", "utf8");
+  const corps = partage.slice(partage.indexOf("export function remplissage(m,"), partage.indexOf("export function remplissageAveugle("));
+  const lues = [...new Set([...corps.matchAll(/\bs\.([a-z_]+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(lues, rendues, "les clés que remplissage() lit sont celles que telemetrie_remplissage() rend — ni plus, ni moins");
+  const lue = Object.fromEntries(rendues.map((k) => [k, { vivantes: 500000, estimees: 499000, octets: 1, ...SEUILS }[k]]));
+  assert.deepEqual([remplissage(lue).classes, remplissage(lue).couleur, remplissage(lue).octets], [true, "orange", 1]);
+  // Les seuils posés par la migration : 60 % et 90 % des bornes du 15/11, celles que le code prend par défaut.
+  const seuils = /execute function public\.telemetrie_classe_bornee\('(\d+)', '(\d+)', '(\d+)', '(\d+)'\);/.exec(sql);
+  assert.ok(seuils, "le déclencheur de la classe et ses quatre seuils");
+  assert.deepEqual(seuils.slice(1).map(Number), [0.6 * BORNES_TELEMETRIE.visiteurs, 0.6 * BORNES_TELEMETRIE.comptes, 0.9 * BORNES_TELEMETRIE.visiteurs, 0.9 * BORNES_TELEMETRIE.comptes]);
+  assert.deepEqual(seuils.slice(1).map(Number), [SEUILS.confort_visiteurs, SEUILS.confort_comptes, SEUILS.reserve_visiteurs, SEUILS.reserve_comptes], "le décor des bancs est celui de la migration");
+  // La base PROTÈGE ce que le client ne jette ni n'échantillonne jamais (CRITICAL_TYPE), et le canari de la veille.
+  const protegee = sql.slice(sql.indexOf("create or replace function public.telemetrie_protegee("), sql.indexOf("revoke all on function public.telemetrie_protegee("));
+  const types = /coalesce\(p_type, ''\) in \(([^)]*)\)/.exec(protegee)[1].split(",").map((x) => x.trim().replace(/'/g, ""));
+  const client = fs.readFileSync("js/telemetry.js", "utf8");
+  const critiques = Object.keys(new Function("return " + /var CRITICAL_TYPE = (\{[^}]*\});/.exec(client)[1])());
+  assert.ok(critiques.length >= 5, "CRITICAL_TYPE se lit");
+  for (const t of critiques) assert.ok(types.includes(t), t + " : type critique du client, écarté ou purgé tôt par la base");
+  for (const t of ["perf", "click", "action", "lifecycle", "nav", "api"]) assert.ok(!types.includes(t), t + " : un type de volume ne se protège pas en entier");
+  assert.match(protegee, new RegExp("'" + CANARI_ACTION + "'"), "le canari de la veille est protégé par son action");
+  const gravites = /coalesce\(p_severity, ''\) in \(([^)]*)\)/.exec(protegee)[1];
+  for (const g of ["warn", "error", "critical"]) assert.match(gravites, new RegExp("'" + g + "'"), g + " : gravité que _estPrioritaire garde");
+  assert.match(client, /return g === "warn" \|\| g === "error" \|\| g === "critical";/, "_estPrioritaire : les gravités que la base protège");
+  // La purge courte ne touche QUE la classe courte, et jamais sans l'exclusion du protégé.
+  const purge = sql.slice(sql.indexOf("create or replace function public.purge_telemetrie_breve()"), sql.indexOf("revoke all on function public.purge_telemetrie_breve()"));
+  assert.match(purge, /x\.type in \('perf', 'click', 'action', 'lifecycle'\)\s+and not public\.telemetrie_protegee\(/);
+  assert.match(purge, /interval '26 hours'/);
+  // Le manifeste du déploiement : la fonction SQL est un prérequis FACULTATIF de `pilotage` (le code tolère son absence).
+  const manifeste = JSON.parse(fs.readFileSync(".passio/deploiement/prerequis-fonctions.json", "utf8")).fonctions.pilotage;
+  assert.ok(manifeste.objets.includes("function:public.telemetrie_remplissage()"));
+  assert.equal(manifeste.obligatoire, false, "obligatoire, il retiendrait le déploiement de la fonction tant que la migration n'est pas appliquée");
+  assert.ok(manifeste.sans.includes(MIGRATION_TELEMETRIE_CLASSES));
+  // Le banc SQL existe, et tourne sans ligne dans le workflow (scripts/bancs-sql-restants.sh le ramasse).
+  assert.ok(fs.existsSync("tests/sql/migration-telemetrie-classes.test.sh"));
+  assert.match(fs.readFileSync("scripts/bancs-sql-restants.sh", "utf8"), /tests\/sql\/\*\.test\.sh/);
 });

@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~3 min (120 réinjections au 2026-11-21)
+//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11)
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -23,6 +23,7 @@ const FN = "supabase/functions/pilotage/index.ts";
 const PJ = "supabase/functions/_shared/pilotage.js";
 const BT = "supabase/functions/_shared/battement.js";
 const PG = "pilotage/pilotage.js";
+const MG = "migrations/migration_telemetrie_classes_2026-11-21.sql";
 const BANC = "tests/unit/pilotage-chemins.test.mjs";
 const PUR = "tests/unit/pilotage.test.mjs";
 const M = [
@@ -166,6 +167,10 @@ const M = [
   ["R118 chaque canari réussi laisse une marque (96 lignes par jour pour rien)", PJ, `if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };`, `if (resultat.emis === true) return { ok: true };`, BANC, "T2-h"],
   ["R119 le motif du serveur part aux journaux de la fonction (épingle de texte)", FN, `console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?") }));`, `console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?"), motif: m.motif }));`, PUR, "T2-g"],
   ["R132 un remplissage non mesuré passe pour une table vide (la veille lâche son voyant)", FN, `  if (r.vivantes === null) throw new Error("remplissage de la télémétrie non mesuré`, `  if (false) throw new Error("remplissage de la télémétrie non mesuré`, BANC, "T2-j"],
+  // Temps 2 : la migration et le code se tiennent (la migration elle-même a ses 19 mutants : tests/sql/migration-telemetrie-classes.test.sh).
+  ["R133 la base ne protège plus un type que le client ne jette jamais", MG, `'flow', 'link', 'rt_recv', 'push'`, `'flow', 'link', 'push'`, PUR, "T2-m"],
+  ["R134 la lecture SQL rend une clé que le pilotage ne lit pas", MG, `    'vivantes', pg_catalog.pg_stat_get_live_tuples(`, `    'lignes', pg_catalog.pg_stat_get_live_tuples(`, PUR, "T2-m"],
+  ["R135 un seuil de classe n'est plus 60 % de sa borne", MG, `telemetrie_classe_bornee('480000', '720000', '720000', '1080000');`, `telemetrie_classe_bornee('500000', '720000', '720000', '1080000');`, PUR, "T2-m"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
