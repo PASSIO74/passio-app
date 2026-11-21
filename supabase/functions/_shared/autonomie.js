@@ -105,6 +105,9 @@ export function doitReveillerSentinelle({ pause, enquetes, dernierRun, comptesEr
   if (dernierRun && dernierRun.etat && dernierRun.etat !== "completed") return { reveiller: false, raison: "run_en_cours" };
   const le = t(dernierRun && dernierRun.le);
   if (Number.isFinite(le) && maintenant - le < REVEIL.runRecentMs) return { reveiller: false, raison: "run_recent" };
+  // Un passage CASSÉ espace aussi le réveil (seconde contre-revue de #1007) : un détecteur en panne
+  // ne voit rien de plus en repartant, et chaque passage rouge envoie un e-mail. Même règle que la cadence.
+  if (Number.isFinite(le) && CONCLUSIONS_CASSEES.includes(dernierRun.conclusion) && maintenant - le < CADENCE.apresEchecMs) return { reveiller: false, raison: "echec_recent" };
   return { reveiller: true, raison: `${comptesErreurs} comptes en échec en 30 min, ${enquetes}/${REVEIL.enquetesMax} enquête(s) en cours` };
 }
 

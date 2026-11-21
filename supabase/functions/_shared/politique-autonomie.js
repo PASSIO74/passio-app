@@ -73,10 +73,10 @@ export const POLITIQUE = Object.freeze({
       libelle: "Lancer la Sentinelle dès que des comptes échouent", circuit: "A", autonome: true, suspenduParPause: true,
       symptome: "échecs chez ≥ 2 comptes réels créés depuis plus de 24 h en 30 min (erreurs et refus comptés en base), ou un parcours en panne CONFIRMÉE sur la dernière heure",
       action: "workflow_dispatch de sentinelle-autonome.yml (lecture, classement, enquête : la détection garde ses propres filtres)",
-      preconditions: ["jeton GitHub posé", "pas de pause", "place libre parmi les enquêtes", "pas de run en cours ni de moins de 10 min"],
+      preconditions: ["jeton GitHub posé", "pas de pause", "place libre parmi les enquêtes", "pas de run en cours ni de moins de 10 min", "pas de passage cassé depuis moins de 2 h"],
       limites: { comptesMin: 2, fenetreMin: 30, parHeure: 2, parJour: 12, runRecentMin: 10, enquetesMax: 3 },
       verification: "un run démarre (204), puis une enquête ou un « rien de nouveau »", retour: "aucun : lancer une lecture ne change rien en production",
-      escalade: "quota du jour épuisé : la ligne « À faire » le dit", appliquePar: "supabase/functions/_shared/autonomie.js (doitReveillerSentinelle)",
+      escalade: "quota du jour épuisé : le battement le dit (`quota_du_jour`) ; la cadence horaire continue", appliquePar: "supabase/functions/_shared/autonomie.js (doitReveillerSentinelle)",
     }),
     // La cadence (2026-11-21, demande de Benjamin : « elle est censée être activée constamment ») :
     // le cron horaire de GitHub est servi 3,7 fois par jour (écart médian 6,5 h, P95 9,9 h, mesuré le 21/11).

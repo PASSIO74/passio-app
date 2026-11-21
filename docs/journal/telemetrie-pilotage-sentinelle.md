@@ -2291,9 +2291,13 @@ battement dit son résultat (`gestes.cadence` : `fait`, `run_recent`, `run_en_co
   menti dès le premier changement.
 - ⚠️ **Un passage CASSÉ espace la cadence à 2 h** (`apresEchecMs`). Chaque passage rouge COMMENTE
   l'issue `[SENTINELLE MUETTE]` — un e-mail à Benjamin : relancé chaque heure, un `SENTINELLE_TOKEN`
-  expiré (tous les 90 jours) en enverrait ~22 par jour. À 2 h, ~11, et toujours sous le seuil
-  « muette » : l'échec garde sa seule ligne (« La Sentinelle s'est arrêtée »). Annulé ou sauté n'est pas
-  cassé. Un passage EN COURS ou en file (quelle que soit son ancienneté) n'est jamais doublé.
+  expiré (tous les 90 jours) en enverrait ~22 par jour. À 2 h, ~11 pour la cadence, ~15 avec les
+  passages du cron, rouges eux aussi (contre ~3,7 avant ce lot) — et toujours sous le seuil « muette » :
+  l'échec garde sa seule ligne (« La Sentinelle s'est arrêtée »). Le RÉVEIL sur échecs suit la même
+  règle (`echec_recent`) : un détecteur en panne ne voit rien de plus en repartant. Annulé ou sauté
+  n'est pas cassé (un job qui dépasse son délai finit `cancelled`, et l'étape `[SENTINELLE MUETTE]`,
+  `if: failure()`, ne commente pas). Un passage EN COURS ou en file (quelle que soit son ancienneté)
+  n'est jamais doublé.
 - ⚠️ **Deux gestes, deux comptes.** Le quota du réveil (12 par jour) n'arrête pas le passage de l'heure,
   et la cadence ne consomme rien du réveil — sinon 24 cadences épuiseraient les réveils dès midi.
 - Coût : le dépôt est public, les minutes d'Actions ne se paient pas ; un passage sans enquête dure ~20 s.
@@ -2318,11 +2322,30 @@ cinq corrigés.**
 - **Un réveil INTERROMPU** (délai de 10 s : GitHub a peut-être accepté) laissait partir la cadence : deux
   passages. `reveil.erreur` bloque aussi la cadence pour ce tour (㉑).
 - Trois commentaires et la carte « Inactif » à l'ancienne mesure.
-- **Laissé, borné** : la « muette » se calcule sur le passage le plus RÉCENT quel que soit son état — un
-  passage bloqué en file bloque la cadence (voulu, dit à 3 h), mais chaque « Régler » en crée un neuf qui
-  remet le voyant vert ; GitHub annule un passage en file après 24 h. Les seuils de 8 h du poste
+- **Laissé** : la « muette » se calcule sur le passage le plus RÉCENT quel que soit son état — un passage
+  bloqué en file bloque la cadence (voulu, dit à 3 h), mais chaque « Régler » en crée un neuf qui remet
+  le voyant vert, et attend DERRIÈRE le passage coincé : celui-là s'annule sur GitHub. ⚠️ L'annulation
+  automatique d'un passage en file après 24 h ne vaut que pour les runners auto-hébergés (« Actions
+  limits », docs GitHub) : sur les runners de GitHub, rien ne le borne. Les seuils de 8 h du poste
   (`dashboard/server/chaine-autonome.js`) et de `scripts/veille-production.mjs` restent : instruments
   distincts, désormais seulement larges.
+
+**Seconde contre-revue (même relecteur, sur le seul diff de correction) : « aucune objection
+bloquante ».** Traité : le réveil suit l'espacement après un passage cassé (ci-dessus, ① de
+`autonomie.test.mjs`) ; un plancher à la garde du réveil (au moins un tour de veille, ㉒ — à 0 ou 1 min
+tout restait vert) ; « réveil interrompu → pas de cadence » joué par la fonction EXÉCUTÉE (㉟ ter : un
+seul envoi tenté) ; l'escalade du runbook `reveil_sentinelle` promettait une ligne « À faire » sur le
+quota épuisé, qui n'a jamais existé — elle dit maintenant ce qui le dit (le battement, `quota_du_jour`)
+et que la cadence continue. Laissé, écrit :
+- À 10 min de garde, un incident qui DURE épuise les 12 réveils du jour en ~5,5 h (10,3 h à 45 min,
+  simulé sur 24 h) ; un second incident le soir attend alors la cadence (≤ ~65 min). Borné, assumé :
+  le premier passage d'un incident compte plus que le douzième.
+- Une pause OUBLIÉE laisse le voyant vert : la « muette » ne s'y dit plus (corrigé ci-dessus, c'était un
+  faux orange), et la ligne « La Sentinelle est en pause » reste rangée en priorité 2. Avant ce lot,
+  l'orange de 8 h jouait ce rappel une fois sur vingt-six, sous un faux libellé. À faire si le besoin se
+  montre : une ligne de priorité 1 après N heures de pause, avec « Reprendre ».
+- Défaut d'avant : un passage de la Sentinelle en échec ne colore pas le voyant (une seule ligne de
+  priorité 1, « La Sentinelle s'est arrêtée »).
 
 Verrous : `autonomie.test.mjs` ⑳ (bornes de la règle), ㉒ (délai du réveil) et ㉑ (ordre du câblage : jeton → réveil →
 politique → décision → plafond → dispatch → 204 → marque), `politique-autonomie.test.mjs` ⑩ (bornes

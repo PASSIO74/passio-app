@@ -1236,6 +1236,15 @@ test("㉟ ter cadence : calme, et plus d'une heure sans passage — la veille re
   assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "fait");
   assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "reveil");
   assert.equal(evenements(EVT.cadence).length, 0);
+  // Un réveil INTERROMPU (GitHub ne répond pas dans le délai : il a peut-être accepté) : la cadence
+  // n'envoie pas un second passage dans le même tour — un seul envoi tenté.
+  await monter({ battement: false, rpc: { pilotage_audience: () => ({ ...AUDIENCE_CALME, comptes_echecs_30min: 3 }) } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && /dispatches$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  await veille();
+  assert.equal(dispatches().length, 1, "le réveil seul a tenté l'envoi");
+  assert.match(evenements(BATTEMENT)[0].properties.gestes.reveil, /^erreur:/);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "reveil");
   // Le quota du réveil épuisé n'arrête pas le passage de l'heure : deux gestes, deux comptes.
   await monter({ battement: false, rpc: { pilotage_audience: () => ({ ...AUDIENCE_CALME, comptes_echecs_30min: 3 }) } });
   banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];

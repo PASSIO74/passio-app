@@ -43,6 +43,11 @@ test("① réveil : des échecs chez 2 comptes, rien en cours, pas de pause, pas
   assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "in_progress", le: ilYa(120) } }).raison, "run_en_cours");
   assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "completed", le: ilYa(REVEIL.runRecentMs / 60e3 - 1) } }).raison, "run_recent");
   assert.equal(doitReveillerSentinelle({ ...base, dernierRun: null }).reveiller, true, "jamais tourné : on réveille");
+  // Après un passage CASSÉ, le réveil attend comme la cadence (seconde contre-revue de #1007).
+  // Mutation : retirer la condition → rougit.
+  assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "completed", conclusion: "failure", le: ilYa(90) } }).raison, "echec_recent");
+  assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "completed", conclusion: "failure", le: ilYa(121) } }).reveiller, true);
+  assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "completed", conclusion: "cancelled", le: ilYa(15) } }).reveiller, true, "annulé n'est pas cassé");
   assert.equal(doitReveillerSentinelle({ ...base, enquetes: NaN }).reveiller, false, "GitHub illisible : on ne réveille pas à l'aveugle");
   assert.equal(doitReveillerSentinelle({}).reveiller, false);
 });
@@ -493,5 +498,7 @@ test("㉒ avec la cadence, le réveil part dans le quart d'heure d'un incident, 
     pire = Math.max(pire, Math.min(t, CADENCE.intervalleMs) - debut);
   }
   assert.ok(pire <= 15 * 60e3, "pire délai avant un passage : " + pire / 60e3 + " min");
+  // Et un plancher : au moins un tour de veille, le temps que GitHub liste le passage qu'il vient d'accepter.
+  assert.ok(REVEIL.runRecentMs >= tick, "la garde du réveil couvre au moins un tour de veille");
   assert.deepEqual([...CONCLUSIONS_CASSEES], [...CONCLUSIONS_ECHEC], "un passage « cassé » se juge comme à l'écran");
 });
