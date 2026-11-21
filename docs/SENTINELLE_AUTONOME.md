@@ -6,7 +6,7 @@ Version du 2026-09-18 (lot A « autonomie »). Fichiers : `scripts/sentinelle-de
 
 ## La chaîne, en une ligne
 
-`sentinelle-autonome.yml` (cron horaire, servi 4 à 8 fois par jour) lit la production →
+`sentinelle-autonome.yml` (cron horaire servi 3 à 4 fois par jour ; depuis le 21/11, relancé chaque heure par la veille du pilotage) lit la production →
 ouvre UNE issue `[SENTINELLE]` label `sentinelle` → pose le label `claude` 8 s plus tard →
 `claude-code.yml` écrit le correctif, le verrou et la fiche → PR auto-fusionnée si toute la
 CI passe (gouvernance : périmètre + 2 fichiers / 60 lignes) → `deploy.yml` déploie et
@@ -47,7 +47,7 @@ plus récentes `{at, app_version}` : c'est ce qui permet la dédup ci-dessous.
 | 8 | **Détecteur en panne** (Supabase 5xx, jeton mort, script cassé) : un e-mail de run rouge parmi d'autres | — | A8 : issue `[SENTINELLE MUETTE]` label `disponibilite`, refermée au premier run suivant où « Lire la production » a vraiment rendu un verdict (pas sur un run vert où elle a été sautée) ; `disponibilite.yml` partage le label mais ne voit que les titres `[DISPONIBILITÉ]` — sans ce filtre, la sonde refermait la MUETTE dans les 10 min |
 | 9 | Jeton `SENTINELLE_TOKEN` expiré (90 j) | — | étape « Le jeton est-il vivant ? » : run rouge nommant la page de renouvellement, puis A8 |
 | 10 | Clé `service_role` changée | — | `exit 2` du détecteur, puis A8 |
-| 11 | GitHub désactive les crons après 60 j sans commit ; les crons sont servis 4 à 23× moins souvent qu'annoncé | 41 % des créneaux | hors de ce lot : le poste (lot D) et la veille (lot B) mesurent l'âge des runs |
+| 11 | GitHub désactive les crons après 60 j sans commit ; les crons sont servis 4 à 23× moins souvent qu'annoncé | mesuré le 21/11 sur les 100 derniers passages planifiés : 3,7 par jour sur 24 demandés, écart médian 6,5 h, P95 9,9 h | **depuis le 21/11, la veille du pilotage (pg_cron, 5 min) relance le passage dès que le dernier est terminé depuis 1 h** (2 h s'il a cassé) (`cadence_sentinelle`, `doitCadencerSentinelle`) ; le cron reste un filet. Au-delà de 3 h sans passage : voyant orange et ligne « À faire » |
 | 12 | **L'angle mort** : bouton mort, HTTP 200 faux, télémétrie interrompue | permanent | aucune : le silence n'est jamais une preuve de santé |
 | 13 | **Lecture tronquée ou budget épuisé, run vert** : une famille ne juge plus, ou le passage ne lit même plus, et l'écran dit « rien à corriger » | mesuré le 21/11 : la famille bouton se taisait vers 435 sessions par jour ; six enquêtes dans la journée, et plus rien n'était lu pendant 24 h | le passage lit TOUJOURS ; chaque lecture dit si elle est complète ; ce qui n'est pas lu, jugé ou confié ouvre `[SENTINELLE PARTIELLE]` (label `sentinelle-partielle`), que le pilotage affiche en orange |
 

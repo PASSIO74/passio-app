@@ -278,8 +278,15 @@ export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {})
   return out;
 }
 
-/** Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler. */
-export const SENTINELLE_MUETTE_MS = 8 * 3600e3;
+/**
+ * Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler.
+ * 8 h jusqu'au 2026-11-21, calées sur un cron servi au P95 toutes les 8,9 h. Depuis,
+ * la veille la fait passer chaque heure (`CADENCE`, _shared/autonomie.js) : trois heures
+ * sans passage, c'est que la cadence elle-même ne part plus (jeton, GitHub, politique).
+ */
+export const SENTINELLE_MUETTE_MS = 3 * 3600e3;
+/** Le titre de la ligne et la raison du voyant : la durée vient de la constante, jamais écrite à la main. */
+export const TITRE_SENTINELLE_MUETTE = "La Sentinelle n'a pas tourné depuis plus de " + SENTINELLE_MUETTE_MS / 3600e3 + " h";
 /** Comptes serveur distincts qu'il faut derrière des erreurs ou des 5xx pour sonner rouge. */
 export const COMPTES_ROUGE_MIN = 2;
 // ─── Ce que « Régler » a lancé (2026-11-07) ──────────────────────────────────
@@ -399,7 +406,9 @@ export function verdict(e) {
   if (veille) orange.push("la veille signale un problème");
   const signal = Number(e && e.signalements && e.signalements.ouverts) || 0;
   if (signal) orange.push(`${signal} signalement(s) à traiter`);
-  if (runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push("la Sentinelle n'a pas tourné depuis plus de 8 h");
+  // Pas pendant la PAUSE du pilote (contre-revue de #1007) : `aFaire` taisait déjà la ligne, et le
+  // filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause.
+  if (!gh.pause && runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push(TITRE_SENTINELLE_MUETTE.charAt(0).toLowerCase() + TITRE_SENTINELLE_MUETTE.slice(1));
   if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange) };
   if (orange.length) return { couleur: "orange", titre: "À surveiller", raisons: orange };
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };
@@ -1101,8 +1110,8 @@ export function aFaire(d, maintenant = Date.now()) {
   const rs0 = runs.sentinelle;
   if (rs0 && rs0.le && !(gh && gh.pause) && maintenant - dateUtc(rs0.le) > SENTINELLE_MUETTE_MS) {
     const srM = suivi("sentinelle");
-    if (enVol(srM)) ajoute({ id: "sentinelle:muette", prio: 1, enCours: true, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiVol(srM, "La Sentinelle") });
-    else ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiRate(srM, "La relance maintenant."), gestes: relancer("sentinelle") });
+    if (enVol(srM)) ajoute({ id: "sentinelle:muette", prio: 1, enCours: true, etiquette: "Machines", titre: TITRE_SENTINELLE_MUETTE, quoi: quoiVol(srM, "La Sentinelle") });
+    else ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: TITRE_SENTINELLE_MUETTE, quoi: quoiRate(srM, "La relance maintenant."), gestes: relancer("sentinelle") });
   }
   // La capacité : une jauge en zone rouge est urgente, orange se prépare. Ce qui
   // s'achète se règle sur la page du fournisseur : le bouton y mène. La télémétrie,

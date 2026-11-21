@@ -61,6 +61,7 @@
 - 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
 - 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
 - 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+- ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -2833,3 +2834,108 @@ adaptées au code actuel, plus :
 
 **Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
 rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.
+
+## ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
+
+**La question de Benjamin**, photo du pilotage à l'appui (« La Sentinelle n'a pas tourné depuis plus
+de 8 h — Régler ») : « Pourquoi la Sentinelle s'arrête de tourner ? Elle est censée être activée
+constamment. »
+
+**La cause, mesurée.** Elle ne s'arrêtait pas : elle n'était pas LANCÉE. Son déclencheur est un cron
+GitHub horaire (`23 * * * *`), et GitHub ne sert un cron que « quand il a de la place ». Sur les 100
+derniers passages planifiés (25/10 → 21/11) : **3,7 par jour sur 24 demandés**, écart médian 6,5 h,
+P95 9,9 h, pire 10,8 h. Aucun passage en échec ; chaque « Régler » réussi en 20 s. Le
+défaut était connu (P1-7 du suivi, n° 11 de `docs/SENTINELLE_AUTONOME.md`) et attendait une décision :
+« réveil de cadence = politique ». La question de Benjamin est cette décision.
+
+**Ce qui en dépendait, au-delà de l'écran** : la lecture de la production (une erreur pouvait attendre
+10 h avant d'être classée), et surtout le **veilleur des enquêtes** de `sentinelle-autonome.yml`
+(relance à 20 min, `humain` après 6 h), qui ne tourne qu'avec elle — ses délais étaient fictifs.
+
+**Le correctif — sans migration, sans toucher `.github/`.** La veille du pilotage tourne déjà toutes les
+5 min par pg_cron (288 tours sur 288 en 24 h) et sait lancer la Sentinelle (le réveil sur échecs du
+2026-10-12). Elle porte désormais un troisième geste, `cadence_sentinelle` (circuit A, suspendu par la
+pause) : dès que le dernier passage (planifié ou lancé, sur `main`) est **terminé depuis 1 h** (2 h s'il a
+cassé), elle
+envoie un `workflow_dispatch` — le MÊME passage que le cron, avec ses propres filtres (places, dédup,
+zones). Règle pure : `doitCadencerSentinelle` (`_shared/autonomie.js`) ; câblage : `cadencerSentinelle`
+(`pilotage/index.ts`), APRÈS le réveil (un passage que le réveil vient de lancer suffit), sous la
+politique, avec un plafond EN BASE d'une relance par heure (`plafond_consommer`, atomique : une lecture
+de GitHub encore en cache ne relance pas deux fois), marque `sentinelle_cadence` après le 204. Le
+battement dit son résultat (`gestes.cadence` : `fait`, `run_recent`, `run_en_cours`, `politique:pause`,
+`plafond`, `refus_github_<code>`…). Le cron reste un filet.
+- **Le seuil « muette » passe de 8 h à 3 h** (`SENTINELLE_MUETTE_MS`) : 8 h était calé sur le cron. Avec
+  la cadence, trois heures sans passage veulent dire que la cadence elle-même ne part plus (jeton,
+  GitHub, politique). Le titre de la ligne et la raison du voyant se DÉDUISENT de la constante
+  (`TITRE_SENTINELLE_MUETTE`) — la phrase « plus de 8 h » écrite à la main en trois endroits aurait
+  menti dès le premier changement.
+- ⚠️ **Un passage CASSÉ espace la cadence à 2 h** (`apresEchecMs`). Chaque passage rouge COMMENTE
+  l'issue `[SENTINELLE MUETTE]` — un e-mail à Benjamin : relancé chaque heure, un `SENTINELLE_TOKEN`
+  expiré (tous les 90 jours) en enverrait ~22 par jour. À 2 h, ~11 pour la cadence, ~15 avec les
+  passages du cron, rouges eux aussi (contre ~3,7 avant ce lot) — et toujours sous le seuil « muette » :
+  l'échec garde sa seule ligne (« La Sentinelle s'est arrêtée »). Le RÉVEIL sur échecs suit la même
+  règle (`echec_recent`) : un détecteur en panne ne voit rien de plus en repartant. Annulé ou sauté
+  n'est pas cassé (un job qui dépasse son délai finit `cancelled`, et l'étape `[SENTINELLE MUETTE]`,
+  `if: failure()`, ne commente pas). Un passage EN COURS ou en file (quelle que soit son ancienneté)
+  n'est jamais doublé.
+- ⚠️ **Deux gestes, deux comptes.** Le quota du réveil (12 par jour) n'arrête pas le passage de l'heure,
+  et la cadence ne consomme rien du réveil — sinon 24 cadences épuiseraient les réveils dès midi.
+- Coût : le dépôt est public, les minutes d'Actions ne se paient pas ; un passage sans enquête dure ~20 s.
+  Cadence réelle : la veille avance par pas de 5 min, un cycle dure ~65 min — **~22 passages par jour**,
+  pas 24 (un intervalle de 55 min se heurterait au plafond d'une heure GLISSANTE).
+
+**Contre-revue adversariale (autre instance, lecture seule) : « à corriger avant fusion », six constats,
+cinq corrigés.**
+- **La cadence ralentissait le réveil sur échecs — le seul chemin rapide d'un incident.** Le réveil
+  refusait un passage de moins de 45 min ; avec la cadence, le dernier passage a toujours moins de
+  ~65 min : le réveil n'était plus permis que 20 min par heure. Simulé minute par minute du cycle :
+  médiane 17 min, pire 49 min (contre 2 et 4 avant). `REVEIL.runRecentMs` passe à **10 min** (runbook
+  et plan 100K suivis) ; ses plafonds (2 par heure, 12 par jour) bornent. Verrou `autonomie.test.mjs` ㉒
+  (la même simulation : pire ≤ 15 min ; à 45 min, rouge). **Règle : un geste qui rend un passage plus
+  fréquent change le sens de tout seuil « pas de passage récent » des autres gestes.**
+- **En pause, le voyant passait orange** : `aFaire` taisait la ligne « muette », pas `verdict` — et le
+  filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause. Défaut d'avant,
+  que le seuil de 3 h multipliait par ~14 (53,7 % du temps de pause, sur les écarts réels du cron).
+  Le voyant ignore la « muette » en pause (`pilotage.test.mjs` ㊹).
+- **Le passage cassé relancé chaque heure** : l'espacement à 2 h ci-dessus (`autonomie.test.mjs` ⑳,
+  `pilotage-chemins` ㉟ ter ; `CONCLUSIONS_CASSEES` = `CONCLUSIONS_ECHEC`, verrou ㉒).
+- **Un réveil INTERROMPU** (délai de 10 s : GitHub a peut-être accepté) laissait partir la cadence : deux
+  passages. `reveil.erreur` bloque aussi la cadence pour ce tour (㉑).
+- Trois commentaires et la carte « Inactif » à l'ancienne mesure.
+- **Laissé** : la « muette » se calcule sur le passage le plus RÉCENT quel que soit son état — un passage
+  bloqué en file bloque la cadence (voulu, dit à 3 h), mais chaque « Régler » en crée un neuf qui remet
+  le voyant vert, et attend DERRIÈRE le passage coincé : celui-là s'annule sur GitHub. ⚠️ L'annulation
+  automatique d'un passage en file après 24 h ne vaut que pour les runners auto-hébergés (« Actions
+  limits », docs GitHub) : sur les runners de GitHub, rien ne le borne. Les seuils de 8 h du poste
+  (`dashboard/server/chaine-autonome.js`) et de `scripts/veille-production.mjs` restent : instruments
+  distincts, désormais seulement larges.
+
+**Seconde contre-revue (même relecteur, sur le seul diff de correction) : « aucune objection
+bloquante ».** Traité : le réveil suit l'espacement après un passage cassé (ci-dessus, ① de
+`autonomie.test.mjs`) ; un plancher à la garde du réveil (au moins un tour de veille, ㉒ — à 0 ou 1 min
+tout restait vert) ; « réveil interrompu → pas de cadence » joué par la fonction EXÉCUTÉE (㉟ ter : un
+seul envoi tenté) ; l'escalade du runbook `reveil_sentinelle` promettait une ligne « À faire » sur le
+quota épuisé, qui n'a jamais existé — elle dit maintenant ce qui le dit (le battement, `quota_du_jour`)
+et que la cadence continue. Laissé, écrit :
+- À 10 min de garde, un incident qui DURE épuise les 12 réveils du jour en ~5,5 h (10,3 h à 45 min,
+  simulé sur 24 h) ; un second incident le soir attend alors la cadence (≤ ~65 min). Borné, assumé :
+  le premier passage d'un incident compte plus que le douzième.
+- Une pause OUBLIÉE laisse le voyant vert : la « muette » ne s'y dit plus (corrigé ci-dessus, c'était un
+  faux orange), et la ligne « La Sentinelle est en pause » reste rangée en priorité 2. Avant ce lot,
+  l'orange de 8 h jouait ce rappel une fois sur vingt-six, sous un faux libellé. À faire si le besoin se
+  montre : une ligne de priorité 1 après N heures de pause, avec « Reprendre ».
+- Défaut d'avant : un passage de la Sentinelle en échec ne colore pas le voyant (une seule ligne de
+  priorité 1, « La Sentinelle s'est arrêtée »).
+
+Verrous : `autonomie.test.mjs` ⑳ (bornes de la règle), ㉒ (délai du réveil) et ㉑ (ordre du câblage : jeton → réveil →
+politique → décision → plafond → dispatch → 204 → marque), `politique-autonomie.test.mjs` ⑩ (bornes
+déclarées = celles du code, escalade = seuil « muette »), `pilotage.test.mjs` ㉿④ et ㊹ (3 h, phrase
+déduite), `pilotage-chemins.test.mjs` ㉟ ter (la fonction EXÉCUTÉE : relance, une seule par heure,
+pause, passage en cours, derrière un réveil, quota du réveil épuisé, GitHub illisible ou qui refuse,
+sans jeton). Quatre réinjections sur le câblage (appel retiré, derrière un réveil, sans plafond,
+marque avant le 204) : quatre rouges. Deux anciens décors corrigés, pas leurs assertions : ㉿⑮ supposait
+un passage vieux de 5 h 50 « pas muet », et ㉟ un passage de 3 h qui ne relançait rien quand le quota
+du réveil était épuisé.
+**Règle : un cron GitHub n'est jamais la cadence d'une machine qui doit tourner « constamment » —
+pg_cron décide, GitHub exécute ; et le seuil qui dit « elle ne tourne plus » se déduit de la cadence
+réelle, jamais de celle qu'on a écrite dans le YAML.**

@@ -1168,13 +1168,123 @@ test("㉟ réveil de la Sentinelle : des échecs chez 3 comptes anciens la lance
   await veille();
   assert.equal(appelsGithub("POST", /dispatches$/).length, 0);
   assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "politique:pause");
-  // Douze réveils dans la journée : le treizième attend.
+  // Douze réveils dans la journée : le treizième attend. (Un passage de 50 min : assez vieux pour
+  // le réveil, pas pour la cadence horaire — ㉟ ter éprouve les deux ensemble.)
   await monter({ battement: false, rpc: echecs });
-  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(50 * 60e3) })];
   banc.base.semer("analytics_events", Array.from({ length: 12 }, (_, i) => ({ user_id: "systeme:pilotage", event: EVT.reveil, created_at: ilYa((i + 1) * 3600e3), properties: {} })));
   await veille();
   assert.equal(appelsGithub("POST", /dispatches$/).length, 0);
   assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "quota_du_jour");
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "run_recent");
+});
+
+// La cadence (2026-11-21) : « elle est censée être activée constamment ». Le cron horaire de la
+// Sentinelle était servi 3 à 4 fois par jour ; la veille relance désormais le passage de l'heure.
+// Mutations éprouvées : retirer l'appel de la cadence dans la veille, la sortir de la politique,
+// retirer son plafond, ou la lancer derrière un réveil → ce test rougit.
+test("㉟ ter cadence : calme, et plus d'une heure sans passage — la veille relance la Sentinelle, une fois dans l'heure, et le note ; ni en pause, ni pendant un passage, ni derrière un réveil, ni à l'aveugle", async () => {
+  // Un plafond EN BASE qui compte vraiment (le décor rend toujours « ok ») : par compte et par fonction.
+  const consommes = [];
+  const plafondReel = (a) => {
+    const n = consommes.filter((c) => c.p_uid === a.p_uid && c.p_fonction === a.p_fonction).length;
+    if (n >= a.p_par_heure) return { ok: false, retry_after_s: 600 };
+    consommes.push(a);
+    return { ok: true };
+  };
+  const dispatches = () => appelsGithub("POST", /\/dispatches$/);
+  // Le cas mesuré le 21/11 : rien n'échoue, dernier passage il y a 70 min.
+  await monter({ battement: false, rpc: { plafond_consommer: plafondReel } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(70 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 1);
+  assert.match(dispatches()[0].chemin, /\/actions\/workflows\/sentinelle-autonome\.yml\/dispatches$/);
+  assert.deepEqual(dispatches()[0].corps, { ref: "main" }, "seule la branche part vers GitHub");
+  assert.equal(evenements(EVT.cadence).length, 1);
+  assert.match(evenements(EVT.cadence)[0].properties.raison, /il y a 70 min/);
+  assert.equal(evenements(EVT.reveil).length, 0, "ce n'est pas un réveil : rien n'échoue");
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "fait");
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "calme");
+  // Le tour suivant : GitHub ne liste pas encore le passage lancé — le plafond en base tient.
+  minuteSuivante();
+  await veille();
+  assert.equal(dispatches().length, 1, "une seule relance dans l'heure");
+  assert.equal(evenements(EVT.cadence).length, 1);
+  // Un passage de 50 min : rien à faire.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(50 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "run_recent");
+  // Un passage en cours (ou en file) depuis longtemps : on attend, on n'empile pas.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ status: "in_progress", conclusion: null, le: ilYa(3 * 3600e3) })];
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "run_en_cours");
+  // La pause du pilote suspend la cadence comme le réveil.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(10 * 3600e3) })];
+  banc.gh.issues.push(issue({ number: 90, title: TITRE_PAUSE, user: { login: "PASSIO74" } }));
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "politique:pause");
+  // Le réveil vient de la lancer : la cadence ne relance pas le même passage.
+  await monter({ battement: false, rpc: { pilotage_audience: () => ({ ...AUDIENCE_CALME, comptes_echecs_30min: 3 }) } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];
+  await veille();
+  assert.equal(dispatches().length, 1);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "fait");
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "reveil");
+  assert.equal(evenements(EVT.cadence).length, 0);
+  // Un réveil INTERROMPU (GitHub ne répond pas dans le délai : il a peut-être accepté) : la cadence
+  // n'envoie pas un second passage dans le même tour — un seul envoi tenté.
+  await monter({ battement: false, rpc: { pilotage_audience: () => ({ ...AUDIENCE_CALME, comptes_echecs_30min: 3 }) } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && /dispatches$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  await veille();
+  assert.equal(dispatches().length, 1, "le réveil seul a tenté l'envoi");
+  assert.match(evenements(BATTEMENT)[0].properties.gestes.reveil, /^erreur:/);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "reveil");
+  // Le quota du réveil épuisé n'arrête pas le passage de l'heure : deux gestes, deux comptes.
+  await monter({ battement: false, rpc: { pilotage_audience: () => ({ ...AUDIENCE_CALME, comptes_echecs_30min: 3 }) } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(3 * 3600e3) })];
+  banc.base.semer("analytics_events", Array.from({ length: 12 }, (_, i) => ({ user_id: "systeme:pilotage", event: EVT.reveil, created_at: ilYa((i + 1) * 3600e3), properties: {} })));
+  await veille();
+  assert.equal(dispatches().length, 1);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.reveil, "quota_du_jour");
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "fait");
+  // Les passages illisibles : rien à l'aveugle, et le battement le dit.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(10 * 3600e3) })];
+  banc.gh.panne = (m, chemin) => (/\/actions\/workflows\/sentinelle-autonome\.yml\/runs/.test(chemin) ? { status: 502 } : null);
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "run_illisible");
+  // GitHub refuse le départ : rien n'est noté comme parti.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(10 * 3600e3) })];
+  banc.gh.panne = (m, chemin) => (m === "POST" && /dispatches$/.test(chemin) ? { status: 403 } : null);
+  await veille();
+  assert.equal(evenements(EVT.cadence).length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "refus_github_403");
+  // Un passage CASSÉ il y a 90 min : la cadence s'espace (un e-mail par passage rouge) ; à 2 h 10, elle relance.
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ conclusion: "failure", le: ilYa(90 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "echec_recent");
+  await monter({ battement: false });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ conclusion: "failure", le: ilYa(130 * 60e3) })];
+  await veille();
+  assert.equal(dispatches().length, 1);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "fait");
+  // Sans jeton GitHub : inactive, dit.
+  await monter({ battement: false, env: { PILOTAGE_GITHUB_TOKEN: undefined } });
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ le: ilYa(10 * 3600e3) })];
+  await veille();
+  assert.equal(dispatches().length, 0);
+  assert.equal(evenements(BATTEMENT)[0].properties.gestes.cadence, "inactif");
 });
 
 test("㉟ bis l'essai des alertes : sans aucune alerte depuis 7 jours, UN essai part de jour, se note « essai » et ne repart pas ; la nuit, rien ne sonne", async (t) => {
@@ -1292,7 +1402,7 @@ test("㊳ bis deux pilotes : ce qui dispense du parcours, ce sont des ADRESSES p
 
 // ═══ SUITES DE #848 (2026-11-12) — les trous côté écran relevés par sa seconde relecture ═══════════════
 
-test("㊴ dix exécutions de la PR d'un fork (branche « main ») ne chassent plus les nôtres : la Sentinelle et la veille se lisent par événement, filtrées par GitHub — « n'a pas tourné depuis 8 h » reste dit", async () => {
+test("㊴ dix exécutions de la PR d'un fork (branche « main ») ne chassent plus les nôtres : la Sentinelle et la veille se lisent par événement, filtrées par GitHub — « n'a pas tourné depuis plus de 3 h » reste dit", async () => {
   await monter();
   // Avant : une lecture « branch=main », filtrée ENSUITE ici — les dix places prises par le fork, `runs.sentinelle` à null, plus d'orange.
   const duFork = (id, minutes) => run({ event: "pull_request", head_branch: "main", head_repository: { full_name: "inconnu/passio-app" }, conclusion: "action_required", id, le: ilYa(minutes * 60e3) });
@@ -1300,7 +1410,7 @@ test("㊴ dix exécutions de la PR d'un fork (branche « main ») ne chassent pl
   const r = await appeler({ action: "etat" });
   assert.ok(r.corps.github.runs.sentinelle, "notre exécution est lue malgré les dix du fork : " + JSON.stringify(r.corps.github.runs));
   assert.equal(r.corps.github.runs.sentinelle.conclusion, "success");
-  assert.match(r.corps.verdict.raisons.join(" "), /la Sentinelle n'a pas tourné depuis plus de 8 h/);
+  assert.match(r.corps.verdict.raisons.join(" "), /la Sentinelle n'a pas tourné depuis plus de 3 h/);
   assert.ok(ligneAFaire(r, "sentinelle:muette"), JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
   // Une lecture par événement qui lance le workflow, filtrée par GitHub — aucune sans filtre.
   const lectures = appelsGithub("GET", /sentinelle-autonome\.yml\/runs/).map((x) => x.chemin);
