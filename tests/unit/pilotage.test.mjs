@@ -901,7 +901,8 @@ const touteLaPanne = (extra = {}) => ({
       iss(7, [], { pr: true, correctif: true, titre: "fix: x" }),
     ],
     runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE },
-      securite: { conclusion: "failure", etat: "completed", le: MUTE_LE, url: "https://github.com/P/p/actions/runs/9" } },
+      securite: { conclusion: "failure", etat: "completed", le: MUTE_LE, url: "https://github.com/P/p/actions/runs/9" },
+      fonctions: { conclusion: "failure", etat: "completed", le: MUTE_LE, url: "https://github.com/P/p/actions/runs/10" } },
     aReparer: [
       { cible: "issue", numero: 1, libelle: "#1", enCours: null }, { cible: "issue", numero: 2, libelle: "#2", enCours: 5 }, { cible: "issue", numero: 3, libelle: "#3", enCours: null },
       { cible: "run", cle: "deploy", libelle: "d", enCours: null }, { cible: "run", cle: "veille", libelle: "v", enCours: null },
@@ -923,13 +924,14 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
     const pbs = aFaire(d, MAINTENANT_AF).filter((x) => x.prio <= 1 && !x.enCours);
     assert.ok(pbs.length >= 8, "le banc couvre bien toutes les familles : " + pbs.map((x) => x.id));
     assert.ok(pbs.some((x) => x.id === "scan:securite"), "le banc couvre le scan de sécurité (relecture de #866)");
+    assert.ok(pbs.some((x) => x.id === "fonctions:deploiement"), "le banc couvre le déploiement des fonctions serveur (2026-11-21)");
     for (const x of pbs) {
       const principaux = x.gestes.filter((g) => g.principal);
       if (x.id.startsWith("signalement:")) {
         assert.equal(principaux.length, 0, "aucune machine ne décide d'un signalement");
         assert.deepEqual(x.gestes.map((g) => g.corps.statut), ["handled", "dismissed"]);
       } else if (x.etiquette === "À trier") {
-        // Un tri HUMAIN (le scan de sécurité) : un lien, jamais un « Régler » ni une action de la fonction.
+        // Un tri HUMAIN (le scan de sécurité, une fonction serveur retenue) : un lien, jamais un « Régler » ni une action de la fonction.
         assert.equal(principaux.length, 1, x.id);
         assert.equal(principaux[0].libelle, "Ouvrir", x.id);
         assert.ok(principaux[0].ouvrir && !principaux[0].special, x.id);

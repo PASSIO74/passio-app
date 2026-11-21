@@ -106,14 +106,14 @@ const run = (extra = {}) => {
 // Ce que GitHub pose sur chaque exécution et que le banc ne répète pas : l'événement qui l'a
 // lancée (une mise en ligne part d'un `push`, la Sentinelle et la veille d'une planification),
 // la branche et le dépôt de tête, la tentative.
-const EVENEMENT_HABITUEL = { "deploy.yml": "push", "sentinelle-autonome.yml": "schedule", "veille-production.yml": "schedule", "securite.yml": "schedule" };
+const EVENEMENT_HABITUEL = { "deploy.yml": "push", "sentinelle-autonome.yml": "schedule", "veille-production.yml": "schedule", "securite.yml": "schedule", "edge-functions.yml": "push" };
 const runComplet = (fichier, r) => ({ event: EVENEMENT_HABITUEL[fichier], head_branch: "main", head_repository: { full_name: DEPOT }, run_attempt: 1, ...r });
 const issue = (x) => ({ state: "open", labels: [], html_url: "https://github.com/" + DEPOT + "/issues/" + x.number, created_at: ilYa(3600e3), user: { login: "github-actions[bot]" }, body: "", ...x, labels: (x.labels || []).map((l) => (typeof l === "string" ? { name: l } : l)) });
 const pr = (x) => ({ number: x.number, state: "open", draft: false, mergeable: true, node_id: "PR_" + x.number, updated_at: ilYa(600e3), auto_merge: null, title: "Correctif " + x.number,
   html_url: "https://github.com/" + DEPOT + "/pull/" + x.number, created_at: ilYa(3600e3), labels: [], user: { login: "github-actions[bot]" },
   head: { ref: "claude/issue-7-1", sha: sha("c"), repo: { full_name: DEPOT } }, ...x });
 function githubCalme() {
-  return { issues: [], pulls: [], commentaires: {}, runs: { "deploy.yml": [run()], "sentinelle-autonome.yml": [run()], "veille-production.yml": [run()], "securite.yml": [run({ le: ilYa(3 * 864e5) })] },
+  return { issues: [], pulls: [], commentaires: {}, runs: { "deploy.yml": [run()], "sentinelle-autonome.yml": [run()], "veille-production.yml": [run()], "securite.yml": [run({ le: ilYa(3 * 864e5) })], "edge-functions.yml": [run({ le: ilYa(2 * 864e5) })] },
     // `tentatives` : { <id du run> : { <n> : la tentative n } } — ce que rend /actions/runs/<id>/attempts/<n>.
     tentatives: {}, panne: null, fusion: { status: 200 }, autoFusion: true, expiration: null, prochainNumero: 900, lenteur: null };
 }
@@ -1510,10 +1510,73 @@ test("㊸ le scan de sécurité se voit — À TRIER par Benjamin, jamais « Ré
   assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, le scan de sécurité/);
 });
 
+test("㊸ bis un déploiement de fonctions serveur en échec SE VOIT (le 20/11 rejoué) — à trier par Benjamin : un lien vers le run, ni « Régler » ni réparation ; seuls ses passages sur push comptent ; relancé et vert, la ligne s'efface ; illisible, c'est dit sans figer la veille", async () => {
+  // Le 20/11 rejoué : le push c6efb27 a rougi (run 44831711346), le contournement manuel du 21/11 est vert.
+  // Un passage lancé à la main ne déploie qu'une fonction, ou le staging : il ne cache pas le push rouge.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ event: "workflow_dispatch", id: 44867428203, le: ilYa(3600e3) }), run({ conclusion: "failure", id: 44831711346, le: ilYa(14 * 3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
+  let r = await appeler({ action: "etat" });
+  const l = ligneAFaire(r, "fonctions:deploiement");
+  assert.ok(l, JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
+  assert.deepEqual([l.titre, l.prio, l.etiquette], ["Des fonctions serveur n'ont pas été déployées", 1, "À trier"]);
+  assert.equal(l.quoi, "Son résumé dit laquelle, et pourquoi.");
+  assert.match(l.reference, /une migration à appliquer avant la fonction \(le résumé la nomme\), ou le jeton Supabase de la CI expiré/);
+  assert.match(l.reference, /celle qui attend sert toujours sa version d'avant/);
+  assert.match(l.reference, /relance ce passage \(« Re-run failed jobs »\) : il rattrape ce qui est en retard, et un passage vert efface cette ligne/);
+  assert.match(String(l.url), /\/runs\/44831711346$/, "le lien mène au push en échec, pas au passage manuel");
+  assert.equal(l.gestes.length, 1);
+  assert.ok(l.gestes[0].ouvrir && !l.gestes[0].corps && l.gestes[0].libelle === "Ouvrir", "un lien, aucune action de la fonction");
+  assert.ok(!(r.corps.aFaire || []).some((x) => x.id === "run:fonctions"), "pas une exécution « en échec » à faire réparer");
+  assert.ok(!(r.corps.github.aReparer || []).some((x) => x.cle === "fonctions"), "rien à confier à un agent : la cause est une migration ou un jeton");
+  assert.equal(r.corps.verdict.couleur, "vert", "une fonction en retard n'est pas une panne de la production : " + JSON.stringify(r.corps.verdict));
+  assert.equal((await appeler({ action: "reparer", cible: "run", cle: "fonctions" })).status, 400);
+  assert.equal(appelsGithub("POST", /\/issues$/).length, 0);
+  // Seuls les passages sur PUSH sont demandés à GitHub, sur main.
+  const lus = appelsGithub("GET", /edge-functions\.yml\/runs/);
+  assert.equal(lus.length, 1, lus.map((x) => x.chemin).join(" | "));
+  assert.ok(/event=push&/.test(lus[0].chemin) && /branch=main/.test(lus[0].chemin), lus[0].chemin);
+  // La cause réglée, le run RELANCÉ (même identifiant, deuxième tentative) et vert : plus rien à dire.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ id: 44831711346, run_attempt: 2, le: ilYa(14 * 3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement"), null, "relancé et vert, la ligne s'efface");
+  // …et pendant la relance, l'échec qu'elle rejoue reste dit (la tentative d'avant se relit).
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ status: "in_progress", conclusion: null, id: 44831711346, run_attempt: 2, le: ilYa(14 * 3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
+  banc.gh.tentatives["44831711346"] = { 1: runComplet("edge-functions.yml", run({ conclusion: "failure", id: 44831711346, run_attempt: 1, le: ilYa(14 * 3600e3) })) };
+  assert.equal((ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement") || {}).titre, "Des fonctions serveur n'ont pas été déployées");
+  // Le push suivant réussit : la sélection relit l'état servi, tout ce qui devait partir est parti.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ id: 3, le: ilYa(3600e3) }), run({ conclusion: "failure", id: 2, le: ilYa(14 * 3600e3) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement"), null);
+  // Un passage manuel en échec (le staging, une fonction nommée) n'invente pas de ligne : qui l'a lancé le regarde.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ event: "workflow_dispatch", conclusion: "failure", id: 7, le: ilYa(3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement"), null);
+  // Annulé (évincé de la file), le précédent réussi : « n'a pas abouti », sans urgence.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [run({ conclusion: "cancelled", id: 8, le: ilYa(3600e3) }), run({ id: 1, le: ilYa(2 * 864e5) })];
+  const annule = ligneAFaire(await appeler({ action: "etat" }), "fonctions:deploiement");
+  assert.deepEqual([annule && annule.titre, annule && annule.prio, annule && annule.etiquette], ["Le déploiement des fonctions serveur n'a pas abouti", 2, "À trier"]);
+  // Aucun passage encore (un dépôt neuf) : rien à dire.
+  await monter();
+  banc.gh.runs["edge-functions.yml"] = [];
+  r = await appeler({ action: "etat" });
+  assert.equal(ligneAFaire(r, "fonctions:deploiement"), null);
+  assert.equal(r.corps.verdict.couleur, "vert");
+  // Illisible : l'écran ne passe pas au vert, et le dit — sans tenir la veille (`verdict` ne le lit pas).
+  await monter();
+  banc.gh.panne = (m, chemin) => (/edge-functions\.yml\/runs/.test(chemin) ? { status: 502 } : null);
+  r = await appeler({ action: "etat" });
+  assert.ok(r.corps.github.runsNonLus.includes("fonctions"));
+  assert.notEqual(r.corps.verdict.couleur, "vert");
+  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, le déploiement des fonctions serveur/);
+  // …et ㊹ prouve qu'illisible, il ne fige pas la veille.
+});
+
 test("㊹ un scan de sécurité ILLISIBLE ne fige pas la veille — `verdict` ne le lit pas : un rouge réglé sonne « résolu », le battement dit GitHub lu ; les exécutions que le voyant lit, elles, la tiennent toujours (relecture de #866)", async () => {
   const rougeMemorise = () => banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["dernier déploiement en échec"], alerteLe: ilYa(30 * 60e3) } }]);
-  // Le scan (un 404 durable si `securite.yml` est un jour renommé), ou l'activité de la veille : `verdict` ne les lit pas.
-  for (const [nom, motif] of [["le scan de sécurité", /securite\.yml\/runs/], ["l'activité de la veille", /veille-production\.yml\/runs/]]) {
+  // Le scan (un 404 durable si `securite.yml` est un jour renommé), l'activité de la veille, ou le déploiement des fonctions serveur (2026-11-21) : `verdict` ne les lit pas.
+  for (const [nom, motif] of [["le scan de sécurité", /securite\.yml\/runs/], ["l'activité de la veille", /veille-production\.yml\/runs/], ["le déploiement des fonctions serveur", /edge-functions\.yml\/runs/]]) {
     await monter({ battement: false });
     rougeMemorise();
     banc.gh.panne = (m, chemin) => (motif.test(chemin) ? { status: 404 } : null);

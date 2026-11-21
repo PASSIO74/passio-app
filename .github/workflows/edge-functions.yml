@@ -6,12 +6,32 @@ name: Edge Functions
 #
 # Jusqu'ici : `supabase functions deploy <nom>` à la main, depuis un poste, sans
 # version, sans test, sans trace — et l'état déployé n'était connu de personne.
-# Ce workflow déploie les fonctions déclarées à chaque fusion sur main qui touche
-# `supabase/functions/**` (idempotent : redéployer une fonction inchangée ne
-# change rien), ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
+# Ce workflow déploie les fonctions à chaque fusion sur main qui touche
+# `supabase/functions/**`, ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
 #   · OPTIONS → 200 (CORS) ;
 #   · POST sans jeton → 401 (« Non authentifié ») — la porte tient.
 # Le SHA déployé est écrit dans le résumé du run : c'est la trace.
+#
+# ⚠️ UN PUSH NE DÉPLOIE QUE CE QUI EST EN RETARD, ET UNE FONCTION RETENUE NE
+# RETIENT PLUS LES AUTRES (2026-11-21). Jusque-là, chaque push vérifiait puis
+# déployait les SIX fonctions : du 19 au 21/11, le prérequis de `private-media`
+# n'étant plus vrai en production, tout push était retenu en entier — le run
+# 44831711346 du 20/11 a rougi pour un changement qui ne concernait que
+# `pilotage`. Désormais :
+#   ① SÉLECTION (scripts/fonctions-a-deployer.mjs) : sur un push, seules les
+#      fonctions dont le code SERVI (X-Passio-Revision) n'est plus celui de ce
+#      commit — leur dossier, ou un module `_shared` qu'elles importent — sont
+#      vérifiées et déployées. C'est l'état servi qui décide, pas le diff du
+#      push : un run retenu, cassé ou évincé de la file est rattrapé par le
+#      suivant. À la demande (« Run workflow »), une fonction nommée, ou toutes.
+#   ② RETENUE PARTIELLE (verifier-prerequis-fonctions.mjs --partiel) : une
+#      fonction dont un prérequis obligatoire manque reste celle d'avant ; les
+#      autres partent et sont éprouvées.
+#   ③ VERDICT : s'il y a eu une retenue, le run rougit APRÈS — le résumé nomme
+#      la fonction, l'objet et la migration, et le pilotage en fait une ligne
+#      « À faire » (un run « Edge Functions » en échec sur main).
+# Banc : tests/unit/deploiement-fonctions.test.mjs (les étapes réelles, jouées
+# sous bash contre une fausse CLI), en tête des verrous avec le banc des imports.
 #
 # ⚠️ `SUPABASE_ACCESS_TOKEN` est le jeton PERSONNEL de la CLI (comme
 # `scripts/appliquer-migration.mjs`), jamais la clé service_role — l'API de
@@ -21,9 +41,16 @@ name: Edge Functions
 on:
   push:
     branches: [main]
+    # Le manifeste et les scripts de ce job comptent aussi : un prérequis corrigé relance la sélection, qui
+    # rattrape une fonction restée retenue ; quand rien n'est en retard, le run ne déploie rien.
     paths:
       - "supabase/functions/**"
       - ".github/workflows/edge-functions.yml"
+      - ".passio/deploiement/prerequis-fonctions.json"
+      - "scripts/fonctions-a-deployer.mjs"
+      - "scripts/verifier-prerequis-fonctions.mjs"
+      - "scripts/fumee-private-media.mjs"
+      - "scripts/lib/lecteur-imports.mjs"
   workflow_dispatch:
     inputs:
       fonction:
@@ -68,6 +95,7 @@ jobs:
       - name: Verrous unitaires des modules partagés
         run: |
           node --test tests/unit/edge-functions-verrous.test.mjs
+          node --test tests/unit/deploiement-fonctions.test.mjs
           node --test tests/unit/plafond.test.mjs
           node --test tests/unit/lien-metier.test.mjs
           node --test tests/unit/purge-compte.test.mjs
@@ -120,6 +148,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # La sélection compare ce commit à celui que SERT chaque fonction, parfois ancien : il faut
+          # l'historique. Un commit introuvable ne se lit jamais « à jour » : la fonction est déployée.
+          fetch-depth: 0
 
       # Node 22 (#753) : la version du job `audits` de deploy.yml, qui éprouve
       # toutes les suites de tests/unit sans node_modules, comme ici. En Node 20,
@@ -152,60 +183,87 @@ jobs:
           # Version figée : ce binaire reçoit le jeton personnel (E-07).
           version: 2.105.0
 
+      # ① LA SÉLECTION (2026-11-21) — ne vérifier et ne déployer que ce qui est en retard. Sur un push : les
+      # fonctions dont la révision servie n'est plus ce commit, sur ce qu'elles EMPORTENT (leur dossier et la
+      # clôture des imports de leur index.ts — le lecteur du banc des verrous). Le doute déploie : révision
+      # illisible, commit absent de l'historique, clôture incalculable. À la demande : la fonction nommée, ou
+      # toutes. Une requête OPTIONS par fonction, sans jeton ; rien n'est écrit.
+      - name: Sélection — les fonctions en retard sur ce commit (lecture seule)
+        id: selection
+        env:
+          ENTREE_FONCTION: ${{ github.event.inputs.fonction }}
+        run: |
+          set -euo pipefail
+          case "${ENTREE_FONCTION:-}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            node scripts/fonctions-a-deployer.mjs --cible "$SUPABASE_URL"
+          elif [ -n "${ENTREE_FONCTION:-}" ]; then
+            node scripts/fonctions-a-deployer.mjs --fonction "$ENTREE_FONCTION"
+          else
+            node scripts/fonctions-a-deployer.mjs --toutes
+          fi
+
       # ⚠️ ASTRA-64 (sixième contre-revue, 2026-09-16) — LA RETENUE. « fusion →
       # migration → déploiement » n'était garanti par rien : ce workflow partait
       # au push. Ici, AVANT de déployer, on LIT la cible (en lecture seule :
       # `set transaction read only`) et on vérifie que chaque objet SQL qu'une
       # fonction exige (`.passio/deploiement/prerequis-fonctions.json`) existe.
-      # Un prérequis obligatoire absent → cette étape échoue → RIEN n'est
-      # déployé : la fonction en service reste celle d'avant, et le résumé nomme
-      # la migration à appliquer (canal ③, avec preuve de revue). Un prérequis
+      # Un prérequis obligatoire absent → la fonction qui l'exige n'est PAS
+      # déployée : celle en service reste celle d'avant, et le résumé nomme la
+      # migration à appliquer (canal ③, avec preuve de revue). Un prérequis
       # facultatif absent est dit, pas bloquant (dégradation honnête).
-      # Banc : tests/sql/prerequis-fonctions.test.sh (PostgreSQL réel).
+      # ② `--partiel` (2026-11-21) : cette retenue ne retient plus les AUTRES
+      # fonctions — elles partent (`deployables`), et l'étape « Verdict » rougit
+      # le run après elles. Une cible ILLISIBLE, elle, arrête tout ici (code 2).
+      # Bancs : tests/sql/prerequis-fonctions.test.sh (PostgreSQL réel),
+      # tests/unit/deploiement-fonctions.test.mjs.
       - name: Retenue — prérequis SQL des fonctions sur la cible (lecture seule)
+        id: retenue
+        if: steps.selection.outputs.concernees != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          ENTREE_FONCTION: ${{ github.event.inputs.fonction }}
+          CONCERNEES: ${{ steps.selection.outputs.concernees }}
         run: |
           set -euo pipefail
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
             echo "::error::SUPABASE_ACCESS_TOKEN absent — la cible n'est pas lisible : déploiement RETENU."
             exit 1
           fi
-          FONCTIONS="${ENTREE_FONCTION:-}"
-          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage private-media"; fi
-          node scripts/verifier-prerequis-fonctions.mjs --fonctions "$FONCTIONS" --projet "$PROJECT_REF"
+          node scripts/verifier-prerequis-fonctions.mjs --fonctions "$CONCERNEES" --projet "$PROJECT_REF" --partiel
 
       # La RÉVISION servie (dossier de livraison §6) : le SHA déployé est écrit
       # dans le bundle, chaque réponse le porte (X-Passio-Revision), la fumée le
-      # relit. C'est l'identifiant vérifiable de « quelle version tourne ».
+      # relit. C'est l'identifiant vérifiable de « quelle version tourne » — et,
+      # depuis le 2026-11-21, ce que la sélection relit au run suivant.
       - name: Révision — écrire le SHA dans le bundle
+        if: steps.retenue.outputs.deployables != ''
         run: |
           set -euo pipefail
           printf 'export const REVISION = "%s";\n' "${{ github.sha }}" > supabase/functions/_shared/revision.js
           cat supabase/functions/_shared/revision.js
 
       - name: Déployer
+        if: steps.retenue.outputs.deployables != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          ENTREE_FONCTION: ${{ github.event.inputs.fonction }}
+          DEPLOYABLES: ${{ steps.retenue.outputs.deployables }}
         run: |
           set -euo pipefail
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
             echo "::error::SUPABASE_ACCESS_TOKEN absent — poser le jeton personnel de la CLI dans les secrets du dépôt."
             exit 1
           fi
-          FONCTIONS="${ENTREE_FONCTION:-}"
-          case "${FONCTIONS}" in ''|ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage private-media"; fi
+          # Le plan vient de la retenue (des noms du manifeste) ; la liste reste FERMÉE ici, là où est le jeton.
+          for f in $DEPLOYABLES; do
+            case "$f" in ask-ai|notify-call|delete-account|export-account|pilotage|private-media) ;; *) echo "::error::Fonction inconnue."; exit 1 ;; esac
+          done
           # ⚠️ `--yes` (2026-11-03) : la CLI `latest` demande désormais une
           # confirmation avant de déployer — « This run can't ask because stdout
           # is not a terminal. Nothing was changed. » — et sortait en 1 : deux
           # déploiements de suite refusés (89bf6f4a, 36f5b3b2), la fonction en
           # service restant l'ancienne. Le message « jeton absent » plus haut
           # n'y était pour rien (le secret était présent, masqué `***`).
-          for f in $FONCTIONS; do
+          for f in $DEPLOYABLES; do
             echo "── déploiement : $f ──"
             if [ "$f" = "private-media" ]; then
               # Seul ce handler accepte des lectures publiques sous RLS et vérifie lui-même les JWT fournis.
@@ -214,15 +272,21 @@ jobs:
               supabase functions deploy "$f" --project-ref "$PROJECT_REF" --yes
             fi
           done
-          echo "DEPLOYEES=$FONCTIONS" >> "$GITHUB_ENV"
+          echo "DEPLOYEES=$DEPLOYABLES" >> "$GITHUB_ENV"
 
+      # `private-media` : la fumée exige que la fonction déployée serve l'état du réglage que la retenue vient
+      # de LIRE (`etat_medias_proteges_actif`), ouvert ou fermé. Jusqu'au 19/11 elle exigeait « fermé », le
+      # contrôle de la préparation : un courtier ouvert n'aurait pas pu être redéployé sans rougir.
       - name: Test de fumée (CORS, porte d'authentification)
+        if: steps.retenue.outputs.deployables != ''
+        env:
+          MEDIAS_ACTIFS: ${{ steps.retenue.outputs.etat_medias_proteges_actif }}
         run: |
           set -euo pipefail
           ko=0
           for f in $DEPLOYEES; do
             if [ "$f" = "private-media" ]; then
-              PASSIO_MEDIA_SMOKE_URL="$SUPABASE_URL" PASSIO_MEDIA_SMOKE_REVISION="${{ github.sha }}" node scripts/fumee-private-media.mjs
+              PASSIO_MEDIA_SMOKE_URL="$SUPABASE_URL" PASSIO_MEDIA_SMOKE_REVISION="${{ github.sha }}" PASSIO_MEDIA_SMOKE_ACTIF="${MEDIAS_ACTIFS:-}" node scripts/fumee-private-media.mjs
               continue
             fi
             url="$SUPABASE_URL/functions/v1/$f"
@@ -239,12 +303,29 @@ jobs:
           [ "$ko" -eq 0 ]
 
       - name: Trace
+        env:
+          A_JOUR: ${{ steps.selection.outputs.a_jour }}
+          RETENUES: ${{ steps.retenue.outputs.retenues }}
         run: |
           {
             echo "## Edge Functions déployées"
             echo ""
             echo "- Commit : \`${{ github.sha }}\`"
-            echo "- Fonctions : $DEPLOYEES"
+            echo "- Déployées : ${DEPLOYEES:-aucune}"
+            echo "- Déjà à jour (ni vérifiées, ni déployées) : ${A_JOUR:-aucune}"
+            echo "- Retenues (un prérequis SQL obligatoire manque) : ${RETENUES:-aucune}"
             echo "- Cible : $PROJECT_REF"
             echo "- Fumée : contrat HTTP des fonctions déployées et X-Passio-Revision = ${{ github.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # ③ LE VERDICT — la retenue ne bloque plus que SA fonction, mais elle ne passe pas pour un succès :
+      # le code de `main` n'est pas celui qui tourne. Le run rougit ICI, une fois les autres déployées et
+      # éprouvées ; le pilotage lit ce run (« fonctions ») et en fait une ligne « À faire ». Le run suivant,
+      # ou ce workflow relancé une fois la migration appliquée, rattrape la fonction (sélection par l'état servi).
+      - name: Verdict — une fonction retenue rend le run rouge, après le déploiement des autres
+        if: steps.retenue.outputs.retenues != ''
+        env:
+          RETENUES: ${{ steps.retenue.outputs.retenues }}
+        run: |
+          echo "::error title=Fonction(s) retenue(s)::$RETENUES — un prérequis SQL obligatoire manque sur la cible : la version en service reste celle d'avant. Le résumé du run nomme l'objet et la migration ; l'appliquer (canal ③, avec preuve de revue), puis relancer ce workflow — il rattrape ce qui est en retard."
+          exit 1

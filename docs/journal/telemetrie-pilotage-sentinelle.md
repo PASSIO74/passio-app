@@ -57,6 +57,7 @@
 - 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 - 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
+- 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1904,3 +1905,60 @@ empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas 
 prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
 À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
 des `perf`, avant et après.
+
+## 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
+
+**Constat, mesuré le 21/11.** `edge-functions.yml` vérifiait puis déployait les SIX fonctions à chaque push qui touchait `supabase/functions/**`. Le manifeste des prérequis (`.passio/deploiement/prerequis-fonctions.json`) exigeait pour `private-media` : `reglage:medias_proteges.actif=false`. Or le pilote a ouvert les médias protégés depuis le téléphone le **19/11 à 10:43:13 UTC** (canal ① : `reglages_distants.medias_proteges = {"actif": true}`, `pose_par: pilote`). Depuis, tout déploiement « toutes fonctions » était retenu EN ENTIER :
+- run 44831711346 (push c6efb27, 20/11 22:46 UTC) : cinq fonctions « prérequis présents », `private-media` RETENUE, **rien de déployé** ;
+- ce push ne changeait que `_shared/politique-autonomie.js`, emporté par `pilotage` seule ;
+- le run d'avant (19/11 07:24 UTC, avant l'ouverture) était vert ; le contournement du 21/11 a été un passage manuel `fonction=pilotage` (run 44867428203) ;
+- personne n'a vu le rouge avant le lendemain : aucun lecteur du pilotage ne lisait ce workflow.
+
+**La décision : « actif=false » était un contrôle de la PRÉPARATION, pas une règle.** ADR-014, « Ordre de livraison retenu le 17 novembre », étape 1 : livrer le courtier sur un serveur FERMÉ (« avant le déploiement privé, la retenue exige la valeur JSON `false` »). L'étape 3 est l'ouverture, faite le 19/11. Aucun texte ne dit « on ne redéploie jamais `private-media` pendant qu'elle sert », et une telle règle coûterait cher : pour livrer un correctif de sécurité du courtier, il faudrait d'abord couper les lectures et les envois de tous les comptes. Un déploiement de fonction est un remplacement de version, comme pour les cinq autres. Le prérequis est donc **retiré**, et remplacé par ce qui reste vrai après l'ouverture :
+- `reglage:medias_proteges.actif:booleen` — l'interrupteur EXISTE et porte un booléen JSON (absent, `{}`, `"true"`, `1` : le serveur le tient pour fermé, mais personne ne l'a décidé — retenue) ;
+- sa VALEUR n'est plus une condition : elle est LUE (`etat:medias_proteges.actif`) et la fumée exige que la fonction déployée serve exactement cet état.
+
+**Ce qui change.**
+- **① La sélection** (`scripts/fonctions-a-deployer.mjs`). Sur un push, chaque fonction dit ce qu'elle SERT (`X-Passio-Revision`, une requête OPTIONS sans jeton). Git dit si un fichier qu'elle emporte a changé depuis ce commit-là : son dossier, et la clôture des imports de son `index.ts`. Rien n'a changé : ni vérifiée, ni déployée. Le doute déploie : révision illisible ou « dev », commit absent de l'historique, clôture incalculable, fonction injoignable. À la demande (« Run workflow »), la fonction nommée, ou toutes.
+- **② La retenue partielle** (`verifier-prerequis-fonctions.mjs --partiel`). Une fonction dont un prérequis obligatoire manque reste celle d'avant ; les autres partent et sont éprouvées. Une cible ILLISIBLE arrête toujours tout (code 2). Sans `--partiel`, le contrat d'avant tient (code 1) : les bancs SQL et un contrôle à la main.
+- **③ Le verdict.** S'il y a eu une retenue, le run rougit APRÈS le déploiement des autres. Son résumé nomme la fonction, l'objet manquant, la migration à appliquer et la raison ; la page du run porte une annotation par fonction retenue.
+- **④ La fumée de `private-media`** (`scripts/fumee-private-media.mjs`) reçoit l'état lu, sans valeur par défaut. Elle rougit dans les deux sens : un courtier « ouvert » quand la coupure est posée, ou l'inverse.
+- **⑤ Le pilotage.** La fonction lit les passages `push` d'`edge-functions.yml` (`runs.fonctions`). En échec : la ligne « Des fonctions serveur n'ont pas été déployées », étiquette « À trier », un lien vers le run, jamais « Régler » — ce qu'elle attend est une migration (canal ③, avec sa revue) ou un jeton, pas un agent. Illisible, c'est dit, sans figer la veille.
+
+**Pourquoi l'état servi, et pas le diff du push.** Un diff ne connaît que son push. Un run retenu, cassé ou ÉVINCÉ de la file (la concurrence du workflow ne garde qu'un run en attente : le deuxième de trois pushes rapprochés est annulé) emportait son changement avec lui : la fonction restait en retard jusqu'au prochain push qui la touche. Jusqu'ici, « tout redéployer à chaque fois » rattrapait ce retard par accident. L'état servi se relit : le run suivant, ou le même run relancé, livre ce que le précédent n'a pas livré.
+
+**Mesuré.**
+- Production, canal ①, 21/11 : la requête du nouveau vérificateur rend les **49 prérequis des six fonctions présents**, `reglage:medias_proteges.actif:booleen` présent, `etat:medias_proteges.actif` = true.
+- Le 20/11 rejoué sur l'historique réel (toutes les fonctions servies à 9a9ae7d, `main` à c6efb27) : seule `pilotage` est sélectionnée.
+- Bancs PostgreSQL réels : `prerequis-fonctions.test.sh` 27 contrôles (19 avant), `migration-medias-proteges.test.sh` 197 cas, le réglage ouvert ne retient plus, quatre formes non booléennes retiennent.
+- **Non éprouvé d'ici** : la lecture réelle des révisions servies (le bac de travail n'atteint pas `*.supabase.co`). La première preuve sera le run de la fusion de ce lot : il doit sélectionner `pilotage` seule (elle sert c6efb27 et son code change), laisser les cinq autres à 9a9ae7d, et finir vert.
+
+**Quand une fonction est retenue.** Ouvrir le run depuis la ligne du pilotage. Appliquer la migration nommée (`npm run migration:appliquer -- <fichier>`, canal ③, contre-revue), mesurer l'état en base (canal ①), puis relancer le run (« Re-run failed jobs ») : la sélection ne trouve plus que la fonction en retard, la déploie, et le vert efface la ligne. Rien d'autre à redéployer, rien à couper.
+
+**Redéployer `private-media` pendant qu'elle sert.** Aucune fenêtre, aucune coupure : un push qui change son code la déploie comme les autres. Les garde-fous sont ceux d'avant, plus la fumée : les verrous unitaires exécutent le vrai gestionnaire avant le déploiement, les registres et l'interrupteur sont vérifiés sur la cible, et la fumée relit la révision, le non-cache, le refus d'un jeton invalide et l'état du réglage. En cas de doute sur une version livrée : poser la coupure depuis le pilotage (bouton « Suspendre les médias protégés »), puis livrer le correctif — la coupure ne retient plus son propre remède.
+
+⚠️ **UN PRÉREQUIS NE PORTE PAS SUR LA VALEUR D'UN RÉGLAGE QUE L'EXPLOITATION CHANGE.** Un prérequis dit « la cible sait faire tourner ce code » : une table, une fonction SQL, une empreinte. « Le réglage vaut false » décrivait un MOMENT du plan de livraison ; le moment passé, il retenait tout, y compris le correctif qui aurait permis de refermer. `deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
+
+⚠️ **LA FUMÉE PORTAIT LE MÊME RELIQUAT, UN CRAN PLUS LOIN.** Elle exigeait `uploads_enabled: false` (`PRIVATE_MEDIA_PREPARATION_VERIFIED`). Le prérequis retiré seul, `private-media` aurait été DÉPLOYÉE puis le run aurait rougi à la fumée : un courtier remplacé en production et un rouge sans défaut. Chercher l'hypothèse d'une phase dans TOUS les contrôles qui la portent, pas dans le premier qui rougit.
+
+⚠️ **UN PASSAGE MANUEL NE DIT RIEN DU RESTE.** Un passage lancé à la main déploie une fonction, ou le staging. Lu comme un push, le passage vert du 21/11 aurait effacé la ligne du push rouge de la veille. `EVENEMENTS_RUNS.fonctions` ne compte que `push` ; le run rouge se relance (même identifiant, la tentative d'avant se relit).
+
+⚠️ **UN RUN ANCIEN RELANCÉ NE FAIT RIEN RECULER.** `gh run rerun --failed` sur un vieux run rouge redéployait l'ancien code par-dessus le nouveau. Une révision servie qui DESCEND du commit du run est tenue pour à jour. Un retour arrière voulu passe par un commit de `main`.
+
+⚠️ **`revision.js` EST DANS CHAQUE CLÔTURE.** Y toucher (même son commentaire) met les six fonctions en retard. Le banc l'a montré à ses dépens : le harnais committait la révision écrite par le run précédent, et « un module de `pilotage` change » déployait tout.
+
+⚠️ **DEUX FONCTIONS PARTAGENT DES PRÉREQUIS.** `export-account` exige aussi les trois registres de médias : un registre absent retient `private-media` ET `export-account`. Le premier scénario du banc prenait `table:public.media_objects` pour un prérequis propre au courtier, et le vérificateur avait raison contre lui.
+
+⚠️ **`manifeste[f]` ACCEPTAIT `constructor`.** Une propriété héritée passait pour une fonction déclarée, sans prérequis : « prérequis présents ». La liste fermée du workflow l'arrêtait avant ; le vérificateur lit désormais `Object.hasOwn`, et refuse un nom hors `[a-z0-9-]`.
+
+**Verrous.**
+- `tests/unit/deploiement-fonctions.test.mjs` (19) joue le job RÉEL étape par étape sous `bash -e`, dans un dépôt git jetable : `if:` et `env:` évalués, sorties d'étape et `$GITHUB_ENV` transmis. Les scripts tournent tels quels ; la CLI, `curl` et le réseau sont faux (`tests/unit/lib/faux-monde-fonctions.mjs`, chargé par `NODE_OPTIONS=--import` : aucun crochet de test dans le code de production). Il est listé dans l'étape « Verrous », avant tout déploiement.
+- `tests/unit/edge-functions-verrous.test.mjs` : ⑩ chaque script que le job qui déploie exécute est importé par une suite listée ; ⑪ la clôture que lit la sélection est celle du banc (le lexeur a déménagé dans `scripts/lib/lecteur-imports.mjs` : un lecteur, deux emplois).
+- `private-media-chemins.test.mjs` (fumée ouverte, fermée, divergente, état non lu), `pilotage-chemins.test.mjs` ㊸ bis et ㊹, `pilotage.test.mjs` ㊴.
+
+**Réinjections**, chacune rouge : `--partiel` retiré du workflow (une retenue retient tout : zéro déploiement) ; la sélection remplacée par `--toutes` (les six partent pour un module de `pilotage`) ; l'étape « Verdict » retirée (une retenue rend le run vert) ; la CLI qui refuse une fonction (l'étape s'arrête, le run suivant rattrape) ; le banc du déploiement retiré de l'étape « Verrous » (⑩ et ② le nomment) ; un script neuf lancé par le job sans banc (⑩).
+
+**Limites connues.**
+- Entre la lecture du réglage et la fumée (une à deux minutes), un geste du pilote sur l'interrupteur fait rougir la fumée à tort. Le run se relance.
+- Une fonction en retard n'est rattrapée qu'au prochain run : un push qui touche les chemins du déclencheur, ou une relance. Rien ne le planifie.
+- Ce qui change la FAÇON de déployer sans changer le bundle (un drapeau de la CLI dans le workflow) ne met aucune fonction en retard : le déployer à la demande.

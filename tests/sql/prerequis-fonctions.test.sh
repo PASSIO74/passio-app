@@ -9,6 +9,8 @@
 #   ② barrière v2 seule (colonne `tentative_vivante` retirée, `auth_echec`
 #      absent du source) : encore RETENUE — v3 exigée, pas « une barrière » ;
 #   ③ v3 appliquée : autorisé ; export médias absent : retenu ; notify-call reste facultatif ;
+#   ③ bis `--partiel` (2026-11-21) : la retenue d'UNE fonction ne retient plus les
+#      autres — code 0, le plan part dans $GITHUB_OUTPUT (deployables, retenues) ;
 #   ④ lecture seule : la requête ne peut pas écrire (read only) ;
 #   ⑤ une fonction hors manifeste ne se déploie pas ;
 #   ⑥ MUTATION : retirer l'objet obligatoire du manifeste → le banc rougit ici
@@ -99,6 +101,23 @@ verifier "…retenue dite" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-
 verifier "…et notify-call (mentions serveur absentes) aussi" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ notify-call : dégradée" || true)"
 JOUER "delete-account notify-call"
 verifier "notify-call facultatif reste non bloquant" "0" "$CODE"
+
+echo "── ③ bis --partiel : UNE FONCTION RETENUE NE RETIENT PLUS LES AUTRES ────"
+# Le défaut du 20/11 (run 44831711346) : un prérequis absent pour une fonction retenait les six.
+PLAN="$BASE/plan.txt"
+JOUER_PARTIEL() { : > "$PLAN"; set +e; SORTIE="$(cd "$RACINE" && GITHUB_OUTPUT="$PLAN" node scripts/verifier-prerequis-fonctions.mjs --fonctions "$1" --psql "$CONN" --partiel 2>&1)"; CODE=$?; set -e; }
+JOUER_PARTIEL "delete-account export-account notify-call"
+verifier "code 0 : la cible a été lue, le job tranche après le déploiement des autres" "0" "$CODE"
+verifier "…export-account retenue, dite" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account : RETENUE" || true)"
+verifier "…le plan : delete-account et notify-call partent" "deployables=delete-account notify-call" "$(grep '^deployables=' "$PLAN")"
+verifier "…export-account ne part pas" "retenues=export-account" "$(grep '^retenues=' "$PLAN")"
+verifier "…et c'est dit : le run finira rouge" "1" "$(printf '%s\n' "$SORTIE" | grep -c "RETENUE PARTIELLE : export-account" || true)"
+JOUER_PARTIEL "delete-account notify-call"
+verifier "sans retenue : code 0, tout part" "deployables=delete-account notify-call|retenues=" "$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")"
+JOUER "delete-account export-account notify-call"
+verifier "sans --partiel, le contrat d'avant tient : code 1" "1" "$CODE"
+JOUER_PARTIEL "fonction-inconnue"
+verifier "--partiel n'ouvre rien : une fonction hors manifeste sort en 2, sans plan" "2|" "$CODE|$(cat "$PLAN")"
 
 echo "── ④ LECTURE SEULE ───────────────────────────────────────────────────────"
 verifier "une écriture dans la même forme de transaction est refusée" "REFUSE" "$(if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -1 -v ON_ERROR_STOP=1 -c "set transaction read only; create table public.tentative_ecriture (x int);" >/dev/null 2>&1; then echo OK; else echo REFUSE; fi)"

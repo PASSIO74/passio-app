@@ -1527,7 +1527,7 @@ async function lireGithub() {
   // jamais celle d'une PR d'un fork dont la branche s'appelle `main`). Une lecture refusée ou
   // muette se NOTE (`runsNonLus`) : un null se lisait comme « rien à dire ».
   const runsNonLus: string[] = [];
-  const run = async (cle: "deploy" | "sentinelle" | "veille" | "securite", f: string) => {
+  const run = async (cle: "deploy" | "sentinelle" | "veille" | "securite" | "fonctions", f: string) => {
     const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
     // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
     // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
@@ -1588,7 +1588,9 @@ async function lireGithub() {
       : PR_PAGES_MAX * 100 + " PR lues, la suite n'a pas pu l'être (" + (r ? "GitHub HTTP " + r.status : "GitHub muet") + ")" };
   };
   // Le scan de sécurité du lundi (`securite`) : lu pour être DIT, à trier par Benjamin — jamais réparé (RUNS_REPARABLES).
-  const [sentinelle, veille, deploy, securite, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), lirePulls()]);
+  // Le déploiement des fonctions serveur (`fonctions`, 2026-11-21) : de même — son run rouge (une fonction retenue,
+  // une fumée cassée) ne se voyait nulle part, du 20 au 21/11.
+  const [sentinelle, veille, deploy, securite, fonctions, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), run("fonctions", "edge-functions.yml"), lirePulls()]);
   const listePr = pulls.lignes;
   // CENT issues ouvertes ou plus : le dépôt est PUBLIC, n'importe qui en ouvre. Lire « les N plus
   // récentes » laissait un sujet `humain` se cacher derrière du bruit (D-18) — et dire « lecture
@@ -1618,7 +1620,7 @@ async function lireGithub() {
   const infosPr = new Map(listePr.map((p) => [p.number, resumerPr(p, DEPOT)]));
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite, fonctions }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
   // `runsNonLus` : ceux que le voyant lit (RUNS_DU_VOYANT) tiennent la VEILLE (on ne sait pas si la mise en
   // ligne a réussi) ; `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
   val.runsNonLus = runsNonLus;

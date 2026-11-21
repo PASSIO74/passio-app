@@ -45,12 +45,14 @@ if(tables) {
   sql('drop publication if exists supabase_realtime; drop schema banc_medias,public,auth,storage,realtime,extensions,net,cron,vault cascade; create schema public;');
 }
 sql(expand(path.join(root,'tests/sql/fixtures/medias-proteges-socle.sql')));
-function mediaPrerequisite(expected){
+// `flag` : l'etat du reglage que le verificateur doit avoir LU (true/false), ou undefined quand il retient avant.
+function mediaPrerequisite(expected,flag){
   const cliEnv=Object.fromEntries(Object.entries(env).filter(([k])=>k.toLowerCase()!=='path'));
   cliEnv.PATH=(path.isAbsolute(client)?path.dirname(client)+path.delimiter:'')+(env.PATH||env.Path||'');
   const r=spawnSync(process.execPath,[path.join(root,'scripts/verifier-prerequis-fonctions.mjs'),'--fonctions','private-media','--psql',`host=127.0.0.1 port=${port} user=postgres dbname=${database}`],{env:cliEnv,encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:65536});
   const verdict = expected === 0 ? 'private-media : prérequis présents' : 'private-media : RETENUE';
   if(r.error || r.status !== expected || !r.stdout.includes(verdict)) throw Error('private_media_native_prerequisite_failed');
+  if(flag !== undefined && !r.stdout.includes('réglage medias_proteges.actif lu sur la cible : ' + flag)) throw Error('private_media_native_flag_state_not_read');
 }
 mediaPrerequisite(1);report.deploymentRetainedBeforeSchema=true;
 const original=sql("select pg_get_functiondef('public.quota_stockage_ok()'::regprocedure)").text;
@@ -80,11 +82,21 @@ for(const phase of ['application','rejeu']) {
   if(!result.text.split('\n').some(line=>line.endsWith('|OK'))) throw new Error('migration_verdict_missing_'+phase);
   report[phase]=true;
 }
-mediaPrerequisite(0);report.deploymentAllowedAfterSchema=true;
+mediaPrerequisite(0,false);report.deploymentAllowedAfterSchema=true;
+// 2026-11-21 : le reglage OUVERT ne retient plus le courtier. « actif=false » etait le controle de la
+// preparation (ADR-014, etape 1) ; depuis l'ouverture du 19/11 il retenait tout redeploiement. Le
+// prerequis est un interrupteur POSE (un booleen JSON), et sa valeur est lue pour la fumee.
 sql(`update public.reglages_distants set valeur='{"actif":true}' where cle='medias_proteges';`);
 sql(migration);
-mediaPrerequisite(1);report.deploymentRetainedAfterEnabledReplay=true;
+mediaPrerequisite(0,true);report.deploymentAllowedAfterEnabledReplay=true;
+// Un interrupteur qui n'est pas un booleen (le serveur le tient pour ferme, personne ne l'a decide) retient.
+for(const invalide of ['{"actif":"true"}','{}','{"actif":null}','{"actif":1}']) {
+  sql(`update public.reglages_distants set valeur='${invalide}' where cle='medias_proteges';`);
+  mediaPrerequisite(1);
+}
+report.deploymentRetainedWithoutBooleanFlag=true;
 sql(`update public.reglages_distants set valeur='{"actif":false}' where cle='medias_proteges';`);
+mediaPrerequisite(0,false);
 sql(readFileSync(path.join(root,'tests/sql/fixtures/medias-proteges-cas.sql'),'utf8'));
 sql(readFileSync(path.join(root,'tests/sql/fixtures/medias-proteges-p1.sql'),'utf8'));
 verifierProjectionHeritage({sql,root});

@@ -1,4 +1,8 @@
 // Uniquement capabilities sur les deux projets autorisés, sans données utilisateur.
+// L'état attendu est celui que la retenue vient de LIRE sur la cible (2026-11-21) : jusqu'au 19/11 la fumée
+// exigeait des capacités fermées — le contrôle de la préparation — et aurait rougi tout redéploiement d'un
+// courtier ouvert. Elle exige désormais que la fonction déployée serve EXACTEMENT le réglage en base, ouvert
+// ou fermé : un courtier qui dirait « ouvert » quand la coupure est posée, ou l'inverse, ne passe pas.
 import { pathToFileURL } from 'node:url';
 
 const TARGETS = new Set([
@@ -12,9 +16,9 @@ const PROBES = [
   { method: 'OPTIONS', status: 405 },
   { method: 'GET', status: 401, invalidBearer: true },
 ];
-const EXPECTED = {
-  protocol: 1, min_client: 1, max_bytes: 27262976, uploads_enabled: false, reads_enabled: false,
-};
+const attendu = (actif) => ({
+  protocol: 1, min_client: 1, max_bytes: 27262976, uploads_enabled: actif, reads_enabled: actif,
+});
 const CACHE_HEADERS = ['Cache-Control', 'CDN-Cache-Control', 'Netlify-CDN-Cache-Control'];
 
 function refuse() {
@@ -40,8 +44,10 @@ async function readBody(response) {
   }
 }
 
-export async function verifierMediaPrive({ baseUrl, revision, fetchFn = globalThis.fetch }) {
-  if (!TARGETS.has(baseUrl) || typeof revision !== 'string' || !/^[0-9a-f]{40}$/.test(revision)) refuse();
+export async function verifierMediaPrive({ baseUrl, revision, actif, fetchFn = globalThis.fetch }) {
+  // `actif` n'a pas de valeur par défaut : un état non lu ne se devine pas.
+  if (!TARGETS.has(baseUrl) || typeof revision !== 'string' || !/^[0-9a-f]{40}$/.test(revision) || typeof actif !== 'boolean') refuse();
+  const EXPECTED = attendu(actif);
   const url = baseUrl + '/functions/v1/private-media/capabilities';
   for (const probe of PROBES) {
     const controller = new AbortController();
@@ -69,14 +75,16 @@ export async function verifierMediaPrive({ baseUrl, revision, fetchFn = globalTh
       controller.abort();
     }
   }
-  return { status: 'PRIVATE_MEDIA_PREPARATION_VERIFIED', requests: PROBES.length, revision, uploads_enabled: false, reads_enabled: false };
+  return { status: 'PRIVATE_MEDIA_VERIFIED', requests: PROBES.length, revision, uploads_enabled: actif, reads_enabled: actif };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.argv.length !== 2) refuse();
+    const etat = process.env.PASSIO_MEDIA_SMOKE_ACTIF;
+    if (etat !== 'true' && etat !== 'false') refuse();
     const result = await verifierMediaPrive({
-      baseUrl: process.env.PASSIO_MEDIA_SMOKE_URL, revision: process.env.PASSIO_MEDIA_SMOKE_REVISION,
+      baseUrl: process.env.PASSIO_MEDIA_SMOKE_URL, revision: process.env.PASSIO_MEDIA_SMOKE_REVISION, actif: etat === 'true',
     });
     console.log(JSON.stringify(result));
   } catch {
