@@ -18,8 +18,13 @@
 // chaîne : un service de connexion en 5xx, un e-mail qui ne part pas, une
 // exception, « Mot de passe oublié ? », le départ vers Google, le nouveau mot
 // de passe et le renvoi du lien en panne. Chacune laisse un signal en code
-// fermé, et le texte à l'écran dit vrai — et se lit : cas ③ ter, ④ bis,
-// ④ ter et ⑧ à ⑬.
+// fermé, et le texte à l'écran dit vrai — et se lit : cas ③ ter, ③ quater,
+// ④ bis, ④ ter et ⑧ à ⑭.
+// (Contre-revue du même jour) Le SDK qui ne se charge pas (⑭), la réponse
+// illisible jouée par le VRAI SDK (③ quater), « pas de connexion internet »
+// réservé à l'appareil hors ligne, la sortie Google sous condition à la
+// récupération, et les effets de bord qui ne se déclenchent plus sous une
+// panne (⑧ quater).
 //
 // Chaque cas nomme la MUTATION qui le rend rouge (éprouvées à l'écriture).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -34,8 +39,12 @@ const SOURCE_APP08 = path.join(__dirname, "..", "..", "js", "app-08-ui-modals-to
 
 // Ouvre l'écran d'auth réel (landing → « Créer un compte »), pose les doubles
 // `supa.auth` et la capture de `tel.action` / `tel.flush`.
-async function ouvrirAuth(page, doubles = {}) {
+// `opts.sdkCoupe` : le script du SDK ne se charge pas (coupure à la première
+// visite, fichier absent après un déploiement). `supa` reste alors le client de
+// repli d'app-08, et on ne pose AUCUN double : c'est lui qu'on éprouve.
+async function ouvrirAuth(page, doubles = {}, opts = {}) {
   await sansDonneesDistantes(page);
+  if (opts.sdkCoupe) await page.route("**/js/vendor/supabase-js-*.js", (route) => route.abort());
   await page.route("**/rest/v1/telemetry_events*", (route) =>
     route.fulfill({ status: 201, contentType: "application/json", body: "[]" }));
   await page.addInitScript(([k, t]) => {
@@ -48,21 +57,30 @@ async function ouvrirAuth(page, doubles = {}) {
   await page.goto("/index.html?telemetry=1");
   await page.waitForSelector("#landing.active", { timeout: 25000 });
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
-  await page.waitForFunction(() => typeof onbDoAuth === "function" && typeof supa !== "undefined" && !!supa,
-    null, { timeout: 25000 });
+  // ⚠️ `!!supa` NE DIT PAS que le SDK est là : le client de repli est un objet
+  // lui aussi. On attend l'état qu'on veut éprouver — le vrai client, ou son
+  // absence — sinon les cas « vrai client » passeraient sur le repli sans le dire.
+  await page.waitForFunction((coupe) => typeof onbDoAuth === "function" && typeof supa !== "undefined" && !!supa
+    && (coupe ? !window._supaReal : window._supaReal === true), !!opts.sdkCoupe, { timeout: 25000 });
   await expect(page.locator("#authTabSignup")).toHaveClass(/active/);
   await page.evaluate((d) => {
     window.__auth = { signUp: [], signIn: [], resend: [] };
-    supa.auth.signUp = async (args) => { window.__auth.signUp.push(args); return d.signUp; };
-    supa.auth.signInWithPassword = async (args) => { window.__auth.signIn.push(args); return d.signIn; };
-    supa.auth.resend = async (args) => { window.__auth.resend.push(args); return d.resend; };
+    if (!d.sdkCoupe) {
+      supa.auth.signUp = async (args) => { window.__auth.signUp.push(args); return d.signUp; };
+      supa.auth.signInWithPassword = async (args) => { window.__auth.signIn.push(args); return d.signIn; };
+      supa.auth.resend = async (args) => { window.__auth.resend.push(args); return d.resend; };
+    }
     // `window.tel` EST l'objet Telemetry (même référence que `tel`) : muter ses
     // méthodes intercepte à la source, sans dépendre du transport.
     window.__telCap = [];
     window.__flushCap = [];
     window.tel.action = function (name, meta) { window.__telCap.push({ name: name, meta: meta || {} }); };
     window.tel.flush = function (opts) { window.__flushCap.push(opts || {}); };
+    // Les ERREURS prioritaires (`tel.error`) : seul leur NOM est gardé.
+    window.__telErr = [];
+    window.tel.error = function (name) { window.__telErr.push(String(name)); };
   }, {
+    sdkCoupe: !!opts.sdkCoupe,
     signUp: doubles.signUp || { data: { user: null, session: null }, error: null },
     signIn: doubles.signIn || { data: { session: null }, error: null },
     resend: doubles.resend || { data: {}, error: null },
@@ -100,7 +118,10 @@ function sansAdresse(evs) {
 }
 
 const HORS_LIGNE = "Pas de connexion internet — réessaie quand tu es en ligne.";
-const viderCapture = (page) => page.evaluate(() => { window.__telCap = []; window.__flushCap = []; });
+// Requête jamais arrivée alors que l'appareil se dit EN LIGNE : coupure locale
+// ou service injoignable, le texte doit être vrai dans les deux cas.
+const INJOIGNABLE = "Impossible de joindre PASSIO pour l'instant. Vérifie ta connexion, puis réessaie dans un instant.";
+const viderCapture = (page) => page.evaluate(() => { window.__telCap = []; window.__flushCap = []; window.__telErr = []; });
 const attendreSignal = (page, nom) => page.waitForFunction(
   (n) => window.__telCap.some((e) => e.name === n), nom, { timeout: 10000 });
 
@@ -211,7 +232,10 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
   // MUTATIONS : retirer la ligne « serveur » → rouge ; retirer la ligne
   // « reseau » → rouge (chacune de ses deux moitiés a son cas) ; retirer la
   // ligne « envoi » → rouge ; déplacer les lignes de statut APRÈS le test
-  // « mdp » → `serveurAvantTexte` rouge.
+  // « mdp » → `serveurAvantTexte` rouge ; retirer la ligne `AuthUnknownError`
+  // → `illisible` rouge ; retirer la ligne « sdk » → `sdk` rouge ; remettre
+  // `AUTH_HORS_LIGNE` sans condition dans messagePanneAuth → rouge ; rendre
+  // `AUTH_ENVOI_KO` sur la porte « recover » → rouge.
   test("③ ter rcRefusAuth lit le STATUT avant le texte : reseau, envoi, serveur — et captcha reste premier", async ({ page }) => {
     await ouvrirAuth(page);
     const r = await page.evaluate(() => ({
@@ -234,24 +258,127 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
       // Le statut ET le texte : l'un sans l'autre n'est pas « envoi ».
       envoiSansStatut: rcRefusAuth({ message: "Error sending confirmation email" }),
       envoi400: rcRefusAuth({ message: "Error sending confirmation email", status: 400 }),
+      // Réponse illisible hors de la liste du SDK (page HTML d'un pare-feu en
+      // 403, 5xx hors liste) : `AuthUnknownError` SANS statut, message anglais.
+      illisible: rcRefusAuth({ name: "AuthUnknownError", message: "Unexpected token '<', \"<html>Atte\"... is not valid JSON" }),
+      // TÉMOIN : le même texte sous une autre classe reste un refus inconnu.
+      illisibleTemoin: rcRefusAuth({ name: "AuthApiError", status: 400, message: "Unexpected token '<', \"<html>Atte\"... is not valid JSON" }),
     }));
+    // SDK non chargé : lu sur l'ÉTAT, quel que soit le texte du client de repli —
+    // et « captcha » reste premier.
+    const sdk = await page.evaluate(() => {
+      window._supaReal = false;
+      const r = {
+        repli: rcRefusAuth({ message: "Supabase non disponible" }),
+        autreTexte: rcRefusAuth({ message: "x", status: 503 }),
+        vide: rcRefusAuth(null),
+        captcha: rcRefusAuth({ message: "captcha verification process failed" }),
+      };
+      window._supaReal = true;
+      r.temoin = rcRefusAuth({ message: "Supabase non disponible" });
+      return r;
+    });
+    expect(sdk).toEqual({ repli: "sdk", autreTexte: "sdk", vide: "sdk", captcha: "captcha", temoin: "autre" });
     expect(r).toEqual({
       reseauStatut0: "reseau", reseauStatut0Muet: "reseau", reseauSansStatut: "reseau",
       serveur500: "serveur", serveur503: "serveur", serveur504: "serveur", serveurAvantTexte: "serveur",
       captchaAvantStatut: "captcha", mdp400: "mdp", quota429: "quota",
       envoi: "envoi", envoiAncien: "envoi", envoiRecuperation: "envoi", envoiAdresse: "envoi",
       envoiSansStatut: "autre", envoi400: "autre",
+      illisible: "serveur", illisibleTemoin: "autre",
     });
     // Un message n'existe que pour une PANNE : un refus garde sa traduction.
-    const m = await page.evaluate(() => ["serveur", "envoi", "reseau", "mdp", "quota", "autre", undefined].map(messagePanneAuth));
+    // (`.map((rc) => …)` : la porte est le second argument, pas l'indice.)
+    const m = await page.evaluate(() => ["serveur", "envoi", "reseau", "mdp", "quota", "autre", undefined].map((rc) => messagePanneAuth(rc)));
     expect(m[0]).toContain("ne répond pas");
     expect(m[1]).toContain("Continuer avec Google");
     // Le texte dit OÙ est la sortie, et la géométrie le vérifie (④ bis, ⑧ bis,
     // ⑧ ter, ⑩) : le bouton est SOUS le message. « au-dessus » serait faux.
     expect(m[1]).toContain("plus bas");
     expect(m[1]).not.toMatch(/au-dessus|ci-dessus/);
-    expect(m[2]).toBe(HORS_LIGNE);
+    // « reseau » sur un appareil qui se dit EN LIGNE : jamais « pas de
+    // connexion internet » — c'est aussi la forme d'un service injoignable.
+    expect(m[2]).toBe(INJOIGNABLE);
     expect(m.slice(3)).toEqual([null, null, null, null]);
+
+    const p = await page.evaluate(() => {
+      const r = {
+        sdk: messagePanneAuth("sdk"),
+        envoiRecup: messagePanneAuth("envoi", "recover"),
+        envoiGoogle: messagePanneAuth("envoi", "google"),
+        exReseau: messageExceptionAuth("reseau"),
+        exCode: messageExceptionAuth("code"),
+        exAutre: messageExceptionAuth("autre"),
+      };
+      // L'appareil se dit hors ligne : là, et là seulement, on le lui dit.
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+      r.reseauHorsLigne = messagePanneAuth("reseau");
+      r.exReseauHorsLigne = messageExceptionAuth("reseau");
+      delete navigator.onLine;
+      r.enLigneApres = navigator.onLine;
+      return r;
+    });
+    expect(p.sdk).toContain("Recharge la page");
+    // À la récupération, Google est une sortie SOUS CONDITION : sans elle, un
+    // compte ouvert avec une autre adresse était envoyé vers un compte neuf.
+    expect(p.envoiRecup).toContain("Si ton compte PASSIO porte ton adresse Google");
+    expect(p.envoiRecup).toContain("plus bas");
+    expect(p.envoiRecup).not.toContain("ou passe par");
+    expect(p.envoiRecup).not.toMatch(/au-dessus|ci-dessus|\d/);
+    // On ne propose pas Google à qui vient de le toucher.
+    expect(p.envoiGoogle).not.toContain("Google");
+    expect(p.exReseau).toBe(INJOIGNABLE);
+    expect(p.exCode).toContain("Recharge la page");
+    expect(p.exAutre).toBe(p.exCode);
+    expect(p.reseauHorsLigne).toBe(HORS_LIGNE);
+    expect(p.exReseauHorsLigne).toBe(HORS_LIGNE);
+    expect(p.enLigneApres).toBe(true);
+  });
+
+  // Le VRAI SDK, face à de vraies réponses HTTP (servies par une route, vers un
+  // hôte de banc : rien ne part en production). Les doubles des autres cas
+  // IMITENT ce que le SDK rend ; celui-ci le MESURE — c'est ici qu'une montée de
+  // version du SDK qui changerait la forme de ses erreurs se verrait.
+  // MUTATION : retirer la ligne `AuthUnknownError` de rcRefusAuth → les deux
+  // volets HTML rendent « autre » et `panne: null`, rouge.
+  test("③ quater vrai SDK : une réponse illisible est une panne (403 ou 540 en HTML), une requête sans réponse lisible est « reseau »", async ({ page }) => {
+    await ouvrirAuth(page);
+    let reponse = null;
+    const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" };
+    await page.route("https://illisible.exemple.test/**", (route) => {
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (reponse === "coupe") return route.abort();
+      return route.fulfill({ status: reponse.status, contentType: reponse.type, headers: cors, body: reponse.body });
+    });
+    const jouer = async (r) => {
+      reponse = r;
+      return page.evaluate(async () => {
+        const c = window.__sdkNu || (window.__sdkNu = supabase.createClient("https://illisible.exemple.test", "cle-de-banc",
+          { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "banc-illisible" } }));
+        const { error } = await c.auth.signInWithPassword({ email: "a@exemple.com", password: "motdepasse123" });
+        const rc = rcRefusAuth(error);
+        return { nom: error && error.name, statut: (error && typeof error.status === "number") ? error.status : null, rc: rc, panne: messagePanneAuth(rc) };
+      });
+    };
+    const HTML = "<html>Attention Required! | pare-feu</html>";
+    const SERVICE_KO = await page.evaluate(() => messagePanneAuth("serveur"));
+
+    expect(await jouer({ status: 403, type: "text/html", body: HTML }))
+      .toEqual({ nom: "AuthUnknownError", statut: null, rc: "serveur", panne: SERVICE_KO });
+    expect(await jouer({ status: 540, type: "text/html", body: HTML }))
+      .toEqual({ nom: "AuthUnknownError", statut: null, rc: "serveur", panne: SERVICE_KO });
+    // 5xx de la liste du SDK, corps illisible : la classe « rejouable », avec son statut.
+    expect(await jouer({ status: 503, type: "text/html", body: HTML }))
+      .toEqual({ nom: "AuthRetryableFetchError", statut: 503, rc: "serveur", panne: SERVICE_KO });
+    // TÉMOIN : un refus en JSON reste un refus, sans message de panne.
+    expect(await jouer({ status: 400, type: "application/json", body: JSON.stringify({ code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" }) }))
+      .toEqual({ nom: "AuthApiError", statut: 400, rc: "mdp", panne: null });
+    // Aucune réponse lisible : statut 0, que la requête soit coupée ou qu'un
+    // 2xx ne soit pas du JSON. L'appareil est en ligne : le texte ne dit pas
+    // « pas de connexion internet ».
+    expect(await jouer("coupe")).toEqual({ nom: "AuthRetryableFetchError", statut: 0, rc: "reseau", panne: INJOIGNABLE });
+    expect(await jouer({ status: 200, type: "text/html", body: HTML }))
+      .toEqual({ nom: "AuthRetryableFetchError", statut: 0, rc: "reseau", panne: INJOIGNABLE });
   });
 
   // MUTATION : retirer `tel.action("confirmation_resent", { ok: !error })` → rouge.
@@ -292,7 +419,8 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     await viderCapture(page);
     const msg = page.locator("#authMsg");
 
-    // Service en 5xx dont le corps n'est pas lisible : le SDK rend « {} ».
+    // Service en 5xx dont le corps JSON est vide : le SDK rend « {} » (pour un
+    // corps illisible : `statusText`, ou « HTTP <statut> »).
     await page.evaluate(() => {
       supa.auth.resend = async () => ({ data: null, error: { name: "AuthRetryableFetchError", status: 503, message: "{}" } });
     });
@@ -319,7 +447,7 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     // Le renvoi lève sur une vraie coupure (libellé de WebKit).
     await page.evaluate(() => { supa.auth.resend = async () => { throw new TypeError("Load failed"); }; });
     await page.locator("#authResendLink").click();
-    await expect(msg).toHaveText(HORS_LIGNE);
+    await expect(msg).toHaveText(INJOIGNABLE);
 
     const evs = await capture(page);
     // `confirmation_resent` garde sa forme exacte : une ligne par tentative.
@@ -486,10 +614,61 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
       supa.auth.signInWithPassword = async () => ({ data: { session: null }, error: { name: "AuthRetryableFetchError", status: 0, message: "signal timed out" } });
     });
     await page.locator("#authSubmitBtn").click();
-    await expect(msg).toHaveText(HORS_LIGNE);
+    // L'appareil est EN LIGNE : c'est la forme d'un service injoignable autant
+    // que d'une coupure — le texte ne tranche pas à la place de la personne.
+    await expect(msg).toHaveText(INJOIGNABLE);
     evs = await capture(page);
     expect(noms(evs)).toEqual(["auth_submitted", "signin_refused"]);
     expect(evs[1].meta).toEqual({ rc: "reseau" });
+  });
+
+  // Les branches d'onbDoAuth qui se décident sur le TEXTE du refus ne valent
+  // que pour un refus. Sous une panne, ce texte est un corps d'erreur quelconque.
+  // MUTATIONS : retirer `!_panne &&` de la branche « Email not confirmed » → le
+  // bloc de renvoi s'ouvre sous la panne, rouge ; le retirer de la branche du
+  // quota → `signup_quota_email` part pour une saturation du service, rouge.
+  test("⑧ quater sous une panne, ni bloc de renvoi ni signal de quota d'e-mails — et leurs témoins les montrent sur un vrai refus", async ({ page }) => {
+    await ouvrirAuth(page, {
+      signIn: { data: { session: null }, error: { name: "AuthRetryableFetchError", status: 502, message: "Email not confirmed (upstream)" } },
+    });
+    const msg = page.locator("#authMsg");
+    await remplirConnexion(page);
+    await expect(msg).toContainText("ne répond pas");
+    await expect(page.locator("#authResendTop")).toBeHidden();
+    await expect(page.locator("#authResendLink")).toBeHidden();
+    expect((await capture(page))[1]).toEqual({ name: "signin_refused", meta: { rc: "serveur" } });
+
+    // TÉMOIN : le même texte en 400 est le vrai refus — la sortie se montre.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signInWithPassword = async () => ({ data: { session: null }, error: { status: 400, code: "email_not_confirmed", message: "Email not confirmed" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await expect(msg).toContainText("Confirme ton e-mail");
+    await expect(page.locator("#authResendTop")).toBeVisible();
+
+    // Saturation du SERVICE dont le texte contient « too many » : ce n'est pas
+    // le quota d'e-mails, et l'erreur prioritaire qui le nomme ne part pas.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: null, session: null }, error: { name: "AuthRetryableFetchError", status: 503, message: "remaining connection slots are reserved: too many connections" } });
+    });
+    await remplirInscription(page);
+    await attendreSignal(page, "signup_refused");
+    await expect(msg).toContainText("ne répond pas");
+    await expect(msg).not.toContainText("Beaucoup de monde");
+    expect((await capture(page))[1]).toEqual({ name: "signup_refused", meta: { rc: "serveur" } });
+    expect(await page.evaluate(() => window.__telErr)).toEqual([]);
+
+    // TÉMOIN : le vrai quota (429) garde son message et son signal.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: null, session: null }, error: { status: 429, code: "over_email_send_rate_limit", message: "Email rate limit exceeded" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await expect(msg).toContainText("Beaucoup de monde");
+    expect((await capture(page))[1]).toEqual({ name: "signup_refused", meta: { rc: "quota" } });
+    expect(await page.evaluate(() => window.__telErr)).toEqual(["signup_quota_email"]);
   });
 
   // MUTATIONS : afficher `msg` même quand `_panne` existe → rouge ; retirer la
@@ -601,10 +780,16 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
   // MUTATIONS : retirer `signalerExceptionAuth(_authMode, e)` du catch
   // d'onbDoAuth → rouge ; y remettre `_showAuthMsg(AUTH_HORS_LIGNE, "error")`
-  // pour toute exception → volets (a) et (c) rouges.
+  // pour toute exception → volets (a) et (c) rouges ; retirer le
+  // `console.warn` de signalerExceptionAuth → volet (a) rouge (plus aucune trace
+  // locale d'un défaut de code) ; passer `_authMode` au lieu de `_mode` à
+  // signalerExceptionAuth → volet (d) rouge (`kind: "signin"`).
   test("⑨ une exception laisse une trace et ne dit plus « pas de connexion » à tout : auth_exception {kind, rc}", async ({ page }) => {
     await ouvrirAuth(page);
     const msg = page.locator("#authMsg");
+    // PAS DE CATCH MUET : hors coupure, l'exception s'écrit dans la console.
+    const avertis = [];
+    page.on("console", (m) => { if (m.type() === "warning" && m.text().startsWith("auth (")) avertis.push(m.text()); });
 
     // (a) Défaut de code, dont le message cite une adresse.
     await page.evaluate(() => {
@@ -620,14 +805,18 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     sansAdresse(evs);
     await expect(page.locator("#authSubmitBtn")).toBeEnabled();
     await expect(page.locator("#authSubmitBtn")).toHaveText("Se connecter");
+    await expect.poll(() => avertis.length).toBe(1);
+    expect(avertis[0]).toMatch(/^auth \(signin\):/);
 
     // (b) Vraie coupure : un `fetch` coupé est AUSSI un TypeError.
     await viderCapture(page);
     await page.evaluate(() => { supa.auth.signInWithPassword = async () => { throw new TypeError("Failed to fetch"); }; });
     await page.locator("#authSubmitBtn").click();
-    await expect(msg).toHaveText(HORS_LIGNE);
+    await expect(msg).toHaveText(INJOIGNABLE);
     evs = await capture(page);
     expect(evs[1]).toEqual({ name: "auth_exception", meta: { kind: "signin", rc: "reseau" } });
+    // Une coupure n'est pas un défaut à corriger : rien de plus dans la console.
+    expect(avertis).toHaveLength(1);
 
     // (c) En création de compte, une exception quelconque.
     await viderCapture(page);
@@ -638,6 +827,25 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     expect(noms(evs)).toEqual(["auth_submitted", "auth_exception"]);
     expect(evs[1].meta).toEqual({ kind: "signup", rc: "autre" });
     await expect(page.locator("#authSubmitBtn")).toHaveText("Créer mon compte");
+
+    // (d) Une exception APRÈS la création du compte : onbDoAuth a déjà basculé
+    // sur l'onglet « Se connecter » (`_authMode` a changé dans le même `try`).
+    // La porte poussée reste « signup » ; le bouton suit l'onglet affiché.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null });
+      const vrai = window._showResendConfirmation;
+      // `switchAuthTab` l'appelle avec "" (on laisse passer) ; l'appel qui suit
+      // « Compte créé » porte l'adresse : c'est lui qui lève.
+      window._showResendConfirmation = function (email) { if (email) throw new Error("boom après création"); return vrai.apply(this, arguments); };
+    });
+    await page.locator("#authSubmitBtn").click();
+    await attendreSignal(page, "auth_exception");
+    evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "signup_pending_confirmation", "auth_exception"]);
+    expect(evs[2].meta).toEqual({ kind: "signup", rc: "autre" });
+    await expect(page.locator("#authTabSignin")).toHaveClass(/active/);
+    await expect(page.locator("#authSubmitBtn")).toHaveText("Se connecter");
   });
 
   // MUTATIONS : tester le NOM avant `estEchecReseau` dans rcExceptionAuth →
@@ -687,7 +895,8 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
   // MUTATIONS : retirer l'une des deux émissions `password_reset_requested` →
   // rouge ; retirer `messagePanneAuth(rc) ||` d'onbForgotPassword → rouge (le
   // texte brut s'affiche) ; remettre `_showAuthMsg(AUTH_HORS_LIGNE, "error")`
-  // sans condition dans son catch → rouge (« Recharge la page » attendu).
+  // sans condition dans son catch → rouge (« Recharge la page » attendu) ;
+  // rendre `AUTH_ENVOI_KO` (Google sans condition) sur cette porte → rouge.
   test("⑩ « Mot de passe oublié ? » : password_reset_requested {ok, rc}, un message vrai en panne, auth_exception {kind:recover} si ça lève", async ({ page }) => {
     await ouvrirAuth(page);
     const msg = page.locator("#authMsg");
@@ -721,9 +930,13 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "serveur" } }]);
 
     // L'e-mail ne part pas : la sortie nommée existe sous le message, en connexion.
+    // ⚠️ SOUS CONDITION : la personne a déjà un compte, et Google n'ouvre que
+    // celui qui porte son adresse Google — il en CRÉE un autre sinon.
     await repondre({ data: null, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending recovery email" } });
     await page.locator("#authForgotLink").click();
     await expect(msg).toContainText("Continuer avec Google");
+    await expect(msg).toContainText("Si ton compte PASSIO porte ton adresse Google");
+    await expect(msg).not.toContainText("ou passe par");
     expect(await googleSousLeMessage(page)).toEqual(GOOGLE_ATTENDU);
     expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "envoi" } }]);
 
@@ -737,14 +950,15 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     // Exception sur une vraie coupure.
     await lever("Failed to fetch");
     await page.locator("#authForgotLink").click();
-    await expect(msg).toHaveText(HORS_LIGNE);
+    await expect(msg).toHaveText(INJOIGNABLE);
     const evs = await capture(page);
     expect(evs).toEqual([{ name: "auth_exception", meta: { kind: "recover", rc: "reseau" } }]);
     sansAdresse(evs);
   });
 
   // MUTATIONS : retirer `tel.action("google_refused", …)` → rouge ; retirer
-  // `signalerExceptionAuth("google", e)` du catch → rouge.
+  // `signalerExceptionAuth("google", e)` du catch → rouge ; retirer
+  // `messagePanneAuth(rc, "google") ||` → le texte brut du 5xx s'affiche, rouge.
   test("⑪ départ vers Google : google_refused {rc} sur refus, auth_exception {kind:google} si ça lève, le drapeau retiré", async ({ page }) => {
     await ouvrirAuth(page);
     // En CONNEXION : le bouton n'exige pas la case de consentement.
@@ -757,6 +971,19 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     let evs = await capture(page);
     expect(evs).toEqual([{ name: "google_refused", meta: { rc: "autre" } }]);
     expect(await page.evaluate(() => localStorage.getItem("passio_oauth_pending"))).toBeNull();
+    // TÉMOIN : un refus garde son propre texte.
+    await expect(page.locator("#authMsg")).toContainText("Unsupported provider");
+
+    // Une PANNE au départ vers Google a son message, comme aux autres portes.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signInWithOAuth = async () => ({ data: null, error: { name: "AuthRetryableFetchError", status: 503, message: "upstream connect error (503)" } });
+    });
+    await page.locator("#authGoogleBtn").click();
+    await attendreSignal(page, "google_refused");
+    expect(await capture(page)).toEqual([{ name: "google_refused", meta: { rc: "serveur" } }]);
+    await expect(page.locator("#authMsg")).toContainText("ne répond pas");
+    await expect(page.locator("#authMsg")).not.toContainText("upstream");
 
     await viderCapture(page);
     await page.evaluate(() => {
@@ -776,7 +1003,8 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
   // MUTATIONS : retirer l'une des deux émissions `password_reset_done` → rouge ;
   // retirer le `tel.flush({ keepalive: true })` qui suit la réussite → rouge (la
   // page recharge 900 ms plus loin, l'événement resterait en file) ; retirer
-  // `signalerExceptionAuth("reset", e)` → rouge.
+  // `signalerExceptionAuth("reset", e)` → rouge ; afficher `AUTH_IMPREVU` dans
+  // ce catch → rouge (« Recharge la page » condamnerait le lien à usage unique).
   test("⑫ nouveau mot de passe : password_reset_done {ok, rc}, flush keepalive à la réussite, auth_exception {kind:reset} si ça lève", async ({ page }) => {
     await ouvrirAuth(page);
     await page.evaluate(() => {
@@ -805,6 +1033,10 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     await attendreSignal(page, "auth_exception");
     await expect(bouton).toBeEnabled();
     expect(await capture(page)).toEqual([{ name: "auth_exception", meta: { kind: "reset", rc: "reseau" } }]);
+    // Ce formulaire ne propose JAMAIS de recharger : le lien qui l'a ouvert ne
+    // sert qu'une fois, et un rechargement le condamne.
+    await expect(page.locator("#pwdRecoveryMsg")).toHaveText("Erreur réseau.");
+    await expect(page.locator("#pwdRecoveryMsg")).not.toContainText("Recharge");
 
     // Réussite : le signal, puis son envoi AVANT le rechargement.
     await viderCapture(page);
@@ -824,7 +1056,7 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     const app02 = fs.readFileSync(SOURCE_APP02, "utf8");
     // Les APPELS (`…(x, e)`), pas la déclaration (`function …(kind, e) {`).
     const appels = [...app02.matchAll(/(?<!function )signalerExceptionAuth\(([^,()]+), e\)/g)].map((m) => m[1].trim());
-    expect(appels.slice().sort()).toEqual(['"google"', '"recover"', '"resend"', '"reset"', "_authMode"]);
+    expect(appels.slice().sort()).toEqual(['"google"', '"recover"', '"resend"', '"reset"', "_mode"]);
 
     // Chaque porte porte SON nom : un `kind` recopié d'une porte à l'autre
     // fausserait le décompte sans rien casser.
@@ -835,7 +1067,13 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
       expect(j, suivant).toBeGreaterThan(i);
       return app02.slice(i, j);
     };
-    expect(corps("async function onbDoAuth() {", "async function onbSkipAuth() {")).toContain("signalerExceptionAuth(_authMode, e)");
+    const doAuth = corps("async function onbDoAuth() {", "async function onbSkipAuth() {");
+    expect(doAuth).toContain("signalerExceptionAuth(_mode, e)");
+    // La porte est figée AVANT le premier `await` : après, `switchAuthTab` a pu
+    // changer `_authMode` (éprouvé en ⑨ (d)).
+    const iFige = doAuth.indexOf("const _mode = _authMode;");
+    expect(iFige).toBeGreaterThan(-1);
+    expect(iFige).toBeLessThan(doAuth.indexOf("await "));
     expect(corps("async function onbForgotPassword() {", "function _showResendConfirmation(")).toContain('signalerExceptionAuth("recover", e)');
     expect(corps("async function onbResendConfirmation() {", "async function onbGoogleAuth() {")).toContain('signalerExceptionAuth("resend", e)');
     expect(corps("async function onbGoogleAuth() {", "async function _poserConsentementOAuth() {")).toContain('signalerExceptionAuth("google", e)');
@@ -845,10 +1083,70 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     const liste = JSON.parse(app02.match(/const PORTES_EXCEPTION_AUTH = (\[[^\]]*\]);/)[1]);
     expect(liste.slice().sort()).toEqual(["google", "recover", "resend", "reset", "signin", "signup"]);
 
-    // « Pas de connexion internet » ne s'affiche plus d'office que par
-    // `authHorsLigne()`, qui a LU `navigator.onLine` : les trois catch qui le
-    // disaient pour toute exception choisissent désormais leur texte.
+    // « Pas de connexion internet » ne s'affiche qu'à un appareil qui se dit
+    // hors ligne : par `authHorsLigne()` avant l'envoi, et par `messagePanneAuth`
+    // — qui lit `navigator.onLine` lui aussi — pour un code « reseau ». Aucun
+    // `catch` ne choisit plus ce texte lui-même (comportement : ③ ter).
     expect((app02.match(/_showAuthMsg\(AUTH_HORS_LIGNE, "error"\)/g) || []).length).toBe(1);
     expect(app02).not.toMatch(/_showPanneAuth\(AUTH_HORS_LIGNE\)/);
+    expect(app02).not.toMatch(/\? AUTH_HORS_LIGNE : AUTH_IMPREVU/);
+    expect(app02).toContain('navigator.onLine === false) ? AUTH_HORS_LIGNE : AUTH_INJOIGNABLE');
+  });
+
+  // Le scénario T6 lui-même : le script du SDK ne se charge pas, `supa` reste
+  // le client de repli, et AUCUNE requête d'authentification ne part — le
+  // crochet réseau ne voit rien. Le signal en code fermé est la seule trace, et
+  // « Recharge la page » la seule sortie (le SDK ne se recharge pas tout seul).
+  // MUTATION : retirer la ligne « sdk » de rcRefusAuth → « Supabase non
+  // disponible » s'affiche aux cinq portes et tout part en `rc: "autre"`, rouge.
+  test("⑭ SDK non chargé : aux cinq portes, « Recharge la page » et rc « sdk » — jamais « Supabase non disponible »", async ({ page }) => {
+    await ouvrirAuth(page, {}, { sdkCoupe: true });
+    expect(await page.evaluate(() => ({ reel: !!window._supaReal, enLigne: navigator.onLine }))).toEqual({ reel: false, enLigne: true });
+    const msg = page.locator("#authMsg");
+    // Le même texte est attendu à chaque porte : on vide l'écran entre deux
+    // gestes, sinon le message de la porte précédente ferait passer la suivante.
+    const repartir = () => page.evaluate(() => {
+      window.__telCap = [];
+      document.getElementById("authMsg").textContent = "";
+    });
+    const verdict = async () => {
+      await expect(msg).toContainText("Recharge la page");
+      await expect(msg).not.toContainText("Supabase");
+      await expect(msg).not.toContainText("Pas de connexion internet");
+    };
+
+    await remplirConnexion(page);
+    await verdict();
+    expect(await capture(page)).toEqual([
+      { name: "auth_submitted", meta: { kind: "signin" } },
+      { name: "signin_refused", meta: { rc: "sdk" } },
+    ]);
+
+    await repartir();
+    await page.locator("#authForgotLink").click();
+    await verdict();
+    expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "sdk" } }]);
+
+    await repartir();
+    await page.locator("#authGoogleBtn").click();
+    await verdict();
+    expect(await capture(page)).toEqual([{ name: "google_refused", meta: { rc: "sdk" } }]);
+    expect(await page.evaluate(() => localStorage.getItem("passio_oauth_pending"))).toBeNull();
+
+    await repartir();
+    await page.evaluate(() => _showResendConfirmation("bloque@exemple.com"));
+    await page.locator("#authResendTop button").first().click();
+    await verdict();
+    expect(await capture(page)).toEqual([{ name: "confirmation_resent", meta: { ok: false } }]);
+
+    await repartir();
+    await remplirInscription(page);
+    await verdict();
+    const evs = await capture(page);
+    expect(evs).toEqual([
+      { name: "auth_submitted", meta: { kind: "signup" } },
+      { name: "signup_refused", meta: { rc: "sdk" } },
+    ]);
+    sansAdresse(evs);
   });
 });

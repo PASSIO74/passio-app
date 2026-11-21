@@ -6607,9 +6607,17 @@ function authHorsLigne() {
 
 // PANNES D'AUTHENTIFICATION (2026-11-21) — une panne n'est pas un refus : la
 // personne n'a rien fait de travers, et le message brut du serveur (anglais,
-// « {} », parfois une adresse) ne lui dit ni quoi ni par où sortir. Trois
-// textes, choisis par `messagePanneAuth` sur le code de `rcRefusAuth`, ou par
-// les `catch` sur celui de `rcExceptionAuth`.
+// « {} », parfois une adresse) ne lui dit ni quoi ni par où sortir. Les textes
+// sont choisis par `messagePanneAuth` sur le code de `rcRefusAuth`, ou par
+// `messageExceptionAuth` sur celui de `rcExceptionAuth`.
+// ⚠️ « PAS DE CONNEXION INTERNET » NE SE DIT QU'À UN APPAREIL QUI SE DIT HORS
+// LIGNE. `authHorsLigne()` sort AVANT tout appel quand `navigator.onLine` est
+// faux : une requête « jamais arrivée » vient donc presque toujours d'un
+// appareil qui se croyait EN LIGNE, et c'est la SEULE forme que prend une
+// passerelle en panne (page d'erreur sans en-têtes CORS : le navigateur la rend
+// illisible, le SDK rend statut 0). Affirmer « pas de connexion » envoyait la
+// personne vérifier un Wi-Fi qui marche. Ce texte-ci est vrai dans les deux cas.
+const AUTH_INJOIGNABLE = "Impossible de joindre PASSIO pour l'instant. Vérifie ta connexion, puis réessaie dans un instant.";
 const AUTH_SERVICE_KO = "Le service de connexion ne répond pas pour l'instant. Réessaie dans quelques minutes — rien n'est perdu.";
 // ⚠️ « PLUS BAS », JAMAIS « AU-DESSUS » : `#authGoogleBtn` est SOUS `#authMsg`
 // dans les deux onglets (index.html ; le bloc de renvoi et la case de
@@ -6619,6 +6627,14 @@ const AUTH_SERVICE_KO = "Le service de connexion ne répond pas pour l'instant. 
 // jour — des heures, pas des minutes — et le texte n'en sait rien. Google est
 // la sortie parce que ce chemin n'envoie aucun e-mail.
 const AUTH_ENVOI_KO = "L'e-mail n'a pas pu partir pour l'instant. Réessaie plus tard, ou passe par « Continuer avec Google », un peu plus bas : ce chemin n'a pas besoin d'e-mail.";
+// ⚠️ SUR « MOT DE PASSE OUBLIÉ ? », GOOGLE N'EST UNE SORTIE QUE SOUS CONDITION.
+// La personne a DÉJÀ un compte, à une adresse donnée. Google ouvre le compte
+// qui porte l'adresse Google — et le CRÉE s'il n'existe pas (leçon AUTH-03,
+// `onbGoogleAuth`) : dire « passe par Google » sans condition envoyait vers un
+// second compte, vide, quiconque s'est inscrit avec une autre adresse (mesuré
+// le 21/11 : 4 comptes e-mail sur 12 sont hors Gmail). À l'inscription, la
+// forme sans condition reste juste : aucun compte n'existe encore.
+const AUTH_ENVOI_KO_RECUP = "L'e-mail n'a pas pu partir pour l'instant. Réessaie plus tard. Si ton compte PASSIO porte ton adresse Google, « Continuer avec Google », un peu plus bas, y entre sans e-mail.";
 // ⚠️ PAS POUR LE FORMULAIRE DE NOUVEAU MOT DE PASSE : recharger pendant qu'il
 // est affiché condamne un lien à usage unique (`_showPasswordRecoveryUI`).
 const AUTH_IMPREVU = "Ça n'a pas abouti de notre côté. Recharge la page, puis réessaie.";
@@ -6627,26 +6643,43 @@ const AUTH_IMPREVU = "Ça n'a pas abouti de notre côté. Recharge la page, puis
 // pour le pilotage. Déduite du message/code GoTrue SANS jamais recopier le
 // message (il peut citer l'adresse saisie). Ordre : du plus spécifique au plus
 // général — « captcha » avant tout (il peut accompagner n'importe quel refus).
-//   captcha · reseau · envoi · serveur · banni · non_confirme · deja_utilise · quota · mdp · autre
+//   captcha · sdk · reseau · envoi · serveur · banni · non_confirme · deja_utilise · quota · mdp · autre
 // (2026-11-21) LE STATUT SE LIT AVANT LE TEXTE, juste après « captcha ». Le SDK
 // embarqué (js/vendor/supabase-js-2.116.0.js) REND dans `{ error }`, sans la
-// lever, une `AuthRetryableFetchError` de statut 0 quand la requête n'est
-// jamais arrivée, et du statut HTTP pour 500…504 et 520…530 — son message est
-// alors celui du corps de la réponse. Sans cette lecture, une panne du service
-// tombait en « autre », et un 5xx dont le texte cite « password » en « mdp ».
-//   · reseau : statut 0, ou pas de statut et un message d'échec réseau ;
+// lever, une `AuthRetryableFetchError` de statut 0 quand aucune réponse lisible
+// n'est revenue (requête jamais arrivée, réponse bloquée par le navigateur, ou
+// 2xx qui n'est pas du JSON), et du statut HTTP pour 500…504 et 520…530 — son
+// message est alors celui du corps de la réponse. Sans cette lecture, une panne
+// du service tombait en « autre », et un 5xx dont le texte cite « password » en
+// « mdp ».
+//   · sdk    : le SDK n'a PAS pu se charger (`window._supaReal` faux). `supa`
+//     est alors le client de repli (app-08), qui répond « Supabase non
+//     disponible » à toute porte SANS qu'aucune requête parte : le crochet
+//     réseau ne voit rien, et ce code est la seule trace de l'impasse « plus
+//     personne ne peut entrer ». `ensureSupabase` garde sa promesse rejetée :
+//     seul un rechargement remet le SDK. Lu sur l'ÉTAT, pas sur le texte du
+//     repli, qui peut changer sans prévenir ;
+//   · reseau : statut 0, ou pas de statut et un message d'échec réseau. Ce
+//     n'est PAS « l'appareil est hors ligne » (`authHorsLigne()` l'a déjà
+//     écarté) : coupure locale OU service injoignable ;
 //   · envoi  : 5xx ET « Error sending … » — GoTrue n'a pas pu remettre l'e-mail
 //     au relais (« Error sending confirmation email », « … confirmation mail »
 //     selon la version, « Error sending recovery email ») ;
-//   · serveur : tout autre 5xx.
+//   · serveur : tout autre 5xx — et toute réponse ILLISIBLE hors de la liste
+//     ci-dessus : le SDK rend alors une `AuthUnknownError` SANS statut (page
+//     HTML d'un pare-feu en 403 ou 429, 5xx hors liste comme 540), dont le
+//     message est l'erreur d'analyse, en anglais. Sur ces portes, le SDK ne
+//     fabrique cette classe que là.
 function rcRefusAuth(error) {
   var m = String((error && error.message) || "");
   var c = String((error && error.code) || "");
   var st = (error && typeof error.status === "number") ? error.status : null;
   if (/captcha/i.test(m) || /captcha/i.test(c)) return "captcha";
+  if (typeof window !== "undefined" && !window._supaReal) return "sdk";
   if (st === 0 || (st === null && estEchecReseau(error))) return "reseau";
   if (st !== null && st >= 500 && /error sending/i.test(m)) return "envoi";
   if (st !== null && st >= 500) return "serveur";
+  if (error && error.name === "AuthUnknownError") return "serveur";
   if (/banned/i.test(m) || c === "user_banned") return "banni";
   if (/not confirmed/i.test(m) || c === "email_not_confirmed") return "non_confirme";
   if (/already registered|already exists/i.test(m) || c === "user_already_exists") return "deja_utilise";
@@ -6657,11 +6690,25 @@ function rcRefusAuth(error) {
 
 // Le message d'une PANNE lue par `rcRefusAuth`, ou `null` quand le code n'en
 // est pas une : l'appelant garde alors sa propre traduction du refus.
-function messagePanneAuth(rc) {
+// `porte` (facultative) : la sortie nommée dépend de l'endroit d'où l'on parle.
+//   · « recover » : Google sous condition (voir `AUTH_ENVOI_KO_RECUP`) ;
+//   · « google »  : on ne propose pas Google à qui vient de le toucher ;
+//   · « sdk »     : « Recharge la page » est ici la VRAIE sortie — le SDK ne se
+//     recharge pas tout seul. Aucune porte qui passe par ici n'est le formulaire
+//     de nouveau mot de passe, où recharger condamne le lien (`AUTH_IMPREVU`).
+function messagePanneAuth(rc, porte) {
+  if (rc === "sdk") return AUTH_IMPREVU;
   if (rc === "serveur") return AUTH_SERVICE_KO;
-  if (rc === "envoi") return AUTH_ENVOI_KO;
-  if (rc === "reseau") return AUTH_HORS_LIGNE;
+  if (rc === "envoi") return porte === "recover" ? AUTH_ENVOI_KO_RECUP : (porte === "google" ? AUTH_SERVICE_KO : AUTH_ENVOI_KO);
+  if (rc === "reseau") return (typeof navigator !== "undefined" && navigator.onLine === false) ? AUTH_HORS_LIGNE : AUTH_INJOIGNABLE;
   return null;
+}
+
+// Le message d'une EXCEPTION, sur le code rendu par `signalerExceptionAuth`.
+// Une coupure levée suit la même règle qu'une coupure rendue : « pas de
+// connexion internet » seulement si l'appareil se dit hors ligne.
+function messageExceptionAuth(rcEx) {
+  return rcEx === "reseau" ? messagePanneAuth("reseau") : AUTH_IMPREVU;
 }
 
 // ⚠️ UNE PANNE DOIT ÊTRE LUE, PAS SEULEMENT ÉCRITE (2026-11-21). Mesuré aux
@@ -6811,16 +6858,16 @@ async function onbForgotPassword() {
       const rc = rcRefusAuth(error);
       try { window.tel && tel.action("password_reset_requested", { ok: false, rc: rc }); } catch (e) {}
       // Une panne a son message et sa sortie ; un refus garde sa traduction.
-      _showAuthMsg(messagePanneAuth(rc) || traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error");
+      _showAuthMsg(messagePanneAuth(rc, "recover") || traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error");
       return;
     }
     try { window.tel && tel.action("password_reset_requested", { ok: true }); } catch (e) {}
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
   } catch (e) {
-    // « Pas de connexion internet » n'est vrai que pour une coupure : un défaut
-    // de code le disait aussi, et renvoyait la personne vérifier son Wi-Fi.
+    // « Pas de connexion internet » n'est vrai que pour un appareil hors ligne :
+    // un défaut de code le disait aussi, et renvoyait la personne vérifier son Wi-Fi.
     const rcEx = signalerExceptionAuth("recover", e);
-    _showAuthMsg(rcEx === "reseau" ? AUTH_HORS_LIGNE : AUTH_IMPREVU, "error");
+    _showAuthMsg(messageExceptionAuth(rcEx), "error");
   }
 }
 
@@ -6917,11 +6964,12 @@ async function onbResendConfirmation() {
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
-    // `confirmation_resent {ok:false}` reste émis TEL QUEL (le pilotage le
-    // compte) ; `auth_exception` dit en plus si c'était une coupure ou un défaut.
+    // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
+    // tentative, forme inchangée) ; `auth_exception` dit en plus si c'était une
+    // coupure ou un défaut.
     try { window.tel && tel.action("confirmation_resent", { ok: false }); } catch (e2) {}
     const rcEx = signalerExceptionAuth("resend", e);
-    _showPanneAuth(rcEx === "reseau" ? AUTH_HORS_LIGNE : AUTH_IMPREVU);
+    _showPanneAuth(messageExceptionAuth(rcEx));
   }
 }
 
@@ -7039,8 +7087,12 @@ async function onbGoogleAuth() {
       try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
       // (2026-11-21) Un départ vers Google refusé ne laissait aucune trace :
       // le premier chemin de l'écran pouvait tomber sans que rien ne le dise.
-      try { window.tel && tel.action("google_refused", { rc: rcRefusAuth(error) }); } catch (e) {}
-      _showAuthMsg(error.message || "Connexion Google indisponible.", "error");
+      const rc = rcRefusAuth(error);
+      try { window.tel && tel.action("google_refused", { rc: rc }); } catch (e) {}
+      // Une panne a son message ici aussi : SDK non chargé, service en 5xx ou
+      // injoignable s'affichaient en texte brut (« Supabase non disponible »).
+      // Un refus (fournisseur désactivé…) garde le sien.
+      _showAuthMsg(messagePanneAuth(rc, "google") || error.message || "Connexion Google indisponible.", "error");
     }
   } catch (e) {
     try { localStorage.removeItem("passio_oauth_pending"); } catch (e2) {}
@@ -7581,6 +7633,12 @@ async function onbDoAuth() {
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
+  // ⚠️ LA PORTE EST FIGÉE ICI, pour le `catch`. Après une inscription réussie,
+  // `switchAuthTab("signin")` change `_authMode` à l'intérieur du même `try` :
+  // une exception levée ensuite partait en `kind: "signin"`, attribuée à une
+  // porte que personne n'avait poussée.
+  const _mode = _authMode;
+
   // LOT E : l'INTENTION, avant l'appel. Le seul signal qui existait était la
   // requête HTTP du hook fetch — muette sur le mode et sur l'issue que l'app lit.
   // Clé `kind` (pas `mode`) : track() pose `mode: pwa|web` sur CHAQUE événement
@@ -7687,6 +7745,15 @@ async function onbDoAuth() {
       // Calculé UNE fois : le même code choisit le signal et, plus bas, le message.
       const _rc = rcRefusAuth(error);
       try { window.tel && tel.action(_authMode === "signin" ? "signin_refused" : "signup_refused", { rc: _rc }); } catch (e) {}
+      // (2026-11-21) UNE PANNE PREND LE PAS SUR TOUTE TRADUCTION : service en
+      // 5xx, e-mail qui ne part pas, requête jamais arrivée, SDK non chargé. Le
+      // message brut partait à l'écran — de l'anglais, « {} », parfois une
+      // adresse technique.
+      // ⚠️ CALCULÉ AVANT les branches qui se décident sur le TEXTE du refus :
+      // sous une panne, ce texte est celui d'un corps d'erreur quelconque, et
+      // ses effets de bord (bloc de renvoi, signal de quota, aide au mot de
+      // passe) seraient ceux d'un refus qui n'a pas eu lieu.
+      const _panne = messagePanneAuth(_rc);
       let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       // Compte SUSPENDU par la modération (MOD-01, 2026-09-15) : GoTrue rend
@@ -7699,7 +7766,9 @@ async function onbDoAuth() {
       // Seule sortie possible pour qui n'a jamais reçu le lien : sans ce renvoi,
       // le compte est inaccessible pour toujours (« déjà utilisé » à
       // l'inscription, « confirme ton e-mail » à la connexion, et rien d'autre).
-      if (msg.includes("Email not confirmed")) {
+      // ⚠️ `!_panne` : un 5xx dont le corps cite « Email not confirmed » ouvrait
+      // le bloc « Renvoyer le lien » sous un message de panne.
+      if (!_panne && msg.includes("Email not confirmed")) {
         msg = "Confirme ton e-mail avant de te connecter : ouvre le lien qu'on t'a envoyé, ou fais-le renvoyer juste en dessous.";
         _showResendConfirmation(email);
       }
@@ -7714,16 +7783,16 @@ async function onbDoAuth() {
       //
       // Et surtout : la personne doit comprendre que son adresse n'est PAS
       // perdue, sinon elle s'en va pour de bon.
-      if (/rate limit|too many|security purposes/i.test(msg)) {
+      // ⚠️ `!_panne` : « remaining connection slots are reserved: too many
+      // connections » en 503 est une saturation du SERVICE. Elle émettait
+      // `signup_quota_email` — une erreur prioritaire, gardée 7 jours, qui nomme
+      // le quota d'e-mails — pour ce qui n'en est pas un.
+      if (!_panne && /rate limit|too many|security purposes/i.test(msg)) {
         msg = "Beaucoup de monde s'inscrit en ce moment. Réessaie dans quelques minutes — ton adresse n'est pas perdue.";
         // Sans cette remontée, la panne est invisible : personne ne saura que
         // des inscriptions ont été refusées ce soir-là.
         try { if (window.tel && tel.error) tel.error("signup_quota_email", { screen: "auth" }); } catch (e) {}
       }
-      // (2026-11-21) UNE PANNE PREND LE PAS SUR TOUTE TRADUCTION : service en
-      // 5xx, e-mail qui ne part pas, requête jamais arrivée. Le message brut
-      // partait à l'écran — de l'anglais, « {} », parfois une adresse technique.
-      const _panne = messagePanneAuth(_rc);
       if (_panne) _showPanneAuth(_panne); else _showAuthMsg(msg, "error");
       // Le même refus, à côté du champ, AVEC la sortie : « Proposer un mot de
       // passe » est juste en dessous. Un refus sans porte de sortie est ce qui
@@ -7828,8 +7897,11 @@ async function onbDoAuth() {
     // (2026-11-21) Ce `catch` n'émettait rien et répondait « Pas de connexion
     // internet » à TOUTE exception : une connexion qui plantait sur un défaut de
     // code envoyait la personne vérifier son Wi-Fi, et le pilotage ne voyait rien.
-    const _rcEx = signalerExceptionAuth(_authMode, e);
-    _showPanneAuth(_rcEx === "reseau" ? AUTH_HORS_LIGNE : AUTH_IMPREVU);
+    // `_mode`, pas `_authMode` : la porte POUSSÉE, figée en tête de fonction. Le
+    // libellé du bouton, lui, suit l'onglet AFFICHÉ (`_authMode`) : après une
+    // bascule, « Créer mon compte » sous l'onglet « Se connecter » serait faux.
+    const _rcEx = signalerExceptionAuth(_mode, e);
+    _showPanneAuth(messageExceptionAuth(_rcEx));
     if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
   }
 }
