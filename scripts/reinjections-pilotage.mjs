@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 142 depuis le rebase sur #1003 et la seconde relecture du lot T2
+//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 142 depuis le rebase sur #1003 et la seconde relecture du lot T2, 182 avec T3 (lot B1, 40 s)
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -29,6 +29,7 @@ const PUR = "tests/unit/pilotage.test.mjs";
 // T3 (2026-11-21) : le prédicat des parcours rouges, la veille GitHub, et leurs suites.
 const PAR = "supabase/functions/_shared/parcours.js";
 const VP = "scripts/veille-production.mjs";
+const EC = "supabase/functions/_shared/echelle.js";
 const BT_SUITE = "tests/unit/battement.test.mjs";
 const VP_SUITE = "tests/unit/veille-production.test.mjs";
 const M = [
@@ -229,6 +230,10 @@ const M = [
   ["R183 la veille GitHub lit un dénominateur sans le valider (une chaîne relève le seuil)", VP, `const compteLu = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);`, `const compteLu = (x) => Number(x);`, VP_SUITE, "T3-m"],
   ["R184 le dénominateur de la veille GitHub compte des appareils (device_id écrits par le navigateur)", VP, `(select count(distinct t.auth_uid) from telemetry_events t join auth.users u on u.id = t.auth_uid`, `(select count(distinct t.device_id) from telemetry_events t join auth.users u on u.id = t.auth_uid`, VP_SUITE, "T3-m"],
   ["R185 les refus groupés à 23 000 comptes donnent une attention permanente", VP, ` && !retenueApi(m.anciensRefus, m.anciensActifs, 3, TAUX_API_PM.refus)`, ``, VP_SUITE, "T3-m"],
+  ["R186 le plancher est perdu : à petite échelle, le taux seul décide (un seuil à 0 ou 1 compte)", EC, `return Math.max(plancher, Math.ceil(`, `return (Math.ceil(`, PUR, "T3-a"],
+  ["R187 le taux s'écrit en fraction (0.07 × 100 = 7.000000000000001, le seuil passe à 8)", EC, `Math.ceil((Math.floor(denominateur) * pourMille) / POUR_MILLE)`, `Math.ceil(Math.floor(denominateur) * (pourMille / POUR_MILLE))`, PUR, "T3-a"],
+  ["R188 un dénominateur illisible (NaN, chaîne, négatif) relève le seuil", EC, `  if (typeof denominateur !== "number" || !Number.isFinite(denominateur) || denominateur <= 0) return plancher;\n`, ``, PUR, "T3-a"],
+  ["R189 un taux non entier ou nul passe", EC, `  if (!Number.isInteger(pourMille) || pourMille <= 0) return plancher;\n`, ``, PUR, "T3-a"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
