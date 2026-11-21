@@ -72,6 +72,15 @@ Rendement = impact à 100k × probabilité ÷ effort. Les identifiants entre par
   1. Sans migration (S) : deux refus consécutifs du canari donnent une ligne « À faire » rouge qui cite le motif.
   2. Avec migration (critical, M) : borne par classe (non-critiques refusés à 60 %), purge par type (perf, action, click à 24 h), rétention courte pour `trafic = robot|emulation`, RPC `telemetrie_remplissage()`, ligne « Télémétrie pleine à x % ».
 - **Risque :** critical · **Migration :** oui pour le second temps.
+- **État au 2026-11-21 :** temps 1 **livré** (fonction `pilotage`, écran, bancs) ; temps 2 **écrit et éprouvé, à appliquer** — `migrations/migration_telemetrie_classes_2026-11-21.sql`, banc `tests/sql/migration-telemetrie-classes.test.sh` ; l'application (attestation, staging puis production) est un geste de Benjamin au poste. Fiche : `docs/journal/telemetrie-pilotage-sentinelle.md` (2026-11-21), qui donne le geste et seize limites connues.
+- **Écarts avec le correctif prévu ci-dessus, et pourquoi :**
+  - **deux paliers par rôle** au lieu d'un seul à 60 % : à 60 % seules les `perf` non protégées sont écartées, à 90 % tout le non-protégé. Un palier unique aurait privé la Sentinelle des effets des clics et le pilotage du compte des comptes connectés sur toute la plage 60–100 % ;
+  - la borne **écarte la ligne**, elle ne refuse pas le lot (les clients déjà en cache restent compatibles) ;
+  - la purge courte est à **26 h** (24 h de fenêtre des lecteurs + 2 h) et prend aussi les `lifecycle` non protégés — à l'échelle, les battements sont le premier volume ;
+  - **pas de rétention propre aux robots et aux émulations** : gain mesuré à la conception de 2,1 % (297 lignes), nul à l'échelle ;
+  - le refus de **débit** du canari reste orange (il ne sonne jamais : tout porteur de la clé publique le provoque), et **après migration la jauge est orange au plus** — le rouge vient du canari « table pleine » ;
+  - le gain annoncé se lit ainsi : **≈ 2,4 fois plus de trafic avant la fermeture, ≈ 1,5 fois avant le premier délestage** — ordres de grandeur, mesurés sur un trafic qui est surtout le nôtre ;
+  - ⚠️ dès l'application, le critère « journée ouvrée quasi vide » de `scripts/veille-production.mjs` cesse de jouer au volume d'aujourd'hui (la médiane des jours ouvrés passe sous son plancher de 500 lignes) : à recalibrer, hors de ce lot.
 
 ### T3 — Seuils absolus : voyant rouge permanent, délestage permanent, carte « erreurs » permanente
 *(AFF-06, CNX-07, PIL-02, PIL-07)*
@@ -132,6 +141,7 @@ Rendement = impact à 100k × probabilité ÷ effort. Les identifiants entre par
   - `js/telemetry.js:1496` — l'écouteur `error` n'est pas en capture, donc les erreurs de ressource ne lui arrivent pas.
   - `js/telemetry.js:1624` — le crochet fetch ignore `/private-media/`.
 - **Correctif :** compteur client et une ligne par session (plan au point 3, C) ; ensuite lecture par la veille en ratio, et ligne « Les photos ne s'affichent plus ».
+- **État au 2026-11-21 — volet client livré (lot D2), lecture à faire.** `js/telemetry.js` compte les médias affichés et en échec par capture au niveau du document et émet `media` / `bilan` `{famille, ko, vus, ko_av, vus_av}` : une ligne par période et par famille en échec, en delta, avec une gigue de ± 30 % par session sur le premier délai et sur la période (les sessions touchées par une même panne n'émettent plus au même instant) et, sous pression, un seul bilan notable par session et par famille. Le plan C ci-dessous a été remplacé (aucun `onerror` modifié, pas de `mediaKo`, cinq familles, crochet fetch inchangé) : contrat, limites et réinjections dans `docs/journal/telemetrie-pilotage-sentinelle.md`, fiche du 2026-11-21. **Le signal est émis, il n'est lu par aucune veille** : une panne de photos laisse aujourd'hui des lignes en base, pas encore une alerte.
 - **Risque :** normal tant que le signal ne nourrit qu'une ligne À faire · **Migration :** non · **Effort :** M.
 
 ### T6 — Plus personne ne peut entrer : invisible
@@ -335,6 +345,8 @@ Quatre pièces indépendantes, relues dans le code. Les numéros de ligne sont c
 
 ### C — Médias qui ne s'affichent pas : un compteur, une ligne par session (T5)
 
+> **Livré autrement le 2026-11-21 (lot D2)** — voir l'état sous T5. Les points 1, 2, 5 et 6 de ce plan n'ont pas été suivis (capture seule, sans appel depuis les `onerror`, sans `genre` ni hôte, sans élargir le crochet fetch) ; les points 3 et 4 le sont, avec une période de 5 min et un bilan par famille.
+
 **Fichiers :** `js/telemetry.js`, `js/app-02-state-utils.js`, `js/app-05-config-profil.js`.
 
 **État relu :**
@@ -387,14 +399,14 @@ Quatre pièces indépendantes, relues dans le code. Les numéros de ligne sont c
 **Non retenus dans ce lot, bien que tentants :**
 - La ligne critique de `deploy.yml` (T8-1) : classe critical, mais une ligne ; à faire en PR séparée, tout de suite après.
 - `data-action` dans les libellés (T10) : touche la frontière de confidentialité du détecteur.
-- Le routage du canari (T2-1) : touche `aFaire`.
+- Le routage du canari (T2-1) : touche `aFaire`. *(Livré le 2026-11-21, avec le reste de T2.)*
 
 ---
 
 ## 4. Ce qui demande une migration, une décision ou un geste humain
 
 **Migrations (canal ③, contre-revue humaine) :**
-- Borne de télémétrie par classe, purge par type, rétention courte du trafic robot (T2).
+- Borne de télémétrie par classe, purge par type, rétention courte du trafic robot (T2). **Écrite et éprouvée le 2026-11-21** (`migrations/migration_telemetrie_classes_2026-11-21.sql`, sans la rétention des robots), **à appliquer** : geste de Benjamin au poste.
 - `pilotage_audience` en taux, avec filtre d'hôte, délais et refus temps réel (T3, T13).
 - Agrégats de la Sentinelle et `pilotage_parcours` (T4).
 - `pilotage_auth_sante` (T6).

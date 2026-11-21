@@ -38,6 +38,7 @@ import {
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
   EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
+  EVT_CANARI, CANARI_LECTURE_MS, CANARI_MARQUES_MAX, marqueCanari, bilanCanari, MIGRATION_TELEMETRIE_CLASSES, remplissage, remplissageAveugle, jaugeRemplissage,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -185,7 +186,7 @@ async function veille(admin: Admin) {
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
-  const [sante, signalements, github, dispo, rap, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300), lireParcoursVeille(admin)]);
+  const [sante, signalements, github, dispo, rap, rempl, can, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), lireRemplissage(admin), lireCanari(admin), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -197,7 +198,10 @@ async function veille(admin: Admin) {
   // Les parcours critiques (2026-11-06) entrent dans le voyant : un parcours
   // CRITIQUE en panne (comptes serveur distincts, _shared/parcours.js) sonne.
   const parcoursVeille = val(parc);
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille };
+  // La table de télémétrie (2026-11-21, T2) : son remplissage et la mémoire du canari entrent dans le voyant —
+  // pleine, elle refuse les signaux de panne eux-mêmes, et tout ce qui est compté ci-dessus se tait.
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille,
+    remplissage: val(rempl), canari: val(can) };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -220,12 +224,14 @@ async function veille(admin: Admin) {
   // rouge ne sonnait plus (contre-revue du 12/11).
   const runsNonLusVoyant = (((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || []).filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));
   const partielGh = partielGithub({ runsNonLus: runsNonLusVoyant }) as string[];
-  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
+  // Le remplissage et la mémoire du canari non plus (2026-11-21) : illisibles, un rouge « table pleine »
+  // se lirait « résolu » à la première lecture manquée.
+  const incomplet = [sante, signalements, github, parc, rempl, can].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
     const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
-    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: partielGh.length ? ("en partie : " + partielGh.join(" ; ")).slice(0, 160) : raison(github), parcours: raison(parc) }));
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: partielGh.length ? ("en partie : " + partielGh.join(" ; ")).slice(0, 160) : raison(github), parcours: raison(parc), remplissage: raison(rempl), canari: raison(can) }));
   }
   if (memoire.illisible) console.warn("veille : état mémorisé illisible " + JSON.stringify({ code: memoire.code || "?" }));
   const vt = tenirVerdict(prec, v, incomplet);
@@ -266,12 +272,16 @@ async function veille(admin: Admin) {
   };
   // Chaque geste passe d'abord par la politique (_shared/politique-autonomie.js) :
   // invalide, en observation ou en pause → aucun geste, l'observation continue.
-  const delestage = await etape(() => delestageAuto(admin, signaux));
+  const delestage = await etape(() => delestageAuto(admin, signaux, e.remplissage));
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
   // La cadence APRÈS le réveil (2026-11-21) : un passage que le réveil vient de lancer suffit.
   const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // La MÉMOIRE du canari (2026-11-21, T2) : un refus laisse une marque, le succès qui clôt une suite aussi.
+  // APRÈS l'alerte (rien ne la retarde) et après l'émission : le voyant de CE passage a jugé les marques
+  // d'avant, celui du passage suivant jugera celle-ci. Sa propre panne ne casse rien (étape isolée).
+  await etape(() => noterCanari(admin, canari, e.canari));
   // L'essai des alertes (2026-11-07) : sans note d'envoi depuis 7 jours, rien ne
   // prouve que le téléphone sonnerait ; un essai part, de jour, et s'accuse.
   const essai = await etape(() => essayerAlertes(admin));
@@ -281,7 +291,7 @@ async function veille(admin: Admin) {
   const battement = await etape(() => battre(admin, contenuBattement({
     // GitHub lu en partie et mémoire illisible sont des lectures manquées : le battement les dit « ko ».
     lectures: { sante, signalements, github: partielGh.length ? { status: "rejected" } : github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud,
-      memoire: { status: memoire.illisible ? "rejected" : "fulfilled" } },
+      memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
     verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, cadence, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
@@ -304,8 +314,55 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
   if (!canariDu(new Date().getUTCMinutes())) return { emis: false };
   const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await anon.from("telemetry_events").insert(ligneCanari("can_srv_" + crypto.randomUUID()));
-  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120) };
+  // Le CODE part avec le motif (PT429 : borne ou débit ; 42501 : RLS ; 57014 : délai) : `noterCanari` les range.
+  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120), code: String((error as { code?: string }).code || "").slice(0, 10) };
   return { emis: true };
+}
+
+// ─── La table de télémétrie se ferme, et personne ne le voit (2026-11-21, T2) ─
+// Logique et textes : _shared/pilotage.js (bilanCanari, remplissage). Ici, les lectures et l'écriture.
+// La MÉMOIRE du canari : les marques `pilotage_canari` des deux dernières heures, sous l'auteur système
+// (écrites par la clé de service : un navigateur ne les forge pas, RLS analytics_insert_own). Une
+// lecture en échec LÈVE : « non lu », jamais « aucun refus ».
+async function lireCanari(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("created_at,properties").eq("event", EVT_CANARI).eq("user_id", "systeme:pilotage")
+    .gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);
+  if (error) throw error;
+  return bilanCanari(data || []);
+}
+// La marque de CE passage (marqueCanari) : chaque refus, et le succès qui clôt une suite — rien en temps
+// normal. Aux journaux, le CODE d'un refus d'écriture, jamais le motif (un texte du serveur).
+async function noterCanari(admin: Admin, resultat: Record<string, unknown>, bilan: { enCours?: boolean } | null) {
+  const m = marqueCanari(resultat, bilan);
+  if (!m) return { note: false };
+  const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_CANARI, properties: m });
+  if (error) { console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?") })); return { note: false }; }
+  return { note: true };
+}
+// Le REMPLISSAGE de `telemetry_events`. Après la migration des classes : `telemetrie_remplissage()`, en temps
+// constant (statistiques du serveur, seuils relus des deux déclencheurs). AVANT (fonction absente, PGRST202) :
+// UN compte exact sous la clé de service — « un compte du pilotage se compte en base » —, borné à 4 s ; au-delà,
+// « non mesuré » (null), JAMAIS 0. Mesuré le 21/11 : 6 ms pour 14 000 lignes, linéaire (≈ 0,35 s à 800 000).
+// Une erreur de la fonction qui n'est PAS une absence (délai, panne) LÈVE, et un remplissage NON MESURÉ aussi
+// (compte abandonné, réponse sans nombre) : une lecture non lue n'est pas une table vide — l'écran ne passe pas
+// au vert, la veille tient son voyant (sinon un rouge « télémétrie pleine » sonnait « résolu » sur un compte lent).
+// ⚠️ « Absente » = PGRST202 SEUL (PostgREST ne trouve pas la fonction), pas `estObjetAbsent` (contre-revue du 21/11) : un
+// 42883 levé DEPUIS la fonction (un objet qu'elle appelle a disparu) ouvrait le repli, et une table qui stationne à 91 %
+// — orange, le régime normal après migration — était jugée sur les seuils d'AVANT : rouge, sonnerie, et une ligne qui
+// demandait d'appliquer une migration déjà en base. Reste PGRST202 quand PostgREST perd son cache de schéma : fiche, limite 18.
+const REMPLISSAGE_DELAI_MS = 4000;
+const fonctionSqlAbsente = (e: unknown) => String((e as { code?: string } | null)?.code || "") === "PGRST202";
+async function lireRemplissage(admin: Admin) {
+  const { data, error } = await admin.rpc("telemetrie_remplissage");
+  let r: ReturnType<typeof remplissage>;
+  if (!error && data && typeof data === "object") r = remplissage(data as Record<string, unknown>);
+  else {
+    if (error && !fonctionSqlAbsente(error)) throw error;
+    const n = await avecDelai(compter(admin.from("telemetry_events").select("id", { count: "exact", head: true })), REMPLISSAGE_DELAI_MS, null);
+    r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });
+  }
+  if (r.vivantes === null) throw new Error("remplissage de la télémétrie non mesuré (compte abandonné après " + REMPLISSAGE_DELAI_MS / 1000 + " s, ou réponse sans nombre)");
+  return r;
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
@@ -598,6 +655,7 @@ async function etat(admin: Admin, frais = false) {
     historique: lireHistorique(admin), croissance: lireCroissance(admin), seuils: lireSeuils(admin),
     parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
     relances: lireRelances(admin), fusionsArmees: lireFusionsArmees(admin),
+    remplissage: lireRemplissage(admin), canari: lireCanari(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -635,6 +693,9 @@ async function etat(admin: Admin, frais = false) {
     const j24 = (out.utilisateurs as { aujourdhui?: Audience | null } | null)?.aujourdhui || null;
     const bp = j24 ? bandePassanteEstimee(j24.appareils) : null;
     if (bp != null) cap.jauges.push(...jauges({ bandePassante: bp }).filter((j) => j.cle === "bandePassante"));
+    // La table de télémétrie (2026-11-21, T2) : sa jauge parmi les autres ; sa ligne « À faire » est à part (aFaire).
+    const rp = out.remplissage as ReturnType<typeof remplissage> | null;
+    if (rp) cap.jauges.push(jaugeRemplissage(rp));
     cap.cout = coutMensuel(cap.jauges);
   }
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
@@ -833,7 +894,7 @@ async function lireReglages(admin: Admin) {
   return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
 }
 
-async function delestageAuto(admin: Admin, a: Audience | null) {
+async function delestageAuto(admin: Admin, a: Audience | null, rp: { comptes?: string | null } | null = null) {
   const pol = autoriser(POLITIQUE, "delestage_auto");
   if (!pol.ok) return { raison: "politique:" + pol.raison };
   const lignes = await lireLignesReglages(admin);
@@ -850,6 +911,9 @@ async function delestageAuto(admin: Admin, a: Audience | null) {
     comptes5xx15 = a.comptes5xx15;
     aveugle = estAveugle(a);
   }
+  // La table au palier 2 des comptes (ou fermée pour eux) n'écrit plus leurs battements : les connexions
+  // comptées BAISSENT sans que la charge baisse. Même sens que l'aveuglement : on peut monter, pas descendre.
+  if (remplissageAveugle(rp)) aveugle = true;
   const d = decideDelestage(actuel, { pctConnexions, comptes5xx15, aveugle });
   if (!d.changer) return { niveau: d.niveau };
   const { error } = await admin.from("reglages_distants").upsert({

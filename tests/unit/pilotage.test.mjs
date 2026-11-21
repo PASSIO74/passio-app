@@ -377,7 +377,8 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   assert.match(v, /const etape = async \(f:[^\n]*\n\s*try \{ return await f\(\); \} catch/, "chaque étape est isolée : une erreur ne casse pas la veille");
-  assert.match(v, /await etape\(\(\) => delestageAuto\(admin, signaux\)\)/);
+  // Le remplissage part avec les signaux (2026-11-21, T2) : la table qui déleste les comptes fige le délestage (T2-g).
+  assert.match(v, /await etape\(\(\) => delestageAuto\(admin, signaux, e\.remplissage\)\)/);
   // L'alerte voit l'aveuglement : la mesure de la veille entre dans le verdict, lue AVEC le reste.
   assert.match(v, /Promise\.allSettled\(\[lireSante\(admin\),[^\n]*audience\(admin, 300\), lireParcoursVeille\(admin\)\]\)/);
   assert.ok(v.indexOf("aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null") > 0
@@ -463,7 +464,8 @@ test("㉔ la veille tient le voyant AVANT de décider l'alerte ; l'écran passe 
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   // Les parcours (2026-11-06) entrent dans le voyant : leur lecture manquée est une lecture incomplète.
-  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\) \|\| partielGh\.length > 0;/, "une lecture des parcours tronquée, ou de GitHub en partie, est une lecture incomplète");
+  // Le remplissage et la mémoire du canari aussi (2026-11-21, T2) : illisibles, un rouge « table pleine » ne se lit pas « résolu ».
+  assert.match(v, /const incomplet = \[sante, signalements, github, parc, rempl, can\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\) \|\| partielGh\.length > 0;/, "une lecture des parcours tronquée, ou de GitHub en partie, est une lecture incomplète");
   assert.match(v, /const vt = tenirVerdict\(prec, v, incomplet\);/);
   assert.match(v, /const actuel = \{ couleur: vt\.couleur, raisons: vt\.raisons,/);
   assert.ok(v.indexOf("tenirVerdict(") < v.indexOf("decideAlerte("), "le voyant est tenu avant que l'alerte ne décide");
@@ -886,6 +888,8 @@ test("㊲ VEILLE #627 : la veille serveur émet le canari un quart d'heure sur t
 // cumul sans trier les jours → ㊺ ; armer l'auto-fusion depuis la veille → ㊻ ; remettre
 // un confirm() ou élargir LIENS_SURS → ㊼.
 const MUTE_LE = "2026-10-23T03:00:00Z"; // 9 h avant MAINTENANT_AF : la Sentinelle est muette
+// 760 000 lignes comptées, migration des classes absente : 95 % de la borne des visiteurs, rouge.
+const PLEINE_SANS_CLASSES = remplissage({ vivantes: 760000 }, { migration: MIGRATION_TELEMETRIE_CLASSES });
 const touteLaPanne = (extra = {}) => ({
   gestesGithub: true,
   verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["tout"] },
@@ -911,9 +915,14 @@ const touteLaPanne = (extra = {}) => ({
   },
   signalements: { ouverts: 0, liste: [], masques: [{ id: "p_1", signaleurs: 3, le: MUTE_LE, extrait: "x" }] },
   erreurs: { details: [{ message: "E", n: 40, comptes: 3, dernier: "2026-10-23T11:00:00Z" }] },
-  capacite: { jauges: jauges({ connexions: 480, emails: 280, base: 8 * 1024 ** 3, stockage: 99 * 1024 ** 3, telemetrie: 2900, bandePassante: 99 * 1024 ** 3 }) },
+  // La table de télémétrie (2026-11-21, T2) : sa jauge ROUGE est dans la liste comme l'état la rend (jaugeRemplissage) —
+  // sans le filtre de la boucle des jauges, elle ferait une ligne « capacite:tableTelemetrie » sans bouton (㊴).
+  capacite: { jauges: [...jauges({ connexions: 480, emails: 280, base: 8 * 1024 ** 3, stockage: 99 * 1024 ** 3, telemetrie: 2900, bandePassante: 99 * 1024 ** 3 }), jaugeRemplissage(PLEINE_SANS_CLASSES)] },
   autonomie: { retour: { jeton: true, proposition: { le: MUTE_LE, version: "aaaa1111", comptes: 6, famille: "E" } } },
   reglages: { absente: false, delestage: { niveau: 0 }, coupures: { cles: [] } },
+  // La sonde refusée deux fois (classe « autre » : la ligne du remplissage reste, les DEUX lignes sont couvertes).
+  canari: { enCours: true, refuse: true, rouge: true, suite: 2, classe: "autre", motif: "new row violates row-level security policy", depuis: MUTE_LE, dernier: MUTE_LE },
+  remplissage: PLEINE_SANS_CLASSES,
   ...extra,
 });
 
@@ -925,6 +934,7 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
     assert.ok(pbs.length >= 8, "le banc couvre bien toutes les familles : " + pbs.map((x) => x.id));
     assert.ok(pbs.some((x) => x.id === "scan:securite"), "le banc couvre le scan de sécurité (relecture de #866)");
     assert.ok(pbs.some((x) => x.id === "fonctions:deploiement"), "le banc couvre le déploiement des fonctions serveur (2026-11-21)");
+    assert.ok(pbs.some((x) => x.id === "telemetrie:canari") && pbs.some((x) => x.id === "telemetrie:remplissage"), "le banc couvre la table de télémétrie (2026-11-21, T2)");
     for (const x of pbs) {
       const principaux = x.gestes.filter((g) => g.principal);
       if (x.id.startsWith("signalement:")) {
@@ -976,7 +986,9 @@ test("㊽ « Tout régler » : seulement ce qui répare ; jamais le retour arri�
     assert.ok(["reparer", "relancer", "fusionner", "fermer"].includes(g.corps.action), id + " : " + g.corps.action);
     assert.equal(g.principal, true, id);
   }
-  for (const x of l.filter((y) => /^(retour:|site$|signalement:|masque:|capacite:)/.test(y.id))) {
+  // Ralentir l'app (les deux lignes de la télémétrie, 2026-11-21) est un choix aussi : jamais dans « Tout régler ».
+  assert.equal(l.filter((y) => y.id.startsWith("telemetrie:")).length, 2, "les deux lignes de la télémétrie sont dans la liste");
+  for (const x of l.filter((y) => /^(retour:|site$|signalement:|masque:|capacite:|telemetrie:)/.test(y.id))) {
     assert.ok(!x.gestes.some((g) => g.tout), x.id + " : c'est un choix, pas une réparation");
   }
 });
@@ -2275,4 +2287,478 @@ test("T4-d textes honnêtes : tant que l'état est ouvert, ni « rien à corrige
   assert.ok(p.quoi.length <= 55);
   assert.doesNotMatch(p.quoi, /rien d'assez sûr/);
   assert.equal(p.prio, 2);
+});
+
+// ─── LA TABLE DE TÉLÉMÉTRIE SE FERME, ET PERSONNE NE LE VOIT (2026-11-21, T2) ──
+// Audit du 20/11, trou T2 : pleine, la table refuse tout — signaux de panne compris — et le
+// pilotage n'en disait rien (le canari refusé dormait dans `gestes.canari` du battement).
+// Les exercices EXÉCUTÉS sont dans pilotage-chemins (T2-h à T2-n). Ici, la logique pure.
+// RÉINJECTIONS (scripts/reinjections-pilotage.mjs, R77 à R119 et R132, R136 à R138 pour les suites mêlées) : compter les marques au lieu
+// des quarts d'heure distincts → T2-a ; un seul refus suffit → T2-a ; le débit rougit → T2-a ;
+// oublier l'âge du dernier refus → T2-b ; ne plus noter le succès qui clôt une suite → T2-b ;
+// prendre les statistiques seules → T2-d ; ne plus valider les seuils → T2-d ; rougir la jauge
+// après migration → T2-d ; le motif du serveur dans une raison du voyant → T2-e ; retirer les
+// deux sources du voyant → T2-e ; le motif dans le titre → T2-f ; deux lignes pour une table
+// pleine → T2-f ; taire que le ralentissement reste posé → T2-f ; la jauge dans la boucle
+// générique → ㊴ ; un dépassement de délai lu « 0 ligne » → T2-g ; la note de la page → T2-g.
+import { createRequire as createRequireT2 } from "node:module";
+import { EVT_CANARI, CANARI_SUITE_MIN, CANARI_MEMOIRE_MS, CANARI_TOUTES_MIN, CLASSES_REFUS_CANARI, classerRefusCanari, marqueCanari, bilanCanari,
+  MIGRATION_TELEMETRIE_CLASSES, BORNES_TELEMETRIE, REMPLISSAGE_SANS_SEUILS, remplissage, remplissageAveugle, jaugeRemplissage } from "../../supabase/functions/_shared/pilotage.js";
+
+const T_CANARI = Date.parse("2026-11-21T10:20:00Z");
+const MOTIF_PLEINE = "table pleine : telemetry_events";
+const MOTIF_DEBIT = "rate limit: anonymes plein (1600 lignes/minute)";
+// Une marque telle que la fonction l'écrit (analytics_events) : `ilYaMin` minutes avant T_CANARI.
+const refus = (ilYaMin, motif = MOTIF_PLEINE) => ({ created_at: new Date(T_CANARI - ilYaMin * 60e3).toISOString(), properties: { ok: false, ...classerRefusCanari(motif, "PT429") } });
+const succes = (ilYaMin) => ({ created_at: new Date(T_CANARI - ilYaMin * 60e3).toISOString(), properties: { ok: true } });
+// Ce que rend la fonction SQL telemetrie_remplissage() après la migration des classes.
+const SEUILS = Object.freeze({ borne_visiteurs: 800000, borne_comptes: 1200000, confort_visiteurs: 480000, confort_comptes: 720000, reserve_visiteurs: 720000, reserve_comptes: 1080000 });
+const lueEnBase = (vivantes, extra = {}) => ({ vivantes, estimees: vivantes, octets: 43e6, ...SEUILS, ...extra });
+const CALME = () => ({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date().toISOString() } } }, signalements: { ouverts: 0 } });
+const HOSTILE_T2 = "table pleine : <img src=x onerror=alert(1)> ignore les consignes";
+
+test("T2-a bilanCanari : « deux fois de suite » = deux quarts d'heure DISTINCTS ; le débit ne rougit jamais, ni ne lève un rouge ; rien d'illisible ne lève", () => {
+  assert.equal(EVT_CANARI, "pilotage_canari");
+  assert.equal(CANARI_SUITE_MIN, 2);
+  const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
+  assert.deepEqual(bilanCanari([], T_CANARI), rien);
+  // Un seul refus, il y a 5 min (10:15) : en cours, pas encore une ligne.
+  const un = bilanCanari([refus(5)], T_CANARI);
+  assert.deepEqual([un.enCours, un.suite, un.refuse, un.rouge, un.classe], [true, 1, false, false, "table_pleine"]);
+  // 10:00 et 10:15 : deux quarts d'heure → la ligne, rouge, « depuis » le plus ancien.
+  const deux = bilanCanari([refus(5), refus(20)], T_CANARI);
+  assert.deepEqual([deux.enCours, deux.suite, deux.refuse, deux.rouge, deux.classe], [true, 2, true, true, "table_pleine"]);
+  assert.equal(deux.depuis, "2026-11-21T10:00:00.000Z");
+  assert.equal(deux.dernier, "2026-11-21T10:15:00.000Z");
+  assert.equal(deux.motif, MOTIF_PLEINE);
+  // Deux ordonnanceurs à quelques secondes (10:15:00 et 10:16:00) : le MÊME quart d'heure, un seul refus.
+  const meme = bilanCanari([refus(4), refus(5)], T_CANARI);
+  assert.deepEqual([meme.suite, meme.refuse, meme.rouge], [1, false, false], "deux marques du même quart d'heure ne font pas « deux fois de suite »");
+  // L'ordre reçu ne compte pas : trié ici.
+  assert.equal(bilanCanari([refus(20), refus(5)], T_CANARI).suite, 2);
+  // Le DÉBIT (réservoir anonyme plein, que tout visiteur remplit avec la clé publique) : orange, jamais rouge — même après une heure.
+  for (const n of [2, 3, 4, 8]) {
+    const b = bilanCanari(Array.from({ length: n }, (_, i) => refus(5 + 15 * i, MOTIF_DEBIT)), T_CANARI);
+    assert.deepEqual([b.suite, b.refuse, b.rouge, b.classe], [n, true, false, "debit"], n + " refus de débit");
+  }
+  // ── Suites MÊLÉES (contre-revue du 21/11) : le rouge se décide sur les seuls refus GRAVES (ni débit), la ligne sur tous.
+  const MOTIF_DELAI = "canceling statement due to statement timeout";
+  const vu = (b) => [b.suite, b.refuse, b.rouge, b.classe];
+  // débit, débit, puis UN délai isolé : la ligne est là (3 refus), mais un seul refus grave n'est pas « deux fois de suite ».
+  const unGrave = bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(35, MOTIF_DEBIT)], T_CANARI);
+  assert.deepEqual(vu(unGrave), [3, true, false, "debit"], "un seul refus grave après des refus de débit ne rougit pas");
+  assert.equal(unGrave.motif, MOTIF_DEBIT, "sans rouge, la ligne dit le débit — pas l'urgence d'un refus isolé");
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), refus(35, MOTIF_DEBIT)], T_CANARI)), [3, true, false, "debit"], "ni au milieu");
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_PLEINE), refus(20, MOTIF_DEBIT)], T_CANARI)), [2, true, false, "debit"], "une table pleine vue une fois : pas encore rouge");
+  // délai, délai, puis un refus de débit : le rouge RESTE — un refus de débit ne dit pas que la panne est finie.
+  const tenu = bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), refus(35, MOTIF_DELAI)], T_CANARI);
+  assert.deepEqual(vu(tenu), [3, true, true, "autre"], "un refus de débit au milieu d'un rouge ne le lève pas");
+  assert.equal(tenu.motif, MOTIF_DELAI, "la classe et le motif sont ceux du dernier refus GRAVE");
+  assert.equal(tenu.dernier, "2026-11-21T10:15:00.000Z", "« dernier » reste le dernier refus de la suite");
+  // table pleine, débit, table pleine : deux quarts d'heure graves, rouge, « table pleine ».
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_PLEINE), refus(20, MOTIF_DEBIT), refus(35, MOTIF_PLEINE)], T_CANARI)), [3, true, true, "table_pleine"]);
+  // Deux refus graves du MÊME quart d'heure, parmi des refus de débit : un seul refus grave.
+  assert.deepEqual(vu(bilanCanari([refus(4, MOTIF_DELAI), refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT)], T_CANARI)), [2, true, false, "debit"]);
+  // Les refus graves VIEILLISSENT : 35 min de refus de débit seuls, et ils ne disent plus rien du présent (la ligne orange reste).
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(35, MOTIF_DEBIT), refus(50, MOTIF_DELAI), refus(65, MOTIF_DELAI)], T_CANARI)), [5, true, false, "debit"]);
+  assert.equal(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(34, MOTIF_DELAI), refus(49, MOTIF_DELAI)], T_CANARI).rouge, true, "à 34 min, le dernier refus grave tient encore");
+  // Un succès borne aussi les refus graves : délai, SUCCÈS, délai, débit → un seul refus grave dans la suite.
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DELAI), succes(35), refus(50, MOTIF_DELAI)], T_CANARI)), [2, true, false, "debit"]);
+  // ── Seconde relecture (21/11) : deux refus ne sont « de suite » que séparés de CANARI_MEMOIRE_MS au plus.
+  // B-1 — deux refus graves à 1 h 45 d'écart, reliés par six refus de débit (qu'un tiers provoque) : pas rouge.
+  // RÉINJECTION R145 (le trou entre deux refus graves ne clôt plus les graves) → rouge.
+  const relies = bilanCanari([refus(5, MOTIF_DELAI), ...[20, 35, 50, 65, 80, 95].map((n) => refus(n, MOTIF_DEBIT)), refus(110, MOTIF_DELAI)], T_CANARI);
+  assert.deepEqual(vu(relies), [8, true, false, "debit"], "deux refus graves éloignés, reliés par du débit, ne font pas « deux fois de suite »");
+  assert.equal(relies.motif, MOTIF_DEBIT);
+  assert.equal(bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(40, MOTIF_DELAI)], T_CANARI).rouge, true, "35 min entre deux refus graves : encore de suite");
+  assert.equal(bilanCanari([refus(5, MOTIF_DELAI), refus(20, MOTIF_DEBIT), refus(41, MOTIF_DELAI)], T_CANARI).rouge, false, "36 min : plus de suite grave");
+  // B-2 — un refus isolé, la veille muette plus de 35 min (son succès n'a laissé aucune marque), un second refus isolé.
+  // RÉINJECTION R144 (le trou entre deux refus ne clôt plus la suite) → rouge.
+  assert.equal(marqueCanari({ emis: true }, bilanCanari([refus(45)], T_CANARI)), null, "prémisse : à 45 min, le bilan n'est plus « en cours », le succès ne se note pas");
+  const isoles = bilanCanari([refus(5), refus(95)], T_CANARI);
+  assert.deepEqual([isoles.enCours, isoles.suite, isoles.refuse, isoles.rouge, isoles.depuis], [true, 1, false, false, "2026-11-21T10:15:00.000Z"], "deux refus isolés à 1 h 30 ne font pas « deux fois de suite »");
+  assert.deepEqual(vu(bilanCanari([refus(5), refus(40)], T_CANARI)), [2, true, true, "table_pleine"], "35 min entre deux refus : encore de suite");
+  assert.deepEqual(vu(bilanCanari([refus(5), refus(41)], T_CANARI)), [1, false, false, "table_pleine"], "36 min : la suite est close");
+  // Le trou clôt aussi le débit d'avant : débit, débit, [trou de 50 min], table pleine, table pleine → la suite s'arrête au trou.
+  assert.deepEqual(vu(bilanCanari([refus(5, MOTIF_DEBIT), refus(20, MOTIF_DEBIT), refus(70), refus(85)], T_CANARI)), [2, true, false, "debit"]);
+  // Une classe inconnue (marque d'une autre version) retombe sur la liste fermée ; le motif reste borné.
+  const autre = bilanCanari([{ ...refus(5), properties: { ok: false, classe: "<script>", motif: "x".repeat(500) } }, refus(20)], T_CANARI);
+  assert.deepEqual([autre.classe, autre.rouge, autre.motif.length], ["autre", true, 120]);
+  assert.ok(CLASSES_REFUS_CANARI.includes(autre.classe));
+  // Rien d'illisible ne lève : null, date invalide, sans propriétés.
+  for (const sale of [null, undefined, "x", [null], [{}], [{ created_at: "n'importe quoi", properties: { ok: false } }], [{ created_at: new Date(T_CANARI).toISOString() }], [{ created_at: new Date(T_CANARI).toISOString(), properties: "texte" }]]) {
+    assert.deepEqual(bilanCanari(sale, T_CANARI), rien, JSON.stringify(sale));
+  }
+  // Une marque illisible au milieu n'interrompt pas la suite des refus lisibles.
+  assert.equal(bilanCanari([refus(5), { created_at: "?", properties: { ok: true } }, refus(20)], T_CANARI).suite, 2);
+});
+
+test("T2-b bilanCanari oublie : un succès plus récent clôt la suite, un dernier refus de plus de 35 min ne dit plus rien ; marqueCanari ne note que les refus et le succès qui clôt", () => {
+  assert.equal(CANARI_MEMOIRE_MS, 35 * 60e3);
+  // 10:00 et 10:15 refusés, 10:30 passé (lu à 10:35) : plus rien.
+  const t35 = T_CANARI + 15 * 60e3;
+  assert.equal(bilanCanari([{ ...succes(-10) }, refus(5), refus(20)], t35).enCours, false);
+  // Un succès ANCIEN borne la suite sans l'effacer : refus, succès, refus, refus → suite 2 (pas 3).
+  const borne = bilanCanari([refus(5), refus(20), succes(35), refus(50)], T_CANARI);
+  assert.deepEqual([borne.suite, borne.depuis], [2, "2026-11-21T10:00:00.000Z"]);
+  // Dernier refus il y a 40 min : la veille s'est arrêtée ou le canari n'est plus émis — ce refus ne dit rien du présent.
+  assert.equal(bilanCanari([refus(40), refus(55)], T_CANARI).enCours, false, "un refus de 40 min ne tient plus la ligne");
+  assert.equal(bilanCanari([refus(34), refus(49)], T_CANARI).refuse, true, "à 34 min, il la tient encore");
+  // marqueCanari. Pas la minute du canari : rien.
+  const enCours = bilanCanari([refus(5)], T_CANARI), calme = bilanCanari([], T_CANARI);
+  assert.equal(marqueCanari({ emis: false }, enCours), null);
+  assert.equal(marqueCanari(null, enCours), null);
+  // Un refus se note TOUJOURS, classé, borné, avec son code.
+  assert.deepEqual(marqueCanari({ emis: false, erreur: MOTIF_PLEINE, code: "PT429" }, calme), { ok: false, classe: "table_pleine", motif: MOTIF_PLEINE, code: "PT429" });
+  assert.deepEqual(marqueCanari({ emis: false, erreur: MOTIF_DEBIT, code: "PT429" }, null), { ok: false, classe: "debit", motif: MOTIF_DEBIT, code: "PT429" });
+  // L'étape qui a LEVÉ (réseau) rend { erreur } : c'est un refus aussi, de classe « autre ».
+  assert.deepEqual(marqueCanari({ erreur: "fetch failed" }, calme), { ok: false, classe: "autre", motif: "fetch failed", code: "" });
+  // Un succès ordinaire ne laisse AUCUNE marque (0 ligne par jour en temps normal)…
+  assert.equal(marqueCanari({ emis: true }, calme), null);
+  assert.equal(marqueCanari({ emis: true }, null), null, "mémoire non lue : pas de marque de succès à l'aveugle");
+  // … celui qui clôt une suite, si : sans lui la ligne tiendrait 35 min après le retour.
+  assert.deepEqual(marqueCanari({ emis: true }, enCours), { ok: true });
+});
+
+test("T2-c classerRefusCanari : trois classes en liste fermée, lues dans le message du serveur ; le motif est borné et sans caractère de contrôle", () => {
+  assert.deepEqual([...CLASSES_REFUS_CANARI], ["table_pleine", "debit", "autre"]);
+  assert.deepEqual(classerRefusCanari(MOTIF_PLEINE, "PT429"), { classe: "table_pleine", motif: MOTIF_PLEINE, code: "PT429" });
+  assert.equal(classerRefusCanari(MOTIF_DEBIT, "PT429").classe, "debit");
+  assert.equal(classerRefusCanari("rate limit: neufs + anonymes plein (2400 lignes/minute)").classe, "debit");
+  for (const m of ["new row violates row-level security policy for table \"telemetry_events\"", "canceling statement due to statement timeout", "", null, undefined, 42]) {
+    assert.equal(classerRefusCanari(m).classe, "autre", String(m));
+  }
+  // Les messages que la base lève VRAIMENT : relus dans les migrations, pas recopiés de mémoire.
+  assert.match(fs.readFileSync("migrations/migration_securite_lot4_telemetrie_2026-11-15.sql", "utf8"), /raise exception 'table pleine : %', tg_table_name using errcode = 'PT429'/);
+  assert.match(fs.readFileSync("migrations/migration_telemetrie_equitable_2026-10-16.sql", "utf8"), /raise exception 'rate limit: % plein \(% lignes\/minute\)'/);
+  const long = classerRefusCanari("table pleine :\n" + "x".repeat(500) + "\u0000\u001b[31m", "PT429" + "9".repeat(40));
+  assert.equal(long.classe, "table_pleine");
+  assert.equal(long.motif.length, 120);
+  assert.doesNotMatch(long.motif, /[\u0000-\u001f\u007f]/);
+  assert.equal(long.code.length, 10);
+});
+
+test("T2-d remplissage : rapporté à la borne des visiteurs ; après migration, orange AU PLUS ; sans les seuils, orange à 70 % et rouge à 90 % ; non mesuré n'est jamais 0", () => {
+  assert.deepEqual({ ...BORNES_TELEMETRIE }, { visiteurs: 800000, comptes: 1200000 });
+  assert.deepEqual({ ...REMPLISSAGE_SANS_SEUILS }, { orange: 0.7, rouge: 0.9 });
+  // Les bornes par défaut sont celles que la base applique (aa_table_bornee, 15/11).
+  assert.match(fs.readFileSync("migrations/migration_securite_lot4_telemetrie_2026-11-15.sql", "utf8"), /execute function public\.telemetrie_bornee\('800000', '1200000'\)/);
+  // APRÈS migration (la fonction SQL rend les quatre seuils) : pct, couleur, état par rôle.
+  const apres = (n) => { const r = remplissage(lueEnBase(n)); return [r.pct, r.couleur, r.visiteurs, r.comptes, r.classes, r.migration]; };
+  assert.deepEqual(apres(100000), [12.5, "vert", "ok", "ok", true, null]);
+  assert.deepEqual(apres(480000), [60, "vert", "ok", "ok", true, null], "le seuil lui-même n'est pas franchi");
+  assert.deepEqual(apres(500000), [62.5, "orange", "confort", "ok", true, null]);
+  assert.deepEqual(apres(750000), [93.8, "orange", "reserve", "confort", true, null], "au-dessus de la réserve des visiteurs : ORANGE — c'est un point de consigne, un rouge y battrait");
+  assert.deepEqual(apres(900000), [112.5, "orange", "ferme", "confort", true, null]);
+  assert.deepEqual(apres(1100000), [137.5, "orange", "ferme", "reserve", true, null]);
+  assert.deepEqual(apres(1300000), [162.5, "orange", "ferme", "ferme", true, null], "même fermée à tous : orange ici, le rouge vient du canari « table pleine »");
+  // AVANT migration (compte exact, fichier nommé) : ni confort ni réserve, orange > 560 000, rouge > 720 000.
+  const avant = (n) => { const r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES }); return [r.pct, r.couleur, r.visiteurs, r.comptes, r.classes]; };
+  assert.deepEqual(avant(14056), [1.8, "vert", "ok", "ok", false]);
+  assert.deepEqual(avant(560000), [70, "vert", "ok", "ok", false]);
+  assert.deepEqual(avant(560001), [70, "orange", "ok", "ok", false]);
+  assert.deepEqual(avant(720000), [90, "orange", "ok", "ok", false]);
+  assert.deepEqual(avant(720001), [90, "rouge", "ok", "ok", false], "rouge AVANT la fermeture : le voyant sonne tant qu'il reste de la place");
+  assert.deepEqual(avant(900000), [112.5, "rouge", "ferme", "ok", false]);
+  assert.deepEqual(avant(1300000), [162.5, "rouge", "ferme", "ferme", false]);
+  assert.equal(remplissage({ vivantes: 5 }, { migration: MIGRATION_TELEMETRIE_CLASSES }).migration, "migrations/migration_telemetrie_classes_2026-11-21.sql");
+  // Non mesuré (compte abandonné après 4 s, réponse vide) : gris, sans pourcentage, sans état — JAMAIS 0 %.
+  for (const m of [{ vivantes: null }, {}, null, undefined, "x", { vivantes: "12" }, { vivantes: NaN }, { vivantes: -1 }]) {
+    const r = remplissage(m);
+    assert.deepEqual([r.vivantes, r.pct, r.couleur, r.visiteurs, r.comptes], [null, null, "gris", null, null], JSON.stringify(m));
+  }
+  // Les statistiques vivantes repartent de ZÉRO après un arrêt brutal : l'estimation du catalogue tient la jauge.
+  const redemarre = remplissage(lueEnBase(0, { estimees: 700000 }));
+  assert.deepEqual([redemarre.vivantes, redemarre.pct, redemarre.couleur], [700000, 87.5, "orange"], "le plus grand des deux compteurs");
+  assert.equal(remplissage(lueEnBase(700000, { estimees: 0 })).vivantes, 700000);
+  assert.equal(remplissage({ estimees: 300 }).vivantes, 300);
+  // Des seuils absurdes sont IGNORÉS (tous), et les bornes retombent sur celles du 15/11 : ni NaN, ni Infinity, ni faux palier.
+  for (const sale of [{ confort_visiteurs: 0 }, { reserve_comptes: -5 }, { confort_comptes: "720000" }, { confort_visiteurs: 720000, reserve_visiteurs: 480000 }, { reserve_visiteurs: 900000 },
+    { reserve_comptes: 1300000 }, { confort_comptes: null }, { confort_visiteurs: Infinity }, { reserve_visiteurs: NaN }]) {
+    const r = remplissage(lueEnBase(750000, sale));
+    assert.equal(r.classes, false, JSON.stringify(sale));
+    assert.deepEqual([r.pct, r.couleur, r.visiteurs, r.comptes], [93.8, "rouge", "ok", "ok"], JSON.stringify(sale));
+  }
+  for (const sale of [{ borne_visiteurs: 0 }, { borne_visiteurs: "x" }, { borne_comptes: -1 }, { borne_visiteurs: NaN, borne_comptes: Infinity }]) {
+    const r = remplissage({ vivantes: 400000, ...sale });
+    assert.deepEqual([r.borne, r.borneComptes, r.pct], [800000, 1200000, 50], JSON.stringify(sale));
+    assert.ok(Number.isFinite(r.pct));
+  }
+  // remplissageAveugle : les comptes au palier 2, ou fermés pour eux — leurs battements ne sont plus écrits.
+  assert.equal(remplissageAveugle(remplissage(lueEnBase(1100000))), true);
+  assert.equal(remplissageAveugle(remplissage(lueEnBase(1300000))), true);
+  assert.equal(remplissageAveugle(remplissage({ vivantes: 1300000 })), true, "sans les classes, la table fermée aux comptes aveugle aussi");
+  for (const r of [remplissage(lueEnBase(1000000)), remplissage(lueEnBase(100000)), remplissage({ vivantes: null }), null, undefined]) assert.equal(remplissageAveugle(r), false);
+  // La jauge : la forme des autres, aucune page à ouvrir, aucun prix ; son geste dit si la migration manque.
+  const j = jaugeRemplissage(remplissage({ vivantes: 760000 }, { migration: MIGRATION_TELEMETRIE_CLASSES }));
+  assert.deepEqual([j.cle, j.valeur, j.plafond, j.pct, j.couleur, j.estimation, j.prix, j.url, j.unite], ["tableTelemetrie", 760000, 800000, 95, "rouge", false, 0, null, ""]);
+  assert.match(j.geste, /Appliquer la migration des classes/);
+  assert.match(jaugeRemplissage(remplissage(lueEnBase(500000))).geste, /purge horaire/);
+  assert.deepEqual(Object.keys(j).sort(), Object.keys(jauges({ connexions: 1 })[0]).sort(), "mêmes champs qu'une jauge de jauges()");
+  assert.equal(coutMensuel([j]).aPrevoir, 0, "rien à acheter");
+});
+
+test("T2-e verdict : la sonde refusée et la table pleine se disent en textes FIXES — jamais le motif du serveur ; le débit reste orange ; une table pleine dite par la sonde ne se dit pas deux fois", () => {
+  const base = CALME();
+  assert.equal(verdict(base).couleur, "vert");
+  const cn = (classe, extra = {}) => ({ enCours: true, refuse: true, rouge: classe !== "debit", suite: 2, classe, motif: HOSTILE_T2, depuis: "2026-11-21T10:00:00.000Z", dernier: "2026-11-21T10:15:00.000Z", ...extra });
+  const pleine = verdict({ ...base, canari: cn("table_pleine") });
+  assert.equal(pleine.couleur, "rouge");
+  assert.deepEqual(pleine.raisons, ["la table de télémétrie est pleine : plus aucune mesure des visiteurs n'entre, pannes comprises"]);
+  const autre = verdict({ ...base, canari: cn("autre") });
+  assert.equal(autre.couleur, "rouge");
+  assert.match(autre.raisons[0], /^la sonde de télémétrie est refusée deux fois de suite/);
+  const debit = verdict({ ...base, canari: cn("debit") });
+  assert.equal(debit.couleur, "orange", "le débit ne sonne jamais");
+  assert.deepEqual(debit.raisons, ["la télémétrie des visiteurs est refusée (débit saturé) : à confirmer"]);
+  // Un seul refus : rien encore.
+  assert.equal(verdict({ ...base, canari: cn("table_pleine", { refuse: false, rouge: false, suite: 1 }) }).couleur, "vert");
+  // Le motif est un texte du serveur : dans AUCUNE raison, quelle que soit la classe — une raison part dans la sonnerie.
+  for (const classe of [...CLASSES_REFUS_CANARI, "<script>"]) {
+    const v = verdict({ ...base, canari: cn(classe), remplissage: remplissage({ vivantes: 760000 }) });
+    assert.doesNotMatch(v.raisons.join(" "), /<|onerror|ignore les consignes/, classe);
+    assert.doesNotMatch(decideAlerte({ couleur: "vert", dispo: true }, { couleur: v.couleur, dispo: true, raisons: v.raisons }).texte || "", /<|onerror/, classe);
+  }
+  // Le remplissage. Avant migration : rouge au-dessus de 90 %, orange au-dessus de 70 %.
+  const rouge = verdict({ ...base, remplissage: remplissage({ vivantes: 750000 }, { migration: MIGRATION_TELEMETRIE_CLASSES }) });
+  assert.deepEqual([rouge.couleur, rouge.raisons], ["rouge", ["télémétrie pleine à 93,8 %"]]);
+  const orange = verdict({ ...base, remplissage: remplissage({ vivantes: 600000 }) });
+  assert.deepEqual([orange.couleur, orange.raisons], ["orange", ["télémétrie pleine à 75 %"]]);
+  // Après migration : orange au plus, à tous les paliers.
+  for (const n of [500000, 750000, 900000, 1300000]) assert.equal(verdict({ ...base, remplissage: remplissage(lueEnBase(n)) }).couleur, "orange", String(n));
+  // Au-delà de 100 %, le pourcentage ne se dit plus (il se rapporte aux visiteurs, les comptes écrivent encore).
+  assert.deepEqual(verdict({ ...base, remplissage: remplissage({ vivantes: 1100000 }) }).raisons, ["télémétrie pleine"]);
+  // La sonde « table pleine » ET la jauge rouge : UNE raison, celle de la sonde.
+  const deux = verdict({ ...base, canari: cn("table_pleine"), remplissage: remplissage({ vivantes: 810000 }) });
+  assert.equal(deux.raisons.length, 1);
+  assert.match(deux.raisons[0], /^la table de télémétrie est pleine/);
+  // Une sonde refusée pour une AUTRE raison n'efface pas la jauge : deux raisons.
+  assert.equal(verdict({ ...base, canari: cn("debit"), remplissage: remplissage({ vivantes: 750000 }) }).raisons.length, 2);
+  // Non mesuré, vert, ou clés absentes (fonction d'avant ce lot) : le verdict d'avant, à l'identique.
+  for (const extra of [{}, { canari: null, remplissage: null }, { canari: bilanCanari([]), remplissage: remplissage({ vivantes: null }) }, { remplissage: remplissage({ vivantes: 14056 }) }]) {
+    assert.deepEqual(verdict({ ...base, ...extra }), verdict(base), JSON.stringify(Object.keys(extra)));
+  }
+  // Illisibles, ces deux sources empêchent le vert à l'écran : sans elles, rien ne dit que la table n'est pas pleine.
+  assert.equal(SOURCES_VERDICT.remplissage, "remplissage de la télémétrie");
+  assert.equal(SOURCES_VERDICT.canari, "sonde de télémétrie");
+  const affiche = verdictAffiche(verdict(base), ["remplissage", "canari"]);
+  assert.equal(affiche.couleur, "orange");
+  assert.match(affiche.raisons.join(" "), /non lu : .*remplissage de la télémétrie, sonde de télémétrie/);
+});
+
+test("T2-f aFaire : deux lignes à leur place — la sonde refusée (motif dans la référence seulement), la table qui se remplit ; « Régler » ralentit d'un cran et dit que ça reste posé", () => {
+  const depuis = "2026-10-23T09:00:00Z"; // 11:00 à Paris
+  const cn = (classe, extra = {}) => ({ enCours: true, refuse: true, rouge: classe !== "debit", suite: 3, classe, motif: HOSTILE_T2, depuis, dernier: "2026-10-23T09:30:00Z", ...extra });
+  const reglages = (niveau) => ({ absente: false, delestage: { niveau, pose_par: niveau ? "pilote" : null }, coupures: { cles: [] } });
+  const ligne = (d, id) => aFaire({ gestesGithub: true, nonLus: [], ...d }, MAINTENANT_AF).find((x) => x.id === id) || null;
+  const RALENTIR = (n) => [{ libelle: "Régler", principal: true, corps: { action: "reglages", cle: "delestage", valeur: { niveau: n } } }];
+  // ① La sonde refusée, table pleine : urgence, titre fixe, UN « Régler » hors « Tout régler ».
+  const c = ligne({ canari: cn("table_pleine"), reglages: reglages(0), remplissage: remplissage({ vivantes: 810000 }) }, "telemetrie:canari");
+  assert.deepEqual([c.prio, c.couleur, c.etiquette, c.depuis, c.titre], [0, "rouge", "3 refus", depuis, "La télémétrie est pleine : les visiteurs ne sont plus mesurés"]);
+  assert.deepEqual(c.gestes, RALENTIR(1));
+  assert.equal(c.quoi, "Ralentit l'app d'un cran.");
+  // Le motif du serveur : dans `reference` (rendue en texte), nulle part ailleurs.
+  assert.ok(c.reference.includes("Refus du serveur : « " + HOSTILE_T2 + " »"));
+  assert.match(c.reference, /3 sondes refusées de suite depuis 11:00\. Tant que ça dure, une panne chez les visiteurs ne se verrait pas ici\. Table à 101,3 % de la borne des visiteurs\./);
+  for (const champ of ["titre", "quoi", "etiquette", "detail"]) assert.doesNotMatch(String(c[champ]), /<|onerror|ignore les consignes/, champ);
+  // Le geste pose le délestage au nom du PILOTE, que la veille ne lève jamais seule : la ligne le dit, en dernier.
+  assert.ok(c.reference.endsWith("Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages › Protection)."), c.reference);
+  // Un motif de 500 caractères ne chasse pas cet avertissement : c'est le motif qui est borné, pas la phrase.
+  const long = ligne({ canari: cn("table_pleine", { motif: "table pleine " + "x".repeat(500) }), reglages: reglages(0) }, "telemetrie:canari");
+  assert.ok(long.reference.endsWith("(Réglages › Protection)."));
+  assert.ok(long.reference.length < 480, String(long.reference.length));
+  // Les titres : une liste fermée de trois, jamais la classe reçue.
+  const titres = ["table_pleine", "debit", "autre", "<script>"].map((k) => ligne({ canari: cn(k), reglages: reglages(0) }, "telemetrie:canari").titre);
+  assert.deepEqual(titres, ["La télémétrie est pleine : les visiteurs ne sont plus mesurés", "La télémétrie des visiteurs est refusée : débit saturé", "La télémétrie n'entre plus : la sonde est refusée", "La télémétrie n'entre plus : la sonde est refusée"]);
+  // Le débit : à régler (prio 1), jamais une urgence.
+  const debit = ligne({ canari: cn("debit"), reglages: reglages(0) }, "telemetrie:canari");
+  assert.deepEqual([debit.prio, debit.couleur], [1, "orange"]);
+  assert.deepEqual(debit.gestes, RALENTIR(1));
+  // Déjà au niveau 1 : un cran de plus. Au niveau 2, ou sans la table des réglages : les purges planifiées — et rien n'est « posé ».
+  assert.deepEqual(ligne({ canari: cn("table_pleine"), reglages: reglages(1) }, "telemetrie:canari").gestes, RALENTIR(2));
+  for (const rg of [reglages(2), { absente: true }, null, undefined]) {
+    const l = ligne({ canari: cn("table_pleine"), reglages: rg }, "telemetrie:canari");
+    assert.deepEqual(l.gestes, [{ libelle: "Régler", principal: true, ouvrir: PAGES_REGLAGE.cron }], JSON.stringify(rg));
+    assert.equal(l.quoi, "Ouvre les purges planifiées dans Supabase.");
+    assert.doesNotMatch(l.reference, /ralentissement/);
+  }
+  // Un refus qui n'est ni la borne ni le débit (RLS, délai) ne se règle pas en ralentissant : ses journaux.
+  const autre = ligne({ canari: cn("autre"), reglages: reglages(0) }, "telemetrie:canari");
+  assert.deepEqual(autre.gestes, [{ libelle: "Régler", principal: true, ouvrir: PAGES_REGLAGE.logsPilotage }]);
+  assert.equal(autre.prio, 0);
+  assert.doesNotMatch(autre.reference, /ralentissement/);
+  // Un seul refus, ou aucun : pas de ligne.
+  assert.equal(ligne({ canari: cn("table_pleine", { refuse: false, rouge: false, suite: 1 }), reglages: reglages(0) }, "telemetrie:canari"), null);
+  assert.equal(ligne({ reglages: reglages(0) }, "telemetrie:canari"), null);
+
+  // ② Le remplissage. Avant migration, rouge : urgence, et la ligne nomme le fichier à appliquer.
+  const r = ligne({ remplissage: remplissage({ vivantes: 760000 }, { migration: MIGRATION_TELEMETRIE_CLASSES }), reglages: reglages(0) }, "telemetrie:remplissage");
+  assert.deepEqual([r.prio, r.etiquette, r.titre, r.quoi], [0, "95 %", "Télémétrie pleine à 95 %", "Ralentit l'app d'un cran."]);
+  assert.deepEqual(r.gestes, RALENTIR(1));
+  assert.equal(r.reference, "Visiteurs : tout est enregistré. Comptes : tout est enregistré. Protection par classe absente : appliquer migrations/migration_telemetrie_classes_2026-11-21.sql (geste au poste)."
+    + " Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages › Protection).");
+  // Après migration : orange (prio 1), les phrases par rôle, la purge horaire.
+  const o = ligne({ remplissage: remplissage(lueEnBase(750000)), reglages: reglages(2) }, "telemetrie:remplissage");
+  assert.deepEqual([o.prio, o.etiquette, o.titre], [1, "93,8 %", "Télémétrie pleine à 93,8 %"]);
+  assert.equal(o.reference, "Visiteurs : seules les pannes et les preuves de parcours sont enregistrées. Comptes : les mesures de performance ne sont plus enregistrées. La purge horaire la vide d'elle-même.");
+  // Au-delà de 100 % : « Télémétrie pleine », sans pourcentage ; fermée à tous, c'est dit.
+  const f = ligne({ remplissage: remplissage(lueEnBase(1300000)), reglages: reglages(0) }, "telemetrie:remplissage");
+  assert.deepEqual([f.prio, f.etiquette, f.titre], [1, "Pleine", "Télémétrie pleine"]);
+  assert.match(f.reference, /^Visiteurs : plus rien n'entre, pannes comprises\. Comptes : plus rien n'entre, pannes comprises\./);
+  // Verte ou non mesurée : pas de ligne.
+  for (const rp of [remplissage({ vivantes: 14056 }), remplissage({ vivantes: null }), null]) assert.equal(ligne({ remplissage: rp, reglages: reglages(0) }, "telemetrie:remplissage"), null);
+  // ③ La sonde dit « table pleine » : UNE ligne, la sienne. Refusée pour une autre raison : les deux.
+  const les = (canari) => aFaire({ gestesGithub: true, nonLus: [], canari, remplissage: remplissage({ vivantes: 810000 }), reglages: reglages(0) }, MAINTENANT_AF).filter((x) => x.id.startsWith("telemetrie:")).map((x) => x.id);
+  assert.deepEqual(les(cn("table_pleine")), ["telemetrie:canari"]);
+  assert.deepEqual(les(cn("debit")), ["telemetrie:remplissage", "telemetrie:canari"], "la jauge rouge (prio 0) passe devant le débit (prio 1)");
+  assert.deepEqual(les(cn("table_pleine", { refuse: false, rouge: false, suite: 1 })), ["telemetrie:remplissage"], "un seul refus ne masque pas la jauge");
+  // ④ La jauge de la table n'a JAMAIS de ligne « capacité » : elle n'y aurait ni bouton ni page.
+  const avecJauge = aFaire({ gestesGithub: true, nonLus: [], reglages: reglages(0), remplissage: PLEINE_SANS_CLASSES, capacite: { jauges: [jaugeRemplissage(PLEINE_SANS_CLASSES)] } }, MAINTENANT_AF);
+  assert.deepEqual(avecJauge.filter((x) => /telemetrie|capacite/i.test(x.id)).map((x) => x.id), ["telemetrie:remplissage"]);
+  // Chaque `quoi` tient sur une ligne de téléphone (㊴ le vérifie aussi sur l'état « toute la panne »).
+  for (const x of [c, debit, autre, r, o, f]) assert.ok(x.quoi.length <= 50, x.quoi);
+});
+
+test("T2-g câblage et page : la mémoire du canari se note APRÈS l'alerte, les deux lectures entrent dans la veille et dans l'état, un délai dépassé n'est jamais « 0 ligne » ; la page nomme la migration manquante", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("// Canari serveur"));
+  // Les deux lectures partent AVEC les autres, et leurs résultats entrent dans le voyant.
+  assert.match(v, /Promise\.allSettled\(\[[^\n]*lireRemplissage\(admin\), lireCanari\(admin\), audience\(admin, 300\), lireParcoursVeille\(admin\)\]\)/);
+  assert.match(v, /remplissage: val\(rempl\), canari: val\(can\) \};/);
+  assert.ok(v.indexOf("remplissage: val(rempl)") < v.indexOf("const v = verdict(e);"), "le verdict de la veille reçoit le remplissage et la mémoire du canari");
+  // La marque se note après l'alerte et après l'émission, avant le battement — dans une étape isolée.
+  assert.match(v, /await etape\(\(\) => noterCanari\(admin, canari, e\.canari\)\);/);
+  const [alerte, emission, note, battement] = ["decideAlerte(", "emettreCanari()", "noterCanari(", "battre(admin"].map((x) => v.indexOf(x));
+  assert.ok(alerte > 0 && alerte < emission && emission < note && note < battement, "decideAlerte, puis emettreCanari, puis noterCanari, puis battre");
+  assert.ok(v.indexOf("sonnerPilote(admin, d.titre") < note, "la sonnerie n'attend pas la marque");
+  // Le résultat de la note n'entre pas dans `gestes` du battement (le canari y est déjà), et les lectures y sont dites.
+  assert.match(v, /gestes: \{ delestage, reveil, cadence, retour, canari, essai \}/);
+  assert.match(v, /memoire: \{ status: memoire\.illisible \? "rejected" : "fulfilled" \}, remplissage: rempl, canari: can \},/);
+  // La marque : clé de service, auteur système, `{ error }` lu ; aux journaux le code, jamais le motif.
+  const n = fn.slice(fn.indexOf("async function noterCanari"), fn.indexOf("const REMPLISSAGE_DELAI_MS"));
+  assert.match(n, /const \{ error \} = await admin\.from\("analytics_events"\)\.insert\(\{ user_id: "systeme:pilotage", event: EVT_CANARI, properties: m \}\);/);
+  assert.doesNotMatch(n, /console\.\w+\([^\n]*(motif|erreur|message)/, "le motif est un texte du serveur : pas dans les journaux");
+  const l = fn.slice(fn.indexOf("async function lireCanari"), fn.indexOf("async function noterCanari"));
+  assert.match(l, /\.eq\("event", EVT_CANARI\)\.eq\("user_id", "systeme:pilotage"\)/);
+  assert.match(l, /if \(error\) throw error;/, "mémoire illisible = « non lu », jamais « aucun refus »");
+  // Le remplissage : la fonction SQL d'abord ; absente, UN compte exact borné à 4 s — au-delà `null` (non mesuré), JAMAIS 0.
+  const r = fn.slice(fn.indexOf("const REMPLISSAGE_DELAI_MS"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(r, /const REMPLISSAGE_DELAI_MS = 4000;/);
+  assert.match(r, /const n = await avecDelai\(compter\(admin\.from\("telemetry_events"\)\.select\("id", \{ count: "exact", head: true \}\)\), REMPLISSAGE_DELAI_MS, null\);/);
+  // « Absente » = PGRST202 seul : un 42883 levé depuis la fonction n'ouvre pas le repli (exécuté : pilotage-chemins T2-j).
+  assert.match(r, /const fonctionSqlAbsente = \(e: unknown\) => String\(\(e as \{ code\?: string \} \| null\)\?\.code \|\| ""\) === "PGRST202";/);
+  assert.match(r, /if \(error && !fonctionSqlAbsente\(error\)\) throw error;/);
+  assert.match(r, /r = remplissage\(\{ vivantes: n \}, \{ migration: MIGRATION_TELEMETRIE_CLASSES \}\);/);
+  // … et « non mesuré » LÈVE : non lu, l'écran ne passe pas au vert et la veille tient son voyant (exécuté : pilotage-chemins T2-j).
+  assert.match(r, /if \(r\.vivantes === null\) throw new Error\("remplissage de la télémétrie non mesuré/);
+  // L'écran : deux parts de plus, la jauge avant la facture.
+  const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
+  assert.match(et, /remplissage: lireRemplissage\(admin\), canari: lireCanari\(admin\),/);
+  assert.ok(et.indexOf("cap.jauges.push(jaugeRemplissage(rp))") > 0 && et.indexOf("cap.jauges.push(jaugeRemplissage(rp))") < et.indexOf("cap.cout = coutMensuel(cap.jauges);"));
+  // Le délestage : la table qui déleste les comptes aveugle la veille — APRÈS le bloc de la mesure exacte, sens conservateur.
+  const d = fn.slice(fn.indexOf("async function delestageAuto"), fn.indexOf("// Geste du pilote."));
+  assert.match(d, /if \(remplissageAveugle\(rp\)\) aveugle = true;/);
+  assert.ok(d.indexOf("aveugle = estAveugle(a);") < d.indexOf("if (remplissageAveugle(rp)) aveugle = true;"));
+  assert.doesNotMatch(d.slice(d.indexOf("if (remplissageAveugle(rp)) aveugle = true;")), /aveugle = (?!true;)/, "le remplissage ne lève jamais un aveuglement : après lui, plus rien ne remet `aveugle` à faux");
+  // Le client sait déjà attendre sur « table pleine » (429) : aucun fichier de js/ ne change dans ce lot.
+  // ── La page : la note de capacité nomme la migration tant qu'elle manque ──
+  class Noeud {
+    constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this.textContent = ""; this.className = ""; }
+    append(...nodes) { this.children.push(...nodes); }
+    get firstChild() { return this.children[0] || null; }
+    removeChild(x) { this.children.splice(this.children.indexOf(x), 1); }
+    querySelector() { return this.children.find((x) => x.className === "carte-actions") || null; }
+  }
+  const zones = new Map(), zone = (id) => { if (!zones.has(id)) zones.set(id, new Noeud("section")); return zones.get(id); };
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  const extraire = (a, b) => { const i = page.indexOf(a), k = page.indexOf(b, i); assert.ok(i >= 0 && k > i, a); return page.slice(i, k); };
+  const navigateur = vm.createContext({ document: { createElement: (tag) => new Noeud(tag) }, $: zone,
+    LIENS_SURS: new Function("return " + page.match(/const LIENS_SURS = (\/.*\/);/)[1])(), taille: (x) => String(x), nonLu: () => { throw new Error("RENDU_INATTENDU"); } });
+  vm.runInContext(extraire("  function el(", "  function lien(c,") + extraire("  function lienReglage(", "  function boutonPrincipal(")
+    + extraire("  function rendreCapacite(", "  // ─── Croissance") + ";globalThis.api = { rendreCapacite };", navigateur);
+  const tous = (x) => [x, ...x.children.flatMap(tous)];
+  const texte = (x) => tous(x).map((y) => y.textContent).join(" ");
+  const etatPage = (rp) => ({ remplissage: rp, capacite: { mesuresServeur: true, jauges: [jaugeRemplissage(rp)], cout: { actuel: 25, aPrevoir: 0, lignes: [{ libelle: "Supabase Pro", prix: 25, aPrevoir: false }] } } });
+  navigateur.api.rendreCapacite(etatPage(PLEINE_SANS_CLASSES));
+  const avant = texte(zone("jauges"));
+  assert.match(avant, /Table de télémétrie : compte exact ; la protection par classe et la purge courte attendent la migration « migrations\/migration_telemetrie_classes_2026-11-21\.sql » \(npm run migration:appliquer\)\./);
+  // La jauge se rend par le code de toutes les jauges : 95 %, « 760000 sur 800000 », son geste — et aucun lien (rien à acheter).
+  assert.match(avant, /Table de télémétrie \(lignes, borne des visiteurs\)/);
+  assert.match(avant, /95 %/); assert.match(avant, /760000 sur 800000/); assert.match(avant, /À faire : Appliquer la migration des classes/);
+  assert.equal(tous(zone("jauges")).filter((x) => x.tagName === "a").length, 0);
+  // Après migration : plus de note. Non mesuré : « Non mesuré », jamais « 0 % ».
+  navigateur.api.rendreCapacite(etatPage(remplissage(lueEnBase(500000))));
+  assert.doesNotMatch(texte(zone("jauges")), /attendent la migration/);
+  assert.match(texte(zone("jauges")), /62,5 %/);
+  navigateur.api.rendreCapacite(etatPage(remplissage({ vivantes: null }, { migration: MIGRATION_TELEMETRIE_CLASSES })));
+  assert.match(texte(zone("jauges")), /Non mesuré/);
+  assert.doesNotMatch(texte(zone("jauges")), /(^|\s)0 %/);
+  // Une fonction d'avant ce lot (pas de clé `remplissage`) : la page se rend comme avant, sans note.
+  navigateur.api.rendreCapacite({ capacite: { mesuresServeur: true, jauges: [], cout: { actuel: 25, aPrevoir: 0, lignes: [] } } });
+  assert.doesNotMatch(texte(zone("jauges")), /Table de télémétrie/);
+});
+
+// ─── T2, temps 2 : la migration des classes et le code se tiennent (2026-11-21) ──
+// La migration s'éprouve sur un PostgreSQL jetable (tests/sql/migration-telemetrie-classes.test.sh).
+// Ici, ce que DEUX fichiers doivent dire ensemble — une dérive de l'un ne rougirait nulle part ailleurs.
+// RÉINJECTIONS (R133 à R135) : retirer un type critique du client de la liste protégée en base ;
+// renommer une clé de la lecture SQL ; poser un seuil qui n'est plus 60 % de sa borne.
+test("T2-m la migration des classes et le code se tiennent : le fichier que l'écran nomme existe, la lecture SQL rend ce que le pilotage lit, les seuils sont 60 % et 90 % des bornes, et la base protège ce que le client ne jette jamais", () => {
+  assert.ok(fs.existsSync(MIGRATION_TELEMETRIE_CLASSES), "l'écran nomme ce fichier : il existe dans le dépôt");
+  const sql = fs.readFileSync(MIGRATION_TELEMETRIE_CLASSES, "utf8");
+  // Une transaction, rejouable ; le tableau de verdict AVANT `commit;` ; le cache de PostgREST rechargé avant lui.
+  assert.ok(sql.replace(/^--[^\n]*\n/gm, "").trimStart().startsWith("begin;"));
+  assert.ok(sql.trimEnd().endsWith("commit;"));
+  const [gardeFou, tableau, recharge, fin] = ["raise exception 'classes de télémétrie", "select controle, valeur from pg_temp.passio_tc_verdict order by n;", "notify pgrst, 'reload schema';", "\ncommit;"].map((x) => sql.lastIndexOf(x));
+  assert.ok(recharge > 0 && recharge < gardeFou && gardeFou < tableau && tableau < fin, "rechargement du schéma, garde-fou qui lève, tableau, puis commit");
+  assert.doesNotMatch(sql, /PREREQUIS-CLIENT:/, "aucun prérequis client : la migration s'applique avant ou après le déploiement du code");
+  // La forme qu'exige l'outil d'application (scripts/appliquer-migration.mjs), relue hors ligne : rien n'est envoyé nulle part.
+  const corpsSql = sql.replace(/--[^\n]*/g, "").trim().toLowerCase();
+  assert.ok(corpsSql.startsWith("begin;") && corpsSql.endsWith("commit;") && !/\bvacuum\b/.test(corpsSql));
+  const barriere = createRequireT2(import.meta.url)("../../scripts/lib/barriere-migration.js");
+  assert.deepEqual(barriere.prerequisClient(sql), []);
+  const envoye = barriere.sqlAvecJournal(sql, { fichier: MIGRATION_TELEMETRIE_CLASSES, cible: "njkiyoklssvefstljemx", outil: "appliquer-migration.mjs" });
+  assert.ok(envoye.indexOf("insert into public.migrations_appliquees") > envoye.indexOf("begin;") && envoye.indexOf("insert into public.migrations_appliquees") < envoye.indexOf("set local lock_timeout"), "le journal s'écrit dans la transaction, juste après son begin");
+  assert.ok(envoye.trimEnd().endsWith("commit;") && envoye.lastIndexOf("select controle, valeur from pg_temp.passio_tc_verdict") > envoye.indexOf("insert into public.migrations_appliquees"), "le tableau reste la dernière instruction qui rend des lignes");
+  // Ce que le pilotage LIT (remplissage) est ce que la fonction SQL REND, clé pour clé.
+  const lecture = sql.slice(sql.indexOf("create or replace function public.telemetrie_remplissage()"), sql.indexOf("grant execute on function public.telemetrie_remplissage()"));
+  const rendues = [...lecture.slice(lecture.indexOf("jsonb_build_object(")).matchAll(/'([a-z_]+)',/g)].map((m) => m[1]);
+  assert.deepEqual(rendues.sort(), ["borne_comptes", "borne_visiteurs", "confort_comptes", "confort_visiteurs", "estimees", "octets", "reserve_comptes", "reserve_visiteurs", "vivantes"]);
+  const partage = fs.readFileSync("supabase/functions/_shared/pilotage.js", "utf8");
+  const corps = partage.slice(partage.indexOf("export function remplissage(m,"), partage.indexOf("export function remplissageAveugle("));
+  const lues = [...new Set([...corps.matchAll(/\bs\.([a-z_]+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(lues, rendues, "les clés que remplissage() lit sont celles que telemetrie_remplissage() rend — ni plus, ni moins");
+  const lue = Object.fromEntries(rendues.map((k) => [k, { vivantes: 500000, estimees: 499000, octets: 1, ...SEUILS }[k]]));
+  assert.deepEqual([remplissage(lue).classes, remplissage(lue).couleur, remplissage(lue).octets], [true, "orange", 1]);
+  // Les seuils posés par la migration : 60 % et 90 % des bornes du 15/11, celles que le code prend par défaut.
+  const seuils = /execute function public\.telemetrie_classe_bornee\('(\d+)', '(\d+)', '(\d+)', '(\d+)'\);/.exec(sql);
+  assert.ok(seuils, "le déclencheur de la classe et ses quatre seuils");
+  assert.deepEqual(seuils.slice(1).map(Number), [0.6 * BORNES_TELEMETRIE.visiteurs, 0.6 * BORNES_TELEMETRIE.comptes, 0.9 * BORNES_TELEMETRIE.visiteurs, 0.9 * BORNES_TELEMETRIE.comptes]);
+  assert.deepEqual(seuils.slice(1).map(Number), [SEUILS.confort_visiteurs, SEUILS.confort_comptes, SEUILS.reserve_visiteurs, SEUILS.reserve_comptes], "le décor des bancs est celui de la migration");
+  // La base PROTÈGE ce que le client ne jette ni n'échantillonne jamais (CRITICAL_TYPE), et le canari de la veille.
+  const protegee = sql.slice(sql.indexOf("create or replace function public.telemetrie_protegee("), sql.indexOf("revoke all on function public.telemetrie_protegee("));
+  const types = /coalesce\(p_type, ''\) in \(([^)]*)\)/.exec(protegee)[1].split(",").map((x) => x.trim().replace(/'/g, ""));
+  const client = fs.readFileSync("js/telemetry.js", "utf8");
+  const critiques = Object.keys(new Function("return " + /var CRITICAL_TYPE = (\{[^}]*\});/.exec(client)[1])());
+  assert.ok(critiques.length >= 5, "CRITICAL_TYPE se lit");
+  for (const t of critiques) assert.ok(types.includes(t), t + " : type critique du client, écarté ou purgé tôt par la base");
+  for (const t of ["perf", "click", "action", "lifecycle", "nav", "api"]) assert.ok(!types.includes(t), t + " : un type de volume ne se protège pas en entier");
+  assert.match(protegee, new RegExp("'" + CANARI_ACTION + "'"), "le canari de la veille est protégé par son action");
+  const gravites = /coalesce\(p_severity, ''\) in \(([^)]*)\)/.exec(protegee)[1];
+  for (const g of ["warn", "error", "critical"]) assert.match(gravites, new RegExp("'" + g + "'"), g + " : gravité que _estPrioritaire garde");
+  assert.match(client, /return g === "warn" \|\| g === "error" \|\| g === "critical";/, "_estPrioritaire : les gravités que la base protège");
+  // La purge courte ne touche QUE la classe courte, et jamais sans l'exclusion du protégé.
+  const purge = sql.slice(sql.indexOf("create or replace function public.purge_telemetrie_breve()"), sql.indexOf("revoke all on function public.purge_telemetrie_breve()"));
+  assert.match(purge, /x\.type in \('perf', 'click', 'action', 'lifecycle'\)\s+and not public\.telemetrie_protegee\(/);
+  assert.match(purge, /interval '26 hours'/);
+  // Le manifeste du déploiement : la fonction SQL est un prérequis FACULTATIF de `pilotage` (le code tolère son absence).
+  const manifeste = JSON.parse(fs.readFileSync(".passio/deploiement/prerequis-fonctions.json", "utf8")).fonctions.pilotage;
+  assert.ok(manifeste.objets.includes("function:public.telemetrie_remplissage()"));
+  assert.equal(manifeste.obligatoire, false, "obligatoire, il retiendrait le déploiement de la fonction tant que la migration n'est pas appliquée");
+  assert.ok(manifeste.sans.includes(MIGRATION_TELEMETRIE_CLASSES));
+  // Le plan que la CI en tire est exécuté dans tests/unit/deploiement-fonctions.test.mjs (T2-p) : importé ici, le script de
+  // la retenue ferait de cette suite un banc du job qui déploie (edge-functions-verrous ⑩).
+  // Le banc SQL existe, et tourne sans ligne dans le workflow (scripts/bancs-sql-restants.sh le ramasse).
+  assert.ok(fs.existsSync("tests/sql/migration-telemetrie-classes.test.sh"));
+  assert.match(fs.readFileSync("scripts/bancs-sql-restants.sh", "utf8"), /tests\/sql\/\*\.test\.sh/);
 });

@@ -58,8 +58,10 @@
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
 - 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
 - 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
-- ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 - 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
+- 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+- 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+- ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -2254,6 +2256,584 @@ coupe retirée).
   `docs/SENTINELLE_AUTONOME.md` et dans un commentaire de `pilotage.test.mjs`.
 ⚠️ Piège du banc, encore : le cas « corps en CRLF » restait vert sous sa réinjection — la ligne de date
 était la DERNIÈRE du corps, donc sans `\r` à sa suite. Seize réinjections jouées, seize rouges.
+
+## 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+
+Trou T2 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`. Une PR, deux temps : ① sans migration, le
+pilotage DIT le remplissage et le canari refusé ; ② une migration — écrite, éprouvée, **pas encore
+appliquée : geste de Benjamin au poste** — apprend à la table à faire de la place seule.
+
+**Le défaut.** Depuis le 15/11 la table `telemetry_events` est bornée en lignes vivantes (800 000
+pour les visiteurs, 1 200 000 pour les comptes). Atteinte, la borne refuse le lot ENTIER — erreurs,
+parcours et canari compris — et la purge ne retire rien avant J-3. Le pilotage n'en disait rien : le
+canari de la veille, refusé, rendait `{ emis: false, erreur }`, rangé dans `gestes.canari` du
+battement, que personne ne lit. Seul le chien de garde GitHub finissait par voir « 0 canari en 2 h »,
+des heures plus tard et sans le motif.
+
+**Mesuré en production (canal ①, lecture seule, 21/11 à 08:30 UTC)** — le trafic y est surtout le
+nôtre (73,8 % d'appareils d'équipe) : des ordres de grandeur. 14 760 lignes, soit 1,8 % de la borne
+des visiteurs, 43 Mo index compris. 1 549 lignes « protégées » (10,5 %) ; 12 475 dans la classe
+courte (84,5 % : `perf`, `click`, `action`, `lifecycle` non protégés), dont 8 867 de plus de 26 h
+(60,1 % de la table). Flux des dernières 24 h : 3 919 lignes, 84,0 % dans la classe courte, 60,5 %
+de `perf`. Les `lifecycle` non protégés ne pèsent que 252 lignes aujourd'hui (1,7 %), mais un onglet
+visible bat une fois par minute sans échantillonnage : à l'échelle c'est le premier volume. Sept
+déclencheurs, quatre tâches de télémétrie, minute 52 libre, PostgreSQL 17.6,
+`stats_fetch_consistency = cache`, coupure de 3 s pour `anon`. Le compte exact de la table : 6 à 7 ms
+(deux mesures du jour, `explain analyze`).
+
+### Temps 1 — sans migration (fonction `pilotage`, `_shared/pilotage.js`, page)
+
+⚠️ **LA MÉMOIRE DU CANARI EST DANS `analytics_events`, PAS DANS LE BATTEMENT** (`EVT_CANARI`,
+`marqueCanari`, `bilanCanari`, `noterCanari`). Le battement s'écrit au plus toutes les 14 min, le
+canari part un passage sur trois : rien ne garantit qu'ils coïncident. Chaque refus laisse une marque
+`pilotage_canari` (auteur `systeme:pilotage`, clé de service : un navigateur ne la forge pas) ; le
+succès qui CLÔT une suite aussi — sans lui la ligne tiendrait 35 min après le retour. En temps
+normal : aucune marque (0 ligne par jour ; 96 au pire d'un incident). La marque s'écrit APRÈS
+l'alerte et après l'émission : le voyant d'un passage juge les marques d'avant, la sonnerie arrive
+donc au passage qui SUIT le deuxième refus (20 min après le premier).
+
+⚠️ **« DEUX FOIS DE SUITE » = DEUX QUARTS D'HEURE DISTINCTS**, sans succès entre eux, le dernier de
+moins de 35 min (`CANARI_MEMOIRE_MS`, le délai du battement périmé). Deux ordonnanceurs à quelques
+secondes comptent pour un refus.
+
+⚠️ **LE REFUS DE DÉBIT NE SONNE JAMAIS.** Trois classes en liste FERMÉE, lues dans le message du
+serveur : `table_pleine`, `debit`, `autre`. Le canari part sous la clé anon : son refus de débit
+vient des réservoirs que n'importe quel visiteur remplit (1 600 lignes/min). Rouge, il donnait à tout
+porteur de la clé publique le moyen de faire sonner le téléphone — et le réservoir se vidant chaque
+minute, le voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs forgées du
+07/11. `debit` : orange, priorité 1. `table_pleine` et `autre` : rouge dès deux quarts d'heure.
+
+⚠️ **DANS UNE SUITE MÊLÉE, LE ROUGE SE DÉCIDE SUR LES SEULS REFUS GRAVES** (contre-revue du lot, A-1).
+La ligne « À faire » (`refuse`) compte tous les refus de la suite, débit compris ; l'urgence (`rouge`)
+exige deux quarts d'heure distincts de refus qui ne sont PAS de débit, le plus récent de moins de
+35 min. Le premier jet jugeait la classe du DERNIER refus seul : un délai isolé précédé de refus de
+débit — que tout porteur de la clé publique provoque — sonnait « refusée deux fois de suite », et un
+seul refus de débit au milieu d'un vrai rouge sonnait « Problème résolu ». La classe et le motif
+rendus sont ceux de ce qui décide : le dernier refus grave si c'est rouge, le dernier refus de débit
+si la ligne est là sans être rouge.
+⚠️ **DEUX REFUS NE SONT « DE SUITE » QUE SÉPARÉS DE 35 MIN AU PLUS** (`CANARI_MEMOIRE_MS`, seconde
+relecture, B-1 et B-2). La suite s'arrête au premier trou plus long entre deux refus, et les refus
+graves au premier trou plus long entre deux refus GRAVES. Sans cela : une veille muette plus de 35 min
+après un refus isolé ne notait pas le succès d'entre-temps (le bilan n'était plus « en cours ») et un
+second refus isolé, une heure plus tard, faisait « refusée deux fois de suite » ; deux délais isolés à
+1 h 45 d'écart, reliés par des refus de débit qu'un tiers provoque, faisaient de même.
+
+⚠️ **LE MOTIF EST UN TEXTE DU SERVEUR : IL NE SORT QUE DANS `reference`**, que la page rend en texte
+(borné à 120 caractères, sans caractère de contrôle). Titres, `quoi`, raisons du voyant, texte de la
+sonnerie, état mémorisé et journaux de la fonction : des textes fixes ou des codes.
+
+⚠️ **LE REMPLISSAGE SE RAPPORTE À LA BORNE DES VISITEURS**, premier mur où des signaux de panne
+meurent (`remplissage`, `lireRemplissage`). Après la migration : la fonction SQL
+`telemetrie_remplissage()`, et le plus grand de deux compteurs — les statistiques vivantes (ce que la
+borne juge) repartent de zéro après un arrêt brutal, l'estimation du catalogue non. Avant : UN compte
+exact sous la clé de service, borné à 4 s. **Non mesuré, ou fonction SQL en erreur : « non lu »,
+jamais 0** — l'écran ne passe pas au vert et la veille tient son voyant (`incomplet`). Le premier
+jet rendait une jauge grise sur un compte abandonné : un rouge « télémétrie pleine » aurait sonné
+« résolu » sur un compte lent.
+
+⚠️ **APRÈS MIGRATION, LA JAUGE EST ORANGE AU PLUS.** Les seuils de classe sont des points de consigne
+de la régulation : au-dessus, l'entrée chute, en dessous elle reprend — la table stationne dessus, et
+la purge horaire y ajoute une dent de scie. Un rouge posé là aurait fait sonner à chaque passage. Le
+rouge d'après migration vient du canari `table_pleine`, qui porte son hystérésis. AVANT migration,
+90 % de 800 000 n'est pas un point de consigne : orange à 70 %, rouge à 90 % — le voyant sonne avant
+la fermeture, et la ligne nomme le fichier à appliquer. Au-delà de 100 %, le titre dit « Télémétrie
+pleine » sans pourcentage (il se rapporte aux visiteurs alors que les comptes écrivent encore).
+
+⚠️ **« RÉGLER » POSE UN DÉLESTAGE AU NOM DU PILOTE, QUE LA VEILLE NE LÈVERA JAMAIS SEULE**
+(`decideDelestage` rend la main dès `pose_par = pilote`). C'est le seul levier du téléphone qui
+réduit ce qui ENTRE ; il n'est jamais dans « Tout régler ». La `reference` des deux lignes finit
+donc par : « Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages ›
+Protection). » Déjà au niveau 2, ou sans la table des réglages : le bouton ouvre les tâches
+planifiées ; refus de classe `autre` (RLS, délai) : les journaux de la fonction.
+
+⚠️ **LA VEILLE NE LÈVE PLUS UN DÉLESTAGE QUAND LA TABLE ÉCARTE LES BATTEMENTS DES COMPTES**
+(`remplissageAveugle`, une ligne après le bloc existant de `delestageAuto`) : au palier 2 des comptes
+le nombre de comptes connectés BAISSE sans que la charge baisse. Sens conservateur seulement — on
+peut monter, pas descendre, et 2 h au plus (`aveugleMaxMs`).
+
+⚠️ **LE BATTEMENT DIT UNE LECTURE MANQUÉE, SANS L'EXIGER** (`resumerBattement`) : `remplissage` et
+`canari` en « ko » ajoutent une raison, mais n'entrent PAS dans `LECTURES_BATTEMENT`. Entre la fusion
+et le déploiement de la fonction, les battements de l'ancienne version n'ont pas ces clés : exigées,
+le chien de garde GitHub aurait lu « n'a pas pu lire » sur une veille qui a tout lu.
+
+### Temps 2 — `migrations/migration_telemetrie_classes_2026-11-21.sql` (à appliquer)
+
+⚠️ **« PROTÉGÉE » EST UNE DÉFINITION, LUE PAR LA BORNE ET PAR LA PURGE** (`telemetrie_protegee`) :
+types `error`, `connectivity`, `flow`, `link`, `rt_recv` (ceux que le client ne jette jamais),
+`push` et `release` (preuves), `session` (lue par la croissance) ; toute ligne corrélée ; statut
+`error` ; HTTP ≥ 400 ; gravité `warn` et au-delà ; actions `acq_signup` et canari. Même contrat que
+`_estPrioritaire` (js/telemetry.js) — `pilotage.test` T2-m les confronte.
+
+⚠️ **LA BORNE PAR CLASSE ÉCARTE LA LIGNE, ELLE NE REFUSE PAS LE LOT** (`zz_classe_bornee`, BEFORE
+INSERT par ligne, `RETURN NULL`). Un lot mêlé garde ses lignes critiques, et tous les clients déjà en
+cache sont compatibles : ils reçoivent un succès et vident leur file. DEUX paliers par rôle : à 60 %
+de la borne du rôle (480 000 / 720 000) seules les `perf` non protégées sont écartées — aucun lecteur
+n'apparie une perf à autre chose ; à 90 % (720 000 / 1 080 000) tout le non-protégé ; 100 % reste le
+refus du 15/11. Un palier unique à 60 % aurait aveuglé la famille « boutons » de la Sentinelle (des
+clics sans leurs effets) et le compte des comptes connectés sur toute la plage 60–100 %.
+`lifecycle` n'est JAMAIS écarté au palier 1 : il fait le compte des comptes connectés.
+
+⚠️ **`zz_` : LE DERNIER DES DÉCLENCHEURS PAR LIGNE.** Une ligne écartée a d'abord subi la taille de
+ligne, les 120 lignes par lot, l'identité et la barrière de suppression : la classe ne desserre aucun
+refus. L'ordre tient au NOM ; le verdict le vérifie le jour de l'application seulement.
+
+⚠️ **LA PURGE COURTE AGRÈGE D'ABORD, ET NE SUPPRIME QUE DANS CE QU'ELLE A AGRÉGÉ**
+(`purge_telemetrie_breve`, chaque heure à :52). Les `perf`, `click`, `action` et `lifecycle` non
+protégés de plus de 26 h (24 h de fenêtre des lecteurs + 2 h) partent par lots de 5 000. Elle agrège
+les deux jours qu'elle entame, puis ne supprime que dans ces deux jours : « jamais une ligne ne part
+sans avoir été comptée » (15/11) tient par construction ; ce qui est plus vieux reste à la purge
+quotidienne. **Le budget de 45 s démarre APRÈS les agrégations, et la sortie se juge APRÈS le lot** :
+le premier jet du plan démarrait le chronomètre avant, et testait avant de supprimer — à l'échelle,
+deux agrégations lentes et plus rien ne partait jamais. La migration n'appelle PAS la purge.
+
+⚠️ **LES SEUILS SONT DES ARGUMENTS DE DÉCLENCHEUR, RELUS PAR LA LECTURE** (`telemetrie_remplissage`
+lit `tgargs` de `aa_table_bornee` et de `zz_classe_bornee`) : une seule source. Pas de
+`min(received_at)` : après une purge, le bout ancien de l'index porte des entrées mortes.
+
+**Ce que ça change en capacité** (ordres de grandeur, trafic surtout interne). Avec 84 % du flux
+d'un jour dans la classe courte, les lignes vivantes passent d'environ 4,3 jours de flux à environ
+1,8 : le même carnet tient **≈ 2,4 fois plus de trafic avant la fermeture, ≈ 1,5 fois avant le premier
+délestage** (le palier 1 est à 60 % : 2,4 × 0,6). Sans `lifecycle` dans la purge, le gain réel à
+l'échelle tombait vers 1,5 avant la fermeture (un onglet visible garde 1 560 perf mais 4 560 à 6 000
+battements). Premier passage après application : ≈ 5 650 lignes (mesuré : 5 658) ; les ≈ 3 200
+lignes de la classe plus vieilles que les deux jours agrégés partent avec la purge quotidienne.
+
+**Avant / après.** Tant que la migration n'est pas appliquée : la fonction SQL répond « absente »
+(PGRST202), la fonction `pilotage` compte la table, `remplissage.classes` vaut `false` et
+`remplissage.migration` porte le chemin du fichier — la page Capacité l'écrit, et la ligne
+« Télémétrie pleine à x % », si elle apparaît, finit par « Protection par classe absente : appliquer
+… (geste au poste) ». La base se comporte comme le 15/11. Le canari, sa mémoire, sa ligne et la
+sonnerie ne dépendent PAS de la migration. Après : lecture en temps constant, la note disparaît,
+orange au plus, la purge de :52 tourne. Aucun changement côté client dans les deux états.
+
+**Le geste d'application — à Benjamin, au poste, après fusion et contre-revue** (seul contrôle humain
+entre ce canal et la production ; une session au poste peut tenir la main, jamais la CI, jamais une
+session distante). Dans l'ordre, staging puis production (`.passio/migrations/README.md`) :
+1. Avant, au canal ① sur CHAQUE cible : les tâches `agreger_croissance`, `purge_telemetrie_paliers`,
+   `purge_telemetrie_rattrapage` et `purge_telemetrie_debit` existent et sont actives (le verdict
+   refuse sinon — lu en production le 21/11 : elles y sont, minute 52 libre ; **le staging n'a pas pu
+   être lu d'ici**).
+2. La revue de mainteneur unique sur la PR (commentaire portant « Contre-revue technique
+   indépendante », « revue de mainteneur unique : j'assume l'application de cette migration », le
+   chemin du fichier et `cible: <ref>` pour chaque cible), puis l'attestation, dans un worktree
+   détaché d'`origin/main` :
+   `node scripts/attester-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --cible <ref> --pr '#<n>' --commit <sha de la revue> --revue <id de la revue> --relecteur PASSIO74 --source <lien de la revue>`
+3. `node scripts/appliquer-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --projet fcksxofaelcdmmifnwjo`
+   (staging), puis `--projet njkiyoklssvefstljemx` (production). Équivalent :
+   `npm run migration:appliquer -- migrations/… --projet <ref>` (sous PowerShell, préférer `node`).
+   Verdict attendu : 8 × OK, deux lignes d'information.
+4. **Mesurer au canal ①, jamais le tableau** : `select public.telemetrie_remplissage();` ; les 8
+   déclencheurs triés par nom (`zz_classe_bornee` en dernier) ; les tâches `purge_telemetrie%`
+   actives ; après le passage de :52, 0 ligne perf/click/action/lifecycle non protégée de plus de
+   27 h dans les deux jours agrégés, et le statut de la tâche dans `cron.job_run_details` ;
+   `activite_jour` et `croissance_jour` de J-1 inchangés. Puis rouvrir le pilotage
+   (`?equipe=1`) : la note « attendent la migration » a disparu.
+5. Sur le staging, AVANT la production : vérifier qu'un lot dont toutes les lignes sont écartées
+   reçoit bien un succès avec `Prefer: return=minimal` (js/telemetry.js) — le banc SQL prouve
+   l'instruction, pas la réponse HTTP de PostgREST ; sinon les clients en cache garderaient leur lot.
+Retour arrière : le bloc `--|` de l'en-tête, à l'éditeur SQL ; le pilotage retombe seul sur un compte.
+
+**Mise en service du temps 1** (après fusion) : AUCUN geste depuis #1002. La fusion touche
+`supabase/functions/**` : le run « Edge Functions » de ce push sélectionne les fonctions dont le code
+servi n'est plus celui du commit — ici `pilotage` seule, la seule qui importe `_shared/pilotage.js`
+et `_shared/battement.js` —, vérifie ses prérequis (`--partiel`), la déploie et l'éprouve. La
+fonction SQL `telemetrie_remplissage()` y est déclarée FACULTATIVE (`obligatoire: false`) : sans la
+migration, `pilotage` sort « dégradée (facultatif absent) », dans `deployables`, jamais dans
+`retenues` — tenu par T2-p de `tests/unit/deploiement-fonctions.test.mjs` (le `dresserPlan` de la CI
+sur le manifeste réel ; R146 le rend obligatoire → rouge) et rejoué contre un PostgreSQL 16 jetable avec le script de la CI. Si ce run
+rougit, c'est pour une AUTRE fonction (une retenue, ou une fonction en service dont un prérequis
+obligatoire manque) : son résumé la nomme, `pilotage` est partie quand même. Le site part en
+parallèle (job « Déploiement production ») ; dans les deux ordres la page se rend : une fonction
+d'avant ne rend pas de clé `remplissage` (la page se rend comme avant, T2-g), une page d'avant
+rend les lignes « À faire » qu'elle reçoit et n'affiche pas la note « attendent la migration ». Preuve : l'en-tête
+`X-Passio-Revision` de la fonction porte le commit ; l'action `etat` rend `remplissage.migration` et
+la jauge « Table de télémétrie » ; au quart d'heure suivant, aucune marque `pilotage_canari`.
+
+**Limites connues.**
+1. **Le délestage par classe est SILENCIEUX côté client** (succès pour un lot dont des lignes sont
+   écartées). Pendant qu'il joue, comptages pondérés (`meta.ech`) et audience sous-estiment ; l'écran
+   le dit, aucun compteur ne dit combien.
+2. **Les lignes écartées ne comptent pas au débit** (`trg_debit_lot` ne compte que la table de
+   transition). Au-dessus d'un palier, un visiteur peut envoyer des lots de `perf` sans remplir son
+   réservoir ni recevoir de 429 ; ni la jauge « Télémétrie reçue » ni `pilotage_audience` ne le
+   voient. Le coût reste borné à 120 lignes par requête, mais c'est un contournement du limiteur.
+3. **Au palier 2 des comptes, un compte dont l'onglet est resté ouvert n'écrit plus que des lignes
+   écartées** : il n'entre pas dans `activite_jour` ce jour-là. Actifs du jour et rétention
+   sous-estiment, pas seulement l'audience en direct.
+4. **La classe n'est pas une frontière de sécurité.** Un flot anonyme de lignes « error » forgées
+   remplit la table jusqu'à 800 000 comme avant, et ces lignes vivent 7 jours. Ce qui change : c'est
+   visible en moins de 35 min, et le téléphone sonne — donc un tiers peut le faire sonner une fois
+   par incident en remplissant la table : c'est un incident réel.
+5. **Le canari « table pleine » peut clignoter** quand la table stationne près de 800 000 : la purge
+   de :52 la fait repasser dessous, le canari de :00 passe, puis deux refus, puis « résolu ». Ce lot
+   n'ajoute aucune hystérésis à `decideAlerte` : à l'échelle, jusqu'à une paire de sonneries par heure.
+6. **La classe `autre` peut être un délai, pas un refus** : l'insertion du canari se fait sous
+   `anon`, coupé à 3 s. Sous forte charge de la base, deux délais à un quart d'heure d'écart font
+   rouge et sonnerie avec le titre « la sonde est refusée » — vrai symptôme, motif trompeur.
+7. **Le seuil orange (480 000 après migration) est aussi un point de consigne** : le voyant peut
+   alterner orange et vert, et chaque changement écrit une ligne `pilotage_etat`. Pas de sonnerie,
+   un historique bruité.
+8. **À 100 000 utilisateurs, la table entre 60 % et 90 % sera le RÉGIME NORMAL.** Ce lot rend l'état
+   visible et protège les signaux de panne ; il n'augmente pas la capacité au-delà du facteur
+   ci-dessus. La ligne orange sera permanente et son bouton ne la fera pas disparaître : ce n'est pas
+   un défaut du lot.
+9. **Le critère « journée ouvrée quasi vide » du chien de garde GitHub CESSERA de jouer dès
+   l'application**, au volume d'aujourd'hui : avec les jours mesurés (61, 31, 3 674, 6 249, 3 314
+   lignes) ramenés à environ 16 % au-delà de 26 h, la médiane des jours ouvrés tombe vers 300, sous
+   `JOURNEE_MEDIANE_MIN` = 500 (`scripts/veille-production.mjs`). Jamais l'inverse (aucune fausse
+   alerte). Les heures vides consécutives, le canari sur 2 h et le battement ne sont pas touchés ;
+   `usage7j` ne compte déjà que ce qui reste (les sessions, gardées 3 jours). À recalibrer : hors lot.
+10. **Borne et classe jugent sur les statistiques du serveur** : après un arrêt brutal de PostgreSQL
+    elles repartent de zéro jusqu'au prochain passage de l'autovacuum, et plus rien n'est délesté ni
+    refusé pendant ce temps (préexistant pour la borne). La jauge prend le plus grand des deux
+    compteurs pour ne pas afficher 0 %, mais les états par rôle décrivent alors un délestage qui ne
+    joue pas. Sur une grande table, ces statistiques sont une ESTIMATION (le banc encadre chaque
+    seuil de 2 000 lignes).
+11. **Le banc tourne sur PostgreSQL 16, la production est en 17.6** : la lecture de
+    `pg_stat_get_live_tuples` dans un déclencheur par ligne (`stats_fetch_consistency = cache`) n'est
+    éprouvée que sur 16. Et le banc prouve l'instruction SQL, pas la réponse HTTP (point 5 du geste).
+12. **Au palier 2, un clic LENT (protégé) survit à son effet `nav` ou `action` écarté** : la famille
+    « boutons » de la Sentinelle peut le lire « sans effet ». Dans cette zone l'écran est orange ou
+    rouge. Faire sauter cette famille quand la table était au palier 2 : hors lot (T4).
+13. **Avant migration, chaque veille et chaque ouverture de l'écran font un appel qui répond 404**
+    (PGRST202) puis un compte : sans effet, mais visible dans les journaux de l'API, 288 fois par jour
+    au moins ; le compte est linéaire (≈ 0,35 s à 800 000 lignes) — la migration doit être appliquée
+    bien avant 100 000 lignes.
+14. **La purge courte ajoute deux agrégations par heure** : à grande échelle, un jour plein de lignes
+    est relu une fois de plus par heure. Si `agreger_croissance` lève, rien n'est supprimé (fermé) et
+    la table se remplit — visible à la jauge. Mesuré au banc, sur une machine jetable : 1,2 million de
+    lignes d'un même jour, deux agrégations et 241 lots en ≈ 15 s, contre la coupure de 120 s.
+15. **`CREATE TRIGGER` verrouille la table** le temps de la fin de la migration (`lock_timeout` 5 s) :
+    pendant ce court instant les clients reçoivent une erreur et gardent leur lot. Les lectures
+    lourdes du verdict sont faites AVANT de poser le déclencheur.
+16. **Les `revoke` de la migration sont une seconde ceinture** : depuis le lot 1 du 06/11 les droits
+    par défaut de `public` ne donnent plus EXECUTE aux clients (lu en production le 21/11). Le banc
+    les éprouve donc sur les droits par défaut d'avant ce lot.
+
+17. **Un rouge du canari ne survit pas à 35 min de refus de débit SEULS.** Tant que le réservoir
+    anonyme est plein, la sonde ne passe pas jusqu'à la panne qu'elle signalait : après 35 min sans
+    refus grave, le voyant repasse à l'orange (« débit saturé : à confirmer ») et « résolu » sonne,
+    sans preuve que ce soit résolu. La ligne orange reste à l'écran. La table pleine n'est pas
+    masquable ainsi (`aa_table_bornee` passe avant le débit) ; un refus `autre` l'est par qui peut
+    tenir le réservoir plein 35 min. Tenir le rouge jusqu'au premier succès donnerait au même tiers
+    le moyen de le figer : hors lot, avec l'hystérésis de `decideAlerte`.
+18. **`lireRemplissage` ne prend plus pour « migration absente » que PGRST202** (contre-revue, A-5) :
+    un 42883 levé depuis la fonction SQL est « non lu ». Reste le cas où PostgREST perd son cache de
+    schéma APRÈS la migration : il répond PGRST202, le repli compte la table et la juge sur les seuils
+    d'avant — au-dessus de 90 %, un rouge et une sonnerie le temps d'un passage, avec une ligne qui
+    demande une migration déjà en base. Rare et bref (le cache se recharge seul) ; s'en souvenir dans
+    l'isolat ne tiendrait pas (« la mémoire d'une Edge Function n'est pas une mémoire »).
+19. **Les marques du canari se relisent par 12 sur deux heures, les plus récentes d'abord** : au-delà
+    (deux ordonnanceurs, veilles à la main), la suite affichée plafonne à ce qui est relu. Mesuré en
+    production par la contre-revue : 326 canaris du pilotage depuis le 18/11, aucun quart d'heure
+    doublé, écart maximal 30 min.
+
+**Contre-revue du lot (21/11), ce qu'elle a changé.** ① A-1 : le rouge sur les seuls refus graves
+(ci-dessus, `bilanCanari`). ② A-2 et A-3 : le tri, la fenêtre et le filtre d'auteur de `lireCanari`
+n'étaient tenus que par une épingle de texte — inverser le tri ou retirer le filtre laissait 167
+tests verts. T2-n les EXÉCUTE : quatorze marques (les deux récentes font le rouge), un refus de
+2 h 10 (hors fenêtre), des marques forgées sous l'identifiant d'un compte (`analytics_insert_own`
+laisse tout compte écrire cet événement sous le sien : ni ligne, ni voyant, ni sonnerie). ③ A-4 :
+l'en-tête de la migration disait qu'aucun lecteur ne relit la classe courte au-delà de 26 h ; la
+médiane sur 9 jours du chien de garde le fait (limite 9) — l'en-tête le dit. ④ A-5 : limite 18.
+Seconde relecture (même jour) : aucune objection bloquante, deux mineurs soldés par une même règle
+d'écart (ci-dessus) — B-1, deux refus graves éloignés reliés par du débit ; B-2, deux refus isolés
+autour d'une veille muette. T2-a joue les deux cas et les bornes 35/36 min (R144, R145). Piège du
+registre : sous la règle d'écart, R141 (lecture sans fenêtre) restait VERT — le refus de 2 h 10 de
+T2-n était déjà écarté par le trou ; T2-n prouve désormais la fenêtre sur une suite CONTINUE.
+
+**Écarts au plan, et pourquoi.** ① `lireRemplissage` LÈVE sur un remplissage non mesuré (le plan
+rendait une jauge grise) : voir plus haut. ② Le banc SQL part de la structure de production
+(`socle-production-2026-11-06.sql` + les migrations du dépôt jusqu'au 15/11) au lieu d'un décor écrit
+à la main, et éprouve AUSSI les vrais seuils à 1,2 million de lignes. ③ Le lanceur des réinjections
+nomme son rapporteur : sous Node 22 sans TTY, `node --test` rend du TAP, le lanceur cherchait
+« ℹ fail » et sortait « VERT (? test joué) » pour tout — aucune réinjection n'était réellement
+jugée dans cet environnement. ④ La lecture SQL rend NULL pour un seuil qui n'est pas un entier, au
+lieu de lever.
+
+Verrous : `tests/unit/pilotage.test.mjs` (T2-a à T2-g, T2-m), `tests/unit/pilotage-chemins.test.mjs`
+(T2-h à T2-l et T2-n, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
+`tests/unit/deploiement-fonctions.test.mjs` (T2-p, le plan de déploiement sans la migration),
+`tests/e2e/pilotage-nuage.spec.js` (㊹), `tests/sql/migration-telemetrie-classes.test.sh` (91
+contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R146 au registre
+(`scripts/reinjections-pilotage.mjs`), toutes rouges, plus trois à la main sur le test navigateur.
+
+**Hors lot** : compteur des lignes écartées ; recul plus long du client sur « table pleine »
+(js/telemetry.js réessaie chaque minute) ; alignement du centre de pilotage local (il range « table
+pleine » avec les refus de débit) ; hystérésis de `decideAlerte` ; index dédié à la purge courte et
+son plan mesuré à l'échelle (staging, après une campagne de charge) ; durée de vie des lignes d'échec
+et plafond propre aux lignes protégées ; un geste « purger maintenant » depuis le téléphone ;
+`migrations/SCHEMA_PROD_REFERENCE.sql` à régénérer après application ; une ligne de règle dans
+`CLAUDE.md` (aucune marge aujourd'hui : 39 989 caractères sur 40 000).
+
+## 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+
+Trou T5 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (lot D2 ; le volet « connexion », D1, est livré
+à part dans app-02). Avant ce lot, si toutes les photos cessaient de s'afficher, **rien ne partait** :
+les `onerror` en ligne du produit masquent ou remplacent l'élément et se taisent (18 lignes de code en
+posent un — `grep -n 'onerror=' js/app-*.js js/ui-v7-lot.js index.html | grep -v '^[^:]*:[0-9]*: *//' | wc -l`,
+compté le 21/11 — dont un seul, `imageFilIndisponible`, écrit « Image indisponible »), l'écouteur `error` de la
+télémétrie n'est pas en capture (il ne voit aucune ressource), le crochet `fetch` ne voit jamais un
+`<img>`. Le voyant restait vert.
+
+**⚠️ Ce lot ÉMET le signal ; personne ne le LIT encore.** Ni la veille, ni le pilotage (`/pilotage/`), ni
+la Sentinelle ne lisent `type = media` : une panne de photos laisse aujourd'hui des lignes en base, pas
+une alerte. La lecture (ratio par sessions, ligne « Les photos ne s'affichent plus ») est un lot
+ultérieur, et cette fiche est son contrat.
+
+**Le contrat de la ligne.** `type = "media"`, `action = "bilan"`, `status = "ok"`, `meta` exactement
+`{famille, ko, vus, ko_av, vus_av}` (plus `mode`, `trafic`, posés par `track` sur toute ligne) :
+- `ko` / `vus` : EMPLACEMENTS en échec / affichés depuis le bilan précédent de la session — un **delta**,
+  jamais un cumul ; `ko_av` / `vus_av` : leur part audio ou vidéo. Chaque nombre est borné à 9 999.
+  **`vus` est un MINORANT** (fenêtre de 60 s, images détachées avant la fin de leur chargement, médias
+  servis avant le bilan précédent) : `ko ≥ vus` est un seuil de tri, `ko / vus` n'est PAS un taux d'échec.
+- `famille`, liste FERMÉE de cinq valeurs, calculée puis oubliée (aucune adresse, aucun hôte, aucun
+  chemin ne part) : `stockage` (chemin `/storage/v1/` sur l'hôte **strictement égal** à celui de
+  `window.PASSIO_SUPABASE.url`), `demo` (`/demo/` de la même origine), `app` (reste de la même origine,
+  dont le `#` que rend `safeUrlAttr` sur une adresse refusée), `local` (`blob:`, et `data:` pour l'audio
+  et la vidéo), `externe` (tout le reste — **y compris tout autre `*.supabase.co`**, et le stockage tant
+  que la configuration n'est pas posée). Une image `data:` et un `src` vide ne sont pas des médias.
+- Une ligne **par session, par période et par famille EN ÉCHEC** ; rien sans échec. Premier bilan 20 s
+  après le premier échec compté (`MEDIA_PREMIER_MS`), puis un par période de 5 min au plus
+  (`MEDIA_PERIODE_MS` × le facteur de délestage, lu à l'armement : `_mediaPeriode`), un au masquage
+  (soumis au même plancher) et un à `pagehide` (il voyage avec le lot de fermeture, et ne connaît PAS le
+  plancher de période : seulement un plancher court de 30 s après la SORTIE précédente, `MEDIA_SORTIE_MS`
+  compté depuis `mediaSortie`, contre les allers-retours du cache aller-retour. Compté depuis n'importe
+  quel bilan, il perdait les échecs d'une page fermée moins de 30 s après un bilan de période ou de
+  masquage — contre-revue, second tour. `e.persisted` n'a pas été retenu : il est vrai à toute sortie
+  éligible au cache, la première comprise).
+- **Gigue** : le premier délai ET la période sont multipliés par un facteur de 0,7 à 1,3, tiré UNE fois
+  par session (`_mediaGigue`, retiré après un refus de la mesure). Les bilans d'une session tombent donc
+  entre 14 et 26 s, puis toutes les 3 min 30 à 6 min 30. Le banc la fixe à 1 (`Math.random` rend 0,5 le
+  temps du SEUL tirage de la gigue, après le refus et la reprise qui créent l'identifiant d'appareil —
+  figé plus longtemps, il donnerait le même `event_id` à toutes les lignes).
+- **Notable** = famille `stockage` ou `demo` ET `ko ≥ 3` (`MEDIA_KO_NOTABLE`) ET `ko ≥ vus` →
+  `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours. Il n'attend ni le
+  délestage ni la pression — **à une réserve près : sous pression (429), un seul notable par session et
+  par famille** (réserve remise à zéro par un refus de la mesure) ; les suivants attendent, comptés,
+  comme le bruit de fond, et partent entiers quand la pression retombe ou à la sortie — sauf une sortie
+  qui suit une autre sortie de moins de 30 s (ils restent alors en mémoire). Il reste soumis au plancher de période et au plafond client de `track`
+  (400 lignes par minute et par onglet).
+  Tout le reste part en `info` et ATTEND sous pression (`tel.sousPression()`) ou sous délestage ; un
+  bilan retenu ne réveille l'appareil qu'une fois par période (`mediaEssai`), pas toutes les 20 s.
+  **À la sortie, ni la pression ni le plancher de période ne retiennent rien** : tout part, sauf le
+  bruit de fond sous délestage, qui est JETÉ, et sauf si une autre sortie a émis il y a moins de 30 s
+  (tout reste alors compté en mémoire, pour la sortie suivante ou perdu avec la page).
+- Dénominateur fenêtré : sans échec compté ni échec en attente de verdict, les compteurs repartent de
+  zéro dès qu'un événement arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`,
+  `_mediaFenetre`) ; la fenêtre repart à chaque bilan.
+
+**Comment c'est compté.** Tout vit dans `js/telemetry.js`, **aucun `onerror` n'est modifié** : trois
+écouteurs en CAPTURE sur `document` (`error`, `load`, `loadedmetadata` — pas `loadeddata`, qu'un
+`preload="metadata"` réussi n'émet pas), filtrés sur `IMG`, `VIDEO`, `AUDIO`, `SOURCE`. La capture passe
+AVANT le gestionnaire en ligne qui remplace l'élément (mesuré), donc tout `onerror` futur est couvert.
+Un échec n'est compté qu'après un **verdict différé de 2 s** (`MEDIA_VERDICT_MS`) :
+- à l'événement : rien si la page est masquée, ni dans les 2 s qui SUIVENT un retour au premier plan
+  ou une bascule réseau (les chargements coupés en arrière-plan tombent au réveil) ;
+- au verdict : rien si une occultation (`_occultation`) ou une bascule réseau (`_mediaCoupure`) est
+  survenue depuis, ni hors ligne, ni en fermeture (`contexteEchec`).
+Entre l'événement et son verdict, l'échec est « en attente » (`mediaAttente`) : il tient la fenêtre du
+dénominateur ouverte, et la fenêtre se juge à l'événement, avant qu'il n'attende.
+`setEnabled(false)` remet les compteurs et l'attente à zéro, périme les verdicts en cours
+(`mediaEpoque`) et annule le minuteur ; mesure refusée, les écouteurs sortent AVANT tout classement
+(aucune lecture de l'élément, aucun minuteur armé). ⚠️ `_mediaCompter` ne porte PAS cette garde (elle
+y était redondante, donc sans verrou) : tout nouvel appelant doit la porter. Fenêtres de banc :
+`tel._familleMedia`, `tel._medias()`, `tel._mediaBilan(raison)`, `tel._mediaGigue()`.
+
+**Écarts au plan de l'audit (point 3, C), décidés à la conception puis à sa contradiction** : pas de
+`mediaKo` appelé depuis les `onerror` (un second chemin et un dédoublonnage pour rien), pas de famille
+`relais` (`urlMediaDirecte` réécrit déjà ces adresses), pas d'hôte ni de genre dans la ligne, crochet
+`fetch` inchangé (les médias protégés ne sont pas en production, et `telecharger` annule volontairement
+des requêtes qu'un filtre élargi peindrait en pannes).
+
+**LIMITES — à lire par qui écrira le lecteur.**
+1. **Le signal est fabricable par le CONTENU, pas seulement par un client qui forge ses lignes.**
+   `posts.media_url` n'exige que `https://` : une publication à image morte fait échouer la famille
+   chez TOUS ses lecteurs, comptes anciens et honnêtes compris (à 4 publications en production, trois
+   suffisent pour un `warn`). Un bilan dit ce qu'un appareil a vu, pas l'état du stockage. **Ne jamais
+   sonner sans recoupement serveur** (lecture d'un objet témoin par la veille).
+2. **Les avatars ne sont comptés qu'en partie** : ceux que `avatarBg` peint en fond CSS échappent à
+   tout écouteur ; ceux qui sont des `<img>` sont comptés comme n'importe quelle image
+   (`js/app-05-config-profil.js:4391`, `js/app-07-ia-explore-irl.js:365`,
+   `js/app-08-ui-modals-tour.js:716` et `:740`). Sont couverts : images du fil, couvertures, stories,
+   vidéos, sons, et ces avatars-là.
+3. **Un bilan peut arriver très tard** : la file est persistée (`passio_tel_backlog`) et rejouée au
+   chargement suivant. Fenêtrer sur `client_ts`, et écarter les lignes où `received_at − client_ts`
+   dépasse 10 min — une fenêtre sur `received_at` prendrait la panne d'hier pour celle d'aujourd'hui.
+4. Les nombres sont des emplacements PAR RENDU : un fil repeint trois fois compte trois fois la même
+   image morte ; les événements d'une image détachée avant la fin de son chargement sont perdus
+   (échecs et succès dans les mêmes proportions). Raisonner en part de SESSIONS, jamais en lignes.
+5. Réseau médiocre mais « en ligne » (tunnel, portail captif) : `navigator.onLine` reste vrai, le
+   bilan part en `warn` au retour. Bruit de fond permanent à grande échelle.
+6. `app`, `local`, `externe` sont bruyantes par nature (hôtes tiers, vocal illisible sur iPhone) : le
+   lecteur ne doit faire sonner que `stockage` et `demo`.
+7. Le service worker sert les médias de même origine depuis son cache : une panne de `/demo/` reste
+   invisible sur les appareils qui ont déjà les images.
+8. **Rien n'a été mesuré sous WebKit** : la suite n'est pas au socle `SUITES_WEBKIT` (les lignes de
+   télémétrie n'y arrivent pas à la route), et l'ordre réel des événements d'iOS (échec livré avant
+   ou après l'annonce de l'arrière-plan) est déduit de la leçon payée pour `fetch`, pas mesuré pour
+   les images. Premier contrôle après déploiement : la part des bilans `warn` venant d'iOS.
+9. En banc local, `/demo/u/…` répond 404 : toute suite à télémétrie active qui affiche le fil
+   d'exemples émet désormais une ligne `media` (`demo`, souvent `warn`) dans ses lots.
+10. Une ligne refusée par le plafond client (400/min/onglet) est perdue avec ses compteurs — un
+    `warn` comme les autres.
+11. **Sous le plancher, rien n'est persisté.** Un masquage dans les 5 min qui suivent un bilan ne pose
+    rien : les échecs comptés depuis restent en mémoire et sont PERDUS si l'onglet est tué sans
+    `pagehide` (le cas ordinaire sur mobile). De même une sortie dans les 30 s qui suivent une AUTRE
+    sortie (`MEDIA_SORTIE_MS` : retour du cache aller-retour puis départ — si la page meurt ensuite, ce
+    qui a été compté entre les deux est perdu), et le bruit de fond d'une sortie sous délestage (jeté,
+    délibérément). Une sortie qui suit un bilan de période ou de masquage, elle, emporte tout. Accepté :
+    le premier bilan de la session, lui, est déjà parti ; écrire les compteurs sur disque à chaque
+    échec coûterait plus que ce delta ne vaut.
+12. Une `<source type="…">` que le navigateur ne sait pas lire lève `error` sur la `<source>` et
+    compterait un échec alors qu'aucune requête n'est partie. L'application n'émet aujourd'hui ni
+    `<source>`, ni `srcset`, ni `<picture>` (`grep -n 'srcset\|<picture\|<source' js/*.js index.html` :
+    seul `telemetry.js` répond) ; les deux premiers sont tenus par le banc (T5-⑫, T5-⑫b) pour le jour
+    où elle en émettra.
+13. Ne sont pas vus : un média dans un shadow DOM (`error` et `load` ne sortent pas de l'arbre), et un
+    `new Image()` ou un `<video>` jamais attaché au document (les préchargements, la compression avant
+    envoi).
+14. **Aucune coupure distante propre à cette mesure** : `reglages_distants` ne sait pas l'éteindre
+    seule. Les recours sont le délestage (période ×2 ou ×4, bruit de fond retenu), le plafond serveur
+    par lot, et `?telemetry=0` appareil par appareil. Si le signal se révèle trop bruyant à l'échelle,
+    c'est un déploiement, pas un réglage.
+15. Une horloge d'appareil qui RECULE ne fait plus taire la mesure (plancher tenu pour échu, délai borné
+    à une période), mais la fenêtre du dénominateur reste figée jusqu'au bilan suivant (ou jusqu'à ce que
+    l'horloge rattrape son retard) : les `vus` sont surestimés pendant ce temps — aucun faux `warn`
+    possible, un `warn` rétrogradé en `info` oui.
+16. Chaque échec arme un minuteur de 2 s (cinq mille images mortes d'un coup = cinq mille minuteurs
+    brefs, mesuré à la sonde) ; rien ne les regroupe.
+
+**Contrôle après déploiement (canal ①)** — le taux de fond qui servira à régler les seuils du lecteur :
+```sql
+select meta->>'famille' as famille, severity, count(*) as lignes,
+       sum((meta->>'ko')::int) as ko, sum((meta->>'vus')::int) as vus
+from public.telemetry_events
+where env = 'production' and type = 'media' and action = 'bilan'
+  and coalesce(meta->>'trafic','') = ''
+  and client_ts > now() - interval '24 hours'
+  and received_at - client_ts < interval '10 minutes'
+group by 1, 2 order by 1, 2;
+```
+Preuve de déploiement : le nom `_mediaBilan` dans la page servie, ouverte avec `?equipe=1` (les
+littéraux `"media"` et `"bilan"` existent ailleurs dans la page).
+
+**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (vingt-cinq cas « T5- », service worker bloqué, horloge
+simulée, tous les envois interceptés) et quatre cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
+(table d'adresses hostiles et hôte qui suit la configuration, câblage en capture, sortie avant tout
+classement quand la mesure est refusée — joués par `npm run verif`).
+
+**Réinjections** (garde retirée → cas rouge ; chacune restaurée à l'identique) :
+| Garde retirée | Cas rouges |
+|---|---|
+| hôte STRICT du stockage (remplacé par `*.supabase.co`) | T5-③, unitaire « liste fermée » |
+| sans configuration, rien n'est `stockage` | unitaire « liste fermée » |
+| sortie sur page masquée, à l'événement | T5-⑥ |
+| hors ligne lu au verdict | T5-⑤ |
+| fermeture lue au verdict | T5-⑤ |
+| bascule réseau pendant la fenêtre du verdict (`_mediaCoupure >= t`) | T5-⑤ |
+| occultation pendant la fenêtre du verdict (`_occultation >= t`) | T5-⑥ |
+| fenêtre après un retour au premier plan | T5-⑥ |
+| fenêtre après une bascule réseau | T5-⑤ |
+| verdict différé (échec compté tout de suite) | T5-①, T5-⑤ |
+| delta (compteurs non remis à zéro après un bilan) | T5-①, ③, ④, ⑦, ⑨, ⑨b |
+| `!ENABLED` dans `_mediaCompter` (déplacée en tête des écouteurs par la contre-revue, voir plus bas) | T5-⑪ |
+| remise à zéro des compteurs dans `setEnabled(false)` | T5-⑪ |
+| minuteur annulé dans `setEnabled(false)` | T5-⑪ |
+| seuil notable : trois échecs | T5-④, ⑨, ⑨b |
+| seuil notable : `ko ≥ vus` | T5-④ |
+| seuil notable : familles de panne seulement | T5-④ |
+| gravité toujours `info` | T5-①, ③, ④, ⑧, ⑨, ⑨b |
+| facteur de délestage sur la période | T5-⑨b |
+| liste fermée des clés (une clé `hote` en plus) | T5-①, ⑦, ⑧, ⑨, ⑬ |
+| famille remplacée par l'hôte | les quatorze cas |
+| écoute `error` sans capture | treize cas, unitaire « capture » |
+| écoute `load` sans capture | T5-①, ②, ③, ④, ⑧, ⑪, ⑬, unitaire « capture » |
+| écoute `loadedmetadata` retirée | T5-③, ⑫, unitaire « capture » |
+| plancher de période dans `_mediaBilan` | T5-⑦ |
+| instant du dernier essai (`mediaEssai`, bilan retenu) | T5-⑨ |
+| le bruit de fond attend | T5-⑨, ⑨b |
+| branche délestage / branche pression de `_mediaDoitAttendre` (scindée depuis en `_mediaDeleste` / `_mediaPression`) | T5-⑨b / T5-⑨ |
+| la panne n'attend jamais (un notable retenu) | T5-⑨, ⑨b |
+| aucune ligne pour une famille sans échec | T5-③ |
+| une image `data:` n'est pas un média | T5-② |
+| filtre de balise (script, feuille de style) | T5-② |
+| `src` présent et blanc | T5-②, ⑫ |
+| fenêtre du dénominateur | T5-⑧ |
+| armement du minuteur au verdict | T5-⑦, ⑨, ⑨b, ⑪ |
+| bilan au masquage / à la fermeture | T5-⑩ / T5-⑩ |
+| borne des nombres | T5-⑬ |
+| part audio ou vidéo (`ko_av`) | T5-③, ⑫ |
+| famille `demo` | T5-③, ④, ⑨, ⑨b, unitaire |
+
+Quarante-deux réinjections jouées une par une, fichier restauré à l'identique après chacune :
+quarante et une rouges, UNE verte. Dit tel quel : (1) la verte était une garde en tête de
+`_mediaBilan` (`if (!ENABLED || !_mediaReste()) return 0;`) qu'AUCUN cas ne voyait — elle doublait le
+test par famille et la remise à zéro du refus ; elle a été retirée plutôt que laissée sans verrou.
+(2) Le délai de `_mediaArmer` après un premier bilan n'a pas de réinjection propre : le plancher de
+`_mediaBilan` rend le même résultat observable (des réveils de trop, aucune ligne de trop) ; seul le
+cas « bilan retenu » (`mediaEssai`, T5-⑨) le voit.
+
+**Contre-revue du lot (2026-11-21, une autre instance de Claude Code, en lecture seule, sondes et
+réinjections jouées).** Ce qu'elle a changé :
+- **D2-1, faux `warn` (sérieux)** : un échec n'entrait dans `mediaCompte` qu'au verdict (2 s) ; si la
+  borne des 60 s tombait dans ces 2 s, son propre comptage effaçait les affichages d'avant — vingt
+  images affichées à 59 s + trois échecs donnaient « ko 3 / vus 0 », `warn`. Corrigé : compteur
+  `mediaAttente` (`++` à l'événement, `--` au verdict, remis à 0 et périmé par `mediaEpoque` au refus),
+  fenêtre jugée à l'événement (`_mediaFenetre`). Cas T5-⑧b.
+- **D2-2** : retirer `!_mediaReste()` de la fenêtre laissait tout vert ; T5-⑦ affiche désormais une image
+  entre le second lot d'échecs et la période, et exige `ko: 3`.
+- **D2-3, échelle** : gigue ± 30 % tirée une fois par session (premier délai et période, T5-⑭) ; sous
+  pression, un seul notable par session et par famille (T5-⑨c).
+- **D2-4, horloge qui recule** : délai d'armement borné à une période, plancher tenu pour échu (T5-⑮).
+- **D2-5** : échecs sous le plancher perdus si l'onglet est tué — limite 11, rien n'est persisté.
+- **D2-6, gardes vertes sous mutation** : `srcset` gardé et testé (T5-⑫b, l'app n'en émet pas
+  aujourd'hui), ordre `currentSrc || src` verrouillé (T5-⑫b, les deux mutations rougissent), hôte du
+  projet qui suit la configuration (unitaire), `mediaDebut` remis au bilan (T5-⑧b c).
+- **D2-7** : commentaires et fiche corrigés — avatars `<img>` comptés, nombre de `onerror` recompté
+  avec sa commande, un `warn` reste soumis au plancher et au plafond client, `vus` est un minorant,
+  `!ENABLED` en tête des deux écouteurs (avant tout classement, banc unitaire).
+- **D2-8** : limites 12 à 14 écrites ; plancher court de 30 s à `pagehide` (T5-⑩b) ; sous délestage, à la
+  sortie, le bruit de fond est JETÉ (T5-⑨d).
+
+**Second tour de contre-revue (même jour).** Le plancher court de `pagehide` se comptait depuis
+`mediaDernier`, donc depuis N'IMPORTE QUEL bilan : une page fermée 12 s après un masquage, ou 15 s après
+un bilan de période, perdait tout le delta suivant, panne du stockage comprise ; et sous pression, une
+sortie juste après un masquage perdait le bruit de fond retenu. Le banc avait été AFFAIBLI pour ne pas
+le voir (T5-⑩ porté de 5 s à 30 s, un saut de 31 s glissé dans T5-⑨) : rétabli. Corrigé par un repère
+propre, `mediaSortie`, posé seulement par une sortie qui a émis ; cas T5-⑩c (après un bilan périodique)
+et T5-⑩d (sous pression, après un masquage). Aussi : `mediaNotable` remis à zéro par un refus (T5-⑨e —
+le plancher de période, lui, survit délibérément au refus : un aller-retour de la mesure ne doit pas
+permettre d'émettre plus souvent) ; le banc ne fige plus `Math.random` pendant la reprise qui crée
+l'identifiant d'appareil. Réinjections de ce tour (`revue-D2/reinj3.py`) : 8 jouées, 8 rouges —
+repère de sortie remplacé par `mediaDernier` (T5-⑨, ⑩, ⑩c, ⑩d), `mediaSortie` jamais posé (T5-⑩b),
+posé à tout bilan (T5-⑨, ⑩, ⑩c, ⑩d), `mediaNotable` non remis au refus (T5-⑨e), plancher court nul
+(T5-⑩b), bruit de fond non jeté (T5-⑨d), plancher de période nul (T5-⑦), horloge reculée (T5-⑮).
+
+Réinjections de l'état final (`revue-D2/reinj2.py`, hors dépôt) : **41 jouées, 41 rouges, aucune
+verte**, fichier restauré à l'identique après chacune (empreinte vérifiée). Les quinze d'origine,
+adaptées au code actuel, plus :
+| Garde retirée | Cas rouges |
+|---|---|
+| compteur d'attente dans la fenêtre / décrément au verdict | T5-⑧b / T5-⑧b |
+| `!_mediaReste()` dans la fenêtre | T5-⑦ |
+| fenêtre jugée à l'événement d'échec | T5-⑧b |
+| époque du verdict / attente remise à 0 au refus | T5-⑪b / T5-⑪b |
+| gigue sur le premier délai / sur la période / retirée au refus | T5-⑭ / T5-⑭ / T5-⑭ |
+| gigue tirée une seule fois | T5-⑦, ⑨b, ⑨c, ⑭, ⑮ |
+| un seul notable sous pression / notable marqué | T5-⑨c / T5-⑨c |
+| délai borné à une période / horloge reculée = plancher échu | T5-⑮ / T5-⑮ |
+| plancher court à `pagehide` | T5-⑩b |
+| bruit de fond jeté à la sortie sous délestage / mémoire vidée | T5-⑨d / T5-⑨d |
+| sortie retenue sous pression | T5-⑨ |
+| `srcset` avec `src` blanc | T5-⑫b |
+| `currentSrc` ignoré / `src` avant `currentSrc` | T5-⑫b / T5-⑫b |
+| hôte du projet mis en cache sans suivre la configuration | unitaire « liste fermée » |
+| `mediaDebut` non remis au bilan | T5-⑧b |
+| `!ENABLED` en tête de l'écouteur `load` / `error` | T5-⑪, unitaire « refus » |
+
+**Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
+rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.
 
 ## ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 

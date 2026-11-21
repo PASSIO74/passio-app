@@ -6005,7 +6005,7 @@ function openChangePassword() {
     <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
       <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
     <label class="field" id="cpNonceWrap" style="display:none;margin-top:8px;"><span>Code reçu par e-mail</span>\
-      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"/></label>\
+      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="Code reçu par e-mail"/></label>\
     <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
     <div style="display:flex;gap:8px;margin-top:10px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -6083,7 +6083,10 @@ async function doChangePassword() {
         try { ra = await supa.auth.reauthenticate(); } catch (e2) { ra = { error: e2 }; }
         if (ra && ra.error) { err("Impossible d'envoyer le code de vérification. Réessaie dans un instant."); rendreBouton(); return; }
         if (nonceWrap) nonceWrap.style.display = "";
-        info("Pour ta sécurité, un code à 6 chiffres vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
+        // Aucun nombre de chiffres ici : la longueur du code est un réglage
+        // serveur (`mailer_otp_length`, 8 en production le 2026-11-21) qui
+        // peut changer sans que ce texte le sache — « 6 chiffres » était faux.
+        info("Pour ta sécurité, un code de vérification vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
         rendreBouton();
         try { if (nonceEl) nonceEl.focus(); } catch (e3) {}
         return;

@@ -384,6 +384,16 @@ export function verdict(e) {
   const av = e && e.aveugle;
   if (av && av.aveugle) orange.push(`veille aveugle : la télémétrie qui décide est au plafond (${av.mesure}/${av.plafond} lignes/min) — délestage figé, réveil et retour arrière muets`);
   else if (!av && s.telemetrieMinute >= 0.9 * PLAFONDS.telemetrie.plafond) orange.push(`télémétrie au plafond (${s.telemetrieMinute}/min) : les chiffres sous-estiment`);
+  // La table de télémétrie (2026-11-21, T2) : la sonde refusée deux fois de suite
+  // (bilanCanari) et le remplissage (remplissage). Des raisons FIXES : le motif du
+  // serveur ne sort que dans la `reference` de la ligne « À faire », jamais ici —
+  // une raison part dans le texte de la sonnerie. « debit » ne rougit jamais.
+  const cn = e && e.canari, rp = e && e.remplissage;
+  if (cn && cn.refuse) (cn.rouge ? rouge : orange).push(RAISONS_CANARI[classeCanari(cn.classe)]);
+  // Le canari « table pleine » le dit déjà, avec son motif : une seule raison.
+  const pleineDite = !!(cn && cn.refuse && cn.classe === "table_pleine");
+  if (rp && !pleineDite && rp.couleur === "rouge") rouge.push(minuscule(titreRemplissage(rp)));
+  else if (rp && !pleineDite && rp.couleur === "orange") orange.push(minuscule(titreRemplissage(rp)));
   const humain = issues.filter((i) => !i.pr && i.labels.includes("humain")).length;
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
@@ -425,6 +435,8 @@ export const SOURCES_VERDICT = Object.freeze({
   parcours: "parcours critiques", battement: "battement de la veille",
   // Une lecture des accusés en échec ne laisse pas l'écran « calme » (revue du 2026-11-06).
   reception: "réception des alertes",
+  // La table de télémétrie (2026-11-21, T2) : sans ces deux lectures, rien ne dit qu'elle n'est pas pleine.
+  remplissage: "remplissage de la télémétrie", canari: "sonde de télémétrie",
 });
 
 /** Le bilan qui juge le voyant : l'heure écoulée (`recent`) quand l'écran a lu la journée. */
@@ -745,6 +757,15 @@ export function aFaire(d, maintenant = Date.now()) {
   const retourPossible = !!(d && d.autonomie && d.autonomie.retour && d.autonomie.retour.jeton);
   const gesteRetour = retourPossible ? { libelle: REGLER, principal: true, special: "retour" } : { libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.netlify };
   const quoiRetour = retourPossible ? "Remet la version d'avant." : "Ouvre Netlify pour remettre la version d'avant.";
+  // Le délestage en vigueur, et le seul levier du téléphone qui réduit ce qui ENTRE dans la télémétrie :
+  // ralentir l'app d'un cran (jamais dans « Tout régler » : c'est un choix). Déjà au niveau 2, ou sans la
+  // table des réglages : le bouton mène aux purges planifiées. `averti` : le geste pose le réglage au nom
+  // du pilote, que la veille ne lèvera JAMAIS seule (decideDelestage) — la ligne le dit.
+  const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
+  const peutRalentir = !!(d && d.reglages && !d.reglages.absente) && niveau < 2;
+  const ralentirApp = peutRalentir
+    ? { quoi: "Ralentit l'app d'un cran.", gestes: [regler({ action: "reglages", cle: "delestage", valeur: { niveau: niveau + 1 } }, false)], averti: RALENTI_RESTE }
+    : { quoi: "Ouvre les purges planifiées dans Supabase.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.cron }], averti: "" };
 
   // Le site d'abord : rien d'autre ne compte s'il ne répond plus.
   const dispo = d && d.disponibilite;
@@ -789,6 +810,29 @@ export function aFaire(d, maintenant = Date.now()) {
   if (d && d.gestesGithub === false) {
     ajoute({ id: "config:jeton-github", prio: 0, etiquette: "Réglage", titre: "Il manque le jeton GitHub du pilotage", quoi: "Ouvre la page où le poser.",
       reference: "Secret à poser : PILOTAGE_GITHUB_TOKEN. Sans lui, les boutons ne peuvent pas réparer, et GitHub se lit mal.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.secrets }] });
+  }
+  // La table de télémétrie (2026-11-21, T2). ① La sonde refusée deux fois de suite (bilanCanari) :
+  // tant que ça dure, une panne chez les visiteurs ne se verrait pas. Le motif du serveur va dans
+  // `reference`, borné ; le titre et `quoi` sont fixes. « debit » reste en priorité 1 : il ne sonne pas.
+  const cn = d && d.canari, rp = d && d.remplissage;
+  const mesure = !!(rp && typeof rp.pct === "number" && Number.isFinite(rp.pct));
+  if (cn && cn.refuse) {
+    const classe = classeCanari(cn.classe);
+    // Un refus qui n'est ni la borne ni le débit (RLS, délai, réseau) ne se règle pas en ralentissant : ses journaux d'abord.
+    const geste = classe === "autre" ? { quoi: "Ouvre les journaux de la fonction pilotage.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.logsPilotage }], averti: "" } : ralentirApp;
+    ajoute({ id: "telemetrie:canari", prio: cn.rouge ? 0 : 1, etiquette: (Number(cn.suite) || 0) + " refus", depuis: cn.depuis || null, titre: TITRES_CANARI[classe],
+      reference: "Refus du serveur : « " + borne(cn.motif, 120) + " ». " + (Number(cn.suite) || 0) + " sondes refusées de suite depuis " + heureMinute(cn.depuis)
+        + ". Tant que ça dure, une panne chez les visiteurs ne se verrait pas ici." + (classe === "table_pleine" && mesure ? " Table à " + pctRemplissage(rp) + " de la borne des visiteurs." : "") + geste.averti,
+      quoi: geste.quoi, gestes: geste.gestes });
+  }
+  // ② Le remplissage, orange ou rouge — sauf si la sonde « table pleine » le dit déjà (une ligne, pas deux).
+  if (rp && mesure && (rp.couleur === "orange" || rp.couleur === "rouge") && !(cn && cn.refuse && cn.classe === "table_pleine")) {
+    const phrase = (etat) => (Object.hasOwn(PHRASES_REMPLISSAGE, etat) ? PHRASES_REMPLISSAGE[etat] : "état non mesuré");
+    ajoute({ id: "telemetrie:remplissage", prio: rp.couleur === "rouge" ? 0 : 1, etiquette: rp.pct > 100 ? "Pleine" : pctRemplissage(rp), titre: titreRemplissage(rp),
+      reference: "Visiteurs : " + phrase(rp.visiteurs) + ". Comptes : " + phrase(rp.comptes) + ". "
+        + (rp.classes ? "La purge horaire la vide d'elle-même." : rp.migration ? "Protection par classe absente : appliquer " + borne(rp.migration, 100) + " (geste au poste)." : "Seuils de classe illisibles en base : relire le déclencheur zz_classe_bornee.")
+        + ralentirApp.averti,
+      quoi: ralentirApp.quoi, gestes: ralentirApp.gestes });
   }
   // Exécutions en échec (déploiement, Sentinelle, veille).
   for (const x of reparables.filter((r) => r.cible === "run")) {
@@ -1073,12 +1117,12 @@ export function aFaire(d, maintenant = Date.now()) {
   // s'achète se règle sur la page du fournisseur : le bouton y mène. La télémétrie,
   // elle, ne s'achète pas : le bouton ralentit l'app d'un cran.
   const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
-  const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
   // Les anciens payloads « emails » comptaient des profils, pas le SMTP.
   if (jg.some((j) => j.cle === "emails")) ajoute({ id: "capacite:smtp", prio: 2, etiquette: "Non mesuré", titre: "Quota SMTP inconnu",
     quoi: "Ouvre le compte Brevo pour vérifier le solde.", detail: "Le quota et les envois SMTP ne sont pas lus automatiquement.",
     gestes: [{ libelle: "Vérifier sur Brevo", principal: true, ouvrir: PAGES_REGLAGE.brevo }] });
-  for (const j of jg.filter((x) => x.cle !== "emails" && (x.couleur === "rouge" || x.couleur === "orange"))) {
+  // La table de télémétrie a SA ligne (telemetrie:remplissage, plus haut) : ici, elle n'aurait ni bouton ni page de forfait.
+  for (const j of jg.filter((x) => x.cle !== "emails" && x.cle !== "tableTelemetrie" && (x.couleur === "rouge" || x.couleur === "orange"))) {
     const prix = Number(j.prix) > 0 ? " (~" + j.prix + " €/mois)" : "";
     const pctTexte = String(j.pct).replace(".", ",") + " %";
     const ralentir = j.cle === "telemetrie" && niveau < 2;
@@ -1874,3 +1918,208 @@ export function ligneCanari(id) {
     meta: { synthetic: true, canary_id: id, exclude_analytics: true, exclude_alerts: true, source: "pilotage" },
   };
 }
+
+// ─── LA TABLE DE TÉLÉMÉTRIE SE FERME, ET PERSONNE NE LE VOIT (2026-11-21, T2) ──
+// Audit « la surveillance tient-elle à 100 000 utilisateurs ? » (20/11), trou T2.
+// La table `telemetry_events` a une borne (15/11 : 800 000 lignes vivantes pour les
+// visiteurs, 1 200 000 pour les comptes). Pleine, elle refuse tout — signaux de
+// panne compris — et rien ne le disait : le canari refusé rendait { emis: false,
+// erreur }, rangé dans le battement, que personne ne lisait ; seul le chien de
+// garde GitHub finissait par voir « 0 canari en 2 h », des heures plus tard et
+// sans le motif. Deux mesures, PURES ici, lues par la veille et par l'écran :
+//   · la MÉMOIRE DU CANARI (`bilanCanari`) : chaque refus laisse une marque
+//     `pilotage_canari` (analytics_events, auteur système, clé de service) ; deux
+//     refus de suite — dans deux quarts d'heure DISTINCTS — font une ligne « À
+//     faire » qui cite le motif du serveur, et le voyant passe au rouge ;
+//   · le REMPLISSAGE (`remplissage`) : lignes vivantes contre la borne des
+//     visiteurs, le premier mur où des signaux de panne meurent.
+// ⚠️ Le MOTIF est le texte du serveur : il ne sort que dans `reference`, que la
+// page rend en texte. Titres, `quoi`, raisons du voyant et texte de la sonnerie
+// sont des textes FIXES, écrits ici.
+// ⚠️ La classe « debit » ne sonne JAMAIS : le canari part sous la clé anon, et son
+// refus de débit vient des réservoirs que n'importe quel visiteur remplit (1 600
+// lignes/min). Rouge, elle aurait donné à tout porteur de la clé publique le moyen
+// de faire sonner le téléphone — et le réservoir se vidant chaque minute, le
+// voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs
+// forgées du 07/11 (COMPTES_ROUGE_MIN).
+export const EVT_CANARI = "pilotage_canari";
+/** Refus de suite (quarts d'heure distincts) à partir desquels la ligne « À faire » apparaît. */
+export const CANARI_SUITE_MIN = 2;
+/** Au-delà, le dernier refus ne dit plus rien du présent (même délai que BATTEMENT_PERIME_MS). */
+export const CANARI_MEMOIRE_MS = 35 * 60e3;
+/** Fenêtre et nombre de marques relues : deux heures de quarts d'heure, et une marge. */
+export const CANARI_LECTURE_MS = 2 * 3600e3;
+export const CANARI_MARQUES_MAX = 12;
+/** Les motifs de refus, en liste FERMÉE : le texte du serveur n'en sort jamais comme une classe. */
+export const CLASSES_REFUS_CANARI = Object.freeze(["table_pleine", "debit", "autre"]);
+const classeCanari = (c) => (CLASSES_REFUS_CANARI.includes(c) ? c : "autre");
+const sansControle = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+
+/**
+ * Un refus du canari → { classe, motif, code }. La classe se lit dans le message
+ * du serveur (« table pleine : … » de telemetrie_bornee, « rate limit: … » de
+ * telemetrie_refuser) ; tout le reste — RLS, délai, réseau — est « autre ».
+ * Le motif est borné et sans caractère de contrôle : il finit à l'écran.
+ */
+export function classerRefusCanari(erreur, code = "") {
+  const motif = sansControle(erreur, 120);
+  return { classe: /table pleine/i.test(motif) ? "table_pleine" : /rate limit/i.test(motif) ? "debit" : "autre", motif, code: sansControle(code, 10) };
+}
+
+/**
+ * La marque à écrire après un passage du canari, ou null. `resultat` = ce que
+ * rend l'étape `emettreCanari` ({ emis }, { emis: false, erreur, code }, ou
+ * { erreur } si elle a levé) ; `bilan` = bilanCanari lu AVANT ce passage.
+ * Un refus se note TOUJOURS. Un succès ne se note que s'il CLÔT une suite de
+ * refus : en temps normal, aucune marque (0 ligne par jour).
+ */
+export function marqueCanari(resultat, bilan) {
+  if (!resultat || typeof resultat !== "object") return null;
+  if (resultat.erreur) return { ok: false, ...classerRefusCanari(resultat.erreur, resultat.code) };
+  if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };
+  return null;
+}
+
+/**
+ * Les marques `pilotage_canari` → où en est la sonde. PUR.
+ * « Deux fois de suite » = des refus dans au moins CANARI_SUITE_MIN quarts d'heure
+ * DISTINCTS, sans succès entre eux, le dernier ayant moins de CANARI_MEMOIRE_MS :
+ * deux ordonnanceurs à quelques secondes d'écart comptent pour un refus.
+ * `refuse` (la ligne « À faire ») se décide sur la suite ENTIÈRE, débit compris.
+ * `rouge` (l'urgence, la sonnerie) se décide sur les seuls refus GRAVES de la suite —
+ * ceux qui ne sont pas de débit : CANARI_SUITE_MIN quarts d'heure distincts de
+ * ceux-là, le plus récent ayant moins de CANARI_MEMOIRE_MS. Contre-revue du 21/11 :
+ * jugé sur la classe du DERNIER refus seul, un unique refus grave (un délai isolé)
+ * précédé de refus de débit — que tout porteur de la clé publique provoque — faisait
+ * sonner « refusée deux fois de suite », et un seul refus de débit au milieu d'un
+ * vrai rouge faisait sonner « Problème résolu ».
+ * La classe et le motif rendus sont ceux de ce qui DÉCIDE : le dernier refus grave
+ * si c'est rouge ; le dernier refus de débit si la ligne est là sans être rouge (il
+ * y en a toujours un : sans débit, deux quarts d'heure refusés sont deux graves) ;
+ * le dernier refus tant qu'il n'y a pas de ligne.
+ * Deux refus ne sont « de suite » que séparés de CANARI_MEMOIRE_MS au plus (seconde
+ * relecture du 21/11, B-1 et B-2) : la suite s'arrête au premier trou plus long, et
+ * les refus graves au premier trou plus long ENTRE DEUX REFUS GRAVES — un succès
+ * qu'une veille muette n'a pas noté, ou des refus de débit forgés entre deux refus
+ * graves isolés, ne font plus « refusée deux fois de suite ».
+ */
+export function bilanCanari(marques, maintenant = Date.now()) {
+  const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
+  const lues = (Array.isArray(marques) ? marques : [])
+    .map((m) => ({ t: dateUtc(m && m.created_at), p: m && m.properties && typeof m.properties === "object" ? m.properties : {} }))
+    .filter((m) => Number.isFinite(m.t))
+    .sort((a, b) => b.t - a.t);
+  const derniere = lues[0];
+  if (!derniere || derniere.p.ok !== false || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;
+  const quart = (m) => Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3));
+  const fenetres = new Set(), graves = new Set();
+  let depuis = derniere.t, grave = null, debit = null, precedent = derniere.t, precedentGrave = null, gravesClos = false;
+  for (const m of lues) {
+    if (m.p.ok !== false) break;
+    // Un trou de plus de CANARI_MEMOIRE_MS entre deux refus CLÔT la suite (seconde relecture, B-2) : une veille
+    // muette plus de 35 min ne noterait pas le succès d'entre-temps, et deux refus isolés feraient « de suite ».
+    if (precedent - m.t > CANARI_MEMOIRE_MS) break;
+    precedent = m.t;
+    fenetres.add(quart(m));
+    depuis = m.t;
+    // Triées de la plus récente à la plus ancienne : la première rencontrée de chaque sorte est la dernière en date.
+    if (classeCanari(m.p.classe) === "debit") debit = debit || m;
+    else if (!gravesClos) {
+      // Même règle entre deux refus GRAVES (B-1) : des refus de débit, que tout porteur de la clé publique
+      // provoque, ne relient pas deux refus graves éloignés en « deux fois de suite ».
+      if (precedentGrave !== null && precedentGrave - m.t > CANARI_MEMOIRE_MS) { gravesClos = true; continue; }
+      precedentGrave = m.t;
+      graves.add(quart(m)); grave = grave || m;
+    }
+  }
+  const refuse = fenetres.size >= CANARI_SUITE_MIN;
+  const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;
+  const montree = rouge ? grave : (refuse && debit) || derniere;
+  return { enCours: true, suite: fenetres.size, refuse, rouge, classe: classeCanari(montree.p.classe), motif: sansControle(montree.p.motif, 120),
+    depuis: new Date(depuis).toISOString(), dernier: new Date(derniere.t).toISOString() };
+}
+
+/** Le fichier de la migration des classes : l'écran le nomme tant qu'elle n'est pas en base. */
+export const MIGRATION_TELEMETRIE_CLASSES = "migrations/migration_telemetrie_classes_2026-11-21.sql";
+/** Les bornes du 15/11 (`aa_table_bornee`), tant que la base ne les rend pas elle-même. */
+export const BORNES_TELEMETRIE = Object.freeze({ visiteurs: 800000, comptes: 1200000 });
+/** Sans les seuils de classe (migration absente) : parts de la borne des visiteurs. */
+export const REMPLISSAGE_SANS_SEUILS = Object.freeze({ orange: 0.7, rouge: 0.9 });
+
+/**
+ * Le remplissage de `telemetry_events`. PUR. `m` = ce que rend la fonction SQL
+ * `telemetrie_remplissage()` ({ vivantes, estimees, borne_*, confort_*, reserve_*,
+ * octets }), ou { vivantes } quand elle manque (compte exact, `migration` nommée).
+ *   · `vivantes` : le PLUS GRAND des deux compteurs du serveur — les statistiques
+ *     vivantes (ce que la borne juge) repartent de zéro après un arrêt brutal, et
+ *     la jauge afficherait 0 % sur une table pleine. Aucun des deux : non mesuré
+ *     (gris), jamais 0.
+ *   · `classes` : les quatre seuils de classe, présents ET ordonnés par rôle
+ *     (confort < réserve ≤ borne) ; sinon ils sont tous ignorés.
+ *   · état par rôle : ok · confort (les mesures de performance sont écartées) ·
+ *     reserve (seul le protégé entre) · ferme (plus rien n'entre).
+ *   · couleur, rapportée à la borne des VISITEURS : SANS classes, orange au-dessus
+ *     de 70 %, rouge au-dessus de 90 % — le voyant sonne avant la fermeture, et le
+ *     geste « appliquer la migration » a un sens. AVEC classes, orange au plus :
+ *     les seuils de classe sont des points de consigne de la régulation (la table
+ *     stationne dessus, la purge horaire y ajoute une dent de scie), et un rouge
+ *     posé là battrait « Problème » / « résolu ». Le rouge d'après migration vient
+ *     du canari « table pleine », qui porte son hystérésis (deux quarts d'heure).
+ */
+export function remplissage(m, { migration = null } = {}) {
+  const positif = (x) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : null);
+  const compte = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);
+  const s = m && typeof m === "object" ? m : {};
+  const lus = [compte(s.vivantes), compte(s.estimees)].filter((x) => x !== null);
+  const vivantes = lus.length ? Math.max(...lus) : null;
+  const borne = positif(s.borne_visiteurs) || BORNES_TELEMETRIE.visiteurs;
+  const borneComptes = positif(s.borne_comptes) || BORNES_TELEMETRIE.comptes;
+  const cv = positif(s.confort_visiteurs), rv = positif(s.reserve_visiteurs), cc = positif(s.confort_comptes), rc = positif(s.reserve_comptes);
+  const classes = !!(cv && rv && cc && rc && cv < rv && rv <= borne && cc < rc && rc <= borneComptes);
+  const etat = (confort, reserve, mur) => (vivantes === null ? null : vivantes > mur ? "ferme" : classes && vivantes > reserve ? "reserve" : classes && vivantes > confort ? "confort" : "ok");
+  const seuilOrange = classes ? cv : REMPLISSAGE_SANS_SEUILS.orange * borne;
+  const seuilRouge = classes ? Infinity : REMPLISSAGE_SANS_SEUILS.rouge * borne;
+  const couleur = vivantes === null ? "gris" : vivantes > seuilRouge ? "rouge" : vivantes > seuilOrange ? "orange" : "vert";
+  return { vivantes, borne, borneComptes, pct: vivantes === null ? null : Math.round((vivantes / borne) * 1000) / 10, couleur,
+    visiteurs: etat(cv, rv, borne), comptes: etat(cc, rc, borneComptes), classes, migration: migration || null, octets: compte(s.octets) };
+}
+
+/**
+ * Les comptes sont-ils délestés par la table elle-même ? Au palier 2 des comptes
+ * (ou table fermée pour eux), leurs battements ne sont plus écrits : le nombre de
+ * comptes connectés SOUS-ESTIME sans que la charge ait baissé — la veille ne lève
+ * alors aucun délestage (même sens conservateur que `estAveugle`).
+ */
+export function remplissageAveugle(r) {
+  return !!r && (r.comptes === "reserve" || r.comptes === "ferme");
+}
+
+/** La jauge de la page Capacité : même forme que `jauges()`, sa propre ligne « À faire ». */
+export function jaugeRemplissage(r) {
+  return { cle: "tableTelemetrie", libelle: "Table de télémétrie (lignes, borne des visiteurs)", valeur: r.vivantes, plafond: r.borne, unite: "", pct: r.pct, couleur: r.couleur, estimation: false,
+    geste: r.classes ? "Rien à acheter : la purge horaire la vide. Si ça dure, Réglages › Protection › Économie." : "Appliquer la migration des classes de télémétrie (geste au poste).",
+    prix: 0, url: null };
+}
+/** « 62,5 % » ; au-delà de 100 %, le pourcentage ne se dit plus (il se rapporte aux visiteurs, les comptes écrivent encore). */
+const pctRemplissage = (r) => String(r.pct).replace(".", ",") + " %";
+const titreRemplissage = (r) => (Number(r.pct) > 100 ? "Télémétrie pleine" : "Télémétrie pleine à " + pctRemplissage(r));
+const minuscule = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+// Ce que le voyant et la ligne « À faire » disent d'un canari refusé, par classe : des textes FIXES.
+const RAISONS_CANARI = Object.freeze({
+  table_pleine: "la table de télémétrie est pleine : plus aucune mesure des visiteurs n'entre, pannes comprises",
+  debit: "la télémétrie des visiteurs est refusée (débit saturé) : à confirmer",
+  autre: "la sonde de télémétrie est refusée deux fois de suite : la surveillance ne reçoit peut-être plus rien",
+});
+const TITRES_CANARI = Object.freeze({
+  table_pleine: "La télémétrie est pleine : les visiteurs ne sont plus mesurés",
+  debit: "La télémétrie des visiteurs est refusée : débit saturé",
+  autre: "La télémétrie n'entre plus : la sonde est refusée",
+});
+// Ce qui entre encore, par état d'un rôle (remplissage) : la phrase de la ligne « À faire ».
+const PHRASES_REMPLISSAGE = Object.freeze({
+  ok: "tout est enregistré",
+  confort: "les mesures de performance ne sont plus enregistrées",
+  reserve: "seules les pannes et les preuves de parcours sont enregistrées",
+  ferme: "plus rien n'entre, pannes comprises",
+});
+const RALENTI_RESTE = " Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages › Protection).";
