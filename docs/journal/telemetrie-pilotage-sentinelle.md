@@ -60,6 +60,7 @@
 - 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
 - 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
 - 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+- 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -2563,3 +2564,155 @@ son plan mesuré à l'échelle (staging, après une campagne de charge) ; durée
 et plafond propre aux lignes protégées ; un geste « purger maintenant » depuis le téléphone ;
 `migrations/SCHEMA_PROD_REFERENCE.sql` à régénérer après application ; une ligne de règle dans
 `CLAUDE.md` (aucune marge aujourd'hui : 39 989 caractères sur 40 000).
+
+## 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+
+Trou T5 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (lot D2 ; le volet « connexion », D1, est livré
+à part dans app-02). Avant ce lot, si toutes les photos cessaient de s'afficher, **rien ne partait** :
+dix-neuf `onerror` du produit écrivent « Image indisponible » et se taisent, l'écouteur `error` de la
+télémétrie n'est pas en capture (il ne voit aucune ressource), le crochet `fetch` ne voit jamais un
+`<img>`. Le voyant restait vert.
+
+**⚠️ Ce lot ÉMET le signal ; personne ne le LIT encore.** Ni la veille, ni le pilotage (`/pilotage/`), ni
+la Sentinelle ne lisent `type = media` : une panne de photos laisse aujourd'hui des lignes en base, pas
+une alerte. La lecture (ratio par sessions, ligne « Les photos ne s'affichent plus ») est un lot
+ultérieur, et cette fiche est son contrat.
+
+**Le contrat de la ligne.** `type = "media"`, `action = "bilan"`, `status = "ok"`, `meta` exactement
+`{famille, ko, vus, ko_av, vus_av}` (plus `mode`, `trafic`, posés par `track` sur toute ligne) :
+- `ko` / `vus` : EMPLACEMENTS en échec / affichés depuis le bilan précédent de la session — un **delta**,
+  jamais un cumul ; `ko_av` / `vus_av` : leur part audio ou vidéo. Chaque nombre est borné à 9 999.
+- `famille`, liste FERMÉE de cinq valeurs, calculée puis oubliée (aucune adresse, aucun hôte, aucun
+  chemin ne part) : `stockage` (chemin `/storage/v1/` sur l'hôte **strictement égal** à celui de
+  `window.PASSIO_SUPABASE.url`), `demo` (`/demo/` de la même origine), `app` (reste de la même origine,
+  dont le `#` que rend `safeUrlAttr` sur une adresse refusée), `local` (`blob:`, et `data:` pour l'audio
+  et la vidéo), `externe` (tout le reste — **y compris tout autre `*.supabase.co`**, et le stockage tant
+  que la configuration n'est pas posée). Une image `data:` et un `src` vide ne sont pas des médias.
+- Une ligne **par session, par période et par famille EN ÉCHEC** ; rien sans échec. Premier bilan 20 s
+  après le premier échec compté (`MEDIA_PREMIER_MS`), puis un par période de 5 min au plus
+  (`MEDIA_PERIODE_MS` × le facteur de délestage, lu à l'armement : `_mediaPeriode`), un au masquage
+  (soumis au même plancher) et un à `pagehide` (toujours, il voyage avec le lot de fermeture).
+- **Notable** = famille `stockage` ou `demo` ET `ko ≥ 3` (`MEDIA_KO_NOTABLE`) ET `ko ≥ vus` →
+  `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours, jamais retenu.
+  Tout le reste part en `info` et ATTEND sous pression (`tel.sousPression()`) ou sous délestage ; un
+  bilan retenu ne réveille l'appareil qu'une fois par période (`mediaEssai`), pas toutes les 20 s.
+- Dénominateur fenêtré : sans échec en attente, les compteurs repartent de zéro dès qu'un événement
+  arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`).
+
+**Comment c'est compté.** Tout vit dans `js/telemetry.js`, **aucun `onerror` n'est modifié** : trois
+écouteurs en CAPTURE sur `document` (`error`, `load`, `loadedmetadata` — pas `loadeddata`, qu'un
+`preload="metadata"` réussi n'émet pas), filtrés sur `IMG`, `VIDEO`, `AUDIO`, `SOURCE`. La capture passe
+AVANT le gestionnaire en ligne qui remplace l'élément (mesuré), donc tout `onerror` futur est couvert.
+Un échec n'est compté qu'après un **verdict différé de 2 s** (`MEDIA_VERDICT_MS`) :
+- à l'événement : rien si la page est masquée, ni dans les 2 s qui SUIVENT un retour au premier plan
+  ou une bascule réseau (les chargements coupés en arrière-plan tombent au réveil) ;
+- au verdict : rien si une occultation (`_occultation`) ou une bascule réseau (`_mediaCoupure`) est
+  survenue depuis, ni hors ligne, ni en fermeture (`contexteEchec`).
+`setEnabled(false)` remet les compteurs à zéro et annule le minuteur ; `_mediaCompter` sort si la mesure
+est refusée. Fenêtres de banc : `tel._familleMedia`, `tel._medias()`, `tel._mediaBilan(raison)`.
+
+**Écarts au plan de l'audit (point 3, C), décidés à la conception puis à sa contradiction** : pas de
+`mediaKo` appelé depuis les `onerror` (un second chemin et un dédoublonnage pour rien), pas de famille
+`relais` (`urlMediaDirecte` réécrit déjà ces adresses), pas d'hôte ni de genre dans la ligne, crochet
+`fetch` inchangé (les médias protégés ne sont pas en production, et `telecharger` annule volontairement
+des requêtes qu'un filtre élargi peindrait en pannes).
+
+**LIMITES — à lire par qui écrira le lecteur.**
+1. **Le signal est fabricable par le CONTENU, pas seulement par un client qui forge ses lignes.**
+   `posts.media_url` n'exige que `https://` : une publication à image morte fait échouer la famille
+   chez TOUS ses lecteurs, comptes anciens et honnêtes compris (à 4 publications en production, trois
+   suffisent pour un `warn`). Un bilan dit ce qu'un appareil a vu, pas l'état du stockage. **Ne jamais
+   sonner sans recoupement serveur** (lecture d'un objet témoin par la veille).
+2. **Les avatars ne sont pas comptés** : `avatarBg` les peint en fond CSS, qu'aucun écouteur ne voit.
+   Sont couverts : images du fil, couvertures, stories, vidéos, sons.
+3. **Un bilan peut arriver très tard** : la file est persistée (`passio_tel_backlog`) et rejouée au
+   chargement suivant. Fenêtrer sur `client_ts`, et écarter les lignes où `received_at − client_ts`
+   dépasse 10 min — une fenêtre sur `received_at` prendrait la panne d'hier pour celle d'aujourd'hui.
+4. Les nombres sont des emplacements PAR RENDU : un fil repeint trois fois compte trois fois la même
+   image morte ; les événements d'une image détachée avant la fin de son chargement sont perdus
+   (échecs et succès dans les mêmes proportions). Raisonner en part de SESSIONS, jamais en lignes.
+5. Réseau médiocre mais « en ligne » (tunnel, portail captif) : `navigator.onLine` reste vrai, le
+   bilan part en `warn` au retour. Bruit de fond permanent à grande échelle.
+6. `app`, `local`, `externe` sont bruyantes par nature (hôtes tiers, vocal illisible sur iPhone) : le
+   lecteur ne doit faire sonner que `stockage` et `demo`.
+7. Le service worker sert les médias de même origine depuis son cache : une panne de `/demo/` reste
+   invisible sur les appareils qui ont déjà les images.
+8. **Rien n'a été mesuré sous WebKit** : la suite n'est pas au socle `SUITES_WEBKIT` (les lignes de
+   télémétrie n'y arrivent pas à la route), et l'ordre réel des événements d'iOS (échec livré avant
+   ou après l'annonce de l'arrière-plan) est déduit de la leçon payée pour `fetch`, pas mesuré pour
+   les images. Premier contrôle après déploiement : la part des bilans `warn` venant d'iOS.
+9. En banc local, `/demo/u/…` répond 404 : toute suite à télémétrie active qui affiche le fil
+   d'exemples émet désormais une ligne `media` (`demo`, souvent `warn`) dans ses lots.
+10. Une ligne refusée par le plafond client (400/min/onglet) est perdue avec ses compteurs.
+
+**Contrôle après déploiement (canal ①)** — le taux de fond qui servira à régler les seuils du lecteur :
+```sql
+select meta->>'famille' as famille, severity, count(*) as lignes,
+       sum((meta->>'ko')::int) as ko, sum((meta->>'vus')::int) as vus
+from public.telemetry_events
+where env = 'production' and type = 'media' and action = 'bilan'
+  and coalesce(meta->>'trafic','') = ''
+  and client_ts > now() - interval '24 hours'
+  and received_at - client_ts < interval '10 minutes'
+group by 1, 2 order by 1, 2;
+```
+Preuve de déploiement : le nom `_mediaBilan` dans la page servie, ouverte avec `?equipe=1` (les
+littéraux `"media"` et `"bilan"` existent ailleurs dans la page).
+
+**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (quatorze cas « T5- », service worker bloqué, horloge
+simulée, tous les envois interceptés) et trois cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
+(table d'adresses hostiles, câblage en capture — joués par `npm run verif`).
+
+**Réinjections** (garde retirée → cas rouge ; chacune restaurée à l'identique) :
+| Garde retirée | Cas rouges |
+|---|---|
+| hôte STRICT du stockage (remplacé par `*.supabase.co`) | T5-③, unitaire « liste fermée » |
+| sans configuration, rien n'est `stockage` | unitaire « liste fermée » |
+| sortie sur page masquée, à l'événement | T5-⑥ |
+| hors ligne lu au verdict | T5-⑤ |
+| fermeture lue au verdict | T5-⑤ |
+| bascule réseau pendant la fenêtre du verdict (`_mediaCoupure >= t`) | T5-⑤ |
+| occultation pendant la fenêtre du verdict (`_occultation >= t`) | T5-⑥ |
+| fenêtre après un retour au premier plan | T5-⑥ |
+| fenêtre après une bascule réseau | T5-⑤ |
+| verdict différé (échec compté tout de suite) | T5-①, T5-⑤ |
+| delta (compteurs non remis à zéro après un bilan) | T5-①, ③, ④, ⑦, ⑨, ⑨b |
+| `!ENABLED` dans `_mediaCompter` | T5-⑪ |
+| remise à zéro des compteurs dans `setEnabled(false)` | T5-⑪ |
+| minuteur annulé dans `setEnabled(false)` | T5-⑪ |
+| seuil notable : trois échecs | T5-④, ⑨, ⑨b |
+| seuil notable : `ko ≥ vus` | T5-④ |
+| seuil notable : familles de panne seulement | T5-④ |
+| gravité toujours `info` | T5-①, ③, ④, ⑧, ⑨, ⑨b |
+| facteur de délestage sur la période | T5-⑨b |
+| liste fermée des clés (une clé `hote` en plus) | T5-①, ⑦, ⑧, ⑨, ⑬ |
+| famille remplacée par l'hôte | les quatorze cas |
+| écoute `error` sans capture | treize cas, unitaire « capture » |
+| écoute `load` sans capture | T5-①, ②, ③, ④, ⑧, ⑪, ⑬, unitaire « capture » |
+| écoute `loadedmetadata` retirée | T5-③, ⑫, unitaire « capture » |
+| plancher de période dans `_mediaBilan` | T5-⑦ |
+| instant du dernier essai (`mediaEssai`, bilan retenu) | T5-⑨ |
+| le bruit de fond attend | T5-⑨, ⑨b |
+| branche délestage / branche pression de `_mediaDoitAttendre` | T5-⑨b / T5-⑨ |
+| la panne n'attend jamais (un notable retenu) | T5-⑨, ⑨b |
+| aucune ligne pour une famille sans échec | T5-③ |
+| une image `data:` n'est pas un média | T5-② |
+| filtre de balise (script, feuille de style) | T5-② |
+| `src` présent et blanc | T5-②, ⑫ |
+| fenêtre du dénominateur | T5-⑧ |
+| armement du minuteur au verdict | T5-⑦, ⑨, ⑨b, ⑪ |
+| bilan au masquage / à la fermeture | T5-⑩ / T5-⑩ |
+| borne des nombres | T5-⑬ |
+| part audio ou vidéo (`ko_av`) | T5-③, ⑫ |
+| famille `demo` | T5-③, ④, ⑨, ⑨b, unitaire |
+
+Quarante-deux réinjections jouées une par une, fichier restauré à l'identique après chacune :
+quarante et une rouges, UNE verte. Dit tel quel : (1) la verte était une garde en tête de
+`_mediaBilan` (`if (!ENABLED || !_mediaReste()) return 0;`) qu'AUCUN cas ne voyait — elle doublait le
+test par famille et la remise à zéro du refus ; elle a été retirée plutôt que laissée sans verrou.
+(2) Le délai de `_mediaArmer` après un premier bilan n'a pas de réinjection propre : le plancher de
+`_mediaBilan` rend le même résultat observable (des réveils de trop, aucune ligne de trop) ; seul le
+cas « bilan retenu » (`mediaEssai`, T5-⑨) le voit.
+
+**Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
+rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.
