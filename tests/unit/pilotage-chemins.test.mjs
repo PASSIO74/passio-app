@@ -1976,3 +1976,166 @@ test("T4-k l'état « pas tout traité » : l'écran passe à l'orange avec SA l
   assert.equal(evenements(BATTEMENT).at(-1).properties.lectures.github, "ok", "le battement ne dit pas une lecture incomplète");
   assert.ok(!banc.console.some((x) => /lecture incomplète/.test(x)), banc.console.join("\n"));
 });
+
+// ═══ T3 de l'audit « 100 000 » (2026-11-21) : un NOUVEAU problème sonne sous un rouge qui dure ═══════
+// Lot B1 (sans migration). Mesuré sur le code d'avant : le téléphone ne sonnait qu'au CHANGEMENT de couleur ;
+// un rouge qui dure (un sujet humain ouvert, du bruit de fond à grande échelle) rendait muette la panne suivante.
+test("T3-i une nouvelle raison rouge sonne pendant un rouge qui dure — une fois ; réparée puis revenue dans la période, elle se tait ; l'historique garde le passage au rouge", async () => {
+  await monter({ battement: false });
+  banc.gh.issues.push(issue({ number: 7, title: "[SENTINELLE] récidive", labels: ["humain"] }));
+  await veille();
+  assert.equal(banc.pushes.length, 2);
+  assert.match(banc.pushes[0].charge.titre, /^🔴 Problème sur PASSIO/);
+  assert.deepEqual(etats().at(-1).properties.codes, ["humain"]);
+  assert.ok(etats().at(-1).properties.annonces.humain, "la sonnerie date ce qu'elle a annoncé");
+  // Un déploiement casse PENDANT le rouge : avant ce lot, aucun son.
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 61, le: ilYa(60e3) }), run({ id: 60, le: ilYa(50 * 60e3) })];
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 4, "une alerte par appareil, une seule fois");
+  assert.equal(banc.pushes.at(-1).charge.titre, "🔴 Nouveau problème sur PASSIO");
+  assert.match(banc.pushes.at(-1).charge.texte, /^dernier déploiement en échec/);
+  assert.doesNotMatch(banc.pushes.at(-1).charge.texte, /sujet/, "le texte nomme la raison NEUVE");
+  assert.deepEqual([...etats().at(-1).properties.codes].sort(), ["deploiement", "humain"]);
+  // Le passage suivant ne dit rien de neuf : ni alerte, ni état.
+  const n = etats().length;
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 4);
+  assert.equal(etats().length, n, "aucun changement : aucune nouvelle ligne d'état");
+  // Le déploiement est réparé : pas d'alerte, mais l'état est réécrit (sinon sa rechute ne serait plus neuve).
+  banc.gh.runs["deploy.yml"] = [run({ id: 62, le: ilYa(30e3) }), run({ conclusion: "failure", id: 61, le: ilYa(60e3) })];
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 4);
+  assert.equal(etats().length, n + 1);
+  assert.deepEqual(etats().at(-1).properties.codes, ["humain"]);
+  assert.ok(etats().at(-1).properties.annonces.deploiement, "son annonce reste dans la période de rappel");
+  // Il rechute dans les 6 h : la raison clignote — l'état suit, le téléphone se tait.
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 63, le: ilYa(10e3) }), run({ id: 62, le: ilYa(30e3) })];
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 4, "une raison qui clignote ne re-sonne pas avant le rappel");
+  assert.deepEqual([...etats().at(-1).properties.codes].sort(), ["deploiement", "humain"]);
+  // Tout est réglé : « résolu ».
+  banc.gh.issues.find((i) => i.number === 7).state = "closed";
+  banc.gh.runs["deploy.yml"] = [run({ id: 64, le: ilYa(5e3) }), run({ conclusion: "failure", id: 63, le: ilYa(10e3) })];
+  await passageSuivant();
+  await veille();
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+  assert.deepEqual(etats().at(-1).properties.codes, []);
+  // L'historique de l'écran : quatre lignes « rouge » de suite n'en font qu'une, le passage au rouge.
+  const e = await appeler({ action: "etat" });
+  assert.deepEqual(e.corps.historique.map((x) => x.couleur), ["vert", "rouge"]);
+  assert.equal(e.corps.historique[1].le, etats()[0].created_at, "c'est la PREMIÈRE ligne rouge qui reste");
+});
+
+test("T3-j un état mémorisé hostile (codes mêlés, annonces illisibles) ne fait taire ni la nouvelle raison, ni « résolu » ; un état d'avant ce lot n'est pas réécrit pour ses codes", async () => {
+  for (const annonces of [null, "chaîne", ["deploiement"], { deploiement: 12 }]) {
+    await monter({ battement: false });
+    banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["1 sujet(s) qui t'attendent"], alerteLe: ilYa(30 * 60e3), codes: ["humain", 3, { x: 1 }], annonces } }]);
+    banc.gh.issues.push(issue({ number: 7, title: "x", labels: ["humain"] }));
+    banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 71, le: ilYa(60e3) })];
+    await veille();
+    assert.equal(banc.pushes.length, 2, JSON.stringify(annonces));
+    assert.equal(banc.pushes[0].charge.titre, "🔴 Nouveau problème sur PASSIO");
+    assert.deepEqual([...etats().at(-1).properties.codes].sort(), ["deploiement", "humain"], "la mémoire réécrite ne garde que des codes valides");
+    assert.ok(!banc.console.some((l) => /\[erreur\]/.test(l)), banc.console.join("\n"));
+  }
+  // Un état d'AVANT ce lot (sans codes) : aucune nouveauté inventée, et pas de réécriture pour ses codes.
+  await monter({ battement: false });
+  banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["1 sujet(s) qui t'attendent"], alerteLe: ilYa(30 * 60e3) } }]);
+  banc.gh.issues.push(issue({ number: 7, title: "x", labels: ["humain"] }));
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 72, le: ilYa(60e3) })];
+  await veille();
+  assert.equal(banc.pushes.length, 0);
+  assert.equal(etats().length, 1);
+  // Des codes qui ne sont pas un tableau : « résolu » sonne toujours.
+  await monter({ battement: false });
+  banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["x"], alerteLe: ilYa(30 * 60e3), codes: "humain", annonces: "x" } }]);
+  await veille();
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+});
+
+test("T3-k la mesure d'échelle : les connectés sur 5 min (l'appel à 300 s DÉJÀ fait, exact) vont au battement et à l'écran — sans changer AUCUNE couleur, sans second appel ; la fonction SQL en échec n'empêche pas de lire la santé", async () => {
+  const audience = (connectes) => ({ p_secondes }) => ({ ...AUDIENCE_CALME, comptes_connectes: p_secondes === 300 ? connectes : 0 });
+  const erreurs = (n, comptes) => Array.from({ length: n }, (_, i) => ({ env: "production", type: "error", severity: "error", auth_uid: "c" + (i % comptes), received_at: ilYa(60e3 + i) }));
+  await monter({ battement: false, rpc: { pilotage_audience: audience(25000) } });
+  banc.base.semer("telemetry_events", erreurs(300, 120));
+  await veille();
+  const [b] = evenements(BATTEMENT);
+  assert.deepEqual(b.properties.echelle, { connectes5: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300, api5xx15: 0 });
+  assert.equal(etats().at(-1).properties.couleur, "rouge", "avant la migration, le bruit de fond à 25 000 reste rouge : AUCUNE couleur ne change");
+  assert.deepEqual(etats().at(-1).properties.codes, ["erreurs"]);
+  const e = await appeler({ action: "etat" });
+  assert.equal(e.corps.echelle.connectes5, 25000);
+  assert.equal(e.corps.echelle.actif, false);
+  assert.match(e.corps.echelle.phrases.join(" "), /nombres absolus/);
+  assert.match(e.corps.echelle.phrases.join(" "), /placeraient le rouge à 500 comptes en erreur/);
+  assert.equal(banc.base.journal.filter((q) => q.table === "rpc:pilotage_audience" && q.args && q.args.p_secondes === 900).length, 0, "aucun second calcul lourd (contre-revue)");
+  // La fonction SQL en échec : la santé est lue quand même, l'échelle vaut null, le voyant juge comme avant.
+  await monter({ battement: false, rpc: { pilotage_audience: () => ({ error: { code: "57014", message: "timeout" } }) } });
+  banc.base.semer("telemetry_events", erreurs(12, 3));
+  await veille();
+  const [b2] = evenements(BATTEMENT);
+  assert.equal(b2.properties.lectures.sante, "ok");
+  assert.equal(b2.properties.echelle.connectes5, null);
+  assert.equal(b2.properties.echelle.comptesErreurs15, 3);
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  const e2 = await appeler({ action: "etat" });
+  assert.ok(!e2.corps.nonLus.includes("sante"));
+  assert.match(e2.corps.echelle.phrases.join(" "), /non lus/);
+});
+
+test("T3-o la mémoire des raisons qui LÈVE ne fait taire aucune alerte ; sans la fonction SQL, le repli par appareils ne fait jamais un dénominateur", async () => {
+  await monter({ battement: false });
+  // Une mémoire en défaut (une version future qui lèverait) : la veille sonne et note quand même, avec les codes mesurés.
+  const piege = { ...M_PILOTAGE, memoireAlerte: () => { throw new Error("mémoire en défaut"); } };
+  banc.gestionnaire = await chargerFonction(SOURCE, { modules: { ...MODULES, "../_shared/pilotage.js": piege }, env: (n) => banc.env[n] });
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 81, le: ilYa(60e3) })];
+  await veille();
+  assert.equal(banc.pushes.length, 2);
+  assert.match(banc.pushes[0].charge.titre, /Problème sur PASSIO/);
+  assert.deepEqual(etats().at(-1).properties.codes, ["deploiement"]);
+  assert.deepEqual(etats().at(-1).properties.annonces, {});
+  // pilotage_audience ABSENTE (repli par lignes, device_id écrits par le navigateur) : jamais un dénominateur.
+  await monter({ battement: false });
+  delete banc.base.rpc.pilotage_audience;
+  banc.base.semer("telemetry_events", Array.from({ length: 40 }, (_, i) => ({ env: "production", type: "perf", user_id: "u" + i, device_id: "forge-" + i, received_at: ilYa(30e3 + i) })));
+  await veille();
+  const [b] = evenements(BATTEMENT);
+  assert.equal(b.properties.lectures.sante, "ok");
+  assert.equal(b.properties.echelle.connectes5, null, "le repli compte des appareils forgeables : il ne fait pas un dénominateur");
+  const e = await appeler({ action: "etat" });
+  assert.ok(!e.corps.nonLus.includes("sante"), JSON.stringify(e.corps.nonLus));
+  assert.equal(e.corps.echelle.connectes5, null);
+});
+
+// ─── Contre-revue de B1 (2026-11-21), B-2 : un code qui clignote ne remplit plus l'historique ───────
+test("T3-q les réécritures « pour les seuls codes » sont marquées et écartées de l'historique ; une suite de même couleur mais d'autre disponibilité reste distincte", async () => {
+  await monter({ battement: false });
+  // La veille marque la réécriture dont la seule cause est l'ensemble des codes.
+  banc.gh.issues.push(issue({ number: 7, title: "x", labels: ["humain"] }));
+  await veille();
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 91, le: ilYa(60e3) }), run({ id: 90, le: ilYa(50 * 60e3) })];
+  await passageSuivant(); await veille();
+  assert.equal(etats().at(-1).properties.motif, undefined, "une réécriture qui a SONNÉ n'est pas « pour les seuls codes »");
+  banc.gh.runs["deploy.yml"] = [run({ id: 92, le: ilYa(30e3) }), run({ conclusion: "failure", id: 91, le: ilYa(60e3) })];
+  await passageSuivant(); await veille();
+  assert.equal(etats().at(-1).properties.motif, "codes");
+  // Le scénario de la contre-revue : douze vraies transitions sur six jours, puis un code qui clignote
+  // toutes les 5 min pendant 3 h 40 (44 réécritures). Avant : une seule ligne d'historique.
+  await monter({ battement: false });
+  const ligne = (age, couleur, extra = {}) => ({ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(age), properties: { couleur, dispo: true, raisons: [couleur], ...extra } });
+  const vraies = Array.from({ length: 12 }, (_, i) => ligne((6 * 864e5) - i * 12 * 3600e3, i % 2 ? "rouge" : "vert"));
+  const clignote = Array.from({ length: 44 }, (_, i) => ligne((44 - i) * 5 * 60e3, "rouge", { codes: i % 2 ? ["humain"] : ["humain", "parcours:send_message"], motif: "codes" }));
+  banc.base.semer("analytics_events", [...vraies, ...clignote]);
+  const e = await appeler({ action: "etat" });
+  assert.equal(e.corps.historique.length, 12, JSON.stringify(e.corps.historique.map((x) => x.couleur)));
+  assert.deepEqual(e.corps.historique.map((x) => x.couleur), vraies.slice().reverse().map((l) => l.properties.couleur));
+  // Même couleur, autre disponibilité : deux lignes (M11 de la contre-revue).
+  await monter({ battement: false });
+  banc.base.semer("analytics_events", [ligne(3 * 3600e3, "rouge"), ligne(2 * 3600e3, "rouge", { dispo: false }), ligne(3600e3, "rouge")]);
+  const e2 = await appeler({ action: "etat" });
+  assert.deepEqual(e2.corps.historique.map((x) => x.dispo), [true, false, true]);
+});

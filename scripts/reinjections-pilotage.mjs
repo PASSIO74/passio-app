@@ -8,7 +8,7 @@
 // doit ROUGIR. Sortie 0 si toutes rougissent, 1 sinon (une cible introuvable compte
 // comme un échec : la réinjection ne décrit plus le code).
 //
-//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 142 depuis le rebase sur #1003 et la seconde relecture du lot T2
+//   node scripts/reinjections-pilotage.mjs          # ~2 min 30 pour 76 sur le poste (12/11) ; 36 s pour 123 sous Linux (21/11), 142 depuis le rebase sur #1003 et la seconde relecture du lot T2, 192 avec T3 (lot B1 et sa contre-revue, 40 s)
 //
 // ⚠️ DANS UN WORKTREE ISOLÉ, JAMAIS dans un checkout partagé avec une autre session :
 // pendant quelques secondes, le fichier muté est sur le disque. Le script refuse de
@@ -26,6 +26,12 @@ const PG = "pilotage/pilotage.js";
 const MG = "migrations/migration_telemetrie_classes_2026-11-21.sql";
 const BANC = "tests/unit/pilotage-chemins.test.mjs";
 const PUR = "tests/unit/pilotage.test.mjs";
+// T3 (2026-11-21) : le prédicat des parcours rouges, la veille GitHub, et leurs suites.
+const PAR = "supabase/functions/_shared/parcours.js";
+const VP = "scripts/veille-production.mjs";
+const EC = "supabase/functions/_shared/echelle.js";
+const BT_SUITE = "tests/unit/battement.test.mjs";
+const VP_SUITE = "tests/unit/veille-production.test.mjs";
 const M = [
   ["R01 une seule exécution lue (per_page=1)", FN, "&event=${ev}&per_page=10", "&event=${ev}&per_page=1", BANC, "⑫"],
   ["R02 seule « failure » est un échec", PJ, `Object.freeze(["failure", "timed_out", "startup_failure"])`, `Object.freeze(["failure"])`, BANC, "⑪"],
@@ -185,6 +191,61 @@ const M = [
   ["R144 un trou de plus de 35 min entre deux refus ne clôt plus la suite (une veille muette fait « deux fois de suite » de deux refus isolés)", PJ, `    if (precedent - m.t > CANARI_MEMOIRE_MS) break;\n`, ``, PUR, "T2-a"],
   ["R145 des refus de débit relient deux refus graves éloignés en « deux fois de suite »", PJ, `if (precedentGrave !== null && precedentGrave - m.t > CANARI_MEMOIRE_MS) { gravesClos = true; continue; }`, `if (false) { gravesClos = true; continue; }`, PUR, "T2-a"],
   ["R146 telemetrie_remplissage() devient obligatoire : `pilotage` retenue tant que la migration n'est pas appliquée", ".passio/deploiement/prerequis-fonctions.json", `"obligatoire": false,\n      "sans": "aucun prérequis SQL propre : lit des tables de base`, `"obligatoire": true,\n      "sans": "aucun prérequis SQL propre : lit des tables de base`, "tests/unit/deploiement-fonctions.test.mjs", "T2-p"],
+  // T3 de l'audit « 100 000 » (2026-11-21, lot B1) : un NOUVEAU problème sonne sous un rouge qui dure ; la mesure d'échelle
+  // (battement, écran, veille GitHub) sans changer AUCUNE couleur du voyant. Logique pure (pilotage.test.mjs T3-a à T3-h),
+  // fonction exécutée (ce banc, T3-i à T3-o), battement (T3-l), veille GitHub (T3-m). R171, R176 et R179 sont des épingles de TEXTE.
+  ["R150 plus de sonnerie pour une raison rouge NEUVE sous un rouge qui dure", PJ, `  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes)) {`, `  if (false) {`, BANC, "T3-i"],
+  ["R151 un code hors de la liste fermée sonne", PJ, `const codesValides = (x) => (x && Array.isArray(x.codes) ? x.codes.filter(estCodeRouge) : []);`, `const codesValides = (x) => (x && Array.isArray(x.codes) ? x.codes : []);`, PUR, "T3-d"],
+  ["R152 une raison qui clignote re-sonne avant la période de rappel", PJ, `.filter((c) => !deja.includes(c) && !recente(c));`, `.filter((c) => !deja.includes(c));`, BANC, "T3-i"],
+  ["R153 une lecture incomplète fait taire une raison neuve venue d'une source lue", PJ, `  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes)) {`, `  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes) && !a.tenu) {`, PUR, "T3-d"],
+  ["R154 un état d'avant ce lot (sans codes) invente une nouveauté à chaque passage", PJ, `  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes)) {\n    let neufs = [];\n    try {\n      const deja = p.codes.filter(`, `  if (a.couleur === "rouge" && p.couleur === "rouge") {\n    let neufs = [];\n    try {\n      const deja = (Array.isArray(p.codes) ? p.codes : []).filter(`, BANC, "T3-j"],
+  ["R155 un état hostile fait lever decideAlerte (plus aucune sonnerie, résolu compris)", PJ, `    } catch (_e) { neufs = []; }`, `    } catch (_e) { throw _e; }`, PUR, "T3-e"],
+  ["R156 des annonces illisibles (null) font taire la raison neuve", PJ, `const ann = objetSimple(p.annonces) ? p.annonces : {};`, `const ann = p.annonces;`, PUR, "T3-e"],
+  ["R157 un voyant tenu oublie les codes d'avant (ils re-sonneraient à la lecture suivante)", PJ, `    if (actuel.tenu && precRouge) codes = codes.concat(codesValides(p));\n`, ``, PUR, "T3-f"],
+  ["R158 un état hostile fait lever memoireAlerte", PJ, `  } catch (_e) { return { codes: [], annonces: {} }; }`, `  } catch (_e) { throw _e; }`, PUR, "T3-e"],
+  ["R159 des annonces mémorisées nulles vident la mémoire des codes", PJ, `if (precRouge && objetSimple(p.annonces)) {`, `if (precRouge) {`, BANC, "T3-j"],
+  ["R160 la raison « déploiement » perd son code (une autre la porte)", PJ, `  coder("deploiement");\n`, ``, PUR, "T3-b"],
+  ["R161 tous les parcours portent le même code (une seconde panne ne sonne plus)", PJ, `? "parcours:" + idsRouges[i] : "parcours"));`, `? "parcours" : "parcours"));`, PUR, "T3-b"],
+  ["R162 un identifiant de parcours est recopié tel quel dans un code", PJ, `/^[a-z][a-z0-9_]{1,39}$/.test(String(idsRouges[i]))`, `true`, PUR, "T3-b"],
+  ["R163 le verdict ne rend plus ses codes", PJ, `raisons: rouge.concat(orange), codes: [...new Set(codes)], rouges:`, `raisons: rouge.concat(orange), rouges:`, BANC, "T3-i"],
+  ["R164 la table de télémétrie pleine n'a pas de code de la liste", PJ, `"deploiement", "veille", "telemetrie", "humain"]);`, `"deploiement", "veille", "humain"]);`, PUR, "T3-b"],
+  ["R165 l'écran lit un nombre de connectés sans le valider", PJ, `const d = typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;`, `const d = n == null ? null : Number(n);`, PUR, "T3-g"],
+  ["R166 la veille passe les codes du voyant TENU (aucun) au lieu du verdict mesuré", FN, `const mesuree = { codes: v.couleur === "rouge" ? v.codes : [], rouges: v.couleur === "rouge" ? v.rouges : [] };`, `const mesuree = { codes: [] as string[], rouges: [] as unknown[] };`, BANC, "T3-i"],
+  ["R167 l'état mémorisé n'écrit ni codes ni annonces", FN, `      codes: memo.codes, annonces: memo.annonces,\n`, ``, BANC, "T3-i"],
+  ["R168 l'état n'est pas réécrit quand l'ensemble des raisons change", FN, ` || d.sonner || codesChange);`, ` || d.sonner);`, BANC, "T3-i"],
+  ["R169 une mémoire qui lève fait taire l'alerte", FN, `  catch { memo = { codes:`, `  catch (err) { throw err; memo = { codes:`, BANC, "T3-o"],
+  ["R170 la veille ne note plus les connectés au battement", FN, `connectes5: connectes5(signaux) },`, `connectes5: null },`, BANC, "T3-k"],
+  ["R171 lireSante rappelle pilotage_audience à 900 s avant le verdict (le calcul lourd refait) — épingle de texte", FN, `  const erreurs24h = await compter(`, `  await admin.rpc("pilotage_audience", { p_secondes: 900 });\n  const erreurs24h = await compter(`, PUR, "T3-h"],
+  ["R172 le battement ne porte plus la mesure d'échelle", FN, `    echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },\n`, ``, BANC, "T3-k"],
+  ["R173 l'écran ne dit plus les seuils du voyant", FN, `  out.echelle = resumeEchelle(connectes5(maintenant));\n`, ``, BANC, "T3-k"],
+  ["R174 l'historique garde chaque réécriture d'un rouge qui dure (les vraies transitions sont chassées)", FN, `  return lignes.filter((l, i) => { const avant = lignes[i + 1]; return !avant || avant.couleur !== l.couleur || avant.dispo !== l.dispo; }).slice(0, 12);`, `  return lignes.slice(0, 12);`, BANC, "T3-i"],
+  ["R175 l'écran ne reçoit plus les connectés", FN, `out.echelle = resumeEchelle(connectes5(maintenant));`, `out.echelle = resumeEchelle(null);`, BANC, "T3-k"],
+  ["R176 le classement mort des 300 lignes revient dans lireSante — épingle de texte", FN, `  const erreurs24h = await compter(`, `  await admin.from("client_errors").select("message,uid,created_at").limit(300);\n  const erreurs24h = await compter(`, PUR, "T3-h"],
+  ["R177 le battement ne porte plus l'échelle", BT, `    echelle: echelle && typeof echelle === "object" ? Object.fromEntries(CLES_ECHELLE.map((k) => [k, nombreFini(echelle[k])])) : null,\n`, ``, BT_SUITE, "T3-l"],
+  ["R178 le battement recopie la mesure sans filtre (une chaîne passe)", BT, `const nombreFini = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? Math.floor(x) : null);`, `const nombreFini = (x) => x;`, BT_SUITE, "T3-l"],
+  ["R179 la page rend les phrases d'échelle en HTML — épingle de texte", PG, `ze.append(el("p", "discret", String(t)))`, `ze.insertAdjacentHTML("beforeend", String(t))`, PUR, "T3-h"],
+  ["R180 une panne de parcours NON confirmée devient rouge (et porte un code)", PAR, `export const estPanneRouge = (p) => !!p && p.etat === "panne" && p.panneConfirmee === true && p.criticite === "critique";`, `export const estPanneRouge = (p) => !!p && p.etat === "panne" && p.criticite === "critique";`, PUR, "T3-b"],
+  ["R181 la veille GitHub alerte sur du bruit de fond à 23 000 comptes (retenue retirée)", VP, `  if (n("n5xx") >= 5 && n("app5xx") >= 2 && retenue5xx(m)) {`, `  if (false) {`, VP_SUITE, "T3-m"],
+  ["R182 sans compte ancien touché, l'alerte est quand même retenue (une panne des seuls comptes neufs se tait)", VP, `return autresSousPlanchers && seuil > 2 && t >= 1 && t < seuil;`, `return autresSousPlanchers && t < seuil;`, VP_SUITE, "T3-m"],
+  ["R183 la veille GitHub lit un dénominateur sans le valider (une chaîne relève le seuil)", VP, `const compteLu = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);`, `const compteLu = (x) => Number(x);`, VP_SUITE, "T3-m"],
+  ["R184 le dénominateur de la veille GitHub compte des appareils (device_id écrits par le navigateur)", VP, `(select count(distinct t.auth_uid) from telemetry_events t join auth.users u on u.id = t.auth_uid`, `(select count(distinct t.device_id) from telemetry_events t join auth.users u on u.id = t.auth_uid`, VP_SUITE, "T3-m"],
+  ["R185 les refus sont retenus à grande échelle (une attention devient « rien »)", VP, `  } else if (n("nRefus") >= 20 && n("appRefus") >= 3) {`, `  } else if (n("nRefus") >= 20 && n("appRefus") >= 3 && !(m.anciensActifs > 1000)) {`, VP_SUITE, "T3-m"],
+  ["R186 le plancher est perdu : à petite échelle, le taux seul décide (un seuil à 0 ou 1 compte)", EC, `return Math.max(plancher, Math.ceil(`, `return (Math.ceil(`, PUR, "T3-a"],
+  ["R187 le taux s'écrit en fraction (0.07 × 100 = 7.000000000000001, le seuil passe à 8)", EC, `Math.ceil((Math.floor(denominateur) * pourMille) / POUR_MILLE)`, `Math.ceil(Math.floor(denominateur) * (pourMille / POUR_MILLE))`, PUR, "T3-a"],
+  ["R188 un dénominateur illisible (NaN, chaîne, négatif) relève le seuil", EC, `  if (typeof denominateur !== "number" || !Number.isFinite(denominateur) || denominateur <= 0) return plancher;\n`, ``, PUR, "T3-a"],
+  ["R189 un taux non entier ou nul passe", EC, `  if (!Number.isInteger(pourMille) || pourMille <= 0) return plancher;\n`, ``, PUR, "T3-a"],
+  // Contre-revue de B1 (2026-11-21) : B-1 (veille GitHub), B-2 (historique), B-3 (raison arrivée avec le site injoignable),
+  // B-4 (annonce future ; la mesure des connectés vient de l'appel à 300 s déjà fait, exact seulement).
+  ["R190 5 000 réponses 5xx hors comptes anciens se taisent derrière un compte ancien touché", VP, `const autresSousPlanchers = !(n >= 5 && d >= 2);`, `const autresSousPlanchers = true;`, VP_SUITE, "T3-m"],
+  ["R191 une alerte retenue devient « rien » au lieu d'une attention", VP, `    etat = "warn";\n    lignes.push("réponses ≥ 500 chez`, `    etat = "ok";\n    lignes.push("réponses ≥ 500 chez`, VP_SUITE, "T3-m"],
+  ["R192 les lignes hors comptes anciens non mesurées n'empêchent plus la retenue", VP, `if (t === null || a === null || n === null || d === null || a <= 0) return false;`, `if (t === null || a === null || a <= 0) return false;`, VP_SUITE, "T3-m"],
+  ["R193 les réécritures pour les seuls codes ne sont plus marquées", FN, `      ...(seulCodes ? { motif: "codes" } : {}),\n`, ``, BANC, "T3-q"],
+  ["R194 l'historique ne les écarte plus (un code qui clignote chasse les vraies transitions)", FN, `.eq("user_id", "systeme:pilotage").or("properties->>motif.is.null,properties->>motif.neq.codes")\n`, `.eq("user_id", "systeme:pilotage")\n`, BANC, "T3-q"],
+  ["R195 une réécriture qui a SONNÉ est marquée « pour les seuls codes »", FN, `prec.dispo === actuel.dispo && !d.sonner && codesChange;`, `prec.dispo === actuel.dispo && codesChange;`, BANC, "T3-q"],
+  ["R196 l'historique fond deux lignes de même couleur et d'autre disponibilité", FN, ` || avant.dispo !== l.dispo; }).slice(0, 12)`, `; }).slice(0, 12)`, BANC, "T3-q"],
+  ["R197 une raison arrivée avec « ne répond plus » se mémorise sans annonce (jamais annoncée)", PJ, `      codes = codes.filter((c) => avant.includes(c));\n`, ``, PUR, "T3-p"],
+  ["R198 une annonce datée dans le futur tait la raison", PJ, ` && t <= maintenant + 60e3;`, `;`, PUR, "T3-p"],
+  ["R199 le repli par appareils (device_id du navigateur) fait un dénominateur", FN, `(a && a.exact ? a.connexions ?? null : null)`, `(a ? a.connexions ?? null : null)`, BANC, "T3-o"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");

@@ -43,7 +43,7 @@ const court = (x, n = 80) => String(x == null ? "" : x).replace(/[\u0000-\u001f]
  * Le contenu d'un battement, à partir de ce que la veille a fait. PUR.
  * `lectures` : { nom → PromiseSettledResult } ; `gestes` : { nom → résultat d'étape }.
  */
-export function contenuBattement({ lectures = {}, verdict = null, sonne = false, gestes = {}, politique = null, parcours = null, revision = "dev", dureeMs = null } = {}) {
+export function contenuBattement({ lectures = {}, verdict = null, sonne = false, gestes = {}, politique = null, parcours = null, revision = "dev", dureeMs = null, echelle = null } = {}) {
   const l = {};
   for (const [k, r] of Object.entries(lectures)) l[k] = etatLecture(r);
   const g = {};
@@ -68,8 +68,16 @@ export function contenuBattement({ lectures = {}, verdict = null, sonne = false,
     politique: politique ? { version: politique.version, mode: court(politique.mode, 20), valide: !!politique.valide } : null,
     parcours: { panne: p.filter((x) => x.etat === "panne").length, degrade: p.filter((x) => x.etat === "degrade").length,
       juges: p.reduce((s, x) => s + (Number(x.juges) || 0), 0), tronque: !!(parcours && parcours.tronque) },
+    // La mesure d'ÉCHELLE (2026-11-21, audit « 100 000 », T3) : la seule trace qui permettra de calibrer
+    // les taux du voyant (TAUX_VOYANT_PM) — comptes connectés (5 min), comptes touchés ET lignes (15 min).
+    // Des NOMBRES seulement (un objet de santé entier ne passe pas) ; absent ou illisible → null. Aucune
+    // clé dans `lectures` : un battement d'avant ce lot reste lisible tel quel.
+    echelle: echelle && typeof echelle === "object" ? Object.fromEntries(CLES_ECHELLE.map((k) => [k, nombreFini(echelle[k])])) : null,
   };
 }
+/** Ce que le battement garde de la santé lue : comptes connectés, comptes touchés, lignes. */
+export const CLES_ECHELLE = Object.freeze(["connectes5", "comptesErreurs15", "comptes5xx15", "erreursJs15", "api5xx15"]);
+const nombreFini = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? Math.floor(x) : null);
 
 const t = (v) => {
   if (v == null || v === "") return NaN;
