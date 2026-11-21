@@ -49,7 +49,7 @@ const BASE = {
   genereLe: MAINTENANT,
   verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["1 sujet(s) qui t'attendent"] },
   disponibilite: { repond: true, depuis: MAINTENANT, veilleLe: MAINTENANT },
-  sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3, principales: [] },
+  sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3 },
   erreurs: { serie: SERIE, total7: 7, total7Prec: 2, details: [{ message: CHARGE, n: 3, comptes: 1, plateformes: [{ nom: "Android", n: 3 }], pages: [{ nom: "/fil", n: 3 }], premier: MAINTENANT, dernier: MAINTENANT, serie: SERIE }] },
   utilisateurs: { total: 41, inscritsJour: 1, inscritsSemaine: 6, inscritsSemainePrec: 4, serieInscriptions: SERIE, maintenant: { comptes: 2, appareils: 3 }, aujourdhui: { comptes: 9, appareils: 12, horsPublic: 4 } },
   activation: { cohorte: 4, mures: 3, activesMures: 1, taux: 33, enCours: 1, enCoursActives: 0, premiers: { message: 1 }, jours: 7, cohorteJours: 30, crees: 6, echantillon: null,
@@ -1543,5 +1543,30 @@ test("㊹ télémétrie pleine : la sonde refusée est EN TÊTE, son motif reste
   await orange.locator("summary").click();
   await expect(orange.locator(".ligne-reference")).toContainText("Visiteurs : les mesures de performance ne sont plus enregistrées. Comptes : tout est enregistré. La purge horaire la vide d'elle-même.");
   await expect(orange.locator("button.btn-regler")).toHaveText("Régler");
+  expect(soucis).toEqual([]);
+});
+
+// ─── T3 de l'audit « 100 000 » (2026-11-21) : les seuils du voyant, dits au pilote ───────────────────
+test("T3-n Détails › Veille dit les seuils du voyant en TEXTE (phrases de la fonction, charge hostile inerte) ; un état sans le champ n'invente rien", async ({ page }) => {
+  const soucis = [];
+  page.on("pageerror", (e) => soucis.push(e.message));
+  const { resumeEchelle } = require("../../supabase/functions/_shared/pilotage.js");
+  const echelle = resumeEchelle({ connectes15: 25000 });
+  echelle.phrases.push(CHARGE);
+  await poserSession(page);
+  await routerFonction(page, [], etat({ echelle }));
+  await page.goto("/pilotage/");
+  await aller(page, "details");
+  const zone = page.locator("#veilleBattement");
+  await expect(zone).toContainText("Seuils du voyant en nombres absolus");
+  await expect(zone).toContainText("Comptes connectés sur 15 min : 25000.");
+  await expect(zone).toContainText("placeraient le rouge à 500 comptes en erreur");
+  await expect(zone).toContainText(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  // Une fonction pas encore à jour (sans `echelle`) : rien n'est affiché ni inventé.
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], etat());
+  await page.click("#actualiser");
+  await expect(zone).not.toContainText("Seuils du voyant");
   expect(soucis).toEqual([]);
 });

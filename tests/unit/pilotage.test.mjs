@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import { coutMensuel } from "../../supabase/functions/_shared/pilotage.js";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE, RUNS_DU_VOYANT } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE, RUNS_DU_VOYANT } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -32,19 +32,6 @@ test("③ relances : liste blanche de trois workflows qui acceptent workflow_dis
     assert.match(y, /workflow_dispatch:/, r.fichier);
   }
   assert.equal(Object.hasOwn(RELANCES, "constructor"), false);
-});
-
-test("④ erreurs regroupées par message, bornées, comptes distincts", () => {
-  const l = [
-    { message: "A", uid: "u1", created_at: "2026-09-28T10:00:00Z" },
-    { message: "A", uid: "u2", created_at: "2026-09-28T11:00:00Z" },
-    { message: "A", uid: "u1", created_at: "2026-09-28T09:00:00Z" },
-    { message: "B".repeat(500), uid: "u3", created_at: "2026-09-28T12:00:00Z" },
-  ];
-  const r = erreursFrequentes(l);
-  assert.equal(r[0].message, "A"); assert.equal(r[0].n, 3); assert.equal(r[0].comptes, 2);
-  assert.equal(r[0].dernier, "2026-09-28T11:00:00.000Z");
-  assert.ok(r[1].message.length <= 161);
 });
 
 test("⑤ une issue résumée ne porte ni corps ni auteur, et le lien doit être github.com", () => {
@@ -2742,4 +2729,214 @@ test("T2-m la migration des classes et le code se tiennent : le fichier que l'é
   // Le banc SQL existe, et tourne sans ligne dans le workflow (scripts/bancs-sql-restants.sh le ramasse).
   assert.ok(fs.existsSync("tests/sql/migration-telemetrie-classes.test.sh"));
   assert.match(fs.readFileSync("scripts/bancs-sql-restants.sh", "utf8"), /tests\/sql\/\*\.test\.sh/);
+});
+
+// ═══ T3 de l'audit « 100 000 » (2026-11-21) : les seuils à l'échelle, et la sonnerie d'un NOUVEAU problème ═══
+// Lot B1, sans migration. Ce qui se verrouille ici : (a) la règle « plancher ET taux » (_shared/echelle.js),
+// pure ; (b) AUCUNE couleur du voyant ne change avant la migration, à aucune des trois échelles ; (c) chaque
+// raison rouge porte un code d'une liste fermée, et un code NEUF sonne sous un rouge qui dure ; (d) un état
+// mémorisé hostile ne fait taire aucune sonnerie ; (e) la lecture de la fonction (texte d'index.ts).
+import { seuilEchelle, pivotEchelle, POUR_MILLE } from "../../supabase/functions/_shared/echelle.js";
+import { TAUX_VOYANT_PM, RAISONS_ROUGES, estCodeRouge, memoireAlerte, resumeEchelle, CODES_MEMOIRE_MAX } from "../../supabase/functions/_shared/pilotage.js";
+import { estPanneRouge } from "../../supabase/functions/_shared/parcours.js";
+import { TOUTES_ECHELLES, ECHELLES, memeDecision } from "./lib/echelles.mjs";
+
+// Les couples plancher / taux (‰) en service ou préparés par ce lot : voyant (erreurs, serveur), veille GitHub (5xx, refus).
+const COUPLES_T3 = [[COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge], [COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge], [2, 10], [3, 15]];
+
+test("T3-a seuilEchelle : le plancher sous le pivot, le taux au-delà, en entiers pour mille ; un dénominateur illisible rend le plancher", () => {
+  assert.equal(POUR_MILLE, 1000);
+  for (const d of [null, undefined, NaN, 0, -5, "25000", Infinity, -Infinity, {}, [25000]]) assert.equal(seuilEchelle(2, 20, d), 2, "dénominateur " + String(d));
+  for (const pm of [0, -10, 2.5, NaN, "20", null]) assert.equal(seuilEchelle(2, pm, 25000), 2, "taux " + String(pm));
+  // 0.07 × 100 = 7.000000000000001 en JavaScript : un taux en fraction relèverait le seuil d'un compte.
+  assert.equal(seuilEchelle(1, 70, 100), 7);
+  for (const [plancher, pm] of COUPLES_T3) {
+    const pivot = pivotEchelle(plancher, pm);
+    assert.ok(Number.isInteger(pm) && pm > 0, "taux entier");
+    assert.ok(pivot >= 100, `pivot ${pivot} : sous 100 comptes, le plancher décide toujours`);
+    for (let d = 0; d <= pivot; d++) assert.equal(seuilEchelle(plancher, pm, d), plancher, `${plancher}/${pm} ‰ à ${d}`);
+    assert.equal(seuilEchelle(plancher, pm, pivot + 1), plancher + 1, `${plancher}/${pm} ‰ juste après le pivot`);
+  }
+  // Épinglés : ce que le pilote lira.
+  assert.equal(seuilEchelle(2, 20, 100), 2); assert.equal(seuilEchelle(2, 20, 5000), 100); assert.equal(seuilEchelle(2, 20, 25000), 500);
+  assert.equal(seuilEchelle(2, 10, 100), 2); assert.equal(seuilEchelle(2, 10, 5000), 50); assert.equal(seuilEchelle(2, 10, 25000), 250);
+  assert.equal(seuilEchelle(2, 20, 100.9), 2, "un dénominateur fractionnaire se lit par défaut");
+});
+
+test("T3-b chaque raison ROUGE du voyant porte un code de la liste fermée, aligné sur son texte ; une panne de parcours non confirmée n'en a aucun", () => {
+  const recent = new Date(Date.now() - 60e3).toISOString();
+  const tout = verdict({
+    sante: { erreursJs15: 40, comptesErreurs15: 5, api5xx15: 9, comptes5xx15: 3 },
+    github: { issues: [{ pr: false, labels: ["humain"] }], runs: { deploy: { etat: "completed", conclusion: "failure", le: recent }, sentinelle: { le: recent } } },
+    battement: { etat: "arrete", raisons: ["dernier battement il y a 50 min"] },
+    canari: { refuse: true, rouge: true, classe: "table_pleine" },
+    parcours: panneMessages(),
+  });
+  assert.equal(tout.couleur, "rouge");
+  tout.rouges.forEach((r, i) => assert.equal(tout.raisons[i], r.texte, "les raisons rouges viennent d'abord, dans l'ordre de leurs codes"));
+  assert.equal(tout.rouges.length, 7);
+  for (const r of tout.rouges) assert.ok(estCodeRouge(r.code), "raison rouge sans code valide : " + r.texte);
+  assert.deepEqual([...tout.codes].sort(), ["deploiement", "erreurs", "humain", "parcours:send_message", "serveur", "telemetrie", "veille"]);
+  assert.equal(tout.rouges.find((r) => r.code === "deploiement").texte.startsWith("dernier déploiement en échec"), true);
+  assert.equal(tout.rouges.find((r) => r.code === "humain").texte, "1 sujet(s) qui t'attendent");
+  assert.match(tout.rouges.find((r) => r.code === "parcours:send_message").texte, /^parcours « .* » en panne/);
+  // Le même prédicat que raisonsVerdict : une panne NON confirmée reste orange, sans code.
+  const brute = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: panneBrute() });
+  assert.notEqual(brute.couleur, "rouge");
+  assert.equal(brute.codes, undefined);
+  assert.equal(panneBrute().parcours.filter(estPanneRouge).length, 0);
+  assert.equal(panneMessages().parcours.filter(estPanneRouge).length, 1);
+  // Un identifiant hors gabarit n'est jamais recopié dans un code.
+  const forge = panneMessages(); forge.parcours.find(estPanneRouge).id = "<script>";
+  assert.deepEqual(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: forge }).codes, ["parcours"]);
+  // Les codes de la liste ; rien d'autre ne passe.
+  for (const c of RAISONS_ROUGES) assert.ok(estCodeRouge(c));
+  for (const c of ["parcours", "parcours:send_message"]) assert.ok(estCodeRouge(c));
+  for (const c of ["n'importe", "parcours:<script>", "parcours:", "Erreurs", "", null, 3, {}, "parcours:a"]) assert.equal(estCodeRouge(c), false, String(c));
+});
+
+test("T3-c AVANT migration, AUCUNE couleur ne change : à 100, 25 000 connectés ou en pleine vague, le voyant juge comme sans mesure d'échelle", () => {
+  const recent = new Date(Date.now() - 60e3).toISOString();
+  const base = { github: { issues: [], runs: { sentinelle: { le: recent } } }, signalements: { ouverts: 0 } };
+  const grille = [];
+  for (const lignes of [0, 1, 9, 10, 40, 300, 4000]) for (const comptes of [0, 1, 2, 5, 120, 600, undefined]) {
+    grille.push({ erreursJs15: lignes, comptesErreurs15: comptes, api5xx15: 0 });
+    grille.push({ erreursJs15: 0, api5xx15: lignes, comptes5xx15: comptes });
+    grille.push({ erreursJs15: lignes, avertJs15: lignes, comptesErreurs15: comptes, comptesAvert15: comptes, api5xx15: 0 });
+  }
+  for (const ech of TOUTES_ECHELLES) {
+    for (const s of grille) {
+      const sans = verdict({ ...base, sante: s });
+      const avec = verdict({ ...base, sante: { ...s, connectes15: ech.connectes15, anciensConnectes15: ech.anciens15 } });
+      assert.equal(memeDecision(sans, avec), null, `${ech.nom} : ${JSON.stringify(s)}`);
+    }
+  }
+  // Le défaut que B2 fermera, tel qu'il est aujourd'hui : 300 erreurs chez 120 comptes sur 25 000 connectés = rouge.
+  assert.equal(verdict({ ...base, sante: { erreursJs15: 300, comptesErreurs15: 120, api5xx15: 0, connectes15: ECHELLES.grand.connectes15 } }).couleur, "rouge");
+});
+
+test("T3-d un NOUVEAU problème sonne sous un rouge qui dure — une fois par code et par période ; un état d'avant, un code hors liste ou l'orange ne sonnent jamais", () => {
+  const T = Date.parse("2026-11-21T12:00:00Z");
+  const h = (n) => new Date(T - n * 3600e3).toISOString();
+  const rouge = (codes, extra = {}) => ({ couleur: "rouge", dispo: true, raisons: codes.map((c) => "texte " + c), codes, rouges: codes.map((c) => ({ code: c, texte: "texte " + c })), ...extra });
+  const prec = (codes, extra = {}) => ({ couleur: "rouge", dispo: true, alerteLe: h(1), codes, annonces: Object.fromEntries(codes.map((c) => [c, h(1)])), ...extra });
+  const d = decideAlerte(prec(["humain"]), rouge(["humain", "erreurs"]), T);
+  assert.equal(d.sonner, true); assert.equal(d.titre, "🔴 Nouveau problème sur PASSIO");
+  assert.equal(d.texte, "texte erreurs", "le texte est celui de la raison NEUVE");
+  assert.deepEqual(d.annonce, ["erreurs"]);
+  assert.equal(decideAlerte(prec(["humain"]), rouge(["humain"]), T).sonner, false, "mêmes codes : silence");
+  assert.equal(decideAlerte(prec(["humain", "erreurs"]), rouge(["erreurs"]), T).sonner, false, "un code qui part ne sonne pas");
+  // Un état d'AVANT ce lot (sans codes) n'invente aucune nouveauté.
+  const { codes: _c, annonces: _a, ...avant } = prec(["humain"]);
+  assert.equal(decideAlerte(avant, rouge(["humain", "erreurs"]), T).sonner, false);
+  // Un code hors liste ne sonne jamais.
+  assert.equal(decideAlerte(prec(["humain"]), rouge(["humain", "n'importe"]), T).sonner, false);
+  // Une raison qui clignote : annoncée il y a 1 h, absente de l'état, revenue → silence ; annoncée il y a 7 h → sonne.
+  assert.equal(decideAlerte(prec(["humain"], { annonces: { humain: h(1), erreurs: h(1) } }), rouge(["humain", "erreurs"]), T).sonner, false);
+  assert.equal(decideAlerte(prec(["humain"], { annonces: { humain: h(1), erreurs: h(7) } }), rouge(["humain", "erreurs"]), T).sonner, true);
+  // Un voyant TENU (lecture incomplète) dont une source LUE apporte un code neuf : sonne quand même.
+  const tenu = decideAlerte(prec(["humain"]), rouge(["deploiement"], { tenu: true, raisons: ["texte humain"] }), T);
+  assert.equal(tenu.titre, "🔴 Nouveau problème sur PASSIO"); assert.equal(tenu.texte, "texte deploiement");
+  // L'orange ne sonne jamais ; le site injoignable et « résolu » restent prioritaires.
+  assert.equal(decideAlerte(prec(["humain"]), { couleur: "orange", dispo: true, raisons: [], codes: ["erreurs"] }, T).titre, "✅ Problème résolu");
+  assert.equal(decideAlerte({ couleur: "orange", dispo: true, codes: [] }, { couleur: "orange", dispo: true, codes: ["erreurs"] }, T).sonner, false);
+  assert.equal(decideAlerte(prec(["humain"]), rouge(["humain", "erreurs"], { dispo: false }), T).titre, "🔴 PASSIO ne répond plus");
+  // Le passage au rouge et le rappel annoncent leurs codes (la mémoire les date).
+  assert.deepEqual(decideAlerte(null, rouge(["humain", "parcours:send_message"]), T).annonce, ["humain", "parcours:send_message"]);
+  assert.deepEqual(decideAlerte(prec(["humain"], { alerteLe: h(7) }), rouge(["humain"]), T).annonce, ["humain"]);
+  assert.equal(decideAlerte(prec(["humain"], { alerteLe: h(7) }), rouge(["humain"]), T).titre, "🔴 Toujours un problème sur PASSIO");
+  // Deux raisons neuves au plus dans le texte.
+  assert.equal(decideAlerte(prec([]), rouge(["erreurs", "serveur", "deploiement"]), T).texte, "texte erreurs · texte serveur");
+});
+
+test("T3-e un état mémorisé HOSTILE ne lève jamais et ne fait taire aucune transition (l'alerte d'abord)", () => {
+  const T = Date.parse("2026-11-21T12:00:00Z");
+  const actuel = { couleur: "rouge", dispo: true, raisons: ["a"], codes: ["deploiement"], rouges: [{ code: "deploiement", texte: "a" }] };
+  const hostiles = [
+    { couleur: "rouge", dispo: true, codes: ["humain"], annonces: null },
+    { couleur: "rouge", dispo: true, codes: ["humain"], annonces: "chaîne" },
+    { couleur: "rouge", dispo: true, codes: ["humain"], annonces: ["deploiement"] },
+    { couleur: "rouge", dispo: true, codes: ["humain", 3, {}, null, ["x"]], annonces: { deploiement: 12 } },
+    { couleur: "rouge", dispo: true, codes: ["humain"], annonces: Object.create(null) },
+  ];
+  for (const p of hostiles) {
+    const d = decideAlerte(p, actuel, T);
+    assert.equal(d.titre, "🔴 Nouveau problème sur PASSIO", JSON.stringify(p));
+    assert.doesNotThrow(() => memoireAlerte(p, actuel, d, T));
+  }
+  // Des annonces qui lèvent à la lecture : la règle neuve se tait, rien ne lève.
+  const piege = { couleur: "rouge", dispo: true, codes: ["humain"], get annonces() { throw new Error("piège"); } };
+  assert.doesNotThrow(() => decideAlerte(piege, actuel, T));
+  assert.equal(decideAlerte(piege, actuel, T).sonner, false);
+  assert.deepEqual(memoireAlerte(piege, actuel, { sonner: true, annonce: ["deploiement"] }, T), { codes: [], annonces: {} });
+  // Des codes qui ne sont pas un tableau : la règle neuve ne joue pas, « résolu » sonne toujours.
+  const pasTableau = { couleur: "rouge", dispo: true, codes: "humain", annonces: {} };
+  assert.equal(decideAlerte(pasTableau, actuel, T).sonner, false);
+  assert.equal(decideAlerte(pasTableau, { couleur: "vert", dispo: true, raisons: [] }, T).titre, "✅ Problème résolu");
+  assert.equal(decideAlerte(hostiles[0], { couleur: "vert", dispo: true }, T).titre, "✅ Problème résolu");
+  // Un actuel sans codes ni rouges (une version d'avant de la veille) : aucune nouveauté, rien ne lève.
+  assert.equal(decideAlerte({ couleur: "rouge", codes: [] }, { couleur: "rouge", raisons: ["x"] }, T).sonner, false);
+});
+
+test("T3-f memoireAlerte : hors rouge rien ; tenu, l'union avec l'état d'avant ; annonces datées et périmées oubliées ; codes valides seulement", () => {
+  const T = Date.parse("2026-11-21T12:00:00Z");
+  const h = (n) => new Date(T - n * 3600e3).toISOString();
+  assert.deepEqual(memoireAlerte({ couleur: "rouge", codes: ["humain"], annonces: { humain: h(1) } }, { couleur: "orange", codes: ["humain"] }, { sonner: true }, T), { codes: [], annonces: {} });
+  const p = { couleur: "rouge", codes: ["humain"], annonces: { humain: h(1), erreurs: h(7), "n'importe": h(1), serveur: "pas une date" } };
+  const m = memoireAlerte(p, { couleur: "rouge", codes: ["deploiement", "<x>"], tenu: true }, { sonner: true, annonce: ["deploiement", "<x>"] }, T);
+  assert.deepEqual(m.codes, ["deploiement", "humain"], "tenu : les codes d'avant sont gardés, sinon ils re-sonneraient");
+  assert.deepEqual(m.annonces, { humain: h(1), deploiement: new Date(T).toISOString() }, "annonce périmée, code hors liste et date illisible oubliés");
+  // Non tenu : les codes MESURÉS seuls (une raison réparée quitte la mémoire, son annonce reste dans la période).
+  const n = memoireAlerte(p, { couleur: "rouge", codes: ["deploiement"] }, { sonner: false }, T);
+  assert.deepEqual(n.codes, ["deploiement"]); assert.deepEqual(n.annonces, { humain: h(1) });
+  // Un passage au rouge : les annonces d'un état NON rouge ne sont pas reprises.
+  assert.deepEqual(memoireAlerte({ couleur: "vert", annonces: { humain: h(1) } }, { couleur: "rouge", codes: ["humain"] }, { sonner: true, annonce: ["humain"] }, T).annonces, { humain: new Date(T).toISOString() });
+  // parcours:<id> accepté, borné en nombre.
+  const beaucoup = Array.from({ length: 40 }, (_, i) => "parcours:p" + String(i).padStart(2, "0"));
+  const b = memoireAlerte(null, { couleur: "rouge", codes: beaucoup }, { sonner: true, annonce: beaucoup }, T);
+  assert.equal(b.codes.length, CODES_MEMOIRE_MAX); assert.equal(Object.keys(b.annonces).length, CODES_MEMOIRE_MAX);
+});
+
+test("T3-g resumeEchelle : des phrases fixes — « nombres absolus » toujours, le dénominateur lu ou non, et où serait le seuil proportionnel sans l'appliquer", () => {
+  assert.equal(resumeEchelle(null), null);
+  const inconnu = resumeEchelle({ erreursJs15: 3 });
+  assert.equal(inconnu.connectes15, null); assert.equal(inconnu.actif, false);
+  assert.match(inconnu.phrases[0], /^Seuils du voyant en nombres absolus/);
+  assert.match(inconnu.phrases[1], /non lus/);
+  for (const v of ["25000", NaN, -3, {}]) assert.equal(resumeEchelle({ connectes15: v }).connectes15, null, String(v));
+  const petit = resumeEchelle({ connectes15: ECHELLES.petit.connectes15 });
+  assert.equal(petit.connectes15, 100);
+  assert.match(petit.phrases.join(" "), /Comptes connectés sur 15 min : 100\./);
+  assert.match(petit.phrases.join(" "), /Jusqu'à 100 comptes connectés, les nombres absolus restent la bonne règle/);
+  const grand = resumeEchelle({ connectes15: ECHELLES.grand.connectes15 });
+  assert.equal(grand.actif, false, "le voyant ne juge pas au taux avant la migration");
+  assert.match(grand.phrases.join(" "), /placeraient le rouge à 500 comptes en erreur et 250 comptes en panne serveur : ils ne sont pas encore en service/);
+  for (const r of [inconnu, petit, grand]) for (const t of r.phrases) assert.equal(typeof t, "string");
+});
+
+test("T3-h la fonction : lireSante ne lit plus le classement mort, compte les connectés par la fonction SQL seule ; la veille code, mémorise et réécrit ; l'écran dit l'échelle", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const sante = fn.slice(fn.indexOf("async function lireSante"), fn.indexOf("async function lireErreurs7j"));
+  assert.doesNotMatch(sante, /\.limit\(300\)/); assert.doesNotMatch(sante, /principales/);
+  assert.match(sante, /lireConnectes15\(admin\)/);
+  assert.match(sante, /erreurs24h, connectes15 \};/);
+  const c15 = fn.slice(fn.indexOf("async function lireConnectes15"), fn.indexOf("async function lireSante"));
+  assert.match(c15, /admin\.rpc\("pilotage_audience", \{ p_secondes: 900 \}\)/);
+  assert.match(c15, /\.comptes_connectes\)/);
+  assert.doesNotMatch(c15, /[^_]audience\(/, "jamais le repli par lignes (device_id écrits par le navigateur)");
+  assert.match(c15, /catch \{ return null; \}/);
+  const v = fn.slice(fn.indexOf("async function veille("), fn.indexOf("// Canari serveur"));
+  assert.match(v, /const mesuree = \{ codes: v\.couleur === "rouge" \? v\.codes : \[\], rouges: v\.couleur === "rouge" \? v\.rouges : \[\] \};/, "les codes du verdict MESURÉ, jamais du voyant tenu");
+  assert.match(v, /dispo: val\(dispo\) !== false, \.\.\.mesuree, tenu: !!vt\.tenu \};/);
+  assert.match(v, /try \{ memo = memoireAlerte\(prec, actuel, d\); \}\s*catch \{ memo = /, "la mémoire après la décision, gardée");
+  assert.ok(v.indexOf("const d = decideAlerte(prec, actuel);") < v.indexOf("memoireAlerte(prec, actuel, d)"));
+  assert.match(v, /\|\| d\.sonner \|\| codesChange\);/);
+  assert.match(v, /codes: memo\.codes, annonces: memo\.annonces,/);
+  assert.match(v, /echelle: e\.sante,/);
+  const etat = fn.slice(fn.indexOf("async function etat("), fn.indexOf("const ilYa ="));
+  assert.ok(etat.indexOf("out.echelle = resumeEchelle(out.sante);") > 0 && etat.indexOf("out.echelle = resumeEchelle(out.sante);") < etat.indexOf("const v = verdict(out"));
+  // L'écran : en TEXTE, rien quand le champ manque.
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  assert.match(page, /if \(d\.echelle && Array\.isArray\(d\.echelle\.phrases\)\) \{/);
+  assert.match(page, /ze\.append\(el\("p", "discret", String\(t\)\)\)/);
 });

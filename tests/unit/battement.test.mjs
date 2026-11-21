@@ -216,3 +216,20 @@ test("⑧ le remplissage ou la mémoire du canari ILLISIBLES rendent la veille �
   assert.deepEqual(avant.lecturesKo, []);
   assert.deepEqual([...LECTURES_BATTEMENT], ["sante", "signalements", "github", "parcours"], "les lectures EXIGÉES ne changent pas : une clé de plus rendrait « incomplet » tout battement d'avant ce lot");
 });
+
+// ─── T3 de l'audit « 100 000 » (2026-11-21) : la mesure d'échelle, de quoi calibrer les taux ───
+test("T3-l le battement porte la mesure d'échelle en NOMBRES seulement ; illisible = null ; aucune clé de plus dans `lectures`", () => {
+  const ok = { status: "fulfilled", value: {} };
+  const lectures = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  const c = contenuBattement({ lectures, echelle: { connectes15: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300.7, api5xx15: 4, principales: ["texte d'un tiers"], evenements15: 9 } });
+  assert.deepEqual(c.echelle, { connectes15: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300, api5xx15: 4 }, "les clés de la liste, rien d'autre");
+  const h = contenuBattement({ lectures, echelle: { connectes15: "25000", comptesErreurs15: -1, comptes5xx15: NaN, erreursJs15: null, api5xx15: { x: 1 } } });
+  assert.deepEqual(h.echelle, { connectes15: null, comptesErreurs15: null, comptes5xx15: null, erreursJs15: null, api5xx15: null });
+  assert.equal(contenuBattement({ lectures }).echelle, null);
+  assert.equal(contenuBattement({ lectures, echelle: "25000" }).echelle, null);
+  assert.deepEqual(Object.keys(c.lectures), ["sante", "signalements", "github", "parcours"]);
+  assert.doesNotMatch(JSON.stringify(c), /\n/);
+  // Un battement d'avant ce lot (sans la clé) se lit comme avant.
+  const r = resumerBattement({ created_at: new Date(Date.now() - 60e3).toISOString(), properties: { lectures: { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" } } });
+  assert.equal(r.etat, "vivant");
+});

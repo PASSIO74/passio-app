@@ -39,6 +39,7 @@
 import { lireJetonsCI } from "./sonder-jeton-ci.mjs";
 import { sqlActivation, activationDepuisLignes } from "../supabase/functions/_shared/pilotage.js";
 import { resumerBattement, BATTEMENT, AUTEUR_BATTEMENT } from "../supabase/functions/_shared/battement.js";
+import { seuilEchelle } from "../supabase/functions/_shared/echelle.js";
 
 // ── Constantes de calibrage (mesures de la carte mesures-prod, 2026-09-18) ──
 // Heures actives réelles du trafic humain : 09h–21h Paris (F10). Rien n'est
@@ -337,9 +338,28 @@ export function signalErreurs(m) {
   return { etat, texte: lignes.join(" ; ") };
 }
 
+// ── À l'échelle (2026-11-21, audit « 100 000 », T3) ──────────────────────────
+// Les planchers (5 réponses ET 2 appareils ; 20 refus ET 3 appareils) ne bougent pas. À grande
+// échelle, un 5xx chez 2 appareils sur 25 000 est du bruit de fond : l'alerte est RETENUE quand
+// les comptes ANCIENS touchés (identité serveur, créés depuis plus de 7 jours, e-mail confirmé,
+// non anonymes) sont sous le taux des comptes anciens actifs. Le dénominateur ne compte JAMAIS des
+// device_id (écrits par le navigateur, gratuits à gonfler). Aucun compte ancien derrière les lignes
+// = jamais de retenue (une panne des visiteurs ou des comptes neufs alerte comme avant). Mesures
+// absentes, NaN, chaînes = les planchers seuls. ⚠️ Le texte part dans une issue PUBLIQUE : il ne
+// dit ni le dénominateur ni le seuil (un tiers saurait combien de comptes forger).
+export const TAUX_API_PM = Object.freeze({ cinqCents: 10, refus: 15 });
+const compteLu = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);
+/** L'alerte est-elle du bruit de fond à cette échelle ? Seulement si tout est lu, et des comptes anciens touchés. */
+export function retenueApi(touches, actifs, plancher, pm) {
+  const t = compteLu(touches), a = compteLu(actifs);
+  if (t === null || a === null || a <= 0) return false;
+  const seuil = seuilEchelle(plancher, pm, a);
+  return seuil > plancher && t >= 1 && t < seuil;
+}
+
 /**
  * API vue par les clients : 5xx et refus 401/403 hors auth, dernière heure.
- * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number}} m
+ * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number,anciensActifs?:number,anciens5xx?:number,anciensRefus?:number}} m
  */
 export function signalApi(m) {
   const ko = inconnu(m, "api");
@@ -347,10 +367,10 @@ export function signalApi(m) {
   const n = (k) => Number(m[k]) || 0;
   let etat = "ok";
   const lignes = [`dernière heure : ${n("n5xx")} réponse(s) ≥ 500 sur ${n("app5xx")} appareil(s), ${n("nRefus")} refus 401/403 hors auth sur ${n("appRefus")} appareil(s)`];
-  if (n("n5xx") >= 5 && n("app5xx") >= 2) {
+  if (n("n5xx") >= 5 && n("app5xx") >= 2 && !retenueApi(m.anciens5xx, m.anciensActifs, 2, TAUX_API_PM.cinqCents)) {
     etat = "alert";
     lignes.push("Supabase répond en erreur serveur à plusieurs appareils");
-  } else if (n("nRefus") >= 20 && n("appRefus") >= 3) {
+  } else if (n("nRefus") >= 20 && n("appRefus") >= 3 && !retenueApi(m.anciensRefus, m.anciensActifs, 3, TAUX_API_PM.refus)) {
     etat = "warn";
     lignes.push("refus d'accès groupés : jeton mort collectif ou policy RLS changée");
   }
@@ -709,6 +729,11 @@ export function filtrePublic() {
   return `coalesce(meta->>'trafic', '') not in (${TRAFICS_HORS_PUBLIC.map((t) => `'${t}'`).join(", ")}) and not (coalesce(platform, '') = 'ios' and coalesce(connection, '') <> '')`;
 }
 
+/** Un compte ANCIEN et réel (T3) : même prédicat que le délestage (migration_reglages_distants_2026-10-11.sql). */
+export function filtreCompteAncien(u = "u") {
+  return `${u}.deleted_at is null and ${u}.email_confirmed_at is not null and not coalesce(${u}.is_anonymous, false) and ${u}.created_at < now() - interval '7 days'`;
+}
+
 export const SQL = {
   // ⚠️ ON COMPTE LE POIDS, PAS LES LIGNES — sinon ce signal MESURE
   // L'ÉCHANTILLONNAGE au lieu de l'usage. Depuis le 2026-09-19, `telemetry.js`
@@ -750,8 +775,13 @@ export const SQL = {
       count(*) filter (where http_status >= 500)::int as "n5xx",
       count(distinct device_id) filter (where http_status >= 500)::int as "app5xx",
       count(*) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "nRefus",
-      count(distinct device_id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "appRefus"
-    from telemetry_events where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
+      count(distinct device_id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "appRefus",
+      (select count(distinct t.auth_uid) from telemetry_events t join auth.users u on u.id = t.auth_uid
+        where t.env = 'production' and t.received_at > now() - interval '1 hour' and ${filtreCompteAncien()})::int as "anciensActifs",
+      count(distinct x.id) filter (where http_status >= 500)::int as "anciens5xx",
+      count(distinct x.id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "anciensRefus"
+    from telemetry_events left join auth.users x on x.id = telemetry_events.auth_uid and ${filtreCompteAncien("x")}
+    where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
   tailleBase: `select pg_database_size(current_database())::bigint as octets`,
   // ⚠️ La purge de la télémétrie BRUTE a deux orthographes dans cron.job : `purge_telemetry_7j`
   // (ouverture publique, 11/09) puis `purge_telemetrie_paliers` (croissance, 01/11, qui
