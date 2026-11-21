@@ -7,7 +7,7 @@ name: Edge Functions
 # Jusqu'ici : `supabase functions deploy <nom>` à la main, depuis un poste, sans
 # version, sans test, sans trace — et l'état déployé n'était connu de personne.
 # Ce workflow déploie les fonctions à chaque fusion sur main qui touche
-# `supabase/functions/**`, ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
+# `supabase/**`, ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
 #   · OPTIONS → 200 (CORS) ;
 #   · POST sans jeton → 401 (« Non authentifié ») — la porte tient.
 # Le SHA déployé est écrit dans le résumé du run : c'est la trace.
@@ -41,10 +41,12 @@ name: Edge Functions
 on:
   push:
     branches: [main]
-    # Le manifeste et les scripts de ce job comptent aussi : un prérequis corrigé relance la sélection, qui
-    # rattrape une fonction restée retenue ; quand rien n'est en retard, le run ne déploie rien.
+    # Tout `supabase/` : la sélection compare ce dossier entier (un `config.toml`, une carte d'imports à la
+    # racine des fonctions concernent toutes les fonctions). Le manifeste et les scripts de ce job comptent
+    # aussi : un prérequis corrigé relance la sélection, qui rattrape une fonction restée retenue ; quand
+    # rien n'est en retard, le run ne déploie rien.
     paths:
-      - "supabase/functions/**"
+      - "supabase/**"
       - ".github/workflows/edge-functions.yml"
       - ".passio/deploiement/prerequis-fonctions.json"
       - "scripts/fonctions-a-deployer.mjs"

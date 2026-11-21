@@ -662,5 +662,6 @@ test("⑮ la forme du job : la sélection et la retenue précèdent le déploiem
   for (const nom of ["Cible", "Sélection", "Trace"]) assert.equal(etapes[rang(nom)].if, undefined, nom);
   // Le déclencheur : le manifeste et les scripts du job relancent la sélection.
   const chemins = doc.on.push.paths;
-  for (const f of ["supabase/functions/**", MANIFESTE, "scripts/fonctions-a-deployer.mjs", "scripts/verifier-prerequis-fonctions.mjs", "scripts/fumee-private-media.mjs", "scripts/lib/lecteur-imports.mjs"]) assert.ok(chemins.includes(f), f);
+  // …et tout supabase/ : ce que la sélection compare est ce qui déclenche (un config.toml seul relance).
+  for (const f of ["supabase/**", MANIFESTE, "scripts/fonctions-a-deployer.mjs", "scripts/verifier-prerequis-fonctions.mjs", "scripts/fumee-private-media.mjs", "scripts/lib/lecteur-imports.mjs"]) assert.ok(chemins.includes(f), f);
 });
