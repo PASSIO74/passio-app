@@ -14,6 +14,13 @@
 // confirmation-email.spec.js — on MUTE l'objet, on ne le remplace pas), et les
 // POST telemetry_events sont servis en 201 par une route.
 //
+// (2026-11-21, trou T6 de l'audit de surveillance) Les IMPASSES ont rejoint la
+// chaîne : un service de connexion en 5xx, un e-mail qui ne part pas, une
+// exception, « Mot de passe oublié ? », le départ vers Google, le nouveau mot
+// de passe et le renvoi du lien en panne. Chacune laisse un signal en code
+// fermé, et le texte à l'écran dit vrai — et se lit : cas ③ ter, ④ bis,
+// ④ ter et ⑧ à ⑬.
+//
 // Chaque cas nomme la MUTATION qui le rend rouge (éprouvées à l'écriture).
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
@@ -62,13 +69,17 @@ async function ouvrirAuth(page, doubles = {}) {
   });
 }
 
-async function remplirInscription(page, email = "nouvelle@exemple.com") {
+async function saisirInscription(page, email = "nouvelle@exemple.com") {
   await page.locator("#authTabSignup").click();
   await page.locator("#authName").fill("Camille");
   await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill(email);
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authConsent").click();
+}
+
+async function remplirInscription(page, email = "nouvelle@exemple.com") {
+  await saisirInscription(page, email);
   await page.locator("#authSubmitBtn").click();
 }
 
@@ -87,6 +98,29 @@ const noms = (evs) => evs.map((e) => e.name);
 function sansAdresse(evs) {
   for (const e of evs) for (const v of Object.values(e.meta || {})) expect(String(v)).not.toContain("@");
 }
+
+const HORS_LIGNE = "Pas de connexion internet — réessaie quand tu es en ligne.";
+const viderCapture = (page) => page.evaluate(() => { window.__telCap = []; window.__flushCap = []; });
+const attendreSignal = (page, nom) => page.waitForFunction(
+  (n) => window.__telCap.some((e) => e.name === n), nom, { timeout: 10000 });
+
+// Le message d'un e-mail qui ne part pas nomme « Continuer avec Google », « un
+// peu plus bas ». Il n'est vrai que si ce bouton est PEINT dans le formulaire,
+// avec ce libellé, et SOUS le message — mesuré, pas lu dans le balisage.
+async function googleSousLeMessage(page) {
+  return page.evaluate(() => {
+    const m = document.getElementById("authMsg").getBoundingClientRect();
+    const b = document.getElementById("authGoogleBtn");
+    const g = b.getBoundingClientRect();
+    const s = getComputedStyle(b);
+    return {
+      peint: g.width > 0 && g.height > 0 && s.display !== "none" && s.visibility !== "hidden",
+      sous: m.height > 0 && g.top >= m.bottom,
+      libelle: b.textContent.trim(),
+    };
+  });
+}
+const GOOGLE_ATTENDU = { peint: true, sous: true, libelle: "Continuer avec Google" };
 
 test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
@@ -171,6 +205,55 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     });
   });
 
+  // Le SDK rend une `AuthRetryableFetchError` de statut 0 (requête jamais
+  // arrivée) ou du statut HTTP (500…504, 520…530), dont le message est celui du
+  // corps de la réponse. Les seize cas de ③ bis, sans statut, ne bougent pas.
+  // MUTATIONS : retirer la ligne « serveur » → rouge ; retirer la ligne
+  // « reseau » → rouge (chacune de ses deux moitiés a son cas) ; retirer la
+  // ligne « envoi » → rouge ; déplacer les lignes de statut APRÈS le test
+  // « mdp » → `serveurAvantTexte` rouge.
+  test("③ ter rcRefusAuth lit le STATUT avant le texte : reseau, envoi, serveur — et captcha reste premier", async ({ page }) => {
+    await ouvrirAuth(page);
+    const r = await page.evaluate(() => ({
+      reseauStatut0: rcRefusAuth({ name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 }),
+      // Le statut 0 SUFFIT : le message n'a pas à ressembler à une coupure.
+      reseauStatut0Muet: rcRefusAuth({ name: "AuthRetryableFetchError", message: "{}", status: 0 }),
+      reseauSansStatut: rcRefusAuth({ message: "signal timed out" }),
+      serveur500: rcRefusAuth({ message: "Database error saving new user", status: 500, code: "unexpected_failure" }),
+      serveur503: rcRefusAuth({ name: "AuthRetryableFetchError", message: "Service Unavailable", status: 503 }),
+      serveur504: rcRefusAuth({ name: "AuthRetryableFetchError", message: "HTTP 504", status: 504 }),
+      serveurAvantTexte: rcRefusAuth({ message: "Password update failed", status: 500 }),
+      captchaAvantStatut: rcRefusAuth({ message: "captcha protection: request disallowed", status: 500 }),
+      mdp400: rcRefusAuth({ message: "Invalid login credentials", status: 400 }),
+      quota429: rcRefusAuth({ message: "Email rate limit exceeded", status: 429 }),
+      // L'e-mail qui ne part pas : les trois libellés connus de GoTrue.
+      envoi: rcRefusAuth({ message: "Error sending confirmation email", status: 500 }),
+      envoiAncien: rcRefusAuth({ message: "Error sending confirmation mail", status: 500 }),
+      envoiRecuperation: rcRefusAuth({ message: "Error sending recovery email", status: 500 }),
+      envoiAdresse: rcRefusAuth({ message: "Error sending confirmation email to jean@exemple.com", status: 500 }),
+      // Le statut ET le texte : l'un sans l'autre n'est pas « envoi ».
+      envoiSansStatut: rcRefusAuth({ message: "Error sending confirmation email" }),
+      envoi400: rcRefusAuth({ message: "Error sending confirmation email", status: 400 }),
+    }));
+    expect(r).toEqual({
+      reseauStatut0: "reseau", reseauStatut0Muet: "reseau", reseauSansStatut: "reseau",
+      serveur500: "serveur", serveur503: "serveur", serveur504: "serveur", serveurAvantTexte: "serveur",
+      captchaAvantStatut: "captcha", mdp400: "mdp", quota429: "quota",
+      envoi: "envoi", envoiAncien: "envoi", envoiRecuperation: "envoi", envoiAdresse: "envoi",
+      envoiSansStatut: "autre", envoi400: "autre",
+    });
+    // Un message n'existe que pour une PANNE : un refus garde sa traduction.
+    const m = await page.evaluate(() => ["serveur", "envoi", "reseau", "mdp", "quota", "autre", undefined].map(messagePanneAuth));
+    expect(m[0]).toContain("ne répond pas");
+    expect(m[1]).toContain("Continuer avec Google");
+    // Le texte dit OÙ est la sortie, et la géométrie le vérifie (④ bis, ⑧ bis,
+    // ⑧ ter, ⑩) : le bouton est SOUS le message. « au-dessus » serait faux.
+    expect(m[1]).toContain("plus bas");
+    expect(m[1]).not.toMatch(/au-dessus|ci-dessus/);
+    expect(m[2]).toBe(HORS_LIGNE);
+    expect(m.slice(3)).toEqual([null, null, null, null]);
+  });
+
   // MUTATION : retirer `tel.action("confirmation_resent", { ok: !error })` → rouge.
   test("④ renvoi du lien : confirmation_resent {ok:true} puis {ok:false} sur refus", async ({ page }) => {
     await ouvrirAuth(page, {
@@ -191,6 +274,109 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     const evs = (await capture(page)).filter((e) => e.name === "confirmation_resent");
     expect(evs.map((e) => e.meta)).toEqual([{ ok: true }, { ok: false }]);
     sansAdresse(evs);
+  });
+
+  // « Renvoyer le lien » EST la sortie promise à qui est bloqué à la
+  // confirmation : en panne, elle affichait de l'anglais ou « {} », et son
+  // `catch` répondait « pas de connexion internet » à un défaut de code.
+  // MUTATIONS : afficher `m` même quand `panne` existe → rouge (« {} »
+  // s'affiche) ; retirer `signalerExceptionAuth("resend", e)` → rouge ; dire
+  // « hors ligne » sans condition dans le catch (`_showPanneAuth(AUTH_HORS_LIGNE)`)
+  // → rouge (« Recharge la page » attendu).
+  test("④ bis renvoi du lien en panne : un message vrai avec sa sortie, auth_exception {kind:resend} si ça lève", async ({ page }) => {
+    await ouvrirAuth(page, {
+      signUp: { data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null },
+    });
+    await remplirInscription(page, "aconfirmer@exemple.com");
+    await expect(page.locator("#authResendLink")).toBeVisible();
+    await viderCapture(page);
+    const msg = page.locator("#authMsg");
+
+    // Service en 5xx dont le corps n'est pas lisible : le SDK rend « {} ».
+    await page.evaluate(() => {
+      supa.auth.resend = async () => ({ data: null, error: { name: "AuthRetryableFetchError", status: 503, message: "{}" } });
+    });
+    await page.locator("#authResendLink").click();
+    await expect(msg).toContainText("ne répond pas");
+    await expect(msg).not.toContainText("{}");
+
+    // L'e-mail ne part pas : la sortie nommée existe, sous le message, même avec
+    // le bloc de renvoi du haut intercalé.
+    await page.evaluate(() => {
+      supa.auth.resend = async () => ({ data: null, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending confirmation email" } });
+    });
+    await page.locator("#authResendLink").click();
+    await expect(msg).toContainText("Continuer avec Google");
+    await expect(page.locator("#authResendTop")).toBeVisible();
+    expect(await googleSousLeMessage(page)).toEqual(GOOGLE_ATTENDU);
+
+    // Le renvoi LÈVE sur un défaut de code : ce n'est pas une coupure.
+    await page.evaluate(() => { supa.auth.resend = async () => { throw new TypeError("x is not a function"); }; });
+    await page.locator("#authResendLink").click();
+    await expect(msg).toContainText("Recharge la page");
+    await expect(msg).not.toContainText("Pas de connexion internet");
+
+    // Le renvoi lève sur une vraie coupure (libellé de WebKit).
+    await page.evaluate(() => { supa.auth.resend = async () => { throw new TypeError("Load failed"); }; });
+    await page.locator("#authResendLink").click();
+    await expect(msg).toHaveText(HORS_LIGNE);
+
+    const evs = await capture(page);
+    // `confirmation_resent` garde sa forme exacte : une ligne par tentative.
+    expect(evs.filter((e) => e.name === "confirmation_resent").map((e) => e.meta))
+      .toEqual([{ ok: false }, { ok: false }, { ok: false }, { ok: false }]);
+    expect(evs.filter((e) => e.name === "auth_exception").map((e) => e.meta))
+      .toEqual([{ kind: "resend", rc: "code" }, { kind: "resend", rc: "reseau" }]);
+    sansAdresse(evs);
+  });
+
+  // Le lien de renvoi du BAS est le point le plus éloigné du message. Mesuré
+  // avant ce lot à 320 × 568 : le haut du message de panne sortait de l'écran
+  // (−20 px). `_showPanneAuth` le ramène entier.
+  // MUTATIONS : afficher la panne du renvoi par `_showAuthMsg(panne, "error")`
+  // → rouge ; afficher par `_showAuthMsg` dans son catch → le volet
+  // « exception » rougit.
+  test("④ ter le renvoi en panne se LIT à 320 × 568 : depuis le lien du bas, le message revient entier à l'écran", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await ouvrirAuth(page, {
+      signUp: { data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null },
+    });
+    await remplirInscription(page, "aconfirmer@exemple.com");
+    const lien = page.locator("#authResendLink");
+    const msg = page.locator("#authMsg");
+    await expect(lien).toBeVisible();
+    const entier = () => page.evaluate(() => {
+      const r = document.getElementById("authMsg").getBoundingClientRect();
+      return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1;
+    });
+    // Un défilement doux est peut-être en cours (`_showResendConfirmation`,
+    // `_showPanneAuth`) : on attend qu'il soit posé avant de placer le doigt.
+    const auRepos = () => page.waitForFunction(() => new Promise((fin) => {
+      const el = document.getElementById("authMsg");
+      const avant = el.getBoundingClientRect().top;
+      setTimeout(() => fin(Math.abs(el.getBoundingClientRect().top - avant) < 0.5), 200);
+    }), null, { timeout: 8000 });
+    // Le point de départ : le lien du bas au bord de l'écran, et le message,
+    // tout en haut du formulaire, entamé ou sorti.
+    const doigtSurLeLienDuBas = async () => {
+      await auRepos();
+      await page.evaluate(() => document.getElementById("authResendLink").scrollIntoView({ block: "end", behavior: "instant" }));
+      expect(await page.evaluate(() => document.getElementById("authMsg").getBoundingClientRect().top)).toBeLessThan(-1);
+    };
+
+    await page.evaluate(() => {
+      supa.auth.resend = async () => ({ data: null, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending confirmation email" } });
+    });
+    await doigtSurLeLienDuBas();
+    await lien.click();
+    await expect(msg).toContainText("Continuer avec Google");
+    await expect.poll(entier, { timeout: 8000 }).toBe(true);
+
+    await page.evaluate(() => { supa.auth.resend = async () => { throw new TypeError("x is not a function"); }; });
+    await doigtSurLeLienDuBas();
+    await lien.click();
+    await expect(msg).toContainText("Recharge la page");
+    await expect.poll(entier, { timeout: 8000 }).toBe(true);
   });
 
   // MUTATION : retirer `tel.action("signin_ok")` ou le `tel.flush({ keepalive: true })`
@@ -267,5 +453,402 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
     // d'adoption qui précède le premier boot avec session.
     const bloc = app02.slice(app02.indexOf("var ACCOUNT_SCOPED_KEYS = ["), app02.indexOf("];", app02.indexOf("var ACCOUNT_SCOPED_KEYS = [")));
     expect(bloc).not.toContain("passio_signup_pending");
+  });
+
+  // ─── LES IMPASSES (2026-11-21) ────────────────────────────────────────────
+
+  // MUTATION : dans onbDoAuth, afficher `msg` même quand `_panne` existe
+  // (`_showAuthMsg(msg, "error")` seul) → le message brut du serveur s'affiche
+  // (avec son adresse), rouge sur les deux volets.
+  test("⑧ service de connexion en panne : signin_refused {rc:serveur}, un message vrai, jamais le texte brut", async ({ page }) => {
+    await ouvrirAuth(page, {
+      signIn: { data: { session: null }, error: { name: "AuthRetryableFetchError", status: 503,
+        message: "upstream connect error for jean@exemple.com at https://abc.supabase.co/auth/v1/token (503)" } },
+    });
+    await remplirConnexion(page);
+    const msg = page.locator("#authMsg");
+    await expect(msg).toContainText("ne répond pas");
+    const texte = await msg.textContent();
+    for (const brut of ["503", "jean@", "supabase", "upstream"]) expect(texte).not.toContain(brut);
+    // Le formulaire reste utilisable : la sortie annoncée est « réessaie ».
+    await expect(page.locator("#authSubmitBtn")).toBeEnabled();
+    await expect(page.locator("#authSubmitBtn")).toHaveText("Se connecter");
+
+    let evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "signin_refused"]);
+    expect(evs[1].meta).toEqual({ rc: "serveur" });
+    sansAdresse(evs);
+
+    // Requête jamais arrivée, RENDUE par le SDK (statut 0) avec un message que
+    // la table de traduction ne connaît pas : il partait tel quel, en anglais.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signInWithPassword = async () => ({ data: { session: null }, error: { name: "AuthRetryableFetchError", status: 0, message: "signal timed out" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await expect(msg).toHaveText(HORS_LIGNE);
+    evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "signin_refused"]);
+    expect(evs[1].meta).toEqual({ rc: "reseau" });
+  });
+
+  // MUTATIONS : afficher `msg` même quand `_panne` existe → rouge ; retirer la
+  // ligne « envoi » de rcRefusAuth → `rc: "serveur"` et plus de Google, rouge ; retirer
+  // `!_panne` de la garde de majAideMotDePasse → « Proposer un mot de passe »
+  // s'affiche sous une panne, rouge. Le témoin (un VRAI refus de mot de passe)
+  // prouve que l'aide se montre quand elle le doit.
+  test("⑧ bis inscription en panne : serveur, e-mail qui ne part pas (sortie Google mesurée), et pas d'aide au mot de passe sous une panne", async ({ page }) => {
+    await ouvrirAuth(page, {
+      signUp: { data: { user: null, session: null }, error: { message: "Database error saving new user", status: 500, code: "unexpected_failure" } },
+    });
+    await remplirInscription(page);
+    const msg = page.locator("#authMsg");
+    await expect(msg).toContainText("ne répond pas");
+    await expect(msg).not.toContainText("Database");
+    let evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "signup_refused"]);
+    expect(evs[1].meta).toEqual({ rc: "serveur" });
+
+    // L'e-mail de confirmation ne part pas (relais en panne, quota du jour).
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: null, session: null }, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending confirmation email" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await expect(msg).toContainText("Continuer avec Google");
+    const texte = await msg.textContent();
+    expect(texte).not.toContain("Error sending");
+    // Aucune durée chiffrée : le texte ne sait pas combien de temps dure la panne.
+    expect(texte).not.toMatch(/\d/);
+    // La sortie nommée est à l'écran, sous le message, avec ce libellé.
+    expect(await googleSousLeMessage(page)).toEqual(GOOGLE_ATTENDU);
+    evs = await capture(page);
+    expect(evs[1]).toEqual({ name: "signup_refused", meta: { rc: "envoi" } });
+    await expect(page.locator("#authSubmitBtn")).toHaveText("Créer mon compte");
+
+    // Un 5xx dont le texte cite « password » : c'est une panne, pas un refus de
+    // mot de passe — l'aide « Proposer un mot de passe » ne se montre pas.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: null, session: null }, error: { status: 500, message: "Password is known to be weak and easy to guess" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await attendreSignal(page, "signup_refused");
+    await expect(msg).toContainText("ne répond pas");
+    await expect(page.locator("#authPwdRefus")).toBeHidden();
+    expect((await capture(page))[1].meta).toEqual({ rc: "serveur" });
+
+    // TÉMOIN : le même texte en 422 est un vrai refus — l'aide se montre.
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signUp = async () => ({ data: { user: null, session: null }, error: { status: 422, code: "weak_password", message: "Password is known to be weak and easy to guess" } });
+    });
+    await page.locator("#authSubmitBtn").click();
+    await expect(page.locator("#authPwdRefus")).toContainText("Proposer un mot de passe");
+    expect((await capture(page))[1].meta).toEqual({ rc: "mdp" });
+  });
+
+  // Aux hauteurs utiles d'un iPhone sous Safari, « Créer mon compte » est tout
+  // en bas du formulaire et `#authMsg` tout en haut : mesuré avant ce lot à
+  // −165…−87 px (390 × 664) et −338…−245 px (320 × 568), hors de l'écran. Un
+  // message vrai que personne ne lit ne dit rien.
+  // MUTATIONS : retirer le `scrollIntoView` de `_showPanneAuth` → rouge aux deux
+  // tailles ; afficher la panne par `_showAuthMsg(_panne, "error")` dans
+  // onbDoAuth → rouge ; afficher par `_showAuthMsg` dans son catch → le volet
+  // « exception » rougit.
+  for (const vue of [{ width: 390, height: 664 }, { width: 320, height: 568 }]) {
+    test(`⑧ ter une panne se LIT : à ${vue.width} × ${vue.height}, le message et « Continuer avec Google » sont à l'écran`, async ({ page }) => {
+      await page.setViewportSize(vue);
+      await ouvrirAuth(page, {
+        signUp: { data: { user: null, session: null }, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending confirmation email" } },
+      });
+      await saisirInscription(page);
+      const bouton = page.locator("#authSubmitBtn");
+      // À l'écran = dans la fenêtre ET sous le doigt (`elementFromPoint`) : un
+      // élément recouvert n'est pas plus lisible qu'un élément hors champ.
+      const aLEcran = () => page.evaluate(() => {
+        const vu = (id) => {
+          const el = document.getElementById(id);
+          const r = el.getBoundingClientRect();
+          if (!(r.height > 0) || r.top < -1 || r.bottom > innerHeight + 1) return false;
+          const touche = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return !!touche && el.contains(touche);
+        };
+        const m = document.getElementById("authMsg").getBoundingClientRect();
+        const g = document.getElementById("authGoogleBtn").getBoundingClientRect();
+        return { message: vu("authMsg"), google: vu("authGoogleBtn"), googleSous: g.top >= m.bottom };
+      });
+
+      // Le point de départ du scénario : le doigt est sur « Créer mon compte »,
+      // et le haut du formulaire (les onglets, juste au-dessus du message) est
+      // sorti de l'écran.
+      await bouton.scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.getElementById("authTabSignup").getBoundingClientRect().bottom)).toBeLessThan(0);
+
+      await bouton.click();
+      await expect(page.locator("#authMsg")).toContainText("Continuer avec Google");
+      await expect.poll(aLEcran, { timeout: 8000 }).toEqual({ message: true, google: true, googleSous: true });
+
+      // Même règle pour une exception : le texte « Recharge la page » se lit.
+      await page.evaluate(() => { supa.auth.signUp = async () => { throw new Error("boom"); }; });
+      await bouton.scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.getElementById("authTabSignup").getBoundingClientRect().bottom)).toBeLessThan(0);
+      await bouton.click();
+      await expect(page.locator("#authMsg")).toContainText("Recharge la page");
+      await expect.poll(async () => (await aLEcran()).message, { timeout: 8000 }).toBe(true);
+    });
+  }
+
+  // MUTATIONS : retirer `signalerExceptionAuth(_authMode, e)` du catch
+  // d'onbDoAuth → rouge ; y remettre `_showAuthMsg(AUTH_HORS_LIGNE, "error")`
+  // pour toute exception → volets (a) et (c) rouges.
+  test("⑨ une exception laisse une trace et ne dit plus « pas de connexion » à tout : auth_exception {kind, rc}", async ({ page }) => {
+    await ouvrirAuth(page);
+    const msg = page.locator("#authMsg");
+
+    // (a) Défaut de code, dont le message cite une adresse.
+    await page.evaluate(() => {
+      supa.auth.signInWithPassword = async () => { throw new TypeError("Cannot read properties of undefined (reading 'jean@exemple.com')"); };
+    });
+    await remplirConnexion(page);
+    await expect(msg).toContainText("Recharge la page");
+    await expect(msg).not.toContainText("Pas de connexion internet");
+    let evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "auth_exception"]);
+    expect(evs[1].meta).toEqual({ kind: "signin", rc: "code" });
+    expect(Object.keys(evs[1].meta).sort()).toEqual(["kind", "rc"]);
+    sansAdresse(evs);
+    await expect(page.locator("#authSubmitBtn")).toBeEnabled();
+    await expect(page.locator("#authSubmitBtn")).toHaveText("Se connecter");
+
+    // (b) Vraie coupure : un `fetch` coupé est AUSSI un TypeError.
+    await viderCapture(page);
+    await page.evaluate(() => { supa.auth.signInWithPassword = async () => { throw new TypeError("Failed to fetch"); }; });
+    await page.locator("#authSubmitBtn").click();
+    await expect(msg).toHaveText(HORS_LIGNE);
+    evs = await capture(page);
+    expect(evs[1]).toEqual({ name: "auth_exception", meta: { kind: "signin", rc: "reseau" } });
+
+    // (c) En création de compte, une exception quelconque.
+    await viderCapture(page);
+    await page.evaluate(() => { supa.auth.signUp = async () => { throw new Error("boom"); }; });
+    await remplirInscription(page);
+    await expect(msg).toContainText("Recharge la page");
+    evs = await capture(page);
+    expect(noms(evs)).toEqual(["auth_submitted", "auth_exception"]);
+    expect(evs[1].meta).toEqual({ kind: "signup", rc: "autre" });
+    await expect(page.locator("#authSubmitBtn")).toHaveText("Créer mon compte");
+  });
+
+  // MUTATIONS : tester le NOM avant `estEchecReseau` dans rcExceptionAuth →
+  // `fetchCoupe` rend "code", rouge (et ⑨ (b) avec lui) ; faire rendre le
+  // message → la liste fermée et l'adresse rougissent ; retirer le `e &&` de la
+  // lecture du nom → `nul` lève, rouge ; retirer le filtre de porte de
+  // signalerExceptionAuth → la valeur libre voyage, rouge.
+  test("⑨ bis rcExceptionAuth : réseau d'abord, liste fermée, jamais le message — et la porte est une liste fermée aussi", async ({ page }) => {
+    await ouvrirAuth(page);
+    const r = await page.evaluate(() => ({
+      abandon: rcExceptionAuth(new DOMException("The operation was aborted.", "AbortError")),
+      fetchCoupe: rcExceptionAuth(new TypeError("Failed to fetch")),
+      chaine: rcExceptionAuth("Load failed"),
+      reference: rcExceptionAuth(new ReferenceError("x is not defined")),
+      type: rcExceptionAuth(new TypeError("x is not a function")),
+      intervalle: rcExceptionAuth(new RangeError("Maximum call stack size exceeded")),
+      syntaxe: rcExceptionAuth(new SyntaxError("Unexpected token")),
+      refusServeur: rcExceptionAuth({ message: "x", code: "42501" }),
+      adresse: rcExceptionAuth(new Error("boom pour jean@exemple.com")),
+      nul: rcExceptionAuth(null),
+      indefini: rcExceptionAuth(undefined),
+    }));
+    expect(r).toEqual({
+      abandon: "reseau", fetchCoupe: "reseau", chaine: "reseau",
+      reference: "code", type: "code", intervalle: "code", syntaxe: "code",
+      refusServeur: "autre", adresse: "autre", nul: "autre", indefini: "autre",
+    });
+    for (const v of Object.values(r)) expect(["reseau", "code", "autre"]).toContain(v);
+
+    const s = await page.evaluate(() => {
+      window.__telCap = [];
+      const rendu = [
+        signalerExceptionAuth("jean_dupont_0612345678", new Error("x")),
+        signalerExceptionAuth("resend", new TypeError("Failed to fetch")),
+      ];
+      return { rendu, evs: window.__telCap };
+    });
+    // La fonction rend `rc` (l'appelant choisit son message), et n'émet qu'une
+    // porte connue.
+    expect(s.rendu).toEqual(["autre", "reseau"]);
+    expect(s.evs).toEqual([
+      { name: "auth_exception", meta: { kind: "autre", rc: "autre" } },
+      { name: "auth_exception", meta: { kind: "resend", rc: "reseau" } },
+    ]);
+  });
+
+  // MUTATIONS : retirer l'une des deux émissions `password_reset_requested` →
+  // rouge ; retirer `messagePanneAuth(rc) ||` d'onbForgotPassword → rouge (le
+  // texte brut s'affiche) ; remettre `_showAuthMsg(AUTH_HORS_LIGNE, "error")`
+  // sans condition dans son catch → rouge (« Recharge la page » attendu).
+  test("⑩ « Mot de passe oublié ? » : password_reset_requested {ok, rc}, un message vrai en panne, auth_exception {kind:recover} si ça lève", async ({ page }) => {
+    await ouvrirAuth(page);
+    const msg = page.locator("#authMsg");
+    const repondre = (reponse) => page.evaluate((r) => {
+      window.__telCap = [];
+      supa.auth.resetPasswordForEmail = async () => r;
+    }, reponse);
+    const lever = (texte) => page.evaluate((t) => {
+      window.__telCap = [];
+      supa.auth.resetPasswordForEmail = async () => { throw new TypeError(t); };
+    }, texte);
+    await page.locator("#authTabSignin").click();
+    await page.locator("#authEmail").fill("oubli@exemple.com");
+
+    await repondre({ data: {}, error: null });
+    await page.locator("#authForgotLink").click();
+    await expect(msg).toContainText("réinitialisation envoyé");
+    expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: true } }]);
+
+    // Refus (délai anti-abus) : l'issue et sa raison, jamais l'adresse.
+    await repondre({ data: null, error: { status: 429, message: "For security purposes, you can only request this after 47 seconds." } });
+    await page.locator("#authForgotLink").click();
+    await attendreSignal(page, "password_reset_requested");
+    expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "quota" } }]);
+
+    // Service en panne : un message vrai, pas le texte du serveur.
+    await repondre({ data: null, error: { name: "AuthRetryableFetchError", status: 503, message: "Service Unavailable" } });
+    await page.locator("#authForgotLink").click();
+    await expect(msg).toContainText("ne répond pas");
+    await expect(msg).not.toContainText("Service Unavailable");
+    expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "serveur" } }]);
+
+    // L'e-mail ne part pas : la sortie nommée existe sous le message, en connexion.
+    await repondre({ data: null, error: { name: "AuthRetryableFetchError", status: 500, message: "Error sending recovery email" } });
+    await page.locator("#authForgotLink").click();
+    await expect(msg).toContainText("Continuer avec Google");
+    expect(await googleSousLeMessage(page)).toEqual(GOOGLE_ATTENDU);
+    expect(await capture(page)).toEqual([{ name: "password_reset_requested", meta: { ok: false, rc: "envoi" } }]);
+
+    // Exception sur un défaut de code : ce n'est pas une coupure.
+    await lever("x is not a function");
+    await page.locator("#authForgotLink").click();
+    await expect(msg).toContainText("Recharge la page");
+    await expect(msg).not.toContainText("Pas de connexion internet");
+    expect(await capture(page)).toEqual([{ name: "auth_exception", meta: { kind: "recover", rc: "code" } }]);
+
+    // Exception sur une vraie coupure.
+    await lever("Failed to fetch");
+    await page.locator("#authForgotLink").click();
+    await expect(msg).toHaveText(HORS_LIGNE);
+    const evs = await capture(page);
+    expect(evs).toEqual([{ name: "auth_exception", meta: { kind: "recover", rc: "reseau" } }]);
+    sansAdresse(evs);
+  });
+
+  // MUTATIONS : retirer `tel.action("google_refused", …)` → rouge ; retirer
+  // `signalerExceptionAuth("google", e)` du catch → rouge.
+  test("⑪ départ vers Google : google_refused {rc} sur refus, auth_exception {kind:google} si ça lève, le drapeau retiré", async ({ page }) => {
+    await ouvrirAuth(page);
+    // En CONNEXION : le bouton n'exige pas la case de consentement.
+    await page.locator("#authTabSignin").click();
+    await page.evaluate(() => {
+      supa.auth.signInWithOAuth = async () => ({ data: null, error: { status: 400, message: "Unsupported provider: provider is not enabled" } });
+    });
+    await page.locator("#authGoogleBtn").click();
+    await attendreSignal(page, "google_refused");
+    let evs = await capture(page);
+    expect(evs).toEqual([{ name: "google_refused", meta: { rc: "autre" } }]);
+    expect(await page.evaluate(() => localStorage.getItem("passio_oauth_pending"))).toBeNull();
+
+    await viderCapture(page);
+    await page.evaluate(() => {
+      supa.auth.signInWithOAuth = async () => { throw new TypeError("Cannot read properties of undefined (reading 'origin')"); };
+    });
+    await page.locator("#authGoogleBtn").click();
+    await attendreSignal(page, "auth_exception");
+    evs = await capture(page);
+    expect(evs).toEqual([{ name: "auth_exception", meta: { kind: "google", rc: "code" } }]);
+    await expect(page.locator("#authMsg")).toContainText("Connexion Google indisponible");
+    // Le drapeau ne survit pas à un départ raté : au prochain démarrage il
+    // ferait prendre une arrivée ordinaire pour un retour de Google.
+    expect(await page.evaluate(() => localStorage.getItem("passio_oauth_pending"))).toBeNull();
+    sansAdresse(evs);
+  });
+
+  // MUTATIONS : retirer l'une des deux émissions `password_reset_done` → rouge ;
+  // retirer le `tel.flush({ keepalive: true })` qui suit la réussite → rouge (la
+  // page recharge 900 ms plus loin, l'événement resterait en file) ; retirer
+  // `signalerExceptionAuth("reset", e)` → rouge.
+  test("⑫ nouveau mot de passe : password_reset_done {ok, rc}, flush keepalive à la réussite, auth_exception {kind:reset} si ça lève", async ({ page }) => {
+    await ouvrirAuth(page);
+    await page.evaluate(() => {
+      // La réussite mène à l'adoption puis au rechargement, qui perdrait la
+      // capture : une promesse jamais réglée fige le parcours là, comme au cas ⑤.
+      window.adopterCompteConnecte = () => new Promise(() => {});
+      supa.auth.updateUser = async () => ({ data: null, error: { status: 422, code: "weak_password", message: "Password should be at least 8 characters." } });
+      window.__telCap = []; window.__flushCap = [];
+      _showPasswordRecoveryUI();
+    });
+    const bouton = page.locator("#pwdRecoveryBtn");
+    await page.locator("#pwdRecoveryInput").fill("motdepasse123");
+
+    // Refus du serveur.
+    await bouton.click();
+    await attendreSignal(page, "password_reset_done");
+    await expect(bouton).toBeEnabled();
+    expect(await capture(page)).toEqual([{ name: "password_reset_done", meta: { ok: false, rc: "mdp" } }]);
+    // Rien ne recharge après un refus : aucun envoi forcé.
+    expect(await page.evaluate(() => window.__flushCap)).toEqual([]);
+
+    // Exception.
+    await viderCapture(page);
+    await page.evaluate(() => { supa.auth.updateUser = async () => { throw new TypeError("Failed to fetch"); }; });
+    await bouton.click();
+    await attendreSignal(page, "auth_exception");
+    await expect(bouton).toBeEnabled();
+    expect(await capture(page)).toEqual([{ name: "auth_exception", meta: { kind: "reset", rc: "reseau" } }]);
+
+    // Réussite : le signal, puis son envoi AVANT le rechargement.
+    await viderCapture(page);
+    await page.evaluate(() => { supa.auth.updateUser = async () => ({ data: { user: { id: "u1" } }, error: null }); });
+    await bouton.click();
+    await expect(page.locator("#pwdRecoveryMsg")).toHaveText("Mot de passe mis à jour.");
+    const evs = await capture(page);
+    expect(evs).toEqual([{ name: "password_reset_done", meta: { ok: true } }]);
+    expect(await page.evaluate(() => window.__flushCap)).toEqual([{ keepalive: true }]);
+    sansAdresse(evs);
+  });
+
+  // MUTATION : retirer l'un des cinq appels → rouge. Sans ce cas, la fonction
+  // pourrait rester vivante et n'être appelée par PERSONNE — ou une sixième
+  // porte naître avec un `kind` hors liste, que le filtre rendrait « autre ».
+  test("⑬ contrat de source : les cinq portes appellent signalerExceptionAuth, chacune sous son nom, et « pas de connexion » ne se dit plus sans condition", async () => {
+    const app02 = fs.readFileSync(SOURCE_APP02, "utf8");
+    // Les APPELS (`…(x, e)`), pas la déclaration (`function …(kind, e) {`).
+    const appels = [...app02.matchAll(/(?<!function )signalerExceptionAuth\(([^,()]+), e\)/g)].map((m) => m[1].trim());
+    expect(appels.slice().sort()).toEqual(['"google"', '"recover"', '"resend"', '"reset"', "_authMode"]);
+
+    // Chaque porte porte SON nom : un `kind` recopié d'une porte à l'autre
+    // fausserait le décompte sans rien casser.
+    const corps = (debut, suivant) => {
+      const i = app02.indexOf(debut);
+      expect(i, debut).toBeGreaterThan(-1);
+      const j = app02.indexOf(suivant, i);
+      expect(j, suivant).toBeGreaterThan(i);
+      return app02.slice(i, j);
+    };
+    expect(corps("async function onbDoAuth() {", "async function onbSkipAuth() {")).toContain("signalerExceptionAuth(_authMode, e)");
+    expect(corps("async function onbForgotPassword() {", "function _showResendConfirmation(")).toContain('signalerExceptionAuth("recover", e)');
+    expect(corps("async function onbResendConfirmation() {", "async function onbGoogleAuth() {")).toContain('signalerExceptionAuth("resend", e)');
+    expect(corps("async function onbGoogleAuth() {", "async function _poserConsentementOAuth() {")).toContain('signalerExceptionAuth("google", e)');
+    expect(corps("function _showPasswordRecoveryUI() {", "function _showAuthMsg(")).toContain('signalerExceptionAuth("reset", e)');
+
+    // Les noms écrits aux portes sont ceux de la liste fermée, sans reste.
+    const liste = JSON.parse(app02.match(/const PORTES_EXCEPTION_AUTH = (\[[^\]]*\]);/)[1]);
+    expect(liste.slice().sort()).toEqual(["google", "recover", "resend", "reset", "signin", "signup"]);
+
+    // « Pas de connexion internet » ne s'affiche plus d'office que par
+    // `authHorsLigne()`, qui a LU `navigator.onLine` : les trois catch qui le
+    // disaient pour toute exception choisissent désormais leur texte.
+    expect((app02.match(/_showAuthMsg\(AUTH_HORS_LIGNE, "error"\)/g) || []).length).toBe(1);
+    expect(app02).not.toMatch(/_showPanneAuth\(AUTH_HORS_LIGNE\)/);
   });
 });
