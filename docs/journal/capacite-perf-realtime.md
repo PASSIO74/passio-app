@@ -3332,7 +3332,7 @@ vrais handlers ; **96 figurants** (`scripts/lib/village100-figurants.mjs`) font 
 trois cibles vérifiées (navigateur, clé de service, `ref` du JWT, puis `SUPABASE_URL` lue dans les pages),
 environnement de l'enfant filtré, port libre, seule une TABLE absente tolérée à la purge.
 
-**Mesuré sur le staging (séances 3 à 5, 555–593 s ; séance 5 avec les gestes complets du client) :**
+**Mesuré sur le staging (séances 3 à 7, 553–593 s ; à partir de la 5, avec les gestes complets du client ; même verdict à chaque fois) :**
 - **La capacité tient exactement.** 30 « je participe » à la même seconde pour 3 places : 3 gagnants,
   27 refus `activite_complete`, jamais 21 venants ; l'écran du perdant (Jade) dit « Activité complète… »
   sans place fantôme. 80 en liste d'attente sans un refus.
@@ -3351,9 +3351,11 @@ environnement de l'enfant filtré, port libre, seule une TABLE absente tolérée
   acceptée). Ajouté en séance 5 : **162/162 appels en 500 `VAPID non configuré`** — le staging n'a pas les
   clés du push, la fonction répond avant tout envoi. Seuls les **40 × 429** de l'organisatrice (dizaines
   d'appels à la suite) touchent son plafond. Le push à 100 se mesure sur un projet qui a ses clés VAPID.
-  ⚠️ **ET MÊME SANS RIEN ENVOYER, LA FONCTION NE SUIT PAS LA RAFALE** (séance 6) : pendant les 150
-  écritures en 10 s du post populaire, **118 des 158 appels des figurants à `notify-call` n'ont reçu
-  AUCUNE réponse en 15 s** (p50 15 004 ms) — la fonction Edge sature avant même de lire sa configuration.
+  ⚠️ **ET MÊME SANS RIEN ENVOYER, LA FONCTION NE SUIT PAS TOUJOURS LA RAFALE** : en séance 6, pendant les
+  150 écritures en 10 s du post populaire, **118 des 158 appels des figurants à `notify-call` n'ont reçu
+  AUCUNE réponse en 15 s** (p50 15 004 ms) ; en séance 7, même scénario, **0 sur 162** (toutes en 500 en
+  quelques centaines de ms). Vu une fois sur deux : un démarrage à froid ou une saturation passagère de la
+  fonction Edge, pas un plafond reproductible — à confirmer sur plusieurs séances, avec VAPID.
   Côté client, `_pousserPushNotif` n'attend pas ce verdict (`.catch(() => {})`) : l'écran n'en souffre pas,
   mais à 100 personnes actives ensemble, une partie des push serait perdue en silence. À mesurer avec VAPID.
   Le rapport compte désormais les requêtes SANS réponse (`totalReseau`, M1) : un 429 n'est pas le seul mur.
