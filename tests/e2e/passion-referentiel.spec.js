@@ -7,6 +7,7 @@
 // Les deux sont synchrones aujourd'hui ; rien ne garantit qu'elles le restent.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { UID_PUBLICATION, installerSessionPublication } = require("./publication-sdk-fixture");
 
 const LOCALES = ["musique","photo","voyage","cuisine","sport","litterature","cinema",
   "tech","art","jardinage","metier","jeuxvideo","yoga","mode","danse","podcast","moto","animaux","actu"];
@@ -121,16 +122,21 @@ test("① bis — un référentiel partiel n'interdit PAS de publier (le cas ré
   // d'écriture plutôt que sur le prédicat seul : c'est la publication qui
   // compte, pas la valeur de retour d'une fonction.
   await boot(page, { serveur: ["moto"] });
+  await page.evaluate(installerSessionPublication, UID_PUBLICATION);
 
   const vu = await page.evaluate(async () => {
     window.__envoye = [];
     // On observe l'insert sans passer par le SDK du helper de cette suite.
-    const vraiSupa = supa;
+    supa.auth = window.__publicationSDK.auth;
     supa.from = (t) => ({
       // ⚠️ `supaPublishPostWithRetry` appelle `insert([postData])` — un TABLEAU.
       // Lire `p.passion_id` rendait `undefined`, et l'assertion échouait pour
       // une raison qui n'avait rien à voir avec le référentiel.
-      insert: (p) => { (Array.isArray(p) ? p : [p]).forEach((row) => window.__envoye.push({ t, p: row })); const r = Promise.resolve({ data: [{ id: "x" }], error: null }); r.select = () => Promise.resolve({ data: [{ id: "x" }], error: null }); return r; },
+      insert: (p) => window.__publicationSDK.ecriture(() => {
+        const rows=Array.isArray(p)?p:[p];
+        rows.forEach(row => window.__envoye.push({t,p:row}));
+        return {data:rows,error:null};
+      }),
       upsert: async () => ({ error: null }),
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
     });

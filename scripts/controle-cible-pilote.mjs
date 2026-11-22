@@ -7,7 +7,10 @@
 //   node scripts/controle-cible-pilote.mjs --public [--attendu <sha>]
 //       lit ce qui est PUBLIC : `release.json` du site (commit servi) et
 //       l'en-tête `X-Passio-Revision` des quatre Edge Functions (OPTIONS).
-//       Avec --attendu, compare au SHA candidat et sort 1 sur écart.
+//       Avec --attendu, compare au SHA candidat et sort 1 sur écart. Depuis le
+//       2026-11-21 un push ne redéploie que les fonctions qu'il concerne : une
+//       fonction qui sert un commit plus ancien est À JOUR si rien de ce qui la
+//       concerne n'a changé jusqu'au SHA attendu (la règle du workflow).
 //   node scripts/controle-cible-pilote.mjs --sql
 //       imprime les requêtes EN LECTURE SEULE à exécuter sur la base (connecteur
 //       `execute_sql` du projet en lecture seule, ou l'éditeur SQL) : journal
@@ -27,6 +30,7 @@ import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
+import { lireFonctions, changementsQuiConcernent, comparateurGit } from "./fonctions-a-deployer.mjs";
 const require = createRequire(import.meta.url);
 
 const racine = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
@@ -48,6 +52,15 @@ const ok = (m) => console.log("  ✅ " + m);
 const ko = (m) => { ecarts++; console.log("  ❌ " + m); };
 const info = (m) => console.log("  ℹ " + m);
 
+/** La règle du workflow (scripts/fonctions-a-deployer.mjs) : servie à `rev`, la fonction est-elle à jour pour `attendu` ? */
+function aJourPour(fonction, rev, attendu) {
+  if (!/^[0-9a-f]{40}$/.test(String(rev || "")) || !/^[0-9a-f]{40}$/.test(String(attendu || ""))) return false;
+  const { noms, clotures, incertaines } = lireFonctions(racine);
+  if (!noms.includes(fonction) || incertaines.has(fonction)) return false;
+  const c = comparateurGit(racine, attendu)(rev);
+  return c.relation === "comparable" && changementsQuiConcernent(fonction, c.changes, { noms, clotures }).length === 0;
+}
+
 async function publicLecture() {
   const attendu = val("--attendu");
   console.log("── SITE : " + SITE + "/release.json");
@@ -63,7 +76,13 @@ async function publicLecture() {
       const r = await fetch(SUPABASE_URL + "/functions/v1/" + f, { method: "OPTIONS" });
       const rev = r.headers.get("x-passio-revision");
       info(`${f} : HTTP ${r.status} · révision ${rev || "ABSENTE (version antérieure au candidat : non vérifiable)"}`);
-      if (attendu) (rev === attendu ? ok : ko)(`${f} sert le SHA attendu`);
+      if (attendu) {
+        // Depuis le 2026-11-21, un push ne redéploie que les fonctions qu'il concerne : une fonction qui sert un
+        // commit plus ancien est À JOUR si rien de ce qu'elle emporte n'a changé jusqu'au SHA attendu.
+        if (rev === attendu) ok(`${f} sert le SHA attendu`);
+        else if (aJourPour(f, rev, attendu)) ok(`${f} sert ${String(rev).slice(0, 12)}, à jour pour ${attendu.slice(0, 12)} : rien de ce qui la concerne n'a changé depuis`);
+        else ko(`${f} ne sert pas le SHA attendu (${rev ? String(rev).slice(0, 12) : "aucune révision"}), et ce qui la concerne a changé depuis — ou ne se compare pas dans ce clone`);
+      }
     } catch (e) { ko(f + " injoignable : " + e.message); }
   }
 }
@@ -125,7 +144,13 @@ function comparer(dossier) {
   console.log("── 2. PRÉREQUIS DES FONCTIONS");
   const pre = lireJson(dossier, "prerequis.json");
   if (!pre) ko("prerequis.json absent (non mesuré)");
-  else for (const l of pre) (l.present === true || l.present === "t" ? ok : ko)(l.spec);
+  else for (const l of pre) {
+    const present = l.present === true || l.present === "t";
+    // « etat:<réglage> » n'est pas un prérequis : c'est la VALEUR lue d'un interrupteur (2026-11-21). Fermé est un
+    // état légitime — le compter comme un écart rougissait ce contrôle sur toute cible où il est fermé.
+    if (String(l.spec).startsWith("etat:")) info(`${String(l.spec).slice("etat:".length)} lu sur la cible : ${present}`);
+    else (present ? ok : ko)(l.spec);
+  }
   console.log("── 3. CATALOGUE DES TABLES DE COMPTE");
   const cat = lireJson(dossier, "catalogue.json");
   if (!cat) ko("catalogue.json absent (non mesuré)");

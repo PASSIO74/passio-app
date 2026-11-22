@@ -129,7 +129,14 @@
         } else {
           api.proposeOuting(passion, null);
         }
-        suggererTitre(passion);
+        // Le formulaire ne propose que les passions DU COMPTE (2026-11-15) :
+        // celle de l'interlocuteur n'est préremplie que si elle est partagée.
+        // Le titre suit la passion RETENUE par le formulaire, pas celle visée —
+        // sinon « Sortie voyage » partirait sous « Musique ».
+        var retenue = passion;
+        try { var selP = document.getElementById("evPassion"); if (selP && selP.value) retenue = selP.value; }
+        catch (e) { fail("passion retenue", e); }
+        suggererTitre(retenue);
         track("ui_v6c_proposer", { v: VERSION, has_psn: !!passion });
       } catch (e) { fail("proposition", e); }
     }, 80);

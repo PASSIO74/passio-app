@@ -33,6 +33,7 @@
 - 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
 - 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
+- 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
 
 ---
 
@@ -854,6 +855,12 @@ le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la 
 `GRANT` — donc refus total pour `anon` et `authenticated`. C'est l'interrupteur serveur du 18+,
 et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
 ajoutant une policy.
+
+⚠️ `auth_otp_long_expiry` (WARN, depuis le 2026-11-21) est **voulu** lui aussi : les liens envoyés
+par e-mail valent 24 h (`mailer_otp_exp` = 86 400), sur décision de Benjamin, pour qu'un lien de
+confirmation ouvert le lendemain marche encore. Supabase n'a qu'un réglage pour tous les liens et
+codes e-mail, nouveau mot de passe compris. Ne pas le ramener à 3 600 sans rouvrir la décision
+(fiche « PARCOURS DU NOUVEL INSCRIT » de `docs/journal/comptes-inscription-legal.md`).
 
 ## 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
 
@@ -2041,3 +2048,81 @@ Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-res
 La vérification locale PGlite couvre le SQL séquentiel et les triggers métier de référence ;
 elle ne prouve pas la concurrence à deux sessions. Une revue indépendante reste requise
 avant toute fusion/application, hors de cette demande de commit local.
+
+## 🧱 P1 RESTÉS OUVERTS AU 20/11 — BUDGET TEMPS RÉEL, RÉÉCRITURES, BOM, LECTURES ANONYMES (2026-11-20, non appliqués)
+
+Cinq migrations, rejouables, à jouer dans cet ordre ; banc `tests/sql/migration-securite-p1-2026-11-20.test.sh`
+(mesure chaque défaut AVANT, joue chaque migration deux fois, vérifie APRÈS ; PostgreSQL natif, CI seulement).
+
+- `migration_securite_p1_budget_realtime_2026-11-20.sql` (D10-01) : `passio_realtime_budget.compteurs.compte` passe
+  de `text → profiles ON DELETE CASCADE` à `uuid → auth.users ON DELETE CASCADE`. Supprimer puis recréer son profil
+  remettait les trois fenêtres à zéro (6 requêtes) ; seule la suppression réelle du compte les efface désormais.
+  Accusés de lecture : au plus 5 poussés par fenêtre de 10 s, par conversation et par compte
+  (`passio_realtime_budget.accuses`) ; au-delà la ligne avance, rien n'est poussé. **`accuses` est une table
+  éphémère de la sauvegarde** : déclarée dans `scripts/lib/reprise-schemas-prives.js` (`BUDGET_TABLES`), qui doit
+  être sur `main` AVANT la migration — sinon l'inventaire de la sauvegarde quotidienne lève « hors périmètre ».
+- `migration_securite_p1_diffusion_tronquee_2026-11-20.sql` (D10-01, **PREREQUIS-CLIENT: msg_tronque_echec**) :
+  au-delà de 2 048 octets, la charge poussée garde son enveloppe mais `record.content` est réduit (500 caractères
+  de texte, ou vide pour une enveloppe JSON) avec `record.tronque = true` — le nom que lit `_diffusionTronquee`
+  (app-08) ; le client relit la ligne par l'API. Le budget compte la taille ENTIÈRE (mesurée avant la troncature) :
+  chaque membre relit la ligne complète hors budget, facturer l'extrait aurait ôté la borne sur le volume distribué.
+  Ne pas appliquer avant que le client servi porte le motif.
+- `migration_securite_p1_debit_maj_2026-11-20.sql` (D10-02) : `trg_debit_maj` sur `posts` (10/min),
+  `post_comments` (30), `events` (15), `user_state` (600 : 120 figeait la synchronisation d'une séance de 2 à 4 h la
+  première semaine) — × 60 par jour, × 15 la première semaine ; policy
+  restrictive `passio_media_update_quota` (quota + 120 objets modifiés par heure), archivage toujours permis.
+- `migration_securite_p1_forme_message_2026-11-20.sql` (B06-N1) : le test de tête de `conv_message_forme_valide`
+  saute EXACTEMENT les blancs de la classe « blanc » de JavaScript (liste explicite, indépendante de la locale), ceux que saute
+  `_messageContentData` : base et client tranchent à l'identique (0 divergence sur tout le plan BMP, relu en
+  lecture de production). Un U+200B ou U+2060 devant `{` reste du TEXTE des deux côtés.
+- `migration_securite_p1_lectures_anonymes_2026-11-20.sql` (D10-03/04) : `passion_relations` fermée à `anon` et
+  `authenticated` (aucun client ne la lit) ; `rechercher_passions` ne note plus que 300 candidats (« ion » :
+  ~39 ms → ~12 ms à chaud en lecture de production, mêmes 20 premiers résultats sur 4 termes relus).
+
+⚠️ **Piège rencontré** : un `\u00A0` écrit dans un fichier par l'outil d'édition est arrivé en caractère BRUT
+(un NBSP réel dans l'expression régulière) — vérifier tout fichier SQL qui porte des échappements Unicode par un
+scan des invisibles avant de calculer une empreinte de corps. Même famille en reprise : une barre oblique inverse
+passée par un document « heredoc » est arrivée simple, puis avalée par un gabarit JS (et la séquence
+de tabulation verticale y est devenue le caractère réel) : construire les barres obliques par `String.fromCharCode(92)`.
+
+**Contre-revue du 20/11 (traitée)** : nom du drapeau aligné sur le client (`tronque`) ; table `accuses`
+inscrite dans la reprise des schémas privés (test `reprise-schemas-prives.test.mjs`, rouge sans le correctif) ;
+budget facturé sur la taille entière ; plafond des accusés en fenêtre (5/10 s) au lieu d'un accusé toutes les
+2 s, qui laissait « non lu » le second de deux messages rapprochés ; `user_state` à 600/min ; forme alignée sur le
+client ; retour arrière de `lectures_anonymes` réduit à `select`. Relu en production (lecture seule) : les cinq
+empreintes « avant », les colonnes `archived_at`/`is_delete_marker`/`updated_at`/`owner` de `storage.objects`,
+aucun `trg_debit_maj` sur les quatre tables, `conv_messages` et `conv_reads` hors de `supabase_realtime`
+(aucune amplification parallèle en `postgres_changes`), `service_role` lit `passion_relations`.
+
+### 2026-11-20 — Revue par un second modèle des correctifs P1 (#985, #986)
+
+Une revue de ChatGPT (codex) sur le diff complet, faite après la mise en production, a relevé cinq défauts. Tous ont été vérifiés contre le code avant d'être corrigés.
+- **Stockage** (`migration_securite_p1_stockage_remplacement_2026-11-20.sql`) :
+  - Une policy WITH CHECK qui appelle une fonction sans argument lit l'état d'AVANT l'UPDATE. Elle ne mesure donc jamais la taille nouvelle d'un remplacement.
+  - Compter les objets dont `updated_at` est récent compte des objets, pas des opérations.
+  - Correctif : un déclencheur BEFORE UPDATE qui lit `new.metadata->>'size'` sous verrou par compte, et un compteur atomique (`debit_compter`). Il ne s'applique que si `metadata` change : la lecture d'un objet ne doit pas consommer le plafond.
+- **Client** (app-08) :
+  - un 5xx est passager même quand il porte un SQLSTATE ;
+  - l'attente du recul fait aussi reculer le filet du fil (`_filComplementsReculSeq`), sans prolonger le recul partagé ;
+  - le budget de relecture des diffusions tronquées compte les requêtes, nouvel essai compris.
+- **Trace du stockage, mesurée au staging en quatre essais, avec un vrai compte** :
+  - Un remplacement (x-upsert ou PUT) est un UPDATE de la même ligne : nouvelle `version`, nouvelle taille.
+  - L'API Storage éprouve la RLS dans une transaction ANNULÉE, puis fait l'écriture finale depuis la session `supabase_storage_admin`, sous l'identité de SERVICE.
+  - Donc : ni le rôle SQL, ni `auth.role()`, ni `auth.uid()` ne désignent l'appelant au moment où la ligne change vraiment. Seul `new.owner` le désigne.
+  - Le déclencheur `aa_stockage_remplacement_borne` compte donc le propriétaire, et n'exempte que la session `postgres`.
+  - Mesure finale : 20 remplacements acceptés, puis 5 refusés, en une minute ; lectures et dépôt, remplacement, suppression normaux inchangés.
+  - Le contrôle de taille à 2 Gio n'a pas été atteint par le banc (limite de 26 Mo par objet).
+
+## 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+
+Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `private-media` : `reglage:medias_proteges.actif=false`. C'était le contrôle de la PRÉPARATION du serveur de médias (ADR-014, étape 1 de l'ordre de livraison : livrer le courtier sur un serveur fermé). Le pilote a ouvert les médias protégés le 19/11 à 10:43 UTC ; depuis, ce prérequis retenait tout redéploiement du courtier — et, le workflow vérifiant alors les six fonctions ensemble, tout déploiement de fonction (run 44831711346 du 20/11).
+
+- Il est remplacé par `reglage:medias_proteges.actif:booleen` : la ligne existe et porte un booléen JSON. Absent, `{}`, `"true"`, `1` : retenue (le serveur le tient pour fermé, personne ne l'a décidé).
+- La valeur est LUE en lecture seule (`etat:medias_proteges.actif`) ; la fumée exige que la fonction déployée serve exactement cet état. Les trois registres et les cinq fonctions SQL restent obligatoires.
+- Rien ne change côté base : aucune migration, aucun droit, la coupure reste l'autorité (`reglages_distants`, lue à chaque résolution, réservation et INSERT Storage).
+- Mesuré au canal ① le 21/11 : les 49 prérequis des six fonctions sont présents en production avec le nouveau manifeste ; le réglage est lu à true.
+- La requête ne nomme `public.reglages_distants` que dans une requête différée (`query_to_xml`), derrière `to_regclass` : une cible qui n'a pas la table retient la fonction qui exige le réglage, sans faire échouer toute la lecture. Banc : `tests/sql/prerequis-fonctions.test.sh` ③ ter.
+
+⚠️ **UN PRÉREQUIS DE DÉPLOIEMENT DIT CE QUE LA CIBLE SAIT FAIRE, PAS DANS QUEL ÉTAT ELLE EST.** Une table, une fonction SQL, une empreinte. La valeur d'un réglage que l'exploitation change n'en est pas un : le jour où elle change, le déploiement s'arrête pour une raison que plus personne ne cherche. `tests/unit/deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
+
+Le récit complet (la sélection par l'état servi, la retenue partielle, la ligne du pilotage, les verrous) : fiche du 21/11 de `docs/journal/telemetrie-pilotage-sentinelle.md`. Banc PostgreSQL : `tests/sql/medias-proteges-runner.mjs` (réglage ouvert : autorisé ; quatre formes non booléennes : retenu).

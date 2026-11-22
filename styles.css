@@ -12758,10 +12758,11 @@ button, a, label, select, summary,
 .passio-hint.passio-hint-sous::before { top: -5px; }
 .passio-hint.passio-hint-sur::after { bottom: -5px; }
 /* ENT-C15 : passions gardées sur l'appareil — la porte du compte, une fois. */
-.fr-note-locale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 6px 12px 2px; padding: 6px 4px 6px 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); font-size: 12.5px; color: var(--text); }
+/* Parcours du nouvel inscrit (2026-11-20) : à 390 px, texte, bouton et × passaient chacun sur leur ligne, le × seul en bas à gauche (124 px de haut). Le × sort du flux, à droite, centré : deux lignes au plus. */
+.fr-note-locale { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 6px 12px 2px; padding: 4px 48px 4px 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); font-size: 12.5px; color: var(--text); }
 .fr-note-locale-texte { color: var(--muted); }
 .fr-note-locale-cta { flex: 1 1 auto; min-height: 44px; border: none; background: transparent; color: #5b21b6; font: inherit; font-weight: 700; text-align: left; cursor: pointer; padding: 0 4px; }
-.fr-note-locale-fermer { width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
+.fr-note-locale-fermer { position: absolute; top: 50%; right: 2px; transform: translateY(-50%); width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
 /* ENT-C12 : liens d'évitement, visibles au focus seulement. */
 .liens-evitement { position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); z-index: 100010; }
 .lien-evitement { position: absolute; left: -9999px; top: 8px; min-height: 44px; padding: 0 16px; border: none; border-radius: 12px; background: #4c1d95; color: #fff; font: inherit; font-weight: 700; white-space: nowrap; }

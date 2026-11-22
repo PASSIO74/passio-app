@@ -362,7 +362,7 @@ function _exSearchLancer(query) {
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
-          ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          ? "<img " + passioMediaProteges.attributImage(_photo) + "='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
           : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
         // Attribut style en quotes SIMPLES : une apostrophe dans la couleur d'un
         // autre compte en sortait. _cssColor refuse quotes, url( et expression(.
@@ -3580,7 +3580,7 @@ async function _fillEventReactionDetail(eventId) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.emoji) + '="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
         : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
@@ -3594,7 +3594,7 @@ async function _fillEventReactionDetail(eventId) {
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
   body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" ' + passioMediaProteges.attributImage(g) + '="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -4580,7 +4580,7 @@ function openEventDetails(id) {
     // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
     // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
     // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" ${passioMediaProteges.attributImage(urlMediaDirecte(ev.coverUrl))}="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
     const coverImg = coverEl.querySelector("img");
     if (coverImg) {
       const coverFb = ev.emoji || passion.emoji || "✨";
@@ -4936,27 +4936,34 @@ function shareEventExperience(id) {
 async function _loadEventAlbum(eventId) {
   const box = document.getElementById("eventAlbum");
   if (!box) return;
-  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
-    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const requete = {};
+  box._requeteAlbum = requete;
+  const locaux = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: projectionHeritageLecture().candidat(p.image) ? null : (p.image || null),
+    text: p.text || "", authorName: p.authorName || "Moi",
   }));
+  let distants = [];
   if (window._supaReal && typeof supaLoadEventPosts === "function") {
     try {
-      const remote = await supaLoadEventPosts(eventId);
-      const seen = new Set(items.map(i => i.id));
-      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
-    } catch (e) {}
+      distants = await supaLoadEventPosts(eventId) || [];
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("album", "lecture_distante_indisponible");
+    }
   }
-  // La fiche a pu être fermée ou changée pendant la requête.
-  if (window._openEventDetailId !== eventId) return;
-  const box2 = document.getElementById("eventAlbum");
-  if (!box2) return;
+  if (MY_UID !== lecteur || _profileCacheGeneration !== generation || window._openEventDetailId !== eventId ||
+      document.getElementById("eventAlbum") !== box || box._requeteAlbum !== requete) return;
+  // Les lignes synchronisées portent le résultat de la projection privée, y compris un refus.
+  const synchronises = new Set(distants.map(p => p.id));
+  const items = locaux.filter(p => !synchronises.has(p.id)).concat(distants);
   if (!items.length) {
-    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    box.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
     return;
   }
-  box2.innerHTML = items.slice(0, 12).map(p => p.image
+  box.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
-         <img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(p.image, 400))}" alt=""/>
+         <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}="${safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}" alt=""/>
        </div>`
     : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
          <span>${escapeHtml((p.text || "").slice(0, 60))}</span>
@@ -6710,8 +6717,14 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
 // centaines de mètres reste EXACT.
 
-// Les passions sous lesquelles ce compte peut organiser : les SIENNES d'abord
-// (résolues par le référentiel), puis le catalogue publiable. Dédupliqué.
+// Les passions sous lesquelles ce compte peut organiser : LES SIENNES, ET
+// ELLES SEULES (demande de Benjamin, 2026-11-15 : « quand je crée une activité
+// il faut afficher seulement les passions sélectionnées dans le profil »).
+// Le catalogue publiable n'est plus qu'un REPLI, quand aucune passion du compte
+// ne peut aboutir (compte sans passion, référentiel pas encore arrivé, hors
+// ligne) : un `<select>` vide rendrait la création impossible. La liste rendue
+// porte alors `repli = true`, et le repeint du référentiel la remplace dès que
+// les passions du compte sont résolues.
 //
 // ⚠️ `passionById` NE REND JAMAIS `null` — sur un identifiant qu'il ne connaît
 // pas encore il rend « Passion ». On garde alors l'identifiant, qui dit au moins
@@ -6767,8 +6780,10 @@ function _irlPassionsOrganisables(myPassionIds) {
     if (!meta) { try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) { meta = null; } }
     pousser(id, meta);
   });
+  if (out.length) return out;                  // les miennes suffisent : rien d'autre
   try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); }
   catch (e) { try { diagLog("irl passionsPubliables " + (e && e.message ? e.message : e)); } catch (_) {} }
+  out.repli = true;
   return out;
 }
 
@@ -6793,12 +6808,18 @@ function _irlAssurerReferentielPassions(myPassionIds) {
       if (!sel) return;
       var choix = sel.value;
       var liste = _irlPassionsOrganisables(myPassionIds);
-      if (choix && !liste.some(function (x) { return x.id === choix; })) return;
+      var present = liste.some(function (x) { return x.id === choix; });
+      // Le formulaire s'était ouvert sur le catalogue de REPLI (les passions du
+      // compte n'étaient pas encore résolues) : maintenant qu'elles le sont, la
+      // liste se réduit à elles, même si l'option retenue par défaut n'en est pas.
+      var sortDuRepli = sel.getAttribute("data-repli") === "1" && !liste.repli;
+      if (choix && !present && !sortDuRepli) return;
+      if (!present) choix = liste.length ? liste[0].id : "";
       sel.innerHTML = liste.map(function (p) {
         return '<option value="' + escapeHtml(p.id) + '"' + (p.id === choix ? " selected" : "") + ">"
-          + escapeHtml(p.emoji) + " " + escapeHtml(p.label)
-          + ((myPassionIds || []).indexOf(p.id) >= 0 ? " \u2726" : "") + "</option>";
+          + escapeHtml(p.emoji) + " " + escapeHtml(p.label) + "</option>";
       }).join("");
+      if (liste.repli) sel.setAttribute("data-repli", "1"); else sel.removeAttribute("data-repli");
       sel.value = choix;
     }).catch(function (e) { try { diagLog("irl referentiel " + (e && e.message ? e.message : e)); } catch (_) {} });
   } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
@@ -6817,12 +6838,12 @@ function openCreateEvent(editId) {
   if (editId && !ed) { toast("Activité introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
 
-  // Toutes les passions sont proposées (les miennes en tête) : restreindre le
-  // choix aux profils créés empêchait d'organiser un événement « photo » quand on
-  // n'avait qu'un profil « musique ».
+  // 🔁 REVIREMENT DU 2026-11-15 (demande de Benjamin) : SEULES les passions du
+  // profil sont proposées. Organiser dans une autre passion = l'ajouter d'abord
+  // dans « Gérer mes passions ». Le « ✦ » (« c'est la tienne ») a disparu avec
+  // le catalogue : tout ce qui est listé est à soi.
   // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
-  // la seule définition de « mes passions », et une passion rangée ne doit ni
-  // remonter en tête ni porter le « ✦ ».
+  // la seule définition de « mes passions » — une passion rangée n'est pas proposée.
   const myPassionIds = ((typeof passionsVivantes === "function")
     ? passionsVivantes()
     : (state.user.profiles || []).filter(pr => !pr.archived))
@@ -6849,16 +6870,22 @@ function openCreateEvent(editId) {
   // Les passions DU COMPTE passent donc en tête, résolues par `passionById`
   // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
   const _pubs = _irlPassionsOrganisables(myPassionIds);
+  const _repli = !!_pubs.repli;
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
+    // Une activité créée sous une passion retirée du profil depuis reste
+    // publiable : seule une passion que « Enregistrer » refusera le dit.
+    let _publiable = !!_irlPassionPlateConnue(_passionEditee);
+    try { _publiable = _publiable || ((typeof estPassionCanonique === "function") && estPassionCanonique(_passionEditee)); }
+    catch (e) { try { diagLog("irl canonique " + (e && e.message ? e.message : e)); } catch (_) {} }
     _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
-                 label: ((_pOrig && _pOrig.label) || _passionEditee) + " (non publiable)" });
+                 label: ((_pOrig && _pOrig.label && _pOrig.label !== "Passion") ? _pOrig.label : _passionEditee) + (_publiable ? "" : " (non publiable)") });
   }
   const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
-    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
+    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
   const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
@@ -6898,7 +6925,7 @@ function openCreateEvent(editId) {
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
-        <select class="input" id="evPassion">${passionOptions}</select>
+        <select class="input" id="evPassion"${_repli ? ' data-repli="1"' : ""}>${passionOptions}</select>
       </label>
       <label class="field"><span>Type</span>
         <select class="input" id="evType">${typeOptions}</select>

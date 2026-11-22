@@ -587,8 +587,12 @@ test("㉒ une seule chaîne de relecture par armement : arrêtée puis réarmée
 });
 
 test("㉓ au retour au premier plan, les lives ne sont relus QUE si le fil est à l'écran", async ({ page }) => {
+  await page.clock.install();
   await preparer(page);
   await figer(page);
+  // supaInit programme aussi une lecture au démarrage, différée de 2 s.
+  // La laisser finir avant de compter les lectures déclenchées par la navigation.
+  await page.clock.runFor(2001);
   await page.evaluate(() => {
     window.__vlive = 0;
     window.supaRefreshVideoLives = () => { window.__vlive++; return Promise.resolve(false); };

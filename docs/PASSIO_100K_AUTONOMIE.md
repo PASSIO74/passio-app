@@ -5,6 +5,7 @@
 > soient auto-réparés — je veux lancer sans trop gérer la partie technique ».
 > Ce document distingue ce qui est **mesuré**, ce qui est **estimé** (et le dit), et ce qui est **livré**.
 > **Suite du 2026-11-06** : parcours jugés dans le nuage, battement de la veille lu par un chien de garde extérieur, politique d'automatisation sous forme de code, matrice des 48 cas — `docs/AUTONOMIE_EXPLOITATION.md`.
+> **Suite du 2026-11-20 (audit « la surveillance tient-elle à 100 000 ? »)** : six familles auditées et contredites, quinze trous triés par rendement, premier lot livré (signaux de panne prioritaires dans la file de télémétrie, fin des réémissions de `perf-ios`, clic lent mesuré). ⚠️ L'estimation « ~25 lignes par session » du §4 est fausse : mesuré ≈ 87 à 133 avant ce lot — `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`.
 > **Suite du 2026-11-09 (bande passante, §4)** : la page se revalide en 304 au lieu de repartir entière à chaque ouverture, les médias sont servis en direct par le CDN Supabase (le cache du relais `/media/*` ne servait rien), avatars et couvertures ont leur version légère (fin du mur des 100 transformations d'image), la liste des passions est gardée 24 h sur l'appareil — `docs/journal/capacite-perf-realtime.md` (2026-11-09), `docs/CDN_MEDIAS.md`.
 
 ## En une page
@@ -149,9 +150,11 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 ### Pour que la Sentinelle répare plus, plus vite (P2)
 5. ✅ **Réveil par la veille — livré le 2026-10-12, actif dès la migration.** Dès que 2 comptes réels
    (identité serveur, confirmés, créés depuis plus de 24 h) ont un échec en 30 min (erreur ou appel
-   refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min, la veille
+   refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min (10 min depuis le 2026-11-21), la veille
    (pg_cron, 5 min) lance la Sentinelle par `workflow_dispatch` — 2 réveils par heure et 12 par jour au plus. Avant :
    un cron GitHub servi 4 à 8 fois par jour.
+   ✅ **Et depuis le 2026-11-21, la cadence** : la même veille relance le passage dès que le dernier est
+   terminé depuis 1 h (runbook `cadence_sentinelle`) — le cron horaire n'était servi que 3,7 fois par jour.
 6. ✅ **Priorité par personnes touchées — c'était déjà le cas** : `classer()` et `classerApi()`
    (`scripts/sentinelle-detecter.mjs`) trient les candidats par comptes distincts, puis par occurrences.
    La première version de ce plan le comptait à tort comme « à faire ».

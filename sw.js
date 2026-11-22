@@ -25,12 +25,11 @@ function contenuVersionne(url, res) {
 
 // Répond au message SKIP_WAITING
 self.addEventListener("message", e => {
-  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
+  if (e.data && e.data.type === "SKIP_WAITING") e.waitUntil(self.skipWaiting());
 });
 
 // Installation : pré-cache les fichiers essentiels pour un vrai fonctionnement offline
 self.addEventListener("install", e => {
-  self.skipWaiting(); // Active immédiatement sans attendre la fermeture des onglets
   e.waitUntil(
     caches.open(CACHE).then(c =>
       // Chaque fichier est ajouté individuellement : un échec n'empêche pas les autres
@@ -62,7 +61,7 @@ self.addEventListener("install", e => {
             .catch(() => {});
         }),
       ])
-    )
+    ).then(()=>pmpSwPrevenirInstallation()).then(()=>self.skipWaiting())
   );
 });
 
@@ -340,11 +339,100 @@ function etagRevalidable(copie) {
   } catch (e) { return null; }
 }
 
+// PRIVATE MEDIA SW v1 : aucun bearer global, aucune decision d'ACL/cache conservee.
+async function pmpSwPrevenirInstallation(){
+  const clients=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  await Promise.all(clients.filter(client=>{const u=new URL(client.url);return u.origin===self.location.origin&&/^\/(index\.html)?$/.test(u.pathname)&&client.frameType==="top-level";}).map(client=>new Promise(resolve=>{
+    const nonce=crypto.randomUUID(),channel=new MessageChannel();let fini=false;
+    const fin=()=>{if(fini)return;fini=true;clearTimeout(timer);channel.port1.close();resolve();};
+    const timer=setTimeout(fin,750);
+    channel.port1.onmessage=event=>{if(event.data&&event.data.type==="PASSIO_PRIVATE_MEDIA_UPDATE_READY"&&event.data.nonce===nonce)fin();};
+    try{client.postMessage({type:"PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE",nonce:nonce},[channel.port2]);}catch(_){fin();}
+  })));
+}
+const pmpSwEpochs = new Map();
+const pmpSwFlux = new Map();
+const pmpSwRoute = /^\/private-media\/(posts|stories)\/[A-Za-z0-9_-]{1,120}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(original|v720|poster)$/;
+const pmpSwHeaders = {"Cache-Control":"private, no-store","CDN-Cache-Control":"no-store","Netlify-CDN-Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"sandbox; default-src 'none'"};
+function pmpSwRefus(status) { return new Response(null,{status:status,headers:pmpSwHeaders}); }
+self.addEventListener("message",event=>{
+  if(!event.data||event.data.type!=="PASSIO_PRIVATE_MEDIA_INVALIDATE"||!event.source||!event.source.id||!Number.isSafeInteger(event.data.epoch)||event.data.epoch<0)return;
+  const id=event.source.id, precedent=pmpSwEpochs.get(id);
+  if(precedent!==undefined && event.data.epoch<=precedent)return;
+  pmpSwEpochs.set(id,event.data.epoch);
+  const flux=pmpSwFlux.get(id);if(flux)flux.forEach(c=>c.abort());
+});
+async function pmpSwIdentite(clientId,abort) {
+  if(!clientId)throw new Error("private_media_client");
+  const client=await self.clients.get(clientId);
+  if(!client||client.id!==clientId||client.type!=="window"||client.frameType!=="top-level")throw new Error("private_media_client");
+  const url=new URL(client.url);
+  if(url.origin!==self.location.origin||!/^\/(index\.html)?$/.test(url.pathname))throw new Error("private_media_client");
+  const nonce=crypto.randomUUID(), canal=new MessageChannel();
+  return new Promise((resolve,reject)=>{
+    let ferme=false;
+    const fermer=()=>{if(ferme)return;ferme=true;clearTimeout(timer);canal.port1.postMessage({type:"PASSIO_PRIVATE_MEDIA_DONE",nonce:nonce});canal.port1.close();};
+    canal.port1.onmessageerror=()=>{abort.abort();fermer();};
+    const fin=(err,value)=>{clearTimeout(timer);if(err){canal.port1.close();reject(new Error("private_media_identity"));}else{
+      canal.port1.onmessage=e=>{if(e.data&&e.data.type==="PASSIO_PRIVATE_MEDIA_CANCEL"&&e.data.nonce===nonce&&Number.isSafeInteger(e.data.epoch)&&e.data.epoch>=value.epoch){abort.abort();canal.port1.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCELLED",nonce:nonce});}};
+      value.fermer=fermer;resolve(value);
+    }};
+    const timer=setTimeout(()=>fin(true),1500);
+    canal.port1.onmessage=event=>{
+      const value=event.data;
+      if(!value||value.type!=="PASSIO_PRIVATE_MEDIA_TOKEN_RESULT"||value.nonce!==nonce||!Number.isSafeInteger(value.epoch)||value.epoch<0)return fin(true);
+      const precedent=pmpSwEpochs.get(clientId);
+      if(precedent!==undefined&&precedent!==value.epoch)return fin(true);
+      if(value.mode!=="anon"&&(value.mode!=="user"||typeof value.token!=="string"||value.token.length>8192||!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value.token)))return fin(true);
+      pmpSwEpochs.set(clientId,value.epoch);fin(false,value);
+    };
+    try{client.postMessage({type:"PASSIO_PRIVATE_MEDIA_TOKEN",nonce:nonce},[canal.port2]);}catch(_){fin(true);}
+  });
+}
+async function pmpSwRequete(event,url) {
+  if(event.request.method!=="HEAD")return pmpSwRefus(405); // Octets exclusivement par POST explicite, hors ancien SW.
+  if(url.search||(!pmpSwRoute.test(url.pathname)&&url.pathname!=="/private-media/capabilities"))return pmpSwRefus(404);
+  const abort=new AbortController();let flux,amont,reader,identite,interrupteur;
+  const clientId=event.clientId;
+  const annuler=()=>abort.abort();
+  const timeout=setTimeout(annuler,180000);
+  event.request.signal.addEventListener("abort",annuler,{once:true});
+  const nettoyer=()=>{clearTimeout(timeout);event.request.signal.removeEventListener("abort",annuler);if(interrupteur)abort.signal.removeEventListener("abort",interrupteur);if(identite)identite.fermer();if(flux){flux.delete(abort);if(!flux.size)pmpSwFlux.delete(clientId);}};
+  try{
+    identite=await pmpSwIdentite(clientId,abort);
+    if(event.request.signal.aborted||pmpSwEpochs.get(clientId)!==identite.epoch)throw new Error("private_media_stale");
+    flux=pmpSwFlux.get(clientId)||new Set();pmpSwFlux.set(clientId,flux);flux.add(abort);
+    const headers=new Headers();if(identite.mode==="user")headers.set("Authorization","Bearer "+identite.token);
+    headers.set("X-Passio-Media-Read","1");
+    delete identite.token; // Le port de cycle de vie n'a plus de credential ni d'operation de lecture.
+    ["Range","If-Range"].forEach(n=>{const v=event.request.headers.get(n);if(v!==null)headers.set(n,v);});
+    amont=await fetch(url.href,{method:event.request.method,headers:headers,credentials:"omit",cache:"no-store",redirect:"error",signal:abort.signal});
+    if(abort.signal.aborted||pmpSwEpochs.get(clientId)!==identite.epoch)throw new Error("private_media_stale");
+    if(!/no-store/i.test(amont.headers.get("Cache-Control")||"")||amont.status===304||amont.status<200||amont.status>=300&&![401,403,404,405,408,416,429,500,502,503].includes(amont.status))throw new Error("private_media_response");
+    const responseHeaders=new Headers(pmpSwHeaders);
+    ["Content-Type","Content-Length","Content-Range","Accept-Ranges","Cross-Origin-Resource-Policy","Referrer-Policy"].forEach(n=>{const v=amont.headers.get(n);if(v!==null)responseHeaders.set(n,v);});
+    if(event.request.method==="HEAD"||!amont.body){await amont.body?.cancel();nettoyer();return new Response(null,{status:amont.status,headers:responseHeaders});}
+    reader=amont.body.getReader();
+    let termine=false;
+    const body=new ReadableStream({
+      start(controller){interrupteur=()=>{if(termine)return;termine=true;controller.error(new Error("private_media_stream"));nettoyer();reader.cancel().catch(()=>{});};abort.signal.addEventListener("abort",interrupteur,{once:true});if(abort.signal.aborted)interrupteur();},
+      async pull(controller){try{const item=await reader.read();if(termine)return;if(abort.signal.aborted||pmpSwEpochs.get(clientId)!==identite.epoch)throw new Error("private_media_stale");if(item.done){termine=true;nettoyer();controller.close();}else controller.enqueue(item.value);}catch(_){abort.abort();if(!termine)interrupteur();}},
+      cancel(){termine=true;abort.abort();nettoyer();reader.cancel().catch(()=>{});}
+    });
+    return new Response(body,{status:amont.status,headers:responseHeaders});
+  }catch(_){abort.abort();nettoyer();if(reader)await reader.cancel().catch(()=>{});else await amont?.body?.cancel().catch(()=>{});return pmpSwRefus(401);}
+}
+// END PRIVATE MEDIA SW v1
+
 // Fetch : network-first pour index.html, cache-first pour le reste
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-
   const url = new URL(e.request.url);
+  // Toujours avant les caches et avant le filtre GET : HEAD/Range restent autorises.
+  if(url.origin===self.location.origin&&url.pathname.startsWith("/private-media/")){
+    if(e.request.method==="POST")return; // Lecture explicite hors de TOUS les workers, anciens compris.
+    e.respondWith(pmpSwRequete(e,url));return;
+  }
+  if (e.request.method !== "GET") return;
 
   // Ne pas intercepter les appels externes (Supabase, CDN Leaflet, etc.)
   if (url.hostname !== self.location.hostname) return;

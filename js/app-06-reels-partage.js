@@ -1387,7 +1387,7 @@ function _myProfileEventsHTML() {
       if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
     } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
         + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
         + 'onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
@@ -1603,7 +1603,7 @@ function renderProfileContent() {
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
@@ -1612,6 +1612,7 @@ function renderProfileContent() {
     var bobines = mine.filter(function(p){return p.isReel;});
     myPostsDiv.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
           var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
@@ -1785,7 +1786,7 @@ function passioOpenCropper(src, opts) {
       apply();
     };
     img.onerror = function() { ov.remove(); reject(new Error("img load failed")); };
-    img.src = src;
+    if(!passioMediaProteges.poserImage(img,src))img.src=src;
 
     zoomEl.addEventListener("input", function() { zoomTo(parseFloat(zoomEl.value), VW / 2, VH / 2); });
     view.addEventListener("wheel", function(e) {
@@ -5295,7 +5296,7 @@ function renderPhotoPreview() {
   _libelleBoutonMedia("photo", !!photoDataUrl);
   if (!photoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <img loading="lazy" decoding="async" src="${photoDataUrl}" alt="preview"/>
+    <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(photoDataUrl)}="${safeUrlAttr(photoDataUrl)}" alt="preview"/>
     <button type="button" class="photo-clear" onclick="clearPhoto()" aria-label="Retirer la photo">✕</button>
   </div>`;
 }
@@ -5343,7 +5344,7 @@ function renderVideoPreview() {
   if (!box) return;
   if (!videoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <video src="${videoDataUrl}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
+    <video ${passioMediaProteges.local(passioMediaProteges.route(videoDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(videoDataUrl)}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
     <button type="button" class="photo-clear" onclick="clearVideo()" aria-label="Retirer la vidéo">✕</button>
   </div>`;
 }
@@ -5376,7 +5377,7 @@ $("#audioInput").addEventListener("change", (e) => {
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "Audio chargé et prêt à publier";
-    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
+    $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
     toast("Audio chargé", "success");
   };
   reader.readAsDataURL(f);
@@ -5459,7 +5460,7 @@ async function toggleRecording() {
         $("#studioVideo").style.display = "none";
         $("#studioAudio").style.display = "block";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
-        $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
+        $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">Supprimer</button>`;
       };
       reader.readAsDataURL(blob);

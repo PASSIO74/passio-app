@@ -56,6 +56,13 @@
 - 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
 - 🕳️ UNE GARDE QUI LIT À TRAVERS `| grep -q` ÉCHOUE OUVERTE — CE QUI PART D'UN AGENT SE LIT COMMIT PAR COMMIT (2026-11-13)
 - 📦 LES PAQUETS NPM ET DENO DE LA CI VIENNENT D'UN LOCKFILE OU D'UNE EMPREINTE — UNE DÉPENDANCE PUBLIÉE UNE MINUTE AVANT LE DÉPLOIEMENT Y ENTRAIT (2026-11-14)
+- 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
+- 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
+- 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
+- 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+- 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+- 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
+- ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1783,3 +1790,1270 @@ barre SMTP, la connexion à 72 % et son supplément de 10 €, croissance et mod
 Risque critique : métriques et décisions du pilotage. Aucun appel Brevo, secret,
 changement Auth/RLS, admission, délestage ou automatisme ajouté. Contre-revue et
 CI requises avant livraison ; retour arrière par PR de revert.
+
+
+## 🚦 LES SIGNAUX DE PANNE PASSENT D'ABORD, LA PERFORMANCE CESSE DE SE RÉPÉTER, UN CLIC LENT SE VOIT — PREMIER LOT DE L'AUDIT « 100 000 » (2026-11-20)
+
+Audit complet et feuille de route : `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (six familles,
+chacune contredite, quinze trous triés par rendement). Ce lot en livre la pièce de tête (T1) et
+la mesure du clic lent (T10, volet client) — côté appareil, sans migration.
+
+**Mesuré (canal ①, 72 h)** : `perf` = 77 % des lignes de `telemetry_events`, dont 83 % de photos
+`ios_stat_*` « periodic ». `perf-ios.js` réémettait toutes les 3 min l'agrégat CUMULÉ de chaque
+métrique, inchangé ou non, onglet masqué compris (`ios_stat_gate_ready` : 1 218 lignes pour 66
+sessions, valeur mesurée une seule fois). Le commentaire « ~4 lignes par session » de
+`telemetry.js` était faux (≈ 87 à 133). À 2 000–5 000 onglets ouverts, ce flux seul dépassait le
+plafond de débit de la base (4 200/min) ; un 429 refuse le lot ENTIER, la file de 300 jetait « les
+plus anciens » sans regarder le type, et le lot suivant repartait dans l'ordre d'arrivée — erreurs,
+flows et clics morts partaient avec les photos, au moment exact où la Sentinelle en a besoin.
+
+⚠️ **PRIORITÉ À TROIS ENDROITS, ORDRE RELATIF CONSERVÉ** (`_estPrioritaire`, `_bornerFile`,
+js/telemetry.js) : type critique, OU gravité ≥ `warn`, OU ligne portant un `correlation_id`. Au
+débordement et au rechargement du backlog, les non-prioritaires les plus anciens partent d'abord ;
+le lot se compose en deux passes, les prioritaires en tête. Le retrait par identité
+(`telemetrie-doublons`) n'est pas touché. ⚠️ **Une ligne corrélée voyage avec son flow** : la
+requête `api` d'un flow n'est ni critique ni grave, et le premier jet la laissait partir un lot
+après son `start`, ou tomber la première — `dashboard/server/traces.js` lit alors un « clic sans
+effet ». Avant le lot, le début et sa requête vieillissaient ensemble : la priorité ne doit pas les
+séparer (contre-revue, S1).
+
+⚠️ **ON NE TIRE PAS AU SORT UN AGRÉGAT, ON CESSE DE LE RÉPÉTER — ET « A BOUGÉ » NE SE LIT PAS SUR
+`n`** (js/perf-ios.js). Une métrique ne repart que si elle a REÇU un enregistrement depuis sa
+dernière ligne (`recus`, jamais plafonné). Le premier jet comparait `n`, la taille de l'anneau :
+à 120 échantillons il ne bouge plus, et les métriques les plus actives se figeaient à leur valeur
+du 120ᵉ, photo de sortie comprise — une dégradation en cours de longue session devenait invisible.
+Défaut BLOQUANT trouvé par la contre-revue (B1), reproduit par un test rouge avant le correctif.
+`ios_context` ne repart qu'avec une métrique ou si ses compteurs ont bougé ; `reset()` oublie aussi
+ce qui a été émis ; la cadence périodique S'ESPACE (3, 6, 12, 24 min, puis 30 — `delaiPeriodique`),
+et seulement sur une photo PRISE : un battement refusé ne compte pas, sinon une longue absence
+repoussait la photo du retour à 30 min.
+
+⚠️ **LA MESURE DE PERFORMANCE CÈDE SOUS LA PRESSION** (`photoUtile`, `photo`). Dédoublonner ne
+suffit pas à l'échelle : une photo vaut ~12 lignes, et 500 sessions qui démarrent par minute en
+font 6 000 — plus que le plafond. Au moindre signal de pression, AUCUNE photo automatique (ni t45,
+ni périodique, ni arrière-plan, ni sortie). Deux signaux : la production en délestage ×2/×4, et
+`tel.sousPression()` — CET appareil s'est vu refuser un lot en 429 : vrai pendant l'attente, puis
+tant qu'AUCUN envoi n'a réussi depuis (le tuyau n'a pas prouvé qu'il était rouvert), et encore
+10 min après le dernier refus. Ce que la base refuse, elle le refuse à tous : pas besoin d'attendre
+que la veille pose un délestage, 5 min au mieux. Cette mémoire n'est pas persistée — un
+rechargement l'oublie jusqu'au prochain refus. Rien n'est marqué « émis » pendant le silence : la
+pression passée, la photo suivante emporte ce qui a bougé. Photo périodique : en plus, onglet
+visible. Photo au passage en arrière-plan après 45 s (un mobile tue souvent l'onglet masqué sans
+`pagehide`) — ⚠️ elle n'est qu'EN PARTIE en keepalive : au-delà de 12 lignes la vidange ordinaire
+de la file en emporte une part, que le système peut couper ; ces lignes restent dans la file
+persistée et repartent au prochain démarrage. `snapshot()` reste l'outil nu (bancs, baseline à la
+main). Aucun lecteur du nuage ne lisait `ios_stat_*`.
+⚠️ **Ce lot NE lève PAS le plafond serveur** : il fait céder le bruit et passer les preuves dans ce
+que la base accepte. La réserve de débit pour les types critiques reste à faire (T2, migration).
+
+⚠️ **UN CLIC LENT SE MESURE, MAIS ON N'INVENTE JAMAIS UN DÉLAI** (écouteur de clic, telemetry.js).
+L'audit supposait que le minuteur de secours (1 s) passait avant la seconde peinture après un
+blocage, effaçant le clic le plus lent. **Non reproduit dans Chromium** (la double peinture gagne
+la course), possible ailleurs. Le discriminant est le **retard du minuteur lui-même** : en retard
+de ≥ 250 ms (`CLIC_FIL_BLOQUE_MS`), page visible, le fil était bloqué — on rapporte l'attente
+vécue ; à l'heure, rien n'a été peint dans la seconde : mesure vide, comme avant
+(`latence-percue.spec.js` ② garde cet invariant ; le tout premier jet l'enfreignait et l'a rougi).
+⚠️ **UN SEUL MINUTEUR, À 1 s, ET C'EST UN CONTRAT** : la Sentinelle apparie un clic à son effet en
+supposant le clic horodaté au plus ~1 s après le toucher (`BOUTON_AVANCE_MS`). Le deuxième jet
+attendait la peinture jusqu'à 5 s : des boutons vivants seraient passés pour morts (S2).
+Au-delà de 500 ms (`CLIC_LENT_MS`, seuil « mauvais » de l'INP), le clic porte `severity: "warn"`
+et `meta.lent = 1` : jamais échantillonné, en tête de lot. PAS de `status: "slow"` —
+`traces.js` juge les parcours sur ce champ. ⚠️ **Une durée n'est une latence que si quelqu'un
+regardait** : page occultée depuis le toucher (`_occultation` : arrière-plan, gel, départ, retour
+par le cache de navigation) ou durée > 30 s → mesure vide, sinon une suspension iOS fabriquerait
+de faux clics lents (R2). Aucun compteur ne lit `click` en `warn` (la veille ne compte que
+`type = error`) ; un clic lent vit 7 jours au lieu de 3 (purge par gravité).
+
+⚠️ **LES ENVOIS DE FERMETURE ONT UN BUDGET DE POIDS COMMUN, PARCE QUE LEUR QUOTA EST PARTAGÉ**
+(`KEEPALIVE_OCTETS_MAX` = 16 Ko, `keepaliveVols`, `flush`). Le navigateur plafonne à 64 Kio la
+SOMME des envois `keepalive` en vol, et la sauvegarde d'état du compte (`supaSaveUserStateBeacon`,
+jusqu'à 60 Ko) part sur le même événement, juste après la télémétrie. Vingt lignes ordinaires
+pèsent ≈ 12 Ko ; les prioritaires, désormais en tête, sont les plus lourdes. Histoire de ce point,
+à garder, parce qu'il a fallu trois passes : ① la première contre-revue craignait « 4 000
+caractères de pile par erreur » — faux, `redactString` borne message et pile à 500 caractères ; le
+correctif en avait conclu « ≈ 1 Ko par erreur, 21 Ko pour vingt » et retiré la borne — faux aussi ;
+② la seconde a MESURÉ 1,2 à 1,8 Ko par erreur, **32 351 octets pour vingt**, et rappelé le quota
+partagé : borne remise, par lot ; ③ la relecture de ce delta a montré qu'une borne PAR LOT ne tient
+pas la promesse — deux `flush` partent sur un même passage en arrière-plan (celui de la télémétrie,
+puis celui de la photo de perf-ios) et laissaient 31 Ko en vol. Le budget est donc commun à tous les
+envois keepalive en vol (un envoi rend son poids quand il aboutit, échoue, ou après 60 s sans
+réponse). La composition S'ARRÊTE au premier événement qui ne tient pas : ni un plus léger qui
+double, ni du bruit qui comble devant une erreur — l'ordre de la file reste strict sur ce chemin
+aussi. Ce qui ne part pas reste dans la file persistée et repart au prochain envoi (événement
+suivant, retour au premier plan, démarrage suivant) : un succès keepalive n'enchaîne pas de
+lui-même. Le premier événement part toujours quand rien n'est en vol.
+Mesuré par la dernière relecture, sur son scénario (40 erreurs lourdes en file, passage en
+arrière-plan) : 14 590 octets en vol au lieu de 31 480, et une sauvegarde d'état de 50 Ko passe
+(elle était refusée dès 40 Ko). ⚠️ **Contrepartie, à connaître** : à la FERMETURE avec une file
+chargée de lignes ordinaires, le premier lot peut prendre ≈ 12 Ko ; la photo de sortie n'a alors
+plus qu'environ 4 Ko en keepalive (≈ 6 lignes au lieu de 20) et le reste — `session/end` compris
+s'il est derrière — attend dans la file persistée jusqu'au démarrage suivant. Sans effet au masquage
+ordinaire, où le premier lot pèse 0,5 à 3 Ko.
+
+**Limites connues, non traitées ici** : ① un clic dont le gestionnaire bloque plus de ~1 s est
+horodaté après son effet de plus de `BOUTON_AVANCE_MS` — la famille « bouton mort » peut le lire
+« sans effet » (préexistant ; le détecteur peut désormais rétro-dater par `meta.ms`, lot suivant) ;
+② au débordement de la file, un clic LENT (prioritaire) survit à son effet `nav`/`action` (qui ne
+l'est pas) — même lecture possible, mais il faut un débordement chez plusieurs comptes sur le même
+bouton ; ③ sans peinture, un blocage de 1,0 à 1,25 s part encore sans durée, et une suspension
+silencieuse (aucun événement de page) de moins de 30 s fabriquerait un faux clic lent — théorique ;
+④ le lecteur « Interface lente » du pilotage (par écran, en taux, par version) reste à faire : le
+signal existe, il ne sonne pas encore.
+
+Verrou : `tests/e2e/telemetrie-priorite-sobriete.spec.js` (13), dont le CÂBLAGE des minuteurs à
+l'horloge simulée (②d : personne ne lit encore `ios_stat_*`, des photos qui ne partiraient plus ne
+se verraient nulle part). Trente-quatre réinjections, toutes rouges — chaque garde nommée ci-dessus
+retirée une à une. Quatre passes de contre-revue adversariale : la première a trouvé B1, S1 et S2 ; la
+seconde, sur l'état corrigé, aucune objection bloquante et six remarques ; la troisième, sur leur
+traitement, le budget de poids à rendre commun ; la quatrième l'a confirmé, mesure à l'appui. ⚠️ Le plafond client de 400/min/onglet
+empêchait la file de déborder dans le banc ③ — un cas qui ne déborde pas passe au vert sans rien
+prouver : le banc décale `Date.now` d'une minute par salve ET exige une file pleine.
+À mesurer après déploiement (canal ①, trafic public seul) : lignes par minute et par session, part
+des `perf`, avant et après.
+
+## 🚏 UNE FONCTION RETENUE RETENAIT LES SIX — LA SÉLECTION LIT CE QUI EST SERVI, LA RETENUE EST PARTIELLE, LE RUN ROUGE SE VOIT (2026-11-21)
+
+**Constat, mesuré le 21/11.** `edge-functions.yml` vérifiait puis déployait les SIX fonctions à chaque push qui touchait `supabase/functions/**`. Le manifeste des prérequis (`.passio/deploiement/prerequis-fonctions.json`) exigeait pour `private-media` : `reglage:medias_proteges.actif=false`. Or le pilote a ouvert les médias protégés depuis le téléphone le **19/11 à 10:43:13 UTC** (canal ① : `reglages_distants.medias_proteges = {"actif": true}`, `pose_par: pilote`). Depuis, tout déploiement « toutes fonctions » était retenu EN ENTIER :
+- run 44831711346 (push c6efb27, 20/11 22:46 UTC) : cinq fonctions « prérequis présents », `private-media` RETENUE, **rien de déployé** ;
+- ce push ne changeait que `_shared/politique-autonomie.js`, emporté par `pilotage` seule ;
+- le run d'avant (19/11 07:24 UTC, avant l'ouverture) était vert ; le contournement du 21/11 a été un passage manuel `fonction=pilotage` (run 44867428203) ;
+- personne n'a vu le rouge avant le lendemain : aucun lecteur du pilotage ne lisait ce workflow.
+
+**La décision : « actif=false » était un contrôle de la PRÉPARATION, pas une règle.** ADR-014, « Ordre de livraison retenu le 17 novembre », étape 1 : livrer le courtier sur un serveur FERMÉ (« avant le déploiement privé, la retenue exige la valeur JSON `false` »). L'étape 3 est l'ouverture, faite le 19/11. Aucun texte ne dit « on ne redéploie jamais `private-media` pendant qu'elle sert », et une telle règle coûterait cher : pour livrer un correctif de sécurité du courtier, il faudrait d'abord couper les lectures et les envois de tous les comptes. Un déploiement de fonction est un remplacement de version, comme pour les cinq autres. Le prérequis est donc **retiré**, et remplacé par ce qui reste vrai après l'ouverture :
+- `reglage:medias_proteges.actif:booleen` — l'interrupteur EXISTE et porte un booléen JSON (absent, `{}`, `"true"`, `1` : le serveur le tient pour fermé, mais personne ne l'a décidé — retenue) ;
+- sa VALEUR n'est plus une condition : elle est LUE (`etat:medias_proteges.actif`) et la fumée exige que la fonction servie dise exactement cet état.
+
+**Ce qui change.**
+- **① La sélection** (`scripts/fonctions-a-deployer.mjs`). Sur un push, chaque fonction dit ce qu'elle SERT (`X-Passio-Revision`, une requête OPTIONS sans jeton). Git dit ce qui a changé depuis ce commit-là, sous `supabase/` et dans le workflow. Une fonction est concernée par :
+  - son dossier, et tout module de la clôture des imports de son `index.ts` ;
+  - ce qui n'est attribuable à personne — un `supabase/config.toml`, une carte d'imports à la racine des fonctions, une donnée de `_shared/` : on ne sait pas qui le lit, donc toutes ;
+  - le workflow lui-même, qui porte la FAÇON de déployer (`--no-verify-jwt`, la version de la CLI) : le changer redéploie les six.
+
+  Elle ne l'est pas par le dossier d'une autre fonction, par un module partagé qu'elle n'emporte pas, ni par un `.md`. Rien ne la concerne : ni vérifiée, ni déployée. Le doute déploie : révision illisible ou « dev », commit absent de l'historique, clôture incalculable, fonction injoignable. À la demande (« Run workflow »), la fonction nommée, ou toutes.
+- **② La retenue partielle** (`verifier-prerequis-fonctions.mjs --partiel`). Une fonction dont un prérequis obligatoire manque reste celle d'avant ; les autres partent. Une cible ILLISIBLE arrête toujours tout (code 2). L'étape tourne à chaque passage, même quand rien n'est en retard (`--fonctions ""` : aucune fonction, jamais « toutes »), pour deux lectures :
+  - l'état des réglages, dont la fumée a besoin ;
+  - les prérequis des fonctions EN SERVICE que ce run ne redéploie pas (`--en-service`). Absents, rien n'est retenu — rien ne part pour elles — mais c'est dit (`sans_prerequis`) et le run rougit : la base a dérivé sous une fonction qui tourne.
+
+  Sans `--partiel`, le contrat d'avant tient (code 1) : les bancs SQL et un contrôle à la main.
+- **③ La fumée éprouve TOUT ce qui est servi** : ce qui vient de partir (révision attendue : ce commit), et toute autre fonction dont la révision se lit — à jour ou RETENUE — à la révision que la sélection a lue. Pour `private-media`, elle reçoit l'état lu, sans valeur par défaut, et rougit dans les deux sens : un courtier « ouvert » quand la coupure est posée, ou l'inverse. Chaque rouge est une annotation et une ligne du résumé du run. Une requête sans réponse (dix secondes, un nouvel essai) rougit SA fonction, « 000 », sans arrêter l'étape.
+- **④ Le verdict.** S'il y a eu une retenue, ou une fonction en service sans un prérequis, le run rougit APRÈS le déploiement et la fumée des autres. Son résumé nomme la fonction, l'objet manquant, la migration à appliquer et la raison ; la page du run porte une annotation par fonction.
+- **⑤ Le pilotage.** La fonction lit les passages `push` d'`edge-functions.yml` (`runs.fonctions`). En échec : la ligne « Le déploiement des fonctions serveur a échoué », étiquette « À trier », un lien vers le run, jamais « Régler » — ce qu'elle attend est une migration (canal ③, avec sa revue), un correctif ou un jeton, pas un agent. Son texte nomme les quatre causes possibles sans en affirmer une ; c'est la page du run qui dit laquelle. Illisible, c'est dit, sans figer la veille.
+- **⑥ Chaque étape exige le témoin de celle d'avant** : la retenue celui de la sélection (`selection=faite`), la fumée celui de la retenue (`plan=lu`). Un script qui ne ferait rien ne passe pas pour « rien à faire ».
+
+**Pourquoi l'état servi, et pas le diff du push.** Un diff ne connaît que son push. Un run retenu, cassé ou ÉVINCÉ de la file (la concurrence du workflow ne garde qu'un run en attente : le deuxième de trois pushes rapprochés est annulé) emportait son changement avec lui : la fonction restait en retard jusqu'au prochain push qui la touche. Jusqu'ici, « tout redéployer à chaque fois » rattrapait ce retard par accident. L'état servi se relit : le run suivant, ou le même run relancé, livre ce que le précédent n'a pas livré.
+
+**Mesuré.**
+- Production, canal ①, 21/11 : la requête du nouveau vérificateur rend les **49 prérequis des six fonctions présents**, `reglage:medias_proteges.actif:booleen` présent, `etat:medias_proteges.actif` = true. La forme gardée de la requête du réglage (ci-dessous) y rend le même résultat, et `false` pour une table qui n'existe pas.
+- Le 20/11 rejoué sur l'historique réel (toutes les fonctions servies à 9a9ae7d, `main` à c6efb27) : seule `pilotage` est sélectionnée.
+- Bancs PostgreSQL réels : `prerequis-fonctions.test.sh` 43 contrôles (19 avant), `migration-medias-proteges.test.sh` 197 cas — le réglage ouvert ne retient plus, quatre formes non booléennes retiennent, une cible sans `reglages_distants` retient `private-media` seule, une fonction en service sans son prérequis est dite sans être retenue.
+- **Non éprouvé d'ici** : la lecture réelle des révisions servies (le bac de travail n'atteint pas `*.supabase.co`). La première preuve sera le run de la fusion de ce lot. Il change le workflow, donc les SIX fonctions sont concernées : six vérifiées (prérequis présents), six déployées, six éprouvées, `private-media` avec l'état `true`. Le run suivant qui ne touche qu'une fonction sera la preuve de la sélection.
+
+**Quand le run est rouge.** Ouvrir le run depuis la ligne du pilotage : ses annotations, en tête de page, disent la cause.
+- « Fonction(s) retenue(s) » : appliquer la migration nommée (`npm run migration:appliquer -- <fichier>`, canal ③, contre-revue), mesurer l'état en base (canal ①), puis relancer le run de push le plus récent (« Re-run failed jobs »). La sélection ne trouve plus que la fonction en retard, la déploie, et le vert efface la ligne.
+- « Fumée rouge — <fonction> » : la fonction nommée EST en service et ne tient pas son contrat. La corriger par un commit. Relancer sans corriger ne verdit pas : chaque passage rééprouve ce qui est servi.
+- « Fonction(s) en service sans prérequis » : un objet SQL manque sous une fonction qui tourne. Le rétablir (ou corriger le manifeste s'il déclare un objet qui n'a pas lieu d'être), puis relancer.
+- « Retenue — cible non vérifiable » : le jeton Supabase de la CI a expiré, ou l'API ne répond pas. Le renouveler, relancer.
+- Le job « Valider » rouge : un verrou unitaire. Rien n'est parti. Relancer rejoue le même commit : il faut un commit qui corrige.
+
+⚠️ Un passage lancé à la main (« Run workflow ») rattrape une fonction mais n'efface PAS la ligne : le pilotage ne lit que les passages de push.
+
+**Redéployer `private-media` pendant qu'elle sert.** Aucune fenêtre, aucune coupure : un push qui change son code la déploie comme les autres. Les garde-fous sont ceux d'avant, plus la fumée : les verrous unitaires exécutent le vrai gestionnaire avant le déploiement, les registres et l'interrupteur sont vérifiés sur la cible, et la fumée relit la révision, le non-cache, le refus d'un jeton invalide et l'état du réglage. En cas de doute sur une version livrée : poser la coupure depuis le pilotage (bouton « Suspendre les médias protégés »), puis livrer le correctif — la coupure ne retient plus son propre remède.
+
+⚠️ **UN PRÉREQUIS NE PORTE PAS SUR LA VALEUR D'UN RÉGLAGE QUE L'EXPLOITATION CHANGE.** Un prérequis dit « la cible sait faire tourner ce code » : une table, une fonction SQL, une empreinte. « Le réglage vaut false » décrivait un MOMENT du plan de livraison ; le moment passé, il retenait tout, y compris le correctif qui aurait permis de refermer. `deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
+
+⚠️ **LA FUMÉE PORTAIT LE MÊME RELIQUAT, UN CRAN PLUS LOIN.** Elle exigeait `uploads_enabled: false` (`PRIVATE_MEDIA_PREPARATION_VERIFIED`). Le prérequis retiré seul, `private-media` aurait été DÉPLOYÉE puis le run aurait rougi à la fumée : un courtier remplacé en production et un rouge sans défaut. Chercher l'hypothèse d'une phase dans TOUS les contrôles qui la portent, pas dans le premier qui rougit.
+
+⚠️ **« SERT CE COMMIT » N'EST PAS « TIENT SON CONTRAT ».** Trouvé par la relecture adverse du lot, par exécution. Une fonction déployée dont la fumée échoue sert bien la révision du commit. La première version de la sélection la disait donc « à jour » au run suivant : relancé, ou suivi d'un push sans rapport, le run rouge VERDISSAIT sans rien rééprouver, et la ligne du pilotage s'effaçait pendant qu'une porte ouverte restait en ligne. Avant ce lot, « tout redéployer et tout rééprouver » tenait ce rouge par accident. Ne déployer que ce qui change n'autorise pas à n'éprouver que ce qui part : la fumée parcourt tout ce qui est servi, à chaque passage.
+
+⚠️ **UN ROUGE QUI NE SE LIT QUE DANS LE JOURNAL N'EST PAS DIT.** Trouvé par les deux relecteurs de la seconde contre-revue. La fumée écrivait son ❌ dans le journal brut de l'étape, et « Trace » est sautée dès qu'elle échoue : la ligne du pilotage menait à une page qui ne nommait ni la fonction ni la porte ouverte — alors que son texte promettait « son résumé dit laquelle ». Pire, une retenue en cours gardait SON annotation, et une porte ouverte du lendemain se lisait comme la même migration en attente. Chaque rouge s'écrit désormais là où on le lit : une annotation et une ligne du résumé, depuis l'étape qui le constate.
+
+⚠️ **NE VÉRIFIER QUE CE QUI PART, C'ÉTAIT CESSER DE RELIRE LE RESTE.** Avant ce lot, chaque push relisait les 49 prérequis. La sélection aurait retiré cette relecture sans le dire : une empreinte qui change, une table retirée sous une fonction en service ne se voyaient plus tant que son code ne bougeait pas. Un lot qui retire un travail inutile doit chercher ce que ce travail gardait par accident — ici deux choses : le contrat de ce qui est servi (la fumée), et l'accord de la base avec ce qui tourne (les prérequis).
+
+⚠️ **LA FAÇON DE DÉPLOYER VIT DANS LE WORKFLOW.** `--no-verify-jwt` et la version de la CLI n'entrent dans aucun bundle. Comparer seulement `supabase/` : retirer le drapeau ne redéployait rien, run vert, et le réglage de passerelle restait l'ancien jusqu'au prochain changement de code de la fonction. Le workflow est comparé, et classé « commun ».
+
+⚠️ **UN PASSAGE MANUEL NE DIT RIEN DU RESTE.** Un passage lancé à la main déploie une fonction, ou le staging. Lu comme un push, le passage vert du 21/11 aurait effacé la ligne du push rouge de la veille. `EVENEMENTS_RUNS.fonctions` ne compte que `push` ; le run rouge se relance (même identifiant, la tentative d'avant se relit). Les verrous (`tests/unit/**`) sont dans le déclencheur : le correctif d'une suite qui a rougi le workflow lance le run qui le reverdit.
+
+⚠️ **UNE TABLE ABSENTE N'EST PAS UNE CIBLE ILLISIBLE.** Nommée en clair, `public.reglages_distants` faisait échouer TOUTE la requête à l'analyse sur une cible qui ne l'a pas (elle est facultative pour `pilotage`) : la retenue d'une fonction redevenait totale, sous le nom « cible illisible ». La table n'est nommée que dans une requête évaluée à l'exécution (`query_to_xml`), derrière `to_regclass`.
+
+⚠️ **`revision.js` EST DANS CHAQUE CLÔTURE.** Y toucher (même son commentaire) met les six fonctions en retard. Le banc l'a montré à ses dépens : le harnais committait la révision écrite par le run précédent, et « un module de `pilotage` change » déployait tout.
+
+⚠️ **DEUX FONCTIONS PARTAGENT DES PRÉREQUIS.** `export-account` exige aussi les trois registres de médias : un registre absent retient `private-media` ET `export-account`. Le premier scénario du banc prenait `table:public.media_objects` pour un prérequis propre au courtier, et le vérificateur avait raison contre lui.
+
+⚠️ **TROIS SILENCES LUS COMME « RIEN À FAIRE ».**
+- `manifeste[f]` acceptait `constructor` : une propriété héritée passait pour une fonction déclarée, sans prérequis. Le vérificateur lit `Object.hasOwn` et refuse un nom hors `[a-z0-9-]`.
+- Un spécificateur nu (`@partage/x.js`, résolu par une carte d'imports) n'était ni suivi ni signalé : le module visé était rangé parmi « ceux qu'elle n'emporte pas ». Il rend désormais la clôture incertaine : TOUT changement sous `supabase/` concerne alors la fonction. Elle se compare quand même à ce qu'elle sert — la première correction la redéployait à chaque passage, pour toujours. Aucun dans le dépôt.
+- Appelés à travers un lien symbolique, les scripts du job ne se reconnaissaient pas « lancés en direct » : ils ne faisaient rien et sortaient en 0. La garde compare des chemins réels, et la retenue exige le témoin de la sélection (`selection=faite`).
+
+⚠️ **UNE ÉPREUVE QUI PASSE PAR LE MAUVAIS CHEMIN NE PROUVE RIEN.** « `lireRevisionServie` ne rend qu'un SHA » s'éprouvait avec un en-tête contenant un saut de ligne : `new Response` le refuse, et c'est le « injoignable » qui répondait. L'expression désancrée passait le banc. Elle s'éprouve avec des en-têtes valides qui ne sont pas un SHA seul.
+
+⚠️ **UN FAUX MONDE QUI RÉUSSIT TOUJOURS NE TIENT RIEN.** Trente-neuf mutations jouées par un relecteur contre les bancs : quatre survivaient dans la fumée. La comparaison de la révision servie (la fausse CLI « servait » toujours la nouvelle, et le banc lisait un `echo` qui imprimait la révision ATTENDUE), `OPTIONS 200` (le faux `curl` rendait toujours 200), une paire illisible sautée au lieu d'arrêter, la garde de l'état en ligne de commande. Le faux monde sait désormais échouer : un déploiement sans effet, un OPTIONS à 503, une requête sans réponse.
+
+⚠️ **UN CHANGEMENT DE SORTIE CASSE SES LECTEURS.** `scripts/controle-cible-pilote.mjs` relit la requête du vérificateur et comptait toute ligne à `false` comme un écart : la ligne `etat:` neuve le faisait sortir en 1 sur toute cible où l'interrupteur est fermé — un état légitime. Et son `--attendu` exigeait que chaque fonction serve le SHA candidat, ce que la sélection rend faux par construction. L'état y est une information ; une fonction « à jour » pour le SHA attendu y vaut « sert le SHA attendu », par la règle même du workflow.
+
+**Verrous.**
+- `tests/unit/deploiement-fonctions.test.mjs` (27) joue le job RÉEL étape par étape sous `bash -e`, dans un dépôt git jetable : `if:` et `env:` évalués, sorties d'étape et `$GITHUB_ENV` transmis. Les scripts tournent tels quels ; la CLI, `curl` et le réseau sont faux (`tests/unit/lib/faux-monde-fonctions.mjs`, chargé par `NODE_OPTIONS=--import` : aucun crochet de test dans le code de production), et savent échouer. Il est listé dans l'étape « Verrous », avant tout déploiement. Trente secondes.
+- `tests/unit/edge-functions-verrous.test.mjs` : ⑩ chaque script que le job qui déploie exécute est importé par une suite listée ; ⑪ la clôture que lit la sélection est celle du banc (le lexeur a déménagé dans `scripts/lib/lecteur-imports.mjs` : un lecteur, deux emplois).
+- `private-media-chemins.test.mjs` (fumée ouverte, fermée, divergente, état non lu), `pilotage-chemins.test.mjs` ㊸ bis et ㊹, `pilotage.test.mjs` ㊴.
+
+**Réinjections.**
+- Sept sont rejouées à chaque passage du banc, sur le texte réel du workflow : `--partiel` retiré (une retenue retient tout : zéro déploiement) ; la sélection remplacée par `--toutes` (les six partent pour un module de `pilotage`) ; l'étape « Verdict » retirée (une retenue rend le run vert) ; la CLI qui refuse une fonction (l'étape s'arrête, le run suivant rattrape et éprouve) ; la sélection rendue muette, puis la retenue (l'étape suivante refuse) ; une paire illisible dans le plan (la fumée s'arrête, nommée).
+- Soixante-douze autres, jouées à la main dans une copie du dépôt, chacune rouge :
+  - la sélection : un commit absent ou une révision illisible lus « à jour » ; la descendance ignorée ; la clôture ignorée ou tronquée à ses imports directs ; un fichier commun, ou le workflow, qui ne concerne personne ; le dossier d'une autre fonction, un module non emporté ou un `.md` qui concernent tout le monde ; git borné à `supabase/functions` ; « dev » accepté comme un SHA ; l'expression du SHA désancrée ; le dossier `a-bis` pris pour celui de `a` ; le cache du comparateur qui rend la réponse d'une autre révision ; une demande manuelle qui ne force plus ; un spécificateur nu ignoré ; les révisions servies non rendues, ou rendues pour les seules fonctions à jour ; la garde par URL revenue ; une fonction incertaine qui repart à chaque passage, ou qui ignore ce qui change ailleurs ; plus de nouvel essai de lecture ;
+  - la retenue : une fonction retenue dans le plan ; un facultatif qui retient ; l'état du réglage non lu, ou une réponse tronquée, lus comme une réponse ; n'importe quelle valeur prise pour un booléen ; l'ancien « =false » redevenu lisible ; `Object.hasOwn` retiré ; `private-media` rendue facultative ; une liste vide relue « toutes » ; l'état lu pour les seules fonctions vérifiées ; les fonctions en service non relues ; `sans_prerequis` toujours vide ; un facultatif absent en service qui rougit ; une cible non vérifiable sans annotation ;
+  - la fumée : « fermé » par défaut ; l'état non exigé, dans la fonction puis en ligne de commande ; ce qui est servi sans être redéployé non éprouvé ; une fonction retenue non éprouvée ; la porte (POST sans jeton), OPTIONS 200 ou la révision servie non regardés ; un courtier rouge qui ne marque plus l'échec ; un rouge sans annotation, ou absent du résumé ; une requête sans réponse qui arrête l'étape ; une paire illisible sautée ;
+  - le workflow : « Déployer » qui prend les fonctions concernées, retenues comprises ; la fumée sans l'état lu, ou seulement s'il y a un plan ; la retenue seulement si quelque chose est concerné ; le témoin de la sélection, puis celui du plan, non exigés ; le Verdict qui ne regarde que les retenues ; l'historique superficiel ; le banc retiré des verrous ; la liste fermée retirée ; le jeton donné à la sélection ; le déclencheur sans les verrous ;
+  - le pilotage : un passage manuel compté comme un push ; la ligne rendue réparable ; le run non lu ; illisible, tu ; le verrou unitaire oublié du texte ; « n'a pas abouti » dit avec le texte de l'échec ;
+  - le contrôle de cible : l'état compté comme un écart ; « à jour » refusé.
+- Une mutation est restée verte, à raison : faire rendre une liste vide à une cible en panne. Le garde suivant (« la cible n'a pas répondu pour … ») retient quand même. Les deux gardes ont chacun leur épreuve (⑬).
+
+**Contre-revues adverses.** Trois relectures par des instances distinctes de l'auteur, en lecture seule, chargées de prouver que le lot est cassé ; chaque constat a été rejoué contre le code avant d'être traité. Il n'y a eu ni second modèle ni relecteur humain.
+- **Première**, sur l'état initial (c0a3172) : un défaut sérieux — « sert ce commit » pris pour « tient son contrat » — et six angles morts. Corrigés dans 3c8b3f3 : la fumée de tout ce qui est servi, le workflow parmi ce qui concerne, le spécificateur nu, la table absente, l'épreuve creuse du SHA, la garde par URL, le texte de la ligne du pilotage.
+- **Deuxième et troisième**, indépendantes l'une de l'autre, sur la tête 4879888 : « aucune objection bloquante » pour les deux, et les cinq corrections de la première tiennent. Un constat sérieux commun (un rouge de fumée qui ne se lisait que dans le journal) et des mineurs : la fonction retenue non éprouvée, les prérequis des fonctions en service plus jamais relus, quatre épreuves creuses, `controle-cible-pilote.mjs` cassé par la ligne d'état, une fonction incertaine redéployée sans fin, des consignes de relance contradictoires, `curl` sans délai, la retenue sans témoin. Tous corrigés dans ce lot. L'une des deux a rejoué 39 mutations dans un clone, lu la production en lecture seule et les journaux des runs des 19, 20 et 21/11.
+- **Quatrième**, sur le seul delta des corrections (4879888..170bfed) : « aucune objection bloquante ». Corrigés ensuite : le texte « n'a pas abouti », qui affirmait « rien n'est cassé » sans pouvoir le savoir (un passage annulé pendant « Déployer » laisse des fonctions non éprouvées) ; `--retry` sans `--retry-max-time` (un `Retry-After` long aurait figé la fumée) ; le message d'une cible non vérifiable, sur une ligne jusque dans le journal ; un résumé qui disait « 0 fonction éprouvée : chacune tient son contrat » ; une fonction retenue dont la révision ne se lit pas, tue ; un 429 ou un 408 passagers, non relus.
+- La CI a trouvé ce qu'aucune relecture n'avait vu : sous GitHub Actions le vérificateur dit un refus deux fois (journal et annotation), et un contrôle du banc SQL comptait les lignes. Les suites se rejouent désormais aussi avec `GITHUB_ACTIONS=true` avant de pousser.
+- Familles sans défaut trouvé par aucune des relectures : un déploiement qui partirait à tort, une injection (entrée du passage manuel, en-tête servi, noms, sorties d'étape), une fumée de `private-media` qui passerait à tort, une ouverture sur les médias protégés.
+- Le premier run réel, simulé par la troisième sur les révisions réellement servies (9a9ae7d pour cinq fonctions, c6efb27 pour `pilotage`) : six fonctions à déployer, 49 prérequis présents ; entre 9a9ae7d et la tête, seuls changent sous `supabase/` les fichiers de `pilotage` — les cinq autres repartent à l'identique, seule leur révision change.
+
+**Limites connues.**
+- **Un vieux run relancé peut encore déployer l'ancien code**, dans deux cas : une révision illisible sur un vieux run de push (le doute déploie CE commit), et un vieux passage MANUEL relancé (il ne lit pas l'état servi). Les deux le faisaient déjà avant ce lot ; seul le vieux push dont les révisions se lisent est désormais couvert. Savoir qu'un run n'est plus la tête de `main` demande de lire GitHub au moment du run : le clone d'un run ancien ne le dit pas de façon sûre (non mesuré ici — à vérifier sur un vrai run avant de s'y fier). Reste à faire.
+- **Un verrou unitaire rouge laisse une ligne que « relancer » n'efface pas.** Le job « Valider » rejoue le même commit. Le déclencheur couvre `tests/unit/**`, mais les suites lisent plus loin (`js/`, `pilotage/`, `migrations/`, d'autres workflows) : un correctif qui ne touche que ces chemins ne lance aucun run, et la ligne attend le prochain push qui touche `supabase/` ou `tests/unit/` — un commit sur trois de `main` depuis le 1er novembre. Le texte de la ligne le dit. La CI de `main` (`deploy.yml`) joue les mêmes suites et rougit au même moment : le défaut, lui, ne passe pas inaperçu.
+- **« La porte tient » éprouve la passerelle, pas le gestionnaire**, pour les cinq fonctions déployées sans `--no-verify-jwt` : c'est elle qui répond 401 à un POST sans jeton. C'était déjà le cas ; le refus du gestionnaire est tenu par les bancs qui l'exécutent.
+- Les prérequis se déclarent par FONCTION, les changements arrivent par MODULE partagé. Un module emporté par deux fonctions, dont le nouvel objet SQL n'est déclaré que chez l'une : l'autre part sans lui. Avant, tout était retenu ensemble, ce qui masquait l'oubli. À relire dans toute PR qui ajoute un prérequis.
+- Entre la lecture du réglage et la fumée (une à deux minutes), un geste du pilote sur l'interrupteur fait rougir la fumée à tort. Le run se relance.
+- Une fonction en retard n'est rattrapée qu'au prochain run : un push qui touche les chemins du déclencheur, ou une relance. Rien ne le planifie.
+- Les runs de push sont environ trois fois plus nombreux qu'avant (les verrous sont au déclencheur) : chacun lit la production par le jeton de la CI et envoie une vingtaine de requêtes aux fonctions. Un aléa réseau est retenté une fois ; au-delà, c'est une ligne à relancer.
+- La fumée de `private-media` ne lit que ses capacités : aucune sonde de lecture négative (un média inexistant, en anonyme) alors que le courtier part désormais ouvert. Sa liste de sondes est un choix du lot médias (« uniquement capabilities, sans données utilisateur ») ; l'élargir relève de ce lot.
+- Une fonction « incertaine » qui importerait du code HORS de `supabase/` ne verrait pas ce code changer : git ne compare que `supabase/` et le workflow. Aucune fonction n'est incertaine aujourd'hui, et le banc des verrous refuse un import introuvable sur `main`.
+- `controle-cible-pilote.mjs --attendu` lit les clôtures de l'arbre de travail : à lancer dans un clone placé sur le SHA attendu. Une fonction en avance sur ce SHA, ou incertaine, y reste comptée en écart.
+- Restent sans épreuve : le délai de 30 s et la panne réseau du vérificateur (le faux monde ne lève pas pour l'API de gestion), et la lecture de la dernière révision quand deux blocs d'en-têtes arrivent.
+- Le lexeur perd un import dans deux formes artificielles, sur une seule ligne (`i++ / 2; import(…); c / 3`, et une expression régulière après `if (…)`). Aucun cas dans le dépôt ; ⓪ du banc des verrous rougirait pour un module de `_shared` devenu orphelin.
+
+## 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
+
+Trou T4 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (« la Sentinelle s'aveugle par ses plafonds de
+lecture »), dans sa part **sans migration**, plus le seul cas de T9 qui faisait mentir l'écran.
+Fichiers : `scripts/sentinelle-detecter.mjs`, `.github/workflows/sentinelle-autonome.yml`,
+`supabase/functions/_shared/pilotage.js` (et un mot `export` dans `_shared/parcours.js`).
+Fiche de la chaîne : `docs/SENTINELLE_AUTONOME.md`, section « Elle lit tout, ou elle dit ce qu'elle n'a pas lu ».
+
+**Le défaut, en une phrase** : quand il y avait trop à lire, la Sentinelle cessait de juger — des
+familles entières (boutons, parcours) ou tout ce qui dépassait les 1 000 lignes les plus récentes
+(erreurs JS, appels refusés) — et sans place d'enquête elle ne lisait même plus la production. Le run
+finissait VERT, et le pilote lisait « rien à corriger ».
+
+**Mesuré en lecture seule (canal ①) le 2026-11-21 à 07:12 UTC, production, 72 h** : 84 sessions ;
+1 909 « effets » (`action|nav|api|flow`), soit 22,7 par session — le plafond de 10 000 lignes mordait
+donc vers 435 à 440 sessions par 24 h, et la famille bouton entière ne désignait alors plus rien ; 984
+de ces effets (52 %) sont les six marqueurs de pose d'interface, 164 chacun, émis au chargement et
+jamais par un geste ; 60 effets au plus dans une session ; 243 clics, dont 183 avec un compte, venus de
+2 comptes distincts — aucun bouton ne réunit donc aujourd'hui les 3 comptes qu'exige une enquête.
+(Mesures de la conception, même jour 05:37 UTC, non refaites : 165 des 176 clics avec compte sont ceux
+de l'équipe ; les appels refusés avec compte pèsent 0,33 ligne par session au calme ; aucun identifiant
+de session hors de `^[A-Za-z0-9_-]{6,64}$`.)
+
+**Ce qui change.**
+- **Une lecture dit si elle est complète.** `lirePagine` s'arrête sur une page VIDE — l'ancien test
+  « moins de lignes que demandé = fini » était toujours vrai dès que le serveur sert moins que la
+  demande (`lireApi` demandait 2 000, la base en sert 1 000). Deux bornes de temps fixées avant la
+  première page, tri sur (colonne, id). Les trois lectures « devoir » lisent dix pages du plus récent
+  au plus ancien et rendent `{ lignes, complet }` ; tronquées, elles restent classées (compteurs
+  plancher). **Seule la première requête lève** : une page suivante refusée ou expirée (le rôle
+  `authenticator` porte `statement_timeout=8s`, relu dans `pg_roles` le 21/11) rend ce qui est lu avec `complet: false` — dix requêtes
+  par lecture au lieu d'une, faire échouer le passage sur la neuvième aurait ouvert [SENTINELLE MUETTE]
+  pour une lecture presque entière. Un délai de 20 s par requête.
+- **Les boutons en deux temps** (`lireFamilleBoutons`) : les clics de comptes, le classement rejoué
+  sans aucun effet (le pire cas), puis les effets des seules sessions des groupes suspects, par lots
+  de 40. Un groupe est relu en entier ou pas du tout. Plafond de durée de 2 minutes sur ce second temps.
+- **Les marqueurs de pose ne sauvent plus un clic** ; **les clics d'un robot ou d'une émulation ne
+  pèsent plus** (l'équipe reste).
+- **L'ancienneté par candidat** (30 comptes tirés, 60 pour un bouton ; 150 comptes DISTINCTS par groupe
+  de familles ; une mémoire pour le passage). Avant, une famille de 60 comptes mangeait tout le budget
+  et les suivantes n'étaient plus relues. Un refus du service d'authentification est COMPTÉ (il valait
+  « compte récent » en silence) ; dix refus de suite coupent la relecture pour tout le passage.
+- **Le passage lit toujours** : « Lire la production » et la dédup ne dépendent plus d'une place libre ;
+  seule « Ouvrir l'enquête » en dépend.
+- **Ce qui n'est pas lu se dit au pilote** : le verdict porte `lecture` (codes fermés), l'étape « État
+  de lecture » ouvre ou réécrit UNE issue `[SENTINELLE PARTIELLE]` (label `sentinelle-partielle`,
+  `github.token`), le pilotage affiche « La Sentinelle n'a pas tout traité » en orange, et les lignes
+  « erreurs » et « parcours » ne disent plus « rien à corriger » / « rien d'assez sûr » tant qu'elle
+  est ouverte.
+
+⚠️ **UN BUDGET N'EST PAS UNE LEVÉE.** Le seuil passe d'environ 435 à environ 2 000 sessions par jour ;
+au-delà, les boutons les plus cliqués ne sont plus jugés, c'est dit à l'écran, et seul l'agrégat SQL
+fermera le trou. Les 2 000 sessions valent pour l'UNION des groupes suspects, et le premier temps
+retient presque tout bouton populaire (sans effet, tout clic est mort) : passé ce volume, ce sont les
+petits groupes qui sont jugés.
+
+⚠️ **RETIRER LES SEULS « EFFETS » D'UN APPAREIL ÉLARGIT CE QUI DEVIENT UNE ENQUÊTE.** L'audit écrivait
+« exclure le trafic équipe, robot, émulation des effets ». Retirer les effets en gardant les clics fait
+de chaque clic de cet appareil un clic MORT. Ce sont donc les CLICS qui sortent. Et l'équipe ne sort
+pas : `CLAUDE.md` dit que `meta.trafic` sort un appareil de l'audience, jamais des erreurs ; la famille
+parcours la garde ; 94 % des clics avec compte du jour sont les siens (168 sur 179, mesure de la
+contre-vérification) ; et retirer des clics SAINS peut
+faire passer un bouton sous 20 % d'effet. `TRAFIC_ECARTE` est exporté de `_shared/parcours.js` et
+importé par le détecteur : une définition, pas une quatrième copie.
+
+⚠️ **UN FILTRE QU'ON NE PEUT PAS ÉPROUVER NE PART PAS.** Le premier plan filtrait les marqueurs de pose
+côté serveur (`or=(action.is.null,action.not.in.(…))`). Aucun `or=(` n'existe dans le dépôt, l'API est
+injoignable d'un bac, et aucune requête du second temps ne partira tant qu'aucun bouton ne réunit trois
+comptes : la syntaxe ne se serait révélée fausse que le jour où la famille aurait eu quelque chose à
+juger. L'exclusion ne vit que dans `indexEffets`, et une **lecture témoin** d'une ligne éprouve la forme
+exacte du second temps dès qu'un clic est lu (`sources.boutons.temoin`).
+
+⚠️ **LE CODE « ANCIENNETÉ » NE VAUT QUE POUR UN DÉFAUT ÉCARTÉ.** Un candidat RETENU sur un échantillon
+de 30 comptes parmi 200 est jugé (trois anciens suffisent) : le compter « lu en partie » aurait passé
+l'écran à l'orange à chaque vrai incident, le mieux prouvé de tous. `nonRetenusNonRelus` ne compte que
+les candidats non retenus qui gardent un compte jamais relu.
+
+⚠️ **L'ÉTAT NE TIENT JAMAIS LE VOYANT DE LA VEILLE.** N'importe quel compte peut gonfler un volume
+(150 lignes par minute) et provoquer l'orange. Il ne peut ni faire sonner (seul le rouge sonne), ni
+figer la veille : l'issue d'état n'entre pas dans `incomplet` (`pilotage/index.ts`). ⚠️ Le premier cas
+de banc écrit pour ça ne mordait pas — `tenirVerdict` laisse toujours MONTER le voyant, donc « un rouge
+suivant sonne » restait vrai avec le défaut ; c'est la DESCENTE qui casse (« ✅ Problème résolu » ne
+part plus). Le cas T4-k rejoue la descente.
+
+**Pièges d'écriture rencontrés.**
+- Aucune apostrophe dans un bloc `node --input-type=module -e '…'` du workflow : bash le cite entre
+  apostrophes simples, la première le referme. Tout le texte français de l'issue vit dans
+  `etatPartiel` ; le banc T4-w6 relit les deux blocs.
+- `PLACES` vaut « 0 » quand tout est pris, et l'ancienne lecture (`places > 0 ? places : 1`) en aurait
+  ouvert une : zéro est désormais zéro, illisible vaut 1 comme avant.
+- `for n in $(gh …)` ne voit pas l'échec de `gh` (le code d'une substitution dans l'en-tête d'une boucle
+  est perdu) : la liste à refermer se lit dans une variable AVANT la boucle.
+- Les clics se lisent du plus récent au plus ancien, donc les lots de sessions aussi : un banc qui
+  « refuse le premier lot » doit viser les sessions les plus récentes (le mien visait la mauvaise moitié
+  et restait vert sous sa réinjection).
+- Le banc ㉚⑥ lit trois instructions du bloc parcours dans le source, à 400 caractères près : elles sont
+  intactes. La relecture d'ancienneté de ce bloc reçoit seulement le compteur de refus du passage.
+- Sans hystérésis, une panne passagère ouvrait puis refermait l'issue d'état à chaque passage — un
+  e-mail et un changement de voyant par heure. Elle n'est refermée que 90 minutes après sa dernière
+  réécriture (le corps porte l'heure de sa mise à jour, et c'est elle qui décide — voir la seconde
+  relecture, plus bas).
+
+**Des assertions de bancs EXISTANTS changent, et c'est voulu** (`sentinelle-detecter.test.mjs`) : les
+lecteurs rendent `{ lignes, complet }` et non plus une liste ; une lecture d'une page fait deux
+requêtes (la page, puis la page vide), celle du repli trois ; l'aide `avecFetchRendant` rend une page
+vide une fois son script épuisé (elle répétait sa dernière réponse) ; le `select` des clics porte
+`trafic:meta->>trafic` et l'identité serveur exigée. Leurs mutations d'origine mordent toujours.
+
+**Limites connues, non traitées ici.**
+- À l'échelle visée, l'état « lu en partie » sera DURABLE : appels refusés au-delà de 10 000 lignes par
+  jour (environ 2 000 sessions avec compte pendant un incident à 5 refus par session ; c'était 200
+  avant ce lot), boutons au-delà de 2 000 sessions. Voyant orange et ligne récurrente, avec un « Régler » qui ne peut pas régler un volume — il
+  se range après une relance (« Relue à HH:MM. Se referme seule une fois tout lu. »). C'est honnête et cela ne sonne
+  pas, mais c'est une fatigue d'alerte jusqu'au lot des agrégats SQL (`comptes_anciens(uuid[])`,
+  `sentinelle_familles`, `sentinelle_boutons`, `pilotage_parcours`), qui demande une migration.
+- La famille parcours tronquée ne désigne toujours rien au-delà de 10 000 étapes : c'est dit, pas levé.
+- `session_id` est écrit par le client : un seul compte peut gonfler un groupe au-delà de 2 000
+  sessions, ou une session au-delà de 5 000 effets, et rendre ce bouton « non jugé ». C'est dit
+  (orange), pas empêché.
+- Interaction avec la file priorisée du 20/11 (#997) : un clic LENT est prioritaire dans la file du
+  client, son effet (`action`, `nav`) ne l'est pas. Sous pression, la file peut jeter l'effet et garder
+  le clic, ce qui fabrique un clic mort. Les autres gardes tiennent (trois comptes anciens, clics
+  rageurs) ; c'est une source nouvelle de faux suspects, à mesurer.
+- **Tant que la fonction `pilotage` n'est pas redéployée, l'écran ne montre rien** : le label n'y est
+  pas encore suivi. L'issue existe sur GitHub (un e-mail), mais Benjamin ne lit pas ses e-mails : la
+  livraison n'est faite qu'après ce déploiement (`edge-functions.yml`, fonction `pilotage`).
+- Le banc T4-06 confronte `MARQUEURS_POSE` au code : tout futur lot d'interface qui émet un marqueur de
+  pose (`if (apply()) track("ui_v…")`) le fera rougir tant que le nom n'est pas inscrit dans la liste —
+  et l'inscrire touche `scripts/`, donc la contre-revue. C'est voulu ; c'est aussi écrit dans
+  `docs/lots-ui/INDEX.md`.
+- Le titre de l'issue d'état, public, nomme les familles tronquées : un tiers qui inonde y lit que cela
+  marche. Rien de neuf (le résumé du passage publie déjà ses sources), à garder en tête avant d'y
+  ajouter du détail.
+- Au-delà de 100 issues ouvertes, le pilotage lit un filtre par label suivi : un label de plus, donc
+  une requête GitHub de plus par lecture.
+- En pause, l'issue d'état reste ouverte (l'étape ne tourne plus) : sa ligne dit « En pause : elle ne
+  relit rien », sans bouton. Le filet générique « À vérifier » de l'écran, lui, garde son « Régler ».
+- Les autres effets ambiants (un appel réseau de fond dans les trois secondes) comptent toujours comme
+  l'effet d'un clic ; les clics des visiteurs sans compte ne sont plus lus du tout (ils ne pesaient déjà
+  rien dans une enquête).
+- Non vérifié contre le vrai PostgREST (API injoignable d'ici) : la double borne sur une même colonne
+  et le tri `order=<colonne>.desc,id.desc`. Pour un `offset` au-delà de la fin, les DEUX réponses
+  possibles valent « fini » : 200 et une liste vide (l'ordinaire, sans en-tête de comptage) ou 416.
+  **Ne pas ajouter d'en-tête `Prefer: count`.**
+
+**À vérifier après fusion** (résumé du premier passage, minute 23) : `lecture` vaut
+`{ "complet": true, "partiel": [] }` ; `sources.parcours` porte `lues` et non `erreur` ;
+`sources.boutons.temoin` vaut `"ok"`. **Critère de retour arrière** : un passage rouge, ou le moindre
+code dans `lecture.partiel` dès ce premier passage (les volumes du jour sont cent fois sous les
+plafonds), signifie une hypothèse PostgREST fausse — revert de la PR.
+
+Verrous : `sentinelle-detecter.test.mjs` T4-01 à T4-20 (dont `detecter()` exécutée de bout en bout),
+`sentinelle-workflows.test.mjs` T4-w1 à T4-w6 (les blocs `run:` réels rejoués), `pilotage.test.mjs`
+T4-a à T4-d, `pilotage-chemins.test.mjs` T4-k (la fonction exécutée). 111 réinjections jouées à la
+livraison, chacune vue rouge sur l'état d'alors (67 pour le détecteur, 26 pour le workflow, 18 pour la
+fonction) ; huit sont inscrites au registre (`scripts/reinjections-pilotage.mjs`, R120 à R127).
+⚠️ « 111 réinjections » ne voulait PAS dire « chaque garde » : la contre-revue en a trouvé huit autres
+qui restaient vertes (paragraphe « Contre-revue », plus bas). La phrase d'origine le prétendait.
+⚠️ Trois réinjections sont d'abord restées VERTES, et c'est le banc qu'il a fallu reprendre : un repli
+« colonne absente » déclenché par n'importe quel refus (le cas faisait échouer le repli aussi), un
+classement du résumé qui aurait porté des groupes non jugés (aucun groupe non suspect n'avait dix
+clics), et la relecture d'ancienneté des parcours appelée sans le compteur de refus (aucun cas ne
+faisait échouer l'authentification sur un parcours).
+
+**Contre-revue adversariale du lot (2026-11-21) : le code était juste, c'est le banc qui ne le tenait
+pas.** Le relecteur a joué 31 réinjections de son cru ; huit restaient vertes, une phrase de l'écran
+pouvait mentir.
+- **Le dernier filtre de la famille bouton n'avait aucun cas** (`second.candidates.filter(estJuge)`).
+  T4-13 ne mordait que sur la définition de `juges` : son groupe non jugé n'avait aucun compte ancien
+  connu, il tombait donc de toute façon au second passage. Scénario qui passe au travers sans le
+  filtre : un bouton MORT jugé (quatre comptes anciens) et un bouton VIVANT dont le lot d'effets est
+  refusé, cliqué par trois des mêmes comptes — le premier fait reconnaître les comptes anciens, le
+  second paraît mort faute d'effets lus, et part en enquête. Cas **T4-13 bis** ; il tient aussi le
+  filtre du PREMIER passage (un groupe non jugé ne dépense pas le budget d'ancienneté). **Règle : une
+  garde en deux temps se teste avec des groupes qui PARTAGENT ce que le premier temps apprend.**
+- **Deux parts du code « ancienneté » pouvaient disparaître sans rougir** — celle des parcours et celle
+  des boutons : seule la part des erreurs en texte libre avait son cas. T4-20 les lève désormais une à
+  une (40 comptes sur un parcours, 70 sur un bouton, aucun ancien).
+- **La session de la lecture témoin** (écrite par un navigateur, envoyée dans une URL appelée avec la
+  clé de service) n'était éprouvée qu'avec des sessions sages : T4-12 (e) place en tête un clic dont la
+  session porte virgule, parenthèse et `&`, et relit toutes les URL émises.
+- Trois petites : le coupe-circuit réservé aux paquets PLEINS (T4-16, neuf refus sur neuf), une session
+  partagée par deux groupes comptée une fois (T4-10), les clics de robot hors du classement du résumé
+  (T4-12 (f)).
+- **Une garde retirée plutôt que testée** : la coupe du titre de l'issue d'état à 160 caractères ne
+  pouvait pas mordre (le titre n'est fait que de six noms fixes, dédoublonnés : 130 caractères au
+  plus). Une garde qu'aucune entrée n'atteint n'a pas de test qui rougit ; elle est remplacée par
+  l'invariant, tenu dans T4-18 : le plus long titre possible fait moins de 160 caractères.
+- **« Relue à HH:MM : toujours en partie » pouvait être faux jusqu'à deux heures.** Après une relance
+  qui a TOUT relu, l'issue d'état reste ouverte : le workflow ne la referme que 90 minutes après sa
+  dernière réécriture, et un passage complet ne la réécrit pas. Le pilotage ne sait pas distinguer
+  « encore partielle » de « complète, fermeture en attente ». La ligne dit désormais ce qui est vrai
+  des deux : « Relue à HH:MM. Se referme seule une fois tout lu. » (49 caractères, une ligne de
+  téléphone). **Limite assumée** : le voyant reste orange pendant cette attente — c'est le prix de
+  l'hystérésis (sans elle, un e-mail et un changement de voyant par heure). Faire lire au pilotage la
+  ligne « Mis à jour » du corps de l'issue le lèverait ; non fait ici (le corps d'une issue publique
+  n'est pas une source que la fonction lit aujourd'hui).
+Après correction : les 31 réinjections du relecteur rougissent toutes (30 rejouées, la 31ᵉ visait la
+coupe retirée).
+
+**Seconde relecture (2026-11-21) : trois remarques mineures, soldées.**
+- **La fermeture de l'issue d'état se décidait sur `updatedAt`, qu'un tiers avance.** GitHub avance
+  `updatedAt` à chaque commentaire, et le dépôt est public : un compte quelconque qui commentait
+  l'issue plus souvent que toutes les 90 minutes la tenait ouverte — voyant orange et « voir sa
+  ligne » à la place de « rien à corriger », alors que tout était relu. Le même genre de signal tenu
+  par un tiers que R120 interdit pour la veille. Désormais `etatsAFermer` (détecteur, fonction pure)
+  lit la ligne « - Mis à jour : <ISO> » du CORPS, que seul un compte ayant le droit d'écrire modifie ;
+  plusieurs lignes : la plus récente. Un corps sans date lisible (retouché à la main) : `updatedAt`
+  décide, faute de mieux — ne jamais refermer laisserait le voyant orange pour toujours sur une note
+  que plus rien ne réécrit ; et quand ni l'un ni l'autre ne se lit, l'issue reste ouverte. En plus,
+  la conversation est **verrouillée** (`gh issue lock`, en `|| true`) à la création et à chaque
+  réécriture — une issue ouverte avant ce verrou le reçoit au passage partiel suivant. Cas T4-21
+  (la fonction) et T4-w5 (le bloc rejoué : `updatedAt` d'il y a 2 min, corps d'il y a 91 → refermée ;
+  `updatedAt` ancien, corps récent → tenue). **Règle : `updatedAt` d'une issue publique n'est pas une
+  horloge — tout le monde peut la remettre à l'heure.**
+- **Le drapeau `complet` n'était tenu de bout en bout que pour les appels refusés.** Forcer
+  `complet: true` dans `detecter()` pour les erreurs JS (deux sources) ou pour les parcours, ou sur
+  le retour des trois chemins de repli, laissait tout vert ; retirer le tri des candidats avant la
+  relecture d'ancienneté aussi. T4-20 joue désormais plus de 10 000 lignes sur chacune des trois
+  lectures et affirme son code ; T4-05 fait dépasser le plafond au repli ; un cas met en concurrence
+  cinq erreurs JS à 30 comptes et un appel refusé à 40 comptes, placé après elles : c'est lui qui doit
+  être relu (budget de 150 comptes). La borne à 160 caractères de `boutonsSuspects.erreur` est
+  **gardée et testée**, contrairement à celle du titre : elle est atteignable — la lecture du code de
+  l'interface peut lever une erreur du système de fichiers, dont le message porte un chemin de
+  longueur quelconque, et le verdict part dans un résumé public.
+- Deux phrases périmées (« si elle reste "en partie", la cause est un volume ») dans
+  `docs/SENTINELLE_AUTONOME.md` et dans un commentaire de `pilotage.test.mjs`.
+⚠️ Piège du banc, encore : le cas « corps en CRLF » restait vert sous sa réinjection — la ligne de date
+était la DERNIÈRE du corps, donc sans `\r` à sa suite. Seize réinjections jouées, seize rouges.
+
+## 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
+
+Trou T2 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md`. Une PR, deux temps : ① sans migration, le
+pilotage DIT le remplissage et le canari refusé ; ② une migration — écrite, éprouvée, **pas encore
+appliquée : geste de Benjamin au poste** — apprend à la table à faire de la place seule.
+
+**Le défaut.** Depuis le 15/11 la table `telemetry_events` est bornée en lignes vivantes (800 000
+pour les visiteurs, 1 200 000 pour les comptes). Atteinte, la borne refuse le lot ENTIER — erreurs,
+parcours et canari compris — et la purge ne retire rien avant J-3. Le pilotage n'en disait rien : le
+canari de la veille, refusé, rendait `{ emis: false, erreur }`, rangé dans `gestes.canari` du
+battement, que personne ne lit. Seul le chien de garde GitHub finissait par voir « 0 canari en 2 h »,
+des heures plus tard et sans le motif.
+
+**Mesuré en production (canal ①, lecture seule, 21/11 à 08:30 UTC)** — le trafic y est surtout le
+nôtre (73,8 % d'appareils d'équipe) : des ordres de grandeur. 14 760 lignes, soit 1,8 % de la borne
+des visiteurs, 43 Mo index compris. 1 549 lignes « protégées » (10,5 %) ; 12 475 dans la classe
+courte (84,5 % : `perf`, `click`, `action`, `lifecycle` non protégés), dont 8 867 de plus de 26 h
+(60,1 % de la table). Flux des dernières 24 h : 3 919 lignes, 84,0 % dans la classe courte, 60,5 %
+de `perf`. Les `lifecycle` non protégés ne pèsent que 252 lignes aujourd'hui (1,7 %), mais un onglet
+visible bat une fois par minute sans échantillonnage : à l'échelle c'est le premier volume. Sept
+déclencheurs, quatre tâches de télémétrie, minute 52 libre, PostgreSQL 17.6,
+`stats_fetch_consistency = cache`, coupure de 3 s pour `anon`. Le compte exact de la table : 6 à 7 ms
+(deux mesures du jour, `explain analyze`).
+
+### Temps 1 — sans migration (fonction `pilotage`, `_shared/pilotage.js`, page)
+
+⚠️ **LA MÉMOIRE DU CANARI EST DANS `analytics_events`, PAS DANS LE BATTEMENT** (`EVT_CANARI`,
+`marqueCanari`, `bilanCanari`, `noterCanari`). Le battement s'écrit au plus toutes les 14 min, le
+canari part un passage sur trois : rien ne garantit qu'ils coïncident. Chaque refus laisse une marque
+`pilotage_canari` (auteur `systeme:pilotage`, clé de service : un navigateur ne la forge pas) ; le
+succès qui CLÔT une suite aussi — sans lui la ligne tiendrait 35 min après le retour. En temps
+normal : aucune marque (0 ligne par jour ; 96 au pire d'un incident). La marque s'écrit APRÈS
+l'alerte et après l'émission : le voyant d'un passage juge les marques d'avant, la sonnerie arrive
+donc au passage qui SUIT le deuxième refus (20 min après le premier).
+
+⚠️ **« DEUX FOIS DE SUITE » = DEUX QUARTS D'HEURE DISTINCTS**, sans succès entre eux, le dernier de
+moins de 35 min (`CANARI_MEMOIRE_MS`, le délai du battement périmé). Deux ordonnanceurs à quelques
+secondes comptent pour un refus.
+
+⚠️ **LE REFUS DE DÉBIT NE SONNE JAMAIS.** Trois classes en liste FERMÉE, lues dans le message du
+serveur : `table_pleine`, `debit`, `autre`. Le canari part sous la clé anon : son refus de débit
+vient des réservoirs que n'importe quel visiteur remplit (1 600 lignes/min). Rouge, il donnait à tout
+porteur de la clé publique le moyen de faire sonner le téléphone — et le réservoir se vidant chaque
+minute, le voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs forgées du
+07/11. `debit` : orange, priorité 1. `table_pleine` et `autre` : rouge dès deux quarts d'heure.
+
+⚠️ **DANS UNE SUITE MÊLÉE, LE ROUGE SE DÉCIDE SUR LES SEULS REFUS GRAVES** (contre-revue du lot, A-1).
+La ligne « À faire » (`refuse`) compte tous les refus de la suite, débit compris ; l'urgence (`rouge`)
+exige deux quarts d'heure distincts de refus qui ne sont PAS de débit, le plus récent de moins de
+35 min. Le premier jet jugeait la classe du DERNIER refus seul : un délai isolé précédé de refus de
+débit — que tout porteur de la clé publique provoque — sonnait « refusée deux fois de suite », et un
+seul refus de débit au milieu d'un vrai rouge sonnait « Problème résolu ». La classe et le motif
+rendus sont ceux de ce qui décide : le dernier refus grave si c'est rouge, le dernier refus de débit
+si la ligne est là sans être rouge.
+⚠️ **DEUX REFUS NE SONT « DE SUITE » QUE SÉPARÉS DE 35 MIN AU PLUS** (`CANARI_MEMOIRE_MS`, seconde
+relecture, B-1 et B-2). La suite s'arrête au premier trou plus long entre deux refus, et les refus
+graves au premier trou plus long entre deux refus GRAVES. Sans cela : une veille muette plus de 35 min
+après un refus isolé ne notait pas le succès d'entre-temps (le bilan n'était plus « en cours ») et un
+second refus isolé, une heure plus tard, faisait « refusée deux fois de suite » ; deux délais isolés à
+1 h 45 d'écart, reliés par des refus de débit qu'un tiers provoque, faisaient de même.
+
+⚠️ **LE MOTIF EST UN TEXTE DU SERVEUR : IL NE SORT QUE DANS `reference`**, que la page rend en texte
+(borné à 120 caractères, sans caractère de contrôle). Titres, `quoi`, raisons du voyant, texte de la
+sonnerie, état mémorisé et journaux de la fonction : des textes fixes ou des codes.
+
+⚠️ **LE REMPLISSAGE SE RAPPORTE À LA BORNE DES VISITEURS**, premier mur où des signaux de panne
+meurent (`remplissage`, `lireRemplissage`). Après la migration : la fonction SQL
+`telemetrie_remplissage()`, et le plus grand de deux compteurs — les statistiques vivantes (ce que la
+borne juge) repartent de zéro après un arrêt brutal, l'estimation du catalogue non. Avant : UN compte
+exact sous la clé de service, borné à 4 s. **Non mesuré, ou fonction SQL en erreur : « non lu »,
+jamais 0** — l'écran ne passe pas au vert et la veille tient son voyant (`incomplet`). Le premier
+jet rendait une jauge grise sur un compte abandonné : un rouge « télémétrie pleine » aurait sonné
+« résolu » sur un compte lent.
+
+⚠️ **APRÈS MIGRATION, LA JAUGE EST ORANGE AU PLUS.** Les seuils de classe sont des points de consigne
+de la régulation : au-dessus, l'entrée chute, en dessous elle reprend — la table stationne dessus, et
+la purge horaire y ajoute une dent de scie. Un rouge posé là aurait fait sonner à chaque passage. Le
+rouge d'après migration vient du canari `table_pleine`, qui porte son hystérésis. AVANT migration,
+90 % de 800 000 n'est pas un point de consigne : orange à 70 %, rouge à 90 % — le voyant sonne avant
+la fermeture, et la ligne nomme le fichier à appliquer. Au-delà de 100 %, le titre dit « Télémétrie
+pleine » sans pourcentage (il se rapporte aux visiteurs alors que les comptes écrivent encore).
+
+⚠️ **« RÉGLER » POSE UN DÉLESTAGE AU NOM DU PILOTE, QUE LA VEILLE NE LÈVERA JAMAIS SEULE**
+(`decideDelestage` rend la main dès `pose_par = pilote`). C'est le seul levier du téléphone qui
+réduit ce qui ENTRE ; il n'est jamais dans « Tout régler ». La `reference` des deux lignes finit
+donc par : « Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages ›
+Protection). » Déjà au niveau 2, ou sans la table des réglages : le bouton ouvre les tâches
+planifiées ; refus de classe `autre` (RLS, délai) : les journaux de la fonction.
+
+⚠️ **LA VEILLE NE LÈVE PLUS UN DÉLESTAGE QUAND LA TABLE ÉCARTE LES BATTEMENTS DES COMPTES**
+(`remplissageAveugle`, une ligne après le bloc existant de `delestageAuto`) : au palier 2 des comptes
+le nombre de comptes connectés BAISSE sans que la charge baisse. Sens conservateur seulement — on
+peut monter, pas descendre, et 2 h au plus (`aveugleMaxMs`).
+
+⚠️ **LE BATTEMENT DIT UNE LECTURE MANQUÉE, SANS L'EXIGER** (`resumerBattement`) : `remplissage` et
+`canari` en « ko » ajoutent une raison, mais n'entrent PAS dans `LECTURES_BATTEMENT`. Entre la fusion
+et le déploiement de la fonction, les battements de l'ancienne version n'ont pas ces clés : exigées,
+le chien de garde GitHub aurait lu « n'a pas pu lire » sur une veille qui a tout lu.
+
+### Temps 2 — `migrations/migration_telemetrie_classes_2026-11-21.sql` (à appliquer)
+
+⚠️ **« PROTÉGÉE » EST UNE DÉFINITION, LUE PAR LA BORNE ET PAR LA PURGE** (`telemetrie_protegee`) :
+types `error`, `connectivity`, `flow`, `link`, `rt_recv` (ceux que le client ne jette jamais),
+`push` et `release` (preuves), `session` (lue par la croissance) ; toute ligne corrélée ; statut
+`error` ; HTTP ≥ 400 ; gravité `warn` et au-delà ; actions `acq_signup` et canari. Même contrat que
+`_estPrioritaire` (js/telemetry.js) — `pilotage.test` T2-m les confronte.
+
+⚠️ **LA BORNE PAR CLASSE ÉCARTE LA LIGNE, ELLE NE REFUSE PAS LE LOT** (`zz_classe_bornee`, BEFORE
+INSERT par ligne, `RETURN NULL`). Un lot mêlé garde ses lignes critiques, et tous les clients déjà en
+cache sont compatibles : ils reçoivent un succès et vident leur file. DEUX paliers par rôle : à 60 %
+de la borne du rôle (480 000 / 720 000) seules les `perf` non protégées sont écartées — aucun lecteur
+n'apparie une perf à autre chose ; à 90 % (720 000 / 1 080 000) tout le non-protégé ; 100 % reste le
+refus du 15/11. Un palier unique à 60 % aurait aveuglé la famille « boutons » de la Sentinelle (des
+clics sans leurs effets) et le compte des comptes connectés sur toute la plage 60–100 %.
+`lifecycle` n'est JAMAIS écarté au palier 1 : il fait le compte des comptes connectés.
+
+⚠️ **`zz_` : LE DERNIER DES DÉCLENCHEURS PAR LIGNE.** Une ligne écartée a d'abord subi la taille de
+ligne, les 120 lignes par lot, l'identité et la barrière de suppression : la classe ne desserre aucun
+refus. L'ordre tient au NOM ; le verdict le vérifie le jour de l'application seulement.
+
+⚠️ **LA PURGE COURTE AGRÈGE D'ABORD, ET NE SUPPRIME QUE DANS CE QU'ELLE A AGRÉGÉ**
+(`purge_telemetrie_breve`, chaque heure à :52). Les `perf`, `click`, `action` et `lifecycle` non
+protégés de plus de 26 h (24 h de fenêtre des lecteurs + 2 h) partent par lots de 5 000. Elle agrège
+les deux jours qu'elle entame, puis ne supprime que dans ces deux jours : « jamais une ligne ne part
+sans avoir été comptée » (15/11) tient par construction ; ce qui est plus vieux reste à la purge
+quotidienne. **Le budget de 45 s démarre APRÈS les agrégations, et la sortie se juge APRÈS le lot** :
+le premier jet du plan démarrait le chronomètre avant, et testait avant de supprimer — à l'échelle,
+deux agrégations lentes et plus rien ne partait jamais. La migration n'appelle PAS la purge.
+
+⚠️ **LES SEUILS SONT DES ARGUMENTS DE DÉCLENCHEUR, RELUS PAR LA LECTURE** (`telemetrie_remplissage`
+lit `tgargs` de `aa_table_bornee` et de `zz_classe_bornee`) : une seule source. Pas de
+`min(received_at)` : après une purge, le bout ancien de l'index porte des entrées mortes.
+
+**Ce que ça change en capacité** (ordres de grandeur, trafic surtout interne). Avec 84 % du flux
+d'un jour dans la classe courte, les lignes vivantes passent d'environ 4,3 jours de flux à environ
+1,8 : le même carnet tient **≈ 2,4 fois plus de trafic avant la fermeture, ≈ 1,5 fois avant le premier
+délestage** (le palier 1 est à 60 % : 2,4 × 0,6). Sans `lifecycle` dans la purge, le gain réel à
+l'échelle tombait vers 1,5 avant la fermeture (un onglet visible garde 1 560 perf mais 4 560 à 6 000
+battements). Premier passage après application : ≈ 5 650 lignes (mesuré : 5 658) ; les ≈ 3 200
+lignes de la classe plus vieilles que les deux jours agrégés partent avec la purge quotidienne.
+
+**Avant / après.** Tant que la migration n'est pas appliquée : la fonction SQL répond « absente »
+(PGRST202), la fonction `pilotage` compte la table, `remplissage.classes` vaut `false` et
+`remplissage.migration` porte le chemin du fichier — la page Capacité l'écrit, et la ligne
+« Télémétrie pleine à x % », si elle apparaît, finit par « Protection par classe absente : appliquer
+… (geste au poste) ». La base se comporte comme le 15/11. Le canari, sa mémoire, sa ligne et la
+sonnerie ne dépendent PAS de la migration. Après : lecture en temps constant, la note disparaît,
+orange au plus, la purge de :52 tourne. Aucun changement côté client dans les deux états.
+
+**Le geste d'application — à Benjamin, au poste, après fusion et contre-revue** (seul contrôle humain
+entre ce canal et la production ; une session au poste peut tenir la main, jamais la CI, jamais une
+session distante). Dans l'ordre, staging puis production (`.passio/migrations/README.md`) :
+1. Avant, au canal ① sur CHAQUE cible : les tâches `agreger_croissance`, `purge_telemetrie_paliers`,
+   `purge_telemetrie_rattrapage` et `purge_telemetrie_debit` existent et sont actives (le verdict
+   refuse sinon — lu en production le 21/11 : elles y sont, minute 52 libre ; **le staging n'a pas pu
+   être lu d'ici**).
+2. La revue de mainteneur unique sur la PR (commentaire portant « Contre-revue technique
+   indépendante », « revue de mainteneur unique : j'assume l'application de cette migration », le
+   chemin du fichier et `cible: <ref>` pour chaque cible), puis l'attestation, dans un worktree
+   détaché d'`origin/main` :
+   `node scripts/attester-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --cible <ref> --pr '#<n>' --commit <sha de la revue> --revue <id de la revue> --relecteur PASSIO74 --source <lien de la revue>`
+3. `node scripts/appliquer-migration.mjs migrations/migration_telemetrie_classes_2026-11-21.sql --projet fcksxofaelcdmmifnwjo`
+   (staging), puis `--projet njkiyoklssvefstljemx` (production). Équivalent :
+   `npm run migration:appliquer -- migrations/… --projet <ref>` (sous PowerShell, préférer `node`).
+   Verdict attendu : 8 × OK, deux lignes d'information.
+4. **Mesurer au canal ①, jamais le tableau** : `select public.telemetrie_remplissage();` ; les 8
+   déclencheurs triés par nom (`zz_classe_bornee` en dernier) ; les tâches `purge_telemetrie%`
+   actives ; après le passage de :52, 0 ligne perf/click/action/lifecycle non protégée de plus de
+   27 h dans les deux jours agrégés, et le statut de la tâche dans `cron.job_run_details` ;
+   `activite_jour` et `croissance_jour` de J-1 inchangés. Puis rouvrir le pilotage
+   (`?equipe=1`) : la note « attendent la migration » a disparu.
+5. Sur le staging, AVANT la production : vérifier qu'un lot dont toutes les lignes sont écartées
+   reçoit bien un succès avec `Prefer: return=minimal` (js/telemetry.js) — le banc SQL prouve
+   l'instruction, pas la réponse HTTP de PostgREST ; sinon les clients en cache garderaient leur lot.
+Retour arrière : le bloc `--|` de l'en-tête, à l'éditeur SQL ; le pilotage retombe seul sur un compte.
+
+**Mise en service du temps 1** (après fusion) : AUCUN geste depuis #1002. La fusion touche
+`supabase/functions/**` : le run « Edge Functions » de ce push sélectionne les fonctions dont le code
+servi n'est plus celui du commit — ici `pilotage` seule, la seule qui importe `_shared/pilotage.js`
+et `_shared/battement.js` —, vérifie ses prérequis (`--partiel`), la déploie et l'éprouve. La
+fonction SQL `telemetrie_remplissage()` y est déclarée FACULTATIVE (`obligatoire: false`) : sans la
+migration, `pilotage` sort « dégradée (facultatif absent) », dans `deployables`, jamais dans
+`retenues` — tenu par T2-p de `tests/unit/deploiement-fonctions.test.mjs` (le `dresserPlan` de la CI
+sur le manifeste réel ; R146 le rend obligatoire → rouge) et rejoué contre un PostgreSQL 16 jetable avec le script de la CI. Si ce run
+rougit, c'est pour une AUTRE fonction (une retenue, ou une fonction en service dont un prérequis
+obligatoire manque) : son résumé la nomme, `pilotage` est partie quand même. Le site part en
+parallèle (job « Déploiement production ») ; dans les deux ordres la page se rend : une fonction
+d'avant ne rend pas de clé `remplissage` (la page se rend comme avant, T2-g), une page d'avant
+rend les lignes « À faire » qu'elle reçoit et n'affiche pas la note « attendent la migration ». Preuve : l'en-tête
+`X-Passio-Revision` de la fonction porte le commit ; l'action `etat` rend `remplissage.migration` et
+la jauge « Table de télémétrie » ; au quart d'heure suivant, aucune marque `pilotage_canari`.
+
+**Limites connues.**
+1. **Le délestage par classe est SILENCIEUX côté client** (succès pour un lot dont des lignes sont
+   écartées). Pendant qu'il joue, comptages pondérés (`meta.ech`) et audience sous-estiment ; l'écran
+   le dit, aucun compteur ne dit combien.
+2. **Les lignes écartées ne comptent pas au débit** (`trg_debit_lot` ne compte que la table de
+   transition). Au-dessus d'un palier, un visiteur peut envoyer des lots de `perf` sans remplir son
+   réservoir ni recevoir de 429 ; ni la jauge « Télémétrie reçue » ni `pilotage_audience` ne le
+   voient. Le coût reste borné à 120 lignes par requête, mais c'est un contournement du limiteur.
+3. **Au palier 2 des comptes, un compte dont l'onglet est resté ouvert n'écrit plus que des lignes
+   écartées** : il n'entre pas dans `activite_jour` ce jour-là. Actifs du jour et rétention
+   sous-estiment, pas seulement l'audience en direct.
+4. **La classe n'est pas une frontière de sécurité.** Un flot anonyme de lignes « error » forgées
+   remplit la table jusqu'à 800 000 comme avant, et ces lignes vivent 7 jours. Ce qui change : c'est
+   visible en moins de 35 min, et le téléphone sonne — donc un tiers peut le faire sonner une fois
+   par incident en remplissant la table : c'est un incident réel.
+5. **Le canari « table pleine » peut clignoter** quand la table stationne près de 800 000 : la purge
+   de :52 la fait repasser dessous, le canari de :00 passe, puis deux refus, puis « résolu ». Ce lot
+   n'ajoute aucune hystérésis à `decideAlerte` : à l'échelle, jusqu'à une paire de sonneries par heure.
+6. **La classe `autre` peut être un délai, pas un refus** : l'insertion du canari se fait sous
+   `anon`, coupé à 3 s. Sous forte charge de la base, deux délais à un quart d'heure d'écart font
+   rouge et sonnerie avec le titre « la sonde est refusée » — vrai symptôme, motif trompeur.
+7. **Le seuil orange (480 000 après migration) est aussi un point de consigne** : le voyant peut
+   alterner orange et vert, et chaque changement écrit une ligne `pilotage_etat`. Pas de sonnerie,
+   un historique bruité.
+8. **À 100 000 utilisateurs, la table entre 60 % et 90 % sera le RÉGIME NORMAL.** Ce lot rend l'état
+   visible et protège les signaux de panne ; il n'augmente pas la capacité au-delà du facteur
+   ci-dessus. La ligne orange sera permanente et son bouton ne la fera pas disparaître : ce n'est pas
+   un défaut du lot.
+9. **Le critère « journée ouvrée quasi vide » du chien de garde GitHub CESSERA de jouer dès
+   l'application**, au volume d'aujourd'hui : avec les jours mesurés (61, 31, 3 674, 6 249, 3 314
+   lignes) ramenés à environ 16 % au-delà de 26 h, la médiane des jours ouvrés tombe vers 300, sous
+   `JOURNEE_MEDIANE_MIN` = 500 (`scripts/veille-production.mjs`). Jamais l'inverse (aucune fausse
+   alerte). Les heures vides consécutives, le canari sur 2 h et le battement ne sont pas touchés ;
+   `usage7j` ne compte déjà que ce qui reste (les sessions, gardées 3 jours). À recalibrer : hors lot.
+10. **Borne et classe jugent sur les statistiques du serveur** : après un arrêt brutal de PostgreSQL
+    elles repartent de zéro jusqu'au prochain passage de l'autovacuum, et plus rien n'est délesté ni
+    refusé pendant ce temps (préexistant pour la borne). La jauge prend le plus grand des deux
+    compteurs pour ne pas afficher 0 %, mais les états par rôle décrivent alors un délestage qui ne
+    joue pas. Sur une grande table, ces statistiques sont une ESTIMATION (le banc encadre chaque
+    seuil de 2 000 lignes).
+11. **Le banc tourne sur PostgreSQL 16, la production est en 17.6** : la lecture de
+    `pg_stat_get_live_tuples` dans un déclencheur par ligne (`stats_fetch_consistency = cache`) n'est
+    éprouvée que sur 16. Et le banc prouve l'instruction SQL, pas la réponse HTTP (point 5 du geste).
+12. **Au palier 2, un clic LENT (protégé) survit à son effet `nav` ou `action` écarté** : la famille
+    « boutons » de la Sentinelle peut le lire « sans effet ». Dans cette zone l'écran est orange ou
+    rouge. Faire sauter cette famille quand la table était au palier 2 : hors lot (T4).
+13. **Avant migration, chaque veille et chaque ouverture de l'écran font un appel qui répond 404**
+    (PGRST202) puis un compte : sans effet, mais visible dans les journaux de l'API, 288 fois par jour
+    au moins ; le compte est linéaire (≈ 0,35 s à 800 000 lignes) — la migration doit être appliquée
+    bien avant 100 000 lignes.
+14. **La purge courte ajoute deux agrégations par heure** : à grande échelle, un jour plein de lignes
+    est relu une fois de plus par heure. Si `agreger_croissance` lève, rien n'est supprimé (fermé) et
+    la table se remplit — visible à la jauge. Mesuré au banc, sur une machine jetable : 1,2 million de
+    lignes d'un même jour, deux agrégations et 241 lots en ≈ 15 s, contre la coupure de 120 s.
+15. **`CREATE TRIGGER` verrouille la table** le temps de la fin de la migration (`lock_timeout` 5 s) :
+    pendant ce court instant les clients reçoivent une erreur et gardent leur lot. Les lectures
+    lourdes du verdict sont faites AVANT de poser le déclencheur.
+16. **Les `revoke` de la migration sont une seconde ceinture** : depuis le lot 1 du 06/11 les droits
+    par défaut de `public` ne donnent plus EXECUTE aux clients (lu en production le 21/11). Le banc
+    les éprouve donc sur les droits par défaut d'avant ce lot.
+
+17. **Un rouge du canari ne survit pas à 35 min de refus de débit SEULS.** Tant que le réservoir
+    anonyme est plein, la sonde ne passe pas jusqu'à la panne qu'elle signalait : après 35 min sans
+    refus grave, le voyant repasse à l'orange (« débit saturé : à confirmer ») et « résolu » sonne,
+    sans preuve que ce soit résolu. La ligne orange reste à l'écran. La table pleine n'est pas
+    masquable ainsi (`aa_table_bornee` passe avant le débit) ; un refus `autre` l'est par qui peut
+    tenir le réservoir plein 35 min. Tenir le rouge jusqu'au premier succès donnerait au même tiers
+    le moyen de le figer : hors lot, avec l'hystérésis de `decideAlerte`.
+18. **`lireRemplissage` ne prend plus pour « migration absente » que PGRST202** (contre-revue, A-5) :
+    un 42883 levé depuis la fonction SQL est « non lu ». Reste le cas où PostgREST perd son cache de
+    schéma APRÈS la migration : il répond PGRST202, le repli compte la table et la juge sur les seuils
+    d'avant — au-dessus de 90 %, un rouge et une sonnerie le temps d'un passage, avec une ligne qui
+    demande une migration déjà en base. Rare et bref (le cache se recharge seul) ; s'en souvenir dans
+    l'isolat ne tiendrait pas (« la mémoire d'une Edge Function n'est pas une mémoire »).
+19. **Les marques du canari se relisent par 12 sur deux heures, les plus récentes d'abord** : au-delà
+    (deux ordonnanceurs, veilles à la main), la suite affichée plafonne à ce qui est relu. Mesuré en
+    production par la contre-revue : 326 canaris du pilotage depuis le 18/11, aucun quart d'heure
+    doublé, écart maximal 30 min.
+
+**Contre-revue du lot (21/11), ce qu'elle a changé.** ① A-1 : le rouge sur les seuls refus graves
+(ci-dessus, `bilanCanari`). ② A-2 et A-3 : le tri, la fenêtre et le filtre d'auteur de `lireCanari`
+n'étaient tenus que par une épingle de texte — inverser le tri ou retirer le filtre laissait 167
+tests verts. T2-n les EXÉCUTE : quatorze marques (les deux récentes font le rouge), un refus de
+2 h 10 (hors fenêtre), des marques forgées sous l'identifiant d'un compte (`analytics_insert_own`
+laisse tout compte écrire cet événement sous le sien : ni ligne, ni voyant, ni sonnerie). ③ A-4 :
+l'en-tête de la migration disait qu'aucun lecteur ne relit la classe courte au-delà de 26 h ; la
+médiane sur 9 jours du chien de garde le fait (limite 9) — l'en-tête le dit. ④ A-5 : limite 18.
+Seconde relecture (même jour) : aucune objection bloquante, deux mineurs soldés par une même règle
+d'écart (ci-dessus) — B-1, deux refus graves éloignés reliés par du débit ; B-2, deux refus isolés
+autour d'une veille muette. T2-a joue les deux cas et les bornes 35/36 min (R144, R145). Piège du
+registre : sous la règle d'écart, R141 (lecture sans fenêtre) restait VERT — le refus de 2 h 10 de
+T2-n était déjà écarté par le trou ; T2-n prouve désormais la fenêtre sur une suite CONTINUE.
+
+**Écarts au plan, et pourquoi.** ① `lireRemplissage` LÈVE sur un remplissage non mesuré (le plan
+rendait une jauge grise) : voir plus haut. ② Le banc SQL part de la structure de production
+(`socle-production-2026-11-06.sql` + les migrations du dépôt jusqu'au 15/11) au lieu d'un décor écrit
+à la main, et éprouve AUSSI les vrais seuils à 1,2 million de lignes. ③ Le lanceur des réinjections
+nomme son rapporteur : sous Node 22 sans TTY, `node --test` rend du TAP, le lanceur cherchait
+« ℹ fail » et sortait « VERT (? test joué) » pour tout — aucune réinjection n'était réellement
+jugée dans cet environnement. ④ La lecture SQL rend NULL pour un seuil qui n'est pas un entier, au
+lieu de lever.
+
+Verrous : `tests/unit/pilotage.test.mjs` (T2-a à T2-g, T2-m), `tests/unit/pilotage-chemins.test.mjs`
+(T2-h à T2-l et T2-n, fonction exécutée, horloge fixée), `tests/unit/battement.test.mjs` (⑧),
+`tests/unit/deploiement-fonctions.test.mjs` (T2-p, le plan de déploiement sans la migration),
+`tests/e2e/pilotage-nuage.spec.js` (㊹), `tests/sql/migration-telemetrie-classes.test.sh` (91
+contrôles, dont 19 mutants de la migration). Réinjections R77 à R119 et R132 à R146 au registre
+(`scripts/reinjections-pilotage.mjs`), toutes rouges, plus trois à la main sur le test navigateur.
+
+**Hors lot** : compteur des lignes écartées ; recul plus long du client sur « table pleine »
+(js/telemetry.js réessaie chaque minute) ; alignement du centre de pilotage local (il range « table
+pleine » avec les refus de débit) ; hystérésis de `decideAlerte` ; index dédié à la purge courte et
+son plan mesuré à l'échelle (staging, après une campagne de charge) ; durée de vie des lignes d'échec
+et plafond propre aux lignes protégées ; un geste « purger maintenant » depuis le téléphone ;
+`migrations/SCHEMA_PROD_REFERENCE.sql` à régénérer après application ; une ligne de règle dans
+`CLAUDE.md` (aucune marge aujourd'hui : 39 989 caractères sur 40 000).
+
+## 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+
+Trou T5 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` (lot D2 ; le volet « connexion », D1, est livré
+à part dans app-02). Avant ce lot, si toutes les photos cessaient de s'afficher, **rien ne partait** :
+les `onerror` en ligne du produit masquent ou remplacent l'élément et se taisent (18 lignes de code en
+posent un — `grep -n 'onerror=' js/app-*.js js/ui-v7-lot.js index.html | grep -v '^[^:]*:[0-9]*: *//' | wc -l`,
+compté le 21/11 — dont un seul, `imageFilIndisponible`, écrit « Image indisponible »), l'écouteur `error` de la
+télémétrie n'est pas en capture (il ne voit aucune ressource), le crochet `fetch` ne voit jamais un
+`<img>`. Le voyant restait vert.
+
+**⚠️ Ce lot ÉMET le signal ; personne ne le LIT encore.** Ni la veille, ni le pilotage (`/pilotage/`), ni
+la Sentinelle ne lisent `type = media` : une panne de photos laisse aujourd'hui des lignes en base, pas
+une alerte. La lecture (ratio par sessions, ligne « Les photos ne s'affichent plus ») est un lot
+ultérieur, et cette fiche est son contrat.
+
+**Le contrat de la ligne.** `type = "media"`, `action = "bilan"`, `status = "ok"`, `meta` exactement
+`{famille, ko, vus, ko_av, vus_av}` (plus `mode`, `trafic`, posés par `track` sur toute ligne) :
+- `ko` / `vus` : EMPLACEMENTS en échec / affichés depuis le bilan précédent de la session — un **delta**,
+  jamais un cumul ; `ko_av` / `vus_av` : leur part audio ou vidéo. Chaque nombre est borné à 9 999.
+  **`vus` est un MINORANT** (fenêtre de 60 s, images détachées avant la fin de leur chargement, médias
+  servis avant le bilan précédent) : `ko ≥ vus` est un seuil de tri, `ko / vus` n'est PAS un taux d'échec.
+- `famille`, liste FERMÉE de cinq valeurs, calculée puis oubliée (aucune adresse, aucun hôte, aucun
+  chemin ne part) : `stockage` (chemin `/storage/v1/` sur l'hôte **strictement égal** à celui de
+  `window.PASSIO_SUPABASE.url`), `demo` (`/demo/` de la même origine), `app` (reste de la même origine,
+  dont le `#` que rend `safeUrlAttr` sur une adresse refusée), `local` (`blob:`, et `data:` pour l'audio
+  et la vidéo), `externe` (tout le reste — **y compris tout autre `*.supabase.co`**, et le stockage tant
+  que la configuration n'est pas posée). Une image `data:` et un `src` vide ne sont pas des médias.
+- Une ligne **par session, par période et par famille EN ÉCHEC** ; rien sans échec. Premier bilan 20 s
+  après le premier échec compté (`MEDIA_PREMIER_MS`), puis un par période de 5 min au plus
+  (`MEDIA_PERIODE_MS` × le facteur de délestage, lu à l'armement : `_mediaPeriode`), un au masquage
+  (soumis au même plancher) et un à `pagehide` (il voyage avec le lot de fermeture, et ne connaît PAS le
+  plancher de période : seulement un plancher court de 30 s après la SORTIE précédente, `MEDIA_SORTIE_MS`
+  compté depuis `mediaSortie`, contre les allers-retours du cache aller-retour. Compté depuis n'importe
+  quel bilan, il perdait les échecs d'une page fermée moins de 30 s après un bilan de période ou de
+  masquage — contre-revue, second tour. `e.persisted` n'a pas été retenu : il est vrai à toute sortie
+  éligible au cache, la première comprise).
+- **Gigue** : le premier délai ET la période sont multipliés par un facteur de 0,7 à 1,3, tiré UNE fois
+  par session (`_mediaGigue`, retiré après un refus de la mesure). Les bilans d'une session tombent donc
+  entre 14 et 26 s, puis toutes les 3 min 30 à 6 min 30. Le banc la fixe à 1 (`Math.random` rend 0,5 le
+  temps du SEUL tirage de la gigue, après le refus et la reprise qui créent l'identifiant d'appareil —
+  figé plus longtemps, il donnerait le même `event_id` à toutes les lignes).
+- **Notable** = famille `stockage` ou `demo` ET `ko ≥ 3` (`MEDIA_KO_NOTABLE`) ET `ko ≥ vus` →
+  `severity: "warn"` : jamais échantillonné, prioritaire dans la file, gardé 7 jours. Il n'attend ni le
+  délestage ni la pression — **à une réserve près : sous pression (429), un seul notable par session et
+  par famille** (réserve remise à zéro par un refus de la mesure) ; les suivants attendent, comptés,
+  comme le bruit de fond, et partent entiers quand la pression retombe ou à la sortie — sauf une sortie
+  qui suit une autre sortie de moins de 30 s (ils restent alors en mémoire). Il reste soumis au plancher de période et au plafond client de `track`
+  (400 lignes par minute et par onglet).
+  Tout le reste part en `info` et ATTEND sous pression (`tel.sousPression()`) ou sous délestage ; un
+  bilan retenu ne réveille l'appareil qu'une fois par période (`mediaEssai`), pas toutes les 20 s.
+  **À la sortie, ni la pression ni le plancher de période ne retiennent rien** : tout part, sauf le
+  bruit de fond sous délestage, qui est JETÉ, et sauf si une autre sortie a émis il y a moins de 30 s
+  (tout reste alors compté en mémoire, pour la sortie suivante ou perdu avec la page).
+- Dénominateur fenêtré : sans échec compté ni échec en attente de verdict, les compteurs repartent de
+  zéro dès qu'un événement arrive plus de 60 s après le début de la fenêtre (`MEDIA_AVANT_MS`,
+  `_mediaFenetre`) ; la fenêtre repart à chaque bilan.
+
+**Comment c'est compté.** Tout vit dans `js/telemetry.js`, **aucun `onerror` n'est modifié** : trois
+écouteurs en CAPTURE sur `document` (`error`, `load`, `loadedmetadata` — pas `loadeddata`, qu'un
+`preload="metadata"` réussi n'émet pas), filtrés sur `IMG`, `VIDEO`, `AUDIO`, `SOURCE`. La capture passe
+AVANT le gestionnaire en ligne qui remplace l'élément (mesuré), donc tout `onerror` futur est couvert.
+Un échec n'est compté qu'après un **verdict différé de 2 s** (`MEDIA_VERDICT_MS`) :
+- à l'événement : rien si la page est masquée, ni dans les 2 s qui SUIVENT un retour au premier plan
+  ou une bascule réseau (les chargements coupés en arrière-plan tombent au réveil) ;
+- au verdict : rien si une occultation (`_occultation`) ou une bascule réseau (`_mediaCoupure`) est
+  survenue depuis, ni hors ligne, ni en fermeture (`contexteEchec`).
+Entre l'événement et son verdict, l'échec est « en attente » (`mediaAttente`) : il tient la fenêtre du
+dénominateur ouverte, et la fenêtre se juge à l'événement, avant qu'il n'attende.
+`setEnabled(false)` remet les compteurs et l'attente à zéro, périme les verdicts en cours
+(`mediaEpoque`) et annule le minuteur ; mesure refusée, les écouteurs sortent AVANT tout classement
+(aucune lecture de l'élément, aucun minuteur armé). ⚠️ `_mediaCompter` ne porte PAS cette garde (elle
+y était redondante, donc sans verrou) : tout nouvel appelant doit la porter. Fenêtres de banc :
+`tel._familleMedia`, `tel._medias()`, `tel._mediaBilan(raison)`, `tel._mediaGigue()`.
+
+**Écarts au plan de l'audit (point 3, C), décidés à la conception puis à sa contradiction** : pas de
+`mediaKo` appelé depuis les `onerror` (un second chemin et un dédoublonnage pour rien), pas de famille
+`relais` (`urlMediaDirecte` réécrit déjà ces adresses), pas d'hôte ni de genre dans la ligne, crochet
+`fetch` inchangé (les médias protégés ne sont pas en production, et `telecharger` annule volontairement
+des requêtes qu'un filtre élargi peindrait en pannes).
+
+**LIMITES — à lire par qui écrira le lecteur.**
+1. **Le signal est fabricable par le CONTENU, pas seulement par un client qui forge ses lignes.**
+   `posts.media_url` n'exige que `https://` : une publication à image morte fait échouer la famille
+   chez TOUS ses lecteurs, comptes anciens et honnêtes compris (à 4 publications en production, trois
+   suffisent pour un `warn`). Un bilan dit ce qu'un appareil a vu, pas l'état du stockage. **Ne jamais
+   sonner sans recoupement serveur** (lecture d'un objet témoin par la veille).
+2. **Les avatars ne sont comptés qu'en partie** : ceux que `avatarBg` peint en fond CSS échappent à
+   tout écouteur ; ceux qui sont des `<img>` sont comptés comme n'importe quelle image
+   (`js/app-05-config-profil.js:4391`, `js/app-07-ia-explore-irl.js:365`,
+   `js/app-08-ui-modals-tour.js:716` et `:740`). Sont couverts : images du fil, couvertures, stories,
+   vidéos, sons, et ces avatars-là.
+3. **Un bilan peut arriver très tard** : la file est persistée (`passio_tel_backlog`) et rejouée au
+   chargement suivant. Fenêtrer sur `client_ts`, et écarter les lignes où `received_at − client_ts`
+   dépasse 10 min — une fenêtre sur `received_at` prendrait la panne d'hier pour celle d'aujourd'hui.
+4. Les nombres sont des emplacements PAR RENDU : un fil repeint trois fois compte trois fois la même
+   image morte ; les événements d'une image détachée avant la fin de son chargement sont perdus
+   (échecs et succès dans les mêmes proportions). Raisonner en part de SESSIONS, jamais en lignes.
+5. Réseau médiocre mais « en ligne » (tunnel, portail captif) : `navigator.onLine` reste vrai, le
+   bilan part en `warn` au retour. Bruit de fond permanent à grande échelle.
+6. `app`, `local`, `externe` sont bruyantes par nature (hôtes tiers, vocal illisible sur iPhone) : le
+   lecteur ne doit faire sonner que `stockage` et `demo`.
+7. Le service worker sert les médias de même origine depuis son cache : une panne de `/demo/` reste
+   invisible sur les appareils qui ont déjà les images.
+8. **Rien n'a été mesuré sous WebKit** : la suite n'est pas au socle `SUITES_WEBKIT` (les lignes de
+   télémétrie n'y arrivent pas à la route), et l'ordre réel des événements d'iOS (échec livré avant
+   ou après l'annonce de l'arrière-plan) est déduit de la leçon payée pour `fetch`, pas mesuré pour
+   les images. Premier contrôle après déploiement : la part des bilans `warn` venant d'iOS.
+9. En banc local, `/demo/u/…` répond 404 : toute suite à télémétrie active qui affiche le fil
+   d'exemples émet désormais une ligne `media` (`demo`, souvent `warn`) dans ses lots.
+10. Une ligne refusée par le plafond client (400/min/onglet) est perdue avec ses compteurs — un
+    `warn` comme les autres.
+11. **Sous le plancher, rien n'est persisté.** Un masquage dans les 5 min qui suivent un bilan ne pose
+    rien : les échecs comptés depuis restent en mémoire et sont PERDUS si l'onglet est tué sans
+    `pagehide` (le cas ordinaire sur mobile). De même une sortie dans les 30 s qui suivent une AUTRE
+    sortie (`MEDIA_SORTIE_MS` : retour du cache aller-retour puis départ — si la page meurt ensuite, ce
+    qui a été compté entre les deux est perdu), et le bruit de fond d'une sortie sous délestage (jeté,
+    délibérément). Une sortie qui suit un bilan de période ou de masquage, elle, emporte tout. Accepté :
+    le premier bilan de la session, lui, est déjà parti ; écrire les compteurs sur disque à chaque
+    échec coûterait plus que ce delta ne vaut.
+12. Une `<source type="…">` que le navigateur ne sait pas lire lève `error` sur la `<source>` et
+    compterait un échec alors qu'aucune requête n'est partie. L'application n'émet aujourd'hui ni
+    `<source>`, ni `srcset`, ni `<picture>` (`grep -n 'srcset\|<picture\|<source' js/*.js index.html` :
+    seul `telemetry.js` répond) ; les deux premiers sont tenus par le banc (T5-⑫, T5-⑫b) pour le jour
+    où elle en émettra.
+13. Ne sont pas vus : un média dans un shadow DOM (`error` et `load` ne sortent pas de l'arbre), et un
+    `new Image()` ou un `<video>` jamais attaché au document (les préchargements, la compression avant
+    envoi).
+14. **Aucune coupure distante propre à cette mesure** : `reglages_distants` ne sait pas l'éteindre
+    seule. Les recours sont le délestage (période ×2 ou ×4, bruit de fond retenu), le plafond serveur
+    par lot, et `?telemetry=0` appareil par appareil. Si le signal se révèle trop bruyant à l'échelle,
+    c'est un déploiement, pas un réglage.
+15. Une horloge d'appareil qui RECULE ne fait plus taire la mesure (plancher tenu pour échu, délai borné
+    à une période), mais la fenêtre du dénominateur reste figée jusqu'au bilan suivant (ou jusqu'à ce que
+    l'horloge rattrape son retard) : les `vus` sont surestimés pendant ce temps — aucun faux `warn`
+    possible, un `warn` rétrogradé en `info` oui.
+16. Chaque échec arme un minuteur de 2 s (cinq mille images mortes d'un coup = cinq mille minuteurs
+    brefs, mesuré à la sonde) ; rien ne les regroupe.
+
+**Contrôle après déploiement (canal ①)** — le taux de fond qui servira à régler les seuils du lecteur :
+```sql
+select meta->>'famille' as famille, severity, count(*) as lignes,
+       sum((meta->>'ko')::int) as ko, sum((meta->>'vus')::int) as vus
+from public.telemetry_events
+where env = 'production' and type = 'media' and action = 'bilan'
+  and coalesce(meta->>'trafic','') = ''
+  and client_ts > now() - interval '24 hours'
+  and received_at - client_ts < interval '10 minutes'
+group by 1, 2 order by 1, 2;
+```
+Preuve de déploiement : le nom `_mediaBilan` dans la page servie, ouverte avec `?equipe=1` (les
+littéraux `"media"` et `"bilan"` existent ailleurs dans la page).
+
+**Verrous.** `tests/e2e/telemetrie-medias.spec.js` (vingt-cinq cas « T5- », service worker bloqué, horloge
+simulée, tous les envois interceptés) et quatre cas « médias » de `tests/unit/telemetrie-pii.test.mjs`
+(table d'adresses hostiles et hôte qui suit la configuration, câblage en capture, sortie avant tout
+classement quand la mesure est refusée — joués par `npm run verif`).
+
+**Réinjections** (garde retirée → cas rouge ; chacune restaurée à l'identique) :
+| Garde retirée | Cas rouges |
+|---|---|
+| hôte STRICT du stockage (remplacé par `*.supabase.co`) | T5-③, unitaire « liste fermée » |
+| sans configuration, rien n'est `stockage` | unitaire « liste fermée » |
+| sortie sur page masquée, à l'événement | T5-⑥ |
+| hors ligne lu au verdict | T5-⑤ |
+| fermeture lue au verdict | T5-⑤ |
+| bascule réseau pendant la fenêtre du verdict (`_mediaCoupure >= t`) | T5-⑤ |
+| occultation pendant la fenêtre du verdict (`_occultation >= t`) | T5-⑥ |
+| fenêtre après un retour au premier plan | T5-⑥ |
+| fenêtre après une bascule réseau | T5-⑤ |
+| verdict différé (échec compté tout de suite) | T5-①, T5-⑤ |
+| delta (compteurs non remis à zéro après un bilan) | T5-①, ③, ④, ⑦, ⑨, ⑨b |
+| `!ENABLED` dans `_mediaCompter` (déplacée en tête des écouteurs par la contre-revue, voir plus bas) | T5-⑪ |
+| remise à zéro des compteurs dans `setEnabled(false)` | T5-⑪ |
+| minuteur annulé dans `setEnabled(false)` | T5-⑪ |
+| seuil notable : trois échecs | T5-④, ⑨, ⑨b |
+| seuil notable : `ko ≥ vus` | T5-④ |
+| seuil notable : familles de panne seulement | T5-④ |
+| gravité toujours `info` | T5-①, ③, ④, ⑧, ⑨, ⑨b |
+| facteur de délestage sur la période | T5-⑨b |
+| liste fermée des clés (une clé `hote` en plus) | T5-①, ⑦, ⑧, ⑨, ⑬ |
+| famille remplacée par l'hôte | les quatorze cas |
+| écoute `error` sans capture | treize cas, unitaire « capture » |
+| écoute `load` sans capture | T5-①, ②, ③, ④, ⑧, ⑪, ⑬, unitaire « capture » |
+| écoute `loadedmetadata` retirée | T5-③, ⑫, unitaire « capture » |
+| plancher de période dans `_mediaBilan` | T5-⑦ |
+| instant du dernier essai (`mediaEssai`, bilan retenu) | T5-⑨ |
+| le bruit de fond attend | T5-⑨, ⑨b |
+| branche délestage / branche pression de `_mediaDoitAttendre` (scindée depuis en `_mediaDeleste` / `_mediaPression`) | T5-⑨b / T5-⑨ |
+| la panne n'attend jamais (un notable retenu) | T5-⑨, ⑨b |
+| aucune ligne pour une famille sans échec | T5-③ |
+| une image `data:` n'est pas un média | T5-② |
+| filtre de balise (script, feuille de style) | T5-② |
+| `src` présent et blanc | T5-②, ⑫ |
+| fenêtre du dénominateur | T5-⑧ |
+| armement du minuteur au verdict | T5-⑦, ⑨, ⑨b, ⑪ |
+| bilan au masquage / à la fermeture | T5-⑩ / T5-⑩ |
+| borne des nombres | T5-⑬ |
+| part audio ou vidéo (`ko_av`) | T5-③, ⑫ |
+| famille `demo` | T5-③, ④, ⑨, ⑨b, unitaire |
+
+Quarante-deux réinjections jouées une par une, fichier restauré à l'identique après chacune :
+quarante et une rouges, UNE verte. Dit tel quel : (1) la verte était une garde en tête de
+`_mediaBilan` (`if (!ENABLED || !_mediaReste()) return 0;`) qu'AUCUN cas ne voyait — elle doublait le
+test par famille et la remise à zéro du refus ; elle a été retirée plutôt que laissée sans verrou.
+(2) Le délai de `_mediaArmer` après un premier bilan n'a pas de réinjection propre : le plancher de
+`_mediaBilan` rend le même résultat observable (des réveils de trop, aucune ligne de trop) ; seul le
+cas « bilan retenu » (`mediaEssai`, T5-⑨) le voit.
+
+**Contre-revue du lot (2026-11-21, une autre instance de Claude Code, en lecture seule, sondes et
+réinjections jouées).** Ce qu'elle a changé :
+- **D2-1, faux `warn` (sérieux)** : un échec n'entrait dans `mediaCompte` qu'au verdict (2 s) ; si la
+  borne des 60 s tombait dans ces 2 s, son propre comptage effaçait les affichages d'avant — vingt
+  images affichées à 59 s + trois échecs donnaient « ko 3 / vus 0 », `warn`. Corrigé : compteur
+  `mediaAttente` (`++` à l'événement, `--` au verdict, remis à 0 et périmé par `mediaEpoque` au refus),
+  fenêtre jugée à l'événement (`_mediaFenetre`). Cas T5-⑧b.
+- **D2-2** : retirer `!_mediaReste()` de la fenêtre laissait tout vert ; T5-⑦ affiche désormais une image
+  entre le second lot d'échecs et la période, et exige `ko: 3`.
+- **D2-3, échelle** : gigue ± 30 % tirée une fois par session (premier délai et période, T5-⑭) ; sous
+  pression, un seul notable par session et par famille (T5-⑨c).
+- **D2-4, horloge qui recule** : délai d'armement borné à une période, plancher tenu pour échu (T5-⑮).
+- **D2-5** : échecs sous le plancher perdus si l'onglet est tué — limite 11, rien n'est persisté.
+- **D2-6, gardes vertes sous mutation** : `srcset` gardé et testé (T5-⑫b, l'app n'en émet pas
+  aujourd'hui), ordre `currentSrc || src` verrouillé (T5-⑫b, les deux mutations rougissent), hôte du
+  projet qui suit la configuration (unitaire), `mediaDebut` remis au bilan (T5-⑧b c).
+- **D2-7** : commentaires et fiche corrigés — avatars `<img>` comptés, nombre de `onerror` recompté
+  avec sa commande, un `warn` reste soumis au plancher et au plafond client, `vus` est un minorant,
+  `!ENABLED` en tête des deux écouteurs (avant tout classement, banc unitaire).
+- **D2-8** : limites 12 à 14 écrites ; plancher court de 30 s à `pagehide` (T5-⑩b) ; sous délestage, à la
+  sortie, le bruit de fond est JETÉ (T5-⑨d).
+
+**Second tour de contre-revue (même jour).** Le plancher court de `pagehide` se comptait depuis
+`mediaDernier`, donc depuis N'IMPORTE QUEL bilan : une page fermée 12 s après un masquage, ou 15 s après
+un bilan de période, perdait tout le delta suivant, panne du stockage comprise ; et sous pression, une
+sortie juste après un masquage perdait le bruit de fond retenu. Le banc avait été AFFAIBLI pour ne pas
+le voir (T5-⑩ porté de 5 s à 30 s, un saut de 31 s glissé dans T5-⑨) : rétabli. Corrigé par un repère
+propre, `mediaSortie`, posé seulement par une sortie qui a émis ; cas T5-⑩c (après un bilan périodique)
+et T5-⑩d (sous pression, après un masquage). Aussi : `mediaNotable` remis à zéro par un refus (T5-⑨e —
+le plancher de période, lui, survit délibérément au refus : un aller-retour de la mesure ne doit pas
+permettre d'émettre plus souvent) ; le banc ne fige plus `Math.random` pendant la reprise qui crée
+l'identifiant d'appareil. Réinjections de ce tour (`revue-D2/reinj3.py`) : 8 jouées, 8 rouges —
+repère de sortie remplacé par `mediaDernier` (T5-⑨, ⑩, ⑩c, ⑩d), `mediaSortie` jamais posé (T5-⑩b),
+posé à tout bilan (T5-⑨, ⑩, ⑩c, ⑩d), `mediaNotable` non remis au refus (T5-⑨e), plancher court nul
+(T5-⑩b), bruit de fond non jeté (T5-⑨d), plancher de période nul (T5-⑦), horloge reculée (T5-⑮).
+
+Réinjections de l'état final (`revue-D2/reinj2.py`, hors dépôt) : **41 jouées, 41 rouges, aucune
+verte**, fichier restauré à l'identique après chacune (empreinte vérifiée). Les quinze d'origine,
+adaptées au code actuel, plus :
+| Garde retirée | Cas rouges |
+|---|---|
+| compteur d'attente dans la fenêtre / décrément au verdict | T5-⑧b / T5-⑧b |
+| `!_mediaReste()` dans la fenêtre | T5-⑦ |
+| fenêtre jugée à l'événement d'échec | T5-⑧b |
+| époque du verdict / attente remise à 0 au refus | T5-⑪b / T5-⑪b |
+| gigue sur le premier délai / sur la période / retirée au refus | T5-⑭ / T5-⑭ / T5-⑭ |
+| gigue tirée une seule fois | T5-⑦, ⑨b, ⑨c, ⑭, ⑮ |
+| un seul notable sous pression / notable marqué | T5-⑨c / T5-⑨c |
+| délai borné à une période / horloge reculée = plancher échu | T5-⑮ / T5-⑮ |
+| plancher court à `pagehide` | T5-⑩b |
+| bruit de fond jeté à la sortie sous délestage / mémoire vidée | T5-⑨d / T5-⑨d |
+| sortie retenue sous pression | T5-⑨ |
+| `srcset` avec `src` blanc | T5-⑫b |
+| `currentSrc` ignoré / `src` avant `currentSrc` | T5-⑫b / T5-⑫b |
+| hôte du projet mis en cache sans suivre la configuration | unitaire « liste fermée » |
+| `mediaDebut` non remis au bilan | T5-⑧b |
+| `!ENABLED` en tête de l'écouteur `load` / `error` | T5-⑪, unitaire « refus » |
+
+**Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
+rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.
+
+## 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
+
+Trou T3 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` : les seuils de la veille sont des NOMBRES
+(10 erreurs, 5 pannes serveur, 2 comptes) et le téléphone ne sonnait qu'au CHANGEMENT de couleur. À
+25 000 connectés, le bruit de fond normal tient le voyant rouge — et la vraie panne qui arrive ensuite
+ne sonne plus. Le lot est coupé en deux : **B1 (ici, sans migration)** et **B2 (migration
+`pilotage_echelle()`, voyant à double règle, écran)**.
+
+**Ce que B1 ferme : une vraie panne n'est plus muette quand le voyant est déjà rouge.** Ce qu'il ne
+ferme PAS : le voyant rouge permanent à grande échelle (B2 : il faut le nombre de comptes ANCIENS
+connectés, compté en base) ; le ralentissement automatique permanent (hors lot : la jauge des 500
+connexions le commande jusqu'à T13, et le réveil de la Sentinelle reste bruité jusqu'à T4).
+
+**Mesuré (canal ①, 21/11).** Au plus 2 comptes connectés par quart d'heure ; aucun bruit de fond
+mesurable : les taux de ce lot sont des valeurs de DÉPART, pas un calibrage. La requête neuve de la
+veille GitHub (`SQL.api`, jointe à `auth.users`) s'exécute en production et rend 0 partout sur
+l'heure écoulée. Non vérifié d'ici : que la connexion anonyme soit désactivée dans Supabase ›
+Authentication (le client sait encore appeler `signInAnonymously`, aucun compte anonyme en base) —
+c'est l'une des raisons pour lesquelles le voyant ne juge pas au taux « tous les connectés ».
+
+⚠️ **UNE RAISON ROUGE = UN CODE D'UNE LISTE FERMÉE** (`RAISONS_ROUGES` : `erreurs`, `serveur`,
+`deploiement`, `veille`, `telemetrie`, `humain`, et `parcours:<id>` au gabarit des identifiants de
+contrat — `estCodeRouge`). `verdict` rend `codes` et `rouges` ({ code, texte }) ; `coder()` code les
+raisons poussées depuis son appel précédent, si bien que les lignes qui poussent n'ont pas changé (R20
+garde son texte). Le prédicat d'un parcours rouge a UNE définition (`estPanneRouge`, `_shared/parcours.js`),
+lue par `raisonsVerdict` et par le code. `telemetrie` (table refusée ou pleine, T2) n'était pas dans le
+plan, écrit avant T2 : sans lui, une table pleine pendant un rouge ne sonnerait pas.
+
+⚠️ **« NOUVEAU PROBLÈME » : UN CODE MESURÉ À CE PASSAGE, ABSENT DE L'ÉTAT MÉMORISÉ, NON ANNONCÉ DEPUIS
+6 H** (`decideAlerte`, `memoireAlerte`). Les codes viennent du verdict MESURÉ (`v`), jamais du voyant
+tenu : pendant une lecture incomplète, une raison neuve venue d'une source lue sonne quand même, et
+`memoireAlerte` garde les codes d'avant (sinon ils re-sonneraient à la lecture suivante). Un état
+d'avant ce lot (sans `codes`) n'invente aucune nouveauté et n'est pas réécrit pour ça ; un code hors
+liste ne sonne jamais ; une raison qui clignote se tait jusqu'au rappel. La veille réécrit l'état quand
+l'ensemble des codes change sous un rouge qui dure (`codesChange`) ; quand c'est sa SEULE cause (même
+couleur, même disponibilité, rien n'a sonné), la ligne porte `motif: "codes"` et `lireHistorique` l'écarte
+en base. Des 40 lignes restantes, il garde la plus ancienne lue de chaque suite de même couleur ET même
+disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
+
+⚠️ **L'ÉTAT MÉMORISÉ EST HOSTILE PAR HYPOTHÈSE.** Il est relu tel quel d'`analytics_events` : la règle
+neuve est sous `try`, `annonces` n'est lu que si c'est un objet simple, `codes` filtré par
+`estCodeRouge`. Une exception y aurait supprimé TOUTE sonnerie, résolu compris. La veille appelle
+`memoireAlerte` APRÈS `decideAlerte`, sous `try/catch` (repli : les codes mesurés, aucune annonce).
+
+⚠️ **AUCUNE COULEUR DU VOYANT NE CHANGE AVANT LA MIGRATION** (contradiction bloquante du plan). Le seul
+dénominateur lisible sans migration, `comptes_connectes` de `pilotage_audience`, compte TOUS les
+connectés, comptes neufs et anonymes compris : cent un comptes qui envoient une ligne chacun auraient
+relevé le seuil et fait taire l'alarme, et une vague de lancement diluerait une panne des seuls comptes
+anciens. Il sert donc à MESURER : le battement note `echelle` (connectés sur 5 min, comptes touchés et
+lignes sur 15 min ; des nombres, `CLES_ECHELLE`), l'écran dit « seuils en nombres absolus » et où serait le seuil
+proportionnel (`resumeEchelle`, Détails › Veille). `TAUX_VOYANT_PM` (20 ‰ erreurs, 10 ‰ serveur) n'y
+sert qu'à cette phrase. T3-c rejoue toute une grille aux trois échelles : même verdict avec ou sans
+mesure. La retenue au taux, à DOUBLE règle (tous les connectés ET les comptes anciens), est B2.
+
+⚠️ **LA RÈGLE « PLANCHER ET TAUX » EST UNE FONCTION FEUILLE** (`_shared/echelle.js`) :
+`max(plancher, ⌈D × ‰ / 1000⌉)`, D illisible → plancher. Des ENTIERS pour mille : aucun taux du lot n'est
+touché par l'arrondi (balayage de 1 à 100 000), c'est une précaution épinglée par
+`seuilEchelle(1, 70, 100) === 7` (0,07 × 100 = 7,000000000000001).
+
+⚠️ **VEILLE GITHUB (`signalApi`) : UNE ALERTE 5XX RETENUE DEVIENT UNE ATTENTION, JAMAIS « RIEN ».**
+Les planchers ne bougent pas (5 réponses ET 2 appareils). L'alerte n'est ramenée à `warn` (`retenue5xx`)
+que si TOUT est lu et que, à la fois : les comptes ANCIENS touchés (identité serveur : plus de 7 jours,
+confirmés, non anonymes, non supprimés) sont au moins 1 et sous le taux des comptes anciens actifs
+(`seuilEchelle(2, 10 ‰, anciensActifs)` : pivot 200, 230 à 23 000) ; ET les lignes qui ne viennent PAS
+de comptes anciens (`n5xxAutres`, `app5xxAutres` : visiteurs, comptes neufs, lignes sans compte)
+restent, seules, sous les planchers d'avant. Le dénominateur ne compte jamais de `device_id`. Les refus
+ne sont pas retenus (leur palier est déjà une attention). Le texte part dans une issue PUBLIQUE : il ne
+cite ni le dénominateur ni le seuil.
+
+**Retrait du classement mort.** `erreursFrequentes` et `sante.principales` (300 dernières lignes de
+`client_errors`) n'avaient plus aucun lecteur — ni la page, ni les scripts, ni le dashboard ; seule la
+fixture e2e les nommait. Le pilote lit `erreurs.details` (1 000 lignes, 7 jours). `erreurs24h` reste
+compté en base, et sa panne lève toujours.
+
+**Bancs.** `tests/unit/lib/echelles.mjs` (données seules : la suite veille-production, non listée par
+`edge-functions.yml`, l'importe aussi). Logique pure : `pilotage.test.mjs` T3-a à T3-h ; fonction
+exécutée : `pilotage-chemins.test.mjs` T3-i (humain, puis déploiement cassé = une alerte « Nouveau
+problème » ; réparé, l'état suit ; rechute dans les 6 h : silence ; tout réglé : résolu ; historique
+réduit au passage au rouge), T3-j (états hostiles), T3-k (25 000 connectés, 300 erreurs chez 120
+comptes : TOUJOURS rouge, mesure au battement et à l'écran), T3-o (mémoire qui lève, fonction SQL qui
+lève) ; `battement.test.mjs` T3-l ; `veille-production.test.mjs` T3-m ; e2e `pilotage-nuage.spec.js`
+T3-n ; contre-revue : T3-p (pur), T3-q (exécuté). **Réinjections R150 à R199** dans
+`scripts/reinjections-pilotage.mjs`, dont les quatre d'`echelle.js` et huit de la veille GitHub ; à la
+main, l'écran rendu par `insertAdjacentHTML` ou retiré rougit T3-n.
+
+**Ce que la contre-revue du lot a changé (B-1 à B-4).**
+- **B-1, veille GitHub.** La première version ne comparait que comptes anciens touchés / actifs :
+  5 000 réponses 5xx sur 3 000 appareils et UN compte ancien touché rendaient `ok` (sur main : alerte),
+  et une ligne 5xx se forge par tout compte (`telemetry_insert_own` ne contraint ni type ni statut).
+  Désormais les lignes hors comptes anciens doivent rester seules sous les planchers d'avant, et une
+  alerte retenue rend `warn`. La fiche disait « une panne des visiteurs ou des comptes neufs alerte
+  comme avant » : c'était faux pour une panne qui touche aussi un compte ancien.
+- **B-2, historique.** Chaque changement de l'ensemble des codes écrivait une ligne ; un code qui
+  clignote remplissait les 40 lignes lues en 3 h 20 et l'historique n'avait plus qu'une ligne. Marque
+  `motif: "codes"`, filtre en base ; le dédoublonnage distingue la disponibilité (survivant M11).
+- **B-3.** Une raison neuve arrivée en même temps que « PASSIO ne répond plus » se mémorisait sans
+  avoir été annoncée — jamais annoncée ensuite. Une sonnerie qui n'annonce aucun code ne mémorise que
+  les codes que l'état d'avant portait déjà.
+- **B-4.** La garde des annonces datées dans le futur n'était vue par aucun test (survivant M1).
+  `lireConnectes15` rappelait `pilotage_audience(900)`, qui refait tout le calcul lourd (aucune branche
+  courte à 900 s), AVANT le verdict et sans délai propre : retiré. Les connectés viennent de l'appel à
+  300 s déjà fait (veille : ses signaux ; écran : `utilisateurs.maintenant`), seulement s'il est exact.
+  Choisi plutôt qu'un `avecDelai` : aucun appel de plus, aucun retard du verdict ; le prix est une
+  fenêtre de 5 min au lieu de 15, dite partout (« sur 5 min »). B2 apportera la mesure sur 15 min.
+
+**Limites connues.**
+- La sonnerie est plus bavarde par construction : un « Nouveau problème » par code et par 6 h ; il remet
+  `alerteLe` à maintenant, donc le rappel « Toujours un problème » des raisons plus anciennes recule.
+- Un rouge en cours au moment du déploiement garde l'ancien comportement (état sans codes) jusqu'à son
+  prochain rappel ou changement de couleur.
+- Un rouge tenu sur une lecture incomplète écrit ses raisons d'AVANT dans l'état et l'historique, même
+  quand une raison neuve vient de sonner (le texte de la sonnerie, lui, la nomme).
+- Un code `parcours:<id>` dépend d'un tirage et d'un budget de relecture : il peut apparaître et
+  disparaître ; l'historique dédoublonné l'absorbe, la mémoire des annonces évite le re-son.
+- Les taux ne sont pas calibrés (2 comptes en production) : à relire dès le premier pivot atteint
+  (100 connectés). Le battement accumule de quoi le faire.
+
+## ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
+
+**La question de Benjamin**, photo du pilotage à l'appui (« La Sentinelle n'a pas tourné depuis plus
+de 8 h — Régler ») : « Pourquoi la Sentinelle s'arrête de tourner ? Elle est censée être activée
+constamment. »
+
+**La cause, mesurée.** Elle ne s'arrêtait pas : elle n'était pas LANCÉE. Son déclencheur est un cron
+GitHub horaire (`23 * * * *`), et GitHub ne sert un cron que « quand il a de la place ». Sur les 100
+derniers passages planifiés (25/10 → 21/11) : **3,7 par jour sur 24 demandés**, écart médian 6,5 h,
+P95 9,9 h, pire 10,8 h. Aucun passage en échec ; chaque « Régler » réussi en 20 s. Le
+défaut était connu (P1-7 du suivi, n° 11 de `docs/SENTINELLE_AUTONOME.md`) et attendait une décision :
+« réveil de cadence = politique ». La question de Benjamin est cette décision.
+
+**Ce qui en dépendait, au-delà de l'écran** : la lecture de la production (une erreur pouvait attendre
+10 h avant d'être classée), et surtout le **veilleur des enquêtes** de `sentinelle-autonome.yml`
+(relance à 20 min, `humain` après 6 h), qui ne tourne qu'avec elle — ses délais étaient fictifs.
+
+**Le correctif — sans migration, sans toucher `.github/`.** La veille du pilotage tourne déjà toutes les
+5 min par pg_cron (288 tours sur 288 en 24 h) et sait lancer la Sentinelle (le réveil sur échecs du
+2026-10-12). Elle porte désormais un troisième geste, `cadence_sentinelle` (circuit A, suspendu par la
+pause) : dès que le dernier passage (planifié ou lancé, sur `main`) est **terminé depuis 1 h** (2 h s'il a
+cassé), elle
+envoie un `workflow_dispatch` — le MÊME passage que le cron, avec ses propres filtres (places, dédup,
+zones). Règle pure : `doitCadencerSentinelle` (`_shared/autonomie.js`) ; câblage : `cadencerSentinelle`
+(`pilotage/index.ts`), APRÈS le réveil (un passage que le réveil vient de lancer suffit), sous la
+politique, avec un plafond EN BASE d'une relance par heure (`plafond_consommer`, atomique : une lecture
+de GitHub encore en cache ne relance pas deux fois), marque `sentinelle_cadence` après le 204. Le
+battement dit son résultat (`gestes.cadence` : `fait`, `run_recent`, `run_en_cours`, `politique:pause`,
+`plafond`, `refus_github_<code>`…). Le cron reste un filet.
+- **Le seuil « muette » passe de 8 h à 3 h** (`SENTINELLE_MUETTE_MS`) : 8 h était calé sur le cron. Avec
+  la cadence, trois heures sans passage veulent dire que la cadence elle-même ne part plus (jeton,
+  GitHub, politique). Le titre de la ligne et la raison du voyant se DÉDUISENT de la constante
+  (`TITRE_SENTINELLE_MUETTE`) — la phrase « plus de 8 h » écrite à la main en trois endroits aurait
+  menti dès le premier changement.
+- ⚠️ **Un passage CASSÉ espace la cadence à 2 h** (`apresEchecMs`). Chaque passage rouge COMMENTE
+  l'issue `[SENTINELLE MUETTE]` — un e-mail à Benjamin : relancé chaque heure, un `SENTINELLE_TOKEN`
+  expiré (tous les 90 jours) en enverrait ~22 par jour. À 2 h, ~11 pour la cadence, ~15 avec les
+  passages du cron, rouges eux aussi (contre ~3,7 avant ce lot) — et toujours sous le seuil « muette » :
+  l'échec garde sa seule ligne (« La Sentinelle s'est arrêtée »). Le RÉVEIL sur échecs suit la même
+  règle (`echec_recent`) : un détecteur en panne ne voit rien de plus en repartant. Annulé ou sauté
+  n'est pas cassé (un job qui dépasse son délai finit `cancelled`, et l'étape `[SENTINELLE MUETTE]`,
+  `if: failure()`, ne commente pas). Un passage EN COURS ou en file (quelle que soit son ancienneté)
+  n'est jamais doublé.
+- ⚠️ **Deux gestes, deux comptes.** Le quota du réveil (12 par jour) n'arrête pas le passage de l'heure,
+  et la cadence ne consomme rien du réveil — sinon 24 cadences épuiseraient les réveils dès midi.
+- Coût : le dépôt est public, les minutes d'Actions ne se paient pas ; un passage sans enquête dure ~20 s.
+  Cadence réelle : la veille avance par pas de 5 min, un cycle dure ~65 min — **~22 passages par jour**,
+  pas 24 (un intervalle de 55 min se heurterait au plafond d'une heure GLISSANTE).
+
+**Contre-revue adversariale (autre instance, lecture seule) : « à corriger avant fusion », six constats,
+cinq corrigés.**
+- **La cadence ralentissait le réveil sur échecs — le seul chemin rapide d'un incident.** Le réveil
+  refusait un passage de moins de 45 min ; avec la cadence, le dernier passage a toujours moins de
+  ~65 min : le réveil n'était plus permis que 20 min par heure. Simulé minute par minute du cycle :
+  médiane 17 min, pire 49 min (contre 2 et 4 avant). `REVEIL.runRecentMs` passe à **10 min** (runbook
+  et plan 100K suivis) ; ses plafonds (2 par heure, 12 par jour) bornent. Verrou `autonomie.test.mjs` ㉒
+  (la même simulation : pire ≤ 15 min ; à 45 min, rouge). **Règle : un geste qui rend un passage plus
+  fréquent change le sens de tout seuil « pas de passage récent » des autres gestes.**
+- **En pause, le voyant passait orange** : `aFaire` taisait la ligne « muette », pas `verdict` — et le
+  filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause. Défaut d'avant,
+  que le seuil de 3 h multipliait par ~14 (53,7 % du temps de pause, sur les écarts réels du cron).
+  Le voyant ignore la « muette » en pause (`pilotage.test.mjs` ㊹).
+- **Le passage cassé relancé chaque heure** : l'espacement à 2 h ci-dessus (`autonomie.test.mjs` ⑳,
+  `pilotage-chemins` ㉟ ter ; `CONCLUSIONS_CASSEES` = `CONCLUSIONS_ECHEC`, verrou ㉒).
+- **Un réveil INTERROMPU** (délai de 10 s : GitHub a peut-être accepté) laissait partir la cadence : deux
+  passages. `reveil.erreur` bloque aussi la cadence pour ce tour (㉑).
+- Trois commentaires et la carte « Inactif » à l'ancienne mesure.
+- **Laissé** : la « muette » se calcule sur le passage le plus RÉCENT quel que soit son état — un passage
+  bloqué en file bloque la cadence (voulu, dit à 3 h), mais chaque « Régler » en crée un neuf qui remet
+  le voyant vert, et attend DERRIÈRE le passage coincé : celui-là s'annule sur GitHub. ⚠️ L'annulation
+  automatique d'un passage en file après 24 h ne vaut que pour les runners auto-hébergés (« Actions
+  limits », docs GitHub) : sur les runners de GitHub, rien ne le borne. Les seuils de 8 h du poste
+  (`dashboard/server/chaine-autonome.js`) et de `scripts/veille-production.mjs` restent : instruments
+  distincts, désormais seulement larges.
+
+**Seconde contre-revue (même relecteur, sur le seul diff de correction) : « aucune objection
+bloquante ».** Traité : le réveil suit l'espacement après un passage cassé (ci-dessus, ① de
+`autonomie.test.mjs`) ; un plancher à la garde du réveil (au moins un tour de veille, ㉒ — à 0 ou 1 min
+tout restait vert) ; « réveil interrompu → pas de cadence » joué par la fonction EXÉCUTÉE (㉟ ter : un
+seul envoi tenté) ; l'escalade du runbook `reveil_sentinelle` promettait une ligne « À faire » sur le
+quota épuisé, qui n'a jamais existé — elle dit maintenant ce qui le dit (le battement, `quota_du_jour`)
+et que la cadence continue. Laissé, écrit :
+- À 10 min de garde, un incident qui DURE épuise les 12 réveils du jour en ~5,5 h (10,3 h à 45 min,
+  simulé sur 24 h) ; un second incident le soir attend alors la cadence (≤ ~65 min). Borné, assumé :
+  le premier passage d'un incident compte plus que le douzième.
+- Une pause OUBLIÉE laisse le voyant vert : la « muette » ne s'y dit plus (corrigé ci-dessus, c'était un
+  faux orange), et la ligne « La Sentinelle est en pause » reste rangée en priorité 2. Avant ce lot,
+  l'orange de 8 h jouait ce rappel une fois sur vingt-six, sous un faux libellé. À faire si le besoin se
+  montre : une ligne de priorité 1 après N heures de pause, avec « Reprendre ».
+- Défaut d'avant : un passage de la Sentinelle en échec ne colore pas le voyant (une seule ligne de
+  priorité 1, « La Sentinelle s'est arrêtée »).
+
+Verrous : `autonomie.test.mjs` ⑳ (bornes de la règle), ㉒ (délai du réveil) et ㉑ (ordre du câblage : jeton → réveil →
+politique → décision → plafond → dispatch → 204 → marque), `politique-autonomie.test.mjs` ⑩ (bornes
+déclarées = celles du code, escalade = seuil « muette »), `pilotage.test.mjs` ㉿④ et ㊹ (3 h, phrase
+déduite), `pilotage-chemins.test.mjs` ㉟ ter (la fonction EXÉCUTÉE : relance, une seule par heure,
+pause, passage en cours, derrière un réveil, quota du réveil épuisé, GitHub illisible ou qui refuse,
+sans jeton). Quatre réinjections sur le câblage (appel retiré, derrière un réveil, sans plafond,
+marque avant le 204) : quatre rouges. Deux anciens décors corrigés, pas leurs assertions : ㉿⑮ supposait
+un passage vieux de 5 h 50 « pas muet », et ㉟ un passage de 3 h qui ne relançait rien quand le quota
+du réveil était épuisé.
+**Règle : un cron GitHub n'est jamais la cadence d'une machine qui doit tourner « constamment » —
+pg_cron décide, GitHub exécute ; et le seuil qui dit « elle ne tourne plus » se déduit de la cadence
+réelle, jamais de celle qu'on a écrite dans le YAML.**

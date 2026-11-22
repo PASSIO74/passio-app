@@ -200,3 +200,13 @@ L'autorité de coupure est la table existante `reglages_distants`, sans nouvelle
 3. Coordonner le minimum de version client, la quiescence des écritures, la fermeture des anciennes origines et l’activation en production. La clôture historique coupe les anciens uploads même si le drapeau est faux. Sa migration relève de cette bascule ultérieure.
 
 La coupure conserve le bucket privé. La conversion historique, la restauration des octets avec leurs registres, la purge, la collecte et la capacité demandent chacune une preuve. Les 180 cas natifs, trois verrous concurrents et 19 unités décrits le 16 novembre documentent le lot serveur source. La qualification de l’assemblage courant et la recette hébergée ont des preuves distinctes.
+
+## Après l'ouverture : la retenue ne porte plus sur la valeur du réglage (21 novembre)
+
+Le réglage `medias_proteges` a été ouvert en production le 19 novembre à 10:43 UTC, depuis le pilotage (étape 3 de l'ordre ci-dessus). La retenue de l'étape 1 — « avant le déploiement privé, la valeur JSON `false` » — et la fumée qui exigeait des capacités fermées décrivaient la PRÉPARATION. Restées en place, elles retenaient tout redéploiement du courtier, et, le workflow vérifiant alors les six fonctions ensemble, tout déploiement de fonction (run 44831711346 du 20 novembre).
+
+Décision : ce contrôle est retiré. Aucune règle ne demande de fermer les médias pour redéployer le courtier : un correctif de sécurité du courtier ne doit pas exiger une coupure pour tous les comptes. Le prérequis devient `reglage:medias_proteges.actif:booleen` : la ligne existe et porte un booléen JSON. La valeur est lue en lecture seule avant le déploiement, et la fumée exige que `uploads_enabled` et `reads_enabled` servis soient exactement cette valeur. Les registres et les cinq fonctions SQL restent des prérequis obligatoires.
+
+Ce qui ne change pas : l'autorité de coupure (`reglages_distants`, aucun droit client), la lecture du réglage à chaque résolution, réservation et INSERT Storage, « absent ou invalide vaut fermé », et le retour arrière — suspendre depuis le pilotage, jamais rouvrir le bucket public. La coupure ne retient plus le déploiement de son propre correctif.
+
+Détail, mesures et verrous : `docs/journal/telemetrie-pilotage-sentinelle.md`, fiche du 21 novembre.

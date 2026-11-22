@@ -142,8 +142,10 @@ test("① la feuille de style : UN <link> avec l'empreinte du fichier écrit, et
   // La reprise écoute `error` en capture sur le document, et elle est posée AVANT le
   // <link> : son échec part avant les scripts du <body> (qui attendent la feuille), un
   // écouteur posé après lui ne le verrait jamais (tests/e2e/app-scripts-par-fichier.spec.js ⑨ ⑩).
-  const reprise = brut.html.indexOf('document.addEventListener("error"');
+  // La reprise est l'écouteur `error` en capture le plus proche AVANT le <link> : la
+  // télémétrie inlinée plus haut en pose un autre (médias qui ne s'affichent pas, T5).
   const lien = brut.html.indexOf('<link rel="stylesheet" href="styles.css?v=');
+  const reprise = brut.html.lastIndexOf('document.addEventListener("error"', lien);
   assert.ok(reprise > 0 && lien > reprise, `reprise à ${reprise}, <link> à ${lien}`);
   assert.equal(brut.html.slice(reprise, lien).includes("<script"), false, "rien d'autre ne s'exécute entre la reprise et le <link>");
   assert.match(brut.html.slice(reprise, lien), /fetch\(adresse, \{ cache: "reload" \}\)/);

@@ -52,6 +52,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const CLOTURE = require("./lib/reprise-cloture-medias.js");
 
 const args = process.argv.slice(2);
 const iRef = args.indexOf("--projet");
@@ -247,6 +248,15 @@ const ETAPES = [
            where s.relnamespace in (${NAMESPACES_SQL}) and s.relkind='S' order by 1,2`,
     rendu: (r) => r.map((x) => `alter sequence ${nomObjet(x, "seq")} owned by ${ident(x.table_schema || "public")}.${ident(x.tbl)}.${ident(x.col)};`) },
 
+  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
+    // Les signatures peuvent référencer les types des tables. Les CHECK et
+    // les index d'expression peuvent ensuite appeler ces fonctions.
+    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
+    // `check_function_bodies` coupé le temps de la section : les fonctions
+    // sortent par ordre alphabétique et certaines s'appellent entre elles.
+    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
+
   { titre: "Clés primaires, uniques, CHECK et étrangères",
     sql: `select format('%I.%I', n.nspname, c.relname) as tbl, con.conname, pg_get_constraintdef(con.oid) as def, con.contype,
                  con.confrelid::regclass::text ref_nom,
@@ -291,22 +301,16 @@ const ETAPES = [
     rendu: (r) => r.map((x) => `alter table ${nomObjet(x, "tbl")} replica identity ${
       x.ri === "f" ? "full" : x.ri === "n" ? "nothing" : x.ri === "i" ? (x.idx ? `using index ${ident(x.idx)}` : "nothing") : "default"};`) },
 
-  { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
-    sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-           where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} order by n.nspname, p.proname`,
-    // `check_function_bodies` coupé le temps de la section : les fonctions
-    // sortent par ordre alphabétique et certaines s'appellent entre elles.
-    rendu: (r) => ["set local check_function_bodies = off;"].concat(r.map((x) => x.def.trim().replace(/;?$/, ";"))) },
-
   { titre: "Vues (options security_invoker comprises)",
     sql: `select c.relnamespace::regnamespace::text sch, c.relname table_name, pg_get_viewdef(c.oid, true) def, coalesce(array_to_string(c.reloptions, ', '), '') opts
             from pg_class c where c.relnamespace in (${NAMESPACES_SQL}) and c.relkind='v' order by 1,2`,
     rendu: (r) => r.map((x) => `create or replace view ${nomObjet(x, "table_name")}${x.opts ? ` with (${x.opts})` : ""} as\n${x.def.trim()}`) },
 
   { titre: "Déclencheurs",
-    sql: `select pg_get_triggerdef(t.oid) as def from pg_trigger t join pg_class c on c.oid=t.tgrelid
+    sql: `select pg_get_triggerdef(t.oid) as def,c.relnamespace::regnamespace::text as sch,
+                 c.relname as table_name,t.tgname,t.tgenabled::text as etat from pg_trigger t join pg_class c on c.oid=t.tgrelid
            where not t.tgisinternal and c.relnamespace in (${NAMESPACES_SQL}) order by c.relnamespace::regnamespace::text, c.relname, t.tgname`,
-    rendu: (r) => r.map((x) => `do $$ begin\n  ${x.def};\nexception when duplicate_object then null; end $$;`) },
+    rendu: CLOTURE.rendreDeclencheurs },
 
   { titre: "RLS activée — sans quoi les policies ne s'appliquent PAS",
     sql: `select relnamespace::regnamespace::text sch, relname, relrowsecurity rls, relforcerowsecurity force
@@ -402,6 +406,10 @@ const ETAPES = [
            where n.nspname in (${SCHEMAS_SQL}) and p.prokind='f' and ${SANS_EXTENSION} group by 1,2 order by 1,2`,
     rendu: (r) => r.map((x) => rendreAcl(`function ${x.sig}`, x)) },
 
+  { titre: "Clôture médias — trigger Storage, marques et propriétaires techniques",
+    sql: CLOTURE.SQL,
+    rendu: CLOTURE.rendre },
+
   { titre: "Publication realtime — ce qui est diffusé en direct",
     sql: `select pubname, schemaname, tablename from pg_publication_tables where pubname='supabase_realtime' and schemaname in (${SCHEMAS_SQL}) order by schemaname, tablename`,
     rendu: (r) => r.map((x) => `do $$ begin\n  alter publication ${ident(x.pubname)} add table ${x.schemaname}.${ident(x.tablename)};\nexception when duplicate_object then null; end $$;`) },
@@ -449,7 +457,7 @@ async function main() {
     "-- Structure seule : aucune donnée, aucun compte (schéma auth), aucun fichier",
     "-- du Storage, aucun réglage d'authentification ni secret du projet.",
     "-- Une transaction, rejouable sur une base vide comme sur une base déjà semée.",
-    "-- " + "═".repeat(73), "", "begin;", "",
+    "-- " + "═".repeat(73), "", "begin;", "", CLOTURE.preconditions(), "",
   ];
   let n = 0;
   for (const e of ETAPES) {

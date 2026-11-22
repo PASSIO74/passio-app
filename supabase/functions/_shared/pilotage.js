@@ -9,7 +9,8 @@
 // tests/unit/pilotage.test.mjs, le même fichier que Deno déploie.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { raisonsVerdict as raisonsParcours, parcoursARegler } from "./parcours.js";
+import { raisonsVerdict as raisonsParcours, parcoursARegler, estPanneRouge } from "./parcours.js";
+import { seuilEchelle, pivotEchelle } from "./echelle.js";
 import { ligneReception } from "./reception.js";
 
 /** Le compte de l'éditeur (même adresse que PASSIO_EDITEUR.email, js/legal-textes.js). */
@@ -62,26 +63,22 @@ export const RELANCES = {
   digest: { fichier: "digest.yml", libelle: "Digest (résumé du jour)" },
 };
 
+// L'ÉTAT « la Sentinelle n'a pas tout traité » (2026-11-21, audit « 100 000 », T4 et T9).
+// sentinelle-autonome.yml ouvre UNE issue sous ce label quand un passage n'a pas pu tout lire,
+// tout juger ou tout confier (lecture tronquée, boutons non jugés, ancienneté relue en partie,
+// budget d'enquêtes atteint avec des défauts en attente). Sans elle, l'écran disait « rien à
+// corriger ». Reconnue à son LABEL seul : il ne se pose qu'avec le droit d'écrire sur le dépôt.
+// ⚠️ Ce n'est PAS le label `sentinelle` : elle ne compte dans aucune enquête en cours, et elle
+// ne se répare pas (un volume n'est pas un défaut qu'un agent corrige).
+export const LABEL_SENTINELLE_PARTIELLE = "sentinelle-partielle";
+/** L'issue d'état ouverte, ou null. `issues` = les issues résumées de lireGithub. */
+export const sentinellePartielle = (issues) => (Array.isArray(issues) ? issues : [])
+  .find((i) => !!i && !i.pr && Array.isArray(i.labels) && i.labels.includes(LABEL_SENTINELLE_PARTIELLE)) || null;
+
 /** Les labels d'issues qui intéressent le pilote. */
-export const LABELS_SUIVIS = ["sentinelle", "veille", "humain", "moderation", "digest", "recidive", "reparation"];
+export const LABELS_SUIVIS = ["sentinelle", "veille", "humain", "moderation", "digest", "recidive", "reparation", LABEL_SENTINELLE_PARTIELLE];
 
 const borne = (s, n) => { const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n) + "…" : t; };
-
-/** Regroupe les erreurs client par message (les 5 plus fréquentes, textes bornés). */
-export function erreursFrequentes(lignes, max = 5) {
-  const groupes = new Map();
-  for (const l of lignes || []) {
-    const cle = borne(l && l.message, 160) || "(sans message)";
-    const g = groupes.get(cle) || { message: cle, n: 0, comptes: new Set(), dernier: null };
-    g.n++;
-    if (l.uid) g.comptes.add(String(l.uid));
-    const t = Date.parse(l.created_at);
-    if (Number.isFinite(t) && (!g.dernier || t > g.dernier)) g.dernier = t;
-    groupes.set(cle, g);
-  }
-  return [...groupes.values()].sort((a, b) => b.n - a.n || (b.dernier || 0) - (a.dernier || 0)).slice(0, max)
-    .map((g) => ({ message: g.message, n: g.n, comptes: g.comptes.size, dernier: g.dernier ? new Date(g.dernier).toISOString() : null }));
-}
 
 /** Résume une issue GitHub : aucun corps, aucun auteur — titre borné, labels, lien. */
 export function resumerIssue(i) {
@@ -168,6 +165,11 @@ export const EVENEMENTS_RUNS = Object.freeze({
   // frais (contre-revue de #863) : elles ne comptent pas. Un passage manuel réussi APRÈS un tri
   // efface donc la ligne, sans attendre le lundi.
   securite: Object.freeze(["schedule", "workflow_dispatch"]),
+  // Le déploiement des fonctions serveur (`edge-functions.yml`, 2026-11-21) : ses passages sur `push`, et eux
+  // seuls. Un push relit l'état SERVI de chaque fonction : vert, tout ce qui devait partir est parti. Un passage
+  // lancé à la main ne dit rien du reste (une seule fonction, ou le staging) : il ne doit ni cacher un push
+  // rouge, ni en inventer un. Le run rouge se RELANCE (même identifiant, tentativesARelire) : il rattrape.
+  fonctions: Object.freeze(["push"]),
 });
 // Les exécutions qui comptent, de la plus récente à la plus ancienne. Tri STABLE : à date égale
 // l'ordre reçu tient — la tentative précédente d'une relance (même date de création) suit sa relance.
@@ -243,7 +245,7 @@ const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup
 // label ne se pose qu'avec le droit d'écrire, `creator` est le pilote. Ce qui dépasse encore
 // (plus de ISSUES_PAR_FILTRE_MAX sous UN filtre : des résumés jamais refermés) se dit à l'écran.
 export const ISSUES_PAR_FILTRE_MAX = 300;
-const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité" });
+const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité", fonctions: "le déploiement des fonctions serveur" });
 /**
  * Les exécutions que le VOYANT lit (`verdict` : `runs.deploy`, `runs.sentinelle`). Seules celles-là,
  * non lues, TIENNENT la veille (`tenirVerdict`) : un scan de sécurité illisible figeait le voyant — plus
@@ -261,10 +263,28 @@ export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {})
   return out;
 }
 
-/** Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler. */
-export const SENTINELLE_MUETTE_MS = 8 * 3600e3;
+/**
+ * Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler.
+ * 8 h jusqu'au 2026-11-21, calées sur un cron servi au P95 toutes les 8,9 h. Depuis,
+ * la veille la fait passer chaque heure (`CADENCE`, _shared/autonomie.js) : trois heures
+ * sans passage, c'est que la cadence elle-même ne part plus (jeton, GitHub, politique).
+ */
+export const SENTINELLE_MUETTE_MS = 3 * 3600e3;
+/** Le titre de la ligne et la raison du voyant : la durée vient de la constante, jamais écrite à la main. */
+export const TITRE_SENTINELLE_MUETTE = "La Sentinelle n'a pas tourné depuis plus de " + SENTINELLE_MUETTE_MS / 3600e3 + " h";
 /** Comptes serveur distincts qu'il faut derrière des erreurs ou des 5xx pour sonner rouge. */
 export const COMPTES_ROUGE_MIN = 2;
+// ─── Les seuils À L'ÉCHELLE du voyant (2026-11-21, audit « 100 000 », T3) ────
+// Taux de départ, en ENTIERS pour mille des comptes connectés (_shared/echelle.js ; sur 15 min en B2 —
+// l'écran de B1 les rapporte aux connectés sur 5 min, la seule mesure exacte sans migration) :
+// rouge des erreurs à 20 ‰ (elles comptent les avertissements réseau, plus bruyants), du serveur
+// à 10 ‰. ⚠️ PAS ENCORE EN SERVICE : le voyant juge toujours sur les nombres absolus ci-dessus.
+// Le seul dénominateur lisible sans migration compte TOUS les connectés, comptes neufs et
+// anonymes compris — cent un comptes qui envoient une ligne chacun relèveraient le seuil et
+// feraient taire l'alarme. La retenue au taux n'entrera qu'avec le dénominateur des comptes
+// ANCIENS (migration du lot B2, règle double). D'ici là, ces taux servent à DIRE au pilote où
+// serait le seuil (resumeEchelle) et au battement de noter de quoi les calibrer.
+export const TAUX_VOYANT_PM = Object.freeze({ erreursRouge: 20, serveurRouge: 10 });
 // ─── Ce que « Régler » a lancé (2026-11-07) ──────────────────────────────────
 // Mesuré le 07/11 : quatre « Régler » en 70 s, quatre analyses de la Sentinelle
 // réussies… et une ligne IDENTIQUE après chacun. GitHub ne liste un run que
@@ -306,6 +326,11 @@ export const heureMinute = (v) => { const t = dateUtc(v); return Number.isFinite
  */
 export function verdict(e) {
   const rouge = [], orange = [];
+  // Chaque raison ROUGE porte un code d'une liste FERMÉE (RAISONS_ROUGES, 2026-11-21) : la veille
+  // sonne « Nouveau problème » quand un code s'ajoute à un rouge qui dure (decideAlerte). `coder`
+  // code les raisons rouges poussées depuis son appel précédent — les lignes qui poussent ne changent pas.
+  const codes = [];
+  const coder = (c) => { while (codes.length < rouge.length) codes.push(c); };
   const s = (e && e.sante) || {};
   const gh = (e && e.github) || {};
   const issues = Array.isArray(gh.issues) ? gh.issues : [];
@@ -330,20 +355,28 @@ export function verdict(e) {
   else if (erreurs >= 10) orange.push(`${erreurs} erreurs dans l'app en 15 min, de moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (erreurs - avert > 0) orange.push(`${erreurs} erreur(s) dans l'app en 15 min`);
   else if (avert > 0 && assez(s.comptesAvert15)) orange.push(`${avert} avertissement(s) dans l'app en 15 min (coupures réseau, replis), chez plusieurs comptes`);
+  coder("erreurs");
   if (s.api5xx15 >= 5 && assez(s.comptes5xx15)) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
   else if (s.api5xx15 >= 5) orange.push(`${s.api5xx15} pannes serveur en 15 min, vues par moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
+  coder("serveur");
   // La dernière mise en ligne TERMINÉE (echecRun) : cassée, expirée ou jamais démarrée → rouge,
   // même si la suivante tourne déjà ; annulée sans rien pour la remplacer → à régler.
   const ed = echecRun(runs.deploy);
   if (ed && ed.nature === "echec") rouge.push("dernier déploiement en échec" + (SUFFIXES_ECHEC[ed.run.conclusion] || ""));
   else if (ed) orange.push("la dernière mise en ligne n'a pas abouti" + (ed.run.conclusion === "cancelled" ? " (annulée)" : "") + " : la version en ligne n'est pas la dernière");
+  coder("deploiement");
   // Les parcours critiques (2026-11-06, _shared/parcours.js) : jugés sur l'heure
   // écoulée (`recent` à l'écran, la lecture d'une heure dans la veille). Un
   // parcours CRITIQUE en panne — comptes serveur distincts — est rouge, donc
   // sonne ; « insuffisant » et « non observé » ne colorent rien.
-  const pv = raisonsParcours(parcoursDuVoyant(e && e.parcours));
+  const bilanV = parcoursDuVoyant(e && e.parcours);
+  const pv = raisonsParcours(bilanV);
   rouge.push(...pv.rouge); orange.push(...pv.orange);
+  // Un code PAR parcours (`parcours:<id>`, même prédicat que raisonsVerdict) : une seconde panne sonne
+  // pendant que la première dure. Un identifiant hors gabarit retombe sur « parcours », jamais copié tel quel.
+  const idsRouges = bilanV && Array.isArray(bilanV.parcours) ? bilanV.parcours.filter(estPanneRouge).map((p) => p.id) : [];
+  pv.rouge.forEach((_t, i) => codes.push(/^[a-z][a-z0-9_]{1,39}$/.test(String(idsRouges[i])) ? "parcours:" + idsRouges[i] : "parcours"));
   // Une lecture des parcours tronquée ne prouve pas le calme : elle se dit.
   if (e && e.parcours && e.parcours.tronque) orange.push("parcours : lecture partielle (trop d'étapes sur la fenêtre) — le calme n'est pas prouvé");
   // La veille elle-même (le battement) : si elle ne tourne plus, le téléphone
@@ -351,6 +384,7 @@ export function verdict(e) {
   const bt = e && e.battement;
   if (bt && bt.etat === "arrete") rouge.push(bt.raisons && bt.raisons[0] ? bt.raisons[0] : "la veille ne tourne plus");
   else if (bt && bt.etat === "jamais") orange.push("la veille n'a encore laissé aucun battement");
+  coder("veille");
   // Télémétrie au plafond (2026-10-11) : les compteurs ci-dessus SOUS-ESTIMENT,
   // un vert ne prouverait plus rien — on le dit au lieu de le taire. Le mur
   // est celui que mesure la veille (`e.aveugle`, mesureAveugle) : sous
@@ -360,16 +394,34 @@ export function verdict(e) {
   const av = e && e.aveugle;
   if (av && av.aveugle) orange.push(`veille aveugle : la télémétrie qui décide est au plafond (${av.mesure}/${av.plafond} lignes/min) — délestage figé, réveil et retour arrière muets`);
   else if (!av && s.telemetrieMinute >= 0.9 * PLAFONDS.telemetrie.plafond) orange.push(`télémétrie au plafond (${s.telemetrieMinute}/min) : les chiffres sous-estiment`);
+  // La table de télémétrie (2026-11-21, T2) : la sonde refusée deux fois de suite
+  // (bilanCanari) et le remplissage (remplissage). Des raisons FIXES : le motif du
+  // serveur ne sort que dans la `reference` de la ligne « À faire », jamais ici —
+  // une raison part dans le texte de la sonnerie. « debit » ne rougit jamais.
+  const cn = e && e.canari, rp = e && e.remplissage;
+  if (cn && cn.refuse) (cn.rouge ? rouge : orange).push(RAISONS_CANARI[classeCanari(cn.classe)]);
+  // Le canari « table pleine » le dit déjà, avec son motif : une seule raison.
+  const pleineDite = !!(cn && cn.refuse && cn.classe === "table_pleine");
+  if (rp && !pleineDite && rp.couleur === "rouge") rouge.push(minuscule(titreRemplissage(rp)));
+  else if (rp && !pleineDite && rp.couleur === "orange") orange.push(minuscule(titreRemplissage(rp)));
+  coder("telemetrie");
   const humain = issues.filter((i) => !i.pr && i.labels.includes("humain")).length;
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
+  coder("humain");
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
   if (enquetes) orange.push(`${enquetes} enquête(s) Sentinelle en cours`);
+  // La Sentinelle a dit ne pas avoir tout lu ou tout confié : orange, JAMAIS rouge (rien ne sonne),
+  // et jamais « incomplet » pour la veille — n'importe quel compte peut gonfler un volume, il ne
+  // doit pas pouvoir tenir le voyant (pilotage-chemins T4-k).
+  if (sentinellePartielle(issues)) orange.push("la Sentinelle n'a pas tout traité : le calme n'est pas prouvé");
   const veille = issues.filter((i) => !i.pr && i.labels.includes("veille")).length;
   if (veille) orange.push("la veille signale un problème");
   const signal = Number(e && e.signalements && e.signalements.ouverts) || 0;
   if (signal) orange.push(`${signal} signalement(s) à traiter`);
-  if (runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push("la Sentinelle n'a pas tourné depuis plus de 8 h");
-  if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange) };
+  // Pas pendant la PAUSE du pilote (contre-revue de #1007) : `aFaire` taisait déjà la ligne, et le
+  // filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause.
+  if (!gh.pause && runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push(TITRE_SENTINELLE_MUETTE.charAt(0).toLowerCase() + TITRE_SENTINELLE_MUETTE.slice(1));
+  if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange), codes: [...new Set(codes)], rouges: rouge.map((texte, i) => ({ code: codes[i], texte })) };
   if (orange.length) return { couleur: "orange", titre: "À surveiller", raisons: orange };
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };
   return { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
@@ -395,6 +447,8 @@ export const SOURCES_VERDICT = Object.freeze({
   parcours: "parcours critiques", battement: "battement de la veille",
   // Une lecture des accusés en échec ne laisse pas l'écran « calme » (revue du 2026-11-06).
   reception: "réception des alertes",
+  // La table de télémétrie (2026-11-21, T2) : sans ces deux lectures, rien ne dit qu'elle n'est pas pleine.
+  remplissage: "remplissage de la télémétrie", canari: "sonde de télémétrie",
 });
 
 /** Le bilan qui juge le voyant : l'heure écoulée (`recent`) quand l'écran a lu la journée. */
@@ -715,6 +769,15 @@ export function aFaire(d, maintenant = Date.now()) {
   const retourPossible = !!(d && d.autonomie && d.autonomie.retour && d.autonomie.retour.jeton);
   const gesteRetour = retourPossible ? { libelle: REGLER, principal: true, special: "retour" } : { libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.netlify };
   const quoiRetour = retourPossible ? "Remet la version d'avant." : "Ouvre Netlify pour remettre la version d'avant.";
+  // Le délestage en vigueur, et le seul levier du téléphone qui réduit ce qui ENTRE dans la télémétrie :
+  // ralentir l'app d'un cran (jamais dans « Tout régler » : c'est un choix). Déjà au niveau 2, ou sans la
+  // table des réglages : le bouton mène aux purges planifiées. `averti` : le geste pose le réglage au nom
+  // du pilote, que la veille ne lèvera JAMAIS seule (decideDelestage) — la ligne le dit.
+  const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
+  const peutRalentir = !!(d && d.reglages && !d.reglages.absente) && niveau < 2;
+  const ralentirApp = peutRalentir
+    ? { quoi: "Ralentit l'app d'un cran.", gestes: [regler({ action: "reglages", cle: "delestage", valeur: { niveau: niveau + 1 } }, false)], averti: RALENTI_RESTE }
+    : { quoi: "Ouvre les purges planifiées dans Supabase.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.cron }], averti: "" };
 
   // Le site d'abord : rien d'autre ne compte s'il ne répond plus.
   const dispo = d && d.disponibilite;
@@ -760,6 +823,29 @@ export function aFaire(d, maintenant = Date.now()) {
     ajoute({ id: "config:jeton-github", prio: 0, etiquette: "Réglage", titre: "Il manque le jeton GitHub du pilotage", quoi: "Ouvre la page où le poser.",
       reference: "Secret à poser : PILOTAGE_GITHUB_TOKEN. Sans lui, les boutons ne peuvent pas réparer, et GitHub se lit mal.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.secrets }] });
   }
+  // La table de télémétrie (2026-11-21, T2). ① La sonde refusée deux fois de suite (bilanCanari) :
+  // tant que ça dure, une panne chez les visiteurs ne se verrait pas. Le motif du serveur va dans
+  // `reference`, borné ; le titre et `quoi` sont fixes. « debit » reste en priorité 1 : il ne sonne pas.
+  const cn = d && d.canari, rp = d && d.remplissage;
+  const mesure = !!(rp && typeof rp.pct === "number" && Number.isFinite(rp.pct));
+  if (cn && cn.refuse) {
+    const classe = classeCanari(cn.classe);
+    // Un refus qui n'est ni la borne ni le débit (RLS, délai, réseau) ne se règle pas en ralentissant : ses journaux d'abord.
+    const geste = classe === "autre" ? { quoi: "Ouvre les journaux de la fonction pilotage.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.logsPilotage }], averti: "" } : ralentirApp;
+    ajoute({ id: "telemetrie:canari", prio: cn.rouge ? 0 : 1, etiquette: (Number(cn.suite) || 0) + " refus", depuis: cn.depuis || null, titre: TITRES_CANARI[classe],
+      reference: "Refus du serveur : « " + borne(cn.motif, 120) + " ». " + (Number(cn.suite) || 0) + " sondes refusées de suite depuis " + heureMinute(cn.depuis)
+        + ". Tant que ça dure, une panne chez les visiteurs ne se verrait pas ici." + (classe === "table_pleine" && mesure ? " Table à " + pctRemplissage(rp) + " de la borne des visiteurs." : "") + geste.averti,
+      quoi: geste.quoi, gestes: geste.gestes });
+  }
+  // ② Le remplissage, orange ou rouge — sauf si la sonde « table pleine » le dit déjà (une ligne, pas deux).
+  if (rp && mesure && (rp.couleur === "orange" || rp.couleur === "rouge") && !(cn && cn.refuse && cn.classe === "table_pleine")) {
+    const phrase = (etat) => (Object.hasOwn(PHRASES_REMPLISSAGE, etat) ? PHRASES_REMPLISSAGE[etat] : "état non mesuré");
+    ajoute({ id: "telemetrie:remplissage", prio: rp.couleur === "rouge" ? 0 : 1, etiquette: rp.pct > 100 ? "Pleine" : pctRemplissage(rp), titre: titreRemplissage(rp),
+      reference: "Visiteurs : " + phrase(rp.visiteurs) + ". Comptes : " + phrase(rp.comptes) + ". "
+        + (rp.classes ? "La purge horaire la vide d'elle-même." : rp.migration ? "Protection par classe absente : appliquer " + borne(rp.migration, 100) + " (geste au poste)." : "Seuils de classe illisibles en base : relire le déclencheur zz_classe_bornee.")
+        + ralentirApp.averti,
+      quoi: ralentirApp.quoi, gestes: ralentirApp.gestes });
+  }
   // Exécutions en échec (déploiement, Sentinelle, veille).
   for (const x of reparables.filter((r) => r.cible === "run")) {
     ajoute({ id: "run:" + x.cle, prio: x.cle === "deploy" ? 0 : 1, etiquette: x.enCours ? "Réparation en cours" : "En échec", titre: TITRES_RUN[x.cle] || x.libelle,
@@ -796,6 +882,32 @@ export function aFaire(d, maintenant = Date.now()) {
     ajoute({ id: "scan:securite", prio: 2, etiquette: "À trier", titre: "Le scan de sécurité n'a pas tourné depuis plus de 8 jours",
       quoi: "Un lundi manqué.", reference: "Vérifie que « Sécurité de la chaîne » est actif sur GitHub (Actions).", url: urlGithub(runs.securite.url), gestes: [] });
   }
+  // Le déploiement des fonctions serveur (`edge-functions.yml`, ses passages sur push — 2026-11-21). Du 20 au
+  // 21/11, son run rouge ne se voyait nulle part : une fonction retenue (un prérequis SQL qui n'était plus vrai)
+  // retenait les six, et personne ne lisait Actions. Depuis, une fonction retenue ne retient plus les autres, et le
+  // run rougit APRÈS leur déploiement — c'est ce rouge qui devient cette ligne. Le pilotage ne sait pas QUELLE
+  // étape a cassé : le texte couvre donc les causes sans en affirmer une (relecture adverse : « elle sert sa
+  // version d'avant » était faux pour une fumée cassée — la fonction cassée EST en service). C'est la PAGE DU RUN
+  // qui nomme la cause : une annotation par fonction retenue, par fonction dont la fumée est rouge, pour une cible
+  // non vérifiable ; un verrou unitaire rouge se lit au job « Valider ». Ce qu'il attend est un geste HUMAIN (une
+  // migration par le canal ③ avec sa revue, un correctif, un jeton) : jamais « Régler », aucune réparation (il
+  // n'est pas dans RUNS_REPARABLES), un lien vers le passage. « Relance » est sûr : chaque passage rééprouve TOUT
+  // ce qui est servi, un contrat cassé reste rouge. Un passage MANUEL ne compte pas (EVENEMENTS_RUNS) : il
+  // rattrape une fonction mais n'efface pas la ligne — le texte dit de relancer le passage, pas d'en lancer un.
+  const fo = echecRun(runs.fonctions);
+  if (fo) {
+    const url = urlGithub(fo.run.url);
+    const echec = fo.nature === "echec";
+    ajoute({ id: "fonctions:deploiement", prio: echec ? 1 : 2, etiquette: "À trier",
+      titre: echec ? "Le déploiement des fonctions serveur a échoué" : "Le déploiement des fonctions serveur n'a pas abouti",
+      quoi: echec ? "La page du passage nomme la cause." : "Annulé ou évincé : à relancer.",
+      reference: echec
+        ? "Quatre causes possibles, nommées en tête du passage. Une fonction ATTEND une migration : elle sert sa version d'avant, les autres sont parties. Une fonction EN LIGNE ne tient pas son contrat (la fumée), ou n'a plus un prérequis en base : à corriger. Le jeton Supabase de la CI a expiré. Ou un verrou d'avant déploiement est rouge (job « Valider ») : rien n'est parti, il faut un commit qui le corrige. La cause réglée, relance CE passage (« Re-run failed jobs ») ou pousse le correctif : il rattrape ce qui est en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne ; un passage lancé à la main ne l'efface pas."
+        // Le pilotage ne sait pas OÙ le passage s'est arrêté : annulé pendant « Déployer », des fonctions servent le
+        // nouveau commit sans avoir été éprouvées. Le texte ne dit donc pas « rien n'est cassé » (relecture du delta).
+        : "Le dernier passage s'est terminé sans trancher (annulé, évincé de la file ou en attente), et le précédent avait réussi. S'il s'est arrêté en cours de déploiement, ce qui est en ligne n'a peut-être pas été éprouvé. Relance-le (« Re-run all jobs ») : il rattrape ce qui serait en retard et rééprouve tout ce qui est servi. Seul un passage de push vert efface cette ligne.",
+      url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
+  }
   // Les issues suivies.
   for (const i of issues) {
     if (i.pr) continue;
@@ -820,6 +932,24 @@ export function aFaire(d, maintenant = Date.now()) {
         // La cible porte déjà la ligne « en cours » : la réparation elle-même n'est que pour info.
         ajoute({ ...base, prio: 2, etiquette: "Réparation", enCours: !cible, titre: "Claude prépare un correctif", quoi: "Il apparaîtra ici, prêt à mettre en ligne." });
       }
+      continue;
+    }
+    // L'état « lu en partie » de la Sentinelle : SA ligne, jamais « Une note ouverte » avec un
+    // bouton Fermer (refermée à la main, elle rouvrirait au passage suivant), jamais réparable.
+    // « Régler » relance sa lecture — le seul geste utile si la cause est passagère. Relancée et
+    // encore ouverte : soit la cause est un volume (un bouton de plus n'y changerait rien), soit
+    // tout est relu et le workflow attend 90 min sans passage incomplet avant de refermer. Le
+    // pilotage ne distingue pas les deux : la phrase ne dit donc QUE ce qui est vrai des deux
+    // (l'heure, et que la note se referme seule), jamais « toujours en partie ». La ligne se
+    // range (même règle que les parcours analysés, plus bas). En pause, elle ne relit rien.
+    if (labels.includes(LABEL_SENTINELLE_PARTIELLE)) {
+      const ligne = { ...base, id: "sentinelle:partielle", etiquette: "Lu en partie", titre: "La Sentinelle n'a pas tout traité" };
+      const srE = suivi("sentinelle");
+      if (gh && gh.pause) ajoute({ ...ligne, prio: 2, quoi: "En pause : elle ne relit rien." });
+      else if (enVol(srE)) ajoute({ ...ligne, prio: 1, enCours: true, quoi: quoiVol(srE, "La Sentinelle") });
+      else if (srE && srE.etat === "faite") ajoute({ ...ligne, prio: 2, quoi: "Relue à " + heureMinute(srE.fini) + ". Se referme seule une fois tout lu.",
+        gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
+      else ajoute({ ...ligne, prio: 1, quoi: quoiRate(srE, "Relance sa lecture maintenant."), gestes: relancer("sentinelle") });
       continue;
     }
     const x = reparation.get("issue:" + i.numero);
@@ -902,6 +1032,9 @@ export function aFaire(d, maintenant = Date.now()) {
   // qu'elle a déjà vue passer sans rien ouvrir n'attend plus personne : sans cette
   // règle, la carte survivait 24 h au geste, et le bouton ne réglait jamais rien.
   const enquete = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle"));
+  // Tant que la Sentinelle dit ne pas avoir tout traité, « rien à corriger » et « rien d'assez
+  // sûr » ne sont pas prouvés : les deux lignes ci-dessous renvoient à la sienne.
+  const partielle = !!sentinellePartielle(issues);
   const erreurs = d && d.erreurs && Array.isArray(d.erreurs.details) ? d.erreurs.details : [];
   const recentes = erreurs.filter((x) => x.dernier && maintenant - dateUtc(x.dernier) < 864e5);
   if (recentes.length) {
@@ -918,7 +1051,8 @@ export function aFaire(d, maintenant = Date.now()) {
     // Une enquête ouverte a déjà sa ligne « en cours » : celle-ci ne la redirait pas.
     if (enquete) ajoute({ ...base, prio: 2, quoi: "La Sentinelle enquête." });
     else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: enVol(sr) ? quoiVol(sr, "La Sentinelle") : "La Sentinelle l'analyse." });
-    else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue" + (sr && sr.etat === "faite" ? " à " + heureMinute(sr.fini) : "") + " : rien à corriger." });
+    else if (vue) ajoute({ ...base, prio: 2, quoi: partielle ? "La Sentinelle n'a pas tout traité : voir sa ligne."
+      : "La Sentinelle l'a vue" + (sr && sr.etat === "faite" ? " à " + heureMinute(sr.fini) : "") + " : rien à corriger." });
     else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: quoiRate(sr, "La Sentinelle s'en occupe."), gestes: relancer("sentinelle") });
   }
   // Les parcours critiques en échec (2026-11-06) : une ligne par parcours, du
@@ -944,7 +1078,7 @@ export function aFaire(d, maintenant = Date.now()) {
     // Analysé à la demande sans enquête ouverte : un « Régler » de plus n'y changerait
     // rien. Rangé dans Détails jusqu'à l'oubli de la relance (RELANCE_SUIVIE_MS), sauf
     // une panne urgente, qui garde sa place et son bouton.
-    else if (srP && srP.etat === "faite" && !urgent) ajoute({ ...base, prio: 2, quoi: "Analysé à " + heureMinute(srP.fini) + " : rien d'assez sûr pour ouvrir une enquête.",
+    else if (srP && srP.etat === "faite" && !urgent) ajoute({ ...base, prio: 2, quoi: "Analysé à " + heureMinute(srP.fini) + (partielle ? ", en partie : voir la ligne Sentinelle." : " : rien d'assez sûr pour ouvrir une enquête."),
       gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
     else ajoute({ ...base, prio: urgent ? 0 : 1, quoi: srP && srP.etat === "faite" ? "Analysé à " + heureMinute(srP.fini) + " sans enquête ouverte : relance, ou ouvre les détails."
       : quoiRate(srP, "La Sentinelle enquête sur ce parcours."), gestes: relancer("sentinelle") });
@@ -988,19 +1122,19 @@ export function aFaire(d, maintenant = Date.now()) {
   const rs0 = runs.sentinelle;
   if (rs0 && rs0.le && !(gh && gh.pause) && maintenant - dateUtc(rs0.le) > SENTINELLE_MUETTE_MS) {
     const srM = suivi("sentinelle");
-    if (enVol(srM)) ajoute({ id: "sentinelle:muette", prio: 1, enCours: true, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiVol(srM, "La Sentinelle") });
-    else ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiRate(srM, "La relance maintenant."), gestes: relancer("sentinelle") });
+    if (enVol(srM)) ajoute({ id: "sentinelle:muette", prio: 1, enCours: true, etiquette: "Machines", titre: TITRE_SENTINELLE_MUETTE, quoi: quoiVol(srM, "La Sentinelle") });
+    else ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: TITRE_SENTINELLE_MUETTE, quoi: quoiRate(srM, "La relance maintenant."), gestes: relancer("sentinelle") });
   }
   // La capacité : une jauge en zone rouge est urgente, orange se prépare. Ce qui
   // s'achète se règle sur la page du fournisseur : le bouton y mène. La télémétrie,
   // elle, ne s'achète pas : le bouton ralentit l'app d'un cran.
   const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
-  const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
   // Les anciens payloads « emails » comptaient des profils, pas le SMTP.
   if (jg.some((j) => j.cle === "emails")) ajoute({ id: "capacite:smtp", prio: 2, etiquette: "Non mesuré", titre: "Quota SMTP inconnu",
     quoi: "Ouvre le compte Brevo pour vérifier le solde.", detail: "Le quota et les envois SMTP ne sont pas lus automatiquement.",
     gestes: [{ libelle: "Vérifier sur Brevo", principal: true, ouvrir: PAGES_REGLAGE.brevo }] });
-  for (const j of jg.filter((x) => x.cle !== "emails" && (x.couleur === "rouge" || x.couleur === "orange"))) {
+  // La table de télémétrie a SA ligne (telemetrie:remplissage, plus haut) : ici, elle n'aurait ni bouton ni page de forfait.
+  for (const j of jg.filter((x) => x.cle !== "emails" && x.cle !== "tableTelemetrie" && (x.couleur === "rouge" || x.couleur === "orange"))) {
     const prix = Number(j.prix) > 0 ? " (~" + j.prix + " €/mois)" : "";
     const pctTexte = String(j.pct).replace(".", ",") + " %";
     const ralentir = j.cle === "telemetrie" && niveau < 2;
@@ -1358,23 +1492,126 @@ export function jauges(m) {
   return out;
 }
 
+// ─── Un NOUVEAU problème sonne, même sur un voyant déjà rouge (2026-11-21, T3) ───
+// Le téléphone ne sonnait qu'au CHANGEMENT de couleur : un rouge qui dure (un sujet humain
+// ouvert, du bruit de fond à grande échelle) rendait muette la vraie panne suivante. Chaque
+// raison rouge porte un code d'une liste FERMÉE (verdict) ; un code mesuré à ce passage qui
+// n'était pas dans l'état mémorisé sonne « Nouveau problème », au plus une fois par code et
+// par période de rappel (`annonces`, remises à zéro quand le voyant quitte le rouge).
+// « telemetrie » : la table de télémétrie refusée ou pleine (T2) — ajoutée à la liste du plan,
+// écrite avant ce lot : sans elle, une table pleine pendant un rouge ne sonnerait pas.
+export const RAISONS_ROUGES = Object.freeze(["erreurs", "serveur", "deploiement", "veille", "telemetrie", "humain"]);
+/** Un code de la liste fermée, ou `parcours:<id>` au gabarit des identifiants de contrat. Rien d'autre ne sonne. */
+export const estCodeRouge = (c) => typeof c === "string" && (RAISONS_ROUGES.includes(c) || /^parcours(:[a-z][a-z0-9_]{1,39})?$/.test(c));
+/** Au plus autant de codes et d'annonces mémorisés : l'état se relit à chaque veille. */
+export const CODES_MEMOIRE_MAX = 24;
+// L'état mémorisé est relu tel quel d'analytics_events : n'importe quelle forme y est possible
+// (un état d'avant ce lot, une écriture partielle). Rien de ce qui le lit ne doit lever — une
+// exception ici supprimerait TOUTE sonnerie, résolu compris (contradiction du lot, 2026-11-21).
+const objetSimple = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const codesValides = (x) => (x && Array.isArray(x.codes) ? x.codes.filter(estCodeRouge) : []);
+
 /**
  * Faut-il sonner le téléphone ? On ne sonne QUE sur un changement qui compte :
- * passage au rouge, site injoignable, retour à la normale — et un rappel toutes
- * les 6 h si le rouge dure. L'orange ne sonne jamais (il se lit à l'ouverture).
- * `prec` = dernier état mémorisé { couleur, dispo, alerteLe } ou null.
+ * passage au rouge, site injoignable, retour à la normale, un NOUVEAU problème
+ * sous un rouge qui dure — et un rappel toutes les 6 h si le rouge dure. L'orange
+ * ne sonne jamais (il se lit à l'ouverture).
+ * `prec` = dernier état mémorisé { couleur, dispo, alerteLe, codes?, annonces? } ou null.
+ * `actuel.codes` = les codes MESURÉS à ce passage (jamais ceux d'un voyant tenu).
+ * `annonce` (quand on sonne) = les codes que cette sonnerie a annoncés (memoireAlerte).
  */
 export function decideAlerte(prec, actuel, maintenant = Date.now(), rappelMs = 6 * 3600e3) {
   const p = prec || { couleur: "vert", dispo: true, alerteLe: null };
   const a = actuel || {};
   if (a.dispo === false && p.dispo !== false) return { sonner: true, titre: "🔴 PASSIO ne répond plus", texte: "Le site ne répond pas à la sonde. Ouvre le pilotage." };
   if (a.dispo !== false && p.dispo === false) return { sonner: true, titre: "✅ PASSIO répond de nouveau", texte: "Le site est revenu." };
-  if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage." };
+  if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage.", annonce: codesValides(a) };
+  // Une raison rouge NEUVE sous un rouge qui dure. Un état d'avant ce lot (sans `codes`) n'invente
+  // aucune nouveauté ; un code déjà annoncé dans la période ne re-sonne pas (une raison qui clignote).
+  // Elle ne regarde pas `a.tenu` : les codes passés sont ceux MESURÉS, une source lue suffit.
+  // Tout état hostile fait taire CETTE règle seule : les transitions ci-dessus et dessous jouent.
+  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes)) {
+    let neufs = [];
+    try {
+      const deja = p.codes.filter((c) => typeof c === "string");
+      const ann = objetSimple(p.annonces) ? p.annonces : {};
+      const recente = (c) => {
+        const t = typeof ann[c] === "string" ? Date.parse(ann[c]) : NaN;
+        return Number.isFinite(t) && maintenant - t < rappelMs && t <= maintenant + 60e3;
+      };
+      neufs = [...new Set(codesValides(a))].filter((c) => !deja.includes(c) && !recente(c));
+    } catch (_e) { neufs = []; }
+    if (neufs.length) {
+      const textes = (Array.isArray(a.rouges) ? a.rouges : []).filter((r) => r && neufs.includes(r.code) && typeof r.texte === "string").map((r) => r.texte);
+      return { sonner: true, titre: "🔴 Nouveau problème sur PASSIO", texte: textes.slice(0, 2).join(" · ") || "Ouvre le pilotage.", annonce: neufs };
+    }
+  }
   // Tenu sur une lecture incomplète (tenirVerdict), le voyant ne dit rien de neuf : pas de rappel. Mesuré
   // le 2026-11-04 : « 🔴 Toujours un problème : 10 erreurs en 15 min » toutes les 6 h, quinze heures après la dernière erreur.
-  if (a.couleur === "rouge" && !a.tenu && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") };
+  if (a.couleur === "rouge" && !a.tenu && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · "), annonce: codesValides(a) };
   if (a.couleur !== "rouge" && p.couleur === "rouge") return { sonner: true, titre: "✅ Problème résolu", texte: a.couleur === "orange" ? "Plus d'urgence, quelques points à surveiller." : "Tout va bien de nouveau." };
   return { sonner: false };
+}
+
+/**
+ * Ce que la veille MÉMORISE des raisons rouges après sa décision : { codes, annonces }.
+ * Hors rouge → rien (la période de rappel repart à zéro). Voyant TENU (lecture incomplète) :
+ * les codes d'avant sont gardés avec ceux mesurés — sinon ils re-sonneraient à la lecture
+ * suivante. `annonces` : code → date de sa dernière sonnerie, encore dans la période.
+ * Ne lève jamais (l'appelant garde quand même un repli : la mémoire n'empêche pas de sonner).
+ */
+export function memoireAlerte(prec, actuel, decision, maintenant = Date.now(), rappelMs = 6 * 3600e3) {
+  try {
+    if (!actuel || actuel.couleur !== "rouge") return { codes: [], annonces: {} };
+    const p = objetSimple(prec) ? prec : {};
+    const precRouge = p.couleur === "rouge";
+    let codes = codesValides(actuel);
+    if (actuel.tenu && precRouge) codes = codes.concat(codesValides(p));
+    const annonces = {};
+    if (precRouge && objetSimple(p.annonces)) {
+      for (const [c, le] of Object.entries(p.annonces)) {
+        const t = typeof le === "string" ? Date.parse(le) : NaN;
+        if (estCodeRouge(c) && Number.isFinite(t) && maintenant - t < rappelMs) annonces[c] = le;
+      }
+    }
+    if (decision && decision.sonner && Array.isArray(decision.annonce)) {
+      for (const c of decision.annonce) if (estCodeRouge(c)) annonces[c] = new Date(maintenant).toISOString();
+    }
+    // Une sonnerie qui n'annonce AUCUN code (le site ne répond plus, ou de nouveau) a pris la place de
+    // « Nouveau problème » : un code arrivé avec elle ne se mémorise pas, sinon il ne serait jamais
+    // annoncé (contre-revue de B1). Seuls restent ceux que l'état d'avant portait déjà.
+    if (decision && decision.sonner && !Array.isArray(decision.annonce)) {
+      const avant = precRouge ? codesValides(p) : [];
+      codes = codes.filter((c) => avant.includes(c));
+    }
+    return { codes: [...new Set(codes)].slice(0, CODES_MEMOIRE_MAX), annonces: Object.fromEntries(Object.entries(annonces).slice(-CODES_MEMOIRE_MAX)) };
+  } catch (_e) { return { codes: [], annonces: {} }; }
+}
+
+/**
+ * Ce que l'écran dit des seuils du voyant (2026-11-21, T3) : des phrases FIXES et des nombres,
+ * jamais un texte lu. `connectes5` = comptes connectés sur 5 min (pilotage_audience EXACTE,
+ * identité serveur), ou null. Le voyant juge toujours en nombres absolus : la phrase le dit,
+ * et dit où serait le seuil proportionnel quand le taux le relèverait — sans l'appliquer.
+ */
+export function resumeEchelle(connectes5) {
+  const n = connectes5;
+  const d = typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  const phrases = [`Seuils du voyant en nombres absolus : rouge à partir de 10 erreurs ou 5 pannes serveur en 15 min, chez au moins ${COMPTES_ROUGE_MIN} comptes.`];
+  if (d === null) {
+    phrases.push("Comptes connectés sur 5 min : non lus à ce passage.");
+    return { connectes5: null, actif: false, phrases };
+  }
+  phrases.push(`Comptes connectés sur 5 min : ${d}.`);
+  const sE = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge, d);
+  const sS = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge, d);
+  if (sE > COMPTES_ROUGE_MIN || sS > COMPTES_ROUGE_MIN) {
+    phrases.push(`À cette taille, des seuils proportionnels placeraient le rouge à ${sE} comptes en erreur et ${sS} comptes en panne serveur : ils ne sont pas encore en service (il leur faut le nombre de comptes anciens connectés, compté en base).`);
+  } else {
+    const pivot = Math.min(pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge), pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge));
+    phrases.push(`Jusqu'à ${pivot} comptes connectés, les nombres absolus restent la bonne règle.`);
+  }
+  return { connectes5: d, actif: false, phrases };
 }
 
 /** Statuts qu'un signalement peut prendre depuis le téléphone. */
@@ -1796,3 +2033,208 @@ export function ligneCanari(id) {
     meta: { synthetic: true, canary_id: id, exclude_analytics: true, exclude_alerts: true, source: "pilotage" },
   };
 }
+
+// ─── LA TABLE DE TÉLÉMÉTRIE SE FERME, ET PERSONNE NE LE VOIT (2026-11-21, T2) ──
+// Audit « la surveillance tient-elle à 100 000 utilisateurs ? » (20/11), trou T2.
+// La table `telemetry_events` a une borne (15/11 : 800 000 lignes vivantes pour les
+// visiteurs, 1 200 000 pour les comptes). Pleine, elle refuse tout — signaux de
+// panne compris — et rien ne le disait : le canari refusé rendait { emis: false,
+// erreur }, rangé dans le battement, que personne ne lisait ; seul le chien de
+// garde GitHub finissait par voir « 0 canari en 2 h », des heures plus tard et
+// sans le motif. Deux mesures, PURES ici, lues par la veille et par l'écran :
+//   · la MÉMOIRE DU CANARI (`bilanCanari`) : chaque refus laisse une marque
+//     `pilotage_canari` (analytics_events, auteur système, clé de service) ; deux
+//     refus de suite — dans deux quarts d'heure DISTINCTS — font une ligne « À
+//     faire » qui cite le motif du serveur, et le voyant passe au rouge ;
+//   · le REMPLISSAGE (`remplissage`) : lignes vivantes contre la borne des
+//     visiteurs, le premier mur où des signaux de panne meurent.
+// ⚠️ Le MOTIF est le texte du serveur : il ne sort que dans `reference`, que la
+// page rend en texte. Titres, `quoi`, raisons du voyant et texte de la sonnerie
+// sont des textes FIXES, écrits ici.
+// ⚠️ La classe « debit » ne sonne JAMAIS : le canari part sous la clé anon, et son
+// refus de débit vient des réservoirs que n'importe quel visiteur remplit (1 600
+// lignes/min). Rouge, elle aurait donné à tout porteur de la clé publique le moyen
+// de faire sonner le téléphone — et le réservoir se vidant chaque minute, le
+// voyant aurait battu « Problème » / « résolu ». Même règle que les dix erreurs
+// forgées du 07/11 (COMPTES_ROUGE_MIN).
+export const EVT_CANARI = "pilotage_canari";
+/** Refus de suite (quarts d'heure distincts) à partir desquels la ligne « À faire » apparaît. */
+export const CANARI_SUITE_MIN = 2;
+/** Au-delà, le dernier refus ne dit plus rien du présent (même délai que BATTEMENT_PERIME_MS). */
+export const CANARI_MEMOIRE_MS = 35 * 60e3;
+/** Fenêtre et nombre de marques relues : deux heures de quarts d'heure, et une marge. */
+export const CANARI_LECTURE_MS = 2 * 3600e3;
+export const CANARI_MARQUES_MAX = 12;
+/** Les motifs de refus, en liste FERMÉE : le texte du serveur n'en sort jamais comme une classe. */
+export const CLASSES_REFUS_CANARI = Object.freeze(["table_pleine", "debit", "autre"]);
+const classeCanari = (c) => (CLASSES_REFUS_CANARI.includes(c) ? c : "autre");
+const sansControle = (s, n) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+
+/**
+ * Un refus du canari → { classe, motif, code }. La classe se lit dans le message
+ * du serveur (« table pleine : … » de telemetrie_bornee, « rate limit: … » de
+ * telemetrie_refuser) ; tout le reste — RLS, délai, réseau — est « autre ».
+ * Le motif est borné et sans caractère de contrôle : il finit à l'écran.
+ */
+export function classerRefusCanari(erreur, code = "") {
+  const motif = sansControle(erreur, 120);
+  return { classe: /table pleine/i.test(motif) ? "table_pleine" : /rate limit/i.test(motif) ? "debit" : "autre", motif, code: sansControle(code, 10) };
+}
+
+/**
+ * La marque à écrire après un passage du canari, ou null. `resultat` = ce que
+ * rend l'étape `emettreCanari` ({ emis }, { emis: false, erreur, code }, ou
+ * { erreur } si elle a levé) ; `bilan` = bilanCanari lu AVANT ce passage.
+ * Un refus se note TOUJOURS. Un succès ne se note que s'il CLÔT une suite de
+ * refus : en temps normal, aucune marque (0 ligne par jour).
+ */
+export function marqueCanari(resultat, bilan) {
+  if (!resultat || typeof resultat !== "object") return null;
+  if (resultat.erreur) return { ok: false, ...classerRefusCanari(resultat.erreur, resultat.code) };
+  if (resultat.emis === true && bilan && bilan.enCours) return { ok: true };
+  return null;
+}
+
+/**
+ * Les marques `pilotage_canari` → où en est la sonde. PUR.
+ * « Deux fois de suite » = des refus dans au moins CANARI_SUITE_MIN quarts d'heure
+ * DISTINCTS, sans succès entre eux, le dernier ayant moins de CANARI_MEMOIRE_MS :
+ * deux ordonnanceurs à quelques secondes d'écart comptent pour un refus.
+ * `refuse` (la ligne « À faire ») se décide sur la suite ENTIÈRE, débit compris.
+ * `rouge` (l'urgence, la sonnerie) se décide sur les seuls refus GRAVES de la suite —
+ * ceux qui ne sont pas de débit : CANARI_SUITE_MIN quarts d'heure distincts de
+ * ceux-là, le plus récent ayant moins de CANARI_MEMOIRE_MS. Contre-revue du 21/11 :
+ * jugé sur la classe du DERNIER refus seul, un unique refus grave (un délai isolé)
+ * précédé de refus de débit — que tout porteur de la clé publique provoque — faisait
+ * sonner « refusée deux fois de suite », et un seul refus de débit au milieu d'un
+ * vrai rouge faisait sonner « Problème résolu ».
+ * La classe et le motif rendus sont ceux de ce qui DÉCIDE : le dernier refus grave
+ * si c'est rouge ; le dernier refus de débit si la ligne est là sans être rouge (il
+ * y en a toujours un : sans débit, deux quarts d'heure refusés sont deux graves) ;
+ * le dernier refus tant qu'il n'y a pas de ligne.
+ * Deux refus ne sont « de suite » que séparés de CANARI_MEMOIRE_MS au plus (seconde
+ * relecture du 21/11, B-1 et B-2) : la suite s'arrête au premier trou plus long, et
+ * les refus graves au premier trou plus long ENTRE DEUX REFUS GRAVES — un succès
+ * qu'une veille muette n'a pas noté, ou des refus de débit forgés entre deux refus
+ * graves isolés, ne font plus « refusée deux fois de suite ».
+ */
+export function bilanCanari(marques, maintenant = Date.now()) {
+  const rien = { enCours: false, refuse: false, rouge: false, suite: 0, classe: null, motif: null, depuis: null, dernier: null };
+  const lues = (Array.isArray(marques) ? marques : [])
+    .map((m) => ({ t: dateUtc(m && m.created_at), p: m && m.properties && typeof m.properties === "object" ? m.properties : {} }))
+    .filter((m) => Number.isFinite(m.t))
+    .sort((a, b) => b.t - a.t);
+  const derniere = lues[0];
+  if (!derniere || derniere.p.ok !== false || maintenant - derniere.t > CANARI_MEMOIRE_MS) return rien;
+  const quart = (m) => Math.floor(m.t / (CANARI_TOUTES_MIN * 60e3));
+  const fenetres = new Set(), graves = new Set();
+  let depuis = derniere.t, grave = null, debit = null, precedent = derniere.t, precedentGrave = null, gravesClos = false;
+  for (const m of lues) {
+    if (m.p.ok !== false) break;
+    // Un trou de plus de CANARI_MEMOIRE_MS entre deux refus CLÔT la suite (seconde relecture, B-2) : une veille
+    // muette plus de 35 min ne noterait pas le succès d'entre-temps, et deux refus isolés feraient « de suite ».
+    if (precedent - m.t > CANARI_MEMOIRE_MS) break;
+    precedent = m.t;
+    fenetres.add(quart(m));
+    depuis = m.t;
+    // Triées de la plus récente à la plus ancienne : la première rencontrée de chaque sorte est la dernière en date.
+    if (classeCanari(m.p.classe) === "debit") debit = debit || m;
+    else if (!gravesClos) {
+      // Même règle entre deux refus GRAVES (B-1) : des refus de débit, que tout porteur de la clé publique
+      // provoque, ne relient pas deux refus graves éloignés en « deux fois de suite ».
+      if (precedentGrave !== null && precedentGrave - m.t > CANARI_MEMOIRE_MS) { gravesClos = true; continue; }
+      precedentGrave = m.t;
+      graves.add(quart(m)); grave = grave || m;
+    }
+  }
+  const refuse = fenetres.size >= CANARI_SUITE_MIN;
+  const rouge = graves.size >= CANARI_SUITE_MIN && maintenant - grave.t <= CANARI_MEMOIRE_MS;
+  const montree = rouge ? grave : (refuse && debit) || derniere;
+  return { enCours: true, suite: fenetres.size, refuse, rouge, classe: classeCanari(montree.p.classe), motif: sansControle(montree.p.motif, 120),
+    depuis: new Date(depuis).toISOString(), dernier: new Date(derniere.t).toISOString() };
+}
+
+/** Le fichier de la migration des classes : l'écran le nomme tant qu'elle n'est pas en base. */
+export const MIGRATION_TELEMETRIE_CLASSES = "migrations/migration_telemetrie_classes_2026-11-21.sql";
+/** Les bornes du 15/11 (`aa_table_bornee`), tant que la base ne les rend pas elle-même. */
+export const BORNES_TELEMETRIE = Object.freeze({ visiteurs: 800000, comptes: 1200000 });
+/** Sans les seuils de classe (migration absente) : parts de la borne des visiteurs. */
+export const REMPLISSAGE_SANS_SEUILS = Object.freeze({ orange: 0.7, rouge: 0.9 });
+
+/**
+ * Le remplissage de `telemetry_events`. PUR. `m` = ce que rend la fonction SQL
+ * `telemetrie_remplissage()` ({ vivantes, estimees, borne_*, confort_*, reserve_*,
+ * octets }), ou { vivantes } quand elle manque (compte exact, `migration` nommée).
+ *   · `vivantes` : le PLUS GRAND des deux compteurs du serveur — les statistiques
+ *     vivantes (ce que la borne juge) repartent de zéro après un arrêt brutal, et
+ *     la jauge afficherait 0 % sur une table pleine. Aucun des deux : non mesuré
+ *     (gris), jamais 0.
+ *   · `classes` : les quatre seuils de classe, présents ET ordonnés par rôle
+ *     (confort < réserve ≤ borne) ; sinon ils sont tous ignorés.
+ *   · état par rôle : ok · confort (les mesures de performance sont écartées) ·
+ *     reserve (seul le protégé entre) · ferme (plus rien n'entre).
+ *   · couleur, rapportée à la borne des VISITEURS : SANS classes, orange au-dessus
+ *     de 70 %, rouge au-dessus de 90 % — le voyant sonne avant la fermeture, et le
+ *     geste « appliquer la migration » a un sens. AVEC classes, orange au plus :
+ *     les seuils de classe sont des points de consigne de la régulation (la table
+ *     stationne dessus, la purge horaire y ajoute une dent de scie), et un rouge
+ *     posé là battrait « Problème » / « résolu ». Le rouge d'après migration vient
+ *     du canari « table pleine », qui porte son hystérésis (deux quarts d'heure).
+ */
+export function remplissage(m, { migration = null } = {}) {
+  const positif = (x) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : null);
+  const compte = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);
+  const s = m && typeof m === "object" ? m : {};
+  const lus = [compte(s.vivantes), compte(s.estimees)].filter((x) => x !== null);
+  const vivantes = lus.length ? Math.max(...lus) : null;
+  const borne = positif(s.borne_visiteurs) || BORNES_TELEMETRIE.visiteurs;
+  const borneComptes = positif(s.borne_comptes) || BORNES_TELEMETRIE.comptes;
+  const cv = positif(s.confort_visiteurs), rv = positif(s.reserve_visiteurs), cc = positif(s.confort_comptes), rc = positif(s.reserve_comptes);
+  const classes = !!(cv && rv && cc && rc && cv < rv && rv <= borne && cc < rc && rc <= borneComptes);
+  const etat = (confort, reserve, mur) => (vivantes === null ? null : vivantes > mur ? "ferme" : classes && vivantes > reserve ? "reserve" : classes && vivantes > confort ? "confort" : "ok");
+  const seuilOrange = classes ? cv : REMPLISSAGE_SANS_SEUILS.orange * borne;
+  const seuilRouge = classes ? Infinity : REMPLISSAGE_SANS_SEUILS.rouge * borne;
+  const couleur = vivantes === null ? "gris" : vivantes > seuilRouge ? "rouge" : vivantes > seuilOrange ? "orange" : "vert";
+  return { vivantes, borne, borneComptes, pct: vivantes === null ? null : Math.round((vivantes / borne) * 1000) / 10, couleur,
+    visiteurs: etat(cv, rv, borne), comptes: etat(cc, rc, borneComptes), classes, migration: migration || null, octets: compte(s.octets) };
+}
+
+/**
+ * Les comptes sont-ils délestés par la table elle-même ? Au palier 2 des comptes
+ * (ou table fermée pour eux), leurs battements ne sont plus écrits : le nombre de
+ * comptes connectés SOUS-ESTIME sans que la charge ait baissé — la veille ne lève
+ * alors aucun délestage (même sens conservateur que `estAveugle`).
+ */
+export function remplissageAveugle(r) {
+  return !!r && (r.comptes === "reserve" || r.comptes === "ferme");
+}
+
+/** La jauge de la page Capacité : même forme que `jauges()`, sa propre ligne « À faire ». */
+export function jaugeRemplissage(r) {
+  return { cle: "tableTelemetrie", libelle: "Table de télémétrie (lignes, borne des visiteurs)", valeur: r.vivantes, plafond: r.borne, unite: "", pct: r.pct, couleur: r.couleur, estimation: false,
+    geste: r.classes ? "Rien à acheter : la purge horaire la vide. Si ça dure, Réglages › Protection › Économie." : "Appliquer la migration des classes de télémétrie (geste au poste).",
+    prix: 0, url: null };
+}
+/** « 62,5 % » ; au-delà de 100 %, le pourcentage ne se dit plus (il se rapporte aux visiteurs, les comptes écrivent encore). */
+const pctRemplissage = (r) => String(r.pct).replace(".", ",") + " %";
+const titreRemplissage = (r) => (Number(r.pct) > 100 ? "Télémétrie pleine" : "Télémétrie pleine à " + pctRemplissage(r));
+const minuscule = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+// Ce que le voyant et la ligne « À faire » disent d'un canari refusé, par classe : des textes FIXES.
+const RAISONS_CANARI = Object.freeze({
+  table_pleine: "la table de télémétrie est pleine : plus aucune mesure des visiteurs n'entre, pannes comprises",
+  debit: "la télémétrie des visiteurs est refusée (débit saturé) : à confirmer",
+  autre: "la sonde de télémétrie est refusée deux fois de suite : la surveillance ne reçoit peut-être plus rien",
+});
+const TITRES_CANARI = Object.freeze({
+  table_pleine: "La télémétrie est pleine : les visiteurs ne sont plus mesurés",
+  debit: "La télémétrie des visiteurs est refusée : débit saturé",
+  autre: "La télémétrie n'entre plus : la sonde est refusée",
+});
+// Ce qui entre encore, par état d'un rôle (remplissage) : la phrase de la ligne « À faire ».
+const PHRASES_REMPLISSAGE = Object.freeze({
+  ok: "tout est enregistré",
+  confort: "les mesures de performance ne sont plus enregistrées",
+  reserve: "seules les pannes et les preuves de parcours sont enregistrées",
+  ferme: "plus rien n'entre, pannes comprises",
+});
+const RALENTI_RESTE = " Ce ralentissement reste posé tant que tu ne le rends pas à l'automatique (Réglages › Protection).";

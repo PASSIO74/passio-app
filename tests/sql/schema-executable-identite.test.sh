@@ -186,6 +186,10 @@ create trigger trg_rid_opaque before insert or update of rid on public.aimes
 create table public.interactions (id text primary key, user_id text not null, kind text not null);
 alter table public.interactions replica identity full;
 create table public.brouillons (id text primary key, corps text);
+-- Une base vierge doit disposer de la fonction avant de recréer le CHECK.
+create function public.corps_valide(valeur text) returns boolean
+  language sql immutable as 'select length(valeur) > 0';
+alter table public.brouillons add constraint brouillons_corps_forme check (public.corps_valide(corps));
 alter table public.brouillons replica identity nothing;
 create table public.orpheline (id text primary key, cle bigint not null);
 create unique index orpheline_cle_key on public.orpheline (cle);

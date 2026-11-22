@@ -452,7 +452,7 @@ function _liensMessage(safe) {
 }
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
-    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
+    ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(txt) + '="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
     : _linkifyText(escapeHtml(txt || ""));
 }
 // Ouvre le profil d'un pseudo @mentionné (recherche insensible à la casse dans
@@ -939,7 +939,7 @@ function _reponseLigneHtml(postId, r, _selfIds) {
   if (r.type === "gif_reaction") {
     const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
     const _gifHtml = _looksLikeMediaUrl(r.text)
-      ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+      ? `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text)}="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
       : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
     return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
       <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
@@ -1315,7 +1315,7 @@ function openCommentReactors(threadId, commentId, event) {
     var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
     var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
     var _face = _looksLikeMediaUrl(r.text)
-      ? '<img loading="lazy" src="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.text) + '="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(r.text || "❤️") + '</span>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
       + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + escapeJsArg(r.authorId) + '\',\'' + escapeJsArg(rSrc) + '\')">' + avatarInner(_av) + '</div>'
@@ -1433,7 +1433,7 @@ function _openReactorsList(items, event) {
   var rowsHtml;
   function face(t) {
     return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
-      ? '<img loading="lazy" src="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(t) + '="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(t || "❤️") + '</span>';
   }
   if (withAuthors) {
@@ -3689,7 +3689,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
   stageSend.onclick = function (ev) { ev.stopPropagation(); commit(); };
   stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
   function pickEmoji(e) { _staged = { kind: "emoji", val: e }; stageFace.textContent = e; stageFace.innerHTML = e; stage.style.display = "flex"; }
-  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
+  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img ' + passioMediaProteges.attributImage(url) + '="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
 
   var content = document.createElement("div");
 
@@ -5364,7 +5364,7 @@ function _renderVisitedEvents() {
     var emoji = e.emoji || "📍";
     try { if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍"; } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
     var quand = "";
     try { quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (x) {}
@@ -5487,15 +5487,16 @@ function _renderVisitedContent() {
           // Cellule d'un tiers d'écran (≤ 180 px) : la vignette, jamais la grande
           // (≤ 2 048 px) — la grille du profil VISITÉ avait été oubliée par le lot
           // images légères (contre-revue du 21/09). Une légère passe telle quelle.
-          var src = p.image ? passioThumb(p.image, 360) : "";
+          var src = p.image ? passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360) : "";
           if (!src) return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';
-          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
+          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune photo");
   } else if (single === "bobines") {
     var bobines = posts.filter(function(p) { return p.isReel && (p.video || p.image); });
     el.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
           var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="ouvrirBobineDepuisProfil(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
@@ -6939,7 +6940,7 @@ function renderConvFpThread(c, displayName) {
     var _altAuteur = escapeHtml(isMe ? "toi" : (m.fromName || c.userName || "l'autre personne"));
     if (m.gif) {
       isMedia = true; isVisuel = true;
-      content = '<img alt="GIF envoyé par ' + _altAuteur + '" src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+      content = '<img alt="GIF envoyé par ' + _altAuteur + '" ' + passioMediaProteges.attributImage(m.gif) + '="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true; isVisuel = true;
       // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et

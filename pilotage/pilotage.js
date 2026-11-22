@@ -940,6 +940,12 @@
       if (g.length) c.append(el("p", "discret", "Décisions : " + g.map(([k, v]) => k + " → " + v).join(" · ")));
       z.append(c);
     }
+    // Les seuils du voyant (2026-11-21, T3) : des phrases que la fonction compose (resumeEchelle), en TEXTE.
+    // Champ absent (fonction pas encore à jour) : rien n'est affiché ni inventé.
+    if (d.echelle && Array.isArray(d.echelle.phrases)) {
+      const ze = $("veilleBattement");
+      d.echelle.phrases.slice(0, 4).forEach((t) => ze.append(el("p", "discret", String(t))));
+    }
     const zp = vider("politique");
     const p = d.politique;
     if (!p) return;
@@ -989,6 +995,9 @@
     } else co.append(carte("Coût", "Non lu", "La facture est absente ou illisible : aucun supplément fiable ne peut être affiché.", "gris"));
     if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
     if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
+    // La table de télémétrie (2026-11-21) : tant que la migration des classes n'est pas en base, la jauge est un
+    // compte exact et RIEN ne déleste la table — l'écran nomme le fichier, au lieu de laisser croire à une protection.
+    if (d.remplissage && d.remplissage.migration) ja.append(el("p", "discret", "Table de télémétrie : compte exact ; la protection par classe et la purge courte attendent la migration « " + d.remplissage.migration + " » (npm run migration:appliquer)."));
     ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
   }
 
@@ -1099,8 +1108,8 @@
     const au = d.autonomie;
     if (au) {
       prot.append(au.reveilSentinelle
-        ? carte("Réveil de la Sentinelle", "Actif", "Dès que 2 comptes de plus de 24 h ont un échec en 30 min (erreur ou appel refusé) et qu'aucune enquête n'est en cours, la veille lance la Sentinelle sans attendre son horaire (2 fois par heure et 12 fois par jour au plus).", "vert")
-        : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même à son horaire.", "gris"));
+        ? carte("Réveil de la Sentinelle", "Actif", "La veille fait passer la Sentinelle chaque heure, même quand GitHub ne sert pas son horaire. Et dès que 2 comptes de plus de 24 h ont un échec en 30 min (erreur ou appel refusé), elle la lance sans attendre (2 fois par heure et 12 fois par jour au plus).", "vert")
+        : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». En attendant, la Sentinelle ne passe que quand GitHub sert son horaire : 3 à 4 fois par jour en pratique.", "gris"));
       const ra = au.retour || {};
       const cr = ra.mode === "proposer"
         ? carte("Retour arrière", "Proposé", "Si une mise en ligne provoque un échec nouveau chez 5 comptes de plus de 7 jours, tu es prévenu sur l'accueil et sur le téléphone. Un toucher sur « Régler », et la version d'avant revient. Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité.", "vert")
