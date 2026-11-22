@@ -146,6 +146,8 @@ test("⑤ IRL-C63 / C54 : verdicts lus — message groupé compté, note refusé
     window._supaReal = true;
     let n = 0;
     window.supaInsertNotif = async () => (n++ === 0);
+    // Chemin de repli (fonction serveur absente) : une écriture par personne, comptée.
+    window.supaPrevenirInscrits = async () => ({ ok: false, absente: true });
     openModal('<textarea id="evBroadcast">On se retrouve à l\'entrée nord</textarea>');
     await _sendEventBroadcast(ev.id);
     const message = window.__t.slice(-1)[0];

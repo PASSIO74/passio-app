@@ -34,6 +34,7 @@
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
 - 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
 - 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+- 📣 PRÉVENIR 99 INSCRITS : LA BASE ÉCRIT, LE PLAFOND NE COMPTE PLUS UNE DIFFUSION (village à 100, A3 — 2026-11-22)
 
 ---
 
@@ -2137,3 +2138,25 @@ Le seau `content` reste public : les avatars, couvertures, photos de passion et 
 - Banc : `tests/sql/migration-securite-p1-seau-public-2026-11-22.test.sh`. La preuve de bout en bout (dépôt refusé par l'API Storage, image ordinaire acceptée) se fait avec de vrais comptes au staging, après application.
 
 ⚠️ **UN SEAU SE RÈGLE SUR CE QUE LE CLIENT Y MET AUJOURD'HUI, PAS SUR CE QU'IL Y METTAIT.** Quand un usage quitte un seau (ici, les publications vers `content-protected`), ses bornes doivent suivre dans le même mouvement : un seau public qui accepte encore l'ancien usage laisse la place à un usage que personne n'a voulu.
+
+## 📣 PRÉVENIR 99 INSCRITS : LA BASE ÉCRIT, LE PLAFOND NE COMPTE PLUS UNE DIFFUSION (village à 100, A3 — 2026-11-22)
+
+Mesuré deux fois sur le staging (`npm run village:100`, contrôle A3, séances 3 et 4) : l'organisatrice annule une activité de 99 inscrits, **60 sont prévenus, 39 refus 400**, et l'écran dit « inscrits prévenus ». `toggleCancelEvent` → `_notifyEventAttendees` (app-07) écrivait une ligne `notifications` par personne depuis son navigateur, en parallèle et sans réessai ; `trg_rate_limit` (`debit_compter`) plafonne `notifications` à 60 par minute et par `from_id`. Même chemin pour la modification et le message groupé.
+
+⚠️ **ET LA SUPPRESSION ÉTAIT PIRE, SANS QUE PERSONNE L'AIT VU.** `events_prevenir_suppression` (12/11) écrit d'un seul `INSERT … SELECT` au nom de l'organisateur : la 61ᵉ ligne lève dans `debit_compter`, l'exception est avalée (« un échec n'empêche jamais la suppression ») et l'INSERT ENTIER est défait. Mesuré au staging dans une transaction annulée : activité de 69 inscrits supprimée → **0 ligne `n_sup_`**. Les 69 lignes `event_join` de la même activité trompent un comptage par `ref_id` seul : compter par préfixe d'identifiant.
+
+`migration_prevenir_inscrits_serveur_2026-11-22.sql` (**appliquée nulle part à l'écriture de cette fiche** ; éprouvée au staging dans une transaction annulée : 14/14) :
+- `prevenir_inscrits_activite(p_event_id, p_genre, p_cle, p_message)`, SECURITY DEFINER : réservée à l'organisation (`organise_activite`) ; `event_cancelled` exige l'activité annulée EN BASE ; destinataires = `going`, `maybe`, `waitlist`, jamais l'appelant, ni un compte bloqué dans un sens ou l'autre, ni un compte en suppression ; texte DÉRIVÉ (nom échappé + phrase fixe, ou message ≤ 200 échappé) ; rend un COMPTE (`destinataires`, `prevenues`), jamais la liste.
+- Identifiant `n_pi_` + md5(activité|genre|clé|destinataire). La clé est tirée par le client UNE fois par geste et réutilisée à son unique réessai réseau : le rejeu ne double rien, et personne ne peut pré-occuper un identifiant qu'il ne sait pas calculer (repli déterministe quand même).
+- Une ligne en échec (barrière d'un compte en suppression…) est dans son propre sous-bloc : elle n'emporte pas les autres.
+- Débit propre : 12 diffusions par minute et par compte (une série compte 12 dates au plus), plafond du jour de `debit_compter` compris.
+- `trg_rate_limit` de `notifications` passe par `notifications_limiter_debit()` : même plafond, sauf une ligne d'origine serveur écrite pendant une DIFFUSION (`passio.diffusion_inscrits = '1'`, posé par la fonction et par la suppression, remis à vide). Une ligne serveur hors diffusion (`follows_notifier`, mentions, promotion) reste comptée.
+- `events_prevenir_suppression` pose ce réglage et écarte les comptes en suppression : 100 prévenus sur une activité de 101.
+
+Aucun `PREREQUIS-CLIENT` : l'ancien client continue d'écrire lui-même (son plafond ne change pas) ; le nouveau essaie la fonction et, ABSENTE (PGRST202), retombe sur l'ancien chemin, compté. Les deux ordres de mise en ligne sont sûrs.
+
+Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ total, prevenues }` et chaque écran le dit (« Activité annulée — 99 personnes prévenues », « ⚠️ … seulement 60 personnes sur 99 »). Un REFUS ou une panne ne retombe PAS sur l'ancien chemin : il rendrait 60 sur 99 en se croyant utile. Le message groupé part BRUT (la base échappe). `event_cancelled` n'a pas de gabarit de push : le client n'appelle plus `notify-call` pour rien ; `event_update` pousse aux 20 premiers (plafond de `notify-call`, venants d'abord). La suppression n'écrit plus rien côté client : ses lignes partaient après l'effacement et étaient toutes refusées.
+
+⚠️ **UN PLAFOND PAR ÉMETTEUR NE BORNE PAS UNE DIFFUSION LÉGITIME, IL LA TRONQUE.** Prévenir N personnes est UN geste : il se compte une fois, côté serveur, et l'écran affiche le compte rendu par la base, jamais la longueur de la liste locale.
+
+Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (défauts mesurés avant, deux mutations refusées, application et rejeu, extérieur sous `authenticated`), exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
