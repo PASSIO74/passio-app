@@ -7,20 +7,32 @@
 //   ① le jeton personnel de la CLI ne sert qu'à lire les clés du STAGING (référence
 //      figée) ; il n'est PAS transmis à l'enfant (ADR-012), pas plus que
 //      PASSIO_E2E_MULTI / PASSIO_E2E_PROD (purge par motif au teardown) ;
-//   ② port LIBRE demandé au système (`reuseExistingServer` prendrait le serveur
-//      d'un autre dossier) ;
+//   ② port LIBRE demandé au système, TOUJOURS (`PASSIO_PORT` est ignoré :
+//      `reuseExistingServer` prendrait le serveur d'un autre dossier) ;
 //   ③ refusé en CI.
-// Et trois de plus, propres aux 100 comptes `@passio-capacite.test` — domaine
-// que PERSONNE d'autre ne purge (docs/BANC_CAPACITE_REALISTE_2026-09-20.md) :
-//   ④ un VERROU de séance (`.passio/tmp/village100/verrou.json`, pid vivant) : un
-//      second lancement purgerait les comptes EN VOL du premier ;
+// Et ce qui est propre aux 100 comptes `@passio-capacite.test` — domaine que
+// PERSONNE d'autre ne purge (docs/BANC_CAPACITE_REALISTE_2026-09-20.md) :
+//   ④ un VERROU de séance (`.passio/tmp/village100/verrou.json`), CRÉÉ de façon
+//      atomique (`wx`), qui porte DEUX pid : le lanceur, et la séance Playwright
+//      qui s'y inscrit. Tant que l'un des deux vit, aucun autre lancement ne
+//      démarre — ni ne purge des comptes EN VOL ;
 //   ⑤ le MANIFESTE (`.passio/tmp/village100/manifest.json`, hors de
 //      `test-results/` que Playwright vide) porte l'adresse exacte de chaque
-//      compte, écrite AVANT sa création ; un reliquat non purgé est purgé au
-//      démarrage — par adresse exacte de SA campagne, relu en 404 — et le
-//      lancement s'arrête si un compte reste ou si une adresse n'est pas de la
-//      séance (manifeste édité ou copié) ;
-//   ⑥ après la séance, filet : un manifeste resté « non purgé » est purgé ici.
+//      compte, écrite AVANT sa création, le pid de la séance et son poste. Un
+//      reliquat non purgé est purgé au démarrage — par adresse exacte de SA
+//      campagne, prouvé par relecture — seulement s'il vient de CE poste ; le
+//      lancement s'arrête si un compte reste, ou si une adresse ou un
+//      identifiant n'est pas de la séance ;
+//   ⑥ `--retries` et `--repeat-each` sont refusés : un second essai dans la
+//      même séance n'a ni sa campagne ni son manifeste (le manifeste refuse
+//      d'ailleurs d'écraser une séance non purgée) ;
+//   ⑦ après la séance, filet : un manifeste resté « non purgé » (la spec a
+//      planté avant sa purge) est purgé ici. Un Ctrl+C tue aussi le lanceur :
+//      c'est alors la purge au démarrage SUIVANT (⑤) qui rattrape.
+//
+// ⚠️ Cohabitation : aucune suppression croisée avec la CI (domaines séparés),
+// mais `notify-call` et les latences du staging sont partagés — éviter de
+// lancer pendant un job `test-prod` si l'on veut lire les latences.
 //
 //   npm run village:100                 # 4 navigateurs invisibles
 //   npm run village:100 -- --headed     # regarder les 4 fenêtres
@@ -29,7 +41,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
 import { STAGING_REF, verrouLibre, refDeLaCle } from "./lib/village100.mjs";
@@ -39,22 +51,37 @@ if (process.env.GITHUB_ACTIONS || process.env.CI) {
   console.error("[village100] refusé en CI : simulation de poste, 100 comptes réels sur le staging.");
   process.exit(2);
 }
+const args = process.argv.slice(2);
+if (args.some((a) => /^--(retries|repeat-each)(=|$)/.test(a))) {
+  console.error("[village100] --retries et --repeat-each sont refusés : une séance = une campagne = un manifeste.");
+  process.exit(2);
+}
 
 const DOSSIER = resolve(".passio", "tmp", "village100");
 const VERROU = resolve(DOSSIER, "verrou.json");
 const MANIFESTE = resolve(DOSSIER, "manifest.json");
 const estVivant = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
 
-// ④ Le verrou, AVANT tout réseau.
-let verrou = null;
-try { verrou = existsSync(VERROU) ? JSON.parse(readFileSync(VERROU, "utf8")) : null; } catch (e) { verrou = null; }
-if (!verrouLibre(verrou, estVivant)) {
-  console.error(`[village100] une séance tourne déjà sur ce poste (pid ${verrou.pid}, depuis ${verrou.debut}) : refusé.`);
-  process.exit(2);
-}
+// ④ Le verrou, AVANT tout réseau : création atomique ; un verrou existant
+// n'est repris que si AUCUN de ses deux pid ne vit.
 mkdirSync(DOSSIER, { recursive: true });
-writeFileSync(VERROU, JSON.stringify({ pid: process.pid, debut: new Date().toISOString() }));
-const liberer = () => { try { rmSync(VERROU, { force: true }); } catch (e) {} };
+function poserVerrou() {
+  try { writeFileSync(VERROU, JSON.stringify({ pid: process.pid, debut: new Date().toISOString() }), { flag: "wx" }); return true; }
+  catch (e) { if (e.code !== "EEXIST") throw e; return false; }
+}
+if (!poserVerrou()) {
+  let v = null;
+  try { v = JSON.parse(readFileSync(VERROU, "utf8")); } catch (e) { v = { illisible: true }; }
+  if (v.illisible || !verrouLibre(v, estVivant)) {
+    console.error(`[village100] une séance tourne déjà sur ce poste (${v.illisible ? "verrou illisible" : `pid ${v.pid}${v.pidSeance ? ` / séance ${v.pidSeance}` : ""}, depuis ${v.debut}`}) : refusé.`);
+    process.exit(2);
+  }
+  rmSync(VERROU, { force: true });
+  if (!poserVerrou()) { console.error("[village100] verrou pris par un autre lancement à l'instant : refusé."); process.exit(2); }
+}
+const liberer = () => {
+  try { const v = JSON.parse(readFileSync(VERROU, "utf8")); if (v.pid === process.pid) rmSync(VERROU, { force: true }); } catch (e) {}
+};
 const sortir = (code) => { liberer(); process.exit(code); };
 
 const patPath = resolve(homedir(), ".supabase", "access-token");
@@ -73,6 +100,8 @@ async function purgerReliquat(moment) {
   let m;
   try { m = Manifeste.lire(MANIFESTE); } catch (e) { console.error(`[village100] manifeste illisible (${e.message}) : rien n'est purgé, à examiner à la main.`); return false; }
   if (!m || m.purge || !m.comptes.length) return true;
+  if (m.poste !== hostname()) { console.error(`[village100] manifeste ${m.campagne} venu d'un autre poste (${m.poste}) : rien n'est purgé, à examiner à la main.`); return false; }
+  if (Number.isInteger(m.pid) && m.pid !== process.pid && estVivant(m.pid)) { console.error(`[village100] la séance ${m.campagne} (pid ${m.pid}) vit encore : rien n'est purgé.`); return false; }
   console.log(`[village100] ${moment} : séance ${m.campagne} non purgée, ${m.comptes.length} adresse(s) à retirer…`);
   const p = await purgerSeance({ url, service, manifeste: m, log: (x) => console.log("[village100] " + x) });
   if (!purgeComplete(p)) {
@@ -85,8 +114,8 @@ async function purgerReliquat(moment) {
 // ⑤ Le reliquat d'une séance interrompue.
 if (!(await purgerReliquat("avant la séance"))) sortir(2);
 
-// ② Un port libre.
-const port = process.env.PASSIO_PORT || await new Promise((ok, ko) => {
+// ② Un port libre, toujours.
+const port = await new Promise((ok, ko) => {
   const srv = createServer();
   srv.once("error", ko);
   srv.listen(0, "127.0.0.1", () => { const p = srv.address().port; srv.close(() => ok(String(p))); });
@@ -103,16 +132,17 @@ const env = {
   PASSIO_E2E_VILLAGE100: "1",
   PASSIO_STAGING_REF: STAGING_REF,
   PASSIO_VILLAGE100_MANIFESTE: MANIFESTE,
+  PASSIO_VILLAGE100_VERROU: VERROU,
   PASSIO_PORT: port,
 };
 console.log(`[village100] cible : staging ${STAGING_REF} — 4 navigateurs + 96 figurants API, purgés en fin de séance.`);
 const res = spawnSync(
   "npx",
-  ["playwright", "test", "tests/e2e/village-100-hybride.spec.js", "--project=prod", "--workers=1", "--retries=0", ...process.argv.slice(2)],
+  ["playwright", "test", "tests/e2e/village-100-hybride.spec.js", "--project=prod", "--workers=1", "--retries=0", ...args],
   { stdio: "inherit", env, shell: process.platform === "win32" }
 );
 console.log("\n[village100] rapport : test-results/village100/rapport.md");
-// ⑥ Le filet : la spec purge elle-même ; si elle n'a pas pu (plantage, Ctrl+C), ici.
+// ⑦ Le filet : la spec purge elle-même ; si elle n'a pas pu (plantage), ici.
 const filet = await purgerReliquat("après la séance");
 liberer();
 process.exit(res.status === null ? 1 : (res.status || (filet ? 0 : 1)));

@@ -3389,6 +3389,18 @@ n'est pas un orphelin), refuse tout identifiant dont l'adresse n'est pas de la c
 ou copié), relit chaque compte en 404 et rend la séance rouge sur un reste (Z1). Un verrou (pid) empêche
 un second lancement de purger les comptes EN VOL du premier. Les rouges assumés sont NOMMÉS
 (`ROUGES_CONNUS = ["A3"]`) : un nouveau rouge, ou A3 qui repasse vert, change le verdict.
+⚠️ **ET LA PREMIÈRE PURGE « PROUVÉE » LAISSAIT 100 LIGNES À CHAQUE SÉANCE** (seconde relecture) : sa
+liste de tables était RECOPIÉE et ignorait `user_safety` (écrite par `declare_birth_year` et
+l'onboarding, TEXT sans FK), la télémétrie, `story_views`, `comment_likes` — Z1 restait vert parce
+qu'il ne regardait que les comptes. La purge IMPORTE désormais `TABLES_COMPTE` de la suppression de
+compte du produit (`supabase/functions/_shared/purge-compte.js`). La preuve est aussi par ADRESSE :
+le listing passe par le filtre d'adresse de l'API d'administration (`filter=<campagne>`, une page, que
+la purge concurrente des comptes de la CI ne décale pas ; un filtre ignoré ou un débordement est une
+erreur), relu APRÈS la purge ; Z1 exige autant de comptes purgés que d'adresses annoncées. Le verrou
+est créé atomiquement (`wx`) et porte deux pid (lanceur ET séance : un lanceur tué dont l'enfant
+survit ne libère rien) ; un manifeste non purgé n'est jamais écrasé, `--retries`/`--repeat-each`
+sont refusés. Le rouge connu a une SIGNATURE figée (`{ A3: "60/99 prévenus" }`) et A3 ne porte plus
+que le décompte : « une seule fois, jamais l'organisatrice » est A3b, exigé hors liste.
 
 Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
 participer »** (29 en ~1 min, aucun regroupement) ; **chaque « je viens » tente d'entrer dans la

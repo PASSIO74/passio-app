@@ -235,7 +235,7 @@ export function rapportMarkdown(r) {
   md += `- Contrôles : **${n("OK")} OK · ${n("ÉCHEC")} échec(s) exigé(s) · ${n("À REGARDER")} observation(s)**\n`;
   const p = r.purge;
   md += `- Purge : ${p ? `${p.lignes} lignes, ${p.comptes}${p.attendus != null ? "/" + p.attendus : ""} comptes relus absents${(p.restants || []).length ? " — ⚠️ RESTANTS : " + p.restants.join(", ") : ""}${(p.refus || []).length ? " — ⛔ REFUS : " + p.refus.join(", ") : ""}${p.erreurs.length ? " — ⚠️ " + p.erreurs.join(" ; ") : ""}` : "non faite"}\n`;
-  if (r.verdict) md += `- Verdict contre les rouges connus (${ROUGES_CONNUS.join(", ")}) : **${r.verdict.ok ? "conforme" : "NON CONFORME"}**${r.verdict.nouveaux.length ? " — nouveaux rouges : " + r.verdict.nouveaux.join(", ") : ""}${r.verdict.gueris.length ? " — repassés verts (à retirer de ROUGES_CONNUS) : " + r.verdict.gueris.join(", ") : ""}${r.verdict.absents.length ? " — contrôles connus non joués : " + r.verdict.absents.join(", ") : ""}\n`;
+  if (r.verdict) md += `- Verdict contre les rouges connus (${Object.entries(ROUGES_CONNUS).map(([k, v]) => `${k} « ${v}… »`).join(", ")}) : **${r.verdict.ok ? "conforme" : "NON CONFORME"}**${(r.verdict.autrement || []).length ? " — rouges connus AUTREMENT : " + r.verdict.autrement.join(", ") : ""}${r.verdict.nouveaux.length ? " — nouveaux rouges : " + r.verdict.nouveaux.join(", ") : ""}${r.verdict.gueris.length ? " — repassés verts (à retirer de ROUGES_CONNUS) : " + r.verdict.gueris.join(", ") : ""}${r.verdict.absents.length ? " — contrôles connus non joués : " + r.verdict.absents.join(", ") : ""}\n`;
   if (r.arret) md += `- ⚠️ **Séance interrompue** : ${cell(r.arret)}\n`;
   md += `\n## Les personnages en navigateur (les « yeux »)\n\n| # | Personnage | Rôle | Inscrit |\n|--|--|--|--|\n`;
   r.personas.forEach((p, i) => { md += `| ${i + 1} | ${p.nom} | ${p.role} | ${p.inscrit ? "oui" : "**non**"} |\n`; });
@@ -279,6 +279,7 @@ export function rapportMarkdown(r) {
 // ne purge ce domaine (docs/BANC_CAPACITE_REALISTE_2026-09-20.md) : un compte
 // non suivi resterait pour toujours, un compte d'autrui ne doit jamais partir.
 export const RE_CAMPAGNE = /^capacite_\d{13}_[a-f0-9]{8}$/;
+export const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function campagneValide(c) { return typeof c === "string" && RE_CAMPAGNE.test(c); }
 export function emailDeLaCampagne(email, campagne) {
   if (!campagneValide(campagne) || typeof email !== "string") return false;
@@ -287,16 +288,24 @@ export function emailDeLaCampagne(email, campagne) {
 }
 
 // Seule une TABLE absente est tolérée par la purge (le schéma du staging
-// dérive) ; une COLONNE absente est une liste de purge fausse qui laisserait
-// ses lignes en silence. Même règle que le village durci (3d0be866).
-export function tableAbsente(texte) {
-  return /Could not find the table|relation "[^"]+" does not exist/i.test(String(texte || ""));
+// dérive) : le refus de PostgREST `PGRST205` qui NOMME cette table. Une colonne
+// absente (42703), ou une relation absente levée par un DÉCLENCHEUR (42P01 :
+// le DELETE n'a pas eu lieu), est une erreur — elle laisserait ses lignes.
+export function tableAbsente(texte, table) {
+  let e;
+  try { e = JSON.parse(String(texte || "")); } catch (x) { return false; }
+  if (!e || e.code !== "PGRST205" || typeof table !== "string" || !/^[a-z0-9_]+$/.test(table)) return false;
+  return String(e.message || "").includes("'public." + table + "'");
 }
 
 // Les comptes à purger : ceux du listing dont l'adresse est dans le manifeste
 // (même si leur identifiant n'a jamais été rendu), plus les identifiants notés
 // qui n'apparaissent plus au listing (à relire un par un). Un identifiant noté
 // dont l'adresse n'est PAS de la séance est un REFUS : on ne supprime rien.
+// ⚠️ Ce que cela ne garde PAS : un manifeste copié AVEC sa propre campagne
+// désigne ses propres comptes de banc, et serait purgé. Le lanceur y ajoute le
+// poste (refus d'un manifeste venu d'ailleurs) et le pid de la séance (refus
+// d'une séance vivante) — c'est là que se tient cette garde-ci.
 export function comptesAPurger({ listing, emails, idsNotes, campagne }) {
   const attendues = new Set(emails);
   const refus = emails.filter((e) => !emailDeLaCampagne(e, campagne));
@@ -311,10 +320,13 @@ export function comptesAPurger({ listing, emails, idsNotes, campagne }) {
 }
 
 // Un seul village à 100 à la fois sur ce poste : le second purgerait les
-// comptes EN VOL du premier en croyant ramasser un reliquat.
+// comptes EN VOL du premier en croyant ramasser un reliquat. Le verrou porte
+// DEUX pid — le lanceur et la séance Playwright — : un lanceur tué dont
+// l'enfant survit (`taskkill` sans `/T`) ne libère rien.
 export function verrouLibre(verrou, estVivant) {
-  if (!verrou || !Number.isInteger(verrou.pid)) return true;
-  return !estVivant(verrou.pid);
+  if (!verrou) return true;
+  const pids = [verrou.pid, verrou.pidSeance].filter((p) => Number.isInteger(p));
+  return !pids.some((p) => estVivant(p));
 }
 
 // Le projet que désigne une clé de service : la charge du JWT (`ref`). Une
@@ -328,13 +340,18 @@ export function refDeLaCle(cle) {
 // dans un rapport.
 export const masquerCle = (t) => String(t || "").replace(/apikey=[^&\s"']+/gi, "apikey=…");
 
-// Les rouges ASSUMÉS, nommés : une seconde régression, ou un rouge connu qui
-// repasse vert, change le verdict au lieu de se cacher derrière lui.
-export const ROUGES_CONNUS = Object.freeze(["A3"]);
+// Les rouges ASSUMÉS, nommés ET FIGÉS : le code, et la SIGNATURE du détail
+// (son début). Une seconde régression, un rouge connu qui repasse vert, ou le
+// même contrôle rouge AUTREMENT (0/99 au lieu de 60/99) change le verdict au
+// lieu de se cacher derrière lui. A3 ne porte que le DÉCOMPTE ; « une seule
+// fois, jamais l'organisatrice » est A3b, exigé, hors de cette liste.
+export const ROUGES_CONNUS = Object.freeze({ A3: "60/99 prévenus" });
 export function verdictFinal(controles, connus = ROUGES_CONNUS) {
-  const echecs = controles.filter((c) => c.statut === "ÉCHEC").map((c) => c.code);
-  const nouveaux = echecs.filter((c) => !connus.includes(c));
-  const gueris = connus.filter((c) => controles.some((x) => x.code === c) && !echecs.includes(c));
-  const absents = connus.filter((c) => !controles.some((x) => x.code === c));
-  return { ok: !nouveaux.length && !gueris.length && !absents.length, nouveaux, gueris, absents, echecs };
+  const codes = Object.keys(connus);
+  const echecs = controles.filter((c) => c.statut === "ÉCHEC");
+  const nouveaux = echecs.filter((c) => !codes.includes(c.code)).map((c) => c.code);
+  const autrement = echecs.filter((c) => codes.includes(c.code) && !String(c.detail || "").startsWith(connus[c.code])).map((c) => c.code);
+  const gueris = codes.filter((k) => controles.some((x) => x.code === k) && !echecs.some((c) => c.code === k));
+  const absents = codes.filter((k) => !controles.some((x) => x.code === k));
+  return { ok: !nouveaux.length && !autrement.length && !gueris.length && !absents.length, nouveaux, autrement, gueris, absents, echecs: echecs.map((c) => c.code) };
 }

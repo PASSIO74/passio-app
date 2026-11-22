@@ -28,8 +28,10 @@ import { randomUUID } from "node:crypto";
 import { Budget } from "./charge-realiste.mjs";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { hostname } from "node:os";
+import { TABLES_COMPTE } from "../../supabase/functions/_shared/purge-compte.js";
 import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, emailFigurant, campagneValide,
-  emailDeLaCampagne, tableAbsente, comptesAPurger } from "./village100.mjs";
+  emailDeLaCampagne, tableAbsente, comptesAPurger, RE_UUID } from "./village100.mjs";
 
 const pause = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const enc = encodeURIComponent;
@@ -54,16 +56,24 @@ export function motifServeurRsvp(texte) {
 // `test-results/`, que Playwright vide au lancement suivant. Une écriture qui
 // échoue LÈVE : un manifeste muet est un compte orphelin pour toujours.
 export class Manifeste {
-  constructor(chemin, campagne) {
+  // Un manifeste NON PURGÉ n'est jamais écrasé : il porte peut-être les seules
+  // adresses de comptes encore vivants (`--retries`, `--repeat-each`, une
+  // séance tombée). Il porte aussi le pid de la séance et son poste : le
+  // lanceur ne purge pas les comptes d'une séance vivante, ni ceux d'un
+  // manifeste venu d'un autre poste.
+  constructor(chemin, campagne, { pid = process.pid, poste = hostname() } = {}) {
     if (!campagneValide(campagne)) throw new Error("CAMPAGNE_INVALIDE");
+    const avant = Manifeste.lire(chemin);
+    if (avant && !avant.purge && avant.comptes.length) throw new Error("MANIFESTE_NON_PURGE");
     this.chemin = chemin;
-    this.etat = { campagne, cible: STAGING_REF, comptes: [], purge: false, debut: new Date().toISOString() };
+    this.etat = { campagne, cible: STAGING_REF, pid, poste, comptes: [], purge: false, debut: new Date().toISOString() };
     this.ecrire();
   }
   static lire(chemin) {
     if (!existsSync(chemin)) return null;
     const m = JSON.parse(readFileSync(chemin, "utf8"));
-    if (!m || !campagneValide(m.campagne) || m.cible !== STAGING_REF || !Array.isArray(m.comptes)) throw new Error("MANIFESTE_INVALIDE");
+    if (!m || !campagneValide(m.campagne) || m.cible !== STAGING_REF || !Array.isArray(m.comptes)
+      || m.comptes.some((c) => !c || typeof c.email !== "string" || (c.id !== null && !RE_UUID.test(String(c.id))))) throw new Error("MANIFESTE_INVALIDE");
     return m;
   }
   ecrire() { mkdirSync(dirname(this.chemin), { recursive: true }); writeFileSync(this.chemin, JSON.stringify(this.etat, null, 2)); }
@@ -74,6 +84,7 @@ export class Manifeste {
   apresCreation(email, id) {
     const c = this.etat.comptes.find((x) => x.email === email);
     if (!c) throw new Error("ADRESSE_NON_ANNONCEE");
+    if (!RE_UUID.test(String(id))) throw new Error("IDENTIFIANT_INVALIDE");
     c.id = id; this.ecrire();
   }
   purgee() { this.etat.purge = true; this.ecrire(); }
@@ -312,51 +323,63 @@ export class Foule {
 }
 
 // ── Purge de la séance : par ADRESSE EXACTE, prouvée par relecture ────────────
-// Ordre des enfants vers les parents : celui du village durci (3d0be866, qui
-// suit scripts/purge-e2e-rest.js, `cdv_*` exceptées), plus `conversations`
-// (la discussion d'activité créée par l'organisatrice). ⚠️ La liste du village
-// vit dans sa spec, non importable : toute table ajoutée là doit l'être ici.
+// Les tables sont celles de la suppression de compte du produit, IMPORTÉES
+// (`TABLES_COMPTE`, supabase/functions/_shared/purge-compte.js) : une table
+// ajoutée là (\`user_safety\`, télémétrie, \`story_views\`…) l'est ici aussi. En
+// plus, ce que la suppression de compte laisse DÉLIBÉRÉMENT parce que c'est
+// un objet partagé, alors qu'ici tout le monde part : la discussion d'activité
+// (\`conversations.created_by\`) et les signalements (\`reports.reporter_id\`).
 export const TABLES_PURGE = Object.freeze([
-  ["conv_messages", ["from_id"]], ["conv_reads", ["user_id"]], ["conv_members", ["user_id"]],
-  ["conversations", ["created_by"]],
-  ["notifications", ["user_id", "from_id"]], ["comment_interactions", ["user_id"]],
-  ["post_comments", ["author_id"]], ["post_likes", ["user_id"]], ["follows", ["follower_id", "following_id"]],
-  ["reports", ["reporter_id"]], ["posts", ["author_id"]], ["stories", ["author_id"]],
-  ["event_comments", ["author_id"]], ["event_attendees", ["user_id"]], ["event_reactions", ["user_id"]],
-  ["events", ["author_id"]], ["blocks", ["blocker_id", "blocked_id"]], ["push_subscriptions", ["user_id"]],
-  ["user_state", ["user_id"]], ["user_passions", ["user_id"]], ["profiles", ["id"]],
+  ...TABLES_COMPTE.filter(([t]) => t !== "profiles"),
+  ["conversations", "created_by"], ["reports", "reporter_id"],
+  ["profiles", "id"],
 ]);
 export function lotsPurge(ids, taille = 40) {
-  const propres = [...new Set(ids.filter((x) => /^[0-9a-f-]{36}$/i.test(String(x))))];
+  const propres = [...new Set(ids.filter((x) => RE_UUID.test(String(x))))];
   const lots = [];
   for (let i = 0; i < propres.length; i += taille) lots.push(propres.slice(i, i + taille));
   return lots;
 }
 
+// Les comptes de la campagne, par le FILTRE d'adresse de l'API d'administration
+// (recherche par sous-chaîne) : une seule page de 100 au plus, que la purge
+// concurrente des comptes de la CI ne peut pas décaler. Si le filtre n'est pas
+// appliqué (une adresse hors campagne revient), ou si la pagination déborde,
+// c'est une ERREUR — jamais un « rien trouvé ».
+export const PAGES_MAX = 5;
+export async function listerCampagne({ url, h, campagne }) {
+  const comptes = [];
+  for (let p = 1; ; p++) {
+    if (p > PAGES_MAX) throw new Error("LISTING_DEBORDE");
+    const r = await fetch(`${url}/auth/v1/admin/users?filter=${encodeURIComponent(campagne)}&page=${p}&per_page=200`, { headers: h, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`LISTING_HTTP_${r.status}`);
+    const d = await r.json();
+    const lot = (d && d.users) || [];
+    if (lot.some((u) => typeof u.email !== "string" || !u.email.includes(campagne))) throw new Error("FILTRE_NON_APPLIQUE");
+    for (const u of lot) comptes.push({ id: u.id, email: u.email });
+    if (lot.length < 200) return comptes;
+  }
+}
+
 // `manifeste` : { campagne, comptes: [{ email, id|null }] }. Rend
-// { lignes, comptes, restants, erreurs, refus }. Rien n'est supprimé si UNE
-// adresse ou UN identifiant n'appartient pas à la séance (manifeste édité,
-// copié, ou d'une autre campagne).
+// { lignes, comptes, attendus, annonces, restants, erreurs, refus }. Rien n'est
+// supprimé si UNE adresse ou UN identifiant n'appartient pas à la séance.
+// La PREUVE est par ADRESSE : après la purge, le listing de la campagne ne doit
+// plus contenir aucune adresse du manifeste ; chaque identifiant est relu en 404.
 export async function purgerSeance({ url, service, manifeste, log = () => {} }) {
   gardesCible(url);
   const h = { apikey: service, Authorization: `Bearer ${service}` };
-  const out = { lignes: 0, comptes: 0, restants: [], erreurs: [], refus: [] };
+  const out = { lignes: 0, comptes: 0, attendus: 0, annonces: 0, restants: [], erreurs: [], refus: [] };
   const campagne = manifeste && manifeste.campagne;
   if (!campagneValide(campagne)) { out.refus.push("CAMPAGNE_INVALIDE"); return out; }
   const emails = manifeste.comptes.map((c) => c.email);
   const idsNotes = manifeste.comptes.map((c) => c.id).filter(Boolean);
-  // ① Le listing des comptes : retrouve aussi ceux dont l'uid n'a jamais été rendu.
-  const listing = [];
-  for (let p = 1; p <= 100; p++) {
-    const r = await fetch(`${url}/auth/v1/admin/users?page=${p}&per_page=200`, { headers: h, signal: AbortSignal.timeout(30000) });
-    if (!r.ok) { out.erreurs.push(`listing des comptes HTTP ${r.status}`); return out; }
-    const d = await r.json();
-    const lot = (d && d.users) || [];
-    for (const u of lot) listing.push({ id: u.id, email: u.email });
-    if (lot.length < 200) break;
-  }
+  out.annonces = emails.length;
+  let listing;
+  try { listing = await listerCampagne({ url, h, campagne }); }
+  catch (e) { out.erreurs.push(court(e && e.message)); return out; }
   const choix = comptesAPurger({ listing, emails, idsNotes, campagne });
-  // ② Un identifiant noté absent du listing : relu un par un (404 = déjà parti).
+  // Un identifiant noté absent du listing : relu un par un (404 = déjà parti).
   for (const id of choix.aRelire) {
     const r = await fetch(`${url}/auth/v1/admin/users/${id}`, { headers: h, signal: AbortSignal.timeout(20000) });
     if (r.status === 404) continue;
@@ -366,17 +389,17 @@ export async function purgerSeance({ url, service, manifeste, log = () => {} }) 
     else choix.refus.push(`${id} → ${u.email}`);
   }
   if (choix.refus.length) { out.refus = choix.refus; return out; }
-  // ③ Les lignes, puis les comptes. Seule une TABLE absente est tolérée.
+  out.attendus = choix.ids.length;
+  // Les lignes, puis les comptes. Seule une TABLE absente est tolérée.
   for (const lot of lotsPurge(choix.ids)) {
     const liste = `(${lot.join(",")})`;
-    for (const [table, cols] of TABLES_PURGE) {
-      const q = cols.length === 1 ? `${cols[0]}=in.${liste}` : `or=(${cols.map((c) => `${c}.in.${liste}`).join(",")})`;
+    for (const [table, col] of TABLES_PURGE) {
       try {
-        const r = await fetch(`${url}/rest/v1/${table}?${q}`, { method: "DELETE", headers: { ...h, Prefer: "return=representation" }, signal: AbortSignal.timeout(30000) });
+        const r = await fetch(`${url}/rest/v1/${table}?${col}=in.${liste}`, { method: "DELETE", headers: { ...h, Prefer: "return=representation" }, signal: AbortSignal.timeout(30000) });
         const t = await r.text();
-        if (!r.ok) { if (!tableAbsente(t)) out.erreurs.push(`${table} HTTP ${r.status} ${court(t)}`); continue; }
+        if (!r.ok) { if (!tableAbsente(t, table)) out.erreurs.push(`${table}.${col} HTTP ${r.status} ${court(t)}`); continue; }
         const l = JSON.parse(t || "[]"); out.lignes += Array.isArray(l) ? l.length : 0;
-      } catch (e) { out.erreurs.push(`${table} ${court(e && e.message)}`); }
+      } catch (e) { out.erreurs.push(`${table}.${col} ${court(e && e.message)}`); }
     }
     for (const id of lot) {
       try {
@@ -385,7 +408,7 @@ export async function purgerSeance({ url, service, manifeste, log = () => {} }) 
       } catch (e) { out.erreurs.push(`compte ${id.slice(0, 8)} ${court(e && e.message)}`); }
     }
   }
-  // ④ La preuve : chaque compte RELU doit répondre 404 (un 404 au DELETE ne suffit pas).
+  // La preuve ① : chaque identifiant RELU répond 404 (un 404 au DELETE ne suffit pas).
   for (const id of choix.ids) {
     try {
       const r = await fetch(`${url}/auth/v1/admin/users/${id}`, { headers: h, signal: AbortSignal.timeout(20000) });
@@ -393,8 +416,16 @@ export async function purgerSeance({ url, service, manifeste, log = () => {} }) 
       else out.restants.push(`${id.slice(0, 8)} (HTTP ${r.status})`);
     } catch (e) { out.restants.push(`${id.slice(0, 8)} (${court(e && e.message)})`); }
   }
-  out.attendus = choix.ids.length;
-  log(`purge : ${out.lignes} lignes, ${out.comptes}/${choix.ids.length} comptes relus absents${out.restants.length ? `, ${out.restants.length} RESTANT(S)` : ""}${out.erreurs.length ? `, ${out.erreurs.length} erreur(s)` : ""}`);
+  // La preuve ② : PAR ADRESSE — plus aucune adresse du manifeste dans la campagne.
+  try {
+    const apres = await listerCampagne({ url, h, campagne });
+    const attendues = new Set(emails);
+    for (const u of apres) if (attendues.has(u.email)) out.restants.push(`${u.email.split("@")[0].split("_").pop()} (adresse encore présente)`);
+  } catch (e) { out.erreurs.push(`relisting ${court(e && e.message)}`); }
+  log(`purge : ${out.lignes} lignes, ${out.comptes}/${out.attendus} comptes relus absents (${out.annonces} adresses annoncées)${out.restants.length ? `, ${out.restants.length} RESTANT(S)` : ""}${out.erreurs.length ? `, ${out.erreurs.length} erreur(s)` : ""}`);
   return out;
 }
+// Complète = rien ne reste, par identifiant ET par adresse. (Une adresse
+// annoncée sans compte est une création qui a échoué : le relisting prouve
+// qu'elle n'existe pas. Z1, lui, exige en plus annonces === attendus.)
 export const purgeComplete = (p) => !!p && !p.erreurs.length && !p.restants.length && !p.refus.length;

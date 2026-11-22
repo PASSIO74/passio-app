@@ -168,7 +168,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
   test.skip(!process.env.PASSIO_E2E_VILLAGE100, "opt-in : npm run village:100 (staging seulement)");
   // Simulation de POSTE : même si un futur job vise le staging et pose la variable.
   test.skip(!!(process.env.CI || process.env.GITHUB_ACTIONS), "jamais en CI : 100 comptes réels");
-  test.skip(!process.env.PASSIO_VILLAGE100_MANIFESTE, "lancer par npm run village:100 (manifeste et verrou de séance)");
+  test.skip(!process.env.PASSIO_VILLAGE100_MANIFESTE || !process.env.PASSIO_VILLAGE100_VERROU, "lancer par npm run village:100 (manifeste et verrou de séance)");
 
   test("l'activité populaire, le post populaire, l'annulation", async ({ browser }) => {
     test.setTimeout(50 * 60 * 1000);
@@ -210,6 +210,13 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
     }
     // Le manifeste de la séance (lanceur : hors de test-results, sous verrou).
     // Écrit AVANT chaque création ; une écriture impossible arrête la séance.
+    // La séance s'inscrit dans le verrou du lanceur : si le lanceur meurt et
+    // que ce processus survit, aucun autre lancement ne purge nos comptes en vol.
+    const cheminVerrou = process.env.PASSIO_VILLAGE100_VERROU;
+    const verrou = JSON.parse(fs.readFileSync(cheminVerrou, "utf8"));
+    verrou.pidSeance = process.pid;
+    fs.writeFileSync(cheminVerrou, JSON.stringify(verrou));
+    // Refuse d'écraser un manifeste NON PURGÉ ; porte le pid de la séance et le poste.
     const manifeste = new F.Manifeste(process.env.PASSIO_VILLAGE100_MANIFESTE, campagne);
 
     const contexts = [], pages = [], uids = [null, null, null, null];
@@ -652,14 +659,23 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         const r = await lire("events", `select=status&id=eq.${evt}`);
         return { ok: r[0] && r[0].status === "cancelled", detail: `statut ${r[0] && r[0].status}` };
       });
-      await verifier("A3", `${A.prevenusAnnulation} personnes prévenues de l'annulation, chacune une seule fois, jamais l'organisatrice`, async () => {
-        const d = L.doublonsNotifs(annul);
-        const dest = new Set(annul.map((n) => n.user_id));
+      // A3 ne porte que le DÉCOMPTE (rouge connu, signature figée : « 60/99
+      // prévenus ») ; A3b, exigé et HORS de la liste des rouges connus, tient le
+      // reste : une seule fois, jamais l'organisatrice, et au moins une personne
+      // prévenue (sans quoi « aucun doublon » ne prouverait rien).
+      const destAnnul = new Set(annul.map((n) => n.user_id));
+      await verifier("A3", `${A.prevenusAnnulation} personnes prévenues de l'annulation`, async () => {
         const errLea = rapport.erreursHttp[nom(LEA)].slice(httpLeaAvant).filter((x) => /notifications/.test(x));
         const statuts = {};
         for (const x of errLea) { const s = x.split(" ")[0]; statuts[s] = (statuts[s] || 0) + 1; }
-        return { ok: dest.size === A.prevenusAnnulation && d.doublons === 0 && !dest.has(uids[LEA]),
-          detail: `${dest.size}/${A.prevenusAnnulation} prévenus, doublons ${d.doublons}${errLea.length ? ` ; écritures refusées chez Léa : ${JSON.stringify(statuts)}` : ""}` };
+        const autres = new Set([...destAnnul].filter((u) => u !== uids[LEA]));
+        return { ok: autres.size === A.prevenusAnnulation,
+          detail: `${autres.size}/${A.prevenusAnnulation} prévenus${errLea.length ? ` ; écritures refusées chez Léa : ${JSON.stringify(statuts)}` : ""}` };
+      });
+      await verifier("A3b", "l'annulation prévient chacun une seule fois, et jamais l'organisatrice", async () => {
+        const d = L.doublonsNotifs(annul);
+        return { ok: destAnnul.size > 0 && d.doublons === 0 && !destAnnul.has(uids[LEA]),
+          detail: `${destAnnul.size} destinataire(s), doublons ${d.doublons}, organisatrice prévenue : ${destAnnul.has(uids[LEA])}` };
       });
       const latAnnul = [...recusAnnul.values()].map((t) => t - tClic);
       const yeuxAnnul = await Promise.all([HUGO, JADE, TOM].map((i) => ev(i, (id) => (window.__v100.notifs || []).find((n) => n.ref === id && n.kind === "event_cancelled") || null, evt)));
@@ -720,12 +736,14 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       for (const c of contexts) { try { await c.close(); } catch (e) {} }
       try { rapport.purge = await F.purgerSeance({ url: cfg.url, service: cfg.cle, manifeste: manifeste.etat, log }); }
       catch (e) { rapport.purge = { lignes: 0, comptes: 0, restants: [], refus: [], erreurs: [String(e.message)] }; }
-      const purgeOk = F.purgeComplete(rapport.purge);
-      if (purgeOk) manifeste.purgee();
+      // Complète (rien ne reste, par identifiant ET par adresse) ET exhaustive :
+      // autant de comptes trouvés et purgés que d'adresses annoncées.
+      const purgeOk = F.purgeComplete(rapport.purge) && rapport.purge.attendus === manifeste.etat.comptes.length;
+      if (F.purgeComplete(rapport.purge)) manifeste.purgee();
       acteCourant = "5 · Purge de la séance";
       rapport.controles.push({ acte: acteCourant, code: "Z1", exige: true, statut: purgeOk ? "OK" : "ÉCHEC", ms: 0,
-        libelle: "les comptes de la séance sont supprimés et relus absents (404), aucune ligne en erreur",
-        detail: `${rapport.purge.comptes}/${rapport.purge.attendus ?? manifeste.etat.comptes.length} comptes relus absents, ${rapport.purge.lignes} lignes${rapport.purge.restants.length ? " ; RESTANTS : " + rapport.purge.restants.slice(0, 5).join(", ") : ""}${rapport.purge.refus.length ? " ; REFUS : " + rapport.purge.refus.slice(0, 3).join(", ") : ""}${rapport.purge.erreurs.length ? " ; erreurs : " + rapport.purge.erreurs.slice(0, 3).join(" ; ") : ""}` });
+        libelle: "chaque adresse annoncée avait son compte ; tous supprimés, relus absents (404) et absents du listing de la campagne ; aucune ligne en erreur",
+        detail: `${rapport.purge.comptes}/${rapport.purge.attendus} comptes relus absents pour ${manifeste.etat.comptes.length} adresses annoncées, ${rapport.purge.lignes} lignes${rapport.purge.restants.length ? " ; RESTANTS : " + rapport.purge.restants.slice(0, 5).join(", ") : ""}${rapport.purge.refus.length ? " ; REFUS : " + rapport.purge.refus.slice(0, 3).join(", ") : ""}${rapport.purge.erreurs.length ? " ; erreurs : " + rapport.purge.erreurs.slice(0, 3).join(" ; ") : ""}` });
       rapport.verdict = L.verdictFinal(rapport.controles);
       rapport.dureeS = Math.round((Date.now() - t0) / 1000);
       if (!rapport.http) rapport.http = L.resumeHttp(foule.mesures);
@@ -738,8 +756,8 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
     // Les rouges ASSUMÉS sont nommés (`ROUGES_CONNUS`, scripts/lib/village100.mjs) :
     // un NOUVEAU rouge, ou un rouge connu qui repasse vert, rend la séance rouge.
     const v = rapport.verdict;
-    expect({ nouveaux: v.nouveaux, gueris: v.gueris, absents: v.absents },
+    expect({ nouveaux: v.nouveaux, autrement: v.autrement, gueris: v.gueris, absents: v.absents },
       `verdict contre les rouges connus ${JSON.stringify(L.ROUGES_CONNUS)} (détail : test-results/village100/rapport.md)`)
-      .toEqual({ nouveaux: [], gueris: [], absents: [] });
+      .toEqual({ nouveaux: [], autrement: [], gueris: [], absents: [] });
   });
 });
