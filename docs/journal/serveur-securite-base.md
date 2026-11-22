@@ -2178,6 +2178,8 @@ Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa 
 
 Une relecture indépendante, faite APRÈS la mise en production, a trouvé quatre trous. Tous ont été vérifiés au staging, dans une transaction annulée.
 
+**Ce n'est PAS une régression du 22/11.** Avant #1017, un compte bloqué lisait déjà TOUT (activités, fils, publications, cartes). La première migration a fermé l'essentiel ; ces quatre trous sont ce qu'elle laissait OUVERT, pas ce qu'elle aurait ouvert. L'homonymie en particulier préexistait (RV-45) et ne s'est pas aggravée en production. Ne pas lire « faille introduite le 22/11 ».
+
 - **① Homonymie (bloquant).** `posts.id` est libre, et la branche « publication » de `comment_target_visible` passait avant la branche « activité ». Kevin publiait un post à l'identifiant de l'activité de Léa : il lisait alors les réponses (`comment_interactions`) et recevait le canal `fil:`. Inversement, l'homonyme fermait à Léa le fil de SA propre activité. Désormais l'activité, et le commentaire, PRIMENT sur une publication de même identifiant.
 - **② Repartage à deux niveaux.** Le repost de la carte d'Inès recopie le texte de la carte. Une aide `publication_masquee_pour_moi(id)` applique la règle entière à la publication CITÉE (un niveau).
 - **③ Fils.** `post_is_visible` applique la même règle : commentaires, j'aime, interactions, `fil_compteurs` et canal `fil:` d'une publication masquée sont fermés.
