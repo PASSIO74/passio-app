@@ -8,6 +8,7 @@
 // `supaPrevenirInscrits`, app-08) et affiche le COMPTE rendu. Ce banc mesure le
 // câblage côté client, réseau coupé (aucune écriture réelle) :
 //   ① annulation : UN appel serveur (genre, clé), aucune écriture par personne,
+//      la push `event_cancelled` aux 20 premiers (gabarit depuis le 22/11),
 //      « 99 personnes prévenues » ;
 //   ② compte partiel ou nul → dit, en avertissement ; un REFUS ne retombe pas
 //      sur l'ancien chemin (il rendrait 60 sur 99 en se croyant utile) ;
@@ -63,7 +64,7 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
     await banc(page);
     const r = await page.evaluate(async () => {
       await toggleCancelEvent("ev_village");
-      return { statut: _findCanonicalEvent("ev_village").status, appels: window.__appels, notifs: window.__notifs.length, push: window.__push.length, toasts: window.__toasts };
+      return { statut: _findCanonicalEvent("ev_village").status, appels: window.__appels, notifs: window.__notifs.length, push: window.__push, toasts: window.__toasts };
     });
     expect(r.statut).toBe("cancelled");
     expect(r.appels).toHaveLength(1);
@@ -72,7 +73,11 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
     expect(r.appels[0].cle, "une clé tirée au hasard, au format exigé par la base").toMatch(/^[A-Za-z0-9_-]{8,64}$/);
     // RÉINJECTION : sur le code d'avant, 99 écritures `supaInsertNotif` partaient du navigateur.
     expect(r.notifs, "plus aucune écriture par personne depuis le navigateur").toBe(0);
-    expect(r.push, "event_cancelled n'a pas de gabarit de push : aucun appel notify-call").toBe(0);
+    // `event_cancelled` a son gabarit de push depuis le 22/11 (lien-metier.js) : l'annulation
+    // réveille aussi les inscrits app fermée — les 20 premiers (plafond de notify-call), venants d'abord.
+    const attendus = [];
+    for (let i = 1; i <= 20; i++) attendus.push("event_cancelled:u_" + i);
+    expect(r.push, "push d'annulation : les 20 premiers inscrits, venants d'abord").toEqual(attendus);
     expect(r.toasts).toContain("Activité annulée — 99 personnes prévenues");
   });
 
