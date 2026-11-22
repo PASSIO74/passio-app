@@ -40,6 +40,7 @@
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 - 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
+- 🏘️ LE VILLAGE À 100, EN HYBRIDE : LA CAPACITÉ TIENT, L'ANNULATION NE PRÉVIENT QUE 60 PERSONNES (2026-11-22)
 
 ---
 
@@ -3314,3 +3315,58 @@ rouge de la CI (A recréé vide) → vert. Suite complète : 15/15.
 **À retenir.** Un nom dans `caches.keys()` ne prouve pas que la version existe encore, et `keys()` puis
 `open(nom)` côté page ressuscite ce que le worker vient de supprimer. Sur des caches, asserter le CONTENU,
 jamais la liste des noms.
+
+## 🏘️ LE VILLAGE À 100, EN HYBRIDE : LA CAPACITÉ TIENT, L'ANNULATION NE PRÉVIENT QUE 60 PERSONNES (2026-11-22)
+
+Demande : passer la simulation « village » (10 vrais navigateurs, `npm run village`) à **100 personnes**,
+pour voir ce que 10 ne montre pas — file longue, course à 30, avalanche de notifications, quotas temps
+réel. Cent navigateurs ne tiennent pas sur un poste (~30 Go) : **hybride**, `npm run village:100`
+(`scripts/village100.mjs`, `tests/e2e/village-100-hybride.spec.js`). **4 yeux** dans de vrais navigateurs
+(Léa organise, Hugo s'inscrit tôt, Jade sur téléphone dans la course, Tom arrive en dernier) pilotent les
+vrais handlers ; **96 figurants** (`scripts/lib/village100-figurants.mjs`) font par l'API les MÊMES
+écritures que le client pour le même geste (UPDATE puis INSERT pour `supaSetEventRsvp`, DELETE puis
+`promouvoir_attente(p_user_id: null)` pour se désister, notification APRÈS l'écriture acceptée) et
+tiennent chacun un socket sur `user:<uid>`. Verdicts purs et éprouvés par réinjection :
+`scripts/lib/village100.mjs`, `tests/unit/village100.test.mjs` (dans `npm run verif`).
+
+**Mesuré deux fois sur le staging (séances 3 et 4, 555–588 s, purge complète : 100 comptes) :**
+- **La capacité tient exactement.** 30 « je participe » à la même seconde pour 3 places : 3 gagnants,
+  27 refus `activite_complete`, jamais 21 venants ; l'écran du perdant (Jade) dit « Activité complète… »
+  sans place fantôme. 80 en liste d'attente sans un refus.
+- **La cascade est juste.** 5 désistements successifs : chacun promeut EXACTEMENT la tête de file du
+  moment ; puis 5 simultanés : l'ensemble promu est la tête de file ; 20 venants à chaque instant ;
+  chaque promu reçoit UNE notification (`n_pa_…`), en direct sur son socket (p95 343 ms).
+- **Le post populaire tient.** 100 j'aime et 50 commentaires en 10 s : 100 et 50 lignes, `fil_compteurs`
+  dit 100/50, Léa reçoit 99 + 50 notifications sans doublon, 50/50 commentaires et 149/149
+  notifications en direct ; la carte des témoins affiche 100/50 **8 à 37 s** après la rafale sans
+  recharger (cadence des compteurs visibles).
+- **Les murs ne sont pas en vue à 100** : ~100 sockets (plafond 500), pic de trames reçues 28–38/s
+  (plafond 500/s), pic d'écriture 42–43/s, aucun 429 ni 5xx côté figurants ; 96 connexions Auth
+  cadencées à 2,4 s (≤ 129 / 5 min yeux compris), aucun 429.
+
+⚠️ **LE DÉFAUT QUE 10 NE MONTRAIT PAS : L'ANNULATION D'UNE ACTIVITÉ DE PLUS DE 60 PERSONNES N'EN PRÉVIENT
+QUE 60.** `toggleCancelEvent` → `_notifyEventAttendees` (app-07) fait écrire les 99 notifications PAR LE
+NAVIGATEUR DE L'ORGANISATRICE, en parallèle, sans réessai — et `trg_rate_limit` plafonne `notifications`
+à **60 insertions par minute et par émetteur** (`migration_ouverture_publique_2026-09-11.sql`). Mesuré
+deux fois à l'identique : **60/99 prévenus, 39 refus 400**, et l'organisatrice lit « inscrits prévenus ».
+Même chemin pour la modification (`event_update`) et la suppression (`_prevenirSuppressionActivite`).
+Contrôle A3, EXIGÉ, laissé ROUGE : c'est le constat. Remède à concevoir à part (écriture serveur comme
+`promouvoir_attente`, qui pose `passio.notification_serveur`), pas dans le banc.
+
+⚠️ **LA CI EFFACE LES COMPTES `@passio-e2e.test` DU STAGING EN PLEINE SÉANCE.** Le teardown du job
+`test-prod` (`PASSIO_E2E_PROD=1`) purge PAR MOTIF ; deux séances ont perdu leurs quatre yeux vers la
+6ᵉ minute, avec deux symptômes trompeurs : `posts_author_id_fkey` (profil disparu) et une notification
+« demande à participer » manquante — `inscription_tracee` saute en silence une personne sans profil,
+alors que l'inscription elle-même passe. Les yeux prennent donc l'adresse du domaine du banc
+(`emailOeil`, `@passio-capacite.test`, index 96–99), comme les figurants et `charge-realiste`.
+⚠️ **L'ORDRE NE SE LIT PAS SUR `created_at` D'UNE NOTIFICATION SERVEUR** : `now()` est l'heure de DÉBUT de
+transaction, antérieure à l'attente du verrou de l'activité — dix promotions simultanées donnaient
+« 3 inversions » sur une cascade juste. L'ordre se prouve en séquence (E10), l'ensemble en concurrence (E8).
+⚠️ **UN TÉMOIN QUI NE SUIT PAS L'AUTEUR NE VOIT PAS LE POST** : fil filtré sur sa passion et ses
+abonnements ; les témoins s'abonnent à Léa par le vrai bouton avant la rafale.
+
+Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
+participer »** (29 en ~1 min, aucun regroupement) ; 40 × 429 et des 500 sur `functions/v1/notify-call`
+(push Web, aucun abonnement posé) pendant les rafales ; latences variables sous la CI concurrente
+(une promotion à 12,5 s en séance 3, 218 ms en séance 4 ; p95 d'un j'aime de 110 ms à 3,1 s).
+Hors portée : médias, push réels, rendu et batterie d'un vrai téléphone.
