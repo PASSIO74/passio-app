@@ -24,6 +24,16 @@
 
 **Décompte après contre-revue : 172 constats actifs — 0 P0 · 11 P1 · 47 P2 · 77 P3 · 37 P4**, pour environ 220 constats bruts avant fusion. Sur les onze P1, deux décrivent la même chaîne et deux dépendent d'un réglage de facturation qui n'a pas pu être lu.
 
+> **État des onze P1 au 20/11/2026, après correctifs et revérification.** Chaque statut a été rejoué par un vérificateur, puis par un contre-vérificateur chargé de le réfuter. Aucun P1 n'est fermé sur la seule présence de code : il faut le correctif appliqué en production et le résultat relu.
+>
+> | Statut | Nombre | Familles |
+> |---|---:|---|
+> | Fermé | 1 | messagerie |
+> | Atténué, reste à faire | 3 | abus (1), capacité (1), agents (1) |
+> | Ouvert | 7 | abus (3), coûts (2), mise en production (1), capacité (1) |
+>
+> Des gestes de fermeture immédiate ont aussi été faits en production le 16/11. Le tableau ci-dessous décrit les constats tels qu'ils ont été établis le 15/11.
+
 ## 2. Les onze constats P1, par famille
 
 | Famille | Nombre | En termes généraux | Force de la preuve |
