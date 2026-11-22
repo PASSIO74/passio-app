@@ -7203,7 +7203,12 @@ function ouvrirConsentementRequis() {
   // le refus en action secondaire.
   openModal(
     '<div class="modal-title">Avant de continuer</div>' +
-    '<p style="font-size:13px;color:var(--muted);margin:8px 0 12px;">Ton compte vient d’être créé avec Google. Pour l’utiliser, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.</p>' +
+    // Texte VRAI pour tout compte sollicité (2026-11-22, simulation « village ») :
+    // la feuille ne s'ouvre pas qu'au retour de Google, mais pour TOUT compte
+    // sans accord tracé — dont les comptes créés par e-mail avant le 10/09, que
+    // ce lot sollicite exprès. « Ton compte vient d'être créé avec Google » était
+    // faux pour eux. Verrou : consentement-google.spec.js ⑥.
+    '<p style="font-size:13px;color:var(--muted);margin:8px 0 12px;">Pour utiliser ton compte, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.</p>' +
     '<label class="field consent-requis-ligne">' +
       '<input type="checkbox" id="consentRequisCase"/>' +
       '<span style="font-size:13px;">J’ai 18 ans ou plus et j’accepte les <a href="#" onclick="event.preventDefault();event.stopPropagation();openTermsOfService();return false;">conditions générales</a> et la <a href="#" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy();return false;">politique de confidentialité</a>.</span>' +

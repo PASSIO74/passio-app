@@ -134,6 +134,21 @@ test.describe("AUTH-03 — consentement Google", () => {
     expect(r.ferme).toBe(true);
   });
 
+  // La feuille sollicite TOUT compte sans accord tracé, y compris un compte
+  // créé par e-mail avant le 10/09 : elle ne doit pas lui dire qu'il vient
+  // d'être créé avec Google (constaté par la simulation à 10 comptes).
+  test("⑥ la feuille dit vrai à un compte créé par e-mail : pas de « créé avec Google »", async ({ page }) => {
+    await banc(page);
+    const texte = await page.evaluate(() => {
+      localStorage.setItem("passio_consentement_requis_v1", "1");
+      ouvrirConsentementRequis();
+      return document.getElementById("modalContent").innerText;
+    });
+    expect(texte).toMatch(/accepte les conditions générales/);
+    expect(texte).not.toMatch(/Google/);
+    expect(texte).not.toMatch(/vient d.être créé/);
+  });
+
   test("⑤ UXO-07 : plus de « contrôle d'âge IA » promis dans le HTML", async () => {
     const html = fs.readFileSync(path.join(RACINE, "index.html"), "utf8");
     const sansCommentaires = html.replace(/<!--[\s\S]*?-->/g, "");
