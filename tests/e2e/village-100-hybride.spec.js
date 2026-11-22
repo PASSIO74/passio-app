@@ -683,17 +683,19 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       const nav429 = navErr.filter((x) => x.startsWith("429")).length;
       rapport.murs["Connexions temps réel simultanées"] = `pic ${foule.picSockets} sockets de figurants + ${YEUX.length} navigateurs ≈ ${foule.picSockets + YEUX.length} (plafond du forfait : 500) ; refus de join : ${foule.frames.refus.length} ; fermetures subies : ${foule.figurants.filter((f) => f.rtFerme).length}`;
       rapport.murs["Messages temps réel reçus (figurants)"] = `${foule.frames.total} trames, dont ${foule.frames.broadcasts} broadcasts (${foule.frames.notifications} notifications) ; pic ${L.picParSeconde(foule.frames.instants)}/s (plafond : 500/s)`;
-      rapport.murs["HTTP des figurants"] = `${http.total} requêtes, 429 : ${http.total429}, 5xx : ${http.total5xx}`;
+      rapport.murs["HTTP des figurants"] = `${http.total} requêtes, 429 : ${http.total429}, 5xx : ${http.total5xx}, sans réponse (15 s, coupure) : ${http.totalReseau}`;
       rapport.murs["HTTP des navigateurs (≥ 400)"] = `${navErr.length} réponses, dont 429 : ${nav429}`;
       const push = http.familles.push_notify_call || { tentatives: 0, statuts: {} };
       rapport.murs["Fonction Edge notify-call (push)"] = `figurants : ${push.tentatives} appels (${Object.entries(push.statuts).map(([k, v]) => `${k}×${v}`).join(" ") || "aucun"}) ; navigateurs : ${navErr.filter((x) => /notify-call/.test(x)).length} réponses ≥ 400`;
       rapport.murs["Connexions Auth"] = `${(http.familles.auth_connexion || {}).tentatives || 0} connexions de figurants + 4 inscriptions navigateur ; 429 : ${((http.familles.auth_connexion || {}).statuts || {})[429] || 0}`;
       rapport.murs["Budget de séance"] = JSON.stringify(foule.budget.resume());
       for (const [k, corps] of Object.entries(foule.premiersRefus)) rapport.murs[`Premier refus « ${k} »`] = corps;
-      await verifier("M1", "aucun 429 ni 5xx pendant la séance (figurants et navigateurs)", async () => ({
-        ok: http.total429 === 0 && http.total5xx === 0 && nav429 === 0,
-        detail: `figurants : 429 ×${http.total429}, 5xx ×${http.total5xx} ; navigateurs : 429 ×${nav429}${http.total429 ? " — familles : " + Object.entries(http.familles).filter(([, f]) => f.statuts[429]).map(([k, f]) => `${k}×${f.statuts[429]}`).join(", ") : ""}`,
-      }), { exige: false });
+      await verifier("M1", "aucun 429, aucun 5xx, aucune requête sans réponse pendant la séance (figurants et navigateurs)", async () => {
+        const touchees = Object.entries(http.familles).filter(([, f]) => f.statuts[429] || f.statuts.reseau || Object.keys(f.statuts).some((s) => Number(s) >= 500))
+          .map(([k, f]) => `${k} (${Object.entries(f.statuts).filter(([s]) => s === "429" || s === "reseau" || Number(s) >= 500).map(([s, n]) => `${s}×${n}`).join(" ")})`);
+        return { ok: http.total429 === 0 && http.total5xx === 0 && http.totalReseau === 0 && nav429 === 0,
+          detail: `figurants : 429 ×${http.total429}, 5xx ×${http.total5xx}, sans réponse ×${http.totalReseau} ; navigateurs : 429 ×${nav429}${touchees.length ? " — familles : " + touchees.join(", ") : ""}` };
+      }, { exige: false });
       await verifier("M3", "les venants entrent dans la discussion de l'activité (`conv_members`, comme `_joinEventConversation`)", async () => {
         const d = http.familles.discussion_rejoindre || { tentatives: 0, statuts: {} };
         const ok = (d.statuts[201] || 0) + (d.statuts[409] || 0);

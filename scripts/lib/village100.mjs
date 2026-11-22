@@ -198,7 +198,9 @@ export function resumeHttp(mesures) {
   }
   const total429 = mesures.filter((m) => m.status === 429).length;
   const total5xx = mesures.filter((m) => m.status >= 500).length;
-  return { familles: out, total: mesures.length, total429, total5xx };
+  // Sans réponse du tout (délai de 15 s dépassé, connexion coupée) : un mur aussi.
+  const totalReseau = mesures.filter((m) => m.status == null).length;
+  return { familles: out, total: mesures.length, total429, total5xx, totalReseau };
 }
 
 // Débit atteint : le plus grand nombre de mesures dans une seconde glissante.

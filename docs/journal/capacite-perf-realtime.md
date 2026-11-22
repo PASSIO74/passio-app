@@ -3351,6 +3351,12 @@ environnement de l'enfant filtré, port libre, seule une TABLE absente tolérée
   acceptée). Ajouté en séance 5 : **162/162 appels en 500 `VAPID non configuré`** — le staging n'a pas les
   clés du push, la fonction répond avant tout envoi. Seuls les **40 × 429** de l'organisatrice (dizaines
   d'appels à la suite) touchent son plafond. Le push à 100 se mesure sur un projet qui a ses clés VAPID.
+  ⚠️ **ET MÊME SANS RIEN ENVOYER, LA FONCTION NE SUIT PAS LA RAFALE** (séance 6) : pendant les 150
+  écritures en 10 s du post populaire, **118 des 158 appels des figurants à `notify-call` n'ont reçu
+  AUCUNE réponse en 15 s** (p50 15 004 ms) — la fonction Edge sature avant même de lire sa configuration.
+  Côté client, `_pousserPushNotif` n'attend pas ce verdict (`.catch(() => {})`) : l'écran n'en souffre pas,
+  mais à 100 personnes actives ensemble, une partie des push serait perdue en silence. À mesurer avec VAPID.
+  Le rapport compte désormais les requêtes SANS réponse (`totalReseau`, M1) : un 429 n'est pas le seul mur.
 
 ⚠️ **LE DÉFAUT QUE 10 NE MONTRAIT PAS : L'ANNULATION D'UNE ACTIVITÉ DE PLUS DE 60 PERSONNES N'EN PRÉVIENT
 QUE 60.** `toggleCancelEvent` → `_notifyEventAttendees` (app-07) fait écrire les 99 notifications PAR LE

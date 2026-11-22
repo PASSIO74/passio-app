@@ -151,7 +151,8 @@ test("latences, débit, décalages", () => {
   assert.ok(d.every((x) => x >= 0 && x < 10000));
   assert.deepEqual(d, L.decalages(96, 10000, 7), "déterministes pour une graine");
   const h = L.resumeHttp([{ famille: "like", status: 201, ms: 10 }, { famille: "like", status: 429, ms: 5 }, { famille: "x", status: 503, ms: 1 }]);
-  assert.equal(h.total429, 1); assert.equal(h.total5xx, 1); assert.deepEqual(h.familles.like.statuts, { 201: 1, 429: 1 });
+  assert.equal(h.total429, 1); assert.equal(h.total5xx, 1); assert.equal(h.totalReseau, 0);
+  assert.equal(L.resumeHttp([{ famille: "push", status: null, ms: 15000 }]).totalReseau, 1, "une requête sans réponse (délai, coupure) est un échec compté"); assert.deepEqual(h.familles.like.statuts, { 201: 1, 429: 1 });
 });
 
 test("rapport : même forme EXIGÉ / OBSERVATION que le village", () => {
@@ -205,7 +206,8 @@ test("adresses de la séance : exactement `capacite_<campagne>_<n>@passio-capaci
   assert.equal(L.emailDeLaCampagne(`${CAMP}_100@passio-capacite.test`, CAMP), false);
   assert.equal(L.emailDeLaCampagne(`${AUTRE}_3@passio-capacite.test`, CAMP), false, "une autre campagne n'est pas la séance");
   assert.equal(L.emailDeLaCampagne(`e2e_qa_1_abc@passio-e2e.test`, CAMP), false);
-  assert.equal(L.emailDeLaCampagne(`${CAMP}_3@passio-capacite.test.evil`, CAMP), false);
+  // Un suffixe ajouté au domaine (construit en deux morceaux : le dépôt est public, `audit-pii-depot`).
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_3@passio-capacite.test` + ".evil", CAMP), false);
   assert.equal(L.emailDeLaCampagne(`${CAMP}_3@passio-capacite.test`, "capacite_%"), false, "campagne invalide : rien n'est de la séance");
 });
 
