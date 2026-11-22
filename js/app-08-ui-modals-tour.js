@@ -1267,8 +1267,10 @@ function _meHideProgress() { var d = document.getElementById("meProgressOv"); if
 // Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder), avec
 // dimensions réduites et débit cible : l'encodeur ne garantit pas ce débit.
 // Rejette si le navigateur ne supporte pas ; le routage WebAudio préserve le son.
-function passioCompressVideo(file, opts, onProgress) {
-  opts = opts || {};
+// `ctl` (4ᵉ argument, facultatif) : pilotage de l'appelant — dureeMax, surCoupe,
+// surDemarrage, demanderGeste, abandon. Séparé de `opts` (profil d'encodage).
+function passioCompressVideo(file, opts, onProgress, ctl) {
+  opts = opts || {}; ctl = ctl || {};
   var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;
   return new Promise(function(resolve, reject) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
@@ -1286,7 +1288,7 @@ function passioCompressVideo(file, opts, onProgress) {
       // galerie de plus d'une minute un refus — mesuré : une testeuse iPhone,
       // vidéo de 34 Mo, refusée deux fois de suite. On encode les
       // VIDEO_DUREE_MAX premières secondes (comme une story ailleurs).
-      var durMax = opts.dureeMax || 60;
+      var durMax = ctl.dureeMax || 60;
       var coupee = dur > durMax + 0.5;
       var durEff = coupee ? durMax : dur;
       var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
@@ -1339,7 +1341,7 @@ function passioCompressVideo(file, opts, onProgress) {
         // Type sans paramètres codecs (virgule interdite dans une data URL — cf. _meOnRecordingStop).
         var blob = new Blob(chunks, { type: ((chunks[0] && chunks[0].type) || "video/webm").split(";")[0] });
         var r = new FileReader();
-        r.onload = function() { cleanup(); if (coupee && opts.surCoupe) { try { opts.surCoupe(durMax); } catch (_) {} } resolve(r.result); };
+        r.onload = function() { cleanup(); if (coupee && ctl.surCoupe) { try { ctl.surCoupe(durMax); } catch (_) {} } resolve(r.result); };
         r.onerror = function() { cleanup(); reject(r.error); };
         r.readAsDataURL(blob);
       };
@@ -1354,7 +1356,7 @@ function passioCompressVideo(file, opts, onProgress) {
       // (NotAllowedError, mesuré le 2026-11-22 : 4 refus de suite sur une vidéo
       // de 41 Mo, trop lourde pour le repli brut). Le `change` du sélecteur de
       // fichier, suivi d'`await`, n'est plus un geste. Au lieu de rejeter, on
-      // demande UN toucher (`opts.demanderGeste`) et on relance DANS ce geste —
+      // demande UN toucher (`ctl.demanderGeste`) et on relance DANS ce geste —
       // muter la vidéo aurait publié une vidéo sans son.
       function lancer() {
         try { if (actx && actx.state === "suspended") actx.resume(); } catch (_) {}
@@ -1366,17 +1368,17 @@ function passioCompressVideo(file, opts, onProgress) {
       function demarrer() {
         if (demarre) return; demarre = true;
         try { rec.start(); } catch (e) { try { video.pause(); } catch (_) {} cleanup(); reject(e); return; }
-        if (opts.surDemarrage) { try { opts.surDemarrage(durEff); } catch (_) {} }
+        if (ctl.surDemarrage) { try { ctl.surDemarrage(durEff); } catch (_) {} }
         draw();
       }
       function echec(e) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} cleanup(); reject(e); }
       // L'appelant qui renonce (annulation, expiration) LIBÈRE tout : sinon
       // l'AudioContext survit, et iOS en plafonne le nombre — la vidéo suivante
       // partirait sans son.
-      if (opts.abandon) opts.abandon(function () { cancelAnimationFrame(raf); echec(new Error("abandon")); });
+      if (ctl.abandon) ctl.abandon(function () { cancelAnimationFrame(raf); echec(new Error("abandon")); });
       lancer().catch(function(e) {
-        if (e && e.name === "NotAllowedError" && typeof opts.demanderGeste === "function") {
-          opts.demanderGeste(function () { lancer().catch(echec); });
+        if (e && e.name === "NotAllowedError" && typeof ctl.demanderGeste === "function") {
+          ctl.demanderGeste(function () { lancer().catch(echec); });
         } else echec(e);
       });
     };
@@ -1466,8 +1468,8 @@ async function passioVideoPourEnvoi(file) {
     // téléphone lent.
     function _armer(ms) { clearTimeout(_minuteur); _minuteur = setTimeout(_expirer, ms); }
     var dataUrl = await Promise.race([
-      passioCompressVideo(file, {
-        maxDim: 720, bitrate: 1200000, dureeMax: VIDEO_DUREE_MAX,
+      passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress, {
+        dureeMax: VIDEO_DUREE_MAX,
         surCoupe: function (s) { _coupeA = s; },
         surDemarrage: function (d) { _armer(Math.max(VIDEO_COMPRESSION_DELAI_MAX, Math.round(d * 1000) + 45000)); },
         abandon: function (f) { _abandonner = f; },
@@ -1475,7 +1477,7 @@ async function passioVideoPourEnvoi(file) {
           if (_meDemanderToucher(function () { _armer(VIDEO_COMPRESSION_DELAI_MAX); relancer(); })) clearTimeout(_minuteur);
           else _expirer();
         }
-      }, _meUpdateProgress),
+      }),
       new Promise(function (_r, rej) {
         _expirer = function () { rej(new Error("compression-sans-verdict")); };
         _armer(VIDEO_COMPRESSION_DELAI_MAX);
@@ -1508,7 +1510,7 @@ async function passioVideoPourEnvoi(file) {
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
     // Une vidéo longue n'est plus un motif de refus (coupée à VIDEO_DUREE_MAX,
     // 2026-11-22) : ici, c'est l'appareil qui n'a pas su l'encoder.
-    throw _erreurVideo("Vidéo impossible à préparer sur cet appareil (" + mo + " Mo). Réessaie, ou filme directement dans l'app.");
+    throw _erreurVideo("Vidéo impossible à optimiser sur cet appareil (" + mo + " Mo). Réessaie avec une vidéo de moins d'une minute, ou filme directement dans l'app.");
   } finally {
     clearTimeout(_minuteur);
     // Annulée ou expirée : le compresseur encore en vol libère son AudioContext

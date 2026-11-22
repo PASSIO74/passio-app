@@ -148,7 +148,7 @@ test("Compression : profil mobile et garde anti-grossissement, conversion iPhone
     const reduit = await passioVideoPourEnvoi(original);
     return { demandes, pareil: pareil.length, converti: converti.length, reduit: reduit.length, mesures };
   });
-  expect(r.demandes[0]).toMatchObject({ maxDim: 720, bitrate: 1200000, dureeMax: 60 });
+  expect(r.demandes[0]).toEqual({ maxDim: 720, bitrate: 1200000 });
   expect(r.pareil).toBeLessThan(r.converti);
   expect(r.reduit).toBeLessThan(r.pareil);
   expect(r.mesures.map(x => x.meta.issue)).toEqual(["original_plus_petit", "transcodage", "compression"]);

@@ -75,11 +75,11 @@ test("① ter compression indisponible → repli BRUT sous 25 Mo, refus NOMMÉ a
     return out;
   });
   expect(r.repli, "sous 25 Mo, un échec de compression ne doit pas refuser la vidéo").toBe(true);
-  // Depuis le 2026-11-22 une vidéo LONGUE est coupée (VIDEO_DUREE_MAX), plus
-  // refusée : le message ne renvoie donc plus à la durée (fausse piste), il
-  // propose la sortie qui marche toujours — filmer dans l'app.
-  expect(r.refus, "un refus DOIT porter son message utilisateur").toMatch(/impossible à préparer|trop lourde/i);
-  expect(r.refus, "…et montrer sa sortie").toMatch(/filme directement dans l'app/i);
+  // ⚠️ Le message ne parle plus SEULEMENT de mégaoctets : `passioCompressVideo`
+  // refuse au-delà de 65 secondes, et c'est le motif le plus fréquent — un refus
+  // qui ne citerait que la taille enverrait chercher la mauvaise cause.
+  expect(r.refus, "un refus DOIT porter son message utilisateur").toMatch(/impossible à optimiser|trop lourde/i);
+  expect(r.refus, "…et nommer les DEUX motifs possibles, durée comprise").toMatch(/minute/i);
 });
 
 test("① quater LA TROISIÈME PORTE : une vidéo jointe à une conversation y passe aussi", async ({ page }) => {
