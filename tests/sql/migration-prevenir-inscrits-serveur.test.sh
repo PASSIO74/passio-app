@@ -201,33 +201,30 @@ create trigger trg_events_prevenir_suppression before delete on public.events fo
 grant execute on all functions in schema public to anon, authenticated;
 SQL
 
-# Une activité de 99 inscrits + l'organisatrice (comme le village) : 20 venants,
-# 75 en attente, 3 « peut-être », 1 « ne vient pas » ; plus BLOQ et SUPPR inscrites.
+# Une activité comme celle du village : l'organisatrice, 19 venants, 77 en attente,
+# 3 « peut-être », 1 « ne vient pas » — 99 à prévenir — plus BLOQ (qui l'a bloquée)
+# et SUPPR (compte en suppression), inscrites elles aussi : 103 lignes.
 peupler() { # $1 = identifiant de l'activité
   Q "insert into public.events (id, organizer_id, author_id, title, status, date_at) values ('$1', '$ORGA', '$ORGA', 'Rando <du> lac', 'active', now() + interval '2 days');
      insert into public.event_attendees (event_id, user_id, rsvp) values ('$1', '$ORGA', 'going'), ('$1', '$BLOQ', 'going'), ('$1', '$SUPPR', 'going');
      insert into public.event_attendees (event_id, user_id, rsvp, created_at)
        select '$1', '00000000-0000-4000-8000-' || lpad(i::text, 12, '0'),
-              case when i <= 19 then 'going' when i <= 94 then 'waitlist' when i <= 97 then 'maybe' else 'declined' end,
+              case when i <= 19 then 'going' when i <= 96 then 'waitlist' when i <= 99 then 'maybe' else 'declined' end,
               now() - make_interval(secs => 200 - i)
-         from generate_series(1, 98) i;" >/dev/null
+         from generate_series(1, 100) i;" >/dev/null
 }
 Q "insert into public.profiles (id, username) values ('$ORGA', 'Léa & co'), ('$X', 'Xavier'), ('$BLOQ', 'Bloque'), ('$SUPPR', 'Partante');
    insert into public.blocks (blocker_id, blocked_id) values ('$BLOQ', '$ORGA');
    insert into public.comptes_en_suppression (user_id, statut) values ('$SUPPR', 'en_cours');" >/dev/null
 
 echo "── ① LES DÉFAUTS, MESURÉS AVANT ──────────────────────────────────────"
-# Le chemin du client : une ligne par personne, au nom de l'organisatrice.
-ecrits=0
-for i in $(seq 1 99); do
-  r="$(AUTH "$ORGA" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('zz_av_$i', '$(uidn "$i")', 'event_cancelled', '$ORGA', 'ev_av', 'x');")"
-  printf '%s' "$r" | grep -qi error || ecrits=$((ecrits+1))
-done
+# Le chemin du client, en rafale : une écriture par personne, au nom de l'organisatrice.
+ecrits="$(AUTH "$ORGA" "do \$r\$ declare i int; begin for i in 1..99 loop begin insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('zz_av_' || i, '00000000-0000-4000-8000-' || lpad(i::text, 12, '0'), 'event_cancelled', '$ORGA', 'ev_av', 'x'); exception when others then null; end; end loop; end \$r\$;" >/dev/null; Q "select count(*) from public.notifications where id like 'zz\_av\_%';")"
 verifier "avant : 99 écritures d'une même minute depuis le navigateur → 60 passent (le défaut d'A3)" "60" "$ecrits"
 Q "delete from public.notifications; delete from public.debit_ecritures; delete from public.debit_jour;" >/dev/null
 peupler ev_sup_avant
 Q "delete from public.events where id = 'ev_sup_avant';" >/dev/null
-verifier "avant : supprimer une activité de 101 inscrits n'en prévient AUCUN (l'INSERT entier est défait à la 61ᵉ ligne)" "0" \
+verifier "avant : supprimer une activité de 102 inscrits n'en prévient AUCUN (l'INSERT entier est défait à la 61ᵉ ligne)" "0" \
   "$(Q "select count(*) from public.notifications where id like 'n\_sup\_%';")"
 Q "delete from public.notifications; delete from public.debit_ecritures; delete from public.debit_jour;" >/dev/null
 
@@ -262,7 +259,7 @@ verifier "l'annulation : 99 personnes prévenues sur 99 (au-delà des 60 du plaf
 verifier "une ligne par personne, sans doublon" "99|99" \
   "$(Q "select count(*) || '|' || count(distinct user_id) from public.notifications where ref_id = 'ev_v' and kind = 'event_cancelled';")"
 verifier "jamais l'organisatrice, ni qui l'a bloquée, ni un compte en suppression, ni « ne vient pas »" "0" \
-  "$(Q "select count(*) from public.notifications where ref_id = 'ev_v' and user_id in ('$ORGA', '$BLOQ', '$SUPPR', '$(uidn 98)');")"
+  "$(Q "select count(*) from public.notifications where ref_id = 'ev_v' and user_id in ('$ORGA', '$BLOQ', '$SUPPR', '$(uidn 100)');")"
 verifier "d'origine serveur, au nom de l'organisatrice, nom échappé, phrase fixe" "serveur|$ORGA|Léa &amp; co a annulé un événement auquel tu participais" \
   "$(Q "select distinct origine || '|' || from_id || '|' || content from public.notifications where ref_id = 'ev_v' and kind = 'event_cancelled';")"
 verifier "le rejeu du même geste (même clé) : 99 comptées, aucune ligne de plus" "99/99|99" \
@@ -273,21 +270,20 @@ verifier "message de l'organisation : échappé, borné à 200" "99/99|Léa &amp
   "$(PREV "$ORGA" ev_v event_update clevillage02 "  <b>RDV</b> à l''entrée nord  ")|$(Q "select content from public.notifications where ref_id = 'ev_v' and kind = 'event_update' limit 1;")|$(PREV "$ORGA" ev_v event_update clevillage03 "$(printf 'x%.0s' $(seq 1 300))" >/dev/null; Q "select max(char_length(content)) - char_length('Léa &amp; co ') from public.notifications where ref_id = 'ev_v' and kind = 'event_update';")"
 verifier "un message n'accompagne pas une annulation" "message_hors_genre" "$(PREV "$ORGA" ev_v event_cancelled clevillage04 "Venez quand même")"
 verifier "une étrangère ne prévient personne" "non_autorise" "$(PREV "$X" ev_v event_update clevillage05)"
-verifier "une clé mal formée est refusée" "cle_invalide" "$(PREV "$ORGA" ev_v event_update "a'b")"
+verifier "une clé mal formée est refusée" "cle_invalide" "$(PREV "$ORGA" ev_v event_update "court")"
 verifier "un genre inconnu est refusé" "genre_inconnu" "$(PREV "$ORGA" ev_v like clevillage06)"
 verifier "une activité inconnue" "introuvable" "$(PREV "$ORGA" ev_inconnue event_update clevillage07)"
 contient "anon ne peut pas appeler la fonction" "permission denied" "$(ANON "select public.prevenir_inscrits_activite('ev_v', 'event_update', 'clevillage08');")"
-# Débit : 12 diffusions par minute et par compte (déjà 4 acceptées ci-dessus, dont le rejeu).
-derniers=""
-for k in $(seq 10 19); do derniers="$(PREV "$ORGA" ev_v event_update "clevillage$k")"; done
-verifier "la 13ᵉ diffusion de la minute est refusée (débit)" "debit" "$derniers"
+# Débit : 12 diffusions par minute et par compte. Les 13 appels partent dans UNE requête
+# (même `now()`, donc la même minute du compteur, quelle que soit la vitesse du poste).
+Q "delete from public.debit_ecritures where table_nom = 'prevenir_inscrits';" >/dev/null
+verifier "12 diffusions par minute passent, la 13ᵉ est refusée (débit)" "12|debit" \
+  "$(AUTH "$ORGA" "select count(*) filter (where (j->>'ok')::boolean) || '|' || max(j->>'motif') filter (where k = 22)
+                     from (select k, public.prevenir_inscrits_activite('ev_v', 'event_update', 'clevillage' || k) as j
+                             from generate_series(10, 22) k) s;")"
 # Le plafond des notifications ORDINAIRES tient toujours : 60 par minute.
 Q "delete from public.debit_ecritures where table_nom = 'notifications';" >/dev/null
-ecrits=0
-for i in $(seq 1 61); do
-  r="$(AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('zz_cl_$i', '$(uidn "$i")', 'like', '$X', 'p1', 'x');")"
-  printf '%s' "$r" | grep -qi error || ecrits=$((ecrits+1))
-done
+ecrits="$(AUTH "$X" "do \$r\$ declare i int; begin for i in 1..61 loop begin insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('zz_cl_' || i, '00000000-0000-4000-8000-' || lpad(i::text, 12, '0'), 'like', '$X', 'p1', 'x'); exception when others then null; end; end loop; end \$r\$;" >/dev/null; Q "select count(*) from public.notifications where id like 'zz\_cl\_%';")"
 verifier "le plafond des écritures du CLIENT est intact : 60 sur 61" "60" "$ecrits"
 # Une origine « serveur » sans diffusion reste comptée (follows_notifier, mentions…).
 Q "delete from public.debit_ecritures;" >/dev/null
@@ -298,7 +294,7 @@ Q "delete from public.notifications; delete from public.debit_ecritures; delete 
 peupler ev_sup
 verifier "les réglages de diffusion ne survivent pas à la suppression" "|" \
   "$(Q "delete from public.events where id = 'ev_sup'; select coalesce(current_setting('passio.diffusion_inscrits', true), '') || '|' || coalesce(current_setting('passio.notification_serveur', true), '');")"
-verifier "après : supprimer une activité de 101 inscrits en prévient 100 (tous sauf l'organisatrice et le compte en suppression)" "100" \
+verifier "après : supprimer une activité de 102 inscrits en prévient 101 (tous sauf le compte en suppression)" "101" \
   "$(Q "select count(*) from public.notifications where ref_id = 'ev_sup' and id like 'n\_sup\_%';")"
 
 echo
