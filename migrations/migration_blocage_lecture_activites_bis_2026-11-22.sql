@@ -4,7 +4,7 @@
 -- appliquée au staging et en production le même jour)
 --
 -- `npm run migration:appliquer -- migrations/migration_blocage_lecture_activites_bis_2026-11-22.sql --projet <ref>`
--- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (14 lignes) LÈVE
+-- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (15 lignes) LÈVE
 -- si une seule ligne est en ECHEC : rien n'est alors validé. Aucun prérequis
 -- client. PRÉREQUIS SERVEUR : la première migration (garde ci-dessous).
 --
@@ -24,10 +24,22 @@
 --    `user:<Kevin>`) ; Z crée une ACTIVITÉ à l'identifiant d'une publication
 --    privée et l'ouvre à tous. Changer l'ordre des branches ne fait que
 --    retourner le trou (premier essai de cette bis, refusé en relecture).
---    LE REMÈDE : il n'y a plus d'homonyme. Un déclencheur refuse, à
---    l'insertion et au changement d'identifiant, tout identifiant déjà
---    présent dans l'une des trois autres tables, sous un verrou consultatif
---    pris par les deux côtés (deux insertions concurrentes ne passent pas).
+--    LE REMÈDE : il n'y a plus d'homonyme. Le déclencheur
+--    `zz_identifiant_sans_homonyme` refuse, à l'insertion et au changement
+--    d'identifiant, un identifiant déjà présent dans l'une des trois autres
+--    tables, OU encore porté par un fil ou une cible ORPHELINS (réponses,
+--    réactions, « j'aime » restés après la suppression de leur ligne : 215
+--    réponses sur 39 fils mesurées en production le 2026-11-22 — un post neuf
+--    à l'un de ces identifiants les rendait lisibles par tous), OU retiré
+--    (`rencontres_prive.identifiants_retires`). Sous un verrou consultatif par
+--    identifiant (deux insertions concurrentes ne passent pas). SQLSTATE
+--    DÉDIÉ `PT409` (HTTP 409) : le client prend un 23505 pour « déjà en
+--    base » (`supaPublishEvent`), un homonyme forgé ne doit jamais passer pour
+--    un succès ; un REJEU dans la même table laisse répondre la clé primaire
+--    (`<table>_pkey`, reconnu par `_conflitClePrimaire`). Un VISITEUR sans
+--    compte n'est pas jugé ici (la RLS le refuse ensuite) : sinon « pris » contre
+--    « refusé » lui dirait qu'un identifiant existe, même privé (anon a le
+--    privilège INSERT sur posts, post_comments, event_comments).
 --    Mesuré le 2026-11-22 : 0 homonyme en production comme au staging ; la
 --    garde le revérifie. `comment_target_visible` n'est PAS réécrite :
 --    sans homonyme, son ordre d'origine (#951 : la publication avant
@@ -43,8 +55,11 @@
 --    album ou un repartage masqués, Kevin lisait commentaires, j'aime,
 --    interactions, compteurs (`fil_compteurs`) et le canal `fil:`. Elle
 --    applique désormais la même règle que la lecture de `posts`.
--- ④ L'ORGANISATRICE ne lisait plus ce qu'un compte bloqué avait laissé sur SA
---    propre activité : elle doit pouvoir le voir pour le modérer.
+-- ④ L'ORGANISATRICE ne lisait plus ce qu'un compte qu'ELLE a bloqué avait
+--    laissé sur SA propre activité : elle doit pouvoir le voir pour le
+--    modérer. Seulement dans ce sens : un organisateur BLOQUÉ par l'auteur
+--    d'un commentaire ne le relit pas (troisième relecture : la v2 le lui
+--    rendait, régression).
 --
 -- UNE DÉFINITION : `publication_masquee_pour_moi(id)` — l'auteur est en
 -- blocage avec moi, OU l'activité portée (album, carte) est masquée pour moi,
@@ -77,9 +92,17 @@
 --   · une expression régulière et un `JSON.parse` peuvent diverger sur un
 --     `shared_data` forgé à deux clés `id` (le forgeur est l'auteur du post,
 --     il ne cache que son propre contenu) ;
---   · les identifiants ne sont pas FIGÉS à l'UPDATE (seul `post_comments`
---     l'est déjà) : un changement d'identifiant reste possible, mais jamais
---     vers un homonyme.
+--   · `events.id` reste modifiable par l'organisateur (`posts.id` ne l'est
+--     plus depuis #888, `post_comments.id` est figé, `event_comments` n'a pas
+--     de policy UPDATE) : jamais vers un homonyme ;
+--   · REJOUER APRÈS CETTE BIS les épreuves embarquées de
+--     `migration_epingle_commentaire_2026-11-05.sql` et de
+--     `migration_publications_supprimees_2026-11-04.sql` échoue : elles
+--     insèrent des homonymes exprès, que le déclencheur refuse (PT409). Ces
+--     migrations sont appliquées ; ne pas les rejouer telles quelles ;
+--   · 215 réponses orphelines restent en base (aucune lecture ne les atteint
+--     sans un identifiant neuf égal, désormais refusé) : les purger est une
+--     écriture de données (canal ②), décision de Benjamin.
 --
 -- RETOUR ARRIÈRE (éditeur SQL) — GARDÉ (il refuse si l'état en place n'est
 -- pas celui que cette bis écrit), rend l'état laissé par la première
@@ -146,10 +169,10 @@
 --|     )
 --|   end
 --| $function$;
---| drop trigger if exists aa_identifiant_sans_homonyme on public.posts;
---| drop trigger if exists aa_identifiant_sans_homonyme on public.events;
---| drop trigger if exists aa_identifiant_sans_homonyme on public.post_comments;
---| drop trigger if exists aa_identifiant_sans_homonyme on public.event_comments;
+--| drop trigger if exists zz_identifiant_sans_homonyme on public.posts;
+--| drop trigger if exists zz_identifiant_sans_homonyme on public.events;
+--| drop trigger if exists zz_identifiant_sans_homonyme on public.post_comments;
+--| drop trigger if exists zz_identifiant_sans_homonyme on public.event_comments;
 --| drop function if exists public.identifiant_sans_homonyme();
 --| drop function if exists public.publication_masquee_pour_moi(text);
 --| commit;
@@ -210,37 +233,68 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  deja boolean;
 begin
   if tg_op = 'UPDATE' and new.id is not distinct from old.id then
     return new;
   end if;
+  -- Un visiteur sans compte : la RLS le refuse ensuite (WITH CHECK sur l'auteur). Rien ne
+  -- doit lui répondre AVANT elle — un BEFORE passe avant la RLS, et « identifiant pris »
+  -- contre « refusé » serait un oracle d'existence, même d'une publication privée.
+  if current_setting('role', true) = 'anon' then
+    return new;
+  end if;
   perform pg_advisory_xact_lock(hashtextextended('passio:identifiant:' || new.id, 0));
+  -- Déjà dans SA table : un rejeu (ou un conflit de mise à jour). La clé primaire répond
+  -- (`<table>_pkey`), que le client sait reconnaître comme « déjà en base ».
+  execute format('select exists (select 1 from public.%I where id = $1)', tg_table_name) into deja using new.id;
+  if deja then
+    return new;
+  end if;
   if (tg_table_name <> 'posts'          and exists (select 1 from public.posts          where id = new.id))
   or (tg_table_name <> 'events'         and exists (select 1 from public.events         where id = new.id))
   or (tg_table_name <> 'post_comments'  and exists (select 1 from public.post_comments  where id = new.id))
-  or (tg_table_name <> 'event_comments' and exists (select 1 from public.event_comments where id = new.id)) then
-    raise exception using errcode = '23505',
-      message = 'identifiant déjà utilisé par une autre publication, activité ou commentaire',
-      hint = 'BLOC-ACT bis : un identifiant est unique entre posts, events, post_comments et event_comments (RV-45).';
+  or (tg_table_name <> 'event_comments' and exists (select 1 from public.event_comments where id = new.id))
+  -- Un fil ou une cible ORPHELINS : la ligne a disparu, ses réponses, réactions et « j'aime »
+  -- sont restés. Un identifiant neuf égal les rouvrirait (à son auteur, voire à tous).
+  or exists (select 1 from public.comment_interactions where post_id = new.id)
+  or exists (select 1 from public.comment_interactions where comment_id = new.id)
+  or exists (select 1 from public.comment_likes where comment_id = new.id) then
+    raise exception using errcode = 'PT409',
+      message = 'identifiant déjà utilisé par une autre publication, activité, commentaire ou fil',
+      hint = 'BLOC-ACT bis : un identifiant est unique entre posts, events, post_comments et event_comments, fils orphelins compris (RV-45).';
+  end if;
+  -- Un identifiant d'activité RETIRÉ (supprimée) ne revient pas, sous aucune forme.
+  if to_regclass('rencontres_prive.identifiants_retires') is not null then
+    if exists (select 1 from rencontres_prive.identifiants_retires where event_id = new.id) then
+      raise exception using errcode = 'PT409',
+        message = 'identifiant retiré (activité supprimée)',
+        hint = 'BLOC-ACT bis : un identifiant d''activité retiré ne se réutilise pas (RV-45).';
+    end if;
   end if;
   return new;
 end
 $$;
 comment on function public.identifiant_sans_homonyme() is
-  'Refuse un identifiant déjà présent dans posts, events, post_comments ou event_comments (RV-45 : comment_target_visible et fil_temps_reel_visible devinent le type d''une cible d''après sa table). BLOC-ACT bis, 2026-11-22.';
+  'Refuse (PT409) un identifiant déjà présent dans posts, events, post_comments ou event_comments, porté par un fil orphelin ou retiré (RV-45 : comment_target_visible et fil_temps_reel_visible devinent le type d''une cible d''après sa table). Ne juge pas un visiteur (la RLS le refuse ensuite). BLOC-ACT bis, 2026-11-22.';
 revoke execute on function public.identifiant_sans_homonyme() from public, anon, authenticated;
 
 drop trigger if exists aa_identifiant_sans_homonyme on public.posts;
-create trigger aa_identifiant_sans_homonyme before insert or update of id on public.posts
+drop trigger if exists zz_identifiant_sans_homonyme on public.posts;
+create trigger zz_identifiant_sans_homonyme before insert or update of id on public.posts
   for each row execute function public.identifiant_sans_homonyme();
 drop trigger if exists aa_identifiant_sans_homonyme on public.events;
-create trigger aa_identifiant_sans_homonyme before insert or update of id on public.events
+drop trigger if exists zz_identifiant_sans_homonyme on public.events;
+create trigger zz_identifiant_sans_homonyme before insert or update of id on public.events
   for each row execute function public.identifiant_sans_homonyme();
 drop trigger if exists aa_identifiant_sans_homonyme on public.post_comments;
-create trigger aa_identifiant_sans_homonyme before insert or update of id on public.post_comments
+drop trigger if exists zz_identifiant_sans_homonyme on public.post_comments;
+create trigger zz_identifiant_sans_homonyme before insert or update of id on public.post_comments
   for each row execute function public.identifiant_sans_homonyme();
 drop trigger if exists aa_identifiant_sans_homonyme on public.event_comments;
-create trigger aa_identifiant_sans_homonyme before insert or update of id on public.event_comments
+drop trigger if exists zz_identifiant_sans_homonyme on public.event_comments;
+create trigger zz_identifiant_sans_homonyme before insert or update of id on public.event_comments
   for each row execute function public.identifiant_sans_homonyme();
 
 -- ── ② ③ La publication est-elle masquée pour l'appelant ? ──────────────────
@@ -290,26 +344,32 @@ create policy posts_lecture_hors_blocage on public.posts
   );
 
 -- ── ④ event_comments / event_reactions : l'auteur et l'organisateur de
--- l'activité lisent ce qu'on y a laissé, bloqué compris (modération). Par
--- `events` lue sous la RLS de l'appelant (ses propres activités), pas par
--- `organise_activite`, qui compterait un co-organisateur bloqué.
+-- l'activité relisent ce qu'y a laissé un compte qu'ILS ont bloqué
+-- (modération). Par `events` lue sous la RLS de l'appelant (ses propres
+-- activités), pas par `organise_activite`, qui compterait un co-organisateur.
 drop policy if exists event_comments_lecture_hors_blocage on public.event_comments;
 create policy event_comments_lecture_hors_blocage on public.event_comments
   as restrictive for select to authenticated
   using (
     author_id = (select auth.uid())::text
-    or exists (select 1 from public.events e where e.id = event_comments.event_id
-                and (e.author_id = (select auth.uid())::text or e.organizer_id = (select auth.uid())::text))
     or (not public.activite_masquee_pour_moi(event_id) and not public.is_blocked_with(author_id))
+    -- Sur SA propre activité, l'organisatrice relit aussi un compte qu'ELLE a bloqué (`blocks`
+    -- lue sous sa RLS : seulement ses blocages) — jamais l'inverse.
+    or (exists (select 1 from public.events e where e.id = event_comments.event_id
+                 and (e.author_id = (select auth.uid())::text or e.organizer_id = (select auth.uid())::text))
+        and exists (select 1 from public.blocks b where b.blocker_id = (select auth.uid())::text and b.blocked_id = event_comments.author_id))
   );
 drop policy if exists event_reactions_lecture_hors_blocage on public.event_reactions;
 create policy event_reactions_lecture_hors_blocage on public.event_reactions
   as restrictive for select to authenticated
   using (
     user_id = (select auth.uid())::text
-    or exists (select 1 from public.events e where e.id = event_reactions.event_id
-                and (e.author_id = (select auth.uid())::text or e.organizer_id = (select auth.uid())::text))
     or (not public.activite_masquee_pour_moi(event_id) and not public.is_blocked_with(user_id))
+    -- Sur SA propre activité, l'organisatrice relit aussi un compte qu'ELLE a bloqué (`blocks`
+    -- lue sous sa RLS : seulement ses blocages) — jamais l'inverse.
+    or (exists (select 1 from public.events e where e.id = event_reactions.event_id
+                 and (e.author_id = (select auth.uid())::text or e.organizer_id = (select auth.uid())::text))
+        and exists (select 1 from public.blocks b where b.blocker_id = (select auth.uid())::text and b.blocked_id = event_reactions.user_id))
   );
 
 -- ── ③ post_is_visible : la même règle que la lecture de `posts` ────────────
@@ -350,6 +410,7 @@ select 1 as n, '① publication_masquee_pour_moi : security definer, search_path
                           and p.prosecdef and p.proconfig @> array['search_path=""'])
              and (select auth.uid()) is null
              and not public.publication_masquee_pour_moi(coalesce((select id from public.posts limit 1), 'aucun'))
+             and (select prosrc from pg_proc where oid = 'public.publication_masquee_pour_moi(text)'::regprocedure) like '%(select auth.uid()) is not null and p_post_id is not null%'
              then 'OK' else 'ECHEC' end as verdict
 union all
 select 2, '② publication_masquee_pour_moi : authenticated oui, anon non',
@@ -360,20 +421,32 @@ select 3, '③ posts : une seule règle restrictive, par publication_masquee_pou
        case when exists (select 1 from pg_policies where schemaname='public' and tablename='posts' and policyname='posts_lecture_hors_blocage'
                           and permissive='RESTRICTIVE' and cmd='SELECT' and roles = '{authenticated}' and qual like '%publication_masquee_pour_moi(id)%') then 'OK' else 'ECHEC' end
 union all
-select 4, '④ event_comments / event_reactions : auteur et organisateur de l''activité lisent tout',
+select 4, '④ event_comments / event_reactions : l''organisatrice relit ce qu''ELLE a bloqué, jamais l''inverse',
        case when (select count(*) from pg_policies where schemaname='public' and tablename in ('event_comments','event_reactions')
                    and policyname like '%_lecture_hors_blocage' and permissive='RESTRICTIVE' and roles = '{authenticated}'
-                   and qual like '%organizer_id%' and qual like '%activite_masquee_pour_moi(event_id)%') = 2 then 'OK' else 'ECHEC' end
+                   and qual like '%organizer_id%' and qual like '%activite_masquee_pour_moi(event_id)%'
+                   and qual like '%b.blocker_id = (( SELECT auth.uid() AS uid))::text%') = 2 then 'OK' else 'ECHEC' end
 union all
 select 5, '⑤ post_is_visible : applique publication_masquee_pour_moi, droits anon conservés',
        case when pg_get_functiondef('public.post_is_visible(text)'::regprocedure) like '%and not public.publication_masquee_pour_moi(p.id)%'
              and has_function_privilege('anon', 'public.post_is_visible(text)', 'EXECUTE') then 'OK' else 'ECHEC' end
 union all
-select 6, '⑥ le déclencheur anti-homonyme est posé sur les QUATRE tables (insertion et changement d''identifiant)',
+select 6, '⑥ le déclencheur anti-homonyme est posé sur les QUATRE tables, seul de son nom',
        case when (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid
                    where c.relnamespace = 'public'::regnamespace and c.relname in ('posts','events','post_comments','event_comments')
-                     and t.tgname = 'aa_identifiant_sans_homonyme' and t.tgenabled = 'O'
-                     and t.tgfoid = 'public.identifiant_sans_homonyme()'::regprocedure) = 4 then 'OK' else 'ECHEC' end
+                     and t.tgname = 'zz_identifiant_sans_homonyme' and t.tgenabled = 'O'
+                     and t.tgfoid = 'public.identifiant_sans_homonyme()'::regprocedure) = 4
+             and not exists (select 1 from pg_trigger where tgname = 'aa_identifiant_sans_homonyme') then 'OK' else 'ECHEC' end
+union all
+select 15, '⑮ le déclencheur : SQLSTATE dédié, fils orphelins et identifiants retirés, visiteur non jugé, rejeu laissé à la clé primaire',
+       case when (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%errcode = ''PT409''%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%comment_interactions where post_id = new.id%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%comment_likes where comment_id = new.id%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%identifiants_retires%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%current_setting(''role'', true) = ''anon''%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%if deja then%'
+             and not exists (select 1 from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure and prosrc like '%23505%')
+             then 'OK' else 'ECHEC' end
 union all
 select 7, '⑦ aucun homonyme entre posts, events, post_comments, event_comments',
        case when not exists (select id from (select id from public.posts union all select id from public.events

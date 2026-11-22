@@ -106,7 +106,11 @@ create policy event_comments_select on public.event_comments for select using (t
 create policy event_reactions_select on public.event_reactions for select using (true);
 create policy ouvert on public.posts for select using (true);
 create policy ouvert on public.post_comments for select using (true);
-create policy ouvert on public.comment_interactions for select using (true);
+-- comment_interactions : la policy de PRODUCTION (par comment_target_visible, défini plus bas
+-- — une policy ne valide pas le corps de la fonction qu'elle nomme, elle doit seulement exister).
+create function public.comment_target_visible(cid text, pid text) returns boolean language sql stable as $fn$ select true $fn$;
+create policy "Lecture selon visibilite de la cible" on public.comment_interactions for select
+  using ((user_id = (select auth.uid())::text) or comment_target_visible(comment_id, post_id));
 
 -- Aides que `comment_target_visible` appelle, réduites à leur contrat.
 create function public.post_is_visible(pid text) returns boolean language sql stable security definer set search_path = public
@@ -114,7 +118,9 @@ create function public.post_is_visible(pid text) returns boolean language sql st
 create function public.est_identifiant_exemple(x text) returns boolean language sql immutable
   as $fn$ select x like 'ex_%' $fn$;
 SQL
-psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$FONCTIONS" >/dev/null
+# Définitions en ordre alphabétique : une fonction en appelle une définie plus bas.
+# check_function_bodies = off, comme pg_dump : sinon « function … does not exist ».
+{ echo "set check_function_bodies = off;"; cat "$FONCTIONS"; } | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null
 # Droits de PRODUCTION : les aides de blocage, authenticated seulement ;
 # comment_target_visible, anon aussi.
 Q "revoke execute on all functions in schema public from public;
