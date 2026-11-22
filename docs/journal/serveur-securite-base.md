@@ -2174,24 +2174,37 @@ Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa 
 - ~~Un repartage de repartage ne remonte pas à l'original.~~ **FAUX** : le repost d'une carte recopie son TEXTE (titre, ville, heure). Corrigé par la bis.
 - ~~`post_comments`/`post_likes` … restent lisibles~~ : corrigé par la bis.
 
-### Bis — `migration_blocage_lecture_activites_bis_2026-11-22.sql` (**appliquée nulle part** : contre-revue de la session mère attendue)
+### Bis — `migration_blocage_lecture_activites_bis_2026-11-22.sql` (**appliquée nulle part** : relecture puis contre-revue de la session mère attendues)
 
-Une relecture indépendante, faite APRÈS la mise en production, a trouvé quatre trous. Tous ont été vérifiés au staging, dans une transaction annulée.
+Une relecture indépendante faite APRÈS la mise en production a trouvé quatre trous. Une seconde relecture a refusé le premier correctif. Tout a été vérifié au staging, dans des transactions annulées.
 
-**Ce n'est PAS une régression du 22/11.** Avant #1017, un compte bloqué lisait déjà TOUT (activités, fils, publications, cartes). La première migration a fermé l'essentiel ; ces quatre trous sont ce qu'elle laissait OUVERT, pas ce qu'elle aurait ouvert. L'homonymie en particulier préexistait (RV-45) et ne s'est pas aggravée en production. Ne pas lire « faille introduite le 22/11 ».
+**Ce n'est PAS une régression du 22/11.** Avant #1017, un compte bloqué lisait déjà TOUT. La première migration a fermé l'essentiel ; ces trous sont ce qu'elle laissait OUVERT. L'homonymie préexistait (RV-45) et ne s'est pas aggravée en production. Ne pas lire « faille introduite le 22/11 ».
 
-- **① Homonymie (bloquant).** `posts.id` est libre, et la branche « publication » de `comment_target_visible` passait avant la branche « activité ». Kevin publiait un post à l'identifiant de l'activité de Léa : il lisait alors les réponses (`comment_interactions`) et recevait le canal `fil:`. Inversement, l'homonyme fermait à Léa le fil de SA propre activité. Désormais l'activité, et le commentaire, PRIMENT sur une publication de même identifiant.
-- **② Repartage à deux niveaux.** Le repost de la carte d'Inès recopie le texte de la carte. Une aide `publication_masquee_pour_moi(id)` applique la règle entière à la publication CITÉE (un niveau).
-- **③ Fils.** `post_is_visible` applique la même règle : commentaires, j'aime, interactions, `fil_compteurs` et canal `fil:` d'une publication masquée sont fermés.
-- **④ L'organisatrice** relit ce qu'un bloqué a laissé sur SON activité, pour le modérer.
-- **Garde-fous de la bis** : `lock_timeout` 3 s et `statement_timeout` 30 s ; un verdict de 13 lignes qui LÈVE sur un seul ECHEC (rien n'est validé) ; une garde md5 sur les trois fonctions réécrites ; un retour arrière exact, éprouvé.
-- **Mesures au staging** (Léa bloque Kevin) :
-  - Kevin ne lit plus ni la réponse sous l'homonyme, ni le repost de Hugo, ni le commentaire ou le j'aime sous la carte de Léa ; `fil_compteurs` lui rend 0/0/0 ;
-  - Léa lit les réponses sur son activité malgré l'homonyme, et le vieux commentaire de Kevin ;
-  - rien ne change pour Inès ni pour anon ;
-  - le retour arrière rend les empreintes de la première migration, puis la bis se réapplique.
-- **Banc** : `tests/sql/migration-blocage-lecture-activites-bis.test.sh`, avec la vraie policy temps réel évaluée par topic.
+- **① Homonymie (RV-45).** Les identifiants de `posts`, `events`, `post_comments` et `event_comments` sont choisis par le client. `comment_target_visible` et `fil_temps_reel_visible` devinent le TYPE d'une cible d'après la table où son identifiant existe. En production, Kevin publie un post à l'identifiant de l'activité de Léa, puis lit ses réponses et reçoit son canal ; `diffuser_interaction` les lui pousse en plus sur `user:<Kevin>`.
+  - **Premier correctif, REFUSÉ** : faire primer l'activité. Le trou se retournait : une activité forgée à l'identifiant d'une publication privée l'ouvrait à un visiteur. #951 avait choisi l'ordre inverse exprès.
+  - **Correctif retenu** : il n'y a plus d'homonyme. Le déclencheur `aa_identifiant_sans_homonyme`, posé sur les quatre tables, refuse en 23505 tout identifiant déjà présent ailleurs, à l'insertion comme au changement d'identifiant. Il est SECURITY DEFINER (l'homonyme peut être invisible à l'appelant) et pris sous un verrou consultatif par identifiant (deux insertions concurrentes ne passent pas). `comment_target_visible` n'est pas réécrite.
+- **② Repartage à deux niveaux.** Le repost de la carte d'Inès recopie le texte de la carte. `publication_masquee_pour_moi(id)` applique la règle entière à la publication CITÉE (un niveau). Elle rend FAUX d'emblée sans compte.
+- **③ Fils.** `post_is_visible` applique la même règle : commentaires, j'aime, interactions, `comment_likes`, `fil_compteurs`, canal `fil:`.
+- **④ L'organisatrice** relit ce qu'un bloqué a laissé sur SON activité. Le test passe par `events` lue sous sa propre RLS, et non par `organise_activite`, qui compterait un co-organisateur bloqué.
+- **Garde-fous** :
+  - `lock_timeout` 3 s et `statement_timeout` 30 s ;
+  - garde md5 sur `post_is_visible` et sur les deux `comment_target_visible` (non réécrites) ;
+  - garde « zéro homonyme » avant de poser le déclencheur ;
+  - un verdict de 14 lignes qui LÈVE sur un seul ECHEC ;
+  - un retour arrière GARDÉ (il refuse un état qui n'est pas celui de la bis).
+- **Mesures au staging** (Léa bloque Kevin ; Paul est privé) :
+  - les quatre homonymes forgés (A, B, miroir, `(cid)`) et un changement d'identifiant vers un homonyme sont refusés en 23505 ;
+  - Kevin ne lit plus rien de Léa, `fil_compteurs` à 0/0/0 ;
+  - Léa garde son fil et voit le vieux commentaire de Kevin ;
+  - Paul reste privé pour tous ;
+  - rien ne change pour Inès ni pour un visiteur ;
+  - coût : un visiteur 4 µs par ligne, un connecté avec un blocage 75 µs par publication.
+  - Retour arrière : il rend les empreintes de la première migration, 0 déclencheur, puis la bis se réapplique.
+- **Banc** : `tests/sql/migration-blocage-lecture-activites-bis.test.sh`. Il utilise les vraies `post_masque`, `abonne_accepte_non_bloque` et `post_is_visible`, les policies de #951 (dont `comment_likes`), et la policy temps réel évaluée par topic. Il couvre A, B, le miroir, `(cid)`, le compte privé, la modération, la carte supprimée, les mutations, le retour arrière (empreintes ET `qual`) et les gardes.
 
-⚠️ **UN IDENTIFIANT LIBRE EST UN IDENTIFIANT FORGEABLE.** Une fonction qui devine le TYPE d'une cible d'après la table où son identifiant existe donne la main à quiconque peut écrire dans la table regardée EN PREMIER. Regarder d'abord la table dont l'auteur ne choisit pas l'identifiant à la légère (`events`, `event_comments`), et éprouver l'homonyme au banc.
+⚠️ **UN IDENTIFIANT CHOISI PAR LE CLIENT EST UN IDENTIFIANT FORGEABLE.** Une fonction qui devine le type d'une cible d'après la table où son identifiant existe donne la main à quiconque peut écrire dans l'une de ces tables. Changer l'ORDRE des branches ne ferme rien : ça retourne le trou. Il faut rendre l'identifiant unique entre les tables, puis éprouver les deux sens au banc.
 
-⚠️ **Reste un refus (pas une fuite)** : la clause `NOT post_auteur_bloque(topic)` de `realtime.passio_rt_recevoir_fil`, antérieure au lot, laisse un homonyme forgé par un bloqué refuser à Léa le canal de son activité. Le client retombe sur son filet. Autre lot : réécrire cette policy temps réel.
+⚠️ **Restes déclarés** :
+- **Carte citée supprimée.** `shared_from_post_id` n'a pas de clé étrangère, et le repost garde le texte recopié : il redevient lisible par le bloqué. Fermer ce cas, c'est neutraliser le texte des repartages à la suppression de l'original — changement de produit, voir village A24.
+- **Lecture anonyme** des activités publiques.
+- **Identifiants pas figés à l'UPDATE** (sauf `post_comments`), mais jamais changés vers un homonyme.

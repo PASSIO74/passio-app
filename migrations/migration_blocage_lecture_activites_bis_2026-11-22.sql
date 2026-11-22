@@ -4,76 +4,97 @@
 -- appliquée au staging et en production le même jour)
 --
 -- `npm run migration:appliquer -- migrations/migration_blocage_lecture_activites_bis_2026-11-22.sql --projet <ref>`
--- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (13 lignes) LÈVE
+-- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (14 lignes) LÈVE
 -- si une seule ligne est en ECHEC : rien n'est alors validé. Aucun prérequis
 -- client. PRÉREQUIS SERVEUR : la première migration (garde ci-dessous).
 --
--- QUATRE TROUS que la première migration laissait (relecture indépendante de
--- la session « Stratégie de simulation multi-compte », mesurés ici) :
+-- CE N'EST PAS UNE RÉGRESSION. Avant la première migration, un compte bloqué
+-- lisait déjà TOUT ; celle-ci ferme ce que la première laissait ouvert.
 --
--- ① HOMONYMIE (bloquant). `posts.id` n'est borné que par sa forme : Kevin
---    publie un post dont l'identifiant est celui de l'activité de Léa. Dans
---    `comment_target_visible`, la branche « publication » passait AVANT la
---    branche « activité » : `post_is_visible(evt_lea)` disait VRAI (Kevin en
---    est l'auteur), la garde de blocage n'était jamais atteinte. Kevin lisait
---    les réponses de l'activité (`comment_interactions.post_id = evt_lea`) et
---    s'abonnait à `fil:evt_lea` ; à l'inverse, un homonyme d'une publication
---    masquée fermait à Léa le fil de SA propre activité. Désormais l'activité
---    (et le commentaire, d'activité puis de publication) PRIME sur une
---    publication de même identifiant, dans les deux signatures.
--- ② REPARTAGE À DEUX NIVEAUX. Inès partage la carte de l'activité (masquée à
---    Kevin) ; Hugo republie la carte d'Inès : son `shared_data` recopie le
---    TEXTE de la carte (titre, ville, heure — `carteCiteeHTML` l'affiche).
---    La première migration ne regardait que l'AUTEUR de la publication citée.
---    Elle applique désormais à la publication citée la règle entière.
---    (La phrase « le texte stocké du second ne cite que… » de l'en-tête de la
---    première migration était FAUSSE.)
+-- QUATRE TROUS (relecture indépendante de la session « Stratégie de
+-- simulation multi-compte », deux tours, mesurés ici) :
+--
+-- ① HOMONYMIE (bloquant, RV-45). Les identifiants de `posts`, `events`,
+--    `post_comments` et `event_comments` sont CHOISIS par le client et ne sont
+--    bornés que par leur forme. Or `comment_target_visible` et
+--    `fil_temps_reel_visible` devinent le TYPE d'une cible d'après la table
+--    où son identifiant existe. Un homonyme forgé y entre donc par la porte
+--    de l'autre table : Kevin publie un post à l'identifiant de l'activité de
+--    Léa et lit ses réponses (et `diffuser_interaction` les lui pousse sur
+--    `user:<Kevin>`) ; Z crée une ACTIVITÉ à l'identifiant d'une publication
+--    privée et l'ouvre à tous. Changer l'ordre des branches ne fait que
+--    retourner le trou (premier essai de cette bis, refusé en relecture).
+--    LE REMÈDE : il n'y a plus d'homonyme. Un déclencheur refuse, à
+--    l'insertion et au changement d'identifiant, tout identifiant déjà
+--    présent dans l'une des trois autres tables, sous un verrou consultatif
+--    pris par les deux côtés (deux insertions concurrentes ne passent pas).
+--    Mesuré le 2026-11-22 : 0 homonyme en production comme au staging ; la
+--    garde le revérifie. `comment_target_visible` n'est PAS réécrite :
+--    sans homonyme, son ordre d'origine (#951 : la publication avant
+--    l'activité) est juste.
+-- ② REPARTAGE À DEUX NIVEAUX. Hugo republie la carte d'Inès, qui partage
+--    l'activité de Léa : son `shared_data` recopie le TEXTE de la carte
+--    (titre, ville, heure). La première migration ne regardait que l'AUTEUR
+--    de la publication citée ; elle applique désormais la règle entière à la
+--    publication citée. (La phrase « le texte stocké du second ne cite
+--    que… » de l'en-tête de la première migration était FAUSSE.)
 -- ③ FILS DE DISCUSSION. `post_is_visible` ignorait le blocage pour un compte
---    public : sous la carte de Léa (`post_ev_<activité>`), sous une carte,
---    un album ou un repartage masqués, Kevin lisait commentaires, j'aime,
---    interactions, compteurs du fil, et le canal `fil:<publication>`.
---    `post_is_visible` applique désormais la même règle que la lecture de
---    `posts` (aucune autre lecture de ces tables n'est réécrite : toutes
---    passent par elle ou par `comment_target_visible`).
+--    public : sous la carte de Léa (`post_ev_<activité>`), sous une carte, un
+--    album ou un repartage masqués, Kevin lisait commentaires, j'aime,
+--    interactions, compteurs (`fil_compteurs`) et le canal `fil:`. Elle
+--    applique désormais la même règle que la lecture de `posts`.
 -- ④ L'ORGANISATRICE ne lisait plus ce qu'un compte bloqué avait laissé sur SA
---    propre activité (commentaires, réactions) : elle doit pouvoir le voir pour
---    le modérer. Rendu à l'auteur et à l'organisateur de l'activité.
+--    propre activité : elle doit pouvoir le voir pour le modérer.
 --
--- UNE DÉFINITION : `publication_masquee_pour_moi(id)` — l'auteur de la
--- publication est en blocage avec moi, OU l'activité qu'elle porte (album,
--- carte) est masquée pour moi, OU la publication qu'elle cite l'est (même
--- règle, un niveau : un repartage de repartage ne recopie que « A partagé une
--- publication de … »). Lue par la policy de `posts`, par `post_is_visible`,
--- donc par `comment_target_visible`, `fil_temps_reel_visible`, `fil_compteurs`
--- et les lectures de `post_comments` / `post_likes` / `comment_interactions`.
+-- UNE DÉFINITION : `publication_masquee_pour_moi(id)` — l'auteur est en
+-- blocage avec moi, OU l'activité portée (album, carte) est masquée pour moi,
+-- OU la publication citée l'est (même règle, un niveau : un repartage de
+-- repartage ne recopie que « A partagé une publication de … »). FAUX d'emblée
+-- sans compte (aucun coût pour un visiteur). Lue par la policy de `posts` et
+-- par `post_is_visible` — donc par `comment_target_visible`,
+-- `fil_temps_reel_visible`, `fil_compteurs` et les lectures de
+-- `post_comments` / `post_likes` / `comment_interactions` / `comment_likes`.
 -- Elle ne dit rien que `post_auteur_bloque` / `is_blocked_with` ne disent déjà
 -- (EXECUTE à authenticated, jamais anon) : pas de nouvel oracle.
 --
--- VERROUS. `CREATE POLICY` prend un AccessExclusive sur `posts` et les tables
--- d'activité : `lock_timeout` 3 s, `statement_timeout` 30 s (convention du
--- 2026-11-16) — une table occupée fait ÉCHOUER la migration, elle ne bloque
--- pas le fil.
+-- VERROUS. `CREATE POLICY` / `CREATE TRIGGER` prennent un verrou fort sur
+-- `posts`, `events` et les commentaires : `lock_timeout` 3 s,
+-- `statement_timeout` 30 s — une table occupée fait ÉCHOUER la migration.
 --
 -- TEMPS RÉEL. Aucune table n'est publiée (verdict ⑫) ; la policy
--- `realtime.passio_rt_recevoir_fil` appelle bien `comment_target_visible`
--- (verdict ⑪) : la fermer ici la ferme là.
+-- `realtime.passio_rt_recevoir_fil` passe par `comment_target_visible`
+-- (verdict ⑪) : sans homonyme, la règle qui la ferme ici la ferme là.
 --
--- RESTE HORS LOT (déclaré) : la lecture anonyme des activités et publications
--- publiques (clé anon seule) ; `participants_compte` (des nombres) ; une
--- notification déjà écrite ; un repartage de repartage (un niveau suffit, voir
--- ②) ; une expression régulière et un `JSON.parse` peuvent diverger sur un
--- `shared_data` forgé à deux clés `id` (le forgeur est l'auteur du post, il ne
--- cache que son propre contenu) ; et un homonyme peut encore REFUSER le canal
--- `fil:<activité>` à l'organisatrice (la clause `NOT post_auteur_bloque(topic)`
--- de `realtime.passio_rt_recevoir_fil`, antérieure à ce lot, lit l'auteur du
--- post homonyme) — un refus, pas une fuite : le client retombe sur son filet.
--- La fermer, c'est réécrire cette policy temps réel, autre lot.
+-- RESTE HORS LOT (déclaré) :
+--   · la lecture ANONYME des activités et publications publiques (clé anon) ;
+--   · une carte CITÉE SUPPRIMÉE : `shared_from_post_id` n'a pas de clé
+--     étrangère, et le repost de Hugo garde le texte recopié de la carte
+--     d'Inès. Une fois cette carte supprimée, rien ne relie plus le repost à
+--     l'activité de Léa : il redevient lisible par Kevin. Le fermer demande
+--     de neutraliser `shared_data` des repartages à la suppression de
+--     l'original — changement de produit (village A24), autre lot ;
+--   · `participants_compte` (des nombres) ; une notification déjà écrite ;
+--   · une expression régulière et un `JSON.parse` peuvent diverger sur un
+--     `shared_data` forgé à deux clés `id` (le forgeur est l'auteur du post,
+--     il ne cache que son propre contenu) ;
+--   · les identifiants ne sont pas FIGÉS à l'UPDATE (seul `post_comments`
+--     l'est déjà) : un changement d'identifiant reste possible, mais jamais
+--     vers un homonyme.
 --
--- RETOUR ARRIÈRE (éditeur SQL) — rend l'état laissé par la première migration,
--- octet pour octet (mêmes empreintes que la garde) :
+-- RETOUR ARRIÈRE (éditeur SQL) — GARDÉ (il refuse si l'état en place n'est
+-- pas celui que cette bis écrit), rend l'état laissé par la première
+-- migration, octet pour octet :
 --| begin;
 --| set local lock_timeout = '3s';
 --| set local statement_timeout = '30s';
+--| do $retour$
+--| begin
+--|   if to_regprocedure('public.publication_masquee_pour_moi(text)') is null
+--|      or (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.post_is_visible(text)'::regprocedure) <> '3e3d52b23aac8d5e931d63f4a61288ee' then
+--|     raise exception 'retour arrière refusé : l''état en place n''est pas celui qu''écrit la bis (post_is_visible ou publication_masquee_pour_moi)';
+--|   end if;
+--| end
+--| $retour$;
 --| drop policy if exists posts_lecture_hors_blocage on public.posts;
 --| create policy posts_lecture_hors_blocage on public.posts
 --|   as restrictive for select to authenticated
@@ -125,47 +146,11 @@
 --|     )
 --|   end
 --| $function$;
---| create or replace function public.comment_target_visible(cid text)
---| returns boolean
---| language sql
---| stable
---| security definer
---| set search_path to 'public'
---| as $function$
---|   -- La CIBLE seule, pour une interaction sans fil (`post_id` nul : aucune ligne aujourd'hui,
---|   -- le client le pose toujours). Avec un fil, comment_target_visible(cid, pid) décide.
---|   select case
---|     when cid is null then false
---|     when exists (select 1 from posts where id = cid)
---|       then public.post_is_visible(cid)
---|     when exists (select 1 from post_comments where id = cid)
---|       then public.post_is_visible((select post_id from post_comments where id = cid limit 1))
---|     -- Un commentaire d'activité : public, sauf pour un compte en blocage avec l'activité (BLOC-ACT, 2026-11-22).
---|     when exists (select 1 from event_comments where id = cid)
---|       then not public.activite_masquee_pour_moi((select event_id from event_comments where id = cid limit 1))
---|     -- Un exemple reste public ; une cible supprimée ou inconnue, personne (R31 : rendait VRAI).
---|     else public.est_identifiant_exemple(cid)
---|   end
---| $function$;
---| create or replace function public.comment_target_visible(cid text, pid text)
---| returns boolean
---| language sql
---| stable
---| security definer
---| set search_path to 'public'
---| as $function$
---|   -- Une interaction se lit comme son FIL : `post_id`, que le client pose toujours — la
---|   -- publication ou l'activité où elle a été écrite. Lui seul rattache une réaction à une
---|   -- RÉPONSE (`comment_id = srep_<date>`, une cible qu'aucune table ne porte).
---|   select case
---|     when pid is null then public.comment_target_visible(cid)
---|     when exists (select 1 from posts where id = pid) then public.post_is_visible(pid)
---|     -- Une activité : publique, sauf pour un compte en blocage avec elle (BLOC-ACT, 2026-11-22).
---|     when exists (select 1 from events where id = pid) then not public.activite_masquee_pour_moi(pid)
---|     -- Un fil d'exemple reste public ; un fil supprimé ou inconnu n'est lisible par personne.
---|     else public.est_identifiant_exemple(pid)
---|   end
---| $function$;
+--| drop trigger if exists aa_identifiant_sans_homonyme on public.posts;
+--| drop trigger if exists aa_identifiant_sans_homonyme on public.events;
+--| drop trigger if exists aa_identifiant_sans_homonyme on public.post_comments;
+--| drop trigger if exists aa_identifiant_sans_homonyme on public.event_comments;
+--| drop function if exists public.identifiant_sans_homonyme();
 --| drop function if exists public.publication_masquee_pour_moi(text);
 --| commit;
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -173,12 +158,12 @@ begin;
 set local lock_timeout = '3s';
 set local statement_timeout = '30s';
 
--- ── Garde : prérequis, et les définitions réécrites sont celles MESURÉES ───
--- (empreintes md5 du corps, CR retirés), ou celles que CE fichier écrit.
+-- ── Garde : prérequis, définitions mesurées, et aucun homonyme ─────────────
 do $garde$
 declare
   r record;
   n int := 0;
+  h int;
 begin
   if to_regprocedure('public.activite_masquee_pour_moi(text)') is null
      or to_regprocedure('public.activite_de_partage(text)') is null
@@ -193,8 +178,9 @@ begin
   loop
     n := n + 1;
     if not (
-         (r.sig = 'comment_target_visible(cid text, pid text)' and r.emp in ('3cf606d2b4bf8605e403643342c11f5d', 'b61eb2bc938c81d8905ead0253487064'))
-      or (r.sig = 'comment_target_visible(cid text)'           and r.emp in ('0d830765c94045194263714b9b7f2bf9', 'e76d020cbc73bc612a486656bd3aa07d'))
+         -- comment_target_visible : celles de la première migration, que cette bis NE réécrit PAS.
+         (r.sig = 'comment_target_visible(cid text, pid text)' and r.emp = '3cf606d2b4bf8605e403643342c11f5d')
+      or (r.sig = 'comment_target_visible(cid text)'           and r.emp = '0d830765c94045194263714b9b7f2bf9')
       or (r.sig = 'post_is_visible(pid text)'                  and r.emp in ('08d910fbe202c6aaa5e73dce487b6364', '3e3d52b23aac8d5e931d63f4a61288ee'))) then
       raise exception '% a changé depuis la mesure du 2026-11-22 (md5 %) : relire avant de réécrire', r.sig, r.emp;
     end if;
@@ -202,14 +188,66 @@ begin
   if n <> 3 then
     raise exception '% définition(s) trouvée(s) parmi comment_target_visible(cid), comment_target_visible(cid, pid), post_is_visible(pid) : 3 attendues', n;
   end if;
+  select count(*) into h from (
+    select id from (select id from public.posts union all select id from public.events
+                    union all select id from public.post_comments union all select id from public.event_comments) t
+     group by id having count(*) > 1) d;
+  if h > 0 then
+    raise exception '% identifiant(s) homonyme(s) entre posts, events, post_comments et event_comments : les résoudre avant de poser le déclencheur', h;
+  end if;
 end
 $garde$;
 
--- ── Aide : la publication est-elle masquée pour l'appelant ? ───────────────
+-- ── ① Plus d'homonyme entre les quatre tables ──────────────────────────────
+-- SECURITY DEFINER : la ligne homonyme peut être invisible à l'appelant (une
+-- publication privée), et c'est justement celle-là qu'il faut voir.
+-- Verrou consultatif sur l'identifiant, pris par les quatre tables : deux
+-- insertions concurrentes du même identifiant dans deux tables se
+-- sérialisent, la seconde voit la première (nouvel instantané par requête).
+create or replace function public.identifiant_sans_homonyme()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE' and new.id is not distinct from old.id then
+    return new;
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('passio:identifiant:' || new.id, 0));
+  if (tg_table_name <> 'posts'          and exists (select 1 from public.posts          where id = new.id))
+  or (tg_table_name <> 'events'         and exists (select 1 from public.events         where id = new.id))
+  or (tg_table_name <> 'post_comments'  and exists (select 1 from public.post_comments  where id = new.id))
+  or (tg_table_name <> 'event_comments' and exists (select 1 from public.event_comments where id = new.id)) then
+    raise exception using errcode = '23505',
+      message = 'identifiant déjà utilisé par une autre publication, activité ou commentaire',
+      hint = 'BLOC-ACT bis : un identifiant est unique entre posts, events, post_comments et event_comments (RV-45).';
+  end if;
+  return new;
+end
+$$;
+comment on function public.identifiant_sans_homonyme() is
+  'Refuse un identifiant déjà présent dans posts, events, post_comments ou event_comments (RV-45 : comment_target_visible et fil_temps_reel_visible devinent le type d''une cible d''après sa table). BLOC-ACT bis, 2026-11-22.';
+revoke execute on function public.identifiant_sans_homonyme() from public, anon, authenticated;
+
+drop trigger if exists aa_identifiant_sans_homonyme on public.posts;
+create trigger aa_identifiant_sans_homonyme before insert or update of id on public.posts
+  for each row execute function public.identifiant_sans_homonyme();
+drop trigger if exists aa_identifiant_sans_homonyme on public.events;
+create trigger aa_identifiant_sans_homonyme before insert or update of id on public.events
+  for each row execute function public.identifiant_sans_homonyme();
+drop trigger if exists aa_identifiant_sans_homonyme on public.post_comments;
+create trigger aa_identifiant_sans_homonyme before insert or update of id on public.post_comments
+  for each row execute function public.identifiant_sans_homonyme();
+drop trigger if exists aa_identifiant_sans_homonyme on public.event_comments;
+create trigger aa_identifiant_sans_homonyme before insert or update of id on public.event_comments
+  for each row execute function public.identifiant_sans_homonyme();
+
+-- ── ② ③ La publication est-elle masquée pour l'appelant ? ──────────────────
 -- SECURITY DEFINER : `posts` est filtrée pour l'appelant, `blocks` ne lui
--- montre que SES blocages. FAUX sans compte, pour un identifiant nul ou
--- inconnu, et pour l'auteur de la publication. La publication CITÉE est jugée
--- par la même règle, écrite sur ses colonnes (un niveau).
+-- montre que SES blocages. FAUX d'emblée sans compte, pour un identifiant nul
+-- ou inconnu, et pour l'auteur. La publication CITÉE est jugée par la même
+-- règle, écrite sur ses colonnes (un niveau).
 create or replace function public.publication_masquee_pour_moi(p_post_id text)
 returns boolean
 language sql
@@ -217,7 +255,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select p_post_id is not null and exists (
+  select (select auth.uid()) is not null and p_post_id is not null and exists (
     select 1 from public.posts p
      where p.id = p_post_id
        and p.author_id is distinct from (select auth.uid())::text
@@ -238,7 +276,7 @@ as $$
   )
 $$;
 comment on function public.publication_masquee_pour_moi(text) is
-  'La publication (son auteur, l''activité qu''elle porte, ou la publication qu''elle cite) est-elle en blocage avec l''appelant ? FAUX pour son auteur et sans compte. Ne dit rien que post_auteur_bloque / is_blocked_with ne disent déjà (BLOC-ACT bis, 2026-11-22).';
+  'La publication (son auteur, l''activité qu''elle porte, ou la publication qu''elle cite) est-elle en blocage avec l''appelant ? FAUX sans compte et pour son auteur. Ne dit rien que post_auteur_bloque / is_blocked_with ne disent déjà (BLOC-ACT bis, 2026-11-22).';
 revoke execute on function public.publication_masquee_pour_moi(text) from public, anon;
 grant execute on function public.publication_masquee_pour_moi(text) to authenticated, service_role;
 
@@ -251,8 +289,10 @@ create policy posts_lecture_hors_blocage on public.posts
     or not public.publication_masquee_pour_moi(id)
   );
 
--- ── event_comments / event_reactions : l'auteur et l'organisateur de
--- l'activité lisent ce qu'on y a laissé, bloqué compris (modération) ───────
+-- ── ④ event_comments / event_reactions : l'auteur et l'organisateur de
+-- l'activité lisent ce qu'on y a laissé, bloqué compris (modération). Par
+-- `events` lue sous la RLS de l'appelant (ses propres activités), pas par
+-- `organise_activite`, qui compterait un co-organisateur bloqué.
 drop policy if exists event_comments_lecture_hors_blocage on public.event_comments;
 create policy event_comments_lecture_hors_blocage on public.event_comments
   as restrictive for select to authenticated
@@ -272,8 +312,8 @@ create policy event_reactions_lecture_hors_blocage on public.event_reactions
     or (not public.activite_masquee_pour_moi(event_id) and not public.is_blocked_with(user_id))
   );
 
--- ── post_is_visible : la même règle que la lecture de `posts` ──────────────
--- Corps identique à la définition mesurée, sauf la ligne marquée BLOC-ACT bis.
+-- ── ③ post_is_visible : la même règle que la lecture de `posts` ────────────
+-- Corps identique à la définition mesurée, sauf les lignes marquées BLOC-ACT bis.
 create or replace function public.post_is_visible(pid text)
 returns boolean
 language sql
@@ -303,61 +343,14 @@ as $function$
   end
 $function$;
 
--- ── comment_target_visible : l'activité D'ABORD (homonymie) ────────────────
--- Corps identiques à la première migration, sauf les lignes marquées BLOC-ACT bis.
-create or replace function public.comment_target_visible(cid text, pid text)
-returns boolean
-language sql
-stable
-security definer
-set search_path to 'public'
-as $function$
-  -- Une interaction se lit comme son FIL : `post_id`, que le client pose toujours — la
-  -- publication ou l'activité où elle a été écrite. Lui seul rattache une réaction à une
-  -- RÉPONSE (`comment_id = srep_<date>`, une cible qu'aucune table ne porte).
-  select case
-    when pid is null then public.comment_target_visible(cid)
-    -- Une activité : publique, sauf pour un compte en blocage avec elle (BLOC-ACT, 2026-11-22).
-    -- Elle PRIME sur une publication de même identifiant : `posts.id` est libre, un homonyme
-    -- ouvrait le fil de l'activité à un bloqué, ou le fermait à l'organisatrice (BLOC-ACT bis).
-    when exists (select 1 from events where id = pid) then not public.activite_masquee_pour_moi(pid)
-    when exists (select 1 from posts where id = pid) then public.post_is_visible(pid)
-    -- Un fil d'exemple reste public ; un fil supprimé ou inconnu n'est lisible par personne.
-    else public.est_identifiant_exemple(pid)
-  end
-$function$;
-
-create or replace function public.comment_target_visible(cid text)
-returns boolean
-language sql
-stable
-security definer
-set search_path to 'public'
-as $function$
-  -- La CIBLE seule, pour une interaction sans fil (`post_id` nul : aucune ligne aujourd'hui,
-  -- le client le pose toujours). Avec un fil, comment_target_visible(cid, pid) décide.
-  select case
-    when cid is null then false
-    -- Un commentaire d'activité : public, sauf pour un compte en blocage avec l'activité (BLOC-ACT, 2026-11-22).
-    -- Les commentaires PRIMENT sur une publication de même identifiant (`posts.id` est libre :
-    -- un homonyme ouvrait ou fermait la cible à tort — BLOC-ACT bis).
-    when exists (select 1 from event_comments where id = cid)
-      then not public.activite_masquee_pour_moi((select event_id from event_comments where id = cid limit 1))
-    when exists (select 1 from post_comments where id = cid)
-      then public.post_is_visible((select post_id from post_comments where id = cid limit 1))
-    when exists (select 1 from posts where id = cid)
-      then public.post_is_visible(cid)
-    -- Un exemple reste public ; une cible supprimée ou inconnue, personne (R31 : rendait VRAI).
-    else public.est_identifiant_exemple(cid)
-  end
-$function$;
-
 -- ── Verdict : il LÈVE sur la moindre ligne en ECHEC ────────────────────────
 create temp table _verdict_bloc_act_bis on commit drop as
-select 1 as n, '① publication_masquee_pour_moi : security definer, search_path vide, FAUX sans compte' as controle,
+select 1 as n, '① publication_masquee_pour_moi : security definer, search_path vide, FAUX sans compte (identifiant réel)' as controle,
        case when exists (select 1 from pg_proc p where p.oid = to_regprocedure('public.publication_masquee_pour_moi(text)')
                           and p.prosecdef and p.proconfig @> array['search_path=""'])
-             and not public.publication_masquee_pour_moi(null) then 'OK' else 'ECHEC' end as verdict
+             and (select auth.uid()) is null
+             and not public.publication_masquee_pour_moi(coalesce((select id from public.posts limit 1), 'aucun'))
+             then 'OK' else 'ECHEC' end as verdict
 union all
 select 2, '② publication_masquee_pour_moi : authenticated oui, anon non',
        case when has_function_privilege('authenticated', 'public.publication_masquee_pour_moi(text)', 'EXECUTE')
@@ -376,30 +369,33 @@ select 5, '⑤ post_is_visible : applique publication_masquee_pour_moi, droits a
        case when pg_get_functiondef('public.post_is_visible(text)'::regprocedure) like '%and not public.publication_masquee_pour_moi(p.id)%'
              and has_function_privilege('anon', 'public.post_is_visible(text)', 'EXECUTE') then 'OK' else 'ECHEC' end
 union all
-select 6, '⑥ comment_target_visible(cid, pid) : la branche activité passe AVANT la branche publication',
-       case when position('when exists (select 1 from events where id = pid) then not public.activite_masquee_pour_moi(pid)' in pg_get_functiondef('public.comment_target_visible(text,text)'::regprocedure))
-                 between 1 and position('when exists (select 1 from posts where id = pid)' in pg_get_functiondef('public.comment_target_visible(text,text)'::regprocedure))
-             then 'OK' else 'ECHEC' end
+select 6, '⑥ le déclencheur anti-homonyme est posé sur les QUATRE tables (insertion et changement d''identifiant)',
+       case when (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                   where c.relnamespace = 'public'::regnamespace and c.relname in ('posts','events','post_comments','event_comments')
+                     and t.tgname = 'aa_identifiant_sans_homonyme' and t.tgenabled = 'O'
+                     and t.tgfoid = 'public.identifiant_sans_homonyme()'::regprocedure) = 4 then 'OK' else 'ECHEC' end
 union all
-select 7, '⑦ comment_target_visible(cid) : les branches commentaire passent AVANT la branche publication',
-       case when position('then public.post_is_visible((select post_id from post_comments where id = cid limit 1))' in pg_get_functiondef('public.comment_target_visible(text)'::regprocedure))
-                 between 1 and position('when exists (select 1 from posts where id = cid)' in pg_get_functiondef('public.comment_target_visible(text)'::regprocedure))
-             then 'OK' else 'ECHEC' end
+select 7, '⑦ aucun homonyme entre posts, events, post_comments, event_comments',
+       case when not exists (select id from (select id from public.posts union all select id from public.events
+                                              union all select id from public.post_comments union all select id from public.event_comments) t
+                              group by id having count(*) > 1) then 'OK' else 'ECHEC' end
 union all
-select 8, '⑧ les aides appelées par les policies sont exécutables par authenticated',
+select 8, '⑧ les aides appelées par les policies sont exécutables par authenticated ; le déclencheur par personne',
        case when has_function_privilege('authenticated', 'public.is_blocked_with(text)', 'EXECUTE')
              and has_function_privilege('authenticated', 'public.post_auteur_bloque(text)', 'EXECUTE')
              and has_function_privilege('authenticated', 'public.activite_masquee_pour_moi(text)', 'EXECUTE')
-             and has_function_privilege('authenticated', 'public.activite_de_partage(text)', 'EXECUTE') then 'OK' else 'ECHEC' end
+             and has_function_privilege('authenticated', 'public.activite_de_partage(text)', 'EXECUTE')
+             and not has_function_privilege('authenticated', 'public.identifiant_sans_homonyme()', 'EXECUTE') then 'OK' else 'ECHEC' end
 union all
 select 9, '⑨ les policies de la première migration sont toujours là (events, event_attendees)',
        case when (select count(*) from pg_policies where schemaname='public' and tablename in ('events','event_attendees')
                    and policyname like '%_lecture_hors_blocage' and permissive='RESTRICTIVE') = 2 then 'OK' else 'ECHEC' end
 union all
-select 10, '⑩ lectures de post_comments / post_likes / comment_interactions : toujours par post_is_visible / comment_target_visible',
+select 10, '⑩ lectures de post_comments / post_likes / comment_interactions / comment_likes : toujours par post_is_visible / comment_target_visible',
        case when exists (select 1 from pg_policies where schemaname='public' and tablename='post_comments' and cmd='SELECT' and qual like '%post_is_visible(post_id)%')
              and exists (select 1 from pg_policies where schemaname='public' and tablename='post_likes' and cmd='SELECT' and qual like '%post_is_visible(post_id)%')
              and exists (select 1 from pg_policies where schemaname='public' and tablename='comment_interactions' and cmd='SELECT' and qual like '%comment_target_visible(comment_id, post_id)%')
+             and exists (select 1 from pg_policies where schemaname='public' and tablename='comment_likes' and cmd='SELECT' and qual like '%comment_target_visible(comment_id)%')
              then 'OK' else 'ECHEC' end
 union all
 select 11, '⑪ temps réel : realtime.passio_rt_recevoir_fil passe par comment_target_visible',
@@ -408,9 +404,14 @@ select 11, '⑪ temps réel : realtime.passio_rt_recevoir_fil passe par comment_
 union all
 select 12, '⑫ aucune de ces tables n''est publiée en temps réel',
        case when not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public'
-                              and tablename in ('events','event_attendees','event_comments','event_reactions','posts','post_comments','post_likes','comment_interactions')) then 'OK' else 'ECHEC' end
+                              and tablename in ('events','event_attendees','event_comments','event_reactions','posts','post_comments','post_likes','comment_interactions','comment_likes')) then 'OK' else 'ECHEC' end
 union all
-select 13, '⑬ la lecture publique des activités reste ouverte (permissive d''origine intacte)',
+select 13, '⑬ comment_target_visible n''est pas réécrite (ordre de #951 : la publication avant l''activité)',
+       case when (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.comment_target_visible(text,text)'::regprocedure) = '3cf606d2b4bf8605e403643342c11f5d'
+             and (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.comment_target_visible(text)'::regprocedure) = '0d830765c94045194263714b9b7f2bf9'
+             then 'OK' else 'ECHEC' end
+union all
+select 14, '⑭ la lecture publique des activités reste ouverte (permissive d''origine intacte)',
        case when exists (select 1 from pg_policies where schemaname='public' and tablename='events' and policyname='Lecture publique' and qual = 'true') then 'OK' else 'ECHEC' end;
 
 do $verdict$
