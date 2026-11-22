@@ -25,14 +25,20 @@
 --     (nom du profil échappé + phrase fixe, ou message ≤ 200 échappé, 600 au total), et rend un
 --     COMPTE : `destinataires`, `prevenues`. Réservée à l'organisation (`organise_activite`), refusée
 --     à un compte en suppression ; `event_cancelled` exige l'activité ANNULÉE en base ;
---     `event_update` exige l'admission (`adult_access_allowed`, comme la modification d'une activité)
---     et une activité terminée depuis moins de 2 jours.
+--     `event_update` exige l'admission (`adult_access_allowed`, comme la modification d'une activité),
+--     une date, une fin passée de moins de 2 jours ET une création de moins d'un an (`created_at`,
+--     posé par le serveur et figé : la date de l'activité, elle, se réécrit — red team, D).
 --     IDENTIFIANTS `n_pi_` (réservés au serveur, ⑤) : une annulation = md5(activité|genre|destinataire),
---     UNE par personne et par activité (une nouvelle annulation après réactivation remet la ligne en
---     « non lue ») ; une mise à jour = md5(activité|genre|clé|destinataire), la clé étant tirée par le
---     client une fois par geste et réutilisée à son réessai — un rejeu ne double rien.
+--     UNE par personne et par activité : une nouvelle annulation ne remet la ligne en « non lue » (au
+--     nom de qui annule, co-organisation comprise — red team, C) QUE si l'activité a été RÉACTIVÉE
+--     depuis, d'après une date tenue par le serveur (⑦, red team B) ; sinon rien ne bouge. Une mise
+--     à jour = md5(activité|genre|clé|destinataire), la clé étant tirée par le client une fois par
+--     geste et réutilisée à son réessai — un rejeu ne double ni ne réécrit rien. Une ligne d'une
+--     autre personne, d'un autre genre ou d'origine client n'est JAMAIS reprise (garde ON CONFLICT,
+--     éprouvée par le verdict 19 et une mutation du banc — red team, E).
 --     BORNES (relecture red team du 22/11, P1 : « le débit comptait les APPELS, pas les lignes ») :
---       · 3 diffusions par heure, par ACTIVITÉ et par genre (`debit_ecritures`, fenêtre glissante) ;
+--       · 3 diffusions par heure, par ACTIVITÉ et par genre (`debit_ecritures`, fenêtre glissante),
+--         lues et débitées SOUS VERROU consultatif (sinon N appels parallèles passaient — red team, A) ;
 --       · 20 diffusions par minute et par compte (`debit_compter`, plafond du jour compris) ;
 --       · un budget du jour en LIGNES diffusées, par compte : 6 000 (1 500 la première semaine)
 --         (`debit_jour_compter('notifications_diffusion', …)`).
@@ -46,10 +52,13 @@
 --     notifications ordinaires de l'organisateur. PostgREST n'expose aucun moyen de poser ce réglage
 --     (même confiance que `passio.notification_serveur`, qui décide déjà de l'origine).
 --   ③ `events_prevenir_suppression` pose ce même réglage, écarte les comptes en suppression, ceux qui
---     ont décliné et les blocages : une activité de 99 inscrits supprimée prévient les 99.
+--     ont décliné et les blocages (lus par rapport à l'ORGANISATION, pas à qui supprime) : une
+--     activité de 99 inscrits supprimée prévient les 99.
 --   ⑤ `identifiant_reserve_au_serveur` réserve aussi `n_pi_` et `n_sup_` : un inscrit pouvait
 --     pré-occuper `n_sup_<md5(activité||destinataire)>` (calculable par tous) et faire sauter l'avis
 --     de suppression d'un autre (défaut du 12/11, relevé par la relecture red team).
+--   ⑦ `events.reactivee_le` : posée par un déclencheur quand une activité annulée est réactivée,
+--     réécrite à chaque INSERT/UPDATE (un client ne la pose jamais), illisible par les clients.
 --   Gardes : les corps remplacés doivent être ceux relus (md5 normalisé, production ou v1 du
 --   staging), et `trg_rate_limit` lié à `rate_limit_insert('from_id','60')` ou à
 --   `notifications_limiter_debit()` — sinon RIEN n'est appliqué.
@@ -62,6 +71,9 @@
 --| create trigger trg_rate_limit before insert on public.notifications
 --|   for each row execute function public.rate_limit_insert('from_id', '60');
 --| drop function if exists public.notifications_limiter_debit();
+--| drop trigger if exists trg_events_reactivee_le on public.events;
+--| drop function if exists public.events_reactivee_le();
+--| alter table public.events drop column if exists reactivee_le;
 --| create or replace function public.identifiant_reserve_au_serveur(p_id text) returns boolean
 --|   language sql immutable set search_path to '' as $f$
 --|   select p_id like 'n\_m\_%' or p_id like 'n\_pa\_%' or p_id like 'n\_fw\_%'
@@ -104,7 +116,7 @@ do $g$
 declare
   f record;
   h text;
-  marque constant text := 'PASSIO prevenir-inscrits v2';
+  marque constant text := 'PASSIO prevenir-inscrits v3';
 begin
   if not exists (select 1 from pg_trigger where tgrelid = 'public.notifications'::regclass and tgname = 'trg_notifications_origine' and not tgisinternal) then
     raise exception 'notifications : le déclencheur d''origine manque — RIEN n''est appliqué' using errcode = 'object_not_in_prerequisite_state';
@@ -165,7 +177,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v2
+-- PASSIO prevenir-inscrits v3
 begin
   -- L'horodatage serveur fait foi (le client n'antidate pas pour échapper au compte).
   new.created_at := pg_catalog.now();
@@ -186,6 +198,37 @@ drop trigger if exists trg_rate_limit on public.notifications;
 create trigger trg_rate_limit before insert on public.notifications
   for each row execute function public.notifications_limiter_debit();
 
+-- ── ⑦ LA DATE DE RÉACTIVATION EST TENUE PAR LE SERVEUR ───────────────────────────────────────────
+-- Une NOUVELLE annulation ne remet les avis en « non lu » que si l'activité a été réactivée depuis
+-- (relecture red team du 22/11, B). La colonne n'est lisible par aucun client (droits de colonne de
+-- `events`) ; elle est réécrite à chaque INSERT et UPDATE : un client ne la pose jamais.
+alter table public.events add column if not exists reactivee_le timestamptz;
+
+create or replace function public.events_reactivee_le()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+-- PASSIO prevenir-inscrits v3
+begin
+  if tg_op = 'INSERT' then
+    new.reactivee_le := null;
+  elsif old.status = 'cancelled' and new.status is distinct from 'cancelled' then
+    new.reactivee_le := pg_catalog.clock_timestamp();
+  else
+    new.reactivee_le := old.reactivee_le;
+  end if;
+  return new;
+end
+$fn$;
+
+revoke all on function public.events_reactivee_le() from public, anon, authenticated;
+
+drop trigger if exists trg_events_reactivee_le on public.events;
+create trigger trg_events_reactivee_le before insert or update on public.events
+  for each row execute function public.events_reactivee_le();
+
 -- ── ⑤ `n_pi_` ET `n_sup_` SONT RÉSERVÉS AU SERVEUR ────────────────────────────────────────────────
 -- Lue par la policy d'INSERT client `notifications_insert_own_author`.
 create or replace function public.identifiant_reserve_au_serveur(p_id text)
@@ -194,7 +237,7 @@ language sql
 immutable
 set search_path = ''
 as $fn$
-  -- PASSIO prevenir-inscrits v2
+  -- PASSIO prevenir-inscrits v3
   select p_id like 'n\_m\_%'
       or p_id like 'n\_pa\_%'
       or p_id like 'n\_fw\_%'
@@ -211,19 +254,21 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v2
+-- PASSIO prevenir-inscrits v3
 declare
-  moi      text := (auth.uid())::text;
-  ev       record;
-  nom      text;
-  texte    text;
-  msg      text := nullif(btrim(coalesce(p_message, '')), '');
-  dest     integer := 0;
-  partis   integer := 0;
-  ecrites  integer := 0;
-  heure    integer := 0;
-  prec_srv text := pg_catalog.current_setting('passio.notification_serveur', true);
-  prec_dif text := pg_catalog.current_setting('passio.diffusion_inscrits', true);
+  moi       text := (auth.uid())::text;
+  ev        record;
+  nom       text;
+  texte     text;
+  msg       text := nullif(btrim(coalesce(p_message, '')), '');
+  ids       text[];
+  idents    text[];
+  partis    integer := 0;
+  couverts  integer := 0;
+  heure     integer := 0;
+  reactivee timestamptz;
+  prec_srv  text := pg_catalog.current_setting('passio.notification_serveur', true);
+  prec_dif  text := pg_catalog.current_setting('passio.diffusion_inscrits', true);
 begin
   if moi is null then return jsonb_build_object('ok', false, 'motif', 'non_connecte'); end if;
   if public.suppression_de_mon_compte() then return jsonb_build_object('ok', false, 'motif', 'compte_en_suppression'); end if;
@@ -236,8 +281,9 @@ begin
   if p_genre = 'event_cancelled' and msg is not null then
     return jsonb_build_object('ok', false, 'motif', 'message_hors_genre');
   end if;
-  select e.id, e.status, e.date_at, e.end_at into ev from public.events e where e.id = p_event_id;
+  select e.id, e.status, e.date_at, e.end_at, e.created_at, e.reactivee_le into ev from public.events e where e.id = p_event_id;
   if not found then return jsonb_build_object('ok', false, 'motif', 'introuvable'); end if;
+  reactivee := ev.reactivee_le;
   -- L'organisation a UNE définition (R24) : auteur, organisateur, co-organisateur.
   if not coalesce(public.organise_activite(p_event_id), false) then
     return jsonb_build_object('ok', false, 'motif', 'non_autorise');
@@ -250,9 +296,15 @@ begin
     if not coalesce(public.adult_access_allowed(), false) then
       return jsonb_build_object('ok', false, 'motif', 'admission_requise');
     end if;
-    -- Les inscrits d'une activité passée ne deviennent pas une liste de diffusion permanente.
+    -- Les inscrits d'une activité ne deviennent pas une liste de diffusion permanente (red team, D) :
+    -- une date est exigée ; la fin (date que l'organisation réécrit) ne doit pas dater de plus de
+    -- 2 jours ; et la CRÉATION (posée par le serveur, figée ensuite) de plus d'un an.
+    if ev.date_at is null then return jsonb_build_object('ok', false, 'motif', 'activite_sans_date'); end if;
     if coalesce(ev.end_at, ev.date_at + interval '3 hours') < pg_catalog.now() - interval '2 days' then
       return jsonb_build_object('ok', false, 'motif', 'activite_terminee');
+    end if;
+    if ev.created_at is null or ev.created_at < pg_catalog.now() - interval '1 year' then
+      return jsonb_build_object('ok', false, 'motif', 'activite_trop_ancienne');
     end if;
   end if;
 
@@ -266,65 +318,74 @@ begin
   end;
   if char_length(texte) > 600 then return jsonb_build_object('ok', false, 'motif', 'message_trop_long'); end if;
 
-  -- 3 diffusions par heure, par activité et par genre (fenêtre glissante de 60 minutes).
+  -- 3 diffusions par heure, par activité et par genre (fenêtre glissante de 60 minutes). La lecture
+  -- et le débit se font SOUS VERROU (red team, A) : sans lui, N appels parallèles lisaient tous
+  -- « 2 » et passaient tous. Le verrou tient jusqu'à la fin de la transaction de l'appel.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('prevenir|' || p_event_id || '|' || p_genre));
   select coalesce(sum(d.n), 0) into heure from public.debit_ecritures d
    where d.table_nom = 'prevenir_activite' and d.source = p_event_id || '|' || p_genre
      and d.minute > pg_catalog.date_trunc('minute', pg_catalog.now()) - interval '60 minutes';
   if heure >= 3 then return jsonb_build_object('ok', false, 'motif', 'debit_activite'); end if;
 
   -- Destinataires : venants, « peut-être », liste d'attente ; jamais l'appelant ni un blocage.
-  select count(*) filter (where c.user_id is null), count(*) filter (where c.user_id is not null)
-    into dest, partis
+  -- Un compte en suppression est compté à part (aucune ligne : il n'a plus de cloche).
+  select coalesce(array_agg(a.user_id order by a.user_id) filter (where c.user_id is null), '{}'),
+         count(*) filter (where c.user_id is not null)
+    into ids, partis
     from public.event_attendees a
     left join public.comptes_en_suppression c on c.user_id = a.user_id and c.statut in ('en_cours', 'purgee', 'supprimee')
    where a.event_id = p_event_id and a.rsvp in ('going', 'maybe', 'waitlist')
      and a.user_id is distinct from moi and not public.is_blocked_with(a.user_id);
+  -- Une annulation : UNE par personne et par activité (sans la clé). Une mise à jour : par geste.
+  select coalesce(array_agg('n_pi_' || left(md5(case when p_genre = 'event_cancelled'
+                                                     then p_event_id || '|' || p_genre || '|' || t.u
+                                                     else p_event_id || '|' || p_genre || '|' || p_cle || '|' || t.u end), 20)
+                            order by t.o), '{}')
+    into idents from unnest(ids) with ordinality as t(u, o);
 
   -- Débits : la diffusion compte pour l'activité et pour le compte (par minute, plafond du jour
   -- compris) ; les LIGNES comptent dans un budget du jour, par compte.
   begin
     perform public.debit_compter('prevenir_activite', p_event_id || '|' || p_genre, 1000);
     perform public.debit_compter('prevenir_inscrits', moi, 20);
-    if dest > 0 then
-      perform public.debit_jour_compter('notifications_diffusion', moi, dest::bigint,
+    if cardinality(ids) > 0 then
+      perform public.debit_jour_compter('notifications_diffusion', moi, cardinality(ids)::bigint,
         case when public.compte_recent(moi) then 1500 else 6000 end);
     end if;
   exception when sqlstate 'P0001' then
     return jsonb_build_object('ok', false, 'motif', 'debit');
   end;
 
-  if dest > 0 then
+  if cardinality(ids) > 0 then
     begin
       perform pg_catalog.set_config('passio.notification_serveur', '1', true);
       perform pg_catalog.set_config('passio.diffusion_inscrits', '1', true);
       insert into public.notifications as n (id, user_id, kind, from_id, ref_id, content, seen)
-      select 'n_pi_' || left(md5(case when p_genre = 'event_cancelled'
-                                      then p_event_id || '|' || p_genre || '|' || a.user_id
-                                      else p_event_id || '|' || p_genre || '|' || p_cle || '|' || a.user_id end), 20),
-             a.user_id, p_genre, moi, p_event_id, texte, false
-        from public.event_attendees a
-       where a.event_id = p_event_id and a.rsvp in ('going', 'maybe', 'waitlist')
-         and a.user_id is distinct from moi and not public.is_blocked_with(a.user_id)
-         and not exists (select 1 from public.comptes_en_suppression c
-                          where c.user_id = a.user_id and c.statut in ('en_cours', 'purgee', 'supprimee'))
-      -- Rejeu d'un même geste, ou nouvelle annulation après réactivation : la ligne de CETTE
-      -- personne, de CET émetteur, redevient non lue — jamais une ligne d'autrui.
-      on conflict (id) do update set content = excluded.content, seen = false, created_at = pg_catalog.now()
-        where n.user_id = excluded.user_id and n.from_id = excluded.from_id and n.kind = excluded.kind
-          and n.ref_id = excluded.ref_id and n.origine = 'serveur';
-      get diagnostics ecrites = row_count;
+      select t.i, t.u, p_genre, moi, p_event_id, texte, false from unnest(idents, ids) as t(i, u)
+      -- Une ligne déjà là n'est reprise QUE pour une annulation, et seulement si l'activité a été
+      -- RÉACTIVÉE depuis (date tenue par le serveur, red team B) : elle redevient non lue, au nom de
+      -- qui annule cette fois (co-organisation, red team C). Jamais la ligne d'une autre personne,
+      -- d'un autre genre, d'une autre activité, ni une ligne d'origine client.
+      on conflict (id) do update set content = excluded.content, from_id = excluded.from_id, seen = false, created_at = pg_catalog.now()
+        where n.user_id = excluded.user_id and n.kind = excluded.kind and n.ref_id = excluded.ref_id and n.origine = 'serveur'
+          and excluded.kind = 'event_cancelled' and reactivee is not null and reactivee > n.created_at;
       perform pg_catalog.set_config('passio.diffusion_inscrits', coalesce(prec_dif, ''), true);
       perform pg_catalog.set_config('passio.notification_serveur', coalesce(prec_srv, ''), true);
     exception when others then
       perform pg_catalog.set_config('passio.diffusion_inscrits', coalesce(prec_dif, ''), true);
       perform pg_catalog.set_config('passio.notification_serveur', coalesce(prec_srv, ''), true);
       raise warning 'prevenir_inscrits_activite : diffusion non écrite (%)', sqlstate;
-      return jsonb_build_object('ok', false, 'motif', 'echec_ecriture', 'destinataires', dest + partis);
+      return jsonb_build_object('ok', false, 'motif', 'echec_ecriture', 'destinataires', cardinality(ids) + partis);
     end;
+    -- Prévenue = une ligne serveur de CE genre, pour CETTE activité, à CETTE personne, sous son
+    -- identifiant — écrite maintenant ou déjà là (rejeu, annulation déjà diffusée).
+    select count(*) into couverts from unnest(idents, ids) as t(i, u)
+      join public.notifications n on n.id = t.i and n.user_id = t.u and n.kind = p_genre
+                                  and n.ref_id = p_event_id and n.origine = 'serveur';
   end if;
   -- Un COMPTE, jamais la liste. Un compte en suppression est compté comme prévenu (aucune ligne :
   -- il n'a plus de cloche) — l'écart d'une unité révélerait sa suppression (ASTRA-25).
-  return jsonb_build_object('ok', true, 'destinataires', dest + partis, 'prevenues', ecrites + partis);
+  return jsonb_build_object('ok', true, 'destinataires', cardinality(ids) + partis, 'prevenues', couverts + partis);
 end
 $fn$;
 
@@ -338,7 +399,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v2
+-- PASSIO prevenir-inscrits v3
 declare
   orga     text := coalesce(old.organizer_id, old.author_id);
   nom      text;
@@ -358,7 +419,11 @@ begin
       from public.event_attendees a
      where a.event_id = old.id and a.user_id is distinct from orga
        and a.rsvp in ('going', 'maybe', 'waitlist')
-       and not public.is_blocked_with(a.user_id)
+       -- Le blocage se lit par rapport à l'ORGANISATION, pas à qui supprime (une purge
+       -- d'administration n'a pas d'`auth.uid()`).
+       and not exists (select 1 from public.blocks b
+                        where (b.blocker_id = orga and b.blocked_id = a.user_id)
+                           or (b.blocker_id = a.user_id and b.blocked_id = orga))
        and not exists (select 1 from public.comptes_en_suppression c
                         where c.user_id = a.user_id and c.statut in ('en_cours', 'purgee', 'supprimee'))
     on conflict (id) do nothing;
@@ -387,6 +452,11 @@ declare
   evt   constant text := 'zz_pi_evt_' || sfx;
   evs   constant text := 'zz_pi_sup_' || sfx;
   evo   constant text := 'zz_pi_old_' || sfx;
+  evc   constant text := 'zz_pi_cnf_' || sfx;
+  evn   constant text := 'zz_pi_nul_' || sfx;
+  evq   constant text := 'zz_pi_anc_' || sfx;
+  q1    constant text := '00000000-0000-4000-8000-0000000d0a05';
+  q2    constant text := '00000000-0000-4000-8000-0000000d0a06';
   mes   jsonb := '{}'::jsonb;
   i     integer;
   u     text;
@@ -413,6 +483,22 @@ begin
     insert into public.event_attendees (event_id, user_id, rsvp) values (evt, bloq, 'going'), (evt, part, 'going'), (evo, part, 'going');
     insert into public.blocks (blocker_id, blocked_id) values (bloq, a);
     insert into public.comptes_en_suppression (user_id, statut) values (part, 'en_cours');
+    -- evc : deux inscrits dont les identifiants d'annulation sont DÉJÀ occupés — par une ligne
+    -- destinée à une autre personne, et par une ligne d'origine client — puis réactivée.
+    insert into public.profiles (id, username, is_private) values (q1, 'zz q1 ' || sfx, false), (q2, 'zz q2 ' || sfx, false);
+    insert into public.events (id, organizer_id, author_id, title, status, date_at) values
+      (evc, a, a, 'Conflits', 'active', now() + interval '2 days'),
+      (evn, a, a, 'Sans date', 'active', null),
+      (evq, a, a, 'Ancienne', 'active', now() + interval '2 days');
+    update public.events set created_at = now() - interval '2 years' where id = evq;
+    insert into public.event_attendees (event_id, user_id, rsvp) values (evc, a, 'going'), (evc, q1, 'going'), (evc, q2, 'going'),
+      (evn, q1, 'going'), (evq, q1, 'going');
+    insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen) values
+      ('n_pi_' || left(md5(evc || '|event_cancelled|' || q1), 20), q2, 'event_cancelled', x, evc, 'zz intact', true),
+      ('n_pi_' || left(md5(evc || '|event_cancelled|' || q2), 20), q2, 'event_cancelled', x, evc, 'zz intact', true);
+    update public.events set status = 'cancelled' where id = evc;
+    update public.events set status = 'active' where id = evc;
+    update public.events set status = 'cancelled' where id = evc;
 
     execute 'set local role authenticated';
     perform set_config('request.jwt.claims', jsonb_build_object('sub', a, 'role', 'authenticated')::text, true);
@@ -433,11 +519,36 @@ begin
     mes := mes || jsonb_build_object('annule', public.prevenir_inscrits_activite(evt, 'event_cancelled', cle1));
     mes := mes || jsonb_build_object('reglage_rendu', current_setting('passio.notification_serveur', true));
     perform set_config('passio.notification_serveur', '', true);
-    -- Une NOUVELLE annulation, clé neuve : aucune ligne de plus (une par personne et par activité).
+    -- Les 68 avis sont lus.
+    execute 'reset role';
+    update public.notifications set seen = true where ref_id = evt and kind = 'event_cancelled';
+    execute 'set local role authenticated';
+    -- Une NOUVELLE annulation SANS réactivation, clé neuve : rien ne bouge (ni ligne, ni « non lu »),
+    -- et les 69 restent comptées prévenues.
     mes := mes || jsonb_build_object('reannule', public.prevenir_inscrits_activite(evt, 'event_cancelled', 'zzcle9' || sfx));
+    -- (Mesures sous le rôle propriétaire : sous `authenticated`, la RLS ne montre à l'organisatrice que SES notifications.)
+    execute 'reset role';
+    mes := mes || jsonb_build_object('non_lues_sans_reactivation', (select count(*) from public.notifications n where n.ref_id = evt and n.kind = 'event_cancelled' and not n.seen));
+    -- Réactivée puis annulée de nouveau : les avis redeviennent non lus, sans ligne de plus.
+    update public.events set status = 'active' where id = evt;
+    update public.events set status = 'cancelled' where id = evt;
+    execute 'set local role authenticated';
+    mes := mes || jsonb_build_object('reannule_apres', public.prevenir_inscrits_activite(evt, 'event_cancelled', 'zzcleR' || sfx));
+    execute 'reset role';
+    mes := mes || jsonb_build_object('non_lues_apres', (select count(*) from public.notifications n where n.ref_id = evt and n.kind = 'event_cancelled' and not n.seen));
+    execute 'set local role authenticated';
     -- Une 4ᵉ annulation dans l'heure : refusée (3 par heure et par activité).
-    mes := mes || jsonb_build_object('annule_4', (select public.prevenir_inscrits_activite(evt, 'event_cancelled', 'zzcleA' || sfx)
-                                                    from (select public.prevenir_inscrits_activite(evt, 'event_cancelled', 'zzcleB' || sfx)) z));
+    mes := mes || jsonb_build_object('annule_4', public.prevenir_inscrits_activite(evt, 'event_cancelled', 'zzcleA' || sfx));
+    -- La garde ON CONFLICT : sur evc (réactivée), une ligne d'une AUTRE personne et une ligne
+    -- d'origine CLIENT occupent les identifiants des deux inscrits — aucune n'est reprise.
+    mes := mes || jsonb_build_object('etrangeres', public.prevenir_inscrits_activite(evc, 'event_cancelled', 'zzcleC' || sfx));
+    execute 'reset role';
+    mes := mes || jsonb_build_object('etrangeres_intactes', (select count(*) from public.notifications n
+                                       where n.ref_id = evc and n.content = 'zz intact' and n.from_id = x and n.origine = 'client'));
+    execute 'set local role authenticated';
+    -- Une date absente, une création de plus d'un an : pas de mise à jour.
+    mes := mes || jsonb_build_object('sans_date', public.prevenir_inscrits_activite(evn, 'event_update', 'zzcleN' || sfx));
+    mes := mes || jsonb_build_object('ancienne', public.prevenir_inscrits_activite(evq, 'event_update', 'zzcleQ' || sfx));
     -- Le message de l'organisation, échappé.
     mes := mes || jsonb_build_object('message', public.prevenir_inscrits_activite(evt, 'event_update', 'zzcle2' || sfx, '  <b>RDV</b> à l''entrée nord  '));
     -- 200 guillemets : 1 200 caractères une fois échappés — refusé AVANT toute écriture.
@@ -510,9 +621,24 @@ union all select 4, true, 'une ligne par personne, d''origine serveur, jamais l'
         and (j ->> 'exclus_prevenus') = '0'
        then 'OK' else 'ECHEC — lignes ' || coalesce(j ->> 'lignes_annule', '-') || ', personnes ' || coalesce(j ->> 'personnes_annule', '-')
                        || ', origine ' || coalesce(j ->> 'origine_annule', '-') || ', exclus ' || coalesce(j ->> 'exclus_prevenus', '-') end from v
-union all select 5, true, 'une nouvelle annulation (clé neuve) n''ajoute aucune ligne ; la 4ᵉ de l''heure est refusée',
-  case when (j #>> '{reannule,prevenues}') = '69' and (j ->> 'lignes_annule') = '68' and j #>> '{annule_4,motif}' = 'debit_activite'
-       then 'OK' else 'ECHEC — ' || coalesce((j -> 'reannule')::text, '-') || ' / ' || coalesce((j -> 'annule_4')::text, '-') end from v
+union all select 5, true, 'ré-annuler SANS réactivation ne touche rien (69 comptées, 0 non lue) ; APRÈS réactivation, les 68 avis redeviennent non lus, sans ligne de plus ; la 4ᵉ de l''heure est refusée',
+  case when (j #>> '{reannule,prevenues}') = '69' and (j ->> 'non_lues_sans_reactivation') = '0'
+        and (j #>> '{reannule_apres,prevenues}') = '69' and (j ->> 'non_lues_apres') = '68'
+        and (j ->> 'lignes_annule') = '68' and j #>> '{annule_4,motif}' = 'debit_activite'
+       then 'OK' else 'ECHEC — ' || coalesce((j -> 'reannule')::text, '-') || ' / non lues ' || coalesce(j ->> 'non_lues_sans_reactivation', '-')
+                       || ' / ' || coalesce((j -> 'reannule_apres')::text, '-') || ' / non lues ' || coalesce(j ->> 'non_lues_apres', '-')
+                       || ' / ' || coalesce((j -> 'annule_4')::text, '-') end from v
+union all select 19, true, 'garde ON CONFLICT : la ligne d''une autre personne et une ligne d''origine client ne sont jamais reprises (0 sur 2 prévenues)',
+  case when (j #>> '{etrangeres,destinataires}') = '2' and (j #>> '{etrangeres,prevenues}') = '0' and (j ->> 'etrangeres_intactes') = '2'
+       then 'OK' else 'ECHEC — ' || coalesce((j -> 'etrangeres')::text, '-') || ' / intactes ' || coalesce(j ->> 'etrangeres_intactes', '-') end from v
+union all select 20, true, 'une activité sans date, ou créée il y a plus d''un an, ne reçoit plus de mise à jour',
+  case when j #>> '{sans_date,motif}' = 'activite_sans_date' and j #>> '{ancienne,motif}' = 'activite_trop_ancienne'
+       then 'OK' else 'ECHEC — ' || coalesce((j -> 'sans_date')::text, '-') || ' / ' || coalesce((j -> 'ancienne')::text, '-') end from v
+union all select 21, true, 'la date de réactivation est tenue par le serveur (déclencheur en place, illisible par les clients)',
+  (select case when exists (select 1 from pg_trigger where tgrelid = 'public.events'::regclass and tgname = 'trg_events_reactivee_le' and not tgisinternal)
+                and not has_column_privilege('anon', 'public.events', 'reactivee_le', 'SELECT')
+                and not has_column_privilege('authenticated', 'public.events', 'reactivee_le', 'SELECT')
+               then 'OK' else 'ECHEC' end)
 union all select 6, true, 'un réglage posé avant l''appel lui survit (rendu, jamais vidé)',
   case when j ->> 'reglage_rendu' = 'temoin' then 'OK' else 'ECHEC — ' || coalesce(j ->> 'reglage_rendu', '-') end from v
 union all select 7, true, 'le texte est dérivé : le nom ÉCHAPPÉ du profil, la phrase fixe',

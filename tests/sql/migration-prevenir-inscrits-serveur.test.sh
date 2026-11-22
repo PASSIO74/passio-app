@@ -98,7 +98,9 @@ create table public.notifications (id text primary key check (id ~ '^[A-Za-z0-9_
 alter table public.notifications enable row level security;
 create policy notifications_select_own on public.notifications for select to authenticated using (user_id = (select auth.uid())::text);
 grant select, insert on public.notifications to authenticated;
-grant select on public.events, public.event_attendees to authenticated;
+-- Comme en production : `events` se lit colonne par colonne (aucun SELECT de table pour les clients).
+grant select (id, organizer_id, author_id, title, status, co_organizers, date_at, end_at, created_at) on public.events to anon, authenticated;
+grant select on public.event_attendees to authenticated;
 create table public.debit_ecritures (minute timestamptz, table_nom text, source text, n integer, primary key (minute, table_nom, source));
 create table public.debit_jour (jour date, cle text, source text, n bigint, primary key (jour, cle, source));
 
@@ -302,6 +304,13 @@ contient "mutation (c) — réglage de diffusion posé pour la session : refusé
 sed "/or p_id like 'n\\\\_sup\\\\_%'/d" "$MIGRATION" > "$TMPM/m4.sql"
 if grep -q "or p_id like 'n\\\\_sup" "$TMPM/m4.sql" || ! grep -q "or p_id like 'n\\\\_sup" "$MIGRATION"; then echo "❌ mutation (d) non posée"; exit 1; fi
 contient "mutation (d) — n_sup_ laissé aux clients : refusée" "RIEN n'est appliqué" "$(APPLIQUER "$TMPM/m4.sql" || true)"
+# (f) sans la garde ON CONFLICT (red team, E) : la ligne d'autrui serait reprise
+GARDE="where n.user_id = excluded.user_id and n.kind = excluded.kind and n.ref_id = excluded.ref_id and n.origine = 'serveur'"
+grep -qF "$GARDE" "$MIGRATION" || { echo "❌ ancre de la mutation (f) introuvable"; exit 1; }
+node -e 'const fs=require("fs");const [s,d,g]=process.argv.slice(1);fs.writeFileSync(d,fs.readFileSync(s,"utf8").split(g).join("where true"));' "$MIGRATION" "$TMPM/m5.sql" "$GARDE" 2>/dev/null \
+  || awk -v g="$GARDE" '{ i = index($0, g); if (i) $0 = substr($0, 1, i - 1) "where true" substr($0, i + length(g)); print }' "$MIGRATION" > "$TMPM/m5.sql"
+grep -qF "$GARDE" "$TMPM/m5.sql" && { echo "❌ mutation (f) non posée"; exit 1; }
+contient "mutation (f) — garde ON CONFLICT retirée : refusée" "RIEN n'est appliqué" "$(APPLIQUER "$TMPM/m5.sql" || true)"
 # (e) la garde : un avis de suppression DIFFÉRENT de celui relu n'est pas remplacé
 Q "create or replace function public.events_prevenir_suppression() returns trigger language plpgsql security definer set search_path to '' as \$f\$ begin return old; end \$f\$;" >/dev/null
 contient "garde — un corps inconnu de l'avis de suppression : rien appliqué" "corps différent de celui relu" "$(APPLIQUER "$MIGRATION" || true)"
@@ -356,10 +365,17 @@ verifier "jamais l'organisatrice, ni qui l'a bloquée, ni un compte en suppressi
 verifier "d'origine serveur, au nom de l'organisatrice, nom échappé, phrase fixe" "serveur|$ORGA|Léa &amp; co a annulé un événement auquel tu participais" \
   "$(Q "select distinct origine || '|' || from_id || '|' || content from public.notifications where ref_id = 'ev_v' and kind = 'event_cancelled';")"
 Q "update public.notifications set seen = true where ref_id = 'ev_v';" >/dev/null
-verifier "une nouvelle annulation, clé NEUVE : aucune ligne de plus, les 99 redeviennent non lues" "100/100|99|99" \
-  "$(PREV "$ORGA" ev_v event_cancelled clevillage09)|$(Q "select count(*) || '|' || count(*) filter (where not seen) from public.notifications where ref_id = 'ev_v' and kind = 'event_cancelled';")"
-verifier "la 4ᵉ annulation de l'heure sur la même activité est refusée" "100/100|debit_activite" \
-  "$(PREV "$ORGA" ev_v event_cancelled clevillage10)|$(PREV "$ORGA" ev_v event_cancelled clevillage11)"
+LUES() { Q "select count(*) || '|' || count(*) filter (where not seen) from public.notifications where ref_id = '$1' and kind = 'event_cancelled';"; }
+# Red team B : sans réactivation, une nouvelle annulation ne touche RIEN (ni ligne, ni « non lu »).
+verifier "ré-annuler SANS réactivation (clé neuve) : 100 comptées, aucune ligne de plus, rien ne redevient non lu" "100/100|99|0" \
+  "$(PREV "$ORGA" ev_v event_cancelled clevillage09)|$(LUES ev_v)"
+Q "update public.events set status = 'active' where id = 'ev_v';" >/dev/null
+Q "update public.events set status = 'cancelled' where id = 'ev_v';" >/dev/null
+verifier "réactivée puis ré-annulée : les 99 redeviennent non lues, sans ligne de plus" "100/100|99|99" \
+  "$(PREV "$ORGA" ev_v event_cancelled clevillage10)|$(LUES ev_v)"
+verifier "la 4ᵉ annulation de l'heure sur la même activité est refusée" "debit_activite" "$(PREV "$ORGA" ev_v event_cancelled clevillage11)"
+verifier "la date de réactivation ne se pose pas par un client (réécrite à l'UPDATE)" "1" \
+  "$(Q "update public.events set reactivee_le = now() + interval '1 year' where id = 'ev_v'; select count(*) from public.events where id = 'ev_v' and reactivee_le < now() + interval '1 day';" | tail -1)"
 verifier "la diffusion n'a pas consommé le plafond ordinaire de l'organisatrice" "" \
   "$(Q "select n from public.debit_ecritures where table_nom = 'notifications' and source = '$ORGA';")"
 peupler ev_m
@@ -383,6 +399,50 @@ contient "anon ne peut pas appeler la fonction" "permission denied" "$(ANON "sel
 Q "insert into public.comptes_en_suppression (user_id, statut) values ('$X', 'en_cours');" >/dev/null
 verifier "un compte en suppression ne diffuse rien" "compte_en_suppression" "$(PREV "$X" ev_v event_update clevillage15)"
 Q "delete from public.comptes_en_suppression where user_id = '$X';" >/dev/null
+# Red team D : une date absente, une création de plus d'un an — la date d'une activité se réécrit.
+peupler ev_sans_date "$ORGA" "null"
+verifier "une activité sans date ne reçoit pas de mise à jour" "activite_sans_date" "$(PREV "$ORGA" ev_sans_date event_update clevillage16)"
+peupler ev_ancienne
+Q "update public.events set created_at = now() - interval '2 years' where id = 'ev_ancienne';" >/dev/null
+verifier "une activité créée il y a plus d'un an (date repoussée) ne reçoit plus de mise à jour" "activite_trop_ancienne" "$(PREV "$ORGA" ev_ancienne event_update clevillage17)"
+# Red team C : une co-organisatrice qui annule après réactivation prévient tout le monde, en son nom.
+CO=ffffffff-ffff-4fff-8fff-ffffffffffff
+Q "insert into public.profiles (id, username) values ('$CO', 'Coline');" >/dev/null
+peupler ev_co
+Q "update public.events set co_organizers = '[\"$CO\"]'::jsonb, status = 'cancelled' where id = 'ev_co';" >/dev/null
+# Pour Coline, l'organisatrice et BLOQ (qui n'a bloqué que l'organisatrice) sont des inscrites : 101 + 1 compte en suppression.
+verifier "l'organisatrice annule (100), puis la co-organisatrice SANS réactivation : 2 nouvelles personnes, rien de repris" "100/100|102/102|101|99" \
+  "$(PREV "$ORGA" ev_co event_cancelled clecoorg01)|$(PREV "$CO" ev_co event_cancelled clecoorg02)|$(Q "select count(*) || '|' || count(*) filter (where from_id = '$ORGA') from public.notifications where ref_id = 'ev_co' and kind = 'event_cancelled';")"
+Q "update public.events set status = 'active' where id = 'ev_co';" >/dev/null
+Q "update public.events set status = 'cancelled' where id = 'ev_co';" >/dev/null
+verifier "après réactivation, la co-organisatrice ré-annule : les 101 avis passent à son nom, non lus" "102/102|101|101|101" \
+  "$(PREV "$CO" ev_co event_cancelled clecoorg03)|$(Q "select count(*) || '|' || count(*) filter (where from_id = '$CO') || '|' || count(*) filter (where not seen) from public.notifications where ref_id = 'ev_co' and kind = 'event_cancelled';")"
+# Red team E : la garde ON CONFLICT — une ligne d'une autre personne et une ligne d'origine client,
+# posées aux identifiants de deux inscrits d'une activité réactivée, ne sont jamais reprises.
+Q "insert into public.events (id, organizer_id, author_id, title, status, date_at) values ('ev_g', '$ORGA', '$ORGA', 'G', 'active', now() + interval '1 day');
+   insert into public.event_attendees (event_id, user_id) values ('ev_g', '$(uidn 1)'), ('ev_g', '$(uidn 2)');
+   insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values
+     ('n_pi_' || left(md5('ev_g|event_cancelled|$(uidn 1)'), 20), '$(uidn 2)', 'event_cancelled', '$X', 'ev_g', 'intact'),
+     ('n_pi_' || left(md5('ev_g|event_cancelled|$(uidn 2)'), 20), '$(uidn 2)', 'event_cancelled', '$X', 'ev_g', 'intact');
+   update public.events set status = 'cancelled' where id = 'ev_g';" >/dev/null
+Q "update public.events set status = 'active' where id = 'ev_g';" >/dev/null
+Q "update public.events set status = 'cancelled' where id = 'ev_g';" >/dev/null
+verifier "garde ON CONFLICT : 0 prévenue sur 2, les deux lignes occupantes intactes (contenu, émetteur, origine client)" "0/2|2" \
+  "$(PREV "$ORGA" ev_g event_cancelled clegarde01)|$(Q "select count(*) from public.notifications where ref_id = 'ev_g' and content = 'intact' and from_id = '$X' and origine = 'client';")"
+# Red team A : deux appels CONCURRENTS sur une activité qui a déjà 2 diffusions dans l'heure. Le
+# premier tient sa transaction ouverte 5 s après son appel ; le second, lancé pendant, doit attendre
+# le verrou puis lire 3 : refusé. Sans verrou, il lisait 2 et passait (4 diffusions).
+Q "delete from public.debit_ecritures where table_nom = 'prevenir_inscrits';" >/dev/null
+peupler ev_conc
+PREV "$ORGA" ev_conc event_update cleconc01 >/dev/null
+PREV "$ORGA" ev_conc event_update cleconc02 >/dev/null
+( AUTH "$ORGA" "select public.prevenir_inscrits_activite('ev_conc', 'event_update', 'cleconc03')->>'ok'; select pg_sleep(5);" > "$TMPM/conc1.txt" ) &
+PID_CONC=$!
+sleep 2
+second="$(PREV "$ORGA" ev_conc event_update cleconc04)"
+wait "$PID_CONC" || true
+verifier "concurrence : la 1ʳᵉ passe, la 2ᵈᵉ (lancée pendant) est refusée ; 3 diffusions, pas 4" "true|debit_activite|3" \
+  "$(head -1 "$TMPM/conc1.txt")|$second|$(Q "select sum(n) from public.debit_ecritures where table_nom = 'prevenir_activite' and source = 'ev_conc|event_update';")"
 # Débit par compte : 20 diffusions par minute, toutes activités confondues. 21 activités d'une
 # personne, 21 appels dans UNE requête (même minute du compteur, quelle que soit la vitesse du poste).
 Q "delete from public.debit_ecritures where table_nom = 'prevenir_inscrits';
@@ -411,7 +471,8 @@ verifier "une ligne serveur HORS diffusion reste comptée" "1" \
 # La suppression d'une grande activité prévient TOUT LE MONDE.
 REMISE
 peupler ev_sup
-verifier "les réglages de diffusion ne survivent pas à la suppression" "|" "$(SUPPRIMER ev_sup | tail -1)"
+# Sans `auth.uid()` (purge d'administration) : le blocage se lit par rapport à l'ORGANISATION.
+verifier "les réglages de diffusion ne survivent pas à la suppression" "|" "$(Q "delete from public.events where id = 'ev_sup'; select coalesce(current_setting('passio.diffusion_inscrits', true), '') || '|' || coalesce(current_setting('passio.notification_serveur', true), '');" | tail -1)"
 verifier "après : supprimer une activité de 102 inscrits en prévient 99 (ni « ne vient pas », ni qui a bloqué, ni le compte en suppression)" "99" \
   "$(Q "select count(*) from public.notifications where ref_id = 'ev_sup' and id like 'n\_sup\_%';")"
 

@@ -2145,7 +2145,7 @@ Mesuré deux fois sur le staging (`npm run village:100`, contrôle A3, séances 
 
 ⚠️ **ET LA SUPPRESSION ÉTAIT PIRE, SANS QUE PERSONNE L'AIT VU.** `events_prevenir_suppression` (12/11) écrit d'un seul `INSERT … SELECT` au nom de l'organisateur : la 61ᵉ ligne lève dans `debit_compter`, l'exception est avalée (« un échec n'empêche jamais la suppression ») et l'INSERT ENTIER est défait. Mesuré au staging dans une transaction annulée : activité de 69 inscrits supprimée → **0 ligne `n_sup_`**. Les 69 lignes `event_join` de la même activité trompent un comptage par `ref_id` seul : compter par préfixe d'identifiant.
 
-`migration_prevenir_inscrits_serveur_2026-11-22.sql` — la **v1** a été appliquée au **staging** le 22/11 (revue n°6013886038, 14/14). Le village à 100 y a alors donné **A3 99/99, 0 doublon**, A4 p95 500 ms et 0 × 429. La **v2**, ci-dessous, intègre la relecture red team du même jour ; elle n'est encore appliquée nulle part (épreuve annulée au staging, par-dessus la v1 : 18/18).
+`migration_prevenir_inscrits_serveur_2026-11-22.sql` — la **v1** a été appliquée au **staging** le 22/11 (revue n°6013886038, 14/14). Le village à 100 y a alors donné **A3 99/99, 0 doublon**, A4 p95 500 ms et 0 × 429. La **v2** puis la **v3**, ci-dessous, intègrent les deux relectures red team du même jour. Elles ne sont encore appliquées nulle part (épreuve annulée au staging, par-dessus la v1 : 18/18 puis 21/21).
 - `prevenir_inscrits_activite(p_event_id, p_genre, p_cle, p_message)` (SECURITY DEFINER) :
   - **Accès** : réservée à l'organisation (`organise_activite`), refusée à un compte en suppression.
   - `event_cancelled` exige l'activité annulée EN BASE.
@@ -2168,10 +2168,38 @@ Mesuré deux fois sur le staging (`npm run village:100`, contrôle A3, séances 
 - ⚠️ **`n_sup_` ÉTAIT PRÉ-OCCUPABLE PAR UN CLIENT** (défaut du 12/11, relevé par la red team). `'n_sup_' || md5(activité || destinataire)` se calcule par n'importe qui. Un inscrit pouvait insérer cet identifiant vers un autre ; à la suppression, `ON CONFLICT DO NOTHING` sautait la victime, qui gardait au contraire un faux message. `identifiant_reserve_au_serveur` réserve désormais `n_pi_` et `n_sup_`.
 - **Gardes** : les corps remplacés sont comparés au md5 normalisé (blancs écrasés) relu en production, ou à celui de la v1 au staging. `trg_rate_limit` doit être lié à `rate_limit_insert('from_id','60')` ou à la fonction de cette migration. Sinon RIEN n'est appliqué.
 
+**v3** (deuxième relecture red team du 22/11, sur `e7d7d07d`), avant la production :
+- **A** — Le plafond de 3 diffusions par heure et par activité se lit et se débite sous `pg_advisory_xact_lock`. Sans ce verrou, N appels parallèles lisaient tous « 2 » et passaient. Le banc l'éprouve avec deux sessions concurrentes.
+- **B** — Une nouvelle annulation ne remet les avis en « non lu » que si l'activité a été RÉACTIVÉE depuis. Cette date, `events.reactivee_le`, est posée par un déclencheur, réécrite à chaque INSERT et UPDATE, et illisible par les clients. Sinon, rien ne bouge.
+- **C** — Une co-organisatrice qui ré-annule après réactivation reprend les avis à son nom : l'émetteur n'entre plus dans la garde `ON CONFLICT`, il est mis à jour.
+- **D** — La date d'une activité se réécrit. Une mise à jour exige donc aussi une date non nulle et une CRÉATION de moins d'un an (`created_at`, posée par le serveur à l'INSERT et figée ensuite).
+- **E** — La garde `ON CONFLICT` est éprouvée : la ligne d'une autre personne et une ligne d'origine client ne sont jamais reprises. C'est le verdict 19 et la mutation (f) du banc.
+- La suppression lit les blocages par rapport à l'ORGANISATION, pas à `auth.uid()`, pour qu'une purge d'administration les respecte.
+
+⚠️ **RÉSERVES DÉCLARÉES** (relecture red team, échéance de reprise le **2026-12-06**) :
+- **Le budget de lignes est tout ou rien, et partagé entre genres.**
+  - 20 modifications d'une activité de 300 inscrits épuisent les 6 000 lignes du jour, et l'annulation suivante répond `debit`, 0 prévenu.
+  - Pour un compte de moins de 7 jours, une activité de plus de 1 500 inscrits n'est jamais annulable avec notification.
+  - La modification et le message groupé partagent les 3 diffusions par heure.
+  - Cible : sortir `event_cancelled` du budget de lignes (une ligne par personne depuis B), et donner un compteur distinct au message groupé.
+- **Le canal de message libre reste ouvert PAR LE CHEMIN CLIENT.**
+  - `notifications_texte_serveur` (12/11), branche `event_update` : `if orga then phrase := c`, soit 240 caractères, 60 par minute, 3 600 par jour.
+  - C'est antérieur à cette PR, qui ne l'aggrave pas. Les plafonds de la RPC ne sont donc PAS la garantie anti-spam.
+  - Cible : une fois tous les clients passés à la RPC, réserver `event_update` et `event_cancelled` aux lignes serveur.
+- **Mineurs, connus :**
+  - la regex du verdict 17 ne voit pas une parenthèse imbriquée ;
+  - des co-organisateurs fantoches multiplient le budget par compte (le plafond par activité reste partagé) ;
+  - l'écart entre les inscrits et `destinataires` révèle combien ont bloqué l'organisatrice ;
+  - les débits sont consommés à perte sur `echec_ecriture` ;
+  - la fenêtre de 60 minutes dépend du cron `purge_debit_ecritures`, sans garde ;
+  - les gardes acceptent un corps portant le marqueur « PASSIO prevenir-inscrits v3 » : une v3 retouchée à la main passerait ;
+  - le message libre part aussi à la liste d'attente et aux « peut-être », par choix de l'organisatrice ;
+  - le contrôle « bloqué » de l'épreuve ne prouve rien en production, où `blocage_pose` efface l'inscription.
+
 Aucun `PREREQUIS-CLIENT` : l'ancien client continue d'écrire lui-même (son plafond ne change pas) ; le nouveau essaie la fonction et, ABSENTE (PGRST202), retombe sur l'ancien chemin, compté. Les deux ordres de mise en ligne sont sûrs.
 
 Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ total, prevenues }` et chaque écran le dit (« Activité annulée — 99 personnes prévenues », « ⚠️ … seulement 60 personnes sur 99 »). Un REFUS ou une panne ne retombe PAS sur l'ancien chemin : il rendrait 60 sur 99 en se croyant utile. Le message groupé part BRUT (la base échappe). `event_cancelled` n'a pas de gabarit de push : le client n'appelle plus `notify-call` pour rien ; `event_update` pousse aux 20 premiers (plafond de `notify-call`, venants d'abord). La suppression n'écrit plus rien côté client : ses lignes partaient après l'effacement et étaient toutes refusées.
 
 ⚠️ **UN PLAFOND PAR ÉMETTEUR NE BORNE PAS UNE DIFFUSION LÉGITIME, IL LA TRONQUE.** Prévenir N personnes est UN geste : il se compte une fois, côté serveur, et l'écran affiche le compte rendu par la base, jamais la longueur de la liste locale.
 
-Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (43). Il mesure d'abord les trois défauts, puis refuse quatre mutations et un corps inconnu. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
+Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (52). Il mesure d'abord les trois défauts, puis refuse cinq mutations et un corps inconnu, et éprouve deux appels CONCURRENTS (A, vérifié par réinjection : sans le verrou, le second passe). Il éprouve aussi la ré-annulation avec et sans réactivation, la co-organisation et la garde `ON CONFLICT`. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.

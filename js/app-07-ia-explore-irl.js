@@ -7329,6 +7329,8 @@ async function _sendEventBroadcast(id) {
     message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
     debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — réessaie plus tard",
     activite_terminee: "⚠️ Activité terminée depuis plus de 2 jours : les inscrits ne reçoivent plus de message",
+    activite_trop_ancienne: "⚠️ Activité créée il y a plus d'un an : les inscrits ne reçoivent plus de message",
+    activite_sans_date: "⚠️ Donne une date à l'activité avant d'écrire aux inscrits",
     debit: "⚠️ Trop d'envois aux inscrits pour l'instant — réessaie plus tard",
   };
   if (v.motif && POURQUOI[v.motif]) toast(POURQUOI[v.motif], "warning");
