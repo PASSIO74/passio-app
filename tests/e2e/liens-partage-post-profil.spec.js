@@ -249,8 +249,12 @@ test.describe("Liens partagés #post-<id> et #user-<id>", () => {
     const debut = corps.indexOf("if (/^\\/[pue]\\//.test(url.pathname)) {");
     expect(debut, "branche des liens courts dans le gestionnaire fetch").toBeGreaterThan(0);
     const bloc = corps.slice(debut, corps.indexOf("\n  }\n", debut));
-    // AVANT toute branche qui met en cache : sinon un 302 serait gardé à vie.
-    expect(debut).toBeLessThan(corps.indexOf("caches.open(CACHE)"));
+    // AVANT toute branche qui met en cache : sinon un 302 serait gardé à vie. Le
+    // rangement passe par `rangerEnCache` depuis le 2026-11-22 (un cache supprimé n'est
+    // jamais recréé) ; l'ancienne forme reste reconnue, c'est la PLACE qui est gardée ici.
+    const premierRangement = corps.search(/rangerEnCache\(|caches\.open\(CACHE\)/);
+    expect(premierRangement, "une branche qui met en cache dans le gestionnaire fetch").toBeGreaterThan(0);
+    expect(debut).toBeLessThan(premierRangement);
     expect(bloc).not.toMatch(/caches\./);
     // Hors navigation, rien ; hors ligne, vers le lien profond (même table que la fonction).
     expect(bloc).toContain('if (e.request.mode !== "navigate") return;');

@@ -23,6 +23,41 @@ function contenuVersionne(url, res) {
   return url.pathname.endsWith(".css") ? /text\/css/i.test(type) : /javascript|ecmascript/i.test(type);
 }
 
+// Ce worker a-t-il été SUPPLANTÉ ? `registration.active` désigne le worker que la
+// registration sert ; il devient le SUIVANT dès que celui-ci s'active, dans ce
+// scope-ci comme dans la page. La comparaison n'affirme la supplantation que
+// PROUVÉE : sans `self.serviceWorker` (Safari < 16), on ne conclut rien.
+function supplante() {
+  try {
+    const actif = self.registration && self.registration.active;
+    return !!(actif && self.serviceWorker && actif !== self.serviceWorker);
+  } catch (e) { return false; }
+}
+
+// ⚠️ NE JAMAIS RESSUSCITER UN CACHE QU'UNE NOUVELLE VERSION VIENT DE VIDER
+// (2026-11-22). `caches.open(nom)` CRÉE le cache quand il n'existe plus, et TOUS les
+// rangements de ce worker partent en tâche de fond : la page a déjà sa réponse, le
+// `put` se règle après. Celui qui se règle APRÈS l'activation du worker suivant —
+// laquelle supprime tous les autres caches — faisait donc REVIVRE l'ancien cache, avec
+// l'entrée qu'il rangeait, jusqu'au déploiement d'après. Vu en CI le 2026-11-22
+// (déploiement 45050821716) : `caches.keys()` à DEUX entrées juste après une mise à
+// jour, l'ancienne créée APRÈS la nouvelle — l'ordre de `keys()` est celui de la
+// création, et c'est lui qui désigne la résurrection.
+// ⚠️ LES DEUX CONDITIONS COMPTENT, et aucune ne suffit : un cache ABSENT n'est pas une
+// supplantation (en dev, `sw.js` est servi tel quel et `CACHE` porte un `Date.now()` —
+// un worker redémarré ouvre un nom neuf, et il doit continuer à ranger), et un worker
+// supplanté peut l'apprendre une microtâche trop tard. On ne refuse donc le rangement
+// que quand le cache a disparu ET qu'une autre version a pris la main ; reste une
+// fenêtre de l'ordre de la microtâche (supplantation entre `has` et `open`), contre la
+// durée entière d'un aller-retour réseau avant ce correctif.
+// Ne JAMAIS revenir à `caches.open(CACHE)` sur un chemin de rangement.
+// Verrou : tests/unit/sw-cache-non-ressuscite.test.mjs.
+function rangerEnCache(requete, reponse) {
+  return caches.has(CACHE)
+    .then(encore => ((encore || !supplante()) ? caches.open(CACHE).then(c => c.put(requete, reponse)) : null))
+    .catch(() => {});
+}
+
 // Répond au message SKIP_WAITING
 self.addEventListener("message", e => {
   if (e.data && e.data.type === "SKIP_WAITING") e.waitUntil(self.skipWaiting());
@@ -514,7 +549,7 @@ self.addEventListener("fetch", e => {
             // caches.open ; res part vers le navigateur en parallèle).
             if (res && res.ok) {
               const copy = res.clone();
-              caches.open(CACHE).then(c => c.put(cle, copy)).catch(() => {});
+              rangerEnCache(cle, copy);
             }
             return res;
           });
@@ -559,7 +594,7 @@ self.addEventListener("fetch", e => {
         .then(res => {
           if (res && res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+            rangerEnCache(e.request, copy);
           }
           return res;
         })
@@ -602,13 +637,15 @@ self.addEventListener("fetch", e => {
     // sur 9 sous WebKit — la page relisait l'ancienne feuille et gardait son secours sans
     // empreinte ; avec, 0 sur 18 sur chaque moteur.
     // Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑧ (scripts), ⑩ (feuille).
+    // ⚠️ SUPPLANTÉ, CE WORKER NE RANGE PLUS (`rangerEnCache`) — il répond quand même :
+    // la page a son script, et c'est le worker suivant qui garde la version suivante.
     if (e.request.cache === "reload") {
       e.respondWith(
         fetch(e.request)
           .then(res => {
             if (!contenuVersionne(url, res)) return res;
             const copy = res.clone();
-            return caches.open(CACHE).then(c => c.put(e.request, copy)).then(() => res, () => res);
+            return rangerEnCache(e.request, copy).then(() => res);
           })
           .catch(() => new Response("", { status: 503 }))
       );
@@ -620,7 +657,7 @@ self.addEventListener("fetch", e => {
         .then(cached => cached || fetch(e.request).then(res => {
           if (contenuVersionne(url, res)) {
             const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+            rangerEnCache(e.request, copy);
           }
           return res;
         }))
@@ -635,7 +672,7 @@ self.addEventListener("fetch", e => {
       const network = fetch(e.request).then(res => {
         if (res && res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+          rangerEnCache(e.request, copy);
         }
         return res;
       }).catch(() => {

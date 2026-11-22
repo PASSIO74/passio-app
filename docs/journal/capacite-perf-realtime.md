@@ -39,6 +39,7 @@
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+- 🪦 UN RANGEMENT EN RETARD RESSUSCITAIT LE CACHE DE L'ANCIENNE VERSION (2026-11-22)
 
 ---
 
@@ -3255,3 +3256,60 @@ chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation
 
 Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
 et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).
+
+## 🪦 UN RANGEMENT EN RETARD RESSUSCITAIT LE CACHE DE L'ANCIENNE VERSION (2026-11-22)
+
+**Le symptôme, et il vient de la CI.** Le déploiement de `main` (exécution `45050821716`,
+commit `515e7f42`) est tombé sur le job « Suites navigateur (1/6) », aux trois essais :
+`app-scripts-par-fichier.spec.js` ④ — « prémisse : le cache de A a été vidé » — relevait
+`caches.keys()` à **DEUX** entrées juste après la mise à jour de A vers B, là où le cas en
+attend une.
+
+**La cause, lue dans l'ordre des clés.** `caches.keys()` rend les noms dans l'ordre de
+CRÉATION : l'entrée en trop arrivait APRÈS celle de B. Ce n'était donc pas une suppression
+en retard, c'était une **création** — `caches.open(nom)` CRÉE le cache quand il n'existe
+plus. Tous les rangements du `fetch` de `sw.js` partent en tâche de fond (la page a déjà
+sa réponse, le `put` se règle après) : celui du worker de A qui se règle APRÈS l'activation
+du worker de B — laquelle supprime tous les autres caches — rouvrait le cache de A, avec
+l'entrée qu'il rangeait. Fenêtre = la durée d'un aller-retour réseau, et le cas ④ démarre
+l'application sans route, donc avec sa vraie activité de fond (la liste des passions, le
+manifeste, les icônes).
+
+**Ce que ça coûtait en production** : un cache orphelin de l'ancienne version sur
+l'appareil, jamais relu, jusqu'à la mise en ligne suivante (son `activate` le supprime à
+son tour). Jamais un mélange de versions — l'adresse d'un fichier versionné porte son
+empreinte — mais du stockage gardé pour rien, et la promesse « l'activation vide l'ancien
+cache » fausse.
+
+**Le correctif (`sw.js`)** : un seul point de rangement, `rangerEnCache`, qui refuse
+d'ouvrir le cache quand il a disparu ET qu'une autre version a pris la main
+(`supplante()` : `registration.active` ≠ `self.serviceWorker`). `install` garde son
+`caches.open(CACHE)` — créer ce cache est son rôle.
+- ⚠️ **LES DEUX CONDITIONS COMPTENT.** Un cache absent n'est pas une supplantation : en
+  dev, `sw.js` est servi tel quel et `CACHE` porte un `Date.now()`, donc un worker
+  redémarré ouvre un nom NEUF et doit continuer à ranger (sinon `sw-page-revalidee` garde
+  une page qu'aucun worker n'a rangée). Et la supplantation peut s'apprendre une
+  microtâche trop tard : sans le test du cache, la résurrection resterait possible.
+  Il reste une fenêtre de l'ordre de la microtâche (supplantation entre `has` et `open`),
+  contre un aller-retour réseau entier avant ce lot.
+- ⚠️ **LA PREUVE DE SUPPLANTATION EST FACULTATIVE, PAS LA GARDE** : sans
+  `self.serviceWorker` (Safari < 16), `supplante()` ne conclut rien et le comportement
+  reste celui d'avant — on ne refuse jamais un rangement sur une supposition.
+- ⚠️ **`liens-partage-post-profil` ⑪ lisait le nom de l'ancienne forme** (« la branche des
+  liens courts est AVANT toute branche qui met en cache », par `indexOf("caches.open(CACHE)")`) :
+  sans adaptation, `indexOf` rendait −1 et le cas passait au vert pour la mauvaise raison,
+  puis rougissait. Il cherche désormais le premier rangement, ancienne forme ou nouvelle.
+
+**Verrou : `tests/unit/sw-cache-non-ressuscite.test.mjs` (4 cas).** Le VRAI `sw.js`
+exécuté en machine virtuelle (comme `rappels.test.mjs`), un CacheStorage de banc qui se
+comporte comme celui du navigateur (`open` crée l'absent, `keys()` suit l'ordre de
+création), et la course JOUÉE À L'ENVERS : le réseau ne rend sa réponse qu'une fois le
+cache supprimé et le worker suivant activé. ④ garde le revers (un cache absent sans
+supplantation se range toujours). Mutations : rendre `rangerEnCache` à
+`caches.open(CACHE).then(c => c.put(…))` → ① rougit ; refuser sur le seul cache absent →
+④ rougit.
+
+⚠️ **CE QUI N'A PAS ÉTÉ MESURÉ D'ICI** : l'agent de réparation n'a ni navigateur ni droit
+d'exécuter `node` — la cause est établie par lecture (l'ordre des clés, les chemins de
+`sw.js`), pas par reproduction locale. Le verrou unitaire et la CI du job
+« Suites navigateur » en sont la mesure.
