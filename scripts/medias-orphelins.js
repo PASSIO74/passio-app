@@ -23,9 +23,11 @@
 // publications perso de chaque compte. Six objets (12 Mo) y étaient référencés.
 // **Une mesure spectaculaire se re-vérifie avant d'y croire.**
 //
-// D'où QUATRE gardes, dont trois sont mécaniques :
+// Le mode destructif est désormais suspendu : les gardes historiques ci-dessous
+// ne prouvent pas un instantané commun des références.
+// QUATRE gardes historiques, dont trois mécaniques :
 //
-//   ① RAPPORT PAR DÉFAUT. `--appliquer` est le seul chemin qui supprime.
+//   ① RAPPORT SEUL. `--appliquer` refuse avant credential et HTTP.
 //   ② ÂGE MINIMUM (30 j). Un média fraîchement déposé n'a pas encore sa ligne :
 //      l'upload précède l'INSERT du post de quelques centaines de millisecondes,
 //      et une publication hors ligne peut attendre des heures dans sa file.
@@ -70,7 +72,7 @@
 // dans `purge-e2e-storage.js`.
 //
 //   npm run medias:orphelins                 (rapport seul, ne supprime rien)
-//   npm run medias:orphelins -- --appliquer  (supprime, avec les quatre gardes)
+//   npm run medias:orphelins -- --appliquer  (refus : instantané non prouvé)
 //   npm run medias:orphelins -- --age 90     (durcit le seuil d'âge)
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
@@ -195,6 +197,14 @@ async function supprimer(cfg, seau, noms) {
 async function main() {
   const args = process.argv.slice(2);
   const appliquer = args.includes("--appliquer");
+  // Des pages toutes lisibles ne constituent pas un instantané : une écriture
+  // concurrente peut déplacer une référence hors des pages lues. Jusqu'à un
+  // protocole temporel revu, refuser AVANT credential et HTTP, sans repli.
+  if (appliquer) {
+    console.error("GC_SNAPSHOT_REQUIRED : suppression suspendue ; les références paginées ne prouvent pas l'absence de lien. Utiliser le rapport seul.");
+    process.exitCode = 2;
+    return;
+  }
   const iAge = args.indexOf("--age");
   const ageMinJours = iAge >= 0 ? Number(args[iAge + 1]) : AGE_MIN_JOURS;
   if (!Number.isFinite(ageMinJours) || ageMinJours < 1) {
@@ -237,7 +247,7 @@ async function main() {
 
   console.log(`TOTAL : ${totalOrph} orphelins, ${mo(poidsOrph)}.`);
   if (!appliquer) {
-    console.log("\nRapport seul — rien n'a été supprimé. Ajouter `-- --appliquer` pour purger.");
+    console.log("\nRapport seul — rien n'a été supprimé. GC_SNAPSHOT_REQUIRED : suppression suspendue jusqu'à un protocole temporel revu.");
     return;
   }
   if (totalOrph > PLAFOND_SUPPRESSIONS) {

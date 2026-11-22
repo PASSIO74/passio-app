@@ -15,6 +15,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { chargerFonction, requete } from "./lib/executer-fonction.mjs";
 
+import { connexionRecente as vraieConnexionRecente } from "../../supabase/functions/_shared/connexion-recente.js";
+
 const SOURCE = fs.readFileSync("supabase/functions/delete-account/index.ts", "utf8");
 const URL_FN = "https://banc.example/functions/v1/delete-account";
 const MOI = "11111111-1111-4111-8111-111111111111";
@@ -38,7 +40,7 @@ const MODULES = {
     traiterSuppression: async (admin, uid) => { banc.appels.push({ quoi: "traiterSuppression", admin, uid }); return banc.suppression; },
   },
   "../_shared/connexion-recente.js": {
-    connexionRecente: (auth, secondes) => { banc.appels.push({ quoi: "connexionRecente", auth, secondes }); return banc.recente; },
+    connexionRecente: (auth, secondes) => { banc.appels.push({ quoi: "connexionRecente", auth, secondes }); return banc.recente === null ? vraieConnexionRecente(auth, secondes) : banc.recente; },
     REPONSE_REAUTH: REAUTH,
   },
   "../_shared/revision.js": { REVISION: "revision-du-banc" },
@@ -121,4 +123,16 @@ test("⑤ le contrat de réponse vit dans la purge : statut et corps rendus tels
     assert.deepEqual(r.corps, suppression.body);
     assert.equal(r.entetes.get("Content-Type"), "application/json");
   }
+});
+
+test("TOTP récent sans connexion primaire récente : 403, aucun accès privilégié", async () => {
+  remettre({recente:null});
+  for (const amr of [[{method:"totp",timestamp:Math.floor(Date.now()/1000)}], [{method:"password",timestamp:1},{method:"totp",timestamp:Math.floor(Date.now()/1000)}], []]) {
+    const jeton="e30."+Buffer.from(JSON.stringify({amr})).toString("base64url")+".sig";
+    const r=await appeler({}, {jeton});
+    assert.equal(r.status,403);
+    assert.equal(r.corps.code,"reauth_requise");
+  }
+  assert.equal(banc.appels.filter(a=>a.quoi==="traiterSuppression").length,0);
+  assert.ok(banc.clients.every(c=>c.cle==="cle-anon"));
 });

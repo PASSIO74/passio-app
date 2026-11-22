@@ -19,6 +19,7 @@
 - 🪧 L'AFFICHE DE LA RENCONTRE — un QR imprimable, suivi jusqu'à l'inscription (2026-11-01)
 - 💌 « INVITER DES AMIS » — la porte contournait la boucle d'invitation (2026-11-09)
 - ✂️ LIEN COMPACT ET MESSAGE COURT — le texte sous l'aperçu WhatsApp était illisible (2026-11-14)
+- 🧭 AUDIT DES ROUTES NETLIFY — netlify.toml l'emportait sur _headers (2026-11-15)
 
 ---
 
@@ -311,3 +312,34 @@ suivi à l'ancien format, le lien reste INTACT — on ne perd jamais une donnée
 « Je t'invite ! … Tu viens ? 👇 », « Viens voir <nom> sur PASSIO 👇 », « Regarde ce qu'a partagé <auteur> sur
 PASSIO 👀 » (l'extrait n'est plus recopié — PAR-C10 tient : l'auteur reste nommé), « Regarde la bobine de… 🎬 ».
 Verrous : `apercu-liens.test.mjs` ② ter et `lot12-partage.spec.js` ②bis.
+
+---
+
+## 🧭 AUDIT DES ROUTES NETLIFY — netlify.toml l'emportait sur _headers (2026-11-15)
+
+Relevé né de la relecture de #920 : chaque route de `netlify.toml`, de `_headers` et des trois Edge Functions
+(`/p/* /u/* /e/*` apercu, `/demo/*`, `/media/*`) confrontée à ce que `scripts/build.js` met dans `dist/`, puis
+**mesurée en production** par `curl -D -` (jamais par le seul banc). Il n'existe ni `_redirects` ni règle
+`[[redirects]]` : l'app route par le hash, les liens courts passent par l'Edge Function.
+
+**Faux, corrigé :**
+- **`netlify.toml` gagne sur `_headers`** pour un même en-tête sur un même chemin. `/sw.js` et `/manifest.json` étaient
+  servis `no-cache` (règle du toml) pendant que `_headers` — et le banc `entetes-coherence` ②, qui ne lit QUE ce
+  fichier — disaient `no-store`. Un vert sur une intention qui n'était pas servie. Le cache n'a plus qu'une source :
+  `_headers` ; le toml ne garde que le bloc `/*` (CSP identique, ①). Verrou ⑤.
+- **`/pilotage/manifest.webmanifest` servi en `application/octet-stream`** → `application/manifest+json`.
+- Verrou ⑥ : toute règle de `_headers` doit correspondre à une source de `dist/` (aucune route morte aujourd'hui).
+
+**Mesuré juste, laissé tel quel :**
+- `js/vendor/*` (supabase-js, maplibre) et `fonts/*` sont servis `max-age=0, must-revalidate` (un 304 par ouverture),
+  quand `app/*` est `immutable`. Écart VOULU, pas un défaut : Netlify applique la règle de cache aux 404 aussi, et un
+  onglet resté sur l'ancienne version qui redemande `supabase-js-<ancienne>.js` après une montée, puis un retour arrière,
+  garderait ce 404 un an — `app/*` a dû s'en défendre par une redemande `cache: "reload"` (scripts/build.js), les
+  chargeurs de `js/vendor/` n'en ont pas. Ne pas y poser de cache long sans leur donner la même reprise.
+- `/p/<id>?plk=…&a=1` → `302 Location: /?plk=…#post-<id>` : le 302 de l'aperçu ne recopie PAS la requête d'origine
+  (seul `plk` passe, voulu). `/u/<id>` invalide → `/`. Un robot d'aperçu reçoit la carte (`max-age=300`, CSP bac à sable).
+- `/media/…?width=192&quality=75&next=…` → `301` vers Supabase AVEC `&next=…` : le piège du 12/11 (Netlify recopie la
+  requête dans le `Location` d'un 301 dont la cible n'a pas de requête), toujours là, toujours inoffensif — l'hôte cible reste
+  Supabase, `object/public` ignore les paramètres. À re-mesurer si ce renvoi vise un jour autre chose qu'un objet public.
+- Les réponses d'Edge Function ne reçoivent pas les `[[headers]]` : chacune pose son bac à sable (`sandbox; default-src 'none'`).
+- 404 : page Netlify, `max-age=0` — aucune règle `immutable` n'y fuit (`/app.js` n'a plus de règle).

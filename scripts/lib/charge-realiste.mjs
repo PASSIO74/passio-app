@@ -268,8 +268,39 @@ export function statistiques(mesures) {
   return { tentatives: mesures.length, succes: succes.length, erreurs,
     tauxErreur: mesures.length ? erreurs / mesures.length : null,
     p50Ms: percentile(mesures.map(m => m.ms), .5), p95Ms: percentile(mesures.map(m => m.ms), .95),
+    p99Ms: percentile(mesures.map(m => m.ms), .99),
     p95SuccesMs: percentile(succes.map(m => m.ms), .95),
     octets: mesures.reduce((s, m) => s + (m.octets || 0), 0), motifs };
+}
+
+// Proportions réalisées, tentatives échouées comprises, jamais le programme
+// théorique des acteurs. Les cycles de compteurs ne sont pas des actions UI.
+// Noms fermés : aucune valeur libre de télémétrie n'entre dans le rapport.
+export function mixObserve(mesures) {
+  const actions = new Set(["fil", "notifications", "evenements", "profil", "message", "publier", "historique", "aimer"]);
+  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "compteur_like_visible",
+    "post_publier", "post_visibilite", "message_envoyer", "message_lire", "notifications", "evenements", "profil", "historique", "aimer", "retirer_like"]);
+  const realises = mesures.filter(m => m.phase === "mesure");
+  function repartir(lignes, famille) {
+    const groupes = new Map();
+    for (const m of lignes) {
+      const cle = famille(m), g = groupes.get(cle) || { famille: cle, tentatives: 0, succes: 0, erreurs: 0 };
+      g.tentatives++; if (m.ok) g.succes++; else g.erreurs++;
+      groupes.set(cle, g);
+    }
+    return { total: lignes.length, familles: [...groupes.values()].sort((a, b) => a.famille.localeCompare(b.famille))
+      .map(g => ({ ...g, pourcentage: Math.round(g.tentatives * 1_000_000 / lignes.length) / 10_000 })) };
+  }
+  return {
+    portee: "tentatives observees en phase mesure uniquement ; pourcentages arrondis, echecs inclus",
+    actions: repartir(realises.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles"),
+      m => actions.has(m.famille) ? m.famille : "autre"),
+    appelsHttp: repartir(realises.filter(m => m.type === "http"), m => {
+      const methode = ["GET", "POST", "DELETE", "HEAD"].includes(m.methode) ? m.methode : "AUTRE";
+      return methode + ":" + (http.has(m.famille) ? m.famille : "autre");
+    }),
+    cyclesCompteurs: realises.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
+  };
 }
 
 export function verdictPalier({ http, parcours, realtime, messages, posts, connectes, attendus, termine, fatal, scenario = "complet" }) {

@@ -8,7 +8,14 @@
 #   ① base sans migration : delete-account RETENUE (objets nommés) ;
 #   ② barrière v2 seule (colonne `tentative_vivante` retirée, `auth_echec`
 #      absent du source) : encore RETENUE — v3 exigée, pas « une barrière » ;
-#   ③ v3 appliquée : autorisé ; export-account facultatif absent : ⚠️ dit, code 0 ;
+#   ③ v3 appliquée : autorisé ; export médias absent : retenu ; notify-call reste facultatif ;
+#   ③ bis `--partiel` (2026-11-21) : la retenue d'UNE fonction ne retient plus les
+#      autres — code 0, le plan part dans $GITHUB_OUTPUT (deployables, retenues) ;
+#   ③ ter une cible SANS la table `reglages_distants` n'est pas une cible illisible :
+#      la fonction qui exige le réglage est retenue, les autres partent ; l'état du
+#      réglage se lit à chaque passage, même sans fonction à vérifier ;
+#   ③ quater `--en-service` : les prérequis d'une fonction servie non redéployée sont
+#      RELUS — absents, rien n'est retenu, mais c'est dit (`sans_prerequis`) ;
 #   ④ lecture seule : la requête ne peut pas écrire (read only) ;
 #   ⑤ une fonction hors manifeste ne se déploie pas ;
 #   ⑥ MUTATION : retirer l'objet obligatoire du manifeste → le banc rougit ici
@@ -94,9 +101,62 @@ JOUER "delete-account"
 verifier "code 0 : delete-account peut partir" "0" "$CODE"
 verifier "…prérequis présents" "1" "$(printf '%s\n' "$SORTIE" | grep -c "✅ delete-account : prérequis présents" || true)"
 JOUER "delete-account export-account notify-call"
-verifier "export-account (instantané absent) : dégradée, code 0" "0" "$CODE"
-verifier "…⚠️ dit" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ export-account : dégradée" || true)"
+verifier "export-account (instantané médias absent) : retenu, code 1" "1" "$CODE"
+verifier "…retenue dite" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account : RETENUE" || true)"
 verifier "…et notify-call (mentions serveur absentes) aussi" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ notify-call : dégradée" || true)"
+JOUER "delete-account notify-call"
+verifier "notify-call facultatif reste non bloquant" "0" "$CODE"
+
+echo "── ③ bis --partiel : UNE FONCTION RETENUE NE RETIENT PLUS LES AUTRES ────"
+# Le défaut du 20/11 (run 44831711346) : un prérequis absent pour une fonction retenait les six.
+PLAN="$BASE/plan.txt"
+JOUER_PARTIEL() { : > "$PLAN"; set +e; SORTIE="$(cd "$RACINE" && GITHUB_OUTPUT="$PLAN" node scripts/verifier-prerequis-fonctions.mjs --fonctions "$1" --psql "$CONN" --partiel 2>&1)"; CODE=$?; set -e; }
+JOUER_PARTIEL "delete-account export-account notify-call"
+verifier "code 0 : la cible a été lue, le job tranche après le déploiement des autres" "0" "$CODE"
+verifier "…export-account retenue, dite" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account : RETENUE" || true)"
+verifier "…le plan : delete-account et notify-call partent" "deployables=delete-account notify-call" "$(grep '^deployables=' "$PLAN")"
+verifier "…export-account ne part pas" "retenues=export-account" "$(grep '^retenues=' "$PLAN")"
+verifier "…et c'est dit : le run finira rouge" "1" "$(printf '%s\n' "$SORTIE" | grep -c "RETENUE PARTIELLE : export-account" || true)"
+JOUER_PARTIEL "delete-account notify-call"
+verifier "sans retenue : code 0, tout part" "deployables=delete-account notify-call|retenues=" "$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")"
+JOUER "delete-account export-account notify-call"
+verifier "sans --partiel, le contrat d'avant tient : code 1" "1" "$CODE"
+JOUER_PARTIEL "fonction-inconnue"
+verifier "--partiel n'ouvre rien : une fonction hors manifeste sort en 2, sans plan" "2|" "$CODE|$(cat "$PLAN")"
+
+echo "── ③ ter SANS reglages_distants : UN RÉGLAGE ABSENT, PAS UNE CIBLE ILLISIBLE ─"
+# Écrite en clair dans la requête, une table absente la faisait échouer EN ENTIER : la retenue d'une fonction
+# redevenait totale sur une cible neuve (relecture adverse du 21/11). Elle est nommée dans une requête différée.
+verifier "prémisse : cette base n'a pas la table" "" "$(Q "select to_regclass('public.reglages_distants');")"
+JOUER_PARTIEL "delete-account private-media"
+verifier "code 0 : la lecture n'échoue pas en entier" "0" "$CODE"
+verifier "…private-media retenue, le réglage nommé parmi ce qui manque" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ private-media : RETENUE — manque : reglage:medias_proteges.actif:booleen" || true)"
+verifier "…delete-account part" "deployables=delete-account" "$(grep '^deployables=' "$PLAN")"
+verifier "…l'état est lu « false » : absent vaut fermé, comme pour le serveur" "etat_medias_proteges_actif=false" "$(grep '^etat_' "$PLAN")"
+Q "create table public.reglages_distants (cle text primary key, valeur jsonb not null); insert into public.reglages_distants values ('medias_proteges', '{\"actif\": true}');" >/dev/null
+JOUER_PARTIEL ""
+verifier "rien n'est en retard (--fonctions \"\") : aucune fonction — jamais « toutes » —, l'état est lu pour la fumée" "0|deployables=|retenues=|etat_medias_proteges_actif=true" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")|$(grep '^etat_' "$PLAN")"
+verifier "…et aucune fonction n'est dite vérifiée" "0" "$(printf '%s\n' "$SORTIE" | grep -c "prérequis présents\|RETENUE" || true)"
+JOUER_PARTIEL "private-media"
+verifier "réglage posé à true : il ne manque plus à private-media (restent ses registres)" "0" "$(printf '%s\n' "$SORTIE" | grep "❌ private-media : RETENUE" | grep -c "reglage:medias_proteges.actif:booleen" || true)"
+Q "update public.reglages_distants set valeur = '{\"actif\": \"true\"}' where cle = 'medias_proteges';" >/dev/null
+JOUER_PARTIEL "private-media"
+verifier "une chaîne « true » n'est pas un booléen : le réglage manque, et l'état est lu « false »" "1|etat_medias_proteges_actif=false" "$(printf '%s\n' "$SORTIE" | grep "❌ private-media : RETENUE" | grep -c "reglage:medias_proteges.actif:booleen" || true)|$(grep '^etat_' "$PLAN")"
+Q "drop table public.reglages_distants;" >/dev/null
+
+echo "── ③ quater --en-service : CE QUI TOURNE EST RELU, JAMAIS RETENU ─────────"
+# Ne vérifier que ce qui part cessait de relire les prérequis des autres : une dérive en base sous une
+# fonction en service ne se voyait plus (seconde contre-revue du 21/11).
+JOUER_SERVIES() { : > "$PLAN"; set +e; SORTIE="$(cd "$RACINE" && GITHUB_OUTPUT="$PLAN" node scripts/verifier-prerequis-fonctions.mjs --fonctions "$1" --en-service "$2" --psql "$CONN" --partiel 2>&1)"; CODE=$?; set -e; }
+JOUER_SERVIES "delete-account" "export-account notify-call"
+verifier "code 0 : delete-account part, rien n'est retenu" "0|deployables=delete-account|retenues=" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")"
+verifier "…export-account, en service sans son instantané, est dite" "sans_prerequis=export-account" "$(grep '^sans_prerequis=' "$PLAN")"
+verifier "…nommée avec ce qui manque" "1" "$(printf '%s\n' "$SORTIE" | grep -c "❌ export-account (en service, non redéployée) : PRÉREQUIS ABSENT" || true)"
+verifier "…notify-call (facultatif absent) : dite, sans compter" "1" "$(printf '%s\n' "$SORTIE" | grep -c "⚠️ notify-call (en service, non redéployée) : facultatif absent" || true)"
+verifier "…et le run finira rouge, c'est annoncé" "1" "$(printf '%s\n' "$SORTIE" | grep -c "EN SERVICE SANS PRÉREQUIS : export-account" || true)"
+JOUER_SERVIES "" "delete-account"
+verifier "rien à déployer, delete-account en service et en règle : plan vide, rien à signaler" "0|deployables=|retenues=|sans_prerequis=" "$CODE|$(grep '^deployables=' "$PLAN")|$(grep '^retenues=' "$PLAN")|$(grep '^sans_prerequis=' "$PLAN")"
+verifier "…le plan porte son témoin" "plan=lu" "$(grep '^plan=' "$PLAN")"
 
 echo "── ④ LECTURE SEULE ───────────────────────────────────────────────────────"
 verifier "une écriture dans la même forme de transaction est refusée" "REFUSE" "$(if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -1 -v ON_ERROR_STOP=1 -c "set transaction read only; create table public.tentative_ecriture (x int);" >/dev/null 2>&1; then echo OK; else echo REFUSE; fi)"
@@ -105,7 +165,9 @@ verifier "…la table n'existe pas" "" "$(Q "select 1 from information_schema.ta
 echo "── ⑤ UNE FONCTION HORS MANIFESTE NE SE DÉPLOIE PAS ────────────────────"
 JOUER "fonction-inconnue"
 verifier "code 2" "2" "$CODE"
-verifier "…nommée" "1" "$(printf '%s\n' "$SORTIE" | grep -c "fonction inconnue du manifeste" || true)"
+# Sous GitHub Actions le refus est dit DEUX fois (le journal, et l'annotation `::error` de la page du run) : on compte chacune.
+verifier "…nommée" "1" "$(printf '%s\n' "$SORTIE" | grep -c "^❌ fonction inconnue du manifeste" || true)"
+verifier "…et sous GitHub Actions, dite aussi sur la page du run" "1" "$(cd "$RACINE" && GITHUB_ACTIONS=true node scripts/verifier-prerequis-fonctions.mjs --fonctions fonction-inconnue --psql "$CONN" 2>&1 | grep -c "^::error title=Retenue — cible non vérifiable::fonction inconnue du manifeste" || true)"
 
 echo "── ⑥ MUTATION : un manifeste sans l'objet obligatoire laisserait partir la fonction ─"
 MUT="$BASE/prerequis-mute.json"

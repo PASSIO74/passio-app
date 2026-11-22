@@ -63,7 +63,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { fetch-depth: 1 }
+        with:
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -71,6 +73,7 @@ jobs:
 
       # Sur une PR qui touche ce canal : on éprouve les fonctions pures, rien d'autre.
       - name: Verrous unitaires
+        if: github.event_name == 'pull_request'
         run: node --test tests/unit/veille-production.test.mjs
 
       # La clé anon de production est publique et vit dans js/app-08 : on la lit
@@ -89,6 +92,33 @@ jobs:
           echo "::add-mask::${cle}"
           echo "cle=${cle}" >> "${GITHUB_OUTPUT}"
 
+      - name: Sonder le jeton github isolément
+        if: github.event_name != 'pull_request'
+        id: sonde_github
+        env:
+          SENTINELLE_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "mesure=$(node scripts/sonder-jeton-ci.mjs github)" >> "$GITHUB_OUTPUT"
+
+      - name: Sonder le jeton supabase isolément
+        if: github.event_name != 'pull_request'
+        id: sonde_supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "mesure=$(node scripts/sonder-jeton-ci.mjs supabase)" >> "$GITHUB_OUTPUT"
+
+      - name: Sonder le jeton netlify isolément
+        if: github.event_name != 'pull_request'
+        id: sonde_netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "mesure=$(node scripts/sonder-jeton-ci.mjs hebergement)" >> "$GITHUB_OUTPUT"
+
       - name: Verdict
         if: github.event_name != 'pull_request'
         id: verdict
@@ -97,8 +127,7 @@ jobs:
           SUPABASE_PROJECT_REF: njkiyoklssvefstljemx
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_ANON_KEY: ${{ steps.anon.outputs.cle }}
-          SENTINELLE_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          PASSIO_JETONS_CI: '{"github":${{ steps.sonde_github.outputs.mesure }},"supabase":${{ steps.sonde_supabase.outputs.mesure }},"netlify":${{ steps.sonde_netlify.outputs.mesure }}}'
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PASSIO_PROD_URL: https://passio-app.netlify.app

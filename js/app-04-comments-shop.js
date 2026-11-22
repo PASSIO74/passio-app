@@ -452,7 +452,7 @@ function _liensMessage(safe) {
 }
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
-    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
+    ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(txt) + '="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
     : _linkifyText(escapeHtml(txt || ""));
 }
 // Ouvre le profil d'un pseudo @mentionné (recherche insensible à la casse dans
@@ -939,7 +939,7 @@ function _reponseLigneHtml(postId, r, _selfIds) {
   if (r.type === "gif_reaction") {
     const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
     const _gifHtml = _looksLikeMediaUrl(r.text)
-      ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+      ? `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text)}="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
       : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
     return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
       <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
@@ -1315,7 +1315,7 @@ function openCommentReactors(threadId, commentId, event) {
     var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
     var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
     var _face = _looksLikeMediaUrl(r.text)
-      ? '<img loading="lazy" src="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.text) + '="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(r.text || "❤️") + '</span>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
       + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + escapeJsArg(r.authorId) + '\',\'' + escapeJsArg(rSrc) + '\')">' + avatarInner(_av) + '</div>'
@@ -1433,7 +1433,7 @@ function _openReactorsList(items, event) {
   var rowsHtml;
   function face(t) {
     return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
-      ? '<img loading="lazy" src="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(t) + '="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(t || "❤️") + '</span>';
   }
   if (withAuthors) {
@@ -3689,7 +3689,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
   stageSend.onclick = function (ev) { ev.stopPropagation(); commit(); };
   stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
   function pickEmoji(e) { _staged = { kind: "emoji", val: e }; stageFace.textContent = e; stageFace.innerHTML = e; stage.style.display = "flex"; }
-  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
+  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img ' + passioMediaProteges.attributImage(url) + '="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
 
   var content = document.createElement("div");
 
@@ -5364,7 +5364,7 @@ function _renderVisitedEvents() {
     var emoji = e.emoji || "📍";
     try { if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍"; } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
     var quand = "";
     try { quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (x) {}
@@ -5487,15 +5487,16 @@ function _renderVisitedContent() {
           // Cellule d'un tiers d'écran (≤ 180 px) : la vignette, jamais la grande
           // (≤ 2 048 px) — la grille du profil VISITÉ avait été oubliée par le lot
           // images légères (contre-revue du 21/09). Une légère passe telle quelle.
-          var src = p.image ? passioThumb(p.image, 360) : "";
+          var src = p.image ? passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360) : "";
           if (!src) return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';
-          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
+          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune photo");
   } else if (single === "bobines") {
     var bobines = posts.filter(function(p) { return p.isReel && (p.video || p.image); });
     el.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
           var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="ouvrirBobineDepuisProfil(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
@@ -6939,7 +6940,7 @@ function renderConvFpThread(c, displayName) {
     var _altAuteur = escapeHtml(isMe ? "toi" : (m.fromName || c.userName || "l'autre personne"));
     if (m.gif) {
       isMedia = true; isVisuel = true;
-      content = '<img alt="GIF envoyé par ' + _altAuteur + '" src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+      content = '<img alt="GIF envoyé par ' + _altAuteur + '" ' + passioMediaProteges.attributImage(m.gif) + '="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true; isVisuel = true;
       // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
@@ -8046,7 +8047,10 @@ async function _forwardTo(targetConvId) {
     content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
     localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
   }
-  else { localMsg.text = m.text || ""; }
+  else {
+    localMsg.text = m.text || "";
+    localMsg._msgRawContent = JSON.stringify({ type: "text", text: localMsg.text });
+  }
   // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
   // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
   // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
@@ -8066,7 +8070,7 @@ async function _forwardTo(targetConvId) {
   target.lastAt = Date.now();
   saveConversations();
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    var raw = content ? JSON.stringify(content) : (localMsg.text || "");
+    var raw = content ? JSON.stringify(content) : localMsg._msgRawContent;
     var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
     // ⚠️ Le verdict de l'écriture DOIT être lu. Ce chemin avalait les deux
     // callbacks (`.then(function(){}, function(){})`) : un transfert dont
@@ -8106,12 +8110,47 @@ async function _forwardTo(targetConvId) {
 // Les messages vocaux (audio/webm ou "Message vocal (Xs)") vont vers le lecteur intégré
 // (m.voiceData) ; les autres fichiers audio restent des pièces jointes téléchargeables.
 // `raw` est optionnel : par défaut on tente de décoder m.text.
-function applyMsgContentData(m, raw) {
-  var src = (raw === undefined || raw === null) ? m.text : raw;
-  if (!src || typeof src !== "string" || src.trim().charAt(0) !== "{") return;
+// B06-N1 / D06-03 : une enveloppe invalide reste UNE bulle, jamais un fil vide.
+// Partagé par la liste, le rejeu et le temps réel ; aucune coercition d'objet hostile.
+function _messageContentData(raw) {
+  if (raw == null || raw === "") return { type: "text", text: "" };
+  if (typeof raw !== "string") return null;
   var d;
-  try { d = JSON.parse(src); } catch (e) { return; }
-  if (!d || !d.type) return;
+  try { d = JSON.parse(raw); } catch (e) {
+    return /^[\s]*[\[{]/.test(raw) ? null : { type: "text", text: raw };
+  }
+  if (!d || typeof d !== "object") return { type: "text", text: raw };
+  if (Array.isArray(d)) return null;
+  if (["text", "t", "gif", "location", "media", "audio", "doc", "react", "del"].indexOf(d.type) < 0) return null;
+  var strings = ["text", "url", "fileType", "filename", "target", "emoji", "op"];
+  if (strings.some(function(k) { return d[k] != null && typeof d[k] !== "string"; })) return null;
+  for (var name of ["sp", "rt"]) {
+    if (d[name] == null) continue;
+    if (typeof d[name] !== "object" || Array.isArray(d[name])) return null;
+    var keys = name === "sp" ? ["e", "c", "n", "ph"] : ["id", "t", "n"];
+    if (keys.some(function(k) { return d[name][k] != null && typeof d[name][k] !== "string"; })) return null;
+  }
+  if (["gif", "media", "audio", "doc"].indexOf(d.type) >= 0 && typeof d.url !== "string") return null;
+  if (d.type === "location" && (typeof d.lat !== "number" || !Number.isFinite(d.lat) || Math.abs(d.lat) > 90 ||
+      typeof d.lng !== "number" || !Number.isFinite(d.lng) || Math.abs(d.lng) > 180)) return null;
+  if ((d.type === "react" || d.type === "del") && (typeof d.target !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(d.target))) return null;
+  if (d.type === "react" && (typeof d.emoji !== "string" || !d.emoji || (d.op != null && d.op !== "add" && d.op !== "remove"))) return null;
+  return d;
+}
+function applyMsgContentData(m, raw) {
+  // Le rendu peut repasser après le chargement et après sauvegarde locale.
+  // Revalider l'enveloppe d'origine, jamais le texte qu'elle contenait : un
+  // texte comme « [rdv demain] » n'est pas une nouvelle enveloppe JSON.
+  var src = (raw === undefined || raw === null)
+    ? (typeof m._msgRawContent === "string" ? m._msgRawContent : m.text) : raw;
+  if (typeof src === "string") m._msgRawContent = src;
+  var d = _messageContentData(src);
+  if (!d) {
+    m.text = "[Message invalide]";
+    try { if (typeof diagLog === "function") diagLog("msg_forme_invalide"); } catch (e) {}
+    return;
+  }
+  if (typeof m.text !== "string") m.text = "";
   // ⚠️ L'IDENTITÉ VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE (PRO-02, 2026-09-14).
   // `sp` (cf. _withSenderMeta, app-02) est écrit par l'ÉMETTEUR dans `content`,
   // que tout membre d'une conversation peut poser librement. Il primait sur la
@@ -8163,7 +8202,7 @@ function applyMsgContentData(m, raw) {
     m.fileName = d.filename;
     m.fileType = d.type;
   }
-  if (d.text && m.text !== d.text) m.text = d.text;
+  if (typeof d.text === "string" && m.text !== d.text) m.text = d.text;
 }
 
 // Téléchargement doc depuis store global
@@ -8420,7 +8459,7 @@ function sendMessageFp(convId, displayName) {
   var msgId = "msg_" + uid();
   // `de` : le compte RÉEL qui a écrit ce message (AUTH-06) — c'est lui, et lui
   // seul, qui autorise un renvoi manuel reconstruit depuis le texte.
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending", de: _fileProprietaire() };
+  var _localMsg = { id: msgId, from: "me", text: txt, _msgRawContent: JSON.stringify({ type: "text", text: txt }), at: Date.now(), status: "sending", de: _fileProprietaire() };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -8438,7 +8477,7 @@ function sendMessageFp(convId, displayName) {
   try { renderMessages(); } catch(e) {}
 
   // 7. Envoyer à Supabase (statut + file d'attente hors-ligne)
-  var _content = _withSenderMeta(txt); // attache le profil actif (persona)
+  var _content = _withSenderMeta(_localMsg._msgRawContent); // texte littéral, puis profil actif
   if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
   _sendTextToSupa(convId, msgId, _content);
 }

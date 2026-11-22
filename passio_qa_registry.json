@@ -196,6 +196,38 @@
   },
   "incidents": [
     {
+      "id": "IRL-MAP-029",
+      "severite": "P2",
+      "domaine": "Rencontrer / navigation",
+      "statut": "FIXED_LOCALLY",
+      "detecte_le": "2026-11-17",
+      "symptome": "Voir l’activité depuis la carte agrandie ne montre pas la fiche.",
+      "cause_racine": "La carte plein écran (z-index 9000) restait au-dessus de la fiche ouverte (z-index 200).",
+      "empreinte": "fiche masquee @ Rencontrer / carte plein ecran vers activite",
+      "impact": {
+        "utilisateurs": null,
+        "appareils": null,
+        "note": "Signalement utilisateur ; audience non mesurée."
+      },
+      "reproduction": "tests/e2e/irl-carte-fiche.spec.js",
+      "preuve_avant": "Sans correctif et après réinjection : 1 failed, 1 passed ; couche tactile Expected: true, Received: false.",
+      "preuve_apres": "Avec correctif : 2 passed (14.4s), vraie carte MapLibre et vrai bouton de popup.",
+      "mutation_teste": true,
+      "correctif": {
+        "fichiers": [
+          "js/app-07-ia-explore-irl.js"
+        ],
+        "resume": "Fermer le plein écran et réutiliser son entrée via pushOverlayHistory ; ignorer une cible absente avant navigation."
+      },
+      "regression": [
+        "npm run verif et suites voisines : résultats détaillés dans docs/journal/social-messagerie.md"
+      ],
+      "test_permanent": "tests/e2e/irl-carte-fiche.spec.js",
+      "commit": null,
+      "risque_residuel": "Exécution locale Chrome mobile ; CI et déploiement restent à vérifier.",
+      "prevention": "Vérifier elementFromPoint, un seul overlay, retour navigateur, re-rendu et réouverture de carte."
+    },
+    {
       "id": "CI-GATE-001",
       "severity": "P1",
       "domain": "ci_release_gate",

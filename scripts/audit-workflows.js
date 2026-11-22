@@ -1314,6 +1314,12 @@ function commandesDuWorkflow(texte) {
   return sortie;
 }
 
+// Le dépôt accepte des segments littéraux. Une référence locale ne porte jamais de révision.
+function cheminLocalValide(local) {
+  return local === "" || local.split("/").every(segment =>
+    /^[A-Za-z0-9._-]+$/.test(segment) && segment !== "." && segment !== ".." && segment.toLowerCase() !== ".git");
+}
+
 /** Règles sur un texte de workflow : rend la liste des défauts, sans lire le disque. */
 function auditerWorkflow(nom, texte) {
   const defauts = [];
@@ -1327,7 +1333,13 @@ function auditerWorkflow(nom, texte) {
   for (const chemin of runsNonChaines(lu.doc)) defauts.push(`${nom}:? : \`${chemin}\` n'est pas une chaîne — forme que la gate ne lit pas`);
   for (const { valeur, cle, ligne, litteral, libelle, run } of lu.chaines) {
     const ou = (n) => `${nom}:${ligne === null ? "?" : litteral ? ligne + n : ligne}`;
-    if (cle === "uses" && !valeur.startsWith("./") && !/@[0-9a-f]{40}$/.test(valeur)) defauts.push(`${ou(0)} : action non épinglée par SHA (${valeur})`);
+    if (cle === "uses") {
+      if (valeur.startsWith("./") || valeur.startsWith("$/")) {
+        if (!cheminLocalValide(valeur.slice(2))) defauts.push(`${ou(0)} : chemin d'action locale invalide (${valeur})`);
+      } else if (!/@[0-9a-f]{40}$/.test(valeur) || /^[.$/\\]/.test(valeur)) {
+        defauts.push(`${ou(0)} : action non épinglée par SHA (${valeur})`);
+      }
+    }
     if (cle === "version" && /^latest$/i.test(valeur.trim())) defauts.push(`${ou(0)} : \`version: latest\` n'est pas figé`);
     if (!libelle) for (const { n, d } of defautsDuShell(valeur)) defauts.push(`${ou(n)} : ${d}`);
     if (run) {
@@ -1416,11 +1428,13 @@ function actionsComposites(textes, { actions, racine }) {
     try {
       parcourir(lireYaml(t), [], (v, chemin) => {
         if (chemin[chemin.length - 1] === "uses" && v.startsWith("./")) locales.add(v.slice(2).trim());
+        if (chemin[chemin.length - 1] === "uses" && v.startsWith("$/")) locales.add(v.slice(2));
       });
     } catch {
       // illisible : la gate le refuse déjà, au fichier lui-même
     }
     for (const local of locales) {
+      if (!cheminLocalValide(local)) continue;
       for (const f of ["action.yml", "action.yaml"]) {
         const rel = path.posix.join(local.replace(/\/+$/, "") || ".", f);
         if (rel.startsWith("..")) continue;

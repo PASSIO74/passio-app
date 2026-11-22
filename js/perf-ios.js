@@ -48,6 +48,10 @@
   var MAX_METRICS = 60;                     // garde-fou : pas d'explosion de noms
   var samples = Object.create(null);        // métrique → [ms]
   var counters = Object.create(null);       // compteur → n
+  // Nombre d'enregistrements REÇUS par métrique, jamais plafonné : c'est lui qui
+  // dit « quelque chose de neuf est arrivé ». La taille de l'anneau (`n`, ≤ 120)
+  // ne le dit plus dès que la fenêtre est pleine — voir `snapshot`.
+  var recus = Object.create(null);          // métrique → nombre d'enregistrements
   var startedAt = Date.now();
 
   function record(metric, ms) {
@@ -60,6 +64,7 @@
     var a = samples[k];
     a.push(Math.round(ms * 100) / 100);
     if (a.length > MAX_SAMPLES) a.splice(0, a.length - MAX_SAMPLES);
+    recus[k] = (recus[k] || 0) + 1;
   }
   function bump(name, n) {
     var k = String(name).slice(0, 40);
@@ -306,13 +311,38 @@
   // métrique (duration_ms = p95, le chiffre qui décide) + un événement de
   // contexte. Volume borné : au plus MAX_METRICS + 1 événements par appel, et le
   // client de télémétrie plafonne déjà à 400 événements/minute.
+  //
+  // ⚠️ UNE MÉTRIQUE NE REPART QUE SI ELLE A BOUGÉ (2026-11-20, audit « 100 000 »,
+  // AFF-02 / CLIC-04). Chaque photo réémettait l'agrégat CUMULÉ de TOUTES les
+  // métriques, inchangé ou non : mesuré sur 72 h de production, `perf` faisait
+  // 77 % de la télémétrie, dont 83 % de photos « periodic » (une valeur mesurée
+  // une seule fois par session, `gate_ready`, revenait ~18 fois). À 2 000–5 000
+  // onglets ouverts, ce flux seul dépassait le plafond de débit de la base
+  // (4 200 lignes/min), qui refuse alors les lots ENTIERS — erreurs et flows
+  // compris. On n'échantillonne pas un agrégat (telemetry.js, `ECH_PERF`) : on
+  // cesse de le RÉPÉTER. La dernière ligne émise d'une métrique reste sa valeur
+  // à jour, puisqu'une métrique sans nouvel échantillon n'a pas changé.
+  // `ios_context` suit la même règle : il ne repart qu'avec une métrique, ou si
+  // ses compteurs (longues tâches, saccades) ont bougé.
+  // ⚠️ « A BOUGÉ » SE LIT SUR LES ENREGISTREMENTS REÇUS (`recus`), JAMAIS SUR `n`
+  // (contre-revue du 20/11, B1). `n` est la taille de l'anneau : à 120, il ne
+  // bouge plus alors que les valeurs changent. Le premier jet comparait `n` — les
+  // métriques les plus actives (image par image, touchers) se figeaient à leur
+  // valeur du 120ᵉ échantillon, photo de sortie comprise.
+  var _recusEmis = {};      // métrique → `recus` à sa dernière émission
+  var _ctxEmis = null;      // empreinte des compteurs du dernier `ios_context`
   function snapshot(labelPhase) {
     var r = report();
     var ph = String(labelPhase || "auto").slice(0, 24);
     var names = Object.keys(r.metrics);
+    var emises = 0;
     for (var i = 0; i < names.length; i++) {
       var s = r.metrics[names[i]];
       if (!s) continue;
+      var vus = recus[names[i]] || 0;
+      if (_recusEmis[names[i]] === vus) continue;   // rien de neuf depuis sa dernière ligne
+      _recusEmis[names[i]] = vus;
+      emises++;
       emit("ios_stat_" + names[i], s.p95, {
         phase: ph, n: s.n, p50: s.p50, p99: s.p99, mn: s.mn, mx: s.mx, avg: s.avg,
       });
@@ -321,9 +351,57 @@
     var m = { phase: ph, uptime_s: r.uptime_s,
       sup_longtask: r.support.longtask ? 1 : 0, sup_event: r.support.event_timing ? 1 : 0,
       longtask_n: counters.longtask_n || 0, tbt_ms: counters.tbt_ms || 0, jank_n: counters.jank_n || 0 };
-    for (var k in ctx) if (Object.prototype.hasOwnProperty.call(ctx, k)) m[k] = ctx[k];
-    emit("ios_context", null, m);
+    var empreinteCtx = m.longtask_n + "|" + m.tbt_ms + "|" + m.jank_n;
+    if (emises > 0 || _ctxEmis !== empreinteCtx) {
+      _ctxEmis = empreinteCtx;
+      for (var k in ctx) if (Object.prototype.hasOwnProperty.call(ctx, k)) m[k] = ctx[k];
+      emit("ios_context", null, m);
+    }
     return r;
+  }
+  // ─── Quand photographier : la mesure de performance CÈDE sous la pression ───
+  // `perf` est la famille la plus volumineuse et la moins urgente. Dédoublonner
+  // ne suffit pas à l'échelle : une seule photo vaut ~12 lignes, et 500 sessions
+  // qui démarrent par minute en font 6 000 — plus que le plafond de la base. La
+  // règle est donc : au moindre signal de pression, AUCUNE photo automatique
+  // (ni t45, ni périodique, ni arrière-plan, ni sortie). Deux signaux :
+  //   · la production est en délestage (js/reglages-distants.js, facteur 2 ou 4) ;
+  //   · CET appareil s'est vu refuser un lot pour débit (429) il y a peu
+  //     (`tel.sousPression()`, js/telemetry.js).
+  // Rien n'est marqué « émis » pendant ce silence : la pression passée, la photo
+  // suivante emporte tout ce qui a bougé entre-temps.
+  // La photo PÉRIODIQUE demande en plus que quelqu'un regarde : onglet masqué,
+  // rien ne bouge à l'écran, et le passage en arrière-plan a déjà pris sa photo.
+  function sousPression() {
+    try {
+      var f = (typeof W.delestageFacteur === "function") ? W.delestageFacteur() : 1;
+      if (f === 2 || f === 4) return true;
+    } catch (e) {}
+    try { if (W.tel && typeof W.tel.sousPression === "function" && W.tel.sousPression()) return true; } catch (e) {}
+    return false;
+  }
+  function photoUtile(phase) {
+    if (sousPression()) return false;
+    if (phase === "periodic") {
+      try { if (document.visibilityState === "hidden") return false; } catch (e) {}
+    }
+    return true;
+  }
+  // La seule porte des photos AUTOMATIQUES. `snapshot()` reste l'outil nu (API
+  // publique, bancs, baseline à la main) : lui ne juge de rien.
+  function photo(phase) {
+    if (!photoUtile(phase)) return false;
+    snapshot(phase);
+    return true;
+  }
+  // La cadence périodique S'ESPACE : 3, 6, 12, 24 min, puis toutes les 30 min.
+  // Les agrégats d'une session convergent — la dixième photo d'une demi-heure
+  // n'apprend presque rien de plus que la quatrième, et c'est la dernière
+  // (arrière-plan, sortie) qui porte l'état final.
+  var SNAP_FIRST_MS = 45000, SNAP_EVERY_MS = 180000, SNAP_MAX_MS = 1800000;
+  function delaiPeriodique(k) {
+    var d = SNAP_EVERY_MS * Math.pow(2, Math.max(0, Math.min(k | 0, 10)));
+    return d > SNAP_MAX_MS ? SNAP_MAX_MS : d;
   }
 
   // ─── Parcours instrumentés ─────────────────────────────────────────────────
@@ -476,16 +554,53 @@
     }
     setTimeout(fn, 0);
   }
-  var SNAP_FIRST_MS = 45000, SNAP_EVERY_MS = 180000;
+  // Le battement périodique, nommé pour que le banc éprouve CE que le minuteur
+  // exécute (`_tickPeriodique`), et non une copie de sa condition. La décision
+  // se prend au battement ; la photo, elle, attend un moment d'oisiveté.
+  function tickPeriodique() {
+    if (!photoUtile("periodic")) return false;
+    whenIdle(function () { snapshot("periodic"); });
+    return true;
+  }
+  // La cadence ne s'espace que sur une photo PRISE : un battement refusé (onglet
+  // masqué, pression) ne compte pas, sinon une longue absence repoussait la
+  // photo du retour à 30 min (contre-revue du 20/11).
+  var _photosPeriodiques = 0;
+  function armerPeriodique() {
+    setTimeout(function () {
+      var prise = false;
+      try { prise = tickPeriodique(); } catch (e) {}
+      if (prise) _photosPeriodiques++;
+      armerPeriodique();
+    }, delaiPeriodique(_photosPeriodiques));
+  }
   setTimeout(function () {
-    whenIdle(function () { snapshot("t45"); });
-    setInterval(function () { whenIdle(function () { snapshot("periodic"); }); }, SNAP_EVERY_MS);
+    whenIdle(function () { photo("t45"); });
+    armerPeriodique();
   }, SNAP_FIRST_MS);
   // Dernière photo avant la fermeture : c'est la session la plus longue qui porte
   // les p99 intéressants, et c'est justement celle qu'on perdrait sans ceci.
   W.addEventListener("pagehide", function () {
-    try { snapshot("exit"); if (W.tel && W.tel.flush) W.tel.flush({ keepalive: true }); } catch (e) {}
+    try { if (photo("exit") && W.tel && W.tel.flush) W.tel.flush({ keepalive: true }); } catch (e) {}
   });
+  // Passage en arrière-plan : sur mobile, c'est souvent la DERNIÈRE occasion —
+  // le système tue l'onglet masqué sans `pagehide`. Puisque la photo périodique
+  // ne tourne plus onglet masqué, celle-ci emporte l'état du moment ; le
+  // dédoublonnage la rend gratuite quand rien n'a bougé depuis la précédente.
+  // Pas avant t45 : une session éclair n'a encore rien de stable à dire, et
+  // `pagehide` reste là pour elle.
+  function surArrierePlan() {
+    try {
+      if (document.visibilityState !== "hidden") return false;
+      if (Date.now() - startedAt < SNAP_FIRST_MS) return false;
+      if (!photo("hidden")) return false;
+      if (W.tel && W.tel.flush) W.tel.flush({ keepalive: true });
+      return true;
+    } catch (e) { return false; }
+  }
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("visibilitychange", surArrierePlan);
+  }
 
   // ─── API publique ──────────────────────────────────────────────────────────
   W.PassioPerf = {
@@ -498,11 +613,19 @@
     journey: journey,
     report: report,
     snapshot: snapshot,
+    // Pour les bancs : le battement périodique, sa cadence et la porte des photos
+    // automatiques — ce que les minuteurs exécutent réellement, pas une copie de
+    // leurs conditions. (Le passage en arrière-plan s'éprouve par son événement.)
+    _tickPeriodique: tickPeriodique,
+    _delaiPeriodique: delaiPeriodique,
+    _photo: photo,
     context: domContext,
     // baseline() : le rapport en JSON lisible, à copier tel quel dans le dossier
     // de mesure (docs/PERF_IOS_BASELINE.md). Aucun chiffre n'est inventé : ce qui
     // n'a pas été mesuré n'apparaît pas.
     baseline: function () { return JSON.stringify(report(), null, 2); },
-    reset: function () { samples = Object.create(null); counters = Object.create(null); startedAt = Date.now(); },
+    // Remise à zéro complète : les compteurs repartent de 0, donc la mémoire de
+    // ce qui a été émis aussi — sinon une métrique revenue au même compte serait tue.
+    reset: function () { samples = Object.create(null); counters = Object.create(null); recus = Object.create(null); startedAt = Date.now(); _recusEmis = {}; _ctxEmis = null; },
   };
 })();

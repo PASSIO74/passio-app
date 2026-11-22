@@ -232,6 +232,9 @@ let erreurs = [];
 async function preparer(page) {
   page.on("pageerror", (e) => erreurs.push(String(e && e.message)));
   await page.addInitScript(({ local, uid }) => {
+    // Lot 4 du 2026-11-15 : la nouvelle version s'applique sans le délai tiré au hasard
+    // de la production (js/pwa-detect.js) — ce banc mesure le chargement, pas l'étalement.
+    window.__passioMajImmediate = true;
     window.__ordre = window.__ordre || [];
     // La sonde : chaque script du bloc, quand il a tourné (son `load` part après son
     // exécution), avant le `onload` du chargeur (capture) — et l'état du document au

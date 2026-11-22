@@ -733,3 +733,8 @@ Le cas du **QR de pointage** est le pire : on est physiquement devant l'organisa
 - `NOTIF-FORGE-009` : n'importe quel compte peut insérer une notification au nom d'un autre. Migration prête, **non appliquée**. Les correctifs de cette nuit ferment l'**affichage**, pas l'**écriture**.
 - **36 findings de moindre gravité** non vérifiés faute de budget lors du premier audit. Une seconde passe adversariale a été lancée sur les plus prometteurs.
 - **PR #201 « CI Node 24 »** — GitHub retire Node 20 des runners le **23 septembre 2026** ; passé cette date, toute la chaîne s'arrête. Le correctif est prêt et minimal, mais il touche `.github/`, donc la garde « Gouvernance critique » exige une contre-revue humaine ancrée sur le SHA. Elle a refusé la PR : c'est le comportement voulu, **et je ne l'ai pas contournée**. C'est la seule chose qui attend vraiment Benjamin.
+
+
+## 2026-11-17 — IRL-MAP-029 : fiche depuis la carte agrandie
+
+Codex corrige la navigation : sortie du plein écran et réutilisation de son entrée. Reproduction et réinjection : `1 failed, 1 passed`, couche tactile `Expected: true / Received: false`. Avec correctif : `2 passed (14.4s)`. Contre-revue : subagent audit-passio, aucun défaut bloquant. Détail : `docs/journal/social-messagerie.md`. Statut : FIXED_LOCALLY, livraison suivie dans la PR.

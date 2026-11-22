@@ -24,6 +24,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 
+import * as M_APPELS from "../../supabase/functions/_shared/appels.js";
+
 const SOURCE = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
 const MOI = "11111111-1111-4111-8111-111111111111";
 const LUI = "22222222-2222-4222-8222-222222222222";
@@ -51,12 +53,13 @@ const MODULES_DE = (appelsActifs) => ({
     createClient: () => ({
       auth: { getUser: async () => (banc.user ? { data: { user: banc.user }, error: null } : { data: { user: null }, error: { message: "jeton" } }) },
       from: (table) => constructeur(table),
+      rpc: async (nom, args) => { banc.appels.push({ table: "rpc", nom, args }); return banc.rpc; },
     }),
   },
   "npm:web-push@3.6.7": { default: { setVapidDetails() {}, sendNotification: async () => ({ statusCode: 201 }) } },
   "../_shared/push-sur.js": { endpointPushSur: () => true, envoyerPushBorne: (f, s, c, o) => f(s, c, o), MAX_ABONNEMENTS_LUS: 10 },
   "../_shared/plafond.js": {
-    verifierPlafondEnBase: async () => banc.plafond,
+    verifierPlafondEnBase: async (_admin, _uid, nom, plafond) => { banc.appels.push({ table: "plafond", nom, plafond }); return nom === "notify-call-ice" ? banc.plafondIce : banc.plafond; },
     reponsePlafond: () => new Response(JSON.stringify({ error: "plafond" }), { status: 429 }),
   },
   "../_shared/lien-metier.js": {
@@ -67,10 +70,12 @@ const MODULES_DE = (appelsActifs) => ({
   },
   "../_shared/reception.js": { adresseAccuse: () => ({ accuse: null }), TTL_NOTIFS_MS: 3600 * 1000 },
   "../_shared/appels.js": {
+    ...M_APPELS,
     APPELS_ACTIFS: appelsActifs,
+    iceAutorise: (o) => M_APPELS.iceAutorise({ ...o, appelsActifs }),
     pousserAppareils: async (o) => { banc.appels.push({ table: "pousserAppareils", args: [o.charge, o.options] }); return { sent: o.abonnements.length, morts: banc.morts }; },
     serveursIceDepuisCloudflare: (r) => (r && Array.isArray(r.iceServers) ? r.iceServers : []),
-    TTL_ICE_S: 21600,
+    TTL_ICE_S: M_APPELS.TTL_ICE_S,
   },
   "../_shared/revision.js": { REVISION: "banc" },
 });
@@ -128,7 +133,9 @@ function remettre({ user = { id: MOI }, env = {}, tables = { blocks: PERSONNE, p
     SUPABASE_URL: "https://banc.supabase.co", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service",
     VAPID_PUBLIC_KEY: "pub", VAPID_PRIVATE_KEY: "priv", ...env,
   };
-  banc.tables = tables;
+  banc.tables = { video_lives: { data: [{ status: "live", last_seen: new Date().toISOString() }], error: null }, call_invites: { data: [{ created_at: new Date().toISOString() }], error: null }, ...tables };
+  banc.rpc = { data: true, error: null };
+  banc.plafondIce = { ok: true };
   banc.appels = [];
   banc.journaux = [];
   banc.fetch = null;
@@ -178,7 +185,7 @@ test("② un appel pendant le pilote : 503 appels_desactives, rien n'est poussé
 
 test("③ `ice`, relais coupé (secrets absents) : liste vide, `configure: false`, jamais en cache, Cloudflare jamais appelé", async () => {
   remettre();
-  const r = await appeler({ type: "ice" });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r.status, 200);
   assert.equal(r.cache, "no-store");
   assert.deepEqual(r.corps, { ok: true, iceServers: [], configure: false });
@@ -189,27 +196,27 @@ test("④ `ice`, relais en place : Cloudflare reçoit la clé et le jeton NETTOY
   remettre({ env: { TURN_CF_KEY_ID: " cle0123456789abcdef\n", TURN_CF_API_TOKEN: "jeton-secret-du-banc\n" } });
   const relais = { urls: ["turn:turn.cloudflare.com:3478?transport=udp"], username: "u", credential: "c" };
   banc.fetch = async () => new Response(JSON.stringify({ iceServers: [relais] }), { status: 201 });
-  const r = await appeler({ type: "ice" });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r.status, 200);
   assert.equal(r.cache, "no-store");
-  assert.deepEqual(r.corps, { ok: true, iceServers: [relais], ttl: 21600, configure: true });
+  assert.deepEqual(r.corps, { ok: true, iceServers: [relais], ttl: 3600, configure: true });
   const [url, init] = banc.appels.find((a) => a.table === "fetch").args;
   assert.equal(url, "https://rtc.live.cloudflare.com/v1/turn/keys/cle0123456789abcdef/credentials/generate-ice-servers");
   assert.equal(init.headers.Authorization, "Bearer jeton-secret-du-banc");
-  assert.deepEqual(JSON.parse(init.body), { ttl: 21600 });
+  assert.deepEqual(JSON.parse(init.body), { ttl: 3600 });
 });
 
 test("⑤ `ice`, Cloudflare en panne : un REPLI prévu (200, `turn_indisponible`), journalisé avec le statut — jamais le jeton", async () => {
   remettre({ env: { TURN_CF_KEY_ID: "cle0123456789abcdef", TURN_CF_API_TOKEN: "jeton-secret-du-banc" } });
   banc.fetch = async () => new Response("oups", { status: 503 });
-  const r = await appeler({ type: "ice" });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r.status, 200);
   assert.deepEqual(r.corps, { ok: false, iceServers: [], configure: true, code: "turn_indisponible" });
   assert.ok(banc.journaux.some((j) => /Cloudflare a répondu 503/.test(j)), banc.journaux.join(" | "));
   // Une exception (réseau, abandon) : même repli, le nom de l'erreur seulement.
   remettre({ env: { TURN_CF_KEY_ID: "cle0123456789abcdef", TURN_CF_API_TOKEN: "jeton-secret-du-banc" } });
   banc.fetch = async () => { throw Object.assign(new Error("connexion refusée jeton-secret-du-banc"), { name: "TypeError" }); };
-  const r2 = await appeler({ type: "ice" });
+  const r2 = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r2.status, 200);
   assert.equal(r2.corps.code, "turn_indisponible");
   assert.ok(banc.journaux.some((j) => /relais TURN : TypeError/.test(j)), banc.journaux.join(" | "));
@@ -218,7 +225,7 @@ test("⑤ `ice`, Cloudflare en panne : un REPLI prévu (200, `turn_indisponible`
 
 test("⑥ `ice`, identifiant de clé hors forme : coupé ET journalisé (`cle_invalide`), Cloudflare jamais appelé", async () => {
   remettre({ env: { TURN_CF_KEY_ID: "clé avec espaces", TURN_CF_API_TOKEN: "jeton-secret-du-banc" } });
-  const r = await appeler({ type: "ice" });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r.status, 200);
   assert.deepEqual(r.corps, { ok: false, iceServers: [], configure: false, code: "cle_invalide" });
   assert.ok(banc.journaux.some((j) => /TURN_CF_KEY_ID hors forme/.test(j)));
@@ -228,7 +235,7 @@ test("⑥ `ice`, identifiant de clé hors forme : coupé ET journalisé (`cle_in
 
 test("⑦ `ice`, session anonyme : rien (`compte_requis`), Cloudflare jamais appelé", async () => {
   remettre({ user: { id: MOI, is_anonymous: true }, env: { TURN_CF_KEY_ID: "cle0123456789abcdef", TURN_CF_API_TOKEN: "jeton-secret-du-banc" } });
-  const r = await appeler({ type: "ice" });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" });
   assert.equal(r.status, 200);
   assert.deepEqual(r.corps, { ok: false, iceServers: [], code: "compte_requis" });
   assert.equal(banc.appels.filter((a) => a.table === "fetch").length, 0);
@@ -236,7 +243,7 @@ test("⑦ `ice`, session anonyme : rien (`compte_requis`), Cloudflare jamais app
 
 test("⑧ sans session : 401, avant toute lecture du corps", async () => {
   remettre({ user: null });
-  const r = await appeler({ type: "ice" }, { auth: false });
+  const r = await appeler({ type: "ice", liveId: "vl_banc" }, { auth: false });
   assert.equal(r.status, 401);
   assert.equal(banc.appels.filter((a) => a.table === "fetch").length, 0);
 });
@@ -329,4 +336,38 @@ test("⑰ abonnements morts (404/410) : supprimés APRÈS l'envoi, par leur adre
   const suppression = banc.appels.filter((a) => a.table === "push_subscriptions");
   assert.ok(suppression.some((a) => a.m === "delete"), "une suppression part");
   assert.ok(suppression.some((a) => a.m === "in" && a.args[0] === "endpoint" && a.args[1][0] === banc.morts[0]));
+});
+
+test("TURN : contexte absent, malformé, invisible, périmé, futur ou lecture en panne — aucun appel fournisseur", async () => {
+  for (const corps of [{type:"ice"}, {type:"ice",liveId:"x,y"}, {type:"ice",callId:"c_banc"}]) {
+    remettre();
+    const r=await appeler(corps);
+    assert.equal(r.corps.code,"contexte_refuse");
+    assert.equal(r.cache,"no-store");
+    assert.equal(banc.appels.filter(a=>a.table==="fetch").length,0);
+  }
+  for (const rpc of [{data:false,error:null},{data:true,error:{message:"panne"}},{data:null,error:null}]) {
+    remettre(); banc.rpc=rpc;
+    assert.equal((await appeler({type:"ice",liveId:"vl_banc"})).corps.code,"contexte_refuse");
+    assert.equal(banc.appels.filter(a=>a.table==="fetch").length,0);
+  }
+  for (const ligne of [{status:"ended",last_seen:new Date().toISOString()}, {status:"live",last_seen:new Date(Date.now()-121000).toISOString()}, {status:"live",last_seen:new Date(Date.now()+60000).toISOString()}, {status:"live",last_seen:"invalide"}]) {
+    remettre({tables:{video_lives:{data:[ligne],error:null}}});
+    assert.equal((await appeler({type:"ice",liveId:"vl_banc"})).corps.code,"contexte_refuse");
+    assert.equal(banc.appels.filter(a=>a.table==="fetch").length,0);
+  }
+  remettre({tables:{video_lives:{data:null,error:{message:"panne"}}}});
+  assert.equal((await appeler({type:"ice",liveId:"vl_banc"})).corps.code,"contexte_refuse");
+  assert.equal(banc.appels.filter(a=>a.table==="fetch").length,0);
+});
+test("TURN : plafond propre avant le fournisseur ; appel lié seulement quand activé et récent", async () => {
+  remettre(); banc.plafondIce={ok:false};
+  assert.equal((await appeler({type:"ice",liveId:"vl_banc"})).status,429);
+  assert.equal(banc.appels.filter(a=>a.table==="fetch").length,0);
+  assert.deepEqual(banc.appels.find(a=>a.nom==="notify-call-ice").plafond,{parMinute:6,parHeure:30});
+  remettre();
+  assert.equal((await appeler({type:"ice",callId:"c_banc"},{appels:true})).corps.configure,false);
+  assert.equal(banc.appels.find(a=>a.table==="rpc").nom,"call_partie_prenante");
+  remettre({tables:{call_invites:{data:[{created_at:new Date(Date.now()-3601000).toISOString()}],error:null}}});
+  assert.equal((await appeler({type:"ice",callId:"c_banc"},{appels:true})).corps.code,"contexte_refuse");
 });

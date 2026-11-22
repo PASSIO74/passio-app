@@ -86,12 +86,12 @@ test("⑥ coût : forfaits payés + gestes des jauges orange ou rouges seulement
 
 test("⑦ « À faire » : une jauge orange dit le geste et le prix ; une publication masquée attend une décision", () => {
   const d = {
-    capacite: { jauges: jauges({ emails: 250 }) },
+    capacite: { jauges: jauges({ connexions: 360 }) },
     signalements: { liste: [], masques: [{ id: "p_1", signaleurs: 3, le: "2026-11-01T10:00:00Z", extrait: "texte de l'auteur" }] },
   };
   const l = aFaire(d, J("2026-11-01"));
-  const cap = l.find((x) => x.id === "capacite:emails");
-  assert.match(cap.reference, /Brevo/); assert.match(cap.reference, /€\/mois/);
+  const cap = l.find((x) => x.id === "capacite:connexions");
+  assert.equal(cap.etiquette, "72 %"); assert.match(cap.reference, /Supabase/); assert.match(cap.reference, /€\/mois/);
   const m = l.find((x) => x.id === "masque:p_1");
   assert.equal(m.prio, 1);
   assert.deepEqual(m.gestes.map((g) => g.corps), [{ action: "masquage", id: "p_1", decision: "garder" }, { action: "masquage", id: "p_1", decision: "retablir" }], "« Régler » la laisse masquée ; la rétablir reste un choix");

@@ -1,0 +1,9 @@
+name: PASSIO copie privée et checkpoint
+description: Copie seule sous plan privé ou qualification synthétique sans Supabase
+inputs:
+  operation:
+    description: qualification ou copie-seule
+    required: true
+runs:
+  using: node24
+  main: action.mjs

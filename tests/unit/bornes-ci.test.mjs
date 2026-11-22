@@ -44,9 +44,9 @@ const DEPLOY = lire(".github/workflows/deploy.yml");
 // Pire durée HORS INSTALLATION de chaque job, en minutes : API Actions, 35 derniers
 // runs verts de `main` (2026-11-03 18:43 → 2026-11-06 08:30 UTC). Un job qui se
 // met à installer Playwright sans mesure ici rougit : on mesure avant de borner.
-const HORS_INSTALLATION_PIRE = { "test-prod": 6.2, "test-local": 13.8, "test-webkit": 7.9, "gates-artefact": 0.8 };
+const HORS_INSTALLATION_PIRE = { "test-prod": 6.2, "rls-prod": 6.2, "test-local": 13.8, "test-webkit": 7.9, "gates-artefact": 0.8 };
 const MARGE = 2; // minutes au-dessus du pire sain
-const JOBS_ATTENDUS = ["gates-artefact", "test-local", "test-prod", "test-webkit"];
+const JOBS_ATTENDUS = ["gates-artefact", "rls-prod", "test-local", "test-prod", "test-webkit"];
 const ESSAI_RE = /\btimeout --kill-after=(\d+)s (\d+)m npx playwright install --with-deps (chromium|webkit)\b/;
 
 const entier = (v) => (/^\d+$/.test(String(v ?? "")) ? Number(v) : null);
@@ -119,7 +119,10 @@ test("① ② deploy.yml réel : les quatre jobs qui installent Playwright sont 
 // audits le 24/10, 31 min, clôture tardive (ses étapes finies à 2,4 min). Les quatre jobs Playwright suivent ② (pire
 // sain + 2 min). Une borne vient d'une mesure : au moins trois fois le pire, et 10 min au moins (la mise en route d'un
 // runner, un gh lent) ; au-delà d'une heure, elle ne borne plus rien.
-const PIRE_MESURE = { governance: 0.3, audits: 6.9, smoke: 0.3, deploy: 5.0, "retour-issue": 0.3, preview: 2.8 };
+// preview-build reprend installation + build du preview auparavant mesuré à 2,8 min.
+// Ce majorant du job complet sert de borne initiale ; la durée du job séparé
+// et de son dépôt d'artefact reste à relever au premier passage CI réussi.
+const PIRE_MESURE = { governance: 0.3, audits: 6.9, smoke: 0.3, deploy: 5.0, "retour-issue": 0.3, preview: 2.8, "preview-build": 2.8 };
 function auditerJobs(texte) {
   const doc = parse(texte);
   const defauts = [];

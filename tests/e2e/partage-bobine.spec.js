@@ -25,18 +25,21 @@
 // ============================================================================
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { UID_PUBLICATION, installerSessionPublication } = require("./publication-sdk-fixture");
 
 const TEXTE_BOBINE = "Café d'Or & Cie";
 
 async function preparerBobine(page) {
+  await page.evaluate(installerSessionPublication, UID_PUBLICATION);
   await page.evaluate((txt) => {
     window.__inserts = [];
     window.supabase = {
       createClient: () => ({
+        auth:window.__publicationSDK.auth,
         from: (table) => ({
-          insert: (rows) => ({
-            select: async () => { window.__inserts.push({ table, rows }); return { data: rows, error: null }; },
-            then: (r) => r({ data: rows, error: null }),
+          insert: (rows) => window.__publicationSDK.ecriture(() => {
+            window.__inserts.push({table,rows});
+            return {data:rows,error:null};
           }),
           upsert: async () => ({ error: null }),
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),

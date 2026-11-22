@@ -15,6 +15,11 @@
 /pilotage/*
   Cache-Control: no-cache
 
+# Son manifeste : sans type déclaré, Netlify le servait en application/octet-stream
+# (mesuré le 2026-11-15) — le type d'un manifeste d'application web est celui-ci.
+/pilotage/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+
 # index.html : toujours frais
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate

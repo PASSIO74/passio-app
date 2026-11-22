@@ -216,6 +216,47 @@ export async function exporterCompte(admin, uid, identite) {
     if (!lecture.instantane && !ordreTotal && lignes.length >= PAGE) { sansOrdre.push(cle); raisonsOrdre[cle] = ordre ? "ordre « " + ordre + " », non total (ex æquo possibles)" : "aucun ordre"; }
     if (incoherence) incoherences.push(cle + " : " + incoherence);
   }
+  // Les rencontres privées arrivent dans le MÊME instantané serveur.
+  // Compatibilité avant migration : l'ancien socle n'annonce pas ce périmètre.
+  const prive = instantane && (inst.dossier.rencontres_prive === 1 ||
+    Object.keys(inst.dossier.tables).some((cle) => cle.startsWith("rencontres_prive.")));
+  if (prive) {
+    for (const nom of ["inscriptions", "accords", "decisions", "coorganisations_anterieures"]) {
+      const cle = "rencontres_prive." + nom;
+      const e = inst.dossier.tables[cle];
+      if (!e || !Array.isArray(e.lignes) || !Number.isInteger(e.attendu) || e.attendu < 0 || typeof e.tronque !== "boolean") {
+        erreurs.push(cle + " : absente ou illisible dans l'instantané");
+        continue;
+      }
+      tables[cle] = e.lignes;
+      if (e.tronque) tronquees.push(cle);
+      if ((!e.tronque && e.lignes.length !== e.attendu) || (e.tronque && e.lignes.length >= e.attendu)) {
+        incoherences.push(cle + " : compte divergent de l'instantané");
+      }
+    }
+  }
+  // Une fonction historique ignore les registres ajoutés après sa liste fixe.
+  // Leur absence ne signifie pas « zéro ligne » : la version de périmètre et
+  // les trois entrées doivent venir du même instantané, y compris flag fermé.
+  const mediasProteges = instantane !== null && inst.dossier.medias_proteges === 1;
+  if (!mediasProteges) {
+    erreurs.push("medias_proteges : perimetre_non_atteste — migration d'export requise, complétude NON garantie");
+  } else {
+    for (const nom of ["media_reservations", "media_assets", "media_objects"]) {
+      const e = inst.dossier.tables[nom];
+      if (!e || !Array.isArray(e.lignes) || e.lignes.length > PLAFOND_PAR_TABLE ||
+          e.lignes.some((l) => !l || typeof l !== "object" || Array.isArray(l)) ||
+          !Number.isSafeInteger(e.attendu) || e.attendu < 0 || typeof e.tronque !== "boolean" || e.ordre_total !== true) {
+        erreurs.push(nom + " : instantane_media_illisible");
+        continue;
+      }
+      tables[nom] = e.lignes;
+      if (e.tronque) tronquees.push(nom);
+      if (e.lignes.length !== Math.min(e.attendu, PLAFOND_PAR_TABLE) || e.tronque !== (e.attendu > PLAFOND_PAR_TABLE)) {
+        incoherences.push(nom + " : compte_media_divergent");
+      }
+    }
+  }
   const medias = [];
   for (const dossier of DOSSIERS_CONTENU) {
     const l = await listerDossier(admin, "content", dossier + "/" + uid);
@@ -243,6 +284,7 @@ export async function exporterCompte(admin, uid, identite) {
     // viderait `erreurs` ne rende pas `complet` par accident.)
     complet: instantane !== null && erreurs.length === 0 && tronquees.length === 0 && sansOrdre.length === 0 && incoherences.length === 0,
     instantane,
+    perimetre_medias_proteges: mediasProteges ? 1 : null,
     tables_exportees: Object.keys(tables).length,
     lignes: Object.values(tables).reduce((n, l) => n + l.length, 0),
     medias: medias.length,

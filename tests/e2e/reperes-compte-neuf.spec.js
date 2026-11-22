@@ -158,7 +158,9 @@ test.describe("Les repères atteignent un compte neuf", () => {
     // banc n'emprunte — c'est très exactement ainsi que le défaut a vécu.
     expect(SRC_FR).toMatch(/function reperesAutorises\(\)/);
     expect(SRC_FR).toMatch(/function montrerEtape\(id\)\s*\{\s*\n\s*if \(!reperesAutorises\(\)\) return false;/);
-    expect(SRC_FR).toMatch(/function planifierTour\(\)\s*\{\s*\n\s*if \(!reperesAutorises\(\)/);
+    // `planifierTour(delaiMs)` (2026-11-20, parcours du nouvel inscrit) : le délai
+    // facultatif ne change rien à la règle — la garde reste la PREMIÈRE instruction.
+    expect(SRC_FR).toMatch(/function planifierTour\((?:delaiMs)?\)\s*\{\s*\n\s*if \(!reperesAutorises\(\)/);
     expect(SRC_FR).toMatch(/function surNavigation\(screen\)\s*\{\s*\n\s*if \(!reperesAutorises\(\)\) return;/);
 
     // La carte de bienvenue RESTE visiteur — c'est une carte de conversion.
