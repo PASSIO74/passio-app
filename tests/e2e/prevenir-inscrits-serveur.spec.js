@@ -89,9 +89,19 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
         partiel: await essai({ ok: true, destinataires: 99, prevenues: 60 }),
         nul: await essai({ ok: true, destinataires: 99, prevenues: 0 }),
         refus: await essai({ ok: false, motif: "refus_42501" }),
-        personne: await (async () => { const ev = _findCanonicalEvent("ev_village"); ev.attendees = [MY_UID]; ev.waitlist = []; return essai(null); })(),
+        personne: await essai({ ok: true, destinataires: 0, prevenues: 0 }),
+        // Appareil pas encore synchronisé : la liste locale est vide, la base connaît 5 inscrits.
+        listeVide: await (async () => {
+          const ev = _findCanonicalEvent("ev_village"); ev.attendees = [MY_UID]; ev.waitlist = [];
+          window.__appels = [];
+          const r = await essai({ ok: true, destinataires: 5, prevenues: 5 });
+          return Object.assign(r, { appels: window.__appels.length });
+        })(),
       };
     });
+    // RÉINJECTION (relecture red team) : sans appel serveur sur liste vide, « Activité annulée » sans rien dire.
+    expect(r.listeVide.appels, "la base est appelée même si la liste locale est vide").toBe(1);
+    expect(r.listeVide.toasts).toContain("Activité annulée — 5 personnes prévenues");
     // RÉINJECTION : sur le code d'avant, « Activité annulée — inscrits prévenus » dans les trois cas.
     expect(r.partiel.toasts).toContain("⚠️ Activité annulée, mais seulement 60 personnes sur 99 prévenues [warning]");
     expect(r.nul.toasts).toContain("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus [warning]");
@@ -138,6 +148,9 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
       sorties.appelsRefus = appels.splice(0).length - 1; // l'appel PGRST202 était dans le lot
       fauxRpc([{ data: { ok: false, motif: "pas_annulee" }, error: null }]);
       sorties.motif = await vraie("ev_village", "event_cancelled", "cleTest1234", null);
+      // 42883 peut venir de l'INTÉRIEUR du corps : c'est un refus, pas une fonction absente.
+      fauxRpc([{ data: null, error: { code: "42883", message: "function x does not exist" } }]);
+      sorties.interne = await vraie("ev_village", "event_cancelled", "cleTest1234", null);
       supa = avant;
       return sorties;
     });
@@ -149,7 +162,8 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
     expect(r.absente).toEqual({ ok: false, absente: true });
     expect(r.refus).toEqual({ ok: false, motif: "refus_42501" });
     expect(r.appelsRefus, "un refus n'est pas rejoué").toBe(1);
-    expect(r.motif).toEqual({ ok: false, motif: "pas_annulee" });
+    expect(r.motif).toEqual({ ok: false, motif: "pas_annulee", destinataires: null });
+    expect(r.interne, "42883 n'est pas « absente » : pas de repli vers l'ancien chemin").toEqual({ ok: false, motif: "refus_42883" });
   });
 
   test("⑤ message groupé brut, modification en un appel avec push bornée, suppression sans écriture du client", async ({ page }) => {
@@ -160,6 +174,12 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
       await _sendEventBroadcast("ev_village");
       out.message = window.__appels.slice(-1)[0];
       out.toastMessage = window.__toasts.slice(-1)[0];
+      // La base refuse un message trop long une fois échappé : l'écran dit pourquoi.
+      window.__verdict = { ok: false, motif: "message_trop_long" };
+      openModal('<textarea id="evBroadcast">' + '"'.repeat(200) + '</textarea>');
+      await _sendEventBroadcast("ev_village");
+      out.toastTropLong = window.__toasts.slice(-1)[0];
+      window.__verdict = null;
       window.__appels = []; window.__push = [];
       const v = await _prevenirInscrits(_findCanonicalEvent("ev_village"), "event_update");
       out.maj = { appels: window.__appels.slice(), push: window.__push.slice(), v };
@@ -170,6 +190,7 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
     expect(r.message.genre).toBe("event_update");
     expect(r.message.message, "le texte part BRUT : c'est la base qui échappe").toBe("RDV <b>entrée</b> nord");
     expect(r.toastMessage).toBe("Message envoyé à 99 personnes");
+    expect(r.toastTropLong).toMatch(/^⚠️ Message trop long une fois mis en forme/);
     expect(r.maj.appels).toHaveLength(1);
     expect(r.maj.appels[0].genre).toBe("event_update");
     expect(r.maj.v).toEqual({ total: 99, prevenues: 99 });

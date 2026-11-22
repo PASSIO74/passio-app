@@ -8859,14 +8859,16 @@ async function supaPrevenirInscrits(eventId, genre, cle, message) {
       const res = await supa.rpc("prevenir_inscrits_activite", params);
       if (res && res.error) {
         const code = String(res.error.code || "");
-        if (code === "PGRST202" || code === "42883") return { ok: false, absente: true };
+        // ABSENTE seulement : PGRST202 est le verdict de PostgREST sur une fonction qu'il ne
+        // connaît pas. (42883 peut venir de l'intérieur du corps : ce serait un refus.)
+        if (code === "PGRST202") return { ok: false, absente: true };
         if (essai === 0 && reseau(res.error)) continue;
         try { if (typeof diagLog === "function") diagLog("prevenir_inscrits refus " + code + " " + String(res.error.message || "").slice(0, 80)); } catch (e) {}
         return { ok: false, motif: "refus_" + code };
       }
       const d = res && res.data;
       if (d && d.ok === true) return { ok: true, destinataires: Number(d.destinataires) || 0, prevenues: Number(d.prevenues) || 0 };
-      return { ok: false, motif: String((d && d.motif) || "reponse_vide") };
+      return { ok: false, motif: String((d && d.motif) || "reponse_vide"), destinataires: d && d.destinataires != null ? Number(d.destinataires) || 0 : null };
     } catch (e) {
       if (essai === 0 && reseau(e)) continue;
       return { ok: false, motif: "exception" };

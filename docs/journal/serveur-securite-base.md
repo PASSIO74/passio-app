@@ -2145,13 +2145,28 @@ Mesuré deux fois sur le staging (`npm run village:100`, contrôle A3, séances 
 
 ⚠️ **ET LA SUPPRESSION ÉTAIT PIRE, SANS QUE PERSONNE L'AIT VU.** `events_prevenir_suppression` (12/11) écrit d'un seul `INSERT … SELECT` au nom de l'organisateur : la 61ᵉ ligne lève dans `debit_compter`, l'exception est avalée (« un échec n'empêche jamais la suppression ») et l'INSERT ENTIER est défait. Mesuré au staging dans une transaction annulée : activité de 69 inscrits supprimée → **0 ligne `n_sup_`**. Les 69 lignes `event_join` de la même activité trompent un comptage par `ref_id` seul : compter par préfixe d'identifiant.
 
-`migration_prevenir_inscrits_serveur_2026-11-22.sql` (**appliquée nulle part à l'écriture de cette fiche** ; éprouvée au staging dans une transaction annulée : 14/14) :
-- `prevenir_inscrits_activite(p_event_id, p_genre, p_cle, p_message)`, SECURITY DEFINER : réservée à l'organisation (`organise_activite`) ; `event_cancelled` exige l'activité annulée EN BASE ; destinataires = `going`, `maybe`, `waitlist`, jamais l'appelant, ni un compte bloqué dans un sens ou l'autre, ni un compte en suppression ; texte DÉRIVÉ (nom échappé + phrase fixe, ou message ≤ 200 échappé) ; rend un COMPTE (`destinataires`, `prevenues`), jamais la liste.
-- Identifiant `n_pi_` + md5(activité|genre|clé|destinataire). La clé est tirée par le client UNE fois par geste et réutilisée à son unique réessai réseau : le rejeu ne double rien, et personne ne peut pré-occuper un identifiant qu'il ne sait pas calculer (repli déterministe quand même).
-- Une ligne en échec (barrière d'un compte en suppression…) est dans son propre sous-bloc : elle n'emporte pas les autres.
-- Débit propre : 12 diffusions par minute et par compte (une série compte 12 dates au plus), plafond du jour de `debit_compter` compris.
-- `trg_rate_limit` de `notifications` passe par `notifications_limiter_debit()` : même plafond, sauf une ligne d'origine serveur écrite pendant une DIFFUSION (`passio.diffusion_inscrits = '1'`, posé par la fonction et par la suppression, remis à vide). Une ligne serveur hors diffusion (`follows_notifier`, mentions, promotion) reste comptée.
-- `events_prevenir_suppression` pose ce réglage et écarte les comptes en suppression : 100 prévenus sur une activité de 101.
+`migration_prevenir_inscrits_serveur_2026-11-22.sql` — la **v1** a été appliquée au **staging** le 22/11 (revue n°6013886038, 14/14). Le village à 100 y a alors donné **A3 99/99, 0 doublon**, A4 p95 500 ms et 0 × 429. La **v2**, ci-dessous, intègre la relecture red team du même jour ; elle n'est encore appliquée nulle part (épreuve annulée au staging, par-dessus la v1 : 18/18).
+- `prevenir_inscrits_activite(p_event_id, p_genre, p_cle, p_message)` (SECURITY DEFINER) :
+  - **Accès** : réservée à l'organisation (`organise_activite`), refusée à un compte en suppression.
+  - `event_cancelled` exige l'activité annulée EN BASE.
+  - `event_update` exige l'admission (`adult_access_allowed`), et une activité terminée depuis moins de 2 jours.
+  - **Destinataires** : `going`, `maybe`, `waitlist`. Jamais l'appelant ni un blocage.
+  - **Texte** dérivé et échappé : un message plus long que 600 caractères une fois échappé est refusé AVANT toute écriture (`message_trop_long` : 200 `"` font 1 200 caractères).
+  - **Retour** : un COMPTE, jamais la liste. Un compte en suppression est compté comme prévenu, sans ligne écrite : l'écart d'une unité trahirait sa suppression (ASTRA-25).
+- **Identifiants `n_pi_`** :
+  - **annulation** = md5(activité|genre|destinataire), donc UNE par personne et par activité. Une nouvelle annulation après réactivation remet la ligne en « non lue », sans nouvelle ligne et sans passage en direct.
+  - **mise à jour** = md5(activité|genre|clé|destinataire). La clé est tirée par le client une fois par geste et réutilisée à son unique réessai : le rejeu ne double rien.
+- ⚠️ **LE DÉBIT COMPTAIT LES APPELS, PAS LES LIGNES** (relecture red team, P1). Une organisatrice de 300 inscrits pouvait envoyer 3 600 lignes par minute de texte libre. Trois bornes désormais :
+  - 3 diffusions par heure, par ACTIVITÉ et par genre (`debit_ecritures`, fenêtre glissante, purgée après 1 h) ;
+  - 20 par minute et par compte ;
+  - un budget du jour en LIGNES : 6 000, et 1 500 la première semaine (`debit_jour_compter('notifications_diffusion', …)`).
+- **Écriture ensembliste** : un seul `INSERT … ON CONFLICT DO UPDATE … WHERE` (la ligne de cette personne, de cet émetteur, d'origine serveur), sans sous-transaction par ligne.
+  - Les causes d'échec par ligne sont écartées en amont : comptes en suppression, blocages, borne de 600.
+- `trg_rate_limit` de `notifications` passe par `notifications_limiter_debit()` : même plafond, sauf une ligne d'origine serveur écrite pendant une DIFFUSION.
+  - Le réglage `passio.diffusion_inscrits` est posé LOCAL à la transaction (`set_config(…, true)`), puis rendu à sa valeur précédente, jamais vidé. Le verdict ⑰ refuse tout `false`.
+- `events_prevenir_suppression` pose ce réglage et écarte les comptes en suppression, ceux qui ont décliné et les blocages.
+- ⚠️ **`n_sup_` ÉTAIT PRÉ-OCCUPABLE PAR UN CLIENT** (défaut du 12/11, relevé par la red team). `'n_sup_' || md5(activité || destinataire)` se calcule par n'importe qui. Un inscrit pouvait insérer cet identifiant vers un autre ; à la suppression, `ON CONFLICT DO NOTHING` sautait la victime, qui gardait au contraire un faux message. `identifiant_reserve_au_serveur` réserve désormais `n_pi_` et `n_sup_`.
+- **Gardes** : les corps remplacés sont comparés au md5 normalisé (blancs écrasés) relu en production, ou à celui de la v1 au staging. `trg_rate_limit` doit être lié à `rate_limit_insert('from_id','60')` ou à la fonction de cette migration. Sinon RIEN n'est appliqué.
 
 Aucun `PREREQUIS-CLIENT` : l'ancien client continue d'écrire lui-même (son plafond ne change pas) ; le nouveau essaie la fonction et, ABSENTE (PGRST202), retombe sur l'ancien chemin, compté. Les deux ordres de mise en ligne sont sûrs.
 
@@ -2159,4 +2174,4 @@ Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ 
 
 ⚠️ **UN PLAFOND PAR ÉMETTEUR NE BORNE PAS UNE DIFFUSION LÉGITIME, IL LA TRONQUE.** Prévenir N personnes est UN geste : il se compte une fois, côté serveur, et l'écran affiche le compte rendu par la base, jamais la longueur de la liste locale.
 
-Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (défauts mesurés avant, deux mutations refusées, application et rejeu, extérieur sous `authenticated`), exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
+Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (43). Il mesure d'abord les trois défauts, puis refuse quatre mutations et un corps inconnu. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.

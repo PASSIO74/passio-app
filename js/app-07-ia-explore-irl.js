@@ -7316,16 +7316,23 @@ async function _sendEventBroadcast(id) {
   if (!ev || !txt) { toast("Écris un message"); return; }
   const cibles = _destinatairesActivite(ev);
   closeModal();
-  if (!cibles.length) { toast("Personne à prévenir pour l'instant"); return; }
   if (!window._supaReal) {
-    toast("Message enregistré sur cet appareil");
+    toast(cibles.length ? "Message enregistré sur cet appareil" : "Personne à prévenir pour l'instant");
     return;
   }
   // Village à 100 (A3) : la base écrit le message à chacun (au-delà de 60) et rend le
-  // compte. Le texte part BRUT : la base l'échappe et le borne à 200.
+  // compte. Le texte part BRUT : la base l'échappe et le borne à 200. Elle est appelée
+  // même si la liste locale est vide (appareil pas encore synchronisé).
   const v = await _prevenirInscrits(ev, "event_update", txt.slice(0, 200));
   const ok = v.prevenues, total = v.total;
-  if (!total) toast("Personne à prévenir pour l'instant");
+  const POURQUOI = {
+    message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
+    debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — réessaie plus tard",
+    activite_terminee: "⚠️ Activité terminée depuis plus de 2 jours : les inscrits ne reçoivent plus de message",
+    debit: "⚠️ Trop d'envois aux inscrits pour l'instant — réessaie plus tard",
+  };
+  if (v.motif && POURQUOI[v.motif]) toast(POURQUOI[v.motif], "warning");
+  else if (!total) toast("Personne à prévenir pour l'instant");
   else if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
   else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
   // Pas de « réessaie » ici : un second envoi repartirait vers TOUS, déjà prévenus compris.
@@ -7679,10 +7686,14 @@ function _cleGeste() {
   for (let i = 0; i < n.length; i++) s += abc[n[i] % abc.length];
   return s;
 }
+// `motif` accompagne un refus de la base (`message_trop_long`, `debit_activite`,
+// `activite_terminee`…) pour que l'écran dise POURQUOI personne n'a été prévenu.
 async function _prevenirInscrits(ev, genre, message) {
-  const cibles = ev ? _destinatairesActivite(ev) : [];
-  if (!ev || !cibles.length) return { total: 0, prevenues: 0 };
+  if (!ev) return { total: 0, prevenues: 0 };
+  const cibles = _destinatairesActivite(ev);
   if (window._supaReal && typeof supaPrevenirInscrits === "function") {
+    // La base est appelée MÊME si la liste locale est vide : un appareil pas encore
+    // synchronisé ne connaît pas les inscrits, la base si (relecture red team du 22/11).
     const v = await supaPrevenirInscrits(ev.id, genre, _cleGeste(), message || null);
     if (v && v.ok) {
       // La push : `event_cancelled` n'a pas de gabarit (notify-call la refuse), et
@@ -7692,8 +7703,12 @@ async function _prevenirInscrits(ev, genre, message) {
       }
       return { total: v.destinataires, prevenues: v.prevenues };
     }
-    if (!v || !v.absente) return { total: cibles.length, prevenues: 0 };
+    if (!v || !v.absente) {
+      const total = (v && typeof v.destinataires === "number") ? v.destinataires : cibles.length;
+      return { total: total, prevenues: 0, motif: (v && v.motif) || "inconnu" };
+    }
   }
+  if (!cibles.length) return { total: 0, prevenues: 0 };
   if (typeof supaInsertNotif !== "function") return { total: cibles.length, prevenues: 0 };
   const texte = genre === "event_cancelled" ? "a annulé un événement auquel tu participais"
     : (message ? escapeHtml(String(message).slice(0, 200)) : "a modifié un événement auquel tu participes");
