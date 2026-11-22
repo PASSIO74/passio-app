@@ -34,6 +34,7 @@
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
 - 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
 - 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+- 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 
 ---
 
@@ -2126,3 +2127,30 @@ Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `priva
 ⚠️ **UN PRÉREQUIS DE DÉPLOIEMENT DIT CE QUE LA CIBLE SAIT FAIRE, PAS DANS QUEL ÉTAT ELLE EST.** Une table, une fonction SQL, une empreinte. La valeur d'un réglage que l'exploitation change n'en est pas un : le jour où elle change, le déploiement s'arrête pour une raison que plus personne ne cherche. `tests/unit/deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
 
 Le récit complet (la sélection par l'état servi, la retenue partielle, la ligne du pilotage, les verrous) : fiche du 21/11 de `docs/journal/telemetrie-pilotage-sentinelle.md`. Banc PostgreSQL : `tests/sql/medias-proteges-runner.mjs` (réglage ouvert : autorisé ; quatre formes non booléennes : retenu).
+
+## 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
+
+`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **pas encore appliquée** (contre-revue attendue ; staging puis production).
+
+Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa bloque Kevin, Kevin appelle `supaLoadEvents()` et lit l'activité de Léa — titre, ville, heure. Bloquer ne fermait que des ÉCRITURES (six policies INSERT, fiche « BLOQUER N'AVAIT D'EFFET QUE SUR `conv_members` ») et, côté client, le profil (PRO-C20). Les LECTURES restaient ouvertes : `events`, `event_comments`, `event_reactions` en `true`, les publications d'un compte public, et la carte « A partagé une activité » qu'un TIERS republie (ville et date dans `content` ET dans `shared_data`).
+
+- **Une policy RESTRICTIVE de lecture par table, `TO authenticated`** : `events` (auteur ou organisateur en blocage), `event_attendees` (l'activité), `event_comments` et `event_reactions` (l'activité ou l'auteur), `posts` (l'auteur, l'album `event_id`, la publication citée `shared_from_post_id`, la carte `shared_data` kind = event). Ses propres lignes restent toujours lisibles ; l'organisatrice voit tous ses inscrits. « L'activité » = UNE définition, `activite_masquee_pour_moi(id)` (auteur ou organisateur en blocage, l'appelant n'étant ni l'un ni l'autre), lue par toutes les tables filles, `posts` et `comment_target_visible`.
+- **`comment_target_visible`** : la branche « activité » rendait VRAI sans condition. Elle suit le blocage. Les commentaires d'activité de `comment_interactions` et le canal `fil:<activité>` (`passio_rt_recevoir_fil`) se ferment avec elle.
+- **Aucun nouvel oracle** : `activite_masquee_pour_moi` ne dit rien que `is_blocked_with(auteur)` ne dise déjà (EXECUTE à authenticated, jamais anon). `activite_de_partage(text)` est pure, sans table.
+- **L'organisateur** : la contrainte `events_organisateur_est_auteur` (validée en production) le rend égal à l'auteur ou nul. La branche organisateur est une défense en profondeur — la relecture adverse l'avait signalée comme un trou, la base dit que le cas ne peut pas exister aujourd'hui.
+- **Pas d'index à ajouter** : `is_blocked_with` sonde la clé primaire `(blocker_id, blocked_id)` dans les deux sens. Coût mesuré au staging : 5 000 appels en 203 ms, soit ~40 µs par ligne lue.
+- **Temps réel** : aucune de ces tables n'est publiée (`supabase_realtime` vide en production et au staging le 22/11). R25/R37 ne s'appliquent pas.
+- **Essai au staging dans une transaction ANNULÉE** (exception finale, rien n'est resté) : 10 OK au verdict, rejeu 10 OK ; le retour arrière `--|` rend les empreintes md5 mesurées et la migration se réapplique ensuite (10 OK). Kevin ne lit plus ni l'activité, ni les inscrits, ni les commentaires et réactions, ni les publications de Léa, ni la carte / le repartage / l'album d'Inès qui la citent, ni le canal `fil:`. Léa ne lit plus Kevin (blocage dans les deux sens). Inès et un visiteur lisent comme avant, sans erreur. Un `shared_data` mal formé ne fait pas échouer la lecture.
+- Banc PostgreSQL : `tests/sql/migration-blocage-lecture-activites.test.sh` (avant, application, rejeu, après, mutation, retour arrière, garde).
+
+⚠️ **UNE POLICY RESTRICTIVE QUI APPELLE `is_blocked_with` SE DÉCLARE `TO authenticated`, JAMAIS `to public`.** `anon` n'a pas EXECUTE sur les aides de blocage : une policy `to public` fait échouer en 42501 toute lecture d'un visiteur. Un visiteur n'a pas d'identité, donc pas de blocage.
+
+⚠️ **UN RETOUR ARRIÈRE SE COPIE DE LA DÉFINITION MESURÉE, JAMAIS DE MÉMOIRE.** La première version des lignes `--|` reprenait les corps de `comment_target_visible` sans leurs commentaires : empreintes différentes, et la garde refusait ensuite de réappliquer la migration. Les lignes `--|` sont désormais générées depuis la fixture (`pg_get_functiondef`) et le banc les rejoue.
+
+⚠️ **`shared_data` EST UN TEXTE, PAS UN JSON.** Le caster en `jsonb` dans une policy fait échouer TOUTE la lecture du fil dès qu'une seule ligne est mal formée. On l'extrait par expression régulière (`activite_de_partage`), qui ne lève jamais.
+
+**Ce que la migration ne ferme pas (déclaré dans son en-tête)** :
+- Un visiteur lit toujours les activités publiques : il suffit de se déconnecter.
+- `participants_compte` répond par des nombres sur un identifiant d'activité.
+- Un repartage de repartage ne remonte pas à l'original.
+- `post_comments`/`post_likes` des publications d'un compte bloqué restent lisibles par `post_is_visible`.
