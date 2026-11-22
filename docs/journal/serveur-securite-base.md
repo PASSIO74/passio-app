@@ -2130,8 +2130,15 @@ Le récit complet (la sélection par l'état servi, la retenue partielle, la lig
 
 ## 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 
-`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **appliquée au STAGING le 2026-11-22** (sur ordre de Benjamin, auto-revue de mainteneur unique n°6013447731 sur #1017, verdict 10/10, journalisée), **pas en production**.
-- Mesuré ensuite au staging : les 5 policies RESTRICTIVE `{authenticated}`, les deux aides (EXECUTE sans `anon`), les empreintes neuves de `comment_target_visible`, aucune table publiée.
+`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **appliquée au STAGING puis en PRODUCTION le 2026-11-22**, sur ordre de Benjamin (« si le village est vert, applique en prod »). Auto-revue de mainteneur unique n°6013447731 sur #1017. Verdict 10/10 sur chaque cible, journalisée.
+- **Mesuré ensuite au staging et au canal ① en production** :
+  - les 5 policies RESTRICTIVE `{authenticated}` ;
+  - les deux aides, avec EXECUTE sans `anon` ;
+  - les empreintes neuves de `comment_target_visible` (`0d830765…`, `3cf606d2…`) ;
+  - aucune table publiée.
+- **Visiteur en production** (API, clé anon) : 200 partout, les 11 activités lisibles, aucun 42501.
+- **Village entre les deux** (`npm run village`, staging, migration appliquée) : **53 OK, 0 échec exigé**. B3 et B19c sont exigés et verts. Les 2 observations (A12, A22) sont antérieures à la migration et sans rapport.
+- ⚠️ `SCHEMA_PROD_REFERENCE.sql` n'est PAS régénéré : `scripts/schema-baseline.js` passe par `supabase db query --linked`, retiré par ADR-012. Le fichier date du 2026-08-17.
 
 Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa bloque Kevin, Kevin appelle `supaLoadEvents()` et lit l'activité de Léa — titre, ville, heure. Bloquer ne fermait que des ÉCRITURES (six policies INSERT, fiche « BLOQUER N'AVAIT D'EFFET QUE SUR `conv_members` ») et, côté client, le profil (PRO-C20). Les LECTURES restaient ouvertes : `events`, `event_comments`, `event_reactions` en `true`, les publications d'un compte public, et la carte « A partagé une activité » qu'un TIERS republie (ville et date dans `content` ET dans `shared_data`).
 
