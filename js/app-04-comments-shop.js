@@ -2109,7 +2109,12 @@ async function _ciVerifierReactionsPost() {
         (Array.isArray(p.reactions) ? p.reactions : []).forEach(function (x) { if (x && !x.ci) avant.add(x); });
       });
     });
-    var res = await supa.from("comment_interactions")
+    // D14-01 (2026-11-22) : la fonction groupée d'abord (`_lectureGroupee`, app-08),
+    // la lecture d'avant si elle est indisponible. Même borne dans les deux cas.
+    var res = (typeof _lectureGroupee === "function")
+      ? await _lectureGroupee("interactions_cibles", { _comment_ids: ids, _kinds: ["emoji", "gif"], _limite: CI_VERIF_LIGNES_MAX })
+      : null;
+    if (!res) res = await supa.from("comment_interactions")
       .select("id,comment_id,post_id,user_id,kind,payload,created_at")
       .in("comment_id", ids).in("kind", ["emoji", "gif"])
       .limit(CI_VERIF_LIGNES_MAX);

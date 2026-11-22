@@ -6343,6 +6343,31 @@ function _filCompteursErreurPassagere(err, status) {
   if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 401 && st !== 408 && st !== 429) return false;
   return true;
 }
+// ── D14-01, SUITE (2026-11-22) : LES LECTURES GROUPÉES ───────────────────────
+// Réactions (`interactions_cibles`) et stories (`story_activite`,
+// `story_commentaires_lire`, `story_nb_commentaires`) : des fonctions qui
+// appliquent la MÊME règle de lecture que la table, mais décident la visibilité
+// une fois par cible au lieu d'une fois par ligne.
+// Rend la réponse de la fonction, ou `null` quand il faut reprendre la lecture
+// d'avant : fonction absente (base pas encore migrée) ou refusée DURABLEMENT,
+// mémorisé pour la session. ⚠️ Une erreur PASSAGÈRE (charge, réseau) est rendue
+// telle quelle : elle ne rouvre JAMAIS la lecture d'avant, plus coûteuse — c'est
+// la leçon du repli du fil (contre-vérification du 2026-11-20).
+var _lecturesGroupeesIndispo = {};
+// La borne de cibles de `interactions_cibles` (migration du 2026-11-22).
+const INTERACTIONS_CIBLES_MAX = 300;
+async function _lectureGroupee(nom, params) {
+  if (_lecturesGroupeesIndispo[nom]) return null;
+  var r = null;
+  try { r = await supa.rpc(nom, params); } catch (e) { return { data: null, error: { message: String((e && e.message) || e) } }; }
+  if (!r) return { data: null, error: { message: "réponse vide" } };
+  if (r.error && !_filCompteursErreurPassagere(r.error, r.status)) {
+    _lecturesGroupeesIndispo[nom] = true;
+    try { diagLog("lecture_groupee_indisponible " + nom + " " + String(r.error.code || r.status || "")); } catch (_e) {}
+    return null;
+  }
+  return r;
+}
 // ⚠️ UN SEUL RECUL POUR LA FONCTION, QUEL QUE SOIT L'APPELANT (contre-revue du
 // 2026-11-20). Le fil (`_chargerComplementsFil`) et les cartes (app-03,
 // `_postLikeLireGroupe`) appellent la même fonction : chacun tapait la fonction
@@ -6677,7 +6702,14 @@ async function supaLoadCommentInteractions(commentIds) {
     // l'identifiant de la ligne ; c'est cette lecture qui permet de savoir ce
     // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
     // compte ne se voit avant la réouverture de la discussion.
-    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    // D14-01 (2026-11-22) : la fonction groupée d'abord (visibilité une fois par
+    // couple commentaire/fil), la lecture d'avant si elle est indisponible. ⚠️ La
+    // fonction ne lit que 300 cibles : au-delà, celles qui manqueraient paraîtraient
+    // sans interaction — la lecture d'avant prend alors toute la liste.
+    var res = uniq.length <= INTERACTIONS_CIBLES_MAX
+      ? await _lectureGroupee("interactions_cibles", { _comment_ids: uniq, _kinds: null, _limite: 1000 })
+      : null;
+    if (!res) res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
     if (!res || res.error) {
       try { diagLog("ci_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
       return null;
@@ -10559,6 +10591,15 @@ async function supaStoryMesJaime(ids) {
 async function supaStoryActivite(storyId) {
   try {
     var id = String(storyId);
+    // D14-01 (2026-11-22) : un appel, la propriété de la story décidée une fois.
+    var g = await _lectureGroupee("story_activite", { _story_id: id });
+    if (g) {
+      if (g.error || !g.data || typeof g.data !== "object") return { erreur: true };
+      return {
+        vues: (Array.isArray(g.data.vues) ? g.data.vues : []).filter(function (v) { return v && v.user_id !== MY_UID; }).map(function (v) { return { userId: v.user_id, at: supaTs(v.seen_at) }; }),
+        jaime: (Array.isArray(g.data.jaime) ? g.data.jaime : []).filter(function (u) { return typeof u === "string"; }),
+      };
+    }
     var rv = await supa.from("story_views").select("user_id, seen_at").eq("story_id", id).order("seen_at", { ascending: false }).limit(500);
     var rl = await supa.from("story_likes").select("user_id").eq("story_id", id).limit(1000);
     if (!_storyIxNoter(rl)) return { absente: true };
@@ -10571,14 +10612,19 @@ async function supaStoryActivite(storyId) {
 }
 async function supaStoryCommentaires(storyId) {
   try {
-    var r = await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
-    if (!_storyIxNoter(r)) return { absente: true };
+    // D14-01 (2026-11-22) : propriété et visibilité de la story décidées une fois.
+    var g = await _lectureGroupee("story_commentaires_lire", { _story_id: String(storyId), _limite: 300 });
+    var r = g || await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
+    if (!g && !_storyIxNoter(r)) return { absente: true };
     if (r.error) return { erreur: true };
     return { liste: (r.data || []).map(function (c) { return { id: c.id, authorId: c.author_id, text: c.content || "", at: supaTs(c.created_at) }; }) };
   } catch (e) { return { erreur: true }; }
 }
 async function supaStoryNbCommentaires(storyId) {
   try {
+    // D14-01 (2026-11-22) : un compte en un appel, sans contrôle de visibilité par ligne comptée.
+    var g = await _lectureGroupee("story_nb_commentaires", { _story_id: String(storyId) });
+    if (g) return (!g.error && typeof g.data === "number") ? g.data : null;
     var r = await supa.from("story_comments").select("id", { count: "exact", head: true }).eq("story_id", String(storyId));
     if (!_storyIxNoter(r) || r.error) return null;
     return typeof r.count === "number" ? r.count : null;
