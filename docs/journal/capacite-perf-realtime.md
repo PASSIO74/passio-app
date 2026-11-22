@@ -3255,3 +3255,31 @@ chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation
 
 Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
 et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).
+
+## 🧮 D14-01, SUITE — RÉACTIONS ET STORIES EN UN APPEL GROUPÉ, ET LA MESURE « 5 000 J'AIME » (2026-11-22)
+
+Après `fil_compteurs` (15/11) et le recul du client (20/11), trois lectures payaient encore une fonction de visibilité SECURITY DEFINER **par ligne**, même quand toutes les lignes visaient la même cible :
+- `comment_interactions` (`supaLoadCommentInteractions`, la vérification `_ciVerifierReactionsPost`) : `comment_target_visible` → `post_is_visible`, cinq à six lectures d'index par ligne ;
+- `story_likes` et `story_views` (`supaStoryActivite`) : `story_est_a_moi` par ligne ;
+- `story_comments` (`supaStoryCommentaires`, `supaStoryNbCommentaires`) : `story_est_a_moi` et `story_visible` par ligne.
+
+**Mesuré au staging le 22/11, avec de vrais jetons** (une publication à 5 000 « j'aime », un commentaire à 500 réactions ; temps serveur relevé dans `pg_stat_statements`) :
+
+| Lecture | Serveur | Client |
+|---|---|---|
+| `HEAD post_likes count=exact` (le compteur de carte d'avant le 20/11) | 667 ms par appel | 833 ms |
+| `fil_compteurs` (le chemin corrigé), 5 000 comptés exactement | 3,3 ms par appel | 75 ms |
+| `GET comment_interactions`, 500 lignes | 177 ms par appel | 286 ms |
+
+- `migration_capacite_lectures_groupees_2026-11-22.sql` ajoute quatre fonctions, construites comme `fil_compteurs` :
+  - `interactions_cibles` décide la visibilité une fois par couple (commentaire, fil), avec au plus 300 cibles et 1 000 lignes ;
+  - `story_activite`, `story_commentaires_lire` et `story_nb_commentaires` décident la propriété et la visibilité de la story une fois.
+  Le contrôle de blocage reste par ligne : il porte sur l'auteur de chaque ligne.
+  Elles appellent les fonctions de visibilité EXISTANTES et n'en recopient aucune.
+- Leur garde compare les cinq règles de lecture des quatre tables, au caractère près, à celles relues le 22/11. Une règle ajoutée ou modifiée rendrait les fonctions non équivalentes, et la migration refuse alors de s'appliquer.
+- Client (`_lectureGroupee`, app-08) : la fonction d'abord. On reprend la lecture d'avant seulement si la fonction est absente ou refusée durablement (PGRST202, 42501), et ce choix est mémorisé pour la session. ⚠️ Une erreur PASSAGÈRE (5xx, réseau) n'y retourne JAMAIS : la lecture est rendue échouée, et c'est la règle du 20/11. Au-delà de 300 cibles, on garde la lecture d'avant, pour ne perdre aucune cible.
+- Bancs :
+  - `tests/sql/migration-capacite-lectures-groupees-2026-11-22.test.sh` compte les appels de visibilité avant et après, et compare ligne à ligne le résultat de chaque fonction à la lecture sous règle, pour quatre identités ;
+  - `tests/e2e/lectures-groupees-2026-11-22.spec.js` (6 cas) : 5 rougissent quand la fonction n'est jamais appelée, et 2 quand une erreur passagère rouvre la lecture d'avant.
+
+⚠️ **UNE RÈGLE DE LECTURE QUI APPELLE UNE FONCTION SE PAIE PAR LIGNE, PAS PAR CIBLE.** PostgreSQL ne retient pas le résultat d'une fonction SECURITY DEFINER d'une ligne à l'autre, même quand l'argument ne change pas. Une lecture qui ramène beaucoup de lignes d'une même cible passe par une fonction qui décide la cible une fois (`materialized`), et cette fonction recopie la RÈGLE, pas la visibilité.
