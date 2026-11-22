@@ -1,5 +1,5 @@
 // IRL-06 — supprimer une activité : le verdict du serveur est lu, les inscrits
-// sont prévenus.
+// sont prévenus (par la BASE depuis le 2026-11-22 : voir ②).
 //
 // LE DÉFAUT (contre-revue Astra, chantier 8). `deleteEventConfirm` (app-07)
 // affichait « Événement supprimé » quel que soit le retour de `supaDeleteEvent`
@@ -51,16 +51,21 @@ test.describe("IRL-06 — supprimer une activité", () => {
     expect(r.notifs).toEqual([]);
   });
 
-  test("② suppression acceptée : inscrits, « peut-être » et liste d'attente prévenus une fois, jamais moi", async ({ page }) => {
+  // ⚠️ DEPUIS LE 2026-11-22 (village à 100), LES INSCRITS SONT PRÉVENUS PAR LA BASE,
+  // AVANT l'effacement (`events_prevenir_suppression`, migration du 12/11, rendue
+  // complète au-delà de 60 par migration_prevenir_inscrits_serveur_2026-11-22.sql ;
+  // banc : tests/sql/migration-prevenir-inscrits-serveur.test.sh). Les écritures que
+  // ce test exigeait du client partaient APRÈS l'effacement, sans lien métier : la
+  // base les refusait toutes (42501). Le client n'écrit donc plus rien.
+  test("② suppression acceptée : l'activité part, le client n'écrit aucune notification (la base a prévenu les 4)", async ({ page }) => {
     await banc(page, true);
-    await page.evaluate(async () => { await deleteEventConfirm("ev_moi"); });
+    const concernees = await page.evaluate(() => _prevenirSuppressionActivite(_findCanonicalEvent("ev_moi")));
+    expect(concernees, "inscrits, « peut-être » et liste d'attente, chacun une fois, jamais moi").toBe(4);
+    await page.evaluate(async () => { window.__notifs = []; await deleteEventConfirm("ev_moi"); });
     expect(await existe(page)).toBe(false);
     const r = await page.evaluate(() => ({ toasts: window.__toasts.slice(), notifs: window.__notifs.slice() }));
     expect(r.toasts.some((t) => /^Activité supprimée$/.test(t))).toBe(true);
-    // RÉINJECTION : sur le code d'avant, aucune notification.
-    const destinataires = r.notifs.map((n) => n.split(":")[1]).sort();
-    expect(destinataires).toEqual(["u_a", "u_b", "u_c", "u_d"]);
-    expect(r.notifs.every((n) => /^event_cancelled:/.test(n) && /Rando du dimanche/.test(n) && /supprimé/.test(n))).toBe(true);
+    expect(r.notifs, "aucune écriture du client après l'effacement : elles étaient toutes refusées").toEqual([]);
   });
 
   test("③ sans compte réel : suppression locale, dite comme telle, sans appel serveur", async ({ page }) => {

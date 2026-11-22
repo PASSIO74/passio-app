@@ -273,7 +273,11 @@ test.describe("IRL — cycle de vie d'un événement", () => {
         organizerId: MY_UID, status: "active",
       }];
       window._notified = [];
+      // Depuis le village à 100 (2026-11-22), c'est la BASE qui écrit l'avis à chaque
+      // inscrit (`prevenir_inscrits_activite`) : le client fait UN appel, plus une
+      // écriture par personne. Le chemin serveur : prevenir-inscrits-serveur.spec.js.
       window.supaInsertNotif = (to, kind) => { window._notified.push(to + ":" + kind); };
+      window.supaPrevenirInscrits = async (id, genre) => { window._notified.push(id + ":" + genre); return { ok: true, destinataires: 1, prevenues: 1 }; };
       goTo("irl"); renderIRL();
       // Chemin de notification : il n'est emprunté QUE si l'écriture serveur a
       // réussi (on ne prévient pas d'une modification qui n'a pas été persistée).
@@ -286,7 +290,7 @@ test.describe("IRL — cycle de vie d'un événement", () => {
     await expect.poll(() => page.evaluate(() => _findCanonicalEvent("mine1").title)).toBe("Titre corrigé");
     // Un seul événement : l'édition ne doit PAS créer de doublon.
     expect(await page.evaluate(() => state.userEvents.filter((e) => e.id === "mine1").length)).toBe(1);
-    expect(await page.evaluate(() => window._notified)).toContain("autre:event_update");
+    await expect.poll(() => page.evaluate(() => window._notified)).toEqual(["mine1:event_update"]);
   });
 
   test("le lien partagé #irl-event-<id> ouvre bien la fiche", async ({ page }) => {
