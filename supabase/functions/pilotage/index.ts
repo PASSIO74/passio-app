@@ -46,7 +46,7 @@ import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
 import {
-  RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  RETOUR, REVEIL, CADENCE, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau, rendreCreneau,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
@@ -290,6 +290,8 @@ async function veille(admin: Admin) {
   // invalide, en observation ou en pause → aucun geste, l'observation continue.
   const delestage = await etape(() => delestageAuto(admin, signaux, e.remplissage));
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
+  // La cadence APRÈS le réveil (2026-11-21) : un passage que le réveil vient de lancer suffit.
+  const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
   // La MÉMOIRE du canari (2026-11-21, T2) : un refus laisse une marque, le succès qui clôt une suite aussi.
@@ -306,7 +308,7 @@ async function veille(admin: Admin) {
     // GitHub lu en partie et mémoire illisible sont des lectures manquées : le battement les dit « ko ».
     lectures: { sante, signalements, github: partielGh.length ? { status: "rejected" } : github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud,
       memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
-    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, cadence, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
     // La mesure d'échelle (2026-11-21, T3) : des NOMBRES, de quoi calibrer les taux (TAUX_VOYANT_PM).
     echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },
     revision: REVISION, dureeMs: Date.now() - t0,
@@ -319,7 +321,7 @@ async function veille(admin: Admin) {
   // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
   // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
   // battement (analytics_events) et dans les journaux de la fonction.
-  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), cadence: !!(cadence && cadence.lance), battement: !!(battement && battement.ecrit) }));
   return json({ ok: true });
 }
 
@@ -981,8 +983,8 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 }
 
 // ─── Réveil de la Sentinelle (_shared/autonomie.js) ─────────────────────────
-// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 4 à 8
-// fois par jour. Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
+// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 3 à 4
+// fois par jour (d'où aussi la cadence, plus bas). Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
 // (comptés EN BASE : `comptes_echecs_30min` de pilotage_audience), aucune
 // enquête en cours, pas de pause, pas de run récent → workflow_dispatch.
 // Plafonné à 2 réveils par heure et 12 par jour EN BASE.
@@ -1019,6 +1021,32 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   cacheGh = null;
   const parcoursEnPanne = comptesParcours >= REVEIL.comptesMin ? enPanne.map((p) => p.id).slice(0, 5) : [];
   try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison, parcours: parcoursEnPanne } }); } catch { /* */ }
+  return { lance: true };
+}
+
+// ─── La cadence de la Sentinelle (2026-11-21, _shared/autonomie.js ③) ────────
+// Son cron horaire est servi 3,7 fois par jour (écart médian 6,5 h) : la veille, tenue à la
+// minute par pg_cron, relance le MÊME passage dès que le dernier est terminé depuis
+// une heure. Rien d'autre ne change : le passage lit, classe, et n'ouvre une
+// enquête que sous ses propres règles. Ce qui sort vers GitHub : `ref: main`, rien d'autre.
+async function cadencerSentinelle(admin: Admin, etatGh: GhEtat | null, reveil: Record<string, unknown> | null) {
+  if (!JETON_GH) return { inactif: true };
+  // Un réveil INTERROMPU (délai de 10 s, exception) a peut-être été accepté par GitHub : on
+  // n'empile pas un second passage, la veille suivante (5 min) tranchera (contre-revue de #1007).
+  if (reveil && (reveil.lance || reveil.erreur)) return { raison: "reveil" };
+  if (!etatGh || !etatGh.runs) return { illisible: true };
+  const pol = autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause });
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
+  const d = doitCadencerSentinelle({ pause: !!etatGh.pause, dernierRun: etatGh.runs.sentinelle || null });
+  if (!d.relancer) return { raison: d.raison };
+  // Plafond EN BASE, atomique (plafond_consommer) : deux veilles qui se chevauchent,
+  // ou une lecture de GitHub encore en cache, ne relancent pas deux fois dans l'heure.
+  const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-cadence", "sentinelle-cadence", { parMinute: 1, parHeure: CADENCE.parHeure });
+  if (!plafond.ok) return { raison: "plafond" };
+  const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
+  if (r.status !== 204) return { raison: "refus_github_" + r.status };
+  cacheGh = null;
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.cadence, properties: { raison: d.raison } }); } catch { /* */ }
   return { lance: true };
 }
 
@@ -1625,7 +1653,7 @@ async function lireGithub() {
     const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
     // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
     // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
-    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis 8 h » disparaissait.
+    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis plus de 8 h » (3 h depuis le 21/11) disparaissait.
     const lectures = await Promise.all((EVENEMENTS_RUNS[cle] as string[]).map(async (ev) => {
       const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true&event=${ev}&per_page=10`).catch(() => null);
       const lu = r && r.ok ? await r.json().catch(() => null) : null;

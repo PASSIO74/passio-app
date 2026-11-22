@@ -421,7 +421,7 @@ test("㉒ aveugle : jugé contre le mur que rend pilotage_audience (anciens sous
 // éprouvées : laisser `tenirVerdict` baisser le voyant → ㉓ rougit ; le retirer
 // de la veille → ㉔ rougit ; rendre un vert sur une lecture incomplète dans
 // `verdictAffiche` → ㉕ rougit.
-import { tenirVerdict, verdictAffiche, sourcesManquantes, tendance, fenetreMiseEnLigne, aFaire, compteCree, compteMesurable, PAGES_REGLAGE, resumerPr, croissanceInscrits, COURBE_POINTS_MAX, REPARATION_MAX_MS } from "../../supabase/functions/_shared/pilotage.js";
+import { tenirVerdict, verdictAffiche, sourcesManquantes, tendance, fenetreMiseEnLigne, aFaire, compteCree, compteMesurable, PAGES_REGLAGE, resumerPr, croissanceInscrits, COURBE_POINTS_MAX, REPARATION_MAX_MS, SENTINELLE_MUETTE_MS, TITRE_SENTINELLE_MUETTE } from "../../supabase/functions/_shared/pilotage.js";
 
 test("㉓ tenirVerdict : une lecture incomplète ne fait jamais BAISSER le voyant, mais peut le monter", () => {
   const orange = { couleur: "orange", raisons: ["la veille signale un problème"] };
@@ -1079,6 +1079,24 @@ test("㊹ un voyant orange ou rouge a toujours une ligne : pannes du serveur, Se
   const muette = (extra = {}) => aFaire({ gestesGithub: true, github: { issues: [], runs: { sentinelle: { etat: "completed", conclusion: "success", le: MUTE_LE } }, aReparer: [], ...extra } }, MAINTENANT_AF).find((x) => x.id === "sentinelle:muette");
   assert.deepEqual(relance(muette()), { action: "relancer", cible: "sentinelle" });
   assert.equal(muette({ pause: true }), undefined, "le pilote l'a mise en pause : elle se tait à sa demande");
+  // Depuis la cadence horaire (2026-11-21) : muette à 3 h, plus à 8. La durée du titre et de la
+  // raison du voyant vient de la constante (mutation : la remettre à 8 h → ces lignes rougissent).
+  const aAge = (h) => ({ etat: "completed", conclusion: "success", le: new Date(MAINTENANT_AF - h * 3600e3).toISOString() });
+  const ligneA = (h) => aFaire({ gestesGithub: true, github: { issues: [], runs: { sentinelle: aAge(h) }, aReparer: [] } }, MAINTENANT_AF).find((x) => x.id === "sentinelle:muette");
+  assert.equal(SENTINELLE_MUETTE_MS, 3 * 3600e3);
+  assert.equal(ligneA(2.9), undefined, "deux cadences ratées ne font pas encore une Sentinelle muette");
+  assert.equal(ligneA(3.1).titre, "La Sentinelle n'a pas tourné depuis plus de 3 h");
+  assert.equal(ligneA(3.1).titre, TITRE_SENTINELLE_MUETTE);
+  // Le voyant lit `Date.now()` : un passage de 3 h 06 le rend orange, avec la même phrase.
+  const v = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date(Date.now() - 3.1 * 3600e3).toISOString() } } } });
+  assert.equal(v.couleur, "orange");
+  assert.deepEqual(v.raisons, ["la Sentinelle n'a pas tourné depuis plus de 3 h"]);
+  assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { sentinelle: { le: new Date(Date.now() - 2.5 * 3600e3).toISOString() } } } }).couleur, "vert");
+  // En PAUSE, ni ligne ni orange (contre-revue de #1007) : le filet recréait un « Régler » inutile.
+  // Mutation : retirer `!gh.pause` du voyant → rougit.
+  const enPause = { sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], pause: true, runs: { sentinelle: { le: new Date(Date.now() - 10 * 3600e3).toISOString() } } } };
+  assert.equal(verdict(enPause).couleur, "vert");
+  assert.equal(aFaire({ ...enPause, gestesGithub: true, verdict: verdict(enPause) }).find((x) => x.id === "sentinelle:muette" || x.id === "voyant"), undefined);
   // Le filet : une raison sans ligne dédiée (ici, la veille aveugle).
   const raisons = ["veille aveugle : la télémétrie est au plafond", "autre raison"];
   const filet = aFaire({ gestesGithub: true, verdict: { couleur: "orange", titre: "À surveiller", raisons }, github: { issues: [], runs: {}, aReparer: [] } }, MAINTENANT_AF);
@@ -1316,7 +1334,7 @@ test("㉿③ sans jeton GitHub, la ligne du parcours dit ce qui manque au lieu d
 
 test("㉿④ la fonction : chaque geste automatique passe par la politique, le battement part en dernier", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
-  for (const [f, id] of [["delestageAuto", "delestage_auto"], ["reveillerSentinelle", "reveil_sentinelle"], ["proposerRetour", "proposition_retour"]]) {
+  for (const [f, id] of [["delestageAuto", "delestage_auto"], ["reveillerSentinelle", "reveil_sentinelle"], ["cadencerSentinelle", "cadence_sentinelle"], ["proposerRetour", "proposition_retour"]]) {
     const corps = fn.slice(fn.indexOf("async function " + f), fn.indexOf("async function " + f) + 900);
     assert.match(corps, new RegExp(`autoriser\\(POLITIQUE, "${id}"`), f + " consulte la politique");
     assert.ok(corps.indexOf("autoriser(") < corps.indexOf("await ") || corps.indexOf("await ") < 0 || corps.indexOf("autoriser(") < corps.indexOf("admin."), f + " : la politique AVANT tout appel");
@@ -1500,7 +1518,7 @@ test("㉿⑪ l'essai des alertes : un geste du catalogue, lu sur la DERNIÈRE no
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   assert.ok(v.indexOf("const canari = await etape(") < v.indexOf("const essai = await etape(() => essayerAlertes(admin));"), "après les gestes de la veille");
   assert.ok(v.indexOf("const essai = await etape(") < v.indexOf("const battement = await etape("), "avant le battement, qui le dit");
-  assert.match(v, /gestes: \{ delestage, reveil, retour, canari, essai \}/);
+  assert.match(v, /gestes: \{ delestage, reveil, cadence, retour, canari, essai \}/);
 });
 
 // ─── Le rouge exige des comptes serveur (2026-11-07) ─────────────────────────
@@ -1605,7 +1623,8 @@ test("㉿⑭ suiviRelance : attente, analyse, faite ou échec, perdue — reconn
 test("㉿⑮ le 07/11 rejoué : le filet orange suit SA relance — « démarre », « analyse », puis « vérifié à 08:54 » rangé dans Détails ; le rouge garde sa place ; une relance perdue le dit", () => {
   const T = Date.parse("2026-11-07T07:53:40Z");
   const iso = (ms) => new Date(ms).toISOString();
-  const ancien = { etat: "completed", conclusion: "success", cree: "2026-11-07T02:02:27Z", le: "2026-11-07T02:02:47Z" };
+  // Le passage d'avant : sous le seuil « muette » (3 h depuis le 2026-11-21), sinon sa ligne dédiée porterait le problème.
+  const ancien = { etat: "completed", conclusion: "success", cree: "2026-11-07T06:02:27Z", le: "2026-11-07T06:02:47Z" };
   const etatDe = (sentinelle, relances, couleur = "orange", maintenant = T) => aFaire({ gestesGithub: true, relances,
     verdict: { couleur, titre: "À surveiller", raisons: ["2 erreur(s) dans l'app en 15 min"] },
     github: { issues: [], runs: { sentinelle }, aReparer: [] } }, maintenant);
@@ -2600,7 +2619,7 @@ test("T2-g câblage et page : la mémoire du canari se note APRÈS l'alerte, les
   assert.ok(alerte > 0 && alerte < emission && emission < note && note < battement, "decideAlerte, puis emettreCanari, puis noterCanari, puis battre");
   assert.ok(v.indexOf("sonnerPilote(admin, d.titre") < note, "la sonnerie n'attend pas la marque");
   // Le résultat de la note n'entre pas dans `gestes` du battement (le canari y est déjà), et les lectures y sont dites.
-  assert.match(v, /gestes: \{ delestage, reveil, retour, canari, essai \}/);
+  assert.match(v, /gestes: \{ delestage, reveil, cadence, retour, canari, essai \}/);
   assert.match(v, /memoire: \{ status: memoire\.illisible \? "rejected" : "fulfilled" \}, remplissage: rempl, canari: can \},/);
   // La marque : clé de service, auteur système, `{ error }` lu ; aux journaux le code, jamais le motif.
   const n = fn.slice(fn.indexOf("async function noterCanari"), fn.indexOf("const REMPLISSAGE_DELAI_MS"));

@@ -73,10 +73,21 @@ export const POLITIQUE = Object.freeze({
       libelle: "Lancer la Sentinelle dès que des comptes échouent", circuit: "A", autonome: true, suspenduParPause: true,
       symptome: "échecs chez ≥ 2 comptes réels créés depuis plus de 24 h en 30 min (erreurs et refus comptés en base), ou un parcours en panne CONFIRMÉE sur la dernière heure",
       action: "workflow_dispatch de sentinelle-autonome.yml (lecture, classement, enquête : la détection garde ses propres filtres)",
-      preconditions: ["jeton GitHub posé", "pas de pause", "place libre parmi les enquêtes", "pas de run en cours ni de moins de 45 min"],
-      limites: { comptesMin: 2, fenetreMin: 30, parHeure: 2, parJour: 12, runRecentMin: 45, enquetesMax: 3 },
+      preconditions: ["jeton GitHub posé", "pas de pause", "place libre parmi les enquêtes", "pas de run en cours ni de moins de 10 min", "pas de passage cassé depuis moins de 2 h"],
+      limites: { comptesMin: 2, fenetreMin: 30, parHeure: 2, parJour: 12, runRecentMin: 10, enquetesMax: 3 },
       verification: "un run démarre (204), puis une enquête ou un « rien de nouveau »", retour: "aucun : lancer une lecture ne change rien en production",
-      escalade: "quota du jour épuisé : la ligne « À faire » le dit", appliquePar: "supabase/functions/_shared/autonomie.js (doitReveillerSentinelle)",
+      escalade: "quota du jour épuisé : le battement le dit (`quota_du_jour`) ; la cadence horaire continue", appliquePar: "supabase/functions/_shared/autonomie.js (doitReveillerSentinelle)",
+    }),
+    // La cadence (2026-11-21, demande de Benjamin : « elle est censée être activée constamment ») :
+    // le cron horaire de GitHub est servi 3,7 fois par jour (écart médian 6,5 h, P95 9,9 h, mesuré le 21/11).
+    cadence_sentinelle: rb({
+      libelle: "Faire passer la Sentinelle chaque heure, que GitHub serve son horaire ou non", circuit: "A", autonome: true, suspenduParPause: true,
+      symptome: "dernier passage de la Sentinelle terminé depuis plus de 60 min — 120 min s'il a cassé (son cron horaire n'est pas servi)",
+      action: "workflow_dispatch de sentinelle-autonome.yml : le MÊME passage que le cron (lecture, classement, enquête sous ses propres filtres)",
+      preconditions: ["jeton GitHub posé", "pas de pause", "dernier passage lu et terminé", "pas de réveil lancé par ce même tour de veille"],
+      limites: { intervalleMin: 60, apresEchecMin: 120, parHeure: 1 },
+      verification: "un run démarre (204), puis l'âge du dernier passage repasse sous l'heure", retour: "aucun : lancer une lecture ne change rien en production",
+      escalade: "plus de 3 h sans passage : voyant orange et ligne « À faire » qui relance", appliquePar: "supabase/functions/_shared/autonomie.js (doitCadencerSentinelle)",
     }),
     proposition_retour: rb({
       libelle: "Proposer de retirer une mise en ligne qui casse", circuit: "A", autonome: true,
