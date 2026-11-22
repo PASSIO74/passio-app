@@ -46,6 +46,7 @@ const SUITES_PROD = [
   "realtime-poussee-reelle.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : la poussée user:<uid> (R25)
   "retrait-interactions-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : le retrait en direct (R37)
   "epingle-commentaire-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : l'épingle partagée (RV-38)
+  "village-10-comptes.spec.js",  // sous PASSIO_E2E_VILLAGE, staging seulement : 10 personnages (npm run village)
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 

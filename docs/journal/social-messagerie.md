@@ -36,6 +36,7 @@
 - ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
 - 🧾 GROUPE : DESCRIPTION ET SORTIE SOUS VERDICT (2026-11-12, SRV-04 et ETAT-04)
 - ↩️ LES RETRAITS DISENT LEUR VERDICT ET CONVERGENT : SUPPRIMER POUR TOUS, FILE DES SUPPRESSIONS, SUIVIS, BLOCAGES, INSCRIPTIONS (2026-11-12, ETAT-04, ETAT-05, ETAT-08)
+- ⬇️ UNE CONVERSATION S'OUVRAIT AU-DESSUS DE SON DERNIER MESSAGE — le fil grandit sans événement (2026-11-22)
 
 ---
 - 🧹 PLUS DE PASSIONS SOUS LES PSEUDOS — messagerie et commentaires (2026-11-13)
@@ -1106,3 +1107,26 @@ Preuve avant correctif, puis réinjection après le premier vert : **1 failed, 1
 Pilotage/Sentinelle : pas de nouvel événement ni de drapeau pour ce correctif local ; conservation de la télémétrie existante d'ouverture de contenu et de détection des clics sans effet. Incident et preuve au registre. Retour arrière : revert de la PR puis déploiement habituel, sans opération de données.
 
 Validation locale finale : **62 passed (3.9m)** sur irl-carte-fiche, irl, ui-v4a3-vue, lot19-irl et historique-retour-en-vol. Build : **Build OK**, 9 scripts. Syntaxe, audit:globals et audit:handlers verts, contre-revue audit-passio sans défaut bloquant. La CI et la mise en ligne sont suivies dans la PR ; le statut du registre reste FIXED_LOCALLY jusqu’à preuve de production.
+
+## ⬇️ UNE CONVERSATION S'OUVRAIT AU-DESSUS DE SON DERNIER MESSAGE (2026-11-22)
+
+**Signalé** (capture Android) : « quand j'ouvre une conversation il faut voir directement le dernier
+message, là c'est coupé » — le dernier message à moitié caché sous la saisie.
+
+**Cause.** Le bas était épinglé à l'ouverture, au `load` d'un média, à la fin de la transition
+(320 ms, seulement à moins de 80 px) et au `resize` de la fenêtre. Mais le fil GRANDIT aussi sans
+aucun de ces événements : police ou emoji couleur chargés tard (Android), réaction, accusé de lecture,
+bandeau inséré sous l'en-tête. `scrollTop`, posé pour l'ancienne géométrie, laissait alors le dernier
+message sous la saisie ; et si un défilement survenait entre-temps, `_auBas` retombait à faux et plus
+rien ne ramenait en bas.
+
+**Correctif** (`_wireConvScroll`, app-04). Un `ResizeObserver` sur le fil ET chacune de ses bulles
+(suivies par un `MutationObserver`, désinscrites quand elles sortent) : collé au bas, on y reste.
+Pendant la fenêtre d'ouverture (1,5 s), le bas est tenu même si `_auBas` est faux — sauf geste
+(`touchstart`/`wheel`/`pointerdown`/`keydown`) ou fil REMONTÉ (`scrollTop` qui DIMINUE,
+`_remonte`). ⚠️ Le critère « remonté » ne peut pas être `_auBas` : c'est justement lui que la
+croissance silencieuse fausse. Trois suites de `conv-clavier-ouverture.spec.js` remontent le fil par
+script 300 ms après l'ouverture — la première version (geste seul) les ramenait en bas.
+
+**Verrou** : `tests/e2e/conv-ouverture-fil.spec.js` (3 cas de plus, deux rougissent sans
+l'observateur ; le troisième garde la relecture de l'historique).

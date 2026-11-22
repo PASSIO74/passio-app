@@ -2109,7 +2109,12 @@ async function _ciVerifierReactionsPost() {
         (Array.isArray(p.reactions) ? p.reactions : []).forEach(function (x) { if (x && !x.ci) avant.add(x); });
       });
     });
-    var res = await supa.from("comment_interactions")
+    // D14-01 (2026-11-22) : la fonction groupée d'abord (`_lectureGroupee`, app-08),
+    // la lecture d'avant si elle est indisponible. Même borne dans les deux cas.
+    var res = (typeof _lectureGroupee === "function")
+      ? await _lectureGroupee("interactions_cibles", { _comment_ids: ids, _kinds: ["emoji", "gif"], _limite: CI_VERIF_LIGNES_MAX })
+      : null;
+    if (!res) res = await supa.from("comment_interactions")
       .select("id,comment_id,post_id,user_id,kind,payload,created_at")
       .in("comment_id", ids).in("kind", ["emoji", "gif"])
       .limit(CI_VERIF_LIGNES_MAX);
@@ -6635,7 +6640,7 @@ async function openConversation(convId) {
   renderConvFpThread(c, displayName);
   // `_auBas` survit d'une conversation à l'autre (le nœud est réutilisé) :
   // une conversation qu'on ouvre part du bas, quelle que soit la précédente.
-  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; thread._nouveaux = 0; }
+  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; thread._nouveaux = 0; thread._ouvertA = Date.now(); thread._geste = false; thread._remonte = false; thread._dernierHaut = thread.scrollTop; }
   try { var _bas = document.getElementById("convFpBas"); if (_bas) _bas.hidden = true; } catch (e) {}
 
   // LOT-23 (MSG-C78 / C87) : une conversation d'exemple, ou avec un compte que
@@ -7253,11 +7258,50 @@ function _wireConvScroll(thread, convId) {
   };
   thread.addEventListener("load", recaler, true);
   thread.addEventListener("loadedmetadata", recaler, true);
+
+  // ⚠️ LE FIL GRANDIT AUSSI SANS ÉVÉNEMENT (2026-11-22). Défaut vécu sur
+  // Android : « quand j'ouvre une conversation, le dernier message est coupé ».
+  // Une police ou un emoji chargé tard, une réaction, un bandeau inséré sous
+  // l'en-tête, un accusé de lecture : la hauteur change sans `load`, sans
+  // `scroll`, sans `resize` — et `scrollTop`, posé pour l'ancienne géométrie,
+  // laisse le dernier message sous la saisie. On observe la TAILLE du fil et de
+  // chacune de ses bulles : collé au bas, on y reste. Pendant l'ouverture
+  // (1,5 s, tant qu'aucun doigt ne s'est posé et que le fil n'a pas été
+  // REMONTÉ), le bas est tenu sans condition : un `_auBas` retombé à faux parce
+  // que le contenu a grandi sous le point de lecture n'est pas une relecture.
+  // Une relecture, c'est un `scrollTop` qui DIMINUE.
+  var marquerGeste = function () { thread._geste = true; };
+  thread.addEventListener("touchstart", marquerGeste, { passive: true });
+  thread.addEventListener("wheel", marquerGeste, { passive: true });
+  thread.addEventListener("pointerdown", marquerGeste, { passive: true });
+  thread.addEventListener("keydown", marquerGeste);
+  if (typeof ResizeObserver === "function") {
+    var epingler = function () {
+      if (!window._openedConvId || thread._loadingMore) return;
+      var ouverture = !thread._geste && !thread._remonte && thread._ouvertA && (Date.now() - thread._ouvertA < 1500);
+      if (thread._auBas === false && !ouverture) return;
+      if (thread.scrollHeight - thread.clientHeight - thread.scrollTop > 1) thread.scrollTop = thread.scrollHeight;
+      if (ouverture) thread._auBas = true;
+    };
+    var ro = new ResizeObserver(epingler);
+    ro.observe(thread);
+    Array.prototype.forEach.call(thread.children, function (n) { ro.observe(n); });
+    if (typeof MutationObserver === "function") {
+      new MutationObserver(function (lots) {
+        lots.forEach(function (l) {
+          Array.prototype.forEach.call(l.removedNodes, function (n) { if (n.nodeType === 1) ro.unobserve(n); });
+          Array.prototype.forEach.call(l.addedNodes, function (n) { if (n.nodeType === 1) ro.observe(n); });
+        });
+      }).observe(thread, { childList: true });
+    }
+  }
   thread.addEventListener("scroll", function() {
     // Mémorise si l'on est collé au bas : c'est la seule information que la
     // géométrie d'APRÈS un redimensionnement ne permet plus de retrouver.
     thread._auBas = (thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
     if (thread._auBas) thread._nouveaux = 0;
+    if (!thread._loadingMore && thread.scrollTop < (thread._dernierHaut || 0) - 2) thread._remonte = true;
+    thread._dernierHaut = thread.scrollTop;
     _convMajBoutonBas(thread);
     if (thread.scrollTop > 60 || thread._loadingMore) return;
     var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
