@@ -15,11 +15,15 @@
 //   ② au retour sans accord, un compte NEUF sans trace se voit DEMANDER le sien
 //      (modale), rien n'est écrit sur le compte (RÉINJECTION : avant, rien
 //      n'était demandé) ;
-//   ③ un compte ANCIEN sans trace n'est pas sollicité (autre lot) ; un compte
-//      qui a déjà une trace non plus ;
+//   ③ un compte ANCIEN sans trace est sollicité lui aussi (révisé le 15/09) ;
+//      un compte qui a déjà une trace, non ;
 //   ④ accepter écrit la trace (version, date) et lève le rappel ; sans case
 //      cochée, rien ne part ;
-//   ⑤ UXO-07 : la promesse d'un « contrôle d'âge IA » a quitté le HTML.
+//   ⑤ UXO-07 : la promesse d'un « contrôle d'âge IA » a quitté le HTML ;
+//   ⑥ un compte e-mail ancien lit un texte VRAI (pas de « créé avec Google »),
+//      qui dit pourquoi on le sollicite et que rien n'a été accepté à sa place ;
+//   ⑦ un compte Google tout juste né garde l'alerte « créé avec Google » et la
+//      sortie du doublon (refuser, se reconnecter avec son e-mail).
 // Aucune requête ne part : `supa.auth` est MUTÉ par `defineProperty`.
 const fs = require("fs");
 const path = require("path");
@@ -134,25 +138,47 @@ test.describe("AUTH-03 — consentement Google", () => {
     expect(r.ferme).toBe(true);
   });
 
-  // La feuille sollicite TOUT compte sans accord tracé, y compris un compte
-  // créé par e-mail avant le 10/09 : elle ne doit pas lui dire qu'il vient
-  // d'être créé avec Google (constaté par la simulation à 10 comptes).
-  test("⑥ la feuille dit vrai à un compte créé par e-mail : pas de « créé avec Google »", async ({ page }) => {
-    await banc(page);
-    const texte = await page.evaluate(() => {
-      localStorage.setItem("passio_consentement_requis_v1", "1");
-      ouvrirConsentementRequis();
-      return document.getElementById("modalContent").innerText;
-    });
-    expect(texte).toMatch(/accepte les conditions générales/);
-    expect(texte).not.toMatch(/Google/);
-    expect(texte).not.toMatch(/vient d.être créé/);
-  });
-
   test("⑤ UXO-07 : plus de « contrôle d'âge IA » promis dans le HTML", async () => {
     const html = fs.readFileSync(path.join(RACINE, "index.html"), "utf8");
     const sansCommentaires = html.replace(/<!--[\s\S]*?-->/g, "");
     expect(sansCommentaires).not.toMatch(/contrôle d['’]âge IA/);
     expect(sansCommentaires).toMatch(/année de naissance est déclarative/);
+  });
+  // ⑥ ⑦ — LE TEXTE DIT VRAI SELON LE COMPTE (2026-11-22, simulation « village »).
+  // Par le VRAI chemin (`_poserConsentementOAuth` → `_verifierConsentementApresOAuth`),
+  // et sur le PARAGRAPHE d'intro : le libellé de la case contient déjà
+  // « accepte les conditions générales », une lecture de toute la modale
+  // resterait verte si l'intro disparaissait.
+  async function introPour(page, user) {
+    await banc(page);
+    return page.evaluate(async (u) => {
+      localStorage.removeItem("passio_oauth_cgu");
+      localStorage.removeItem("passio_consentement_requis_v1");
+      window._consentementPlanifie = false;
+      window.__user = u;
+      await _poserConsentementOAuth();
+      for (let i = 0; i < 20 && !document.getElementById("consentRequisIntro"); i++) await new Promise((r) => setTimeout(r, 200));
+      const p = document.getElementById("consentRequisIntro");
+      return p ? p.textContent : null;
+    }, user);
+  }
+
+  test("⑥ compte e-mail ancien sans trace : texte vrai, la raison et « rien n'a été accepté »", async ({ page }) => {
+    const intro = await introPour(page, { id: "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31", created_at: "2026-08-20T10:00:00Z",
+      app_metadata: { provider: "email" }, identities: [{ provider: "email" }], user_metadata: {} });
+    expect(intro, "la feuille est à l'écran, avec son paragraphe").toBeTruthy();
+    // RÉINJECTION : l'ancien texte disait « Ton compte vient d'être créé avec Google » à ce compte.
+    expect(intro).not.toMatch(/Google/);
+    expect(intro).not.toMatch(/vient d.être créé/);
+    expect(intro, "il apprend POURQUOI on le sollicite").toMatch(/pas de trace de ton accord/);
+    expect(intro, "la phrase qui compte juridiquement").toMatch(/rien n.a été accepté à ta place/);
+  });
+
+  test("⑦ compte Google tout juste né : l'alerte « créé avec Google » et la sortie du doublon", async ({ page }) => {
+    const intro = await introPour(page, { id: "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31", created_at: new Date(Date.now() - 20000).toISOString(),
+      app_metadata: { provider: "google" }, identities: [{ provider: "google" }], user_metadata: {} });
+    expect(intro).toMatch(/vient d.être créé avec Google/);
+    expect(intro, "la sortie quand c'est un doublon d'un compte e-mail").toMatch(/refuse et reconnecte-toi/);
+    expect(intro).toMatch(/rien n.a été accepté à ta place/);
   });
 });
