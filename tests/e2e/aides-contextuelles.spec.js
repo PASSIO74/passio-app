@@ -60,7 +60,7 @@ test("§8 — la première carte du Fil explique comment ouvrir une Passio", asy
   await inscrire(page, "musique");
   await expect(bulles(page)).toHaveCount(1);
   await expect(bulles(page)).toHaveAttribute("data-hint", "feed_auteur");
-  await expect(bulles(page)).toContainText("Appuie sur l'auteur");
+  await expect(bulles(page)).toContainText("Touche le nom pour voir son profil");
 });
 
 test("§8 — une aide est dismissible, et ne revient jamais", async ({ page }) => {

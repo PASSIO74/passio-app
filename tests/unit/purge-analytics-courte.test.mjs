@@ -92,7 +92,8 @@ test("③ un créneau de la veille ne se relit que par IDENTIFIANT (sa minute, l
   const M0 = Date.parse("2026-11-07T12:05:00Z");
   const { client, appels } = enregistreur();
   const r = await prendreCreneau(client, "systeme:pilotage-veille", "pilotage-veille", "secret-serveur-de-test-0123456789", M0);
-  assert.deepEqual(r, { ok: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.ids.length, 2, "les deux lignes du créneau : ce que rend un geste que GitHub a refusé (rendreCreneau)");
   assert.equal(appels.filter((a) => FILTRES_TEMPS.has(a.m)).length, 0, "aucun filtre de date : rien ne relit un vieux créneau");
   const lecture = appels.find((a) => a.m === "in");
   assert.ok(lecture && lecture.args[0] === "id" && lecture.args[1].length === 2, "lecture par identifiant, deux créneaux");
@@ -166,6 +167,7 @@ test("⑥ aucun autre lecteur (une HEURISTIQUE, dite comme telle : elle attrape 
     "migrations/migration_purge_analytics_courte_2026-11-07.sql": "la purge elle-même",
     // PR #753 (ouverte le 07/11) : le plafond passe en SQL, `plafond_consommer` — sa fenêtre est vérifiée ci-dessous.
     "migrations/migration_securite_lot1_2026-11-06.sql": "plafond_consommer : relit la dernière heure",
+    "migrations/migration_pilotage_veille_secret_2026-11-16.sql": "edge_disponible est une configuration Vault ; aucune lecture des événements analytics edge_*",
   };
   const NOTE = {
     "supabase/functions/_shared/reception.js": "la définition de EVT_ENVOI",
@@ -184,6 +186,10 @@ test("⑥ aucun autre lecteur (une HEURISTIQUE, dite comme telle : elle attrape 
   for (const f of nommentEdge) assert.ok(EDGE[f], f + " nomme `edge_` : un nouveau lecteur ou écrivain de ces lignes — vérifier sa fenêtre contre la rétention de la purge (2 h), puis l'inscrire ici avec sa raison");
   for (const f of nommentNote) assert.ok(NOTE[f], f + " nomme `push_envoye` / EVT_ENVOI : un nouveau lecteur des notes — vérifier sa fenêtre contre la rétention (8 jours), puis l'inscrire ici avec sa raison");
   for (const f of ["supabase/functions/_shared/plafond.js", "supabase/functions/_shared/autonomie.js"]) assert.ok(nommentEdge.includes(f), f + " ne nomme plus `edge_` : relire ce verrou");
+  // Cette homonymie n'autorise pas à ajouter un lecteur analytics dans le cron.
+  const cronSecret = lignesCode("migrations/migration_pilotage_veille_secret_2026-11-16.sql").join("\n");
+  assert.doesNotMatch(cronSecret, /\banalytics_events\b/i);
+  for (const mention of cronSecret.matchAll(/\bedge_[a-z_]+/g)) assert.equal(mention[0], "edge_disponible");
   assert.ok(nommentNote.includes("supabase/functions/pilotage/index.ts"));
 
   // Les écrivains n'écrivent que : chaque mention est l'import, ou `event: EVT_ENVOI` dans un `.insert(`.

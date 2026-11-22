@@ -176,7 +176,8 @@ async function pwaInstall() {
 
   // Prompt pas encore arrivé → attendre 4s
   if (_supportsPWA) {
-    if (typeof toast === 'function') toast('Installation en cours…', 'info');
+    // LOT-21 (TRA-C20) : plus de « Installation en cours… » — rien n'est en cours,
+    // on attend seulement que le navigateur propose l'installation.
     await new Promise(function(res) {
       var t = 0, iv = setInterval(function() {
         t += 300;
@@ -208,21 +209,24 @@ function pwaShowBannerInstall() {
   var lp = document.getElementById("pwaLogoImg");
   if (lp && typeof LOGO_SRC !== 'undefined') lp.src = LOGO_SRC;
 
-  // Icône adaptée selon le navigateur
-  var icon = _isEdge ? '🟦' : '🟡';
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C20) : sur un téléphone Android, la
+  // consigne parlait de l'icône ⊕ de la barre d'adresse d'un ORDINATEUR — elle
+  // n'existe pas sur mobile, où l'installation est dans le menu du navigateur.
+  var _android = /Android/i.test(navigator.userAgent || "");
   var name = _isEdge ? 'Edge' : _isSamsung ? 'Samsung Internet' : 'Chrome';
-  var hint = _isEdge
-    ? 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">📥</strong> pour installer PASSIO.'
-    : 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">💾</strong> pour installer PASSIO.';
+  var hint = _android
+    ? (_isSamsung
+      ? 'Touche le menu <strong>≡</strong> en bas de l\'écran, puis « Ajouter la page à » → « Écran d\'accueil ».'
+      : 'Touche le menu <strong>⋮</strong> en haut à droite, puis « Installer l\'application » (ou « Ajouter à l\'écran d\'accueil »).')
+    : 'Dans la barre d\'adresse, en haut à droite, clique sur l\'icône d\'installation (un écran avec une flèche), puis « Installer ».';
 
   content.innerHTML =
     '<div style="text-align:center;padding:4px 0 12px;">' +
-    '<div style="font-size:40px;margin-bottom:10px;">' + icon + '</div>' +
-    '<div style="font-size:15px;font-weight:800;color:#1e1b4b;margin-bottom:10px;">Installe via ' + name + '</div>' +
-    '<div style="background:#f5f3ff;border-radius:14px;padding:14px;margin-bottom:14px;text-align:left;font-size:13px;color:#374151;line-height:1.6;">' +
+    '<div style="font-size:15px;font-weight:800;color:var(--text, #1f1235);margin-bottom:10px;">Installer PASSIO avec ' + name + '</div>' +
+    '<div style="background:var(--accent-tile, #f5efff);border-radius:14px;padding:14px;margin-bottom:14px;text-align:left;font-size:14px;color:var(--text, #1f1235);line-height:1.6;">' +
     hint +
     '</div>' +
-    '<button class="pwa-btn-install" onclick="pwaDismiss();window.focus();" style="margin-bottom:8px;">✅&nbsp;&nbsp;Compris, je cherche l\'icône</button>' +
+    '<button class="pwa-btn-install" onclick="pwaDismiss();window.focus();" style="margin-bottom:8px;">Compris</button>' +
     '<button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>' +
     '</div>';
   ov.style.display = "flex";
@@ -240,13 +244,17 @@ function togglePwd(id, btn) {
 // Le SW envoie { type:"OFFLINE" } quand il sert depuis le cache faute de réseau.
 // On écoute aussi les événements natifs online/offline du navigateur.
 (function _setupOfflineBanner() {
+  // LOT-31 (TRA-C19) : `passio-hors-ligne` sur <body> fait monter le bandeau de
+  // l'équipe au-dessus de celui-ci — les deux restent lisibles.
   function showOffline() {
     var b = document.getElementById("offlineBanner");
     if (b) b.style.display = "flex";
+    try { document.body.classList.add("passio-hors-ligne"); } catch (e) {}
   }
   function hideOffline() {
     var b = document.getElementById("offlineBanner");
     if (b) b.style.display = "none";
+    try { document.body.classList.remove("passio-hors-ligne"); } catch (e) {}
   }
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", function(e) {
@@ -543,19 +551,13 @@ function _onEmojiSearch(query) {
     return;
   }
 
-  results.forEach(function(emoji) {
-    var div = document.createElement("div");
-    div.className = "emoji-item";
-    div.textContent = emoji;
-    div.onclick = function() { insertEmoji(emoji); };
-    grid.appendChild(div);
-  });
+  results.forEach(function(emoji) { grid.appendChild(_caseEmoji(emoji)); });
 }
 
 // Populate emoji grid
 function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
-  if (!grid) return; // panel pas encore ouvert — appelé de nouveau à l'ouverture
+  if (!grid) return; // grille pas encore lue — rappelée à la fin du parsing, et à l'ouverture (toggleEmojiPanel)
 
   grid.innerHTML = "";
 
@@ -565,21 +567,31 @@ function _populateEmojiGrid() {
   }
 
   // Remplir avec tous les emojis
-  EMOJIS.forEach(function(emoji) {
-    var div = document.createElement("div");
-    div.className = "emoji-item";
-    div.textContent = emoji;
-    div.style.cursor = "pointer";
-    div.onclick = function() {
-      insertEmoji(emoji);
-    };
-    grid.appendChild(div);
-  });
+  EMOJIS.forEach(function(emoji) { grid.appendChild(_caseEmoji(emoji)); });
 }
 
-// Call on page load - avec délai pour garantir que le DOM est chargé
+// LOT-37 (audit UX/UI du 2026-11-10, MSG-C70) : une case est un BOUTON de 44 px
+// (huit colonnes), nommé par son emoji ; elle n'est jamais un demi-caractère.
+function _caseEmoji(emoji) {
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "emoji-item";
+  b.textContent = emoji;
+  b.setAttribute("aria-label", emoji);
+  b.onclick = function() { insertEmoji(emoji); };
+  return b;
+}
+
+// Remplissage au chargement.
+// ⚠️ LE DÉLAI NE GARANTISSAIT PAS « QUE LE DOM EST CHARGÉ » (2026-11-12). `#emojiGrid` est
+// à la fin de la page, après le chargeur du bloc app, et ce script peut tourner avant que le
+// parseur l'atteigne : scripts sortis du cache, page qui arrive lentement — mesuré en
+// production, le panneau des emojis restait VIDE pour la session. Sans grille au bout des
+// 100 ms, on attend la fin du parsing ; l'ouverture du panneau remplit aussi une grille
+// restée vide (toggleEmojiPanel, emoji-misc.js). Verrou : app-scripts-par-fichier.spec.js ⑤ bis.
 setTimeout(function() {
-  _populateEmojiGrid();
+  if (document.getElementById("emojiGrid")) _populateEmojiGrid();
+  else document.addEventListener("DOMContentLoaded", _populateEmojiGrid, { once: true });
 }, 100);
 
 // Insert emoji into message input
@@ -590,11 +602,18 @@ function insertEmoji(e) {
     var start = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
     var end = inp.selectionEnd != null ? inp.selectionEnd : inp.value.length;
     inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
-    inp.focus();
-    var pos = start + [...e].length;
+    // LOT-37 (MSG-C70) : le panneau RESTE ouvert — on choisit souvent plusieurs
+    // emojis de suite ; il se ferme à l'envoi, au bouton ou en touchant ailleurs.
+    // Sur un écran tactile, le champ ne prend pas le focus : le clavier
+    // recouvrirait le panneau. Le curseur se compte en unités UTF-16 (celles de
+    // setSelectionRange) : compter les points de code le plaçait AU MILIEU de
+    // l'emoji suivant.
+    var tactile = false;
+    try { tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches; } catch(_) {}
+    if (!tactile) inp.focus();
+    var pos = start + e.length;
     try { inp.setSelectionRange(pos, pos); } catch(_) {}
     if (typeof autoResizeTextarea === "function") autoResizeTextarea(inp);
-    _closeEmojiPanel();
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
@@ -626,79 +645,34 @@ function _sendGif(gifUrl) {
     }
     _diag("_sendGif: convId=" + convId);
 
+    // Mêmes portes que le texte (`sendMessageFp`) : un visiteur est invité à créer
+    // son compte, une conversation de démonstration n'envoie rien.
+    if (window.requireAuthentication && !requireAuthentication("message")) return;
     var convs = getConversations();
     var c = convs.find(x => x.id === convId);
     if (!c) {
       _diag("_sendGif: Conversation NOT FOUND");
       return;
     }
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
 
     var msgId = "msg_" + uid();
+    var contentJson = JSON.stringify({type: "gif", url: gifUrl, text: "🎬 GIF"});
     if (!c.messages) c.messages = [];
-    c.messages.push({ id: msgId, from: "me", text: "", gif: gifUrl, at: Date.now() });
+    // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, MSG-C57) : le GIF partait par un INSERT
+    // à part, sans statut, dont l'échec n'était que journalisé — il restait affiché
+    // « 18:48 ✓ » alors que la base n'avait rien (mesuré, panne 500 programmée).
+    // Il passe désormais par le chemin COMMUN du texte (`_sendTextToSupa`) :
+    // « envoi… », échec visible, file hors ligne, « réessayer ». `envoi` garde le
+    // contenu exact pour qu'un renvoi reparte en GIF, pas en message vide.
+    c.messages.push({ id: msgId, from: "me", text: "", gif: gifUrl, at: Date.now(), status: "sending", de: (typeof _fileProprietaire === "function" ? _fileProprietaire() : null), envoi: contentJson });
     c.lastAt = Date.now();
-
-    _diag("_sendGif: Message créé localement - msgId=" + msgId);
     saveConversations();
 
     if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
     if (typeof renderMessages === "function") renderMessages();
 
-    // Sync Supabase
-    if (typeof supa === 'undefined' || !supa) {
-      _diag("_sendGif: Supabase NOT AVAILABLE");
-      return;
-    }
-    if (!MY_UID) {
-      _diag("_sendGif: MY_UID NOT SET");
-      return;
-    }
-
-    _diag("_sendGif: Sync Supabase - Envoi du GIF...");
-    _diag("_sendGif: MY_UID=" + MY_UID);
-
-    // Vérifier que MY_UID est défini
-    // Sync Supabase pour synchronisation multi-appareils
-    _diag("_sendGif: Tentative Supabase...");
-
-    // Encoder le GIF dans le content en JSON
-    var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
-    var contentJson = JSON.stringify(contentData);
-
-    // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
-    // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
-    // (Aligné sur sendMessageToSupabase / sendMessageFp le 2026-06-15.)
-    supa.from("conv_messages").insert({
-      id: msgId,
-      conv_id: convId,
-      from_id: MY_UID,
-      content: _withSenderMeta(contentJson),
-      created_at: new Date().toISOString()
-    }).then(function(res) {
-      if (res.error) {
-        _diag("_sendGif: Erreur avec from_id - " + res.error.message);
-        // Fallback: essayer SANS from_id
-        _diag("_sendGif: Fallback - essai sans from_id...");
-        supa.from("conv_messages").insert({
-          id: msgId,
-          conv_id: convId,
-          content: _withSenderMeta(contentJson),
-          created_at: new Date().toISOString()
-        }).then(function(res2) {
-          if (!res2.error) {
-            _diag("_sendGif: ✅ Supabase OK (fallback sans from_id)");
-          } else {
-            _diag("_sendGif: ❌ Échec définitif - " + res2.error.message);
-          }
-        }).catch(function() {});
-      } else {
-        _diag("_sendGif: ✅ Supabase OK (avec from_id)");
-      }
-    }).catch(function(err) {
-      _diag("_sendGif: Catch - " + err.message);
-    });
-
-    _diag("_sendGif: ✅ Sauvegarde locale OK");
+    _sendTextToSupa(convId, msgId, _withSenderMeta(contentJson));
   } catch(err) {
     _diag("_sendGif: EXCEPTION - " + err.message);
     console.error("_sendGif:", err);
@@ -1032,6 +1006,14 @@ function _pjDeposer(convId, msgId, o) {
     _pjEchec(convId, msgId, Object.assign(base, { reseau: true, rc: "reseau", http: 0 }));
     return Promise.resolve(false);
   }
+  // LOT-43 (MSG-C22) : un brouillon devient une conversation AVANT le dépôt ;
+  // un refus est une coupure (en file, comme sans réseau).
+  if (typeof _convBrouillon === "function" && _convBrouillon(convId)) {
+    return _materialiserConv(convId).then(function (ok) {
+      if (!ok) { _pjEchec(convId, msgId, Object.assign(base, { reseau: true, rc: "reseau", http: 0 })); return false; }
+      return _pjDeposer(convId, msgId, o);
+    });
+  }
   _pjEnVol[msgId] = true;
   // Une mise à jour attend ce dépôt (pwa-detect.js) : la copie n'est sûre qu'une
   // fois l'objet chez Storage ou l'entrée en file.
@@ -1219,7 +1201,13 @@ function handleAttachFile(input, kind) {
   if (kind === "media" && file.type && file.type.indexOf("image/") === 0 && typeof passioCompressImage === "function") {
     if (file.size > 40 * 1024 * 1024) { input.value = ""; return toast("Image trop lourde (>40 Mo)."); }
     passioCompressImage(file).then(function (durl) {
-      _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+      // LOT-24 (MSG-C72) : la photo touchée dans la galerie partait SANS être
+      // montrée — une vignette voisine, une capture personnelle, et c'était
+      // envoyé. On la montre d'abord ; « Envoyer » la fait partir, « Annuler »
+      // ne laisse rien. Aucun nouveau format de message.
+      _apercuPhotoAvantEnvoi(durl, function () {
+        _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+      }, function () { input.value = ""; });
     }).catch(function () { input.value = ""; toast("Impossible de lire cette image."); });
     return;
   }
@@ -1253,6 +1241,31 @@ function handleAttachFile(input, kind) {
     return;
   }
   _processAttach(input, kind, file);
+}
+
+// Aperçu d'une photo avant envoi (MSG-C72). Rendu DOM ; l'image est une URL
+// `data:image/…` produite ICI par la compression, passée par `safeUrlAttr`.
+// LOT-40 (MSG-C71) : le même aperçu sert au GIF (URL https du fournisseur, même
+// désinfectant) — `titre` et `alt` disent ce qui va partir.
+function _apercuPhotoAvantEnvoi(durl, envoyer, annuler, titre, alt) {
+  var src = (typeof safeUrlAttr === "function") ? safeUrlAttr(durl) : "#";
+  if (!src || src === "#") { envoyer(); return; }
+  var decide = false;
+  openModal(
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">' + escapeHtml(titre || "Envoyer cette photo ?") + '</div>' +
+    '<div class="pj-apercu"><img id="pjApercuImg" alt="' + escapeHtml(alt || "Photo à envoyer") + '" /></div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button type="button" class="btn ghost block" id="pjApercuAnnuler">Annuler</button>' +
+      '<button type="button" class="btn primary block" id="pjApercuEnvoyer">Envoyer</button>' +
+    '</div>'
+  );
+  var img = document.getElementById("pjApercuImg");
+  if (img) img.src = src;
+  var bE = document.getElementById("pjApercuEnvoyer");
+  var bA = document.getElementById("pjApercuAnnuler");
+  if (bE) bE.addEventListener("click", function () { if (decide) return; decide = true; closeModal(); envoyer(); });
+  if (bA) bA.addEventListener("click", function () { if (decide) return; decide = true; closeModal(); annuler(); });
 }
 
 function _processAttach(input, kind, file) {
@@ -1316,11 +1329,13 @@ function _processAttach(input, kind, file) {
       msg.voiceDuration = 0;
       msg.isFile = true;
       msg.fileName = file.name;
+      msg.fileSize = tailleFichierLisible(file.size);
       _diag("handleAttachFile: AUDIO added");
     } else if(kind === 'doc') {
       msg.docData = dataUrl;
       msg.fileName = file.name;
-      msg.fileSize = (file.size/1024).toFixed(0) + " KB";
+      // LOT-20 (MSG-C83) : « moins de 1 Ko » plutôt que « 0 KB », en français.
+      msg.fileSize = tailleFichierLisible(file.size);
       msg.fileType = file.name.split(".").pop().toUpperCase();
       _diag("handleAttachFile: DOCUMENT added");
     }
@@ -1489,56 +1504,46 @@ function shareLocation() {
   navigator.geolocation.getCurrentPosition(function(pos) {
     var lat = pos.coords.latitude.toFixed(5);
     var lng = pos.coords.longitude.toFixed(5);
-    var url = "https://maps.google.com/?q=" + lat + "," + lng;
 
     var convId = fp.getAttribute("data-conv-id");
-    var displayName = fp.getAttribute("data-display-name");
     var convs = getConversations ? getConversations() : (window.conversationsState || []);
     var c = convs.find(x => x.id === convId);
     if (!c) return;
 
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+
+    // LOT-4 (audit UX/UI du 2026-11-10, MSG-C56) : la position exacte, au mètre près,
+    // partait au premier toucher, sans aperçu. On montre ce qui part et à qui ; rien
+    // ne part sans « Envoyer ma position ».
+    var qui = (typeof _convInterlocuteur === "function") ? _convInterlocuteur(c) : (c.userName || "ton interlocuteur");
+    if (typeof ouvrirFeuilleConfirmation !== "function") return _envoyerPositionMesuree(fp, c, lat, lng);
+    ouvrirFeuilleConfirmation({
+      titre: c.isGroup ? "Envoyer ta position actuelle au groupe ?" : "Envoyer ta position actuelle à " + qui + " ?",
+      texte: ["Position précise : " + lat + ", " + lng + ".", "Elle part comme un lien vers une carte, visible par " + qui + "."],
+      actions: [{ id: "envoyer", libelle: "Envoyer ma position", agir: function () { _envoyerPositionMesuree(fp, c, lat, lng); } }],
+    });
+  }, function() {
+    toast("❌ Impossible d'obtenir la position");
+  });
+}
+
+// L'envoi lui-même, après confirmation (MSG-C56).
+function _envoyerPositionMesuree(fp, c, lat, lng) {
+    var url = "https://maps.google.com/?q=" + lat + "," + lng;
+    var convId = c.id;
+    var displayName = fp.getAttribute("data-display-name");
+
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msgText = "📍 Ma position : " + url;
-    c.messages.push({id: msgId, from: "me", text: msgText, at: Date.now()});
+    var contentJson = JSON.stringify({ type: "location", lat: parseFloat(lat), lng: parseFloat(lng), url: url, text: msgText });
+    // ⚠️ LOT-1 (MSG-C57) : même chemin commun que le texte et le GIF — statut,
+    // échec visible, file hors ligne, « réessayer » (l'INSERT séparé d'avant
+    // avalait son échec, la position restait affichée comme envoyée).
+    c.messages.push({id: msgId, from: "me", text: msgText, at: Date.now(), status: "sending", de: (typeof _fileProprietaire === "function" ? _fileProprietaire() : null), envoi: contentJson});
     c.lastAt = Date.now();
 
     if(typeof saveConversations === 'function') saveConversations();
-
-    // Sync Supabase pour synchronisation multi-appareils
-    if(typeof supa !== 'undefined' && supa) {
-      // Encoder dans le content en JSON
-      var contentData = {
-        type: "location",
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        url: url,
-        text: msgText
-      };
-      var contentJson = JSON.stringify(contentData);
-
-      // AVEC from_id d'abord : la RLS v2 rejette TOUJOURS l'insert sans from_id
-      // (même ordre que sendMessageToSupabase — l'ancien ordre inverse échouait
-      // systématiquement au 1er essai et gaspillait une requête par position).
-      supa.from("conv_messages").insert({
-        id: msgId,
-        conv_id: convId,
-        from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
-        content: _withSenderMeta(contentJson),
-        created_at: new Date().toISOString()
-      }).then(function(res) {
-        if(res.error) {
-          // Fallback sans from_id (par prudence, ex. RLS historique)
-          supa.from("conv_messages").insert({
-            id: msgId,
-            conv_id: convId,
-            content: _withSenderMeta(contentJson),
-            created_at: new Date().toISOString()
-          }).catch(function() {});
-        }
-      }).catch(function(err) {
-        // Continuer même en cas d'erreur
-      });
-    }
+    _sendTextToSupa(convId, msgId, _withSenderMeta(contentJson));
 
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
@@ -1552,9 +1557,6 @@ function shareLocation() {
         if(btn) btn.classList.remove("active");
       }
     }, 300);
-  }, function() {
-    toast("❌ Impossible d'obtenir la position");
-  });
 }
 
 function openConvFiles() {
@@ -1655,52 +1657,70 @@ function openConvSettings(convId) {
     var uname = String(c.userName || "Utilisateur").replace(/'/g, "\\'");
     var blocked = isDM && typeof isBlocked === "function" && isBlocked(c.userId);
 
+    // LOT-31 (audit UX/UI du 2026-11-10, MSG-C24) : une conversation d'EXEMPLE
+    // proposait quatorze actions réelles (bloquer, signaler, exporter…) sur un
+    // personnage qui n'existe pas. Elle n'en garde qu'une : la retirer.
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) {
+      var titreEx = document.getElementById("convSettingsTitre");
+      if (titreEx) titreEx.textContent = c.userName || "Exemple";
+      content.innerHTML =
+        '<div class="csetting-section">EXEMPLE PASSIO</div>' +
+        '<div class="csetting-note" style="padding:4px 16px 12px;color:var(--muted);font-size:13px;line-height:1.4;">Cette conversation montre à quoi ressemble la messagerie. Personne ne la lit.</div>' +
+        '<div class="csetting-item csetting-danger" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
+          '<div class="csetting-icon">' + picto("supprimer") + '</div><div class="csetting-label">Supprimer cet exemple</div></div>';
+      panel.style.display = ""; panel.style.transform = ""; panel.style.pointerEvents = "";
+      panel.classList.add("open");
+      return;
+    }
+
+    // LOT-35 (audit UX/UI du 2026-11-10, MSG-C17) : quatorze entrées mal rangées.
+    // Le titre dit de QUI il s'agit ; ce qui touche la conversation est groupé ;
+    // les accusés de lecture, réglage de TOUT le compte, le disent ; ce qui efface
+    // ou fait sortir est rassemblé en bas, dans un rouge lisible (.csetting-danger,
+    // 6:1 au lieu de 3,5:1), « Effacer les messages » compris (il était gris).
+    var titre = document.getElementById("convSettingsTitre");
+    if (titre) titre.textContent = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
+    var item = function (action, icone, libelle, danger) {
+      return '<div class="csetting-item' + (danger ? ' csetting-danger' : '') + '" onclick="' + action + '">' +
+        '<div class="csetting-icon">' + icone + '</div><div class="csetting-label">' + libelle + '</div></div>';
+    };
+    var idJs = escapeJsArg(convId);
+    var accuses = !((state.user.general || {}).readReceipts === false);
     content.innerHTML =
       '<div class="csetting-section">CONVERSATION</div>' +
-      (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + escapeJsArg(uid) + '\',\'seed\')">' +
-        '<div class="csetting-icon">👤</div><div class="csetting-label">Voir le profil</div></div>' : '') +
-      '<div class="csetting-item" onclick="_toggleMuteConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">' + (c._muted ? '🔕' : '🔔') + '</div>' +
-        '<div class="csetting-label">' + (c._muted ? 'Activer les notifications' : 'Couper les notifications') + '</div></div>' +
-      '<div class="csetting-item" onclick="openConvFiles()">' +
-        '<div class="csetting-icon">📎</div><div class="csetting-label">Pièces jointes & médias</div></div>' +
-      '<div class="csetting-item" onclick="_togglePinConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📌</div><div class="csetting-label">' + (c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') + '</div></div>' +
-      '<div class="csetting-item" onclick="_openConvBgPicker(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🎨</div><div class="csetting-label">Fond de conversation</div></div>' +
-      (c.isGroup ? '<div class="csetting-item" onclick="closeConvSettings();pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🖼️</div><div class="csetting-label">Changer la photo du groupe</div></div>' : '') +
-      '<div class="csetting-item" onclick="_markConvUnread(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
-      (function(){ var on = !((state.user.general||{}).readReceipts === false);
-        return '<div class="csetting-item" onclick="_toggleReadReceipts(\'' + escapeJsArg(convId) + '\')">' +
-          '<div class="csetting-icon">' + (on ? '👁️' : '🚫') + '</div>' +
-          '<div class="csetting-label">Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (on ? 'activés' : 'désactivés') + '</span></div></div>'; })() +
+      (isDM ? item("closeConvSettings();openUserProfile('" + escapeJsArg(uid) + "','seed')", picto("profil"), "Voir le profil") : '') +
+      item("_toggleMuteConv('" + idJs + "')", c._muted ? picto("clocheCoupee") : picto("cloche"), c._muted ? 'Activer les notifications' : 'Couper les notifications') +
+      item("_searchConv('" + idJs + "')", picto("recherche"), "Rechercher dans la conversation") +
+      item("openConvFiles()", picto("trombone"), "Pièces jointes & médias") +
+      item("_togglePinConv('" + idJs + "')", picto("epingler"), c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') +
+      item("_markConvUnread('" + idJs + "')", picto("nonLu"), "Marquer comme non lu") +
+      item("_toggleArchiveConv('" + idJs + "')", picto("archiver"), c.archived ? 'Désarchiver' : 'Archiver la conversation') +
+      item("_openConvBgPicker('" + idJs + "')", picto("palette"), "Fond de conversation") +
+      (c.isGroup ? item("closeConvSettings();pickGroupPhoto('" + idJs + "')", picto("image"), "Changer la photo du groupe") : '') +
+      item("_exportConv('" + idJs + "')", picto("exporter"), "Exporter la conversation") +
 
-      '<div class="csetting-section">ACTIONS</div>' +
-      '<div class="csetting-item" onclick="_toggleArchiveConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">' + (c.archived ? '📤' : '📥') + '</div><div class="csetting-label">' + (c.archived ? 'Désarchiver' : 'Archiver la conversation') + '</div></div>' +
-      '<div class="csetting-item" onclick="_searchConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🔍</div><div class="csetting-label">Rechercher dans la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_exportConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📤</div><div class="csetting-label">Exporter la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_clearConvMessages(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🗑️</div><div class="csetting-label" style="color:var(--muted);">Effacer les messages</div></div>' +
+      '<div class="csetting-section">TON COMPTE</div>' +
+      item("_toggleReadReceipts('" + idJs + "')", accuses ? picto("oeil") : picto("masquer"),
+        'Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (accuses ? 'activés' : 'désactivés') + '</span>' +
+        '<div class="csetting-aide">Pour toutes tes conversations</div>') +
 
       (isDM ?
         '<div class="csetting-section">CONFIDENTIALITÉ</div>' +
-        (blocked ?
-          '<div class="csetting-item" onclick="closeConvSettings();unblockUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
-            '<div class="csetting-icon">✅</div><div class="csetting-label">Débloquer ' + escapeHtml(c.userName || '') + '</div></div>'
-          :
-          '<div class="csetting-item" onclick="_blockFromConv(\'' + escapeJsArg(convId) + '\')">' +
-            '<div class="csetting-icon">🚫</div><div class="csetting-label" style="color:#ef4444;">Bloquer ' + escapeHtml(c.userName || '') + '</div></div>') +
-        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
-          '<div class="csetting-icon">🚩</div><div class="csetting-label" style="color:#ef4444;">Signaler</div></div>'
+        (blocked
+          ? item("closeConvSettings();unblockUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", picto("debloquer"), "Débloquer " + escapeHtml(c.userName || ''))
+          : item("_blockFromConv('" + idJs + "')", picto("bloquer"), "Bloquer " + escapeHtml(c.userName || ''), true)) +
+        item("closeConvSettings();reportUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", picto("signaler"), "Signaler", true)
         : '') +
 
-      '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div></div>';
+      '<div class="csetting-section">EFFACER</div>' +
+      item("_clearConvMessages('" + idJs + "')", picto("supprimer"), "Effacer les messages", true) +
+      // LOT-28 (audit UX/UI du 2026-11-10, MSG-C21) : un groupe n'a qu'UNE sortie,
+      // « Quitter le groupe » (l'appartenance part, les messages cessent) — l'ancien
+      // « Supprimer » ne retirait que la copie locale, et le prochain message le
+      // faisait revenir. En 1:1, la portée est dans le libellé : « pour moi ».
+      (c.isGroup
+        ? item("closeConvSettings();leaveGroup('" + idJs + "')", picto("quitter"), "Quitter le groupe", true)
+        : item("_deleteConv('" + idJs + "')", picto("supprimer"), "Supprimer pour moi", true));
 
     // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
     // pointer-events) sur ce panneau → ils écrasaient la classe .open et le panneau
@@ -1720,10 +1740,38 @@ function _toggleMuteConv(convId) {
   saveConversations();
   openConvSettings(convId);
   toast(c._muted ? "🔕 Notifications coupées" : "🔔 Notifications activées");
+  _ecrireSourdineServeur(convId, !!c._muted);
 }
 
-function _clearConvMessages(convId) {
-  if (!confirm("Effacer tous les messages ?")) return;
+// MSG-C02, volet serveur (audit UX/UI du 2026-11-10) : la sourdine n'existait
+// que sur CET appareil — l'expéditeur, lui, déclenchait la push vers tous les
+// appareils du destinataire. Elle est écrite sur MA ligne `conv_members`
+// (`muted`, seule colonne que la migration du 2026-11-13 me laisse écrire), et
+// `notify-call` ne réveille plus un membre en sourdine. Le réglage LOCAL reste
+// la vérité de cet appareil : un refus serveur ne l'annule pas, il le dit.
+async function _ecrireSourdineServeur(convId, muted) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return;
+    if (!convId || typeof MY_UID === "undefined" || !MY_UID) return;
+    var r = await supa.from("conv_members").update({ muted: muted })
+      .eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id");
+    if (r && r.error) {
+      var code = String(r.error.code || "");
+      // Base pas encore migrée (colonne inconnue) : rien à dire, la sourdine
+      // locale fonctionne comme avant.
+      if (code === "42703" || code === "PGRST204") { try { diagLog("sourdine serveur : colonne absente"); } catch (e) {} return; }
+      try { diagLog("sourdine serveur refusée " + code); } catch (e) {}
+      toast("Sourdine enregistrée sur cet appareil seulement — tes autres appareils sonneront encore", "warning");
+      return;
+    }
+    // Zéro ligne : la conversation n'existe pas en base (exemple, locale) — rien à dire.
+  } catch (e) { try { diagLog("sourdine serveur : " + (e && e.message)); } catch (_) {} }
+}
+
+async function _clearConvMessages(convId) {
+  // LOT-6 (TRA-C11) : feuille de l'application ; la portée est dite.
+  if (!(await confirmerAction({ titre: "Effacer tous les messages ?", texte: "Ils disparaissent de cet appareil. Ils restent visibles chez les autres membres.", libelle: "Effacer les messages", danger: true }))) return;
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
@@ -1754,8 +1802,12 @@ function _exportConv(convId) {
   toast("Exporté !");
 }
 
-function _deleteConv(convId) {
-  if (!confirm("Supprimer cette conversation ?")) return;
+async function _deleteConv(convId) {
+  var _cDel = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+  var _exemple = typeof _estConvDemo === "function" && _estConvDemo(_cDel);
+  if (!(await confirmerAction(_exemple
+      ? { titre: "Supprimer cet exemple ?", texte: "Il disparaît de ta liste.", libelle: "Supprimer", danger: true }
+      : { titre: "Supprimer cette conversation pour toi ?", texte: "Elle disparaît de ta liste et de cet appareil. L'autre personne garde tout l'historique.", libelle: "Supprimer pour moi", danger: true }))) return;
   conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
   // Pierres tombales : la conversation ne revient ni au boot ni par la fusion,
   // et son historique reste effacé si un nouveau message la fait réapparaître
@@ -1800,24 +1852,26 @@ function _markConvUnread(convId) {
 }
 
 // Bloquer depuis la conversation (avec confirmation) → masque ses messages + retour liste.
-function _blockFromConv(convId) {
+async function _blockFromConv(convId) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c || c.isGroup) return;
-  if (!confirm("Bloquer " + (c.userName || "cet utilisateur") + " ?\nSes messages seront masqués et tu ne le suivras plus.")) return;
+  // LOT-6 (TRA-C10) : la même feuille que les trois autres portes de blocage.
+  var fait = await demanderBlocage(c.userId, c.userName);
+  if (!fait) return;
   closeConvSettings();
-  if (typeof blockUser === "function") blockUser(c.userId, c.userName);
   try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
 }
 
 // Recherche de texte dans la conversation : filtre le fil sur les messages
 // correspondants, avec un bandeau « Tout afficher » pour revenir.
-function _searchConv(convId) {
+async function _searchConv(convId) {
   closeConvSettings();
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
-  var q = prompt("🔍 Rechercher dans la conversation :");
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var q = await demanderTexte({ titre: "Rechercher dans la conversation", placeholder: "Un mot, un nom…", libelle: "Rechercher" });
   if (q == null) return;
   q = q.trim().toLowerCase();
   if (!q) return;
@@ -1852,18 +1906,34 @@ function _togglePinConv(convId) {
 
 // Fond de conversation : applique un dégradé/couleur au fil (#convFpThread),
 // mémorisé par conversation (c.bg) et réappliqué à l'ouverture.
+// LOT-35 (audit UX/UI du 2026-11-10, MSG-C16, MSG-C79) : cinq fonds sur six
+// étaient sombres — un mode sombre par conversation, alors que le produit n'en a
+// plus : heures et séparateurs (#6E6987) y tombaient à 3:1. Six fonds CLAIRS, où
+// l'habillage du fil reste lisible. Un fond sombre déjà choisi (c.bg, mémorisé
+// sur l'appareil) est traduit à l'affichage vers le clair de même rang.
 var CONV_BGS = [
   { label: "Par défaut", css: "var(--bg-deep)" },
-  { label: "Violet",     css: "linear-gradient(160deg,#2a1a4a,#160d2a)" },
-  { label: "Océan",      css: "linear-gradient(160deg,#0f2a3a,#0a1722)" },
-  { label: "Coucher",    css: "linear-gradient(160deg,#3a1a2a,#241019)" },
-  { label: "Forêt",      css: "linear-gradient(160deg,#16291f,#0d1a12)" },
-  { label: "Nuit",       css: "#0a0a0f" }
+  { label: "Lavande",    css: "linear-gradient(160deg,#f4effe,#e9e1fc)" },
+  { label: "Ciel",       css: "linear-gradient(160deg,#eef6fc,#dcecf7)" },
+  { label: "Pêche",      css: "linear-gradient(160deg,#fdf2ec,#f9e3d8)" },
+  { label: "Menthe",     css: "linear-gradient(160deg,#eef8f1,#dcefe3)" },
+  { label: "Sable",      css: "linear-gradient(160deg,#f8f4ea,#eee6d4)" }
 ];
+var CONV_BGS_SOMBRES = [
+  "linear-gradient(160deg,#2a1a4a,#160d2a)",
+  "linear-gradient(160deg,#0f2a3a,#0a1722)",
+  "linear-gradient(160deg,#3a1a2a,#241019)",
+  "linear-gradient(160deg,#16291f,#0d1a12)",
+  "#0a0a0f"
+];
+function fondConvClair(css) {
+  var i = CONV_BGS_SOMBRES.indexOf(String(css || ""));
+  return i > -1 ? CONV_BGS[i + 1].css : (css || "var(--bg-deep)");
+}
 
 function _applyConvBg(css) {
   var thread = document.getElementById("convFpThread");
-  if (thread) thread.style.background = css || "var(--bg-deep)";
+  if (thread) thread.style.background = fondConvClair(css);
 }
 
 function _openConvBgPicker(convId) {
@@ -1871,10 +1941,10 @@ function _openConvBgPicker(convId) {
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
   var swatches = CONV_BGS.map(function(b, i) {
-    var sel = (c.bg || "var(--bg-deep)") === b.css;
-    return '<div onclick="_setConvBg(\'' + escapeJsArg(convId) + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';">' +
+    var sel = fondConvClair(c.bg) === b.css;
+    return '<button type="button" class="conv-fond-choix" aria-pressed="' + (sel ? 'true' : 'false') + '" onclick="_setConvBg(\'' + escapeJsArg(convId) + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'var(--border)') + ';padding:0;background:none;font:inherit;">' +
       '<div style="height:62px;background:' + b.css + ';"></div>' +
-      '<div style="font-size:11px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></div>';
+      '<div style="font-size:12px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></button>';
   }).join("");
   openModal(
     '<div class="modal-handle"></div>' +
@@ -1930,6 +2000,16 @@ window._onGifSearch = _onGifSearch;
 
 // FIX 5 — Clic sur une image dans le chat : ouvre un visualiseur
 // plein écran (avant : ReferenceError, rien ne se passait).
+// Ferme la visionneuse (bouton, fond, Échap) en rendant son entrée d'historique ;
+// `depuisRetour` : l'entrée vient d'être retirée par le navigateur.
+function fermerVisionneuseImage(depuisRetour) {
+  var v = document.getElementById("fullImgViewer");
+  if (!v) return false;
+  v.remove();
+  if (!depuisRetour) { try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {} }
+  return true;
+}
+
 function openFullImg(src) {
   if (!src) return;
   var old = document.getElementById("fullImgViewer");
@@ -1950,14 +2030,17 @@ function openFullImg(src) {
     '</div>' +
     '<div style="position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:rgba(255,255,255,0.6);font-size:12px;pointer-events:none;">Double-tap pour zoomer · glisser pour déplacer</div>';
   document.body.appendChild(v);
+  // LOT-24 (MSG-C73) : une entrée d'historique, comme une modale — le retour
+  // système ferme l'image au lieu de fermer la conversation derrière elle.
+  try { if (typeof pushOverlayHistory === "function") pushOverlayHistory("image", "#image"); } catch (e) {}
   var img = v.querySelector("#_fiv_img");
   var scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0, lastTap = 0;
   function apply() { img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")"; img.style.cursor = scale > 1 ? "grab" : "zoom-in"; }
   function reset() { scale = 1; tx = 0; ty = 0; apply(); }
-  v.querySelector("#_fiv_close").onclick = function (e) { e.stopPropagation(); v.remove(); };
+  v.querySelector("#_fiv_close").onclick = function (e) { e.stopPropagation(); fermerVisionneuseImage(); };
   v.querySelector("#_fiv_dl").onclick = function (e) { e.stopPropagation(); try { var a = document.createElement("a"); a.href = src; a.download = "passio_image"; a.click(); } catch (err) {} };
   // Fond cliqué (hors image) → fermer.
-  v.addEventListener("click", function (e) { if (e.target === v) v.remove(); });
+  v.addEventListener("click", function (e) { if (e.target === v) fermerVisionneuseImage(); });
   // Double-tap / double-clic → zoom toggle.
   img.addEventListener("click", function (e) {
     e.stopPropagation();
@@ -1978,7 +2061,59 @@ function openFullImg(src) {
 var _voiceRecorder = null, _voiceChunks = [], _voiceStartAt = 0, _voiceTimerInt = null, _voiceCancelled = false;
 window._isRecording = false;
 
-async function startVoiceRecord() {
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C53/C54) — LE GESTE DU MICRO.
+// Avant : le micro s'ouvrait APRÈS que le doigt s'était levé (autorisation, flux
+// lent), l'enregistrement continuait seul, et le toucher suivant l'ENVOYAIT ; glisser
+// hors du bouton puis relâcher envoyait aussi. Désormais : on n'enregistre que doigt
+// posé ; relâcher envoie ; glisser de plus de 80 px vers la gauche puis relâcher
+// annule (la barre le dit). Un toucher bref ne capte rien et dit quoi faire.
+var VOIX_SEUIL_ANNULER = 80;
+var _voixGeste = null; // { x, annuler } tant que le doigt est posé
+var VOIX_CONSIGNE = "Relâche pour envoyer · glisse vers la gauche pour annuler";
+function _voixConsigneCourte() { try { toast("🎙️ Maintiens le micro pour enregistrer"); } catch (e) {} }
+function _voixMajBarre() {
+  var bar = document.getElementById("voiceRecordBar");
+  var c = document.getElementById("voiceRecordConsigne");
+  var annuler = !!(_voixGeste && _voixGeste.annuler);
+  if (bar) bar.classList.toggle("voice-annule", annuler);
+  if (c) c.textContent = annuler ? "Relâche pour annuler" : VOIX_CONSIGNE;
+}
+function _brancherBoutonVocal() {
+  var b = document.getElementById("btnVoice");
+  if (!b || b._voixBranche) return;
+  b._voixBranche = true;
+  var finir = function (e) {
+    document.removeEventListener("pointermove", bouger, true);
+    document.removeEventListener("pointerup", finir, true);
+    document.removeEventListener("pointercancel", finir, true);
+    var g = _voixGeste; _voixGeste = null;
+    if (!g) return;
+    if (e && e.type === "pointercancel") g.annuler = true;
+    if (g.annuler) cancelVoiceRecord(); else stopVoiceRecord();
+    _voixMajBarre();
+  };
+  var bouger = function (e) {
+    if (!_voixGeste) return;
+    var annuler = (_voixGeste.x - e.clientX) > VOIX_SEUIL_ANNULER;
+    if (annuler !== _voixGeste.annuler) { _voixGeste.annuler = annuler; _voixMajBarre(); }
+  };
+  b.addEventListener("pointerdown", function (e) {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    _voixGeste = { x: e.clientX, annuler: false };
+    _voixMajBarre();
+    document.addEventListener("pointermove", bouger, true);
+    document.addEventListener("pointerup", finir, true);
+    document.addEventListener("pointercancel", finir, true);
+    startVoiceRecord({ geste: true });
+  });
+  // Pas de menu « copier / partager » ni de sélection sous un appui long.
+  b.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _brancherBoutonVocal); else _brancherBoutonVocal();
+
+async function startVoiceRecord(opts) {
+  var parGeste = !!(opts && opts.geste);
   if (window._isRecording) return;
   if (typeof _pjEnvoiPermis === "function" && !_pjEnvoiPermis()) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
@@ -1990,6 +2125,13 @@ async function startVoiceRecord() {
       echoCancellation: true, noiseSuppression: true, autoGainControl: true,
       channelCount: { ideal: 1 }, sampleRate: 48000,
     } });
+    // Le doigt s'est levé pendant que le micro s'ouvrait : on ferme le flux tout de
+    // suite, rien n'est capté, et on dit quoi faire (MSG-C53).
+    if (parGeste && !_voixGeste) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      _voixConsigneCourte();
+      return;
+    }
     _voiceChunks = []; _voiceCancelled = false;
     // Débit 128 kbps EXPLICITE : le défaut de MediaRecorder est bas et variable
     // selon les navigateurs (voix étouffée).
@@ -2016,6 +2158,9 @@ async function startVoiceRecord() {
       stream.getTracks().forEach(function (t) { t.stop(); });
       _voiceUIStop();
       var elapsed = Date.now() - _voiceStartAt;
+      if (!_voiceCancelled && elapsed < 600) _voixConsigneCourte(); // toucher trop court : dire quoi faire
+      // LOT-27 (MSG-C81) : rien de capté (0 octet) — l'application ne disait rien.
+      if (!_voiceCancelled && elapsed >= 600 && !_voiceChunks.length) toast("L'enregistrement n'a pas fonctionné, réessaie", "warning");
       if (_voiceCancelled || !_voiceChunks.length || elapsed < 600) return; // tap trop court / annulé
       _mediaEnPreparation();
       var dur = Math.max(1, Math.round(elapsed / 1000));
@@ -2029,6 +2174,8 @@ async function startVoiceRecord() {
     _voiceStartAt = Date.now();
     var bar = document.getElementById("voiceRecordBar");
     if (bar) bar.classList.add("active");
+    try { var _bv = document.getElementById("btnVoice"); if (_bv) _bv.classList.add("record-active"); } catch (e) {}
+    _voixMajBarre();
     var timerEl = document.getElementById("voiceRecordTimer");
     _voiceTimerInt = setInterval(function () {
       if (!timerEl) return;
@@ -2037,7 +2184,11 @@ async function startVoiceRecord() {
     }, 250);
   } catch (e) {
     console.warn("startVoiceRecord:", e);
-    toast("🎙️ Micro non disponible (autorisation refusée ?)");
+    // LOT-27 (MSG-C81) : un message qui sait ce qu'il dit, et ce qu'il faut faire.
+    var refus = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+    toast(refus
+      ? "Micro bloqué — autorise-le dans les réglages du site pour envoyer un vocal"
+      : "Micro indisponible sur cet appareil — impossible d'enregistrer un vocal", "warning");
   }
 }
 
@@ -2045,7 +2196,8 @@ function _voiceUIStop() {
   window._isRecording = false;
   if (_voiceTimerInt) { clearInterval(_voiceTimerInt); _voiceTimerInt = null; }
   var bar = document.getElementById("voiceRecordBar");
-  if (bar) bar.classList.remove("active");
+  if (bar) bar.classList.remove("active", "voice-annule");
+  try { var _bv = document.getElementById("btnVoice"); if (_bv) _bv.classList.remove("record-active"); } catch (e) {}
   var timerEl = document.getElementById("voiceRecordTimer");
   if (timerEl) timerEl.textContent = "0:00";
 }
@@ -2217,3 +2369,57 @@ function syncAppViewportHeight() {
 //    tests/e2e/interactions.spec.js) ;
 //  · les règles `.chrome-collapsed` ont été retirées de styles.css avec ce
 //    code : aucune classe n'est plus posée nulle part.
+
+// ═══ LOT-42 (audit UX/UI du 2026-11-10, MSG-C88) : la conversation se cale sur
+// le CLAVIER. `syncAppViewportHeight` refuse — à raison — de réduire `--app-vh`
+// pendant la frappe (une hauteur amputée resterait figée après la fermeture du
+// clavier, zone réglée trois fois). Mais la coque garde alors toute sa hauteur
+// et le navigateur fait glisser la page pour montrer le champ : l'en-tête
+// (retour, nom) sort de l'écran. Pendant la frappe DANS une conversation, et
+// seulement quand la zone visible a vraiment rétréci (clavier), SEUL
+// #conv-fullpage prend la hauteur et la position de `visualViewport` : en-tête
+// en haut, fil réduit, barre au-dessus du clavier. Tout est retiré dès que le
+// clavier se ferme ou que le champ perd le focus — `--app-vh` n'est jamais
+// touché.
+function calerConvSurClavier() {
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var vv = window.visualViewport;
+    var ae = document.activeElement;
+    var frappe = !!(ae && fp.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable));
+    var total = window.innerHeight || document.documentElement.clientHeight || 0;
+    var clavier = !!(vv && total && fp.classList.contains("active") && frappe
+      && (!vv.scale || vv.scale <= 1.05) && vv.height < total * 0.85);
+    if (!clavier) {
+      if (fp.classList.contains("conv-cale-clavier")) {
+        fp.classList.remove("conv-cale-clavier");
+        fp.style.removeProperty("top");
+        fp.style.removeProperty("height");
+        fp.style.removeProperty("bottom");
+      }
+      return;
+    }
+    var parent = fp.offsetParent || fp.parentElement;
+    var haut = parent ? parent.getBoundingClientRect().top : 0;
+    var thread = document.getElementById("convFpThread");
+    var auBas = !!(thread && thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
+    fp.classList.add("conv-cale-clavier");
+    fp.style.setProperty("top", Math.round((vv.offsetTop || 0) - haut) + "px");
+    fp.style.setProperty("bottom", "auto");
+    fp.style.setProperty("height", Math.round(vv.height) + "px");
+    if (auBas && thread) thread.scrollTop = thread.scrollHeight;
+  } catch (e) { try { diagLog("calerConvSurClavier : " + (e && e.message)); } catch (_) {} }
+}
+(function () {
+  var vv = window.visualViewport;
+  if (vv) {
+    vv.addEventListener("resize", calerConvSurClavier);
+    vv.addEventListener("scroll", calerConvSurClavier);
+  }
+  document.addEventListener("focusin", function () { setTimeout(calerConvSurClavier, 0); });
+  document.addEventListener("focusout", function () { setTimeout(calerConvSurClavier, 0); });
+})();
+
+// Le pont de médias ne contacte aucun backend à l'installation ; auth seulement par requête.
+passioMediaProteges.installer();

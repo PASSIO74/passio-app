@@ -64,12 +64,20 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     await bootOnboarded(page);
     await page.evaluate(SONDE);
     await semerConv(page);
-    const z = await page.evaluate(() => ({
-      back: window.__zoneTap(document.querySelector(".conv-fp-back")),
-      action: window.__zoneTap(document.querySelector(".conv-action-btn")),
-      envoi: window.__zoneTap(document.getElementById("convFpSendBtn")),
-      gif: window.__zoneTap(document.querySelector('.conv-tool-btn[aria-label="Ajouter un GIF"]')),
-    }));
+    // LOT-4 (MSG-C60) : champ vide, le bouton rond est le micro (le bouton GIF
+    // séparé a disparu) ; avec du texte, c'est l'envoi.
+    const z = await page.evaluate(() => {
+      const micro = window.__zoneTap(document.getElementById("btnVoice"));
+      const inp = document.getElementById("convFpInput");
+      inp.value = "Bonjour";
+      const r = {
+        back: window.__zoneTap(document.querySelector(".conv-fp-back")),
+        action: window.__zoneTap(document.querySelector(".conv-action-btn")),
+        envoi: window.__zoneTap(document.getElementById("convFpSendBtn")),
+        micro,
+      };
+      return r;
+    });
     // RÉINJECTION : sur le code d'avant, back 36×36, action 34×34, envoi 40×40.
     // En largeur, les actions de l'en-tête sont à 4 px l'une de l'autre : on
     // n'y gagne que 2 px de chaque côté (38), la hauteur porte les 44 px.
@@ -77,8 +85,11 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
       expect(v.h, k + " : hauteur tapable").toBeGreaterThanOrEqual(44);
       expect(v.w, k + " : largeur tapable").toBeGreaterThanOrEqual(38);
     }
-    expect(z.back.visuelW).toBe(36);
-    expect(z.action.visuelW).toBe(34);
+    // LOT-32 (audit UX/UI du 2026-11-10, MSG-C67) : « ← » et les actions de
+    // l'en-tête sont DESSINÉS à 44 px (ils l'étaient à 36 et 34, agrandis par un
+    // ::after) ; l'envoi garde sa taille.
+    expect(z.back.visuelW).toBe(44);
+    expect(z.action.visuelW).toBe(44);
     expect(z.envoi.visuelW).toBe(40);
     // Les voisins ne se volent pas leurs taps : le centre de chacun reste à lui.
     const centres = await page.evaluate(() => [".conv-fp-back", ".conv-action-btn", "#convFpSendBtn"].map((s) => { const e = document.querySelector(s); const b = e.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t === e || e.contains(t); }));
@@ -103,7 +114,8 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     expect(croix).not.toBeNull();
     expect(croix.w).toBeGreaterThanOrEqual(44);
     expect(croix.h).toBeGreaterThanOrEqual(44);
-    expect(croix.visuelW).toBe(38);
+    // LOT-14 (BOB-C14) : la croix du lecteur est désormais VISIBLEMENT de 44 px.
+    expect(croix.visuelW).toBe(44);
     await page.evaluate(() => { try { closeReels(); } catch (e) {} });
   });
 
@@ -117,7 +129,8 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     // RÉINJECTION : sur le code d'avant, 20×20 et aucun nom.
     expect(r.w).toBeGreaterThanOrEqual(44);
     expect(r.h).toBeGreaterThanOrEqual(44);
-    expect(r.visuelW).toBeLessThanOrEqual(20);   // 17 px dans la carte v8, 20 px ailleurs
+    // LOT-16 (PRO-C13) : le badge passe à 28 px (zone de 44 px inchangée) ; 17 px dans la carte v8.
+    expect(r.visuelW).toBeLessThanOrEqual(28);
     expect(r.label).toMatch(/photo/i);
     expect(r.role).toBe("button");
     expect(r.tab).toBe("0");
@@ -138,10 +151,10 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     expect(await page.evaluate(() => document.getElementById("convFpSendBtn").getAttribute("aria-label"))).toMatch(/Envoyer/);
     await page.evaluate(() => openNewMessage());
     await page.waitForTimeout(200);
-    const croix = await page.evaluate(() => [...document.querySelectorAll("#modalContent span.modal-close")].map((s) => s.getAttribute("aria-label")));
-    // RÉINJECTION : sur le code d'avant, `span.modal-close` sans nom.
-    expect(croix.length).toBeGreaterThanOrEqual(1);
-    for (const l of croix) expect(l).toBe("Fermer");
+    // LOT-17 (TRA-C22) : la croix en DOUBLE (`span.modal-close` des gabarits) est
+    // retirée — il ne reste que celle d'`openModal`, un bouton nommé.
+    const croix = await page.evaluate(() => [...document.querySelectorAll("#modalContent .modal-close")].map((s) => s.tagName + ":" + s.getAttribute("aria-label")));
+    expect(croix).toEqual(["BUTTON:Fermer"]);
     // Et le source : plus aucun `<span class="modal-close"` sans nom dans les app-0*.
     const dossier = path.join(__dirname, "..", "..", "js");
     const sansNom = fs.readdirSync(dossier).filter((f) => /^app-0\d/.test(f)).flatMap((f) => (fs.readFileSync(path.join(dossier, f), "utf8").match(/<span class="modal-close" onclick=/g) || []).map(() => f));

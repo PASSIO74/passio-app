@@ -4,12 +4,12 @@
 // Le TURN public « Open Relay » est mort (`openrelay.metered.ca` → 192.0.2.1 /
 // 100::1, mesuré le 2026-11-09) : sans relais, un live ou un appel entre deux
 // réseaux à NAT strict échoue. `notify-call` fabrique, sur `{ type: "ice" }`, des
-// identifiants Cloudflare de 6 h ; `assurerServeursIce` (app-05) les AJOUTE au
+// identifiants Cloudflare de 1 h ; `assurerServeursIce` (app-05) les AJOUTE au
 // tableau que lisent les cinq `new RTCPeerConnection`. Le vrai code client, un
 // faux `supa.functions.invoke` qui COMPTE les demandes.
 //
 // ① une réponse valide ajoute le relais, une seule demande ;
-// ② gardés tant qu'il leur reste plus de 3 h (sur 6) : pas de seconde demande ;
+// ② gardés tant qu'il leur reste plus de 30 min (sur 1 h) : pas de seconde demande ;
 // ③ relais coupé (secrets absents) : les identifiants déjà posés sont RETIRÉS, pas
 //    de nouvelle demande avant une heure ;
 // ④ réponse hostile, hors forme ou refusée : rien d'ajouté ;
@@ -35,7 +35,8 @@ async function preparer(page, { compte = true } = {}) {
   await bootOnboarded(page);
   await page.evaluate(([relais, compteReel]) => {
     window.__demandes = [];
-    window.__reponse = { data: { ok: true, iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }, relais], ttl: 21600, configure: true }, error: null };
+    window._vliveView = { id: "vl_banc" };
+    window.__reponse = { data: { ok: true, iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }, relais], ttl: 3600, configure: true }, error: null };
     window.__muet = false;
     const fonctions = {
       invoke(nom, opts) {
@@ -65,14 +66,14 @@ test("① une réponse valide AJOUTE le relais au tableau des connexions, en une
     return { n, demandes: window.__demandes, ice: CALL_ICE_SERVERS, base: window.__base };
   });
   expect(r.n).toBe(2);
-  expect(r.demandes).toEqual([{ nom: "notify-call", body: { type: "ice" } }]);
+  expect(r.demandes).toEqual([{ nom: "notify-call", body: { type: "ice", liveId: "vl_banc" } }]);
   expect(r.ice.length).toBe(r.base + 2);
   expect(r.ice).toContainEqual(RELAIS);
   // Les STUN de Google restent : le relais s'ajoute, il ne remplace rien.
   expect(JSON.stringify(r.ice)).toContain("stun.l.google.com");
 });
 
-test("② gardés tant qu'il leur reste plus de 3 h : une seconde demande ne part pas", async ({ page }) => {
+test("② gardés tant qu'il leur reste plus de 30 min : une seconde demande ne part pas", async ({ page }) => {
   await preparer(page);
   const r = await page.evaluate(async () => {
     await assurerServeursIce(); await assurerServeursIce(); await assurerServeursIce();
@@ -80,12 +81,12 @@ test("② gardés tant qu'il leur reste plus de 3 h : une seconde demande ne par
   });
   expect(r.demandes).toBe(1);
   expect(r.longueur).toBe(r.base + 2);
-  // 6 h chez Cloudflare ; renouvelés à 3 h de l'expiration : un live ou un appel
-  // part toujours avec au moins 3 h de validité.
-  expect(r.expire).toBeGreaterThan(5.9 * 3600 * 1000);
-  expect(r.expire).toBeLessThanOrEqual(6 * 3600 * 1000);
-  expect(r.renouvelle).toBeGreaterThan(2.9 * 3600 * 1000);
-  expect(r.renouvelle).toBeLessThanOrEqual(3 * 3600 * 1000);
+  // 1 h chez Cloudflare ; renouvelés à 30 min de l'expiration : un live ou un appel
+  // part toujours avec au moins 30 min de validité.
+  expect(r.expire).toBeGreaterThan(0.99 * 3600 * 1000);
+  expect(r.expire).toBeLessThanOrEqual(1 * 3600 * 1000);
+  expect(r.renouvelle).toBeGreaterThan(0.49 * 3600 * 1000);
+  expect(r.renouvelle).toBeLessThanOrEqual(0.5 * 3600 * 1000);
 });
 
 test("③ relais coupé (secrets absents) : les identifiants déjà posés sont RETIRÉS, pas de nouvelle demande avant une heure", async ({ page }) => {
@@ -189,11 +190,11 @@ test("⑧ câblage : les lives et les appels ATTENDENT le relais avant de créer
   };
   const ATTENTE = "try { await _relais; } catch (e) {}";
   const hote = corps("async function startVideoLive()");
-  expect(hote.indexOf("const _relais = assurerServeursIce();")).toBeGreaterThan(hote.indexOf("_appelEnPreparation();"));
-  expect(hote.indexOf("const _relais = assurerServeursIce();")).toBeLessThan(hote.indexOf("await _vlivePromptTitle()"));
+  const demandeHote = hote.indexOf("await assurerServeursIce({ liveId: id });");
+  expect(demandeHote).toBeGreaterThan(hote.indexOf('supa.from("video_lives").insert(row)'));
   // Attendu UNE fois, après la caméra et AVANT d'ouvrir le live : la connexion de
   // chaque spectateur se crée ensuite sans attente.
-  expect(hote.indexOf(ATTENTE)).toBeGreaterThan(hote.indexOf("getUserMedia("));
+  expect(demandeHote).toBeGreaterThan(hote.indexOf("getUserMedia("));
   expect(hote.indexOf(ATTENTE)).toBeLessThan(hote.indexOf('supa.channel("vlive:"'));
   // Chaque spectateur : SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide
   // doublon et capacité sur cette table. Une attente là (première correction de
@@ -211,23 +212,23 @@ test("⑧ câblage : les lives et les appels ATTENDENT le relais avant de créer
     expect(/assurerServeursIce\(\);[^\n]*\n\s*(const pc = )?$/.test(avant) || /function _callSetupPeerConnection\(\) \{\n  const cs = window\._call;\n  const pc = $/.test(avant), avant.slice(-120)).toBe(true);
   }
   const spectateur = corps("async function joinVideoLive(liveId)");
-  expect(spectateur).toContain("const _relais = assurerServeursIce();");
+  expect(spectateur).toContain("const _relais = assurerServeursIce({ liveId: liveId });");
   // Attendu AVANT d'entrer dans le canal du live : l'offre de l'hôte peut arriver tout de suite.
   expect(spectateur.indexOf(ATTENTE)).toBeGreaterThan(-1);
   expect(spectateur.indexOf(ATTENTE)).toBeLessThan(spectateur.indexOf('supa.channel("vlive:"'));
   // Les appels : l'attente se place AVANT `_callSetupPeerConnection()`, qui copie la
   // liste des serveurs ; la demande, APRÈS l'exclusion des contacts de démo.
   const appel = corps("async function startCall(convId, kind)");
-  expect(appel.indexOf("const _relais = assurerServeursIce();")).toBeGreaterThan(appel.indexOf("Ce contact de démo n'est pas joignable"));
-  expect(appel.indexOf(ATTENTE)).toBeGreaterThan(appel.indexOf("await _callGetMedia(kind)"));
-  expect(appel.indexOf(ATTENTE)).toBeLessThan(appel.indexOf("_callSetupPeerConnection();"));
+  const demandeAppel = appel.indexOf("await assurerServeursIce({ callId: callId });");
+  expect(demandeAppel).toBeGreaterThan(appel.indexOf("const verdictInvite = await fire();"));
+  expect(demandeAppel).toBeLessThan(appel.indexOf("_callSetupPeerConnection();"));
   // Un double toucher pendant l'attente n'écrase pas l'appel ; un départ devenu sans
   // objet coupe la caméra et le micro qu'il a obtenus.
   expect(appel.indexOf("if (window._callDepart) return;")).toBeLessThan(appel.indexOf("await _callGetMedia(kind)"));
-  expect(appel.indexOf("const departValide = window._callDepart === depart && !window._call;")).toBeGreaterThan(appel.indexOf(ATTENTE));
+  expect(appel.indexOf("const departValide = window._callDepart === depart && !window._call;")).toBeGreaterThan(appel.indexOf("await _callGetMedia(kind)"));
   expect(appel.indexOf("if (!departValide) { try { (stream.getTracks() || []).forEach((t) => t.stop()); } catch (e) {} return; }")).toBeLessThan(appel.indexOf("_callSetupPeerConnection();"));
   const reponse = corps("async function acceptIncomingCall()");
-  expect(reponse.indexOf("const _relais = assurerServeursIce();")).toBeLessThan(reponse.indexOf("await _callGetMedia(inv.kind)"));
+  expect(reponse.indexOf("const _relais = assurerServeursIce({ callId: inv.callId });")).toBeLessThan(reponse.indexOf("await _callGetMedia(inv.kind)"));
   expect(reponse.indexOf(ATTENTE)).toBeGreaterThan(reponse.indexOf("await _callGetMedia(inv.kind)"));
   expect(reponse.indexOf(ATTENTE)).toBeLessThan(reponse.indexOf("_callSetupPeerConnection();"));
   // Aucune connexion ne lit autre chose que le tableau commun.
@@ -260,6 +261,7 @@ test("⑨ identifiants expirés : retirés, même quand le renouvellement échou
 async function bancLive(page) {
   await preparer(page);
   await page.evaluate(() => {
+    window._vliveView = null;
     window.__muet = true; // le relais tarde : 2,5 s sans rien à l'écran
     window.__canaux = [];
     window.__lectures = 0;
@@ -318,6 +320,7 @@ async function bancAppel(page) {
   await page.addInitScript(() => localStorage.setItem("passio_appels_actifs", "1"));
   await preparer(page);
   await page.evaluate(() => {
+    window._vliveView = null;
     window.__muet = true; // le relais tarde 2,5 s : la fenêtre où l'on peut retoucher
     window.__arrets = 0; window.__connexions = 0; window.__refus = []; window.__medias = 0;
     navigator.mediaDevices.getUserMedia = () => {
@@ -373,4 +376,22 @@ test("⑩ bis deux lives touchés coup sur coup : le DERNIER gagne, le premier n
   expect(r.canaux).toEqual(["vlive:live_b"]);
   expect(r.vue).toBe("live_b");
   expect(r.entree).toBe(null);
+});
+
+test("sans contexte : aucun identifiant demandé", async ({page}) => {
+  await preparer(page);
+  const r=await page.evaluate(async()=>{window._vliveView=null;window._vliveHost=null;window._call=null;return {n:await assurerServeursIce(),demandes:window.__demandes.length};});
+  expect(r).toEqual({n:0,demandes:0});
+});
+
+test("sans contexte : les identifiants expires sont retires sans requete", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    await assurerServeursIce();
+    _iceRelais.expire = Date.now() - 1;
+    window._vliveView = null; window._vliveHost = null; window._call = null;
+    const n = await assurerServeursIce();
+    return { n, demandes: window.__demandes.length, restants: CALL_ICE_SERVERS.length - window.__base };
+  });
+  expect(r).toEqual({ n: 0, demandes: 1, restants: 0 });
 });

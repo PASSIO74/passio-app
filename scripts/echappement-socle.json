@@ -260,6 +260,10 @@
     {
       "cle": "js/app-02-state-utils.js | style | styleEtatSuivi",
       "raison": "attrsBoutonSuivi (app-02) : ternaire entre TROIS litteraux CSS en dur, choisis par etatSuivi(uid) — aucune valeur d'un autre compte n'entre dans cet attribut. Variable au nom DISTINCTIF : la cle du socle porte l'expression, et une cle generique (« style ») accepterait en silence toute future interpolation de ce nom dans app-02."
+    },
+    {
+      "cle": "js/app-09-boot-pwa.js | onclick | action",
+      "raison": "LOT-35 : helper item() d'openConvSettings (app-09). `action` est un appel littéral du code dont chaque argument variable (convId, uid, uname) passe déjà par escapeJsArg à l'appel ; aucune donnée brute n'y entre."
     }
   ]
 }

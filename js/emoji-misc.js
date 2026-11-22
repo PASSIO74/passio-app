@@ -222,6 +222,10 @@ window.toggleEmojiPanel = function() {
   var p = document.getElementById("convEmojiPanel");
   if(!p) return;
   p.classList.toggle("open");
+  // LOT-37 (MSG-C70) : la grille d'emojis se remplit à l'ouverture si elle est vide.
+  var grilleEmoji = document.getElementById("emojiGrid");
+  if (p.classList.contains("open") && grilleEmoji && !grilleEmoji.querySelector(".emoji-item")
+      && typeof _populateEmojiGrid === "function") _populateEmojiGrid();
   // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
   if (p.classList.contains("open") && !p._gifFilled) {
     p._gifFilled = true;
@@ -232,8 +236,13 @@ window.toggleEmojiPanel = function() {
 };
 
 window.switchEmojiTab = function(t,b) {
-  document.querySelectorAll("#emojiTopBar button").forEach(x => x.style.background="transparent");
-  b.style.background="#7c3aed";
+  // LOT-37 (MSG-C70) : l'onglet actif suit la couleur d'accent (plus de #7c3aed
+  // en dur) et l'annonce (aria-selected).
+  document.querySelectorAll("#emojiTopBar .emoji-onglet").forEach(function (x) {
+    var actif = x === b;
+    x.classList.toggle("actif", actif);
+    x.setAttribute("aria-selected", actif ? "true" : "false");
+  });
   var e = document.getElementById("emojiTabContent");
   var g = document.getElementById("gifTabContent");
   if(t==="emoji") {
@@ -245,23 +254,12 @@ window.switchEmojiTab = function(t,b) {
   }
 };
 
-// Populate emoji grid - TRÈS COMPACT
-var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
-var grid = document.getElementById("emojiGrid");
-if(grid) {
-  grid.style.gap = "0px";
-  grid.style.gridTemplateColumns = "repeat(12,1fr)";
-  for(var i=0; i < emojiList.length; i++) {
-    var d = document.createElement("div");
-    d.textContent = emojiList[i];
-    d.style.cssText = "font-size:12px;padding:0px;cursor:pointer;text-align:center;line-height:1;";
-    d.onclick = function(e) {
-      if(window.insertEmoji) window.insertEmoji(e.target.textContent);
-      window.toggleEmojiPanel();
-    };
-    grid.appendChild(d);
-  }
-}
+// LOT-37 (audit UX/UI du 2026-11-10, MSG-C70) : une boucle remplissait ici la
+// grille en découpant la chaîne d'emojis par UNITÉ UTF-16 — elle ne pouvait
+// produire que des demi-caractères (« � », 327 cellules de 12 px) dès qu'elle
+// passait après le remplissage correct d'app-09 (une ouverture sur deux selon la
+// vitesse de chargement). Elle est retirée : _populateEmojiGrid (app-09) est la
+// SEULE à remplir la grille, rappelée à l'ouverture si elle est vide.
 
 // Grille GIF du panneau emoji — remplie en LAZY à la première ouverture
 // (toggleEmojiPanel) via passioFetchGifs : API si clé, sinon liste locale.
@@ -278,9 +276,24 @@ window._fillEmojiGifGrid = function(query) {
       img.loading = "lazy"; // 🔧 PERF : ne charge que les GIFs visibles
       img.src = url;
       img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      // LOT-40 (audit UX/UI du 2026-11-10, MSG-C71) : effleurer une vignette en
+      // faisant défiler ENVOYAIT le GIF, sans étape. Il est montré d'abord ;
+      // « Envoyer » le fait partir, « Annuler » rouvre le panneau pour en choisir
+      // un autre. (Avant, l'envoi refermait le panneau puis le basculait : il se
+      // rouvrait aussitôt.)
+      img.alt = "GIF";
       img.onclick = function() {
-        if(window._sendGif) window._sendGif(url);
-        window.toggleEmojiPanel();
+        var envoyer = function () { if (window._sendGif) window._sendGif(url); };
+        if (typeof _closeEmojiPanel === "function") _closeEmojiPanel();
+        if (typeof _apercuPhotoAvantEnvoi !== "function") { envoyer(); return; }
+        _apercuPhotoAvantEnvoi(url, envoyer, function () {
+          // Après la fin du clic : rouvert pendant, l'écouteur « clic en dehors »
+          // (même événement, remonté au document) le refermait aussitôt.
+          setTimeout(function () {
+            var p = document.getElementById("convEmojiPanel");
+            if (p && !p.classList.contains("open")) window.toggleEmojiPanel();
+          }, 0);
+        }, "Envoyer ce GIF ?", "GIF à envoyer");
       };
       d.appendChild(img);
       gifGrid.appendChild(d);
@@ -333,10 +346,11 @@ function likeComment(postId, commentId, event) {
   } else {
     comment.likes = (comment.likes || 0) + 1;
     comment.likedBy.push(meId);
-    if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "like", "");
-    // Notifie l'auteur du commentaire (interaction cross-compte).
-    if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(commentId, postId, "like", "") : false;
+    // Notifie l'auteur du commentaire (interaction cross-compte) — au verdict de
+    // l'écriture, jamais avant (SRV-02 : la base exige le j'aime réel).
+    if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, comment.authorId, "like", postId, "a aimé ton commentaire");
     }
   }
   _diag("✅ Like toggle: " + comment.likes + " likes");
@@ -374,11 +388,11 @@ function replyToComment(postId, commentId, authorName, event) {
   wrap.innerHTML =
     '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" style="background:none;border:none;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;" '
       + 'onclick="cmtComposerEmoji(\'' + escapeJsArg(inputId) + '\',event,\'_submitReply\',\'' + escapeJsArg(arg) + '\')">😊</button>'
-    + '<input id="' + escapeHtml(inputId) + '" type="text" class="reply-field" placeholder="Répondre à ' + escapeHtml(authorName) + '…" '
+    + '<input id="' + escapeHtml(inputId) + '" type="text" class="reply-field" aria-label="Répondre à ' + escapeHtml(authorName) + '" placeholder="Répondre à ' + escapeHtml(authorName) + '…" '
       + 'style="flex:1;min-width:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:16px;box-sizing:border-box;background:var(--bg-card);color:var(--text);" '
       + 'onkeypress="if(event.key===\'Enter\'){event.preventDefault();_submitReply(\'' + escapeJsArg(arg) + '\');}" />'
     + '<button type="button" title="Envoyer" aria-label="Envoyer la réponse" '
-      + 'style="width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;flex-shrink:0;" '
+      + 'style="width:44px;height:44px;border-radius:10px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;flex-shrink:0;" '
       + 'onclick="_submitReply(\'' + escapeJsArg(arg) + '\')">✓</button>';
 
   // Ancre le champ au commentaire RÉELLEMENT cliqué : le même commentaire peut
@@ -421,10 +435,14 @@ function _submitReply(arg) {
   comment.replies.push({ id: _rid, authorId: meId, text: text, createdAt: Date.now() });
   if (typeof thread.save === "function") thread.save(); else saveState();
   // Sync Supabase via la FILE D'ATTENTE (#14) : envoi + réessai auto, statut sur la réponse.
-  if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "reply", threadId: postId, parentId: commentId, nodeId: _rid, text: text });
-  else if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", text);
-  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
+  // La notification VOYAGE AVEC l'envoi (SRV-02) : la file la pose à la
+  // confirmation de la réponse, qui peut venir bien plus tard (hors ligne).
+  var _notifRep = (comment.authorId && comment.authorId !== meId && comment.fromSupabase)
+    ? { to: comment.authorId, kind: "comment", text: "a répondu à ton commentaire" } : null;
+  if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "reply", threadId: postId, parentId: commentId, nodeId: _rid, text: text, notif: _notifRep });
+  else if (typeof supaCommentInteract === "function") {
+    var _ecritRep = supaCommentInteract(commentId, postId, "reply", text);
+    if (_notifRep && typeof notifierApresEcriture === "function") notifierApresEcriture(_ecritRep, _notifRep.to, _notifRep.kind, postId, _notifRep.text);
   }
   if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
   var w = inp.closest(".comment-reply-input"); if (w) w.remove();
@@ -453,9 +471,12 @@ function toggleCommentReplies(commentId, event) {
     window._repliesExpanded[commentId] = isHidden;
     if (btn) {
       var count = repliesDiv.querySelectorAll(".comment-reply").length;
-      btn.textContent = isHidden
-        ? "▲ Masquer les réponses"
+      // L'aperçu de la carte du fil garde son libellé « ▼ N réponses ».
+      var replie = btn.hasAttribute("data-apercu-lien") && typeof _libelleApercuReponses === "function"
+        ? _libelleApercuReponses(count)
         : "⌵ Voir " + count + " réponse" + (count > 1 ? "s" : "");
+      btn.textContent = isHidden ? "▲ Masquer les réponses" : replie;
+      if (btn.hasAttribute("aria-expanded")) btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
     }
     _diag("✅ Replies toggled");
   }
@@ -542,9 +563,9 @@ function addGifToComment(postId, commentId, gifUrl) {
   var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user && state.user.id) || "me";
   comment.replies.push({ id: "reply_" + Date.now(), authorId: meId, text: gifUrl, createdAt: Date.now() });
   if (typeof thread.save === "function") thread.save(); else saveState();
-  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", gifUrl);
-  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu avec un GIF"); } catch (e) {}
+  var _ecritGif = (typeof supaCommentInteract === "function") ? supaCommentInteract(commentId, postId, "reply", gifUrl) : false;
+  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+    notifierApresEcriture(_ecritGif, comment.authorId, "comment", postId, "a répondu avec un GIF");
   }
   window._repliesExpanded = window._repliesExpanded || {}; window._repliesExpanded[commentId] = true;
   // Nouvelle réponse = la liste change → refresh (scroll préservé via _setThreadHtml).
@@ -642,20 +663,22 @@ function addEmojiToPost(postId, emoji) {
   // POST lui-même). On efface d'abord MES réactions (journal append-only) puis on
   // (ré)insère la nouvelle — sauf toggle off. Chargée par supaLoadPosts, propagée
   // par realtime:comment_interactions.
-  _syncReactionEmoji(postId, postId, res.removedSame ? "" : emoji);
-  if (!res.removedSame) _notifyPostReaction(post, emoji);
+  var _geste = _syncReactionEmoji(postId, postId, res.removedSame ? "" : emoji);
+  if (!res.removedSame) _notifyPostReaction(post, emoji, _geste);
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
   return false;
 }
 
-// Notifie l'auteur du post d'une réaction reçue (cross-compte uniquement).
-function _notifyPostReaction(post, face) {
+// Notifie l'auteur du post d'une réaction reçue (cross-compte uniquement), au
+// verdict de l'insertion de la réaction : `ecriture` est la file de
+// `_syncReactionEmoji`, qui rend le booléen de `supaCommentInteract` (SRV-02).
+function _notifyPostReaction(post, face, ecriture) {
   try {
     var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-    if (post && post.authorId && post.authorId !== me && post.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(post.authorId, "like", post.id, "a réagi " + face + " à ton post");
+    if (post && post.authorId && post.authorId !== me && post.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecriture, post.authorId, "like", post.id, "a réagi " + face + " à ton post");
     }
   } catch(e) {}
 }
@@ -708,15 +731,20 @@ function _postGifComment(threadId, gifUrl) {
   // confirmation qui fait entrer la ligne dans le total exact du fil). Le tir
   // sans confirmation laissait le GIF « local » pour toujours : compté deux
   // fois au tour suivant du filet (contre-revue).
+  // Notifie l'auteur du fil (cross-compte) — au verdict de l'écriture, ou à la
+  // confirmation par la file (SRV-02 : la base exige le commentaire réel).
+  var _notifGif = (thread.targetUserId && thread.targetUserId !== meId && thread.fromSupabase)
+    ? { to: thread.targetUserId, kind: "comment", text: "a commenté avec un GIF" } : null;
+  var _apres = function (ecriture) {
+    if (_notifGif && typeof notifierApresEcriture === "function") notifierApresEcriture(ecriture, _notifGif.to, _notifGif.kind, threadId, _notifGif.text);
+  };
   try {
-    if (kind === "event" && typeof supaAddEventComment === "function") supaAddEventComment(threadId, gifUrl);
-    else if (typeof MY_UID !== "undefined" && MY_UID && typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: threadId, commentId: cid, nodeId: cid, text: gifUrl });
-    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) Promise.resolve(supaAddComment(threadId, gifUrl, cid)).then(function (ok) { if (ok && typeof _commentaireConfirme === "function") _commentaireConfirme(threadId, cid); }).catch(function () {});
-  } catch (e) {}
-  // Notifie l'auteur du fil (cross-compte).
-  try {
-    if (thread.targetUserId && thread.targetUserId !== meId && thread.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(thread.targetUserId, "comment", threadId, "a commenté avec un GIF");
+    if (kind === "event" && typeof supaAddEventComment === "function") _apres(supaAddEventComment(threadId, gifUrl));
+    else if (typeof MY_UID !== "undefined" && MY_UID && typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: threadId, commentId: cid, nodeId: cid, text: gifUrl, notif: _notifGif });
+    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) {
+      var _ecritCmt = Promise.resolve(supaAddComment(threadId, gifUrl, cid));
+      _ecritCmt.then(function (ok) { if (ok && typeof _commentaireConfirme === "function") _commentaireConfirme(threadId, cid); }).catch(function () {});
+      _apres(_ecritCmt);
     }
   } catch (e) {}
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
@@ -870,10 +898,10 @@ window.forceRefreshFeed = function() {
       state.seed.posts = posts;
       console.log(`✅ Posts mis à jour: ${oldCount} → ${posts.length}`);
       renderFeed();
-      toast(`✅ Feed rafraîchi (${posts.length} posts)`, "success");
+      toast(`Fil rafraîchi (${posts.length} publications)`, "success");
     } else {
       console.warn("❌ Aucun post retourné");
-      toast("❌ Aucun post trouvé", "error");
+      toast("Aucune publication trouvée", "error");
     }
   }).catch(function(err) {
     console.error("❌ Erreur refresh:", err);

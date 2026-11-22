@@ -295,7 +295,10 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
       state.supabasePosts = await supaLoadPosts(); __poserCarte("post_r37");
       __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_ailleurs_2" } });
       await new Promise((ok) => setTimeout(ok, 800));
-      return { ci: findPostAnywhere("post_r37").reactions.map((x) => x.ci), lectures: __lecturesCi().length };
+      // Seules les lectures des IDENTIFIANTS comptent ici (filtre `kind`) : depuis le
+      // 2026-11-13, un tour du filet lit aussi les interactions des aperçus de
+      // commentaires (`supaLoadPosts`), une autre lecture, sans filtre `kind`.
+      return { ci: findPostAnywhere("post_r37").reactions.map((x) => x.ci), lectures: __lecturesCi().filter((q) => q.ins && q.ins.kind).length };
     });
     expect(r.ci).toEqual(["ci_post_Z"]);
     expect(r.lectures, "le filet ne fait pas renaître la lecture").toBe(1);

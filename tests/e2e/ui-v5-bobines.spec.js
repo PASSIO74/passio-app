@@ -112,7 +112,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
       const r = document.querySelector('.reel-item[data-post-id="v5_reel_libre"] .v5-actions');
       return !!(r && r.parentElement && r.parentElement.classList.contains("reel-info"));
     })).toBe(true);
-    await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(3);
+    await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(4); // + « Plus » (LOT-6, BOB-C04 : signaler / supprimer)
     await expect(b.locator("[data-reellike]")).toHaveCount(1);
 
     expect(errors.js, "exceptions JS").toEqual([]);
@@ -159,7 +159,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     await expect(b).not.toHaveAttribute("data-v5", "1");
     await expect(b.locator(".v5-actions")).toHaveCount(0);
     // Rien n'est masqué : la bobine garde toutes ses actions historiques.
-    await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(3);
+    await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(4); // + « Plus » (LOT-6, BOB-C04 : signaler / supprimer)
   });
 
   test("« Ça m'intéresse » : signal réel, persisté, réversible, et il pèse", async ({ page }) => {
@@ -296,7 +296,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
       document.documentElement.classList.contains("passio-ui-5"))).toBe(false);
     await expect(page.locator(".v5-actions")).toHaveCount(0);
     // Le viewer historique est intact.
-    await expect(item(page, "v5_reel_libre").locator(".reel-actions .reel-action-btn")).toHaveCount(3);
+    await expect(item(page, "v5_reel_libre").locator(".reel-actions .reel-action-btn")).toHaveCount(4); // + « Plus » (LOT-6, BOB-C04 : signaler / supprimer)
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });
 
@@ -313,7 +313,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
       document.documentElement.classList.contains("passio-ui-5"))).toBe(false);
     // Le nœud décoré redevient un `.reel-item` ordinaire : le marqueur est retiré.
     await expect(item(page, "v5_reel_libre")).not.toHaveAttribute("data-v5", "1");
-    await expect(item(page, "v5_reel_libre").locator(".reel-actions .reel-action-btn")).toHaveCount(3);
+    await expect(item(page, "v5_reel_libre").locator(".reel-actions .reel-action-btn")).toHaveCount(4); // + « Plus » (LOT-6, BOB-C04 : signaler / supprimer)
   });
 
   test("la décoration survit à une réouverture du viewer", async ({ page }) => {

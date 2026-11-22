@@ -77,6 +77,9 @@ function applyConfig() {
         .main-profile-cover:not([data-has-photo=\"1\"]) { background: radial-gradient(130% 140% at 12% -10%, " + c.c5 + " 0%, transparent 55%), radial-gradient(120% 130% at 95% 15%, " + c.soft + " 0%, transparent 60%), radial-gradient(160% 130% at 50% 115%, " + c.c3 + " 0%, " + c.c2 + " 70%) !important; }\
       ";
       if (c.dark) {
+        // La feuille des fenêtres est blanche en dur : en Sombre, son texte clair
+        // (`--text`) y devenait illisible. Elle prend le fond du thème.
+        colorOverride.textContent += " .modal { background: " + c.bgSoft + " !important; }";
         root.style.setProperty("--text", "#e2e8f0");
         root.style.setProperty("--text-dim", "#cbd5e1");
         root.style.setProperty("--muted", "#94a3b8");
@@ -182,77 +185,85 @@ function applyConfig() {
   }, 150);
 }
 
-function openConfigurator() {
-  // Pré-charger TOUTES les Google Fonts immédiatement
-  var fontsToLoad = [];
-  FONT_FAMILIES.forEach(function(f) {
-    if (f.url) {
-      var existing = document.querySelector('link[href="' + f.url + '"]');
-      if (!existing) {
-        var link = document.createElement("link"); link.rel = "stylesheet"; link.href = f.url;
-        document.head.appendChild(link);
-        fontsToLoad.push(f.family.replace(/'/g, ""));
-      }
-    }
-  });
+// « AFFICHAGE » — couleurs, police, taille du texte (2026-11-14, demande de
+// Benjamin : « remets dans Affichage les choix de couleur et de typographie »).
+// LOT-21 (TRA-C06) avait réduit l'écran à la taille du texte seule ; les palettes
+// et les polices REVIENNENT. Restent retirés : les coins et l'ordre des onglets
+// (qu'aucune barre ne lit plus) et le « Appliquer » sans effet — chaque choix
+// s'applique au toucher. À l'ouverture, seules ces deux clés (`radius`,
+// `navOrder`) sortent de `passio_config`, ainsi qu'une couleur ou une police
+// qui n'existe pas dans les listes.
+var CONFIG_HORS_CHARTE = ["radius", "navOrder"];
+var PROPRIETES_THEME = ["--accent", "--accent-soft", "--accent-2", "--accent-2-soft", "--accent-3", "--accent-3-soft",
+  "--accent-4", "--accent-4-soft", "--accent-5", "--accent-5-soft", "--bg-deep", "--bg-soft", "--border", "--border-strong",
+  "--shadow-soft", "--shadow-strong", "--shadow-glow", "--shadow-glow-2", "--grad-hero", "--grad-hero-2", "--grad-warm",
+  "--grad-cool", "--text", "--text-dim", "--muted", "--muted-2", "--bg-card",
+  "--att-photo", "--att-doc", "--att-audio", "--att-lieu", "--att-fichiers", "--att-irl"];
+// Revenir à la couleur de la charte : aucune surcharge, la feuille de style seule.
+function effacerSurchargesCouleur() {
+  var root = document.documentElement;
+  PROPRIETES_THEME.forEach(function (p) { root.style.removeProperty(p); });
+  var el = document.getElementById("passio-color-override"); if (el) el.remove();
+  document.body.style.background = "";
+  try { if (typeof updateLogos === "function") updateLogos(); } catch (e) {}
+}
+function retirerReglagesHorsCharte() {
+  var cfg = getCurrentConfig();
+  var change = false;
+  CONFIG_HORS_CHARTE.forEach(function (k) { if (cfg[k] !== undefined) { delete cfg[k]; change = true; } });
+  var couleurInconnue = cfg.accent !== undefined && !ACCENT_COLORS.some(function (c) { return c.id === cfg.accent; });
+  if (couleurInconnue) { delete cfg.accent; change = true; }
+  if (cfg.fontFamily !== undefined && !FONT_FAMILIES.some(function (f) { return f.id === cfg.fontFamily; })) { delete cfg.fontFamily; change = true; }
+  if (!change) return false;
+  saveConfig(cfg);
+  var rd = document.getElementById("passio-rd-override"); if (rd) rd.remove();
+  if (couleurInconnue) effacerSurchargesCouleur();
+  try { if (typeof applyNavOrder === "function") applyNavOrder(); } catch (e) {}
+  return true;
+}
 
+function openConfigurator() {
+  retirerReglagesHorsCharte();
   var cfg = getCurrentConfig();
   var accentNow = cfg.accent || "violet";
   var fontFamilyNow = cfg.fontFamily || "default";
   var fontSizeNow = cfg.fontSize || "medium";
-  var radiusNow = cfg.radius || "round";
-
   var accentHTML = ACCENT_COLORS.map(function(c) {
-    return '<div onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
+    var actif = c.id === accentNow;
+    return '<button type="button" class="config-couleur' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')"><span class="config-couleur-pastille" aria-hidden="true" style="background:' + c.grad1 + ';"></span><span>' + escapeHtml(c.name) + '</span></button>';
   }).join("");
-
   var currentFF = FONT_FAMILIES.find(function(f) { return f.id === fontFamilyNow; }) || FONT_FAMILIES[0];
-
-  var fontFamilyHTML = '<div style="margin-bottom:16px;">\
-    <div id="fontDropdown" onclick="toggleFontDropdown()" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:2px solid var(--accent);background:var(--bg-deep);transition:all 0.15s;">\
-      <div style="font-family:' + currentFF.family + ';font-size:16px;font-weight:800;flex:1;color:var(--text);">' + currentFF.name + '</div>\
-      <span style="font-size:14px;color:var(--muted);" id="fontDropdownArrow">▼</span>\
-    </div>\
-    <div id="fontDropdownList" style="display:none;margin-top:6px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-card);overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,0.12);max-height:300px;overflow-y:auto;"></div>\
-  </div>';
-
+  var fontFamilyHTML = '\
+    <button type="button" id="fontDropdown" class="config-police" aria-expanded="false" aria-controls="fontDropdownList" onclick="toggleFontDropdown()">\
+      <span class="config-police-nom" style="font-family:' + currentFF.family + ';">' + escapeHtml(currentFF.name) + '</span>\
+      <span id="fontDropdownArrow" aria-hidden="true">▼</span>\
+    </button>\
+    <div id="fontDropdownList" class="config-police-liste" style="display:none;"></div>';
   var fontSizeHTML = FONT_SIZES.map(function(f) {
-    return '<div onclick="setConfig(\'fontSize\',\'' + escapeJsArg(f.id) + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:12px;border:2px solid ' + (f.id === fontSizeNow ? 'var(--accent)' : 'transparent') + ';background:' + (f.id === fontSizeNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="font-size:' + (f.px+4) + 'px;font-weight:800;margin-bottom:4px;">Aa</div><div style="font-size:10px;color:var(--muted);">' + f.name + '</div></div>';
+    var actif = f.id === fontSizeNow;
+    return '<button type="button" class="config-taille' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'fontSize\',\'' + escapeJsArg(f.id) + '\')"><span class="config-taille-aa" aria-hidden="true" style="font-size:' + (Number(f.px) + 4) + 'px;">Aa</span><span>' + escapeHtml(f.name) + '</span></button>';
   }).join("");
-
-  var radiusHTML = BORDER_RADIUS.map(function(r) {
-    return '<div onclick="setConfig(\'radius\',\'' + escapeJsArg(r.id) + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:' + r.val + ';border:2px solid ' + (r.id === radiusNow ? 'var(--accent)' : 'transparent') + ';background:' + (r.id === radiusNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="width:32px;height:32px;background:var(--accent);border-radius:' + r.val + ';margin:0 auto 6px;"></div><div style="font-size:10px;color:var(--muted);">' + r.name + '</div></div>';
-  }).join("");
-
-  var html = '\
+  openModal('\
     <div class="modal-handle"></div>\
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>\
-    <div style="text-align:center;margin-bottom:16px;">\
-      <div style="font-weight:800;font-size:18px;color:var(--text);">Configurateur</div>\
-      <div style="font-size:12px;color:var(--muted);">Personnalise PASSIO à ton image</div>\
-    </div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Thème de couleur</div>\
-    <div style="margin-bottom:16px;">' + accentHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Police d\'écriture <span style="font-size:10px;color:var(--muted);font-weight:400;">glisse pour voir</span></div>\
+    <div class="modal-title">Affichage</div>\
+    <div class="modal-subtitle">La couleur, la police et la taille du texte.</div>\
+    <div class="config-rubrique">Couleur</div>\
+    <div class="config-couleurs">' + accentHTML + '</div>\
+    <div class="config-rubrique">Police d\'écriture</div>\
     ' + fontFamilyHTML + '\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Taille du texte</div>\
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">' + fontSizeHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Style des coins</div>\
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">' + radiusHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Disposition des onglets</div>\
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Maintiens et glisse pour réorganiser</div>\
-    <div id="navOrderList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;"></div>\
-    <button class="btn primary block" onclick="closeModal();toast(\'Configuration appliquée !\');" style="margin-top:10px;">Appliquer</button>\
-    <button class="btn ghost block" onclick="resetConfig()" style="margin-top:6px;font-size:12px;">Réinitialiser tout</button>\
-  ';
-  openModal(html);
-  setTimeout(renderNavOrderList, 50);
+    <div class="config-rubrique">Taille du texte</div>\
+    <div class="config-tailles">' + fontSizeHTML + '</div>\
+    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
+  ');
 }
 
 function setConfig(key, value) {
   var cfg = getCurrentConfig();
-  cfg[key] = value;
-  saveConfig(cfg);
+  // Le violet et la police « Par défaut » SONT la charte : on retire le réglage
+  // au lieu de poser une surcharge qui la recopierait à peu près.
+  if (key === "accent" && value === "violet") { delete cfg.accent; saveConfig(cfg); effacerSurchargesCouleur(); }
+  else if (key === "fontFamily" && value === "default") { delete cfg.fontFamily; saveConfig(cfg); }
+  else { cfg[key] = value; saveConfig(cfg); }
   applyConfig();
   if (key !== "navOrder") openConfigurator();
 }
@@ -279,57 +290,55 @@ var _fontExamples = {
 function toggleFontDropdown() {
   var list = document.getElementById("fontDropdownList");
   var arrow = document.getElementById("fontDropdownArrow");
+  var bouton = document.getElementById("fontDropdown");
   if (!list) return;
   if (list.style.display === "block") {
     list.style.display = "none";
     if (arrow) arrow.textContent = "▼";
+    if (bouton) bouton.setAttribute("aria-expanded", "false");
     return;
   }
   if (arrow) arrow.textContent = "▲";
+  if (bouton) bouton.setAttribute("aria-expanded", "true");
+  // Les polices ne se chargent qu'ICI, quand la liste s'ouvre — jamais à
+  // l'ouverture du panneau (seize feuilles Google pour qui ne veut que la taille).
+  FONT_FAMILIES.forEach(function(f) {
+    if (!f.url || document.querySelector('link[href="' + f.url + '"]')) return;
+    var link = document.createElement("link"); link.rel = "stylesheet"; link.href = f.url;
+    document.head.appendChild(link);
+  });
   var cfg = getCurrentConfig();
   var activeId = cfg.fontFamily || "default";
-  
-  // Vider et reconstruire via DOM pour pouvoir mettre !important
   list.innerHTML = "";
-  
   FONT_FAMILIES.forEach(function(f) {
     var isActive = f.id === activeId;
-    var desc = _fontExamples[f.id] || "";
-    
-    var row = document.createElement("div");
-    row.style.cssText = "cursor:pointer;padding:14px 16px;border-bottom:1px solid var(--border);background:" + (isActive ? "var(--bg-deep)" : "transparent") + ";";
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "config-police-choix" + (isActive ? " actif" : "");
+    row.setAttribute("aria-pressed", isActive ? "true" : "false");
     row.onclick = function(e) { e.stopPropagation(); setConfig("fontFamily", f.id); };
-    
-    var nameEl = document.createElement("div");
+    var left = document.createElement("span");
+    left.className = "config-police-choix-texte";
+    var nameEl = document.createElement("span");
+    nameEl.className = "config-police-choix-nom";
     nameEl.textContent = f.name;
-    nameEl.style.cssText = "font-size:20px;font-weight:800;color:var(--text);margin-bottom:3px;";
     nameEl.style.setProperty("font-family", f.family, "important");
-    
-    var descEl = document.createElement("div");
-    descEl.textContent = desc;
-    descEl.style.cssText = "font-size:11px;color:var(--muted);";
+    var descEl = document.createElement("span");
+    descEl.className = "config-police-choix-desc";
+    descEl.textContent = _fontExamples[f.id] || "";
     descEl.style.setProperty("font-family", f.family, "important");
-    
-    var left = document.createElement("div");
-    left.style.cssText = "flex:1;";
     left.appendChild(nameEl);
     left.appendChild(descEl);
-    
-    var wrap = document.createElement("div");
-    wrap.style.cssText = "display:flex;align-items:center;gap:10px;";
-    wrap.appendChild(left);
-    
+    row.appendChild(left);
     if (isActive) {
       var check = document.createElement("span");
       check.textContent = "✓";
-      check.style.cssText = "font-size:18px;color:var(--accent);";
-      wrap.appendChild(check);
+      check.setAttribute("aria-hidden", "true");
+      check.className = "config-police-choix-coche";
+      row.appendChild(check);
     }
-    
-    row.appendChild(wrap);
     list.appendChild(row);
   });
-  
   list.style.display = "block";
 }
 
@@ -492,14 +501,14 @@ const CALL_ICE_SERVERS = [
 ];
 
 // ── Relais TURN Cloudflare, fabriqué par le serveur (2026-11-09) ────────────
-// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 6 h
+// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 1 h, liés à un live/appel autorisé
 // (secrets `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN` de la fonction : jamais dans ce
 // fichier, le dépôt est public). Ils s'AJOUTENT au tableau ci-dessus, que lisent
 // les cinq `new RTCPeerConnection` des appels et des lives : rien d'autre à
 // changer. Secrets absents, réseau coupé, réponse hors forme : le tableau reste en
 // STUN seul, comme avant — jamais un appel ou un live retardé de plus de 2,5 s.
-//   · renouvelés quand il leur reste moins de 3 h : un live ou un appel part
-//     toujours avec au moins 3 h de validité (une connexion relayée ne survit pas
+//   · renouvelés quand il leur reste moins de 30 min : un live ou un appel part
+//     toujours avec au moins 30 min de validité (une connexion relayée ne survit pas
 //     à l'expiration de ses identifiants) ;
 //   · relais coupé (`configure: false`) : les identifiants déjà posés sont RETIRÉS,
 //     et la fonction n'est pas redemandée avant une heure ;
@@ -507,7 +516,7 @@ const CALL_ICE_SERVERS = [
 //     avant 5 min — sinon chaque entrée dans un live attendrait 2,5 s de plus ;
 //   · expirés : retirés, même quand le renouvellement échoue.
 const ICE_ATTENTE_MAX_MS = 2500;
-const ICE_MARGE_MS = 3 * 3600 * 1000;
+const ICE_MARGE_MS = 30 * 60 * 1000;
 const ICE_PAUSE_ECHEC_MS = 5 * 60 * 1000;
 const ICE_PAUSE_COUPE_MS = 3600 * 1000;
 const _iceRelais = { serveurs: [], jusqua: 0, expire: 0, enCours: null };
@@ -526,9 +535,15 @@ function _iceServeursSurs(liste) {
     return !relais || (typeof s.username === "string" && !!s.username && typeof s.credential === "string" && !!s.credential);
   });
 }
-function assurerServeursIce() {
+function assurerServeursIce(contexte) {
   try {
+    // Les renouvellements synchrones retrouvent le contexte actif. Sans contexte,
+    // aucune demande ne part (ancien client : le serveur refuse également).
+    contexte = contexte || (window._vliveHost ? { liveId: window._vliveHost.id }
+      : window._vliveView ? { liveId: window._vliveView.id }
+      : window._call ? { callId: window._call.id } : null);
     if (_iceRelais.serveurs.length && Date.now() >= _iceRelais.expire) _iceRetirerRelais();
+    if (!contexte || (!contexte.liveId && !contexte.callId)) return Promise.resolve(0);
     if (Date.now() < _iceRelais.jusqua) return Promise.resolve(_iceRelais.serveurs.length);
     if (_iceRelais.enCours) return _iceRelais.enCours;
     var compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
@@ -537,7 +552,7 @@ function assurerServeursIce() {
       try { if (typeof diagLog === "function") diagLog("ice relais " + raison); } catch (_e) {}
       return -1;
     };
-    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: { type: "ice" } }))
+    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: Object.assign({ type: "ice" }, contexte) }))
       .then(function (r) {
         // Un refus du serveur (429 du plafond…) ne LÈVE pas : il arrive dans `error`.
         if (r && r.error) return echec("refusé : " + (r.error.message || r.error));
@@ -554,7 +569,7 @@ function assurerServeursIce() {
         _iceRetirerRelais();
         surs.forEach(function (s) { CALL_ICE_SERVERS.push(s); });
         _iceRelais.serveurs = surs;
-        var ttlMs = ((d && Number(d.ttl) > 0) ? Number(d.ttl) : 6 * 3600) * 1000;
+        var ttlMs = ((d && Number(d.ttl) > 0) ? Math.min(Number(d.ttl), 3600) : 3600) * 1000;
         _iceRelais.expire = Date.now() + ttlMs;
         _iceRelais.jusqua = Date.now() + Math.max(10 * 60 * 1000, ttlMs - ICE_MARGE_MS);
         return surs.length;
@@ -681,7 +696,7 @@ async function startCall(convId, kind) {
   // (2,5 s au plus) avant de créer la connexion : `new RTCPeerConnection` copie la
   // liste des serveurs à sa création — sans relais à ce moment, l'appel entre deux
   // réseaux à NAT strict échoue (audit du 2026-11-09).
-  const _relais = assurerServeursIce();
+  // Le relais sera demandé après le dépôt de l’invitation.
   const depart = {};
   window._callDepart = depart;
 
@@ -693,7 +708,6 @@ async function startCall(convId, kind) {
     if (window._callDepart === depart) window._callDepart = null;
     toast("Caméra/micro indisponible ou refusé"); return;
   }
-  try { await _relais; } catch (e) {}
   // Pendant l'attente, un autre appel a pu commencer (un appel entrant accepté) :
   // ce départ s'efface, et la caméra et le micro qu'il a obtenus sont coupés.
   const departValide = window._callDepart === depart && !window._call;
@@ -712,7 +726,6 @@ async function startCall(convId, kind) {
   };
 
   _callRenderActiveUI();
-  _callSetupPeerConnection();
   console.log("[call] startCall →", peer.id, "callId", callId, "kind", kind);
 
   // Invitation déposée sur le canal personnel du pair (`ring:<peerId>`).
@@ -770,6 +783,10 @@ async function startCall(convId, kind) {
     endCall();
     return;
   }
+
+  await assurerServeursIce({ callId: callId });
+  if (!window._call || window._call.id !== callId) return;
+  _callSetupPeerConnection();
 
   // S'abonne au canal d'appel (réponse SDP / ICE).
   const chan = _callChannel("call:" + callId);
@@ -906,7 +923,7 @@ function _callRafraichirIdentite(inv) {
     var el = document.querySelector("#callOverlay .call-name, .call-overlay.active .call-name");
     if (el) el.textContent = inv.identite.name;
     var av = document.querySelector("#callOverlay .call-avatar, .call-overlay.active .call-avatar");
-    if (av) av.textContent = inv.identite.emoji;
+    if (av) av.outerHTML = _callAvatarHtml(inv.identite, "var(--accent)");
   }).catch(function () {});
 }
 
@@ -1260,7 +1277,7 @@ async function acceptIncomingCall() {
   _appelEnPreparation();
   // Le relais TURN se demande pendant la permission caméra/micro, et on l'attend
   // (2,5 s au plus) avant de créer la connexion — même raison que `startCall`.
-  const _relais = assurerServeursIce();
+  const _relais = assurerServeursIce({ callId: inv.callId });
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) {
     if (window._callAcceptation === inv) window._callAcceptation = null;
@@ -1360,6 +1377,7 @@ function _callMarkConnected() {
   cs.startedAt = Date.now();
   const statusEl = document.getElementById("callStatusText");
   if (statusEl) statusEl.textContent = cs.kind === "video" ? "Appel vidéo" : "Appel audio";
+  try { var _tm = document.getElementById("callTimer"); if (_tm) _tm.hidden = false; } catch (e) {}
   // Monte la qualité (débits d'encodage) une fois la connexion établie.
   _callApplyMediaQuality();
   // Ré-affirme la qualité après quelques secondes (le 1ᵉʳ setParameters avant
@@ -1436,7 +1454,9 @@ function toggleCallMute(btn) {
   const tracks = cs.localStream.getAudioTracks();
   const on = tracks[0] && tracks[0].enabled;
   tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🔇" : "🎙"; }
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🔇" : "🎙";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.setAttribute("aria-label", on ? "Réactiver le micro" : "Couper le micro"); }
 }
 function toggleCallVideo(btn) {
   const cs = window._call; if (!cs || !cs.localStream) return;
@@ -1444,7 +1464,9 @@ function toggleCallVideo(btn) {
   if (!tracks.length) return;
   const on = tracks[0].enabled;
   tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🚫" : "📷"; }
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🚫" : "📷";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.setAttribute("aria-label", on ? "Réactiver la caméra" : "Couper la caméra"); }
 }
 async function flipCallCamera() {
   const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
@@ -1509,6 +1531,29 @@ function _emojiBorne(e) {
   return Array.from(String(e == null ? "" : e)).slice(0, 4).join("") || "🙂";
 }
 function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
+
+// LOT-38 (audit UX/UI du 2026-11-10, MSG-C26) : l'écran d'appel montrait un
+// emoji sur un violet fixe, jamais la photo de la personne. La photo vient du
+// profil (identité SERVEUR, jamais la charge de l'invitation), passée par
+// safeUrlAttr ; sans photo, l'emoji du profil comme avant.
+function _callAvatarHtml(idn, couleur) {
+  var photo = (idn && idn.photo) || "";
+  // safeUrlAttr rend "#" pour une URL refusée : ce n'est PAS une photo.
+  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img ' + passioMediaProteges.attributImage(photo) + '="' + safeUrlAttr(photo) + '" alt=""></div>';
+  return '<div class="call-avatar" style="background:' + _cssColor(couleur || "var(--accent)") + ';">' + _emojiSur(idn && idn.emoji) + '</div>';
+}
+// Le calque d'appel est un dialogue nommé, et le focus y entre.
+function _callDialogue(el, nom) {
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-label", "Appel avec " + (nom || "Contact"));
+  setTimeout(function () { try { var b = el.querySelector(".call-control-btn"); if (b) b.focus({ preventScroll: true }); } catch (e) {} }, 0);
+}
+// Les chiffres du réseau (« audio · 32 kb/s · relais ») sont de la mise au point :
+// on ne les montre que sur demande (localStorage.passio_appel_stats = "1").
+function _callStatsVisibles() {
+  try { return localStorage.getItem("passio_appel_stats") === "1"; } catch (e) { return false; }
+}
 function _callRenderIncomingUI(inv) {
   const el = _callOverlayEl();
   const isVideo = inv.kind === "video";
@@ -1517,14 +1562,15 @@ function _callRenderIncomingUI(inv) {
   const idn = inv.identite || _callIdentiteServeur(inv.from);
   el.innerHTML =
     '<div class="call-card">' +
-      '<div class="call-avatar" style="background:#7c3aed;">' + _emojiSur(idn.emoji) + '</div>' +
+      _callAvatarHtml(idn, "var(--accent)") +
       '<div class="call-name">' + escapeHtml(idn.name || "Contact") + '</div>' +
       '<div class="call-status">' + (isVideo ? "Appel vidéo entrant…" : "Appel entrant…") + '</div>' +
-      '<div class="call-controls">' +
-        '<button class="call-control-btn hangup" onclick="declineIncomingCall()" title="Refuser">📵</button>' +
-        '<button class="call-control-btn accept" onclick="acceptIncomingCall()" title="Répondre">✅</button>' +
+      '<div class="call-controls call-controls-entrant">' +
+        '<div class="call-commande"><button class="call-control-btn hangup" onclick="declineIncomingCall()" aria-label="Refuser l\'appel" title="Refuser">📵</button><span>Refuser</span></div>' +
+        '<div class="call-commande"><button class="call-control-btn accept" onclick="acceptIncomingCall()" aria-label="Répondre" title="Répondre">✅</button><span>Répondre</span></div>' +
       '</div>' +
     '</div>';
+  _callDialogue(el, idn.name);
   // Entrée d'historique : sans elle, un geste de retour pendant la sonnerie
   // quittait l'application. Le filet du bouton retour (closeCurrentOverlay,
   // app-02) la consomme sans raccrocher — cf. le commentaire là-bas.
@@ -1542,19 +1588,23 @@ function _callRenderActiveUI() {
     (isVideo ? '<video id="callRemoteVideo" class="call-remote-video" autoplay playsinline></video>' : '<audio id="callRemoteAudio" autoplay></audio>') +
     (isVideo ? '<video id="callLocalVideo" class="call-local-video" autoplay playsinline muted></video>' : '') +
     '<div class="call-card ' + (isVideo ? 'call-card-video' : '') + '">' +
-      (isVideo ? '' : '<div class="call-avatar" style="background:' + _cssColor(cs.peer.color || "#7c3aed") + ';">' + escapeHtml(cs.peer.emoji || "🙂") + '</div>') +
+      (isVideo ? '' : _callAvatarHtml({ photo: cs.peer.photo || null, emoji: cs.peer.emoji || "🙂" }, cs.peer.color || "var(--accent)")) +
       '<div class="call-name">' + escapeHtml(cs.peer.name || "Contact") + '</div>' +
-      '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Appel en cours…" : "Connexion…") + '</div>' +
-      '<div class="call-timer" id="callTimer">00:00</div>' +
-      '<div class="call-stats" id="callStats"></div>' +
+      // LOT-38 (MSG-C26) : « Appel en cours… 00:00 » pendant la SONNERIE disait
+      // un appel décroché ; c'est « Ça sonne… », et le minuteur n'apparaît qu'à
+      // la connexion (_callMarkConnected).
+      '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Ça sonne…" : "Connexion…") + '</div>' +
+      '<div class="call-timer" id="callTimer" hidden>00:00</div>' +
+      (_callStatsVisibles() ? '<div class="call-stats" id="callStats"></div>' : '') +
       '<div class="call-controls">' +
-        '<button class="call-control-btn mute" onclick="toggleCallMute(this)" title="Micro">🎙</button>' +
-        (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" title="Caméra">📷</button>' : '') +
-        (isVideo ? '<button class="call-control-btn flip" onclick="flipCallCamera()" title="Changer de caméra">🔄</button>' : '') +
-        '<button class="call-control-btn hangup" onclick="endCall()" title="Raccrocher">📞</button>' +
+        '<button class="call-control-btn mute" onclick="toggleCallMute(this)" aria-label="Couper le micro" aria-pressed="false" title="Micro">🎙</button>' +
+        (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" aria-label="Couper la caméra" aria-pressed="false" title="Caméra">📷</button>' : '') +
+        (isVideo ? '<button class="call-control-btn flip" onclick="flipCallCamera()" aria-label="Changer de caméra" title="Changer de caméra">🔄</button>' : '') +
+        '<button class="call-control-btn hangup" onclick="endCall()" aria-label="Raccrocher" title="Raccrocher">📞</button>' +
       '</div>' +
     '</div>';
   el.classList.add("active");
+  _callDialogue(el, cs.peer.name);
   // Aperçu local — muted posé en PROPRIÉTÉ : l'attribut écrit par innerHTML
   // n'est pas toujours répercuté (même piège que meSetMedia) → l'aperçu
   // rejouait le propre micro de l'utilisateur = écho/larsen immédiat.
@@ -1806,12 +1856,81 @@ if (typeof document !== "undefined") {
 }
 
 // Création de groupe (conversation multi-utilisateurs)
+// LOT-44 (MSG-C28) : Entrée ou Espace sur une case = un clic.
+function _caseClavier(e, el) {
+  if (!e || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  el.click();
+}
 function toggleGroupUser(el) {
   el.classList.toggle("selected");
+  el.setAttribute("aria-checked", el.classList.contains("selected") ? "true" : "false");
   const cb = el.querySelector("input[type=checkbox]");
   if (cb) cb.checked = el.classList.contains("selected");
   const check = el.querySelector(".grp-check");
   if (check) check.textContent = el.classList.contains("selected") ? "✓" : "";
+  // LOT-5 (MSG-C04) : la sélection survit à une nouvelle recherche.
+  const id = el.getAttribute("data-uid");
+  if (id && window._grpSel) {
+    if (el.classList.contains("selected")) window._grpSel.set(id, el.getAttribute("data-nom") || "");
+    else window._grpSel.delete(id);
+  }
+}
+
+// LOT-5 (audit UX/UI du 2026-11-10, MSG-C04) — LES MEMBRES D'UN NOUVEAU GROUPE.
+// La liste était `state.seed.users.slice(0, 10)` : dix personnages d'exemple, sans
+// recherche ; la base refusait ensuite leurs identifiants et l'écran disait
+// « Groupe créé ». Pour un COMPTE : tes contacts réels (conversations), puis la
+// recherche de personnes du serveur ; jamais un personnage d'exemple.
+function _grpOptionHTML(u, coche) {
+  // LOT-44 (MSG-C28) : une case qu'on coche dit son état (role=checkbox,
+  // aria-checked) et se coche au clavier (Entrée, Espace).
+  return '<div class="group-user-option' + (coche ? ' selected' : '') + '" role="checkbox" tabindex="0" aria-checked="' + (coche ? 'true' : 'false') + '" data-uid="' + escapeHtml(u.id) + '" data-nom="' + escapeHtml(u.name || "") + '" onclick="toggleGroupUser(this)" onkeydown="_caseClavier(event,this)">' +
+    '<input type="checkbox" value="' + escapeHtml(u.id) + '"' + (coche ? ' checked' : '') + ' />' +
+    '<span class="msg-avatar" style="background:' + avatarBg(u) + ';width:36px;height:36px;font-size:18px;flex-shrink:0;">' + avatarInner(u) + '</span>' +
+    '<span style="flex:1;font-size:13px;">' + escapeHtml(u.name || "Passionné") + '</span>' +
+    '<span class="grp-check">' + (coche ? '✓' : '') + '</span>' +
+  '</div>';
+}
+function _grpContactsReels() {
+  var vus = {};
+  return (getConversations() || []).filter(function (c) {
+    if (!c || c.isGroup || !c.userId || vus[c.userId] || estPersonneExemple(c.userId)) return false;
+    vus[c.userId] = true; return true;
+  }).map(function (c) {
+    return { id: c.userId, name: c.userName || "Passionné", profileEmoji: c.userEmoji || "✨", avatar: c.userColor || "#8b5cf6", photoUrl: c.userPhoto || null };
+  });
+}
+function _grpPeindreCandidats(liste, vide) {
+  var box = document.getElementById("grpNewList");
+  if (!box) return;
+  var sel = window._grpSel || new Map();
+  // Les personnes déjà cochées restent en tête, même hors de la recherche courante.
+  var dejaVus = {};
+  var html = [];
+  sel.forEach(function (nom, id) {
+    dejaVus[id] = true;
+    var u = (liste || []).find(function (x) { return x.id === id; }) || { id: id, name: nom };
+    html.push(_grpOptionHTML(u, true));
+  });
+  (liste || []).forEach(function (u) { if (!dejaVus[u.id]) html.push(_grpOptionHTML(u, false)); });
+  box.innerHTML = html.length ? html.join("") : '<div class="grp-new-vide" style="font-size:12px;color:var(--muted);padding:8px 0;">' + escapeHtml(vide || "Aucune personne trouvée.") + '</div>';
+}
+function grpChercherMembres(q) {
+  var brut = String(q || "").trim();
+  var plie = plierRecherche(brut);
+  var contacts = _grpContactsReels();
+  var locaux = plie ? contacts.filter(function (u) { return plierRecherche(u.name).includes(plie); }) : contacts;
+  _grpPeindreCandidats(locaux, plie ? "Aucune personne trouvée." : "Écris le nom d'une personne pour l'inviter.");
+  if (!plie || typeof supaSearchUsers !== "function") return;
+  window._grpRequete = plie;
+  supaSearchUsers(brut).then(function (res) {
+    if (window._grpRequete !== plie) return;   // une réponse ancienne n'écrase pas la courante
+    var vus = {}; locaux.forEach(function (u) { vus[u.id] = true; });
+    var serveur = (res || []).filter(function (u) { return u && u.id && u.id !== MY_UID && !vus[u.id] && !estPersonneExemple(u.id); })
+      .map(function (u) { return { id: u.id, name: u.username || "Passionné", profileEmoji: u.emoji || "✨", avatar: u.color || "#8b5cf6", photoUrl: u.photoUrl || null }; });
+    _grpPeindreCandidats(locaux.concat(serveur).slice(0, 12), "Aucune personne trouvée.");
+  }).catch(function () {});
 }
 function toggleGroupPassion(el) {
   const selected = document.querySelectorAll(".group-passion-option.selected");
@@ -1819,6 +1938,7 @@ function toggleGroupPassion(el) {
     toast("Maximum 3 passions"); return;
   }
   el.classList.toggle("selected");
+  el.setAttribute("aria-checked", el.classList.contains("selected") ? "true" : "false");
   const cb = el.querySelector("input[type=checkbox]");
   if (cb) cb.checked = el.classList.contains("selected");
 }
@@ -1858,7 +1978,7 @@ function _groupePassionsHTML() {
     });
   });
   return out.map(p =>
-    `<div class="group-passion-option" data-pid="${escapeHtml(p.id)}" onclick="toggleGroupPassion(this)">
+    `<div class="group-passion-option" role="checkbox" tabindex="0" aria-checked="false" data-pid="${escapeHtml(p.id)}" onclick="toggleGroupPassion(this)" onkeydown="_caseClavier(event,this)">
       <input type="checkbox" value="${escapeHtml(p.id)}" />
       <span>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</span>
     </div>`
@@ -1888,6 +2008,7 @@ function _groupeRepeindreEnGardantLesCoches() {
     const el = grille.querySelector('.group-passion-option[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(pid) : pid) + '"]');
     if (!el) return;
     el.classList.add("selected");
+    el.setAttribute("aria-checked", "true");
     const cb = el.querySelector("input[type=checkbox]");
     if (cb) cb.checked = true;
   });
@@ -1905,39 +2026,41 @@ function _groupeAssurerLibelles() {
 
 function openCreateGroup() {
   const seedUsers = state.seed.users || [];
-  const userOptions = seedUsers.slice(0, 10).map(u =>
-    `<div class="group-user-option" data-uid="${escapeHtml(u.id)}" onclick="toggleGroupUser(this)">
-      <input type="checkbox" value="${escapeHtml(u.id)}" />
-      <span class="msg-avatar" style="background:${avatarBg(u)};width:36px;height:36px;font-size:18px;flex-shrink:0;">${avatarInner(u)}</span>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name)}</span>
-      <span class="grp-check"></span>
-    </div>`
-  ).join("");
+  const compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  window._grpSel = new Map();
+  window._grpRequete = "";
+  // Sans compte, rien ne part en base : l'aperçu d'avant reste (exemples).
+  const userOptions = compte ? "" : seedUsers.slice(0, 10).map(u => _grpOptionHTML(u, false)).join("");
+  const recherche = compte
+    ? `<input type="search" class="input" id="grpNewSearch" placeholder="Rechercher une personne…" oninput="grpChercherMembres(this.value)" style="margin-bottom:8px;" />`
+    : "";
   const passionOptions = _groupePassionsHTML();
 
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
+    
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">👥</div>
       <div class="pay-modal-title">Nouveau groupe</div>
     </div>
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Crée un groupe autour d'une ou plusieurs passions, avec les membres de ton choix.</p>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Crée un groupe avec les personnes de ton choix — autour d'une passion si tu veux.</p>
 
     <label class="field"><span>Nom du groupe</span>
       <input type="text" class="input" id="groupName" placeholder="Ex: Photographes de Lyon · Lecteurs assidus…" maxlength="50" />
     </label>
 
-    <label class="field"><span>Passion(s) du groupe (1 à 3)</span></label>
+    <label class="field"><span>Passion(s) du groupe (facultatif, 3 au plus)</span></label>
     <div class="group-passion-grid">${passionOptions}</div>
 
     <label class="field" style="margin-top:14px;"><span>Membres à inviter</span></label>
-    <div class="group-user-list">${userOptions}</div>
+    ${recherche}
+    <div class="group-user-list" id="grpNewList">${userOptions}</div>
 
     <button class="btn primary block" onclick="confirmCreateGroup()" style="margin-top:14px;">Créer le groupe</button>
   `;
   openModal(html);
   _groupeAssurerLibelles();
+  if (compte) grpChercherMembres("");
 }
 
 async function confirmCreateGroup() {
@@ -1945,19 +2068,37 @@ async function confirmCreateGroup() {
   const name = (nameInput && nameInput.value || "").trim();
   if (!name) { toast("Donne un nom au groupe"); return; }
   const selectedPassions = [...document.querySelectorAll(".group-passion-option.selected input")].map(i => i.value);
-  const selectedUsers = [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
-  if (selectedPassions.length === 0) { toast("Choisis au moins 1 passion"); return; }
+  const selectedUsers = (window._grpSel && window._grpSel.size)
+    ? [...window._grpSel.keys()]
+    : [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
+  // LOT-44 (audit UX/UI du 2026-11-10, MSG-C31) : la passion d'un groupe était
+  // EXIGÉE, alors que le serveur la tient pour facultative (ADR-010,
+  // `optionalCanonicalPassion`) — un compte sans passion cochable ne pouvait pas
+  // créer de groupe. Elle devient facultative, comme en base.
   if (selectedUsers.length === 0) { toast("Sélectionne au moins 1 membre"); return; }
 
   let groupId = "conv_grp_" + uid();
+  // LOT-5 (MSG-C04) : le verdict de CHAQUE ajout est lu ; un membre refusé par la
+  // base n'est ni compté ni annoncé.
+  const rapport = { refuses: [] };
 
   // Créer le groupe dans Supabase si connecté
+  // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : hors ligne ou serveur en panne,
+  // un COMPTE lisait « Groupe créé » pour une ébauche locale que personne d'autre
+  // ne verrait jamais (0 ligne en base, rien au retour du réseau). Un groupe non
+  // créé côté serveur n'est plus annoncé : la fenêtre reste ouverte, et on le dit.
+  const compteReel = !!(window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel());
+  if (compteReel && navigator.onLine === false) { toast("Pas de connexion — le groupe n'est pas créé. Réessaie quand le réseau revient.", "warning"); return; }
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    let supaId = null;
     try {
-      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0]);
+      supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0] || null, rapport);
       if (supaId) groupId = supaId;
     } catch(e) {}
+    if (compteReel && !supaId) { toast("Le groupe n'a pas pu être créé — vérifie ta connexion et réessaie.", "warning"); return; }
   }
+  const refuses = new Set(rapport.refuses || []);
+  const membresAjoutes = selectedUsers.filter(u => !refuses.has(u));
 
   // ⚠️ PAR IDENTIFIANT, JAMAIS À L'AVEUGLE : ma propre ligne `conv_members` m'est
   // poussée sur `user:<moi>` (`conv_members:INSERT`, R25) et peut avoir posé
@@ -1967,13 +2108,14 @@ async function confirmCreateGroup() {
   const convs = getConversations().filter(c => c && c.id !== groupId);
   const welcomeMsgId = "msg_" + uid();
   const newConv = {
+    createdBy: MY_UID, // LOT-4 (MSG-C08)
     id: groupId,
     isGroup: true,
     groupName: name,
     groupPassions: selectedPassions,
-    userIds: selectedUsers,
-    userId: selectedUsers[0],
-    passion: selectedPassions[0],
+    userIds: membresAjoutes,
+    userId: membresAjoutes[0] || selectedUsers[0],
+    passion: selectedPassions[0] || null,
     unread: 0,
     lastAt: Date.now(),
     messages: [
@@ -1993,7 +2135,36 @@ async function confirmCreateGroup() {
 
   closeModal();
   renderMessages();
-  toast(`Groupe « ${name} » créé`);
+  if (refuses.size) {
+    const noms = [...refuses].map(id => (window._grpSel && window._grpSel.get(id)) || "un membre");
+    toast(`Groupe « ${name} » créé — pas pu ajouter : ${noms.join(", ")}`, "warning");
+  } else {
+    toast(`Groupe « ${name} » créé`);
+  }
+  window._grpSel = null;
+}
+
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C08) — UN SEUL CALCUL des membres d'un groupe.
+// `userIds` inclut MON compte quand il vient du serveur, pas quand le groupe a été
+// créé ici : l'en-tête disait 4, la fenêtre 5. Les autres membres, sans moi, uniques.
+function membresAutresGroupe(c) {
+  var vus = {};
+  return ((c && c.userIds) || []).filter(function (id) {
+    if (!id || id === "me" || id === MY_UID || vus[id]) return false;
+    vus[id] = true; return true;
+  });
+}
+function nbMembresGroupe(c) { return membresAutresGroupe(c).length + 1; }
+// Le rôle se tire du créateur ; inconnu, personne n'est présenté comme tel.
+function estCreateurGroupe(c) { return !!(c && c.createdBy && c.createdBy === MY_UID); }
+
+// LOT-4 (MSG-C09) : retirer quelqu'un d'un groupe se confirme, comme « Quitter ».
+function confirmerRetraitMembre(convId, userId, nom) {
+  ouvrirFeuilleConfirmation({
+    titre: "Retirer " + (nom || "ce membre") + " du groupe ?",
+    texte: ["Cette personne ne recevra plus les messages du groupe."],
+    actions: [{ id: "retirer", libelle: "Retirer du groupe", danger: true, agir: function () { removeGroupMember(convId, userId); } }],
+  });
 }
 
 function showGroupMembers(convId) {
@@ -2008,29 +2179,38 @@ function _renderGroupMembersModal(convId) {
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   var seedUsers = state.seed.users || [];
-  var memberIds = c.userIds || [];
+  // LOT-4 (MSG-C08) : la liste, le compte et le rôle disent vrai. Plus de « Admin ·
+  // En ligne » écrit en dur, plus de libellé de remplissage, plus de membre absent
+  // parce qu'il n'est pas dans le cache de démonstration ; « Retirer » et « Ajouter »
+  // ne sont proposés qu'au créateur, jamais sur le créateur.
+  var memberIds = membresAutresGroupe(c);
+  var nbMembres = memberIds.length + 1;
+  var jeCree = estCreateurGroupe(c);
+  var moi = (state.user && state.user.general) || {};
 
   var membersHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;">😊</div>' +
-    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div><div style="font-size:11px;color:var(--muted);">Admin · En ligne</div></div>' +
-    '<span style="font-size:10px;font-weight:700;color:var(--accent);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">Admin</span>' +
+    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;">' + escapeHtml(moi.profileEmoji || "😊") + '</div>' +
+    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div>' + (jeCree ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') + '</div>' +
   '</div>';
 
   membersHTML += memberIds.map(function(uid) {
     var u = seedUsers.find(function(x) { return x.id === uid; });
-    if (!u) return '';
-    var passion = passionById(u.passion);
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-      '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>' +
-      '<div style="flex:1;">' +
-        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted);">' + (passion ? escapeHtml(passion.emoji) + ' ' + escapeHtml(passion.label) : '') + '</div>' +
+    var p = (!u && typeof _profileCache !== "undefined" && _profileCache && _profileCache.get) ? _profileCache.get(uid) : null;
+    var nom = (u && u.name) || (p && p.username) || "Membre";
+    var avatar = u ? '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>'
+      : '<div style="width:40px;height:40px;border-radius:50%;background:' + escapeHtml((p && p.color) || "#8b5cf6") + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + escapeHtml((p && p.emoji) || "👤") + '</div>';
+    var estCreateur = !!(c.createdBy && c.createdBy === uid);
+    return '<div class="grp-membre" data-membre="' + escapeHtml(uid) + '" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
+      avatar +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(nom) + '</div>' +
+        (estCreateur ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') +
       '</div>' +
-      '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\')">Retirer</button>' +
+      ((jeCree && !estCreateur) ? '<button class="btn ghost grp-retirer" style="min-height:44px;font-size:13px;padding:0 14px;color:#b91c1c;border-color:rgba(185,28,28,0.35);" onclick="confirmerRetraitMembre(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(nom) + '\')">Retirer</button>' : '') +
     '</div>';
   }).join("");
 
-  var passionsHTML = (c.groupPassions || [c.passion]).map(function(pid) {
+  var passionsHTML = (c.groupPassions || (c.passion ? [c.passion] : [])).filter(Boolean).map(function(pid) {
     var p = passionById(pid);
     return p ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-deep);border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</span>' : '';
   }).join(" ");
@@ -2040,9 +2220,9 @@ function _renderGroupMembersModal(convId) {
 
   function buildNonMembersHTML(filter) {
     var filtered = filter ? nonMembers.filter(function(u) {
-      return u.name.toLowerCase().includes(filter.toLowerCase());
+      return plierRecherche(u.name).includes(plierRecherche(filter));
     }) : nonMembers;
-    if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
+    if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Toutes les personnes que tu connais sont déjà membres.</div>';
     if (filtered.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Aucun résultat.</div>';
     return filtered.map(function(u) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
@@ -2071,14 +2251,14 @@ function _renderGroupMembersModal(convId) {
     '<div class="modal-handle"></div>' +
     grpAvatarHTML +
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + nbMembres + ' membre' + (nbMembres > 1 ? 's' : '') + '</div>' +
     '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
       (c.groupDesc ? escapeHtml(c.groupDesc) : 'Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
-    '<div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
-      '<button id="grpTab_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + (memberIds.length + 1) + ')</button>' +
-      '<button id="grpTab_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' +
+    '<div role="tablist" aria-label="Groupe" style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
+      '<button id="grpTab_members" role="tab" aria-selected="true" aria-controls="grpPanel_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + nbMembres + ')</button>' +
+      (jeCree ? '<button id="grpTab_add" role="tab" aria-selected="false" aria-controls="grpPanel_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' : '') +
     '</div>' +
     // Panneau Membres
     '<div id="grpPanel_members" style="display:block;">' +
@@ -2088,14 +2268,14 @@ function _renderGroupMembersModal(convId) {
     '<div id="grpPanel_add" style="display:none;">' +
       '<div style="position:relative;margin-bottom:10px;">' +
         '<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;display:inline-flex;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);display:block;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg></span>' +
-        '<input id="grpSearchInput" type="text" placeholder="Rechercher un utilisateur..." oninput="filterGroupAddList(this.value)" ' +
+        '<input id="grpSearchInput" type="text" placeholder="Chercher une personne…" aria-label="Chercher une personne à ajouter" enterkeyhint="search" oninput="filterGroupAddList(this.value)" ' +
           'style="width:100%;box-sizing:border-box;padding:9px 12px 9px 34px;border-radius:12px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:13px;outline:none;">' +
       '</div>' +
       '<div id="grpAddList" style="max-height:240px;overflow-y:auto;">' + buildNonMembersHTML("") + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
       '<button class="btn ghost" onclick="closeModal();openConversation(\'' + escapeJsArg(convId) + '\')" style="flex:1;">← Retour</button>' +
-      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
+      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter le groupe</button>' +
     '</div>'
   );
 
@@ -2115,6 +2295,7 @@ function pickGroupPhoto(convId) {
     var file = e.target.files[0];
     document.body.removeChild(input);
     if (!file) return;
+    if (!/^image\//.test(file.type || "")) { toast("Choisis une image (JPG, PNG…)", "warning"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var convs = getConversations();
@@ -2122,23 +2303,24 @@ function pickGroupPhoto(convId) {
       if (!c) return;
       c.groupPhoto = ev.target.result;
       saveConversations();
-      toast("Photo du groupe mise à jour", "success");
-      // Mettre à jour l'avatar dans le header sans recharger la conversation
-      var avatarStyle = "background:url(" + ev.target.result + ") center/cover;width:40px;height:40px;font-size:0;flex-shrink:0;";
-      var avatarEl = document.querySelector("#convFpHead .msg-avatar");
-      if (avatarEl) {
-        avatarEl.style.cssText = avatarStyle;
+      // LOT-20 (audit UX/UI du 2026-11-10, MSG-C11) : trois références mortes —
+      // `renderConvList` (inexistante : ReferenceError, rien après ne tournait),
+      // `#convFpHead .msg-avatar` et `#modal-backdrop` (absents du DOM). Succès
+      // annoncé, rien ne changeait. Et la photo n'est écrite que sur CET appareil
+      // (aucun dépôt serveur pour un groupe) : on le dit.
+      var avatarEl = document.querySelector("#convFpHead .conv-fp-head-avatar");
+      if (avatarEl && window._openedConvId === convId) {
         avatarEl.textContent = "";
+        avatarEl.style.backgroundImage = 'url("' + String(ev.target.result).replace(/"/g, "%22") + '")';
+        avatarEl.style.backgroundSize = "cover";
+        avatarEl.style.backgroundPosition = "center";
       }
-      // Mettre à jour dans la liste
-      renderConvList();
-      // Mettre à jour dans la modale si ouverte
-      var modalAvatarEl = document.querySelector(".modal-content .msg-avatar[data-grp], .modal-content [style*='border-radius:50%']");
-      // Re-render la modale membres si elle est ouverte
-      var modalBackdrop = document.getElementById("modal-backdrop");
-      if (modalBackdrop && modalBackdrop.style.display !== "none") {
-        _renderGroupMembersModal(convId);
+      try { if (typeof renderMessages === "function") renderMessages(); } catch (e2) {}
+      var modalBackdrop = document.getElementById("modalBackdrop");
+      if (modalBackdrop && modalBackdrop.classList.contains("active") && typeof _renderGroupMembersModal === "function") {
+        try { _renderGroupMembersModal(convId); } catch (e3) {}
       }
+      toast("Photo du groupe mise à jour sur cet appareil", "success");
     };
     reader.readAsDataURL(file);
   };
@@ -2153,6 +2335,9 @@ function switchGroupTab(tab, sansFocus) {
   var panelMembers = document.getElementById("grpPanel_members");
   var panelAdd     = document.getElementById("grpPanel_add");
   if (!tabMembers || !tabAdd) return;
+  // LOT-32 (MSG-C28) : l'onglet actif est annoncé, pas seulement coloré.
+  tabMembers.setAttribute("aria-selected", tab === "members" ? "true" : "false");
+  tabAdd.setAttribute("aria-selected", tab === "members" ? "false" : "true");
   if (tab === "members") {
     tabMembers.style.color = "var(--accent)";
     tabMembers.style.borderBottom = "2px solid var(--accent)";
@@ -2180,12 +2365,12 @@ function filterGroupAddList(query) {
   var nonMembers = window._grpNonMembers || [];
   var convId = window._grpConvId || "";
   var filtered = query ? nonMembers.filter(function(u) {
-    return u.name.toLowerCase().includes(query.toLowerCase());
+    return plierRecherche(u.name).includes(plierRecherche(query));
   }) : nonMembers;
   var list = document.getElementById("grpAddList");
   if (!list) return;
   if (nonMembers.length === 0) {
-    list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Toutes les personnes que tu connais sont déjà membres.</div>';
     return;
   }
   if (filtered.length === 0) {
@@ -2208,25 +2393,72 @@ function _groupMemberName(userId) {
   return "Membre";
 }
 
+// ⚠️ LOT-1 (audit UX/UI du 2026-11-10, MSG-C05) : l'ajout partait à l'aveugle —
+// INSERT envoyé, résultat ignoré, « ajouté·e au groupe » et « a rejoint le
+// groupe » annoncés quoi qu'il arrive (mesuré : refus de la policy pour une
+// participante non créatrice, membre absent de la base, compteur 8 → 9 à
+// l'écran). Même patron que le retrait (RV-44, ci-dessous) : ce que le serveur
+// n'a jamais pu avoir reste local ; sinon on écrit, on LIT le verdict, et
+// seulement alors on annonce.
+var _ajoutsMembreEnVol = {};
+function _ajoutMembreLocal(c, convId, userId, name, apresAllerRetour) {
+  c.userIds = c.userIds || [];
+  if (c.userIds.includes(userId)) return;
+  c.userIds.push(userId);
+  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a rejoint le groupe.", at: Date.now(), fromName: "Passio" });
+  c.lastAt = Date.now();
+  saveConversations();
+  toast(name + " ajouté·e au groupe", "success");
+  var bd = document.getElementById("modalBackdrop");
+  if (!apresAllerRetour || (bd && bd.classList.contains("active") && window._grpConvId === convId)) _renderGroupMembersModal(convId);
+  var fp = document.getElementById("conv-fullpage");
+  if (fp && fp.classList.contains("active") && (!apresAllerRetour || window._openedConvId === convId)) renderConvFpThread(c, c.groupName || "Groupe");
+}
 function addGroupMember(convId, userId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   c.userIds = c.userIds || [];
   if (c.userIds.includes(userId)) return;
-  c.userIds.push(userId);
   var name = _groupMemberName(userId);
-  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a rejoint le groupe.", at: Date.now(), fromName: "Passio" });
-  c.lastAt = Date.now();
-  saveConversations();
-  // Sync Supabase : ajoute le membre à conv_members → il reçoit les messages.
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
-    try { supa.from("conv_members").insert({ conv_id: convId, user_id: userId }).then(function(){}, function(){}); } catch(e) {}
+  // Ce que le serveur n'a jamais pu avoir (visiteur, ébauche locale, membre
+  // non uuid) : ajout local, comme avant — les règles sont celles du retrait.
+  if (!_retraitMembreViseLeServeur(convId, userId)) { _ajoutMembreLocal(c, convId, userId, name, false); return; }
+  if (typeof sessionExpiree === "function" && sessionExpiree()) {
+    toast("Ta session a expiré — reconnecte-toi pour ajouter " + name + " au groupe.", "error");
+    return;
   }
-  toast("✅ " + name + " ajouté·e au groupe");
-  _renderGroupMembersModal(convId);
-  var fp = document.getElementById("conv-fullpage");
-  if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+  if (typeof supa === "undefined" || !supa || !window._supaReal) {
+    toast("Le service n'a pas pu se charger : recharge l'application pour ajouter " + name + " au groupe.", "error");
+    return false;
+  }
+  var cle = convId + "|" + userId;
+  if (_ajoutsMembreEnVol[cle]) return _ajoutsMembreEnVol[cle];
+  var envoi;
+  try {
+    envoi = Promise.resolve(supa.from("conv_members").insert({ conv_id: convId, user_id: userId }).select("user_id"));
+  } catch (e) {
+    envoi = Promise.reject(e);
+  }
+  var p = envoi.then(function(r) {
+    if (r && r.error) {
+      var code = String(r.error.code || "");
+      // 23505 : la ligne existe déjà — il EST membre, l'ajout est acquis.
+      if (code === "23505") { _ajoutMembreLocal(c, convId, userId, name, true); return true; }
+      try { if (typeof diagLog === "function") diagLog("conv_members ajout refusé", code.slice(0, 12)); } catch (e) {}
+      var reseau = typeof estEchecReseau === "function" && estEchecReseau(r.error);
+      toast(reseau ? "Pas de connexion : " + name + " n'a pas été ajouté·e. Réessaie quand le réseau revient."
+                   : "Le serveur a refusé l'ajout de " + name + " au groupe.", "error");
+      return false;
+    }
+    _ajoutMembreLocal(c, convId, userId, name, true);
+    return true;
+  }, function(e) {
+    toast("Pas de connexion : " + name + " n'a pas été ajouté·e. Réessaie quand le réseau revient.", "error");
+    return false;
+  }).then(function(v) { delete _ajoutsMembreEnVol[cle]; return v; });
+  _ajoutsMembreEnVol[cle] = p;
+  return p;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2463,10 +2695,22 @@ function removeGroupMember(convId, userId) {
 
 // Quitter un groupe : retire MA propre adhésion (RLS « Suppression propre ») et
 // supprime la conversation localement.
-function leaveGroup(convId) {
-  if (!confirm("Quitter ce groupe ? Tu ne recevras plus ses messages.")) return;
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
-    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).then(function(){}, function(){}); } catch(e) {}
+// ⚠️ ANNONCÉ = FAIT (ETAT-04, audit du 2026-11-10). Le retrait de `conv_members`
+// partait sans être lu : sur un refus ou une coupure, l'écran disait « Tu as quitté
+// le groupe » et la pierre tombale cachait la conversation, alors que le compte en
+// restait MEMBRE — il continuait d'en recevoir les messages et les notifications.
+// Pour un compte, on attend le verdict ; un échec garde la conversation et le dit.
+async function leaveGroup(convId) {
+  // LOT-6 (TRA-C11) : feuille de l'application, plus de boîte native.
+  if (!(await confirmerAction({ titre: "Quitter ce groupe ?", texte: "Tu ne recevras plus ses messages.", libelle: "Quitter le groupe", danger: true }))) return;
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal
+      && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    var v;
+    try {
+      v = _writeVerdict(await supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id"),
+        { expectRows: true, label: "quitter le groupe" });
+    } catch (e) { v = { ok: false }; }
+    if (!v.ok) { toast("Impossible de quitter le groupe pour l'instant — réessaie"); return; }
   }
   conversationsState = (getConversations() || []).filter(function(c){ return c.id !== convId; });
   if (typeof convTombAdd === "function") convTombAdd("conv", convId);  // sinon la fusion au boot la ressuscite (ADR-008)
@@ -2478,17 +2722,32 @@ function leaveGroup(convId) {
 }
 
 // Édite la description du groupe (locale + colonne conversations.description).
-function editGroupDescription(convId) {
+async function editGroupDescription(convId) {
   var c = getConversations().find(function(x){ return x.id === convId; });
   if (!c) return;
-  var d = prompt("Description du groupe :", c.groupDesc || "");
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var d = await demanderTexte({ titre: "Description du groupe", valeur: c.groupDesc || "", placeholder: "De quoi parle ce groupe ?", libelle: "Enregistrer", multiligne: true, max: 2000 });
   if (d == null) return;
+  var avant = c.groupDesc || "";
   c.groupDesc = d.trim();
   saveConversations();
-  if (typeof supa !== "undefined" && supa && window._supaReal) {
-    try { supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).then(function(){}, function(){}); } catch(e) {}
-  }
   _renderGroupMembersModal(convId);
+  // ⚠️ ANNONCÉ = GARDÉ (SRV-04, audit du 2026-11-10). L'écriture partait sans être
+  // lue : un membre que la policy n'autorise pas voyait « Description mise à jour »,
+  // et la description revenait au prochain rechargement. Pour un compte, le verdict
+  // décide ; un refus rend l'ancienne description.
+  if (typeof supa !== "undefined" && supa && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    return supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).select("id")
+      .then(function (res) { return _writeVerdict(res, { expectRows: true, label: "description du groupe" }); },
+            function () { return { ok: false }; })
+      .then(function (v) {
+        if (v.ok) { toast("Description mise à jour", "success"); return; }
+        c.groupDesc = avant;
+        saveConversations();
+        try { _renderGroupMembersModal(convId); } catch (e) {}
+        toast("Description non modifiée — le serveur l'a refusée");
+      });
+  }
   toast("Description mise à jour", "success");
 }
 
@@ -2521,6 +2780,9 @@ const reelsState = {
   viewedSinceOpen: 0,
   pausePrompted: false,
   observer: null,
+  // Son ACTIVÉ par défaut (demande de Benjamin, 2026-11-14) : c'est à
+  // l'utilisateur de le couper (bouton 🔊 de chaque bobine), pas de l'activer.
+  soundOn: true,
 };
 
 // Vidéos seed embarquées, bucket Google public, garanti hotlinkable et lecture H.264
@@ -2847,6 +3109,12 @@ function _reelVideoError(videoEl) {
   ph.className = "reel-media";
   ph.style.cssText = "background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(255,255,255,0.9);font-size:14px;font-weight:600;text-align:center;padding:24px;";
   ph.innerHTML = '<span style="font-size:40px;">🎬</span>Vidéo non lisible sur cet appareil';
+  // LOT-14 (BOB-C15) : le bouton « ▶ Lire » ne promet plus ce que le message dément.
+  try {
+    var item = videoEl.closest(".reel-item, .post, .reel-media-container");
+    var porte = item && (item.closest(".reel-item") || item);
+    if (porte) porte.querySelectorAll("[data-video-public-play], .reel-sound-btn").forEach(function (b) { if (b.parentNode) b.parentNode.removeChild(b); });
+  } catch (e) {}
   if (videoEl.parentNode) videoEl.parentNode.replaceChild(ph, videoEl);
 }
 
@@ -2888,6 +3156,15 @@ function buildReels(pinnedId) {
       return true;
     })
     .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  // LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : le RÉEL d'abord, les exemples
+  // ensuite — même règle et même coupure que le fil (`filReelDabordActif`). Mesuré :
+  // 20 bobines d'exemple sur 27, mêlées à celles des comptes, sans marque.
+  if (typeof filReelDabordActif === "function" && filReelDabordActif()) {
+    const reelles = eligibles.filter(function (p) { return !bobineExemple(p); });
+    const exemples = eligibles.filter(bobineExemple);
+    eligibles.length = 0;
+    Array.prototype.push.apply(eligibles, reelles.concat(exemples));
+  }
 
   const liste = eligibles.slice(0, 30);
   // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>), ou choisie
@@ -2957,6 +3234,9 @@ function _reelVideoSrc(post) {
   return v;
 }
 
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : l'auteur porte aussi sa PHOTO
+// (`photoUrl`, lue par `avatarBg` / `avatarInner`) quand elle est connue — le
+// lecteur montrait l'emoji de Léa alors que le fil et son profil montrent sa photo.
 function authorOfReel(post) {
   if (post._source === "me") {
     const prof = (state.user.profiles || []).find(p => p.id === post.profileId);
@@ -2964,6 +3244,7 @@ function authorOfReel(post) {
       name: prof ? prof.name : "Toi",
       emoji: prof ? prof.emoji : "🙂",
       color: prof ? prof.color : "#7c3aed",
+      photoUrl: (state.user.general && state.user.general.avatarPhoto) || null,
     };
   }
   const su = (state.seed.users || []).find(u => u.id === post.userId);
@@ -2972,6 +3253,16 @@ function authorOfReel(post) {
       name: su.name,
       emoji: su.profileEmoji || "🙂",
       color: su.avatar || "#7c3aed",
+      photoUrl: (typeof _userPhoto === "function") ? _userPhoto(su) : null,
+    };
+  }
+  const distant = (post.authorId && typeof userById === "function") ? userById(post.authorId) : null;
+  if (distant && (typeof _userPhoto === "function") && _userPhoto(distant)) {
+    return {
+      name: post.authorName || distant.name || "Anonyme",
+      emoji: post.authorEmoji || distant.profileEmoji || "🙂",
+      color: post.authorColor || distant.avatar || "#7c3aed",
+      photoUrl: _userPhoto(distant),
     };
   }
   // 🔧 FIX AUDIT 2026-06-10 : posts Supabase (vrais utilisateurs) — ils
@@ -2985,6 +3276,7 @@ function authorOfReel(post) {
 }
 
 function reelMediaHTML(post) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   // ⚠️ Une bobine peut venir de N'IMPORTE QUEL compte : `video`, `poster` et
   // `fallback` sont des champs libres côté serveur. Trois contextes distincts,
   // trois helpers — se tromper ici, c'est exécuter le code d'un inconnu :
@@ -2993,19 +3285,22 @@ function reelMediaHTML(post) {
   //                l'intérieur d'un attribut onerror ; le HTML décode avant que JS
   //                ne parse, donc escapeHtml seul ne protège pas.
   if (post.type === "video" && post.video) {
-    const poster = post.poster ? ` poster="${safeUrlAttr(post.poster)}"` : "";
+    const poster = post.poster ? ` ${passioMediaProteges.attributPoster(post.poster)}="${safeUrlAttr(post.poster)}"` : "";
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
     return `<video class="reel-media" data-video-public-src="${safeUrlAttr(_reelVideoSrc(post))}"${poster}${fallback} muted playsinline loop preload="none"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
-  const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
+  // LOT-10 (BOB-C02) : une bobine PHOTO créée (app-08) et relue du serveur porte
+  // `image` — le lecteur ne lisait que photo / coverPhotoUrl / cover, et montrait un
+  // dégradé violet à la place de la photo publiée.
+  const src = post.image || post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
   if (!src) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
   const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
-  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
+  return `<img class="reel-media" ${passioMediaProteges.attributImage(vignette)}="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
 }
 
 function resolveCoverUrl(cover) {
@@ -3022,7 +3317,19 @@ const COLORS_PASSION_BG = {
   cinema: "#9333ea", nature: "#15803d", actu: "#0f172a",
 };
 
+// Une bobine d'EXEMPLE vient du socle de démonstration (`state.seed.posts`) et
+// d'aucune source réelle. Les bobines du socle portent `_source: "seed_reel"`, le
+// fil pose `"seed"` : toute source qui commence par « seed » est un exemple.
+function bobineExemple(post) {
+  if (!post) return false;
+  if (post._source) return String(post._source).indexOf("seed") === 0;
+  const id = post.id;
+  const dans = function (t) { return (t || []).some(function (p) { return p && (p === post || p.id === id); }); };
+  return dans(state.seed.posts) && !dans(state.supabasePosts) && !dans(state.userPosts);
+}
+
 function renderReelHTML(post, idx) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = moodShortLabel(post.mood);
@@ -3032,20 +3339,20 @@ function renderReelHTML(post, idx) {
   const txt = post.text || post.caption || "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
-      <div class="reel-media-container">
+      <div class="reel-media-container"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
         ${reelMediaHTML(post)}
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
       ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
-      <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
+      ${/* LOT-14 (BOB-C14) : l'étiquette du haut répétait la passion et chevauchait la flèche ; l'envie rejoint la ligne de passion, sous le nom. */ ""}
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
         <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
-          <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
+          <div class="reel-avatar" style="background:${avatarBg(author)};">${avatarInner(author)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}</div>
+            <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
@@ -3061,7 +3368,7 @@ function renderReelHTML(post, idx) {
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M21 12 C21 16 16.5 19 12 19 C10.8 19 9.7 18.85 8.7 18.55 L4 20 L5.5 16 C4 14.85 3 13.5 3 12 C3 8 7.5 5 12 5 C16.5 5 21 8 21 12 Z"/></svg>
           </span>
-          <span class="reel-action-label">Commentaire</span>
+          <span class="reel-action-label">${(typeof nbCommentairesPost === "function") ? nbCommentairesPost(post) : ((post.comments || []).length)}</span>
         </button>
         <button class="reel-action-btn" onclick="shareReel('${escapeJsArg(post.id)}')" aria-label="Partager">
           <span class="reel-action-icon">
@@ -3069,8 +3376,30 @@ function renderReelHTML(post, idx) {
           </span>
           <span class="reel-action-label">Partager</span>
         </button>
+        <button class="reel-action-btn reel-plus-btn" onclick="openReelMenu('${escapeJsArg(post.id)}')" aria-label="Plus d'actions sur cette bobine">
+          <span class="reel-action-icon">
+            <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </span>
+          <span class="reel-action-label">Plus</span>
+        </button>
       </div>
     </div>`;
+}
+
+// LOT-6 (audit UX/UI du 2026-11-10, BOB-C04) — « PLUS » SUR UNE BOBINE.
+// Le format le plus viral n'avait ni « Signaler » (la story l'a), ni « Supprimer »
+// pour son auteur. La feuille passe au-dessus du lecteur (z-index 9999) ;
+// supprimer FERME d'abord le lecteur, puis passe par la suppression existante
+// (`confirmDeletePost` → `deletePost`, pierre tombale, quatre tableaux).
+function openReelMenu(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) p = (reelsState.items || []).find(function (x) { return x && x.id === postId; }) || null;
+  if (!p) return;
+  var mien = (typeof _estMonPost === "function") && _estMonPost(p);
+  var actions = mien
+    ? [{ id: "supprimer", libelle: "Supprimer cette bobine", danger: true, agir: function () { window._bobineRetourProfil = null; try { closeReels(); } catch (e) {} confirmDeletePost(postId); } }]
+    : [{ id: "signaler", libelle: "Signaler cette bobine", danger: true, agir: function () { reportPost(postId); } }];
+  ouvrirFeuilleConfirmation({ titre: mien ? "Ta bobine" : "Cette bobine", actions: actions });
 }
 
 function openReels(pinnedId) {
@@ -3090,7 +3419,7 @@ function openReels(pinnedId) {
       <div class="reels-empty">
         <div class="reels-empty-emoji">🎬</div>
         <div class="reels-empty-title">Pas encore de bobines</div>
-        <div class="reels-empty-text">Crée ta première bobine : ➕ → Studio → onglet <b>Bobine</b>.</div>
+        <div class="reels-empty-text">Filme un moment de ta passion.</div>
         <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">Créer une bobine</button>
       </div>`;
     lockBodyScroll("reels");
@@ -3103,7 +3432,14 @@ function openReels(pinnedId) {
   reelsState.pausePrompted = false;
 
   const list = document.getElementById("reelsList");
-  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("");
+  // LOT-5 (BOB-C22) : une fin de liste qui le dit, au lieu d'une flèche grise.
+  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("") + `
+    <div class="reels-fin" role="status">
+      <div class="reels-fin-emoji">🎬</div>
+      <div class="reels-fin-titre">Tu as tout vu</div>
+      <div class="reels-fin-texte">Reviens plus tard, ou crée la tienne.</div>
+      <button class="btn primary" onclick="startBobineCreation()">Créer une bobine</button>
+    </div>`;
 
   const v = document.getElementById("reelsViewer");
   v.classList.add("open");
@@ -3183,7 +3519,20 @@ function closeReels() {
   // Pause toutes les vidéos
   document.querySelectorAll("#reelsList video").forEach(arreterVideoPublique);
   if (reelsState && reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
+  // LOT-14 (BOB-C12) : le panneau de commentaires part avec le lecteur.
+  const panneauCmt = document.getElementById("reelCommentsPanel");
+  if (panneauCmt && panneauCmt.classList.contains("open")) {
+    panneauCmt.classList.remove("open");
+    if (v) v.classList.remove("comments-open");
+    window.currentReelCommentPostId = null;
+  }
   if (etaitOuvert) releaseOverlayHistory();
+  // LOT-14 (BOB-C10) : retour au profil visité d'où la bobine a été ouverte.
+  const retour = window._bobineRetourProfil;
+  window._bobineRetourProfil = null;
+  if (etaitOuvert && retour && typeof openUserProfile === "function") {
+    setTimeout(function () { try { openUserProfile(retour); } catch (e) {} }, 0);
+  }
 }
 
 function resumeReels() {
@@ -3212,6 +3561,21 @@ function updateReelsCounter() {
   el.textContent = `${cur} / ${total}`;
 }
 
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C06) : toucher la vidéo la met en
+// pause, la toucher encore la relance ; en pause, le bouton « ▶ Lire » se
+// montre — c'est le repère, et la porte de reprise.
+function basculerLectureBobine(conteneur, ev) {
+  const vid = conteneur && conteneur.querySelector("video");
+  if (!vid) return;
+  if (ev) ev.stopPropagation();
+  if (vid.paused) {
+    lancerVideoPublique(vid, true);
+  } else {
+    try { vid.pause(); } catch (e) {}
+    videoPubliqueBouton(vid, true);
+  }
+}
+
 function playReelAt(idx) {
   const items = document.querySelectorAll("#reelsList .reel-item");
   const soundOn = !!reelsState.soundOn;
@@ -3224,29 +3588,49 @@ function playReelAt(idx) {
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
     if (i === idx) {
-      lancerVideoPublique(vid, false);
+      lancerVideoPublique(vid, false).then((ok) => {
+        // Un navigateur peut refuser la lecture SONORE hors geste (iOS en
+        // défilement, Chrome sans interaction préalable). Plutôt qu'une bobine
+        // figée, on relance sans son pour CETTE vidéo seulement : le choix
+        // global reste « son activé », et 🔇 affiché invite à toucher.
+        if (ok || vid.muted || !vid.paused || !vid.hasAttribute("src")) return;
+        if (reelsState.current !== idx || !reelsState.open) return;
+        if (typeof videoPubliqueAutoplay === "function" && !videoPubliqueAutoplay()) return;
+        vid.muted = true; vid.defaultMuted = true;
+        _syncReelSoundBtns();
+        lancerVideoPublique(vid, false);
+      });
     }
     else arreterVideoPublique(vid);
   });
+  _syncReelSoundBtns();
 }
 
 // Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
 // son sur une bobine l'active pour les suivantes, mémorisé pour la session.
 function toggleReelsSound(ev) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-  reelsState.soundOn = !reelsState.soundOn;
-  _syncReelSoundBtns();
   const items = document.querySelectorAll("#reelsList .reel-item");
   const cur = items[reelsState.current];
   const vid = cur && cur.querySelector("video");
+  // On bascule ce que l'utilisateur ENTEND : une vidéo relancée sans son
+  // (lecture sonore refusée par le navigateur) affiche 🔇 alors que le choix
+  // global est « son activé » — la toucher doit allumer le son, pas l'éteindre.
+  reelsState.soundOn = vid ? !!vid.muted : !reelsState.soundOn;
   if (vid) {
     vid.muted = !reelsState.soundOn; vid.defaultMuted = vid.muted;
     if (vid.paused) lancerVideoPublique(vid, true);
   }
+  _syncReelSoundBtns();
 }
 function _syncReelSoundBtns() {
-  document.querySelectorAll("#reelsList .reel-sound-btn").forEach((b) => {
-    b.textContent = reelsState.soundOn ? "🔊" : "🔇";
+  document.querySelectorAll("#reelsList .reel-item").forEach((it) => {
+    const b = it.querySelector(".reel-sound-btn");
+    if (!b) return;
+    const vid = it.querySelector("video");
+    const on = vid ? !vid.muted : !!reelsState.soundOn;
+    b.textContent = on ? "🔊" : "🔇";
+    b.setAttribute("aria-label", on ? "Couper le son" : "Activer le son");
   });
 }
 
@@ -3312,6 +3696,8 @@ function openReelComments(postId) {
   if (panel && reelsViewer) {
     // Ajouter la classe pour réduire la vidéo
     reelsViewer.classList.add("comments-open");
+    // LOT-14 (BOB-C12) : une entrée d'historique — le retour ferme le panneau, pas la bobine.
+    if (!panel.classList.contains("open")) { try { pushOverlayHistory("commentaires-bobine"); } catch (e) {} }
     panel.classList.add("open");
 
     // Stocker le postId courant
@@ -3343,7 +3729,12 @@ function closeReelComments() {
   const reelsViewer = document.getElementById("reelsViewer");
 
   if (panel) {
+    const etaitOuvert = panel.classList.contains("open");
+    // Le champ ne garde pas le focus d'un panneau fermé : Échap suivant doit
+    // atteindre le lecteur, pas un champ invisible.
+    try { if (panel.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     panel.classList.remove("open");
+    if (etaitOuvert) { try { releaseOverlayHistory(); } catch (e) {} }
     if (reelsViewer) {
       reelsViewer.classList.remove("comments-open");
     }
@@ -3422,9 +3813,8 @@ function loadReelComments(postId) {
           </div>
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
           <div class="reel-comment-footer">
-            <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${escapeJsArg(postId)}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
-            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${escapeJsArg(postId)}', ${idx}, '${escapeJsArg(commenter.name)}')">💬</span>
-            <span class="reel-comment-action" onclick="showQuickEmojiForReelComment('${escapeJsArg(postId)}', ${idx}, event)" title="Réagir">😊</span>
+            <button type="button" class="reel-comment-like ${isLiked ? 'liked' : ''}" aria-pressed="${isLiked ? 'true' : 'false'}" aria-label="J'aime ce commentaire — ${likesCount}" onclick="likeReelComment('${escapeJsArg(postId)}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</button>
+            <button type="button" class="reel-comment-reply" aria-label="Répondre à ${escapeHtml(commenter.name)}" onclick="replyToReelCommentBox('${escapeJsArg(postId)}', ${idx}, '${escapeJsArg(commenter.name)}')">💬 Répondre</button>
             ${replies.length > 0 ? `<span class="reel-comment-reply-count" onclick="toggleReelCommentReplies(${idx})">${replies.length} réponse${replies.length > 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
@@ -3449,7 +3839,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
-              <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text || "")}="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
@@ -3490,22 +3880,26 @@ function autoResizeReelCommentInput() {
 function _envoyerCommentaireBobine(postId, op) {
   if (typeof supa === "undefined" || !supa) return;
   if (typeof MY_UID === "undefined" || !MY_UID) return;
-  if (typeof _enqueueCommentSync === "function") {
-    _enqueueCommentSync(Object.assign({ threadId: postId }, op));
-  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
-    supaAddComment(postId, op.text, op.commentId);
-  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
-    supaCommentInteract(op.parentId, postId, "reply", op.text);
-  }
-  // Prévenir l'auteur, comme le fait le chemin du Fil.
+  // Prévenir l'auteur, comme le fait le chemin du Fil — à la CONFIRMATION de
+  // l'écriture (SRV-02 : la base exige le commentaire réel) ; la file pose la
+  // notification au succès.
+  let notif = null;
   try {
     const cible = typeof findPostAnywhere === "function" ? findPostAnywhere(postId) : null;
-    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase
-        && typeof supaInsertNotif === "function") {
-      supaInsertNotif(cible.authorId, "comment", postId, "a commenté ta bobine");
+    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase) {
+      notif = { to: cible.authorId, kind: "comment", text: "a commenté ta bobine" };
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   } catch (e) {}
+  let ecriture = null;
+  if (typeof _enqueueCommentSync === "function") {
+    _enqueueCommentSync(Object.assign({ threadId: postId }, op, { notif: notif }));
+  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
+    ecriture = supaAddComment(postId, op.text, op.commentId);
+  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
+    ecriture = supaCommentInteract(op.parentId, postId, "reply", op.text);
+  }
+  if (ecriture && notif && typeof notifierApresEcriture === "function") notifierApresEcriture(ecriture, notif.to, notif.kind, postId, notif.text);
 }
 
 function submitReelComment() {
@@ -3619,9 +4013,10 @@ function likeReelComment(postId, commentIdx) {
     comment.likedBy.push(userId);
     comment.likes++;
     // Sync cross-compte : sans elle, le like restait dans ce seul navigateur.
-    if (typeof supaCommentInteract === "function") supaCommentInteract(comment.id, postId, "like", "");
-    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch (e) {}
+    const ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(comment.id, postId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecrit, comment.authorId, "like", postId, "a aimé ton commentaire");
     }
   }
 
@@ -3649,156 +4044,12 @@ function toggleReelCommentReplies(commentIdx) {
   }
 }
 
-function showQuickEmojiForReelComment(postId, commentIdx, event) {
-  event.stopPropagation();
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","👍","💯","🎉","🤔"];
-  const container = document.createElement("div");
-  container.style.cssText = "position:absolute;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;gap:4px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,0.1);";
-
-  emojis.forEach(emoji => {
-    const btn = document.createElement("button");
-    btn.textContent = emoji;
-    btn.style.cssText = "background:none;border:none;font-size:18px;cursor:pointer;padding:4px;";
-    btn.onclick = () => {
-      addEmojiReactionToReelComment(postId, commentIdx, emoji);
-      container.remove();
-    };
-    container.appendChild(btn);
-  });
-
-  event.target.parentElement.appendChild(container);
-  setTimeout(() => container.remove(), 3000);
-}
-
-function showEmojiPickerForReelComment(postId, commentIdx) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","🎉","👍","💯","🤔"];
-  let selected = [];
-
-  openModal(`
-    <div class="modal-title">Réagir au commentaire</div>
-    <div id="_reelEmojiPreviewRow" style="display:flex;align-items:center;gap:8px;min-height:38px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
-      <span id="_reelEmojiPreview" style="font-size:24px;flex:1;letter-spacing:2px;"></span>
-      <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${escapeJsArg(postId)}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:4px 0;max-height:200px;overflow-y:auto;">
-      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${escapeJsArg(emoji)}')" style="padding:8px;font-size:22px;border:none;">${emoji}</button>`).join("")}
-    </div>
-  `);
-
-  window._reelEmojiSelected = [];
-  window._reelEmojiPick = function(e) {
-    window._reelEmojiSelected.push(e);
-    var prev = document.getElementById("_reelEmojiPreview");
-    var val = document.getElementById("_reelEmojiValidate");
-    if (prev) prev.textContent = window._reelEmojiSelected.join("");
-    if (val) { val.style.opacity = "1"; val.style.pointerEvents = "auto"; }
-  };
-  window._reelEmojiConfirm = function(pid, idx) {
-    if (!window._reelEmojiSelected.length) return;
-    addEmojiReactionToReelComment(pid, idx, window._reelEmojiSelected.join(""));
-  };
-}
-
-function showGifPickerForReelComment(postId, commentIdx) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  openModal(`
-    <div class="modal-title">GIF de réaction</div>
-    <input type="search" placeholder="${escapeHtml(typeof passioGifPlaceholder === "function" ? passioGifPlaceholder() : "Rechercher un GIF…")}" aria-label="Rechercher un GIF"
-      oninput="_reelGifSearch('${escapeJsArg(postId)}', ${commentIdx}, this.value)"
-      style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
-    <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
-      <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Chargement…</div>
-    </div>
-  `);
-  _fillReelGifGrid(postId, commentIdx, "");
-}
-
-// Remplit la grille GIF du modal de réaction bobine via l'API (fallback local)
-function _fillReelGifGrid(postId, commentIdx, query) {
-  passioFetchGifs(query, 12).then(urls => {
-    const grid = document.getElementById("reelGifGrid");
-    if (!grid) return; // modal refermé entre-temps
-    grid.innerHTML = urls.length
-      // ⚠️ Le MÊME `gif` va dans deux contextes différents, donc deux helpers
-      // différents : escapeHtml dans l'onclick était le piège documenté — le HTML
-      // décode `&#39;` AVANT le parse JS, l'apostrophe rouvre la chaîne.
-      ? urls.map(gif => `<img loading="lazy" decoding="async" src="${safeUrlAttr(gif)}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${escapeJsArg(postId)}', ${Number(commentIdx) || 0}, '${escapeJsArg(gif)}')" />`).join("")
-      : '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Aucun GIF trouvé</div>';
-  });
-}
-
-let _reelGifDeb = null;
-function _reelGifSearch(postId, commentIdx, q) {
-  clearTimeout(_reelGifDeb);
-  _reelGifDeb = setTimeout(() => _fillReelGifGrid(postId, commentIdx, q), 350);
-}
-
-function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  if (!comment.replies) comment.replies = [];
-
-  const reply = {
-    type: "emoji_reaction",
-    text: emoji,
-    authorId: state.user?.id || "me",
-    authorName: currentProfile()?.name || "Moi",
-    createdAt: Date.now()
-  };
-
-  comment.replies.push(reply);
-  saveState();
-  closeModal();
-  loadReelComments(postId);
-  toast(`${emoji} Réaction ajoutée!`);
-}
-
-function addGifReactionToReelComment(postId, commentIdx, gifUrl) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  if (!comment.replies) comment.replies = [];
-
-  const reply = {
-    type: "gif_reaction",
-    text: gifUrl,
-    authorId: state.user?.id || "me",
-    authorName: currentProfile()?.name || "Moi",
-    createdAt: Date.now()
-  };
-
-  comment.replies.push(reply);
-  saveState();
-  closeModal();
-  loadReelComments(postId);
-  toast("GIF ajouté");
-}
-
-function reactToReel(emoji) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
-
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  if (!reel.reactions) reel.reactions = {};
-  if (!reel.reactions[emoji]) reel.reactions[emoji] = 0;
-  reel.reactions[emoji]++;
-
-  saveState();
-  toast(`${emoji} Réaction ajoutée!`);
-}
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C18) — RETIRÉ : la rangée de réactions
+// de bobine (masquée, `reactToReel`) et la réaction « 😊 » / GIF à un commentaire
+// de bobine (`showQuickEmojiForReelComment`, sélecteurs emoji et GIF,
+// `addEmojiReactionToReelComment`, `addGifReactionToReelComment`). Elles
+// n'écrivaient que dans l'état local : une réaction que personne d'autre ne
+// voyait jamais, et qui disparaissait au rechargement. J'aime et Répondre restent.
 
 function shareReel(postId) {
   openReelShareModal(postId);
@@ -3807,56 +4058,24 @@ function shareReel(postId) {
 function openReelShareModal(postId) {
   const reel = findPostAnywhere(postId);
   if (!reel) return;
-
-  // Lien suivi : on FABRIQUE l'URL puis on la tague (?plk=<id>) pour que le centre
-  // de pilotage apparie cette création à une éventuelle ouverture confirmée.
-  const rawUrl = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  const _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("reel", postId) : "";
-  const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
+  // LOT-12 (PAR-C08) : le lien d'une bobine porte `?inv=` comme les trois autres
+  // portes (l'invité est accueilli par le nom de qui l'envoie). Il reste un lien
+  // `#reel=` : c'est lui que le routeur sait ouvrir dans le lecteur. L'aperçu
+  // riche (chemin court) reste à faire côté serveur — hors de ce lot.
+  const inv = (typeof _invitationParametre === "function") ? _invitationParametre() : "";
+  const rawUrl = location.origin + location.pathname + inv + "#reel=" + encodeURIComponent(postId);
+  // Même comptage que les trois autres portes : le lien est créé ET compté partagé.
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "reel", postId, navigator.share ? "native" : "clipboard") : rawUrl;
   const author = authorOfReel(reel);
-  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const moodLabel = moodShortLabel(reel.mood);
-  const txt = reel.text || reel.caption || "";
-
-  // Créer des URLs de partage pour les réseaux sociaux
-  const encodedUrl = encodeURIComponent(url);
-  const encodedText = encodeURIComponent(`Regarde cette bobine PASSIO: ${txt.slice(0, 50)}...`);
-
-  const shareHTML = `
-    <div class="modal-handle"></div>
-    <div class="modal-title">${shareIconSvg(20)} Partager cette bobine</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      <button class="btn secondary" onclick="shareReelVia('whatsapp', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        WhatsApp
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('telegram', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        Telegram
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('twitter', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        𝕏 Twitter
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('facebook', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        Facebook
-      </button>
-      <button class="btn secondary" onclick="shareReelEmail('${escapeJsArg(postId)}', '${escapeJsArg(encodedText)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        Email
-      </button>
-      <button class="btn secondary" onclick="shareReelSMS('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        SMS
-      </button>
-    </div>
-
-    <button class="btn primary block" onclick="shareReelInFeed('${escapeJsArg(postId)}')" style="margin-bottom:8px;">
-      Partager dans le Feed
-    </button>
-
-    <button class="btn secondary block" onclick="copyReelLink('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')">
-      Copier le lien
-    </button>
-  `;
-
-  openModal(shareHTML);
+  const txt = String(reel.text || reel.caption || "");
+  const extrait = txt.length > 60 ? txt.slice(0, 60) + "…" : txt;
+  ouvrirFeuillePartage({
+    quoi: "bobine", auteur: author.name || "Passionné", extrait: extrait,
+    vignette: reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || "",
+    url: url,
+    message: "Regarde la bobine de " + (author.name || "Passionné") + " sur PASSIO 🎬",
+    republier: function () { shareReelInFeed(postId); },
+  });
 }
 
 async function shareReelInFeed(postId) {
@@ -3899,7 +4118,8 @@ async function shareReelInFeed(postId) {
     // DEUX fois → « Café d'Or » s'affichait « Café d&#39;Or », et la valeur
     // corrompue partait telle quelle dans `posts.content`. Même motif que le
     // double échappement du formulaire d'activité (#200 ②).
-    text: `📤 A partagé une bobine\n\n${passion.emoji} ${author.name} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    // LOT-10 (PAR-C06) : la carte citée montre la bobine ; le texte stocké reste sobre.
+    text: "A partagé une bobine de " + author.name,
     caption: `Shared reel from ${author.name}`,
     // ⚠️ `createdAt` est OBLIGATOIRE : `supaPublishPostWithRetry` fait
     // `new Date(post.createdAt).toISOString()` — sur `undefined` cela lève un
@@ -3927,7 +4147,9 @@ async function shareReelInFeed(postId) {
       authorName: author.name,
       authorEmoji: author.emoji,
       authorColor: author.color,
-      passion: reel.passion
+      passion: reel.passion,
+      media: (function () { var m = reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || ""; return /^data:/.test(String(m)) ? "" : m; })(),
+      isReel: true,
     }
   };
 
@@ -4121,8 +4343,12 @@ function _vliveFiletTour() {
     // source, il ne recule pas. BORNÉ au fil à l'écran (les bulles « 🔴 LIVE »
     // vivent dans sa barre de stories) : `filetEstLeSeulChemin` (app-02), MÊME
     // autorité que le filet du fil.
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : le seul chemin n'épingle plus 60 s, il
+    // BORNE le recul à 3 min (`filetBorneSeulChemin`, app-02), comme le filet du fil.
+    // Un live connu garde la cadence vive : ce cas-là ne change pas.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetBorneSeulChemin(_vliveFiletPas, seulChemin);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
@@ -4162,7 +4388,7 @@ function _vliveChipsHtml() {
   const mine = (typeof MY_UID !== "undefined" && MY_UID) || "";
   return (window._videoLives || []).filter(r => r.author_id !== mine).map(r => {
     const inner = r.author_photo
-      ? '<img loading="lazy" decoding="async" src="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(r.author_photo) + '="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
       : escapeHtml(r.author_emoji || "🔴");
     const tip = r.title ? (r.author_name || "Live") + " — " + r.title : "Rejoindre le live";
     return '' +
@@ -4215,6 +4441,12 @@ function _vlivePromptTitle() {
   });
 }
 
+// Lot 4 du 2026-11-15 : les colonnes d'adresse de média n'acceptent plus que https.
+var LIVE_PHOTO_HTTPS = "video_lives:photo-https";
+function _livePhotoHttps(v) {
+  return (typeof v === "string" && /^https:\/\//i.test(v) && v.length <= 2048) ? v : null;
+}
+
 async function startVideoLive() {
   if (window._call) { toast("Termine ton appel d'abord"); return; }
   if (window._vliveHost) return;
@@ -4230,6 +4462,9 @@ async function startVideoLive() {
   // déclare défectueux ferait conclure au prochain lecteur qu'il a été audité
   // et validé ici (capacité, 2026-09-20).
   const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  // LOT-15 (CRE-C14) : un visiteur reçoit la MÊME porte d'inscription que les
+  // cinq autres entrées de « Créer », pas un simple toast.
+  if (window.requireAuthentication && !requireAuthentication("publier")) return;
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
   _appelEnPreparation();
@@ -4239,7 +4474,6 @@ async function startVideoLive() {
   // rester SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide doublon et
   // capacité sur cette table ; une attente là faisait répondre « complet » à des
   // spectateurs groupés alors que des relais étaient libres, relecture du 2026-11-09).
-  const _relais = assurerServeursIce();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4250,14 +4484,16 @@ async function startVideoLive() {
       video: Object.assign({ facingMode: "user" }, VLIVE_VIDEO_QUALITY),
     });
   } catch (e) { toast("Caméra/micro indisponible ou refusé"); return; }
-  try { await _relais; } catch (e) {}
 
   const id = "vl_" + String(MY_UID).slice(0, 8) + "_" + Date.now().toString(36);
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
   const row = {
     id: id, author_id: MY_UID, author_name: _callMyName(),
     author_emoji: me.emoji || "🔴",
-    author_photo: (state.user && state.user.general && state.user.general.avatarPhoto) || null,
+    // Une adresse https seulement : une photo encore locale (data:) serait refusée par la base
+    // (`video_lives_author_photo_forme`) et ferait échouer tout le direct. `LIVE_PHOTO_HTTPS`
+    // est la chaîne que la migration exige dans le client servi (`-- PREREQUIS-CLIENT:`).
+    author_photo: _livePhotoHttps(state.user && state.user.general && state.user.general.avatarPhoto),
     title: title || null,
     status: "live",
     started_at: new Date().toISOString(), last_seen: new Date().toISOString(),
@@ -4266,6 +4502,8 @@ async function startVideoLive() {
     const { error } = await supa.from("video_lives").insert(row);
     if (error) { console.warn("[vlive] insert:", error.message); toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
   } catch (e) { toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
+
+  await assurerServeursIce({ liveId: id });
 
   window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null, title: title || "", chatLog: [], peak: 0, tree: {}, paused: false };
   _vliveRenderUI("host", row);
@@ -4377,7 +4615,7 @@ async function _vliveHostAddViewer(vid) {
   if (Object.keys(H.pcs).length >= VLIVE_MAX_VIEWERS) { _vliveSend("full", { to: vid }); return; }
   // SANS attente (voir `startVideoLive`, qui attend le relais avant d'ouvrir le live) :
   // l'appel retire tout de suite des identifiants expirés et relance le renouvellement
-  // en arrière-plan ; ceux qui restent ont au moins 3 h par construction.
+  // en arrière-plan ; ceux qui restent ont au moins 30 min par construction.
   assurerServeursIce();
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
   const entry = { pc: pc, pendingIce: [] };
@@ -4491,7 +4729,7 @@ async function _vliveNotifyFollowers(liveId, title) {
     ? ("est en direct : « " + String(title).slice(0, 60) + " » — rejoins !")
     : "est en direct — rejoins le live !";
   try {
-    const { data } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID).limit(200);
+    const { data } = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", MY_UID)).limit(200);
     const ids = [...new Set((data || []).map(r => r.follower_id))].filter(x => x && x !== MY_UID);
     for (const fid of ids) {
       try { await supaInsertNotif(fid, "live_video", liveId, msg); } catch (e) {}
@@ -4540,7 +4778,7 @@ async function joinVideoLive(liveId) {
     _appelEnPreparation();
     // Le relais TURN se demande EN MÊME TEMPS que l'état du live, et on l'attend
     // (2,5 s au plus) avant d'entrer : l'offre de l'hôte peut arriver tout de suite.
-    const _relais = assurerServeursIce();
+    const _relais = assurerServeursIce({ liveId: liveId });
     // Vérifie que le live est encore vivant (statut + heartbeat récent).
     let row = (window._videoLives || []).find(r => r.id === liveId) || null;
     try {
@@ -5219,7 +5457,7 @@ function _vliveShare() {
     partagerOuCopier({ title: "PASSIO — Live", text: txt, url: url }, "Lien du live copié"); return;
   } catch (e) {}
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt + "\n" + url).then(() => toast("Lien du live copié"), () => toast("Lien : " + url));
-  } else { toast("Lien : " + url); }
+    navigator.clipboard.writeText(txt + "\n" + url).then(() => toast("Lien du live copié"), () => montrerLienACopier(url));
+  } else { montrerLienACopier(url); }
 }
 window._vliveShare = _vliveShare;

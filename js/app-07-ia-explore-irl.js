@@ -161,11 +161,52 @@ var _exSearchJeton = 0;      // annulation des recherches dépassées
 var _exSearchTimer = null;   // anti-rebond
 var EX_SEARCH_DEBOUNCE = 160;
 
+// LOT-11 (audit UX/UI du 2026-11-10, REC-C07) — LE PANNEAU DE RÉSULTATS SE FERME.
+// Il ne se fermait qu'en vidant le champ lettre à lettre. Croix d'effacement de
+// 44 px, Échap et toucher hors du panneau le ferment ; revenir dans un champ
+// rempli rouvre les résultats.
+function exFermerResultats() {
+  var r = document.getElementById("exploreSearchResults");
+  if (r) r.style.display = "none";
+}
+function exRouvrirResultats() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp && inp.value.trim()) filterExplore();
+}
+function exEffacerRecherche() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp) { inp.value = ""; try { inp.focus(); } catch (e) {} }
+  filterExplore();
+}
+(function _brancherFermetureRecherche() {
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var r = document.getElementById("exploreSearchResults");
+    if (r && r.style.display !== "none") exFermerResultats();
+  });
+  document.addEventListener("click", function (e) {
+    var r = document.getElementById("exploreSearchResults");
+    if (!r || r.style.display === "none") return;
+    var zone = r.parentNode;
+    if (zone && !zone.contains(e.target)) exFermerResultats();
+  }, true);
+})();
+// LOT-11 (REC-C06) : le panneau descend jusqu'au bas de l'écran au lieu de 360 px.
+function _exHauteurPanneau(r) {
+  try {
+    var haut = r.getBoundingClientRect().top;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    r.style.maxHeight = Math.max(240, Math.floor(vh - haut - 16)) + "px";
+  } catch (e) {}
+}
+
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
   var results = document.getElementById("exploreSearchResults");
   if (!results) return;
   var query = inp ? inp.value : "";
+  var croix = document.getElementById("explorerClear");
+  if (croix) croix.hidden = !query;
 
   if (_exSearchTimer) { clearTimeout(_exSearchTimer); _exSearchTimer = null; }
 
@@ -177,12 +218,33 @@ function filterExplore() {
   }
 
   results.style.display = "block";
+  _exHauteurPanneau(results);
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
   _exSearchTimer = setTimeout(function () { _exSearchLancer(query.trim()); }, EX_SEARCH_DEBOUNCE);
 }
 
 // Passions correspondant à la frappe. Rend une PROMESSE : le référentiel plat
 // n'est chargé qu'au premier usage réel de la recherche, et c'en est un.
+// LOT-11 (REC-C08, REC-C12) — Passions qui ont des publications RÉELLES (le même
+// compte que la tuile des tendances), et recherche dans le socle embarqué.
+function _exPassionsActivesHTML(n) {
+  var ps = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, n) : [];
+  if (!ps.length) return "";
+  return "<div class='ex-suggestions' style='padding:4px 14px 12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;'>"
+    + ps.map(function (p) {
+      return "<button type='button' class='pill' onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\">" + escapeHtml(p.emoji || "✨") + " " + escapeHtml(p.label) + "</button>";
+    }).join("") + "</div>";
+}
+function _exRechercheLocaleHTML(query) {
+  var q = (typeof plierRecherche === "function") ? plierRecherche(query) : String(query || "").toLowerCase();
+  var ps = PASSIONS.filter(function (p) { return p && p.label && ((typeof plierRecherche === "function") ? plierRecherche(p.label) : p.label.toLowerCase()).indexOf(q) >= 0; }).slice(0, 6);
+  if (!ps.length) return "";
+  return ps.map(function (p) {
+    return "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--border);'>"
+      + "<div style='font-size:20px;'>" + escapeHtml(p.emoji || "✨") + "</div><div style='font-weight:700;font-size:13px;'>" + escapeHtml(p.label) + "</div></div>";
+  }).join("");
+}
+
 function _exChercherPassions(q) {
   var repliSocle = function () {
     var ql = q.toLowerCase();
@@ -259,10 +321,15 @@ function _exSearchLancer(query) {
         || (pw && pw.label.toLowerCase().includes(q));
     }).slice(0, 5);
 
-    var fu = supaFormatted.concat(seedUsers).slice(0, 8);
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+    var fu = supaFormatted.concat(seedUsers).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
 
     if (fp.length === 0 && fu.length === 0) {
-      cible.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " »</div>";
+      // LOT-11 (REC-C08) : un « aucun résultat » qui aide à reformuler, et trois
+      // passions qui ont des publications, à toucher.
+      cible.innerHTML = "<div class='ex-aucun' style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " ».<br>Vérifie l'orthographe, ou essaie un mot plus court.</div>"
+        + _exPassionsActivesHTML(3);
       return;
     }
 
@@ -271,27 +338,31 @@ function _exSearchLancer(query) {
     // Passions
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
-      fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+      // LOT-11 (REC-C06) : trois passions, puis « Voir N autres passions » — qui
+      // cherche un pseudo ne traverse plus six lignes avant les personnes.
+      var _plus = fp.length > 3 ? fp.length - 3 : 0;
+      fp.forEach(function(p, _i) {
+        html += "<div" + (_i >= 3 ? " class='ex-passion-plus' hidden" : "") + " onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji || "✨") + "</div>" +
           "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label || p.id) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
           "</div>";
       });
+      if (_plus) {
+        html += "<button type='button' class='ex-voir-plus' onclick=\"event.stopPropagation();this.parentNode.querySelectorAll('.ex-passion-plus').forEach(function(x){x.hidden=false});this.remove();\">Voir " + _plus + " autre" + (_plus > 1 ? "s passions" : " passion") + "</button>";
+      }
     }
 
     // Utilisateurs
     if (fu.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Utilisateurs</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Personnes</div>";
       fu.forEach(function(u) {
-        // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
-        // recherche portaient chacun leur variante de pastilles ; ils
-        // n'affichaient donc pas la même chose de la même personne.
-        var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
+        // 2026-11-13 (Benjamin) : plus de passions sous le pseudo d'un
+        // résultat de recherche — « trop chargé ». Nom (et bio) seulement.
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
-          ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          ? "<img " + passioMediaProteges.attributImage(_photo) + "='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
           : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
         // Attribut style en quotes SIMPLES : une apostrophe dans la couleur d'un
         // autre compte en sortait. _cssColor refuse quotes, url( et expression(.
@@ -300,7 +371,6 @@ function _exSearchLancer(query) {
           "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
-            passionBadges +
             (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
           "</div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;margin-left:6px;'>Voir →</div>" +
@@ -316,7 +386,10 @@ function _exSearchLancer(query) {
     try { diagLog("explorer recherche " + (e && e.message ? e.message : e)); } catch (_) {}
     if (jeton !== _exSearchJeton) return;
     var c = document.getElementById("exploreSearchResults");
-    if (c) c.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
+    // LOT-11 (REC-C12) : hors ligne, on le DIT, et on cherche dans ce qu'on a.
+    if (c) c.innerHTML = (typeof navigator !== "undefined" && navigator.onLine === false)
+      ? "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Tu es hors ligne : la recherche reprendra dès que le réseau revient.</div>" + _exRechercheLocaleHTML(query)
+      : "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
   });
 }
 
@@ -349,6 +422,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
+  // LOT-11 (REC-C09) : UN compte, le même que la tuile des tendances — les
+  // publications RÉELLES (sans les exemples) ; la liste peut montrer des exemples.
+  var nbReelles = (typeof nbPublicationsPassion === "function") ? nbPublicationsPassion(pid) : posts.length;
   // ⚠️ `_parDefaut` EXCLU (même famille) : la fiche d'une passion annonçait
   // « tu as cette passion » sur le seul profil de remplissage.
   var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid && !up._parDefaut; });
@@ -358,7 +434,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // donc « Pas encore de créateurs », y compris quand de vrais comptes la
   // portent. Le seed reste le repli de démonstration ; les comptes RÉELS sont
   // chargés juste après et se posent EN TÊTE.
-  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid; });
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid && !(typeof isBlocked === "function" && isBlocked(u.id)); });
 
   // Un seul constructeur de ligne, et le moteur de suivi UNIQUE
   // (`toggleFollowUser`, app-04) : il garde `requireAuthentication`, sait
@@ -384,7 +462,13 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   var vide = '<div class="empty"><div class="empty-text">Pas encore de créateurs</div></div>';
   var creatorsHTML = creators.length ? creators.map(ligne).join("") : vide;
 
-  var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
+  // LOT-11 (REC-C09, REC-C17) : « 6 sur N » et un chemin vers le fil filtré ; une
+  // fiche vide propose d'être la personne qui commence.
+  var postsHTML = posts.length
+    ? posts.slice(0,6).map(renderPostHTML).join("")
+      + (posts.length > 6 ? '<div class="pex-suite"><span>6 sur ' + posts.length + '</span> <button type="button" class="btn small ghost" onclick="closeModal();setFeedPassions([\'' + escapeJsArg(pid) + '\']);goTo(\'feed\')">Voir dans le fil</button></div>' : "")
+    : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucune publication pour l\'instant</div>'
+      + '<button type="button" class="btn primary pex-publier" onclick="closeModal();publierSurPassion(\'' + escapeJsArg(pid) + '\')">Publier sur ' + escapeHtml(p.label || pid) + '</button></div>';
 
   // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
   // non plus une passion à créer (elle existe, rangée). On propose la
@@ -395,7 +479,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
     : (hasProfile
       ? '<span class="pill active">Ta passion</span>'
-      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
+      : '<button class="btn small primary pex-ajouter" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">＋ Ajouter à mes passions</button>');
 
   // Le retour est un LIEN, pas une croix : la croix ferme déjà la modale, et
   // fermer ne ramène pas au profil. Le libellé nomme la destination.
@@ -415,15 +499,16 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     +   '<div>'
     +     '<div class="modal-title" style="margin:0;">' + escapeHtml(p.label || pid) + '</div>'
     +     '<div style="font-size:12px;color:var(--muted);">'
-    +       posts.length + ' post' + (posts.length > 1 ? "s" : "")
+    +       nbReelles + ' publication' + (nbReelles > 1 ? "s" : "")
     +     '</div>'
     +   '</div>'
     +   '<div style="margin-left:auto;">' + profileBtn + '</div>'
     + '</div>'
+    + _pexActivitesHTML(pid, p.label || pid)
     + '<div class="section-title" style="margin-top:6px;">Créateurs</div>'
     + '<div id="pexCreators">' + creatorsHTML + '</div>'
     + '<div id="pexLiees"></div>'
-    + '<div class="section-title" style="margin-top:14px;">Posts</div>'
+    + '<div class="section-title" style="margin-top:14px;">Publications</div>'
     + postsHTML
     // ⚠️ EN BAS, ET DISCRET. Signaler n'est pas une action de découverte : la
     // placer en tête ferait d'une fiche de passion un formulaire de plainte.
@@ -438,6 +523,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     + '</div>';
 
   openModal(html);
+  // LOT-11 (REC-C11) : la fiche s'ouvre EN HAUT — ouverte depuis un résultat, elle
+  // héritait du défilement de la fiche précédente (scrollTop 1 226 mesuré).
+  try { var _mc = document.getElementById("modalContent"); if (_mc) _mc.scrollTop = 0; } catch (e) {}
 
   _pexChargerCreateurs(pid, creators);
   _pexPeindreLiees(pid);
@@ -446,6 +534,28 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
 // Les comptes RÉELS qui portent cette passion. Bornée, tolérante à l'échec, et
 // elle ne peint que si la modale est TOUJOURS celle-ci — `openModal` n'empile
 // pas, une réponse tardive écrirait sinon dans la modale suivante.
+// LOT-3 (audit UX/UI du 2026-11-10, REC-C04) : la fiche d'une passion ne menait
+// jamais à Rencontrer, même avec une activité de cette passion à venir — le
+// parcours Découvrir → Rencontrer s'y arrêtait. Une porte corail (§5 : le corail
+// signale le passage au réel) qui réutilise le moteur EXISTANT de la passerelle
+// (`PassioUIV3.seeActivities` : Rencontrer filtré sur la passion, sans demande
+// de position). Aucune fonction nouvelle ; sans le moteur, aucune porte.
+function _pexActivitesHTML(pid, label) {
+  try {
+    if (!window.PassioUIV3 || typeof PassioUIV3.seeActivities !== "function") return "";
+    var maintenant = Date.now();
+    var n = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
+      return e && e.passion === pid && e.status !== "cancelled" && Number(e.date) > maintenant;
+    }).length;
+    var compte = n ? " · " + n + " à venir" : "";
+    return '<button type="button" class="btn block pex-activites" data-tel="passion_activites"'
+      + ' style="min-height:48px;margin:0 0 16px;background:var(--v4b-coral-texte,#c13d28);color:#fff;border-color:transparent;font-weight:800;"'
+      + ' onclick="closeModal(); PassioUIV3.seeActivities(\'' + escapeJsArg(String(pid)) + '\')">'
+      + 'Voir les activités ' + escapeHtml(String(label)) + compte
+      + '</button>';
+  } catch (e) { return ""; }
+}
+
 function _pexChargerCreateurs(pid, creatorsSeed) {
   var hote = document.getElementById("pexCreators");
   if (!hote || typeof supa === "undefined" || !supa) return;
@@ -472,6 +582,9 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
       (creatorsSeed || []).forEach(function (u) { vus[u.id] = 1; });
       var reels = r.data.filter(function (u) {
         if (!u || !u.id || u.id === MY_UID || vus[u.id]) return false;
+        // LOT-6 (REC-C03) : on ne bloque en pratique que de VRAIS comptes — ils
+        // arrivent ici, chargés après le socle, et passent par le même filtre.
+        if (typeof isBlocked === "function" && isBlocked(u.id)) return false;
         vus[u.id] = 1;
         return true;
       });
@@ -546,6 +659,20 @@ function _pexPeindreLiees(pid) {
 // unique : c'est lui qui garde le plafond, restaure une archive au lieu de la
 // dupliquer, et synchronise. Deux moteurs pour un même geste divergent toujours
 // au premier correctif — la leçon de `sharePostInFeed` / `shareReelInFeed`.
+// LOT-11 (REC-C17) : depuis la fiche VIDE d'une passion, « Publier sur … » ouvre
+// le Studio avec cette passion choisie (ajoutée au compte si besoin, sous les
+// mêmes garde-fous que « Ajouter à mes passions »).
+function publierSurPassion(pid) {
+  var vivante = function () { return (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived && !x._parDefaut; }); };
+  if (!vivante() && typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(pid, "");
+  var v = vivante();
+  if (!v) return;   // refusé (plafond, passion non publiable) : la fenêtre l'a déjà dit
+  state.user.currentProfileId = v.id;
+  saveState();
+  goTo("studio");
+  try { renderStudio(); } catch (e) {}
+}
+
 function quickCreateProfile(pid) {
   if (typeof ajouterPassionAuCompte !== "function") return;
   const p = passionById(pid);
@@ -564,9 +691,10 @@ function quickCreateProfile(pid) {
   if (!vivante) return;
   state.user.currentProfileId = vivante.id;
   saveState();
-  closeModal();
   renderTopbar();
-  goTo("profiles");
+  // LOT-11 (REC-C10) : on RESTE sur la fiche — elle montre désormais « Ta passion ».
+  // Basculer vers Profil faisait quitter la découverte au milieu d'un geste.
+  try { openPassionExplorer(pid); } catch (e) {}
   if (np) toast("✨ " + ((p && p.label) || "Passion") + " ajoutée à tes passions", "success");
 }
 
@@ -610,7 +738,7 @@ function _eventEndAt(ev) {
 // sans être sûrs. Trois états honnêtes (going / maybe / declined) + une file
 // d'attente quand c'est complet (cf. Partiful, Luma, Eventbrite).
 const RSVP_LABELS = {
-  going:    { label: "Je viens",        short: "✓ Je viens" },
+  going:    { label: "Je participe",    short: "✓ Je participe" },  // LOT-3 (PCS-C06) : un seul mot pour le geste, partout
   maybe:    { label: "Peut-être",       short: "Peut-être" },
   declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
   waitlist: { label: "Liste d'attente", short: "En attente" },
@@ -670,6 +798,25 @@ function _eventSpotsLeft(ev) {
   return Math.max(0, ev.maxAttendees - _nbInscrits(ev, "going"));
 }
 function _eventIsFull(ev) { const s = _eventSpotsLeft(ev); return s !== null && s <= 0; }
+
+// LOT-19 (IRL-C54) : la base a refusé « je viens » parce que l'activité est
+// complète. Les compteurs sont relus (`supaLireParticipants`, seule source) ;
+// si la lecture ne rend rien, le refus du serveur suffit à poser le plein.
+async function _rafraichirApresComplet(ev) {
+  if (!ev) return;
+  try {
+    if (typeof supaLireParticipants === "function") {
+      const lu = await supaLireParticipants([ev.id], "rsvp_complet");
+      const c = lu && lu.comptesLus && lu.countsByEvent ? lu.countsByEvent[ev.id] : null;
+      if (c) ev.counts = Object.assign({}, ev.counts || {}, c);
+    }
+  } catch (e) { try { diagLog("rsvp complet : relecture — " + (e && e.message)); } catch (_) {} }
+  if (ev.maxAttendees && !_eventIsFull(ev)) {
+    ev.counts = Object.assign({}, ev.counts || {}, { going: Math.max(Number(ev.maxAttendees) || 0, Number((ev.counts || {}).going) || 0) });
+  }
+  try { _patchEventCardJoin(ev.id); } catch (e) {}
+  try { _refreshEventDetailIfOpen(ev.id); } catch (e) {}
+}
 
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
@@ -1223,7 +1370,7 @@ function requestUserLocation() {
       // sortie est nommée : choisir sa ville.
       if (!window._geoRefusDit) {
         window._geoRefusDit = true;
-        try { toast("Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi.", "warning"); } catch (e) {}
+        try { toast("Position indisponible. Choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */ } catch (e) {}
       }
 
       // Afficher Paris comme fallback
@@ -1465,12 +1612,19 @@ function openIrlCitySelector() {
       if (!box || searchInput.value.trim() !== brut) return;
       // On ne propose que des communes, et pas celles déjà listées localement.
       const seen = new Set();
-      const cities = (res || []).filter(r => {
+      const toutes = (res || []).filter(r => {
         const c = (r.city || "").toLowerCase();
         if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
         seen.add(c);
         return true;
       });
+      // LOT-36 (audit UX/UI du 2026-11-10, IRL-C18) : « Grenoble » ramenait aussi
+      // Le Boupère, Arcisses, Aulnay-sous-Bois — des communes dont une RUE ou un
+      // lieu-dit porte le nom. Seules restent celles dont le NOM contient la
+      // saisie. Si aucune ne la contient et que rien n'est trouvé localement, on
+      // garde la réponse du géocodeur : c'est sans doute une faute de frappe.
+      const contenant = toutes.filter(r => _normIrlCityName(r.city).indexOf(query) > -1);
+      const cities = (contenant.length || localHits) ? contenant : toutes;
       if (!cities.length) {
         montrerVide(localHits ? "" : "Aucune ville trouvée pour « " + brut + " ».");
         return;
@@ -1566,7 +1720,7 @@ function initIrlMap() {
       // il faut juste le dire au lieu de laisser un cadre vide.
       .catch(function(){
         el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
-          + 'La liste des événements ci-dessous fonctionne normalement.</div>';
+          + 'La liste des activités ci-dessous fonctionne normalement.</div>';
       });
     return;
   }
@@ -1578,6 +1732,22 @@ function initIrlMap() {
     maxZoom: 19,
   }).addTo(irlMap);
   irlMarkersLayer = L.layerGroup().addTo(irlMap);
+  // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : tuiles refusées (réseau
+  // faible, service du fond de carte indisponible) → un fond gris uni, sans un
+  // mot. La carte le dit, et renvoie à la liste ; le message part dès qu'une
+  // tuile arrive.
+  if (typeof irlMap.surEchecFond === "function") {
+    irlMap.surEchecFond(function (echec) {
+      var msg = el.querySelector(".irl-map-tuiles");
+      if (!echec) { if (msg) msg.remove(); return; }
+      if (msg) return;
+      msg = document.createElement("div");
+      msg.className = "irl-map-fallback irl-map-tuiles";
+      msg.setAttribute("role", "status");
+      msg.textContent = "Le fond de carte ne charge pas (connexion ?). Les activités restent dans la liste ci-dessous.";
+      el.appendChild(msg);
+    });
+  }
   // Minimal delay pour laisser le DOM se stabiliser
   setTimeout(() => irlMap.invalidateSize(), 10);
   // Flag pour tracer la première initialisation
@@ -1768,9 +1938,45 @@ function updateIrlMapMarkers() {
   var filtered = _filteredNow;
 
   const points = [];
+  // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : six activités au même lieu
+  // (une ville géocodée à sa mairie, un même local) donnaient six marqueurs
+  // empilés, impossibles à toucher séparément — le micro-décalage ne les
+  // écartait que de quelques mètres. Les activités d'un même lieu (~100 m) sont
+  // regroupées en UNE pastille qui dit leur nombre ; sa bulle les liste toutes.
+  // Zoomer n'aurait rien séparé : elles partagent le même point.
+  const lieux = new Map();
   filtered.forEach(ev => {
     const ll = eventLatLng(ev);
     if (!ll) return;
+    const cle = Number(ll[0]).toFixed(3) + "," + Number(ll[1]).toFixed(3);
+    if (!lieux.has(cle)) lieux.set(cle, { ll, evs: [] });
+    lieux.get(cle).evs.push(ev);
+  });
+  lieux.forEach(({ ll, evs }) => {
+    if (evs.length > 1) {
+      const icone = L.divIcon({
+        className: "passio-marker-wrap",
+        html: `<div class="passio-marker passio-marker-groupe" aria-label="${evs.length} activités à cet endroit">${evs.length}</div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -18],
+      });
+      const mg = L.marker([ll[0], ll[1]], { icon: icone }).addTo(irlMarkersLayer);
+      mg.bindPopup(`
+        <div class="irl-popup-title">${evs.length} activités à cet endroit</div>
+        <div class="irl-popup-liste">${evs.map(ev => {
+          const dd = fmtEventDate(ev.date);
+          const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
+          return `<button type="button" class="irl-popup-ligne" onclick="openEventDetails('${escapeJsArg(ev.id)}')">
+            <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Activité")}</span>
+            <span class="irl-popup-ligne-meta">${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
+          </button>`;
+        }).join("")}</div>
+      `);
+      points.push([ll[0], ll[1]]);
+      return;
+    }
+    const ev = evs[0];
     // Micro-jitter DÉTERMINISTE basé sur l'id (minimal, évite le chevauchement sans décalage visible)
     const h = String(ev.id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
     const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
@@ -1794,10 +2000,14 @@ function updateIrlMapMarkers() {
     const m = L.marker([lat, lng], { icon }).addTo(irlMarkersLayer);
     const d = fmtEventDate(ev.date);
     const dk = _eventDistanceKm(ev);
+    // LOT-5 (IRL-C01) : la bulle d'une activité d'exemple le dit aussi.
+    let _exPop = false;
+    try { _exPop = !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) {}
     m.bindPopup(`
-      <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
+      ${_exPop ? '<div class="irl-popup-exemple">Activité d\'exemple · pas d\'inscription</div>' : ""}
+      <div class="irl-popup-title">${escapeHtml(ev.title || "Activité")}</div>
       <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
-      <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
+      <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'activité</button>
     `);
     points.push([lat, lng]);
   });
@@ -1848,8 +2058,24 @@ function toggleIrlMapFullscreen() {
   } else if (typeof releaseOverlayHistory === "function") {
     releaseOverlayHistory();
   }
+  majBoutonPleinEcranCarte();
   // Laisse Leaflet s'adapter à la nouvelle taille
   setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
+}
+
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C10) : en plein écran, la seule sortie
+// était l'icône d'entrée, sans libellé. Le bouton dit maintenant « Fermer la
+// carte » (texte visible, nom accessible) ; appelé par les TROIS chemins qui
+// entrent ou sortent du plein écran (bouton, retour, changement d'écran).
+function majBoutonPleinEcranCarte() {
+  try {
+    var wrap = document.getElementById("irlMapWrap");
+    var btn = document.getElementById("irlMapExpandBtn");
+    if (!wrap || !btn) return;
+    var plein = wrap.classList.contains("fullscreen");
+    btn.setAttribute("aria-label", plein ? "Fermer la carte" : "Carte en plein écran");
+    btn.setAttribute("title", plein ? "Fermer la carte" : "Carte en plein écran");
+  } catch (e) {}
 }
 
 // Déplier / replier la carte (« peek » content-first). État mémorisé.
@@ -1889,6 +2115,7 @@ document.addEventListener("keydown", (e) => {
     const wrap = document.getElementById("irlMapWrap");
     if (wrap && wrap.classList.contains("fullscreen")) {
       wrap.classList.remove("fullscreen");
+      majBoutonPleinEcranCarte();
       setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
     }
   }
@@ -1896,12 +2123,13 @@ document.addEventListener("keydown", (e) => {
 
 // Barre de passions (refondue le 2026-07-22) : en PRINCIPAL, les passions de mes
 // profils — c'est mon écran, il doit ressembler à mes centres d'intérêt. Les
-// autres passions restent atteignables (les événements des autres ne doivent
-// jamais être inatteignables, c'était le bug du 2026-07-21) mais via un petit
-// panneau « + Autres passions » à cocher : une passion cochée vient s'ajouter à
-// la barre principale, où elle se comporte exactement comme les miennes.
-// ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
-// la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+// autres passions restent atteignables par « Chercher »
+// (`ouvrirRecherchePassionIRL`) : une passion choisie là devient un filtre, et
+// une passion filtrée a toujours sa tuile dans la barre.
+// ⚠️ La tuile « Autres » et son panneau à cocher sont RETIRÉS (2026-11-14,
+// demande de Benjamin : « il y a déjà Chercher ») — deux portes pour le même
+// besoin. `state.user.irlExtraPassions` n'est plus lu : une passion cochée
+// autrefois ne garde pas de tuile, faute de porte pour la retirer.
 // ⚠️ « Mes passions » doit dire la MÊME chose sur Rencontrer et sur le Fil.
 // Mesuré avant correctif, juste après avoir archivé « Cuisine » :
 //   renderProfileStrip (Fil)  → ["musique"]
@@ -1921,29 +2149,6 @@ function _irlMyPassions() {
     : (state.user.profiles || []);
   return [...new Set(source.map(p => p.passion).filter(Boolean))];
 }
-function _irlExtraPassions() {
-  if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
-  return state.user.irlExtraPassions;
-}
-function toggleIrlExtraPassion(pid) {
-  const extra = _irlExtraPassions();
-  const i = extra.indexOf(pid);
-  if (i > -1) {
-    extra.splice(i, 1);
-    // Retirer la tuile doit aussi retirer son filtre, sinon on filtre sur une
-    // passion qui n'est plus affichée (donc plus décochable).
-    if (irlPassionFilters) irlPassionFilters.delete(pid);
-  } else {
-    extra.push(pid);
-  }
-  saveState();
-  renderIRL();
-}
-function toggleIrlExtraPanel() {
-  window._irlExtraOpen = !window._irlExtraOpen;
-  renderIrlPassionTiles();
-}
-
 // ⚠️ FONCTION GLOBALE : `audit:handlers` exige qu'un `onclick` inline désigne
 // une fonction globale EXISTANTE. Elle ne fait que déléguer.
 function ouvrirRecherchePassionIRL() {
@@ -1966,10 +2171,9 @@ function renderIrlPassionTiles() {
 
   const mine = _irlMyPassions();
   const mineSet = new Set(mine);
-  const extra = _irlExtraPassions().filter(pid => !mineSet.has(pid));
-  // Une passion filtrée reste toujours affichée, même si elle n'est ni mienne ni
-  // cochée (sinon la tuile active disparaît et le filtre devient indécochable).
-  const shown = [...new Set(mine.concat(extra, [...irlPassionFilters]))];
+  // Une passion filtrée reste toujours affichée, même si elle n'est pas mienne
+  // (sinon la tuile active disparaît et le filtre devient indécochable).
+  const shown = [...new Set(mine.concat([...irlPassionFilters]))];
 
   const tileHtml = (pid) => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
@@ -1978,19 +2182,11 @@ function renderIrlPassionTiles() {
     const isMine = mineSet.has(pid);
     return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
         aria-pressed="${escapeHtml(isActive)}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
-      <span class="msg-tile-icon">${p.emoji}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
+      <span class="msg-tile-icon">${escapeHtml(p.emoji)}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
   };
-
-  // Panneau « autres passions » : tout ce qui a au moins un événement et qui
-  // n'est pas déjà dans la barre.
-  const others = Object.keys(counts)
-    .filter(pid => !mineSet.has(pid) && extra.indexOf(pid) === -1)
-    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
-  const open = !!window._irlExtraOpen;
-  const nExtra = extra.length;
 
   // ── Lot flat_passions_v1 : chercher une passion précise ──────────────────
   // ⚠️ Posée DANS le rendu : `renderIrlPassionTiles` réécrit `#irlPassionRow`
@@ -2012,32 +2208,7 @@ function renderIrlPassionTiles() {
   row.innerHTML = `
     <div class="msg-filter-tiles">${chercheTile}
       ${shown.map(tileHtml).join("")}
-      <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
-        aria-expanded="${escapeHtml(open)}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
-        <span class="msg-tile-icon">＋</span>
-        <span class="msg-tile-label">Autres</span>
-        ${nExtra > 0 ? `<span class="msg-tile-badge">${nExtra}</span>` : ""}
-      </button>
-    </div>
-    ${open ? `<div class="irl-extra-panel" id="irlExtraPanel">
-      <div class="irl-extra-title">Ajouter des passions à ma barre</div>
-      <div class="irl-extra-list">
-        ${extra.map(pid => _irlExtraChipHtml(pid, counts, true)).join("")}
-        ${others.map(pid => _irlExtraChipHtml(pid, counts, false)).join("")}
-        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des événements pour le moment.</span>' : ""}
-      </div>
-    </div>` : ""}`;
-}
-
-function _irlExtraChipHtml(pid, counts, checked) {
-  const p = passionById(pid) || { label: pid, emoji: "✨" };
-  const cnt = counts[pid] || 0;
-  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${escapeHtml(checked)}"
-      onclick="toggleIrlExtraPassion('${escapeJsArg(pid)}')">
-    <span class="irl-extra-box" aria-hidden="true">${checked ? "✓" : ""}</span>
-    <span>${p.emoji} ${escapeHtml(p.label)}</span>
-    ${cnt > 0 ? `<b>${cnt}</b>` : ""}
-  </button>`;
+    </div>`;
 }
 
 var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
@@ -2341,12 +2512,17 @@ function setIrlPassionsMiennes() {
 // l'utilisateur n'est jamais mesurée (cf. `js/telemetry.js`).
 function irlLieuReference() {
   if (irlSelectedCity) return { nom: irlSelectedCity.name, sub: "Ville choisie" };
+  // LOT-25 (IRL-C04) : après un REFUS, le point est le repli Paris — jamais
+  // « Position actuelle », que l'écran affichait pour un point qu'il n'a pas.
+  if (irlUserLocation && typeof irlUserLocationError !== "undefined" && irlUserLocationError) {
+    return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
+  }
   if (irlUserLocation) {
     var el = document.getElementById("irlUserCityName");
     var n = (el && el.textContent && el.textContent !== "…") ? el.textContent : "Ma position";
     return { nom: n, sub: "Position actuelle" };
   }
-  return { nom: "Choisir une ville", sub: "Aucune position" };
+  return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
 }
 
 // Résumé lisible du filtre de date. UN SEUL constructeur : `_syncIrlDateBtn`
@@ -2378,10 +2554,10 @@ function _syncIrlFiltersFooter(count) {
   // ne le verrait — les deux nombres restant plausibles.
   window._irlResultCount = n;
   if (done) {
-    done.textContent = n === null ? "Voir les événements"
+    done.textContent = n === null ? "Voir les activités"
       : n === 0 ? "Aucun résultat"
-      : n === 1 ? "Voir 1 événement"
-      : "Voir les " + n + " événements";
+      : n === 1 ? "Voir 1 activité"
+      : "Voir les " + n + " activités";
   }
   if (reset) {
     var active = _irlActiveFilterCount() > 0 || !!irlSearchQuery;
@@ -2417,7 +2593,7 @@ function _syncIrlTimeUI() {
   if (ds) ds.textContent = String(start).padStart(2, "0") + ":00";
   if (de) de.textContent = String(end).padStart(2, "0") + ":00";
   var sum = document.getElementById("irlTimeSum");
-  if (sum) sum.textContent = irlTimeFilter ? "Événements entre " + irlTimeFilter : "Aucune contrainte d'horaire";
+  if (sum) sum.textContent = irlTimeFilter ? "Activités entre " + irlTimeFilter : "Aucune contrainte d'horaire";
   var clear = document.getElementById("irlTimeClearBtn");
   if (clear) clear.style.display = irlTimeFilter ? "block" : "none";
   // La pastille qui correspond à la plage réglée est cochée : sans ça, revenir
@@ -2656,7 +2832,21 @@ function _filterIrlEvents(events) {
         .some(function(v) { return String(v || "").toLowerCase().indexOf(q) > -1; });
     });
   }
-  return _sortIrlEvents(filtered);
+  return _reelsAvantExemples(_sortIrlEvents(filtered));
+}
+
+// LOT-25 (audit UX/UI du 2026-11-10, IRL-C14) : les vraies activités d'abord,
+// les exemples ensuite — 9 des 12 premières cartes étaient des exemples
+// ailleurs en France, alors que 7 vraies activités attendaient à Lyon. Tri
+// STABLE : l'ordre choisi (imminent, proche, populaire) tient dans chaque groupe.
+function _reelsAvantExemples(list) {
+  var estExemple = function (e) {
+    try { return !!(window.PassioFirstRun && typeof PassioFirstRun.evenementDemo === "function" && PassioFirstRun.evenementDemo(e)); }
+    catch (x) { return false; }
+  };
+  var reels = [], exemples = [];
+  (list || []).forEach(function (e) { (estExemple(e) ? exemples : reels).push(e); });
+  return reels.concat(exemples);
 }
 
 // Tri de la liste : imminent (défaut) / le plus proche / le plus populaire.
@@ -2681,9 +2871,18 @@ function _sortIrlEvents(list) {
 
 // Distance en km entre un événement et le point de référence, ou null si le lieu
 // n'est pas géolocalisable.
+// LOT-45 (audit UX/UI du 2026-11-10, IRL-C02) : sans position obtenue ni ville
+// choisie, la référence est le repli Paris — et l'écran affichait « Lyon ·
+// environ 391 km », « Paris · environ 0 m » comme des distances réelles. Une
+// distance n'est AFFICHÉE que s'il existe une référence réelle ; le tri et le
+// filtre, qui passent leur référence explicitement, ne changent pas.
+function _irlAReferenceReelle() {
+  return !!(irlSelectedCity || (irlUserLocation && !(typeof irlUserLocationError !== "undefined" && irlUserLocationError)));
+}
 function _eventDistanceKm(ev, ref) {
   var loc = eventLatLng(ev);
   if (!loc) return null;
+  if (!ref && !_irlAReferenceReelle()) return null;
   var r = ref || _irlReferenceLoc();
   return calculateDistance(r.lat, r.lng, loc[0], loc[1]);
 }
@@ -2819,9 +3018,9 @@ function irlToolsSections() {
           sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
-      { id: "miens", title: "Mes événements", items: [
-        { icon: pers, label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
-        { icon: coche, label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
+      { id: "miens", title: "Mes activités", items: [
+        { icon: pers, label: "Mes activités", data: { irlfilter: "mine" }, active: hasMine },
+        { icon: coche, label: "Je participe", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
     ]
   };
@@ -2872,16 +3071,23 @@ function setIrlPastMode(past) {
 function _irlEmptyStateHtml() {
   var filtered = _irlActiveFilterCount() > 0 || irlSearchQuery;
   if (irlShowPast) {
-    return '<div class="empty"><div class="empty-icon">🕰</div><div class="empty-title">Aucun événement passé</div>'
-      + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ton premier événement.</div>'
-      + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les événements à venir</button></div>';
+    return '<div class="empty"><div class="empty-icon">🕰</div><div class="empty-title">Aucune activité passée</div>'
+      + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ta première activité.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les activités à venir</button></div>';
+  }
+  // LOT-19 (IRL-C12) : une RECHERCHE sans résultat n'accuse pas des filtres
+  // qu'on n'a pas posés.
+  if (irlSearchQuery && _irlActiveFilterCount() === 0) {
+    return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Aucune activité pour « ' + escapeHtml(String(irlSearchQuery)) + ' »</div>'
+      + '<div class="empty-text">Essaie un autre mot, ou une passion voisine.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">Effacer la recherche</button></div>';
   }
   if (filtered) {
     return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
-      + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'événements.</div>'
+      + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'activités.</div>'
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
   }
-  return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div>'
+  return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucune activité</div>'
     + '<div class="empty-text">Crée le premier et donne rendez-vous.</div>'
     + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
 }
@@ -2908,6 +3114,12 @@ function _scheduleIrlMapUpdate() {
     else run();
   }, 60);
 }
+
+// LOT-25 (IRL-C03) puis 2026-11-14 : l'invitation « Choisis ta ville pour
+// voir les distances » vivait en tête de la liste ; Benjamin la veut DANS le
+// filtre, pas au-dessus des activités. Elle est désormais le sous-titre de la
+// carte « Où ? » de la page Filtre (`irlLieuReference`), qui ouvre déjà le
+// sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
@@ -3016,7 +3228,7 @@ function renderIRL() {
     // ⚠️ Le « · » de séparation est ajouté ICI et NULLE PART AILLEURS (le bug
     // historique « Lyon · · Café des Arts » venait d'un `· ` déjà collé au venue).
     const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
-    const distKm = _eventDistanceKm(e, _ref);
+    const distKm = _irlAReferenceReelle() ? _eventDistanceKm(e, _ref) : null; // LOT-45 (IRL-C02)
     const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(fmtEventPrice(e.price))}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
@@ -3043,7 +3255,7 @@ function renderIRL() {
       data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
       onclick="openEventDetails('${escapeJsArg(e.id)}')"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
-      ${cancelled ? '<div class="event-card-banner cancelled">Événement annulé par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
+      ${cancelled ? '<div class="event-card-banner cancelled">Activité annulée par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
           <div class="event-date-day">${d.day}</div>
@@ -3052,7 +3264,7 @@ function renderIRL() {
         </div>
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
-          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
+          <div class="event-meta">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
         </div>
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
@@ -3064,8 +3276,8 @@ function renderIRL() {
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
+        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}"${attrsLikePost(evLiked, evLikeCount)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${contenuLikePost(evLiked, evLikeCount)}</span>
+        <span class="post-action" data-evc="${escapeHtml(e.id)}"${attrsCommentairesPost(_eventCmtBadge(e.id))} onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">${contenuCommentairesPost(_eventCmtBadge(e.id))}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(e.id)}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(e.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(e.id)}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
@@ -3103,7 +3315,8 @@ async function _loadEventReactions(ids) {
       if (_prev && _prev.gifs && _prev.gifs.length && (!d.gifs || !d.gifs.length)) d.gifs = _prev.gifs;
       window._eventLikes[id] = d;
       var lk = document.querySelector('[data-evlike="' + id + '"]');
-      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+      // Tous les exemplaires (carte de la liste ET fiche), icônes de LOT-8.
+      _peindreLikeEvenement(id, d, lk);
       if (typeof _patchEventReactChip === "function") _patchEventReactChip(id);
     });
   } catch (e) {}
@@ -3111,6 +3324,8 @@ async function _loadEventReactions(ids) {
 
 // Like ❤️ d'un événement (toggle optimiste local + sync event_reactions).
 function toggleEventLike(id, el) {
+  // Mode invité : même porte que le « j'aime » d'une publication (PARC-01).
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
   state.user.likedEvents = state.user.likedEvents || [];
   window._eventLikes = window._eventLikes || {};
   var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
@@ -3124,24 +3339,50 @@ function toggleEventLike(id, el) {
   }
   window._eventLikes[id] = cur;
   if (typeof saveState === "function") saveState();
-  // Patch TOUS les exemplaires du bouton : le même événement est affiché à la fois
-  // dans la liste et dans sa fiche (et la fiche se superpose à la liste) — ne
-  // repeindre que `el` laissait l'autre copie sur l'ancien compteur.
-  var _els = document.querySelectorAll('[data-evlike="' + id + '"]');
+  _peindreLikeEvenement(id, cur, el);
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetEventLike === "function") {
+    var voulu = cur.liked;
+    // ⚠️ LE VERDICT DÉCIDE (PARC-01, audit du 2026-11-10). Le résultat de
+    // `supaSetEventLike` était jeté et l'organisateur notifié tout de suite : un
+    // « j'aime » refusé restait peint, et notifié. On envoie l'INTENTION, jamais une
+    // relecture ; un refus pour un compte rétablit l'état d'avant et le dit.
+    Promise.resolve(supaSetEventLike(id, voulu)).then(function (ok) {
+      if (ok) {
+        if (voulu) {
+          var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
+          if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
+            supaInsertNotif(ev.organizerId, "like", id, "a aimé ton événement");
+          }
+        }
+        return;
+      }
+      if (typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;   // visiteur : rien en base, copie locale
+      var c = window._eventLikes[id] || cur;
+      if (c.liked !== voulu) return;   // un autre geste est passé depuis : il décide
+      if (voulu) {
+        state.user.likedEvents = (state.user.likedEvents || []).filter(function(x){ return x !== id; });
+        c.likes = Math.max(0, (c.likes || 1) - 1); c.liked = false;
+      } else {
+        if ((state.user.likedEvents || []).indexOf(id) === -1) state.user.likedEvents.push(id);
+        c.likes = (c.likes || 0) + 1; c.liked = true;
+      }
+      window._eventLikes[id] = c;
+      if (typeof saveState === "function") saveState();
+      _peindreLikeEvenement(id, c, el);
+      toast("« J'aime » non enregistré — réessaie");
+    });
+  }
+}
+
+// Patch TOUS les exemplaires du bouton : le même événement est affiché à la fois
+// dans la liste et dans sa fiche (et la fiche se superpose à la liste) — ne
+// repeindre que `el` laissait l'autre copie sur l'ancien compteur.
+function _peindreLikeEvenement(id, cur, el) {
+  var _els = document.querySelectorAll('[data-evlike="' + CSS.escape(String(id)) + '"]');
   if (!_els.length && el) _els = [el];
   [].forEach.call(_els, function (n) {
-    n.classList.toggle("liked", cur.liked);
-    n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
+    peindreLikePost(n, !!cur.liked, cur.likes || 0);
   });
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetEventLike === "function") {
-    supaSetEventLike(id, cur.liked);   // l'INTENTION, jamais une relecture de la base
-    if (cur.liked) {
-      var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
-      if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
-        supaInsertNotif(ev.organizerId, "like", id, "a aimé ton événement");
-      }
-    }
-  }
 }
 
 // 😊 Réagir à un événement : ouvre le MÊME sélecteur emoji + GIF que les posts
@@ -3286,16 +3527,17 @@ function _setEventReaction(eventId, val) {
   state.user.eventReactions[eventId] = val;
   window._eventLikes[eventId] = d;
   if (typeof saveState === "function") saveState();
-  if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, val);
+  var ecriture = (typeof supaAddEventReaction === "function") ? supaAddEventReaction(eventId, val) : false;
   _patchEventReactChip(eventId);
-  _notifyEventOrganizerReaction(eventId);
+  _notifyEventOrganizerReaction(eventId, ecriture);
 }
-function _notifyEventOrganizerReaction(eventId) {
+// Au verdict de l'insertion de la réaction (SRV-02 : la base exige la réaction réelle).
+function _notifyEventOrganizerReaction(eventId, ecriture) {
   try {
     var ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(eventId))
       || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === eventId; }) : null);
-    if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(ev.organizerId, "like", eventId, "a réagi à ton événement");
+    if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecriture, ev.organizerId, "like", eventId, "a réagi à ton événement");
     }
   } catch(e) {}
 }
@@ -3338,7 +3580,7 @@ async function _fillEventReactionDetail(eventId) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.emoji) + '="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
         : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
@@ -3352,7 +3594,7 @@ async function _fillEventReactionDetail(eventId) {
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
   body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" ' + passioMediaProteges.attributImage(g) + '="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -3437,8 +3679,8 @@ async function _loadEventCommentCounts(ids) {
     Object.keys(counts).forEach(function(id){ window._eventCommentCounts[id] = counts[id]; });
     if (typeof _persistEventComments === "function") _persistEventComments();
     ids.forEach(function(id){
-      var el = document.querySelector('[data-evc="' + id + '"]');
-      if (el) el.textContent = "💬 " + _eventCmtBadge(id);
+      var el = document.querySelector('[data-evc="' + CSS.escape(String(id)) + '"]');
+      if (el) peindreCommentairesPost(el, _eventCmtBadge(id));
     });
   } catch (e) {}
 }
@@ -3482,15 +3724,19 @@ async function setEventRsvp(id, rsvp) {
   try {
     if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
   } catch (e) {}
-  if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé", "warning"); return; }
+  if (_eventIsCancelled(ev) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
   if (prev === rsvp) return;
 
   // Complet : on ne peut pas passer « je viens » de force, on entre en file.
+  // LOT-48 (audit UX/UI du 2026-11-10, IRL-C64) : un seul message par geste —
+  // « C'est complet… » était suivi de « Liste d'attente » pour le même tap.
+  let _gesteDejaDit = false;
   if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
     rsvp = "waitlist";
     toast("C'est complet — tu es sur liste d'attente");
+    _gesteDejaDit = true;
   }
 
   // LOT E (2026-09-18) : le flow s'ouvre ICI — seule porte commune à la carte,
@@ -3576,10 +3822,16 @@ async function setEventRsvp(id, rsvp) {
     // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
     // quand il nomme sa raison, on la dit — et on nomme la sortie.
     const motif = window._irlRefusMotif || null;
-    annuler(motif === "complete" ? "Activité complète — tu peux rejoindre la liste d'attente"
+    annuler(motif === "complete" ? "Activité complète : la dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
       : "⚠️ Inscription non enregistrée — réessaie");
+    // LOT-19 (IRL-C54) : sur « complète », l'écran gardait le compteur périmé
+    // (« 1 place restante ») et le bouton « Je participe », qu'un nouvel appui
+    // faisait refuser de nouveau. La base a tranché : l'activité est COMPLÈTE.
+    // On relit les compteurs, et au pire on pose le plein — le pied repasse à
+    // « Rejoindre la liste d'attente ».
+    if (motif === "complete") await _rafraichirApresComplet(ev);
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
@@ -3601,13 +3853,15 @@ async function setEventRsvp(id, rsvp) {
   }
 
   if (rsvp === "going" && prev !== "going") {
-    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
-  } else {
+    pushNotification(`Demande envoyée pour <b>${escapeHtml(ev.title)}</b> · accès privés après validation`, "🤝");
+  } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
-  // Notifier l'organisateur (interaction cross-compte sur SON événement).
-  if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
-    supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
+  // La base écrit la demande de participation ; une insertion client ferait un
+  // doublon. Le push seul réveille l'organisation après le verdict de l'écriture.
+  // notify-call relit cette ligne serveur et ignore le texte fourni par le client.
+  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof _pousserPushNotif === "function") {
+    _pousserPushNotif(ev.organizerId, "event_join", "");
   }
   // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
   // ⚠️ « peut-être » n'y entre plus (C-04, troisième contre-revue du
@@ -3686,7 +3940,7 @@ async function _promoteNextWaitlisted(ev) {
   _appliquerPromotionLocale(ev, next);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") {
-    supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
+    supaInsertNotif(next, "event_update", ev.id, "a libéré une place : tu es inscrit·e à « " + String(ev.title || "l'activité").slice(0, 60) + " » !"); /* TRA-C16 : la phrase a un sujet (le nom est préfixé) */
   }
 }
 
@@ -3852,7 +4106,6 @@ async function _joinEventConversation(ev) {
       if (!convId) return false;
       ev.convId = convId;
       saveState();
-      await supaUpdateEvent(ev);
     } else {
       const membre = await supaJoinEventConversation(ev.convId);
       if (!membre) {
@@ -3900,20 +4153,31 @@ async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
-    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je viens »" : "Rejoins l'événement pour accéder à la discussion");
+    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je participe »" : "Rejoins l'activité pour accéder à la discussion");
     return;
   }
   if (!ev.convId) {
     toast("Ouverture de la discussion…");
     await _joinEventConversation(ev);
   }
-  if (!ev.convId) { toast("Discussion indisponible hors connexion"); return; }
-  // Déjà membre localement : on ouvre. Sinon on DEMANDE l'entrée au serveur et
+  // LOT-10 (audit UX/UI du 2026-11-10, IRL-C51) : le message accusait le réseau
+  // alors qu'on était en ligne. La discussion n'existe qu'une fois qu'un
+  // gestionnaire l'a ouverte : tant que ce n'est pas fait, c'est CE QU'ON DIT.
+  // (L'ouvrir dès la publication est une règle serveur — hors de ce lot.)
+  if (!ev.convId) {
+    var horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false);
+    toast(horsLigne
+      ? "Discussion indisponible hors connexion"
+      : (_canManageEvent(ev)
+        ? "Impossible d'ouvrir la discussion pour l'instant — réessaie dans un moment"
+        : "La discussion n'est pas encore ouverte par l'organisation de l'activité"));
+    return;
+  }
+  // Le cache local ne prouve pas le droit actuel : on DEMANDE au serveur et
   // on ne montre la discussion que s'il l'accorde (IRL-10).
-  const dejaLocal = typeof getConversations === "function" && getConversations().some(c => c.id === ev.convId);
-  if (!dejaLocal && window._supaReal) {
+  if (window._supaReal) {
     const entre = await _joinEventConversation(ev);
-    if (!entre) { toast("⚠️ Impossible de rejoindre la discussion pour le moment — réessaie", "warning"); return; }
+    if (!entre) { toast("La discussion nécessite la validation de l’organisation.", "warning"); return; }
   } else {
     _ensureLocalEventConv(ev);
   }
@@ -4006,25 +4270,28 @@ function _refreshEventDetailIfOpen(id) {
 function openEventRsvpSheet(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé", "warning"); return; }
+  if (_eventIsCancelled(ev)) { toast("Cette activité a été annulée", "warning"); return; }
   const cur = myRsvp(id);
   const full = _eventIsFull(ev);
   const spots = _eventSpotsLeft(ev);
+  // LOT-47 (audit UX/UI du 2026-11-10, IRL-C59) : titre et description étaient
+  // côte à côte (« Je participe » sur deux lignes) ; ils s'empilent, alignés à
+  // gauche, sur une cible de 56 px. Les mots sont ceux de la fiche.
   const opt = (key, desc) => `
-    <button class="btn ${cur === key ? "primary" : "ghost"} block" style="margin-bottom:8px;text-align:left;"
+    <button class="btn ${cur === key ? "primary" : "ghost"} block rsvp-option" style="margin-bottom:8px;text-align:left;"
       onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${escapeJsArg(key)}')">
       <b>${RSVP_LABELS[key].label}</b>
       <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
     </button>`;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${escapeHtml(ev.title || "Événement")}</div>
-    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — file d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
+    <div class="modal-title">${escapeHtml(ev.title || "Activité")}</div>
+    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — liste d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
     <div style="margin-top:14px;">
       ${full && cur !== "going"
         ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
         : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
-      ${opt("maybe", "Tu suis l'événement sans bloquer de place")}
+      ${opt("maybe", "Tu suis l'activité sans bloquer de place")}
       ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
     </div>
     ${cur ? `<button class="btn secondary block" style="margin-top:6px;" onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', null)">Retirer ma réponse</button>` : ""}
@@ -4240,7 +4507,26 @@ function _lienContactEvenement(contact) {
   return escapeHtml(brut);
 }
 
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C17) — LA HAUTEUR DU PIED COLLANT, MESURÉE.
+// Le pied de la fiche change de hauteur (état « inscrit », liste d'attente, suite
+// proposée) : une marge fixe sous le corps le laissait recouvrir « Signaler cet
+// événement ». `--fiche-pied` suit sa hauteur réelle (styles.css).
+(function _brancherHauteurPiedFiche() {
+  function brancher() {
+    var page = document.getElementById("eventDetailPage");
+    var pied = document.getElementById("eventDetailCta");
+    if (!page || !pied || pied._hauteurBranchee) return;
+    pied._hauteurBranchee = true;
+    var poser = function () { page.style.setProperty("--fiche-pied", Math.ceil(pied.getBoundingClientRect().height) + "px"); };
+    poser();
+    try { new ResizeObserver(poser).observe(pied); } catch (e) {}
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+
 function openEventDetails(id) {
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) return;
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("activite"); } catch (e) {}
@@ -4263,11 +4549,18 @@ function openEventDetails(id) {
       if (typeof closeConversation === "function") closeConversation();
       else _conv.classList.remove("active");
     }
-    pushOverlayToHistory("event", id);
+    const carte = document.getElementById("irlMapWrap");
+    if (carte && carte.classList.contains("fullscreen")) {
+      // La carte (z 9000) masquait la fiche (z 200). La quitter et réutiliser
+      // son entrée, comme un remplacement de modale : aucun retour mort.
+      toggleIrlMapFullscreen();
+      if (irlMap) irlMap.closePopup();
+      pushOverlayHistory("event", "#event-" + id);
+    } else {
+      pushOverlayToHistory("event", id);
+    }
   }
 
-  const ev = allEvents().find(e => e.id === id);
-  if (!ev) return;
   window._openEventDetailId = id; // pour le refresh realtime des commentaires
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
@@ -4287,7 +4580,7 @@ function openEventDetails(id) {
     // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
     // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
     // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" ${passioMediaProteges.attributImage(urlMediaDirecte(ev.coverUrl))}="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
     const coverImg = coverEl.querySelector("img");
     if (coverImg) {
       const coverFb = ev.emoji || passion.emoji || "✨";
@@ -4311,8 +4604,8 @@ function openEventDetails(id) {
     // Le <select> de création ne propose que des valeurs fixes, mais rien
     // n'empêche une insertion REST directe.
     heroTitle.innerHTML = `
-      <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
-      <div class="event-detail-title">${escapeHtml(ev.title || "Événement")}</div>
+      <div class="event-detail-passion-badge">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
+      <div class="event-detail-title">${escapeHtml(ev.title || "Activité")}</div>
     `;
   }
 
@@ -4372,17 +4665,28 @@ function openEventDetails(id) {
   };
   const participantsHtml = _facesEtReste(atts, 12, nbVenants);
 
+  // LOT-19 (audit UX/UI du 2026-11-10, IRL-C58) : quand l'adresse est réservée
+  // à qui participe, la zone publique (code postal, ville) n'est PAS une adresse.
+  // Elle s'affichait « Adresse : 69001, Lyon » avec un lien de carte vers la
+  // ville entière, puis « Adresse exacte : Communiquée une fois inscrit·e » —
+  // deux lignes qui se contredisaient. Une seule ligne « Lieu » désormais, sans
+  // lien tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.
+  const adresseReservee = !!(ev.fromSupabase && !ev.address);
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
+  const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
+  const zonePublique = [ev.postalCode, ev.city].filter(Boolean).join(" ");
+  const lieuReserve = [ev.venue, zonePublique].filter(Boolean).join(" · ");
 
   // Build info rows (only show filled fields)
   const infoRows = [
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
-    addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
-    ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
-    // Une activité du serveur sans adresse lisible : elle existe peut-être, réservée à qui vient.
-    (ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going") ? infoRow("Adresse exacte", "Communiquée une fois inscrit·e") : "",
+    adresseReservee
+      ? (lieuReserve
+        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche après validation par l\'organisation.</span>')
+        : infoRow("Lieu", "L'adresse exacte s'affiche après validation par l'organisation."))
+      : (addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : "")),
+    (ev.venue && !adresseReservee) ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
     infoRow("Prix", priceStr),
     // ⚠️ LE LIEN `tel:` ÉTAIT POSÉ SUR N'IMPORTE QUEL CONTACT (2026-09-10), y
     // compris une adresse e-mail : toucher « Contact » lançait alors un appel
@@ -4402,14 +4706,16 @@ function openEventDetails(id) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
-    ${cancelled ? '<div class="event-detail-urgency cancelled">Cet événement a été annulé par l\'organisateur</div>'
+    ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
+        + (["going", "maybe", "waitlist"].indexOf(myRsvp(ev.id)) > -1 ? ' Ta participation est annulée, rien d\'autre à faire.' : '') + '</div>'
       : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
-      : over ? '<div class="event-detail-urgency past">Événement terminé</div>'
+      : over ? '<div class="event-detail-urgency past">Activité terminée</div>'
       : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
       ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
-      <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+      <!-- LOT-12 (PAR-C12) : la porte « Partager » du milieu est retirée — deux suffisent
+           (l'icône du haut, la barre d'actions du bas), et la feuille propose l'invitation. -->
       ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
@@ -4445,12 +4751,12 @@ function openEventDetails(id) {
     ${_eventFeedbackPromptHtml(ev)}
     <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
 
-    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
+    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Activité récurrente — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
     ${over && !cancelled ? `
       <div class="event-recap-cta">
         <div class="event-recap-title">Tu y étais ?</div>
-        <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'événement après coup.</div>
+        <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'activité après coup.</div>
         <button class="btn primary block" style="margin-top:8px;font-size:12px;" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>
       </div>` : ""}
 
@@ -4484,8 +4790,8 @@ function openEventDetails(id) {
       <div class="event-detail-section-title">Co-organisateurs</div>
       <div class="event-detail-participants">${_faces(ev.coOrganizers, 8)}</div>` : ""}
 
-    <!-- Album de l'événement : les publications faites après coup. -->
-    <div class="event-detail-section-title">Album de l'événement</div>
+    <!-- Album de l'activité : les publications faites après coup. -->
+    <div class="event-detail-section-title">Album de l'activité</div>
     <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
 
     <!-- Barre d'engagement : la fiche n'avait NI like NI réaction emoji (alors que
@@ -4493,8 +4799,10 @@ function openEventDetails(id) {
          handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
          personne ». -->
     <div class="post-actions" style="margin-top:18px;">
-      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
+      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}"${attrsLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${contenuLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
+      <!-- LOT-12 (PAR-C12) : deux portes de partage sur la fiche — l'icône du haut et celle-ci.
+           IRL-C67 proposait de n'en garder qu'une : la décision de LOT-12, déjà livrée, l'emporte. -->
       <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(ev.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
@@ -4509,7 +4817,7 @@ function openEventDetails(id) {
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
 
-    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cet événement</button>`}
+    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cette activité</button>`}
   `;
 
   _loadEventComments(ev.id);
@@ -4520,7 +4828,11 @@ function openEventDetails(id) {
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
-  if (shareBtn) shareBtn.onclick = function() { shareEvent(id); };
+  if (shareBtn) {
+    // LOT-12 (PAR-C12) : la MÊME icône que les autres portes (nœuds), pas un mot.
+    shareBtn.innerHTML = shareIconSvg(20);
+    shareBtn.onclick = function() { shareEvent(id); };
+  }
 
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
@@ -4534,7 +4846,7 @@ function _refreshEventDetailCta(ev, joined) {
   const cta = document.getElementById("eventDetailCta");
   if (!cta) return;
   if (_eventIsCancelled(ev)) {
-    cta.innerHTML = `<button class="btn ghost block" disabled>Événement annulé</button>`;
+    cta.innerHTML = `<button class="btn ghost block" disabled>Activité annulée</button>`;
     return;
   }
   if (_eventIsOver(ev)) {
@@ -4555,6 +4867,33 @@ function _refreshEventDetailCta(ev, joined) {
 // mon contenu » — le cœur de la promesse PASSIO. Le post publié sera rattaché à
 // l'événement (window._pendingEventPost, lu par publishPost) et remontera dans
 // son album.
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C16) — LE SOUVENIR SE VOIT. Le Studio
+// s'ouvrait rattaché à l'album PUBLIC de l'activité sans le dire, et le marqueur
+// survivait : quitter le Studio puis publier autre chose rattachait cette autre
+// publication à l'album. Un bandeau le dit, une croix le retire, et quitter le
+// Studio l'efface (goTo, app-02).
+function _peindreSouvenirStudio() {
+  var ancien = document.getElementById("studioSouvenir");
+  var id = window._pendingEventPost;
+  if (!id) { if (ancien) ancien.remove(); return; }
+  var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
+  if (!ev) { if (ancien) ancien.remove(); return; }
+  var ta = document.getElementById("postText");
+  if (!ta || !ta.parentNode) return;
+  var b = ancien || document.createElement("div");
+  b.id = "studioSouvenir";
+  b.className = "studio-souvenir";
+  b.setAttribute("role", "status");
+  b.innerHTML = '<span class="studio-souvenir-texte"></span><button type="button" class="studio-souvenir-retirer" aria-label="Ne pas l\'ajouter à l\'album" onclick="retirerSouvenirStudio()">×</button>';
+  b.querySelector(".studio-souvenir-texte").textContent = "Souvenir de « " + (ev.title || "l'activité") + " » — ira dans l'album de l'activité";
+  if (!ancien) ta.parentNode.insertBefore(b, ta);
+}
+function retirerSouvenirStudio() {
+  window._pendingEventPost = null;
+  _peindreSouvenirStudio();
+  toast("Ta publication n'ira pas dans l'album");
+}
+
 function shareEventExperience(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
@@ -4564,6 +4903,7 @@ function shareEventExperience(id) {
   const prefill = `📍 ${ev.title}${ev.city ? " · " + ev.city : ""} (${d.day} ${d.month})\n\n`;
   goTo("studio");
   setTimeout(() => {
+    try { _peindreSouvenirStudio(); } catch (e) {}
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
     // ⚠️ AFFECTER `select.value` AVEC UNE VALEUR SANS <option> NE LÈVE PAS :
@@ -4590,33 +4930,40 @@ function shareEventExperience(id) {
   }, 250);
 }
 
-// ===== Album de l'événement =====
+// ===== Album de l'activité =====
 // Les posts publiés via « Partager mon expérience » (colonne posts.event_id),
 // fusionnés avec mes posts locaux pas encore synchronisés.
 async function _loadEventAlbum(eventId) {
   const box = document.getElementById("eventAlbum");
   if (!box) return;
-  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
-    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const requete = {};
+  box._requeteAlbum = requete;
+  const locaux = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: projectionHeritageLecture().candidat(p.image) ? null : (p.image || null),
+    text: p.text || "", authorName: p.authorName || "Moi",
   }));
+  let distants = [];
   if (window._supaReal && typeof supaLoadEventPosts === "function") {
     try {
-      const remote = await supaLoadEventPosts(eventId);
-      const seen = new Set(items.map(i => i.id));
-      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
-    } catch (e) {}
+      distants = await supaLoadEventPosts(eventId) || [];
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("album", "lecture_distante_indisponible");
+    }
   }
-  // La fiche a pu être fermée ou changée pendant la requête.
-  if (window._openEventDetailId !== eventId) return;
-  const box2 = document.getElementById("eventAlbum");
-  if (!box2) return;
+  if (MY_UID !== lecteur || _profileCacheGeneration !== generation || window._openEventDetailId !== eventId ||
+      document.getElementById("eventAlbum") !== box || box._requeteAlbum !== requete) return;
+  // Les lignes synchronisées portent le résultat de la projection privée, y compris un refus.
+  const synchronises = new Set(distants.map(p => p.id));
+  const items = locaux.filter(p => !synchronises.has(p.id)).concat(distants);
   if (!items.length) {
-    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    box.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
     return;
   }
-  box2.innerHTML = items.slice(0, 12).map(p => p.image
+  box.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
-         <img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(p.image, 400))}" alt=""/>
+         <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}="${safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}" alt=""/>
        </div>`
     : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
          <span>${escapeHtml((p.text || "").slice(0, 60))}</span>
@@ -4686,6 +5033,16 @@ var EVENT_REMINDER_TIERS = [
   { key: "h2", ms: 2 * 3600000,  label: "dans 2 h" },
 ];
 
+// LOT-7 (TRA-C15) : le jour d'une activité dit comme une personne le dirait.
+function _quandRappel(ts, maintenant) {
+  var j = joursCalendairesAvant(ts, maintenant);
+  if (j <= 0) return "aujourd'hui";
+  if (j === 1) return "demain";
+  var d = new Date(ts);
+  if (j < 7) return d.toLocaleDateString("fr-FR", { weekday: "long" });
+  return "le " + d.getDate() + " " + d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
+}
+
 function _checkEventReminders() {
   try {
     var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
@@ -4711,11 +5068,11 @@ function _checkEventReminders() {
       var mark = e.id + ":" + tier.key;
       if (reminded.indexOf(mark) > -1) return;
 
-      var d = fmtEventDate(e.date);
-      // À moins de 24 h, « demain » devient faux passé minuit : on recale.
-      var when = tier.key === "d1"
-        ? (diff <= 12 * 3600000 ? "aujourd'hui" : "demain")
-        : tier.label;
+      // LOT-7 (audit UX/UI du 2026-11-10, TRA-C15) : le palier dit QUAND rappeler,
+      // jamais ce qu'on affiche. Une activité à 26 h tombait dans le palier d7 et
+      // recevait « dans une semaine » ; on compose la date RÉELLE, en jours de
+      // calendrier : « aujourd'hui », « demain », « samedi », « le 20 nov. ».
+      var when = _quandRappel(e.date, now);
       // `event_reminder` + `refId` : toucher le rappel dans la cloche ouvre
       // l'activité (openNotifTarget), au lieu d'une ligne inerte.
       if (typeof pushNotification === "function") {
@@ -4796,7 +5153,7 @@ function _irlWeeklyDigest() {
     const top = soon[0];
     const city = irlSelectedCity ? irlSelectedCity.name
       : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
-    const text = `<b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
+    const text = `<b>${soon.length} activité${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
     // Identifiant par semaine : il distingue ce résumé, compté sur le réel, de
     // ceux d'avant le 2026-11-09 que `stripLegacyEconomy` retire (app-02).
     if (typeof pushNotification === "function") pushNotification(text, "📍", "me", { id: NOTIF_DIGEST_IRL_PREFIXE + wk });
@@ -4806,7 +5163,7 @@ function _irlWeeklyDigest() {
         && navigator.serviceWorker && navigator.serviceWorker.ready) {
       navigator.serviceWorker.ready.then(reg => {
         reg.showNotification("PASSIO — ça bouge près de toi", {
-          body: `${soon.length} événement${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
+          body: `${soon.length} activité${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
           icon: "./icons/icon-192.png", tag: "irl-digest", data: { url: "./#irl-event-" + top.id },
         });
       }).catch(() => {});
@@ -4846,7 +5203,7 @@ function downloadEventIcs(id) {
     a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast("Événement ajouté à ton calendrier (rappel J-1 inclus)");
+    toast("Activité ajoutée à ton calendrier (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
 
@@ -4918,7 +5275,7 @@ function _openIrlEventFromHash() {
     // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
     if (++_irlEvLinkEssais <= 12) { _irlEvLinkReplanifier(); return false; }
     _irlEvLinkId = "";
-    toast("Événement introuvable ou supprimé");
+    toast("Activité introuvable ou supprimée");
     return false;
   } catch (e) {
     // Ne JAMAIS conclure sur une exception : c'est exactement ce qui tuait la
@@ -5055,35 +5412,23 @@ window.addEventListener("passio:app-ready", function () {
 // les carnets CDV.
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); return; }
+  if (!ev) { toast("Activité introuvable."); return; }
   // Lien COURT en production (aperçu de l'activité chez WhatsApp, iMessage…) : app-06.
   const rawUrl = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", id) : location.origin + location.pathname + "#irl-event-" + id;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const d = fmtEventDate(ev.date);
-  const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
-
-  const html = `
-    <div class="modal-title">${shareIconSvg(20)} Partager cet événement</div>
-    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
-      ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
-    </div>
-    <button class="btn primary block" id="_shareEvInFeedBtn" onclick="shareEventInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      Partager dans mon feed
-    </button>
-    <button class="btn secondary block" id="_shareEvOutBtn">
-      ${shareIconSvg(16)} Partager en dehors
-    </button>
-  `;
-  openModal(html);
-  // Listener propre : pas d'injection de texte utilisateur dans un onclick inline.
-  setTimeout(() => {
-    const btn = document.getElementById("_shareEvOutBtn");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      partagerOuCopier({ title: ev.title, text, url }, "Lien de l'événement copié");
-    });
-  }, 0);
+  const quand = d.day + " " + d.month + " à " + _eventTimeLabel(ev);
+  ouvrirFeuillePartage({
+    quoi: "activité", titre: ev.title || "Activité", extrait: quand + (ev.city ? " · " + ev.city : ""),
+    url: url,
+    // Texte court et engageant (2026-11-14) : l'aperçu montre déjà titre et photo.
+    message: "Ça te dit ? " + (ev.title || "Une activité") + ", " + quand + (ev.city ? " à " + ev.city : "") + " 👇",
+    voit: "La personne qui reçoit le lien voit l'activité et peut s'y inscrire, même sans compte.",
+    idEnvoyer: "_shareEvOutBtn", idRepublier: "_shareEvInFeedBtn",
+    republier: function () { shareEventInFeed(id); },
+    inviter: function () { closeModal(); openEventInvite(id); },
+  });
 }
 
 // Crée un post « repost » de l'événement dans le feed (miroir de sharePostInFeed
@@ -5095,20 +5440,20 @@ async function shareEventInFeed(id) {
   if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
 
   if (typeof MY_UID === "undefined" || !MY_UID) {
-    toast("Connexion requise pour partager cet événement.");
+    toast("Connexion requise pour partager cette activité.");
     closeModal();
     return;
   }
 
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); closeModal(); return; }
+  if (!ev) { toast("Activité introuvable."); closeModal(); return; }
 
   try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
 
   // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
   if (typeof publicationRefuseeFautePassion === "function"
       && publicationRefuseeFautePassion(passionDeRepartage(ev.passion))) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Republier dans mon fil"; }
     closeModal();
     return;
   }
@@ -5121,7 +5466,7 @@ async function shareEventInFeed(id) {
 
   closeModal();
   setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("Événement partagé dans ton feed.");
+  toast("Activité partagée dans ton fil.");
 
   if (typeof supa !== "undefined" && supa) {
     try {
@@ -5166,7 +5511,7 @@ function _postActiviteAuFil(ev, authorName, postId) {
     authorName: authorName,
     authorEmoji: (prof && prof.emoji) || g.emoji || "✨",
     authorColor: (prof && prof.color) || g.color || "#8b5cf6",
-    text: `📍 A partagé un événement\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
+    text: `📍 A partagé une activité\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
     passion: passionDeRepartage(ev.passion),   // cf. `sharePostInFeed` (app-03)
     mood: "irl",
     createdAt: Date.now(),
@@ -5181,6 +5526,10 @@ function _postActiviteAuFil(ev, authorName, postId) {
       venue: ev.venue || "",
       date: ev.date || null,
       passion: ev.passion || null,
+      // Description, pour la carte du fil tant que l'activité n'est pas chargée.
+      desc: String(ev.desc || "").slice(0, 280),
+      // Photo de l'activité, pour la carte du fil (jamais de base64 en base).
+      coverUrl: /^https?:/.test(String(ev.coverUrl || "")) ? ev.coverUrl : "",
     },
   };
 }
@@ -5428,7 +5777,9 @@ function _renderEventComments(eventId) {
   }
   var sortMode = window._eventCommentSort || "recent";
   var sorted = sortComments(list, sortMode);
-  var bar = list.length > 1 ? commentSortBarHtml(sortMode, "setEventCommentSort") : "";
+  // LOT-48 (IRL-C67) : la liste unifiée porte déjà son tri (« Pertinents /
+  // Récents ») ; la barre « Récents / Aimés » faisait deux tris l'un sous l'autre.
+  var bar = "";
   // Renderer unifié : like / répondre / emoji / GIF / menu ⋯, comme le fil.
   box.innerHTML = bar + _renderCommentsList(sorted, eventId);
 }
@@ -5452,8 +5803,8 @@ async function addEventComment(eventId) {
   try {
     window._eventCommentCounts = window._eventCommentCounts || {};
     window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
-    var _badge = document.querySelector('[data-evc="' + eventId + '"]');
-    if (_badge) _badge.textContent = "💬 " + _eventCmtBadge(eventId);
+    var _badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
+    if (_badge) peindreCommentairesPost(_badge, _eventCmtBadge(eventId));
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
@@ -5461,12 +5812,41 @@ async function addEventComment(eventId) {
     try {
       var realId = await supaAddEventComment(eventId, text);
       if (realId) { optimistic.id = realId; _persistEventComments(); }
+      // ⚠️ ÉCHEC = ON LE DIT ET ON REND LE TEXTE (ETAT-09, audit du 2026-11-10).
+      // L'échec était muet : le commentaire restait affiché sous un identifiant
+      // local, persisté, vu de son seul auteur, pour toujours. Pour un COMPTE, il
+      // est retiré et le texte revient dans le champ ; un visiteur n'a rien en
+      // base, sa copie locale reste comme avant.
+      else if (typeof _compteAuthReel === "function" && _compteAuthReel()) {
+        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp);
+        return;
+      }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
-      if (ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
+      // Sur un commentaire ÉCRIT seulement (SRV-02 : la base exige la ligne réelle).
+      if (realId && ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
         supaInsertNotif(ev.organizerId, "event_comment", eventId, "a commenté ton événement");
       }
     } catch (e) {}
   }
+}
+
+// Retire le commentaire optimiste qu'un refus serveur a laissé sans ligne, et rend
+// le texte à la personne : rien n'a été publié, l'écran ne doit pas le prétendre.
+function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
+  var liste = _eventCommentsCache[eventId] || [];
+  var i = liste.indexOf(optimistic);
+  if (i >= 0) liste.splice(i, 1);
+  _persistEventComments();
+  try {
+    if (window._eventCommentCounts && window._eventCommentCounts[eventId] > 0) window._eventCommentCounts[eventId]--;
+    var badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
+    if (badge) peindreCommentairesPost(badge, _eventCmtBadge(eventId));
+  } catch (e) {}
+  try { _renderEventComments(eventId); } catch (e) {}
+  if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
+  var champ = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput") || inp;
+  if (champ && !champ.value) champ.value = text;
+  toast("Commentaire non envoyé — ton texte est resté dans le champ");
 }
 
 function previewEventCover(input) {
@@ -6299,6 +6679,9 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
   if (window._openedConvId !== convId) return false;
   irlProposalTrack("irl_proposal_cta_clicked", "ok");
   try { if (typeof fermerHint === "function") fermerHint(); } catch (e) {}
+  // LOT-46 (MSG-C69) : le même chemin que l'entrée du menu « + » — formulaire
+  // prérempli par la passion. Le verdict vient d'être lu : on ne le relit pas.
+  if (typeof window.PassioProposerIrl === "function") { window.PassioProposerIrl(true); return true; }
   try { if (typeof closeConversation === "function") closeConversation(); } catch (e) {}
   if (typeof openCreateEvent !== "function") return false;
   openCreateEvent();
@@ -6334,8 +6717,14 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
 // centaines de mètres reste EXACT.
 
-// Les passions sous lesquelles ce compte peut organiser : les SIENNES d'abord
-// (résolues par le référentiel), puis le catalogue publiable. Dédupliqué.
+// Les passions sous lesquelles ce compte peut organiser : LES SIENNES, ET
+// ELLES SEULES (demande de Benjamin, 2026-11-15 : « quand je crée une activité
+// il faut afficher seulement les passions sélectionnées dans le profil »).
+// Le catalogue publiable n'est plus qu'un REPLI, quand aucune passion du compte
+// ne peut aboutir (compte sans passion, référentiel pas encore arrivé, hors
+// ligne) : un `<select>` vide rendrait la création impossible. La liste rendue
+// porte alors `repli = true`, et le repeint du référentiel la remplace dès que
+// les passions du compte sont résolues.
 //
 // ⚠️ `passionById` NE REND JAMAIS `null` — sur un identifiant qu'il ne connaît
 // pas encore il rend « Passion ». On garde alors l'identifiant, qui dit au moins
@@ -6391,8 +6780,10 @@ function _irlPassionsOrganisables(myPassionIds) {
     if (!meta) { try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) { meta = null; } }
     pousser(id, meta);
   });
+  if (out.length) return out;                  // les miennes suffisent : rien d'autre
   try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); }
   catch (e) { try { diagLog("irl passionsPubliables " + (e && e.message ? e.message : e)); } catch (_) {} }
+  out.repli = true;
   return out;
 }
 
@@ -6417,12 +6808,18 @@ function _irlAssurerReferentielPassions(myPassionIds) {
       if (!sel) return;
       var choix = sel.value;
       var liste = _irlPassionsOrganisables(myPassionIds);
-      if (choix && !liste.some(function (x) { return x.id === choix; })) return;
+      var present = liste.some(function (x) { return x.id === choix; });
+      // Le formulaire s'était ouvert sur le catalogue de REPLI (les passions du
+      // compte n'étaient pas encore résolues) : maintenant qu'elles le sont, la
+      // liste se réduit à elles, même si l'option retenue par défaut n'en est pas.
+      var sortDuRepli = sel.getAttribute("data-repli") === "1" && !liste.repli;
+      if (choix && !present && !sortDuRepli) return;
+      if (!present) choix = liste.length ? liste[0].id : "";
       sel.innerHTML = liste.map(function (p) {
         return '<option value="' + escapeHtml(p.id) + '"' + (p.id === choix ? " selected" : "") + ">"
-          + escapeHtml(p.emoji) + " " + escapeHtml(p.label)
-          + ((myPassionIds || []).indexOf(p.id) >= 0 ? " \u2726" : "") + "</option>";
+          + escapeHtml(p.emoji) + " " + escapeHtml(p.label) + "</option>";
       }).join("");
+      if (liste.repli) sel.setAttribute("data-repli", "1"); else sel.removeAttribute("data-repli");
       sel.value = choix;
     }).catch(function (e) { try { diagLog("irl referentiel " + (e && e.message ? e.message : e)); } catch (_) {} });
   } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
@@ -6438,15 +6835,15 @@ function openCreateEvent(editId) {
   // sien juste après (feedIrlBridgeOpen → openCreateEvent → prefill).
   feedIrlBridgeConsumeOrigin();
   const ed = editId ? _findCanonicalEvent(editId) : null;
-  if (editId && !ed) { toast("Événement introuvable"); return; }
+  if (editId && !ed) { toast("Activité introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
 
-  // Toutes les passions sont proposées (les miennes en tête) : restreindre le
-  // choix aux profils créés empêchait d'organiser un événement « photo » quand on
-  // n'avait qu'un profil « musique ».
+  // 🔁 REVIREMENT DU 2026-11-15 (demande de Benjamin) : SEULES les passions du
+  // profil sont proposées. Organiser dans une autre passion = l'ajouter d'abord
+  // dans « Gérer mes passions ». Le « ✦ » (« c'est la tienne ») a disparu avec
+  // le catalogue : tout ce qui est listé est à soi.
   // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
-  // la seule définition de « mes passions », et une passion rangée ne doit ni
-  // remonter en tête ni porter le « ✦ ».
+  // la seule définition de « mes passions » — une passion rangée n'est pas proposée.
   const myPassionIds = ((typeof passionsVivantes === "function")
     ? passionsVivantes()
     : (state.user.profiles || []).filter(pr => !pr.archived))
@@ -6473,16 +6870,22 @@ function openCreateEvent(editId) {
   // Les passions DU COMPTE passent donc en tête, résolues par `passionById`
   // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
   const _pubs = _irlPassionsOrganisables(myPassionIds);
+  const _repli = !!_pubs.repli;
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
+    // Une activité créée sous une passion retirée du profil depuis reste
+    // publiable : seule une passion que « Enregistrer » refusera le dit.
+    let _publiable = !!_irlPassionPlateConnue(_passionEditee);
+    try { _publiable = _publiable || ((typeof estPassionCanonique === "function") && estPassionCanonique(_passionEditee)); }
+    catch (e) { try { diagLog("irl canonique " + (e && e.message ? e.message : e)); } catch (_) {} }
     _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
-                 label: ((_pOrig && _pOrig.label) || _passionEditee) + " (non publiable)" });
+                 label: ((_pOrig && _pOrig.label && _pOrig.label !== "Passion") ? _pOrig.label : _passionEditee) + (_publiable ? "" : " (non publiable)") });
   }
   const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
-    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
+    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
   const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
@@ -6501,7 +6904,7 @@ function openCreateEvent(editId) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${editId ? "Modifier l'événement" : "Créer un événement IRL"}</div>
+    <div class="modal-title">${editId ? "Modifier l'activité" : "Créer une activité"}</div>
     <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté."}</div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Photo de couverture</div>
@@ -6522,7 +6925,7 @@ function openCreateEvent(editId) {
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
-        <select class="input" id="evPassion">${passionOptions}</select>
+        <select class="input" id="evPassion"${_repli ? ' data-repli="1"' : ""}>${passionOptions}</select>
       </label>
       <label class="field"><span>Type</span>
         <select class="input" id="evType">${typeOptions}</select>
@@ -6677,7 +7080,7 @@ function _evPlacePick(i) {
 function openEventManage(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   const cancelled = _eventIsCancelled(ev);
   // Les NOMBRES affichés passent par `_nbInscrits` (C-04) : la liste lisible
   // n'est pas le compteur, même si l'organisation, elle, lit toutes les lignes.
@@ -6687,13 +7090,14 @@ function openEventManage(id) {
   const enAttente = _nbInscrits(ev, "waitlist");
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Gérer l'événement</div>
+    <div class="modal-title">Gérer l'activité</div>
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'événement" : "Annuler l'événement"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
@@ -6704,46 +7108,9 @@ function openEventManage(id) {
 // Un événement porté par une seule personne meurt avec elle : on partage les
 // droits d'édition (policy « Update organisateurs » côté RLS).
 function openEventCoOrganizers(id) {
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
-  if (!ev) return;
-  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  const co = ev.coOrganizers || [];
-  // Candidats : les participants (hors moi), c'est là que se trouvent les motivés.
-  const candidates = (ev.attendees || []).concat(ev.maybes || [])
-    .filter(u => u && u !== meId && u !== "me");
-  const row = (uidx) => {
-    const u = userById(uidx) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
-    const isCo = co.indexOf(uidx) > -1;
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name || "Participant")}</span>
-      <button class="btn small ${isCo ? "ghost" : "primary"}" onclick="toggleEventCoOrganizer('${escapeJsArg(id)}','${escapeJsArg(uidx)}')">${isCo ? "Retirer" : "Ajouter"}</button>
-    </div>`;
-  };
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Co-organisateurs</div>
-    <div class="modal-subtitle">Ils pourront modifier l'événement et prévenir les inscrits.</div>
-    <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
-      ${[...new Set(co.concat(candidates))].map(row).join("")
-        || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Aucun participant à promouvoir pour l\'instant.</div>'}
-    </div>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
-  `);
+  toast("La coorganisation est suspendue en attendant les invitations avec consentement.");
 }
-
 async function toggleEventCoOrganizer(id, userId) {
-  const ev = _findCanonicalEvent(id);
-  if (!ev || !_canManageEvent(ev)) return;
-  ev.coOrganizers = ev.coOrganizers || [];
-  const isCo = ev.coOrganizers.indexOf(userId) > -1;
-  ev.coOrganizers = isCo ? ev.coOrganizers.filter(x => x !== userId) : ev.coOrganizers.concat([userId]);
-  saveState();
-  if (window._supaReal) await supaUpdateEvent(ev);
-  if (!isCo && typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_update", id, "t'a nommé·e co-organisateur·ice");
-  }
-  toast(isCo ? "Co-organisateur retiré" : "Co-organisateur ajouté");
   openEventCoOrganizers(id);
 }
 
@@ -6812,7 +7179,7 @@ async function cancelEventSeries(id) {
   const ref = _findCanonicalEvent(id);
   if (!ref || !ref.seriesId) return;
   const all = allEvents().filter(e => e.seriesId === ref.seriesId && !_eventIsOver(e));
-  if (!confirm("Annuler les " + all.length + " dates à venir de cette série ? Les inscrits seront prévenus.")) return;
+  if (!(await confirmerAction({ titre: "Annuler les " + all.length + " dates à venir ?", texte: "Toute la série est annulée. Les inscrits seront prévenus.", libelle: "Annuler la série", annuler: "Garder la série", danger: true }))) return;
   closeModal();
   // ⚠️ IRL-13 (contre-revue Astra, 2026-09-15) : « Série annulée » était
   // annoncé même quand TOUS les appels serveur échouaient — chaque refus
@@ -6845,7 +7212,9 @@ async function toggleCancelEvent(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
   const cancel = !_eventIsCancelled(ev);
-  if (cancel && !confirm("Annuler cet événement ? Les inscrits seront prévenus.")) return;
+  // LOT-19 (IRL-C60) : la confirmation dit COMBIEN de personnes seront prévenues.
+  const _nbPrevenus = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
+  if (cancel && !(await confirmerAction({ titre: "Annuler cette activité ?", texte: (_nbPrevenus ? _nbPrevenus + " personne" + (_nbPrevenus > 1 ? "s seront prévenues" : " sera prévenue") : "Personne n'est encore inscrit") + ". Tu pourras la réactiver.", libelle: "Annuler l'activité", annuler: "Garder l'activité", danger: true }))) return;
   // Le serveur d'abord : « annulé » n'est ni affiché ni notifié sur un refus
   // (même famille que ROB-02 / IRL-06 ; l'annulation optimiste restait barrée
   // à l'écran après « Changement non synchronisé »).
@@ -6858,13 +7227,16 @@ async function toggleCancelEvent(id) {
   closeModal();
   renderIRL();
   if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais", "event_cancelled");
-  toast(cancel ? "Événement annulé — inscrits prévenus" : "Événement réactivé");
+  toast(cancel ? "Activité annulée — inscrits prévenus" : "Activité réactivée");
 }
 
 async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
-  if (!confirm("Supprimer définitivement « " + (ev.title || "") + " » ? Cette action est irréversible.")) return;
+  // LOT-19 (IRL-C60) : le nombre de personnes touchées, et l'annulation
+  // recommandée quand il y a des inscrits (elle se réactive, la suppression non).
+  const _nbTouches = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
+  if (!(await confirmerAction({ titre: "Supprimer « " + (ev.title || "cette activité") + " » ?", texte: "Elle disparaît pour tout le monde" + (_nbTouches ? ", et " + _nbTouches + " personne" + (_nbTouches > 1 ? "s seront prévenues" : " sera prévenue") + ". Pour garder une trace, préfère « Annuler l'activité »" : "") + ". Cette action est définitive.", libelle: "Supprimer définitivement", danger: true }))) return;
   // ⚠️ LE VERDICT DU SERVEUR EST LU, ET LES INSCRITS SONT PRÉVENUS (IRL-06,
   // 2026-09-14). « Événement supprimé » était affiché quel que soit le retour de
   // `supaDeleteEvent` (qui rendait déjà false sur refus ou zéro ligne) : un
@@ -6893,14 +7265,14 @@ async function deleteEventConfirm(id) {
   closeEventDetail();
   window._irlMapSig = null; // la carte doit perdre son marqueur
   renderIRL();
-  toast(serveur ? "Événement supprimé" : "Événement supprimé sur cet appareil");
+  toast(serveur ? "Activité supprimée" : "Activité supprimée sur cet appareil");
 }
 
 // Prévient tout le monde qu'une activité vient d'être supprimée : inscrits,
 // « peut-être » et liste d'attente, chacun une fois, jamais soi-même (IRL-06).
 function _prevenirSuppressionActivite(ev) {
   if (!ev) return 0;
-  return _notifyEventAttendees(ev, "« " + String(ev.title || "").slice(0, 60) + " » a été supprimé par l'organisateur", "event_cancelled");
+  return _notifyEventAttendees(ev, "a supprimé l'activité « " + String(ev.title || "").slice(0, 60) + " »", "event_cancelled"); /* TRA-C16 */
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
@@ -6921,18 +7293,36 @@ function _messageEventAttendees(id) {
   `);
 }
 
-function _sendEventBroadcast(id) {
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C63) : « Message envoyé aux inscrits »
+// partait avant toute écriture, sans lire un seul verdict — un refus (réseau,
+// droits) laissait croire que tout le monde était prévenu. On attend chaque
+// écriture et on dit ce qui est vrai : combien sur combien.
+async function _sendEventBroadcast(id) {
   const ev = _findCanonicalEvent(id);
   const txt = (document.getElementById("evBroadcast")?.value || "").trim();
   if (!ev || !txt) { toast("Écris un message"); return; }
-  _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
+  const cibles = _destinatairesActivite(ev);
   closeModal();
-  toast("Message envoyé aux inscrits");
+  if (!cibles.length) { toast("Personne à prévenir pour l'instant"); return; }
+  if (!window._supaReal || typeof supaInsertNotif !== "function") {
+    _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
+    toast("Message enregistré sur cet appareil");
+    return;
+  }
+  const verdicts = await Promise.all(cibles.map(function (uidTo) {
+    try { return Promise.resolve(supaInsertNotif(uidTo, "event_update", ev.id, escapeHtml(txt.slice(0, 200)))).catch(function () { return false; }); }
+    catch (e) { return Promise.resolve(false); }
+  }));
+  const ok = verdicts.filter(function (v) { return v === true; }).length;
+  const total = cibles.length;
+  if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
+  else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
+  else toast("⚠️ Message envoyé à " + ok + " personne" + (ok > 1 ? "s" : "") + " sur " + total + " — réessaie pour les autres", "warning");
 }
 
 // Signalement d'un événement (parité avec posts / profils).
 // ⚠️ CETTE PORTE EST OUVERTE AUX VISITEURS : `openEventDetails` est un chemin
-// invité assumé et le bouton « Signaler cet événement » s'affiche dès que la
+// invité assumé et le bouton « Signaler cette activité » s'affiche dès que la
 // rencontre n'est pas la sienne. Sans compte, `MY_UID` est un `u_<aléatoire>`
 // fabriqué, la RLS refuse l'insert — et la personne lisait « Signalement envoyé
 // — merci ». D'où la porte d'authentification, l'`await` et la lecture du
@@ -6947,7 +7337,7 @@ async function reportEvent(id) {
   // fenêtre. On abandonne, et on le dit au journal.
   var motif = null;
   try {
-    if (typeof _demanderMotifSignalement === "function") motif = await _demanderMotifSignalement("cette rencontre");
+    if (typeof _demanderMotifSignalement === "function") motif = await _demanderMotifSignalement("cette activité");
     else motif = "";
   } catch (e) {
     try { if (typeof diagLog === "function") diagLog("signalement_motif_indisponible " + ((e && e.message) || "?")); } catch (e2) {}
@@ -6956,9 +7346,7 @@ async function reportEvent(id) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("event", id, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Signalement envoyé — merci"
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (typeof messageSignalement === "function") messageSignalement(ok); else toast(ok ? "Signalement envoyé" : "Signalement non envoyé — réessaie", ok ? "success" : "warning");
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
@@ -7029,7 +7417,7 @@ async function submitEvent(editId) {
 
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const existing = editId ? _findCanonicalEvent(editId) : null;
-  if (editId && !existing) { toast("Événement introuvable"); return; }
+  if (editId && !existing) { toast("Activité introuvable"); return; }
 
   const p = passionById(passion) || { emoji: "✨" };
   const ev = Object.assign(existing || {}, {
@@ -7141,8 +7529,8 @@ async function submitEvent(editId) {
   // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
   // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
   toast(ok
-    ? (editId ? "Événement mis à jour"
-      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Événement publié !")
+    ? (editId ? "Activité mise à jour"
+      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
     : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
     ok ? "success" : "warning");
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
@@ -7150,6 +7538,17 @@ async function submitEvent(editId) {
   if (ok && backend && !editId) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   if (ok && backend && !editId) publierActiviteAuFil(ev);
+  // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation
+  // n'avait pas ouvert la discussion elle-même, aucun participant ne pouvait y
+  // entrer (« La discussion n'est pas encore ouverte… »). Elle est créée ICI,
+  // dès la publication confirmée, par le chemin existant
+  // (`_joinEventConversation` → `supaCreateEventConversation`, réservé à qui
+  // gère l'activité) : aucune règle serveur nouvelle, aucune migration.
+  if (ok && backend && !editId && typeof _joinEventConversation === "function") {
+    _joinEventConversation(ev).then(function (entre) {
+      if (!entre) { try { diagLog("discussion d'activité : création à la publication refusée " + ev.id); } catch (e) {} }
+    }, function (e) { try { diagLog("discussion d'activité : " + (e && e.message)); } catch (_) {} });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7219,8 +7618,8 @@ function inviterActivite(ev, quand) {
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
   const canal = navigator.share ? "native" : "clipboard";
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", ev.id, canal) : rawUrl;
-  const texte = "Je t'invite : " + (ev.title || "une activité")
-    + (quand ? " — " + quand : "") + (ev.city ? " · " + ev.city : "") + ". Rejoins-moi sur PASSIO 👇";
+  const texte = "Je t'invite ! " + (ev.title || "Une activité")
+    + (quand ? ", " + quand : "") + (ev.city ? " à " + ev.city : "") + ". Tu viens ? 👇";
   try { if (window.tel && tel.action) tel.action("activite_invite_partagee", { v: 1, canal: canal }); } catch (e) {}
   partagerOuCopier({ title: ev.title || "PASSIO", text: texte, url: url }, "Lien d'invitation copié — colle-le dans ta conversation");
   closeModal();
@@ -7408,18 +7807,46 @@ function _rememberEventInvite(eventId, userId) {
   saveState();
 }
 
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C13) — « INVITER MES ABONNEMENTS ».
+// Deux « × » superposés (celui d'`openModal` + celui du gabarit), un bouton de
+// 29 px, des noms coupés, et l'invitation partait au premier appui ; la personne
+// disparaissait ensuite de la liste (« Tu as invité tout le monde »), sans trace.
+// Désormais : un seul ×, des boutons de 44 px, les noms sur deux lignes, une
+// section « Déjà invités », 5 s pour annuler, et toujours une sortie « Envoyer le
+// lien à quelqu'un d'autre ».
+var EVENT_INVITE_ANNULER_MS = 5000;
+window._invitesEnAttente = window._invitesEnAttente || {};
 function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
-  if (!ev) { toast("Événement introuvable"); return; }
+  if (!ev) { toast("Activité introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">Inviter des amis</div>'
+  openModal('<div class="modal-title">Inviter mes abonnements</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
-    + '<input type="text" class="input" id="eventInviteSearch" placeholder="Rechercher parmi tes abonnements…" '
+    + '<input type="search" class="input" id="eventInviteSearch" aria-label="Chercher parmi tes abonnements" placeholder="Chercher parmi tes abonnements…" '
     + 'oninput="_renderEventInviteList()" style="margin-bottom:10px;"/>'
-    + '<div id="eventInviteList"></div>');
+    + '<div id="eventInviteList"></div>'
+    + '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLien(\'' + escapeJsArg(eventId) + '\')">Envoyer le lien à quelqu\'un d\'autre</button>');
   _renderEventInviteList();
+}
+function _inviterParLien(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var d = fmtEventDate(ev.date);
+  inviterActivite(ev, d.day + " " + d.month + " à " + _eventTimeLabel(ev));
+}
+
+function _ligneInvite(eventId, id, etat) {
+  var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
+  var bouton = etat === "fait"
+    ? '<span class="event-invite-fait" role="status">✓ Invité</span>'
+    : etat === "attente"
+      ? '<button type="button" class="btn small ghost event-invite-btn" data-invite="' + escapeHtml(id) + '" onclick="annulerInviteEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\')">Annuler</button>'
+      : '<button type="button" class="btn small primary event-invite-btn" data-invite="' + escapeHtml(id) + '" aria-label="Inviter ' + escapeHtml(u.name || "Passionné") + '" onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>';
+  return '<div class="event-invite-row">'
+    + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
+    + '<div class="event-invite-nom">' + escapeHtml(u.name || "Passionné") + '</div>'
+    + bouton + '</div>';
 }
 
 function _renderEventInviteList() {
@@ -7429,48 +7856,57 @@ function _renderEventInviteList() {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
 
-  var q = ((document.getElementById("eventInviteSearch") || {}).value || "").trim().toLowerCase();
-  var ids = _eventInvitables(ev).filter(function (id) {
+  var q = plierRecherche(((document.getElementById("eventInviteSearch") || {}).value || "").trim());
+  var filtre = function (id) {
     if (!q) return true;
     var u = (typeof userById === "function" && userById(id)) || {};
-    return (u.name || "").toLowerCase().indexOf(q) > -1;
-  });
+    return plierRecherche(u.name || "").indexOf(q) > -1;
+  };
+  var enAttente = window._invitesEnAttente[eventId] || {};
+  var ids = _eventInvitables(ev).filter(filtre);
+  var faits = _eventInvitesSent(eventId).filter(function (id) { return !enAttente[id] && filtre(id); });
 
-  if (!ids.length) {
-    var sent = _eventInvitesSent(eventId).length;
-    box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">'
-      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »"
-           : sent ? "Tu as invité tout le monde"
-                  : "Abonne-toi à des passionnés pour pouvoir les inviter ici.")
+  var html = "";
+  if (!ids.length && !faits.length) {
+    html = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;">'
+      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »" : "Abonne-toi à des passionnés pour pouvoir les inviter ici — ou envoie-leur le lien.")
       + '</div>';
-    return;
   }
-
-  box.innerHTML = ids.slice(0, 50).map(function (id) {
-    var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
-    return '<div class="event-invite-row">'
-      + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
-      + '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-      + escapeHtml(u.name || "Passionné") + '</div>'
-      + '<button class="btn small primary" data-invite="' + escapeHtml(id) + '" '
-      + 'onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>'
-      + '</div>';
-  }).join("");
+  html += ids.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, enAttente[id] ? "attente" : "a-faire"); }).join("");
+  if (faits.length) {
+    html += '<div class="event-invite-section">Déjà invités</div>'
+      + faits.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, "fait"); }).join("");
+  }
+  box.innerHTML = html;
 }
 
+// `btn` présent = un geste à l'écran : 5 s pour annuler avant que la notification
+// parte. Sans bouton (« inviter tout le monde »), l'envoi est immédiat, comme avant.
 function inviteToEvent(eventId, userId, btn) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  if (btn) { btn.disabled = true; btn.textContent = "✓ Invité"; btn.classList.remove("primary"); btn.classList.add("ghost"); }
-  _rememberEventInvite(eventId, userId);
-
-  // L'invitation EST la notification (kind "event_invite" → openEventDetails).
-  // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-  if (typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_invite", eventId,
-      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
-  }
-  toast("Invitation envoyée");
+  var envoyer = function () {
+    if (window._invitesEnAttente[eventId]) delete window._invitesEnAttente[eventId][userId];
+    _rememberEventInvite(eventId, userId);
+    // L'invitation EST la notification (kind "event_invite" → openEventDetails).
+    // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
+    if (typeof supaInsertNotif === "function") {
+      supaInsertNotif(userId, "event_invite", eventId,
+        "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+    }
+    try { _renderEventInviteList(); } catch (e) {}
+  };
+  if (!btn) { envoyer(); toast("Invitation envoyée"); return; }
+  window._invitesEnAttente[eventId] = window._invitesEnAttente[eventId] || {};
+  window._invitesEnAttente[eventId][userId] = setTimeout(envoyer, EVENT_INVITE_ANNULER_MS);
+  _renderEventInviteList();
+  toast("Invitation envoyée dans 5 s — touche « Annuler » pour la retenir");
+}
+function annulerInviteEvent(eventId, userId) {
+  var t = window._invitesEnAttente[eventId] && window._invitesEnAttente[eventId][userId];
+  if (t) { clearTimeout(t); delete window._invitesEnAttente[eventId][userId]; }
+  _renderEventInviteList();
+  toast("Invitation annulée");
 }
 
 // Invite d'un coup tous ceux que je suis et qui ne se sont pas encore prononcés.
@@ -7648,7 +8084,7 @@ function openEventFeedback(eventId) {
   var mine = myEventRating(eventId) || { rating: 0, feedback: "" };
   window._ratingDraft = mine.rating || 0;
 
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
+  openModal(''
     + '<div class="modal-title">Ton retour</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7680,24 +8116,35 @@ function setEventRatingDraft(n) {
   if (box) box.innerHTML = _evRatingStarsHtml(n);
 }
 
-function submitEventFeedback(eventId) {
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C63) : « Merci pour ton retour »
+// partait AVANT `supaRateEvent`, jamais attendu — une note refusée (zéro ligne,
+// réseau) était annoncée prise puis disparaissait au rechargement. Le serveur
+// d'abord ; un refus garde la fenêtre ouverte et le dit.
+async function submitEventFeedback(eventId) {
   var n = window._ratingDraft || 0;
   if (!n) { toast("Choisis une note d'abord"); return; }
   var txt = ((document.getElementById("evFeedbackText") || {}).value || "").trim().slice(0, 500);
 
+  var ecrite = false;
+  if (window._supaReal && typeof supaRateEvent === "function") {
+    var ok = false;
+    try { ok = await supaRateEvent(eventId, n, txt); } catch (e) { ok = false; }
+    if (!ok) { toast("⚠️ Retour non enregistré — réessaie", "warning"); return; }
+    ecrite = true;
+  }
   state.user.eventRatings = state.user.eventRatings || {};
   state.user.eventRatings[eventId] = { rating: n, feedback: txt, at: Date.now() };
   saveState();
   closeModal();
   toast("Merci pour ton retour");
 
-  if (window._supaReal && typeof supaRateEvent === "function") supaRateEvent(eventId, n, txt);
-
-  // Le retour notifie l'organisateur : c'est le signal qu'il attend.
+  // Le retour notifie l'organisateur : c'est le signal qu'il attend — une fois
+  // la note ÉCRITE (SRV-02 : la base exige la note réelle ; `ecrite` ne vaut vrai
+  // que sur le verdict positif de `supaRateEvent` ci-dessus).
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   var orga = ev && (ev.organizerId || ev.authorId);
-  if (ev && orga && orga !== MY_UID && typeof supaInsertNotif === "function") {
-    supaInsertNotif(orga, "event_feedback", eventId,
+  if (ev && orga && orga !== MY_UID && typeof notifierApresEcriture === "function") {
+    notifierApresEcriture(ecrite, orga, "event_feedback", eventId,
       "a noté <b>" + escapeHtml((ev.title || "ton événement").slice(0, 60)) + "</b> " + n + "/5");
   }
   _refreshEventDetailIfOpen(eventId);
@@ -8064,7 +8511,7 @@ function _rendreCheckinQr(ev, code) {
     svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
   }
 
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
+  openModal(''
     + '<div class="modal-title">Accueil des participants</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -8087,7 +8534,7 @@ function _copyCheckinLink(eventId) {
   if (window.tel && tel.shareLink) url = tel.shareLink(url, "checkin", ev.id, "clipboard");
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function () { toast("Lien copié"); },
-      function () { toast("Lien : " + url); });
+      function () { montrerLienACopier(url); });
   } else { toast("Lien : " + url); }
 }
 
@@ -8096,7 +8543,7 @@ function _copyCheckinLink(eventId) {
 function openCheckinCodeEntry(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
+  openModal(''
     + '<div class="modal-title">Pointer mon arrivée</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'
@@ -8198,7 +8645,7 @@ function _openIrlCheckinFromHash() {
     if (!ev) {
       if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
       _irlCkLinkId = ""; _irlCkLinkCode = "";
-      toast("Événement introuvable ou supprimé");
+      toast("Activité introuvable ou supprimée");
       return false;
     }
     // Même règle qu'au-dessus, et elle compte davantage ici : un id mémorisé qui
@@ -8235,3 +8682,31 @@ window.addEventListener("passio:app-ready", function () {
   _irlCkLinkAttentes = 0; _irlCkLinkEssais = 0;
   _openIrlCheckinFromHash();
 });
+
+// rencontres:validation-organisation-v1
+var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
+async function openEventParticipantValidation(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
+  let r;
+  try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
+  catch (e) { toast("Liste indisponible — réessaie"); return; }
+  if (r.error) { toast("Liste indisponible — réessaie"); return; }
+  const lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
+  openModal('<div class="modal-title">Participants</div><div class="modal-subtitle">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
+    + lignes.map(a => '<div style="padding:12px 0"><span>' + escapeHtml((userById(a.user_id) || {}).name || "Participant")
+      + '</span> <span>' + (a.valide ? 'Validé' : 'En attente') + '</span> '
+      + (a.rsvp === 'going' && !a.valide ? '<button class="btn small" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id)
+      + '\',true)">Valider</button> ' : '') + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\''
+      + escapeJsArg(a.user_id) + '\',false)">Retirer</button></div>').join("")
+    + (lignes.length ? '' : '<p>Aucune demande en cours.</p>'));
+}
+async function validerEventParticipant(id, uid, accepter) {
+  try {
+    const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
+    if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    toast(accepter ? "Participation validée" : "Participant retiré");
+    await openEventParticipantValidation(id);
+    return true;
+  } catch (e) { toast("Modification non confirmée — réessaie"); return false; }
+}

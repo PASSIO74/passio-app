@@ -123,8 +123,10 @@
   // s'ajoute sous les cinq autres.
   var CREATE_CHOICES = [
     {
-      key: "post", icon: ICONS.post, title: "Publication", hint: "Photo / vidéo",
-      run: function () { goToScreen("studio"); },
+      // LOT-15 (CRE-C15 / CRE-C01) : le sous-titre ne cache plus le texte seul, et
+      // « Publication » rouvre le Studio sur le média RÉELLEMENT attaché (texte sinon).
+      key: "post", icon: ICONS.post, title: "Publication", hint: "Texte, photo ou vidéo",
+      run: function () { if (!call("ouvrirStudioPublication")) goToScreen("studio"); },
     },
     {
       key: "bobine", icon: ICONS.bobine, title: "Bobine",
@@ -248,7 +250,11 @@
       el.addEventListener("click", activate);
       // Les `<div role="button">` doivent s'activer au clavier ; le délégué
       // générique d'app-08 exclut explicitement les `.nav-item`, et le listener
-      // historique n'a jamais vu ces nœuds (créés après son exécution).
+      // historique ne branche que `#appNav .nav-item` : ces nœuds-ci n'ont donc
+      // que les écouteurs posés ICI, dans les deux ordres de chargement.
+      // ⚠️ Jusqu'au 2026-11-12 il branchait `.nav-item` : en production, où le
+      // bloc app tourne APRÈS ce module, chaque toucher partait deux fois (deux
+      // `goTo`, deux entrées d'historique) — cf. app-08, « NAV CLICKS ».
       if (d.screen) {
         el.addEventListener("keydown", function (e) {
           if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
@@ -327,7 +333,12 @@
         track("ui_v2_create", { choice: c.key });
         // Toute entrée ouvre désormais un éditeur : on referme AVANT de lancer,
         // sinon le fond assombri resterait au-dessus de l'éditeur média.
-        closeCreateSheet();
+        // `rendreFocus:false` (2026-11-15) : on part VERS un éditeur, pas en
+        // arrière. Rendre le focus au « + » le faisait mémoriser par la fenêtre
+        // suivante (`_modalFocusAvant`), qui le re-focalisait au retour — après
+        // une saisie au clavier, Chrome Android y peignait l'anneau de focus :
+        // « Créer » restait encadré sur le Fil. Même règle que la feuille UI-3.
+        closeCreateSheet({ rendreFocus: false });
         c.run();
       });
       list.appendChild(btn);
@@ -364,10 +375,13 @@
     var first = wrap.querySelector(".v2-sheet-item");
     if (first) first.focus();
     document.addEventListener("keydown", onSheetKeydown, true);
+    // ENT-C07 (audit UX/UI du 2026-11-10) : une entrée d'historique — le retour
+    // système ferme la feuille (closeCurrentOverlay) au lieu de changer d'écran dessous.
+    try { if (typeof window.pushOverlayHistory === "function") window.pushOverlayHistory("creer"); } catch (e) {}
     track("ui_v2_create_open", {});
   }
 
-  function closeCreateSheet() {
+  function closeCreateSheet(opts) {
     var wrap = document.getElementById("v2CreateSheet");
     if (!wrap || wrap.hidden) return;
     wrap.classList.remove("open");
@@ -375,7 +389,12 @@
     var cta = document.querySelector('#appNavV2 [data-v2-action="create"]');
     if (cta) cta.setAttribute("aria-expanded", "false");
     document.removeEventListener("keydown", onSheetKeydown, true);
-    if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
+    try { if (typeof window.releaseOverlayHistory === "function") window.releaseOverlayHistory(); } catch (e) {}
+    if (opts && opts.rendreFocus === false) {
+      // Le choix vient d'être caché avec la feuille : on lâche le focus plutôt
+      // que de le laisser sur un nœud masqué ou de le poser sur le « + ».
+      try { if (wrap.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
+    } else if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
     lastFocused = null;
   }
 
@@ -468,6 +487,11 @@
       if (window.console && console.error) console.error("[ui-v2] buildReels :", e);
       return [];
     }
+    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : « Bobines à découvrir » ne
+    // me propose pas MES bobines.
+    reels = reels.filter(function (r) {
+      try { return !(typeof window._estMonPost === "function" && window._estMonPost(r)); } catch (e) { return true; }
+    });
     return reels.slice(0, max);
   }
 
@@ -541,6 +565,12 @@
       img.alt = "";
       img.src = poster;
       thumb.appendChild(img);
+    } else if (reel.video && typeof window.miniatureVideoPubliqueHTML === "function") {
+      // LOT-14 (BOB-C05) : une image de la vidéo (preload=metadata, jamais une
+      // lecture) plutôt qu'un aplat ; en économie de données, l'aplat reste.
+      var apercu = window.miniatureVideoPubliqueHTML("", reel.video);
+      if (apercu.indexOf("<video") === 0) thumb.insertAdjacentHTML("beforeend", apercu);
+      else thumb.classList.add("v2-reel-thumb-empty");
     } else {
       thumb.classList.add("v2-reel-thumb-empty");
     }
@@ -731,7 +761,8 @@
         insertAfterNthPost(list, buildBobinesModule(bobines), REEL_AFTER);
       }
 
-      var gens = pickPassionnes(Array.isArray(posts) ? posts : []);
+      _postsDecor = Array.isArray(posts) ? posts : [];
+      var gens = pickPassionnes(_postsDecor);
       if (gens.length) insertAfterNthPost(list, buildPassionnesModule(gens), PEOPLE_AFTER);
       return true;
     } catch (e) {
@@ -739,6 +770,27 @@
       // (piège « catch large » du projet) : on nettoie et on le dit.
       if (window.console && console.error) console.error("[ui-v2] décoration du fil :", e);
       removeFeedModules(list);
+      return false;
+    }
+  }
+
+  // FIL-C30 (audit UX/UI du 2026-11-10) : « Passionnés à découvrir » était peint
+  // AVANT la lecture des abonnements et jamais repeint — il proposait des
+  // comptes déjà suivis. À l'arrivée des abonnements (`_fusionnerSuivisServeur`,
+  // app-08), le module seul est recomposé, sans repeindre le fil.
+  var _postsDecor = [];
+  function rafraichirPassionnes() {
+    try {
+      var list = feedList();
+      if (!list || !uiV2Enabled()) return false;
+      var ancien = list.querySelector("[" + MODULE_ATTR + '="people"]');
+      if (!ancien) return false;
+      var gens = pickPassionnes(_postsDecor);
+      if (!gens.length) { ancien.parentNode.removeChild(ancien); return true; }
+      ancien.parentNode.replaceChild(buildPassionnesModule(gens), ancien);
+      return true;
+    } catch (e) {
+      if (window.console && console.error) console.error("[ui-v2] Passionnés à découvrir :", e);
       return false;
     }
   }
@@ -754,14 +806,18 @@
     if (!uiV2Enabled()) return false;
 
     var rienChoisi = !!(ctx && ctx.nothingSelected);
+    // FIL-C17 (audit UX/UI du 2026-11-10) : « Tu ne suis encore personne »
+    // conseille de suivre quelqu'un — le bouton y mène (écran Rechercher).
+    var aucunSuivi = !rienChoisi && !!(ctx && ctx.aucunSuivi);
+    var genre = rienChoisi ? "explore" : (aucunSuivi ? "people" : "create");
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn primary v2-empty-cta";
-    btn.setAttribute("data-v2-empty-cta", rienChoisi ? "explore" : "create");
-    btn.textContent = rienChoisi ? "Explorer les passions" : "Publier une Passio";
+    btn.setAttribute("data-v2-empty-cta", genre);
+    btn.textContent = rienChoisi ? "Explorer les passions" : (aucunSuivi ? "Trouver des personnes à suivre" : "Publier quelque chose");
     btn.addEventListener("click", function () {
-      track("ui_v2_empty_cta", { kind: rienChoisi ? "explore" : "create" });
-      if (rienChoisi) { goToScreen("explore"); return; }
+      track("ui_v2_empty_cta", { kind: genre });
+      if (genre !== "create") { goToScreen("explore"); return; }
       openCreateSheet();
     });
     emptyEl.appendChild(btn);
@@ -838,6 +894,7 @@
     dismissHint: fermerAideContextuelle,
     // UI-2 — appelées par `renderFeed` (app-02). Inertes quand la V2 est coupée.
     decorateFeed: decorateFeed,
+    rafraichirPassionnes: rafraichirPassionnes,
     decorateEmpty: decorateEmpty,
   };
 })();

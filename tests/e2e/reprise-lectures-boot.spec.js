@@ -604,15 +604,22 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
     const annonce = corps.indexOf("annoncerRechargement();");
     // Les APPELS, jamais les noms : le commentaire qui précède l'annonce les cite.
     const premierReseau = corps.indexOf("await supaSaveUserState()");
-    const signOut = corps.indexOf("await supa.auth.signOut()");
+    // Le SIGNE de l'appel, quels que soient ses arguments : `signOut({ scope: "local" })`
+    // depuis le 2026-11-10 (ETAT-02). Un -1 ferait passer `annonce < signOut` pour faux.
+    const signOut = corps.indexOf("await supa.auth.signOut(");
+    expect(signOut, "doLogout appelle signOut").toBeGreaterThan(-1);
     // Sans ce cas, l'annonce pourrait être retirée de `doLogout` — ou déplacée
     // APRÈS `signOut`, où elle ne couvrirait plus les requêtes que la
     // déconnexion elle-même lance — sans un seul rouge (défaut `_notifierMessage`).
     expect(annonce).toBeGreaterThan(-1);
     expect(annonce).toBeLessThan(premierReseau);
     expect(annonce).toBeLessThan(signOut);
-    // La sonde du bandeau « Session expirée » passe bien par `doLogout`.
-    expect(src).toMatch(/function _sondeServeurReconnecter\(\) \{\s*\n\s*try \{ if \(typeof doLogout === "function"\) doLogout\("signin"\)/);
+    // ⚠️ ATTENDU CHANGÉ LE 2026-11-10 (ETAT-06) : la sonde du bandeau « Session expirée » passait
+    // par `doLogout` — une PURGE de ce que le mode « session expirée » promet de garder. Elle
+    // passe désormais par `reconnecterSession`, qui annonce son rechargement elle-même.
+    const sonde = src.slice(src.indexOf("function _sondeServeurReconnecter()"), src.indexOf("function _sondeServeurReponse("));
+    expect(sonde).toMatch(/reconnecterSession\(\)/);
+    expect(sonde).not.toMatch(/doLogout\(/);
     // Et la télémétrie lit bien le drapeau dans le hook fetch ET dans le contexte d'envoi.
     const tel = fs.readFileSync(SOURCE_TELEMETRIE, "utf8");
     expect((tel.match(/rechargementImminent\(\)/g) || []).length).toBeGreaterThanOrEqual(2);

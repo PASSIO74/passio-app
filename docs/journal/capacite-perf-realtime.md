@@ -34,6 +34,11 @@
 - 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
 - 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 - ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
+- 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+- 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
+- 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
+- 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
+- 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 
 ---
 
@@ -2093,7 +2098,7 @@ rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il f
 
 | Mur | Limite (Pro, spend cap actif) | Atteint vers… |
 |---|---|---|
-| E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
+| E-mails d'inscription | 150/h côté Supabase (relevé : `rate_limit_email_sent`, lu le 12/11 par l'API de gestion ; le 09/11, le défaut de 30/h avait été supposé sans être lu), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
 | **Messages temps réel** | **5 M/mois** | **avant la migration de #802 : ~1 300 actifs/jour (800 à 2 000) ; après : ~14 000** |
 | Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | avant la migration : ~430 comptes connectés ensemble ; après : les 500 connexions passent devant |
 | Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
@@ -2117,6 +2122,33 @@ e ≈ 4, ≈ 3,1 × D², les 5 M vers D ≈ 1 300, les 500/s vers C ≈ 430. **A
 connexions, pas les messages, qui borne la simultanéité. **Ce sont des estimations, à un facteur 2
 près** : le chiffre réel se lit dans Supabase › Usage › Realtime Messages, que rien dans le pilotage ne
 suit encore.
+
+**Mesuré après coup (2026-11-12) : la précondition d'extinction est remplie — et Netlify recopie la
+requête dans le renvoi.**
+- #800 est servie depuis le 2026-11-09 (fusion à 19:39 UTC ; le commit servi le 12/11, `00258361`, la
+  contient).
+- Journaux edge de Supabase (`query_logs`, source `edge_logs`, chemin `/render/image/`) : **zéro demande
+  sur trois fenêtres de 24 h**, du 09/11 18:00 au 12/11 18:00 UTC (0 sur 38 898, 17 124 et 23 558
+  requêtes) ; 94 lectures `object/public` sur la dernière.
+- `release/version_skew` sur 3 jours : un seul événement, un appareil du public sur `36b778d1` (#821,
+  qui contient #795). Aucun build d'avant #795 vu.
+- ⚠️ **NETLIFY RECOPIE LA REQUÊTE ENTIÈRE DANS LE `Location` D'UN RENVOI D'EDGE FUNCTION.**
+  `/media/content/x.jpg?width=192&quality=75&next=https://evil.example` rend
+  `301 → …/object/public/content/x.jpg?width=192&quality=75&next=https://evil.example`, alors que
+  `media.js` pose une cible SANS requête : ⑦ le vérifie sur la fonction, pas sur la plateforme. Ce n'est
+  pas un renvoi ouvert (l'origine reste celle de Supabase), ni une transformation : `object/public`
+  ignore ces paramètres — mêmes octets avec et sans `?width=192&quality=75` (1 269 896 octets,
+  `image/jpeg`, mesuré). Un renvoi qui ne doit RIEN transmettre ne peut pas compter sur la fonction
+  seule.
+
+**La transformation est ÉTEINTE — constaté le 2026-11-12 par l'API de gestion** (`GET
+/v1/projects/<ref>/config/storage`, jeton de la CLI) : `features.imageTransformation.enabled = false`
+sur le projet de production, déjà à la première lecture — personne ici n'a eu à l'envoyer. Effet
+mesuré : `render/image` répond `403 FeatureNotEnabled` (« feature not enabled for this tenant ») ;
+l'image d'origine répond 200, et l'ancienne adresse `/media/…?width=` du site aboutit à la même image
+(200, mêmes octets). Le quota de 100 images d'origine par mois ne peut plus être consommé par
+personne. Le même interrupteur se lit et se règle par `PATCH` sur la même route, en touchant le seul
+champ `features.imageTransformation` (le reste de la configuration est relu et renvoyé tel quel).
 
 ---
 
@@ -2164,6 +2196,9 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | (2026-11-10) Chaque script porte l'empreinte `integrity` (sha384) de ses octets SERVIS, sur le preload et sur le `<script>` ; le buildId et les `?v=` ne bougent pas quand le build minifie | `scripts/build.js` (étapes 1 et 1 bis) | `app-scripts-par-fichier.spec.js` ⑦ ⑧ (deux moteurs), `integrite-app.test.mjs` ①③ |
 | (2026-11-10) Le worker honore une redemande `cache: "reload"` d'un fichier versionné : réseau, rangé si c'est bien un script, réponse une fois rangée | `sw.js` | ⑧ |
 | (2026-11-10) Refus de déployer une page dont une empreinte ne désigne pas son fichier — relue APRÈS la minification de la page ; même contrôle à chaque PR (« Gates artefact » construit minifié) | `scripts/verifier-integrite-app.js`, `deploy.yml`, `scripts/servir-dist.js` | `integrite-app.test.mjs` ② |
+| (2026-11-10, la feuille) `styles.css?v=` porte l'empreinte `integrity` de ses octets SERVIS ; une reprise posée AVANT son `<link>` : au refus, TOUT DE SUITE un secours SANS empreinte à la même place (jamais une page sans styles), puis la redemande (`cache: "reload"`) et un `<link>` AVEC l'empreinte juste après le secours, qui le retire s'il se charge | `scripts/build.js` (étape 2) | `app-scripts-par-fichier.spec.js` ⑨ ⑩ (deux moteurs) et ① (une seule demande), `integrite-app.test.mjs` ① |
+| (2026-11-10, la feuille) Minifiée PAR LE BUILD (`PASSIO_MINIFIER_APP`, étape 2 bis : même commande clean-css, mêmes octets que la production) ; l'étape « Minify styles.css » du déploiement est RETIRÉE ; le contrôle relit aussi le `<link>` de la feuille, et exige la reprise avant lui | `scripts/build.js`, `deploy.yml`, `scripts/verifier-integrite-app.js` | `integrite-app.test.mjs` ② ③ ⑤ |
+| (2026-11-12, STAB-10, la PAGE) Minifiée PAR LE BUILD (`PASSIO_MINIFIER_APP`, étape 6 ter : même commande html-minifier-terser du lockfile, arbre `dist/` identique à l'octet à l'ancien chemin) ; l'étape « Minify index.html » du déploiement est RETIRÉE. « Gates artefact » joue `release-integrity`, `passion-context` ET la fumée (`smoke.spec.js`) sur la page minifiée, puis publie l'empreinte de l'arbre servi ; le déploiement reconstruit et REFUSE d'envoyer un `dist/` d'une autre empreinte. Reste : le déploiement reconstruit au lieu de publier l'artefact du test (déterministe, et l'empreinte le prouve à chaque envoi) ; le buildId reste celui de la page BRUTE (étape 5) : une mise à jour de html-minifier-terser change la page servie sans changer le buildId — sans effet tant que `sw.js` va au réseau d'abord pour `index.html` | `scripts/build.js`, `scripts/empreinte-dist.js`, `deploy.yml` | `integrite-app.test.mjs` ③ ⑥ ⑦, `page-minifiee-testee.test.mjs` ① à ④ (mutations vues rouges) |
 | La barrière des migrations lit les 9 scripts servis (un motif peut vivre dans n'importe lequel ; un seul illisible = refus) ; l'ancienne forme reste lue | `scripts/lib/barriere-migration.js` (`urlsBundlesServis`), `scripts/appliquer-migration.mjs` | `tests/unit/barriere-migration.test.mjs` ④ (sur le VRAI build ; deux mutations) |
 | Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
 
@@ -2193,6 +2228,17 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
   le rejeu est alors REPORTÉ (retour en ligne, action suivante, lancement suivant), jamais perdu.
   Même famille, même ordre de grandeur : un geste fait pendant ce chargement peut appeler un
   fichier pas encore exécuté (`ReferenceError` remontée, sans autre effet).
+  **Suite (2026-11-13) : ce verrou ⑤ mesurait un état de plus que son invariant, et c'est lui
+  qui a rougi.** Il exigeait `document.readyState === "interactive"` au premier script ; le
+  déploiement de `main` (exécution 43433603440) l'a trouvé à « loading » sous Chromium, aux trois
+  essais, l'application restant prête avant `load`. Rien n'avait changé au chargeur : le premier
+  script est inséré dès le gate franchi (microtâche), et la page continue de parser-exécuter les
+  ~20 modules inlinés APRÈS le chargeur — lequel des deux finit le premier est une course de
+  quelques millisecondes que la taille de ces modules (NAV-V2 du 12/11, entre autres) fait pencher.
+  « loading », c'est d'ailleurs exactement ce que faisait l'ancien `app.js`, parseur-bloquant.
+  Le verrou mesure désormais ce qu'il garde : « loading » ou « interactive », jamais « complete ».
+  Il n'y perd pas sa mutation — un `<script>` inséré retarde `load`, donc « complete » ne sort
+  d'ici que si le chargeur n'a rien inséré avant, et `__appAuLoad` tombe alors avec lui.
 - ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
   WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
   version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
@@ -2354,17 +2400,128 @@ une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
 - ⚠️ **UNE MISE À JOUR DE TERSER** change les octets servis sous les mêmes `?v=` : chaque appareil
   refuse une fois ce qu'il garde, et le redemande (une seconde par script modifié). Le prix d'une
   version de terser, pas un défaut ; terser est figé (5.51.2, sans `^`).
-- **Survivant de la même classe, non traité : `styles.css?v=`** (la seule autre règle `immutable` de
-  `_headers`). Un retour arrière range la feuille de A sous l'adresse de B, et B rétabli la garde un an.
-  L'effet est visuel (des styles de B manquants), pas un mélange de code. Le remède a deux pièces qui
-  n'existent pas pour elle : une empreinte `integrity` sur un `<link rel=stylesheet>` refusé laisserait
-  la page SANS styles, faute de reprise ; et clean-css la minifie après le build (le même obstacle que
-  terser). Le worker, lui, est déjà prêt (`estVersionne` couvre `.css`, la branche `reload` aussi).
+- **Survivant de la même classe : `styles.css?v=`** (la seule autre règle `immutable` de `_headers`) —
+  reproduit puis fermé le jour même, ci-dessous.
+
+**La feuille de style, même cas — reproduit, puis fermé (2026-11-10, la suite).** Netlify ignore le
+`?v=` de la feuille comme celui des scripts : pendant un retour arrière de C vers A, la feuille de A
+est servie en 200 `immutable` sous l'adresse de C.
+- **Reproduit d'abord, sous Chromium ET WebKit, dans les deux caches** (`app-scripts-par-fichier.spec.js`,
+  un troisième artefact C qui ne diffère de A QUE par la feuille ; profil persistant, aucune route).
+  ⑨ — une page C partie juste avant la bascule range la feuille de A sous l'adresse de C dans le cache
+  HTTP ; C rétabli à l'identique, la page applique la feuille de A, sans une demande au serveur.
+  ⑩ — le worker de C installé pendant la bascule (`FICHIERS_VERSION`) la range dans SON cache ; C
+  rétabli, il la sert à chaque ouverture. Prémisses assertées (la feuille de A servie en 200 sous
+  l'adresse de C, puis relue sans une demande `style` — `Sec-Fetch-Dest`), verdict rouge sur les deux
+  moteurs : un seul `load`, celui de la feuille de A, et zéro demande.
+- **L'exposition, mesurée sur `main`** : 11 versions sur 151 touchent la feuille en 30 jours, avec des
+  écarts jusqu'à 33 jours (18/09 → 21/10). Un appareil touché gardait donc des styles périmés des jours
+  à des semaines, jusqu'à la prochaine version qui change la feuille. La fenêtre qui le déclenche est
+  étroite (quelques millisecondes entre la page et sa feuille, ou entre `sw.js` et l'installation) ;
+  l'effet, lui, dure.
+- **Le remède** (les deux lignes « la feuille » du tableau ci-dessus) : l'empreinte `integrity` de la
+  feuille SERVIE sur son `<link>`, une reprise, la minification dans le build. Le worker n'a pas
+  bougé : `estVersionne` couvre `.css`, et sa branche `reload` (⑧) range la feuille neuve avant de
+  répondre.
+- ⚠️ **SANS REPRISE, L'EMPREINTE SERAIT PIRE QUE LE DÉFAUT** : une feuille refusée laisse la page SANS
+  styles (mutation « sans reprise », tableau ci-dessous). La reprise est une écoute de `error` en
+  capture sur le document, posée par un petit script JUSTE AVANT le `<link>` : son échec part avant que
+  le moindre script du `<body>` ne s'exécute (ils attendent la feuille, « script-blocking style sheet »),
+  un écouteur posé plus loin ne le verrait jamais. ⚠️ Pas une écoute de `error` quelconque comme
+  marqueur : telemetry.js et platform.js en posent plus haut dans le `<head>` ; le contrôle cherche
+  l'expression de la reprise, `^styles\.css\?v=`, qui survit à la minification.
+- ⚠️ **LE SECOURS D'ABORD, LA REDEMANDE ENSUITE.** Au refus, la reprise pose TOUT DE SUITE, à la place
+  du `<link>` refusé, un `<link>` de secours SANS empreinte : la page prend la feuille que gardent les
+  caches (celle de l'autre version) au lieu de rester nue. Le secours réglé, elle redemande l'adresse
+  (`fetch(…, { cache: "reload" })`, corps lu jusqu'au bout) et pose JUSTE APRÈS le secours un `<link>`
+  AVEC l'empreinte : chargé, il retire le secours ; refusé (pendant la bascule elle-même, le site sert
+  encore A), il se retire, et la page garde le secours — la feuille de A, comme avant ce lot. ⑨ ⑩
+  assertent la suite exacte des événements : refus, secours chargé, PUIS le `<link>` avec empreinte.
+  La première version faisait l'inverse — redemander, puis poser — et la relecture `audit-passio` l'a
+  arrêtée : un réseau qui cale après le refus (tunnel, portail captif) laissait la page SANS styles
+  aussi longtemps que la redemande ne se réglait pas, et même sur un réseau sain chaque reprise
+  montrait un éclair sans styles — mesuré sous charge, médiane 0,2 à 0,9 s, au plus 1,7 s. À l'inverse
+  des scripts (qui s'arrêtent : jamais deux versions de code dans la même page), une feuille de
+  l'autre version un instant n'est qu'un défaut visuel ; l'absence de styles serait pire. Rien ne
+  s'installe : chaque ouverture repart du `<link>` avec empreinte, qui répare dès que le site sert la
+  bonne feuille.
+- ⚠️ **TOUT SE POSE À LA PLACE DU `<link>` D'ORIGINE, JAMAIS EN FIN DE `<head>`** (`replaceChild`, puis
+  `insertBefore(…, secours.nextSibling)`) : l'ordre des feuilles fait la cascade, et app-05 ajoute au
+  `<head>`, APRÈS la feuille, les `<style>` des réglages de l'utilisateur (`#passio-color-override`,
+  `-ff-`, `-fs-`, `-rd-`). Une feuille rajoutée derrière eux effacerait thème, police, taille et
+  arrondi choisis. ⑨ ⑩ vérifient que le `<link>` final suit directement le script de la reprise — et,
+  en prémisse, qu'un élément le suit (sans lui, un `<link>` rajouté en fin de `<head>` serait lui aussi
+  juste après la reprise, et la vérification ne distinguerait rien).
+- ⚠️ **L'EMPREINTE N'EST BONNE QUE SUR LES OCTETS SERVIS — LA MINIFICATION PASSE DANS LE BUILD** (étape
+  2 bis), comme terser la veille : `cleancss -o <sortie> <entrée>`, clean-css-cli 5.6.3 du lockfile.
+  Vérifié avant de pousser, deux fois : sur `7dade60f` puis, rebasé, sur `4e1d8ed1` (#820 venait de
+  changer la feuille), la feuille minifiée PAR LE BUILD est octet pour octet celle que servait la
+  production (231 511 octets, même sha384, sous `?v=a6881b4c96` puis `?v=709d2be1cc`), et les 9
+  scripts aussi : la mise en ligne ne fait refuser à aucun appareil ce qu'il garde. Le buildId change
+  une fois (la page porte la reprise et l'empreinte : `3d8e98bb12ad` → `7e41f8b20efe` sur `4e1d8ed1`),
+  identique minifié ou non. L'étape « Minify styles.css » du déploiement est RETIRÉE : une seconde
+  minification après le contrôle ferait refuser la feuille à tout le monde.
+- ⚠️ **L'EMPREINTE NE DOUBLE PAS LE TÉLÉCHARGEMENT** (mesuré, ① : routes posées, donc cache HTTP coupé —
+  un second téléchargement atteindrait le serveur) : UNE demande `style`, et un seul `load`, avec
+  l'empreinte, sur les deux moteurs. Le pré-chargement spéculatif lit l'empreinte avec l'adresse.
+- ⚠️ **UN `update()` PEUT SE FONDRE DANS UNE AUTRE TÂCHE DU WORKER** : la toute première passe de ⑩ sous
+  Chromium a vu le worker de C ne jamais s'installer (30 s, le cache de A seul) ; les suivantes non. La
+  prémisse de ⑧ et ⑩ redemande désormais la mise à jour à chaque tour (`installerWorker`), comme
+  `majSilencieuse` toutes les 60 s.
+- **Mutations, chacune mesurée sur les deux moteurs** (la reprise « secours d'abord » ; fichiers restaurés
+  et comparés par empreinte après chacune ; « au repos » = une passe, « sous charge » = ×9 sur trois
+  workers) :
+
+  | Pièce retirée | Chromium | WebKit |
+  |---|---|---|
+  | l'empreinte du `<link>` | ⑨ ⑩ rouges : la feuille de A s'applique, un seul `load`, zéro demande | ⑨ ⑩ rouges |
+  | la reprise | ⑨ ⑩ rouges : page SANS styles, bascule comprise | ⑨ ⑩ rouges |
+  | le secours (il porte l'empreinte, donc il est refusé aussi) | ⑨ ⑩ rouges : page sans styles jusqu'au `<link>` juste, et pendant toute la bascule | ⑨ ⑩ rouges |
+  | `cache: "reload"` sur la redemande | ⑨ ⑩ rouges : la redemande relit le cache, le `<link>` avec empreinte est refusé, la page garde la feuille de A | ⑨ ⑩ rouges |
+  | la redemande (le `<link>` avec empreinte posé dès le secours chargé) | ⑨ ⑩ rouges, même issue | ⑨ ⑩ rouges |
+  | le retrait du secours quand le `<link>` juste se charge | ⑨ ⑩ rouges : deux feuilles dans la page | ⑨ ⑩ rouges |
+  | le retrait du `<link>` refusé | ⑨ rouge (pendant la bascule, deux `<link>`) ; ⑩ vert (il ne joue pas la bascule) | idem |
+  | la place du secours (en fin de `<head>`) | ⑨ ⑩ rouges — **verts tant que le banc ne posait rien après la feuille**, voir ci-dessous | ⑨ ⑩ rouges |
+  | la place du `<link>` juste (en fin de `<head>`, derrière les surcharges d'app-05) | ⑨ ⑩ rouges | ⑨ ⑩ rouges |
+  | la branche `reload` du worker | ⑩ rouge : le worker resert son cache | ⑩ rouge |
+  | l'attente du rangement dans le worker | vert au repos ; sous charge **2 rouges sur 9** | vert au repos ; sous charge **1 rouge sur 9** |
+  | la lecture du corps avant le `<link>` juste | vert au repos ; sous charge **1 rouge sur 18** | vert au repos ; sous charge **3 rouges sur 18** |
+  | attendre que le secours soit réglé avant de redemander | vert au repos et sous charge (18/18) | **rouge** : 1 sur 2 au repos, 9 sur 18 sous charge — la prémisse rougit, le secours repart au SERVEUR : la feuille est téléchargée deux fois |
+  | le remplacement de l'empreinte de la feuille (étape 2 bis) | `integrite-app.test.mjs` ③ ④ rouges | — |
+  | la comparaison de la feuille dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+  | l'exigence de la reprise dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+
+  Trois pièces ne se voient que sous charge, ou que sous WebKit — la leçon de #815, de nouveau.
+- ⚠️ **UNE VÉRIFICATION DE PLACE QUI NE DISTINGUAIT RIEN.** La mutation « secours en fin de `<head>` »
+  est d'abord restée verte sous Chromium : au moment du refus, la feuille est encore le dernier élément
+  du `<head>` (le refus part avant les scripts du `<body>`), l'y rajouter à la fin revient au même.
+  En production aussi, au refus — mais pas plus tard, quand le chargeur a posé ses preloads et app-05
+  ses `<style>` : c'est là que le `<link>` juste arrive. ⑨ ⑩ posent désormais un élément juste après la
+  feuille dès que le parseur l'insère (`marquerApresFeuille`) ; les deux mutations de place rougissent
+  sur les deux moteurs. Relevé en prémisse par la relecture `audit-passio`, prouvé par la mutation.
+- **Sous charge, le remède intact** (⑨ ⑩ ×9, trois workers) : 18/18 sous Chromium, 18/18 sous WebKit,
+  toujours la même suite — C rétabli : refus, secours chargé, `<link>` juste chargé ; pendant la
+  bascule : refus, secours chargé, `<link>` juste refusé. Annotation `feuille` du rapport :
+  **la page reste sans styles** du refus au secours, médiane 26 à 105 ms sous Chromium et 136 à 143 ms
+  sous WebKit, au plus 0,3 s (la première conception : médiane 0,2 à 0,9 s, au plus 1,7 s, et sans
+  borne si le réseau calait) ; elle porte ensuite **la feuille de l'autre version** jusqu'au `<link>`
+  juste, médiane 171 à 334 ms, au plus 0,8 s. Une fois par appareil après un retour arrière, au lieu
+  de semaines de styles périmés. Masquer la page le temps de la reprise a été écarté : une page
+  masquée dont la reprise ne se règle pas serait bien pire.
+- **⑤ est intermittent, ANTÉRIEUREMENT à ce lot** — mesuré dans les mêmes conditions (Chromium, ⑤ ×12, un
+  worker) : 1 rouge sur 12 avec le `build.js` d'avant ce lot, 2 sur 12 avec lui, la même signature
+  (`loading` au lieu d'`interactive` : app-01 tourne avant la fin du parsing). ⑤ n'a pas été touché.
 
 **Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
 cache réseau — le lot n'en dépend plus ; un profil WebKit persistant (`launchPersistentContext`, comme
-⑥) en donne déjà une approximation d'ici. `styles.css?v=` après un retour arrière (ci-dessus) : une
-reprise pour la feuille de style, puis son empreinte, sa minification dans le build. La première installation
+⑥) en donne déjà une approximation d'ici. (`styles.css?v=` après un retour arrière : fermé le
+2026-11-10, ci-dessus.) Les deux reprises, scripts et feuille, ne laissent aucune trace au pilotage :
+les écoutes `error` de telemetry.js et platform.js sont sur `window`, en remontée, et ne voient pas
+l'échec d'un `<script>` ou d'un `<link>` — un traitement hors CI qui casserait une empreinte pour tout
+le monde ne se verrait qu'à l'œil (relevé par `audit-passio`). ⑤ (antérieur, mesuré ci-dessus) :
+app-01 tourne parfois avant la fin du parsing ; or des éléments du `<body>` suivent le chargeur
+(`#pwa-overlay`, `#convEmojiPanel`) — mesurer en production si le 9ᵉ script et `boot()` peuvent
+partir avant eux. La première installation
 sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
 plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
 `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file
@@ -2513,9 +2670,100 @@ n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwr
 `pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
 **0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
 bloque le worker (réinjection faite sur `cadrage`).
-⚠️ **À REMESURER SUR 24 H PLEINES** après la fusion de la PR de suite, avec la même requête
-(`edge_logs`, `request.cf.asOrganization` préfixé « Microsoft », groupé par famille et par
-`request.headers.cf_connecting_ip`), et le nombre de runs « CI & Deploy » de la fenêtre.
+**SUR 24 H PLEINES APRÈS LA PR DE SUITE (#804, fusionnée le 09/11 à 21:05 UTC) — même requête,
+fenêtre du 09/11 21:10 au 10/11 21:10 UTC, relevée le 12/11** : **37 200 requêtes reçues par la
+production, dont 4 520 du réseau Azure — 12,2 %** (68,1 % avant). Le dépôt a tourné **57 runs « CI &
+Deploy »** dans la fenêtre (39 de PR, 18 sur `main`), plus de quatre fois les 13 de la fenêtre de
+référence : **≈ 79 requêtes de production PAR RUN, contre ≈ 2 860 — −97 %**. Au rythme d'avant, ces
+57 runs en auraient envoyé ≈ 163 000.
+Ce qui reste est, pour l'essentiel, ce qui parle au vrai projet PAR CONSTRUCTION : les gates `dist`
+(démarrage réel de l'artefact et sa télémétrie : `passions`, `profiles`, `posts`, `events`,
+`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60 **[121 :
+paragraphe suivant]**, soit ≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils
+86), le contrat désigné de `telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199
+lots), et des lectures de comptage des scripts Node (HEAD `stories` / `profiles`).
+⚠️ **UN RÉSIDU NEUF, PROPRE À WEBKIT : 320 PRÉ-REQUÊTES CORS** (`OPTIONS /rest/v1/passions`,
+≈ 6 par run) contre 6 `GET` réels sur la même table. Sous WebKit, la pré-requête d'une requête que la
+route sert part quand même au serveur : la requête est servie par le miroir, son `OPTIONS` ne l'est
+pas. Aucune donnée ne revient (une pré-requête n'a pas de corps), mais c'est une requête comptée ;
+Chromium, lui, ne la laisse pas partir. S'y ajoutent ≈ 90 lectures WebKit réelles en 24 h
+(`profiles` 24, `posts` 22, `fil_compteurs` 18…), compatibles avec `pwa-maj-pendant-appel`, qui garde
+EXPRÈS le vrai service worker (son sujet) — donc des requêtes qui, une fois le worker aux commandes,
+échappent aux routes **[rectifié au paragraphe suivant : ce sont les lectures des deux seuls runs de
+la PR #820, jamais de `main`]**. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce
+niveau.
+⚠️ **LA PART EN POURCENTAGE BAISSE MOINS VITE QUE LE PAR-RUN** (68,1 % → 12,2 % pour −97 % par run) :
+la CI a tourné quatre fois plus, et le reste du trafic a lui aussi changé. Le bon indicateur reste
+**par run**, rapporté au nombre de runs de `gh run list --created` **[rectifié au paragraphe suivant :
+de runs EXÉCUTÉS, 51 des 57]**.
+
+**APRÈS LA FUSION DE #804 — 24 H PLEINES (2026-11-09 21:10 → 2026-11-10 21:10 UTC), SECONDE LECTURE :
+ADRESSE PAR ADRESSE.** Mêmes journaux (`query_logs`, `edge_logs`, canal ① en lecture seule), relus le
+12/11 en même temps que la précédente : mêmes totaux à l'unité (37 200 requêtes, 4 520 du réseau des
+runners, 57 runs créés). Ces 4 520 viennent de 175 adresses : headless 3 248, Node 833, WebKit
+(« iPhone OS 15_0 ») 439. **51 des 57 runs ont joué au moins un job**, dont les 15 `push` ; les six
+autres : trois `push` et un run de PR annulés avant leur premier job, deux runs de PR d'agent
+(`claude/issue-806`, `-807`, déclenchés par `github-actions[bot]`) restés en attente d'approbation puis
+clos en `failure` le lendemain, sans un job. Près de quatre fois l'activité de la fenêtre d'avant
+(13 runs), pour **88 % de requêtes en moins en valeur absolue**.
+Lu adresse par adresse (une adresse = un job), classé par SIGNATURE, puis contrôlé par les fenêtres
+des runs de `gh run list` :
+- **`authz-critical` : 15 exécutions, les 15 runs `push` exécutés — 3 256 requêtes, 217 par
+  exécution**, inchangé par construction (1 301 / 6 = 217 avant). Chacune : ≈ 170 du navigateur (dont
+  2 `/auth/v1/verify` et une connexion temps réel), ≈ 45 du service role (dont 8 `/auth/v1/admin` —
+  créer, lier, lister, supprimer les deux comptes — et la purge d'environ 25 tables). C'est désormais
+  LE poste de la CI : 75 % de ses requêtes.
+- **Gates `dist` (référent `127.0.0.1:8091`) : 466.** Jusqu'à #819 (fusionnée le 10/11 à 13:53 UTC),
+  `passion-context` y parlait à la production ; ensuite `release-integrity` seul : 3 GET (`posts`,
+  `events`, `passions`) et leurs 3 pré-requêtes par passage — le « reste à faire » de #819
+  (`telemetrie-pilotage-sentinelle.md`).
+- **Télémétrie (référent `:8080`) : 197 POST acceptés (201).** Avant #819, surtout les envois
+  `keepalive` du DÉPART d'une page (`telemetrie-trafic` ④, la fuite que #819 ferme) ; ensuite 25 pour
+  19 runs : le lot voulu de `telemetrie-preauth` ①, et lui seul.
+- **WebKit : 343 pré-requêtes CORS** (`OPTIONS`, 200, sans corps ni requête en base) — 320 sur la
+  pagination du référentiel (`passions?…&offset=N000`), 18 sur `post_comments`, ≈ 7 par job. La route
+  sert la requête, mais sous WebKit sa pré-requête part au réseau.
+- **Une fuite WebKit, arrêtée par son banc : 96 vraies lectures** (`profiles`, `posts`,
+  `fil_compteurs`, la messagerie de `conv_lea`) par les deux runs de la PR #820, à 13:27 et 13:37 UTC :
+  la suite qu'elle ajoutait au socle WebKit démarrait l'application sans bloquer le service worker. Le
+  banc ⑦ de `tests/unit/isolation-projet-supabase.test.mjs` a rougi les deux runs (« Audits statiques
+  et bancs serveur »), 8fd2f5bf l'a corrigée avant la fusion : **jamais sur `main`** — et aucune autre
+  adresse WebKit n'a lu une table dans la fenêtre.
+- **Bord de fenêtre : 1** WebSocket à 21:10:28, d'un run créé avant le début de la fenêtre.
+- **Hors CI : 161** — « Sauvegarde production » 119 (10:19, Node, dont la liste des comptes),
+  « Sentinelle autonome » 38 (six passages de 6 ou 7 lectures), « Veille de production » 3, « Alerte
+  de modération » 1.
+**PAR RUN EXÉCUTÉ : la CI hors `authz-critical` pèse 1 103 / 51 ≈ 22 requêtes de production, contre
+2 746 avant — −99,2 %** (≈ 20 sans la fuite de #820) ; **depuis #819, 277 / 19 ≈ 15** (pré-requêtes
+WebKit ≈ 8,4, `release-integrity` ≈ 4,8, lot de télémétrie voulu ≈ 1,3). **S'y ajoutent ≈ 217 par run
+`push`** (`authz-critical`). Méthode brute d'avant (tout le réseau des runners / runs) : 4 520 / 51
+≈ 89 contre 2 858, **−96,9 %**. L'attendu (≈ 35 par run, + ≈ 216 quand `authz-critical` tourne) est
+tenu, et passé.
+⚠️ **CE QUE CETTE LECTURE RECTIFIE DANS LA PRÉCÉDENTE** (#830, même fenêtre, fusionnée pendant que
+celle-ci passait sa CI) : ① les ≈ 90 lectures WebKit ne viennent pas de `pwa-maj-pendant-appel` : ce
+sont les 96 des deux runs de #820 (puce ci-dessus) — une suite du socle aurait lu à CHAQUE run WebKit,
+et aucune autre adresse WebKit n'a lu une table ; ② le dénominateur est le run EXÉCUTÉ (puce « UN RUN
+CRÉÉ… » ci-dessous) : 4 520 / 51 ≈ 89, et non / 57 ≈ 79 — le même −97 %, mais un « par run » qui se
+dilue dès qu'une rafale de fusions annule des runs ; ③ les appels `/auth/v1/admin` sont 121, et non
+60 — 8 par exécution d'`authz-critical` (30 créations, 30 liens, 30 listes, 30 suppressions), plus la
+liste de la sauvegarde ; les 30 comptes créés concordent.
+⚠️ **LA RÉFÉRENCE, DÉCOMPOSÉE DE MÊME** (requête rejouée le 09/11 sur la fenêtre d'avant : 54 563,
+37 159 et 34 318 retrouvés à l'unité) : headless 33 668, WebKit 2 036, `authz-critical` 1 301 en six
+exécutions, Node hors CI 154 — d'où 35 704 / 13 = 2 746 par run hors `authz-critical`. La part hors CI
+y pesait 0,4 % ; elle pèse 3,6 % aujourd'hui : **ce qui se rapporte à un run se lit par classe
+d'adresse, plus par réseau.**
+⚠️ **`authz-critical` = `/auth/v1/admin` ET un navigateur sur la même adresse** : la sauvegarde lit
+aussi `/auth/v1/admin/users` (la liste des comptes) — une règle « admin ⇒ authz » la range en CI.
+⚠️ **UN RUN CRÉÉ N'EST PAS UN RUN EXÉCUTÉ** : six des 57 n'ont joué aucun job. Compter par
+`gh run view --json jobs` (au moins un job `success` ou `failure`), sinon le « par run » se dilue.
+⚠️ **LE PARSEUR DE `query_logs` REFUSE LES CTE** (la requête y est enveloppée) et l'accès `r.1` aux
+tuples ; les sous-requêtes imbriquées, `tupleElement`, `arrayJoin([...])` et `cross join` passent.
+**Ce qui reste, par poids.** `authz-critical`, voulu : 30 comptes créés en 24 h, deux par déploiement
+— à quinze déploiements par jour, ~900 MAU par mois et non ~360 (paragraphe suivant), moins de 1 % des
+100 000 du forfait ; deux comptes PERMANENTS le ramèneraient à 2. Les pré-requêtes WebKit, sans coût
+en base : les faire disparaître demanderait de pointer le SDK des suites vers une adresse qui ne
+résout pas, plutôt que vers la production. `release-integrity` (3 GET par passage), dont la raison au
+socle est périmée d'après #819.
 
 **LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
 `authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
@@ -2540,7 +2788,8 @@ résout `@playwright/test` y tombe au chargement (premier passage CI de #799). O
 run 42653481806) et a rougi le shard 1 des deux premiers passages de #799. Son faux serveur passe
 `sansIsolationDesDonnees` : le projet vide ne s'y pose pas, ce n'est pas lui. À traiter à part.
 ⚠️ **CE QUI PARLE ENCORE AU VRAI PROJET, PAR CONSTRUCTION** : les gates `dist` (`release-integrity`,
-`passion-context`, au socle : l'artefact déployé et sa télémétrie réelle sont leur sujet),
+`passion-context`, au socle : l'artefact déployé et sa télémétrie réelle sont leur sujet — **isolées
+depuis**, `passion-context` le 2026-11-10 (#819), `release-integrity` le 2026-11-12, fiche 🧾),
 `authz-critical` (la barrière RLS de la production), le contrat de `telemetrie-preauth`, et les scripts
 Node des jobs (service role : purge, mesures). Le WebSocket temps réel des suites
 `sansIsolationDesDonnees` est avalé depuis la PR de suite, côté banc seulement — le code temps réel de
@@ -2590,3 +2839,419 @@ rien figé (« Publier dans » suit toujours la passion). Réinjection : écritu
   `animationend` et `transitionend` (capture, passifs) : un réveil coûte O(1), le tour reste borné par
   son rendez-vous. Leçon : **corriger une boucle de réveils, c'est aussi chercher qui en vivait** —
   relancer les suites des AUTRES consommateurs des mêmes observateurs, pas seulement la sienne.
+
+## 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+
+`scripts/build.js` (chargeur du bloc app), `tests/e2e/app-scripts-par-fichier.spec.js` ⑨. Trouvé par l'audit de
+stabilisation du 10/11 (STAB-01), dans les erreurs de la production, pas dans le code.
+
+**Le fait.** Le 10/11 à 12:18 UTC (version `7dade60f`), `client_errors` 211 à 220 et 19 `window_error` en
+télémétrie : « Cannot read properties of undefined (reading '0') », pile `suivant` ← `s.onload`, colonne
+199000 de la page — la lecture `scripts[i][0]`. Deux pages, toutes deux arrivées par `?fbclid=…`, écran
+2000 × 2000 et plateforme Linux pour les deux, l'une sous un agent « Chrome Windows » (agent maquillé) : des
+robots de prévisualisation. L'application y avait démarré
+normalement ; ~25 s plus tard les `load` des 9 scripts ont été rejoués (la mesure `page_load` de la même page est
+repartie au même instant, à l'identique). Chaque `onload` refaisait `i++` puis `suivant()` : `i` passait 9, la garde
+`i === scripts.length` ne tenait plus, et la lecture levait — 9 erreurs par page.
+
+**La cause.** Les deux écouteurs du chargeur restaient armés après avoir servi. Rien, dans un navigateur ordinaire,
+ne rejoue un `load` ; mais ce chargeur est la seule chose entre une page et son application, et il ne doit dépendre
+d'aucune politesse de son hôte.
+
+**Le correctif.** `onload` et `onerror` se désarment à leur premier appel (`s.onload = s.onerror = null`). La reprise
+d'un échec pose ses écouteurs sur le NOUVEL élément : rien d'autre ne change, et le bloc app est le même à l'octet
+(`appHash` inchangé, seul le `buildId` de la page bouge).
+
+**Mesuré.** Reproduit sur l'artefact de production reconstruit localement (identique à l'octet à la production) :
+9 `load` rejoués → 9 erreurs, au message de la production. Le cas ⑨ rejoue 9 `load` et 9 `error` : 18 erreurs avant
+(un `error` rejoué retirait le script déjà exécuté, puis sa reprise levait une seconde plus tard), 0 après, 9 scripts
+toujours en place, aucune redemande, un seul `passio:app-ready`. Suite complète verte sous Chromium (①–⑨) et WebKit.
+
+⚠️ **Ce que ce lot ne fait pas.** Ces deux pages n'étaient pas classées `robot` (`meta.trafic` vide : ni
+`navigator.webdriver`, ni agent connu) : elles restent comptées dans l'audience. Reconnaître ces robots est une
+décision de mesure, laissée au registre de l'audit (STAB-03).
+
+---
+
+## 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
+
+**Le défaut (audit de stabilisation du 10/11, ETAT-01, P1).** La file `passio_pending_user_state_<uid>` garde le
+dernier blob d'état qui n'a pas abouti : elle est posée à chaque masquage de page « sale », et le `.then` du keepalive
+ne la retire pas quand la page meurt. Au démarrage, `supaLoadUserState` lit la ligne serveur, l'applique si elle est
+plus récente, **et avance `state._stateSyncedAt` jusqu'à elle**. Puis `_flushPendingUserState` rejouait la file avec
+`UPDATE … WHERE updated_at <= state._stateSyncedAt`, soit « updated_at <= updated_at » : la condition était toujours
+vraie. Suite d'usage ordinaire, sans aucune concurrence : le téléphone ferme l'application avec un état de 09:00 en
+file ; l'ordinateur travaille à 10:00 ; le téléphone redémarre à midi. Le serveur, puis les deux appareils,
+reviennent à 09:00. Perdus : brouillons, réglages du fil, passions archivées, désinscriptions.
+
+**Le correctif.** La base voyage avec le blob : `_queuePendingUserState` note `base = state._stateSyncedAt` au moment
+de la mise en file, et le rejeu compare à elle (`_baseDeLaFile`).
+- Une file d'avant le correctif n'a pas de base : on prend le repère que son blob porte (`data._stateSyncedAt`).
+- Sans base du tout, on compare à l'époque : le blob peut créer une ligne absente, jamais en remplacer une.
+- « 0 ligne + ligne existante » jette la file, et le dit à `diagLog` (`rejeu_etat_jete`).
+
+**Le piège trouvé en relecture (agent `audit-passio`, le même jour), avant fusion.** Comparer à la seule base
+fait perdre des gestes à un appareil SEUL. Le beacon (`return=minimal`) et la sauvegarde dont la réponse s'est
+perdue écrivent la ligne SANS avancer le repère. Une file posée ensuite porte donc une base plus ancienne que la
+ligne que l'appareil a lui-même écrite, et le rejeu la jetait. Désormais chaque blob envoyé porte une estampille
+`_ecriture` (`_estampillerEcriture`), dont l'appareil garde les 30 dernières (`passio_mes_ecritures_<uid>`). Quand la
+ligne a bougé depuis la base mais que sa dernière écriture est l'une des nôtres, le rejeu passe, toujours en
+compare-et-remplace sur la valeur relue. Le chemin « insert » relit aussi `updated_at` au lieu de marquer l'heure
+locale de la file.
+
+Verrou : `tests/e2e/user-state-rejeu-anciennete.spec.js` (6). Le cas ⑥ joue la vraie séquence : beacon, sauvegarde
+hors ligne, lecture, rejeu. Mutations : remettre le repère vivant rougit ①, ③ et ④ ; retirer la reconnaissance de
+ses propres écritures rougit ⑥.
+
+**Ce que ça ne règle pas.** `updated_at` reste l'heure de DÉBUT de transaction (`now()`), pas une révision monotone :
+deux écritures réellement concurrentes peuvent encore s'ordonner à l'envers (SYNC-CLOCK-012). Une colonne `revision`
+réglerait ce cas, mais au prix d'une migration ; elle n'est pas faite ici.
+
+**ETAT-09, même lot.** Un commentaire d'activité refusé par la base restait affiché sous un identifiant `ec_local_…`,
+persisté et vu de son seul auteur. Désormais, pour un compte : le commentaire est retiré, le texte revient dans le
+champ et un toast « Commentaire non envoyé » prévient la personne (`_retirerCommentaireEvtNonEnvoye`, app-07). Un
+visiteur garde sa copie locale, comme pour SRV-03.
+
+**PARC-01, même lot.** Le « j'aime » d'une activité jetait le verdict de `supaSetEventLike` et notifiait l'organisateur
+tout de suite. Il passe maintenant par la porte visiteur (`requireAuthentication("aimer")`). L'organisateur n'est
+notifié qu'après un succès, et un refus pour un compte rétablit l'état d'avant (« « J'aime » non enregistré »).
+Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (5). Mutations : rougissent ① et ④.
+
+---
+
+## 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
+
+`tests/e2e/release-integrity.spec.js`, `scripts/tests-isolation-socle.json`. Ferme le « Reste à faire » de la fiche 🚱
+du 2026-11-10 (`telemetrie-pilotage-sentinelle.md`) et la ligne « CE QUI PARLE ENCORE AU VRAI PROJET » de la fiche
+🧪 du 2026-11-09 pour le job `dist`.
+
+**Le fait.** Dernière suite du job « Gates artefact production » inscrite au socle, `release-integrity` lisait la
+production à chaque passage : trois de ses quatre cas (①, ③, ④) démarrent l'application par leur propre `page.goto`,
+sans isolation, et le démarrage d'un visiteur demande `posts`, `events` et le référentiel `passions`. Mesuré derrière
+un proxy local qui REFUSE et compte toute connexion vers `*.supabase.co` (la sonde Playwright donne les chemins) :
+**9 tentatives par passage, 3 par cas** ; ② passe par `bootOnboarded` et était déjà servi par les routes. ⚠️ **9 est
+un PLANCHER** : derrière un proxy qui ne répond rien, la première page du référentiel échoue et le chargeur s'arrête.
+Le même passage servi par le miroir (réponses pleines) en compte **16** : le référentiel pagine tant que la page vit
+— 1, 3 et 6 pages pour ①, ③, ④. Aucune ligne de télémétrie : les POST du drain étaient déjà routés.
+
+**La raison au socle était périmée, sur ses deux moitiés.** « Le drain attend ses VRAIS POST » : depuis le
+2026-09-11, le cas ④ route `/rest/v1/telemetry_events` sur TOUT hôte ; ses POST n'atteignent plus aucun serveur, et
+ce qu'il mesure (que `drain` ne rend la main qu'une fois plus rien en vol) se lit sur cette route. « Un réseau simulé
+ne prouverait rien de l'artefact déployé » : l'artefact est servi EN LOCAL par `scripts/servir-dist.js`, et Supabase
+n'en fait pas partie. L'identité de build (`window.PASSIO_RELEASE`, `/release.json`, `sw.js`) et le garde N+1
+(`/release.json` routé) ne passent par aucune requête au projet.
+
+**Le correctif.** `sansDonneesDistantes(page)` avant la navigation de ①, ③ et ④ ; l'entrée de socle est retirée
+(`audit-tests-isolation.js --ci` l'aurait déclarée inutile). Dans ④, la route `telemetry_events` est une route de
+PAGE : elle passe avant le projet vide, posé au CONTEXTE, et `started > 0` le vérifie à chaque passage.
+
+**Mesuré après**, même proxy, même sonde, `release-integrity` + `passion-context` sous `PASSIO_CIBLE=dist` et
+`PASSIO_MINIFIER_APP=1` : **0 connexion vers le projet, 0 requête partie, 0 échec** ; 40 requêtes Supabase, toutes
+servies par une route ; 6 cas verts. **Réinjection** : un `drain` qui demande le vidage puis rend la main aussitôt
+fait rougir ④ isolé (« aucun POST encore actif au retour de drain », 2 ≠ 3), toujours sans connexion au projet.
+Le job `dist` ne parle plus au projet de production. Ce qui lui parle encore, par construction : `authz-critical`,
+le chemin réel de `telemetrie-preauth` (`cheminsReels`) et les scripts Node des jobs.
+
+⚠️ **Mesurer sans toucher la production, et sans toucher `playwright.config.js`** (chemin protégé, relu par chaque
+worker) : une surcouche de config HORS du dépôt reprend celle du dépôt et ajoute `launchOptions.proxy` (avec
+`bypass: "127.0.0.1,localhost"`). Ses chemins RELATIFS se résolvent contre le dossier de la surcouche : `testDir`,
+`globalTeardown` (« Cannot find module './tests/e2e/global-teardown.js' » au premier essai) et `webServer.cwd` sont à
+poser en absolu. Un port à part (`PASSIO_PORT`) : le 8080 est souvent tenu par une autre session, et `dist` refuse
+de réutiliser un serveur.
+
+---
+
+## 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
+
+> **Fusion du 2026-11-13 (après LOT-37).** Ce lot a été écrit avant LOT-37 (MSG-C70), qui a retiré de `emoji-misc.js` toute écriture sur la grille : la mise en colonnes est portée par `styles.css` (8 colonnes, `!important`) et le remplissage à l'ouverture y était déjà. De ce lot n'entrent donc que l'attente de `DOMContentLoaded` d'app-09 et le banc ⑤ bis, dont l'assertion « 12 colonnes » devient « grille remplie ». Les mesures « 12 / 8 colonnes » ci-dessous décrivent l'état d'avant LOT-37.
+
+`js/emoji-misc.js`, `js/app-09-boot-pwa.js`, `tests/e2e/app-scripts-par-fichier.spec.js` ⑤ et ⑤ bis. Point de départ
+(mesuré le 2026-11-10) : l'intermittence de ⑤ vue en mesurant #821 — `window.__etatAuDebut` (l'état du document quand
+app-01 a tourné) valait parfois `loading` au lieu d'`interactive`, 1 fois sur 12 avant #821, 2 sur 12 après.
+
+**La question.** Un script inséré par le chargeur n'attend pas le parseur : il s'exécute dès que ses octets sont là, à la
+première pause du parseur — et le parseur s'arrête chaque fois qu'il attend le réseau. Or le chargeur est au MILIEU de
+la page minifiée (il finit à 201 Ko sur 391) : 190 Ko le suivent (44 Ko compressés), 23 scripts inlinés
+(contextual-nav, ui-v2 à ui-v7, passions-flat*, récapitulatif, affiche), puis `#pwa-overlay` et `#convEmojiPanel`,
+tout à la fin. Sortis du cache (HTTP ou worker), les 9 pouvaient-ils tourner, jusqu'à app-09 et `boot()`, avant ?
+
+**Mesuré : oui, en production comme sur l'artefact.** Sonde dans la page (`addInitScript`, aucun octet servi touché) :
+`readyState`, `#emojiGrid`, `#pwa-overlay` et les modules de fin de page au `load` de chaque script, à l'entrée de
+`boot()` (enveloppe posée au `load` d'app-08, celle qu'app-09 appelle) et à `passio:app-ready`. Profil PERSISTANT,
+aucune route (Playwright couperait le cache HTTP), 5 ouvertures après une première qui remplit les caches. L'artefact
+est celui de la production du jour (`buildId` `3d8e98bb12ad`, le même des deux côtés), minifié comme au déploiement.
+
+| Où | Conditions | app-01 avant la fin de la page | app-09, `boot()`, `passio:app-ready` avant la fin | Grille des emojis à la fin |
+|---|---|---|---|---|
+| Artefact | page d'un coup, Chromium, avec ou sans worker | 2 à 4 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page d'un coup, Chromium, CPU ×4 | 4 à 5 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page d'un coup, WebKit, avec ou sans worker | 0 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page à ~1,5 Mbit/s compressé, Chromium, avec ou sans worker | 5 / 5 | **5 / 5** | **VIDE, 5 / 5** |
+| Artefact | idem, WebKit sans worker · avec worker | 5 / 5 | **4 / 5 · 5 / 5** | **vide 3 / 5 · 5 / 5** |
+| Artefact | page à ~6 Mbit/s, Chromium, avec ou sans worker | 5 / 5 | **5 / 5** | remplie plus tard, **8 colonnes** (4 et 5 / 5) |
+| Artefact | idem, WebKit sans worker | 4 / 5 | 0 / 5 | remplie, 12 colonnes |
+| **Production** (`?equipe=1`, visiteur) | Chromium · WebKit, avec worker, réseau du poste | 3 / 5 · 0 / 5 | 0 / 5 | remplie, 12 colonnes |
+| **Production** | Chromium sans worker, 1,6 Mbit/s + 150 ms (CDP) | 5 / 5 | **5 / 5** — le parseur encore au chargeur (16ᵉ script inline sur 38) ou un à deux plus loin | **VIDE, 5 / 5** |
+| **Production** | Chromium sans worker, 6 Mbit/s | 5 / 5 | **5 / 5** | remplie plus tard, **8 colonnes, 5 / 5** |
+
+Le cas réel : un téléphone sur réseau mobile qui rouvre l'application, scripts en cache, page venue du réseau — une
+nouvelle version (la page change, 8 scripts sur 9 restent en cache : le but même du découpage), ou une ouverture sans
+worker. Dans les cas lents, `DOMContentLoaded` arrivait 160 à 450 ms APRÈS `passio:app-ready`.
+
+**Ce que ça cassait — mesuré, et seulement ça.** La grille des emojis de la messagerie : emoji-misc.js (fermé dans le
+9ᵉ script) posait sa mise en forme compacte au chargement, une fois, au niveau du fichier ; `_populateEmojiGrid` (app-09)
+la remplissait 100 ms plus tard, une fois aussi (« avec délai pour garantir que le DOM est chargé » : un espoir, pas une
+garantie). Fin de page arrivée après les deux : panneau VIDE pour toute la session (seule une recherche le remplissait).
+Entre les deux : rempli, sur 8 colonnes espacées au lieu de 12 serrées. **Tout le reste de l'écran finit identique avec
+ou sans la course** — mêmes 24 cartes dans le fil, mêmes classes dans le fil et sur `<html>`, à ~1,5 et ~0,4 Mbit/s
+(Chromium) : les modules ui-v* de fin de page, arrivés après `passio:app-ready`, se rattrapent par `DOMContentLoaded`
+et leurs reprises bornées (`openCreateEvent.__v6a0` vrai à la fin, toujours). `#pwaLogoImg` (fin de page), lu par
+`boot()` : sans effet, `pwaShowOverlay` — appelé par un geste, jamais au démarrage — repose le logo.
+
+**Le correctif rejeté, sur mesure : retenir le 9ᵉ script jusqu'à la fin de la page.** Écrit, verrouillé, éprouvé
+(mutations rouges sur les deux moteurs, puis 0 sur 35 ouvertures avant la fin de la page, grille sur 12 colonnes
+35 / 35). Puis mesuré contre l'artefact de `main`, en ALTERNANCE, page à ~1,5 Mbit/s, 15 ouvertures de chaque côté —
+la première VRAIE carte du fil (pas le squelette, voir les pièges), en médiane :
+
+| | `main` (la course) | app-09 retenu | Écart |
+|---|---|---|---|
+| Chromium sans worker | 1 051 ms | 1 443 ms | **+392 ms** |
+| Chromium avec worker | 3 530 ms | 3 968 ms | **+438 ms** |
+| WebKit avec worker | 2 303 ms | 3 218 ms | **+915 ms** |
+
+Avec la course, `boot()` fait son travail asynchrone (SDK, session, hydratation) PENDANT que la fin de la page arrive :
+la première carte vient après `DOMContentLoaded` dans les 45 ouvertures, mais plus tôt. Retenir app-09 sérialise les
+deux. Payer 0,4 à 0,9 s sur réseau lent, à chaque nouvelle version, pour un seul panneau dont la réparation est locale :
+non. Retenir les 9 aurait coûté plus encore (210 à 260 ms d'exécution d'app-01 à app-08 à CPU ×4, ajoutés après la page).
+Second motif, trouvé par la relecture `audit-passio` et mesuré par elle (HTTP/1.1 local) : une connexion COUPÉE pendant
+la fin de la page laisse `readyState` à `loading` pour de bon — Chromium, et WebKit avec `Content-Length` ; ni
+`DOMContentLoaded` ni `load`. Avec la retenue, app-09 n'est alors jamais inséré : pas de `boot()`, l'application ne
+démarre pas avant un rechargement. Sans elle, `boot()` part sur la page tronquée.
+**Le chargeur reste tel quel, exprès ; ce qui lit la fin de la page l'attend lui-même.**
+
+**Le correctif.**
+- emoji-misc.js : la mise en forme compacte attend `DOMContentLoaded` quand la grille n'est pas encore là. Ce bloc
+  ajoutait aussi sa propre liste, découpée par unité UTF-16 (des MOITIÉS d'emojis, `emojiList[i]`), que
+  `_populateEmojiGrid` remplaçait 100 ms plus tard : retirée. Ses `var grid`, `i`, `d`, `emojiList` n'étaient que des
+  globales accidentelles (aucun lecteur, `audit-globals` vert).
+- app-09 : au bout des 100 ms, sans grille, le remplissage attend `DOMContentLoaded`.
+- emoji-misc.js, `toggleEmojiPanel` : une grille restée vide se remplit à l'ouverture — le commentaire d'app-09 le
+  promettait (« appelé de nouveau à l'ouverture »), rien ne le faisait.
+- Seul le 9ᵉ script change d'octets : la mise en ligne ne fait retélécharger que lui.
+
+**Le verrou : ⑤ bis.** Le banc coupe la page juste après le chargeur et retient la fin jusqu'à ce que l'application soit
+prête ET que le remplissage d'app-09 (armé à 100 ms) soit passé — une CONDITION, pas une durée : un minuteur de même
+délai, armé au `load` d'app-09 donc après lui, part après lui (HTML : à délai égal, dans l'ordre d'armement) ; une attente
+fixe de 400 ms laissait, sous charge, la mutation MA passer verte (relevé par `audit-passio`). Prémisses assertées :
+coupe juste après le chargeur (repéré à sa liste, une fois), fin retenue qui porte la grille et la fenêtre
+d'installation, et LA COURSE REPRODUITE — app-09, `boot()` et `passio:app-ready` partis en `loading`, sans grille, sans
+fenêtre, sans modules de fin de page (une retenue réintroduite plus tard dans le chargeur ferait rougir cette prémisse :
+la décision ci-dessus est verrouillée aussi). Puis : aucune `TypeError` « … of null » / « null is not an object » (une
+lecture sans garde d'un élément de la fin de page ; le banc ne relevait que les `ReferenceError`), la grille remplie sur
+12 colonnes, `openCreateEvent.__v6a0` posé (le défaut de #813 : un module qui n'écoutait que `passio:app-ready`), un
+panneau ouvert sur une grille vidée se remplit, l'application prête avant `load`.
+
+| Mutation | Chromium | WebKit |
+|---|---|---|
+| MA — sans l'attente d'app-09 | ⑤ bis rouge : grille vide (12 colonnes) | idem |
+| MB — sans l'attente d'emoji-misc.js | ⑤ bis rouge : `repeat(8, 1fr)` | idem |
+| MC — sans le remplissage à l'ouverture | ⑤ bis rouge : « le panneau ne s'ouvre jamais sur une grille vide » | idem |
+| MD — les deux fichiers de `main` | ⑤ bis rouge : grille vide ET 8 colonnes — le symptôme de la production | idem |
+| ME — emoji-misc.js lit la grille sans garde ni attente | ⑤ bis rouge : `Cannot read properties of null (reading 'style')` | rouge : `null is not an object (evaluating 'grille.style')` |
+
+**Après le correctif, sur l'artefact** (minifié comme en production), contre celui de `main`, en ALTERNANCE, page à
+~1,5 Mbit/s, 10 ouvertures de chaque côté : la course demeure (app-09 avant la fin de la page 40 / 40, des deux côtés),
+la grille est remplie sur 12 colonnes 40 / 40 (`main` : vide 40 / 40), `openCreateEvent.__v6a0` vrai partout. Première
+vraie carte du fil, en médiane : Chromium 1 024 → 1 029 ms, Chromium + worker 2 049 → 2 053, WebKit 1 164 → 1 139,
+WebKit + worker 1 219 → 1 324 — sur cette dernière ligne, `DOMContentLoaded` a glissé d'autant (801 → 926 ms) pour des
+octets de page identiques : du bruit de poste, pas le correctif. Aucun coût mesurable.
+
+**⑤ remis à ce qu'il garde.** Il exigeait `interactive` au premier script : ce n'est pas ce qu'il prétend garder
+(« l'application s'exécute avant `load` »), et un script inséré tourne légitimement pendant le parsing. Il exige
+désormais `loading` ou `interactive` — jamais `complete` — et l'application prête au `load`. La mutation qui lance la
+chaîne au `load` de la page (le chargeur rejeté le 2026-11-09) le fait toujours rougir, sur les deux moteurs.
+Répétés, ⑤ et ⑤ bis : 24 / 24 sous Chromium (×12, trois workers), 12 / 12 sous WebKit (×6, deux workers) ; le banc
+complet 13 / 13 sous chacun des deux moteurs.
+
+**Pièges.**
+- ⚠️ **LE CHARGEUR NE SE REPÈRE PAS À `passio:app-ready`** : telemetry.js, identity-transition.js et d'autres scripts
+  de l'EN-TÊTE le nomment aussi. Ma première coupe tombait à 72 Ko, dans l'en-tête, avant même la feuille de style :
+  rien ne tournait pendant la retenue, et j'ai d'abord cru le chargeur à 18 % de la page. Le banc le repère à sa liste
+  (`["app/app-01-`) et asserte qu'il coupe juste après lui, une fois.
+- ⚠️ **`#feedList` NAÎT AVEC SON SQUELETTE** (`#feedSkeleton`, dans le balisage) : « premier enfant du fil » mesure le
+  parseur, pas l'application. La première vraie carte est le premier enfant qui n'est pas le squelette.
+- ⚠️ **PAGE D'UN COUP, LA COURSE NE TOUCHE PAS app-09** : sur le réseau du poste, le parseur ne fait que de courtes
+  pauses ; app-01 seul les attrape (⑤, 1 à 2 fois sur 12). Il faut une page qui ARRIVE lentement pour voir le reste.
+- ⚠️ **UN CORRECTIF QUI MARCHE N'EST PAS ENCORE LE BON** : la retenue était verte, mutée, stable — c'est la mesure de son
+  coût, contre `main` et en alternance, qui l'a écartée. Mesurer l'écran final AVANT de choisir où réparer : ici, il
+  disait qu'un seul panneau dépendait de l'ordre.
+- ⚠️ **PROBABLEMENT PAS NEUF** (lu dans le code, non mesuré) : l'ancien `app.js` unique, inséré par un chargeur du même
+  genre depuis le 2026-07-03, sortait lui aussi du cache sans attendre le parseur.
+- ⚠️ **COLLISION DE NUMÉROS LAISSÉE TELLE QUELLE** : #821 (la feuille de style) et #822 (le `load` rejoué), fusionnées
+  le même jour, ont chacune nommé un cas ⑨ dans ce banc. Ceux de la feuille (⑨ ⑩) sont cités partout ; renommer celui
+  de #822 (en ⑪) oblige à changer le renvoi de `scripts/build.js` (étape 1, paragraphe STAB-01) — sans quoi ce « ⑨ »
+  désignerait le cas de la feuille, le mauvais. C'est un chemin critique (contre-revue humaine) : ce lot n'y touche
+  pas, la renumérotation se fera au prochain passage dans ce fichier.
+- Vu en route, non traité : emoji-misc.js retire, 100 ms après son chargement, le premier élément dont le style en
+  ligne contient `rgba(0,0,0,0.5)` (« fermer les diagnostics ») — aucun dans le balisage aujourd'hui, mais n'importe
+  quel élément créé ainsi avant ces 100 ms disparaîtrait.
+- ⚠️ **Vu en route, non traité — L'ORDRE NORMAL A SON DÉFAUT AUSSI** (relevé par `audit-passio`, mesuré par elle sur
+  l'artefact, 2 ouvertures sur 2 par moteur ; lu dans le code ici) : `app-08` pose au niveau du fichier
+  `$$(".nav-item").forEach(…)` (clic + clavier → `goTo`). En production, app-08 tourne d'ordinaire APRÈS la fin de la
+  page, où `ui-v2-shell.js` a déjà créé ses boutons `.nav-item.nav-v2-item` avec leur propre écouteur : un toucher sur
+  la barre v2 fait deux `goTo`, deux entrées d'historique, et le premier « retour » ne fait rien de visible. En
+  développement (app-08 avant ui-v2) le défaut n'existe pas — le commentaire d'ui-v2-shell.js suppose cet ordre-là.
+  Remède proposé : `#appNav .nav-item` ou `.nav-item:not(.nav-v2-item)`. Proposé en lot séparé.
+
+## Lot abus et capacité — reprise locale (2026-11-16)
+
+Travail interrompu repris sur la branche existante, sans opération distante. Les corps et prédicats
+ont été comparés aux photographies de production fournies par le lead ; ces photographies restent
+hors du dépôt. Aucun changement de messagerie, de configuration AAL2 ou TURN.
+
+Les trois migrations du 15/11 ajoutent des budgets atomiques par jour UTC, optimisent fil_compteurs
+en conservant les prédicats de visibilité, indexent les recherches, conservent le contrôle du quota
+Storage et séparent la capacité anonyme de télémétrie. Les statistiques de lignes sont approximatives.
+La purge est bornée par lots et par journées UTC complètes pour ne pas réagréger une journée amputée.
+Les nouvelles tables internes sont sous RLS sans droits clients ; les helpers internes ne sont pas RPC.
+
+Client : recherche de personnes à trois caractères, heartbeat 60 s (jusqu'à 240 s délesté),
+présence dashboard 270 s, recul exponentiel avec jitter en panne, recharge de version étalée.
+Le fil demande explicitement la propagation des erreurs : la lecture retournait [] même sous panne,
+rendant le catch du nouveau backoff inaccessible. Un échec partiel de lecture des cartes recule aussi.
+Le prévol sans CDC prouve une publication par lecture JWT destinataire ; il ne prétend pas mesurer
+une livraison Realtime de publication. Aucune campagne réseau exécutée.
+
+Ordre de livraison : client d'abord (marqueur video_lives:photo-https), puis migrations plafonds,
+lectures, telemetrie, après les lots de novembre précédents. Chaque migration est transactionnelle
+et rejouable ; revue critique et test SQL sur PostgreSQL jetable restent requis avant application.
+Les retours arrière sont décrits dans chaque fichier. Aucun déploiement ni application SQL effectué ici.
+
+Limites explicites : les HEAD count=exact des cartes et les comptages d'abonnés restent sous RLS
+par ligne ; D14-01 n'est donc que partiellement corrigé. Le cache Storage a été retiré après relecture : contrôle existant conservé, scans coûteux encore présents.
+Aucun DDL sur le schéma storage géré par Supabase.
+Les bornes de télémétrie fondées sur pg_stat sont approximatives, pas des quotas stricts.
+Le banc garde des lectures legacy et des HEAD : il ne certifie pas la capacité du client complet.
+Pas de preuve de tenue à 100 000 utilisateurs.
+
+Reprise finale Codex (16/11) : risque critical, finalisation du lot existant uniquement ;
+agent de correction/relecture locale : Codex, seconde revue indépendante encore requise.
+Critères : budgets journaliers atomiques, visibilité conservée, aucun cache Storage permissif,
+prévol sans CDC vérifié par lecture JWT destinataire ; aucun DDL sur storage.
+Socle local HEAD a270749b ; référence main locale d4c885af ancêtre du HEAD. Conformité avec
+le dernier état distant non revérifiée (consigne sans distant). Catalogue fourni LEAD relu.
+Le banc SQL vérifie maintenant aussi l'identité intégrale de quota_stockage_ok avant/après
+et la présence effective des verdicts. Aucun serveur PostgreSQL disponible sur le PATH :
+syntaxe Bash contrôlée, exécution SQL non réalisée, à faire sur une instance jetable avant
+revue/application. La purge conserve une borne UTC complète ; pg_stat reste approximatif.
+Le test unitaire exécute le vrai chemin livraison sans CDC et vérifie les deux JWT,
+l'absence de sonde CDC et l'échec si la publication reste invisible.
+Intégration pilotage pertinente : battement délesté et fenêtre de présence alignés ; aucune
+remédiation automatique ajoutée. Retour arrière : migrations documentées, client réversible.
+
+Validation finale : tests unitaires ciblés passants (59 initiaux, puis 43 après ajout de deux cas),
+Bash -n et diff --check passants. npm run verif s'arrête sur quatre échecs de bornes-ci.test.mjs
+(délais mesurés trop longs / processus expiré sous Windows), hors fichiers du lot : vérification
+complète NON verte, à reprendre dans le runner adapté avant fusion. Aucun contournement ajouté.
+Point de revue restant : fil_compteurs passe en SECURITY DEFINER avec les prédicats clients.
+Les lectures service_role privées peuvent différer du comportement antérieur sans RLS ; la
+correction proposée pour préserver cette compatibilité a été refusée par la revue automatique
+faute d'autorisation explicite du changement sensible. Aucun contournement ni correction appliquée.
+Les migrations ne sont donc pas annoncées prêtes à appliquer : trancher ce point, exécuter le
+banc SQL jetable avant/après/rejeu et obtenir la contre-revue critique avant toute application.
+
+Résultat navigateur final : 67/67 tests locaux passants avec Chrome via PASSIO_CHROMIUM
+(11,4 min pour les cinq fichiers, dont 9,6 min pour la suite PWA). Unitaires finaux : 61/61.
+La durée demandée a été dépassée par ces vérifications ; aucun échec navigateur.
+
+Suivi D10-01 demandé : reste OUVERT, aucune extension messagerie dans ce lot.
+D'après le catalogue LEAD : conv_members INSERT et conv_messages INSERT appellent déjà
+le compteur commun à 60/min ; le lot ajoute donc 900/jour avant 7 jours, 3 600/jour ensuite.
+Les budgets persistent côté PostgreSQL (debit_ecritures, debit_jour), UPSERT atomiques,
+clé par table/opération/source et fenêtre serveur ; ils survivent à un rechargement navigateur.
+Ils ne sont pas un budget global multi-comptes et les opérations de service échappent au jour.
+conv_reads : aucun trigger de débit dans le catalogue, seulement diffusion de lecture,
+rid et barrière de suppression. Ses INSERT/UPDATE last_read_at ne sont donc pas couverts.
+conv_members UPDATE n'est pas couvert par son trigger INSERT. Le lot ne pose pas de quota
+général UPDATE : il étend seulement les compteurs existants, notamment profils/lives/passions.
+Receipts par message/compte, broadcasts, destinataires du fanout et octets/événements Realtime
+n'ont pas de budget propre : limiter une insertion ne compte pas chaque émission qu'elle produit.
+Télémétrie : réserve anon/comptes sur statistiques de lignes approximatives et purge par lots,
+pas de plafond strict de tout le volume d'événements. Les reculs/heartbeats côté navigateur
+réduisent la charge normale, mais ne remplacent pas une protection serveur contre l'abus direct.
+Ordre restant : revue critique du point fil_compteurs service_role, banc PostgreSQL jetable
+avant/après/rejeu, CI verte, puis client servi portant video_lives:photo-https, migrations
+plafonds → lectures → telemetrie, contrôle sur cible et observation pilotage. Aucun de ces
+gestes distants, aucune charge ni application de migration n'a été exécuté ici.
+
+
+## Diagnostic du banc de charge — 17 novembre 2026
+
+Le timer HTTP reste 12 s, mais les échecs indiquent désormais le stade atteint
+(préparation, attente des en-têtes, lecture du corps, validation), la première
+origine locale d'interruption (échéance ou arrêt de campagne) et l'état du signal.
+Ces nouveaux champs sont fermés, sans propriété d'exception, URL ou identité ;
+les motifs historiques uppercase de motifSur restent inchangés et gardent leur limite.
+
+L'état adaptatif est conservé entre paliers. Une photographie agrégée après
+échauffement, avant mesure, compte les acteurs froids/partiels/chauds ; aucune Map
+n'est vidée, aucune clé/valeur n'est exportée. Auth, cibles, budgets, cadence,
+verdicts et nettoyage sont conservés. Le banc privé a validé la parité avec
+l'ancien chemin ; les 11 tests intégrés exercent les vrais requete/stop/palier
+en VM avec fetch et horloges injectés, sans lancer l'opérateur ou un réseau.
+
+Ce lot ne corrige pas causalement le pic historique et ne donne aucun GO. Le
+palier 100 n'a pas été relancé. Implémentation Codex, contre-revue Root favorable
+et relecture séparée de l'adaptation de la fixture VM existante : ses assertions
+sont conservées. Les 55 tests concernés et `npm run verif` passent sous Node22.
+Les chemins scripts/tests restent critiques pour la gouvernance. Pilotage :
+catégories et compteurs de rapport seulement, aucune connexion/remédiation active.
+
+## 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+
+Revérification du 20/11 (groupe C) : la correction serveur de `fil_compteurs` tenait, mais trois
+chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation.
+
+- **Repli du fil.** Toute erreur de `fil_compteurs` (délai à 8 s, 503) basculait la page sur les
+  trois lectures d'avant (`post_likes` sans limite, commentaires, réactions — contrôle RLS par
+  ligne), et trois échecs passaient la session entière en legacy ; ce repli « réussissait », donc le
+  filet ne reculait pas. **Règle :** le chemin d'avant ne sert que pour une fonction ABSENTE
+  (PGRST202/42883, `_erreurFonctionAbsente`). Sur une erreur de charge, `_chargerComplementsFil`
+  rend `source: "echec"` : la copie précédente de chaque publication fait foi
+  (`_complementConserve`), aucune autre lecture ne part, la fonction est retentée après
+  `reculSurErreur(15 s, n)` ; le filet du fil lit `window._filComplementsDegradesSeq` et compte le
+  tour comme un échec.
+- **Compteur des cartes.** Trois `HEAD count=exact` par tour (règle de lecture de `post_likes`
+  évaluée par « j'aime ») → UN appel groupé `fil_compteurs` (`_postLikeLireGroupe`) ; le HEAD ne
+  reste que si la fonction est mémorisée absente. Le recul n'est plus remis à zéro par
+  `_postLikeRefreshReprise` (retour au premier plan, `online`) ni rapproché par un réveil : seule
+  une lecture réussie le lève. La cadence de base (15 → 60 s) est INCHANGÉE : le banc de charge en
+  porte une copie verrouillée (`tests/unit/charge-realiste.test.mjs`), et il modélise encore trois
+  HEAD par tour — il surestime donc ce poste (à réaligner avec D15-01).
+- **Diffusions de messages tronquées** (préparation de D10-01, client prêt AVANT la migration) :
+  `tronque: true` + `id` dans la charge → relecture de `conv_messages` par identifiant
+  (`_relireMessageTronque`), au plus 30/min, jamais deux fois le même, ligne d'une autre
+  conversation jetée, un seul nouvel essai ; jamais le contenu tronqué peint comme entier.
+- **B06-N1** : `supaLoadMyConversations` filtre ses lignes (`_lignesConv`) et construit chaque
+  conversation sous son propre `try` — une ligne invalide ne vide plus la liste.
+
+**Contre-revue du même jour** — quatre corrections :
+- **Erreur durable ≠ charge** (`_filCompteursErreurPassagere`) : seuls réseau, délai, 5xx/401/408/429
+  sans code, 57014, classes 53/08/40, PGRST000-003 et PGRST3xx (jeton) reculent en gardant les
+  compteurs. Un 4xx ou un code durable (42501 après un droit retiré, PGRST203…) prend le chemin
+  d'avant, mémorisé pour l'heure comme une absence — sinon le fil restait à 0 j'aime pour toute
+  publication neuve, indéfiniment. L'ATTENTE du recul n'est plus comptée comme un échec du filet
+  (seul un appel parti et en échec l'est) : le filet est le seul chemin des nouvelles publications.
+- **Un seul recul pour la fonction** : fil et cartes lisent et écrivent `_filCompteursEchecs` /
+  `_filCompteursProchainEssai` (`_filCompteursEnRecul`, `_filCompteursNoterSucces`) ; un succès de
+  l'un lève le recul de l'autre, et un échec arrivé pendant une fenêtre de recul (rafale concurrente
+  au démarrage) ne compte pas.
+- **Sous-lecture en échec** (messages, membres, accusés) : `supaLoadMyConversations` rend `[]`
+  (= garder le local) au lieu de fabriquer des entrées sans aperçu qui remplaçaient la copie locale.
+- **Drapeau `tronque` honoré sur `user:<moi>` seulement** : sur `conv:<id>`, où tout membre émet,
+  la charge est jetée (sinon : rejeu d'un ancien contrôle d'autrui rendu authentique, et une lecture
+  par abonné pour chaque charge forgée). Budget de relecture : 60/min, dont 20 par conversation ;
+  hors budget ou relecture en échec, la conversation reçoit sa pastille non lue, sans contenu.
+
+Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
+et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).

@@ -187,10 +187,11 @@ test("⑤ le champ de recherche dit « Rechercher sur KLIPY » — le panneau g�
   expect(r.panneau).toBe("Rechercher sur KLIPY");
   expect(r.messagerie).toBe("Rechercher sur KLIPY");
   expect(r.sansCle).toBe("Rechercher un GIF…");
-  // Les trois autres champs (commentaires ×2, réaction GIF d'une bobine) lisent la même fonction.
+  // Les deux autres champs (commentaires ×2) lisent la même fonction. La réaction GIF
+  // d'une bobine a été RETIRÉE (LOT-14, BOB-C18 : elle n'écrivait que dans l'état local).
   const app04 = lire("js/app-04-comments-shop.js");
   expect((app04.match(/search\.placeholder = \(typeof passioGifPlaceholder === "function"\) \? passioGifPlaceholder\(\)/g) || []).length).toBe(2);
-  expect(lire("js/app-05-config-profil.js")).toMatch(/placeholder="\$\{escapeHtml\(typeof passioGifPlaceholder === "function" \? passioGifPlaceholder\(\)/);
+  expect(lire("js/app-05-config-profil.js")).not.toMatch(/showGifPickerForReelComment/);
   for (const f of ["js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/emoji-misc.js"]) {
     expect(lire(f), f).not.toMatch(/placeholder\s*=\s*"Rechercher un GIF…"|placeholder="Rechercher un GIF…"/);
   }

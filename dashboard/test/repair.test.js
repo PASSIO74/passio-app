@@ -138,7 +138,8 @@ test("le prompt interdit explicitement de toucher aux tests et autorise le refus
   assert.match(p, /Ne touche JAMAIS aux tests/);
   assert.match(p, /PAS DE CORRECTIF SÛR/);
   assert.match(p, /diff unifié/);
-  assert.ok(p.includes("const a = 1;"), "le contenu du fichier doit être fourni par le serveur");
+  assert.ok(!p.includes("const a = 1;"), "aucun fichier dynamique choisi depuis un diagnostic ne devient une consigne");
+  assert.match(p, /empreinte/, "la pièce source reste corrélable par empreinte seulement");
 });
 
 test.after(() => { fs.rmSync(TMP, { recursive: true, force: true }); });

@@ -193,7 +193,7 @@ test.describe("UI-6A0 — Créer une activité", () => {
   test("⑤ coupé, la modale d'avant revient, sans rangement ni garde", async ({ page }) => {
     await boot(page, { coupe: true });
     await ouvrir(page);
-    await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer un événement IRL");
+    await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer une activité");
     expect(await page.evaluate(() => document.getElementById("modalContent").classList.contains("v6a0"))).toBe(false);
     await expect(page.locator("#modalContent details.v6a0-options")).toHaveCount(0);
     await compterEnvois(page);
@@ -218,7 +218,7 @@ test.describe("UI-6A0 — Créer une activité", () => {
   });
 
   for (const largeur of [320, 390, 430]) {
-    test(`⑥ capture ${largeur} px, sans débordement horizontal`, async ({ page }) => {
+    test(`⑥ capture ${largeur} px, sans débordement horizontal`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: largeur, height: 900 });
       await boot(page);
       await ouvrir(page);
@@ -227,7 +227,13 @@ test.describe("UI-6A0 — Créer une activité", () => {
         return m.scrollWidth > m.clientWidth + 1;
       });
       expect(deborde, "aucun débordement horizontal").toBe(false);
-      await page.locator("#modalContent").screenshot({ path: path.join(__dirname, "..", "..", "docs", "captures", "ui-6a0", `creer-activite-${largeur}.png`) });
+      // ⚠️ LES CAPTURES VERSIONNÉES NE SE RÉÉCRIVENT QUE SUR DEMANDE (2026-11-10, STAB-11) : jusque-là chaque
+      // passage de la suite modifiait docs/captures/ui-6a0/*.png — un arbre sale après `npm run test:local`, et
+      // trois images prêtes à partir dans le commit de quelqu'un d'autre. `PASSIO_CAPTURES=1` les régénère.
+      const cible = process.env.PASSIO_CAPTURES === "1"
+        ? path.join(__dirname, "..", "..", "docs", "captures", "ui-6a0", `creer-activite-${largeur}.png`)
+        : testInfo.outputPath(`creer-activite-${largeur}.png`);
+      await page.locator("#modalContent").screenshot({ path: cible });
     });
   }
 });

@@ -24,6 +24,8 @@ async function banc(page) {
     window._supaReal = true;
     window.__toasts = []; window.__notifs = [];
     window.toast = (t) => window.__toasts.push(String(t));
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     window.supaInsertNotif = async (to, kind, ref, txt) => { window.__notifs.push(kind + ":" + to); };
     window.__cancel = true; window.supaCancelEvent = async () => window.__cancel;
@@ -114,7 +116,7 @@ test.describe("IRL-13 — annuler prévient les trois listes, après le verdict"
     expect(r.statut).toBe("active");
     expect(r.notifs).toEqual([]);
     expect(r.toasts.some((t) => /non enregistré/.test(t))).toBe(true);
-    expect(r.toasts.some((t) => /^Événement annulé/.test(t))).toBe(false);
+    expect(r.toasts.some((t) => /^(Événement|Activité) annulée?/.test(t))).toBe(false);
   });
 
   // IRL-13, second volet (contre-revue Astra, 2026-09-15) : l'annulation d'une
@@ -163,7 +165,7 @@ test.describe("ROB-05 — la géolocalisation refusée se dit", () => {
     expect(r.erreur).toBe(true);
     expect(r.titre).toBe("Paris (par défaut)");
     expect(r.label).toBe("Paris (par défaut)");
-    expect(r.t1.filter((t) => /Localisation indisponible/.test(t)).length).toBe(1);
+    expect(r.t1.filter((t) => /Position indisponible/.test(t)).length).toBe(1);
     expect(r.t2).toBe(1);
     // La sortie existe : choisir une ville remplace le repli.
     expect(await page.evaluate(() => { irlSelectedCity = { name: "Lyon", lat: 45.76, lng: 4.83 }; updateIrlCityTitle(); return _irlReferenceLabel(); })).toBe("Lyon");

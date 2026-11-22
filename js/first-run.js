@@ -638,6 +638,13 @@
     if (pd && pd.style && pd.style.display !== "none" && pd.style.display !== "") return true;
     // Feuille basse / panneau plein écran ouverts par un autre lot.
     if (document.querySelector(".ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
+    // Les Paramètres (2026-11-20, contre-revue du parcours du nouvel inscrit) :
+    // une bulle posée pendant qu'ils sont ouverts tombait SOUS leur fond
+    // (z-index 9000 contre 49999) et prenait le focus clavier sur un bouton
+    // invisible. La fenêtre s'est allongée quand la bulle a appris à attendre la
+    // fin d'un toast (3,3 s au lieu de 0,7).
+    var dp = document.getElementById("devPanel");
+    if (dp && dp.classList.contains("active")) return true;
     var l = document.getElementById("landing");
     if (l && l.classList.contains("active")) return true;
     var o = document.getElementById("onboarding");
@@ -905,10 +912,28 @@
     assurerReferentiel();   // les libellés des spécialités viennent du référentiel plat
     chargerPopulairesVivantes();
     try { openModal(panneauHTML()); } catch (e) { journal("ouverture du panneau", e); return; }
+    // ⚠️ LE FOCUS SEULEMENT AVEC UNE SOURIS (parcours du nouvel inscrit,
+    // 2026-11-20). Sur un téléphone, poser le focus dans le champ ouvre le
+    // clavier — Chrome Android comme Safari iOS le font encore 60 ms après le
+    // toucher — et le clavier recouvre la grille et « Voir mon fil » : la
+    // personne venait choisir des tuiles, elle doit d'abord fermer un clavier
+    // qu'elle n'a pas demandé. La recherche reste à un toucher.
+    if (!pointeurFin()) return;
     setTimeout(function () {
       var champ = document.getElementById("frSearch");
       if (champ) { try { champ.focus(); } catch (e) {} }
     }, 60);
+  }
+
+  // Pointeur fin = souris ou pavé : poser le focus n'y ouvre aucun clavier
+  // virtuel. Même règle que le champ de commentaire : `_pointeurFin` (app-04)
+  // fait autorité ; le repli local ne sert que si ce script manquait. Sans
+  // `matchMedia`, on s'abstient — le choix qui ne peut pas ouvrir un clavier.
+  function pointeurFin() {
+    try {
+      if (typeof window._pointeurFin === "function") return !!window._pointeurFin();
+      return !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+    } catch (e) { return false; }
   }
 
   function passionsDuFil() {
@@ -1285,8 +1310,71 @@
     rendreFil();
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
     tel("guest_passions_saved", { n: p.passions.length, s: p.specialites.length, from: _panneauOrigine });
-    try { toast("Ton fil est à toi ✨"); } catch (e) {}
-    planifierTour();
+    // ⚠️ UN MESSAGE À LA FOIS (parcours du nouvel inscrit, 2026-11-20). Mesuré à
+    // 390 × 664 : le toast « Ton fil est à toi », la note « Gardées sur cet
+    // appareil » et la bulle « Un Fil construit autour de tes passions »
+    // arrivaient ensemble, le toast (3 s) posé SUR la rangée « Ne plus afficher
+    // / Compris » de la bulle (700 ms). La note dit déjà que le choix est pris,
+    // et porte la porte du compte : quand elle se pose À L'ÉCRAN, le toast se
+    // tait. Sinon (note déjà vue, ou posée au-dessus du pli d'un fil défilé —
+    // contre-revue du lot), le toast parle et la bulle attend sa fin.
+    // Une bulle restée à l'écran AVANT le panneau (posée au démarrage, jamais
+    // touchée : la fenêtre la recouvrait sans la retirer) reparaissait SOUS le
+    // toast — mesuré par ② ter. Elle est caduque : on la retire, comme
+    // `surNavigation` à chaque changement d'écran (son étape est déjà marquée
+    // vue), et le planificateur pose la suivante en temps voulu.
+    try { fermerBulle(); } catch (e) { journal("bulle avant validation", e); }
+    var notePosee = false;
+    try { notePosee = poserNoteLocale(); } catch (e) { journal("note locale", e); }
+    var noteVue = notePosee && aLEcran(document.getElementById("frNoteLocale"));
+    var MESSAGE_FIL = "Ton fil est à toi ✨";
+    if (!noteVue) { try { toast(MESSAGE_FIL); } catch (e) {} }
+    planifierTour(noteVue ? undefined : dureeDuToast(MESSAGE_FIL) + 300);
+  }
+
+  // Un élément est-il dans la fenêtre, au moins en partie ?
+  function aLEcran(el) {
+    if (!el) return false;
+    try {
+      var r = el.getBoundingClientRect();
+      return r.height > 0 && r.bottom > 0 && r.top < (window.innerHeight || 0);
+    } catch (e) { return false; }
+  }
+
+  // Durée réelle d'un toast (`dureeToast`, app-02) : la bulle qui le suit ne
+  // doit pas se poser dessous. Repli : 3 s, la durée plancher d'un toast.
+  function dureeDuToast(msg) {
+    try { if (typeof window.dureeToast === "function") return Number(window.dureeToast(msg, false)) || 3000; } catch (e) {}
+    return 3000;
+  }
+
+  // ENT-C15 (audit UX/UI du 2026-11-10) : au moment où le visiteur vient
+  // d'investir (ses passions), on dit qu'elles ne vivent que sur cet appareil,
+  // et la porte du compte qui les garderait. Une seule fois, refermable.
+  function poserNoteLocale() {
+    if (!estVisiteur()) return false;
+    var p = prefs();
+    if (p.noteLocaleVue || document.getElementById("frNoteLocale")) return false;
+    var rangee = document.getElementById("profileStrip");
+    if (!rangee || !rangee.parentNode) return false;
+    var n = document.createElement("div");
+    n.id = "frNoteLocale";
+    n.className = "fr-note-locale";
+    n.setAttribute("role", "status");
+    n.innerHTML = '<span class="fr-note-locale-texte">Gardées sur cet appareil.</span>'
+      + '<button type="button" class="fr-note-locale-cta">Créer mon compte pour les retrouver partout</button>'
+      + '<button type="button" class="fr-note-locale-fermer" aria-label="Fermer">×</button>';
+    n.querySelector(".fr-note-locale-cta").addEventListener("click", function () {
+      if (n.parentNode) n.parentNode.removeChild(n);
+      ouvrirAuth("signup", "passions_locales");
+    });
+    n.querySelector(".fr-note-locale-fermer").addEventListener("click", function () {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    });
+    rangee.parentNode.insertBefore(n, rangee.nextSibling);
+    p.noteLocaleVue = true;
+    sauverPrefs();
+    return true;
   }
 
   // Applique les préférences du visiteur au moteur EXISTANT du fil. Aucun
@@ -1518,9 +1606,55 @@
       screen: ecranActif() || "feed",
       hash: RE_LIEN_PROFOND.test(h) ? h : "",
       action: ctx || "",
-      scroll: mesurerScroll()
+      scroll: mesurerScroll(),
+      // LOT-2 (audit UX/UI du 2026-11-10, PAR-C02) : la CIBLE lue à l'écran.
+      // L'adresse ne suffisait pas : le routeur de `#post-<id>` la nettoie
+      // AVANT d'ouvrir (mesuré : `retour.hash` vide, la publication jamais
+      // rouverte), et une fiche d'activité repose `#event-<id>`, que le routeur
+      // `#irl-event-` ne relit pas. Un genre et un identifiant, rien d'autre.
+      cible: cibleOuverte()
     };
     sauverPrefs();
+  }
+
+  // ── Le contenu ouvert par-dessus l'écran (LOT-2, PAR-C01 / PAR-C02) ─────────
+  // Publication, fiche d'activité ou bobine : ce que la personne regardait quand
+  // elle a demandé un compte. Lu dans ce qui est AFFICHÉ, jamais dans l'adresse.
+  function cibleOuverte() {
+    try {
+      if (typeof reelsState !== "undefined" && reelsState && reelsState.open) {
+        var it = reelsState.items && reelsState.items[reelsState.current];
+        if (it && it.id) return { genre: "bobine", id: String(it.id) };
+      }
+    } catch (e) {}
+    try {
+      var ev = document.getElementById("eventDetailPage");
+      if (ev && ev.style && ev.style.display && ev.style.display !== "none" && window._openEventDetailId) {
+        return { genre: "activite", id: String(window._openEventDetailId) };
+      }
+      var pd = document.getElementById("postDetailPage");
+      if (pd && pd.style && pd.style.display && pd.style.display !== "none") {
+        var art = pd.querySelector("[data-postid]");
+        if (art && art.getAttribute("data-postid")) return { genre: "publication", id: art.getAttribute("data-postid") };
+      }
+    } catch (e) {}
+    return null;
+  }
+  // Le contenu est-il déjà à l'écran (resté ouvert sous le formulaire) ?
+  function memeCible(a, b) { return !!(a && b && a.genre === b.genre && String(a.id) === String(b.id)); }
+  // Rouvre le contenu par sa fonction d'ouverture — jamais en reposant une
+  // adresse. Rend `true` seulement si le contenu EST à l'écran ensuite (déjà
+  // ouvert, ou ouvert maintenant) ; sinon le retour retombe sur l'écran mémorisé.
+  function rouvrirCible(c) {
+    if (!c || !c.id) return false;
+    if (memeCible(cibleOuverte(), c)) return true;
+    try {
+      if (c.genre === "publication" && typeof openPost === "function"
+          && typeof findPostAnywhere === "function" && findPostAnywhere(c.id)) openPost(c.id);
+      else if (c.genre === "activite" && typeof openEventDetails === "function") openEventDetails(c.id);
+      else if (c.genre === "bobine" && typeof openReelById === "function") openReelById(c.id);
+    } catch (e) { journal("rouvrir cible", e); }
+    return memeCible(cibleOuverte(), c);
   }
 
   function mesurerScroll() {
@@ -1545,6 +1679,23 @@
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
+    // LOT-2 (PAR-C01, P0) : le formulaire passe AU-DESSUS du contenu ouvert
+    // (publication, fiche d'activité, bobine), qui reste ouvert dessous — le
+    // fermer reprenait son entrée d'historique et laissait un retour mort
+    // (relecture du lot). Pour un VISITEUR seulement, le contenu est rangé comme
+    // cible du retour, que la connexion recharge la page ou non (PAR-C02) ;
+    // toujours écrite, même nulle, pour qu'une cible ancienne ne ressorte pas.
+    // Une reconnexion (session expirée) n'écrit rien : elle n'est pas une
+    // inscription, et `retour` la ferait compter comme telle.
+    try { document.body.classList.add("fr-auth-dessus"); } catch (e) {}
+    if (estVisiteur()) {
+      try {
+        var _p = prefs();
+        if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
+        _p.retour.cible = cibleOuverte();
+        sauverPrefs();
+      } catch (e) {}
+    }
     // ⚠️ LA BULLE DE REPÈRE NE SURVIT PAS À L'INSCRIPTION (2026-11-09). `.fr-tip`
     // est en `fixed`, z-index 9000 ; `#onboarding` en 50 : mesuré sur iPhone, la
     // bulle « Découvrir » couvrait les onglets puis les champs. `ecranOccupe()`
@@ -1575,6 +1726,10 @@
       }
     } catch (e) {}
     poserSortieExploration();
+    // LOT-2 (ENT-C01) : le formulaire pose son entrée d'historique, comme une
+    // modale — le retour système le ferme (`closeCurrentOverlay` → `fermerAuthParRetour`)
+    // au lieu de changer l'écran dessous, ou de quitter PASSIO.
+    try { if (!_authHistoriquePose && typeof pushOverlayHistory === "function") { pushOverlayHistory("compte"); _authHistoriquePose = true; } } catch (e) {}
     if (mode === "signup") tel("guest_signup_started", { ctx: ctx || "" });
     // Sans cette mesure, les trois portes vers un compte EXISTANT (carte de
     // bienvenue, Paramètres, déconnexion) seraient indiscernables de portes
@@ -1598,16 +1753,53 @@
     b.className = "fr-back-explore";
     b.textContent = "← Continuer à explorer";
     b.addEventListener("click", retourExploration);
-    onb.appendChild(b);
+    // ENT-C03 (audit UX/UI du 2026-11-10) : une BARRE en tête du conteneur
+    // (colonne flex), plus une pastille flottante — elle ne recouvre plus le
+    // logo ni la première ligne d'un refus.
+    onb.insertBefore(b, onb.firstChild);
   }
 
-  function retourExploration() {
+  var _authHistoriquePose = false;
+
+  // Retour système pendant le formulaire de compte (LOT-2, ENT-C01). Seulement
+  // tant que la personne est sur le formulaire d'accès : une fois le compte créé,
+  // les étapes suivantes (âge, prénom, passions) ne se ferment pas par un retour.
+  function fermerAuthParRetour() {
+    var onb = document.getElementById("onboarding");
+    if (!onb || !onb.classList.contains("active")) return false;
+    if (!document.getElementById("frBackToExplore")) return false; // pas ouvert par ce parcours
+    try { if (typeof _compteAuthReel === "function" && _compteAuthReel()) return false; } catch (e) {}
+    // Une fenêtre ouverte PAR-DESSUS le formulaire (CGU, confidentialité, une
+    // histoire, des outils) se ferme d'abord : c'est elle que vise ce retour.
+    try {
+      var mb = document.getElementById("modalBackdrop");
+      if (mb && mb.classList.contains("active")) return false;
+      var sv = document.getElementById("storyViewer");
+      if (sv && (sv.classList.contains("active") || sv.classList.contains("open"))) return false;
+      if (window.ContextualTools && ContextualTools.isOpen && ContextualTools.isOpen()) return false;
+    } catch (e) {}
+    _authHistoriquePose = false; // l'entrée vient d'être consommée par le retour
+    retourExploration(true);
+    return true;
+  }
+
+  function retourExploration(parRetour) {
     var b = document.getElementById("frBackToExplore");
     if (b && b.parentNode) b.parentNode.removeChild(b);
     var onb = document.getElementById("onboarding");
     if (onb) onb.classList.remove("active");
     var l = document.getElementById("landing");
     if (l) l.classList.remove("active");
+    // Fermé au doigt (« ← Continuer à explorer ») : on reprend l'entrée posée à
+    // l'ouverture. Fermé par le retour système : elle vient d'être consommée.
+    if (parRetour !== true && _authHistoriquePose) {
+      _authHistoriquePose = false;
+      try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+    }
+    try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    // LOT-2 (PAR-C01) : le contenu est resté ouvert SOUS le formulaire —
+    // « continuer à explorer », c'est le retrouver tel quel, sans changer d'écran.
+    if (cibleOuverte()) return;
     try { document.body.classList.add("screen-feed-active"); } catch (e) {}
     // ⚠️ AUCUN RÉARMEMENT DE L'ACCUEIL ICI, ET C'EST DÉLIBÉRÉ. Le budget de
     // `planifierAccueil` se consomme bien pendant que le formulaire occupe
@@ -1775,7 +1967,11 @@
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
   // l'interdit (« trois indications principales maximum »).
   var ORDRE_ETAPES = ["decouvrir", "rencontrer", "creer"];
-  var ETAPES_ECRAN = { profiles: "profil", messages: "messages", studio: "studio" };
+  // ENT-C05 (audit UX/UI du 2026-11-10) : plus aucun repère d'ÉCRAN posé à
+  // l'ouverture de Profil, Messages ou Studio — neuf repères interrompaient
+  // chaque premier passage. Les trois marches du tour restent ; les textes de
+  // `ETAPES.profil/messages/studio` restent appelables (`montrerEtape`).
+  var ETAPES_ECRAN = {};
 
   function etapeVue(id) { return !!prefs().tour[id]; }
   function tourAbandonne() { return !!prefs().tour.abandonne; }
@@ -1783,6 +1979,8 @@
   function bulleVisible() { return !!document.querySelector(".fr-tip"); }
 
   function fermerBulle(raison) {
+    // ENT-C05 : le contour de la cible part avec sa bulle.
+    try { Array.prototype.forEach.call(document.querySelectorAll(".fr-tip-cible"), function (n) { n.classList.remove("fr-tip-cible"); }); } catch (_) {}
     var el = document.querySelector(".fr-tip");
     if (!el) return;
     var id = el.getAttribute("data-fr-tip") || "";
@@ -1838,15 +2036,22 @@
 
     // Ancrage borné à la fenêtre, en respectant les safe areas basses (la barre
     // de navigation occupe le bas de l'écran sur mobile).
-    var largeur = Math.min(300, window.innerWidth - 24);
+    // ENT-C05 (audit UX/UI du 2026-11-10) : la bulle ne se pose plus SUR ce
+    // qu'elle présente. C'est une carte en bas de l'écran, au-dessus de la barre
+    // d'onglets, et la cible reçoit un contour ; si la cible occupe elle-même
+    // ce bas d'écran, la carte monte en haut.
+    var largeur = Math.min(360, window.innerWidth - 24);
+    bulle.classList.add("fr-tip-carte");
     document.body.appendChild(bulle);
     var h = bulle.offsetHeight || 120;
-    var gauche = Math.max(12, Math.min(r.left, window.innerWidth - largeur - 12));
-    var haut = r.bottom + 10;
-    if (haut + h + 90 > window.innerHeight) haut = Math.max(12, r.top - h - 10);
+    var BAS = 84;
+    var basCarte = window.innerHeight - BAS;
+    var enHaut = r.bottom > basCarte - h - 8 && r.top < basCarte;
     bulle.style.width = largeur + "px";
-    bulle.style.left = Math.round(gauche) + "px";
-    bulle.style.top = Math.round(haut) + "px";
+    bulle.style.left = Math.round((window.innerWidth - largeur) / 2) + "px";
+    if (enHaut) bulle.style.top = "calc(12px + env(safe-area-inset-top, 0px))";
+    else bulle.style.bottom = "calc(" + BAS + "px + env(safe-area-inset-bottom, 0px))";
+    try { cible.classList.add("fr-tip-cible"); } catch (_) {}
 
     // Échap ferme la bulle. Écouteur porté par la BULLE, pas par `document` :
     // celui d'app-02 ferme déjà la modale sur Échap, et un second écouteur
@@ -1910,20 +2115,34 @@
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
 
-  function planifierTour() {
+  var _tourEcheance = 0;   // instant où la bulle planifiée partira (0 : aucune)
+
+  // `delaiMs` (facultatif) : 700 ms par défaut ; plus long quand un toast vient
+  // de partir, pour que la bulle ne se pose pas sous lui (`validerPersonnalisation`).
+  function planifierTour(delaiMs) {
     if (!reperesAutorises() || tourAbandonne()) return;
+    var delai = (typeof delaiMs === "number" && delaiMs > 0) ? delaiMs : 700;
+    var echeance = Date.now() + delai;
+    // ⚠️ UNE ÉCHÉANCE POSÉE N'EST JAMAIS AVANCÉE (audit du lot, 2026-11-20). Après
+    // « Voir mon fil », la bulle attend la fin du toast (3,3 s) ; mais le retour
+    // au fil rappelle aussitôt `planifierTour()` (par `planifierAccueil`), et le
+    // `clearTimeout` ramenait la bulle à 700 ms — SOUS le toast, mesuré par
+    // `parcours-nouvel-inscrit` ② ter. Une demande plus tardive l'emporte.
+    if (_tourPlanifie && _tourEcheance > echeance) return;
     if (_tourPlanifie) clearTimeout(_tourPlanifie);
+    _tourEcheance = echeance;
     // ⚠️ `setTimeout`, JAMAIS `requestAnimationFrame` : sur une page qui ne
     // compose pas de frames (onglet en arrière-plan, headless, machine
     // saturée), rAF ne part pas — l'indication ne serait jamais posée, en
     // silence. Piège payé au lot UI-3A.
     _tourPlanifie = setTimeout(function () {
       _tourPlanifie = null;
+      _tourEcheance = 0;
       if (ecranActif() !== "feed") return;
       if (document.getElementById("frWelcome")) return; // la carte parle déjà
       if (!etapeVue("decouvrir")) { montrerEtape("decouvrir"); return; }
       if (!etapeVue("creer")) montrerEtape("creer");
-    }, 700);
+    }, delai);
   }
 
   function abandonnerTour() { fermerBulle("abandon"); }
@@ -2336,10 +2555,26 @@
     // Le retour ne sert qu'une fois : le garder ferait re-naviguer à chaque
     // rechargement suivant, longtemps après que la personne soit passée à autre chose.
     pref.retour = null;
+    // LOT-2 : le formulaire de compte est fini — son entrée d'historique (posée
+    // par `ouvrirAuth`) est reprise, sinon elle resterait un retour mort.
+    try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    if (_authHistoriquePose) {
+      _authHistoriquePose = false;
+      try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+    }
     sauverPrefs();
 
     setTimeout(function () {
       try {
+        // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
+        // bobine que la personne regardait est rouverte par sa fonction
+        // d'ouverture, et le rappel s'affiche dessus. Aucune action n'est rejouée.
+        if (r && r.cible && rouvrirCible(r.cible)) {
+          if (r.action && RAPPELS[r.action]) {
+            setTimeout(function () { try { if (typeof toast === "function") toast(RAPPELS[r.action]); } catch (e) {} }, 400);
+          }
+          return;
+        }
         if (r && r.hash) {
           // Destination de lien profond : on redonne la main aux routages
           // existants (`#reel=`, `#irl-event-`…) en reposant le hash.
@@ -2547,6 +2782,7 @@
     voirToutes: voirToutes,
     chercherDansPanneau: chercherDansPanneau,
     validerPersonnalisation: validerPersonnalisation,
+    poserNoteLocale: poserNoteLocale,
     chercher: chercher,
     specialitesDe: specialitesDe,
     // Exposée pour que le banc éprouve le classement RÉEL (2026-10-06).
@@ -2578,6 +2814,8 @@
     poserSortieExploration: poserSortieExploration,
     apresAuthentification: apresAuthentification,
     retourExploration: retourExploration,
+    fermerAuthParRetour: fermerAuthParRetour,
+    cibleOuverte: cibleOuverte,
     migrerPreferences: migrerPreferences,
     // Exposée pour que le verrou interroge la RÈGLE réelle plutôt qu'une copie
     // recopiée dans le test — une copie ne prouverait que sa propre cohérence.

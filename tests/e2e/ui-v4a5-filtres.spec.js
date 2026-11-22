@@ -138,7 +138,7 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     // secondaires (pas de case, donc pas au rang d'un filtre).
     const racc = await page.$$eval("#v4a5Raccourcis [data-irlfilter]",
       (ns) => ns.map((n) => n.textContent.trim() + "|" + n.getAttribute("data-irlfilter")));
-    expect(racc).toEqual(["Mes événements|mine", "Mes rencontres|joined"]);
+    expect(racc).toEqual(["Mes activités|mine", "Je participe|joined"]); // LOT-47 (IRL-C62)
     expect(await page.locator("#v4a5Raccourcis .v4a5-case").count()).toBe(0);
   });
 

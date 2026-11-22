@@ -101,7 +101,7 @@
   // ── Normalisation (même règles que le serveur, en plus strict : le client
   // ne fait confiance ni au cache ni au réseau) ──────────────────────────────
   function normaliser(lignes) {
-    var r = { delestage: 0, coupures: [], bandeau: null };
+    var r = { delestage: 0, coupures: [], bandeau: null, mediasProteges: false };
     if (!Array.isArray(lignes)) return r;
     for (var i = 0; i < lignes.length; i++) {
       var l = lignes[i];
@@ -112,6 +112,8 @@
       } else if (l.cle === "coupures" && Array.isArray(l.valeur.cles)) {
         var ok = l.valeur.cles.every(function (k) { return COUPURES_AUTORISEES.indexOf(k) !== -1; });
         if (ok) r.coupures = l.valeur.cles.filter(function (k, j, a) { return a.indexOf(k) === j; });
+      } else if (l.cle === "medias_proteges") {
+        r.mediasProteges = !Array.isArray(l.valeur) && Object.keys(l.valeur).length === 1 && l.valeur.actif === true;
       } else if (l.cle === "bandeau" && typeof l.valeur.texte === "string") {
         var t = l.valeur.texte.replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
         if (t && t.length <= BANDEAU_MAX) r.bandeau = { texte: t, niveau: l.valeur.niveau === "alerte" ? "alerte" : "info", id: String(l.maj || "") + "|" + t };
@@ -120,7 +122,7 @@
     return r;
   }
 
-  var etat = { delestage: 0, coupures: [], bandeau: null, recuLe: 0, lu: false };
+  var etat = { delestage: 0, coupures: [], bandeau: null, mediasProteges: false, recuLe: 0, lu: false };
 
   function depuisCache() {
     var c = json(CLE_CACHE, null);
@@ -167,9 +169,15 @@
       el.id = "passioBandeauDistant";
       el.setAttribute("role", "status");
       el.setAttribute("aria-live", "polite");
-      el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:10050;display:flex;align-items:center;gap:8px;"
-        + "padding:calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 16px;color:#fff;font:600 14px/1.35 system-ui,-apple-system,sans-serif;"
-        + "box-shadow:0 2px 10px rgba(0,0,0,.25)";
+      // LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : posé en haut (fixed, z 10050),
+      // le bandeau recouvrait la cloche et « ⋯ », et se cachait avec celui du hors
+      // ligne. Il se pose au-dessus de la barre d'onglets, en lavis (encre sur fond
+      // clair) ; avec le hors-ligne affiché, il monte d'un cran (styles.css,
+      // `body.passio-hors-ligne`).
+      el.className = "bandeau-distant";
+      el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom, 0px));z-index:10050;display:flex;align-items:center;gap:8px;"
+        + "padding:4px 4px 4px 14px;border-radius:14px;font:600 14px/1.35 system-ui,-apple-system,sans-serif;"
+        + "box-shadow:0 4px 16px rgba(30,27,75,.18)";
       var t = document.createElement("span");
       t.className = "bandeau-distant-texte";
       t.style.cssText = "flex:1;min-width:0;overflow-wrap:anywhere";
@@ -186,7 +194,9 @@
       el.appendChild(t); el.appendChild(x);
       document.body.appendChild(el);
     }
-    el.style.background = b.niveau === "alerte" ? "#b91c1c" : "#6d28d9";
+    el.style.background = b.niveau === "alerte" ? "#fee2e2" : "#ede9fe";
+    el.style.color = b.niveau === "alerte" ? "#7f1d1d" : "#1e1b4b";
+    el.style.border = "1px solid " + (b.niveau === "alerte" ? "#fca5a5" : "#c4b5fd");
     el.setAttribute("data-niveau", b.niveau);
     el.querySelector(".bandeau-distant-texte").textContent = b.texte;
   }
@@ -199,9 +209,16 @@
   }
   function appliquer(r, recuLe) {
     var avant = etat.delestage;
+    var mediasAvant = etat.mediasProteges;
     etat.delestage = r.delestage; etat.coupures = r.coupures; etat.bandeau = r.bandeau;
     etat.recuLe = recuLe; etat.lu = true;
     ecrire(CLE_CACHE, JSON.stringify({ recuLe: recuLe, reglages: { delestage: r.delestage, coupures: r.coupures, bandeau: r.bandeau } }));
+    // Ce signal sert à libérer les médias résidents. Le serveur autorise chaque
+    // lecture/envoi ; cette préférence n’est jamais chargée depuis localStorage.
+    etat.mediasProteges = r.mediasProteges === true;
+    if (mediasAvant !== etat.mediasProteges) {
+      try { window.dispatchEvent(new CustomEvent("passio:medias-proteges", { detail: { actif: etat.mediasProteges } })); } catch (e) {}
+    }
     appliquerCoupures(r.coupures);
     peindreBandeau();
     if (avant !== etat.delestage) {
@@ -265,6 +282,7 @@
     facteur: function () { return delestageFacteur(); },
     coupures: function () { return etat.coupures.slice(); },
     bandeau: function () { return etat.bandeau ? { texte: etat.bandeau.texte, niveau: etat.bandeau.niveau } : null; },
+    mediasProtegesActifs: function () { return actif() && etat.lu && Date.now() - etat.recuLe < PERIODE_MS && etat.mediasProteges === true; },
     rafraichir: rafraichir,
     actif: actif,
     _etat: etat,

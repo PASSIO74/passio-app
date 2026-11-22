@@ -162,7 +162,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(menu).toContainText("Modifier le profil");
     await expect(menu).toContainText("Photo de profil");
     await expect(menu).toContainText("Photo de couverture");
-    await expect(menu).toContainText("Apparence");
+    await expect(menu).toContainText("Affichage"); // LOT-21 (TRA-C06) : « Apparence & thème » devient « Affichage »
   });
 
   // ⚠️ RETRAIT DES EMOJIS DÉCORATIFS DU MENU ⋯ (Benjamin, 2026-09-03) : « garde

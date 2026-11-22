@@ -1,0 +1,56 @@
+# Configuration de gitleaks (scan « Sécurité de la chaîne », securite.yml) — trié le 2026-11-13.
+#
+# Les règles par défaut restent TOUTES actives (`useDefault`). Ce fichier n'ajoute que des
+# exceptions, chacune par sa VALEUR EXACTE et avec sa raison — jamais un dossier entier : une
+# vraie clé posée demain dans un test ou une migration doit encore faire échouer le scan.
+#
+# Syntaxe `[allowlist]` (une seule table) : gitleaks-action, au SHA épinglé, installe gitleaks
+# 8.24.3, qui ne lit pas encore `[[allowlists]]` (elle y est ignorée sans erreur). Vérifié avec
+# 8.24.3, 8.28.0 et 8.30.1.
+#
+# Rappel de la procédure : un vrai positif ne s'ignore pas, il se RÉVOQUE d'abord. Les empreintes
+# ponctuelles restent dans `.gitleaksignore`.
+#
+# Tri du 13/11 : les 64 trouvailles du scan du 09/11 (toutes les branches, `git log --all`)
+# rejouées à l'identique — 41 sur `main` seul. AUCUNE clé secrète : toutes relèvent d'une des
+# familles ci-dessous. Tous les JWT de l'historique décodent en rôle « anon » ou en valeur de banc ;
+# la clé `service_role` n'apparaît dans aucun commit.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valeurs publiques par conception ou factices — tri du 2026-11-13"
+regexTarget = "secret"
+regexes = [
+  # 1. Clé ANON Supabase du projet ({"role":"anon","ref":"njkiyoklssvefstljemx"}) : servie dans
+  #    chaque page (app-08, index.html, aperçu Netlify, pilotage). La base est protégée par la RLS,
+  #    pas par cette clé.
+  '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24i[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+$''',
+
+  # 2. Empreinte SHA-256 du code d'accès de la beta (GATE_HASH, js/access-gate.js), servie à chaque
+  #    visiteur ; recopiée par les tests et les preuves d'audit pour lever le rideau.
+  '''^67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f$''',
+
+  # 3. Clés publiques lues par chaque navigateur : VAPID PUBLIQUE des appels (app-05 ; la privée
+  #    vit côté serveur) et clé Web GIF (js/emoji-misc.js ; l'appel part du navigateur).
+  '''^BDtLiNPAVm63VXN_z5cc_hliMa_u5DfFsv_CGQ_8Hb41mDbS5UD8F6gKHRdEb2JmTR95g''',
+  '''^u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE$''',
+
+  # 4. Noms de clés localStorage (« passio_xxx_v1 ») : un nom, pas une valeur.
+  '''^passio_[a-z0-9_]+_v[0-9]+$''',
+
+  # 5. Identifiants de passions (migrations/delta_passions_2026-09-10.sql, générée) : des
+  #    identifiants, pas des clés.
+  '''^(1cbd7840336dc47863b9dc9d41a99f4b|29178908bb49fea2e1849c42db383867|8395105991f37af80211dc9cebf2b678|9371c9fe062801596b9a092c2bfc4104|962de4872f2d6a9b7e666e752aff6c11|af3d8ff88354860805a2cfc06c3ce7e2|c30c0858aed26e91df31b294aeae2fda|c89a3eec04e7339c8c228151934b1940|e04cd3547aefb9d6f1ff1f00b23bcb19|e89833e40c163052fde079e3fea6bb97|f648c00d7db7f4d2a30a486b484c19f2)$''',
+
+  # 6. Valeurs inventées des bancs de test (dashboard/test, tests/unit, preuves d'audit) :
+  #    aucune n'ouvre quoi que ce soit.
+  '''^motdepasse-de-banc-42$''',
+  '''^Passio-2026-longue$''',
+  '''^sb_secret_Abc123_def-456XYZ$''',
+  '''^sb_publishable_Abc123''',
+  '''^eyJhbGciOiJIUzI1NiJ9\.$''',
+  '''^eyJhbGciOiJIUzI1NiJ9\.eyJyb2xlIjoiYW5vbiJ9\.c2lnbmF0dXJl$''',
+  '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0\.''',
+]

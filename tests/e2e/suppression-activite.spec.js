@@ -25,6 +25,8 @@ async function banc(page, avecCompte) {
     window._supaReal = true;
     window.__toasts = []; window.__notifs = [];
     window.toast = (t) => window.__toasts.push(String(t));
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     window.__delete = true;
     window.supaDeleteEvent = async () => window.__delete;
@@ -44,7 +46,7 @@ test.describe("IRL-06 — supprimer une activité", () => {
     // RÉINJECTION : sur le code d'avant, l'activité est retirée et « Événement supprimé » affiché.
     expect(await existe(page)).toBe(true);
     const r = await page.evaluate(() => ({ toasts: window.__toasts.slice(), notifs: window.__notifs.slice() }));
-    expect(r.toasts.some((t) => /^Événement supprimé/.test(t))).toBe(false);
+    expect(r.toasts.some((t) => /^(Événement supprimé|Activité supprimée)/.test(t))).toBe(false);
     expect(r.toasts.some((t) => /non enregistrée/.test(t))).toBe(true);
     expect(r.notifs).toEqual([]);
   });
@@ -54,7 +56,7 @@ test.describe("IRL-06 — supprimer une activité", () => {
     await page.evaluate(async () => { await deleteEventConfirm("ev_moi"); });
     expect(await existe(page)).toBe(false);
     const r = await page.evaluate(() => ({ toasts: window.__toasts.slice(), notifs: window.__notifs.slice() }));
-    expect(r.toasts.some((t) => /^Événement supprimé$/.test(t))).toBe(true);
+    expect(r.toasts.some((t) => /^Activité supprimée$/.test(t))).toBe(true);
     // RÉINJECTION : sur le code d'avant, aucune notification.
     const destinataires = r.notifs.map((n) => n.split(":")[1]).sort();
     expect(destinataires).toEqual(["u_a", "u_b", "u_c", "u_d"]);

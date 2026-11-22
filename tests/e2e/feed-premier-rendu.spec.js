@@ -188,7 +188,7 @@ test("§7 — le filtre mood réglé par l'utilisateur est respecté, même s'il
   // Aucun élargissement, aucun repli : le vide est SON choix, on n'y touche pas.
   expect(r.cartes).toBe(0);
   expect(r.repli).toBe(false);
-  expect(r.titre).toBe("Aucun post pour cette sélection");
+  expect(r.titre).toBe("Aucune publication pour cette sélection"); // LOT-34 (FIL-C22)
 });
 
 test("§7 — l'intention mood survit au rechargement (selectedMoods, lui, repart à zéro)", async ({ page }) => {

@@ -229,7 +229,10 @@ test.describe("Liens partagés #post-<id> et #user-<id>", () => {
       sharePost("p1"); await attendre();
       document.getElementById("_shareOutBtn").click();
       try { closeModal(); } catch (e) {}
-      shareUserProfile("u_lea", "Léa Moreau");
+      // LOT-12 (PAR-C07) : le profil ouvre la feuille unique ; « Envoyer à quelqu'un » diffuse.
+      shareUserProfile("u_lea", "Léa Moreau"); await attendre();
+      document.getElementById("_shareUserOutBtn").click();
+      try { closeModal(); } catch (e) {}
       shareEvent("e1"); await attendre();
       document.getElementById("_shareEvOutBtn").click();
       return urls;

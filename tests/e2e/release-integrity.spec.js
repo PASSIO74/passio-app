@@ -1,12 +1,25 @@
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 
 // Ces tests visent l'ARTEFACT de production. En suite dev ils sont volontairement
 // ignorés ; la CI les relance explicitement avec PASSIO_CIBLE=dist.
+//
+// ⚠️ ISOLÉE DU PROJET DE PRODUCTION (2026-11-12). Rien de ce que la suite prouve ne
+// vient de Supabase : l'identité de build (release.json, HTML, service worker) et le
+// garde N+1 se lisent sur le serveur LOCAL de l'artefact ; le bundle différé démarre
+// par `bootOnboarded`, déjà isolé ; le drain observe les POST `telemetry_events`, que
+// sa propre route sert sur TOUT hôte (une route de PAGE : elle passe avant le projet
+// vide, posé au CONTEXTE). Les trois autres démarrages lisaient pourtant la
+// PRODUCTION à chaque passage du job « Gates artefact production » : `posts`, `events`
+// et le référentiel `passions` — 9 tentatives derrière un proxy local qui refuse et
+// compte toute connexion vers `*.supabase.co`, 16 quand les réponses reviennent
+// pleines (le référentiel pagine tant que la page vit). Avec `sansDonneesDistantes` :
+// zéro, et les quatre cas restent verts. Mesure : docs/journal/capacite-perf-realtime.md.
 test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identité", () => {
   test.skip(process.env.PASSIO_CIBLE !== "dist", "contrat vérifiable uniquement sur dist construit");
 
   test("release.json, HTML et service worker désignent exactement le même build", async ({ page, request }) => {
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
 
     const embedded = await page.evaluate(() => window.PASSIO_RELEASE || null);
@@ -58,6 +71,7 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
     test.use({ serviceWorkers: "block" });
 
     test("un onglet N détecte N+1 sans forcer le rechargement", async ({ page }) => {
+      await sansDonneesDistantes(page);
       await page.route("**/release.json*", async (route) => {
         const current = await page.evaluate(() => window.PASSIO_RELEASE).catch(() => null);
         const body = {
@@ -86,6 +100,10 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
     let started = 0;
     let finished = 0;
 
+    // Le démarrage (fil, événements, référentiel) est servi par le projet vide ; la
+    // route `telemetry_events` ci-dessous, posée APRÈS sur la page, garde la main
+    // sur les POST que le drain attend.
+    await sansDonneesDistantes(page);
     await page.addInitScript(() => {
       window.PASSIO_SUPABASE = {
         url: "https://telemetry.test",

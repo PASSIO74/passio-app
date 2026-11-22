@@ -52,14 +52,26 @@ const ID_FORGE = "n_forge_poussee";
 const decoder = (f) => (typeof f.payload === "string" ? f.payload : Buffer.from(f.payload).toString("latin1"));
 const trames = (compte, motif) => compte.frames.filter((t) => t.indexOf(motif) !== -1);
 
-/** B écrit, sous le genre `like` : `follow` est réservé au serveur (`genres_reserves_au_serveur`). */
-const ecrireNotification = (B, pour, texte) => B.page.evaluate(async ([a, t]) => {
+/** A publie : la publication est le FAIT que B aimera (SRV-02, `trg_notifications_preuve`). */
+const publier = (A) => A.page.evaluate(async () => {
+  const id = "p_e2e_poussee_" + uid();
+  const { error } = await supa.from("posts").insert({ id, author_id: MY_UID, content: "essai de poussée" });
+  return error ? null : id;
+});
+
+/** B écrit, sous le genre `like` : `follow` est réservé au serveur (`genres_reserves_au_serveur`).
+ *  ⚠️ Depuis SRV-02 (13/11), la base exige le FAIT : B aime VRAIMENT la publication `postId`
+ *  de A d'abord, et la notification la désigne — comme le fait l'app. Un fait ne vaut
+ *  qu'une notification : deux notifications = deux publications aimées. */
+const ecrireNotification = (B, pour, texte, postId) => B.page.evaluate(async ([a, t, p]) => {
+  const jaime = await supa.from("post_likes").insert({ post_id: p, user_id: MY_UID });
+  if (jaime.error) return { id: null, erreur: "j'aime : " + jaime.error.code + " " + jaime.error.message };
   const id = "n_" + uid();
   const { error } = await supa.from("notifications").insert({
-    id, user_id: a, kind: "like", from_id: MY_UID, ref_id: "e2e_poussee_ref", content: t, seen: false, created_at: new Date().toISOString(),
+    id, user_id: a, kind: "like", from_id: MY_UID, ref_id: p, content: t, seen: false, created_at: new Date().toISOString(),
   });
   return { id, erreur: error ? error.code + " " + error.message : null };
-}, [pour, texte]);
+}, [pour, texte, postId]);
 
 const recueChezA = (A, id) => A.page.waitForFunction((n) => (state.notifications || []).some((x) => x.id === n), id, { timeout: 15000 });
 
@@ -109,7 +121,9 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       });
       const avant = trames(A, "notifications:INSERT").length;
       const debut = Date.now();
-      notificationPremiere = await ecrireNotification(B, A.uid, "essai de poussée, une");
+      const publication = await publier(A);
+      expect(publication, "A publie (le fait de la notification)").toBeTruthy();
+      notificationPremiere = await ecrireNotification(B, A.uid, "essai de poussée, une", publication);
       expect(notificationPremiere.erreur, "écriture de la notification").toBeNull();
       await recueChezA(A, notificationPremiere.id);
       noter(`① reçue en ${Date.now() - debut} ms, ${lecturesBloquees} lecture(s) REST bloquée(s)`);
@@ -173,7 +187,9 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
 
       // Le témoin : pendant ce temps, A reçoit bien ce qui lui revient.
       const chezC = trames(C, "notifications:INSERT").length;
-      notificationSeconde = await ecrireNotification(B, A.uid, "essai de poussée, deux");
+      const publication2 = await publier(A);
+      expect(publication2, "A publie une seconde fois").toBeTruthy();
+      notificationSeconde = await ecrireNotification(B, A.uid, "essai de poussée, deux", publication2);
       expect(notificationSeconde.erreur, "seconde notification").toBeNull();
       await recueChezA(A, notificationSeconde.id);
       await C.page.waitForTimeout(3000);
@@ -260,6 +276,7 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       await supprimer(`conv_members?user_id=in.(${liste})`);
       if (aNettoyer.conv) await supprimer(`conversations?id=eq.${aNettoyer.conv}`);
       await supprimer(`post_likes?user_id=in.(${liste})`);
+      await supprimer(`posts?author_id=in.(${liste})`);
       await supprimer(`profiles?id=in.(${liste})`);
       for (const u of uids) await fetch(cfg.url + "/auth/v1/admin/users/" + u, { method: "DELETE", headers: entetes }).catch(() => null);
     }

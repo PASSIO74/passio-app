@@ -163,12 +163,12 @@ test.describe("résumé hebdomadaire IRL : le réel seulement", () => {
     expect(r.exemplesEligibles, "prémisse : des exemples seraient comptés").toBeGreaterThan(0);
     // RÉINJECTION : sur le code d'avant, « <b>N+1 événements</b> » (exemples compris).
     expect(r.notifs).toHaveLength(1);
-    expect(r.notifs[0].text).toMatch(/^<b>1 événement<\/b> cette semaine /);
+    expect(r.notifs[0].text).toMatch(/^<b>1 activité<\/b> cette semaine /); // LOT-47 (TRA-C23)
     expect(r.notifs[0].text).toContain("Atelier céramique du jeudi");
     expect(r.notifs[0].unread).toBe(true);
     expect(r.notifs[0].id, "porte la marque du résumé compté sur le réel").toBe("irl_digest_" + r.wk);
     expect(r.semaine).toBe(r.wk);
-    expect(r.sys).toEqual([{ titre: "PASSIO — ça bouge près de toi", body: "1 événement cette semaine · Atelier céramique du jeudi" }]);
+    expect(r.sys).toEqual([{ titre: "PASSIO — ça bouge près de toi", body: "1 activité cette semaine · Atelier céramique du jeudi" }]);
     // Et ce résumé-là survit aux frontières (`stripLegacyEconomy`).
     const garde = await page.evaluate(() => stripLegacyEconomy({ notifications: state.notifications.slice() }).notifications.length);
     expect(garde).toBe(1);
@@ -196,12 +196,10 @@ test.describe("Explorer : les tendances ne comptent pas les exemples", () => {
       return { exemplesMusique, tuiles };
     });
     expect(r.exemplesMusique, "prémisse : la démo porte bien plus de 2 publications Musique").toBeGreaterThan(2);
-    expect(r.tuiles.length).toBeGreaterThan(1);
     // RÉINJECTION : sur le code d'avant, Musique affiche « 41 posts » (ou plus,
     // exemples compris) et les autres tuiles leurs comptes de démo.
-    expect(r.tuiles[0]).toEqual({ nom: "Musique", stat: "2 posts" });
-    for (const tuile of r.tuiles.slice(1)) {
-      expect(tuile.stat, tuile.nom + " : aucun compteur sans publication réelle").toBeNull();
-    }
+    // LOT-11 (REC-C14) : seules les passions qui ont des publications RÉELLES
+    // forment la section ; LOT-11 (REC-C09) : le mot est « publications ».
+    expect(r.tuiles).toEqual([{ nom: "Musique", stat: "2 publications" }]);
   });
 });

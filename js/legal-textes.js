@@ -51,8 +51,8 @@ const PASSIO_EDITEUR = {
   //     ② avoir communiqué à cet hébergeur ses éléments d'identification
   //        personnelle — ce que fait un compte Netlify nominatif.
   //   ⚠️ CE RÉGIME TOMBE AU PREMIER EURO. Dès que le service est exploité à
-  //   titre professionnel — les passions payantes d'`openPassionPaywall` en
-  //   sont le déclencheur direct — il faut basculer sur "societe", et les huit
+  //   titre professionnel — un abonnement vendu aux organisateurs en sera le
+  //   déclencheur direct (ADR-013) — il faut basculer sur "societe", et les huit
   //   champs redeviennent obligatoires. Ce n'est pas une destination, c'est un
   //   abri temporaire.
   // "societe" — éditeur professionnel : les huit champs sont EXIGÉS et tout

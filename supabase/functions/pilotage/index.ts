@@ -31,13 +31,14 @@ import { REVISION } from "../_shared/revision.js";
 import { aalDuJeton, egaliteConstante, fusionAutorisee } from "../_shared/pilotage.js";
 import {
   autorise, RELANCES, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote, estReparationDuPilote, reparationConfiee, issueSuivie,
-  erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
+  detailsErreurs, jauges, resumerIssue, verdict, decideAlerte, memoireAlerte, resumeEchelle,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, COMMENTAIRE_CONFIER, dejaConfiee, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
-  EVT_GESTE, RELANCE_SUIVIE_MS,
+  EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
+  EVT_CANARI, CANARI_LECTURE_MS, CANARI_MARQUES_MAX, marqueCanari, bilanCanari, MIGRATION_TELEMETRIE_CLASSES, remplissage, remplissageAveugle, jaugeRemplissage,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -45,8 +46,8 @@ import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
 import {
-  RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
-  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau,
+  RETOUR, REVEIL, CADENCE, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau, rendreCreneau,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
@@ -85,6 +86,9 @@ const ADRESSE = adresseAccuse((n) => Deno.env.get(n));
 const ACCUSE = ADRESSE.accuse;
 type Admin = ReturnType<typeof createClient>;
 
+// Les actions qui n'écrivent rien : interrompues, elles ne laissent aucun doute derrière elles.
+const LECTURES_SEULES = new Set(["etat", "inscrits", "retour_apercu"]);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -95,12 +99,12 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   if (action === "veille") {
-    // Le secret, une fois posé (PILOTAGE_VEILLE_SECRET), ferme le déclencheur anonyme.
-    // Sans lui, rien ne change pour pg_cron (audit 2026-11-06).
+    // Secret obligatoire, partagé avec Vault/pg_cron et le workflow de secours.
+    // Absent ou différent : aucun créneau, lecture ou geste de veille.
     const secret = Deno.env.get("PILOTAGE_VEILLE_SECRET") || "";
     const presente = req.headers.get("x-passio-veille") || "";
     const reconnu = !!secret && egaliteConstante(presente, secret);
-    if (secret && !reconnu) return json({ error: "Non authentifié" }, 401);
+    if (!reconnu) return json({ error: "Non authentifié" }, 401);
     return veille(admin);
   }
 
@@ -116,32 +120,56 @@ Deno.serve(async (req) => {
 
   const plafond = await verifierPlafondEnBase(admin, user.id, "pilotage", { parMinute: 30, parHeure: 600 });
   if (!plafond.ok) return reponsePlafond(plafond, corsHeaders);
+  // Le pilote se marque : la veille le retrouve sans parcourir tous les comptes (uidsPilotes).
+  await noterPilote(admin, user.id);
 
-  switch (action) {
-    // `frais` (2026-11-07) : relu juste après un geste, l'écran ne doit pas sortir du
-    // cache de GitHub d'un AUTRE isolat, qui ne l'a pas vidé (lireGithub).
-    case "etat": return json(await etat(admin, corps.frais === true));
-    case "relancer": return relancer(admin, String(corps.cible || ""));
-    case "essai": return essaiManuel(admin);
-    case "fusionner": return fusionner(Number(corps.numero));
-    case "fermer": return fermer(Number(corps.numero));
-    case "pause": return pause(true);
-    case "reprendre": return pause(false);
-    case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
-    case "masquage": return deciderMasquage(admin, String(corps.id || ""), String(corps.decision || ""));
-    case "reparer": return reparer(corps);
-    case "reglages": return poserReglage(admin, corps);
-    case "retour_apercu": return retourApercu(admin);
-    case "retour_arriere": return retourManuel(admin, corps);
-    case "inscrits": return listerInscrits(admin, corps);
-    default: return json({ error: "Action inconnue." }, 400);
+  const geste = async (): Promise<Response> => {
+    switch (action) {
+      // `frais` (2026-11-07) : relu juste après un geste, l'écran ne doit pas sortir du
+      // cache de GitHub d'un AUTRE isolat, qui ne l'a pas vidé (lireGithub).
+      case "etat": return json(await etat(admin, corps.frais === true));
+      case "relancer": return relancer(admin, String(corps.cible || ""));
+      case "essai": return essaiManuel(admin);
+      case "fusionner": return fusionner(admin, Number(corps.numero), corps.sha);
+      case "fermer": return fermer(Number(corps.numero));
+      case "pause": return pause(true);
+      case "reprendre": return pause(false);
+      case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
+      case "masquage": return deciderMasquage(admin, String(corps.id || ""), String(corps.decision || ""));
+      case "reparer": return reparer(admin, corps);
+      case "reglages": return poserReglage(admin, corps);
+      case "retour_apercu": return retourApercu(admin);
+      case "retour_arriere": return retourManuel(admin, corps);
+      case "inscrits": return listerInscrits(admin, corps);
+      default: return json({ error: "Action inconnue." }, 400);
+    }
+  };
+  // Une exception en plein geste (GitHub muet, délai dépassé) n'est ni un succès ni un refus
+  // (2026-11-12, contre-revue) : elle sortait en 500 nu, et l'écran n'en disait rien d'utile. Un
+  // geste qui ÉCRIT est peut-être parti — c'est dit ; rien n'est promis, rien n'est rejoué.
+  try { return await geste(); }
+  catch (err) {
+    // Un DÉFAUT DU CODE (une variable jamais déclarée — le défaut de #753) n'est pas une panne de GitHub : il se dit
+    // comme tel, en erreur dans les journaux (seconde relecture de #848). Seule la ReferenceError le prouve : une
+    // SyntaxError vient aussi d'un CORPS qui n'est pas du JSON (`Response.json()` sur une page HTML de GitHub, un corps
+    // Netlify vide), une RangeError d'une date illisible, une TypeError d'un `fetch` qui ne joint pas GitHub — des
+    // DONNÉES ou le réseau, donc ambiguës : « peut-être parti » (relecture de #866).
+    // Par le NOM, pas `instanceof` : une erreur venue d'un autre domaine d'exécution garde son nom.
+    const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";
+    const trace = JSON.stringify({ action: action.slice(0, 30), nom: String((err as { name?: string })?.name || ""), erreur: String((err as { message?: string })?.message || err).slice(0, 120) });
+    if (defaut) {
+      console.error("pilotage : défaut du code dans un geste " + trace);
+      return json({ error: "Erreur interne du pilotage (un défaut du code, pas une panne de GitHub) : le geste a peut-être été fait en partie. Relis l'écran ; le défaut est dans les journaux de la fonction." }, 500);
+    }
+    console.warn("pilotage : geste interrompu " + trace);
+    return json({ error: LECTURES_SEULES.has(action) ? "La lecture n'a pas abouti : réessaie dans un instant."
+      : "Le geste a été interrompu (GitHub ou la base n'a pas répondu) : il est peut-être parti. Relis l'écran avant de retoucher." }, 502);
   }
 });
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
-// Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
-// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Réservée aux ordonnanceurs qui présentent le secret de veille.
+// La clé anon seule ne donne aucun accès.
 // Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
 // « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
 // deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)
@@ -158,7 +186,7 @@ async function veille(admin: Admin) {
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
-  const [sante, signalements, github, dispo, rap, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300), lireParcoursVeille(admin)]);
+  const [sante, signalements, github, dispo, rap, rempl, can, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), lireRemplissage(admin), lireCanari(admin), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -170,28 +198,60 @@ async function veille(admin: Admin) {
   // Les parcours critiques (2026-11-06) entrent dans le voyant : un parcours
   // CRITIQUE en panne (comptes serveur distincts, _shared/parcours.js) sonne.
   const parcoursVeille = val(parc);
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille };
+  // La table de télémétrie (2026-11-21, T2) : son remplissage et la mémoire du canari entrent dans le voyant —
+  // pleine, elle refuse les signaux de panne eux-mêmes, et tout ce qui est compté ci-dessus se tait.
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille,
+    remplissage: val(rempl), canari: val(can) };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
-  const prec = await lireEtatMemorise(admin);
+  // La MÉMOIRE du voyant (2026-11-12) : illisible n'est pas « aucun état ». Sa lecture en échec
+  // rendait null, et la veille notait alors le voyant du moment comme un premier état : un vert
+  // posé ainsi effaçait un rouge sans jamais dire « résolu » (pilotage-chemins ㉛).
+  const memoire = await lireEtatMemorise(admin);
+  const prec = memoire.etat;
   // Une source illisible n'est pas une source calme (2026-10-23, tenirVerdict) :
   // une lecture incomplète ne fait jamais BAISSER le voyant mémorisé — sinon
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
   // Une lecture des parcours TRONQUÉE (au-delà de 5 pages) ne prouve pas le calme :
   // un flot de lignes peut pousser l'heure réelle hors de la lecture (revue adversariale).
-  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque);
+  // Des EXÉCUTIONS non lues non plus (2026-11-12, partielGithub) — celles que le VOYANT lit
+  // (RUNS_DU_VOYANT) : on ne sait pas si la dernière mise en ligne a réussi. Le scan de sécurité,
+  // que `verdict` ne lit pas, ne tient rien : illisible, il figeait la veille (relecture de #866).
+  // Les issues, elles, ne tiennent JAMAIS le voyant : le dépôt est public, et tenir tant qu'il y a
+  // du bruit donnait à un tiers le moyen de figer la veille — plus de « résolu », et un nouveau
+  // rouge ne sonnait plus (contre-revue du 12/11).
+  const runsNonLusVoyant = (((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || []).filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));
+  const partielGh = partielGithub({ runsNonLus: runsNonLusVoyant }) as string[];
+  // Le remplissage et la mémoire du canari non plus (2026-11-21) : illisibles, un rouge « table pleine »
+  // se lirait « résolu » à la première lecture manquée.
+  const incomplet = [sante, signalements, github, parc, rempl, can].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
     const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
-    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github), parcours: raison(parc) }));
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: partielGh.length ? ("en partie : " + partielGh.join(" ; ")).slice(0, 160) : raison(github), parcours: raison(parc), remplissage: raison(rempl), canari: raison(can) }));
   }
+  if (memoire.illisible) console.warn("veille : état mémorisé illisible " + JSON.stringify({ code: memoire.code || "?" }));
   const vt = tenirVerdict(prec, v, incomplet);
-  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
+  // Les codes des raisons rouges (2026-11-21, T3) viennent du verdict MESURÉ (`v`), jamais du voyant tenu :
+  // une raison neuve venue d'une source lue sonne même pendant une lecture incomplète.
+  const mesuree = { codes: v.couleur === "rouge" ? v.codes : [], rouges: v.couleur === "rouge" ? v.rouges : [] };
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, ...mesuree, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
-  const change = !prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner;
+  // La mémoire des raisons APRÈS la décision, et gardée : elle ne doit jamais empêcher de sonner.
+  let memo: { codes: string[]; annonces: Record<string, string> };
+  try { memo = memoireAlerte(prec, actuel, d); }
+  catch { memo = { codes: (Array.isArray(actuel.codes) ? actuel.codes : []).filter((c: unknown) => typeof c === "string").slice(0, 24), annonces: {} }; }
+  // L'ensemble des raisons rouges a changé sous un rouge qui dure : l'état se réécrit (sinon une raison
+  // réparée puis revenue ne re-sonnerait pas). Un état d'avant ce lot, sans `codes`, n'est pas réécrit pour ça.
+  const codesPrec = prec && Array.isArray(prec.codes) ? prec.codes : null;
+  const codesChange = !!codesPrec && actuel.couleur === "rouge" && (codesPrec.length !== memo.codes.length || memo.codes.some((c) => !codesPrec.includes(c)));
+  // Mémoire illisible : seul ce qui SONNE (un rouge, un site injoignable) s'écrit — l'alerte
+  // d'abord, quitte à sonner deux fois. Tout autre voyant attend la lecture suivante.
+  const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner || codesChange);
+  const seulCodes = !!prec && prec.couleur === actuel.couleur && prec.dispo === actuel.dispo && !d.sonner && codesChange;
   // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
   // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
   // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
@@ -209,6 +269,10 @@ async function veille(admin: Admin) {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
+      codes: memo.codes, annonces: memo.annonces,
+      // Réécrite pour ses seuls codes (même couleur, même dispo, rien n'a sonné) : marquée, et l'historique
+      // de l'écran l'écarte — un code qui clignote aurait rempli les lignes lues (contre-revue de B1).
+      ...(seulCodes ? { motif: "codes" } : {}),
     } });
     dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
@@ -224,10 +288,16 @@ async function veille(admin: Admin) {
   };
   // Chaque geste passe d'abord par la politique (_shared/politique-autonomie.js) :
   // invalide, en observation ou en pause → aucun geste, l'observation continue.
-  const delestage = await etape(() => delestageAuto(admin, signaux));
+  const delestage = await etape(() => delestageAuto(admin, signaux, e.remplissage));
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
+  // La cadence APRÈS le réveil (2026-11-21) : un passage que le réveil vient de lancer suffit.
+  const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // La MÉMOIRE du canari (2026-11-21, T2) : un refus laisse une marque, le succès qui clôt une suite aussi.
+  // APRÈS l'alerte (rien ne la retarde) et après l'émission : le voyant de CE passage a jugé les marques
+  // d'avant, celui du passage suivant jugera celle-ci. Sa propre panne ne casse rien (étape isolée).
+  await etape(() => noterCanari(admin, canari, e.canari));
   // L'essai des alertes (2026-11-07) : sans note d'envoi depuis 7 jours, rien ne
   // prouve que le téléphone sonnerait ; un essai part, de jour, et s'accuse.
   const essai = await etape(() => essayerAlertes(admin));
@@ -235,8 +305,12 @@ async function veille(admin: Admin) {
   // ce qu'elle a lu et décidé (_shared/battement.js). Son échec ne casse rien.
   const pol = resumerPolitique();
   const battement = await etape(() => battre(admin, contenuBattement({
-    lectures: { sante, signalements, github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud },
-    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    // GitHub lu en partie et mémoire illisible sont des lectures manquées : le battement les dit « ko ».
+    lectures: { sante, signalements, github: partielGh.length ? { status: "rejected" } : github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud,
+      memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, cadence, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    // La mesure d'échelle (2026-11-21, T3) : des NOMBRES, de quoi calibrer les taux (TAUX_VOYANT_PM).
+    echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
@@ -247,7 +321,7 @@ async function veille(admin: Admin) {
   // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
   // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
   // battement (analytics_events) et dans les journaux de la fonction.
-  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), cadence: !!(cadence && cadence.lance), battement: !!(battement && battement.ecrit) }));
   return json({ ok: true });
 }
 
@@ -258,8 +332,55 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
   if (!canariDu(new Date().getUTCMinutes())) return { emis: false };
   const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await anon.from("telemetry_events").insert(ligneCanari("can_srv_" + crypto.randomUUID()));
-  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120) };
+  // Le CODE part avec le motif (PT429 : borne ou débit ; 42501 : RLS ; 57014 : délai) : `noterCanari` les range.
+  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120), code: String((error as { code?: string }).code || "").slice(0, 10) };
   return { emis: true };
+}
+
+// ─── La table de télémétrie se ferme, et personne ne le voit (2026-11-21, T2) ─
+// Logique et textes : _shared/pilotage.js (bilanCanari, remplissage). Ici, les lectures et l'écriture.
+// La MÉMOIRE du canari : les marques `pilotage_canari` des deux dernières heures, sous l'auteur système
+// (écrites par la clé de service : un navigateur ne les forge pas, RLS analytics_insert_own). Une
+// lecture en échec LÈVE : « non lu », jamais « aucun refus ».
+async function lireCanari(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("created_at,properties").eq("event", EVT_CANARI).eq("user_id", "systeme:pilotage")
+    .gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);
+  if (error) throw error;
+  return bilanCanari(data || []);
+}
+// La marque de CE passage (marqueCanari) : chaque refus, et le succès qui clôt une suite — rien en temps
+// normal. Aux journaux, le CODE d'un refus d'écriture, jamais le motif (un texte du serveur).
+async function noterCanari(admin: Admin, resultat: Record<string, unknown>, bilan: { enCours?: boolean } | null) {
+  const m = marqueCanari(resultat, bilan);
+  if (!m) return { note: false };
+  const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_CANARI, properties: m });
+  if (error) { console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?") })); return { note: false }; }
+  return { note: true };
+}
+// Le REMPLISSAGE de `telemetry_events`. Après la migration des classes : `telemetrie_remplissage()`, en temps
+// constant (statistiques du serveur, seuils relus des deux déclencheurs). AVANT (fonction absente, PGRST202) :
+// UN compte exact sous la clé de service — « un compte du pilotage se compte en base » —, borné à 4 s ; au-delà,
+// « non mesuré » (null), JAMAIS 0. Mesuré le 21/11 : 6 ms pour 14 000 lignes, linéaire (≈ 0,35 s à 800 000).
+// Une erreur de la fonction qui n'est PAS une absence (délai, panne) LÈVE, et un remplissage NON MESURÉ aussi
+// (compte abandonné, réponse sans nombre) : une lecture non lue n'est pas une table vide — l'écran ne passe pas
+// au vert, la veille tient son voyant (sinon un rouge « télémétrie pleine » sonnait « résolu » sur un compte lent).
+// ⚠️ « Absente » = PGRST202 SEUL (PostgREST ne trouve pas la fonction), pas `estObjetAbsent` (contre-revue du 21/11) : un
+// 42883 levé DEPUIS la fonction (un objet qu'elle appelle a disparu) ouvrait le repli, et une table qui stationne à 91 %
+// — orange, le régime normal après migration — était jugée sur les seuils d'AVANT : rouge, sonnerie, et une ligne qui
+// demandait d'appliquer une migration déjà en base. Reste PGRST202 quand PostgREST perd son cache de schéma : fiche, limite 18.
+const REMPLISSAGE_DELAI_MS = 4000;
+const fonctionSqlAbsente = (e: unknown) => String((e as { code?: string } | null)?.code || "") === "PGRST202";
+async function lireRemplissage(admin: Admin) {
+  const { data, error } = await admin.rpc("telemetrie_remplissage");
+  let r: ReturnType<typeof remplissage>;
+  if (!error && data && typeof data === "object") r = remplissage(data as Record<string, unknown>);
+  else {
+    if (error && !fonctionSqlAbsente(error)) throw error;
+    const n = await avecDelai(compter(admin.from("telemetry_events").select("id", { count: "exact", head: true })), REMPLISSAGE_DELAI_MS, null);
+    r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });
+  }
+  if (r.vivantes === null) throw new Error("remplissage de la télémétrie non mesuré (compte abandonné après " + REMPLISSAGE_DELAI_MS / 1000 + " s, ou réponse sans nombre)");
+  return r;
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
@@ -402,11 +523,17 @@ async function lireReception(admin: Admin) {
   return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS, tronqueNotifs, notifsLimitees });
 }
 
-async function lireEtatMemorise(admin: Admin) {
-  const { data } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
-    .eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
-  const r = data && data[0];
-  return r ? { ...(r.properties || {}), le: r.created_at } : null;
+// Le dernier voyant noté par la veille. `illisible` (2026-11-12) : la lecture a échoué — ce
+// n'est PAS « aucun état », et l'appelant ne doit ni noter un premier état ni conclure à un retour.
+type EtatMemorise = { couleur?: string; dispo?: boolean; raisons?: string[]; alerteLe?: string | null; dispoDepuis?: string | null; codes?: unknown; annonces?: unknown; le: string };
+async function lireEtatMemorise(admin: Admin): Promise<{ etat: EtatMemorise | null; illisible: boolean; code?: string }> {
+  try {
+    const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
+      .eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+    if (error) return { etat: null, illisible: true, code: String((error as { code?: string }).code || "lecture") };
+    const r = data && data[0];
+    return { etat: r ? { ...(r.properties || {}), le: r.created_at } as EtatMemorise : null, illisible: false };
+  } catch (_e) { return { etat: null, illisible: true, code: "injoignable" }; }
 }
 
 /** La page répond-elle ? Deux essais de 8 s sur release.json (léger, jamais en cache). */
@@ -426,18 +553,74 @@ async function sonder(): Promise<boolean> {
 // le jour même où le trafic les rend indispensables. On parcourt donc les
 // pages jusqu'à avoir trouvé chaque adresse autorisée (ou la fin de la liste),
 // et on garde le résultat 10 min dans l'isolat (un bonus, jamais une garantie).
+// ⚠️ ET CE PARCOURS NE PASSE PAS L'ÉCHELLE (2026-11-12). L'authentification rend les comptes du
+// plus récent au plus ancien : le pilote, premier inscrit, est sur la DERNIÈRE page. À 100 000
+// inscrits, sonner demandait cent lectures de mille comptes (≈ 100 Mo de JSON à décoder) — le
+// délai d'une fonction y passe, et l'alerte ne part pas, le jour même où il y a du monde. Le
+// cache de l'isolat (10 min) n'y change rien : chaque passage de pg_cron peut naître dans un neuf.
+// Désormais le pilote se MARQUE lui-même : chaque appel qu'il fait derrière la porte (`autorise`
+// sur un jeton validé) pose une ligne `pilotage_pilote` sous l'auteur système, que seule la clé de
+// service écrit (RLS analytics_insert_own). Sonner relit ces marques — une lecture — et revérifie
+// chaque compte dans l'authentification (une lecture par compte) : une marque n'ouvre AUCUN droit,
+// elle évite un parcours. Un compte supprimé ou sorti de la liste n'est plus sonné ; une
+// authentification qui ne répond pas laisse sonner le compte marqué (l'alerte d'abord : elle ne
+// porte ni contenu ni donnée). Sans marque (pilote jamais venu depuis ce lot, second compte de
+// PILOTAGE_EMAILS jamais venu), le parcours d'avant reste le repli. Banc : pilotage-chemins ㊳.
+const EVT_PILOTE = "pilotage_pilote";
+const RE_UID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+async function noterPilote(admin: Admin, uid: string) {
+  try {
+    if (!RE_UID.test(String(uid))) return;
+    const id = await idGeste("pilote:" + uid, SECRET_GESTES);
+    const { data, error } = await admin.from("analytics_events").select("id").eq("id", id).limit(1);
+    if (error || (data && data.length)) return;
+    await admin.from("analytics_events").insert({ id, user_id: "systeme:pilotage", event: EVT_PILOTE, properties: { uid } });
+  } catch { /* un raccourci : sans lui, le parcours reste */ }
+}
+async function pilotesMarques(admin: Admin): Promise<{ uids: string[]; adresses: Set<string> }> {
+  const candidats = new Set<string>();
+  const rien = { uids: [] as string[], adresses: new Set<string>() };
+  try {
+    const { data, error } = await admin.from("analytics_events").select("properties").eq("event", EVT_PILOTE).eq("user_id", "systeme:pilotage").limit(50);
+    if (error) return rien;
+    for (const l of data || []) {
+      const u = (l.properties as { uid?: unknown } | null)?.uid;
+      if (typeof u === "string" && RE_UID.test(u)) candidats.add(u);
+    }
+  } catch { return rien; }
+  // `adresses` : celles des comptes RELUS et autorisés. Un compte gardé sur une authentification
+  // muette est sonné (un silence serait pire qu'une alerte de trop), mais son adresse n'est pas
+  // prouvée : il ne dispense pas de chercher le pilote qui manquerait (contre-revue du 12/11).
+  const uids: string[] = [];
+  const adresses = new Set<string>();
+  for (const uid of [...candidats].slice(0, 20)) {
+    try {
+      const { data, error } = await admin.auth.admin.getUserById(uid);
+      if (error) { if (Number((error as { status?: number }).status) !== 404) uids.push(uid); continue; }
+      const u = data && data.user;
+      if (u && autorise(u, EXTRA)) { uids.push(uid); adresses.add(String(u.email).trim().toLowerCase()); }
+    } catch { uids.push(uid); }
+  }
+  return { uids, adresses };
+}
 let cacheUidsPilotes: { at: number; uids: string[] } | null = null;
 async function uidsPilotes(admin: Admin): Promise<string[]> {
   if (cacheUidsPilotes && cacheUidsPilotes.uids.length && Date.now() - cacheUidsPilotes.at < 600e3) return cacheUidsPilotes.uids;
   const attendus = new Set([COMPTE_PILOTE, ...EXTRA.split(",")].map((x) => x.trim().toLowerCase()).filter(Boolean));
-  const uids: string[] = [];
-  const trouves = new Set<string>();
-  for (let page = 1; page <= 300; page++) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) break;
-    const lot = (data && data.users) || [];
-    for (const u of lot) if (autorise(u, EXTRA)) { uids.push(u.id); trouves.add(String(u.email).trim().toLowerCase()); }
-    if (lot.length < 1000 || trouves.size >= attendus.size) break;
+  const marques = await pilotesMarques(admin);
+  const uids: string[] = marques.uids;
+  // Chaque adresse autorisée a son compte marqué ET relu : personne d'autre à chercher. (Une adresse
+  // de PILOTAGE_EMAILS qui n'a pas de compte force le parcours à chaque isolat neuf : n'y mettre que
+  // des comptes qui existent.)
+  if (marques.adresses.size < attendus.size) {
+    const trouves = new Set<string>();
+    for (let page = 1; page <= 300; page++) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) break;
+      const lot = (data && data.users) || [];
+      for (const u of lot) if (autorise(u, EXTRA)) { if (!uids.includes(u.id)) uids.push(u.id); trouves.add(String(u.email).trim().toLowerCase()); }
+      if (lot.length < 1000 || trouves.size >= attendus.size) break;
+    }
   }
   cacheUidsPilotes = { at: Date.now(), uids };
   return uids;
@@ -487,9 +670,10 @@ async function etat(admin: Admin, frais = false) {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
-    historique: lireHistorique(admin), croissance: lireCroissance(admin),
+    historique: lireHistorique(admin), croissance: lireCroissance(admin), seuils: lireSeuils(admin),
     parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
-    relances: lireRelances(admin),
+    relances: lireRelances(admin), fusionsArmees: lireFusionsArmees(admin),
+    remplissage: lireRemplissage(admin), canari: lireCanari(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -527,15 +711,21 @@ async function etat(admin: Admin, frais = false) {
     const j24 = (out.utilisateurs as { aujourdhui?: Audience | null } | null)?.aujourdhui || null;
     const bp = j24 ? bandePassanteEstimee(j24.appareils) : null;
     if (bp != null) cap.jauges.push(...jauges({ bandePassante: bp }).filter((j) => j.cle === "bandePassante"));
+    // La table de télémétrie (2026-11-21, T2) : sa jauge parmi les autres ; sa ligne « À faire » est à part (aFaire).
+    const rp = out.remplissage as ReturnType<typeof remplissage> | null;
+    if (rp) cap.jauges.push(jaugeRemplissage(rp));
     cap.cout = coutMensuel(cap.jauges);
   }
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
   catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
+  // Les seuils du voyant, dits au pilote (2026-11-21, T3) : nombres absolus, et où serait le seuil proportionnel.
+  out.echelle = resumeEchelle(connectes5(maintenant));
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
-  // Jamais de vert sans avoir tout lu : ce qui manque est dit (verdictAffiche).
-  out.verdict = verdictAffiche(v, nonLus);
+  // Jamais de vert sans avoir tout lu : ce qui manque est dit (verdictAffiche), y compris ce
+  // qu'une source lue n'a pas rendu en entier (GitHub : exécutions, issues au-delà des pages lues).
+  out.verdict = verdictAffiche(v, nonLus, ((out.github as { partiel?: string[] } | null)?.partiel) || []);
   // Ce qui attend le pilote, en UNE liste triée par urgence (_shared/pilotage.js).
   // Une liste qui ne se construit pas n'emporte pas le reste : la page dit alors
   // « Liste indisponible », jamais « Rien à faire ».
@@ -551,6 +741,13 @@ async function compter(q: PromiseLike<{ count: number | null; error: unknown }>)
   return count ?? 0;
 }
 
+// Les comptes connectés (2026-11-21, T3) : `comptes_connectes` de l'appel à 300 s DÉJÀ fait (la veille
+// pour ses signaux, l'écran pour `utilisateurs.maintenant`), et seulement s'il est EXACT (fonction SQL,
+// identité serveur) — jamais le repli par lignes, qui compte des device_id qu'écrit le navigateur. Un
+// second appel à 900 s refaisait tout le calcul lourd et retardait le verdict sans délai propre
+// (contre-revue de B1). Une mesure sur 5 min, jamais une décision : inconnue, elle vaut null.
+const connectes5 = (a: Audience | null | undefined): number | null => (a && a.exact ? a.connexions ?? null : null);
+
 async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
@@ -565,14 +762,9 @@ async function lireSante(admin: Admin) {
     compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
   const depuis24 = ilYa(24 * 3600e3);
-  const [{ data, error }, erreurs24h] = await Promise.all([
-    admin.from("client_errors").select("message,uid,created_at").gte("created_at", depuis24).order("created_at", { ascending: false }).limit(300),
-    // Le NOMBRE se compte en base : la liste ci-dessus est bornée (300, et
-    // PostgREST ne rend jamais plus de 1 000 lignes) — sa longueur plafonnait
-    // l'affichage à 300 erreurs par jour, quelle que soit la réalité.
-    compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
-  ]);
-  if (error) throw error;
+  // Le NOMBRE se compte en base. Le classement des 300 dernières lignes qui l'accompagnait n'avait
+  // plus aucun lecteur (2026-11-21, T3) : le pilote lit celui de `erreurs.details` (lireErreurs7j).
+  const erreurs24h = await compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24));
   // Les COMPTES serveur derrière ces lignes (2026-11-07) : une erreur et une
   // panne 5xx se remontent avec la clé anon, publique — dix lignes forgées
   // faisaient sonner rouge. Seule l'identité posée par le serveur (`auth_uid`)
@@ -590,7 +782,7 @@ async function lireSante(admin: Admin) {
   // coupure réseau, un repli) ; seuls et d'un seul compte, ils ne colorent plus l'écran (verdict).
   const [lErreurs, l5xx, avertJs15] = await Promise.all([lignes("error", false), lignes("api", true), compter(prod().eq("type", "error").eq("severity", "warn"))]);
   const comptesErreurs15 = distincts(lErreurs), comptes5xx15 = distincts(l5xx), comptesAvert15 = distincts(lErreurs, (x) => x.severity === "warn");
-  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
+  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h };
 }
 
 async function lireErreurs7j(admin: Admin) {
@@ -628,15 +820,23 @@ async function lireMiseEnLigne(admin: Admin, etatGh: { runs?: { deploy?: RunResu
 // Ce qui s'est passé (2026-10-23) : les derniers CHANGEMENTS du voyant notés par
 // la veille (7 jours). Des raisons écrites par cette fonction, jamais un texte
 // de tiers ; bornées quand même.
+// Depuis le 2026-11-21 (T3), la veille réécrit aussi son état quand l'ensemble des raisons ROUGES change
+// sous un rouge qui dure. Ces réécritures portent `motif: "codes"` et sont écartées EN BASE (un code qui
+// clignote en écrirait douze par heure). Restent des lignes « rouge » de suite quand une sonnerie réécrit
+// l'état (« Nouveau problème », rappel) : on garde la plus ancienne lue de chaque suite de même couleur ET
+// même disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
+const HISTORIQUE_LU = 40;
 async function lireHistorique(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
-    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(12);
+    .eq("user_id", "systeme:pilotage").or("properties->>motif.is.null,properties->>motif.neq.codes")
+    .gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(HISTORIQUE_LU);
   if (error) throw error;
-  return (data || []).map((r) => {
+  const lignes = (data || []).map((r) => {
     const p = (r.properties || {}) as { couleur?: unknown; dispo?: unknown; raisons?: unknown };
     const couleur = ["vert", "orange", "rouge", "gris"].includes(String(p.couleur)) ? String(p.couleur) : "gris";
     return { le: r.created_at, couleur, dispo: p.dispo !== false, raisons: (Array.isArray(p.raisons) ? p.raisons : []).slice(0, 3).map((x) => String(x).slice(0, 160)) };
   });
+  return lignes.filter((l, i) => { const avant = lignes[i + 1]; return !avant || avant.couleur !== l.couleur || avant.dispo !== l.dispo; }).slice(0, 12);
 }
 
 async function lireUtilisateurs(admin: Admin) {
@@ -724,7 +924,7 @@ async function lireReglages(admin: Admin) {
   return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
 }
 
-async function delestageAuto(admin: Admin, a: Audience | null) {
+async function delestageAuto(admin: Admin, a: Audience | null, rp: { comptes?: string | null } | null = null) {
   const pol = autoriser(POLITIQUE, "delestage_auto");
   if (!pol.ok) return { raison: "politique:" + pol.raison };
   const lignes = await lireLignesReglages(admin);
@@ -741,6 +941,9 @@ async function delestageAuto(admin: Admin, a: Audience | null) {
     comptes5xx15 = a.comptes5xx15;
     aveugle = estAveugle(a);
   }
+  // La table au palier 2 des comptes (ou fermée pour eux) n'écrit plus leurs battements : les connexions
+  // comptées BAISSENT sans que la charge baisse. Même sens que l'aveuglement : on peut monter, pas descendre.
+  if (remplissageAveugle(rp)) aveugle = true;
   const d = decideDelestage(actuel, { pctConnexions, comptes5xx15, aveugle });
   if (!d.changer) return { niveau: d.niveau };
   const { error } = await admin.from("reglages_distants").upsert({
@@ -780,8 +983,8 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 }
 
 // ─── Réveil de la Sentinelle (_shared/autonomie.js) ─────────────────────────
-// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 4 à 8
-// fois par jour. Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
+// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 3 à 4
+// fois par jour (d'où aussi la cadence, plus bas). Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
 // (comptés EN BASE : `comptes_echecs_30min` de pilotage_audience), aucune
 // enquête en cours, pas de pause, pas de run récent → workflow_dispatch.
 // Plafonné à 2 réveils par heure et 12 par jour EN BASE.
@@ -818,6 +1021,32 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   cacheGh = null;
   const parcoursEnPanne = comptesParcours >= REVEIL.comptesMin ? enPanne.map((p) => p.id).slice(0, 5) : [];
   try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison, parcours: parcoursEnPanne } }); } catch { /* */ }
+  return { lance: true };
+}
+
+// ─── La cadence de la Sentinelle (2026-11-21, _shared/autonomie.js ③) ────────
+// Son cron horaire est servi 3,7 fois par jour (écart médian 6,5 h) : la veille, tenue à la
+// minute par pg_cron, relance le MÊME passage dès que le dernier est terminé depuis
+// une heure. Rien d'autre ne change : le passage lit, classe, et n'ouvre une
+// enquête que sous ses propres règles. Ce qui sort vers GitHub : `ref: main`, rien d'autre.
+async function cadencerSentinelle(admin: Admin, etatGh: GhEtat | null, reveil: Record<string, unknown> | null) {
+  if (!JETON_GH) return { inactif: true };
+  // Un réveil INTERROMPU (délai de 10 s, exception) a peut-être été accepté par GitHub : on
+  // n'empile pas un second passage, la veille suivante (5 min) tranchera (contre-revue de #1007).
+  if (reveil && (reveil.lance || reveil.erreur)) return { raison: "reveil" };
+  if (!etatGh || !etatGh.runs) return { illisible: true };
+  const pol = autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause });
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
+  const d = doitCadencerSentinelle({ pause: !!etatGh.pause, dernierRun: etatGh.runs.sentinelle || null });
+  if (!d.relancer) return { raison: d.raison };
+  // Plafond EN BASE, atomique (plafond_consommer) : deux veilles qui se chevauchent,
+  // ou une lecture de GitHub encore en cache, ne relancent pas deux fois dans l'heure.
+  const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-cadence", "sentinelle-cadence", { parMinute: 1, parHeure: CADENCE.parHeure });
+  if (!plafond.ok) return { raison: "plafond" };
+  const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
+  if (r.status !== 204) return { raison: "refus_github_" + r.status };
+  cacheGh = null;
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.cadence, properties: { raison: d.raison } }); } catch { /* */ }
   return { lance: true };
 }
 
@@ -1280,6 +1509,58 @@ async function deciderMasquage(admin: Admin, id: string, decision: string) {
 
 // Croissance (2026-11-01, _shared/croissance.js) : une lecture agrégée.
 const MIGRATION_CROISSANCE = "migrations/migration_croissance_2026-11-01.sql";
+// Les seuils d'usage du lancement (2026-11-12, seuilsLancement, ADR-013) : par
+// ville, ce qui décide d'ouvrir une offre — jamais un nombre d'inscrits. Lecture
+// seule. Chaque lecture est bornée et le DIT (`partiel`) : un nombre tronqué est
+// un minimum, jamais présenté comme exact.
+const SEUILS_FENETRE_JOURS = 60, SEUILS_PAGES_MAX = 20, SEUILS_PAQUET = 100;
+async function lireSeuils(admin: Admin) {
+  const maintenant = Date.now();
+  let partiel = false;
+  // Les comptes comptés : les mêmes exclusions que l'activation (tests e2e, éditeur, supprimés).
+  const mesurables = new Set<string>();
+  for (let page = 1; page <= SEUILS_PAGES_MAX; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const lot = (data && data.users) || [];
+    for (const u of lot) if (compteCree(u, EXTRA)) mesurables.add(String(u.id));
+    if (lot.length < 1000) break;
+    if (page === SEUILS_PAGES_MAX) partiel = true;
+  }
+  // Une ligne par compte et par jour actif : paginée, max-rows rend 1 000 lignes au plus.
+  const jour7 = new Date(maintenant - 6 * 864e5).toISOString().slice(0, 10);
+  const actifs: { uid: string }[] = [];
+  for (let page = 0; page < SEUILS_PAGES_MAX; page++) {
+    const { data, error } = await admin.from("activite_jour").select("uid").gte("jour", jour7)
+      .order("jour", { ascending: true }).order("uid", { ascending: true })
+      .range(page * MAX_LIGNES_POSTGREST, (page + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) { if (estObjetAbsent(error)) return { absente: true }; throw error; }
+    const lot = (data || []) as { uid: string }[];
+    actifs.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) break;
+    if (page === SEUILS_PAGES_MAX - 1) partiel = true;
+  }
+  // Les rencontres de la fenêtre : 60 jours en arrière, 60 en avant (colonnes `timestamp` en UTC).
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 19);
+  const { data: rs, error: er } = await admin.from("events").select("id,city,date_at,end_at,status,author_id,organizer_id")
+    .gte("date_at", iso(maintenant - SEUILS_FENETRE_JOURS * 864e5)).lte("date_at", iso(maintenant + SEUILS_FENETRE_JOURS * 864e5))
+    .order("date_at", { ascending: false }).limit(MAX_LIGNES_POSTGREST);
+  if (er) throw er;
+  const rencontres = (rs || []) as Record<string, unknown>[];
+  if (rencontres.length >= MAX_LIGNES_POSTGREST) partiel = true;
+  // Les participations des rencontres déjà commencées, par paquets d'identifiants (taille de l'URL).
+  const passees = rencontres.filter((r) => dateUtc(r.date_at as string) < maintenant).map((r) => String(r.id));
+  const participations: Record<string, unknown>[] = [];
+  for (let i = 0; i < passees.length; i += SEUILS_PAQUET) {
+    const { data, error } = await admin.from("event_attendees").select("event_id,user_id,rsvp,checked_in_at")
+      .in("event_id", passees.slice(i, i + SEUILS_PAQUET)).limit(MAX_LIGNES_POSTGREST);
+    if (error) throw error;
+    if ((data || []).length >= MAX_LIGNES_POSTGREST) partiel = true;
+    participations.push(...((data || []) as Record<string, unknown>[]));
+  }
+  return seuilsLancement({ actifs, rencontres, participations, mesurables, partiel }, maintenant);
+}
+
 async function lireCroissance(admin: Admin) {
   const { data, error } = await admin.rpc("pilotage_croissance", { p_jours: 30 });
   if (error) { if (estObjetAbsent(error)) return { absente: true, migration: MIGRATION_CROISSANCE }; throw error; }
@@ -1296,19 +1577,20 @@ async function lireCapacite(admin: Admin) {
   // sinon le total reçu sur 60 s contre 3 000, comme avant.
   const mur = aud.exact ? mesureAveugle(aud) : null;
   const telemetrie = mur ? mur.mesure : await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
-  // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
-  const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
+  // Le nombre de profils ne mesure pas les envois SMTP : Google, renvois et
+  // récupérations suivent d'autres chemins. Le quota reste à vérifier sur Brevo.
   let base: number | null = null, stockage: number | null = null;
   const { data: m, error } = await admin.rpc("pilotage_mesures");
   if (!error && m) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
+  return { jauges: jauges({ connexions, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {
-  const [repond, mem] = await Promise.all([sonder(), lireEtatMemorise(admin)]);
+  const [repond, memoire] = await Promise.all([sonder(), lireEtatMemorise(admin)]);
+  const mem = memoire.etat;
   return { repond, depuis: mem && mem.dispo === repond ? (mem.dispoDepuis || null) : null, veilleLe: mem ? mem.le : null };
 }
 
@@ -1329,12 +1611,29 @@ function gh(chemin: string, init: RequestInit = {}) {
 }
 
 let cacheGh: { at: number; val: unknown } | null = null;
+// Les PR ouvertes se lisent sur au plus trois pages de cent (lireGithub) : au-delà, c'est dit à l'écran.
+const PR_PAGES_MAX = 3;
+// Les issues ouvertes sous UN filtre (`labels=…`, `creator=…`), jusqu'à ISSUES_PAR_FILTRE_MAX.
+type IssueBrute = { number: number; [cle: string]: unknown };
+async function lireIssuesFiltre(filtre: string): Promise<{ lignes: IssueBrute[]; tronque: boolean }> {
+  const lignes: IssueBrute[] = [];
+  for (let page = 1; page <= ISSUES_PAR_FILTRE_MAX / 100; page++) {
+    const r = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100&${filtre}&page=${page}`);
+    if (!r.ok) throw new Error("GitHub HTTP " + r.status);
+    const lot = await r.json();
+    if (!Array.isArray(lot)) throw new Error("GitHub : liste d'issues illisible");
+    lignes.push(...(lot as IssueBrute[]));
+    if (lot.length < 100) return { lignes, tronque: false };
+  }
+  return { lignes, tronque: true };
+}
+
 async function lireGithub() {
   // Sans jeton, GitHub accorde 60 lectures/heure par adresse : réponse gardée
   // 2 min dans l'isolat (un bonus quand il survit, jamais une garantie).
   if (cacheGh && Date.now() - cacheGh.at < 120e3) return cacheGh.val;
-  // N'importe quel compte GitHub peut ouvrir des issues : les 50 plus récentes ne suffisaient pas à
-  // voir `humain` ni la pause (D-18). Jusqu'à cinq pages de 100.
+  // La première page des issues ouvertes, tous auteurs confondus : dans la marche normale (moins
+  // de cent issues ouvertes), c'est TOUT ce qu'il y a à lire.
   const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100`);
   // La raison d'un refus est dite au pilote (erreursLecture) : sans jeton,
   // GitHub accorde 60 lectures par heure à une adresse PARTAGÉE avec d'autres
@@ -1342,11 +1641,94 @@ async function lireGithub() {
   if (!res.ok) throw new Error("GitHub HTTP " + res.status + (res.headers.get("x-ratelimit-remaining") === "0" ? " (limite de lecture atteinte" + (JETON_GH ? ")" : ", pas de jeton)") : ""));
   // La fin du jeton, annoncée par GitHub à chaque réponse : dite une semaine avant (aFaire).
   const finJeton = Date.parse(res.headers.get("github-authentication-token-expiration") || "");
-  const brut = await res.json();
-  for (let page = 2; page <= 5 && brut.length === 100 * (page - 1); page++) {
-    const suite = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100&page=${page}`);
-    if (!suite.ok) throw new Error("GitHub HTTP " + suite.status);
-    brut.push(...await suite.json());
+  let brut = (await res.json()) as IssueBrute[];
+  // Les DIX dernières exécutions de chaque workflow (2026-11-12, resumerRuns) : ce qui compte est la
+  // dernière qui a TRANCHÉ — un échec ne se cache plus derrière l'exécution suivante encore en
+  // cours, ni derrière une exécution évincée de la file. Seules NOS exécutions comptent
+  // (EVENEMENTS_RUNS : `push` pour la mise en ligne, planifiée ou relancée pour les deux autres ;
+  // jamais celle d'une PR d'un fork dont la branche s'appelle `main`). Une lecture refusée ou
+  // muette se NOTE (`runsNonLus`) : un null se lisait comme « rien à dire ».
+  const runsNonLus: string[] = [];
+  const run = async (cle: "deploy" | "sentinelle" | "veille" | "securite" | "fonctions", f: string) => {
+    const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
+    // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
+    // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
+    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis plus de 8 h » (3 h depuis le 21/11) disparaissait.
+    const lectures = await Promise.all((EVENEMENTS_RUNS[cle] as string[]).map(async (ev) => {
+      const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true&event=${ev}&per_page=10`).catch(() => null);
+      const lu = r && r.ok ? await r.json().catch(() => null) : null;
+      return lu && Array.isArray(lu.workflow_runs) ? lu.workflow_runs : null;
+    }));
+    if (lectures.some((l) => !l)) { runsNonLus.push(cle); return null; }
+    const j = { workflow_runs: lectures.flat() };
+    // Une RELANCE en cours (`gh run rerun`) garde son identifiant et vide sa conclusion : sa
+    // tentative précédente se relit, et se range juste derrière elle (même date de création, tri
+    // stable). Illisible, le workflow est « non lu » : on ne conclut pas à un retour au calme.
+    const aRelire = new Map((tentativesARelire(j.workflow_runs, opts) as { id: number; tentative: number }[]).map((x) => [x.id, x.tentative]));
+    const nonLu = () => { if (!runsNonLus.includes(cle)) runsNonLus.push(cle); };
+    const liste: Record<string, unknown>[] = [];
+    for (const brutRun of j.workflow_runs as Record<string, unknown>[]) {
+      liste.push(brutRun);
+      // De la tentative d'avant vers les plus anciennes, jusqu'à celle qui a tranché (une tentative
+      // annulée ne dit rien non plus). Au-delà de TENTATIVES_RELUES_MAX : « non lu », on ne conclut pas.
+      let tentative = aRelire.get(brutRun.id as number) || 0;
+      for (let lues = 0; tentative >= 1; tentative--, lues++) {
+        if (lues >= TENTATIVES_RELUES_MAX) { nonLu(); break; }
+        const ra = await gh(`/repos/${DEPOT}/actions/runs/${brutRun.id}/attempts/${tentative}`).catch(() => null);
+        const ja = ra && ra.ok ? await ra.json().catch(() => null) : null;
+        if (!ja || typeof ja !== "object") { nonLu(); break; }
+        liste.push(ja as Record<string, unknown>);
+        if (runATranche(ja)) break;
+      }
+    }
+    return resumerRuns(liste, opts);
+  };
+  // Les PR ouvertes, par pages de cent, jusqu'à PR_PAGES_MAX (2026-11-12, seconde relecture de #848) : lues sur 50, cinquante
+  // PR de forks plus récentes faisaient sortir un correctif armé de la liste — il devenait un « chantier », et la ligne
+  // « a changé depuis ton Régler » disparaissait. Le CORPS se lit dans la même promesse : lu après coup, un corps illisible
+  // devenait une liste vide sans rien dire. Au-delà des pages lues, c'est dit (`prNonLues`).
+  // Une page en échec GARDE les pages déjà lues (relecture de #866) : les jeter faisait passer un correctif
+  // récent, et sa ligne « a changé depuis ton Régler », derrière la ligne « non lues ». Une PR non lue reste
+  // un chantier (`infosPr` absente → externe) : jamais un bouton qui met en ligne à l'aveugle.
+  const lirePulls = async (): Promise<{ ok: boolean; lignes: IssueBrute[]; raison: string | null }> => {
+    const lignes: IssueBrute[] = [];
+    for (let page = 1; page <= PR_PAGES_MAX; page++) {
+      const r = await gh(`/repos/${DEPOT}/pulls?state=open&per_page=100&page=${page}`).catch(() => null);
+      if (!r || !r.ok) return { ok: false, lignes, raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };
+      const lot = await r.json().catch(() => null);
+      if (!Array.isArray(lot)) return { ok: false, lignes, raison: "GitHub : liste des PR illisible" };
+      lignes.push(...(lot as IssueBrute[]));
+      if (lot.length < 100) return { ok: true, lignes, raison: null };
+    }
+    // Trois pages pleines : une lecture d'UNE ligne dit s'il en reste — trois cents PR tout juste ne sont pas
+    // « plus de trois cents » (relecture de #866). Illisible, on ne sait pas : c'est dit aussi.
+    const r = await gh(`/repos/${DEPOT}/pulls?state=open&per_page=1&page=${PR_PAGES_MAX * 100 + 1}`).catch(() => null);
+    const reste = r && r.ok ? await r.json().catch(() => null) : null;
+    if (Array.isArray(reste) && reste.length === 0) return { ok: true, lignes, raison: null };
+    return { ok: true, lignes, raison: Array.isArray(reste)
+      ? "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues"
+      : PR_PAGES_MAX * 100 + " PR lues, la suite n'a pas pu l'être (" + (r ? "GitHub HTTP " + r.status : "GitHub muet") + ")" };
+  };
+  // Le scan de sécurité du lundi (`securite`) : lu pour être DIT, à trier par Benjamin — jamais réparé (RUNS_REPARABLES).
+  // Le déploiement des fonctions serveur (`fonctions`, 2026-11-21) : de même — son run rouge (une fonction retenue,
+  // une fumée cassée) ne se voyait nulle part, du 20 au 21/11.
+  const [sentinelle, veille, deploy, securite, fonctions, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), run("fonctions", "edge-functions.yml"), lirePulls()]);
+  const listePr = pulls.lignes;
+  // CENT issues ouvertes ou plus : le dépôt est PUBLIC, n'importe qui en ouvre. Lire « les N plus
+  // récentes » laissait un sujet `humain` se cacher derrière du bruit (D-18) — et dire « lecture
+  // partielle » tant que le bruit est là donnait à un tiers le moyen de figer la veille
+  // (contre-revue du 12/11). On lit donc CE QUI EST SUIVI, par des filtres qu'un tiers ne peut pas
+  // noyer : un label ne se pose qu'avec le droit d'écrire, `creator` est le pilote (sa pause, ses
+  // réparations sans label), et les PR ont leur propre lecture.
+  let issuesTronquees = false;
+  if (Array.isArray(brut) && brut.length >= 100) {
+    const filtres = [...(LABELS_SUIVIS as string[]).map((l) => "labels=" + encodeURIComponent(l)), "creator=" + PILOTE_GITHUB];
+    const lots = await Promise.all(filtres.map((f) => lireIssuesFiltre(f)));
+    issuesTronquees = lots.some((l) => l.tronque);
+    const vues = new Map<number, IssueBrute>();
+    for (const l of lots) for (const i of l.lignes) vues.set(i.number, i);
+    for (const p of listePr) if (!vues.has(p.number)) vues.set(p.number, { ...p, pull_request: {} });
+    brut = [...vues.values()].sort((a, b) => b.number - a.number);
   }
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
@@ -1355,21 +1737,19 @@ async function lireGithub() {
   // invisible — 16 « [RÉPARER] #627 » ouvertes du 24 au 25/10, une par toucher.
   const issues = (Array.isArray(brut) ? brut : []).map((i) => ({ ...resumerIssue(i), pause: estPauseDuPilote(i), reparation: estReparationDuPilote(i), confiee: reparationConfiee(i) }))
     .filter(issueSuivie);
-  const run = async (f: string) => {
-    const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?per_page=1&branch=main&exclude_pull_requests=true`);
-    if (!r.ok) return null;
-    const j = await r.json();
-    return resumerRun(j && j.workflow_runs && j.workflow_runs[0]);
-  };
-  const [sentinelle, veille, deploy, pulls] = await Promise.all([run("sentinelle-autonome.yml"), run("veille-production.yml"), run("deploy.yml"), gh(`/repos/${DEPOT}/pulls?state=open&per_page=50`)]);
   // Correctif de la chaîne ou chantier en cours (resumerPr) ? Illisible, la PR reste
   // un chantier — jamais un bouton qui met en ligne à l'aveugle — et c'est dit (`prNonLues`).
-  const infosPr = new Map(pulls.ok ? ((await pulls.json()) as { number: number }[]).map((p) => [p.number, resumerPr(p, DEPOT)]) : []);
+  const infosPr = new Map(listePr.map((p) => [p.number, resumerPr(p, DEPOT)]));
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.ok ? null : "GitHub HTTP " + pulls.status, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite, fonctions }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
+  // `runsNonLus` : ceux que le voyant lit (RUNS_DU_VOYANT) tiennent la VEILLE (on ne sait pas si la mise en
+  // ligne a réussi) ; `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
+  val.runsNonLus = runsNonLus;
+  val.partiel = partielGithub({ runsNonLus, issuesTronquees });
   val.aReparer = aReparer(val);
-  cacheGh = { at: Date.now(), val };
+  // Une lecture en partie n'est pas gardée : la suivante réessaie tout de suite.
+  if (!(val.partiel as string[]).length) cacheGh = { at: Date.now(), val };
   return val;
 }
 
@@ -1382,10 +1762,24 @@ async function relancer(admin: Admin, cible: string) {
   const r = Object.hasOwn(RELANCES, cible) ? RELANCES[cible as keyof typeof RELANCES] : null;
   if (!r) return json({ error: "Relance inconnue." }, 400);
   if (!JETON_GH) return sansJeton();
+  // Un double toucher ne lance pas deux exécutions (2026-11-12, pilotage-chemins ⑯) : un créneau
+  // ATOMIQUE par workflow (prendreCreneau : sa minute et la suivante), rendu si GitHub refuse.
+  // Une base qui ne répond pas ne ferme pas le bouton — relancer une lecture ne change rien en
+  // production — mais le dit aux journaux.
+  const creneau = await prendreCreneau(admin, "systeme:pilotage", "pilotage-relance-" + cible, SECRET_GESTES);
+  if (!creneau.ok && creneau.raison === "pris") return json({ error: "Cette relance vient de partir : son résultat s'affiche sur sa ligne dans la minute." }, 409);
+  if (!creneau.ok) console.warn("pilotage : relance sans verrou " + JSON.stringify({ code: (creneau as { code?: string }).code || "?" }));
   // L'heure AVANT l'envoi : le run que GitHub crée ensuite part après elle (suiviRelance).
   const demande = new Date().toISOString();
-  const res = await gh(`/repos/${DEPOT}/actions/workflows/${r.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
-  if (res.status !== 204) return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") }, 502);
+  const res = await gh(`/repos/${DEPOT}/actions/workflows/${r.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) }).catch(() => null);
+  // GitHub MUET (délai dépassé) n'est pas un refus : la relance est peut-être partie. Le créneau reste
+  // pris (deux minutes au plus) et l'écran ne promet rien — une réponse perdue n'est ni un succès ni un échec.
+  // Un 5xx est aussi ambigu qu'un délai : GitHub a pu lancer l'exécution avant de répondre.
+  if (!res || res.status >= 500) return json({ error: "GitHub n'a pas répondu" + (res ? " (HTTP " + res.status + ")" : "") + " : la relance est peut-être partie. Relis l'écran dans une minute avant de retoucher." }, 502);
+  if (res.status !== 204) {
+    await rendreCreneau(admin, creneau);
+    return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") }, 502);
+  }
   cacheGh = null; // pour que l'écran voie l'exécution partir, sans attendre le cache de 2 min
   // La relance est NOTÉE (2026-11-07) : chaque ligne qui relance la suit jusqu'au
   // résultat, quel que soit l'isolat qui sert l'écran. Le geste est parti même si
@@ -1396,6 +1790,21 @@ async function relancer(admin: Admin, cible: string) {
     if (error) { suivie = false; console.warn("pilotage : relance non notée " + String((error as { code?: string }).code || "")); }
   } catch { suivie = false; console.warn("pilotage : relance non notée (base injoignable)"); }
   return json({ ok: true, suivie, message: "Lancé : " + r.libelle + (suivie ? ". Le résultat s'affiche sur sa ligne dans la minute." : ". Le suivi n'a pas pu être noté : relis dans une minute.") });
+}
+
+// Les auto-fusions ARMÉES depuis le téléphone, trente jours (sept laissaient une auto-fusion encore armée sans
+// comparaison — seconde relecture de #848) : numéro de PR → version armée (la plus récente). Seule la fonction écrit sous « systeme:pilotage ».
+async function lireFusionsArmees(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", EVT_GESTE).eq("user_id", "systeme:pilotage")
+    .eq("properties->>geste", "fusion_armee").gte("created_at", ilYa(30 * 864e5)).order("created_at", { ascending: false }).limit(100);
+  if (error) throw error;
+  const out: Record<string, string> = {};
+  for (const l of (data || []) as { properties: { geste?: unknown; numero?: unknown; sha?: unknown } | null }[]) {
+    const p = l.properties || {};
+    if (p.geste !== "fusion_armee" || !Number.isInteger(p.numero) || !shaValide(p.sha)) continue;
+    if (!out[String(p.numero)]) out[String(p.numero)] = p.sha as string;
+  }
+  return out;
 }
 
 // Les relances demandées depuis le téléphone (2026-11-07) : la plus récente par
@@ -1415,17 +1824,22 @@ async function lireRelances(admin: Admin) {
   return out;
 }
 
-async function fusionner(n: number) {
+async function fusionner(admin: Admin, n: number, shaVu: unknown) {
   if (!numeroValide(n)) return json({ error: "Numéro invalide." }, 400);
+  // La version VUE à l'écran est exigée (2026-11-12, pilotage-chemins ⑱). Le geste ne portait que le
+  // numéro : la fonction relisait la PR et fusionnait la tête DU MOMENT — un commit poussé entre
+  // l'affichage et le toucher partait en ligne sans que le pilote l'ait vu.
+  if (!shaValide(shaVu)) return json({ error: "Relis d'abord l'écran : la version à mettre en ligne doit être celle que tu as vue." }, 400);
   if (!JETON_GH) return sansJeton();
   const pr = await gh(`/repos/${DEPOT}/pulls/${n}`);
   if (!pr.ok) return json({ error: "PR introuvable." }, 404);
   const p = await pr.json();
   if (p.state !== "open" || p.draft) return json({ error: "Cette PR n'est pas ouverte, ou elle est en brouillon." }, 409);
-  // La règle d'écran (« une PR de fork ne se fusionne pas d'ici ») devient une règle serveur (audit 2026-11-06),
-  // et le SHA relu est celui qu'on fusionne : un commit poussé entre-temps fait échouer le geste.
+  // La règle d'écran (« une PR de fork ne se fusionne pas d'ici ») devient une règle serveur (audit 2026-11-06).
   if (!fusionAutorisee(p, DEPOT)) return json({ error: "Cette PR ne se fusionne pas d'ici (dépôt tiers)." }, 403);
-  const r = await gh(`/repos/${DEPOT}/pulls/${n}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", sha: p.head.sha }) });
+  if (p.head.sha !== shaVu) return json({ error: "Ce correctif a changé depuis que tu l'as vu : relis l'écran, puis touche de nouveau." }, 409);
+  // GitHub refuse à son tour si la tête bouge entre cette lecture et la fusion (`sha`).
+  const r = await gh(`/repos/${DEPOT}/pulls/${n}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", sha: shaVu }) });
   cacheGh = null;
   if (r.ok) return json({ ok: true, message: "C'est parti : la mise en ligne suit toute seule." });
   const j = await r.json().catch(() => ({}));
@@ -1433,20 +1847,35 @@ async function fusionner(n: number) {
   // quand tout sera vert, et rien d'autre : un rouge arrête la PR, la protection
   // de `main` (CI, contre-revue) reste entière. C'est le geste du pilote qui arme,
   // jamais la machine : une réparation n'est jamais fusionnée sans lui.
-  if (r.status === 405 && p.mergeable !== false && await armerAutoFusion(String(p.node_id || ""))) {
+  // Déjà armée (un premier « Régler », puis la tête a bougé) : ce toucher VALIDE la version du
+  // moment — rien à réarmer, seule la note change.
+  if (r.status === 405 && p.mergeable !== false && (!!p.auto_merge || await armerAutoFusion(String(p.node_id || ""), shaVu as string))) {
     cacheGh = null;
-    return json({ ok: true, message: "Les tests tournent encore : il partira en ligne tout seul dès qu'ils sont verts." });
+    // La version ARMÉE se note (2026-11-12, contre-revue) : l'auto-fusion de GitHub SUIT la branche —
+    // armée sur X, elle fusionnera Y si un compte qui a le droit d'écrire pousse Y et que Y passe les
+    // tests. L'écran compare la tête à cette note (aFaire : « a changé depuis ton Régler »).
+    let notee = false;
+    try {
+      const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_GESTE, properties: { geste: "fusion_armee", numero: n, sha: shaVu } });
+      notee = !error;
+    } catch { /* la fusion est armée ; seule la comparaison manquera */ }
+    // Sans la note, l'écran ne pourra pas comparer : il ne le promet pas.
+    return json({ ok: true, message: "Les tests tournent encore : il partira en ligne tout seul dès qu'ils sont verts." + (notee ? " Si le correctif change d'ici là, l'écran te le dira." : "") });
   }
   if (p.mergeable === false) return json({ error: "Ce correctif est en conflit avec la version en ligne : refuse-le, puis relance la réparation." }, 409);
   return json({ error: r.status === 405 ? "Pas encore fusionnable : tests en échec ou contre-revue manquante." : `GitHub a refusé (HTTP ${r.status}) ${String(j.message || "").slice(0, 120)}` + refusDroit(r.status, "Pull requests » et « Contents") }, 409);
 }
 
 // L'auto-fusion native de GitHub, celle que `gh pr merge --auto --squash` arme pour la Sentinelle.
-async function armerAutoFusion(idPr: string): Promise<boolean> {
-  if (!idPr) return false;
+// `expectedHeadOid` (2026-11-12) : GitHub refuse d'ARMER si la tête n'est plus la version vue.
+// ⚠️ Il ne le contrôle qu'à l'armement. Ensuite l'auto-fusion suit la branche : un commit poussé par
+// un compte qui a le droit d'écrire sera fusionné s'il passe les tests (GitHub ne désarme que sur le
+// push d'un compte SANS ce droit). D'où la note `fusion_armee` de fusionner() et la ligne de l'écran.
+async function armerAutoFusion(idPr: string, tete: string): Promise<boolean> {
+  if (!idPr || !shaValide(tete)) return false;
   const r = await gh("/graphql", { method: "POST", body: JSON.stringify({
-    query: "mutation($id: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId } }",
-    variables: { id: idPr },
+    query: "mutation($id: ID!, $tete: GitObjectID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $tete }) { clientMutationId } }",
+    variables: { id: idPr, tete },
   }) });
   if (!r.ok) return false;
   const j = await r.json().catch(() => null);
@@ -1465,7 +1894,10 @@ async function fermer(n: number) {
 async function pause(activer: boolean) {
   if (!JETON_GH) return sansJeton();
   cacheGh = null;
-  const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100`);
+  // Les issues du PILOTE seulement (`creator`, 2026-11-12) : sur un dépôt public, cent issues
+  // d'inconnus poussaient la pause hors de la première page — « Reprendre » ne la trouvait plus,
+  // « Mettre en pause » en ouvrait une seconde.
+  const res = await gh(`/repos/${DEPOT}/issues?state=open&creator=${PILOTE_GITHUB}&per_page=100`);
   if (!res.ok) return json({ error: "GitHub illisible." }, 502);
   const ouvertes = ((await res.json()) as { number: number; title: string; pull_request?: unknown; user?: { login?: string } }[]).filter((i) => !i.pull_request && estPauseDuPilote(i));
   if (activer) {
@@ -1500,7 +1932,21 @@ async function traiterSignalement(admin: Admin, id: string, statut: string) {
 // plusieurs événements dans la même seconde rejouent la course du 10 au 12/09
 // (le run qui travaille évincé de la file de concurrence).
 const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms)); // sert au retour arrière (version servie)
-async function reparer(corps: Record<string, unknown>) {
+// UN PROBLÈME, UNE RÉPARATION, UN AGENT (2026-11-12). La garde était « lire GitHub, puis ouvrir » :
+// deux touchers au même instant lisaient tous deux « aucune réparation en cours » et ouvraient
+// deux issues — deux agents sur le même problème (pilotage-chemins ㉒ ; les 16 doublons de #627
+// du 24/10 avaient une autre cause, même effet). Le verrou est un créneau ATOMIQUE de dix
+// minutes par cible (prendreCreneau, clé primaire sous HMAC) ; il se rend si GitHub refuse.
+// Échec FERMÉ, à la différence d'une relance : ouvrir une réparation lance un agent.
+const REPARATION_VERROU_MS = 10 * 60e3;
+async function verrouReparation(admin: Admin, cle: string) {
+  const creneau = await prendreCreneau(admin, "systeme:pilotage", "pilotage-reparer-" + cle, SECRET_GESTES, Date.now(), REPARATION_VERROU_MS);
+  if (creneau.ok) return { creneau, refus: null };
+  const pris = creneau.raison === "pris";
+  if (!pris) console.warn("pilotage : réparation sans verrou, refusée " + JSON.stringify({ code: (creneau as { code?: string }).code || "?" }));
+  return { creneau: null, refus: json({ error: pris ? "Une réparation vient d'être demandée pour ce problème : elle apparaît ici dans la minute." : "La base ne répond pas : la réparation n'est pas partie. Réessaie dans un instant." }, pris ? 409 : 503) };
+}
+async function reparer(admin: Admin, corps: Record<string, unknown>) {
   if (!JETON_GH) return sansJeton();
   const cible = String(corps.cible || "");
   const demande = cible === "issue" ? { cible, numero: Number(corps.numero) }
@@ -1511,12 +1957,21 @@ async function reparer(corps: Record<string, unknown>) {
   try { etatGh = await lireGithub() as typeof etatGh; } catch { return json({ error: "GitHub illisible." }, 502); }
   const c = etatGh.aReparer.find((x) => x.cible === demande.cible && (x.cible === "issue" ? x.numero === (demande as { numero: number }).numero : x.cle === (demande as { cle: string }).cle));
   if (!c) return json({ error: "Rien à réparer ici : le problème est déjà réglé, ou il est déjà entre les mains de la Sentinelle." }, 409);
-  if (c.enCours) return reconfier(c.enCours, etatGh.issues);
+  const cleVerrou = c.cible === "issue" ? "issue-" + c.numero : "run-" + c.cle;
+  if (c.enCours) return reconfier(admin, cleVerrou, c.enCours, etatGh.issues);
   const ouvertes = etatGh.issues.filter((i) => !i.pr && estReparation(i.titre)).length;
   if (ouvertes >= REPARATIONS_MAX) return json({ error: `Déjà ${ouvertes} réparations en cours : attends qu'une se termine.` }, 429);
-  const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT) }) });
+  const verrou = await verrouReparation(admin, cleVerrou);
+  if (verrou.refus) return verrou.refus;
+  const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT) }) }).catch(() => null);
   cacheGh = null;
-  if (!r.ok) return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` + refusDroit(r.status, "Issues") }, 502);
+  // GitHub MUET n'est pas un refus : l'issue est peut-être ouverte, et un agent avec. Le verrou RESTE
+  // (dix minutes) : un second toucher ne doit pas en ouvrir une seconde sur une réponse perdue.
+  if (!r || r.status >= 500) return json({ error: "GitHub n'a pas répondu" + (r ? " (HTTP " + r.status + ")" : "") + " : la réparation est peut-être partie. Relis l'écran ; si elle n'y est pas, retouche dans dix minutes." }, 502);
+  if (!r.ok) {
+    await rendreCreneau(admin, verrou.creneau);
+    return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` + refusDroit(r.status, "Issues") }, 502);
+  }
   const issue = await r.json().catch(() => ({}));
   return json({ ok: true, message: `Réparation lancée (#${Number(issue.number) || "?"}) : Claude prépare le correctif, il apparaîtra ici, prêt à mettre en ligne.` });
 }
@@ -1528,14 +1983,17 @@ async function reparer(corps: Record<string, unknown>) {
 // #657 (25/10) le label ET le commentaire (403, 403) — ouvrir passe, commenter
 // non. D'où la mention à l'ouverture (reparer) ; ce chemin ne sert plus que
 // « Relancer », et la réparation reste visible (estReparationDuPilote).
+// Un 5xx est AMBIGU (l'ordre est peut-être passé) : on lève — reconfier garde le verrou, et la
+// seconde voie n'est pas tentée : passée après un label déjà posé, elle lancerait un second agent.
+const ambigu = (r: Response) => { if (r.status >= 500) throw new Error("GitHub HTTP " + r.status); return r; };
 async function confier(n: number, refusLabel = 0) {
   if (!refusLabel) {
-    const l = await gh(`/repos/${DEPOT}/issues/${n}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
+    const l = ambigu(await gh(`/repos/${DEPOT}/issues/${n}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) }));
     cacheGh = null;
     if (l.ok) return json({ ok: true, message: `Réparation lancée (#${n}) : Claude prépare le correctif, il apparaîtra ici, prêt à mettre en ligne.` });
     refusLabel = l.status;
   }
-  const c = await gh(`/repos/${DEPOT}/issues/${n}/comments`, { method: "POST", body: JSON.stringify({ body: COMMENTAIRE_CONFIER }) });
+  const c = ambigu(await gh(`/repos/${DEPOT}/issues/${n}/comments`, { method: "POST", body: JSON.stringify({ body: COMMENTAIRE_CONFIER }) }));
   cacheGh = null;
   if (c.ok) return json({ ok: true, message: `Réparation lancée (#${n}, confiée par commentaire, label « claude » refusé : HTTP ${refusLabel}) : le correctif apparaîtra ici, prêt à mettre en ligne.` });
   return json({ error: `#${n} ouverte, mais GitHub refuse de la confier à Claude (label HTTP ${refusLabel}, commentaire HTTP ${c.status}). Donne au jeton PILOTAGE_GITHUB_TOKEN le droit « Issues: Read and write », puis touche « Régler ».` }, 502);
@@ -1545,13 +2003,21 @@ async function confier(n: number, refusLabel = 0) {
 // `@claude` à l'ouverture, ni label `claude`, ni commentaire `@claude` du
 // pilote), on la confie maintenant — jamais deux fois, un second ordre
 // lancerait un second agent.
-async function reconfier(n: number, issues: { numero: number; labels?: string[]; confiee?: boolean }[]) {
+async function reconfier(admin: Admin, cleVerrou: string, n: number, issues: { numero: number; labels?: string[]; confiee?: boolean }[]) {
   const i = issues.find((x) => x.numero === n);
   if (i && (i.confiee || (i.labels || []).includes("claude"))) return json({ ok: true, message: "Réparation déjà en cours (#" + n + ")." });
-  const r = await gh(`/repos/${DEPOT}/issues/${n}/comments?per_page=100`);
-  if (!r.ok) return json({ error: "GitHub illisible." }, 502);
+  const r = await gh(`/repos/${DEPOT}/issues/${n}/comments?per_page=100`).catch(() => null);
+  if (!r || !r.ok) return json({ error: "GitHub illisible." }, 502);
   if (dejaConfiee(await r.json())) return json({ ok: true, message: "Réparation déjà confiée à Claude (#" + n + ")." });
-  return confier(n);
+  // Confier lance un agent : le même verrou que l'ouverture (deux touchers, un seul ordre).
+  const verrou = await verrouReparation(admin, cleVerrou);
+  if (verrou.refus) return verrou.refus;
+  // GitHub muet ou en 5xx pendant qu'on confie : l'ordre est peut-être parti — le verrou reste, l'écran ne promet rien.
+  let reponse: Response;
+  try { reponse = await confier(n); }
+  catch { return json({ error: "GitHub n'a pas répondu : la réparation #" + n + " est peut-être confiée. Relis l'écran ; si rien ne bouge, retouche dans dix minutes." }, 502); }
+  if (!reponse.ok) await rendreCreneau(admin, verrou.creneau);
+  return reponse;
 }
 
 function json(body: unknown, status = 200): Response {

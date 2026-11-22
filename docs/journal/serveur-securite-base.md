@@ -30,6 +30,10 @@
 - 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
 - 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 - 🧱 « JAMAIS DE BASE64 EN BASE » DEVIENT UNE RÈGLE DU SERVEUR : `conv_messages.content` BORNÉ (2026-11-07)
+- 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
+- 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
+- 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
+- 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
 
 ---
 
@@ -851,6 +855,12 @@ le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la 
 `GRANT` — donc refus total pour `anon` et `authenticated`. C'est l'interrupteur serveur du 18+,
 et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
 ajoutant une policy.
+
+⚠️ `auth_otp_long_expiry` (WARN, depuis le 2026-11-21) est **voulu** lui aussi : les liens envoyés
+par e-mail valent 24 h (`mailer_otp_exp` = 86 400), sur décision de Benjamin, pour qu'un lien de
+confirmation ouvert le lendemain marche encore. Supabase n'a qu'un réglage pour tous les liens et
+codes e-mail, nouveau mot de passe compris. Ne pas le ramener à 3 600 sans rouvrir la décision
+(fiche « PARCOURS DU NOUVEL INSCRIT » de `docs/journal/comptes-inscription-legal.md`).
 
 ## 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
 
@@ -1799,3 +1809,320 @@ contre-revue 5817042152 ; la remarque 1, les titres du banc encore datés du 07/
 **Retour arrière** : le bloc « --| » de l'en-tête (deux `drop constraint if exists`, rien d'effacé ; les CHECK du lot de
 sécurité restent) ; le banc ⑦ prouve le
 catalogue de conv_messages revenu À L'IDENTIQUE.
+
+## 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
+
+`migrations/migration_menage_publications_test_2026-11-12.sql`. Décision de Benjamin le 12/11 (STAB-05) : les
+publications de ses trois comptes de test, masquées le 04/11 par 35 lignes `contenus_masques` (`signaleurs = 0`),
+sont supprimées. Sauvegarde complète AVANT, hors du dépôt (`.passio/sauvegardes/`, ignoré).
+
+⚠️ **Supprimer une publication emporte ce que d'AUTRES y ont écrit** : les déclencheurs R31 effacent ses commentaires,
+« j'aime » et interactions (28 / 29 / 128, dont 5 commentaires d'autres comptes). C'est pourquoi le 04/11 avait choisi
+le masquage ; la sauvegarde rend le geste réversible à la main.
+⚠️ **Un DELETE sur `contenus_masques` n'est pas journalisé** (`trg_contenus_masques_journal` : INSERT OR UPDATE) : la
+migration écrit elle-même une ligne `moderation_actions` par masquage retiré.
+⚠️ **Le stockage refuse un DELETE en SQL** (`storage.protect_delete`) : les 5 médias restent dans `content`, à
+retirer par l'API Storage (`npm run medias:orphelins`, clé de service).
+L'ensemble est figé sur le prédicat EXACT du geste du 04/11 (`masque_le` à la microseconde) ; la migration refuse si
+ce n'est plus 35 masquages — un rejeu après application n'efface rien.
+
+---
+
+## 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
+
+`client_errors` accepte l'INSERT de `anon`. Son seul plafond était GLOBAL : `limiter_debit_global('created_at', 120)`,
+soit 120 lignes par minute, toutes sources confondues. 120 insertions anonymes par minute faisaient donc refuser
+(P0001) toute erreur d'un vrai compte : un angle mort de surveillance qui ne coûtait presque rien à provoquer.
+
+`migration_client_errors_reservoirs_2026-11-12.sql` remplace ce plafond par `client_errors_limiter_debit`, qui lit
+l'identité posée par la base (`auth_uid`, déclencheur d'identité, qui passe avant celui-ci par ordre alphabétique) :
+- visiteurs, tous ensemble : 60 par minute ;
+- chaque compte : 20 par minute ;
+- tous les comptes ensemble : 120 par minute.
+
+L'heure reste celle du serveur (ASTRA-02).
+
+La migration s'éprouve elle-même sous les vrais rôles, dans une sous-transaction annulée : une rafale anonyme,
+puis un compte qui écrit quand même, puis un compte arrêté à sa 21ᵉ ligne, puis un second compte qui écrit encore.
+Elle vérifie qu'aucune ligne d'essai ne reste.
+
+⚠️ Une sous-transaction annulée emporte ses lignes ET ses `set_config`. Les mesures se gardent dans une variable
+plpgsql, qui survit à l'annulation, et ne sont posées en réglage qu'APRÈS le bloc d'exception.
+
+Mesuré au canal ① le 12/11 : 16 lignes en 30 jours, pointe à 11 par minute. Ces plafonds ne gênent aucun usage réel.
+
+---
+
+## 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
+
+**CLI-01, côté serveur** (`migration_forme_pseudo_coorganisateurs_2026-11-12.sql`). Le client était corrigé depuis le
+10/11 (#823), mais la base laissait passer les deux prémisses du scénario d'injection. Ce qui change :
+- `profiles_username_forme` refuse désormais le guillemet droit, les chevrons, l'accent grave et la barre oblique
+  inverse. L'apostrophe reste permise.
+- `events_co_organizers_tableau` n'accepte plus qu'un tableau de 0 à 20 uuid en minuscules (`jsonb_tableau_uuid`,
+  IMMUTABLE).
+
+**PRÉREQUIS-CLIENT, dans la même PR.**
+- `nomCompteCaracteresInterdits` (app-02) refuse ces caractères AVANT la base : à l'inscription et dans « Modifier
+  le profil ».
+- `_eventRow` ne garde que les uuid des co-organisateurs, mis en minuscules. Sans ce filtre, un identifiant de
+  démonstration ferait refuser l'activité entière.
+
+Verrou : `tests/e2e/pseudo-caracteres-interdits.spec.js` (3), rougi par mutation.
+
+**SRV-02** (`migration_notifications_texte_serveur_2026-11-12.sql`). La cloche affichait le `content` écrit par
+l'émetteur. N'importe quel compte pouvait donc envoyer à n'importe qui « Équipe PASSIO : ton compte est
+suspendu… ». Le déclencheur `trg_notifications_texte` traite les seules lignes d'origine client :
+- le NOM est toujours relu dans `profiles` ;
+- la PHRASE doit appartenir à la liste fermée de ce que l'application écrit (relevée dans `js/` et dans les
+  170 lignes de production) ;
+- les phrases qui portent un titre (invitation, avis, direct, groupe) sont reconstruites depuis la base ;
+- toute autre phrase est remplacée par le gabarit du genre.
+
+Liens métier exigés (refus 42501 sinon) :
+- `message` : les deux comptes sont membres de la conversation ;
+- `event_update` et `event_cancelled` : le destinataire est inscrit à l'activité (tous statuts), et l'émetteur
+  l'organise, la co-organise, ou y est inscrit lui aussi (c'est le cas de « une place s'est libérée »). Seul
+  l'organisateur garde un texte libre.
+
+Trouvé par la relecture adversariale avant application (agent `passio-red-team`, 12/11), et corrigé :
+- la première version laissait un organisateur écrire à N'IMPORTE QUI, sous couvert de sa propre activité, et
+  l'épreuve validait ce trou ;
+- les phrases fixes « tu es inscrit·e » et « a annulé » étaient ouvertes à tous ;
+- un nom de groupe servait de texte libre. Un groupe s'annonce désormais par le gabarit « a écrit dans un
+  groupe », comme la push.
+
+**L'avis de suppression d'une activité est écrit par la BASE.** Le client prévenait les inscrits APRÈS avoir
+effacé l'activité : à ce moment, le lien ne se prouve plus. Désormais `trg_events_prevenir_suppression` (BEFORE
+DELETE) écrit une ligne d'origine serveur par inscrit, au nom de l'organisateur. Son échec n'empêche jamais la
+suppression.
+
+⚠️ **Toute nouvelle phrase de notification côté client doit être ajoutée à la liste de
+`notifications_texte_serveur`**. Sinon, elle devient le gabarit du genre, sans erreur.
+
+**SRV-05** (`migration_purge_donnees_expirees_2026-11-12.sql`). `purger_donnees_expirees()` tourne chaque nuit à 03:53
+par pg_cron, et personne d'autre ne peut l'appeler. Chaque catégorie est bornée à 5 000 lignes par passage :
+- conversations sans membre ni message, de plus de 7 jours, qu'aucune activité ne vise (`events.conv_id`) ;
+- stories de plus de 48 h (l'application n'en lit que 24) ;
+- directs muets depuis plus d'une heure, passés en `ended` ;
+- notifications LUES de plus de 90 jours ;
+- `conv_reads` et `story_views` orphelins.
+
+Le verdict compare des IDENTIFIANTS, pas des comptes : une ligne arrivée pendant la migration aurait faussé un
+compte, ou masqué une perte.
+
+## 📸 STORIES : J'AIME, « VU PAR », COMMENTAIRES PUBLICS — `migration_story_interactions_2026-11-14.sql` (**appliquée en production** le 2026-11-14)
+
+Demande de Benjamin : « la même chose qu'Instagram » — l'auteur voit le nombre de j'aime et « Vu par »,
+les commentaires sont visibles de tous ceux qui voient la story.
+- `story_likes (story_id, user_id)` : lu par le j'aimeur et par l'auteur de la story, personne d'autre.
+- `story_comments` : lus par quiconque voit la story (`story_visible`, copie de la policy de `stories` +
+  blocage dans les deux sens, et un commentaire d'un compte bloqué n'est pas lu) ; effacés par leur auteur
+  ou par l'auteur de la story ; aucun UPDATE ; 1 à 500 caractères ; débit et ligne bornés.
+- `story_views` : policy AJOUTÉE `story_views_select_auteur_story` (l'auteur lit qui a vu) ; la policy
+  propre est gardée.
+- Deux fonctions SECURITY DEFINER (`story_visible`, `story_est_a_moi`), EXECUTE retiré à `public`/`anon`.
+- Tables NON publiées en temps réel ; `on delete cascade` sur `stories(id)` et `profiles(id)` (exceptions
+  déclarées dans `scripts/audit-tables-compte.js`, PR #930).
+**Aucun prérequis client** : le client servi (PR #930) détecte 42P01 / PGRST205 et garde son repli
+(message direct). **Après application** : vérifier par le canal ① (`pg_policies`, simulation de rôles
+étranger / abonné / auteur / bloqué, `SET LOCAL role` et `SELECT` dans le MÊME appel), puis régénérer
+`migrations/SCHEMA_PROD_REFERENCE.sql`.
+**Appliquée le 2026-11-14** par Benjamin depuis son poste (`appliquer-migration.mjs`, verdict 5 × OK, journalisée),
+sur auto-revue de mainteneur unique (revue n°5906875768, ancrée sur 2fdf689d). **Mesuré ensuite au canal ①** :
+les 10 policies attendues (3 + 3 + 4 sur `story_views`, dont `story_views_select_own` d'origine), RLS active,
+`anon` sans SELECT, aucun UPDATE pour `authenticated`, fonctions SECURITY DEFINER sans EXECUTE pour `anon`,
+aucune table publiée. ⚠️ La simulation de rôles n'est PAS possible par le connecteur en lecture seule
+(`permission denied to set role "authenticated"`) : la preuve par rôle est le banc
+`tests/sql/migration-story-interactions.test.sh` (38 cas, mutation vérifiée). Reste à faire :
+régénérer `migrations/SCHEMA_PROD_REFERENCE.sql`.
+
+
+## Rencontres : validation de l'organisation (2026-11-16, préparation locale)
+
+Lot critique réalisé par Codex GPT-6, sans délégation, sans accès distant, sans application SQL.
+Sources : photographie des fonctions et du catalogue de production fournie le 16/11, comparée aux policies
+et fonctions touchées. La branche de départ est a270749b (origin/main local identique), sans modifications.
+Les documents d'audit restreints restent hors dépôt ; aucune donnée personnelle n'est recopiée.
+
+Décision produit prudente : une inscription en « going » réserve une place mais ne donne PAS les accès
+privés. L'organisation les valide dans Gérer → Valider les participants. La validation ouvre l'adresse,
+le contact, la liste des venants et la discussion ; le retrait, un autre RSVP ou un blocage les révoque.
+Aucun accord historique n'est inventé : les inscrits existants doivent être validés. Le nombre public
+ne dépend plus des blocages. Les suivis mutuels ne donnent plus accès à la liste d'une rencontre.
+La coorganisation est SUSPENDUE (tableau vide imposé en base, rôles historiques retirés), tant qu'un
+parcours d'invitation, acceptation et retrait volontaire n'est pas implémenté. Ce parcours reste à faire.
+Un organisateur principal ne peut plus être désigné comme un tiers à l'INSERT.
+
+Migration : migration_rencontres_validation_2026-11-16.sql, transaction rejouable, droits nominatifs,
+schéma rencontres_prive non exposé avec RLS sans policy cliente. Accords et journal sont emportés avec
+le profil ; les accords partent avec l'inscription ; le journal survit au retrait et à la suppression
+d'activité (event_id devient NULL). Les identifiants retirés sont conservés sans donnée de compte.
+La suppression d'activité emporte les messages, lectures, membres et conversation canoniques ; une
+ancienne conversation orpheline ne peut plus être réattachée ou lue. Les objets Storage physiques
+restent à purger par l'API Storage : supprimer leurs lignes SQL créerait des blobs orphelins.
+
+Journal serveur accessible à l'organisation et au participant par journal_participation, notification
+serveur à chaque entrée en going, plafond glissant de 20 changements d'inscription par jour et compte.
+Le journal est raccordé à la purge périodique existante et les données privées à l'export instantané.
+Les nouvelles durées de rétention sont décrites dans la fiche de reprise ci-dessous. Le client historique
+émet encore sa notification d'inscription : doublon possible, sans ouverture de droits.
+
+Ordre : client portant rencontres:validation-organisation-v1, puis migration après les migrations déjà
+appliquées du 06–14/11. Ne pas rejouer une ancienne migration qui réécrit les mêmes fonctions après.
+Pas de retour arrière automatique qui réouvrirait les accès : conserver les restrictions SQL et
+corriger en avant. Une restauration des messages supprimés exige une sauvegarde contrôlée.
+
+Pilotage/Sentinelle : pas d'événement contenant un identifiant de participant, d'adresse ou de contact.
+Les erreurs/RPC utilisent la collecte existante ; aucune nouvelle autoréparation. Les réglages AAL2
+et TURN sont hors périmètre et n'ont pas été modifiés. Revue indépendante et simulation PostgreSQL
+avec les déclencheurs actuels restent requises avant application réelle.
+
+
+Relecture du lot : la valeur historique non vide de co_organizers est copiée une seule fois dans
+rencontres_prive.coorganisations_anterieures AVANT suspension, RLS fermée, même durée de vie que
+l'activité. Une réexécution ne l'écrase pas. NULL est normalisé en tableau vide à la garde d'écriture.
+is_conv_member conserve la garde (_uid = auth.uid()::text OR auth.uid() IS NULL), et la recherche
+explicite d'appartenance : sans session, postgres/service_role garde le comportement antérieur ;
+avec session, la nouvelle garde d'activité s'ajoute. Participants en attente et validés sont
+rendus distinctement via une RPC réservée à l'organisation, sans ouverture de la table des accords.
+Avant application destructive : sauvegarde de la base ET inventaire Storage, vérifier la restauration.
+La suppression demandée d'une activité détruit son fil ; rollback = restauration contrôlée, pas de
+réouverture automatique de l'ancien modèle de droits. Aucun storage.objects n'est supprimé par SQL.
+
+
+Vérification locale : 9 tests unitaires du lot verts ; syntaxe JS, globals, handlers, échappement et
+ git diff --check verts. npm run verif exécuté : premier passage arrêté sur Bash absent du PATH ;
+second passage avec Git Bash arrêté sur sentinelle-workflows.test.mjs (attentes sleep non interceptées
+sur Windows, fichiers de cette suite inchangés). Ce résultat est ROUGE, pas une validation globale.
+Banc SQL fourni : tests/sql/migration-rencontres-validation.test.sql, base locale vide exclusivement
+nommée passio_test_rencontres. Non exécuté : psql et initdb absents, aucun accès réseau autorisé.
+Il couvre les rôles, l'attente/accord, la révocation, le compteur, l'historique et trois applications
+de la migration (la dernière après approbation : le nettoyage doit préserver l'accord existant).
+Ce socle est réduit : la chaîne complète des triggers de production doit encore être éprouvée.
+La photographie de production n'est pas copiée dans le dépôt. Aucun test:prod ni charge réseau.
+## Contrôles sociaux complémentaires — 2026-11-16 (non appliqués)
+
+Migration locale : migration_social_visibilite_2026-11-16.sql. Fiche, ordre client,
+limites et retour arrière : docs/journal/social-messagerie.md, entrée du 2026-11-16.
+Aucun corps de fonction ni paramètre de production modifié. Validation SQL sous
+rôles réels à effectuer avant application ; ne pas confondre relecture et exécution.
+## Controle des fonctions et de la veille (2026-11-16, lot 5 local)
+
+Le relais exige un contexte live visible et vivant (battement de moins de deux minutes), ou un appel lie et recent si les appels sont actives. Refus ferme sur erreur, plafond propre 6/min et 30/h, identifiants limites a une heure. Le client transmet le contexte apres creation du live ou depot de l'invitation et renouvelle a trente minutes. Les anciennes pages sans contexte restent en STUN. Les secrets TURN retires par le Lead restent retires.
+
+Suppression et export exigent une methode primaire recente (password, oauth, otp, saml/sso) : TOTP ne renouvelle pas cette preuve. AMR absent, invalide, inconnu ou futur : reconnexion requise. Exception conservee pour les sessions anonymes validees par Auth.
+
+La veille refuse sans PILOTAGE_VEILLE_SECRET. Migration non appliquee : migration_pilotage_veille_secret_2026-11-16.sql, transaction begin/commit, aucun droit client nouveau. Apres revue, le Lead provisionne via l'API du tableau editor, hors journal SQL, les valeurs Vault pilotage_veille_secret, pilotage_veille_anon_key, pilotage_veille_base_url et les configurations non secretes pilotage_veille_projet et pilotage_veille_edge_disponible (1). Meme secret dans Edge et GitHub ; URL egale au projet declare parmi les deux cibles connues. Vault/configuration de cible absente ou Edge non disponible : ancien cron retire, aucun nouveau cron. Parametres relus a chaque execution ; aucune GUC requise par le script officiel. Staging sans Edge : ne pas provisionner l'activation.
+
+Ordre de livraison : revue, provisionnement hors journal, migration via le script officiel, workflow pilotage-veille.yml, puis Edge fermee. Publier le client avec contexte avant ou avec notify-call ; les anciens clients n'obtiennent plus de relais. Aucune operation distante effectuee par ce lot. AAL2 active par le Lead conserve.
+
+Controles locaux : chemins Edge, preuve de reconnexion et configuration veille ; verif et navigateur local rapportes au commit. La photographie des fonctions/policies fournie par le Lead confirme les noms, colonnes et predicats utilises. Limites : migration non executee ici (PostgreSQL serveur absent), aucune preuve sur cible ; role hote Realtime encore declaratif, separation serveur des emissions et signalisation privee a traiter ; TTL/plafonds TURN ne sont pas un plafond de facture. Retrait sur : laisser TURN coupe, garder la veille fermee et desactiver son cron si necessaire.
+
+Reprise Codex du 16/11 : risque critical ; implementation initiale preservee puis finalisee par Codex, sans delegation ; contre-revue independante encore requise avant fusion. Acceptation locale : primaire recente obligatoire, TURN reserve au contexte admis, veille fermee sans secret, cron sans GUC et sans activation implicite. Integration pilotage/Sentinelle pertinente via veille authentifiee, secours, journal officiel et desactivation explicite. Le cache TURN expire est aussi retire sans contexte actif. La validation Node du SQL injecte utilise sqlAvecJournal sur production et staging ; ce controle ne remplace pas une execution PostgreSQL. Aucun secret Vault ne doit etre copie entre cibles ; le Lead doit relire que pilotage_veille_projet correspond a la cible --projet du script officiel. Baseline locale : HEAD a270749b identique au suivi origin/main disponible ; aucune actualisation distante demandee. Aucun changement AAL2, secrets TURN ou notifications Auth.
+
+La cible Vault est aussi comparee a la cible de la ligne injectee par appliquer-migration.mjs dans la meme transaction (xmin). Une configuration de production copiee sur staging provoque un refus avant planification ; aucune URL de production ne part de ce cron staging. Ce controle exige le script officiel pour une activation, sans GUC manuelle. Validation de reprise : 212 tests Node cibles verts puis suite pilotage rejouee avec le nouveau cas (92 tests), Chrome local 14 tests verts + regression cache expire 1 test vert ; audits globals, tests-creux et workflows verts. Verif globale precedente conservee, non repetee. Restants ordonnes : contre-revue critique et execution SQL sur base jetable/staging avec Vault absent puis cibles divergentes ; provisionnement cible hors journal ; migration officielle ; secours et Edge selon ordre ci-dessus ; controle post-livraison.
+
+
+## Rencontres — reprise locale de contre-revue (2026-11-16)
+
+Périmètre critique : fiabilité de la création des discussions, cohérence des inscriptions,
+cycle de vie et traçabilité des données privées. Implémentation : Codex (modèle non attesté
+par les outils de cette reprise). Critères : verdict serveur vérifié avant succès client,
+contrôle de contention à deux sessions, export/purge effectifs et décisions datées.
+Aucun changement de production, de configuration distante ou de contenu utilisateur.
+
+Les décisions disposent d'un journal privé : participant, décision, auteur et date serveur.
+La purge existante traite les journaux par lots de 5 000 : inscriptions au-delà de 30 jours
+après leur écriture ET la fin d'activité ; décisions au-delà de 90 jours selon les mêmes
+bornes. Une activité supprimée garde les délais depuis l'écriture. Ces durées bornent le
+suivi opérationnel et l'assistance, tout en préservant la fenêtre de plafond de 24 heures.
+L'archive temporaire de suspension expire après 30 jours ; aucun rôle n'est rétabli.
+L'effacement du compte prime sur ces délais. Les exports signalent les troncatures.
+
+Pilotage/Sentinelle : réutilisation de la purge planifiée et de ses compteurs de résultat,
+ainsi que des erreurs déjà collectées ; aucun identifiant personnel dans la télémétrie.
+Aucune autoréparation ajoutée. Les restrictions restent fermées en cas de retour arrière ;
+la récupération de données effacées exige une sauvegarde contrôlée et une revue avant action.
+Le banc PostgreSQL natif est collecté automatiquement par scripts/bancs-sql-restants.sh.
+La vérification locale PGlite couvre le SQL séquentiel et les triggers métier de référence ;
+elle ne prouve pas la concurrence à deux sessions. Une revue indépendante reste requise
+avant toute fusion/application, hors de cette demande de commit local.
+
+## 🧱 P1 RESTÉS OUVERTS AU 20/11 — BUDGET TEMPS RÉEL, RÉÉCRITURES, BOM, LECTURES ANONYMES (2026-11-20, non appliqués)
+
+Cinq migrations, rejouables, à jouer dans cet ordre ; banc `tests/sql/migration-securite-p1-2026-11-20.test.sh`
+(mesure chaque défaut AVANT, joue chaque migration deux fois, vérifie APRÈS ; PostgreSQL natif, CI seulement).
+
+- `migration_securite_p1_budget_realtime_2026-11-20.sql` (D10-01) : `passio_realtime_budget.compteurs.compte` passe
+  de `text → profiles ON DELETE CASCADE` à `uuid → auth.users ON DELETE CASCADE`. Supprimer puis recréer son profil
+  remettait les trois fenêtres à zéro (6 requêtes) ; seule la suppression réelle du compte les efface désormais.
+  Accusés de lecture : au plus 5 poussés par fenêtre de 10 s, par conversation et par compte
+  (`passio_realtime_budget.accuses`) ; au-delà la ligne avance, rien n'est poussé. **`accuses` est une table
+  éphémère de la sauvegarde** : déclarée dans `scripts/lib/reprise-schemas-prives.js` (`BUDGET_TABLES`), qui doit
+  être sur `main` AVANT la migration — sinon l'inventaire de la sauvegarde quotidienne lève « hors périmètre ».
+- `migration_securite_p1_diffusion_tronquee_2026-11-20.sql` (D10-01, **PREREQUIS-CLIENT: msg_tronque_echec**) :
+  au-delà de 2 048 octets, la charge poussée garde son enveloppe mais `record.content` est réduit (500 caractères
+  de texte, ou vide pour une enveloppe JSON) avec `record.tronque = true` — le nom que lit `_diffusionTronquee`
+  (app-08) ; le client relit la ligne par l'API. Le budget compte la taille ENTIÈRE (mesurée avant la troncature) :
+  chaque membre relit la ligne complète hors budget, facturer l'extrait aurait ôté la borne sur le volume distribué.
+  Ne pas appliquer avant que le client servi porte le motif.
+- `migration_securite_p1_debit_maj_2026-11-20.sql` (D10-02) : `trg_debit_maj` sur `posts` (10/min),
+  `post_comments` (30), `events` (15), `user_state` (600 : 120 figeait la synchronisation d'une séance de 2 à 4 h la
+  première semaine) — × 60 par jour, × 15 la première semaine ; policy
+  restrictive `passio_media_update_quota` (quota + 120 objets modifiés par heure), archivage toujours permis.
+- `migration_securite_p1_forme_message_2026-11-20.sql` (B06-N1) : le test de tête de `conv_message_forme_valide`
+  saute EXACTEMENT les blancs de la classe « blanc » de JavaScript (liste explicite, indépendante de la locale), ceux que saute
+  `_messageContentData` : base et client tranchent à l'identique (0 divergence sur tout le plan BMP, relu en
+  lecture de production). Un U+200B ou U+2060 devant `{` reste du TEXTE des deux côtés.
+- `migration_securite_p1_lectures_anonymes_2026-11-20.sql` (D10-03/04) : `passion_relations` fermée à `anon` et
+  `authenticated` (aucun client ne la lit) ; `rechercher_passions` ne note plus que 300 candidats (« ion » :
+  ~39 ms → ~12 ms à chaud en lecture de production, mêmes 20 premiers résultats sur 4 termes relus).
+
+⚠️ **Piège rencontré** : un `\u00A0` écrit dans un fichier par l'outil d'édition est arrivé en caractère BRUT
+(un NBSP réel dans l'expression régulière) — vérifier tout fichier SQL qui porte des échappements Unicode par un
+scan des invisibles avant de calculer une empreinte de corps. Même famille en reprise : une barre oblique inverse
+passée par un document « heredoc » est arrivée simple, puis avalée par un gabarit JS (et la séquence
+de tabulation verticale y est devenue le caractère réel) : construire les barres obliques par `String.fromCharCode(92)`.
+
+**Contre-revue du 20/11 (traitée)** : nom du drapeau aligné sur le client (`tronque`) ; table `accuses`
+inscrite dans la reprise des schémas privés (test `reprise-schemas-prives.test.mjs`, rouge sans le correctif) ;
+budget facturé sur la taille entière ; plafond des accusés en fenêtre (5/10 s) au lieu d'un accusé toutes les
+2 s, qui laissait « non lu » le second de deux messages rapprochés ; `user_state` à 600/min ; forme alignée sur le
+client ; retour arrière de `lectures_anonymes` réduit à `select`. Relu en production (lecture seule) : les cinq
+empreintes « avant », les colonnes `archived_at`/`is_delete_marker`/`updated_at`/`owner` de `storage.objects`,
+aucun `trg_debit_maj` sur les quatre tables, `conv_messages` et `conv_reads` hors de `supabase_realtime`
+(aucune amplification parallèle en `postgres_changes`), `service_role` lit `passion_relations`.
+
+### 2026-11-20 — Revue par un second modèle des correctifs P1 (#985, #986)
+
+Une revue de ChatGPT (codex) sur le diff complet, faite après la mise en production, a relevé cinq défauts. Tous ont été vérifiés contre le code avant d'être corrigés.
+- **Stockage** (`migration_securite_p1_stockage_remplacement_2026-11-20.sql`) :
+  - Une policy WITH CHECK qui appelle une fonction sans argument lit l'état d'AVANT l'UPDATE. Elle ne mesure donc jamais la taille nouvelle d'un remplacement.
+  - Compter les objets dont `updated_at` est récent compte des objets, pas des opérations.
+  - Correctif : un déclencheur BEFORE UPDATE qui lit `new.metadata->>'size'` sous verrou par compte, et un compteur atomique (`debit_compter`). Il ne s'applique que si `metadata` change : la lecture d'un objet ne doit pas consommer le plafond.
+- **Client** (app-08) :
+  - un 5xx est passager même quand il porte un SQLSTATE ;
+  - l'attente du recul fait aussi reculer le filet du fil (`_filComplementsReculSeq`), sans prolonger le recul partagé ;
+  - le budget de relecture des diffusions tronquées compte les requêtes, nouvel essai compris.
+- **Trace du stockage, mesurée au staging en quatre essais, avec un vrai compte** :
+  - Un remplacement (x-upsert ou PUT) est un UPDATE de la même ligne : nouvelle `version`, nouvelle taille.
+  - L'API Storage éprouve la RLS dans une transaction ANNULÉE, puis fait l'écriture finale depuis la session `supabase_storage_admin`, sous l'identité de SERVICE.
+  - Donc : ni le rôle SQL, ni `auth.role()`, ni `auth.uid()` ne désignent l'appelant au moment où la ligne change vraiment. Seul `new.owner` le désigne.
+  - Le déclencheur `aa_stockage_remplacement_borne` compte donc le propriétaire, et n'exempte que la session `postgres`.
+  - Mesure finale : 20 remplacements acceptés, puis 5 refusés, en une minute ; lectures et dépôt, remplacement, suppression normaux inchangés.
+  - Le contrôle de taille à 2 Gio n'a pas été atteint par le banc (limite de 26 Mo par objet).
+
+## 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+
+Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `private-media` : `reglage:medias_proteges.actif=false`. C'était le contrôle de la PRÉPARATION du serveur de médias (ADR-014, étape 1 de l'ordre de livraison : livrer le courtier sur un serveur fermé). Le pilote a ouvert les médias protégés le 19/11 à 10:43 UTC ; depuis, ce prérequis retenait tout redéploiement du courtier — et, le workflow vérifiant alors les six fonctions ensemble, tout déploiement de fonction (run 44831711346 du 20/11).
+
+- Il est remplacé par `reglage:medias_proteges.actif:booleen` : la ligne existe et porte un booléen JSON. Absent, `{}`, `"true"`, `1` : retenue (le serveur le tient pour fermé, personne ne l'a décidé).
+- La valeur est LUE en lecture seule (`etat:medias_proteges.actif`) ; la fumée exige que la fonction déployée serve exactement cet état. Les trois registres et les cinq fonctions SQL restent obligatoires.
+- Rien ne change côté base : aucune migration, aucun droit, la coupure reste l'autorité (`reglages_distants`, lue à chaque résolution, réservation et INSERT Storage).
+- Mesuré au canal ① le 21/11 : les 49 prérequis des six fonctions sont présents en production avec le nouveau manifeste ; le réglage est lu à true.
+- La requête ne nomme `public.reglages_distants` que dans une requête différée (`query_to_xml`), derrière `to_regclass` : une cible qui n'a pas la table retient la fonction qui exige le réglage, sans faire échouer toute la lecture. Banc : `tests/sql/prerequis-fonctions.test.sh` ③ ter.
+
+⚠️ **UN PRÉREQUIS DE DÉPLOIEMENT DIT CE QUE LA CIBLE SAIT FAIRE, PAS DANS QUEL ÉTAT ELLE EST.** Une table, une fonction SQL, une empreinte. La valeur d'un réglage que l'exploitation change n'en est pas un : le jour où elle change, le déploiement s'arrête pour une raison que plus personne ne cherche. `tests/unit/deploiement-fonctions.test.mjs` ⑫ refuse tout prérequis en `=true` ou `=false`.
+
+Le récit complet (la sélection par l'état servi, la retenue partielle, la ligne du pilotage, les verrous) : fiche du 21/11 de `docs/journal/telemetrie-pilotage-sentinelle.md`. Banc PostgreSQL : `tests/sql/medias-proteges-runner.mjs` (réglage ouvert : autorisé ; quatre formes non booléennes : retenu).

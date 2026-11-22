@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, lireAction } = require("./app-helper");
 
 // Vrai rendu/réveil du produit, horloge navigateur et serveur HEAD contrôlé.
 // Aucune donnée distante ni écriture réelle : les barrières retiennent les
@@ -80,6 +80,11 @@ async function preparer(page, count = 1, initialRandom = 0) {
       };
       return q;
     };
+    // D14-01 (2026-11-20) : le compteur des cartes passe par UN appel groupé
+    // `fil_compteurs` ; ce banc éprouve le chemin HEAD, qui ne sert plus que
+    // quand la fonction est ABSENTE du projet (mémorisée comme pour le fil).
+    // Le chemin groupé : tests/e2e/securite-p1-client-2026-11-20.spec.js.
+    _filCompteursNoterAbsence();
     startPostLikeRefresh();
   }, { n: count, initialRandom });
 }
@@ -135,14 +140,14 @@ test("phase initiale haute de14999ms, premier compteur et clic local immédiat",
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
   expect(await page.evaluate(() => _postLikeRefreshStats.initialDelayMs)).toBe(14999);
   await page.locator('#likes-test-stage [data-action="like"]').click();
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 5");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 5");
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   expect(await lectures(page)).toHaveLength(0);
   await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() - 1));
   expect(await lectures(page)).toHaveLength(0);
   await passer(page, 1);
   expect(await lectures(page)).toHaveLength(1);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 7");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 7");
 });
 
 test("aucune phase anonyme ou cachée ; connexion visible et nouveau compte ont chacun leur échéance", async ({ page }) => {
@@ -191,10 +196,10 @@ test("HEAD exact, compteur supérieur à1000, retrait à zéro et état aimé co
   });
   await passer(page, 350);
   expect(await lectures(page)).toEqual([expect.objectContaining({ table: "post_likes", cols: "post_id", col: "post_id", id: "visible_like_0", options: { count: "exact", head: true } })]);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 1234");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 1234");
   await page.evaluate(() => { __counts.visible_like_0 = 0; });
   await passer(page);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 0");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 0");
   expect(await page.evaluate(() => state.user.likedPosts)).toEqual(["visible_like_0"]);
 });
 
@@ -220,15 +225,30 @@ test("visiteur : zéro HEAD ; connexion réveille, déconnexion écarte la répo
 });
 
 test("NULL, refus, NaN et négatif ne deviennent jamais zéro", async ({ page }) => {
-  await preparer(page);
-  for (const kind of ["null", "error", "nan", "negative"]) {
+  await preparer(page, 1, 0.5);
+  await figer(page);
+  await page.evaluate(() => { window.delestageFacteur = () => 1; window.__casInvalidesLus = []; });
+  const invalides = ["null", "error", "nan", "negative"];
+  for (const [i, kind] of invalides.entries()) {
     await page.evaluate((k) => {
-      __hold = () => ({ count: k === "null" ? null : k === "nan" ? NaN : k === "negative" ? -1 : 0, error: k === "error" ? { message: "denied" } : null });
+      __hold = () => {
+        __casInvalidesLus.push(k);
+        return { count: k === "null" ? null : k === "nan" ? NaN : k === "negative" ? -1 : 0, error: k === "error" ? { message: "denied" } : null };
+      };
     }, kind);
-    await passer(page);
+    // Sous erreur le produit espace les créneaux (30, 60, 120 puis 240 s,
+    // gigue fixée au milieu). Chaque échantillon doit réellement atteindre
+    // le serveur ; quatre sauts fixes de 17 s n'en exerçaient plus que deux.
+    await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now() - 1));
+    expect(await lectures(page), kind + " : aucune lecture avant son créneau").toHaveLength(i);
+    await passer(page, 1);
+    expect(await lectures(page), kind + " : réponse effectivement lue").toHaveLength(i + 1);
     expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(4);
+    expect(await page.evaluate(() => _postLikeRefreshStats.echecsConsecutifs)).toBe(i + 1);
+    expect(await page.evaluate(() => _postLikeRefreshNextAt - Date.now())).toBe(30000 * 2 ** i);
   }
-  expect((await lectures(page)).length).toBeGreaterThanOrEqual(4);
+  expect(await page.evaluate(() => __casInvalidesLus)).toEqual(invalides);
+  expect(await lectures(page)).toHaveLength(4);
 });
 
 test("trois lectures par créneau, rotation, pas de rafale sur scroll et zéro hors viewport", async ({ page }) => {
@@ -297,11 +317,11 @@ for (const disposition of ["pending", "success", "failure"]) {
     await page.evaluate(() => { __hold = () => new Promise(resolve => { window.__resolveHead = resolve; }); });
     await passer(page, 350);
     await page.locator('#likes-test-stage [data-action="like"]').click();
-    await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 5");
+    await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 5");
     if (disposition !== "pending") await page.evaluate((ok) => __writeResolvers.shift()({ ok }), disposition === "success");
     await page.evaluate(() => { __resolveHead({ count: 1, error: null }); __hold = null; });
     await page.evaluate(() => Promise.resolve());
-    await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText(disposition === "failure" ? "🤍 4" : "❤️ 5");
+    await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe(disposition === "failure" ? "🤍 4" : "❤️ 5");
     if (disposition === "pending") {
       await passer(page);
       expect(await lectures(page)).toHaveLength(1); // bien plus que le verrou UI de800ms
@@ -331,7 +351,7 @@ test("like puis unlike après800ms : écritures ordonnées, HEAD attend le derni
   await passer(page, 1000);
   await page.locator('#likes-test-stage [data-action="like"]').click();
   expect(await page.evaluate(() => __writes.map(w => w.want))).toEqual([true]);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("🤍 4");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("🤍 4");
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   await page.evaluate(() => Promise.resolve());
   expect(await page.evaluate(() => __writes.map(w => w.want))).toEqual([true, false]);
@@ -339,7 +359,7 @@ test("like puis unlike après800ms : écritures ordonnées, HEAD attend le derni
   expect(await lectures(page)).toHaveLength(0);
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   await passer(page, 350);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("🤍 7");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("🤍 7");
 });
 
 for (const change of ["compte", "purge", "suppression", "blocage", "masque"]) {
@@ -361,20 +381,34 @@ for (const change of ["compte", "purge", "suppression", "blocage", "masque"]) {
 }
 
 test("une requête lente reste seule et son abandon rend le prochain créneau disponible", async ({ page }) => {
-  await preparer(page);
+  await preparer(page, 1, 0.5);
+  await figer(page);
   await page.evaluate(() => {
-    __hold = req => new Promise((resolve, reject) => { req.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }); });
+    window.delestageFacteur = () => 1;
+    window.__abandonsHead = 0;
+    __hold = req => new Promise((resolve, reject) => { req.signal.addEventListener("abort", () => { __abandonsHead++; reject(new Error("aborted")); }, { once: true }); });
   });
-  await passer(page, 350);
-  await passer(page, 7000);
+  await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now()));
   expect(await lectures(page)).toHaveLength(1);
+  const debut = (await lectures(page))[0].at;
+  await passer(page, 7999);
+  expect(await page.evaluate(() => __abandonsHead)).toBe(0);
   await page.evaluate(() => { for (let i = 0; i < 10; i++) window.dispatchEvent(new Event("resize")); });
-  await passer(page, 1500);
   expect(await lectures(page)).toHaveLength(1);
+  await passer(page, 1);
+  expect(await page.evaluate(() => __abandonsHead)).toBe(1);
+  expect(await lectures(page)).toHaveLength(1);
+  expect(await page.evaluate(() => _postLikeRefreshBusy)).toBe(false);
+  // L'abandon libère le cycle, sans effacer le recul sous panne : sa
+  // prochaine lecture tombe à 30 s du départ, pas après un délai fixe de 17 s.
+  expect(await page.evaluate(() => _postLikeRefreshNextAt)).toBe(debut + 30000);
   await page.evaluate(() => { __hold = null; });
-  await passer(page, 8500);
+  await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now() - 1));
+  expect(await lectures(page)).toHaveLength(1);
+  await passer(page, 1);
   expect(await lectures(page)).toHaveLength(2);
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(7);
+  expect(await page.evaluate(() => _postLikeRefreshStats.echecsConsecutifs)).toBe(0);
 });
 
 test("détail, profil et Bobines : copies durables, compteur visible et déduplication", async ({ page }) => {
@@ -394,7 +428,7 @@ test("détail, profil et Bobines : copies durables, compteur visible et dédupli
   expect(await page.evaluate(() => [state.supabasePosts[0].likes, _feedExtraPosts[0].likes, _visited.posts[0].likes, reelsState.items[0].likes])).toEqual([7, 7, 7, 7]);
   await expect(page.locator('#likes-test-stage [data-reellike] .reel-action-label')).toHaveText("7");
   await page.evaluate(() => { _renderVisitedContent(); });
-  await expect(page.locator('#visitedContent [data-action="like"]')).toHaveText("🤍 7");
+  await expect.poll(() => lireAction(page.locator('#visitedContent [data-action="like"]'))).toBe("🤍 7");
   await page.evaluate(() => {
     document.getElementById("likes-test-stage").style.display = "none";
     window.supaLoadComments = async () => [];
@@ -402,7 +436,7 @@ test("détail, profil et Bobines : copies durables, compteur visible et dédupli
     __counts.visible_like_0 = 12;
   });
   await passer(page);
-  await expect(page.locator('#postDetailContent .post-actions .post-action').first()).toHaveText("🤍 12");
+  await expect.poll(() => lireAction(page.locator('#postDetailContent .post-actions .post-action').first())).toBe("🤍 12");
   expect((await lectures(page)).length).toBe(2);
 });
 
@@ -437,6 +471,11 @@ for (const chemin of ["listes", "rpc"]) for (const newValue of ["head", "clic"])
       supa.rpc = (fn, args) => {
         if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });
         if (chemin === "listes") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function public.fil_compteurs" } });
+        // D14-01 (2026-11-20) : le compteur des cartes lit lui aussi par
+        // `fil_compteurs`. Le premier appel est la lecture du fil (retenue) ; les
+        // suivants sont les tours du compteur, servis tout de suite (le serveur
+        // « actuel » : `__counts`, comme le HEAD).
+        if (window.__resolveBulk) return Promise.resolve({ data: args._post_ids.map(id => ({ post_id: id, likes: __counts[id], aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null });
         return new Promise(resolve => { window.__resolveBulk = (res) => resolve(res.data
           ? { data: res.data.map(l => ({ post_id: l.post_id, likes: 1, aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null }
           : res); });

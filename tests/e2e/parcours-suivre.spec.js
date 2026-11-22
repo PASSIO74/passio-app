@@ -32,7 +32,9 @@ async function poser(page) {
     window.supaUnfollowUser = async () => ({ error: null });
 
     state.seed.users = (state.seed.users || []).filter((u) => u.id !== "u_sacha");
-    state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine" });
+    // LOT-5 (REC-C02) : Sacha est une VRAIE personne (profil mis en cache, `distant`) —
+    // un personnage d'exemple ne se suit plus.
+    state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine", distant: true });
     state.seed.users = state.seed.users.filter((u) => u.id !== "u_tiers");
     state.seed.users.push({ id: "u_tiers", name: "Alex", profileEmoji: "🎸", avatar: "#8b5cf6", passion: "musique" });
     state.seed.posts = [
@@ -130,7 +132,7 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
     // Le seed est reconstruit au boot : on repose la publication de Sacha, mais
     // PAS l'abonnement — c'est lui qu'on met à l'épreuve.
     state.seed.users = (state.seed.users || []).filter((u) => u.id !== "u_sacha");
-    state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine" });
+    state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine", distant: true }); // vraie personne (LOT-5)
     state.seed.users = state.seed.users.filter((u) => u.id !== "u_tiers");
     state.seed.users.push({ id: "u_tiers", name: "Alex", profileEmoji: "🎸", avatar: "#8b5cf6", passion: "musique" });
     state.seed.posts = [

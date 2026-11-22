@@ -1,0 +1,122 @@
+-- BANC UNIQUEMENT, apres la migration stories du 14/11.
+-- Policies et declencheurs : codex-catalogue-prod.json du Lead, reproduits sans assouplissement.
+-- Retrait des anciens grants de COLONNE du socle 06/11 ; edition content seule (13/11).
+set check_function_bodies = off;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='posts' loop execute format('drop policy %I on public.posts',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='post_comments' loop execute format('drop policy %I on public.post_comments',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='post_likes' loop execute format('drop policy %I on public.post_likes',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='comment_likes' loop execute format('drop policy %I on public.comment_likes',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='comment_interactions' loop execute format('drop policy %I on public.comment_interactions',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='stories' loop execute format('drop policy %I on public.stories',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='story_views' loop execute format('drop policy %I on public.story_views',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='story_comments' loop execute format('drop policy %I on public.story_comments',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='public' and tablename='story_likes' loop execute format('drop policy %I on public.story_likes',p.policyname); end loop; end $b$;
+do $b$ declare p record; begin for p in select policyname from pg_policies where schemaname='realtime' and tablename='messages' loop execute format('drop policy %I on realtime.messages',p.policyname); end loop; end $b$;
+create policy "Utilisateur reçoit ses messages" on "realtime"."messages" as PERMISSIVE for SELECT to "authenticated" using ((realtime.topic() = ('user:'::text || (( SELECT auth.uid() AS uid))::text)));
+create policy "passio_rt_emettre" on "realtime"."messages" as PERMISSIVE for INSERT to "authenticated" with check ((((realtime.topic() ~~ 'call:%'::text) AND call_partie_prenante(substr(realtime.topic(), 6))) OR ((realtime.topic() ~~ 'vlive:%'::text) AND peut_voir_live(substr(realtime.topic(), 7))) OR ((realtime.topic() ~~ 'typing:%'::text) AND is_conv_member(substr(realtime.topic(), 8), (( SELECT auth.uid() AS uid))::text)) OR ((realtime.topic() ~~ 'conv:%'::text) AND is_conv_member(substr(realtime.topic(), 6), (( SELECT auth.uid() AS uid))::text))));
+create policy "passio_rt_recevoir" on "realtime"."messages" as PERMISSIVE for SELECT to "authenticated" using ((((realtime.topic() ~~ 'ring:%'::text) AND (substr(realtime.topic(), 6) = (( SELECT auth.uid() AS uid))::text)) OR ((realtime.topic() ~~ 'call:%'::text) AND call_partie_prenante(substr(realtime.topic(), 6))) OR ((realtime.topic() ~~ 'vlive:%'::text) AND peut_voir_live(substr(realtime.topic(), 7))) OR (realtime.topic() = 'realtime:db'::text) OR ((realtime.topic() ~~ 'typing:%'::text) AND is_conv_member(substr(realtime.topic(), 8), (( SELECT auth.uid() AS uid))::text)) OR ((realtime.topic() ~~ 'conv:%'::text) AND is_conv_member(substr(realtime.topic(), 6), (( SELECT auth.uid() AS uid))::text)) OR ((realtime.topic() ~~ 'conv_specific:%'::text) AND is_conv_member(substr(realtime.topic(), 15), (( SELECT auth.uid() AS uid))::text))));
+create policy "passio_rt_recevoir_fil" on "realtime"."messages" as PERMISSIVE for SELECT to "authenticated" using (((realtime.topic() ~~ 'fil:%'::text) AND fil_temps_reel_visible(substr(realtime.topic(), 5))));
+create policy "Lecture selon visibilite de la cible" on "public"."comment_interactions" as PERMISSIVE for SELECT to "public" using (((user_id = (( SELECT auth.uid() AS uid))::text) OR comment_target_visible(comment_id, post_id)));
+create policy "ci_delete" on "public"."comment_interactions" as PERMISSIVE for DELETE to "public" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "ci_insert" on "public"."comment_interactions" as PERMISSIVE for INSERT to "authenticated" with check (((user_id = (( SELECT auth.uid() AS uid))::text) AND (NOT suppression_de_mon_compte()) AND (NOT post_auteur_bloque(post_id)) AND (NOT event_auteur_bloque(post_id)) AND (NOT post_auteur_bloque(comment_id)) AND (NOT event_auteur_bloque(comment_id)) AND ((kind = 'pin'::text) OR (NOT (EXISTS ( SELECT 1
+   FROM post_comments k
+  WHERE ((k.id = comment_interactions.comment_id) AND is_blocked_with(k.author_id))))))));
+create policy "Ecriture propre" on "public"."post_likes" as PERMISSIVE for INSERT to "authenticated" with check (((user_id = (( SELECT auth.uid() AS uid))::text) AND (NOT post_auteur_bloque(post_id)) AND (NOT suppression_de_mon_compte())));
+create policy "Lecture selon visibilite du post" on "public"."post_likes" as PERMISSIVE for SELECT to "public" using (((user_id = (( SELECT auth.uid() AS uid))::text) OR post_is_visible(post_id)));
+create policy "Suppression propre" on "public"."post_likes" as PERMISSIVE for DELETE to "public" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "story_likes_delete" on "public"."story_likes" as PERMISSIVE for DELETE to "authenticated" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "story_likes_insert" on "public"."story_likes" as PERMISSIVE for INSERT to "authenticated" with check (((user_id = (( SELECT auth.uid() AS uid))::text) AND story_visible(story_id) AND (NOT suppression_de_mon_compte())));
+create policy "story_likes_select" on "public"."story_likes" as PERMISSIVE for SELECT to "authenticated" using (((user_id = (( SELECT auth.uid() AS uid))::text) OR (story_est_a_moi(story_id) AND (NOT is_blocked_with(user_id)))));
+create policy "comment_likes_delete_own" on "public"."comment_likes" as PERMISSIVE for DELETE to "public" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "comment_likes_insert_own" on "public"."comment_likes" as PERMISSIVE for INSERT to "public" with check (((user_id = (( SELECT auth.uid() AS uid))::text) AND (NOT suppression_de_mon_compte()) AND (NOT (EXISTS ( SELECT 1
+   FROM post_comments k
+  WHERE ((k.id = comment_likes.comment_id) AND is_blocked_with(k.author_id)))))));
+create policy "comment_likes_select" on "public"."comment_likes" as PERMISSIVE for SELECT to "anon", "authenticated" using (((user_id = (( SELECT auth.uid() AS uid))::text) OR comment_target_visible(comment_id)));
+create policy "story_comments_delete" on "public"."story_comments" as PERMISSIVE for DELETE to "authenticated" using (((author_id = (( SELECT auth.uid() AS uid))::text) OR story_est_a_moi(story_id)));
+create policy "story_comments_insert" on "public"."story_comments" as PERMISSIVE for INSERT to "authenticated" with check (((author_id = (( SELECT auth.uid() AS uid))::text) AND story_visible(story_id) AND (NOT suppression_de_mon_compte())));
+create policy "story_comments_select" on "public"."story_comments" as PERMISSIVE for SELECT to "authenticated" using ((story_visible(story_id) AND (NOT is_blocked_with(author_id))));
+create policy "story_views_delete_own" on "public"."story_views" as PERMISSIVE for DELETE to "public" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "story_views_insert_own" on "public"."story_views" as PERMISSIVE for INSERT to "public" with check (((user_id = (( SELECT auth.uid() AS uid))::text) AND (NOT suppression_de_mon_compte())));
+create policy "story_views_select_auteur_story" on "public"."story_views" as PERMISSIVE for SELECT to "authenticated" using ((story_est_a_moi(story_id) AND (NOT is_blocked_with(user_id))));
+create policy "story_views_select_own" on "public"."story_views" as PERMISSIVE for SELECT to "public" using ((user_id = (( SELECT auth.uid() AS uid))::text));
+create policy "Ecriture propre" on "public"."posts" as PERMISSIVE for INSERT to "public" with check (((author_id = (( SELECT auth.uid() AS uid))::text) AND (NOT suppression_de_mon_compte())));
+create policy "Lecture respectant les comptes prives" on "public"."posts" as PERMISSIVE for SELECT to "public" using (((author_id = (( SELECT auth.uid() AS uid))::text) OR (NOT (EXISTS ( SELECT 1
+   FROM profiles pr
+  WHERE ((pr.id = posts.author_id) AND (pr.is_private = true))))) OR abonne_accepte_non_bloque(author_id)));
+create policy "Masquage apres signalements" on "public"."posts" as RESTRICTIVE for SELECT to "public" using (((author_id = (( SELECT auth.uid() AS uid))::text) OR (NOT post_masque(id))));
+create policy "Suppression propre" on "public"."posts" as PERMISSIVE for DELETE to "public" using ((author_id = (( SELECT auth.uid() AS uid))::text));
+create policy "posts_modifier_texte_auteur" on "public"."posts" as PERMISSIVE for UPDATE to "authenticated" using ((author_id = (( SELECT auth.uid() AS uid))::text)) with check ((author_id = (( SELECT auth.uid() AS uid))::text));
+create policy "Ecriture propre" on "public"."post_comments" as PERMISSIVE for INSERT to "authenticated" with check (((author_id = (( SELECT auth.uid() AS uid))::text) AND (NOT post_auteur_bloque(post_id)) AND (NOT suppression_de_mon_compte())));
+create policy "Lecture selon visibilite du post" on "public"."post_comments" as PERMISSIVE for SELECT to "public" using (((author_id = (( SELECT auth.uid() AS uid))::text) OR post_is_visible(post_id)));
+create policy "Suppression propre" on "public"."post_comments" as PERMISSIVE for DELETE to "public" using ((author_id = (( SELECT auth.uid() AS uid))::text));
+create policy "Update propre" on "public"."post_comments" as PERMISSIVE for UPDATE to "authenticated" using ((author_id = (( SELECT auth.uid() AS uid))::text)) with check (((author_id = (( SELECT auth.uid() AS uid))::text) AND (NOT post_auteur_bloque(post_id)) AND (NOT suppression_de_mon_compte())));
+create policy "Ecriture propre" on "public"."stories" as PERMISSIVE for INSERT to "public" with check (((author_id = (( SELECT auth.uid() AS uid))::text) AND (NOT suppression_de_mon_compte())));
+create policy "Lecture stories respectant les comptes prives" on "public"."stories" as PERMISSIVE for SELECT to "public" using (((author_id = (( SELECT auth.uid() AS uid))::text) OR (NOT (EXISTS ( SELECT 1
+   FROM profiles pr
+  WHERE ((pr.id = stories.author_id) AND (pr.is_private = true))))) OR abonne_accepte_non_bloque(author_id)));
+create policy "Suppression propre" on "public"."stories" as PERMISSIVE for DELETE to "public" using ((author_id = (( SELECT auth.uid() AS uid))::text));
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.posts'::regclass and not tgisinternal loop execute format('drop trigger %I on public.posts',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.post_comments'::regclass and not tgisinternal loop execute format('drop trigger %I on public.post_comments',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.post_likes'::regclass and not tgisinternal loop execute format('drop trigger %I on public.post_likes',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.comment_likes'::regclass and not tgisinternal loop execute format('drop trigger %I on public.comment_likes',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.comment_interactions'::regclass and not tgisinternal loop execute format('drop trigger %I on public.comment_interactions',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.stories'::regclass and not tgisinternal loop execute format('drop trigger %I on public.stories',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.story_views'::regclass and not tgisinternal loop execute format('drop trigger %I on public.story_views',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.story_comments'::regclass and not tgisinternal loop execute format('drop trigger %I on public.story_comments',t.tgname); end loop; end $b$;
+do $b$ declare t record; begin for t in select tgname from pg_trigger where tgrelid='public.story_likes'::regclass and not tgisinternal loop execute format('drop trigger %I on public.story_likes',t.tgname); end loop; end $b$;
+CREATE TRIGGER aa_ligne_bornee BEFORE INSERT OR UPDATE ON public.comment_interactions FOR EACH ROW EXECUTE FUNCTION ligne_bornee('16384');
+CREATE TRIGGER trg_ci_epingle_garde BEFORE INSERT OR UPDATE ON public.comment_interactions FOR EACH ROW WHEN ((new.kind = 'pin'::text)) EXECUTE FUNCTION ci_epingle_garde();
+CREATE TRIGGER trg_diffuser_interaction AFTER INSERT OR DELETE ON public.comment_interactions FOR EACH ROW EXECUTE FUNCTION diffuser_interaction();
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.comment_interactions FOR EACH ROW EXECUTE FUNCTION rate_limit_insert('user_id', '60');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.comment_interactions FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('user_id');
+CREATE TRIGGER trg_debit_compte BEFORE INSERT ON public.post_likes FOR EACH ROW EXECUTE FUNCTION debit_par_compte('120');
+CREATE TRIGGER trg_rid_opaque BEFORE INSERT OR UPDATE OF rid ON public.post_likes FOR EACH ROW EXECUTE FUNCTION rid_opaque_garde();
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.post_likes FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('user_id');
+CREATE TRIGGER trg_debit_compte BEFORE INSERT ON public.story_likes FOR EACH ROW EXECUTE FUNCTION debit_par_compte('120');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.story_likes FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('user_id');
+CREATE TRIGGER trg_debit_compte BEFORE INSERT ON public.comment_likes FOR EACH ROW EXECUTE FUNCTION debit_par_compte('120');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.comment_likes FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('user_id');
+CREATE TRIGGER aa_ligne_bornee BEFORE INSERT OR UPDATE ON public.story_comments FOR EACH ROW EXECUTE FUNCTION ligne_bornee('4096');
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.story_comments FOR EACH ROW EXECUTE FUNCTION rate_limit_insert('author_id', '30');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.story_comments FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('author_id');
+CREATE TRIGGER trg_debit_compte BEFORE INSERT ON public.story_views FOR EACH ROW EXECUTE FUNCTION debit_par_compte('240');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.story_views FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('user_id');
+CREATE TRIGGER aa_ligne_bornee BEFORE INSERT OR UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION ligne_bornee('262144');
+CREATE TRIGGER ab_debit_octets BEFORE INSERT OR UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION debit_octets_par_compte('4194304');
+CREATE TRIGGER ac_posts_edited_at BEFORE UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION posts_marquer_modifie();
+CREATE TRIGGER trg_posts_freeze_author BEFORE UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION posts_freeze_author();
+CREATE TRIGGER trg_purger_cibles_publication AFTER DELETE ON public.posts REFERENCING OLD TABLE AS publications_supprimees FOR EACH STATEMENT EXECUTE FUNCTION purger_cibles_publications();
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.posts FOR EACH ROW EXECUTE FUNCTION rate_limit_insert('author_id', '10');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('author_id');
+CREATE TRIGGER ab_debit_octets BEFORE INSERT OR UPDATE ON public.post_comments FOR EACH ROW EXECUTE FUNCTION debit_octets_par_compte('4194304');
+CREATE TRIGGER trg_diffuser_commentaire_publication AFTER INSERT ON public.post_comments FOR EACH ROW EXECUTE FUNCTION diffuser_commentaire_publication();
+CREATE TRIGGER trg_identifiants_figes BEFORE UPDATE ON public.post_comments FOR EACH ROW EXECUTE FUNCTION identifiants_figes('id', 'post_id', 'author_id', 'created_at');
+CREATE TRIGGER trg_purger_cibles_commentaire AFTER DELETE ON public.post_comments REFERENCING OLD TABLE AS commentaires_supprimes FOR EACH STATEMENT EXECUTE FUNCTION purger_cibles_commentaires();
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.post_comments FOR EACH ROW EXECUTE FUNCTION rate_limit_insert('author_id', '30');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.post_comments FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('author_id');
+CREATE TRIGGER aa_ligne_bornee BEFORE INSERT OR UPDATE ON public.stories FOR EACH ROW EXECUTE FUNCTION ligne_bornee('65536');
+CREATE TRIGGER ab_debit_octets BEFORE INSERT OR UPDATE ON public.stories FOR EACH ROW EXECUTE FUNCTION debit_octets_par_compte('4194304');
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.stories FOR EACH ROW EXECUTE FUNCTION rate_limit_insert('author_id', '10');
+CREATE TRIGGER zz_barriere_suppression BEFORE INSERT OR UPDATE ON public.stories FOR EACH ROW EXECUTE FUNCTION refuser_ecriture_compte_en_suppression('author_id');
+revoke update on public.posts from anon, authenticated;
+revoke update ("likes", "created_at", "is_reel", "overlays", "vlog", "edited_at", "id", "author_id", "passion_id", "mood", "content", "media_url", "shared_from_post_id", "shared_data", "event_id") on public.posts from anon, authenticated;
+grant update (content) on public.posts to authenticated;
+grant select (edited_at) on public.posts to anon, authenticated;
+revoke all on public.contenus_masques from anon, authenticated;
+revoke all on function public.fil_temps_reel_visible(text) from public, anon;
+grant execute on function public.fil_temps_reel_visible(text) to authenticated;
+revoke all on function public.ligne_bornee() from public, anon, authenticated;
+revoke all on function public.ci_epingle_garde() from public, anon, authenticated;
+revoke all on function public.diffuser_interaction() from public, anon, authenticated;
+revoke all on function public.rate_limit_insert() from public, anon, authenticated;
+revoke all on function public.refuser_ecriture_compte_en_suppression() from public, anon, authenticated;
+revoke all on function public.debit_par_compte() from public, anon, authenticated;
+revoke all on function public.rid_opaque_garde() from public, anon, authenticated;
+revoke all on function public.debit_octets_par_compte() from public, anon, authenticated;
+revoke all on function public.posts_marquer_modifie() from public, anon, authenticated;
+revoke all on function public.posts_freeze_author() from public, anon, authenticated;
+revoke all on function public.purger_cibles_publications() from public, anon, authenticated;
+revoke all on function public.diffuser_commentaire_publication() from public, anon, authenticated;
+revoke all on function public.identifiants_figes() from public, anon, authenticated;
+revoke all on function public.purger_cibles_commentaires() from public, anon, authenticated;
+set check_function_bodies = on;

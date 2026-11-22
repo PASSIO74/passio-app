@@ -11,18 +11,92 @@ function openPostOptions(postId) {
   // éditeur n'existe plus. Les publications de type `vlog` n'apparaissent
   // d'ailleurs plus nulle part, donc ce menu ne peut plus s'ouvrir sur l'une
   // d'elles.
-  var _editBtn = "";
+  // CRE-C16 / FIL-C24 (décision de Benjamin du 2026-11-13, « 1 : a ») : le
+  // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
+  // Pas pour un repartage : son texte est la citation de l'original.
+  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
+    ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Modifier le texte
+      </button>`
+    : "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
       ${_editBtn}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
-        Supprimer le post
+        Supprimer la publication
       </button>
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+}
+
+// ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────
+// Le serveur d'abord : le texte affiché ne change qu'une fois l'écriture
+// confirmée (`{ error }` lu, zéro ligne = refus). La migration du 2026-11-13
+// n'ouvre que la colonne `content`, à l'auteur ; `edited_at` est posé par le
+// serveur. Une publication qui n'existe que sur cet appareil se corrige ici.
+var TEXTE_PUBLICATION_MAX = 5000;
+function modifierTextePublication(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) { toast("Cette publication n'est plus disponible."); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Modifier le texte</div>
+    <div class="modal-subtitle">La passion, la photo et la vidéo ne changent pas. La publication portera la mention « modifié ».</div>
+    <textarea class="textarea" id="pubTexteEdit" aria-label="Texte de la publication" maxlength="${TEXTE_PUBLICATION_MAX}" style="min-height:120px;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+      <button class="btn primary block" id="pubTexteEnregistrer" onclick="enregistrerTextePublication('${escapeJsArg(postId)}')">Enregistrer</button>
+    </div>
+  `);
+  var champ = document.getElementById("pubTexteEdit");
+  if (champ) { champ.value = String(p.text || ""); try { champ.focus(); } catch (e) {} }
+}
+async function enregistrerTextePublication(postId) {
+  var champ = document.getElementById("pubTexteEdit");
+  var bouton = document.getElementById("pubTexteEnregistrer");
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!champ || !p) return;
+  var texte = String(champ.value || "").trim().slice(0, TEXTE_PUBLICATION_MAX);
+  if (!texte && !p.image && !p.video && !p.audio) { toast("Écris quelque chose, ou supprime la publication"); return; }
+  if (texte === String(p.text || "").trim()) { closeModal(); return; }
+  if (bouton) { if (bouton.disabled) return; bouton.disabled = true; bouton.textContent = "Enregistrement…"; }
+  var serveur = !!(p.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  var editedAt = Date.now();
+  if (serveur) {
+    var r = null;
+    try {
+      r = await supa.from("posts").update({ content: texte }).eq("id", postId).eq("author_id", MY_UID).select("id, edited_at");
+    } catch (e) { r = { error: e }; }
+    var ok = r && !r.error && Array.isArray(r.data) && r.data.length === 1;
+    if (!ok) {
+      if (bouton) { bouton.disabled = false; bouton.textContent = "Enregistrer"; }
+      try { diagLog("modification de publication refusée " + String((r && r.error && (r.error.code || r.error.message)) || "0 ligne")); } catch (e) {}
+      toast(typeof estEchecReseau === "function" && r && r.error && estEchecReseau(r.error)
+        ? "⚠️ Pas de connexion — modification non enregistrée"
+        : "⚠️ Modification non enregistrée — réessaie", "warning");
+      return;
+    }
+    if (r.data[0].edited_at) editedAt = supaTs(r.data[0].edited_at);
+  }
+  // Toutes les copies vivantes (userPosts, supabasePosts, seed, extras du fil).
+  [state.userPosts, state.supabasePosts, state.seed && state.seed.posts, window._feedExtraPosts].forEach(function (liste) {
+    (liste || []).forEach(function (x) { if (x && x.id === postId) { x.text = texte; x.editedAt = editedAt; } });
+  });
+  try { saveState(); } catch (e) {}
+  closeModal();
+  window._feedDomSig = null; window._lastHtml = null;
+  try { renderFeed(); } catch (e) {}
+  try {
+    var page = document.getElementById("postDetailPage");
+    if (page && page.style.display === "flex" && typeof openPost === "function") openPost(postId);
+  } catch (e) {}
+  toast(serveur ? "Publication modifiée" : "Publication modifiée sur cet appareil");
 }
 
 // Le ⋯ d'une publication d'AUTRUI : signaler la publication, bloquer l'auteur.
@@ -37,10 +111,10 @@ function openPostOptionsAutrui(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
-      <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">🚩 Signaler cette publication</button>
+      <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">${picto("signaler")} Signaler cette publication</button>
       ${bloque
-        ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">✅ Débloquer ${escapeHtml(nom)}</button>`
-        : `<button class="post-option danger" onclick="closeModal();blockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">🚫 Bloquer ${escapeHtml(nom)}</button>`}
+        ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">${picto("debloquer")} Débloquer ${escapeHtml(nom)}</button>`
+        : `<button class="post-option danger" onclick="closeModal();demanderBlocage('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">${picto("bloquer")} Bloquer ${escapeHtml(nom)}</button>`}
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
@@ -112,7 +186,10 @@ function _delObStopTimer() { if (_delObTimer) { clearInterval(_delObTimer); _del
 function _enqueuePostDelete(postId, paths) {
   if (!postId) return;
   var arr = _delObLoad().filter(function (o) { return o.postId !== postId; });
-  arr.push({ postId: postId, paths: paths || [], uid: (typeof MY_UID !== "undefined" ? MY_UID : null), tries: 0, ts: Date.now() });
+  // AUTH-06 : le compte RÉEL qui supprime, jamais le `u_<aléatoire>` d'un visiteur.
+  var proprio = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+  if (!proprio) return;   // un visiteur n'a aucune ligne en base à supprimer
+  arr.push({ postId: postId, paths: paths || [], uid: proprio, tries: 0, ts: Date.now() });
   _delObSave(arr);
   _delObStartTimer();
   _delObFlush();
@@ -127,9 +204,20 @@ function _enqueuePostDelete(postId, paths) {
 // coûte une requête sur un chemin rare.
 async function _delObRun(op) {
   try {
-    if (typeof sessionExpiree === "function" && sessionExpiree()) return false; // UXO-02
+    if (typeof sessionExpiree === "function" && sessionExpiree()) return "sans_session"; // UXO-02 : on attend, sans compter d'essai
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    // ⚠️ LA RELECTURE N'EST UNE PREUVE QUE SI LE LECTEUR EST L'AUTEUR (ETAT-05, audit
+    // du 2026-11-10). Sous une session morte, le DELETE est filtré par la RLS (0 ligne,
+    // aucune erreur) et la relecture se fait sous le rôle anonyme : la publication d'un
+    // compte PRIVÉ existe mais n'est pas lisible → « reste » nul → « supprimée ». La
+    // file l'abandonnait, la pierre tombale la cachait à son auteur, ses abonnés la
+    // lisaient toujours. Sans session de CE compte, on attend — sans compter d'essai.
+    try {
+      const ses = await supa.auth.getSession();
+      const su = ses && ses.data && ses.data.session && ses.data.session.user;
+      if (!su || su.id !== MY_UID) return "sans_session";
+    } catch (e) { return "sans_session"; }
     const res = await supa.from("posts").delete().eq("id", op.postId).eq("author_id", MY_UID).select("id");
     const verdict = (typeof _writeVerdict === "function")
       ? _writeVerdict(res, { label: "suppression de la publication " + op.postId })
@@ -163,10 +251,16 @@ async function _delObFlush() {
     for (var i = 0; i < arr.length; i++) {
       var op = arr[i];
       if ((op.tries || 0) >= _DEL_OB_MAX_TRIES) continue;
-      if (op.uid && op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
+      if (!op.uid) {   // entrée d'avant AUTH-06, sans propriétaire : ni rejouée sous un autre compte, ni gardée en silence
+        try { if (typeof diagLog === "function") diagLog("file suppressions : entrée sans propriétaire retirée " + String(op.postId).slice(0, 40)); } catch (e) {}
+        _delObSave(_delObLoad().filter(function (o) { return o.postId !== op.postId; }));
+        continue;
+      }
+      if (op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
       var ok = false;
       try { ok = await _delObRun(op); } catch (e) { ok = false; }
-      if (ok) {
+      if (ok === "sans_session") continue;   // ni preuve ni essai : on attend la session
+      if (ok === true) {
         _delObSave(_delObLoad().filter(function (o) { return o.postId !== op.postId; }));
       } else {
         op.tries = (op.tries || 0) + 1;
@@ -175,7 +269,7 @@ async function _delObFlush() {
     }
   } finally { _delObFlushing = false; }
   var pend = _delObLoad().filter(function (o) {
-    return (o.tries || 0) < _DEL_OB_MAX_TRIES && (!o.uid || o.uid === MY_UID);
+    return (o.tries || 0) < _DEL_OB_MAX_TRIES && o.uid === MY_UID;
   });
   if (pend.length) _delObStartTimer(); else _delObStopTimer();
 }
@@ -212,13 +306,13 @@ function confirmDeletePost(postId) {
   const preview = (post.text || "").slice(0, 80) + (post.text && post.text.length > 80 ? "…" : "");
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
+    
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">🗑</div>
-      <div class="pay-modal-title">Supprimer ce post ?</div>
+      <div class="pay-modal-title">Supprimer cette publication ?</div>
     </div>
     <div style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.55;text-align:center;">
-      Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés.
+      Cette action est <b>définitive</b>. La publication et ses commentaires seront supprimés.
     </div>
     ${preview ? `<div style="background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text-dim);font-style:italic;line-height:1.5;">« ${escapeHtml(preview)} »</div>` : ""}
     <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="deletePost('${escapeJsArg(postId)}')">
@@ -258,7 +352,7 @@ function deletePost(postId) {
   // Re-render selon l'écran courant
   renderFeed();
   if (typeof renderProfilesScreen === "function") renderProfilesScreen();
-  toast("Post supprimé.");
+  toast("Publication supprimée.");
 }
 
 // Détecte une URL d'image/GIF (KLIPY, Giphy, Tenor ou extension média) pour rendre
@@ -336,9 +430,29 @@ function _linkifyText(safe) {
   }
   return out;
 }
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C67) : les liens d'un MESSAGE, sur un
+// texte DÉJÀ échappé — même reconnaissance que `_linkifyText` (http(s) seulement,
+// ponctuation finale hors du lien, aucun `<`, `"` déjà en entité), sans mentions
+// ni mots-dièse. Nouvel onglet, `noopener noreferrer nofollow`.
+function _liensMessage(safe) {
+  if (!safe) return "";
+  var adresse = /^https?:\/\/[^\s<]+/;
+  var bord = /[\s(]/;
+  var out = "", i = 0, m;
+  while (i < safe.length) {
+    var ch = safe[i];
+    if (ch === "h" && (i === 0 || bord.test(safe[i - 1])) && (m = adresse.exec(safe.slice(i)))) {
+      var clean = m[0].replace(/[.,;!?)]+$/, "");
+      out += '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="msg-lien">' + clean + '</a>';
+      i += clean.length; continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
-    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
+    ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(txt) + '="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
     : _linkifyText(escapeHtml(txt || ""));
 }
 // Ouvre le profil d'un pseudo @mentionné (recherche insensible à la casse dans
@@ -529,6 +643,19 @@ function _enqueueCommentSync(op) {
   _cmtObStartTimer();
   _cmtObFlush();
 }
+// ⚠️ SRV-02 (2026-11-13) : la notification d'un commentaire part à SA
+// CONFIRMATION, jamais à la mise en file. La base exige le commentaire réel
+// derrière une notification `comment` ; posée en parallèle, elle arrivait avant
+// lui (hors ligne : des minutes avant) et se faisait refuser. `op.notif` =
+// { to, kind, text } ; la référence est le fil (`op.threadId`). L'entrée a déjà
+// passé la garde du compte (AUTH-06) : c'est bien son auteur qui notifie.
+function _cmtObNotifier(op) {
+  try {
+    var n = op && op.notif;
+    if (!n || !n.to || !n.kind || typeof supaInsertNotif !== "function") return;
+    supaInsertNotif(n.to, n.kind, op.threadId, n.text);
+  } catch (e) {}
+}
 // Exécute UN envoi ; renvoie une Promise<boolean> (succès serveur).
 function _cmtObRun(op) {
   try {
@@ -594,7 +721,7 @@ async function _cmtObFlush() {
       if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
       var ok = false;
       try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
-      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); }
+      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); _cmtObNotifier(op); }
       else { op.tries = (op.tries || 0) + 1; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); _cmtObSetStatus(op.threadId, op.nodeId, false); }
     }
   } finally { _cmtObFlushing = false; }
@@ -639,9 +766,41 @@ function _commentSkeletonHtml(n) {
   return '<div class="cmt-skel-wrap" aria-hidden="true">' + rows + '</div>';
 }
 
+// FIL-C07 (audit UX/UI du 2026-11-10) : « Masquer ce commentaire » ne tenait
+// que jusqu'à la relecture de la discussion (le commentaire n'était retiré que
+// du tableau en mémoire). Les identifiants masqués vivent désormais dans l'état
+// du COMPTE (`state.user.hiddenComments`, borné à 500), et la liste les écarte
+// comme elle écarte les comptes bloqués.
+var _CMT_MASQUES_MAX = 500;
+function commentaireMasque(id) {
+  try { return !!id && ((state.user && state.user.hiddenComments) || []).indexOf(id) > -1; } catch (e) { return false; }
+}
+function memoriserCommentaireMasque(id) {
+  if (!id || !state.user) return;
+  var l = Array.isArray(state.user.hiddenComments) ? state.user.hiddenComments : (state.user.hiddenComments = []);
+  if (l.indexOf(id) < 0) {
+    l.push(id);
+    if (l.length > _CMT_MASQUES_MAX) l.splice(0, l.length - _CMT_MASQUES_MAX);
+  }
+  try { saveState(); } catch (e) {}
+}
+
+// FIL-C29 : la limite de 400 caractères se dit, à partir de 350.
+function majCompteurCommentaire(champ) {
+  try {
+    var c = document.getElementById((champ && champ.id ? champ.id : "newComment") + "Compteur");
+    if (!c || !champ) return;
+    var max = Number(champ.getAttribute("maxlength")) || 400;
+    var n = (champ.value || "").length;
+    if (n >= max - 50) { c.hidden = false; c.textContent = n + " / " + max; c.classList.toggle("plein", n >= max); }
+    else { c.hidden = true; c.textContent = ""; }
+  } catch (e) {}
+}
+
 function _renderCommentsList(allComments, postId) {
-  // Masquer les commentaires des utilisateurs bloqués (modération)
-  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
+  // Masquer les commentaires des utilisateurs bloqués (modération) et ceux que
+  // j'ai masqués (FIL-C07).
+  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)) && !commentaireMasque(c.id));
   // Tri Pertinents / Récents (le tableau arrive trié récent→ancien).
   window._cmtSort = window._cmtSort || {};
   var _sortMode = window._cmtSort[postId] || "recent";
@@ -732,73 +891,122 @@ function _renderCommentsList(allComments, postId) {
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
     const cEpingle = _estEpingle(postId, c);
     return `<div class="comment${cEpingle ? " pinned" : ""}" data-commentid="${escapeHtml(c.id)}">
-      <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
-      <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+      <div class="avatar sm" role="link" aria-label="Profil de ${escapeHtml(name)}" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
+      <button class="comment-menu-btn" title="Options" aria-label="Options du commentaire" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
         ${cEpingle ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
-        ${identitePassionsHTML(_cAv, "ident-passions-sm")}
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" role="button" aria-label="J'aime ce commentaire — ${cLikes}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+          <span class="comment-action" role="button" aria-label="Répondre" onclick="return replyToComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" role="button" aria-label="Réagir" onclick="return showEmojiPickerForComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
           <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
-          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-          const rSrc = r.authorId === "me" ? "me" : "seed";
-
-          // Si c'est une réaction emoji, afficher différemment
-          // ⚠️ r.text est ÉCHAPPÉ : le payload de comment_interactions est librement
-          // insérable par tout compte authentifié (RLS insert user_id only) → un
-          // payload HTML brut serait un XSS stocké rendu chez tous les lecteurs.
-          if (r.type === "emoji_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
-            </div>`;
-          }
-
-          // Si c'est une réaction GIF — n'affiche une image QUE si le texte est une
-          // vraie URL média (sinon texte échappé), même raison anti-XSS que ci-dessus.
-          if (r.type === "gif_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            const _gifHtml = _looksLikeMediaUrl(r.text)
-              ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
-              : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
-            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span><br/>
-              ${_gifHtml}</div>
-            </div>`;
-          }
-
-          // Réponse normale — avec sa propre action « réagir » + pastille de réactions
-          const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-          const rReactChip = _cmtReactChipHtml(postId, r);
-          const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
-          const rLikes = r.likes || 0;
-          return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
-            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}${identitePassionsHTML(ru, "ident-passions-sm")}
-            <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
-              <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
-              <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
-              <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="Réagir">😊</span>
-              <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(r.id)}">${rReactChip}</span>
-            </div></div>
-          </div>`;
-        }).join("")}</div>` : ""}
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => _reponseLigneHtml(postId, r, _selfIds)).join("")}</div>` : ""}
       </div>
     </div>`;
   }).join("") + _olderBtn;
   return _sortBar + _listHtml;
+}
+
+// Une ligne de réponse sous un commentaire : réponse texte, GIF, ou réaction
+// emoji. UNE seule écriture, pour la discussion (`_renderCommentsList`) et pour
+// les réponses dépliées sous un aperçu de la carte du fil (`renderPostHTML`,
+// app-02, 2026-11-13 : « fais comme Facebook et Instagram »).
+function _reponseLigneHtml(postId, r, _selfIds) {
+  const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+  const rSrc = r.authorId === "me" ? "me" : "seed";
+
+  // Si c'est une réaction emoji, afficher différemment
+  // ⚠️ r.text est ÉCHAPPÉ : le payload de comment_interactions est librement
+  // insérable par tout compte authentifié (RLS insert user_id only) → un
+  // payload HTML brut serait un XSS stocké rendu chez tous les lecteurs.
+  if (r.type === "emoji_reaction") {
+    const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+    return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+      <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+      <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
+    </div>`;
+  }
+
+  // Si c'est une réaction GIF — n'affiche une image QUE si le texte est une
+  // vraie URL média (sinon texte échappé), même raison anti-XSS que ci-dessus.
+  if (r.type === "gif_reaction") {
+    const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+    const _gifHtml = _looksLikeMediaUrl(r.text)
+      ? `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text)}="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+      : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
+    return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+      <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+      <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span><br/>
+      ${_gifHtml}</div>
+    </div>`;
+  }
+
+  // Réponse normale — avec sa propre action « réagir » + pastille de réactions
+  const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+  const rReactChip = _cmtReactChipHtml(postId, r);
+  const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
+  const rLikes = r.likes || 0;
+  return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+    <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
+    <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
+    <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
+      <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
+      <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
+      <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="Réagir">😊</span>
+      <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(r.id)}">${rReactChip}</span>
+    </div></div>
+  </div>`;
+}
+
+// Réponses d'un APERÇU de la carte du fil, dépliables sur place (façon Facebook /
+// Instagram, 2026-11-13) : le lien « ▼ N réponses » et le bloc des réponses,
+// replié par défaut, ouvert si `_repliesExpanded` le dit (l'état survit aux
+// re-rendus, comme dans la discussion). La liste est `_reponsesComptees` : la
+// carte compte les réactions emoji avec les réponses depuis toujours, elle les
+// montre donc aussi, en ligne — le compte du lien et les lignes dépliées disent
+// la même chose.
+function _apercuReponsesHtml(postId, c, selfIds) {
+  var reps = (typeof _reponsesComptees === "function") ? _reponsesComptees(c && c.replies) : ((c && c.replies) || []);
+  reps = reps.filter(Boolean);
+  if (!c || !reps.length) return { lien: "", bloc: "" };
+  var ouvert = !!(window._repliesExpanded && window._repliesExpanded[c.id]);
+  var lien = '<span class="comment-reply-count" data-apercu-lien="' + escapeHtml(c.id) + '" role="button" aria-expanded="' + (ouvert ? "true" : "false") + '"'
+    + ' onclick="return toggleCommentReplies(\'' + escapeJsArg(c.id) + '\', event);">'
+    + (ouvert ? "▲ Masquer les réponses" : _libelleApercuReponses(reps.length)) + '</span>';
+  var bloc = '<div class="comment-replies" data-apercu-reps="' + escapeHtml(c.id) + '" id="replies-' + escapeHtml(c.id) + '" style="display:' + (ouvert ? "block" : "none") + ';">'
+    + reps.map(function (r) { return _reponseLigneHtml(postId, r, selfIds || []); }).join("") + '</div>';
+  return { lien: lien, bloc: bloc };
+}
+function _libelleApercuReponses(n) { return "▼ " + n + " réponse" + (n > 1 ? "s" : ""); }
+// Une réponse ajoutée (ou confirmée, retirée) se voit aussi sous l'aperçu de la
+// carte : on repeint en place le lien et le bloc de chaque copie de l'aperçu.
+function _rafraichirApercusCarte(threadId, comments) {
+  var selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user && state.user.id, "me"].filter(Boolean);
+  var cartes = document.querySelectorAll('.post[data-postid="' + CSS.escape(threadId) + '"]');
+  Array.prototype.forEach.call(cartes, function (carte) {
+    Array.prototype.forEach.call(carte.querySelectorAll(".comment[data-commentid]"), function (el) {
+      var c = (comments || []).find(function (x) { return x && x.id === el.getAttribute("data-commentid"); });
+      if (!c) return;
+      var parts = _apercuReponsesHtml(threadId, c, selfIds);
+      var actions = el.querySelector(".comment-actions");
+      var vieuxLien = el.querySelector(".comment-reply-count"), vieuxBloc = el.querySelector(".comment-replies");
+      if (vieuxLien) vieuxLien.remove();
+      if (vieuxBloc) vieuxBloc.remove();
+      if (parts.lien && actions) actions.insertAdjacentHTML("beforeend", parts.lien);
+      if (parts.bloc) {
+        // Sous le champ de réponse s'il est ouvert, sinon sous les actions.
+        var apres = el.querySelector(".comment-reply-input") || actions;
+        if (apres) apres.insertAdjacentHTML("afterend", parts.bloc);
+      }
+    });
+  });
 }
 
 // Déplie tous les commentaires d'un fil (retire le cap de pagination) puis re-rend.
@@ -1041,7 +1249,7 @@ function _patchPostCommentCount(postId) {
   if (!post) return;
   var n = (typeof nbCommentairesPost === "function") ? nbCommentairesPost(post) : (post.comments || []).length;
   document.querySelectorAll('[data-cmtcount="' + postId + '"]').forEach(function (el) {
-    el.innerHTML = "💬 " + n;
+    peindreCommentairesPost(el, n);
   });
 }
 // Patch EN PLACE le bouton like d'un commentaire/réponse (holder [data-cmtlike]).
@@ -1107,7 +1315,7 @@ function openCommentReactors(threadId, commentId, event) {
     var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
     var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
     var _face = _looksLikeMediaUrl(r.text)
-      ? '<img loading="lazy" src="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.text) + '="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(r.text || "❤️") + '</span>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
       + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + escapeJsArg(r.authorId) + '\',\'' + escapeJsArg(rSrc) + '\')">' + avatarInner(_av) + '</div>'
@@ -1162,9 +1370,10 @@ function likeCommentNode(threadId, nodeId, event) {
     if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(nodeId);
   } else {
     node.likedBy.push(meId); node.likes += 1;
-    if (typeof supaCommentInteract === "function") supaCommentInteract(nodeId, threadId, "like", "");
-    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(node.authorId, "like", threadId, "a aimé ta réponse"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(nodeId, threadId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, node.authorId, "like", threadId, "a aimé ta réponse");
     }
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
@@ -1224,7 +1433,7 @@ function _openReactorsList(items, event) {
   var rowsHtml;
   function face(t) {
     return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
-      ? '<img loading="lazy" src="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" ' + passioMediaProteges.attributImage(t) + '="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(t || "❤️") + '</span>';
   }
   if (withAuthors) {
@@ -1316,14 +1525,14 @@ async function openComments(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Discussion</div>
-    <div class="modal-subtitle">Réponds à cette publication.</div>
-    <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
+    <div id="commentsBox" class="cmt-fil-liste" aria-live="polite">
       ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
-    <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
+    <textarea class="textarea" id="newComment" aria-label="Écrire un commentaire" placeholder="Ajoute un commentaire…" maxlength="400" rows="1" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this);majCompteurCommentaire(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
+    <div class="cmt-compteur" id="newCommentCompteur" aria-live="polite" hidden></div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
-      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
+      <button class="btn primary cmt-publier" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
     </div>
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
@@ -1446,7 +1655,7 @@ function submitComment(postId) {
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("commenter")) return;
   const text = $("#newComment").value.trim();
-  if (text.length < 2) { toast("Trop court"); return; }
+  if (text.length < 2) { toast("Écris au moins 2 caractères"); return; }
   let post = findPostAnywhere(postId);
   if (!post) return;
   try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
@@ -1472,12 +1681,16 @@ function submitComment(postId) {
   // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
   // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text });
-    else Promise.resolve(supaAddComment(postId, text, _cid)).then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
-    // Notifier l'auteur du post
+    // Notifier l'auteur du post — à la CONFIRMATION du commentaire (SRV-02) : la
+    // notification voyage avec l'envoi dans la file, qui la pose au succès.
     const commentedPost = findPostAnywhere(postId);
-    if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
-      supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
+    const _notifCmt = (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase)
+      ? { to: commentedPost.authorId, kind: "comment", text: "a commenté ton post" } : null;
+    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text, notif: _notifCmt });
+    else {
+      const _ecrit = Promise.resolve(supaAddComment(postId, text, _cid));
+      _ecrit.then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
+      if (_notifCmt) notifierApresEcriture(_ecrit, _notifCmt.to, _notifCmt.kind, postId, _notifCmt.text);
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   }
@@ -1491,7 +1704,7 @@ function submitComment(postId) {
   var _box = document.getElementById("commentsBox");
   if (_box) { _box.scrollTop = 0; _flashNewComment(_box, _cid); } // nouveau = en tête (unshift)
   var _tt = document.querySelector(".modal-title");
-  if (_tt) _tt.textContent = "Discussion · " + nbCommentairesPost(post);
+  if (_tt) _tt.textContent = "Discussion (" + nbCommentairesPost(post) + ")"; // LOT-50 (FIL-C05) : une seule forme
   if (typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
   // Compteur 💬 de la carte/du détail patché EN PLACE (fini le renderFeed complet
   // derrière la modale : ~100 ms de rebuild du fil à CHAQUE commentaire publié).
@@ -2366,6 +2579,10 @@ function _refreshCommentThreadUINow(threadId) {
   try {
     if (window.currentReelCommentPostId === threadId && typeof loadReelComments === "function") loadReelComments(threadId);
   } catch(e) {}
+  // Aperçus de la carte du fil : réponses dépliées sur place (2026-11-13).
+  if (thread.kind === "post") {
+    try { _rafraichirApercusCarte(threadId, thread.comments); } catch(e) { try { diagLog("apercus_carte : " + (e && e.message)); } catch (_e) {} }
+  }
   // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
@@ -2389,23 +2606,23 @@ function openCommentOptions(threadId, commentId, mine, event) {
     name: c.authorName || c.author || "ce compte", authorId: c.authorId,
     text: c.text || c.content || "" };
   var rows = ""
-    + _cmtRow("💬", "Répondre", "reply")
-    + _cmtRow("😊", "Réagir avec un emoji", "react")
-    + _cmtRow("🎬", "Réagir avec un GIF", "gif")
-    + _cmtRow("📋", "Copier le texte", "copy");
+    + _cmtRow(picto("repondre"), "Répondre", "reply")
+    + _cmtRow(picto("emoji"), "Réagir avec un emoji", "react")
+    + _cmtRow(picto("gif"), "Réagir avec un GIF", "gif")
+    + _cmtRow(picto("copier"), "Copier le texte", "copy");
   window._cmtSheetCtx.owner = (typeof _isThreadOwner === "function") ? _isThreadOwner(threadId) : false;
   // Épingler : réservé au propriétaire du fil (auteur du post/événement/live) — et
   // jamais dans un fil homonyme, que la garde du serveur refuse (`_filAmbigu`).
   if (window._cmtSheetCtx.owner && !_filAmbigu(threadId)) {
-    rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
+    rows += _cmtRow(picto("epingler"), _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
-    if (!_looksLikeMediaUrl(c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
-    rows += _cmtRow("🗑", "Supprimer", "delete", true);
+    if (_commentaireModifiable(commentId, c.text || c.content || "")) rows += _cmtRow(picto("modifier"), "Modifier", "edit");
+    rows += _cmtRow(picto("supprimer"), "Supprimer", "delete", true);
   } else {
-    rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
-    rows += _cmtRow("🚫", "Bloquer ce compte", "block", true);
-    rows += _cmtRow("⚠️", "Signaler", "report", true);
+    rows += _cmtRow(picto("masquer"), "Masquer ce commentaire", "hide");
+    rows += _cmtRow(picto("bloquer"), "Bloquer ce compte", "block", true);
+    rows += _cmtRow(picto("signaler"), "Signaler", "report", true);
   }
   var ov = document.createElement("div");
   ov.id = "cmtSheet";
@@ -2428,14 +2645,18 @@ function _cmtAct(kind) {
   else if (kind === "react") { try { showEmojiPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "gif") { try { showGifPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "copy") {
-    try { navigator.clipboard.writeText(ctx.text); toast("Texte copié"); }
-    catch(e) { toast("Copie impossible"); }
+    // FIL-C09 : le succès s'annonce APRÈS la réponse du presse-papiers (le
+    // try/catch n'entourait qu'un appel asynchrone : refus avalé, « Texte copié »).
+    try {
+      Promise.resolve(navigator.clipboard.writeText(ctx.text))
+        .then(function () { toast("Texte copié"); }, function () { toast("Copie impossible"); });
+    } catch(e) { toast("Copie impossible"); }
   }
   else if (kind === "edit") { editCommentEntry(ctx.threadId, ctx.commentId); }
   else if (kind === "pin") { togglePinComment(ctx.threadId, ctx.commentId); }
   else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
-  else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
-  else if (kind === "block") { if (typeof blockUser === "function") blockUser(ctx.authorId); }
+  else if (kind === "hide") { memoriserCommentaireMasque(ctx.commentId); deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
+  else if (kind === "block") { demanderBlocage(ctx.authorId, ctx.name); }
   else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
 }
 
@@ -2463,22 +2684,64 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   // en place, sans reconstruire tout le fil.
   if (thread.kind === "post") { try { _patchPostCommentCount(threadId); } catch(e){} }
   _refreshCommentThreadUI(threadId);
-  if (!localOnly) {
-    _supaDeleteCommentRow(commentId);
-    toast("Commentaire supprimé");
-  }
+  if (localOnly) return;
+  // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, FIL-C06) : « Commentaire supprimé »
+  // partait AVANT la réponse du serveur, qui n'était jamais lue. Un refus (RLS,
+  // panne, hors ligne) laissait la ligne en base : le commentaire « supprimé »
+  // revenait à la relecture suivante. On annonce désormais le VERDICT, et un
+  // refus remet le commentaire à sa place.
+  _supaDeleteCommentRow(commentId).then(function (v) {
+    if (v && v.ok) { toast("Commentaire supprimé"); return; }
+    if (retire) {
+      var t2 = _findCommentThread(threadId);
+      if (t2 && !t2.comments.some(function (c) { return c.id === retire.id; })) {
+        t2.comments.splice(Math.min(Math.max(idx, 0), t2.comments.length), 0, retire);
+        if (retire.fromSupabase && t2.kind === "post") {
+          var vuRet = new Set();
+          ((typeof _copiesDiscussion === "function") ? _copiesDiscussion(threadId, null) : []).forEach(function (c) {
+            if (!c || vuRet.has(c)) return; vuRet.add(c);
+            if (Number.isSafeInteger(c.commentsTotal)) c.commentsTotal++;
+          });
+        }
+        if (typeof t2.save === "function") t2.save();
+        if (t2.kind === "post") { try { _patchPostCommentCount(threadId); } catch (e) {} }
+        _refreshCommentThreadUI(threadId);
+      }
+    }
+    toast(v && v.reseau ? "Hors connexion : commentaire non supprimé. Réessaie une fois en ligne."
+                        : "Le commentaire n'a pas pu être supprimé. Réessaie.", "error");
+  });
 }
+// Rend le verdict de la suppression : { ok: true } (supprimé, ou rien à
+// supprimer côté serveur : commentaire local, visiteur, démonstration),
+// { ok: false, reseau } sinon. Une suppression qui ne touche AUCUNE ligne alors
+// que la ligne existe encore est un refus (RLS) : le SDK ne lève pas dessus.
 async function _supaDeleteCommentRow(commentId) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return { ok: true, local: true };
     var table = null;
     if (/^ec_/.test(commentId)) table = "event_comments";
     else if (/^lc_/.test(commentId)) table = "cdv_live_comments";
     else table = "post_comments"; // c_… et autres
-    await supa.from(table).delete().eq("id", commentId);
+    var r = await supa.from(table).delete().eq("id", commentId).select("id");
+    if (r && r.error) {
+      if (typeof diagLog === "function") diagLog("cmt_suppression: " + (r.error.message || r.error.code));
+      return { ok: false, reseau: typeof estEchecReseau === "function" && estEchecReseau(r.error) };
+    }
+    if (!r || !Array.isArray(r.data) || !r.data.length) {
+      // Zéro ligne : déjà partie (succès) ou refusée (la ligne est toujours là).
+      var reste = await supa.from(table).select("id").eq("id", commentId).limit(1);
+      if (reste && !reste.error && Array.isArray(reste.data) && reste.data.length) {
+        if (typeof diagLog === "function") diagLog("cmt_suppression: 0 ligne, refus");
+        return { ok: false, reseau: false };
+      }
+    }
     // Nettoie aussi les interactions liées (best-effort, RLS owner).
     try { await supa.from("comment_interactions").delete().eq("comment_id", commentId); } catch(e) {}
-  } catch(e) {}
+    return { ok: true };
+  } catch(e) {
+    return { ok: false, reseau: typeof estEchecReseau === "function" ? estEchecReseau(e) : true };
+  }
 }
 
 // Suis-je le propriétaire du fil (auteur du post / organisateur événement /
@@ -2491,11 +2754,45 @@ function _isThreadOwner(threadId) {
   return false;
 }
 // ── #10 ÉDITION d'un commentaire (façon IG/FB) ── éditeur inline + sync.
+// ⚠️ UN COMMENTAIRE D'ACTIVITÉ NE SE MODIFIE PAS (SRV-03, audit de stabilisation du
+// 2026-11-10). Mesuré au canal ① : `event_comments` n'a ni colonne `content` ni policy
+// UPDATE. « Modifier » y était proposé, l'écran disait « Commentaire modifié », et le
+// texte ne quittait jamais l'appareil. Seule autorité du menu ET de l'édition directe.
+// (`lc_` : commentaires des lives du Carnet, retirés par ADR-011, table sans droit.)
+function _commentaireModifiable(commentId, texte) {
+  if (/^(ec_|lc_)/.test(String(commentId || ""))) return false;
+  return !_looksLikeMediaUrl(texte || "");
+}
+
+// L'enregistrement d'une modification : optimiste, puis LE VERDICT DE LA BASE décide
+// (SRV-03). Sur un refus ou 0 ligne, l'ancien texte revient et c'est dit.
+async function _enregistrerModificationCommentaire(found, threadId, commentId, v, cur) {
+  var node = found.node;
+  var avantEdite = !!node.edited;
+  var sauver = function () {
+    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
+  };
+  node.text = v; node.content = v; node.edited = true;
+  sauver();
+  try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+  var ok = await _supaUpdateCommentRow(commentId, v);
+  if (!ok) {
+    node.text = cur; node.content = cur; node.edited = avantEdite;
+    sauver();
+    try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+    toast("Le commentaire n'a pas été modifié — réessaie", "warning");
+    return false;
+  }
+  toast("Commentaire modifié");
+  return true;
+}
+
 function editCommentEntry(threadId, commentId) {
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, commentId) : null;
   if (!found || !found.node) return;
   var node = found.node;
   if (_looksLikeMediaUrl(node.text || node.content || "")) { toast("Un GIF ne peut pas être modifié"); return; }
+  if (!_commentaireModifiable(commentId, node.text || node.content || "")) { toast("Ce commentaire ne peut pas être modifié"); return; }
   var el = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
   if (!el) return;
   var cur = node.text || node.content || "";
@@ -2515,23 +2812,24 @@ function editCommentEntry(threadId, commentId) {
     var v = (ta.value || "").trim();
     if (!v) { toast("Le commentaire ne peut pas être vide"); return; }
     if (v === cur) { _refreshCommentThreadUINow(threadId); return; }
-    node.text = v; node.content = v; node.edited = true;
-    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
-    _supaUpdateCommentRow(commentId, v);
-    _refreshCommentThreadUINow(threadId);
-    toast("Commentaire modifié");
+    _enregistrerModificationCommentaire(found, threadId, commentId, v, cur);
   };
 }
+// Rend le VERDICT : `true` si la base a gardé le texte (ou s'il n'y a pas de base :
+// commentaire local, mode hors Supabase), `false` sur un refus, une panne ou 0 ligne.
 async function _supaUpdateCommentRow(commentId, text) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    var table = /^ec_/.test(commentId) ? "event_comments" : /^lc_/.test(commentId) ? "cdv_live_comments" : "post_comments";
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return true;
+    // Un visiteur n'a rien en base : son commentaire vit sur l'appareil, le refus serveur
+    // attendu n'est pas un échec (relu à la contre-revue du 2026-11-10).
+    if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return true;
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(String(commentId || "")) || /^(ec_|lc_)/.test(commentId)) return false;
     // Le SDK ne LÈVE PAS sur un refus RLS : depuis le 2026-09-11 l'UPDATE de
-    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus), et
-    // une édition refusée resterait « Commentaire modifié » à l'écran.
-    var r = await supa.from(table).update({ content: text }).eq("id", commentId);
-    if (r && r.error) { try { toast("Modification refusée"); } catch (e) {} }
-  } catch (e) {}
+    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus). Et un
+    // UPDATE qui ne touche aucune ligne ne lève pas non plus : on compte les lignes.
+    var r = await supa.from("post_comments").update({ content: text }).eq("id", commentId).select("id");
+    return _writeVerdict(r, { expectRows: true, label: "commentaire (modification)" }).ok;
+  } catch (e) { console.warn("commentaire (modification) :", e && e.message); return false; }
 }
 // ── #11 ÉPINGLER un commentaire (le propriétaire du fil le remonte en tête) ──
 // Un seul épinglé par fil. Écrit dans comment_interactions (kind « pin », charge
@@ -2976,9 +3274,7 @@ async function reportCommentEntry(threadId, commentId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("comment", commentId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Commentaire signalé. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
@@ -3164,7 +3460,7 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
       list.forEach(function (e) {
         var b = document.createElement("span");
         b.textContent = e;
-        b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+        b.style.cssText = "cursor:pointer;font-size:24px;line-height:1;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;transition:background .15s,transform .1s;"; // LOT-30 (FIL-C10)
         b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
         b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
         b.onclick = function (ev) { ev.stopPropagation(); _insertEmoji(e); };
@@ -3268,10 +3564,14 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
     var r = btn.getBoundingClientRect();
     panel.style.left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 296)) + "px";
     panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    panel._ancreBtn = r;
   } else {
     panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)";
   }
   document.body.appendChild(panel);
+  // LOT-30 (FIL-C10) : jamais hors de l'écran, même quand le contenu grandit.
+  _placerPanneauReaction(panel);
+  try { if (window.ResizeObserver) new ResizeObserver(function () { _placerPanneauReaction(panel); }).observe(panel); } catch (e) {}
   setTimeout(function () {
     var cl = function (ev) {
       if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); }
@@ -3311,10 +3611,12 @@ function _emojiReactPopover(event, onPick) {
     var r = btn.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(r.left - 90, window.innerWidth - 300)) + "px";
     pop.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    pop._ancreBtn = r;
   } else {
     pop.style.left = "50%"; pop.style.bottom = "30%"; pop.style.transform = "translateX(-50%)";
   }
   document.body.appendChild(pop);
+  _placerPanneauReaction(pop); // LOT-30 (FIL-C10)
   setTimeout(function () {
     var cl = function (ev) {
       if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener("click", cl); }
@@ -3333,6 +3635,19 @@ function _emojiReactPopover(event, onPick) {
 //   onEmoji(emoji)  → applique la réaction emoji (obligatoire)
 //   onGif(url)      → applique la réaction GIF (optionnel : sans lui, pas d'onglet GIF)
 // ════════════════════════════════════════════════════════════════════════
+function _placerPanneauReaction(panel) {
+  try {
+    if (!panel || !panel.isConnected) return;
+    var a = panel._ancreBtn;
+    var h = panel.getBoundingClientRect().height;
+    if (a && a.top - 8 - h < 8 && a.bottom + 8 + h <= window.innerHeight - 8) {
+      panel.style.bottom = "auto";
+      panel.style.top = (a.bottom + 8) + "px";
+    }
+    if (typeof _ramenerDansLEcran === "function") _ramenerDansLEcran(panel);
+  } catch (e) { try { diagLog("panneau de réaction : " + (e && e.message)); } catch (_) {} }
+}
+
 function emojiReactPanel(event, onEmoji, onGif) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   var old = document.getElementById("emoji-react-panel");
@@ -3374,7 +3689,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
   stageSend.onclick = function (ev) { ev.stopPropagation(); commit(); };
   stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
   function pickEmoji(e) { _staged = { kind: "emoji", val: e }; stageFace.textContent = e; stageFace.innerHTML = e; stage.style.display = "flex"; }
-  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
+  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img ' + passioMediaProteges.attributImage(url) + '="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
 
   var content = document.createElement("div");
 
@@ -3382,10 +3697,15 @@ function emojiReactPanel(event, onEmoji, onGif) {
     content.innerHTML = "";
     var grid = document.createElement("div");
     grid.style.cssText = "display:flex;flex-wrap:wrap;gap:2px;max-height:200px;overflow-y:auto;";
+    // LOT-30 (audit UX/UI du 2026-11-10, FIL-C10) : cases de 40 px, emojis de 24 px
+    // (18 px dans 28 px auparavant, sous la taille d'une cible tactile).
     emojis.forEach(function (e) {
       var b = document.createElement("span");
       b.textContent = e;
-      b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+      b.className = "emoji-react-case";
+      b.setAttribute("role", "button");
+      b.setAttribute("aria-label", e);
+      b.style.cssText = "cursor:pointer;font-size:24px;line-height:1;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;transition:background .15s,transform .1s;";
       b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
       b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
       b.onclick = function (ev) { ev.stopPropagation(); pickEmoji(e); };
@@ -3460,8 +3780,15 @@ function emojiReactPanel(event, onEmoji, onGif) {
     var r = btn.getBoundingClientRect();
     panel.style.left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 296)) + "px";
     panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    panel._ancreBtn = r;
   } else { panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)"; }
   document.body.appendChild(panel);
+  // LOT-30 (FIL-C10) : ouvert depuis un bouton proche du HAUT de l'écran, le
+  // panneau (posé au-dessus du bouton) sortait par le haut. S'il ne tient pas
+  // au-dessus, il passe dessous ; puis il est ramené dans l'écran (8 px), y
+  // compris quand son contenu grandit (onglet GIF, ligne de validation).
+  _placerPanneauReaction(panel);
+  try { if (window.ResizeObserver) new ResizeObserver(function () { _placerPanneauReaction(panel); }).observe(panel); } catch (e) {}
   setTimeout(function () {
     cl = function (ev) { if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); } };
     document.addEventListener("click", cl);
@@ -3594,7 +3921,10 @@ function deduplicateConversations(convs) {
   var seen = {};
   var result = [];
   // Trier par lastAt desc pour traiter le plus récent en premier
-  var sorted = [...convs].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  // LOT-43 (relecture audit-passio) : à paire égale, un fil RÉEL passe avant un
+  // brouillon, quel que soit son `lastAt` — sinon le brouillon (plus récent)
+  // absorbait la conversation serveur et gardait son identifiant local.
+  var sorted = [...convs].sort((a, b) => ((a && a._brouillon ? 1 : 0) - (b && b._brouillon ? 1 : 0)) || ((b.lastAt || 0) - (a.lastAt || 0)));
   for (var c of sorted) {
     if (c.isGroup) { result.push(c); continue; }
     // Repli : d'anciennes conversations (créées avant la résolution fiable du
@@ -3631,6 +3961,16 @@ function deduplicateConversations(convs) {
       if (!main.userPhoto && c.userPhoto) main.userPhoto = c.userPhoto;
       if ((!main.userEmoji || main.userEmoji === "✨") && c.userEmoji && c.userEmoji !== "✨") main.userEmoji = c.userEmoji;
       if (!main.userId && c.userId) main.userId = c.userId;
+      // LOT-43 : un BROUILLON absorbé par le fil réel — ses messages en file
+      // visent encore son identifiant local, qui n'existera jamais en base. On
+      // les réaffecte au fil réel, sinon le rejeu les perdait.
+      if (c._brouillon && !main._brouillon && c.id !== main.id) {
+        try {
+          var _f = _outboxLoad(), _change = false;
+          _f.forEach(function (e) { if (e && e.convId === c.id) { e.convId = main.id; _change = true; } });
+          if (_change) _outboxSave(_f);
+        } catch (e) { try { diagLog("conv_brouillon_file " + (e && e.message)); } catch (_) {} }
+      }
     }
   }
   result.forEach(_dedoublonnerDecorConversation);
@@ -3690,6 +4030,51 @@ function _dedoublonnerDecorConversation(c) {
 // étiquette, pastille « 3 » de non-lus sur l'onglet Messages, et un message
 // qu'on y écrivait partait vers un compte qui n'existe pas. Même règle que le
 // fil (`contenuDemoSignale`) : le décor se dit, ne compte pas, ne répond pas.
+// LOT-23 (audit UX/UI du 2026-11-10) — la barre de saisie d'une conversation
+// qui ne peut pas aboutir est REMPLACÉE par une ligne qui dit pourquoi :
+//   · MSG-C87 : conversation d'exemple — l'envoi était refusé par un toast que
+//     le panneau masquait ; on écrivait, on touchait « Envoyer », rien.
+//   · MSG-C78 : compte que J'AI bloqué — le fil amputé de ses messages laissait
+//     écrire des messages voués à l'échec. Le blocage subi n'est pas révélé ici.
+// Rendu DOM (`textContent`), jamais de nom dans un onclick inline (CLAUDE.md).
+function _peindreIssueConversation(c, displayName) {
+  try {
+    var barre = document.querySelector("#conv-fullpage .conv-toolbar");
+    var ancien = document.getElementById("convFpIssue");
+    if (ancien) ancien.remove();
+    var demo = _estConvDemo(c);
+    var bloque = !!(c && !c.isGroup && c.userId && typeof isBlocked === "function" && isBlocked(c.userId));
+    if (barre) barre.style.display = (demo || bloque) ? "none" : "";
+    if (!demo && !bloque) return;
+    var note = document.createElement("div");
+    note.id = "convFpIssue";
+    note.className = "conv-issue";
+    note.setAttribute("role", "status");
+    note.setAttribute("data-issue", demo ? "exemple" : "bloque");
+    var texte = document.createElement("span");
+    texte.textContent = demo
+      ? "Conversation d'exemple — pour écrire à quelqu'un, ouvre son profil."
+      : "Tu as bloqué " + (displayName || "ce compte") + ". Vous ne pouvez plus vous écrire.";
+    var bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "btn small " + (demo ? "primary" : "ghost");
+    bouton.textContent = demo ? "Découvrir des profils" : "Débloquer";
+    bouton.addEventListener("click", function () {
+      if (demo) {
+        try { closeConversation(); } catch (e) {}
+        try { goTo("explore"); } catch (e) {}
+        return;
+      }
+      Promise.resolve(typeof unblockUser === "function" ? unblockUser(c.userId, displayName) : false).then(function () {
+        if (window._openedConvId === c.id) _peindreIssueConversation(c, displayName);
+      });
+    });
+    note.appendChild(texte);
+    note.appendChild(bouton);
+    if (barre && barre.parentNode) barre.parentNode.insertBefore(note, barre);
+  } catch (e) { try { diagLog("issue de conversation : " + (e && e.message)); } catch (_) {} }
+}
+
 function _estConvDemo(c) {
   if (!c) return false;
   if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return true;
@@ -3722,7 +4107,8 @@ function _alignerIdentiteConv(c) {
 // Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
 function _convNonLus() {
   var n = 0;
-  try { (getConversations() || []).forEach(function (c) { if (!_estConvDemo(c)) n += (c.unread || 0); }); } catch (e) {}
+  // LOT-7 (MSG-C02) : une conversation en sourdine ne compte pas aux badges.
+  try { (getConversations() || []).forEach(function (c) { if (!_estConvDemo(c) && !c._muted && !c.muted) n += (c.unread || 0); }); } catch (e) {}
   return n;
 }
 
@@ -4006,10 +4392,10 @@ function renderMessageFilters() {
 
 function openNewMessage() {
   var html = `
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
+    
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
-      <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
+      <input id="_nmSearch" type="text" class="input" placeholder="Chercher une personne…" aria-label="Chercher une personne à qui écrire" enterkeyhint="search" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding-right:40px;"
         oninput="_nmDoSearch(this.value)" />
     </div>
@@ -4027,13 +4413,16 @@ function openNewMessage() {
 // `_nmDoSearch` la reçoit. Sert à jeter une réponse réseau devenue obsolète.
 function _nmRequeteCourante() {
   var inp = document.getElementById("_nmSearch");
-  return ((inp && inp.value) || "").trim().toLowerCase();
+  return plierRecherche(((inp && inp.value) || "").trim());
 }
 
 function _nmDoSearch(q) {
   var box = document.getElementById("_nmResults");
   if (!box) return;
-  q = (q || "").trim().toLowerCase();
+  // La saisie BRUTE part au serveur (son ilike trouve « Léa » si l'on tape « léa ») ;
+  // la version pliée sert aux comparaisons locales (MSG-C06).
+  var brut = (q || "").trim();
+  q = plierRecherche(brut);
 
   // Contacts récents (conversations existantes)
   var convs = getConversations();
@@ -4048,25 +4437,43 @@ function _nmDoSearch(q) {
   var all = recentUsers.concat(seedUsers.filter(function(su) {
     return !recentUsers.find(function(r) { return r.id === su.id; });
   }));
+  // LOT-5 (audit UX/UI du 2026-11-10, MSG-C03) : un COMPTE ne se voit proposer que
+  // de vraies personnes. Les personnages d'exemple (cinq « Passionné » pour un
+  // compte neuf, auxquels on ne peut pas écrire) sortent des suggestions comme
+  // des résultats ; sans contact, une consigne au lieu de faux contacts.
+  var compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  if (compte) all = all.filter(function (u) { return !estPersonneExemple(u.id); });
+  // LOT-6 (REC-C03) : ni personne bloquée.
+  all = all.filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
+  // LOT-28 (MSG-C22) : mon propre compte n'est jamais une personne à qui écrire.
+  all = all.filter(_nmPasMoi);
 
-  var matches = q ? all.filter(function(u) { return u.name.toLowerCase().includes(q); }) : all;
+  var matches = q ? all.filter(function(u) { return plierRecherche(u.name).includes(q); }) : all;
   matches = matches.slice(0, 10);
 
   if (matches.length === 0) {
-    box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
+    var serveur = !!(q && typeof supaSearchUsers === "function" && supa && MY_UID);
+    // LOT-28 (MSG-C23) : hors ligne, « Aucun utilisateur trouvé » faisait croire
+    // que la personne n'existait pas. Tant que le serveur n'a pas répondu, on
+    // cherche ; s'il ne peut pas répondre, on le dit.
+    if (serveur && navigator.onLine === false) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
+    box.innerHTML = (compte && !q)
+      ? `<div class="nm-consigne" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Écris le nom d'une personne pour la trouver.</div>`
+      : (serveur ? _nmMessage("Recherche…", "attente") : _nmMessage("Aucune personne trouvée", "vide"));
     // Lancer aussi la recherche Supabase si query non vide
-    if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+    if (serveur) {
       // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
       // pas dans celui de la frappe : taper « ab » puis « abc » pouvait laisser
       // la réponse d'« ab » écraser celle d'« abc ». On ne peint que si la
       // question posée est encore la question courante.
       var _qA = q;
-      supaSearchUsers(q).then(function(res) {
-        if (_nmRequeteCourante() !== _qA) return;
-        if (!res || !res.length) return;
-        var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
-        if (box) box.innerHTML = html2;
-      }).catch(function(){});
+      Promise.resolve(supaSearchUsers(brut)).then(function(res) {
+        if (_nmRequeteCourante() !== _qA || !box) return;
+        if (res && res.echec) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
+        var trouves = (res || []).filter(_nmPasMoi).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
+        if (!trouves.length) { box.innerHTML = _nmMessage("Aucune personne trouvée", "vide"); return; }
+        box.innerHTML = trouves.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
+      }).catch(function(){ if (box && _nmRequeteCourante() === _qA) box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); });
     }
     return;
   }
@@ -4076,13 +4483,21 @@ function _nmDoSearch(q) {
   // Compléter avec Supabase en arrière-plan si query
   if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
     var _qB = q;
-    supaSearchUsers(q).then(function(res) {
+    supaSearchUsers(brut).then(function(res) {
       if (_nmRequeteCourante() !== _qB) return;   // cf. garde d'obsolescence
       if (!res || !box) return;
-      var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
+      var extra = res.filter(_nmPasMoi).filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }) && !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0,5);
       if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
     }).catch(function(){});
   }
+}
+
+function _nmPasMoi(u) {
+  return !!(u && u.id && u.id !== "me" && !(typeof MY_UID !== "undefined" && MY_UID && u.id === MY_UID));
+}
+
+function _nmMessage(texte, etat) {
+  return '<div class="nm-etat" data-etat="' + escapeHtml(etat) + '" role="status" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">' + escapeHtml(texte) + '</div>';
 }
 
 function _nmUserRow(id, name, emoji, color, photoUrl) {
@@ -4124,11 +4539,11 @@ function searchUsers(query) {
   results.style.display = "block";
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
 
-  var q = query.trim().toLowerCase();
+  var q = plierRecherche(query.trim());
 
   // Seed local
   var seedUsers = ((state.seed && state.seed.users) ? state.seed.users : []).filter(function(u) {
-    return (u.name||"").toLowerCase().includes(q) || (u.passion||"").toLowerCase().includes(q);
+    return plierRecherche(u.name).includes(q) || plierRecherche(u.passion).includes(q);
   }).slice(0, 5);
 
   // Supabase (vrais utilisateurs)
@@ -4152,23 +4567,23 @@ function searchUsers(query) {
 
     // Seed : exclure ceux déjà dans Supabase
     var seedFiltered = seedUsers.filter(function(u) { return !supaIds.has(u.id); });
-    var matches = supaFormatted.concat(seedFiltered).slice(0, 8);
+    // LOT-6 (REC-C03) : une personne bloquée n'est pas un résultat.
+    var matches = supaFormatted.concat(seedFiltered).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).filter(_nmPasMoi).slice(0, 8);
 
     if (matches.length === 0) {
-      results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
+      // LOT-28 (MSG-C23) : une panne n'est pas une absence.
+      results.innerHTML = (supaUsers && supaUsers.echec)
+        ? _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne")
+        : _nmMessage("Aucune personne trouvée", "vide");
       return;
     }
 
     results.innerHTML = matches.map(function(u) {
       var nameEsc = escapeHtml(u.name || "Passionné");
       var emoji = u.profileEmoji || "✨";
-      // §2 : la MÊME ligne d'identité que partout ailleurs, au lieu des pastilles
-      // propres à cet écran. `identitePassionsHTML` échappe (le jsonb
-      // `profiles.passions` d'un AUTRE compte est du contenu libre — un
-      // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30)
-      // et borne la liste, pour qu'un compte à douze passions ne pousse pas
-      // « Message → » hors de l'écran.
-      var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
+      // 2026-11-13 : plus de ligne de passions sous le pseudo dans la messagerie
+      // (demande de Benjamin : « ce n'est pas joli et trop chargé »). Le pseudo
+      // seul, comme dans la liste des conversations.
       // ⚠️ data-emoji recevait `profiles.emoji` BRUT dans un attribut simple-quoté :
       // une valeur du type `' onmouseover='…` refermait l'attribut et ouvrait un
       // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
@@ -4182,8 +4597,7 @@ function searchUsers(query) {
         '<div style="width:38px;height:38px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'
          + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
-          "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +
-          "<div>" + passionBadges + "</div>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
         "</div>" +
         "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
       "</div>";
@@ -4202,7 +4616,97 @@ function _pickMsgUser(el) {
 }
 
 
+// LOT-46 (audit UX/UI du 2026-11-10, PCS-C02) : « Retour » depuis une
+// conversation ouverte d'un profil (lui-même ouvert du fil) menait à la liste
+// Messages — profil et fil perdus. L'ORIGINE est notée ici (écran actif,
+// profil d'où l'on vient) et consommée par openConversation ; closeConversation
+// y ramène. Ouverte depuis la liste Messages, la conversation y revient.
+function _ecranActifId() {
+  try { var s = document.querySelector(".screen.active"); return s && s.id ? s.id.replace(/^screen-/, "") : null; } catch (e) { return null; }
+}
+function _convOrigineProfil(userId) { window._convOrigineProfil = userId || null; }
+// LOT-52 (audit UX/UI du 2026-11-10, PCS-C05) : écrire à quelqu'un dont on vient
+// d'ouvrir le profil DEPUIS UNE PUBLICATION ouvrait une conversation vide, sans
+// rien de ce qui l'avait motivée. On note la publication (identifiant seulement)
+// quand on ouvre son auteur ; si la conversation suit dans les 10 minutes, elle
+// la rappelle au-dessus du champ — une ligne qu'on peut fermer. RIEN n'est
+// envoyé ni publié : c'est un rappel, pas un message (§10 du lot UI-6C).
+function _contexteDepuisPublication(postId) {
+  window._contexteMessage = postId ? { postId: String(postId), a: Date.now() } : null;
+}
+function _peindreContexteConv() {
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var ancien = document.getElementById("convContexte");
+    if (ancien) ancien.remove();
+    var o = window._convOrigine;
+    var ctx = o && o.contexte;
+    if (!ctx || window._openedConvId !== o.convId) return;
+    var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(ctx.postId) : null;
+    if (!p) return;
+    var extrait = String(p.text || "").replace(/\s+/g, " ").trim().slice(0, 90) || "sa publication";
+    var barre = fp.querySelector(".conv-toolbar") || document.getElementById("convFpInput");
+    if (!barre || !barre.parentNode) return;
+    var d = document.createElement("div");
+    d.id = "convContexte";
+    d.className = "conv-contexte";
+    d.setAttribute("role", "note");
+    var t = document.createElement("span");
+    t.className = "conv-contexte-texte";
+    t.textContent = "À propos de sa publication : « " + extrait + " »";
+    var x = document.createElement("button");
+    x.type = "button";
+    x.className = "conv-contexte-fermer";
+    x.setAttribute("aria-label", "Fermer le rappel");
+    x.textContent = "×";
+    x.addEventListener("click", function () { d.remove(); if (window._convOrigine) window._convOrigine.contexte = null; });
+    d.appendChild(t); d.appendChild(x);
+    barre.parentNode.insertBefore(d, barre);
+  } catch (e) { try { diagLog("conv_contexte " + (e && e.message)); } catch (_) {} }
+}
+// LOT-43 (relecture audit-passio) : la recherche d'une conversation DIRECTE
+// existante en base LIT ses erreurs. Une panne (hors ligne, 401, 500) rendait
+// `data: null`, lu comme « aucune conversation » : un brouillon s'ouvrait alors
+// qu'un fil existait, et le premier envoi en créait un SECOND chez l'autre.
+// `absenceProuvee` n'est vrai que si les trois lectures ont répondu sans erreur.
+// Rend { id, absenceProuvee } ; extrait de `startDirectMessage` le 2026-11-14
+// pour que la visionneuse de stories (app-08) écrive dans le MÊME fil.
+async function _chercherConvDirecte(userId) {
+  let supaConvId = null;
+  let absenceProuvee = false;
+  try {
+    // Chercher une conv directe existante entre les deux users dans Supabase
+    const r1 = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
+    if (r1 && r1.error) throw r1.error;
+    const myConvIds = ((r1 && r1.data) || []).map(m => m.conv_id);
+    if (!myConvIds.length) absenceProuvee = true;
+    else {
+      const r2 = await supa.from("conv_members")
+        .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
+      if (r2 && r2.error) throw r2.error;
+      const shared = (r2 && r2.data) || [];
+      if (!shared.length) absenceProuvee = true;
+      else {
+        // Vérifier que c'est une conv directe (pas groupe)
+        const r3 = await supa.from("conversations")
+          .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
+        if (r3 && r3.error) throw r3.error;
+        supaConvId = (r3 && r3.data && r3.data[0] && r3.data[0].id) || null;
+        if (!supaConvId) absenceProuvee = true;
+      }
+    }
+  } catch(e) { try { diagLog("dm_recherche_echec " + String((e && (e.code || e.message)) || "")); } catch (_) {} }
+  return { id: supaConvId, absenceProuvee: absenceProuvee };
+}
 async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
+  // LOT-52 (PCS-C05) : la publication d'où l'on vient, si c'est bien son auteur.
+  var _ctx = window._contexteMessage;
+  window._contexteMessage = null;
+  var _p = (_ctx && typeof findPostAnywhere === "function") ? findPostAnywhere(_ctx.postId) : null;
+  var _contexte = (_ctx && _p && _p.authorId === userId && Date.now() - _ctx.a < 10 * 60000) ? { postId: _ctx.postId } : null;
+  window._convOrigineEnAttente = { ecran: _ecranActifId(), profil: window._convOrigineProfil || null, contexte: _contexte };
+  window._convOrigineProfil = null;
   // ⚠️ Ouvrir un DM avec un compte que J'AI bloqué créait la conversation EN
   // BASE (`supaCreateConversation` insère les deux membres), puis `renderMessages`
   // la masquait au rendu : la ligne restait, et la conversation redevenait
@@ -4213,6 +4717,8 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
     toast("Compte bloqué — débloque-le pour lui écrire", "warning");
     return;
   }
+  // LOT-28 (MSG-C22) : mon propre compte ouvrait un fil avec moi-même.
+  if (userId && !_nmPasMoi({ id: userId })) { toast("C'est ton propre compte"); return; }
   // Photo : argument explicite, sinon profil déjà connu en cache
   if (!userPhoto) userPhoto = (userById(userId) || {}).photoUrl || null;
   var results = document.getElementById("msgUserResults");
@@ -4225,22 +4731,41 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   // Si Supabase dispo : approche Supabase-first (ID cohérent entre utilisateurs)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && userId !== "me") {
     goTo("messages");
-    let supaConvId = null;
-    try {
-      // Chercher une conv directe existante entre les deux users dans Supabase
-      const { data: myMemberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
-      const myConvIds = (myMemberships || []).map(m => m.conv_id);
-      if (myConvIds.length) {
-        const { data: shared } = await supa.from("conv_members")
-          .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
-        if (shared && shared.length) {
-          // Vérifier que c'est une conv directe (pas groupe)
-          const { data: convData } = await supa.from("conversations")
-            .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
-          supaConvId = convData?.[0]?.id || null;
-        }
+    // La recherche vit dans `_chercherConvDirecte` (partagée avec la story,
+    // app-08) ; voir son commentaire.
+    const _rech = await _chercherConvDirecte(userId);
+    let supaConvId = _rech.id;
+    let absenceProuvee = _rech.absenceProuvee;
+
+    // LOT-43 (audit UX/UI du 2026-11-10, MSG-C22) : choisir une personne
+    // CRÉAIT la conversation chez elle (une ligne `conversations`, deux
+    // `conv_members`) avant tout message — un fil vide surgissait dans sa liste
+    // si l'on changeait d'avis. Pour un compte qui écrit à un autre compte, on
+    // ouvre un BROUILLON local (identifiant déjà choisi) ; la base ne le connaît
+    // qu'au premier envoi (`_materialiserConv`, sous ce même identifiant). Un
+    // brouillon vide n'est pas listé.
+    if (!supaConvId && absenceProuvee && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+      var convsB = getConversations();
+      var brouillon = convsB.find(function (c) { return !c.isGroup && c.userId === userId; });
+      if (!brouillon) {
+        brouillon = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false, _brouillon: true };
+        convsB.unshift(brouillon);
+        conversationsState = convsB;
+        saveConversations();
       }
-    } catch(e) {}
+      var idB = brouillon.id;
+      setTimeout(function() { renderMessages(); openConversation(idB); }, 120);
+      return;
+    }
+
+    // Recherche en panne pour un compte réel : on ne devine pas (un fil existe
+    // peut-être) — on le dit, sans rien ouvrir ni créer (LOT-28, MSG-C23).
+    if (!supaConvId && !absenceProuvee && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+      toast("Conversation non ouverte — vérifie ta connexion et réessaie.", "warning");
+      return;
+    }
 
     // Pas de conv existante → en créer une dans Supabase
     if (!supaConvId) {
@@ -4252,6 +4777,8 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
       var convs = getConversations();
       var existing = convs.find(c => c.id === supaConvId || (!c.isGroup && c.userId === userId));
       if (existing) {
+        // LOT-43 : ce fil existe en base — ce n'est plus (ou jamais) un brouillon.
+        delete existing._brouillon;
         existing.id = supaConvId;
         existing.userId = userId;
         existing.userName = userName || existing.userName || "Passionné";
@@ -4276,12 +4803,36 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
     setTimeout(function() { openConversation(existing.id); }, 120);
     return;
   }
+  // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : pour un COMPTE qui écrit à un
+  // autre compte, une création refusée (hors ligne, 500) ouvrait un fil local
+  // sans un mot — un fil que l'autre ne verrait jamais. On le dit, sans ouvrir.
+  if (window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+    toast("Conversation non ouverte — vérifie ta connexion et réessaie.", "warning");
+    return;
+  }
   var newConv = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
   convs.unshift(newConv);
   conversationsState = convs;
   saveConversations();
   goTo("messages");
   setTimeout(function() { renderMessages(); openConversation(newConv.id); }, 120);
+}
+
+// Vrai si un blocage existe entre ce compte et moi ET que ce n'est pas MOI qui
+// ai bloqué — c'est donc lui. `is_blocked_with` (SECURITY DEFINER, comptes
+// seulement) répond pour les deux sens sans révéler lequel ; le sens « moi »
+// se lit dans ma propre liste. Visiteur, compte d'exemple, panne : faux — le
+// profil s'affiche comme avant.
+async function _profilIndisponiblePourMoi(authorId) {
+  try {
+    if (!authorId || typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return false;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(authorId))) return false;
+    if (typeof isBlocked === "function" && isBlocked(authorId)) return false;
+    var r = await supa.rpc("is_blocked_with", { _other: String(authorId) });
+    return !!(r && !r.error && r.data === true);
+  } catch (e) { return false; }
 }
 
 async function openUserProfile(authorId, source) {
@@ -4295,6 +4846,20 @@ async function openUserProfile(authorId, source) {
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
+    return;
+  }
+
+  // PRO-C20 (décision de Benjamin du 2026-11-13, « 3 : b ») : le profil d'un
+  // compte qui M'A bloqué n'est pas affiché — « Ce profil n'est pas
+  // disponible », comme un compte supprimé, sans bouton menant à un refus
+  // certain. (Un compte que J'AI bloqué garde son profil et « Débloquer », LOT-16.)
+  if (await _profilIndisponiblePourMoi(authorId)) {
+    openModal(`
+      <div class="modal-handle"></div>
+      <div class="modal-title">Ce profil n'est pas disponible</div>
+      <div class="modal-subtitle">Il a peut-être été supprimé, ou n'est pas visible pour toi.</div>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
+    `);
     return;
   }
 
@@ -4368,6 +4933,19 @@ async function openUserProfile(authorId, source) {
     toast("Ce profil n'est pas disponible");
     return;
   }
+
+  // ⚠️ À PARTIR D'ICI, L'IDENTIFIANT EST CELUI DU COMPTE RÉSOLU, JAMAIS LA VALEUR REÇUE
+  // (2026-11-10, CLI-01 de l'audit de stabilisation). Le compte peut avoir été retrouvé
+  // PAR PSEUDO (plus haut), et un pseudo n'est borné par la base qu'en longueur : un
+  // guillemet y passe. La valeur reçue restait pourtant l'identifiant de toute la fiche —
+  // écrite brute dans l'attribut `id` du bouton « Suivre », où un pseudo qui ferme le
+  // guillemet puis écrit son propre attribut de clic posait SON code sur le bouton (le
+  // premier attribut gagne), et passée telle quelle au suivi,
+  // à la messagerie et aux lectures `author_id`, qui ne trouvaient rien.
+  // (Ne pas recopier ici le début littéral de cet attribut : `suivre-compte-prive` ⑦
+  // cherche sa PREMIÈRE occurrence dans ce fichier pour lire le gabarit.)
+  // Verrou : tests/e2e/profil-visite-identifiant-hostile.spec.js.
+  if (user.id && user.id !== authorId) authorId = user.id;
 
   // 🔄 Charger le profil COMPLET depuis Supabase (toujours, même si user déjà
   // trouvé en local) : passions enrichies (bio/photos), couverture, réseaux
@@ -4516,8 +5094,8 @@ async function openUserProfile(authorId, source) {
   if (typeof supa !== "undefined" && supa) {
     try {
       const [fRes, gRes] = await Promise.all([
-        supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId),
-        supa.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", authorId),
+        seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId)),
+        seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", authorId)),
       ]);
       followerCount = fRes.count || 0;
       followingCount = gRes.count || 0;
@@ -4533,7 +5111,7 @@ async function openUserProfile(authorId, source) {
   // compte visité côté client (`_profileCache` ne porte pas `is_private`).
   window._visited = { authorId: authorId, isPrivate: !!user.isPrivate, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
 
-  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection).
+  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection, « Tout » exclusif — 2026-11-14).
   var _VTAB_SVGS = {
     posts:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>',
     photos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg>',
@@ -4546,11 +5124,11 @@ async function openUserProfile(authorId, source) {
     // visité tirent désormais du MÊME référentiel (`PROFILE_TAB_KEYS`, app-06).
     audio:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>'
   };
-  var _VTAB_TITLES = { posts: "Posts", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
+  var _VTAB_TITLES = { posts: "Tout", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
   // ⚠️ 2026-08-31 : plus de ligne d'aide au-dessus des sous-filtres (mon profil
   // l'a perdue le même jour). Les icônes portent déjà leur libellé.
   var tabsHTML = canSeeContent
-    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
+    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par format de contenu">'
       + ((typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","audio"]).map(function(k) {
           return '<button class="profile-tab" data-vtab="' + escapeHtml(k) + '" aria-pressed="false" onclick="switchVisitedTab(\'' + escapeJsArg(k) + '\')" title="' + escapeHtml(_VTAB_TITLES[k]) + '" aria-label="' + escapeHtml(_VTAB_TITLES[k]) + '">' + _VTAB_SVGS[k] + '<span class="profile-tab-lbl">' + escapeHtml(_VTAB_TITLES[k]) + '</span></button>';
         }).join("")
@@ -4589,9 +5167,21 @@ async function openUserProfile(authorId, source) {
     ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
-  var html = '\
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()" style="z-index:20;">×</span>\
-    \
+  // La bio d'autrui en paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) :
+  // normalisée À L'AFFICHAGE (jamais garantie en base) et ÉCHAPPÉE morceau par
+  // morceau. Calculée une fois : le gabarit teste puis peint la même valeur.
+  var _bioVisiteHtml = bioEnParagraphesHtml(user.bio);
+
+  // LOT-16 (PRO-C07) : un compte que J'AI bloqué le dit, à la place des actions.
+  var _bloqueParMoi = (typeof isBlocked === "function") && isBlocked(authorId);
+  // LOT-16 (PRO-C09) : la croix vient d'`openModal` ; la seconde (un span) est retirée.
+  // LOT-16 (PRO-C10) : ouvert depuis une liste, le profil y ramène.
+  var _retourListe = source === "liste-abonnes"
+    ? '<button type="button" class="profil-retour-liste" onclick="openFollowersList()">← Abonnés</button>'
+    : source === "liste-abonnements"
+      ? '<button type="button" class="profil-retour-liste" onclick="openFollowingList()">← Abonnements</button>'
+      : '';
+  var html = _retourListe + '\
     <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
     <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
     \
@@ -4603,20 +5193,24 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user, 352) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
+        ' + (_bioVisiteHtml ? '<div class="main-profile-bio">' + _bioVisiteHtml + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
-          <div class="main-profile-stat"><span>' + postCount + '</span><span>posts</span></div>\
-          <div class="main-profile-stat"><span>' + followerCount + '</span><span>abonnés</span></div>\
+          <div class="main-profile-stat"><span>' + postCount + '</span><span>publication' + (postCount > 1 ? "s" : "") + '</span></div>\
+          <div class="main-profile-stat"><span data-abonnes-visite="' + followerCount + '" data-suivi-initial="' + ((typeof etatSuivi === "function" && etatSuivi(authorId) === "suivi") ? 1 : 0) + '">' + followerCount + '</span><span>abonnés</span></div>\
           <div class="main-profile-stat"><span>' + followingCount + '</span><span>abonnements</span></div>\
         </div>\
       </div>\
     </div>\
     \
     <!-- BOUTONS -->\
-    <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+    ' + (_bloqueParMoi
+      ? '<div id="visitedProfileActions" class="profil-bloque" role="status"><span>Tu as bloqué ce compte.</span>'
+        + '<button type="button" class="btn ghost profil-action" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();">Débloquer</button></div>'
+      : '') + '\
+    <div id="' + (_bloqueParMoi ? 'visitedProfileActionsMasquees" hidden' : 'visitedProfileActions"') + ' style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
+      <button class="btn primary profil-action" onclick="closeModal();_convOrigineProfil(\'' + escapeJsArg(authorId) + '\');startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;border-radius:14px;">Message</button>\
+      <button class="btn ghost profil-action" id="followBtn_' + escapeHtml(authorId) + '" data-follow-uid="' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;border-radius:14px;' + (isFollowing ? 'background:rgba(124, 58, 237, 0.1);color:var(--accent);border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -4677,7 +5271,7 @@ function openVisitedProfileMenu(ev, authorId, name) {
     { label: "Signaler", run: function () { reportUser(authorId, name); } },
     bloque
       ? { label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
-      : { label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
+      : { label: "Bloquer", danger: true, run: function () { demanderBlocage(authorId, name); } }
   ]);
 }
 
@@ -4770,7 +5364,7 @@ function _renderVisitedEvents() {
     var emoji = e.emoji || "📍";
     try { if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍"; } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
     var quand = "";
     try { quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (x) {}
@@ -4783,7 +5377,7 @@ function _renderVisitedEvents() {
       + '<div style="flex:1;min-width:0;">'
       + '<div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + escapeHtml(e.title || "Activité") + '</div>'
-      + '<div style="font-size:10.5px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
       + '</div></div>';
   }).join("");
 }
@@ -4799,7 +5393,12 @@ function toggleVisitedPassion(pid) {
 
 function switchVisitedTab(tab) {
   var v = window._visited; if (!v) return;
-  if (v.tabSel.has(tab)) v.tabSel.delete(tab); else v.tabSel.add(tab);
+  // Multi-sélection des FORMATS (2026-11-14, demande de Benjamin : « je ne peux
+  // pas sélectionner photo, vidéo… en même temps »). Même règle que mon profil :
+  // chaque format se coche/décoche indépendamment, l'affichage est leur UNION ;
+  // « Tout » est EXCLUSIF — il vide la sélection, et cocher un format le retire
+  // (sinon Tout ∪ Photos ne filtrerait rien : le défaut PRO-C04 du LOT-16).
+  v.tabSel = _basculerFormat(v.tabSel, tab, "");
   _syncVisitedUI();
   _renderVisitedContent();
 }
@@ -4824,7 +5423,9 @@ function _syncVisitedUI() {
     if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
-    var on = v.tabSel.has(b.getAttribute("data-vtab"));
+    var k = b.getAttribute("data-vtab");
+    // Rien de coché = « Tout » : l'onglet le dit.
+    var on = k === "posts" ? v.tabSel.size === 0 : v.tabSel.has(k);
     b.classList.toggle("active", on);
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
@@ -4833,6 +5434,16 @@ function _syncVisitedUI() {
 // Rend #visitedContent — équivalent de renderProfileContent pour un profil
 // visité : union des types cochés, grille 3 colonnes si la sélection vaut
 // EXACTEMENT « photos » ou « bobines », sinon liste renderPostHTML.
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C10) : une bobine ouverte depuis le
+// profil VISITÉ ramène à ce profil quand on ferme le lecteur — la fenêtre du
+// profil disparaissait, et l'on tombait sur « Mon profil ».
+function ouvrirBobineDepuisProfil(id) {
+  var v = window._visited;
+  window._bobineRetourProfil = (v && v.authorId) ? String(v.authorId) : null;
+  closeModal();
+  openReelById(id);
+}
+
 function _renderVisitedContent() {
   var v = window._visited;
   var el = document.getElementById("visitedContent");
@@ -4876,18 +5487,19 @@ function _renderVisitedContent() {
           // Cellule d'un tiers d'écran (≤ 180 px) : la vignette, jamais la grande
           // (≤ 2 048 px) — la grille du profil VISITÉ avait été oubliée par le lot
           // images légères (contre-revue du 21/09). Une légère passe telle quelle.
-          var src = p.image ? passioThumb(p.image, 360) : "";
+          var src = p.image ? passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360) : "";
           if (!src) return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';
-          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
+          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune photo");
   } else if (single === "bobines") {
     var bobines = posts.filter(function(p) { return p.isReel && (p.video || p.image); });
     el.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
-          var thumb = miniatureVideoPubliqueHTML(poster);
-          return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+          var thumb = miniatureVideoPubliqueHTML(poster, p.video);
+          return '<div onclick="ouvrirBobineDepuisProfil(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune bobine");
   } else {
@@ -4913,11 +5525,31 @@ var VISITED_PROFILE_COLS = "id,username,emoji,color,passion_id,passions,bio,avat
 // silence. Les surfaces marquent donc leurs boutons d'un `data-follow-uid` et on
 // les retourne TOUS ; l'identifiant historique reste pris en compte pour les
 // surfaces qui ne l'ont pas encore.
+// LOT-6 (REC-C01) : repeint TOUS les boutons de suivi présents dans la page, avec
+// le moteur unique (`_peindreBoutonsSuivi`, libellé de `libelleBoutonSuivi`).
+function repeindreBoutonsSuiviVisibles() {
+  var vus = {};
+  Array.prototype.forEach.call(document.querySelectorAll('[data-follow-uid], [id^="followBtn_"]'), function (b) {
+    var uid = b.getAttribute("data-follow-uid") || String(b.id || "").replace(/^followBtn_/, "");
+    if (!uid || vus[uid]) return;
+    vus[uid] = true;
+    try { _peindreBoutonsSuivi(uid, etatSuivi(uid)); } catch (e) { try { diagLog("repeint suivi : " + (e && e.message)); } catch (_e) {} }
+  });
+}
+
 function _boutonsSuivi(userId) {
   var out = [];
+  // ⚠️ TOUS les porteurs de l'identifiant, PAS `getElementById` (2026-11-14).
+  // Rapporté par Benjamin (captures) : sur le profil visité, le toast disait
+  // « Tu suis… » puis « Tu ne suis plus… », le compteur bougeait, et le bouton
+  // restait figé sur « Demande envoyée ». « Créateurs à suivre » (app-06) émet
+  // le même `followBtn_<uid>` et PRÉCÈDE la modale : `getElementById` rendait
+  // ce bouton caché, et celui sous le doigt n'était jamais repeint.
   try {
-    var parId = document.getElementById("followBtn_" + userId);
-    if (parId) out.push(parId);
+    var idCherche = "followBtn_" + userId;
+    Array.prototype.forEach.call(document.querySelectorAll('[id^="followBtn_"]'), function (b) {
+      if (b.id === idCherche && out.indexOf(b) < 0) out.push(b);
+    });
   } catch (e) {}
   try {
     // Comparaison d'ATTRIBUT plutôt que sélecteur construit : un identifiant de
@@ -4990,6 +5622,9 @@ function _majBlocPriveVisite(userId) {
 }
 
 function toggleFollowUser(userId, userName) {
+  // LOT-5 (REC-C02) : un personnage d'exemple n'existe pas — aucun suivi ne part,
+  // ni en local ni en base, et c'est dit.
+  if (estPersonneExemple(userId)) { toast("C'est un profil d'exemple : on ne peut pas le suivre."); return; }
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -5091,14 +5726,41 @@ function toggleFollowUser(userId, userName) {
   state.user.following = state.user.following.filter(function (id) { return id !== userId; });
   _peindreBoutonsSuivi(userId, "aucun");
   toast("Tu ne suis plus " + nom);
-  _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).catch(function () {});
+  // ⚠️ LE VERDICT EST LU (ETAT-08, audit du 2026-11-10). Seul un `.catch` était
+  // attaché : un DELETE refusé laissait l'abonnement vivant en base pendant que
+  // l'écran disait « Tu ne suis plus » — et la lecture suivante le remettait.
+  _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).then(function (r) {
+    if (!r || r.ok !== false) return;
+    if ((state.user.following || []).indexOf(userId) < 0) state.user.following.push(userId);
+    _peindreBoutonsSuivi(userId, "suivi");
+    toast("Désabonnement non enregistré — tu suis toujours " + nom);
+    saveState();
+  }).catch(function () {});
   saveState();
 }
 
 // Peint TOUS les boutons « Suivre » d'un compte (jusqu'à trois surfaces) dans
 // l'un des trois états. Seul point qui écrit ces libellés : `libelleBoutonSuivi`
 // (app-02) est la source des mots, ceci n'en est que la mise en couleur.
+// LOT-48 (audit UX/UI du 2026-11-10, PCS-C04) : « ✓ Suivi » et « 0 abonnés »
+// côte à côte — le compteur du profil visité ne bougeait pas. Il suit l'état
+// du bouton : +1 quand je suis, −1 quand je me désabonne, rien pour une demande
+// en attente (compte privé). Le nombre de départ est celui lu en base à
+// l'ouverture, corrigé de MON abonnement d'alors.
+function _majCompteurAbonnesVisite(userId, etat) {
+  try {
+    var v = window._visited;
+    if (!v || v.authorId !== userId) return;
+    document.querySelectorAll("[data-abonnes-visite]").forEach(function (el) {
+      var base = Number(el.getAttribute("data-abonnes-visite")) || 0;
+      var initial = el.getAttribute("data-suivi-initial") === "1" ? 1 : 0;
+      var n = Math.max(0, base - initial + (etat === "suivi" ? 1 : 0));
+      el.textContent = String(n);
+    });
+  } catch (e) { try { diagLog("compteur_abonnes " + (e && e.message)); } catch (_) {} }
+}
 function _peindreBoutonsSuivi(userId, etat) {
+  _majCompteurAbonnesVisite(userId, etat);
   // L'état est écrit AVANT chaque appel : le libellé se lit dans la seule table.
   var libelle = libelleBoutonSuivi(userId);
   // Appelée NUE, comme `libelleBoutonSuivi` juste au-dessus : un `typeof` y
@@ -5106,7 +5768,14 @@ function _peindreBoutonsSuivi(userId, etat) {
   var aide = aideBoutonSuivi(userId);
   _boutonsSuivi(userId).forEach(function (btn) {
     btn.innerHTML = libelle;
-    if (etat === "suivi") {
+    if (etat === "suivi" && btn.classList.contains("profil-action")) {
+      // LOT-16 (PRO-C17) : sur le profil visité, l'ÉTAT n'est plus plus fort que
+      // l'action — « Message » reste la seule action pleine ; « ✓ Suivi » est un
+      // contour à fond léger (toujours distinct de « Demande envoyée », contour nu).
+      btn.style.background = "rgba(124, 58, 237, 0.1)";
+      btn.style.color = "var(--accent)";
+      btn.style.borderColor = "var(--accent)";
+    } else if (etat === "suivi") {
       btn.style.background = "var(--accent)";
       btn.style.color = "#fff";
       btn.style.borderColor = "var(--accent)";
@@ -5144,6 +5813,24 @@ function _peindreBoutonsSuivi(userId, etat) {
 // contraire, et l'état local, lui, survivait à la réhydratation. Même famille
 // que « signalement envoyé » annoncé sans écriture (2026-09-10).
 // Optimiste à l'écran, puis le verdict : un échec ANNULE l'affichage et le dit.
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C10) — UNE SEULE PORTE DE BLOCAGE.
+// Quatre portes, deux comportements : immédiat au premier toucher (fil, profil,
+// commentaire) ou boîte native (conversation). Toutes passent par cette feuille,
+// qui dit les effets AVANT. `blockUser` reste l'exécutant (verdict serveur, retour
+// arrière) ; rien n'est bloqué sans « Bloquer ».
+async function demanderBlocage(userId, name) {
+  if (!userId || userId === MY_UID || userId === "me") return false;
+  var nom = name || "ce compte";
+  var oui = await confirmerAction({
+    titre: "Bloquer " + nom + " ?",
+    texte: ["Vous ne verrez plus vos publications, commentaires et messages l'un de l'autre.",
+            "Vous ne pourrez plus vous écrire, et l'abonnement est retiré. " + nom + " n'est pas prévenu·e."],
+    libelle: "Bloquer", danger: true,
+  });
+  if (!oui) return false;
+  return blockUser(userId, name);
+}
+
 async function blockUser(userId, name) {
   if (!userId || userId === MY_UID || userId === "me") return false;
   if (_ecritureBlocageEnCours[userId]) return false; // écriture en cours (ROB-04)
@@ -5191,6 +5878,7 @@ async function unblockUser(userId, name) {
   saveState();
   try { renderFeed(); } catch(e) {}
   try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+  _repeindreApresBlocage(userId);
   if (typeof supaUnblockUser !== "function" || !window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) {
     toast("✅ " + libelle + " débloqué sur cet appareil");
     return true;
@@ -5202,11 +5890,30 @@ async function unblockUser(userId, name) {
     saveState();
     try { renderFeed(); } catch(e) {}
     try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+    _repeindreApresBlocage(userId);
     toast("⚠️ Déblocage non enregistré — réessaie");
     return false;
   }
   toast("✅ " + libelle + " débloqué");
   return true;
+}
+
+// LOT-28 (audit UX/UI du 2026-11-10, MSG-C29) : débloquer repeignait le fil et la
+// fenêtre des comptes bloqués, pas la liste des messages — la conversation restait
+// absente jusqu'au prochain rendu. La liste ET la conversation ouverte avec cette
+// personne (fil, bandeau « Tu as bloqué… ») suivent l'état du blocage.
+function _repeindreApresBlocage(userId) {
+  try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
+  try {
+    var ouverte = window._openedConvId;
+    if (!ouverte || typeof getConversations !== "function") return;
+    var c = (getConversations() || []).find(function (x) { return x && x.id === ouverte; });
+    if (!c || c.isGroup || c.userId !== userId) return;
+    var fp = document.getElementById("conv-fullpage");
+    var nom = fp ? fp.getAttribute("data-display-name") : "";
+    if (typeof renderConvFpThread === "function") renderConvFpThread(c, nom);
+    _peindreIssueConversation(c, nom);
+  } catch (e) { try { diagLog("repeindre après blocage : " + (e && e.message)); } catch (_) {} }
 }
 
 // ⚠️ « SIGNALEMENT ENVOYÉ » ÉTAIT ANNONCÉ MÊME QUAND RIEN N'ÉTAIT ÉCRIT
@@ -5237,9 +5944,7 @@ async function reportUser(userId, name) {
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("user", userId, motif); } catch (e) { ok = false; }
   closeModal();
-  toast(ok
-    ? "🚩 Signalement envoyé. Notre équipe va vérifier."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
@@ -5263,9 +5968,7 @@ async function reportStory(storyId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("story", storyId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Story signalée. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
   return ok;
 }
@@ -5385,13 +6088,21 @@ async function reportPassion(pid, label) {
   try {
     if (typeof supaReport === "function") ok = await supaReport("passion", pid, "");
   } catch (e) { ok = false; }
-  if (ok) {
-    toast("🚩 « " + nom + " » signalée. On vérifie.", "success");
-  } else {
-    // Le doublon est le cas le plus fréquent : l'index unique refuse un second
-    // signalement de la même personne sur la même passion.
-    toast("Signalement déjà envoyé, ou impossible pour le moment.");
-  }
+  // Le doublon est le cas le plus fréquent (index unique par personne) :
+  // `messageSignalement` le dit comme tel (TRA-C18).
+  messageSignalement(ok);
+}
+
+// LOT-26 (audit UX/UI du 2026-11-10, TRA-C18) : sept portes de signalement,
+// six réponses différentes, et un échec (« déjà envoyé, ou impossible ») qui ne
+// disait pas s'il fallait réessayer. UNE réponse, quel que soit l'objet ; un
+// doublon (23505, `_dernierSignalementMotif` posé par `supaReport`) se dit
+// comme tel, un vrai échec invite à réessayer. Rien n'est promis de plus que
+// ce que fait la modération (examen par l'équipe).
+function messageSignalement(ok) {
+  if (ok) { toast("Signalement envoyé. L'équipe l'examinera, merci.", "success"); return; }
+  if (window._dernierSignalementMotif === "doublon") { toast("Tu l'as déjà signalé — l'équipe l'a bien reçu.", "info"); return; }
+  toast("Signalement non envoyé — réessaie", "warning");
 }
 
 async function reportPost(postId) {
@@ -5403,9 +6114,7 @@ async function reportPost(postId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("post", postId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Publication signalée. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
@@ -5419,7 +6128,7 @@ function _blockedListHtml() {
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
       <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
-      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${escapeJsArg(id)}','${escapeJsArg(name)}')">Débloquer</button>
+      <button class="btn ghost bloque-debloquer" onclick="unblockUser('${escapeJsArg(id)}','${escapeJsArg(name)}')">Débloquer</button>
     </div>`;
   }).join("");
 }
@@ -5433,10 +6142,19 @@ function openBlockedList() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Comptes bloqués</div>
-    <div class="modal-subtitle">Leurs posts, commentaires et messages sont masqués.</div>
+    <div class="modal-subtitle">Leurs publications, commentaires et messages te sont masqués. Débloquer les rétablit, sans réabonnement automatique.</div>
     <div id="blockedListBox" style="max-height:320px;overflow-y:auto;margin-top:8px;">${_blockedListHtml()}</div>
     <button class="btn primary block" style="margin-top:12px;" onclick="closeModal()">OK</button>
   `);
+  // LOT-17 (audit UX/UI du 2026-11-10, TRA-C09) : un compte absent du cache
+  // local s'affichait « ? Utilisateur » — on relit son nom et sa photo sur
+  // `profiles` (lecture publique, aucun droit nouveau), puis on repeint.
+  try {
+    var inconnus = (state.user.blocked || []).filter(function (id) { var u = userById(id); return !u || !u.name; });
+    if (inconnus.length && typeof _resolveProfilesByIds === "function") {
+      _resolveProfilesByIds(inconnus).then(function () { renderBlockedList(); }).catch(function () {});
+    }
+  } catch (e) {}
 }
 
 function shareUserProfile(userId, name) {
@@ -5444,8 +6162,14 @@ function shareUserProfile(userId, name) {
   const rawUrl = (typeof lienPartageDe === "function")
     ? lienPartageDe("user", userId) : location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
-  const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  partagerOuCopier(data, "Lien du profil copié");
+  // LOT-12 (PAR-C07) : le profil passait directement à la feuille du téléphone,
+  // sans rien montrer de ce qui part.
+  ouvrirFeuillePartage({
+    quoi: "profil", titre: name || "Profil PASSIO", url: url,
+    message: "Viens voir " + (name || "ce profil") + " sur PASSIO 👇",
+    voit: "La personne qui reçoit le lien voit ce profil et ses publications publiques.",
+    idEnvoyer: "_shareUserOutBtn",
+  });
 }
 
 function renderMessages() {
@@ -5465,11 +6189,24 @@ function renderMessages() {
   // Génère les pills lu/non lu
   renderMessageFilters();
 
-  const _q = (window._msgSearchQuery || "").trim().toLowerCase();
+  const _q = plierRecherche((window._msgSearchQuery || "").trim());
   const _showArch = !!window._showArchived;
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
   let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)));
+  // LOT-43 (MSG-C22) : un brouillon sans message n'est pas une conversation.
+  filtered = filtered.filter(c => !(c && c._brouillon && !(c.messages || []).length));
+  // LOT-31 (audit UX/UI du 2026-11-10, MSG-C24) : pour un COMPTE, les cinq
+  // conversations d'exemple (`SEED_CONVERSATIONS`) restaient mêlées aux vraies
+  // jusqu'au démarrage suivant. Dès qu'une vraie conversation existe, elles
+  // quittent la liste. Seuls les exemples du socle : jamais un fil avec un
+  // interlocuteur réel, même mis en cache.
+  if (typeof SEED_CONVERSATIONS !== "undefined" && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    const _idsExemples = new Set(SEED_CONVERSATIONS.map(s => s.id));
+    if (filtered.some(c => c && !_idsExemples.has(c.id) && !_estConvDemo(c))) {
+      filtered = filtered.filter(c => !(c && _idsExemples.has(c.id)));
+    }
+  }
 
   // Bandeau « Archivées » : compteur + bascule (caché pendant une recherche).
   const archivedCount = filtered.filter(c => c.archived).length;
@@ -5477,23 +6214,30 @@ function renderMessages() {
   if (archRow) {
     if (_q) archRow.innerHTML = "";
     else if (_showArch) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">← Retour aux conversations</button>`;
-    else if (archivedCount) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">Archivées (${archivedCount})</button>`;
+    // LOT-24 (MSG-C14) : les non-lus d'une conversation archivée font compter
+    // l'onglet ; la rangée « Archivées » les dit, sinon on ne les trouve pas.
+    else if (archivedCount) {
+      const _nlArch = filtered.filter(c => c.archived && (c.unread || 0) > 0).reduce((t, c) => t + (c.unread || 0), 0);
+      archRow.innerHTML = `<button class="btn ghost block${_nlArch ? " archives-non-lues" : ""}" onclick="_toggleArchivedView()" style="font-size:13px;">Archivées (${archivedCount})${_nlArch ? ` · <span class="archives-pastille">${_nlArch} non lu${_nlArch > 1 ? "s" : ""}</span>` : ""}</button>`;
+    }
     else archRow.innerHTML = "";
   }
 
   if (_q) {
     // Recherche globale : nom de conversation OU texte d'un message (archivées incluses).
     filtered = filtered.filter(c => {
-      const name = (c.isGroup ? (c.groupName || "") : (c.userName || "")).toLowerCase();
+      const name = plierRecherche(c.isGroup ? (c.groupName || "") : (c.userName || ""));
       if (name.indexOf(_q) > -1) return true;
-      return (c.messages || []).some(m => (m.text || "").toLowerCase().indexOf(_q) > -1);
+      return (c.messages || []).some(m => plierRecherche(m.text || "").indexOf(_q) > -1);
     });
   } else {
     // Vue normale : actives, ou archivées si on a basculé.
     filtered = filtered.filter(c => _showArch ? c.archived : !c.archived);
   }
-  // Épinglées d'abord, puis par date du dernier message.
-  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
+  // Épinglées d'abord, puis les VRAIES conversations, puis les exemples (LOT-5,
+  // PCS-006 : elles étaient mêlées), chacune par date du dernier message.
+  const _exConv = (c) => (typeof _estConvDemo === "function" && _estConvDemo(c)) ? 1 : 0;
+  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (_exConv(a) - _exConv(b)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
     // Squelette shimmer tant que le chargement réseau initial n'est pas terminé
@@ -5502,6 +6246,10 @@ function renderMessages() {
     if (!_q && !_showArch && !window._convNetLoaded && window._supaReal !== false) {
       if (!window._convSkelTimeout) {
         window._convSkelTimeout = setTimeout(function () {
+          // LOT-20 (MSG-C32) : le filet ne prétend plus que la lecture est finie —
+          // il dit qu'elle est LENTE. « Aucune conversation » est réservé à une
+          // lecture réellement revenue vide (`_convNetLoaded` posé par app-08).
+          if (!window._convNetLoaded) window._convChargementLent = true;
           window._convNetLoaded = true;
           try { renderMessages(); } catch (e) {}
         }, 8000);
@@ -5522,9 +6270,17 @@ function renderMessages() {
     if (empt) {
       empt.style.display = "block";
       const t = empt.querySelector(".empty-title"), x = empt.querySelector(".empty-text");
-      if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ni message ne correspond à ta recherche."; }
+      // LOT-30 (audit UX/UI du 2026-11-10, MSG-C07) : la recherche ne connaît que
+      // les noms et les messages déjà chargés sur cet appareil ; elle le dit.
+      if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ne correspond. Pour retrouver un ancien message, ouvre la conversation puis « Rechercher dans la conversation »."; }
       else if (_showArch) { if (t) t.textContent = "Aucune conversation archivée"; if (x) x.textContent = "Les conversations archivées apparaîtront ici."; }
-      else { if (t) t.textContent = "Aucune conversation"; if (x) x.textContent = "Recherche un utilisateur ci-dessus pour démarrer une discussion."; }
+      else if (window._convChargementLent) {
+        if (t) t.textContent = "Chargement plus long que prévu…";
+        if (x) x.textContent = "Tes conversations n'ont pas encore répondu.";
+      }
+      // MSG-C19 : la consigne envoyait vers un champ qui ne cherche pas de personnes.
+      else { if (t) t.textContent = "Aucune conversation"; if (x) x.textContent = "Écris à une personne pour démarrer une discussion."; }
+      _peindreActionEtatVideMessages(empt, !_q && !_showArch);
     }
     return;
   }
@@ -5551,9 +6307,8 @@ function renderMessages() {
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
     const _visibles = (c.messages || []).filter(_msgVisiblePourMoi);
     const lastMsg = _visibles.length ? _visibles[_visibles.length - 1] : null;
-    const _previewContent = lastMsg
-      ? (lastMsg.gif ? "GIF" : lastMsg.voiceData ? "Message vocal" : lastMsg.video ? "Vidéo" : lastMsg.img ? "Photo" : lastMsg.docData ? "Document · " + (lastMsg.fileName || "Fichier") : _sansEmojiEnveloppe(lastMsg.text) || "")
-      : "";
+    // MSG-C12 : une seule autorité (le TYPE d'abord), jamais l'étiquette technique.
+    const _previewContent = lastMsg ? (_msgPreviewText(lastMsg) || "") : "";
     const previewText = (c.draft && c.id !== window._openedConvId)
       ? "Brouillon : " + c.draft
       : (lastMsg
@@ -5581,22 +6336,24 @@ function renderMessages() {
     // de `safeUrlAttr`). Aujourd'hui la photo de groupe n'est écrite que par
     // l'appareil de son créateur (data URL), mais une ligne serveur ou une fusion
     // multi-appareils en ferait une donnée d'autrui : le contexte décide.
+    const _photoActivite = (c.isGroup && !c.groupPhoto) ? photoActiviteConv(c) : "";
     const avatarStyle = (c.isGroup && c.groupPhoto)
       ? `background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;`
-      : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
-    const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
+      : (_photoActivite ? `background:var(--accent) url('${_photoActivite}') center/cover;font-size:0;`
+      : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`));
+    const _convAvInner = ((c.isGroup && c.groupPhoto) || _photoActivite) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
     const membresLine = c.isGroup
-      ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
+      ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${(typeof nbMembresGroupe === "function" ? nbMembresGroupe(c) : ((c.userIds||[]).length || 0))} membres</div>`
       : "";
 
     const _demo = _estConvDemo(c);
     const _nonLus = _demo ? 0 : (c.unread || 0);
-    return `<div class="msg-card ${_nonLus > 0 ? "unread" : ""}" ${_demo ? 'data-conv-demo="1"' : ""} onclick="openConversation('${escapeJsArg(c.id)}')">
+    return `<div class="msg-card ${_nonLus > 0 ? "unread" : ""}" data-conv-id="${escapeHtml(c.id)}" ${_demo ? 'data-conv-demo="1"' : ""} onclick="openConversation('${escapeJsArg(c.id)}')">
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
-          <span class="msg-name">${c.pinned ? "📌 " : ""}${escapeHtml(displayName)}</span>
+          <span class="msg-name">${c.pinned ? "📌 " : ""}${escapeHtml(displayName)}${(c._muted || c.muted) ? ' <span class="msg-sourdine" title="Notifications coupées" aria-label="Notifications coupées">🔕</span>' : ""}</span>
           <span class="msg-time">${lastMsg ? fmtMsgTime(c.lastAt) : ""}</span>
         </div>
         ${membresLine}
@@ -5618,7 +6375,19 @@ function _loadMoreConvs() {
 function _globalMsgSearch(q) {
   window._msgSearchQuery = q || "";
   window._convListLimit = 30; // réinitialise la pagination pour la recherche
+  var effacer = document.getElementById("convGlobalSearchClear");
+  if (effacer) effacer.hidden = !window._msgSearchQuery;
   renderMessages();
+}
+
+// LOT-30 (MSG-C07) : un × vide le champ et rend la liste ; quitter l'écran
+// Messages vide aussi la recherche (revenir montrait une liste filtrée sans
+// qu'on se souvienne pourquoi).
+function _effacerRechercheMessages() {
+  var champ = document.getElementById("convGlobalSearch");
+  if (champ) champ.value = "";
+  if (window._msgSearchQuery) _globalMsgSearch("");
+  else { var effacer = document.getElementById("convGlobalSearchClear"); if (effacer) effacer.hidden = true; }
 }
 
 // Bascule entre conversations actives et archivées.
@@ -5629,6 +6398,57 @@ function _toggleArchivedView() {
 }
 
 // Archive / désarchive une conversation (masquée de la liste principale).
+// LOT-44 (audit UX/UI du 2026-11-10, MSG-C30) : épingler, archiver, marquer
+// comme non lu ou couper les notifications demandait d'OUVRIR la conversation
+// (ce qui la marquait lue) puis ⋮ puis l'entrée. Un appui long (ou clic droit)
+// sur la ligne ouvre ces mêmes entrées, sans l'ouvrir. Rien pour un exemple.
+function _actionsListeConv(convId) {
+  var c = getConversations().find(function (x) { return x && x.id === convId; });
+  if (!c || (typeof _estConvDemo === "function" && _estConvDemo(c))) return;
+  var id = escapeJsArg(convId);
+  var ligne = function (ic, lib, fn) {
+    return '<div class="csetting-item" role="button" tabindex="0" onclick="closeModal();' + fn + '"><div class="csetting-icon">' + ic + '</div><div class="csetting-label">' + lib + '</div></div>';
+  };
+  var nom = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
+  openModal('<div class="modal-handle"></div><div class="modal-title">' + escapeHtml(nom) + '</div>' +
+    ligne(picto("epingler"), c.pinned ? "Désépingler" : "Épingler en haut de la liste", "_togglePinConv('" + id + "')") +
+    ligne(picto("nonLu"), "Marquer comme non lu", "_markConvUnread('" + id + "')") +
+    ligne(c._muted ? picto("cloche") : picto("clocheCoupee"), c._muted ? "Activer les notifications" : "Couper les notifications", "_sourdineDepuisListe('" + id + "')") +
+    ligne(picto("archiver"), c.archived ? "Désarchiver" : "Archiver la conversation", "_toggleArchiveConv('" + id + "')"));
+}
+function _sourdineDepuisListe(convId) {
+  var c = getConversations().find(function (x) { return x && x.id === convId; });
+  if (!c) return;
+  c._muted = !c._muted;
+  saveConversations();
+  try { renderMessages(); } catch (e) {}
+  toast(c._muted ? "Notifications coupées" : "Notifications activées");
+  if (typeof _ecrireSourdineServeur === "function") _ecrireSourdineServeur(convId, !!c._muted);
+}
+(function () {
+  var minuteur = null, bouge = false, ouvertA = 0;
+  function carte(t) { return t && t.closest ? t.closest("#messageList .msg-card[data-conv-id]") : null; }
+  document.addEventListener("touchstart", function (e) {
+    var k = carte(e.target); if (!k) return;
+    bouge = false; clearTimeout(minuteur);
+    minuteur = setTimeout(function () { if (!bouge) { ouvertA = Date.now(); _actionsListeConv(k.getAttribute("data-conv-id")); } }, 480);
+  }, { passive: true });
+  document.addEventListener("touchmove", function () { bouge = true; clearTimeout(minuteur); }, { passive: true });
+  document.addEventListener("touchend", function (e) {
+    clearTimeout(minuteur);
+    if (ouvertA && Date.now() - ouvertA < 1500) { try { e.preventDefault(); } catch (x) {} }
+  }, { passive: false });
+  // Le clic de synthèse du relâchement n'ouvre pas la conversation.
+  document.addEventListener("click", function (e) {
+    if (ouvertA && Date.now() - ouvertA < 700 && carte(e.target)) { e.preventDefault(); e.stopPropagation(); ouvertA = 0; }
+  }, true);
+  document.addEventListener("contextmenu", function (e) {
+    var k = carte(e.target); if (!k) return;
+    e.preventDefault();
+    _actionsListeConv(k.getAttribute("data-conv-id"));
+  });
+})();
+
 function _toggleArchiveConv(convId) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
@@ -5651,7 +6471,31 @@ function _pointeurFin() {
   } catch (e) { return false; }
 }
 
+// 2026-11-15 (Benjamin, capture de « Nouile ») : la discussion d'une activité
+// (`evgrp_<id>`) montrait 👥 dans son cercle ; elle montre désormais la photo de
+// couverture de l'activité, si l'activité est connue ici et en porte une. Une
+// photo de groupe posée à la main reste prioritaire. Renvoie une URL passée par
+// `_cssUrl` (donnée d'autrui destinée à un `url(` CSS), ou "".
+function photoActiviteConv(c) {
+  try {
+    if (!c || !c.isGroup || !/^evgrp_/.test(String(c.id || ""))) return "";
+    var evId = String(c.id).slice(6);
+    var ev = null;
+    if (typeof _findCanonicalEvent === "function") ev = _findCanonicalEvent(evId);
+    if (!ev && typeof allEvents === "function") ev = (allEvents() || []).find(function (e) { return e && e.id === evId; }) || null;
+    var photo = ev && ev.coverUrl;
+    if (!photo) return "";
+    if (typeof urlMediaDirecte === "function") photo = urlMediaDirecte(photo);
+    return _cssUrl(passioThumb(photo, 192)) || "";
+  } catch (e) { console.warn("photoActiviteConv", e); return ""; }
+}
+
 async function openConversation(convId) {
+  // LOT-46 (PCS-C02) : l'origine posée par startDirectMessage, ou aucune.
+  window._convOrigine = window._convOrigineEnAttente || null;
+  window._convOrigineEnAttente = null;
+  if (window._convOrigine) window._convOrigine.convId = convId;
+  setTimeout(_peindreContexteConv, 60); // LOT-52 (PCS-C05)
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
   // Réinitialise un éventuel contexte de réponse d'une conversation précédente.
@@ -5662,7 +6506,13 @@ async function openConversation(convId) {
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
   // 1ʳᵉ ouverture d'une conversation : proposer les notifications d'appel pour
   // pouvoir RECEVOIR un appel même app fermée (geste utilisateur = autorisé).
-  if (!c.isGroup) { try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {} }
+  // LOT-29 (audit UX/UI du 2026-11-10, MSG-C25) : la demande du SYSTÈME partait
+  // sans un mot à la première conversation. Ici, on ne fait plus que renouveler
+  // l'abonnement d'une permission DÉJÀ accordée ; la demande se fait là où elle
+  // s'explique (« Autoriser les notifications », réglages des notifications).
+  if (!c.isGroup && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {}
+  }
   c._convPage = 1; // repart du bas (messages récents) à chaque ouverture
   _alignerIdentiteConv(c); // pseudo changé depuis la création du fil
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
@@ -5692,10 +6542,27 @@ async function openConversation(convId) {
       <div class="conv-fp-head-avatar" style="background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;"></div>
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
+  } else if (c.isGroup && photoActiviteConv(c)) {
+    // 2026-11-15 : discussion d'activité sans photo de groupe → la photo de
+    // l'activité ; le cercle ouvre l'activité, comme « Voir l'activité ».
+    avatarHtml = `<div class="conv-fp-head-avatar conv-fp-head-avatar-activite" role="button" aria-label="Voir l'activité" style="background:var(--accent) url('${photoActiviteConv(c)}') center/cover;font-size:0;" onclick="openEventDetails('${escapeJsArg(String(convId).slice(6))}')"></div>`;
   } else {
-    const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
-    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">${avatarInner(_hu)}</div>`;
+    // LOT-29 (MSG-C20) : un groupe sans photo montrait la photo de son premier
+    // membre — la liste, elle, montre 👥. L'avatar d'un groupe ouvre sa fenêtre.
+    const _hu = c.isGroup
+      ? { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: null }
+      : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
+    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? `showGroupMembers('${escapeJsArg(convId)}')` : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">${avatarInner(_hu)}</div>`;
   }
+  // LOT-29 (MSG-C20) : la discussion d'une activité (`evgrp_<id>`) mène à
+  // l'activité — seulement si elle est connue ici (jamais un lien mort).
+  var _evIdConv = (c.isGroup && /^evgrp_/.test(String(convId))) ? String(convId).slice(6) : "";
+  var _evConnue = !!(_evIdConv && typeof allEvents === "function" && (allEvents() || []).some(function (e) { return e && e.id === _evIdConv; }));
+  var _ligneGroupe = c.isGroup
+    ? (_evConnue
+        ? `<span class="conv-fp-lien-activite" data-ev="${escapeHtml(_evIdConv)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(_evIdConv)}')">Voir l'activité ›</span>`
+        : `👥 ${nbMembresGroupe(c)} membres`)
+    : (_estConvDemo(c) ? 'Exemple PASSIO' : 'Voir le profil');
 
   // ── Header ──
   const headEl = document.getElementById("convFpHead");
@@ -5704,21 +6571,21 @@ async function openConversation(convId) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
     ${avatarHtml}
-    <div class="conv-fp-head-info" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
+    <div class="conv-fp-head-info" onclick="${c.isGroup ? `showGroupMembers('${escapeJsArg(convId)}')` : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      <div class="conv-fp-passion">${c.isGroup ? `👥 ${(c.userIds||[]).length} membres` : 'Voir le profil'}</div>
+      <div class="conv-fp-passion">${_ligneGroupe}</div>
     </div>
     <div class="conv-actions">
-      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres">
+      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres" aria-label="Membres du groupe">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>` : ''}
-      ${(c.isGroup || (typeof appelsDisponibles === "function" && !appelsDisponibles())) ? '' : `<button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','voice')" title="Appel audio">
+      ${(c.isGroup || (typeof appelsDisponibles === "function" && !appelsDisponibles())) ? '' : `<button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','voice')" title="Appel audio" aria-label="Appel audio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1.2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
-      <button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','video')" title="Appel vidéo">
+      <button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','video')" title="Appel vidéo" aria-label="Appel vidéo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </button>`}
-      <button class="conv-action-btn" onclick="openConvSettings('${escapeJsArg(convId)}')" title="Paramètres">
+      <button class="conv-action-btn" onclick="openConvSettings('${escapeJsArg(convId)}')" title="Paramètres" aria-label="Paramètres de la conversation">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>
     </div>`;
@@ -5728,10 +6595,21 @@ async function openConversation(convId) {
   const btn = document.getElementById("convFpSendBtn");
   if (inp) {
     inp.value = c.draft || ""; // restaure le brouillon non envoyé
+    // LOT-32 (audit UX/UI du 2026-11-10, MSG-C75) : le champ n'avait que son
+    // placeholder ; il porte le nom de la personne ou du groupe (attribut posé
+    // par setAttribute, jamais concaténé dans du HTML).
+    try { inp.setAttribute("aria-label", "Message à " + (displayName || "cette conversation")); } catch (e) {}
     inp.style.height = "auto";
     try { if (inp.value) autoResizeTextarea(inp); } catch(e) {}
+    // LOT-20 (MSG-C59) : sur un clavier TACTILE il n'y a pas de Maj+Entrée — la
+    // touche de retour envoyait le message en cours, impossible de sauter une
+    // ligne. Au doigt, Entrée insère un saut de ligne et seul le bouton envoie ;
+    // sur ordinateur (pointeur fin), Entrée envoie et Maj+Entrée saute une ligne.
+    var _tactile = !_pointeurFin();
+    inp.setAttribute("enterkeyhint", _tactile ? "enter" : "send");
+    if (!inp.getAttribute("aria-label")) inp.setAttribute("aria-label", "Écrire un message");
     inp.onkeydown = function(e) {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessageFp(convId, displayName); }
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !_tactile) { e.preventDefault(); sendMessageFp(convId, displayName); }
     };
   }
   if (btn) btn.onclick = () => sendMessageFp(convId, displayName);
@@ -5739,7 +6617,7 @@ async function openConversation(convId) {
   const fp = document.getElementById("conv-fullpage");
   var thread = document.getElementById("convFpThread");
   // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
-  if (thread) thread.style.background = c.bg || "var(--bg-deep)";
+  if (thread) thread.style.background = (typeof fondConvClair === "function") ? fondConvClair(c.bg) : (c.bg || "var(--bg-deep)"); // LOT-35 (MSG-C16)
 
   // ⚠️ LE FIL EST PEINT AVANT QUE LE PANNEAU N'ENTRE À L'ÉCRAN.
   // Défaut vécu (« j'ouvre une conversation, les messages déjà envoyés ne
@@ -5757,7 +6635,13 @@ async function openConversation(convId) {
   renderConvFpThread(c, displayName);
   // `_auBas` survit d'une conversation à l'autre (le nœud est réutilisé) :
   // une conversation qu'on ouvre part du bas, quelle que soit la précédente.
-  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; }
+  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; thread._nouveaux = 0; }
+  try { var _bas = document.getElementById("convFpBas"); if (_bas) _bas.hidden = true; } catch (e) {}
+
+  // LOT-23 (MSG-C78 / C87) : une conversation d'exemple, ou avec un compte que
+  // j'ai bloqué, n'offre pas une saisie qui n'aboutira pas — elle dit pourquoi
+  // et propose la sortie. Peint AVANT la révélation du panneau (CLAUDE.md).
+  _peindreIssueConversation(c, displayName);
 
   // ── Afficher pleine page ──
   if (fp) {
@@ -5951,9 +6835,13 @@ function renderConvFpThread(c, displayName) {
     if (!ts) return "";
     var d = new Date(ts), now = new Date();
     var sameYear = d.getFullYear() === now.getFullYear();
-    var diffDays = Math.floor((now - d) / 86400000);
+    // LOT-20 (MSG-C61) : des JOURS CALENDAIRES (minuit local), pas des tranches
+    // de 24 h — un message d'hier soir passait sous « Aujourd'hui », suivi d'un
+    // second « Aujourd'hui », et « Hier » désignait avant-hier.
+    var diffDays = -joursCalendairesAvant(d.getTime(), now.getTime());
     if (diffDays === 0) return "Aujourd'hui";
     if (diffDays === 1) return "Hier";
+    if (diffDays > 1 && diffDays < 7) return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     return d.toLocaleDateString("fr-FR", { day:"numeric", month:"long", year: sameYear ? undefined : "numeric" });
   }
   function _dayKey(ts) { var d = new Date(ts); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
@@ -6010,20 +6898,36 @@ function renderConvFpThread(c, displayName) {
     // Temps — affiché sur chaque message avec heure exacte (HH:MM)
     var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
     var timeStr = '';
-    if (m.at) {
-      var receipt = (isLastMe && isLastInGroup) ? readReceipt : '';
+    // LOT-41 (audit UX/UI du 2026-11-10, MSG-C77) : l'heure sous CHAQUE bulle et
+    // 12 px entre deux messages d'une même série — sept messages courts par
+    // écran. Une SÉRIE = même expéditeur, même jour, moins de 5 min d'écart :
+    // l'heure ne s'écrit que sous son dernier message, et ses bulles se serrent
+    // (4 px). L'heure de chaque message reste dans son nom accessible et en tête
+    // de sa feuille d'actions. Mes messages gardent leur porte-statut
+    // [data-msgst] (🕓 / ⚠️), que _setMsgStatus patche en place.
+    var _suivant = msgs[i + 1];
+    var _finDeSerie = isLastInGroup || !_suivant || !m.at || !_suivant.at || (_suivant.at - m.at) > 5 * 60000;
+    if (!_finDeSerie) {
+      timeStr = isMe ? '<span class="conv-bubble-time conv-bubble-time-statut">' + statusInd + '</span>' : '';
+    } else if (m.at) {
+      // LOT-20 (MSG-C62) : pas de « ✓ » sur un message qui n'est pas parti.
+      var _pasParti = m.status === "sending" || m.status === "failed";
+      var receipt = (isLastMe && isLastInGroup && !_pasParti) ? readReceipt : '';
       var d = new Date(m.at);
       var hours = String(d.getHours()).padStart(2, '0');
       var mins = String(d.getMinutes()).padStart(2, '0');
       var timeExact = hours + ':' + mins;
       timeStr = '<span class="conv-bubble-time">' + timeExact + receipt + statusInd + '</span>';
     } else if (isMe) {
-      timeStr = '<span class="conv-bubble-time">' + ((isLastMe && isLastInGroup) ? readReceipt : '') + statusInd + '</span>';
+      timeStr = '<span class="conv-bubble-time">' + ((isLastMe && isLastInGroup && m.status !== "sending" && m.status !== "failed") ? readReceipt : '') + statusInd + '</span>';
     }
 
     // Contenu
     var content = "";
     var isMedia = false;
+    // LOT-4 (MSG-C50) : seuls les médias VISUELS perdent le fond de la bulle ; vocal,
+    // document et position le gardent (blanc sur fond clair : 1,08:1 mesuré).
+    var isVisuel = false;
 
     // Décoder le JSON du texte si nécessaire (messages média Supabase non encore décodés)
     applyMsgContentData(m);
@@ -6031,11 +6935,14 @@ function renderConvFpThread(c, displayName) {
     // safeUrlAttr : ces URLs viennent du JSON décodé d'un message ENVOYÉ PAR
     // L'AUTRE compte → sans neutralisation un correspondant pouvait sortir de
     // l'attribut src (XSS) ou pointer un href javascript:.
+    // LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : photos et GIF sans texte
+    // alternatif. Le nom vient d'un autre compte : escapeHtml.
+    var _altAuteur = escapeHtml(isMe ? "toi" : (m.fromName || c.userName || "l'autre personne"));
     if (m.gif) {
-      isMedia = true;
-      content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+      isMedia = true; isVisuel = true;
+      content = '<img alt="GIF envoyé par ' + _altAuteur + '" ' + passioMediaProteges.attributImage(m.gif) + '="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
-      isMedia = true;
+      isMedia = true; isVisuel = true;
       // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
       // bascule en lecteur plein écran natif dès le premier tap — on quitte la
       // conversation, on perd le fil, et il faut ressortir à la main. Android
@@ -6049,8 +6956,8 @@ function renderConvFpThread(c, displayName) {
       // `attachments` est privé depuis le 2026-09-11. Un GIF (Tenor) garde son src.
       content = '<video ' + attrMediaSrc(m.video) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
-      isMedia = true;
-      content = '<img loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      isMedia = true; isVisuel = true;
+      content = '<img alt="Photo envoyée par ' + _altAuteur + '" loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
       var ftype = (m.fileType || 'file').toLowerCase();
@@ -6064,7 +6971,7 @@ function renderConvFpThread(c, displayName) {
       content = '<a ' + attrMediaSrc(m.fileUrl, "href") + ' target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
-        '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + fname + '">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">Télécharger</div></div></div></a>';
     } else if (m.location) {
       isMedia = true;
@@ -6081,11 +6988,23 @@ function renderConvFpThread(c, displayName) {
       var waveBg = isMe ? 'rgba(255,255,255,0.2)' : 'rgba(139,92,246,0.12)';
       var waveFill = isMe ? 'rgba(255,255,255,0.6)' : 'var(--accent)';
       content = '<div style="display:flex;align-items:center;gap:8px;min-width:180px;max-width:240px;">' +
-        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')" id="pb_' + aid + '">▶</button>' +
+        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" class="voice-play-btn" aria-label="Lire le message vocal" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')" id="pb_' + escapeHtml(aid) + '">▶</button>' +
         '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
         '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
-        '<button class="voice-speed-btn" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
+        '<button class="voice-speed-btn" aria-label="Vitesse de lecture : ' + _libelleVitesseVocal(window._voiceSpeed || 1) + '" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
         '</div>';
+    } else if (m.voiceData && m.isFile) {
+      // LOT-20 (MSG-C51) : ma copie LOCALE d'un fichier audio envoyé était une
+      // bulle vide (aucune branche ne la peignait) ; rechargée du serveur, la
+      // même devenait une carte « 🎵 nom · Télécharger ». Même carte, tout de suite.
+      isMedia = true;
+      var aname = escapeHtml(m.fileName || 'Fichier audio');
+      content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
+        (isMe
+          ? '<div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">🎵</div>'
+          : '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-soft);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">🎵</div>') +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + aname + '">' + aname + '</div>' +
+        '<div style="font-size:11px;opacity:0.75;">Fichier audio' + (m.fileSize ? ' · ' + escapeHtml(m.fileSize) : '') + '</div></div></div>';
     } else if (m.docData) {
       isMedia = true;
       var fname = escapeHtml(m.fileName || 'Fichier');
@@ -6093,7 +7012,7 @@ function renderConvFpThread(c, displayName) {
       var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
       content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;" onclick="_docDownload(\'' + escapeJsArg((m.id||i)) + '\')">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
-        '<div><div style="font-size:13px;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + fname + '">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">' + escapeHtml((m.fileType||'') + (m.fileSize ? ' · '+m.fileSize : '')) + '</div></div></div>';
       // stocker pour le téléchargement
       window['_doc_' + (m.id||i)] = { data: m.docData, name: m.fileName || 'fichier' };
@@ -6105,7 +7024,9 @@ function renderConvFpThread(c, displayName) {
         // (il n'accepte que http(s), data:image|audio|video et blob:).
         content = '<a href="' + safeUrlAttr(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
       } else {
-        content = escapeHtml(m.text);
+        // LOT-20 (MSG-C67) : les liens http(s) d'un message s'ouvrent — échappement
+        // D'ABORD, puis liens seulement (ni mentions ni mots-dièse ici).
+        content = _liensMessage(escapeHtml(m.text));
       }
     }
 
@@ -6121,7 +7042,7 @@ function renderConvFpThread(c, displayName) {
       if (!isLastOfGroup) extraBubbleStyle += 'border-bottom-left-radius:6px;';
     }
 
-    var bubbleStyle = isMedia
+    var bubbleStyle = isVisuel
       ? ' style="background:transparent;padding:0;box-shadow:none;' + extraBubbleStyle + '"'
       : (extraBubbleStyle ? ' style="' + extraBubbleStyle + '"' : '');
 
@@ -6140,14 +7061,28 @@ function renderConvFpThread(c, displayName) {
         // ⚠️ La CLÉ de `m.reactions` vient de la ligne `conv_messages` de l'autre
         // compte : rien n'oblige un client à y mettre un emoji. Échappée à
         // l'affichage, comme tout payload librement insérable (règle CLAUDE.md).
-        Object.keys(m.reactions).map(function(e){ return '<span class="conv-react-badge">' + escapeHtml(e) + (m.reactions[e]>1?(' '+escapeHtml(String(m.reactions[e]))):'') + '</span>'; }).join('') +
+        // LOT-24 (MSG-C76) : MA réaction est un bouton — la toucher la retire
+        // (le handler est délégué, `_wireMsgActions` : aucun payload dans un onclick).
+        Object.keys(m.reactions).map(function(e){
+          var compte = (m.reactions[e]>1?(' '+escapeHtml(String(m.reactions[e]))):'');
+          return (m.myReact && m.myReact[e])
+            ? '<button type="button" class="conv-react-badge mine" data-react="' + escapeHtml(e) + '" aria-label="Retirer ta réaction ' + escapeHtml(e) + '">' + escapeHtml(e) + compte + '</button>'
+            : '<span class="conv-react-badge">' + escapeHtml(e) + compte + '</span>';
+        }).join('') +
         '</div>';
     }
 
+    // LOT-24 (MSG-C76) : une bulle est atteignable au clavier et nommée ; Entrée
+    // ou la touche Menu ouvrent ses actions. (MSG-C65) Une vidéo garde ses
+    // commandes natives au toucher : un bouton ⋯ porte ses actions.
+    var _nomBulle = (isMe ? "Ton message" : "Message de " + (m.fromName || c.userName || "ton interlocuteur"))
+      + (m.at ? ", " + String(new Date(m.at).getHours()).padStart(2, "0") + " h " + String(new Date(m.at).getMinutes()).padStart(2, "0") : "")
+      + " : " + String(_msgPreviewText(m) || "").slice(0, 80);
     parts.push(
-      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '">' +
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + (_finDeSerie ? '' : ' conv-serie') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '" tabindex="0" aria-label="' + escapeHtml(_nomBulle) + '">' +
         senderLine +
         '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + replyHtml + content + '</div>' +
+        (m.video ? '<button type="button" class="conv-actions-btn" data-actions="1" aria-label="Actions de la vidéo">⋯</button>' : '') +
         reactHtml +
         timeStr +
       '</div>'
@@ -6230,17 +7165,100 @@ function _rerendreFilSansArracher(c, displayName) {
   if (window.visualViewport) window.visualViewport.addEventListener("resize", relancer);
 })();
 
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) — retour aux derniers messages.
+// Remonté de plus d'un écran, ou un message arrivé pendant la relecture : un
+// bouton rond « ↓ » (44 px) au-dessus de la saisie ramène au dernier message, et
+// dit combien sont arrivés (« 2 nouveaux messages ↓ »). On ne ramène JAMAIS en
+// bas sans geste quelqu'un qui relit l'historique.
+function _convMajBoutonBas(thread) {
+  var fp = document.getElementById("conv-fullpage");
+  if (!thread || !fp) return;
+  var b = document.getElementById("convFpBas");
+  var n = thread._nouveaux || 0;
+  var loin = thread.scrollHeight - thread.scrollTop - thread.clientHeight > thread.clientHeight;
+  var montrer = fp.classList.contains("active") && thread._auBas === false && (n > 0 || loin);
+  if (!montrer) { if (b) b.hidden = true; return; }
+  if (!b) {
+    b = document.createElement("button");
+    b.id = "convFpBas";
+    b.type = "button";
+    b.className = "conv-fp-bas";
+    b.addEventListener("click", function () {
+      var t = document.getElementById("convFpThread");
+      if (!t) return;
+      t.scrollTop = t.scrollHeight;
+      t._auBas = true; t._nouveaux = 0;
+      b.hidden = true;
+    });
+    fp.appendChild(b);
+  }
+  var r = thread.getBoundingClientRect();
+  b.style.top = Math.max(0, Math.round(r.bottom - 56)) + "px";
+  b.textContent = n > 0 ? (n === 1 ? "1 nouveau message ↓" : n + " nouveaux messages ↓") : "↓";
+  b.setAttribute("aria-label", n > 0 ? b.textContent.replace(" ↓", "") + " — revenir en bas" : "Revenir aux derniers messages");
+  b.classList.toggle("conv-fp-bas-compte", n > 0);
+  b.hidden = false;
+}
+
+// Un message ENTRANT dans la conversation ouverte : rendu sans arracher la
+// relecture, et compté s'il arrive hors de vue.
+function _convMessageEntrant(c, displayName) {
+  var t = document.getElementById("convFpThread");
+  var relecture = !!t && t._auBas === false;
+  _rerendreFilSansArracher(c, displayName);
+  if (!t) return;
+  if (relecture) t._nouveaux = (t._nouveaux || 0) + 1;
+  _convMajBoutonBas(t);
+}
+
 // Scroll infini : charge une page de messages plus anciens quand on approche du
 // haut du fil, en préservant la position visuelle.
+// LOT-8 (audit UX/UI du 2026-11-10, SOC-C02) — LE PANNEAU FERMÉ EST INERTE.
+// Hors champ (x = 390), le panneau de conversation restait atteignable au clavier
+// et exposé aux lecteurs d'écran : huit commandes invisibles (Retour, Pièce
+// jointe, Emoji, champ, Envoyer…). `inert` + `aria-hidden` suivent la classe
+// `active`, quel que soit le chemin qui l'ouvre ou la ferme (trois fermetures
+// distinctes) : l'observateur ne dépend d'aucun d'eux. L'ouverture injecte le
+// contenu AVANT `.active` (règle « contenu avant révélation ») ; l'inertie tombe
+// au même instant.
+(function _brancherInertieConv() {
+  function synchroniser(fp) {
+    var ouvert = fp.classList.contains("active");
+    if (ouvert) { fp.removeAttribute("inert"); fp.removeAttribute("aria-hidden"); }
+    else { fp.setAttribute("inert", ""); fp.setAttribute("aria-hidden", "true"); }
+  }
+  function brancher() {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp || fp._inertieBranchee) return;
+    fp._inertieBranchee = true;
+    synchroniser(fp);
+    try { new MutationObserver(function () { synchroniser(fp); }).observe(fp, { attributes: true, attributeFilter: ["class"] }); } catch (e) {}
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+
 function _wireConvScroll(thread, convId) {
   if (!thread) return;
   thread._curConvId = convId;
   if (thread._scrollWired) return;
   thread._scrollWired = true;
+  // LOT-4 (MSG-C52) : une photo, une vidéo ou un GIF qui finit de charger fait
+  // grandir le fil SOUS le point de lecture ; collé au bas, on y reste. Les
+  // événements `load` ne remontent pas : on les capte à la descente.
+  var recaler = function (e) {
+    var el = e && e.target;
+    if (!el || (el.tagName !== "IMG" && el.tagName !== "VIDEO")) return;
+    if (thread._auBas === false || thread._loadingMore) return;
+    thread.scrollTop = thread.scrollHeight;
+  };
+  thread.addEventListener("load", recaler, true);
+  thread.addEventListener("loadedmetadata", recaler, true);
   thread.addEventListener("scroll", function() {
     // Mémorise si l'on est collé au bas : c'est la seule information que la
     // géométrie d'APRÈS un redimensionnement ne permet plus de retrouver.
     thread._auBas = (thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
+    if (thread._auBas) thread._nouveaux = 0;
+    _convMajBoutonBas(thread);
     if (thread.scrollTop > 60 || thread._loadingMore) return;
     var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
     if (!c || !c.messages) return;
@@ -6273,20 +7291,84 @@ function _wireMsgActions(thread, convId) {
     var mid = bubbleMid(e.target); if (!mid) return;
     e.preventDefault(); _openMsgActions(thread._curConvId, mid);
   });
+  // LOT-24 (MSG-C64) : la feuille s'ouvre sous le doigt encore posé ; le clic de
+  // synthèse du relâchement tombait sur une de ses lignes (« Répondre »,
+  // « Supprimer… ») ou sur le fond, qui la refermait. Après un appui long, le
+  // relâchement est neutralisé (touchend non passif) et le clic qui suit, avalé.
   thread.addEventListener("touchstart", function(e) {
     var mid = bubbleMid(e.target); if (!mid) return;
     moved = false;
-    pressTimer = setTimeout(function(){ if (!moved) _openMsgActions(thread._curConvId, mid); }, 480);
+    pressTimer = setTimeout(function(){ if (!moved) { window._msgActionsOuvertA = Date.now(); _openMsgActions(thread._curConvId, mid); } }, 480);
   }, { passive: true });
   thread.addEventListener("touchmove", function(){ moved = true; clearTimeout(pressTimer); }, { passive: true });
-  thread.addEventListener("touchend", function(){ clearTimeout(pressTimer); }, { passive: true });
+  thread.addEventListener("touchend", function(e){
+    clearTimeout(pressTimer);
+    var o = window._msgActionsOuvertA || 0;
+    if (o && Date.now() - o < 1500) { try { e.preventDefault(); } catch (x) {} }
+  }, { passive: false });
+  if (!window._msgActionsClicAvale) {
+    window._msgActionsClicAvale = true;
+    document.addEventListener("click", function (e) {
+      var o = window._msgActionsOuvertA || 0;
+      if (o && Date.now() - o < 700) { e.preventDefault(); e.stopPropagation(); window._msgActionsOuvertA = 0; }
+    }, true);
+  }
+  // LOT-24 (MSG-C65 / C76) : bouton ⋯ d'une vidéo, ma réaction retirée d'un
+  // toucher, et le clavier (Entrée, touche Menu, Maj+F10) sur une bulle.
+  // Posés UNE fois par fil (le câblage ci-dessus se rejoue à chaque conversation) :
+  // deux écouteurs retireraient puis remettraient la même réaction.
+  if (thread._lot24Wired) return;
+  thread._lot24Wired = true;
+  thread.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var act = t.closest("[data-actions]");
+    if (act) { e.preventDefault(); var mid1 = bubbleMid(act); if (mid1) _openMsgActions(thread._curConvId, mid1); return; }
+    var re = t.closest(".conv-react-badge.mine");
+    if (re) {
+      e.preventDefault();
+      var mid2 = bubbleMid(re);
+      if (mid2 && typeof _toggleReaction === "function") _toggleReaction(thread._curConvId, mid2, re.getAttribute("data-react"));
+    }
+  });
+  thread.addEventListener("keydown", function (e) {
+    var w = e.target && e.target.classList && e.target.classList.contains("conv-bubble-wrap") ? e.target : null;
+    if (!w) return;
+    if (e.key === "Enter" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+      e.preventDefault();
+      _openMsgActions(thread._curConvId, w.getAttribute("data-mid"));
+    }
+  });
 }
 
 // Scroll jusqu'au message cité (surbrillance brève).
+// LOT-40 (audit UX/UI du 2026-11-10, MSG-C86) : une citation d'un message plus
+// ancien que la page affichée (40 par page) menait à « Message introuvable ».
+// On charge les pages nécessaires (comme en remontant le fil), puis on y va ;
+// seul un message qui n'existe plus du tout le dit.
 function _jumpToMsg(mid) {
   if (!mid) return;
-  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]');
-  if (!el) { toast("Message introuvable (peut-être plus ancien)"); return; }
+  var sel = '.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]';
+  var el = document.querySelector(sel);
+  if (!el) {
+    try {
+      var thread = document.getElementById("convFpThread");
+      var c = thread && getConversations().find(function (x) { return x.id === thread._curConvId; });
+      if (c && (c.messages || []).some(function (m) { return m && m.id === mid; })) {
+        var fp = document.getElementById("conv-fullpage");
+        var nom = fp ? fp.getAttribute("data-display-name") : (c.userName || "");
+        var garde = 0;
+        while (!el && garde++ < 200 && Math.min(c.messages.length, (c._convPage || 1) * 40) < c.messages.length) {
+          c._convPage = (c._convPage || 1) + 1;
+          c._loadingOlder = true;
+          renderConvFpThread(c, nom);
+          c._loadingOlder = false;
+          el = document.querySelector(sel);
+        }
+      }
+    } catch (e) { try { diagLog("_jumpToMsg : " + (e && e.message)); } catch (_) {} }
+  }
+  if (!el) { toast("Ce message n'est plus disponible"); return; }
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   var b = el.querySelector(".conv-bubble");
   if (b) { b.style.transition = "box-shadow .3s"; b.style.boxShadow = "0 0 0 3px var(--accent)"; setTimeout(function(){ b.style.boxShadow = ""; }, 1200); }
@@ -6323,12 +7405,36 @@ function _msgVisiblePourMoi(m) {
   if (!m || m.from === "me" || !m.from) return true;
   return !(typeof isBlocked === "function" && isBlocked(m.from));
 }
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C12 / C66) : le libellé d'un message
+// se décide par son TYPE, avant de regarder son texte. Le texte d'une pièce
+// jointe est une étiquette TECHNIQUE (« [DOC] topo.pdf », « [AUDIO] … »,
+// « [MEDIA] atelier.jpg », app-09) et une position est une adresse Google
+// Maps : la liste, la barre de réponse et la citation les affichaient tels
+// quels. Une seule autorité pour les trois.
+var _ETIQUETTE_PJ_RE = /^\[(MEDIA|IMAGE|PHOTO|VIDEO|AUDIO|DOC|FILE|FICHIER)\]\s*(.*)$/i;
+function _msgEstTexte(m) {
+  if (!m || !m.text || /^\{/.test(m.text)) return false;
+  if (m.gif || m.img || m.video || m.voiceData || m.fileUrl || m.docData || m.location) return false;
+  return !_ETIQUETTE_PJ_RE.test(m.text) && !/^📍 Ma position : https?:\/\//.test(m.text);
+}
 function _msgPreviewText(m) {
   if (!m) return "";
-  if (m.text && !/^\{/.test(m.text)) return _sansEmojiEnveloppe(m.text);
   if (m.gif) return "GIF"; if (m.img) return "Photo"; if (m.video) return "Vidéo";
-  if (m.voiceData) return "Message vocal"; if (m.fileUrl || m.docData) return "Document · " + (m.fileName || "Fichier");
-  if (m.location) return "Position"; return m.text || "Message";
+  if (m.voiceData) return "Message vocal" + (m.voiceDuration ? " · " + m.voiceDuration : "");
+  if (m.fileUrl || m.docData) return (/^audio\//.test(String(m.fileType || "")) ? "Fichier audio · " : "Document · ") + (m.fileName || "Fichier");
+  if (m.location) return "Position";
+  var t = String(m.text || "");
+  if (/^📍 Ma position : https?:\/\//.test(t)) return "Position";
+  var e = t.match(_ETIQUETTE_PJ_RE);
+  if (e) {
+    var k = e[1].toUpperCase(), nom = e[2] || "";
+    if (k === "AUDIO") return /^message vocal/i.test(nom) ? nom : "Fichier audio · " + nom;
+    if (k === "VIDEO") return "Vidéo";
+    if (k === "MEDIA" || k === "IMAGE" || k === "PHOTO") return /\.(mp4|mov|webm|m4v)$/i.test(nom) ? "Vidéo" : "Photo";
+    return "Document · " + (nom || "Fichier");
+  }
+  if (t && !/^\{/.test(t)) return _sansEmojiEnveloppe(t);
+  return t || "Message";
 }
 
 function _openMsgActions(convId, msgId) {
@@ -6338,10 +7444,12 @@ function _openMsgActions(convId, msgId) {
   var reactRow = '<div style="display:flex;justify-content:space-around;padding:6px 4px 12px;">' +
     reacts.map(function(e){ return '<span onclick="_reactAndClose(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\',\'' + escapeJsArg(e) + '\')" style="font-size:26px;cursor:pointer;">' + e + '</span>'; }).join('') + '</div>';
   function item(icon, label, fn, danger) {
-    return '<div class="csetting-item" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
-      '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
+    // LOT-39 (MSG-C82) : pictogramme au trait, rouge lisible (.csetting-danger).
+    return '<div class="csetting-item' + (danger ? ' csetting-danger' : '') + '" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
+      '<div class="csetting-label">' + label + '</div></div>';
   }
-  var canCopy = m.text && !/^\{/.test(m.text);
+  // MSG-C66 : « Copier le texte » seulement pour un message de TEXTE.
+  var canCopy = _msgEstTexte(m);
   // ⚠️ LES IDENTIFIANTS SONT ÉCRITS PAR D'AUTRES COMPTES (audit 2026-11-03) :
   // `conv_messages.id` et `conversations.id` sont posés par l'EXPÉDITEUR, sans
   // forme imposée par le serveur. Concaténés tels quels dans un onclick, un
@@ -6349,16 +7457,28 @@ function _openMsgActions(convId, msgId) {
   // longuement sur le message — XSS stockée, même famille que B-01. Le rendu
   // des bulles les échappait (`data-mid`, escapeHtml) ; ce menu, non.
   var cj = escapeJsArg(convId), mj = escapeJsArg(msgId);
+  // LOT-41 (MSG-C77) : l'heure n'est plus écrite sous chaque bulle ; elle est ici.
+  var _heure = "";
+  if (m.at) {
+    var _d = new Date(m.at);
+    var _auj = new Date();
+    var _jour = _d.toDateString() === _auj.toDateString() ? "aujourd'hui"
+      : _d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    _heure = '<div class="msg-actions-heure">' + (isMe ? "Envoyé " : "Reçu ") + escapeHtml(_jour) + " à "
+      + String(_d.getHours()).padStart(2, "0") + ":" + String(_d.getMinutes()).padStart(2, "0") + '</div>';
+  }
   openModal(
-    '<div class="modal-handle"></div>' + reactRow +
-    item('↩️', 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
-    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
-    item('↪️', 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
+    '<div class="modal-handle"></div>' + _heure + reactRow +
+    item(picto("repondre"), 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
+    (canCopy ? item(picto("copier"), 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
+    item(picto("transferer"), 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
     // Signaler CE message (E-08, DSA : un contenu se signale, pas seulement son
     // auteur) — jamais pour les miens ni pour les messages système.
-    (!isMe && m.from ? item('🚩', 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
-    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + cj + "','" + mj + "')", true) +
-    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + cj + "','" + mj + "')", true) : '')
+    (!isMe && m.from ? item(picto("signaler"), 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
+    // LOT-4 (MSG-C58) : une seule entrée, séparée des autres ; la portée se choisit
+    // dans la confirmation (« pour moi » / « pour tout le monde »).
+    '<div style="height:1px;background:var(--border);margin:6px 0;"></div>' +
+    item(picto("supprimer"), 'Supprimer…', "_demanderSuppressionMsg('" + cj + "','" + mj + "')", true)
   );
 }
 
@@ -6379,9 +7499,7 @@ async function reportMessage(convId, msgId) {
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("message", msgId, motif); } catch (e) { ok = false; }
   closeModal();
-  toast(ok
-    ? "🚩 Message signalé. Notre équipe va vérifier."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
@@ -6390,8 +7508,12 @@ function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(co
 function _copyMsg(convId, msgId) {
   var r = _msgById(convId, msgId); if (!r || !r.m) return;
   var t = r.m.text || "";
-  try { navigator.clipboard.writeText(t); toast("Copié"); } catch(e) { toast("Copie impossible"); }
   closeModal();
+  // Le succès s'annonce APRÈS la réponse du presse-papiers (même défaut que FIL-C09).
+  try {
+    Promise.resolve(navigator.clipboard.writeText(t))
+      .then(function () { toast("Copié"); }, function () { toast("Copie impossible"); });
+  } catch(e) { toast("Copie impossible"); }
 }
 
 // Répondre : mémorise la cible et affiche un bandeau au-dessus du champ de saisie.
@@ -6410,11 +7532,192 @@ function _renderReplyBar() {
   if (!rt) { if (bar) bar.remove(); return; }
   var toolbar = document.querySelector("#conv-fullpage .conv-toolbar");
   if (!toolbar) return;
+  // LOT-29 (audit UX/UI du 2026-11-10, MSG-C86) : la barre (≈ 53 px) apparaissait
+  // par-dessus le bas du fil — réactions et heure du dernier message cachées. Si
+  // l'on était en bas du fil, on y reste une fois la barre posée.
+  var fil = document.getElementById("convFpThread");
+  var enBas = !!(fil && (fil.scrollHeight - fil.scrollTop - fil.clientHeight) < 48);
   if (!bar) { bar = document.createElement("div"); bar.id = "convReplyBar"; toolbar.parentNode.insertBefore(bar, toolbar); }
   bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:8px;margin:0 8px 6px;">' +
     '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">Réponse à ' + escapeHtml(rt.n) + '</div>' +
     '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(rt.t) + '</div></div>' +
-    '<span onclick="_cancelReply()" style="font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px;">✕</span></div>';
+    '<button type="button" class="conv-reply-annuler" onclick="_cancelReply()" aria-label="Annuler la réponse" style="font-size:18px;cursor:pointer;color:var(--muted);background:none;border:0;min-width:44px;min-height:44px;margin:-10px -8px -10px 0;">✕</button></div>';
+  if (enBas && fil) fil.scrollTop = fil.scrollHeight;
+}
+
+// LOT-4 (audit UX/UI du 2026-11-10) — FEUILLE DE CONFIRMATION de la messagerie.
+// Au-dessus de tout (conversation pleine page ET fenêtre modale : `openModal`
+// remplace la modale courante, cette feuille non). Texte posé par `textContent`
+// (le nom d'un autre compte y passe). Fond, « Annuler » et Échap ferment sans agir.
+//   o = { titre, texte, actions: [{ libelle, danger, agir }], annuler,
+//         champ: { valeur, placeholder, multiligne, max } (LOT-6), surAnnuler }
+// Avec `champ`, `agir` reçoit le texte saisi. `surAnnuler` est appelé quand la
+// feuille se ferme SANS action (Annuler, fond, Échap).
+function ouvrirFeuilleConfirmation(o) {
+  o = o || {};
+  // Une feuille encore ouverte se ferme par SON `fermer` : sa promesse se résout
+  // (« non ») et son écouteur Échap part — un `remove()` nu les laissait en suspens.
+  if (typeof window._fermerFeuilleConf === "function") { try { window._fermerFeuilleConf(); } catch (e) {} }
+  var ancien = document.getElementById("feuilleConfirmation");
+  if (ancien) ancien.remove();
+  var ov = document.createElement("div");
+  ov.id = "feuilleConfirmation";
+  ov.className = "feuille-conf-ov";
+  var f = document.createElement("div");
+  f.className = "feuille-conf";
+  f.setAttribute("role", "dialog");
+  f.setAttribute("aria-modal", "true");
+  f.setAttribute("aria-labelledby", "feuilleConfirmationTitre");
+  var h = document.createElement("h2");
+  h.id = "feuilleConfirmationTitre";
+  h.className = "feuille-conf-titre";
+  h.textContent = o.titre || "Confirmer ?";
+  f.appendChild(h);
+  (Array.isArray(o.texte) ? o.texte : (o.texte ? [o.texte] : [])).forEach(function (t) {
+    var p = document.createElement("p");
+    p.className = "feuille-conf-texte";
+    p.textContent = t;
+    f.appendChild(p);
+  });
+  var champ = null;
+  if (o.champ) {
+    champ = document.createElement(o.champ.multiligne ? "textarea" : "input");
+    champ.className = "feuille-conf-champ";
+    champ.id = "feuilleConfirmationChamp";
+    if (!o.champ.multiligne) champ.type = "text";
+    else champ.rows = 3;
+    champ.value = o.champ.valeur || "";
+    if (o.champ.placeholder) champ.placeholder = o.champ.placeholder;
+    if (o.champ.max) champ.maxLength = o.champ.max;
+    if (o.champ.lectureSeule) {
+      champ.readOnly = true;
+      champ.addEventListener("focus", function () { try { champ.select(); } catch (e) {} });
+    }
+    champ.setAttribute("aria-labelledby", "feuilleConfirmationTitre");
+    f.appendChild(champ);
+  }
+  var agi = false;
+  var fermer = function () {
+    document.removeEventListener("keydown", surTouche, true);
+    if (ov.parentNode) ov.parentNode.removeChild(ov);
+    if (window._fermerFeuilleConf === fermer) window._fermerFeuilleConf = null;
+    if (!agi && typeof o.surAnnuler === "function") { try { o.surAnnuler(); } catch (e) {} }
+  };
+  window._fermerFeuilleConf = fermer;
+  var surTouche = function (e) { if (e.key === "Escape") { e.stopPropagation(); fermer(); } };
+  (o.actions || []).forEach(function (a) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "feuille-conf-btn" + (a.danger ? " feuille-conf-danger" : " feuille-conf-primaire");
+    b.textContent = a.libelle;
+    if (a.id) b.setAttribute("data-conf", a.id);
+    b.addEventListener("click", function () {
+      agi = true;
+      var saisi = champ ? champ.value : undefined;
+      fermer();
+      try { a.agir && a.agir(saisi); } catch (e) { try { diagLog("feuille_conf : " + (e && e.message)); } catch (_e) {} }
+    });
+    f.appendChild(b);
+  });
+  if (champ && !o.champ.multiligne) {
+    champ.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var premier = f.querySelector(".feuille-conf-btn[data-conf]:not([data-conf='annuler'])");
+      if (premier) { e.preventDefault(); premier.click(); }
+    });
+  }
+  var annuler = document.createElement("button");
+  annuler.type = "button";
+  annuler.className = "feuille-conf-btn feuille-conf-annuler";
+  annuler.setAttribute("data-conf", "annuler");
+  annuler.textContent = o.annuler || "Annuler";
+  annuler.addEventListener("click", fermer);
+  f.appendChild(annuler);
+  ov.appendChild(f);
+  ov.addEventListener("click", function (e) { if (e.target === ov) fermer(); });
+  document.addEventListener("keydown", surTouche, true);
+  document.body.appendChild(ov);
+  // Un geste DESTRUCTEUR ne se confirme pas d'un Entrée réflexe : le focus va sur « Annuler ».
+  var destructeur = (o.actions || []).some(function (a) { return a && a.danger; });
+  try { (champ || (destructeur ? annuler : f.querySelector(".feuille-conf-btn")) || annuler).focus(); } catch (e) {}
+  return fermer;
+}
+
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C11) — LES BOÎTES NATIVES REMPLACÉES.
+// Huit `confirm()` et quatre `prompt()` : une boîte système qui ne ressemble pas
+// à PASSIO (titre = adresse du site sous Android), qui ne dit pas les
+// conséquences et qu'un test ne capture pas. Deux promesses sur la feuille :
+//   confirmerAction({ titre, texte, libelle, danger }) → true | false
+//   demanderTexte({ titre, texte, valeur, placeholder, libelle, multiligne, max }) → texte | null
+// LOT-10 (audit UX/UI du 2026-11-10, PAR-C04) — UN LIEN QU'ON N'A PAS PU COPIER.
+// Le presse-papiers refusé, le lien n'apparaissait que 3 s dans un toast non
+// sélectionnable — ou pas du tout pour une bobine. Il est posé dans un champ en
+// lecture seule, sélectionné, avec « Copier » (nouvel essai, puis sélection
+// manuelle si le navigateur refuse encore).
+function montrerLienACopier(url, titre) {
+  ouvrirFeuilleConfirmation({
+    titre: titre || "Copie ce lien",
+    texte: "Ton navigateur n'a pas autorisé la copie automatique. Le lien est sélectionné : copie-le, ou appuie sur « Copier ».",
+    champ: { valeur: String(url || ""), lectureSeule: true },
+    annuler: "Fermer",
+    actions: [{ id: "copier", libelle: "Copier", danger: false, agir: function () {
+      var ok = function () { toast("Lien copié"); };
+      var echec = function () { montrerLienACopier(url, "Sélectionne le lien pour le copier"); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(String(url)).then(ok, echec);
+        else echec();
+      } catch (e) { echec(); }
+    } }],
+  });
+  try { var c = document.getElementById("feuilleConfirmationChamp"); if (c) c.select(); } catch (e) {}
+}
+
+function confirmerAction(o) {
+  o = o || {};
+  return new Promise(function (resoudre) {
+    ouvrirFeuilleConfirmation({
+      titre: o.titre, texte: o.texte, annuler: o.annuler,
+      actions: [{ id: "ok", libelle: o.libelle || "Confirmer", danger: o.danger !== false, agir: function () { resoudre(true); } }],
+      surAnnuler: function () { resoudre(false); },
+    });
+  });
+}
+function demanderTexte(o) {
+  o = o || {};
+  return new Promise(function (resoudre) {
+    ouvrirFeuilleConfirmation({
+      titre: o.titre, texte: o.texte, annuler: o.annuler,
+      champ: { valeur: o.valeur || "", placeholder: o.placeholder || "", multiligne: !!o.multiligne, max: o.max || 0 },
+      actions: [{ id: "ok", libelle: o.libelle || "Valider", danger: false, agir: function (v) { resoudre(v == null ? "" : String(v)); } }],
+      surAnnuler: function () { resoudre(null); },
+    });
+  });
+}
+
+// Le nom à qui l'on parle, pour les phrases de confirmation.
+function _convInterlocuteur(c) {
+  if (!c) return "ton interlocuteur";
+  if (c.isGroup) return "les autres membres";
+  return c.userName || "ton interlocuteur";
+}
+
+// LOT-4 (MSG-C58) : UNE entrée « Supprimer… » dans le menu ; elle explique les deux
+// portées et demande confirmation. Les exécutants ci-dessous restent tels quels.
+function _demanderSuppressionMsg(convId, msgId) {
+  closeModal();
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  var qui = _convInterlocuteur(r.c);
+  var aMoi = r.m.from === "me";
+  var actions = [];
+  if (aMoi) actions.push({ id: "tous", libelle: "Supprimer pour tout le monde", danger: true, agir: function () { _deleteMsgForAll(convId, msgId).catch(function (e) { try { diagLog("supprimer pour tous : " + (e && e.message)); } catch (_) {} }); } });
+  actions.push({ id: "moi", libelle: "Supprimer pour moi", danger: true, agir: function () { _deleteMsgForMe(convId, msgId); } });
+  ouvrirFeuilleConfirmation({
+    titre: "Supprimer ce message ?",
+    texte: aMoi
+      ? ["Pour moi : il disparaît de cet appareil, il reste visible chez " + qui + ".", "Pour tout le monde : il disparaît aussi chez " + qui + "."]
+      : ["Il disparaît de cet appareil. Il reste visible chez " + qui + "."],
+    actions: actions,
+  });
 }
 
 // Supprimer pour moi : retrait local uniquement.
@@ -6432,17 +7735,56 @@ function _deleteMsgForMe(convId, msgId) {
 
 // Supprimer pour tous (mes messages) : retrait local + suppression Supabase +
 // tombstone diffusé au destinataire (géré par _handleIncomingConvMessage type:del).
-function _deleteMsgForAll(convId, msgId) {
+// ⚠️ ANNONCÉ = FAIT (ETAT-04, audit du 2026-11-10). Le DELETE partait sans être lu,
+// la bulle disparaissait et une pierre tombale empêchait même de s'en apercevoir :
+// sur un refus ou une coupure, le message restait lisible chez le destinataire
+// pendant que l'écran disait « supprimé pour tous ». Pour un COMPTE, la base
+// tranche d'abord ; un refus laisse la bulle et le dit.
+async function _deleteMsgForAll(convId, msgId) {
   closeModal();
-  var r = _msgById(convId, msgId); if (!r || !r.m || r.m.from !== "me") return;
+  var r0 = _msgById(convId, msgId); if (!r0 || !r0.m || r0.m.from !== "me") return;
+  // Un message EN FILE hors ligne (« envoi… » sans réseau) se retire de sa file
+  // d'abord : sans quoi il partirait après sa suppression. En ligne, un envoi en
+  // cours peut poser sa ligne APRÈS notre DELETE : on attend qu'il finisse.
+  var dansLaFile = false;
+  try { dansLaFile = typeof _outboxLoad === "function" && _outboxLoad().some(function (x) { return x.msgId === msgId; }); } catch (e) {}
+  if (r0.m.status === "sending") {
+    var horsLigneNav = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (!(dansLaFile && horsLigneNav)) { toast("Ce message est encore en cours d'envoi — réessaie dans un instant."); return; }
+  }
+  if (dansLaFile || r0.m.status === "failed") { try { if (typeof _outboxRemove === "function") _outboxRemove(msgId); } catch (e) {} }
+  // « en échec » ne veut pas dire « absent de la base » (réponse perdue APRÈS
+  // l'écriture) : on tente toujours le DELETE, et 0 ligne sous MA session vaut
+  // succès — ligne déjà partie (autre appareil, purge de nuit) ou jamais posée.
+  var envoyeAuServeur = true;
+  if (typeof supa !== "undefined" && supa && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    var v;
+    try {
+      v = _writeVerdict(await supa.from("conv_messages").delete().eq("id", msgId).eq("from_id", MY_UID).select("id"),
+        { label: "message supprimé pour tous" });
+      if (v.ok && v.rows === 0) {
+        var moi = (typeof _sessionEstMoi === "function") ? await _sessionEstMoi() : false;
+        if (!moi) v = { ok: false, error: null };   // session morte : 0 ligne ne prouve rien
+        else envoyeAuServeur = false;               // rien en base à retirer chez l'autre
+      }
+    } catch (e) { v = { ok: false, error: e }; }
+    if (!v.ok) {
+      var horsLigne = typeof estEchecReseau === "function" && estEchecReseau(v.error);
+      toast(horsLigne ? "Hors connexion : message non supprimé. Réessaie une fois en ligne."
+                      : "Le message n'a pas pu être supprimé pour tout le monde. Réessaie.", "error");
+      return;
+    }
+  }
+  var jamaisEnvoye = !envoyeAuServeur;
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
   r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
   convTombAdd("msg", msgId);        // sinon la fusion au boot le ressuscite (ADR-008)
   saveConversations();
   var fp = document.getElementById("conv-fullpage");
   renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");
   try { renderMessages(); } catch(e) {}
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    try { supa.from("conv_messages").delete().eq("id", msgId).then(function(){}, function(){}); } catch(e) {}
+  if (!jamaisEnvoye && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    // (La ligne est déjà supprimée ci-dessus pour un compte, verdict lu.)
     // ⚠️ LA PIÈCE JOINTE PART AVEC LE MESSAGE (MSG-03, 2026-09-14). La ligne
     // était supprimée, l'objet Storage jamais : photo, vidéo, vocal, fichier
     // restaient lisibles par tout membre de la conversation (URL signée), pour
@@ -6569,10 +7911,16 @@ function _purgerPieceJointeDe(m) {
 function _forwardPick(convId, msgId) {
   closeModal();
   window._forwardSrc = { convId: convId, msgId: msgId };
-  var convs = getConversations().filter(function(c){ return !c.archived; }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
+  // LOT-27 (MSG-C84) : la conversation d'ORIGINE n'est plus proposée (en tête de
+  // liste, un toucher renvoyait le message là où il était déjà), ni celle d'un
+  // compte bloqué ; et un toucher demande confirmation au lieu d'envoyer.
+  var convs = getConversations().filter(function(c){
+    return !c.archived && c.id !== convId && !(typeof isBlocked === "function" && c.userId && isBlocked(c.userId))
+      && !(c._brouillon && !(c.messages || []).length); // LOT-43 : un brouillon vide n'est pas une conversation
+  }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
   var rows = convs.map(function(c){
     var name = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
-    return '<div class="csetting-item" onclick="_forwardTo(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
+    return '<div class="csetting-item" role="button" tabindex="0" onclick="_forwardConfirmer(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
       '<div class="csetting-label">' + escapeHtml(name) + '</div></div>';
   }).join("");
   openModal('<div class="modal-handle"></div><div class="modal-title">Transférer vers…</div>' +
@@ -6599,6 +7947,21 @@ function _conteneurAudioDuMessage(m) {
   return "audio/webm";
 }
 
+// MSG-C84 : « Transférer à Malik ? » avant d'envoyer — une erreur de ligne
+// envoyait le message (ou la photo) à la mauvaise personne.
+function _forwardConfirmer(targetConvId) {
+  var c = getConversations().find(function (x) { return x && x.id === targetConvId; });
+  if (!c) return;
+  var nom = c.isGroup ? (c.groupName || "ce groupe") : (c.userName || "cette conversation");
+  closeModal();
+  openModal('<div class="modal-handle"></div>' +
+    '<div class="modal-title">Transférer à ' + escapeHtml(nom) + ' ?</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button type="button" class="btn ghost block" onclick="_forwardPick(\'' + escapeJsArg((window._forwardSrc || {}).convId || "") + '\',\'' + escapeJsArg((window._forwardSrc || {}).msgId || "") + '\')">Changer</button>' +
+      '<button type="button" class="btn primary block" onclick="_forwardTo(\'' + escapeJsArg(targetConvId) + '\')">Transférer</button>' +
+    '</div>');
+}
+
 async function _forwardTo(targetConvId) {
   closeModal();
   // ⚠️ L'AUTEUR EST CAPTURÉ ICI, AVANT TOUT `await` (ASTRA-21, revue audit-passio du
@@ -6611,6 +7974,10 @@ async function _forwardTo(targetConvId) {
   var m = r.m;
   var convs = getConversations();
   var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // LOT-43 : un brouillon devient une conversation en base AVANT le transfert.
+  if (typeof _convBrouillon === "function" && _convBrouillon(targetConvId)) {
+    if (!(await _materialiserConv(targetConvId))) { toast("Transfert non envoyé — réessaie.", "warning"); return; }
+  }
   // Lu AVANT que la copie ne remplace l'URL : seule la copie locale porte le
   // conteneur dans son mime.
   var _conteneurAudio = m.voiceData ? _conteneurAudioDuMessage(m) : null;
@@ -6680,7 +8047,10 @@ async function _forwardTo(targetConvId) {
     content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
     localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
   }
-  else { localMsg.text = m.text || ""; }
+  else {
+    localMsg.text = m.text || "";
+    localMsg._msgRawContent = JSON.stringify({ type: "text", text: localMsg.text });
+  }
   // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
   // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
   // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
@@ -6700,7 +8070,7 @@ async function _forwardTo(targetConvId) {
   target.lastAt = Date.now();
   saveConversations();
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    var raw = content ? JSON.stringify(content) : (localMsg.text || "");
+    var raw = content ? JSON.stringify(content) : localMsg._msgRawContent;
     var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
     // ⚠️ Le verdict de l'écriture DOIT être lu. Ce chemin avalait les deux
     // callbacks (`.then(function(){}, function(){})`) : un transfert dont
@@ -6740,12 +8110,47 @@ async function _forwardTo(targetConvId) {
 // Les messages vocaux (audio/webm ou "Message vocal (Xs)") vont vers le lecteur intégré
 // (m.voiceData) ; les autres fichiers audio restent des pièces jointes téléchargeables.
 // `raw` est optionnel : par défaut on tente de décoder m.text.
-function applyMsgContentData(m, raw) {
-  var src = (raw === undefined || raw === null) ? m.text : raw;
-  if (!src || typeof src !== "string" || src.trim().charAt(0) !== "{") return;
+// B06-N1 / D06-03 : une enveloppe invalide reste UNE bulle, jamais un fil vide.
+// Partagé par la liste, le rejeu et le temps réel ; aucune coercition d'objet hostile.
+function _messageContentData(raw) {
+  if (raw == null || raw === "") return { type: "text", text: "" };
+  if (typeof raw !== "string") return null;
   var d;
-  try { d = JSON.parse(src); } catch (e) { return; }
-  if (!d || !d.type) return;
+  try { d = JSON.parse(raw); } catch (e) {
+    return /^[\s]*[\[{]/.test(raw) ? null : { type: "text", text: raw };
+  }
+  if (!d || typeof d !== "object") return { type: "text", text: raw };
+  if (Array.isArray(d)) return null;
+  if (["text", "t", "gif", "location", "media", "audio", "doc", "react", "del"].indexOf(d.type) < 0) return null;
+  var strings = ["text", "url", "fileType", "filename", "target", "emoji", "op"];
+  if (strings.some(function(k) { return d[k] != null && typeof d[k] !== "string"; })) return null;
+  for (var name of ["sp", "rt"]) {
+    if (d[name] == null) continue;
+    if (typeof d[name] !== "object" || Array.isArray(d[name])) return null;
+    var keys = name === "sp" ? ["e", "c", "n", "ph"] : ["id", "t", "n"];
+    if (keys.some(function(k) { return d[name][k] != null && typeof d[name][k] !== "string"; })) return null;
+  }
+  if (["gif", "media", "audio", "doc"].indexOf(d.type) >= 0 && typeof d.url !== "string") return null;
+  if (d.type === "location" && (typeof d.lat !== "number" || !Number.isFinite(d.lat) || Math.abs(d.lat) > 90 ||
+      typeof d.lng !== "number" || !Number.isFinite(d.lng) || Math.abs(d.lng) > 180)) return null;
+  if ((d.type === "react" || d.type === "del") && (typeof d.target !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(d.target))) return null;
+  if (d.type === "react" && (typeof d.emoji !== "string" || !d.emoji || (d.op != null && d.op !== "add" && d.op !== "remove"))) return null;
+  return d;
+}
+function applyMsgContentData(m, raw) {
+  // Le rendu peut repasser après le chargement et après sauvegarde locale.
+  // Revalider l'enveloppe d'origine, jamais le texte qu'elle contenait : un
+  // texte comme « [rdv demain] » n'est pas une nouvelle enveloppe JSON.
+  var src = (raw === undefined || raw === null)
+    ? (typeof m._msgRawContent === "string" ? m._msgRawContent : m.text) : raw;
+  if (typeof src === "string") m._msgRawContent = src;
+  var d = _messageContentData(src);
+  if (!d) {
+    m.text = "[Message invalide]";
+    try { if (typeof diagLog === "function") diagLog("msg_forme_invalide"); } catch (e) {}
+    return;
+  }
+  if (typeof m.text !== "string") m.text = "";
   // ⚠️ L'IDENTITÉ VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE (PRO-02, 2026-09-14).
   // `sp` (cf. _withSenderMeta, app-02) est écrit par l'ÉMETTEUR dans `content`,
   // que tout membre d'une conversation peut poser librement. Il primait sur la
@@ -6797,7 +8202,7 @@ function applyMsgContentData(m, raw) {
     m.fileName = d.filename;
     m.fileType = d.type;
   }
-  if (d.text && m.text !== d.text) m.text = d.text;
+  if (typeof d.text === "string" && m.text !== d.text) m.text = d.text;
 }
 
 // Téléchargement doc depuis store global
@@ -6835,15 +8240,25 @@ function _playVoiceById(aid) {
   audio.playbackRate = window._voiceSpeed || 1; // vitesse de lecture choisie
   if (!audio.paused) {
     audio.pause();
-    if (pb) pb.textContent = '▶';
+    _etatBoutonVocal(pb, false);
     return;
   }
+  // LOT-27 (MSG-C80) : un seul vocal à la fois — lancer le second superposait
+  // les deux voix. L'ancien est mis en pause (son bouton repasse à ▶).
+  try {
+    if (window._vocalEnCours && window._vocalEnCours.audio !== audio) {
+      window._vocalEnCours.audio.pause();
+      var pbAncien = document.getElementById("pb_" + window._vocalEnCours.aid);
+      _etatBoutonVocal(pbAncien, false);
+    }
+  } catch (e) {}
+  window._vocalEnCours = { audio: audio, aid: aid };
   audio.play().then(function() {
-    if (pb) pb.textContent = '⏸';
+    _etatBoutonVocal(pb, true);
     var iv = setInterval(function() {
       if (audio.paused || audio.ended) {
         clearInterval(iv);
-        if (pb) pb.textContent = '▶';
+        _etatBoutonVocal(pb, false);
         if (wf) wf.style.width = '0%';
         return;
       }
@@ -6854,7 +8269,7 @@ function _playVoiceById(aid) {
       }
     }, 150);
   }).catch(function (err) {
-    if (pb) pb.textContent = '▶';
+    _etatBoutonVocal(pb, false);
     // ⚠️ Un `catch` MUET ici laissait l'utilisateur taper sur ▶ sans que rien
     // n'arrive et sans la moindre explication. Cas réel sur iPhone : Safari ne
     // décode PAS le conteneur WebM, dans lequel étaient enregistrés tous les
@@ -6880,7 +8295,18 @@ function _cycleVoiceSpeed(btnId) {
   // Applique à tous les vocaux en cours de lecture.
   Object.keys(window).forEach(function(k){ if (k.indexOf("_aud_") === 0 && window[k] && typeof window[k].playbackRate !== "undefined") { try { window[k].playbackRate = next; } catch(e) {} } });
   // Met à jour tous les boutons de vitesse affichés.
-  document.querySelectorAll(".voice-speed-btn").forEach(function(b){ b.textContent = (next % 1 === 0 ? next : next.toString().replace(".", ",")) + "×"; });
+  document.querySelectorAll(".voice-speed-btn").forEach(function(b){ b.textContent = _libelleVitesseVocal(next); b.setAttribute("aria-label", "Vitesse de lecture : " + _libelleVitesseVocal(next)); });
+}
+
+// LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : le bouton de lecture s'appelait
+// « ▶ » pour un lecteur d'écran, et ne disait pas qu'il était en lecture.
+function _etatBoutonVocal(pb, enLecture) {
+  if (!pb) return;
+  pb.textContent = enLecture ? "⏸" : "▶";
+  pb.setAttribute("aria-label", enLecture ? "Mettre le message vocal en pause" : "Lire le message vocal");
+}
+function _libelleVitesseVocal(v) {
+  return (v % 1 === 0 ? String(v) : String(v).replace(".", ",")) + "×";
 }
 
 function _loadMoreMsgs(convId) {
@@ -7033,7 +8459,7 @@ function sendMessageFp(convId, displayName) {
   var msgId = "msg_" + uid();
   // `de` : le compte RÉEL qui a écrit ce message (AUTH-06) — c'est lui, et lui
   // seul, qui autorise un renvoi manuel reconstruit depuis le texte.
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending", de: _fileProprietaire() };
+  var _localMsg = { id: msgId, from: "me", text: txt, _msgRawContent: JSON.stringify({ type: "text", text: txt }), at: Date.now(), status: "sending", de: _fileProprietaire() };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -7051,7 +8477,7 @@ function sendMessageFp(convId, displayName) {
   try { renderMessages(); } catch(e) {}
 
   // 7. Envoyer à Supabase (statut + file d'attente hors-ligne)
-  var _content = _withSenderMeta(txt); // attache le profil actif (persona)
+  var _content = _withSenderMeta(_localMsg._msgRawContent); // texte littéral, puis profil actif
   if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
   _sendTextToSupa(convId, msgId, _content);
 }
@@ -7154,10 +8580,50 @@ function _outboxAdd(convId, msgId, content, owner, contexte) {
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
 
+// LOT-20 (MSG-C19 / C32) : l'état vide de la messagerie se termine par une
+// ACTION — « Nouveau message » (même geste que le « + »), ou « Réessayer »
+// quand la lecture est lente. Bouton peint en DOM, sans onclick inline.
+function _peindreActionEtatVideMessages(empt, actif) {
+  if (!empt) return;
+  var ancien = empt.querySelector("[data-msg-vide-action]");
+  if (ancien) ancien.remove();
+  if (!actif) return;
+  var lent = !!window._convChargementLent;
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn primary msg-vide-action";
+  b.setAttribute("data-msg-vide-action", lent ? "reessayer" : "nouveau");
+  b.textContent = lent ? "Réessayer" : "Nouveau message";
+  b.addEventListener("click", function () {
+    if (lent) {
+      window._convChargementLent = false;
+      window._convNetLoaded = false;
+      window._convSkelTimeout = null;
+      try {
+        if (typeof _rafraichirConversationsServeur === "function") {
+          var p = _rafraichirConversationsServeur({ fusion: true });
+          if (p && typeof p.catch === "function") p.catch(function (e) { try { diagLog("conversations : réessai — " + (e && e.message)); } catch (_) {} });
+        }
+      } catch (e) {}
+      try { renderMessages(); } catch (e) {}
+      return;
+    }
+    try { if (typeof openNewMessage === "function") openNewMessage(); } catch (e) {}
+  });
+  empt.appendChild(b);
+}
+
 // HTML de l'indicateur d'envoi (🕓 en cours / ⚠️ échec cliquable / rien si envoyé).
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C62) : un seul état par message, en
+// toutes lettres — « Envoi… », « En attente du réseau » (hors ligne : il part
+// seul au retour), « Non envoyé · réessayer » en vraie cible de 44 px (c'était
+// un mot rouge de 47 × 15 px collé à l'heure, à côté d'un « ✓ » mensonger).
 function _msgStatusIndHtml(convId, msgId, status) {
-  if (status === "sending") return ' <span style="opacity:0.55;">🕓</span>';
-  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')">réessayer</span>';
+  if (status === "sending") {
+    var horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false);
+    return ' <span class="msg-st msg-st-envoi">🕓 ' + (horsLigne ? "En attente du réseau" : "Envoi…") + '</span>';
+  }
+  if (status === "failed") return ' <span class="msg-st msg-st-echec" role="button" tabindex="0" aria-label="Message non envoyé — réessayer" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">Non envoyé · réessayer</span>';
   return '';
 }
 
@@ -7217,6 +8683,40 @@ var MSG_ESSAIS_MAX = 10;
 // boucle d'obstination que le correctif du 2026-09-09 vient de fermer, avec un
 // appel de plus à chaque tour.
 window._convReparationTentee = window._convReparationTentee || {};
+
+// LOT-43 (MSG-C22) : brouillon de conversation directe — local, jamais écrit en
+// base tant qu'aucun message n'est parti.
+function _convBrouillon(convId) {
+  try {
+    var c = getConversations().find(function (x) { return x && x.id === convId; });
+    return (c && c._brouillon && !c.isGroup && c.userId) ? c : null;
+  } catch (e) { try { diagLog("conv_brouillon_lecture " + (e && e.message)); } catch (_) {} return null; }
+}
+var _materialisationsEnCours = {};
+function _materialiserConv(convId) {
+  var c = _convBrouillon(convId);
+  if (!c) return Promise.resolve(true);
+  if (_materialisationsEnCours[convId]) return _materialisationsEnCours[convId];
+  var p = Promise.resolve()
+    .then(function () { return supaCreateConversation(c.userId, null, convId); })
+    .then(function (id) {
+      delete _materialisationsEnCours[convId];
+      if (id !== convId) { try { diagLog("conv_brouillon_refus " + String(convId)); } catch (e) {} return false; }
+      var cc = _convBrouillon(convId);
+      if (cc) { delete cc._brouillon; saveConversations(); }
+      // Le canal « en train d'écrire » d'un brouillon a replié sur le public
+      // (`is_conv_member` ne le connaissait pas) : on le rouvre, privé.
+      try { if (window._openedConvId === convId && typeof _subscribeTyping === "function") _subscribeTyping(convId); } catch (e) {}
+      return true;
+    })
+    .catch(function (e) {
+      delete _materialisationsEnCours[convId];
+      try { diagLog("conv_brouillon_erreur " + (e && e.message)); } catch (_) {}
+      return false;
+    });
+  _materialisationsEnCours[convId] = p;
+  return p;
+}
 
 async function _reparerAppartenanceConv(convId) {
   if (!convId || window._convReparationTentee[convId]) return false;
@@ -7366,6 +8866,25 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     return;
   }
   if (_msgEstEnVol(msgId)) return;
+  // LOT-43 (MSG-C22) : un brouillon devient une conversation en base ICI, au
+  // premier envoi ; un refus laisse le message en échec et en file, comme une
+  // panne d'écriture — le rejeu retente la création.
+  if (_convBrouillon(convId)) {
+    _materialiserConv(convId).then(function (ok) {
+      if (ok) { _sendTextToSupa(convId, msgId, content, moi, gen); return; }
+      _setMsgStatus(convId, msgId, "failed");
+      // Refus de RÈGLE (blocage, pas créateur) : aucun renvoi ne le lèvera.
+      if (supaCreateConversation.dernierRefus === "42501") {
+        _outboxRemove(msgId);
+        toast("Message non envoyé — cette personne n'accepte pas de nouvelle conversation.", "warning");
+        return;
+      }
+      // Purge ou changement de compte pendant la création : la réponse est périmée.
+      if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) return;
+      _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+    });
+    return;
+  }
   _msgEnVol[msgId] = true;
   var _flux = _fluxEnvoiMessage(convId);
   // `from_id: moi` et non `MY_UID` : même si la garde ci-dessus était un jour
@@ -7525,7 +9044,9 @@ function _retryMsg(convId, msgId) {
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
-  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""), m.de);
+  // `envoi` : le contenu exact d'un GIF ou d'une position (LOT-1, MSG-C57) — sans
+  // lui, un renvoi les reconstruirait en simple texte.
+  _sendTextToSupa(convId, msgId, _withSenderMeta(m.envoi || m.text || ""), m.de);
 }
 
 // Vide la file d'attente (à la reconnexion ou au boot).
@@ -7583,7 +9104,17 @@ function _flushOutbox() {
   _outboxSave(restants);
 }
 if (typeof window !== "undefined") {
-  window.addEventListener("online", function(){ try { toast("🟢 Connexion rétablie — envoi des messages en attente"); } catch(e){} _flushOutbox(); });
+  // LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : le toast annonçait un envoi à
+  // CHAQUE reconnexion, file vide comprise — un envoi fantôme. Il ne parle plus
+  // que des messages de CE compte réellement en attente, et les compte.
+  window.addEventListener("online", function(){
+    try {
+      var moi = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+      var n = (_outboxLoad() || []).filter(function (it) { return it && _outboxVerdict(it, moi) === "moi"; }).length;
+      if (n > 0) toast("Connexion rétablie — envoi de " + n + " message" + (n > 1 ? "s" : "") + " en attente");
+    } catch(e){}
+    _flushOutbox();
+  });
 }
 
 // ── Notification sonore ──
@@ -7800,7 +9331,24 @@ function closeConversation() {
   // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
   document.getElementById("convSettingsPanel")?.classList.remove("open");
   document.getElementById("convFilesPanel")?.classList.remove("open");
+  // LOT-24 (MSG-C73) : le panneau emoji/GIF et le menu « + » restaient
+  // affichés par-dessus la liste quand le retour fermait la conversation.
+  document.getElementById("convEmojiPanel")?.classList.remove("open");
+  document.getElementById("btnEmoji")?.classList.remove("active");
+  document.getElementById("convAttachMenu")?.classList.remove("open");
+  document.getElementById("btnAttach")?.classList.remove("active");
+  // LOT-27 (MSG-C80) : quitter la conversation coupe le vocal en cours — le son
+  // continuait, sans plus rien à l'écran pour l'arrêter.
+  try { if (window._vocalEnCours) { window._vocalEnCours.audio.pause(); window._vocalEnCours = null; } } catch (e) {}
   renderMessages();
+  // LOT-46 (PCS-C02) : on revient d'où l'on vient — l'écran, puis le profil.
+  var origine = window._convOrigine; window._convOrigine = null;
+  if (etaitOuverte && origine && origine.ecran && origine.ecran !== "messages") {
+    try {
+      if (typeof goTo === "function") goTo(origine.ecran);
+      if (origine.profil && typeof openUserProfile === "function") setTimeout(function () { openUserProfile(origine.profil); }, 60);
+    } catch (e) { try { diagLog("conv_retour_origine " + (e && e.message)); } catch (_) {} }
+  }
 }
 
 // ===== CONFIGURATEUR — personnalisation de l'app =====

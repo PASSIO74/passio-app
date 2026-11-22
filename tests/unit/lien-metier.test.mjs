@@ -315,6 +315,26 @@ test("ASTRA-24 ③ les genres encore écrits par le client : événement exigé,
   assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, false);
 });
 
+test("MSG-C02 (audit UX/UI du 2026-11-10) : un membre en SOURDINE n'est pas réveillé ; colonne absente ou ligne absente → la push part, comme avant", async () => {
+  const membres = (BASE.conv_members || []).filter((m) => !(m.conv_id === "dm_ab" && m.user_id === B));
+  const tables = {
+    ...BASE,
+    profiles: [{ id: A, username: "Alex", emoji: "🎸" }],
+    notifications: [{ from_id: A, user_id: B, kind: "message", ref_id: "dm_ab", content: "x", created_at: new Date(T0 - 5_000).toISOString() }],
+    conv_messages: [{ conv_id: "dm_ab", from_id: A, created_at: new Date(T0 - 8_000).toISOString() }],
+    conv_members: membres.concat([{ conv_id: "dm_ab", user_id: A }, { conv_id: "dm_ab", user_id: B, muted: true }]),
+  };
+  const coupee = await autoriserPushNotif(fauxAdmin(tables), A, B, T0);
+  assert.equal(coupee.ok, false, "en sourdine : rien ne part");
+  assert.match(coupee.raison, /sourdine/);
+  // Sourdine levée : la push repart.
+  tables.conv_members.find((m) => m.user_id === B && m.conv_id === "dm_ab").muted = false;
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, true);
+  // Base pas encore migrée (colonne absente) : comme avant, la push part.
+  delete tables.conv_members.find((m) => m.user_id === B && m.conv_id === "dm_ab").muted;
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, true);
+});
+
 test("ASTRA-24 ④ textePush : un gabarit par genre, le nom borné, l'inconnu nul", () => {
   assert.equal(textePush("like", "Camille"), "Camille a aimé ta publication");
   assert.equal(textePush("follow", ""), "Quelqu'un a commencé à te suivre");

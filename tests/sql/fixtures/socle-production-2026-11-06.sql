@@ -88,6 +88,11 @@ $f$;
 create function cron.unschedule(jobname text) returns boolean language sql as $f$
   with x as (delete from cron.job j where j.jobname = unschedule.jobname returning 1) select exists (select 1 from x)
 $f$;
+-- pg_cron propose aussi la suppression par identifiant ; les planificateurs
+-- réels l'utilisent avant de recréer leurs tâches.
+create function cron.unschedule(p_id bigint) returns boolean language sql as $f$
+  with x as (delete from cron.job j where j.jobid = p_id returning 1) select exists (select 1 from x)
+$f$;
 create publication supabase_realtime;
 
 grant usage, select on all sequences in schema public to anon, authenticated, service_role;

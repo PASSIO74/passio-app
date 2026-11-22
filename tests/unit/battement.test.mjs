@@ -174,3 +174,62 @@ test("⑥ au seuil déduit : une milliseconde avant, le battement est frais ; un
   assert.equal(apres.etat, "arrete", `à ${seuilMs / MIN} min et 1 ms, la veille a manqué deux battements et sa marge : le téléphone ne sonnera plus`);
   assert.equal(apres.frais, false);
 });
+
+test("⑦ le voyant mémorisé ILLISIBLE rend la veille « incomplète », et un essai des alertes PARTI se distingue d'un essai non dû (2026-11-12)", () => {
+  const ok = { status: "fulfilled" }, ko = { status: "rejected" };
+  const lues = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  // L'essai rendait { essai: "envoye" } : le battement le notait « rien », comme un essai non dû
+  // (mesuré en production le 12/11 : 507 battements, 507 « rien »).
+  const c = contenuBattement({ lectures: { ...lues, memoire: ko }, gestes: { essai: { essai: "envoye", appareils: 2 }, autre: { essai: "pas_du" }, vide: {} } });
+  assert.equal(c.lectures.memoire, "ko");
+  assert.equal(c.gestes.essai, "envoye");
+  assert.equal(c.gestes.autre, "pas_du");
+  assert.equal(c.gestes.vide, "rien");
+  const r = resumerBattement({ created_at: new Date().toISOString(), properties: c });
+  assert.equal(r.etat, "incomplet");
+  assert.match(r.raisons.join(" "), /n'a pas pu relire son dernier voyant/);
+  // Un battement d'avant ce lot, sans la clé `memoire`, n'en dit rien : vivant.
+  const avant = contenuBattement({ lectures: lues });
+  assert.equal("memoire" in avant.lectures, false);
+  assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: avant }).etat, "vivant");
+  assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: contenuBattement({ lectures: { ...lues, memoire: ok } }) }).etat, "vivant");
+});
+
+// ─── ⑧ La table de télémétrie (2026-11-21, audit du 20/11, trou T2) ──────────
+// La veille tient son voyant quand elle ne peut lire ni le remplissage ni la mémoire du canari ; le
+// battement doit le DIRE. MUTATIONS éprouvées : retirer la raison de `resumerBattement` → rouge ;
+// ajouter « remplissage » à LECTURES_BATTEMENT → rouge (un battement d'avant ce lot deviendrait « incomplet »).
+test("⑧ le remplissage ou la mémoire du canari ILLISIBLES rendent la veille « incomplète », et le disent ; un battement d'avant, sans ces clés, reste vivant", () => {
+  const ok = { status: "fulfilled" }, ko = { status: "rejected" };
+  const lues = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  const frais = (lectures) => resumerBattement({ created_at: new Date(T - 5 * 60e3).toISOString(), properties: contenuBattement({ lectures }) }, 96, T);
+  const r = frais({ ...lues, remplissage: ko, canari: ok });
+  assert.equal(r.etat, "incomplet");
+  assert.match(r.raisons.join(" "), /n'a pas pu lire le remplissage de la télémétrie : .*table de télémétrie pleine ne se serait pas vue/);
+  assert.doesNotMatch(r.raisons.join(" "), /mémoire de sa sonde/, "seule la lecture manquée est nommée");
+  assert.match(frais({ ...lues, remplissage: ok, canari: ko }).raisons.join(" "), /n'a pas pu lire la mémoire de sa sonde/);
+  assert.match(frais({ ...lues, remplissage: ko, canari: ko }).raisons.join(" "), /le remplissage de la télémétrie ni la mémoire de sa sonde/);
+  assert.equal(frais({ ...lues, remplissage: ok, canari: ok }).etat, "vivant");
+  // Entre la fusion et le déploiement de la fonction, l'ancienne version bat sans ces clés : vivant, et rien à dire.
+  const avant = frais(lues);
+  assert.equal(avant.etat, "vivant");
+  assert.deepEqual(avant.lecturesKo, []);
+  assert.deepEqual([...LECTURES_BATTEMENT], ["sante", "signalements", "github", "parcours"], "les lectures EXIGÉES ne changent pas : une clé de plus rendrait « incomplet » tout battement d'avant ce lot");
+});
+
+// ─── T3 de l'audit « 100 000 » (2026-11-21) : la mesure d'échelle, de quoi calibrer les taux ───
+test("T3-l le battement porte la mesure d'échelle en NOMBRES seulement ; illisible = null ; aucune clé de plus dans `lectures`", () => {
+  const ok = { status: "fulfilled", value: {} };
+  const lectures = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  const c = contenuBattement({ lectures, echelle: { connectes5: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300.7, api5xx15: 4, principales: ["texte d'un tiers"], evenements15: 9 } });
+  assert.deepEqual(c.echelle, { connectes5: 25000, comptesErreurs15: 120, comptes5xx15: 0, erreursJs15: 300, api5xx15: 4 }, "les clés de la liste, rien d'autre");
+  const h = contenuBattement({ lectures, echelle: { connectes5: "25000", comptesErreurs15: -1, comptes5xx15: NaN, erreursJs15: null, api5xx15: { x: 1 } } });
+  assert.deepEqual(h.echelle, { connectes5: null, comptesErreurs15: null, comptes5xx15: null, erreursJs15: null, api5xx15: null });
+  assert.equal(contenuBattement({ lectures }).echelle, null);
+  assert.equal(contenuBattement({ lectures, echelle: "25000" }).echelle, null);
+  assert.deepEqual(Object.keys(c.lectures), ["sante", "signalements", "github", "parcours"]);
+  assert.doesNotMatch(JSON.stringify(c), /\n/);
+  // Un battement d'avant ce lot (sans la clé) se lit comme avant.
+  const r = resumerBattement({ created_at: new Date(Date.now() - 60e3).toISOString(), properties: { lectures: { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" } } });
+  assert.equal(r.etat, "vivant");
+});

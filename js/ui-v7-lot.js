@@ -109,13 +109,28 @@
   // restitution rendait l'écran dans un ordre inventé. On retient donc la liste
   // ordonnée des enfants AVANT le premier déplacement, et on la rejoue telle
   // quelle : `appendChild` déplace, donc rejouer l'ordre restaure l'ordre.
+  //
+  // ⚠️ LE RAIL DES PASSIONS (`#v9ProfilePassions`) N'EST PAS À CE LOT, et il
+  // est HORS de la photographie. Sa place est « juste avant son ancre »
+  // (`ancrerRailPassions`, app-06) — `#v7ProfileTabs` quand ce lot est là,
+  // `.profile-tabs` sinon —, et `renderProfilePassionRail` la lui rend à chaque
+  // repeint. Photographié, il était rejoué à une place PÉRIMÉE ; absent de la
+  // photo, la coupure le laissait en tête (tous les autres nœuds étant rejoués
+  // derrière lui) : au-dessus de la carte. Et une construction faite après un
+  // repeint glissait la barre sous la carte, AU-DESSUS du rail, qui restait
+  // sous les panneaux jusqu'au repeint suivant (défaut préexistant relevé le
+  // 2026-11-14). D'où `rendreLeRail()` à la fin de chaque déplacement de ce
+  // lot, dans les deux sens. Verrou : section KILL SWITCH de `ui-v7-lot.spec.js`.
   var hoteOrigine = null;
   var ordreOrigine = null;
+  var RAIL_ID = "v9ProfilePassions";
 
   function memoriserOrdre(hote) {
     if (ordreOrigine || !hote) return;
     hoteOrigine = hote;
-    ordreOrigine = Array.prototype.slice.call(hote.children);
+    ordreOrigine = Array.prototype.slice.call(hote.children).filter(function (n) {
+      return n.id !== RAIL_ID;
+    });
   }
   function deplacer(noeud, hote) {
     if (!noeud || !hote) return false;
@@ -125,10 +140,22 @@
   function rendreLesNoeuds() {
     if (!hoteOrigine || !ordreOrigine) return;
     try {
-      for (var i = 0; i < ordreOrigine.length; i++) hoteOrigine.appendChild(ordreOrigine[i]);
+      for (var i = 0; i < ordreOrigine.length; i++) {
+        // Un nœud qui n'est plus DANS l'écran (un autre code l'a retiré depuis
+        // la photo) ne revient pas. ⚠️ `contains` lit la descendance, pas la
+        // filiation : un nœud resté dans l'écran, même plus profond, est rejoué.
+        if (hoteOrigine.contains(ordreOrigine[i])) hoteOrigine.appendChild(ordreOrigine[i]);
+      }
     } catch (e) { fail("restitution", e); }
     hoteOrigine = null;
     ordreOrigine = null;
+  }
+  // Rend au rail SA place, décidée par app-06 (qui peut ne pas être chargé :
+  // le lot reste alors sans effet sur lui).
+  function rendreLeRail() {
+    try {
+      if (typeof window.ancrerRailPassions === "function") window.ancrerRailPassions();
+    } catch (e) { fail("rail_ancrage", e); }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -193,7 +220,14 @@
       b.setAttribute("aria-selected", p.cle === ongletActif ? "true" : "false");
       b.setAttribute("aria-controls", "v7Pan-" + p.cle);
       b.textContent = p.libelle;
-      b.addEventListener("click", function () { choisirOnglet(p.cle); });
+      b.addEventListener("click", function () {
+        // Recadrer seulement si l'onglet CHANGE : re-toucher l'onglet actif (la
+        // barre collante est sous le pouce en permanence) ne doit pas faire
+        // perdre la position de lecture.
+        var change = ongletActif !== p.cle;
+        choisirOnglet(p.cle);
+        if (change) recadrerSousBarre(p.cle);
+      });
       barre.appendChild(b);
 
       var pan = document.createElement("div");
@@ -253,6 +287,10 @@
     // ⚠️ Le lien secondaire « Carnets de voyage » a été retiré avec la
     // fonctionnalité elle-même (§6).
 
+    // La barre vient de s'insérer sous la carte : le rail, s'il existe déjà,
+    // repasse juste avant elle (sans attendre le prochain repeint).
+    rendreLeRail();
+
     ec.setAttribute("data-v7-profil", "1");
     return true;
   }
@@ -280,6 +318,26 @@
     track("ui_v7_profil_onglet", { tab: cle });
   }
 
+  // ⚠️ LA BARRE EST COLLANTE (2026-11-14, bloc PROFIL-ERGONOMIE de styles.css) :
+  // on peut donc changer d'onglet en plein milieu de ses publications. Le
+  // panneau qui apparaît commence alors AU-DESSUS de l'écran — on verrait le
+  // milieu, ou le vide, d'une liste plus courte. Au TOUCHER seulement (pas sur
+  // `selectProfileTab`, dont l'appelant défile lui-même), on ramène le début
+  // du panneau juste sous la barre. Rien ne bouge quand le panneau est déjà
+  // sous elle (cas ordinaire, haut de page). Aucun écouteur de défilement.
+  function recadrerSousBarre(cle) {
+    try {
+      var barre = el(BARRE_ID);
+      var pan = el("v7Pan-" + cle);
+      var defileur = document.getElementById("appMain");
+      if (!barre || !pan || !defileur || pan.hidden) return;
+      var bas = barre.getBoundingClientRect().bottom;
+      var haut = pan.getBoundingClientRect().top;
+      if (haut >= bas) return;
+      defileur.scrollTop = Math.max(0, defileur.scrollTop - (bas - haut) - 8);
+    } catch (e) { fail("recadrage_onglet", e); }
+  }
+
   function retirerProfil() {
     try {
       var sf = document.querySelector(".profile-tabs.v7-subfilters");
@@ -295,6 +353,9 @@
       for (var k = 0; k < sec.length; k++) {
         if (sec[k].parentNode) sec[k].parentNode.removeChild(sec[k]);
       }
+      // APRÈS le retrait de la barre : l'ancre du rail retombe alors sur
+      // `.profile-tabs`, sa place d'avant ce lot.
+      rendreLeRail();
       var ec = ecranProfil();
       if (ec) ec.removeAttribute("data-v7-profil");
     } catch (e) { fail("profil_restitution", e); }
@@ -400,8 +461,11 @@
       + '<label class="v7-champ"><span>Description</span>'
       + '<textarea class="input" id="v7BobineDesc" rows="2" maxlength="600"'
       + ' placeholder="Raconte ce moment en une phrase…"></textarea></label>'
-      + '<label class="v7-champ"><span>Passion</span>'
-      + '<select class="input" id="v7BobinePassion"></select></label>'
+      // CRE-C13 (décision du 2026-11-13, « 2 : a ») : même mot et même sélecteur
+      // que le Studio. Le `<select>` reste la source de vérité de `publierBobine`.
+      + '<div class="v7-champ"><span>Publier dans</span>'
+      + '<div class="v7-passion-ligne"><select class="input" id="v7BobinePassion" aria-label="Passion de la bobine"></select>'
+      + '<button type="button" class="btn small ghost" id="v7BobinePassionChoisir">Changer</button></div></div>'
       + '<div class="v7-champ"><span>Couverture</span>'
       + '<div class="v7-cover-row">'
       + '<div class="v7-cover-vue" id="v7BobineCoverVue" aria-hidden="true">🎞️</div>'
@@ -433,6 +497,13 @@
     if (clear) clear.addEventListener("click", function () { poserCouverture(null); });
     var pub = el("v7BobinePublier");
     if (pub) pub.addEventListener("click", function () { publierBobine(); });
+    var choisir = el("v7BobinePassionChoisir");
+    if (choisir) choisir.addEventListener("click", function () {
+      var sel = el("v7BobinePassion");
+      var ok = false;
+      try { ok = !!(window.PassioFlatUI && typeof PassioFlatUI.ouvrirChoixPassion === "function" && PassioFlatUI.ouvrirChoixPassion(sel)); } catch (x) { fail("passion_bobine", x); }
+      if (!ok && sel) { try { sel.focus(); } catch (x) {} }
+    });
     return f;
   }
 
@@ -616,19 +687,8 @@
   }
 
   function envoyerCouverture(dataUrl) {
-    if (!dataUrl || String(dataUrl).indexOf("data:") !== 0) {
-      return Promise.resolve(dataUrl || null);
-    }
-    if (typeof supaUploadMedia !== "function" || !window._supaReal) {
-      return Promise.resolve(dataUrl);
-    }
-    var cle = "reelcover_" + Date.now();
-    return Promise.race([
-      supaUploadMedia(cle, "photos", dataUrl, "image", { legere: true }),
-      new Promise(function (r) { setTimeout(function () { r(null); }, 20000); }),
-    ]).then(function (u) {
-      return (u && String(u).indexOf("http") === 0) ? u : dataUrl;
-    }).catch(function () { return dataUrl; });
+    // La couverture reste locale jusqu'au vrai parent et a sa reservation de variantes.
+    return Promise.resolve(dataUrl||null);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

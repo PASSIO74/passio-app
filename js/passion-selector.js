@@ -84,12 +84,21 @@
       // sans rien pour conclure. Mesuré par Benjamin sur la preview.
       verifier: null,
       // Appelée à la place du toast quand `max` est atteint : l'appelant décide
-      // ce que « plus de place » veut dire chez lui (au compte, c'est une offre
-      // payante à annoncer ; ailleurs, un simple plafond de confort).
+      // ce que « plus de place » veut dire chez lui (au compte, la limite qui a
+      // refusé le geste ; ailleurs, un simple plafond de confort).
       onMax: null,
       onChoisir: null,
       onValider: null,
       onChangement: null,
+      // LISTE FERMÉE (2026-11-14, demande de Benjamin : « ne propose de
+      // partager que dans mes passions sélectionnées sur mon profil »). Un
+      // tableau d'identifiants = le sélecteur ne montre, ne cherche et ne
+      // laisse choisir QUE ceux-là — ni « Récemment utilisées », ni
+      // « Quelques idées » tirées du référentiel. `null` = le référentiel
+      // entier, comme avant. `vide` = le HTML affiché quand la liste est vide.
+      parmi: null,
+      titreParmi: "Tes passions",
+      vide: "",
     }, config || {});
     this.selection = (this.cfg.selection || []).slice();
     this.frappe = "";
@@ -163,12 +172,19 @@
       if (action === "retirer" && id) { self.retirer(id); return; }
       if (action === "ajouter") { self.creer(); return; }
       if (action === "valider") { self.valider(); return; }
+      if (action === "gerer" && typeof self.cfg.onGerer === "function") {
+        try { self.cfg.onGerer(); } catch (x) { journal("onGerer", x); }
+        return;
+      }
     });
 
     this.rendreChoisies();
     this.zoneListe.innerHTML = '<p class="psel-vide">Chargement des passions…</p>';
     var m = moteur();
-    if (!m) { this.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible.</p>'; return; }
+    if (!m) {
+      if (Array.isArray(this.cfg.parmi)) { this.chercher(); return; }
+      this.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible.</p>'; return;
+    }
     // ⚠️ REPEINDRE LES PUCES APRÈS LE CHARGEMENT, pas seulement à la sélection.
     // Mesuré à l'écran : une passion déjà choisie s'affichait « ✨ musique » —
     // son identifiant brut et l'emoji générique — parce que `parId()` rend
@@ -193,8 +209,36 @@
     this.minuteur = setTimeout(function () { self.chercher(); }, DEBOUNCE_MS);
   };
 
+  // Recherche DANS la liste fermée : locale, synchrone, sur le libellé et les
+  // alias — quelques passions au plus, le serveur n'a rien à y ajouter.
+  Selecteur.prototype.chercherParmi = function () {
+    var m = moteur();
+    var q = String(this.frappe || "").trim();
+    var n = function (x) {
+      try { if (m && typeof m.norme === "function") return m.norme(x); } catch (e) {}
+      return String(x || "").toLowerCase();
+    };
+    var nq = n(q);
+    var vus = {};
+    this.resultats = (this.cfg.parmi || []).map(function (id) {
+      if (typeof id !== "string" || !id || vus[id]) return null;
+      vus[id] = 1;
+      var p = m && m.parId(id);
+      if (!p) { try { p = typeof passionById === "function" ? passionById(id) : null; } catch (e) { p = null; } }
+      return { id: id, label: (p && p.label) || id, emoji: (p && p.emoji) || "✨", aliases: (p && p.aliases) || [] };
+    }).filter(function (p) {
+      if (!p) return false;
+      if (!nq) return true;
+      if (n(p.label).indexOf(nq) > -1) return true;
+      return (p.aliases || []).some(function (a) { return n(a).indexOf(nq) > -1; });
+    });
+    this.frappeRendue = this.frappe;
+    this.rendreListe();
+  };
+
   Selecteur.prototype.chercher = function () {
     var self = this;
+    if (Array.isArray(this.cfg.parmi)) { this.jeton++; return this.chercherParmi(); }
     var m = moteur();
     if (!m) return;
     var mien = ++this.jeton;
@@ -223,11 +267,22 @@
     // ⚠️ NI le terme plus général, NI la « famille » ne s'affichent. Le modèle
     // est plat : une ligne, un nom, rien qui suggère qu'il faudrait passer par
     // autre chose.
-    return '<button type="button" class="psel-item" role="option" aria-selected="false"'
+    // LOT-15 (audit UX/UI du 2026-11-10, CRE-C17) : la ligne CHOISIE le dit (« ✓ »,
+    // aria-selected) — elle gardait son « + », et l'état ne se lisait qu'en haut.
+    var choisie = this.selection.indexOf(p.id) > -1;
+    // LOT-16 (PRO-C19) : une passion déjà à moi n'est pas une idée à ajouter.
+    if (!choisie && Array.isArray(this.cfg.possedees) && this.cfg.possedees.indexOf(p.id) > -1) {
+      return '<div class="psel-item psel-item-possedee" role="option" aria-disabled="true" aria-selected="false">'
+        + '<span class="psel-item-emoji" aria-hidden="true">' + ech(p.emoji || "✨") + "</span>"
+        + '<span class="psel-item-label">' + ech(p.label) + "</span>"
+        + '<span class="psel-item-deja">Déjà ajoutée</span>'
+        + "</div>";
+    }
+    return '<button type="button" class="psel-item' + (choisie ? " psel-item-choisie" : "") + '" role="option" aria-selected="' + (choisie ? "true" : "false") + '"'
       + ' data-psel="choisir" data-psel-id="' + ech(p.id) + '">'
       + '<span class="psel-item-emoji" aria-hidden="true">' + ech(p.emoji || "✨") + "</span>"
       + '<span class="psel-item-label">' + ech(p.label) + "</span>"
-      + '<span class="psel-item-plus" aria-hidden="true">+</span>'
+      + '<span class="psel-item-plus" aria-hidden="true">' + (choisie ? "✓" : "+") + "</span>"
       + "</button>";
   };
 
@@ -239,6 +294,22 @@
     var m = moteur();
     var q = String(this.frappe || "").trim();
     var html = "";
+
+    if (Array.isArray(this.cfg.parmi)) {
+      var vide = !this.cfg.parmi.length;
+      // Rien à chercher ni à valider dans une liste vide : seule la sortie reste.
+      try { var champ = this.hote.querySelector(".psel-champ"); if (champ) champ.style.display = vide ? "none" : ""; } catch (e) {}
+      if (vide) html = this.cfg.vide || '<p class="psel-vide">Aucune passion disponible.</p>';
+      else {
+        if (!q) html += '<p class="psel-section">' + ech(this.cfg.titreParmi || "Tes passions") + "</p>";
+        html += this.resultats.length
+          ? this.resultats.map(this.ligneHTML, this).join("")
+          : '<p class="psel-vide">Aucune de tes passions ne correspond.</p>';
+      }
+      this.zoneListe.innerHTML = html;
+      this.rendrePied();
+      return;
+    }
 
     if (!q) {
       var rec = (m ? m.recentes() : []).filter(function (r) { return this.selection.indexOf(r.id) < 0; }, this);
@@ -321,10 +392,16 @@
           + ' value="' + ech(this.alias || "") + '">';
       }
     }
-    if (this.cfg.valider) {
+    if (this.cfg.valider && !(Array.isArray(this.cfg.parmi) && !this.cfg.parmi.length)) {
       var n = this.selection.length;
       var refus = this.motifRefus();
       if (refus) html += '<p class="psel-refus" role="status">' + ech(refus) + "</p>";
+      // LOT-15 (CRE-C02) : une NOTE (non bloquante) dit ce que le choix entraîne.
+      if (!refus && n && typeof this.cfg.note === "function") {
+        var note = "";
+        try { note = this.cfg.note(this.selection.slice()) || ""; } catch (e) { journal("note", e); }
+        if (note) html += '<p class="psel-note" role="status">' + ech(note) + "</p>";
+      }
       var bloque = n === 0 || !!refus;
       html += '<button type="button" class="btn primary block psel-valider" data-psel="valider"'
         + (bloque ? " disabled" : "") + ">"
@@ -345,10 +422,25 @@
     return "";
   };
 
+  // LOT-15 (CRE-C17) : les lignes déjà peintes suivent la sélection sur place
+  // (la liste n'est pas repeinte en mode unique — on garde le défilement).
+  Selecteur.prototype.marquerLignes = function () {
+    var sel = this.selection;
+    if (!this.zoneListe) return;
+    Array.prototype.forEach.call(this.zoneListe.querySelectorAll(".psel-item"), function (b) {
+      var on = sel.indexOf(b.getAttribute("data-psel-id")) > -1;
+      b.classList.toggle("psel-item-choisie", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      var plus = b.querySelector(".psel-item-plus");
+      if (plus) plus.textContent = on ? "✓" : "+";
+    });
+  };
+
   Selecteur.prototype.rendreChoisies = function () {
+    try { this.marquerLignes(); } catch (e) {}
     var m = moteur();
     if (!this.selection.length) { this.zoneChoisies.innerHTML = ""; return; }
-    this.zoneChoisies.innerHTML = '<p class="psel-section">Tes passions</p>'
+    this.zoneChoisies.innerHTML = '<p class="psel-section">' + ech(this.cfg.titreChoisies || "Tes passions") + '</p>'
       + this.selection.map(function (id) {
         var p = (m && m.parId(id)) || { id: id, label: id, emoji: "✨" };
         return '<span class="psel-puce">'
@@ -363,6 +455,9 @@
   // ── Sélection ────────────────────────────────────────────────────────────
   Selecteur.prototype.basculer = function (id) {
     var m = moteur();
+    // Liste fermée : un identifiant hors liste (touche Entrée, appel
+    // programmatique) ne se sélectionne pas.
+    if (Array.isArray(this.cfg.parmi) && this.cfg.parmi.indexOf(id) < 0) return;
     if (this.cfg.mode === "unique") {
       this.selection = [id];
       if (m) m.noterUtilisation(id);

@@ -1,0 +1,21 @@
+{
+  "moteur": "webkit",
+  "avant": {
+    "erreurs": [],
+    "pret": 1,
+    "scripts": 9
+  },
+  "apresA": {
+    "erreurs": [
+      "undefined is not an object (evaluating 'scripts[i][0]')"
+    ],
+    "pret": 1,
+    "scripts": 9
+  },
+  "apresB": {
+    "attribut": "if(this.src.indexOf('/demo/u/')>-1)this.parentNode.classList.add('cover-ok');",
+    "erreurs": [
+      "null is not an object (evaluating 'this.parentNode.classList')"
+    ]
+  }
+}

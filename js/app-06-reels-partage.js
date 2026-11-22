@@ -619,12 +619,47 @@ function accueillirInvitation() {
       });
       try { if (window.tel && tel.action) tel.action("invitation_accueil", { v: 1 }); } catch (e) {}
       majInvitationAuth();
+      peindreBandeauInvitation();
     }).catch(function (e) { _invitationEchec("accueil", e); });
     return true;
   } catch (e) {
     _invitationEchec("accueil", e);
     return false;
   }
+}
+
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C20) — L'INVITATION RESTE VISIBLE.
+// Le seul signe de l'invitation était un toast de 6 s : le visiteur qui lit
+// d'abord le contenu ne revoyait jamais qui l'avait invité ni pourquoi s'inscrire.
+// Un bandeau bas, discret et persistant, tant que l'appareil ne porte aucun
+// compte ; une croix le range pour la session. Posé sur <body> (jamais dans
+// #appMain : un `position: fixed` y défilerait avec le conteneur sous WebKit).
+function peindreBandeauInvitation() {
+  try {
+    var ancien = document.getElementById("invitationBandeau");
+    var inv = invitationEnAttente();
+    var range = false;
+    try { range = sessionStorage.getItem("passio_invitation_bandeau_range") === "1"; } catch (e) {}
+    if (!inv || !inv.nom || _appareilPorteUnCompte() || range) { if (ancien) ancien.remove(); return; }
+    var b = ancien || document.createElement("div");
+    b.id = "invitationBandeau";
+    b.className = "invitation-bandeau";
+    b.setAttribute("role", "region");
+    b.setAttribute("aria-label", "Invitation");
+    b.innerHTML = '<div class="invitation-bandeau-texte"><strong class="invitation-bandeau-nom"></strong>'
+      + '<span>Le réseau des passions : partage ce que tu aimes, retrouve des gens près de chez toi.</span></div>'
+      + '<button type="button" class="btn primary invitation-bandeau-cta">Créer mon compte</button>'
+      + '<button type="button" class="invitation-bandeau-fermer" aria-label="Fermer l\'invitation">×</button>';
+    b.querySelector(".invitation-bandeau-nom").textContent = inv.nom + " t'invite sur PASSIO";
+    b.querySelector(".invitation-bandeau-cta").onclick = function () {
+      try { if (window.PassioFirstRun && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("invitation"); } catch (e) {}
+    };
+    b.querySelector(".invitation-bandeau-fermer").onclick = function () {
+      try { sessionStorage.setItem("passio_invitation_bandeau_range", "1"); } catch (e) {}
+      b.remove();
+    };
+    if (!ancien) document.body.appendChild(b);
+  } catch (e) { try { diagLog("bandeau invitation : " + (e && e.message)); } catch (_e) {} }
 }
 
 // ③ La ligne du formulaire de création. `mode` vient de `switchAuthTab` ; sans
@@ -850,6 +885,9 @@ capterInvitation();
 window.addEventListener("passio:app-ready", function () {
   _invitationAccueilEssais = 0;
   accueillirInvitation();
+  // LOT-12 (PAR-C20) : une invitation déjà accueillie garde son bandeau aux visites
+  // suivantes, tant qu'aucun compte n'est né sur l'appareil.
+  setTimeout(peindreBandeauInvitation, 1500);
 });
 (function _invitationBoot() {
   if (!invitationEnAttente()) return;
@@ -877,15 +915,21 @@ window.addEventListener("passio:app-ready", function () {
 // ③ Le partage part du CLIC (`partagerOuCopier`, synchrone). `link_create` et
 //    `link_share` sont émis au geste ; le type `beta` est gardé pour la
 //    continuité du pilotage, la cible nomme la porte.
-// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ de mon profil, le
-// séparateur « Exemples PASSIO » du fil (compte seulement).
+// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ (crayon) de mon profil,
+// le séparateur « Exemples PASSIO » du fil (compte seulement).
 // ═══════════════════════════════════════════════════════════════════════════
-var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
+var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions. Viens me rejoindre 👇";
 
 function lienInvitationAmis() {
   if (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) return lienPartageDe("user", MY_UID);
   return location.origin + location.pathname;
 }
+
+// ⚠️ `partagerMonProfil` (LOT-12, PAR-C14 : le bouton « Partager mon profil » de
+// la carte d'identité) a été RETIRÉE le 2026-11-14 avec son unique appelant, sur
+// demande de Benjamin (« il sert à rien »). Le lien de mon profil part toujours
+// par « Inviter des amis » (menu du crayon), qui envoie `lienPartageDe("user",
+// MY_UID)` pour un vrai compte.
 
 function inviterDesAmis(porte) {
   var brut = lienInvitationAmis();
@@ -895,86 +939,11 @@ function inviterDesAmis(porte) {
   partagerOuCopier({ title: "PASSIO", text: INVITATION_AMIS_TEXTE, url: url }, "Lien d'invitation copié");
 }
 
-function copyReelLink(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
-      _telLinkShare(url, "clipboard");
-      toast("Lien copié");
-      closeModal();
-    });
-  } else {
-    toast("Copie impossible sur ce navigateur");
-  }
-}
-
-// Émet le signal « lien partagé » (canal donné) au centre de pilotage, à partir
-// d'une URL taguée. Guardé : ne casse rien si la télémétrie est absente/désactivée.
-function _telLinkShare(url, channel) {
-  try { if (window.tel && tel.linkShare) { var id = tel.linkFromUrl(url); if (id) tel.linkShare(id, channel); } } catch (e) {}
-}
-
-function shareReelVia(platform, postId, encodedUrl, encodedText) {
-  const url = decodeURIComponent(encodedUrl);
-  const text = decodeURIComponent(encodedText);
-  let shareUrl;
-
-  switch(platform) {
-    case "whatsapp":
-      shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`;
-      break;
-    case "twitter":
-      shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-      break;
-    case "facebook":
-      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
-      break;
-    case "telegram":
-      shareUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
-      break;
-    default:
-      return;
-  }
-
-  _telLinkShare(url, platform);
-  window.open(shareUrl, "_blank", "width=600,height=400");
-  toast(`Ouverture ${platform}...`);
-  closeModal();
-}
-
-function shareReelEmail(postId, encodedText, encodedUrl) {
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  // Réutilise l'URL taguée du modal (suivi du lien) ; repli si absente.
-  const url = encodedUrl ? decodeURIComponent(encodedUrl) : `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  const author = authorOfReel(reel);
-  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const text = reel.text || reel.caption || "";
-
-  const subject = encodeURIComponent(`Regarde cette bobine PASSIO de ${author.name}!`);
-  const body = encodeURIComponent(`Salut!\n\nJe viens de découvrir cette super bobine sur PASSIO:\n\n${passion.emoji} ${author.name} – ${passion.label}\n"${text.slice(0, 150)}${text.length > 150 ? "…" : ""}"\n\nViens la voir ici: ${url}\n\nPASSIO - Partage tes passions!`);
-
-  _telLinkShare(url, "email");
-  const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
-  window.location.href = mailtoLink;
-  toast("Ouverture de ton client email…");
-  closeModal();
-}
-
-function shareReelSMS(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  const text = reel.text || reel.caption || "";
-  const smsBody = encodeURIComponent(`Regarde cette bobine PASSIO: ${text.slice(0, 30)}... ${url}`);
-  _telLinkShare(url, "sms");
-  const smsLink = `sms:?body=${smsBody}`;
-  window.location.href = smsLink;
-  toast("Ouverture SMS…");
-  closeModal();
-}
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C07) : `copyReelLink`, `shareReelVia`,
+// `shareReelEmail`, `shareReelSMS` et `_telLinkShare` RETIRÉES avec les huit
+// boutons de l'ancienne feuille de bobine. La bobine passe par la feuille unique
+// (`ouvrirFeuillePartage`, app-02) : la feuille du téléphone couvre WhatsApp,
+// Telegram, SMS, e-mail…, et le lien est compté par `tel.shareLink`.
 
 function scrollToReel(idx) {
   const list = document.getElementById("reelsList");
@@ -1012,6 +981,20 @@ document.addEventListener("keydown", (e) => {
   if (!reelsState.open) {
     return;
   }
+  // LOT-10 (audit UX/UI du 2026-11-10, BOB-C01) : une touche frappée DANS UN CHAMP
+  // (commentaire d'une bobine, recherche…) n'est pas une commande du lecteur.
+  // L'Espace passait à la bobine suivante : « Bonjour à tous » devenait
+  // « Bonjouràtous », et le panneau restait sur les commentaires de la précédente.
+  // LOT-14 (BOB-C12) : Échap ferme ce qui est AU-DESSUS du lecteur d'abord — le
+  // panneau de commentaires (même depuis son champ), puis une fenêtre ou une
+  // feuille (leurs propres écouteurs s'en chargent) — et le lecteur en dernier.
+  if (e.key === "Escape" && !document.querySelector("#modalBackdrop.active, .cmt-sheet-ov, #feuilleConfirmation")) {
+    var panneau = document.getElementById("reelCommentsPanel");
+    if (panneau && panneau.classList.contains("open")) { e.preventDefault(); closeReelComments(); return; }
+  }
+  var cible = e.target;
+  if (cible && (cible.tagName === "INPUT" || cible.tagName === "TEXTAREA" || cible.isContentEditable)) return;
+  if (document.querySelector("#reelCommentsPanel.open, .cmt-sheet-ov, #modalBackdrop.active, #feuilleConfirmation")) return;
   if (e.key === "Escape") { closeReels(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();
@@ -1031,7 +1014,46 @@ function _profileInitials(name) {
   return ini.toUpperCase();
 }
 
+// ── La hauteur RÉELLE du corps de la carte, pour la répartition du haut de page
+// (2026-11-14). `--espace-profil` (styles.css, bloc `#screen-profiles`) répartit
+// la place libre entre la carte, le rail et les onglets pour que « tout tienne sur
+// une page » (Benjamin, 2026-09-10). Il comptait un corps FIXE de 145 px ; une bio
+// réelle et le bouton « Partager » en faisaient 249, et les onglets passaient sous
+// la barre du bas. On MESURE donc le corps et on le pose en variable CSS.
+// ⚠️ ResizeObserver, jamais de rAF ni d'écouteur de défilement. ⚠️ Une `style`
+// sur l'écran, jamais une CLASSE : UI-6B et UI-7 observent l'attribut `class` de
+// l'écran et de ses descendants. ⚠️ Écran masqué = hauteur 0 : on garde la
+// dernière mesure. La variable ne change pas la hauteur du corps (elle ne règle
+// que des marges SOUS la carte et la couverture AU-DESSUS) : aucune boucle.
+// ⚠️ PAS `corps.offsetHeight` : la marge négative de l'avatar (−130 px) traverse
+// le corps, dont la boîte REMONTE dans la photo (mesuré : 300 px pour 170 sous la
+// couverture). Ce qui compte est ce qui dépasse SOUS la photo : bas du corps −
+// bas de la couverture, indépendant de la hauteur de la couverture elle-même.
+var _corpsCarteProfilObs = null;
+var _corpsCarteProfilPx = 0;
+function _suivreCorpsCarteProfil() {
+  if (_corpsCarteProfilObs || typeof ResizeObserver !== "function") return;
+  var corps = document.querySelector("#mainProfileCard .main-profile-body");
+  var couverture = document.getElementById("mainProfileCover");
+  var ecran = document.getElementById("screen-profiles");
+  if (!corps || !couverture || !ecran) return;
+  try {
+    _corpsCarteProfilObs = new ResizeObserver(function () {
+      var h = Math.round(corps.getBoundingClientRect().bottom - couverture.getBoundingClientRect().bottom);
+      if (!(h > 0) || h === _corpsCarteProfilPx) return;
+      _corpsCarteProfilPx = h;
+      ecran.style.setProperty("--corps-carte-profil", h + "px");
+    });
+    _corpsCarteProfilObs.observe(corps);
+  } catch (e) {
+    // Repli : la formule garde son corps supposé de 145 px. Journalisé, jamais muet.
+    _corpsCarteProfilObs = null;
+    try { if (typeof diagLog === "function") diagLog("profil_corps_mesure " + (e && e.message)); } catch (x) {}
+  }
+}
+
 function renderMainProfile() {
+  _suivreCorpsCarteProfil();
   var g = state.user.general || {};
   var cur = currentProfile();
   var avatarEl = document.getElementById("mainProfileAvatar");
@@ -1084,9 +1106,13 @@ function renderMainProfile() {
   // RSVP : le remettre ferait revenir la rangée partout, sans qu'aucun test de
   // rendu ne s'en émeuve. L'identité complète reste centralisée (ADR-011 §3) et
   // s'affiche sur les surfaces denses, où rien ne la double.
-  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
-  bioEl.textContent = g.bio || "";
-  bioEl.style.display = g.bio ? "" : "none";
+  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder).
+  // En paragraphes (2026-11-14, `bioEnParagraphesHtml`, app-02) : une ligne vide
+  // devient un écart de 6 px au lieu d'une ligne blanche entière. Contenu ÉCHAPPÉ
+  // morceau par morceau ; `textContent` rend la bio à l'octet près.
+  var _bioHtml = bioEnParagraphesHtml(g.bio);
+  bioEl.innerHTML = _bioHtml;
+  bioEl.style.display = _bioHtml ? "" : "none";
 
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var links = g.rsLinks || [];
@@ -1144,7 +1170,7 @@ function renderMainProfile() {
 async function loadFollowersCount() {
   if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
   try {
-    const { count } = await supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", MY_UID);
+    const { count } = await seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", MY_UID));
     window._followersCount = count || 0;
     var fEl = document.getElementById("mainStatFollowers");
     if (fEl) fEl.textContent = window._followersCount;
@@ -1181,18 +1207,22 @@ function openMyPostsTab() {
 }
 
 // Une ligne de personne (avatar + nom), clic -> ouvre son profil
-function _personRowHTML(id, u) {
-  return '<div onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
+// LOT-16 (audit UX/UI du 2026-11-10, PRO-C09 / PRO-C10) : une ligne de personne
+// est un vrai bouton (rôle, clavier) ; le profil ouvert depuis une LISTE sait
+// y revenir (« ← Abonnés »), au lieu de ramener à mon profil.
+// 2026-11-13 (Benjamin) : plus de ligne de passions sous le pseudo, ici non plus.
+function _personRowHTML(id, u, liste) {
+  return '<div class="personne-ligne" role="button" tabindex="0" onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(liste ? "liste-" + liste : "") + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
     + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
     + '<div style="min-width:0;"><div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div>'
-    + identitePassionsHTML(u, "ident-passions-sm") + '</div></div>';
+    + '</div></div>';
 }
 function _peopleEmpty(msg) {
   return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';
 }
 function _peopleModal(title, bodyHTML) {
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">' + title + '</div>'
+  // LOT-16 (PRO-C09) : une seule croix — celle d'`openModal`.
+  openModal('<div class="modal-title">' + title + '</div>'
     + '<div id="peopleListBody" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-height:60vh;overflow-y:auto;">' + bodyHTML + '</div>');
 }
 
@@ -1201,7 +1231,7 @@ function openFollowingList() {
   var ids = state.user.following || [];
   var rows = ids.map(function(id){
     var u = userById(id) || { name: "Utilisateur", profileEmoji: "👤", avatar: "#64748b" };
-    return _personRowHTML(id, u);
+    return _personRowHTML(id, u, "abonnements");
   }).join("");
   _peopleModal("Abonnements", ids.length ? rows : _peopleEmpty("Tu ne suis personne pour l'instant."));
 }
@@ -1215,15 +1245,18 @@ async function openFollowersList() {
     return;
   }
   try {
-    const { data: rels } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID);
+    const { data: rels } = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", MY_UID));
     var ids = (rels || []).map(function(r){ return r.follower_id; }).filter(Boolean);
     if (!ids.length) { if (body) body.innerHTML = _peopleEmpty("Personne ne te suit encore."); return; }
-    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions").in("id", ids);
+    // LOT-16 (PRO-C09) : la photo et les passions, comme dans « Abonnements ».
+    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions,avatar_url").in("id", ids);
     var map = {}; (profs || []).forEach(function(p){ map[p.id] = p; });
     var rows = ids.map(function(id){
       var p = map[id] || {};
-      var u = { name: p.username || (userById(id) || {}).name || "Utilisateur", profileEmoji: p.emoji || "👤", avatar: p.color || "#64748b" };
-      return _personRowHTML(id, u);
+      var connu = userById(id) || {};
+      var u = { name: p.username || connu.name || "Utilisateur", profileEmoji: p.emoji || "👤", avatar: p.color || "#64748b",
+        photoUrl: p.avatar_url || connu.photoUrl || null, passions: Array.isArray(p.passions) ? p.passions : (connu.passions || []) };
+      return _personRowHTML(id, u, "abonnes");
     }).join("");
     if (body) body.innerHTML = rows || _peopleEmpty("Personne ne te suit encore.");
   } catch (e) {
@@ -1354,7 +1387,7 @@ function _myProfileEventsHTML() {
       if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
     } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
         + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
         + 'onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
@@ -1373,11 +1406,111 @@ function _myProfileEventsHTML() {
       + '<div style="flex:1;min-width:0;">'
       + '<div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + escapeHtml(e.title || "Activité") + '</div>'
-      + '<div style="font-size:10.5px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
       + '</div>'
       + (role ? '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">' + role + '</span>' : '')
       + '</div>';
   }).join("");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MES PUBLICATIONS ET MES PASSIONS NE DISPARAISSENT JAMAIS (2026-11-14)
+// ──────────────────────────────────────────────────────────────────────────
+// Défaut vécu par Benjamin : publier « soirée trkl a la maisons » en Course à
+// pied depuis l'ordinateur, fermer, rouvrir — la passion et le post avaient
+// disparu du profil. Le post était BIEN en base ; c'est l'appareil qui l'avait
+// perdu : ① l'onglet « Publications » ne lisait que `state.userPosts`, une
+// copie locale que l'état serveur remplaçait à la réouverture ; ② la passion,
+// réactivée ici, avait été re-archivée par un blob serveur plus ancien.
+//
+// La règle : la table `posts` est la vérité de MES publications, et une passion
+// dans laquelle j'ai publié APRÈS l'avoir archivée est une passion que j'ai
+// reprise. Rien n'est jamais supprimé ni masqué sans un geste de l'utilisateur.
+window._mesPublicationsServeur = window._mesPublicationsServeur || [];
+
+// Toutes mes publications connues de l'appareil : copie locale + relecture
+// serveur dédiée + celles du fil. Dédoublonnées par id, pierres tombales exclues.
+function mesPublicationsConnues() {
+  var moi = (typeof MY_UID !== "undefined") ? MY_UID : null;
+  var vus = Object.create(null);
+  var out = [];
+  function prendre(p, exigerAuteur) {
+    if (!p || !p.id || vus[p.id]) return;
+    if (exigerAuteur && (!moi || p.authorId !== moi)) return;
+    try { if (typeof postSupprime === "function" && postSupprime(p.id)) return; } catch (e) {}
+    vus[p.id] = 1;
+    out.push(p);
+  }
+  (state.userPosts || []).forEach(function (p) { prendre(p, false); });
+  (window._mesPublicationsServeur || []).forEach(function (p) { prendre(p, true); });
+  (state.supabasePosts || []).forEach(function (p) { prendre(p, true); });
+  return out;
+}
+
+// Une passion ARCHIVÉE dans laquelle j'ai publié APRÈS son archivage revient,
+// en silence et sans consommer de changement : publier dedans EST le geste de
+// la reprendre (le Studio refuse de publier dans une passion archivée, donc
+// elle était vivante à ce moment-là — c'est la synchronisation qui l'a perdue).
+// Un archivage postérieur à ma dernière publication reste, lui, respecté.
+function reactiverPassionsPubliees() {
+  if (!state || !state.user || !Array.isArray(state.user.profiles)) return 0;
+  var derniere = Object.create(null);   // passion → date de ma dernière publication
+  mesPublicationsConnues().forEach(function (p) {
+    if (!p || !p.passion) return;
+    var t = Number(p.createdAt) || 0;
+    if (t > (derniere[p.passion] || 0)) derniere[p.passion] = t;
+  });
+  var reprises = [];
+  state.user.profiles.forEach(function (pr) {
+    if (!pr || !pr.archived || !pr.passion) return;
+    var t = derniere[pr.passion];
+    if (!t || t <= (Number(pr.archivedAt) || 0)) return;
+    // Une passion « vivante » de même identifiant existe déjà : rien à reprendre.
+    if (state.user.profiles.some(function (x) { return x && x !== pr && x.passion === pr.passion && !x.archived; })) return;
+    pr.archived = false;
+    delete pr.archivedAt;
+    delete pr._parDefaut;
+    pr.restoredAt = t;
+    reprises.push(pr.passion);
+  });
+  if (!reprises.length) return 0;
+  reprises.forEach(function (id) { try { ajouterPassionAuFil(id); } catch (e) {} });
+  try { saveState(); } catch (e) {}
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  try { if (typeof diagLog === "function") diagLog("passions_reprises_par_publication " + reprises.join(",")); } catch (e) {}
+  return reprises.length;
+}
+
+// Relit MES publications dans la table `posts` (60 dernières) et repeint le
+// profil. Lecture « de moi » : réservée à un compte réel (un visiteur n'a rien).
+var _rapatriementEnCours = null;
+function rapatrierMesPublications() {
+  if (_rapatriementEnCours) return _rapatriementEnCours;
+  _rapatriementEnCours = (async function () {
+    try {
+      if (!window._supaReal || typeof supaLoadPosts !== "function") return 0;
+      if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return 0;
+      var moi = MY_UID;
+      var lus = await supaLoadPosts(0, moi);
+      if (moi !== MY_UID) return 0;                       // le compte a changé pendant la lecture
+      window._mesPublicationsServeur = (lus || []).filter(function (p) { return p && p.authorId === moi; });
+      var reprises = reactiverPassionsPubliees();
+      try {
+        var ecran = document.getElementById("screen-profiles");
+        if (ecran && ecran.classList.contains("active")) {
+          if (reprises && typeof renderProfilesScreen === "function") renderProfilesScreen();
+          else renderProfileContent();
+        }
+        if (reprises && typeof renderProfileStrip === "function") renderProfileStrip();
+      } catch (e) { if (typeof diagLog === "function") diagLog("rapatrier_publications_rendu " + (e && e.message)); }
+      return window._mesPublicationsServeur.length;
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("rapatrier_publications " + (e && e.message));
+      return 0;
+    } finally { _rapatriementEnCours = null; }
+  })();
+  return _rapatriementEnCours;
 }
 
 // Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
@@ -1385,7 +1518,6 @@ function _myProfileEventsHTML() {
 function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
-
   // ⚠️ AUCUNE PASSION COCHÉE = AUCUN FILTRE, donc TOUT s'affiche.
   //
   // Ce n'était pas le cas, et le défaut était double. ① « Réinitialiser » —
@@ -1403,7 +1535,10 @@ function renderProfileContent() {
   // `allFeedPosts` les exclut déjà pour le fil, mais cette liste-ci lit
   // `state.userPosts` en direct : sans ce filtre, un carnet ancien s'y
   // afficherait avec un `onclick` vers un viewer qui n'existe plus.
-  var mine = state.userPosts.filter(function (p) { return p && p.type !== "vlog"; });
+  // ⚠️ `mesPublicationsConnues()` ET NON `state.userPosts` SEUL (2026-11-14) :
+  // la copie locale peut avoir perdu un post que la base, elle, a gardé.
+  var mine = mesPublicationsConnues().filter(function (p) { return p && p.type !== "vlog"; });
+  mine.sort(function (a, b) { return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0); });
 
   if (passionsUnifieesActives()) {
     // ── LOT UI-8 : le filtre de contenu vit ICI, dans « Publications », et il
@@ -1455,19 +1590,20 @@ function renderProfileContent() {
   function guidedEmpty(emoji, title, text) {
     if (_filtreNom) {
       title = "Rien en " + _filtreNom;
-      text = "Touche « Toutes » pour revoir tout ce que tu as publié, ou crée dans cette passion.";
+      // LOT-16 (PRO-C11) : aucun bouton ne s'appelle « Toutes » — on nomme le geste réel.
+      text = "Touche de nouveau la bulle « " + _filtreNom + " » pour revoir tout ce que tu as publié, ou crée dans cette passion.";
     }
     return '<div class="empty">'
       + '<div class="empty-icon">'+emoji+'</div>'
       + '<div class="empty-title">'+title+'</div>'
       + '<div class="empty-text">'+text+'</div>'
-      + '<button class="btn primary" onclick="goTo(\'studio\')">Créer un post</button>'
+      + '<button class="btn primary" onclick="goTo(\'studio\')">Créer une publication</button>'
       + '</div>';
   }
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
@@ -1476,8 +1612,9 @@ function renderProfileContent() {
     var bobines = mine.filter(function(p){return p.isReel;});
     myPostsDiv.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
-          var thumb = miniatureVideoPubliqueHTML(poster);
+          var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("")+'</div>'
       // ⚠️ `emptyBlock` n'a jamais existé → ReferenceError en prod (8× le 20/07)
@@ -1493,11 +1630,35 @@ function renderProfileContent() {
   }
 }
 
+// ── La rangée de formats (Tout · Photos · Vidéos · Bobines · Audio) est
+// TOUJOURS peinte sur mon profil (2026-11-14, demande de Benjamin : « je ne
+// vois plus les onglets photo / vidéo à cocher »). Le masquage « tant qu'elle
+// ne filtre rien » (fiche 31 ⑨) est retiré : un compte sans média la croyait
+// disparue. Ne pas la remasquer selon le contenu.
+
+// Bascule un format dans une sélection (pure, partagée avec le profil visité).
+// Multi-sélection : chaque format se coche/décoche, l'affichage est l'UNION.
+// « Tout » (`posts`) est EXCLUSIF : le toucher vide les formats, et cocher un
+// format le retire — Tout ∪ Photos ne filtrait rien (PRO-C04, LOT-16). Une
+// sélection vidée retombe sur `vide` ("posts" pour mon profil, "" pour le
+// profil visité, où rien de coché = tout).
+function _basculerFormat(sel, tab, vide) {
+  var res = new Set(sel);
+  res.delete("posts");
+  if (tab === "posts") res.clear();
+  else if (res.has(tab)) res.delete(tab);
+  else res.add(tab);
+  if (!res.size && vide) res.add(vide);
+  return res;
+}
+
 // Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
 function switchProfileTab(tab, btn) {
   if (PROFILE_TAB_KEYS.indexOf(tab) === -1) return;
   var sel = _profileTabSel();
-  if (sel.has(tab)) sel.delete(tab); else sel.add(tab);
+  var nouv = _basculerFormat(sel, tab, "posts");
+  sel.clear();
+  nouv.forEach(function (k) { sel.add(k); });
   window.activeProfileTab = _activeProfileTab(); // compat
   _persistProfileTabs();
   _syncProfileTabButtons();
@@ -1539,7 +1700,19 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
     } else if (typeof supaEnsureProfileExists === "function") {
       await supaEnsureProfileExists();   // la ligne doit exister, rien de plus
     }
-  } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
+    // LOT-16 (PRO-C18) : avec un compte, la photo n'est « mise à jour » que si
+    // elle est PARTIE (URL Storage) ; sinon on le dit, au lieu d'un succès annoncé
+    // avant l'envoi et d'un échec avalé.
+    if (window._supaReal && typeof MY_UID !== "undefined" && MY_UID && !(typeof _val === "string" && /^https?:\/\//.test(_val))) {
+      toast("La photo n'a pas pu être envoyée — elle reste sur cet appareil. Réessaie.", "warning");
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("Sync photo profil échouée:", e && e.message);
+    try { toast("La photo n'a pas pu être envoyée — réessaie.", "warning"); } catch (_e) {}
+    return false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1560,7 +1733,11 @@ function passioOpenCropper(src, opts) {
     var VH = Math.round(VW / aspect);
     var ov = document.createElement("div");
     ov.className = "passio-cropper-ov";
-    ov.style.cssText = "position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+    // LOT-10 (audit UX/UI du 2026-11-10, PRO-C02) : 10050 et non 6000. Ouvert depuis
+    // « Modifier le profil » (modale à 10001), le recadreur s'ouvrait DESSOUS : après
+    // le choix de la photo, rien ne bougeait. Au-dessus des modales, sous les
+    // feuilles de confirmation (100005) et les toasts (100010).
+    ov.style.cssText = "position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
     ov.innerHTML =
       '<div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:14px;text-align:center;">' + escapeHtml(title) + '</div>'
       + '<div id="pcropView" style="position:relative;width:' + VW + 'px;height:' + VH + 'px;overflow:hidden;border-radius:' + (round ? "50%" : "14px") + ';touch-action:none;background:#000;box-shadow:0 0 0 2px rgba(255,255,255,0.9);cursor:grab;">'
@@ -1609,7 +1786,7 @@ function passioOpenCropper(src, opts) {
       apply();
     };
     img.onerror = function() { ov.remove(); reject(new Error("img load failed")); };
-    img.src = src;
+    if(!passioMediaProteges.poserImage(img,src))img.src=src;
 
     zoomEl.addEventListener("input", function() { zoomTo(parseFloat(zoomEl.value), VW / 2, VH / 2); });
     view.addEventListener("wheel", function(e) {
@@ -1667,6 +1844,12 @@ function passioOpenCropper(src, opts) {
 function _readAndCrop(file, cropOpts) {
   return new Promise(function(resolve, reject) {
     if (!file) { reject(new Error("no file")); return; }
+    // LOT-16 (PRO-C18) : une vidéo choisie ne fait plus RIEN en silence.
+    if (file.type && !/^image\//i.test(file.type)) {
+      try { toast("Ce fichier n'est pas une image — choisis une photo.", "warning"); } catch (e) {}
+      reject(new Error("pas une image"));
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(e) { passioOpenCropper(e.target.result, cropOpts).then(resolve, reject); };
     reader.onerror = function() { reject(reader.error); };
@@ -1682,8 +1865,7 @@ function changeCoverPhoto(event) {
   // la photo est visible ENTIÈRE sur le profil, telle que cadrée ici.
   _readAndCrop(file, { aspect: 3 / 2, outW: 1080, outH: 720, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
-      _syncProfilePhoto("coverPhoto", "covers", dataUrl);
-      toast("Photo de couverture mise à jour", "success");
+      _syncProfilePhoto("coverPhoto", "covers", dataUrl).then(function (ok) { if (ok) toast("Photo de couverture mise à jour", "success"); });
       _reopenEditProfileAfterCover();
     })
     .catch(function() { _reopenEditProfileAfterCover(); });
@@ -1703,8 +1885,7 @@ function changeAvatarPhoto(event) {
   if (!file) return;
   _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre ta photo de profil" })
     .then(function(dataUrl) {
-      _syncProfilePhoto("avatarPhoto", "avatars", dataUrl);
-      toast("Photo de profil mise à jour", "success");
+      _syncProfilePhoto("avatarPhoto", "avatars", dataUrl).then(function (ok) { if (ok) toast("Photo de profil mise à jour", "success"); });
     })
     .catch(function() {});
 }
@@ -1880,7 +2061,7 @@ function openMainProfileMenu(ev) {
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
         } catch (e) { return ""; }
       })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
-    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); }, sep: true },
+    { label: "Affichage", run: function() { if (typeof openConfigurator === "function") openConfigurator(); }, sep: true },
     // L'invitation avait pour seule porte Paramètres → Support (2026-11-09).
     // `run` est appelé dans le clic même : le partage natif garde son geste.
     { label: "Inviter des amis", run: function() { inviterDesAmis("profil"); } }
@@ -1940,7 +2121,7 @@ function openEditMainProfile() {
 
   const html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Mon profil principal</div>
+    <div class="modal-title">Modifier mon profil</div>
 
     <!-- Photo de couverture : unique point d'entrée (le bouton « Changer » a été
          retiré de la carte profil pour ne garder QU'UN seul onglet d'édition). -->
@@ -1954,7 +2135,8 @@ function openEditMainProfile() {
 
     <label class="field">
       <span>Pseudo</span>
-      <input type="text" class="input" id="editUsername" value="${escapeHtml(g.username || state.user.name || "")}" maxlength="40" placeholder="Ton nom sur PASSIO"/>
+      <input type="text" class="input" id="editUsername" value="${escapeHtml(g.username || state.user.name || "")}" maxlength="40" placeholder="Ton nom sur PASSIO" aria-describedby="editUsernameErreur"/>
+      <span class="champ-erreur" id="editUsernameErreur" role="alert" hidden></span>
     </label>
 
     <label class="field">
@@ -1981,21 +2163,27 @@ function openEditMainProfile() {
       ${RS_LIST.map(platform => {
         const icons = { instagram:"📸", tiktok:"🎵", facebook:"👤", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
         const existing = links.find(l => l.platform === platform);
-        return `<div style="display:flex;align-items:center;gap:8px;">
+        // LOT-16 (PRO-C15) : seuls les réseaux REMPLIS sont affichés (les autres
+        // restent dans le formulaire, masqués : l'enregistrement lit tous les
+        // champs) ; « ＋ Ajouter un réseau » les montre. Noms de marque corrects.
+        const NOMS = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", youtube: "YouTube", twitter: "X (Twitter)", linkedin: "LinkedIn", snapchat: "Snapchat", autre: "Autre lien" };
+        return `<div class="rs-ligne" style="display:flex;align-items:center;gap:8px;"${existing && existing.url ? "" : " hidden"}>
           <span style="width:24px;text-align:center;font-size:16px;">${icons[platform]||"🔗"}</span>
           <input type="url" class="input rs-link-input" data-platform="${escapeHtml(platform)}"
-            placeholder="${platform.charAt(0).toUpperCase()+platform.slice(1)} URL"
+            aria-label="${escapeHtml(NOMS[platform] || platform)}"
+            placeholder="${escapeHtml(NOMS[platform] || platform)} — adresse"
             value="${escapeHtml(existing?.url||"")}"
             style="flex:1;font-size:16px;padding:8px 12px;"/>
         </div>`;
       }).join("")}
+      ${RS_LIST.some(p => !links.find(l => l.platform === p && l.url)) ? `<button type="button" class="btn ghost rs-ajouter" onclick="this.parentNode.querySelectorAll('.rs-ligne[hidden]').forEach(function(r){r.hidden=false;});this.remove();">＋ Ajouter un réseau</button>` : ""}
     </div>
 
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Apparence &amp; thème</button>
+      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Affichage</button>
     </div>
 
-    <div style="display:flex;gap:8px;margin-top:12px;">
+    <div class="edit-profil-actions" style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn ghost" onclick="closeModal()">Annuler</button>
       <button class="btn primary" style="flex:1;" onclick="saveMainProfile()">Sauvegarder</button>
     </div>`;
@@ -2038,8 +2226,30 @@ function editCoverFromModal() {
   if (inp) inp.click();
 }
 
+// LOT-6 (audit UX/UI du 2026-11-10, PRO-C03) : l'erreur d'un pseudo se dit SOUS le
+// champ, modale ouverte — un toast se peignait sous la modale, invisible.
+function _erreurPseudo(msg) {
+  var e = document.getElementById("editUsernameErreur");
+  var inp = document.getElementById("editUsername");
+  if (e) { e.textContent = msg || ""; e.hidden = !msg; }
+  if (inp) { if (msg) { inp.setAttribute("aria-invalid", "true"); try { inp.focus(); } catch (x) {} } else inp.removeAttribute("aria-invalid"); }
+  if (msg && !e) toast("⚠️ " + msg);
+}
+
 async function saveMainProfile() {
   const username = document.getElementById("editUsername")?.value.trim() || "";
+  _erreurPseudo("");
+  // LOT-6 (PRO-C03) : la même règle qu'à l'inscription (`nomCompteValide`, app-02,
+  // seule autorité du nom) — un pseudo vide ou réservé (« Admin ») partait en PATCH
+  // et l'écran disait « Profil mis à jour ».
+  if (typeof nomCompteValide === "function" && !nomCompteValide(username)) {
+    _erreurPseudo(!username
+      ? "Choisis un pseudo."
+      : (typeof nomCompteReserve === "function" && nomCompteReserve(username))
+        ? "Ce pseudo est réservé, choisis-en un autre."
+        : "Ton pseudo doit faire entre " + (typeof NOM_COMPTE_MIN !== "undefined" ? NOM_COMPTE_MIN : 2) + " et " + (typeof NOM_COMPTE_MAX !== "undefined" ? NOM_COMPTE_MAX : 40) + " caractères.");
+    return;
+  }
   // ⚠️ PAS de `.trim()` seul : il écrase les espaces aux bouts mais laisse passer
   // les \r d'un collage Windows, et n'a jamais borné les lignes vides. La bio est
   // MULTILIGNE (rendue en `white-space: pre-line`), donc elle passe par le
@@ -2049,13 +2259,23 @@ async function saveMainProfile() {
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
 
+  // CLI-01 : mêmes caractères interdits que la base (`profiles_username_forme`).
+  if (username && typeof nomCompteCaracteresInterdits === "function" && nomCompteCaracteresInterdits(username)) {
+    _erreurPseudo("Ton pseudo ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse.");
+    return;
+  }
   // Unicité du pseudo : refuse un pseudo déjà porté par un autre compte.
   if (username && typeof supaUsernameTaken === "function") {
     const takenBy = await supaUsernameTaken(username);
-    if (takenBy) { toast("⚠️ Ce pseudo est déjà utilisé, choisis-en un autre"); return; }
+    if (takenBy) { _erreurPseudo("Ce pseudo est déjà utilisé, choisis-en un autre."); return; }
   }
 
   if (!state.user.general) state.user.general = {};
+  // ⚠️ INSTANTANÉ AVANT TOUTE ÉCRITURE (ETAT-03, 2026-11-10) : un refus du serveur rend
+  // cet état — jamais « Profil mis à jour » sur une ligne que la base n'a pas gardée.
+  const _avantGeneral = JSON.parse(JSON.stringify(state.user.general));
+  const _avantNom = state.user.name;
+  const _avantNomsPassions = (state.user.profiles || []).map(function (pr) { return pr && pr.name; });
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
@@ -2096,15 +2316,34 @@ async function saveMainProfile() {
   // `is_private` — et encore : `supaSavePublicProfile` le refusera si
   // `privacyChoisi` n'est pas posé (cf. le marqueur, plus haut dans cette
   // fonction). L'ancien appel republiait tout le profil depuis l'état local.
+  // ⚠️ `is_private` NE PART QUE SUR LE GESTE DE CETTE OUVERTURE (ETAT-03, 2026-11-10).
+  // `privacyChoisi` reste posé pour toujours et voyage entre appareils : s'y fier faisait
+  // repartir la valeur AFFICHÉE par la case à chaque enregistrement — celle de l'état local,
+  // périmé, quand la relecture serveur était lente ou en panne. Un compte rendu privé
+  // ailleurs redevenait public en enregistrant une bio.
   if (typeof supaSavePublicProfile === "function") {
-    try {
-      await supaSavePublicProfile({
-        username: state.user.general.username,
-        bio: state.user.general.bio,
-        rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
-        is_private: state.user.general.isPrivate,
-      });
-    } catch (e) {}
+    const champs = {
+      username: state.user.general.username,
+      bio: state.user.general.bio,
+      rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
+    };
+    if (window._privacyTouched === true) champs.is_private = state.user.general.isPrivate;
+    let enregistre = false;
+    try { enregistre = (await supaSavePublicProfile(champs)) !== false; } catch (e) { enregistre = false; }
+    // ⚠️ LE VERDICT SE LIT (ETAT-03). L'ancien appel l'avalait dans un `catch` vide et
+    // disait toujours « Profil mis à jour » : hors ligne ou sur un refus, la personne
+    // se croyait en compte privé pendant que sa ligne restait publique.
+    // Un visiteur n'a pas de ligne `profiles` : son profil vit sur l'appareil, et le
+    // refus serveur attendu (0 ligne) n'est pas un échec pour lui.
+    const compteReel = typeof _compteAuthReel === "function" ? _compteAuthReel() : true;
+    if (!enregistre && compteReel) {
+      state.user.general = _avantGeneral;
+      state.user.name = _avantNom;
+      (state.user.profiles || []).forEach(function (pr, i) { if (pr) pr.name = _avantNomsPassions[i]; });
+      saveState();
+      toast("Profil non enregistré — vérifie ta connexion et réessaie", "warning");
+      return;   // l'écran reste ouvert : la saisie n'est pas perdue
+    }
   }
   // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
@@ -2433,6 +2672,30 @@ function _ancreRailPassions() {
       || document.getElementById("myPosts");
 }
 
+// Pose le rail JUSTE AVANT son ancre — la SEULE règle de sa place, partagée
+// par `renderProfilePassionRail` et par le lot UI-7 (`js/ui-v7-lot.js`), qui
+// l'appelle après chacun de ses déplacements de nœuds (construction ET
+// coupure). ⚠️ UI-7 rejoue un ordre d'enfants photographié : sans ce rappel,
+// une coupure suivie d'un repeint puis d'un rétablissement posait le rail SOUS
+// les panneaux, et sans le repeint AU-DESSUS de la carte (défaut préexistant
+// relevé le 2026-11-14, verrou « KILL SWITCH » de `ui-v7-lot.spec.js`).
+// Ne fait que DÉPLACER un rail existant : rien n'est créé ni réécrit.
+function ancrerRailPassions(rail) {
+  rail = rail || document.getElementById("v9ProfilePassions");
+  var ancre = _ancreRailPassions();
+  if (!rail || !ancre || !ancre.parentNode || rail === ancre) return null;
+  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
+  // `innerHTML`. Et le chemin du rendu échappe à `ecrireRailCoulissant` : la
+  // sortie anticipée sur `data-v9-sig` rend le rail sans jamais réécrire son
+  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
+  if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
+    var _xRail = rail.scrollLeft || 0;
+    ancre.parentNode.insertBefore(rail, ancre);
+    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
+  }
+  return rail;
+}
+
 function renderProfilePassionRail() {
   var ancre = _ancreRailPassions();
   if (!ancre || !ancre.parentNode) return null;
@@ -2452,15 +2715,8 @@ function renderProfilePassionRail() {
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
-  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
-  // `innerHTML`. Et ce chemin-ci échappe à `ecrireRailCoulissant` : la sortie
-  // anticipée sur `data-v9-sig` (plus bas) rend le rail sans jamais réécrire son
-  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
-  if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
-    var _xRail = rail.scrollLeft || 0;
-    ancre.parentNode.insertBefore(rail, ancre);
-    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
-  }
+  // Sa place : juste avant l'ancre (le `scrollLeft` y est préservé).
+  ancrerRailPassions(rail);
 
   var vivantes = passionsVivantes();
   var selIds = {};
@@ -2549,7 +2805,6 @@ function renderProfilePassionRail() {
       label: et.label,
       photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
       fallbackUrl: passionPhotoFallback(pr.passion),
-      count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
       dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
@@ -2663,7 +2918,8 @@ function openPassionsAide() {
         : "")
     + "<p><b>Archiver ne supprime rien.</b> Publications, activités, bobines et "
     + "médias d'une passion archivée restent enregistrés ; tu peux la réactiver "
-    + "quand une place et un changement sont disponibles.</p>"
+    // LOT-16 (PRO-C12) : la condition ne se dit que quand le plafond est en vigueur.
+    + (plafondActif ? "quand une place et un changement sont disponibles.</p>" : "quand tu veux.</p>")
     + (restants === Infinity ? ""
         : "<p><b>Réorganiser coûte un changement.</b> Il t'en reste <b>" + restants
           + "</b> sur " + CHANGEMENTS_PASSION_OFFERTS + ". Seul l'archivage d'une "
@@ -2846,6 +3102,9 @@ function restaurerPassion(profileId, silencieux) {
   }
   pr.archived = false;
   delete pr.archivedAt;
+  // Date du geste : c'est elle qui arbitre la fusion avec un blob serveur plus
+  // ancien (app-02) — sans elle, la réactivation était annulée à la réouverture.
+  pr.restoredAt = Date.now();
   // ⚠️ RESTAURER, C'EST POSSÉDER. Sans cette ligne, réactiver un remplissage
   // archivé consommait un changement et ne faisait RÉAPPARAÎTRE RIEN — ni
   // carte, ni bulle, ni compteur, puisque `passionsVivantes()` l'écarte. Un
@@ -3354,7 +3613,7 @@ function renderProfilesScreen() {
         </div>
         <div class="profile-card-body" style="flex:1;">
           <div class="profile-card-name">
-            ${passion.emoji} ${passion.label}
+            ${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}
           </div>
           ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
         </div>
@@ -3374,6 +3633,7 @@ function renderProfilesScreen() {
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
+
 
   // Aide §8 « premier retour Profil » : montrer comment créer un second profil
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui
@@ -3524,7 +3784,7 @@ function openEditPassionProfile(profileId) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✏️ ${escapeHtml(passion.emoji + " " + passion.label)}</div>
+    <div class="modal-title">Modifier « ${escapeHtml(passion.label)} »</div>
 
     <div class="field">
       <span>Photo de la passion</span>
@@ -3544,7 +3804,7 @@ function openEditPassionProfile(profileId) {
     </div>
 
     <label class="field">
-      <span>Bio de ce profil <span style="font-weight:400;color:var(--muted);" id="passionBioCount">${(p.bio||"").length}/150</span></span>
+      <span>Ce que tu partages ici <span style="font-weight:400;color:var(--muted);" id="passionBioCount">${(p.bio||"").length}/150</span></span>
       <textarea class="textarea" id="editPassionBio" maxlength="150" placeholder="Décris ce que tu partages avec cette passion…" style="min-height:80px;">${escapeHtml(p.bio||"")}</textarea>
     </label>
 
@@ -3773,18 +4033,7 @@ function renderProfileStrip() {
   var hasPassionFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasPassionFilter || enSuivis);
 
-  // Compter les posts disponibles par passion (tous moods)
-  var allPostsFlat = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
-  var postCountByPassion = {};
-  allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
-
-  // Combien de publications le rail « Suivis » montrerait — même source que le
-  // moteur (`following` × `authorId`), pour ne pas annoncer un chiffre que le
-  // fil ne tiendrait pas.
-  var _suivis = (state.user && state.user.following) || [];
-  var followingPostCount = _suivis.length
-    ? allPostsFlat.filter(function (p) { return _suivis.indexOf(p.authorId) >= 0; }).length
-    : 0;
+  // Aucun chiffre sur les bulles (2026-11-13) : voir `passionTileHTML` (app-02).
   // ⚠️ Le rendu de la bulle est CENTRALISÉ dans `passionTileHTML` (app-02) : le
   // Profil affiche exactement la même, et deux copies auraient divergé.
   var followingTile = passionTileHTML({
@@ -3792,7 +4041,6 @@ function renderProfileStrip() {
     label: "Suivis",
     photoUrl: imageDemo("photo-1529156069898-49953e39b3ac", "avatar"),
     avatarStyle: "background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));",
-    count: followingPostCount,
     selected: enSuivis,
     dimmed: !enSuivis,
     action: "feedFollowing",
@@ -3817,7 +4065,6 @@ function renderProfileStrip() {
       label: passion.label,
       photoUrl: passionPhotoUrl(passion),
       fallbackUrl: passionPhotoFallback(p.passion),
-      count: postCountByPassion[p.passion] || 0,
       selected: isSelected,
       dimmed: isDimmed,
       action: "feedPassion", arg: p.passion,
@@ -3866,6 +4113,11 @@ function renderProfileStrip() {
 // ══════════════════════════════════════════════════════════════════════════
 // TROIS PASSIONS OFFERTES, LES SUIVANTES SERONT PAYANTES (2026-09-01)
 // ──────────────────────────────────────────────────────────────────────────
+// ⛔ DÉCISION REMPLACÉE PAR ADR-013 (2026-11-12) : les passions sont illimitées
+// pour tous, définitivement, et un membre ne paie jamais. Le récit ci-dessous
+// reste pour l'histoire ; le plafond ne s'arme plus que sur un appareil de test
+// (`plafondPassionsArme`), et aucune fenêtre n'annonce plus d'offre payante.
+//
 // Demande de Benjamin : « 3 profils gratuits, le reste payant ; pour l'instant
 // tu bloques et tu mets une fenêtre qui annonce que ça sera payant » — puis,
 // une minute plus tard : « ne mets pas de valeur, tu mets juste que ça va être
@@ -4098,8 +4350,10 @@ function passionsIllimitees() {
 // donc `passionsRestantesOffertes` → Infinity, le quota (`quotaChangementsActif`)
 // tombe avec lui, l'écran retire seul « sur N » et l'alerte de quota.
 //
-// ⚠️ LE MÉCANISME RESTE, ENTIER. Il sera le premier avantage de PASSIO+
-// (phase 3 du plan). Le réarmer = passer `PLAFOND_PASSIONS_EN_VIGUEUR` à true.
+// ⚠️ LEVÉ DÉFINITIVEMENT (ADR-013, 2026-11-12) : PASSIO+ est abandonné, et le
+// plafond ne sera jamais vendu. Le mécanisme reste dans le code, armable sur un
+// appareil (les suites qui l'éprouvent), comme limite anti-abus de secours :
+// le réarmer pour tous demanderait de rouvrir l'ADR, jamais une constante.
 //   • Un compte qui a pris cinq passions pendant le lancement les GARDE : la
 //     fusion n'ajoute que sous le plafond, elle ne rétrograde jamais l'état
 //     serveur (`reinjecterProfilsLocauxBornes`, fiche 16).
@@ -4415,14 +4669,19 @@ function openPassionPaywall(opts) {
   //   • `opts.creation` : les trois CRÉATIONS de passion sont utilisées ;
   //   • `quotaEpuise`   : les trois CHANGEMENTS sont utilisés ;
   //   • défaut          : les trois passions VIVANTES sont occupées.
+  // ⚠️ AUCUNE OFFRE PAYANTE ANNONCÉE (ADR-013, 2026-11-12) : les passions sont
+  // illimitées, définitivement, et un membre ne paie jamais. Ces fenêtres disent
+  // la limite qui a refusé le geste, jamais qu'elle se lève en payant.
+  //   • la CRÉATION (noms absents du catalogue) reste bornée par le SERVEUR :
+  //     c'est l'anti-abus du catalogue, chaque nom neuf est relu ;
+  //   • le plafond et le quota ne s'arment plus que sur un appareil de test.
   const corps = opts.creation
-    ? `Tu as utilisé tes <strong>${PASSIONS_OFFERTES} créations de passion</strong>.
-       En créer d'autres fera partie d'une formule <strong>payante</strong>.`
+    ? `Tu as créé <strong>${PASSIONS_OFFERTES} passions</strong> qui n'existaient pas
+       encore au catalogue : c'est la limite par compte. Chaque nom nouveau est
+       relu, pour garder un catalogue sans doublons ni abus.`
     : quotaEpuise
-    ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.
-       En changer davantage fera partie d'une formule <strong>payante</strong>.`
-    : `Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
-       supplémentaires feront partie d'une formule <strong>payante</strong>.`;
+    ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.`
+    : `Tu suis déjà <strong>${PASSIONS_OFFERTES} passions</strong> : c'est la limite en vigueur.`;
 
   const suite = opts.creation
     ? `Les passions déjà présentes au catalogue restent accessibles : cherche-les,
@@ -4438,12 +4697,8 @@ function openPassionPaywall(opts) {
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:30px;margin-bottom:8px;">🔒</div>
-      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">${opts.creation ? "Trois créations offertes" : "Trois passions offertes"}</div>
+      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">${opts.creation ? "Trois créations de passion" : "Trois passions à la fois"}</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.6;">${corps}</div>
-    </div>
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
-      Cette formule <strong>n'est pas encore ouverte</strong> : aucun paiement n'est
-      possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé plus tard.
     </div>
     <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">${suite}</div>
     ${echange}
@@ -4628,7 +4883,7 @@ function openCreateProfile() {
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
         <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${escapeHtml(p.id)}" onclick="selectNewProfilePassion('${escapeJsArg(p.id)}')">
-          <div class="passion-tile-emoji">${p.emoji}</div>
+          <div class="passion-tile-emoji">${escapeHtml(p.emoji)}</div>
           <div class="passion-tile-label">${escapeHtml(p.label)}</div>
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
@@ -4831,7 +5086,7 @@ function renderStudio() {
   const _pool = _poolBrut.filter(p => p && estPassionCanonique(p.passion));
   sel.innerHTML = _pool.map(p => {
     const pn = passionById(p.passion);
-    return `<option value="${p.passion}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${pn.emoji} ${pn.label}</option>`;
+    return `<option value="${escapeHtml(p.passion)}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${escapeHtml(pn.emoji)} ${escapeHtml(pn.label)}</option>`;
   }).join("");
   // La ligne d'explication n'apparaît QUE si quelque chose a été écarté : sinon
   // elle inquiéterait pour rien l'immense majorité des comptes.
@@ -4869,24 +5124,10 @@ function renderStudio() {
     }
   }
 
-  // Drafts
-  // 🔧 FIX AUDIT 2026-06-10 : #draftList n'existe plus dans le markup →
-  // TypeError à CHAQUE ouverture du Studio (goTo("studio") → renderStudio).
-  const drafts = state.user.drafts || [];
-  const dl = $("#draftList");
-  if (!dl) return;
-  if (drafts.length === 0) {
-    dl.innerHTML = `<div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Aucun brouillon</div><div class="empty-text">Tes brouillons apparaîtront ici.</div></div>`;
-  } else {
-    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${escapeJsArg(escapeHtml(d.id))}')">
-      <div style="font-size:22px;">${d.type === "photo" ? "📷" : d.type === "audio" ? "🎙" : "✍️"}</div>
-      <div class="list-row-body">
-        <div class="list-row-title">${escapeHtml((d.text || "").slice(0, 60)) || "(vide)"}</div>
-        <div class="list-row-meta">${passionById(d.passion).label} · ${fmtTime(d.at)}</div>
-      </div>
-      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${escapeJsArg(escapeHtml(d.id))}')">🗑</button>
-    </div>`).join("");
-  }
+  // LOT-15 (CRE-C05) : le brouillon automatique se propose sur un champ vide.
+  try { proposerBrouillonStudio(); } catch (e) {}
+  // LOT-15 (CRE-C10) : qui verra la publication.
+  try { var _bp = document.querySelector('#screen-studio button[onclick="publishPost()"]'); if (_bp) peindreLigneAudience(_bp.parentNode, "publication"); } catch (e) {}
 }
 
 function applyTemplate(kind) {
@@ -5035,16 +5276,33 @@ $("#photoInput").addEventListener("change", async (e) => {
   }
 });
 
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C01) : « Créer → Publication » ouvre le
+// Studio sur le média RÉELLEMENT attaché, sinon sur le texte — l'audio choisi
+// avant (« Créer → Audio ») ne restait plus en mémoire pour refuser un texte.
+function ouvrirStudioPublication() {
+  if (studioType !== "bobine") studioType = photoDataUrl ? "photo" : videoDataUrl ? "video" : audioDataUrl ? "audio" : "text";
+  goTo("studio");
+  return true;
+}
+
+// LOT-15 (CRE-C07) : le bouton du composer dit « Changer la photo » quand une photo est là.
+function _libelleBoutonMedia(type, present) {
+  const b = document.querySelector('[data-v6-media="' + type + '"]');
+  if (b) b.textContent = present ? (type === "photo" ? "Changer la photo" : "Changer la vidéo") : (type === "photo" ? "Ajouter une photo" : "Ajouter une vidéo");
+}
+
 function renderPhotoPreview() {
   const box = $("#photoPreviewBox");
+  _libelleBoutonMedia("photo", !!photoDataUrl);
   if (!photoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <img loading="lazy" decoding="async" src="${photoDataUrl}" alt="preview"/>
-    <div class="photo-clear" onclick="clearPhoto()">✕</div>
+    <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(photoDataUrl)}="${safeUrlAttr(photoDataUrl)}" alt="preview"/>
+    <button type="button" class="photo-clear" onclick="clearPhoto()" aria-label="Retirer la photo">✕</button>
   </div>`;
 }
 
-function clearPhoto() { photoDataUrl = null; renderPhotoPreview(); }
+// LOT-15 (CRE-C01) : retirer le média rend le Studio au texte.
+function clearPhoto() { photoDataUrl = null; if (studioType === "photo") studioType = "text"; renderPhotoPreview(); }
 
 // Video upload
 // ⚠️ CETTE PORTE ENVOYAIT LE FICHIER BRUT, jusqu'à 30 Mo, pendant que l'éditeur
@@ -5082,15 +5340,16 @@ $("#videoInput").addEventListener("change", async (e) => {
 
 function renderVideoPreview() {
   const box = $("#videoPreviewBox");
+  _libelleBoutonMedia("video", !!videoDataUrl);
   if (!box) return;
   if (!videoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <video src="${videoDataUrl}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
-    <div class="photo-clear" onclick="clearVideo()">✕</div>
+    <video ${passioMediaProteges.local(passioMediaProteges.route(videoDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(videoDataUrl)}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
+    <button type="button" class="photo-clear" onclick="clearVideo()" aria-label="Retirer la vidéo">✕</button>
   </div>`;
 }
 
-function clearVideo() { videoDataUrl = null; renderVideoPreview(); }
+function clearVideo() { videoDataUrl = null; if (studioType === "video") studioType = "text"; renderVideoPreview(); }
 
 // ✅ Audio file upload
 $("#audioInput").addEventListener("change", (e) => {
@@ -5118,7 +5377,7 @@ $("#audioInput").addEventListener("change", (e) => {
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "Audio chargé et prêt à publier";
-    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
+    $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
     toast("Audio chargé", "success");
   };
   reader.readAsDataURL(f);
@@ -5149,6 +5408,10 @@ function _passioBestAudioMime() {
 }
 
 async function toggleRecording() {
+  // LOT-15 (CRE-C14) : aucune demande de micro avant un compte — la règle de
+  // première visite (« aucune permission à l'entrée ») ; la porte d'inscription
+  // explique l'action, comme pour publier.
+  if (!(mediaRecorder && mediaRecorder.state === "recording") && window.requireAuthentication && !requireAuthentication("publier")) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     _mediaEnPreparation();
     mediaRecorder.stop();
@@ -5197,7 +5460,7 @@ async function toggleRecording() {
         $("#studioVideo").style.display = "none";
         $("#studioAudio").style.display = "block";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
-        $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
+        $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">Supprimer</button>`;
       };
       reader.readAsDataURL(blob);
@@ -5263,6 +5526,24 @@ async function publishPost() {
     }
   }
 
+  // LOT-10 (audit UX/UI du 2026-11-10, CRE-C01) : le format du DERNIER média restait
+  // en mémoire — photo ajoutée puis retirée, ou déjà publiée, ou « Créer → Audio »
+  // puis « Publication » : le Studio refusait ensuite un texte seul (« Ajoute une
+  // photo. »), et les onglets pour revenir à « Texte » sont masqués depuis UI-6.
+  // `studioType` reste la SEULE source de ce qui est publié : on le REMET juste
+  // quand le média qu'il annonce n'est pas là et qu'un texte est écrit. La
+  // bobine, format choisi explicitement, n'est pas concernée.
+  var _mediaAttendu = { photo: photoDataUrl, video: videoDataUrl, audio: audioDataUrl };
+  if (Object.prototype.hasOwnProperty.call(_mediaAttendu, studioType) && !_mediaAttendu[studioType] && text.length >= 3) {
+    studioType = "text";
+  }
+  // LOT-15 (CRE-C01, suite) : et dans l'autre sens — un média RÉELLEMENT attaché
+  // décide du type, même si le Studio croyait écrire un texte.
+  if (studioType === "text") {
+    if (photoDataUrl) studioType = "photo";
+    else if (videoDataUrl) studioType = "video";
+    else if (audioDataUrl) studioType = "audio";
+  }
   if (studioType === "text" && text.length < 3) {
     toast("Écris quelque chose.");
     return;
@@ -5304,7 +5585,7 @@ async function publishPost() {
     return;
   }
 
-  toast("Publication en cours…", "loading");
+  const _toastEnCours = toast("Publication en cours…", "loading");
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
@@ -5403,30 +5684,41 @@ async function publishPost() {
 
     // Quand l'upload se termine (même après le timeout d'affichage), l'URL Storage
     // a remplacé le base64 dans `post` → on persiste et on re-rend pour fixer l'image.
-    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
-      if (ok) { try { saveState(); renderFeed(); } catch (e) {} }
-      return ok;
-    });
+    // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, CRE-C04) : la carte restait sur
+    // « Sync… » après le verdict — succès comme refus — parce que `renderFeed`
+    // sautait le repeint (`_feedDomSig` ne voit pas `syncStatus`). On invalide
+    // la signature AU VERDICT, quel qu'il soit, et seulement à lui.
+    const _repeindreVerdict = () => { try { saveState(); window._feedDomSig = null; renderFeed(); } catch (e) {} };
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => { _repeindreVerdict(); return ok; },
+      (e) => { _repeindreVerdict(); throw e; });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
+    // Le verdict remplace « Publication en cours… » : jamais les deux à l'écran.
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e) {}
 
     if (syncSuccess) {
-      toast("Post publié", "success");
+      toast("Publication en ligne", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
       // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
-      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
+      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3). Le statut posé par
+      // `supaPublishPostWithRetry` (app-08) dit lequel des trois cas on vit.
       var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-      toast(_msgP || "Post en local (connexion lente)", "warning");
+      if (_msgP) toast(_msgP, "error");
+      else if (post.syncStatus === "refusee") toast("Publication refusée par le serveur : elle n'est visible que sur cet appareil.", "error");
+      else if (post.syncStatus === "offline") toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
+      else toast("Envoi plus long que prévu : ta publication s'affichera « En ligne » dès qu'elle est reçue.", "info");
     }
   } catch (e) {
-    toast("Post en local (erreur réseau)", "warning");
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e2) {}
+    toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }
 
   // Clear form
   $("#postText").value = "";
+  try { effacerBrouillonStudio(); } catch (e) {}
   photoDataUrl = null;
   videoDataUrl = null;
   audioDataUrl = null;
@@ -5471,79 +5763,93 @@ async function publishPost() {
     }
 
     goTo("feed");
-    pushNotification(`Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
+    pushNotification(`Ta publication est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
 }
 
-function saveDraft() {
-  const text = $("#postText").value.trim();
-  if (!text && !photoDataUrl && !videoDataUrl && !audioDataUrl) { toast("Rien à sauvegarder"); return; }
-  const d = {
-    id: uid(),
-    type: studioType,
-    text,
-    // Filet de dernier recours : un `<select>` peut valoir "" sans que personne
-    // ne l'ait voulu (une affectation à une valeur sans <option> le vide en
-    // silence — cf. shareEventExperience). Un post sans passion perd sa
-    // provenance ET disparaît du fil de son auteur, que le filtre de passions
-    // écarte. On retombe donc sur l'identité active, jamais sur du vide.
-    passion: $("#postPassion").value || (currentProfile() && currentProfile().passion) || "",
-    mood: studioMood,
-    image: photoDataUrl,
-    video: videoDataUrl,
-    audio: audioDataUrl,
-    at: Date.now(),
-  };
-  state.user.drafts.unshift(d);
-  saveState();
-  toast("Brouillon sauvegardé");
-  renderStudio();
+// ══════════════════════════════════════════════════════════════════════════
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C05) — LE BROUILLON AUTOMATIQUE
+// ──────────────────────────────────────────────────────────────────────────
+// Une fermeture de la PWA, une mise à jour ou un rechargement effaçait la
+// création en cours : `saveDraft` n'avait plus aucun appelant, et `#draftList`
+// n'existait plus. Ce code orphelin est RETIRÉ ; à sa place, le texte (avec la
+// passion et l'envie) se garde seul, en local, et se propose à la réouverture
+// (« Reprendre / Effacer »). Pas de liste de brouillons.
+// ⚠️ Une file locale appartient à un compte (AUTH-06) : le brouillon porte le
+// compte qui l'a écrit et ne se propose qu'à lui ; sa clé est déjà dans
+// ACCOUNT_SCOPED_KEYS (purgée au changement de compte). Le texte seul : jamais
+// un média (base64) dans localStorage.
+const BROUILLON_STUDIO_KEY = "passio_vlog_draft_v1";
+const BROUILLON_STUDIO_DUREE_MS = 14 * 24 * 3600 * 1000;
+let _brouillonStudioMinuteur = null;
+function _brouillonStudioCompte() {
+  try { return (typeof _fileProprietaire === "function" && _fileProprietaire()) || "visiteur"; } catch (e) { return "visiteur"; }
 }
-
-function loadDraft(id) {
-  const d = state.user.drafts.find(x => x.id === id);
-  if (!d) return;
-  studioType = d.type;
-  // ⚠️ La passion du brouillon était la SEULE chose que `loadDraft` ne
-  // restaurait pas. Tant que le `<select>` proposait toutes les passions, le
-  // brouillon repartait sous la sienne par la présélection du profil actif.
-  // Depuis le filtre canonique, un brouillon rangé dans une passion non
-  // publiable serait republié sous une AUTRE passion, sans un mot. On la
-  // restaure quand elle est encore proposée, et on le DIT quand elle ne l'est
-  // plus — plutôt que de reclasser dans le dos de son auteur.
-  setTimeout(function () {
-    try {
-      var sel = $("#postPassion");
-      if (!sel || !d.passion) return;
-      var dispo = [].slice.call(sel.options).some(function (o) { return o.value === d.passion; });
-      if (dispo) { sel.value = d.passion; return; }
-      var pn = (typeof passionById === "function") ? passionById(d.passion) : null;
-      toast("⚠️ « " + ((pn && pn.label) || d.passion) + " » n'est plus publiable : choisis une passion avant d'envoyer.");
-    } catch (e) {}
-  }, 0);
+function enregistrerBrouillonStudio() {
+  const ta = document.getElementById("postText");
+  if (!ta) return false;
+  const text = String(ta.value || "");
+  try {
+    if (!text.trim()) { localStorage.removeItem(BROUILLON_STUDIO_KEY); return false; }
+    const sel = document.getElementById("postPassion");
+    localStorage.setItem(BROUILLON_STUDIO_KEY, JSON.stringify({
+      v: 1, compte: _brouillonStudioCompte(), text: text.slice(0, 1200),
+      passion: (sel && sel.value) || "", mood: studioMood || "", at: Date.now(),
+    }));
+    return true;
+  } catch (e) { return false; }
+}
+function lireBrouillonStudio() {
+  try {
+    const d = JSON.parse(localStorage.getItem(BROUILLON_STUDIO_KEY) || "null");
+    if (!d || d.v !== 1 || typeof d.text !== "string" || !d.text.trim()) return null;
+    if (d.compte !== _brouillonStudioCompte()) return null;
+    if (!(Date.now() - Number(d.at) < BROUILLON_STUDIO_DUREE_MS)) return null;
+    return d;
+  } catch (e) { return null; }
+}
+function effacerBrouillonStudio() {
+  try { localStorage.removeItem(BROUILLON_STUDIO_KEY); } catch (e) {}
+  const b = document.getElementById("studioBrouillon");
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+}
+// Le bandeau ne se pose que sur un champ VIDE : il ne remplace jamais ce qu'on écrit.
+function proposerBrouillonStudio() {
+  const ta = document.getElementById("postText");
+  const ancien = document.getElementById("studioBrouillon");
+  if (ancien && ancien.parentNode) ancien.parentNode.removeChild(ancien);
+  if (!ta || String(ta.value || "").trim()) return false;
+  const d = lireBrouillonStudio();
+  if (!d) return false;
+  const b = document.createElement("div");
+  b.id = "studioBrouillon";
+  b.className = "studio-brouillon";
+  b.setAttribute("role", "status");
+  const extrait = d.text.trim().slice(0, 60) + (d.text.trim().length > 60 ? "…" : "");
+  b.innerHTML = '<span class="studio-brouillon-texte">Un brouillon t’attend : « ' + escapeHtml(extrait) + ' »</span>'
+    + '<button type="button" class="btn small primary" onclick="reprendreBrouillonStudio()">Reprendre</button>'
+    + '<button type="button" class="btn small ghost" onclick="effacerBrouillonStudio()">Effacer</button>';
+  ta.parentNode.insertBefore(b, ta);
+  return true;
+}
+function reprendreBrouillonStudio() {
+  const d = lireBrouillonStudio();
+  if (!d) { effacerBrouillonStudio(); return false; }
+  const ta = document.getElementById("postText");
+  if (ta) ta.value = d.text;
+  const sel = document.getElementById("postPassion");
+  if (sel && d.passion && [].slice.call(sel.options).some(function (o) { return o.value === d.passion; })) sel.value = d.passion;
   studioMood = normalizeStudioMood(d.mood);
-  photoDataUrl = d.image || null;
-  videoDataUrl = d.video || null;
-  audioDataUrl = d.audio || null;
-  $$("#studioTypeTabs .studio-type").forEach(el => el.classList.toggle("active", el.getAttribute("data-type") === studioType));
   $$("#postMoodRow .pill").forEach(el => el.classList.toggle("active", el.getAttribute("data-postmood") === studioMood));
-  $("#studioPhoto").style.display = studioType === "photo" ? "block" : "none";
-  $("#studioVideo").style.display = studioType === "video" ? "block" : "none";
-  $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
-  $("#postText").value = d.text || "";
-  if (studioType === "photo") renderPhotoPreview();
-  if (studioType === "video") renderVideoPreview();
-  if (studioType === "audio" && audioDataUrl) {
-    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
-  }
-  toast("Brouillon chargé");
+  const b = document.getElementById("studioBrouillon");
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+  return true;
 }
-
-function deleteDraft(id) {
-  state.user.drafts = state.user.drafts.filter(x => x.id !== id);
-  saveState();
-  renderStudio();
-}
+document.addEventListener("input", function (e) {
+  if (!e.target || e.target.id !== "postText") return;
+  clearTimeout(_brouillonStudioMinuteur);
+  _brouillonStudioMinuteur = setTimeout(enregistrerBrouillonStudio, 600);
+});
 
 // ======== EXPLORER ========
 // ══════════════════════════════════════════════════════════════════════════
@@ -5591,6 +5897,22 @@ function renderExplorer() {
   function peindreTendances() {
     var cible = document.getElementById("trendingGrid");
     if (!cible) return;
+    // LOT-11 (REC-C14, REC-C15) : seules les passions qui ont des publications
+    // réelles, nommées ; sans elles, la section dit « Pour commencer » et montre
+    // le socle — plus de « Hot » posé sur l'ordre alphabétique.
+    var actives = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, 6) : [];
+    var titre = document.getElementById("trendingTitle");
+    if (titre) titre.textContent = actives.length ? "Passions actives" : "Pour commencer";
+    if (actives.length) {
+      cible.innerHTML = actives.map(function (p) {
+        return '<div class="trending-tile" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
+          + '<div class="trending-emoji">' + escapeHtml(p.emoji) + '</div>'
+          + '<div class="trending-name">' + escapeHtml(p.label) + '</div>'
+          + '<div class="trending-stat">' + p.count + ' publication' + (p.count > 1 ? "s" : "") + '</div>'
+          + '</div>';
+      }).join("");
+      return;
+    }
     var counts = {};
     var dejaComptes = Object.create(null);
     [].concat(state.userPosts || [], state.supabasePosts || []).forEach(function (p) {
@@ -5722,7 +6044,17 @@ function renderExplorer() {
   // garde d'authentification, si bien qu'un visiteur sans compte écrivait un
   // suivi. Tout passe désormais par `toggleFollowUser` (app-04), qui garde
   // `requireAuthentication`, sait DÉSUIVRE, et synchronise.
+  // LOT-11 (REC-C05) : « à suivre » = personnes que je ne suis pas encore (ni
+  // suivies, ni en demande, ni bloquées), celles qui partagent une de mes
+  // passions d'abord.
+  var _mesPassions = {};
+  try { (state.user.profiles || []).forEach(function (p) { if (p && !p.archived && !p._parDefaut && p.passion) _mesPassions[p.passion] = 1; }); } catch (e) {}
+  function _aSuivre(id) { return id && (typeof etatSuivi !== "function" || etatSuivi(id) === "aucun") && !(typeof isBlocked === "function" && isBlocked(id)); }
+  function _parAffinite(a, b) { return (_mesPassions[b.passion || b.passion_id] ? 1 : 0) - (_mesPassions[a.passion || a.passion_id] ? 1 : 0); }
   function ligneCreateur(u) {
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+    if (typeof isBlocked === "function" && isBlocked(u.id)) return "";
     var suivi = ((state.user.following || []).indexOf(u.id) >= 0);
     return '<div class="list-row" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">'
       + '<div class="avatar" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
@@ -5737,7 +6069,7 @@ function renderExplorer() {
   }
 
   function createursSeed() {
-    return (state.seed.users || []).slice(0, 4).map(function (u) {
+    return (state.seed.users || []).filter(function (u) { return _aSuivre(u.id); }).slice().sort(_parAffinite).slice(0, 4).map(function (u) {
       var p = passionById(u.passion);
       return ligneCreateur({
         id: u.id, name: u.name, avatar: u.avatar, profileEmoji: u.profileEmoji,
@@ -5761,7 +6093,7 @@ function renderExplorer() {
         if ((r && r.error) || !data || !data.length) return;
         var el = document.getElementById("suggestedCreators");
         if (!el) return;
-        var others = data.filter(function (u) { return u.id !== MY_UID && u.username; });
+        var others = data.filter(function (u) { return u.id !== MY_UID && u.username && _aSuivre(u.id); }).sort(_parAffinite);
         if (!others.length) return;
         var supaHtml = others.map(function (u) {
           var p = passionById(u.passion_id);
@@ -5957,12 +6289,12 @@ async function aiGenerateResponse(query) {
     var cardsHTML = matched.length ? matched.map(function(e) {
       var p = passionById(e.passion) || { emoji:"📍", label: e.passion };
       return '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-        '<div class="ai-card-title">' + p.emoji + ' ' + escapeHtml(e.title || "Événement") + '</div>' +
+        '<div class="ai-card-title">' + escapeHtml(p.emoji) + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
         '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "Bientôt") + '</div>' +
       '</div>';
-    }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucun événement trouvé pour ta recherche.</div>';
-    return '<div><div class="ai-section-label">📍 Événements IRL</div>' + cardsHTML +
-      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Tu peux aussi créer ton propre événement dans l\'onglet IRL → <b>+ Créer</b>.</div></div>';
+    }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucune activité trouvée pour ta recherche.</div>';
+    return '<div><div class="ai-section-label">📍 Activités IRL</div>' + cardsHTML +
+      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Tu peux aussi créer ta propre activité dans l\'onglet Rencontrer → <b>+ Créer</b>.</div></div>';
   }
 
   // --- Créateurs ---
@@ -5983,7 +6315,7 @@ async function aiGenerateResponse(query) {
       return '<div class="ai-card" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
-          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + p.emoji + ' ' + p.label + '</div></div>' +
+          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</div></div>' +
         '</div>' +
       '</div>';
     }).join("");
@@ -6036,13 +6368,13 @@ async function aiGenerateResponse(query) {
 
     var html = '<div>';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-    html += '<span style="font-size:28px;">' + passionEmoji + '</span>';
-    html += '<div><div style="font-weight:800;font-size:15px;">' + passionLabel + '</div>';
+    html += '<span style="font-size:28px;">' + escapeHtml(passionEmoji) + '</span>';
+    html += '<div><div style="font-weight:800;font-size:15px;">' + escapeHtml(passionLabel) + '</div>';
     html += '<div style="font-size:11px;color:var(--muted);">Passion PASSIO</div></div></div>';
 
     if (!knowledge) {
       // Passion sans base de connaissance — réponse générique + données app
-      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + passionLabel + '</b> rassemble une belle communauté sur PASSIO. Explore les posts, connecte-toi aux créateurs et participe aux événements IRL !</div>';
+      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + escapeHtml(passionLabel) + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
     } else if (isDebutant) {
       html += '<div class="ai-section-label">Pour débuter</div>';
       html += '<div style="font-size:13px;line-height:1.6;background:var(--bg-deep);border-radius:12px;padding:12px;margin-bottom:8px;">' + knowledge.pour_debuter + '</div>';
@@ -6079,7 +6411,7 @@ async function aiGenerateResponse(query) {
       html += '<div class="ai-section-label" style="margin-top:10px;">📍 Events IRL</div>';
       passionEvents.forEach(function(e) {
         html += '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-          '<div class="ai-card-title">' + escapeHtml(e.title || "Événement") + '</div>' +
+          '<div class="ai-card-title">' + escapeHtml(e.title || "Activité") + '</div>' +
           '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "") + '</div>' +
         '</div>';
       });
@@ -6147,7 +6479,7 @@ async function aiGenerateResponse(query) {
     'Je n\'ai pas de réponse précise pour <em>"' + escapeHtml(query) + '"</em>.<br><br>' +
     'Tu peux :<br>' +
     '• Explorer une passion dans l\'onglet <b>Recherche</b><br>' +
-    '• Chercher des événements IRL<br>' +
+    '• Chercher des activités IRL<br>' +
     '• Organiser ou rejoindre une rencontre<br><br>' +
     'Essaie des questions comme :<br>' +
     '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +

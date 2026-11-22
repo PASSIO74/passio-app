@@ -24,9 +24,10 @@ const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
+// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Apprendre · Idées · Rencontrer.
 const PASTILLES = [
-  { label: "Idées", value: "creation" },
   { label: "Apprendre", value: "learn" },
+  { label: "Idées", value: "creation" },
   { label: "Rencontrer", value: "irl" },
   { label: "Tous", value: "all" },
 ];
@@ -125,9 +126,12 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
+    // LOT-15 (CRE-C05) : la liste de brouillons (orpheline) a laissé place au
+    // brouillon automatique ; la règle du mood retiré vaut pour lui.
     const etat = await page.evaluate(() => {
-      state.user.drafts = [{ id: "d_legacy", type: "text", mood: "chill", text: "Ancien brouillon" }];
-      loadDraft("d_legacy");
+      document.getElementById("postText").value = "";
+      localStorage.setItem(BROUILLON_STUDIO_KEY, JSON.stringify({ v: 1, compte: _brouillonStudioCompte(), mood: "chill", text: "Ancien brouillon", passion: "", at: Date.now() }));
+      reprendreBrouillonStudio();
       return {
         mood: studioMood,
         actives: Array.from(document.querySelectorAll("#postMoodRow .pill.active"))

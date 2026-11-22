@@ -56,12 +56,13 @@ function demarrer({ uid = null, label = null, search = "" } = {}) {
     removeItem: (k) => memoire.delete(k),
   };
   const envois = [];
+  const ecoutes = [];   // les écouteurs posés sur `document` : [type, capture, fonction]
   const ctx = {
     navigator: { userAgent: "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 Chrome/141.0.0.0 Mobile Safari/537.36", onLine: true },
-    location: { search, hostname: "passio-app.netlify.app", pathname: "/", hash: "", href: "https://passio-app.netlify.app/" + search },
+    location: { search, hostname: "passio-app.netlify.app", host: "passio-app.netlify.app", pathname: "/", hash: "", href: "https://passio-app.netlify.app/" + search },
     localStorage: stockage, sessionStorage: stockage,
     history: { state: null, replaceState() {} },
-    document: { referrer: "", hidden: false, visibilityState: "visible", addEventListener() {}, querySelector: () => null },
+    document: { referrer: "", hidden: false, visibilityState: "visible", addEventListener(type, f, capture) { ecoutes.push([type, capture, f]); }, querySelector: () => null },
     screen: { width: 390, height: 844 },
     matchMedia: () => ({ matches: false }),
     addEventListener() {},
@@ -82,7 +83,7 @@ function demarrer({ uid = null, label = null, search = "" } = {}) {
   if (label) ctx.state = { user: { general: { username: label } } };
   ctx.window = ctx;
   vm.runInNewContext(SOURCE, ctx, { filename: "telemetry.js" });
-  return { tel: ctx.tel, envois, ctx };
+  return { tel: ctx.tel, envois, ctx, ecoutes };
 }
 
 /**
@@ -280,4 +281,88 @@ test("audit 2026-11-06 : un lien ?telemetry=1 ne relève pas un refus enregistr�
   ctx.window = ctx;
   vm.runInNewContext(SOURCE, ctx, { filename: "telemetry.js" });
   assert.equal(memoire.get("passio_telemetry"), "0");
+});
+
+// ── Médias qui ne s'affichent pas (2026-11-21, T5) ──────────────────────────
+// Le bilan `media` ne porte qu'une FAMILLE d'une liste fermée. La fonction qui
+// la calcule reçoit des adresses hostiles (e-mail dans le chemin, JWT dans la
+// requête, autre projet Supabase, hôte qui imite le nôtre) : elle ne rend
+// jamais autre chose qu'un mot de la liste, ou `null`.
+test("médias : une adresse ne rend qu'une famille de la liste fermée ; « stockage » exige l'hôte EXACT du projet", () => {
+  const b = demarrer();
+  const f = b.tel._familleMedia;
+  const PROJET = "https://njkiyoklssvefstljemx.supabase.co";
+  const cas = [
+    [PROJET + "/storage/v1/object/public/content/u1/photo.jpg", "stockage"],
+    [PROJET + "/storage/v1/object/sign/attachments/" + encodeURIComponent(EMAIL) + "/x.webp?token=" + JWT, "stockage"],
+    ["https://autreprojetxxxxxxxxxx.supabase.co/storage/v1/object/public/content/u1/photo.jpg", "externe"],
+    [PROJET + ".evil.example/storage/v1/object/public/content/x.jpg", "externe"],
+    ["https://evil.example/njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/x.jpg", "externe"],
+    [PROJET + ":8443/storage/v1/object/public/content/x.jpg", "externe"],
+    [PROJET + "/rest/v1/posts?select=*", "externe"],
+    ["https://passio-app.netlify.app/demo/u/photo-1.jpg", "demo"],
+    ["/demo/u/" + encodeURIComponent(EMAIL) + ".jpg", "demo"],
+    ["/icons/icon-192.png", "app"],
+    ["#", "app"],
+    ["https://lh3.googleusercontent.com/a/" + JWT, "externe"],
+    ["blob:https://passio-app.netlify.app/0000-1111", "local"],
+    [DATA_URI, null],
+    ["javascript:alert('" + EMAIL + "')", "externe"],
+    ["", null], [null, null], [undefined, null], [{ href: PROJET }, null],
+  ];
+  const LISTE = ["stockage", "demo", "app", "local", "externe", null];
+  for (const [adresse, attendu] of cas) {
+    const rendu = f(adresse);
+    assert.ok(LISTE.includes(rendu), "hors liste fermée : " + String(rendu));
+    assert.equal(rendu, attendu, String(adresse).slice(0, 80));
+  }
+  // L'hôte du projet SUIT la configuration : un autre projet posé après coup
+  // (bascule de configuration au démarrage) devient le stockage, l'ancien non.
+  const AUTRE = "https://zzzzzzzzzzzzzzzzzzzz.supabase.co";
+  b.ctx.PASSIO_SUPABASE = { url: AUTRE, anon: "k" };
+  assert.equal(f(AUTRE + "/storage/v1/object/public/content/u1/photo.jpg"), "stockage");
+  assert.equal(f(PROJET + "/storage/v1/object/public/content/u1/photo.jpg"), "externe", "l'hôte mémorisé ne survit pas à un changement de configuration");
+  // Tant que la configuration du projet n'est pas posée, rien n'est « stockage ».
+  delete b.ctx.PASSIO_SUPABASE;
+  assert.equal(f(AUTRE + "/storage/v1/object/public/content/u1/photo.jpg"), "externe");
+});
+
+test("médias : l'écoute est en CAPTURE sur le document (error, load, loadedmetadata), sans quoi rien n'est vu", () => {
+  const b = demarrer();
+  for (const type of ["error", "load", "loadedmetadata"]) {
+    assert.ok(b.ecoutes.some(([t, capture]) => t === type && capture === true), type + " doit être écouté en capture");
+  }
+  assert.ok(!b.ecoutes.some(([t]) => t === "loadeddata"), "loadeddata n'est pas le signal retenu");
+});
+
+test("médias : mesure refusée, les écouteurs sortent AVANT tout classement (aucune lecture de l'élément, aucun minuteur)", () => {
+  const b = demarrer();
+  const P = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/";
+  let lectures = 0;
+  const cible = {
+    get tagName() { lectures++; return "IMG"; },
+    getAttribute() { lectures++; return P + "a.jpg"; },
+    get currentSrc() { lectures++; return P + "a.jpg"; },
+    get src() { lectures++; return P + "a.jpg"; },
+  };
+  const emettre = (type) => { for (const [t, capture, f] of b.ecoutes) if (t === type && capture === true) f({ target: cible }); };
+  // Témoin : mesure active, l'élément est bien lu et l'affichage compté.
+  emettre("load");
+  assert.ok(lectures > 0, "témoin : le classement lit l'élément");
+  assert.equal(b.tel._medias().stockage.vus, 1);
+  b.tel.setEnabled(false);
+  for (const type of ["load", "loadedmetadata", "error"]) {
+    lectures = 0;
+    emettre(type);
+    assert.equal(lectures, 0, type + " : l'élément ne doit pas être lu quand la mesure est refusée");
+  }
+  assert.deepEqual(Object.keys(b.tel._medias()), []);
+});
+
+test("médias : un bilan demandé sans rien de compté ne pose aucune ligne", async () => {
+  const b = demarrer();
+  assert.equal(Object.keys(b.tel._medias()).length, 0);
+  assert.equal(b.tel._mediaBilan("sortie"), 0);
+  const corps = await corpsEnvoyes(b);
+  assert.ok(!corps.includes('"type":"media"'));
 });

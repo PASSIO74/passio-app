@@ -23,6 +23,10 @@ dans cet ordre et rien d'autre :
 | **Quelles passions ?** | Toutes · Mes passions · Chercher, puis les bulles de passion | `irlPassionFilters` |
 | **Horaire** | Matin · Après-midi · Soir | `irlTimeFilter` |
 
+> **Retrait du 2026-11-14 — la tuile « Autres » et son panneau « Ajouter des passions à ma barre » n'existent plus** (demande de Benjamin : « il y a déjà Chercher »).
+> « Chercher » est la SEULE porte vers une passion qui n'est pas la mienne ; une passion filtrée garde toujours sa tuile. `state.user.irlExtraPassions` n'est plus lu.
+> Verrou : `tests/e2e/irl.spec.js` (« plus de tuile « Autres » »).
+
 Puis, **discrètement, sur une seule ligne** : « Mes événements | Mes
 rencontres » (`irlFilters`, valeurs `mine` et `joined`). Et, **fixe au-dessus
 de la barre d'onglets**, le bouton violet **« Afficher N résultats »**.

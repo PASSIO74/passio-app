@@ -1,0 +1,29 @@
+{
+  "moteur": "chromium",
+  "avant": {
+    "erreurs": [],
+    "pret": 1,
+    "scripts": 9
+  },
+  "apresA": {
+    "erreurs": [
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')",
+      "Cannot read properties of undefined (reading '0')"
+    ],
+    "pret": 1,
+    "scripts": 9
+  },
+  "apresB": {
+    "attribut": "if(this.src.indexOf('/demo/u/')>-1)this.parentNode.classList.add('cover-ok');",
+    "erreurs": [
+      "Cannot read properties of null (reading 'classList')"
+    ]
+  }
+}

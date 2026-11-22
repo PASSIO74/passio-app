@@ -159,4 +159,36 @@ test.describe("Une activité créée apparaît dans le fil", () => {
     expect(n).toBe(0);
     expect(await page.evaluate(() => [state.userPosts.length, window.__envoyes.length])).toEqual([0, 0]);
   });
+
+  // 2026-11-15 (Benjamin) : le titre ET la description au-dessus du rectangle date.
+  test("⑤ la carte porte la description, entre le titre et le rectangle, échappée", async ({ page }) => {
+    await banc(page, true);
+    const r = await page.evaluate(() => {
+      const html = (desc, snap) => carteActiviteFilHTML({ sharedReelData: Object.assign(
+        { kind: "event", id: "ev_absente", title: "Via ferrata", city: "Sixt", date: Date.now() + 86400000 }, snap) });
+      const d = document.createElement("div");
+      d.innerHTML = html(null, { desc: "Casque fourni <img src=x onerror=window.__xss=1>" });
+      const enfants = Array.from(d.querySelector(".post-activite").children).map((n) => n.className);
+      const sans = document.createElement("div");
+      sans.innerHTML = html(null, {});
+      return { enfants, texte: d.querySelector(".post-activite-desc").textContent,
+        img: d.querySelectorAll(".post-activite-desc img").length, sans: sans.querySelectorAll(".post-activite-desc").length };
+    });
+    expect(r.enfants).toEqual(["post-activite-titre", "post-activite-desc", "post-activite-rdv"]);
+    expect(r.texte).toContain("Casque fourni <img");
+    expect(r.img).toBe(0);
+    expect(r.sans, "pas de description → pas de ligne vide").toBe(0);
+
+    // Et la création la recopie dans la carte du fil.
+    await page.evaluate(() => {
+      openCreateEvent();
+      document.getElementById("evTitle").value = "Via ferrata";
+      document.getElementById("evCity").value = "Sixt-Fer-à-Cheval";
+      document.getElementById("evDesc").value = "Niveau débutant, baudrier prêté";
+    });
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__envoyes.length)).toBe(1);
+    await page.evaluate(() => { closeModal(); goTo("feed"); renderFeed(); });
+    await expect(page.locator("#feedList .post-activite-desc").first()).toHaveText("Niveau débutant, baudrier prêté");
+  });
 });

@@ -237,7 +237,9 @@ test.describe("Créer une passion", () => {
     // aboutissent au même mur : quelqu'un qui vient de se faire refuser une
     // CRÉATION ne doit pas y lire qu'il « suit déjà 3 passions » — ce peut être
     // faux, et un mur qui parle d'autre chose se lit comme une panne.
-    await expect(modale).toContainText("Trois créations offertes");
+    await expect(modale).toContainText("Trois créations de passion");
+    // ADR-013 : la limite de création est l'anti-abus du catalogue, jamais une offre payante.
+    await expect(modale).not.toContainText("payante");
     await expect(modale).toContainText("créations de passion");
     await expect(modale).not.toContainText("Tu suis déjà");
     // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » — invariant du paywall (㉒).
@@ -302,7 +304,9 @@ test.describe("Créer une passion", () => {
       return vu;
     });
     expect(texte).not.toMatch(/signalée\. On vérifie/i);
-    expect(texte).toMatch(/déjà envoyé|impossible/i);
+    // LOT-26 (TRA-C18) : toutes les portes de signalement répondent pareil ; un
+    // refus dit « non envoyé » — jamais « signalée ».
+    expect(texte).toMatch(/déjà envoyé|impossible|non envoyé/i);
   });
 
   // ⑬ ARCHIVER DOIT AVOIR UN EFFET RÉEL. Le retrait de modération passe par
@@ -687,7 +691,9 @@ test.describe("Créer une passion", () => {
     await bouton.click();
     const modale = page.locator("#modalContent");
     await expect(modale).toBeVisible({ timeout: 10000 });
-    await expect(modale).toContainText("Trois créations offertes");
+    await expect(modale).toContainText("Trois créations de passion");
+    // ADR-013 : la limite de création est l'anti-abus du catalogue, jamais une offre payante.
+    await expect(modale).not.toContainText("payante");
     expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(false);
   });
 });

@@ -114,7 +114,7 @@ async function appareilNeuf(page, general = {}) {
 
 const ligneDe = (page) => page.evaluate(() => window.__rows.find((r) => r.id === window.__uid) || null);
 
-test("① ligne absente + état local vide : la ligne est créée, et PRIVÉE", async ({ page }) => {
+test("① ligne absente + état local vide : la ligne est créée, et PUBLIQUE", async ({ page }) => {
   await boot(page, []);
   await appareilNeuf(page);
 
@@ -125,8 +125,10 @@ test("① ligne absente + état local vide : la ligne est créée, et PRIVÉE", 
   expect(ligne, "la ligne doit exister").not.toBeNull();
   expect(ligne.username).toBe("Profil");
   expect(ligne.passion_id, "aucune passion résoluble : la FK accepte NULL").toBe(null);
-  // ⚠️ Le point de l'arbitrage : sans preuve de choix, le profil naît PRIVÉ.
-  expect(ligne.is_private, "aucun choix prouvé → privé").toBe(true);
+  // ⚠️ ATTENDU CHANGÉ LE 2026-11-12 (décision de Benjamin, STAB-04) : sans choix
+  // exprimé, une ligne NEUVE naît PUBLIQUE. Les cas ③ ⑤ ⑨ gardent l'essentiel :
+  // une ligne existante, privée, n'est jamais rendue publique.
+  expect(ligne.is_private, "aucun choix privé exprimé → public").toBe(false);
 });
 
 test("② ligne existante + état local vide : le username n'est PAS écrasé", async ({ page }) => {
@@ -212,7 +214,7 @@ test("⑥ choix public explicitement PROUVÉ + ligne absente : créée publique"
   expect(ligne.is_private, "un choix prouvé est respecté").toBe(false);
 });
 
-test("⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE", async ({ page }) => {
+test("⑦ simple `false` local, SANS preuve de choix : créée PUBLIQUE (règle du 2026-11-12)", async ({ page }) => {
   await boot(page, []);
   // ⚠️ Exactement ce que `is_private: !!g.isPrivate` aurait rendu public.
   await appareilNeuf(page, { isPrivate: false });
@@ -220,7 +222,7 @@ test("⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE", async (
   await page.evaluate(() => supaEnsureProfileExists());
   const ligne = await ligneDe(page);
 
-  expect(ligne.is_private, "`false` sans marqueur ne prouve aucun choix → privé").toBe(true);
+  expect(ligne.is_private, "aucun choix privé exprimé → public").toBe(false);
 });
 
 test("⑦ bis — `undefined` ne doit jamais devenir `false` en silence", async ({ page }) => {
@@ -234,7 +236,14 @@ test("⑦ bis — `undefined` ne doit jamais devenir `false` en silence", async 
   });
 
   expect(vu.avant, "prémisse : la valeur est bien absente, pas `false`").toBe(undefined);
-  expect(vu.ligne.is_private).toBe(true);
+  expect(vu.ligne.is_private, "absent → public (STAB-04, 2026-11-12)").toBe(false);
+});
+
+test("⑦ ter — un choix PRIVÉ local est respecté à la création, même sans marqueur", async ({ page }) => {
+  await boot(page, []);
+  await appareilNeuf(page, { isPrivate: true });
+  await page.evaluate(() => supaEnsureProfileExists());
+  expect((await ligneDe(page)).is_private).toBe(true);
 });
 
 test("⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null", async ({ page }) => {

@@ -168,7 +168,7 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
   test.setTimeout(240000);
 
   test("b. B et C rejoignent, D et C en course, A change la date puis annule, B se retire → promotion (B-02)", async ({ browser }) => {
-    const srv = new FauxServeur();
+    const srv = new FauxServeur().migrerNotificationsParticipation();
     srv.compte(A, "alice_e2e"); srv.compte(B, "bob_e2e"); srv.compte(C, "carol_e2e"); srv.compte(D, "dan_e2e");
     const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext(), ctxD = await browser.newContext();
     try {
@@ -205,9 +205,15 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
       // ── B rejoint (vrai handler toggleJoinEvent) ───────────────────────────
       await pages[B].evaluate((id) => toggleJoinEvent(id), evId);
       await pages[B].waitForFunction((id) => myRsvp(id) === "going", evId, { timeout: 15000 });
-      await pages[B].waitForTimeout(1200); // supaSetEventRsvp + supaInsertNotif atterrissent
+      await expect.poll(() => srv.t.event_attendees.find((x) => x.event_id === evId && x.user_id === B)?.rsvp).toBe("going");
       expect(srv.t.event_attendees.find((x) => x.event_id === evId && x.user_id === B).rsvp, "B est `going` en base").toBe("going");
-      expect(srv.t.notifications.some((n) => n.user_id === A && n.kind === "event_join" && n.from_id === B), "A est notifié de l'arrivée de B").toBe(true);
+      const demandesB = () => srv.t.notifications.filter((n) => n.user_id === A && n.kind === "event_join" && n.from_id === B && n.ref_id === evId);
+      expect(demandesB(), "A reçoit une seule demande de B").toHaveLength(1);
+      expect(demandesB()[0].origine, "la demande est écrite par le serveur").toBe("serveur");
+      expect(srv.requetes((r) => r.table === "notifications" && r.m === "POST" && r.me === B && r.body?.kind === "event_join"), "le client ne double pas la ligne serveur").toHaveLength(0);
+      const repete = await pages[B].evaluate((id) => supaSetEventRsvp(id, "going"), evId);
+      expect(repete, "le rejeu de la même intention est accepté").toBe(true);
+      expect(demandesB(), "un RSVP inchangé ne crée pas une deuxième demande").toHaveLength(1);
 
       // ── C et D : deux `toggleJoinEvent` SIMULTANÉS pour la dernière place ──
       // Chacun croit l'activité à 1 inscrit (B) : les deux envoient `going`.
@@ -228,6 +234,7 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
       console.log("[E-b] perdant", perdant.slice(0, 8), etatPerdant);
       expect(etatPerdant.going, "le perdant n'est PAS compté `going` localement (optimiste annulé)").toBe(false);
       expect(etatPerdant.toasts.join(" | "), "le perdant lit la vraie raison et la sortie (liste d'attente)").toMatch(/complète|liste d'attente/);
+      expect(srv.t.notifications.filter((n) => n.kind === "event_join" && n.ref_id === evId && n.from_id === perdant), "le refus de capacité n'envoie aucune demande à l'organisation").toHaveLength(0);
       const lignePerdant = lignes.find((x) => x.user_id === perdant);
       // ⚠️ Le perdant n'a AUCUNE ligne : le refus du trigger a annulé l'INSERT.
       // Il n'est donc pas inscrit en liste d'attente automatiquement — E-03 si on
@@ -257,6 +264,7 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
       }, evId);
       await pages[perdant].waitForTimeout(800);
       expect(srv.t.event_attendees.find((x) => x.event_id === evId && x.user_id === perdant).rsvp, "le perdant est en liste d'attente en base").toBe("waitlist");
+      expect(srv.t.notifications.filter((n) => n.kind === "event_join" && n.ref_id === evId && n.from_id === perdant), "la liste d'attente n'est pas une demande going").toHaveLength(0);
 
       // ── A change la date (co-org absent : UPDATE events par l'auteur) ───────
       const nouvelleDate = dans2j + 86400000;

@@ -29,7 +29,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
 import { evaluer, decide } from "./lib/expression-github.mjs";
@@ -76,6 +76,10 @@ for a in "$@"; do if [ "$prev" = "--jq" ]; then jqexpr="$a"; fi; prev="$a"; done
 tout="$*"
 # Échec simulé (contre-revue du 2026-11-03) : une commande qui contient FAUX_ECHEC échoue.
 if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
+# FAUX_404 : comme le vrai gh sur une ressource disparue — le message de GitHub sur l'erreur standard, code 1 (#875).
+if [ -n "\${FAUX_404:-}" ] && [[ "$tout" == *"\${FAUX_404}"* ]]; then printf '%s' '{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
+# FAUX_ERREUR_SUR + FAUX_ERREUR : une commande qui contient le premier échoue en écrivant le second (\\n, \\r compris).
+if [ -n "\${FAUX_ERREUR_SUR:-}" ] && [[ "$tout" == *"\${FAUX_ERREUR_SUR}"* ]]; then printf '%b\\n' "\${FAUX_ERREUR:-}" >&2; exit 1; fi
 corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
@@ -85,6 +89,8 @@ case "$tout" in
   "issue list"*"--label sentinelle --label humain"*) corps="$(cat "$FX/issues-open-humain.json")" ;;
   # Les tableaux (lot F) : AVANT la forme générique --state open, qui l'avalerait.
   "issue list"*"--label tableau"*) corps="$(cat "$FX/issues-tableau.json")" ;;
+  # L'issue d'état de la Sentinelle (2026-11-21) : AVANT la forme générique aussi. Absente = aucune issue.
+  "issue list"*"--label sentinelle-partielle"*) corps="$(cat "$FX/issues-partielle.json" 2>/dev/null || echo "[]")" ;;
   "issue list"*"--state open"*) corps="$(cat "$FX/issues-open.json")" ;;
   "pr list"*"--state merged"*) corps="$(cat "$FX/prs-merged.json")" ;;
   "pr list"*) corps="$(cat "$FX/prs-all.json")" ;;
@@ -95,18 +101,23 @@ case "$tout" in
   # Le commit lui-même (message) et une PR par numéro : le repli de la gouvernance quand l'index est vide.
   "api"*"/commits/"*) corps="$(cat "$FX/commit.json")" ;;
   "api"*"/pulls/"*"/files"*) corps="$(cat "$FX/pr-files.json")" ;;
-  "api"*"/pulls/"*"/reviews"*) corps="[]" ;;
+  "api"*"/pulls/"*"/reviews"*) corps="$(cat "$FX/pr-reviews.json" 2>/dev/null || echo "[]")" ;;
   "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
-  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"label create"*|"pr merge"*)
+  "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"issue lock"*|"label create"*|"pr merge"*)
     ligne="$tout"
     for ((k=0; k<\${#args[@]}; k++)); do if [ "\${args[$k]}" = "--body-file" ]; then ligne="$ligne :: $(tr '\\n' ' ' < "\${args[$((k+1))]}")"; fi; done
     printf '%s :: jeton=%s\\n' "$ligne" "\${GH_TOKEN:-}" >> "$LOG"; exit 0 ;;
   *) echo "faux gh : forme inconnue : $tout" >&2; exit 2 ;;
 esac
 # jq.exe écrit CRLF sur Windows, le jq du runner Linux écrit LF : on aligne.
-if [ -n "$jqexpr" ]; then printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r'; else printf '%s' "$corps"; fi
+# FAUX_LIGNE_A_LIGNE : un gh qui écrit ses résultats UN À UN, une pause entre deux (le VRAI sleep, pas celui du bac) —
+# ce qu'un lecteur qui sort au premier résultat (grep -q) doit supporter sous pipefail (#875).
+if [ -n "$jqexpr" ] && [ -n "\${FAUX_LIGNE_A_LIGNE:-}" ]; then
+  printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r' > "$FX/.lignes"
+  while IFS= read -r l; do printf '%s\\n' "$l"; command -p sleep 0.3; done < "$FX/.lignes"
+elif [ -n "$jqexpr" ]; then printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r'; else printf '%s' "$corps"; fi
 `);
 // Le faux sleep JOURNALISE sa durée : `sleep 8` est la garde A1 contre la course d'événements.
 fs.writeFileSync(BAC + "/bin/sleep", '#!/usr/bin/env bash\nprintf \'sleep %s\\n\' "${1:-}" >> "$LOG"\nexit 0\n');
@@ -135,6 +146,21 @@ function fixtures(obj) {
   for (const [k, v] of Object.entries(obj)) fs.writeFileSync(path.join(FX, k + ".json"), JSON.stringify(v));
 }
 
+/** Un MODÈLE des commandes que le runner lit dans ce qu'une étape écrit, tiré de la lecture de son code
+ *  (actions/runner, `ActionCommand` : `TryParseV2` puis `TryParse` ; le lecteur de flux de .NET) — rien n'est
+ *  exécuté sur un vrai runner, et ce n'est pas une équivalence exacte. Ce qu'il modélise, pour un flux UTF-8 écrit
+ *  d'un seul tenant : sortie standard ET erreur standard (le `flux` de `jouer`, même quand l'étape réussit), une
+ *  marque d'ordre des octets retirée en tête de chaque flux seulement ; chaque ligne coupée sur \r\n, \r ou \n ; les
+ *  blancs de tête retirés comme `TrimStart` de .NET (`char.IsWhiteSpace` : U+0085 oui, U+FEFF non — l'inverse de
+ *  `trimStart` de JS) ; une ligne qui commence alors par « :: », ou qui contient où que ce soit « ##[ ».
+ *  Ce qu'il ne modélise pas, et qui peut donner un faux rouge comme un faux vert : un flux UTF-16 ou UTF-32 (le
+ *  lecteur de .NET change d'encodage sur sa marque), une marque coupée entre deux écritures, les comparaisons de
+ *  culture du runner. Aucune étape jouée par ce banc n'écrit autre chose que de l'UTF-8 d'un seul tenant.
+ *  Retenus ici et pas par le runner (un faux rouge) : une ligne « :: » ou « ##[ » sans commande valide, et l'effet
+ *  de `::stop-commands::`. */
+const BLANCS_DOTNET = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/;
+const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.replace(BLANCS_DOTNET, "")).filter((l) => l.startsWith("::") || l.includes("##["));
+
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
   fs.writeFileSync(LOG, "");
@@ -144,23 +170,27 @@ function jouer(script, env = {}) {
   const texte = script.replace(/\$\{\{[^}]*\}\}/g, "").split("/tmp/").join(BAC + "/")
     .split('execFileSync("gh", args, { encoding: "utf8" })').join('execFileSync("node", [process.env.FAUX_GH_JS, ...args], { encoding: "utf8" })');
   fs.writeFileSync(BAC + "/etape.sh", texte);
-  try {
-    // `-e` comme GitHub (`bash -e {0}` est le shell par défaut d'un `run:` sans `shell:`) : sans lui, un
-    // `node …; code=$?` qui tue l'étape en production resterait vert ici (défaut du digest, 2026-09-18).
-    sortie = execFileSync("bash", ["-e", BAC + "/etape.sh"], {
-      cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        // Sous Git Bash, `C:/x` sur le PATH devient `/c/x` ; sous Linux, rien à convertir.
-        PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin" + path.delimiter + process.env.PATH,
-        JQ_BIN: JQ, FX, LOG, FAUX_GH_JS: BAC + "/bin/faux-gh.mjs",
-        GITHUB_REPOSITORY: "o/r", GITHUB_SERVER_URL: "https://github.com", GITHUB_RUN_ID: "1", GITHUB_SHA: "a".repeat(40),
-        GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summ, RUNNER_TEMP: BAC, ...env,
-      },
-    });
-  } catch (e) { code = e.status; sortie = String(e.stdout || "") + String(e.stderr || ""); }
+  // `-e` comme GitHub (`bash -e {0}` est le shell par défaut d'un `run:` sans `shell:`) : sans lui, un
+  // `node …; code=$?` qui tue l'étape en production resterait vert ici (défaut du digest, 2026-09-18).
+  // `spawnSync` : l'erreur standard d'une étape RÉUSSIE est gardée aussi (`flux`) — le runner y lit ses commandes.
+  const r = spawnSync("bash", ["-e", BAC + "/etape.sh"], {
+    cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
+    env: {
+      ...process.env,
+      // Sous Git Bash, `C:/x` sur le PATH devient `/c/x` ; sous Linux, rien à convertir.
+      PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin" + path.delimiter + process.env.PATH,
+      JQ_BIN: JQ, FX, LOG, FAUX_GH_JS: BAC + "/bin/faux-gh.mjs",
+      GITHUB_REPOSITORY: "o/r", GITHUB_SERVER_URL: "https://github.com", GITHUB_RUN_ID: "1", GITHUB_SHA: "a".repeat(40),
+      GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summ, RUNNER_TEMP: BAC, ...env,
+    },
+  });
+  if (r.error) throw r.error;
+  const stdout = String(r.stdout || ""), stderr = String(r.stderr || "");
+  if (r.status === 0) sortie = stdout; else { code = r.status; sortie = stdout + stderr; }
   const log = fs.readFileSync(LOG, "utf8");
-  return { code, sortie, log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
+  // Le lecteur de flux du runner retire une marque d'ordre des octets en TÊTE de flux, et nulle part ailleurs.
+  const sansMarque = (s) => s.replace(/^\uFEFF/, "");
+  return { code, sortie, flux: sansMarque(stdout) + "\n" + sansMarque(stderr), log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
 }
 
 const iso = (minAgo) => new Date(Date.now() - minAgo * 60_000).toISOString();
@@ -590,7 +620,10 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g2 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g2.code, 0, g2.sortie);
   assert.ok(g2.summary.includes("1 fichier(s) de code, 30 ligne(s)"), "fiche et verrou hors comptage\n" + g2.summary);
-  for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js"]) {
+  // Les INSTRUMENTS DE MESURE (2026-11-20, audit « 100 000 », T8) : une réparation automatique ne
+  // modifie pas ce qui la juge. Mutation : retirer leur ligne du `case` de périmètre → rougit ici.
+  const INSTRUMENTS = ["js/telemetry.js", "js/platform.js", "js/perf-ios.js", "js/release-guard.js", "js/reglages-distants.js", "js/identity-transition.js"];
+  for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js", ...INSTRUMENTS]) {
     fixtures({
       "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
       "issue-700": { labels: [{ name: "sentinelle" }] },
@@ -598,6 +631,11 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
     });
     const r = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
     assert.notEqual(r.code, 0, `une réparation automatique ne touche pas ${interdit} (audit du 2026-11-06, E-04)`);
+    // C'est le REFUS DE PÉRIMÈTRE qui doit parler (écrit sur l'issue, label `humain`), pas un échec plus
+    // loin : sans cette assertion, un instrument sorti du `case` restait refusé… par la seule contre-revue
+    // manquante, et l'issue restait muette, comptée dans les enquêtes en cours (vu par réinjection).
+    assert.ok(r.log.includes("issue comment 700") && r.log.includes("Périmètre dépassé") && r.log.includes(interdit),
+      `${interdit} : le refus de périmètre doit être écrit sur l'issue\n` + r.log);
   }
   fixtures({
     "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
@@ -626,6 +664,113 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g5 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "78", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g5.code, 0, g5.sortie);
   assert.equal(g5.log.trim(), "", "PR humaine non critique : aucun commentaire");
+  // Un instrument de mesure est au périmètre CRITIQUE, même pour une PR humaine : contre-revue
+  // exigée, ancrée sur le SHA. Mutation : retirer les instruments du `case` critique → rougit.
+  for (const instrument of INSTRUMENTS) {
+    fixtures({ "pr-view": { headRefName: "feature/humaine", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: instrument, additions: 2, deletions: 1 }] });
+    const sans = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "79", TRUSTED_REVIEWER: "PASSIO74" });
+    assert.notEqual(sans.code, 0, `${instrument} sans contre-revue : doit être refusé (périmètre critique)\n` + sans.sortie.slice(-400));
+    assert.ok(sans.sortie.includes("Contre-revue manquante"), sans.sortie.slice(-400));
+    fixtures({ "pr-view": { headRefName: "feature/humaine", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: instrument, additions: 2, deletions: 1 }],
+      "pr-reviews": [{ user: { login: "PASSIO74" }, commit_id: "b".repeat(40), body: "Contre-revue technique indépendante — instrument" }] });
+    const avec = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "79", TRUSTED_REVIEWER: "PASSIO74" });
+    assert.equal(avec.code, 0, `${instrument} avec contre-revue ancrée : accepté\n` + avec.sortie.slice(-400));
+  }
+});
+
+test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'être cherchés — un gh qui écrit « sentinelle » puis une autre ligne ne fait plus passer une réparation pour une PR humaine ; illisibles, la gouvernance s'arrête", () => {
+  // Sous pipefail, `gh … | grep -qx sentinelle` rendait 141 quand gh écrivait encore après « sentinelle » : grep était
+  // sorti, gh mourait de SIGPIPE, le `if` rendait faux. Mutation : rétablir le tube → rougit sur le runner Linux.
+  const gov = etape(DEP, "governance", "Résoudre la PR").run;
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "issue-700": { labels: [{ name: "sentinelle" }, { name: "claude" }, { name: "reparation" }] },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }, { filename: "dashboard/server/x.js", additions: 1, deletions: 0 }],
+  });
+  const lent = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre", FAUX_LIGNE_A_LIGNE: "1" });
+  assert.notEqual(lent.code, 0, "une réparation de la Sentinelle hors périmètre est refusée, même quand gh écrit ses labels un à un\n" + lent.sortie.slice(-800));
+  assert.ok(lent.log.includes("issue comment 700") && lent.log.includes("dashboard/server/x.js"), "le refus est écrit sur l'issue d'origine\n" + lent.log);
+  // Les labels illisibles : on ne sait pas ce qu'est la PR — refus dit, jamais « PR humaine ».
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }],
+  });
+  const muet = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
+  assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
+  // Chaque annotation de ce bloc se vérifie EN ENTIER, seule de ce que l'étape écrit (relectures de `ae533574` et de
+  // `94a1c975`) : la cause est celle, déterministe, du faux gh — la commande qu'il a reçue.
+  const ILLISIBLES = "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (faux gh : échec simulé : api repos/o/r/issues/700 --jq .labels[].name) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.";
+  assert.deepEqual(annotations(muet), [ILLISIBLES]);
+  // L'issue introuvable (404) ou supprimée (410) sur une PR OUVERTE : refus, avec un remède qui marche (relecture de
+  // #875). Le 404 vient avec ou sans corps JSON (gh écrit le corps sur sa sortie standard) ; la cause se cite telle
+  // quelle, sans l'espace qu'y laissait le saut de ligne final.
+  for (const [nom, env, cause] of [
+    ["404", { FAUX_404: "/issues/700" }, "gh: Not Found (HTTP 404)"],
+    ["404 sans corps JSON", { FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: HTTP 404" }, "gh: HTTP 404"],
+    ["410", { FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: This issue was deleted (HTTP 410)" }, "gh: This issue was deleted (HTTP 410)"],
+  ]) {
+    const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
+    assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
+    // Ce remède-là, et lui seul (un second, jamais éprouvé, avait été proposé) : l'annotation est comparée EN ENTIER,
+    // et c'est la seule de ce que l'étape écrit — rien avant elle, rien après, rien dans une autre annotation, sous
+    // toutes les formes que lit `annotations` (sortie et erreur standard, blancs de tête, « ##[ » où qu'il soit).
+    assert.deepEqual(annotations(disparue), [
+      "::error title=Gouvernance::L'issue #700 est introuvable (" + cause + ") : la branche claude/issue-700-1 prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>.",
+    ], nom);
+    assert.doesNotMatch(disparue.sortie, /Relance le job/, nom);
+  }
+  // Une limite de débit (403) n'est PAS une issue disparue : « Relance le job ».
+  const debit = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: API rate limit exceeded (HTTP 403)" });
+  assert.notEqual(debit.code, 0);
+  assert.deepEqual(annotations(debit), [
+    "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (gh: API rate limit exceeded (HTTP 403)) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.",
+  ]);
+  // Une cause sur plusieurs lignes, retour chariot compris : UNE ligne d'annotation, rien qui commence une autre commande.
+  const multi = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "ligne une\\r::warning::forgée\\nligne deux" });
+  assert.notEqual(multi.code, 0);
+  const ligneErreur = multi.sortie.split("\n").find((l) => l.startsWith("::error title=Gouvernance::Les labels"));
+  assert.ok(ligneErreur && ligneErreur.includes("ligne une") && ligneErreur.includes("ligne deux"), "la cause tient sur la ligne de l'annotation : " + multi.sortie.slice(-400));
+  assert.ok(!/\r/.test(ligneErreur), "aucun retour chariot dans l'annotation");
+  assert.ok(!multi.sortie.split(/\r|\n/).some((l) => l.startsWith("::warning::forgée")), "aucune commande du runner forgée par la cause");
+  assert.deepEqual(annotations(multi), [
+    "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (ligne une ::warning::forgée ligne deux) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.",
+  ]);
+  // La Sentinelle en SECOND label est vue (un `.labels[0]` ne lirait que le premier).
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "issue-700": { labels: [{ name: "claude" }, { name: "sentinelle" }] },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }, { filename: "dashboard/server/x.js", additions: 1, deletions: 0 }],
+  });
+  const second = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
+  assert.notEqual(second.code, 0);
+  assert.ok(second.log.includes("issue comment 700"), "la réparation est jugée comme telle\n" + second.log);
+  // Sur un PUSH dans main, la PR est DÉJÀ fusionnée : une issue effacée après coup ne bloque pas sa mise en ligne — dit.
+  // L'avertissement EN ENTIER, seul de ce que l'étape écrit : il dit ce que fait la garde (l'issue introuvable ne bloque
+  // pas ; la contre-revue, si) et ce qu'elle ne revérifie pas — jamais « a passé la gouvernance », qu'elle ne sait pas.
+  const AVERTISSEMENT = "::warning title=Gouvernance::L'issue #700 est introuvable (gh: Not Found (HTTP 404)) ; la PR #77 est déjà fusionnée : elle est jugée ici comme humaine. L'issue introuvable ne bloque pas son déploiement ; la contre-revue des fichiers critiques s'applique comme à toute PR humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre et dans sa taille.";
+  fixtures({ "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }], "commit-pulls": [{ number: 77 }] });
+  const apres = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.equal(apres.code, 0, apres.sortie.slice(-600));
+  assert.deepEqual(annotations(apres), [AVERTISSEMENT], apres.sortie.slice(-600));
+  assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue introuvable");
+  // Un push d'une PR CRITIQUE : la contre-revue s'applique comme à toute PR humaine (relecture de `ae533574` : dire
+  // « cette garde ne bloque pas son déploiement » était faux ici). Sans elle, refus ; avec elle, l'avertissement seul.
+  const critique = { "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "sw.js", additions: 1, deletions: 0 }], "commit-pulls": [{ number: 77 }] };
+  fixtures(critique);
+  const sansRevue = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.notEqual(sansRevue.code, 0, sansRevue.sortie.slice(-600));
+  assert.deepEqual(annotations(sansRevue), [
+    AVERTISSEMENT,
+    "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74, ancrée sur le SHA courant et contenant le marqueur « Contre-revue technique indépendante », est obligatoire avant preview ou production.",
+  ]);
+  fixtures({ ...critique, "pr-reviews": [{ user: { login: "PASSIO74" }, commit_id: "b".repeat(40), body: "## Contre-revue technique indépendante — version b" }] });
+  const avecRevue = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.equal(avecRevue.code, 0, avecRevue.sortie.slice(-600));
+  assert.deepEqual(annotations(avecRevue), [AVERTISSEMENT]);
+  // … mais une PANNE (pas une disparition) sur un push reste un refus à relancer.
+  const panne = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
+  assert.notEqual(panne.code, 0);
+  assert.deepEqual(annotations(panne), [ILLISIBLES]);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
@@ -722,7 +867,8 @@ test("claude-code.yml : le snippet réel d'extraction de la fiche rend le bloc C
   assert.ok(m, "le snippet Node d'extraction existe dans l'étape de succès");
   const rejouer = (corps, sentinelle) => {
     fs.writeFileSync(BAC + "/corps-commit.txt", corps);
-    execFileSync("node", ["--input-type=module", "-e", m[1]], { cwd: RACINE, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: BAC, SENTINELLE: sentinelle } });
+    // CONFIANCE : l'arbre d'où le détecteur est importé (le commit de départ, en production ; ici, ce dépôt) — #875.
+    execFileSync("node", ["--input-type=module", "-e", m[1]], { cwd: RACINE, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: BAC, SENTINELLE: sentinelle, CONFIANCE: RACINE } });
     return fs.readFileSync(BAC + "/fiche.md", "utf8");
   };
   const avec = rejouer([
@@ -763,7 +909,8 @@ function fauxNode(nom) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(dir + "/node", `#!/usr/bin/env bash
 case "$*" in
-  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*) printf '%s' "$FAUX_JSON"; exit "\${FAUX_CODE:-0}" ;;
+  # FAUX_SUR_ERREUR : la panne sort sur l'erreur standard, comme le vrai script (moderation-alerte.mjs l. 105 et 116).
+  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*|*"scripts/moderation-alerte.mjs"*) if [ -n "\${FAUX_SUR_ERREUR:-}" ]; then printf '%s' "$FAUX_JSON" >&2; else printf '%s' "$FAUX_JSON"; fi; exit "\${FAUX_CODE:-0}" ;;
   *) exec "$VRAI_NODE" "$@" ;;
 esac
 `);
@@ -803,6 +950,95 @@ test("veille-production.yml : Verdict — code 3 (alerte) rend alerte=oui et le 
   r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "", FAUX_JSON: json, FAUX_CODE: "3" });
   assert.equal(r.code, 1, "sans jeton, la veille est aveugle : refus, pas un verdict");
   assert.ok(r.sortie.includes("SUPABASE_ACCESS_TOKEN absent"), r.sortie);
+});
+
+// Le TROISIÈME canal de cette forme (2026-11-12) : l'alerte de modération. Son étape « Verdict » portait encore
+// `node …; code=$?` — le piège corrigé ci-dessus pour le digest et la veille. 60 passages verts sur 60 : la
+// condition d'alerte (un signalement en attente depuis plus de 24 h) ne s'était jamais présentée. Le jour où elle
+// se présente, le code 3 tuait l'étape : run rouge, « Ouvrir ou mettre à jour l'issue » sautée, aucune issue
+// `[MODÉRATION]` — donc aucune ligne au pilotage, le jour même où il en fallait une.
+// Mutation : remettre `node …; code=$?` dans le workflow → ce test rougit (code 3 au lieu de 0).
+const MOD = wf("moderation-alerte.yml");
+test("moderation-alerte.yml : Verdict — code 3 (signalements en retard) rend alerte=oui, le titre et le corps de l'issue ; code 0 → non ; code 2 = panne VISIBLE ; sans la clé l'étape REFUSE", () => {
+  const run = etape(MOD, "compter", "Verdict").run;
+  const env = fauxNode("moderation");
+  const json = JSON.stringify({ titre: "[MODÉRATION] 2 signalements en attente depuis plus de 24 h", corps: "corps de l'alerte", ouverts: 3, enRetard: 2, alerte: true });
+  for (const f of ["titre.txt", "corps.md"]) fs.rmSync(BAC + "/" + f, { force: true });
+  let r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 0, "code 3 = une alerte à ouvrir, pas une panne : " + r.sortie);
+  assert.match(r.out, /^alerte=oui$/m, r.out);
+  assert.match(r.summary, /^- Signalements ouverts : 3$/m, r.summary);
+  assert.match(r.summary, /^- En attente depuis plus de 24 h : 2$/m, r.summary);
+  // Ce que l'étape suivante lit pour ouvrir l'issue.
+  assert.equal(fs.readFileSync(BAC + "/titre.txt", "utf8"), "[MODÉRATION] 2 signalements en attente depuis plus de 24 h");
+  assert.match(fs.readFileSync(BAC + "/corps.md", "utf8"), /^corps de l'alerte\n\n_Dernier passage : \d{4}-/);
+  assert.equal(etape(MOD, "compter", "Ouvrir ou mettre à jour l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'oui'");
+  assert.equal(etape(MOD, "compter", "Refermer l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'non'");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: JSON.stringify({ titre: "", corps: "", ouverts: 1, enRetard: 0, alerte: false }), FAUX_CODE: "0" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.out, /^alerte=non$/m, r.out);
+  // La panne, comme le vrai script l'écrit : sur l'erreur standard, rien sur la sortie. Un `2>/dev/null` ajouté à l'étape la
+  // rendrait muette : ce test rougirait.
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: "lecture des signalements impossible", FAUX_SUR_ERREUR: "1", FAUX_CODE: "2" });
+  assert.equal(r.code, 2, "une panne du lecteur reste une panne");
+  assert.ok(r.sortie.includes("lecture des signalements impossible"), "et elle est affichée : " + r.sortie);
+  assert.doesNotMatch(r.out, /alerte=/, "une panne ne rend ni « oui » ni « non » : l'issue n'est ni ouverte ni refermée");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 1, "sans la clé, l'alerte est aveugle : refus, pas un verdict");
+  assert.ok(r.sortie.includes("SUPABASE_SERVICE_ROLE_KEY absent"), r.sortie);
+});
+
+// Aucun canal ne doit retomber dans le piège (2026-11-12, élargi après la relecture indépendante de #849) : sous le shell
+// par défaut d'une étape GitHub (`bash -e`), la commande qui sort en code non nul a DÉJÀ tué l'étape quand la ligne
+// suivante lit `$?`. Le balayage raisonne ÉTAPE par ÉTAPE, pas ligne par ligne : il ne retient que les étapes dont le shell
+// garde `-e` (pas de `shell:`, ou `bash`, ou `sh`, ou une option `-…e`), ignore ce qui suit un `set +e`, et signale toute
+// lecture de `$?` ou de `PIPESTATUS` qui ne suit pas un `||` sur sa ligne. Il attrape donc la forme sur deux lignes,
+// `node … | tee f` puis `${PIPESTATUS[0]}` (la forme qui a cassé controle-realtime.yml le 2026-09-12), et `if [ $? -eq 3 ]`.
+// Il est PRUDENT sur PIPESTATUS : sans `pipefail`, `node … | tee` ne tue pas l'étape et la lecture serait juste — il la signale
+// quand même (écrire alors `shell: bash {0}` ou `set +e`, comme controle-realtime.yml). Ce qu'il NE prouve pas : qu'un code lu
+// ailleurs soit bien traité — seulement qu'aucune lecture ne vient trop tard.
+function lecturesTropTard(nom, texte) {
+  const d = parse(texte);
+  const res = [];
+  for (const [idJob, job] of Object.entries((d && d.jobs) || {})) {
+    const shellJob = (job && job.defaults && job.defaults.run && job.defaults.run.shell) ?? (d.defaults && d.defaults.run && d.defaults.run.shell);
+    for (const s of (job && job.steps) || []) {
+      if (typeof s.run !== "string") continue;
+      const shell = s.shell ?? shellJob; // absent → `bash -e {0}` ; `bash` → `-eo pipefail` ; `bash {0}` → sans -e
+      const avecE = shell === undefined || /^(bash|sh)$/.test(String(shell).trim()) || /\s-[a-z]*e/.test(String(shell));
+      if (!avecE) continue;
+      let sousPlusE = false;
+      for (const ligne of s.run.split("\n")) {
+        const code = ligne.replace(/(^|\s)#.*$/, "");
+        if (/^\s*set\s+\+[a-z]*e/.test(code)) sousPlusE = true;
+        if (/^\s*set\s+-[a-z]*e/.test(code)) sousPlusE = false;
+        if (sousPlusE) continue;
+        if (/\$\?|\$\{?PIPESTATUS/.test(code) && !/\|\|[^;]*(\$\?|PIPESTATUS)/.test(code)) res.push(`${nom} ${idJob}/${s.name || s.id}: ${code.trim()}`);
+      }
+    }
+  }
+  return res;
+}
+
+test("aucun workflow ne lit un code de sortie TROP TARD : sous le shell de GitHub (bash -e), la commande qui le produit a déjà tué l'étape — étape par étape, `set +e` et `shell:` compris", () => {
+  const dossier = path.join(RACINE, ".github/workflows");
+  const fautifs = [];
+  for (const nom of fs.readdirSync(dossier).filter((x) => /\.ya?ml$/.test(x))) fautifs.push(...lecturesTropTard(nom, fs.readFileSync(path.join(dossier, nom), "utf8")));
+  assert.deepEqual(fautifs, [], "écrire `code=0; commande || code=$?`, ou poser `set +e` avant la commande");
+  // Le balayage éprouvé sur les formes qu'il doit attraper, et sur celles qu'il doit épargner.
+  const synthetique = [
+    "name: t", "on: push", "jobs:", "  j:", "    runs-on: ubuntu-latest", "    steps:",
+    "      - name: une-ligne", "        run: |", "          node x.mjs > /tmp/v.json; code=$?",
+    "      - name: deux-lignes", "        run: |", "          set -uo pipefail", "          node x.mjs > /tmp/v.json", "          code=$?",
+    "      - name: pipestatus", "        run: |", "          set -uo pipefail", "          node x.mjs | tee /tmp/v.txt", "          code=${PIPESTATUS[0]}",
+    "      - name: if-dollar", "        run: |", "          node x.mjs; if [ $? -eq 3 ]; then echo a; fi",
+    "      - name: bonne-forme", "        run: |", "          code=0; node x.mjs || code=$?",
+    "      - name: apres-set-plus-e", "        run: |", "          set +e", "          node x.mjs", "          code=$?",
+    "      - name: sans-e", "        shell: bash {0}", "        run: |", "          node x.mjs | tee /tmp/v.txt", "          code=${PIPESTATUS[0]}",
+    "      - name: commentaire", "        run: |", "          # écrit `node …; code=$?`, le code 3 tuait l'étape", "          echo ok",
+  ].join("\n");
+  const vus = lecturesTropTard("t.yml", synthetique).map((x) => x.split(": ")[0].split("/")[1]);
+  assert.deepEqual(vus, ["une-ligne", "deux-lignes", "pipestatus", "if-dollar"], "attrapées : une ligne, deux lignes, PIPESTATUS, `if [ $? …` ; épargnées : `|| code=$?`, après `set +e`, `shell: bash {0}`, un commentaire");
 });
 
 // ═══ F — Tableaux : les comptes rendus vivent dans le centre de pilotage ═════════════════
@@ -1197,4 +1433,261 @@ test("sentinelle-autonome.yml : le `sleep 8` et le veilleur restent, et leur rai
   assert.ok(etape(SA, "detecter", "Veilleur").run.includes("sleep 8"), "le `sleep 8` de la relance");
   assert.match(texte, /DEPUIS LE 2026-11-04, CETTE FILE NE PERD PLUS RIEN/);
   assert.match(texte, /aucune enquête n'a tourné\n# depuis #370/);
+});
+
+// ═══ T4 — La Sentinelle lit toujours, et dit ce qu'elle n'a pas lu ou pas confié (2026-11-21) ═══
+// Audit « la surveillance tient-elle à 100 000 ? », T4 et T9. Avant : sans place d'enquête, le run finissait vert sans
+// avoir lu la production, et une lecture tronquée ne se disait nulle part — le pilote lisait « rien à corriger ».
+const ETAPE_LECTURE = "État de lecture";
+const ctxSteps = ({ pr = false, actif = "true", libre = "true", cible = "oui", deja = "non", detect = "success" } = {}) => ({
+  github: { event_name: pr ? "pull_request" : "schedule" },
+  steps: { pause: { outputs: { actif } }, encours: { outputs: { libre } }, detect: { outputs: { cible }, outcome: detect }, dedup: { outputs: { deja } } },
+});
+
+test("T4-w1 conditions : le passage LIT et DÉDOUBLONNE même sans place ; seule l'ouverture d'une enquête exige une place ; l'état de lecture exige un verdict rendu", () => {
+  const lire = String(etape(SA, "detecter", "Lire la production").if);
+  const dedup = String(etape(SA, "detecter", "Ce défaut a-t-il").if);
+  const ouvrir = String(etape(SA, "detecter", "Ouvrir l'enquête").if);
+  const etat = String(etape(SA, "detecter", ETAPE_LECTURE).if);
+  // RÉINJECTION : remettre `&& steps.encours.outputs.libre == 'true'` sur « Lire la production » → rouge
+  // (six enquêtes dans la journée, et plus rien n'est lu pendant 24 h, run vert).
+  assert.equal(decide(lire, ctxSteps({ libre: "false" })), true, "sans place : la production est lue quand même");
+  assert.equal(decide(dedup, ctxSteps({ libre: "false" })), true, "sans place : les défauts vivants sont comptés quand même");
+  // RÉINJECTION : retirer `steps.encours.outputs.libre == 'true'` d'« Ouvrir l'enquête » → rouge (le plafond ne borne plus rien).
+  assert.equal(decide(ouvrir, ctxSteps({ libre: "false" })), false, "sans place : AUCUNE enquête n'est ouverte");
+  assert.equal(decide(ouvrir, ctxSteps()), true);
+  assert.equal(decide(ouvrir, ctxSteps({ deja: "oui" })), false);
+  // La pause arrête tout, PR comprise.
+  for (const expr of [lire, dedup]) {
+    assert.equal(decide(expr, ctxSteps({ actif: "false" })), false, expr);
+    assert.equal(decide(expr, ctxSteps({ pr: true })), false, expr);
+    assert.equal(decide(expr, ctxSteps()), true, expr);
+  }
+  assert.equal(decide(dedup, ctxSteps({ cible: "non" })), false, "aucun candidat : rien à dédoublonner");
+  // RÉINJECTION : retirer `&& steps.detect.outcome == 'success'` de « État de lecture » → rouge (une issue refermée, ou
+  // écrite, sur un passage qui n'a rendu aucun verdict).
+  assert.equal(decide(etat, ctxSteps()), true);
+  assert.equal(decide(etat, ctxSteps({ libre: "false", cible: "non" })), true, "sans place et sans cible : l'état se dit quand même");
+  assert.equal(decide(etat, ctxSteps({ detect: "skipped" })), false, "en pause, « Lire la production » est sautée : aucun état n'est écrit ni refermé");
+  assert.equal(decide(etat, ctxSteps({ detect: "failure" })), false);
+  assert.equal(decide(etat, ctxSteps({ pr: true })), false);
+  // Le commentaire qui disait « sautée (une enquête en cours, pause) » ne ment plus.
+  assert.doesNotMatch(workflowsReels()["sentinelle-autonome.yml"], /a été sautée \(une enquête en cours, pause\)/);
+});
+
+test("T4-w2 « Enquêtes en parallèle » dit POURQUOI il n'y a plus de place : budget=atteint à six enquêtes en 24 h, budget=libre sinon", () => {
+  // RÉINJECTION : retirer `echo "budget=${budget}" >> "${GITHUB_OUTPUT}"` → rouge. RÉINJECTION 2 : retirer `budget=atteint` → rouge.
+  const recent = new Date(Date.now() - 3_600_000).toISOString();
+  const recentes = (n) => Array.from({ length: n }, () => ({ createdAt: recent }));
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": recentes(6) });
+  const plein = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.equal(plein.code, 0, plein.sortie);
+  assert.match(plein.out, /^budget=atteint$/m, plein.out);
+  assert.match(plein.out, /^places=0$/m, plein.out);
+  assert.match(plein.out, /^libre=false$/m, plein.out);
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": recentes(5) });
+  const ok = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.match(ok.out, /^budget=libre$/m, ok.out);
+  assert.match(ok.out, /^libre=true$/m, ok.out);
+  // Trois enquêtes en cours : plus de place, mais le budget n'est pas atteint — la file se vide seule.
+  fixtures({ "issues-open": [1, 2, 3].map((number) => ({ number, labels: L("sentinelle", "claude") })), "issues-open-humain": [], "issues-recentes": recentes(3) });
+  const sature = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.match(sature.out, /^budget=libre$/m, sature.out);
+  assert.match(sature.out, /^places=0$/m, sature.out);
+});
+
+test("T4-w3 dédup sans place : PLACES=0 ne retient AUCUNE cible et compte les défauts vivants ; PLACES=1 en retient une ; illisible vaut 1 comme avant", () => {
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  const calme = { "issues-closed": [], "issues-open": [], "prs-merged": [], "runs-deploy": [], "compare": { commits: [] } };
+  // RÉINJECTION : remettre `Number.isInteger(places) && places > 0 ? places : 1` → deja=non avec PLACES=0, rouge
+  // (une enquête ouverte alors que le budget du jour est atteint).
+  verdict(A, [A, B]);
+  fixtures(calme);
+  const zero = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "0" });
+  assert.equal(zero.code, 0, zero.sortie);
+  assert.match(zero.out, /^deja=oui$/m, zero.out);
+  assert.match(zero.out, /^n=0$/m, zero.out);
+  assert.match(zero.out, /^attente=2$/m, zero.out);
+  assert.equal(lireVerdict().cibles, undefined, "le verdict ne reçoit aucune cible à ouvrir");
+  assert.ok(zero.summary.includes("aucune cible retenue faute de place ; 2 défaut(s) vivant(s) en attente d une place"), zero.summary);
+  assert.ok(!zero.summary.includes("aucune cible vivante"), "des défauts attendent : le bilan ne dit pas qu'il n'y en a aucun\n" + zero.summary);
+  // RÉINJECTION : `const attente = 0;` → rouge.
+  verdict(A, [A, B, C]);
+  fixtures(calme);
+  const une = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "1" });
+  assert.match(une.out, /^deja=non$/m, une.out);
+  assert.match(une.out, /^n=1$/m, une.out);
+  assert.match(une.out, /^attente=2$/m, une.out);
+  assert.deepEqual(lireVerdict().cibles.map((x) => x.cible.cle), [A.cle], "la première du classement, comme avant");
+  assert.ok(une.summary.includes("1 cible(s) retenue(s) ; 2 défaut(s) vivant(s) en attente d une place"), une.summary);
+  // Un titre déjà ouvert ne compte pas comme « en attente » : il a son enquête.
+  verdict(A, [A, B]);
+  fixtures({ ...calme, "issues-open": [{ number: 400, title: mod.titreIssue(A) }] });
+  const ouvert = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "0" });
+  assert.match(ouvert.out, /^attente=1$/m, ouvert.out);
+  // Absent ou illisible : une place, comme avant ce lot (jamais zéro par accident, jamais « toutes »).
+  for (const PLACES of [undefined, "", "abc", "-1", "1.5"]) {
+    verdict(A, [A, B, C]);
+    fixtures(calme);
+    const r = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, PLACES === undefined ? {} : { PLACES });
+    assert.match(r.out, /^n=1$/m, JSON.stringify(PLACES) + "\n" + r.out);
+    assert.match(r.out, /^attente=2$/m, JSON.stringify(PLACES) + "\n" + r.out);
+  }
+  // Rien à attendre : le bilan d'avant, mot pour mot.
+  verdict(A, [A]);
+  fixtures({ ...calme, "issues-open": [{ number: 400, title: mod.titreIssue(A) }] });
+  const rien = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "3" });
+  assert.match(rien.out, /^attente=0$/m, rien.out);
+  assert.ok(rien.summary.includes("aucune cible vivante (occurrences antérieures au correctif, titre déjà ouvert, ou correctif en vol)"), rien.summary);
+});
+
+const PARTIEL_BOUTONS = { lecture: { complet: false, partiel: [{ code: "boutons_non_juges", n: 2 }, { code: "api", lues: 10000 }] } };
+const TOUT_LU = { lecture: { complet: true, partiel: [] } };
+const TITRE_PARTIEL = "[SENTINELLE PARTIELLE] pas tout traité : boutons, appels refusés";
+const jouerEtat = (env = {}) => jouer(etape(SA, "detecter", ETAPE_LECTURE).run, { GH_TOKEN: "integre", ATTENTE: "", BUDGET: "libre", ...env });
+
+test("T4-w4 « État de lecture » : lecture partielle → UNE issue `sentinelle-partielle` (github.token, jamais claude ni sentinelle) ; déjà ouverte → réécrite, sans doublon ni commentaire", () => {
+  // Verrous statiques, recopiés de l'étape « Tableau » de veille-production.yml.
+  const t = etape(SA, "detecter", ETAPE_LECTURE);
+  // RÉINJECTION : retirer `continue-on-error: true` → rouge (un état non publié ferait un run rouge, donc [SENTINELLE MUETTE]).
+  assert.equal(String(t["continue-on-error"]), "true");
+  // RÉINJECTION : `GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}` → rouge (une issue de PASSIO74, éligible à claude-code.yml).
+  assert.equal(t.env.GH_TOKEN, "${{ github.token }}");
+  assert.deepEqual(Object.keys(t.env).sort(), ["ATTENTE", "BUDGET", "GH_TOKEN"], "les sorties des étapes passent par l'environnement, jamais dans le bloc");
+  assert.equal(t.env.ATTENTE, "${{ steps.dedup.outputs.attente }}");
+  assert.equal(t.env.BUDGET, "${{ steps.encours.outputs.budget }}");
+  assert.ok(!t.run.includes("SENTINELLE_TOKEN") && !t.run.includes("--search") && !t.run.includes("--label claude") && !t.run.includes("${{"), "ni jeton personnel, ni --search, ni label claude, ni expression dans le bloc");
+  assert.ok(t.run.includes("--body-file /tmp/partiel-corps.md"), "le corps passe par un fichier, jamais interpolé");
+  // RÉINJECTION : retirer le `trap … ERR` → rouge (test T4-w5 : l'échec ne s'annoncerait nulle part).
+  assert.ok(/trap '[^\n]*::warning title=État de lecture non publié::[^\n]*GITHUB_STEP_SUMMARY[^\n]*' ERR/.test(t.run));
+  assert.ok(t.run.includes('startswith("' + mod.PREFIXE_PARTIELLE + '")'), "le workflow retrouve l'issue par le préfixe que `etatPartiel` écrit");
+  const steps = SA.jobs.detecter.steps;
+  const rang = (nom) => steps.findIndex((x) => String(x.name || "").startsWith(nom));
+  assert.ok(rang(ETAPE_LECTURE) > steps.findIndex((x) => x.id === "detect") && rang(ETAPE_LECTURE) > steps.findIndex((x) => x.id === "dedup"), "après le verdict et la dédup, dont elle lit les sorties");
+  assert.ok(rang(ETAPE_LECTURE) < rang("Ouvrir l'enquête"), "avant l'ouverture : un échec à l'ouverture ne tait pas l'état");
+  assert.ok(steps.some((x) => x.id === "encours") && /budget=\$\{budget\}/.test(etape(SA, "detecter", "Enquêtes en parallèle").run), "la sortie `budget` que l'étape lit existe");
+
+  // Aucune issue d'état : le label, puis la création. RÉINJECTION : `--label sentinelle-partielle` → `--label sentinelle`
+  // → rouge (l'issue compterait comme une enquête, prendrait une place, et le pilote lirait « La Sentinelle enquête »).
+  verdict(null, [], PARTIEL_BOUTONS);
+  fixtures({ "issues-partielle": [] });
+  const r = jouerEtat();
+  assert.equal(r.code, 0, r.sortie);
+  const iLabel = r.lignes.findIndex((x) => x.startsWith("label create sentinelle-partielle "));
+  const iCreate = r.lignes.findIndex((x) => x.startsWith("issue create"));
+  assert.ok(iLabel >= 0 && iCreate > iLabel, "le label est créé (--force) AVANT l'issue\n" + r.log);
+  assert.match(r.lignes[iCreate], /^issue create --repo o\/r --title \[SENTINELLE PARTIELLE\] pas tout traité : boutons, appels refusés --body-file \S+\/partiel-corps\.md --label sentinelle-partielle :: jeton=integre$/, r.log);
+  // La conversation est VERROUILLÉE dès la création : le dépôt est public, et un commentaire de n'importe quel compte
+  // ferait du bruit sur une issue que seule la Sentinelle écrit. RÉINJECTION : retirer la ligne `gh issue lock` → rouge.
+  assert.deepEqual(r.lignes.filter((x) => x.startsWith("issue ")).slice(1), ["issue lock 999 --repo o/r :: jeton=integre"], "une création, son verrou, rien d'autre\n" + r.log);
+  // Un verrou refusé ne retire rien : l'état est publié, l'étape réussit, aucune annonce d'échec.
+  const sansVerrou = jouerEtat({ FAUX_ECHEC: "issue lock" });
+  assert.equal(sansVerrou.code, 0, sansVerrou.sortie);
+  assert.ok(sansVerrou.summary.includes("État de lecture publié : #999") && !sansVerrou.summary.includes("NON publié"), sansVerrou.summary);
+  assert.ok(!annotations(sansVerrou).some((l) => l.includes("non publié")), sansVerrou.flux);
+  assert.doesNotMatch(r.log, /--label claude|--label sentinelle( |$)|--label humain/m, r.log);
+  const corps = fs.readFileSync(BAC + "/partiel-corps.md", "utf8");
+  assert.match(corps, /^- Boutons : 2 bouton\(s\) suspect\(s\) non jugé\(s\)/m, corps);
+  assert.match(corps, /^- Appels refusés : seuls les 10000 plus récents ont été lus\.$/m, corps);
+  assert.match(corps, /^- Passage : https:\/\/github\.com\/o\/r\/actions\/runs\/1$/m, corps);
+  assert.match(corps, /^- Mis à jour : \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/m, "l'heure de mise à jour : c'est elle qui repousse la fermeture");
+  assert.ok(r.summary.includes("## La Sentinelle n'a pas tout traité") && r.summary.includes("État de lecture publié : #999"), r.summary);
+
+  // Déjà ouverte : réécrite (titre et corps), jamais doublée, jamais commentée (un commentaire = un e-mail par heure).
+  // RÉINJECTION : le jq → `.[0].number // empty` sans filtre de titre → rouge (#76, une autre issue du même label, serait réécrite).
+  fixtures({ "issues-partielle": [{ number: 76, title: "note à part", updatedAt: iso(300) }, { number: 77, title: "[SENTINELLE PARTIELLE] pas tout traité : parcours", updatedAt: iso(61) }] });
+  const r2 = jouerEtat();
+  assert.equal(r2.code, 0, r2.sortie);
+  // Le verrou est rejoué à la réécriture : une issue ouverte avant lui, ou un verrou refusé la fois d'avant, le reçoit.
+  assert.deepEqual(r2.lignes.filter((x) => x.startsWith("issue ")).map((x) => x.split(" --body-file ")[0]), ["issue edit 77 --repo o/r --title " + TITRE_PARTIEL, "issue lock 77 --repo o/r :: jeton=integre"], r2.log);
+  assert.ok(r2.lignes[0].includes(" :: La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier") && r2.lignes[0].endsWith(":: jeton=integre"), r2.log);
+  assert.ok(r2.summary.includes("État de lecture mis à jour : #77"), r2.summary);
+});
+
+// Le corps tel que l'étape l'écrit : sa dernière ligne porte l'heure de la réécriture, à la seconde.
+const corpsEtat = (minutes) => "La Sentinelle a lu la production, mais elle n'a pas pu tout lire ou tout confier :\n\n- Boutons : 2 bouton(s) suspect(s) non jugé(s).\n\n- Passage : https://github.com/o/r/actions/runs/1\n- Mis à jour : " + iso(minutes).replace(/\.\d{3}Z$/, "Z") + "\n";
+
+test("T4-w5 « État de lecture » : tout est lu → l'issue n'est refermée que si son CORPS n'a pas été réécrit depuis 90 min (updatedAt, qu'un commentaire avance, ne décide pas) ; « en attente » seulement budget atteint ; un échec s'annonce", () => {
+  // Refermée : commentaire puis fermeture. RÉINJECTION : retirer la branche de fermeture → rouge.
+  verdict(null, [], TOUT_LU);
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(125), body: corpsEtat(125) }, { number: 76, title: "note à part", updatedAt: iso(900), body: corpsEtat(900) }] });
+  const ferme = jouerEtat();
+  assert.equal(ferme.code, 0, ferme.sortie);
+  assert.deepEqual(ferme.lignes.map((x) => x.replace(/ — https:\S+/, "")), [
+    "issue comment 77 --repo o/r --body ✅ La Sentinelle a de nouveau tout lu et tout confié :: jeton=integre",
+    "issue close 77 --repo o/r --reason completed :: jeton=integre",
+  ], ferme.log);
+  assert.ok(ferme.summary.includes("État de lecture refermé : #77"), ferme.summary);
+  // ⚠️ HYSTÉRÉSIS. RÉINJECTION : dans `etatsAFermer`, `reference < limite` → `true` → rouge : une panne passagère ouvrirait
+  // puis refermerait l'issue à chaque passage — un e-mail et un changement de voyant par heure.
+  // L'heure lue est celle du CORPS : `updatedAt` est ici ANCIEN partout, et l'issue tient quand même.
+  for (const minutes of [5, 61, 89]) {
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(600), body: corpsEtat(minutes) }] });
+    const tenue = jouerEtat();
+    assert.equal(tenue.code, 0, tenue.sortie);
+    assert.equal(tenue.log.trim(), "", "réécrite il y a " + minutes + " min (updatedAt ancien) : elle reste ouverte\n" + tenue.log);
+  }
+  // ⚠️ UN TIERS NE LA TIENT PAS OUVERTE : un commentaire avance `updatedAt` (dépôt public), pas le corps.
+  // RÉINJECTION : revenir à `updatedAt` (`const reference = Date.parse(String(i.updatedAt || ""));`) → rouge, ici et au-dessus.
+  fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(2), body: corpsEtat(91) }] });
+  const commentee = jouerEtat();
+  assert.equal(commentee.code, 0, commentee.sortie);
+  assert.ok(commentee.log.includes("issue close 77"), "commentée il y a 2 min, réécrite il y a 91 : refermée\n" + commentee.log);
+  // Un corps SANS date lisible (retouché à la main) : `updatedAt` décide, faute de mieux — récent, elle reste ouverte.
+  for (const body of ["", "note retouchée à la main", "- Mis à jour : hier soir", "- Mis à jour : 2026-13-45T99:99:99Z"]) {
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(30), body }] });
+    assert.equal(jouerEtat().log.trim(), "", "corps sans date, activité il y a 30 min : elle reste ouverte — " + JSON.stringify(body));
+    fixtures({ "issues-partielle": [{ number: 77, title: TITRE_PARTIEL, updatedAt: iso(91), body }] });
+    assert.ok(jouerEtat().log.includes("issue close 77"), "corps sans date, aucune activité depuis 91 min : refermée — " + JSON.stringify(body));
+  }
+  // Aucune issue, tout est lu : rien n'est écrit.
+  fixtures({ "issues-partielle": [] });
+  const calme = jouerEtat();
+  assert.equal(calme.code, 0, calme.sortie);
+  assert.equal(calme.log.trim(), "", calme.log);
+  assert.ok(!calme.summary.includes("n'a pas tout traité"), calme.summary);
+  // Des défauts vivants attendent : dit SEULEMENT si le budget du jour est atteint.
+  // RÉINJECTION : `budgetAtteint: true` en dur dans le bloc → rouge.
+  const libre = jouerEtat({ ATTENTE: "2", BUDGET: "libre" });
+  assert.equal(libre.log.trim(), "", "trois enquêtes en cours : la file se vide seule, rien à dire\n" + libre.log);
+  const atteint = jouerEtat({ ATTENTE: "2", BUDGET: "atteint" });
+  assert.equal(atteint.code, 0, atteint.sortie);
+  assert.match(atteint.lignes.find((x) => x.startsWith("issue create")) || "", /--title \[SENTINELLE PARTIELLE\] pas tout traité : défauts en attente /, atteint.log);
+  assert.match(fs.readFileSync(BAC + "/partiel-corps.md", "utf8"), /^- 2 défaut\(s\) retenu\(s\) attendent : le budget d'enquêtes par 24 h est atteint\.$/m);
+  for (const ATTENTE of ["", "abc", "2; rm -rf /", "-3"]) assert.equal(jouerEtat({ ATTENTE, BUDGET: "atteint" }).log.trim(), "", "ATTENTE illisible = 0 : " + JSON.stringify(ATTENTE));
+  // Un verdict d'avant ce lot (sans `lecture`) n'ouvre rien et ne casse rien.
+  verdict(A, [A]);
+  assert.equal(jouerEtat().code, 0);
+  // Un gh en échec : l'étape échoue (continue-on-error la laisse sans effet sur le run) ET l'annonce.
+  verdict(null, [], PARTIEL_BOUTONS);
+  fixtures({ "issues-partielle": [] });
+  const casse = jouerEtat({ FAUX_ECHEC: "issue create" });
+  assert.notEqual(casse.code, 0);
+  assert.ok(annotations(casse).some((l) => l.startsWith("::warning title=État de lecture non publié::")), casse.flux);
+  assert.ok(casse.summary.includes("État de lecture NON publié"), casse.summary);
+  const liste = jouerEtat({ FAUX_ECHEC: "issue list" });
+  assert.notEqual(liste.code, 0, "la lecture des issues en échec ne passe pas pour « aucune issue »");
+  assert.ok(!liste.log.includes("issue create"), liste.log);
+  verdict(null, [], TOUT_LU);
+  const fermeture = jouerEtat({ FAUX_ECHEC: "issue list" });
+  assert.notEqual(fermeture.code, 0, "côté fermeture aussi : la liste se lit AVANT la boucle, pas dans son en-tête");
+  assert.ok(annotations(fermeture).some((l) => l.startsWith("::warning title=État de lecture non publié::")), fermeture.flux);
+});
+
+test("T4-w6 le label du canal existe avant qu'on en ait besoin, et le résumé du passage imprime ce qui n'a pas été lu", () => {
+  // RÉINJECTION : retirer `gh label create sentinelle-partielle` de « Labels du canal » → rouge.
+  fixtures({});
+  const l = jouer(etape(SA, "detecter", "Labels du canal").run, { GH_TOKEN: "integre" });
+  assert.equal(l.code, 0, l.sortie);
+  assert.ok(l.lignes.some((x) => x.startsWith("label create sentinelle-partielle --repo o/r ") && x.includes("--force") && x.endsWith(":: jeton=integre")), l.log);
+  // RÉINJECTION : retirer `lecture: v.lecture, ` du résumé de « Lire la production » → rouge (le run ne dirait plus ce qu'il n'a pas lu).
+  assert.match(etape(SA, "detecter", "Lire la production").run, /sources: v\.sources, lecture: v\.lecture, boutonsSuspects: v\.boutonsSuspects/);
+  // Aucune apostrophe dans les blocs Node cités entre apostrophes simples par bash (vécu : le bloc se referme au milieu).
+  for (const nom of ["Ce défaut a-t-il", ETAPE_LECTURE]) {
+    const run = etape(SA, "detecter", nom).run;
+    const debut = run.indexOf("node --input-type=module -e '") + "node --input-type=module -e '".length;
+    const bloc = run.slice(debut, run.indexOf("\n'", debut) < 0 ? undefined : run.indexOf("\n'", debut));
+    assert.ok(debut > 30 && bloc.includes("import fs from"), nom + " : le bloc Node est retrouvé");
+    assert.ok(!bloc.includes("'"), nom + " : une apostrophe refermerait le bloc");
+  }
 });

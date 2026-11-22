@@ -20,6 +20,10 @@
 //   ⑤ les participants AGRÉGÉS · les places restantes ;
 //   ⑥ la preuve sociale historique, quand elle existe (personnes suivies) ;
 //   ⑦ « Détails » et « Je viens » / « Inscrit ✓ ».
+//   ⑧ depuis le 2026-11-14 (demande de Benjamin) : aimer, commenter, partager.
+//      Ce module n'en construit RIEN : `styles.css` cesse de recouvrir la barre
+//      sociale historique (`.post-actions`), dont les nœuds et les moteurs
+//      (`toggleEventLike`, `openCommentSheet`, `shareEvent`) sont inchangés.
 //
 // ── Ce qui n'est PAS fait ici, et pourquoi ────────────────────────────────
 //   • aucune vue « Liste / Carte » : c'est le sous-lot suivant (UI-4A3) ;
@@ -88,7 +92,7 @@
 
   var LIB_VOIR = "Détails";
   var LIB_REVOIR = "Revoir";
-  var LIB_VIENS = "Je viens";
+  var LIB_VIENS = "Je participe"; // LOT-3 (audit UX/UI, PCS-C06) : le même mot que la fiche
   var LIB_FILE = "Liste d'attente";
   var LIB_ANNULE = "Annulé";
   var LIB_ORGANISE = "Tu organises";
@@ -364,19 +368,29 @@
     // de démonstration dit ce qu'elle est, à la place des chiffres.
     try {
       if (window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)) {
-        return "Exemple PASSIO · participation désactivée";
+        return "Activité d'exemple · pas d'inscription";
       }
     } catch (e) {}
     var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
-    var reste = placesRestantes(ev);
+    // LOT-19 (IRL-C56) : pas de « places restantes » sur une activité finie.
+    var fini = estTermine(ev);
+    var reste = fini ? null : placesRestantes(ev);
     if (reste !== null && reste !== undefined) {
       bouts.push(reste <= 0
         ? "complet"
         : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
-    var att = nbInscrits(ev, "waitlist");
+    var att = fini ? 0 : nbInscrits(ev, "waitlist");
     if (att) bouts.push(att + " en attente");
+    // LOT-19 (IRL-C06) : le prix est une information de décision — « · 15 € »
+    // sur la carte, rien pour une activité gratuite (seule autorité : fmtEventPrice).
+    try {
+      if (typeof fmtEventPrice === "function") {
+        var prix = fmtEventPrice(ev.price);
+        if (prix && prix !== "Gratuit") bouts.push(prix);
+      }
+    } catch (e) { fail("prix", e); }
     return bouts.join(" · ");
   }
 
@@ -600,6 +614,22 @@
       return true;
     }
     if (termine) return true;
+
+    // LOT-5 (audit UX/UI du 2026-11-10, IRL-C01) : une activité d'EXEMPLE refuse la
+    // participation — le « Je participe » corail plein, identique à celui d'une
+    // vraie activité, était proposé quand même (et finissait sur un toast). La
+    // pastille d'état dit ce qu'elle est ; « Détails » reste la seule action.
+    var estExemple = false;
+    try { estExemple = !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) {}
+    if (estExemple) {
+      var ex = document.createElement("span");
+      ex.className = "v4a2-etat v4a2-etat-exemple";
+      ex.setAttribute("data-v4a2-act", "exemple");
+      ex.setAttribute("role", "status");
+      ex.textContent = "Exemple";
+      a.appendChild(ex);
+      return true;
+    }
 
     if (estMien(ev)) {
       // Organiser n'est pas participer : proposer « Je viens » à l'organisateur

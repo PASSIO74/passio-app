@@ -1,0 +1,163 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT-16 (audit UX/UI du 2026-11-10) — LE PROFIL
+//   ① PRO-C04 : formats en MULTI-SÉLECTION (union), « Tout » exclusif (deux profils).
+//   ② PRO-C07 / C08 / C09 / C17 : profil visité — « publications », une seule
+//      croix, actions de 44 px, « ✓ Suivi » moins fort que Message, bandeau
+//      « Tu as bloqué ce compte ».
+//   ③ PRO-C10 : ouvert depuis une liste, le profil y ramène.
+//   ④ PRO-C22 : une fenêtre qui remplace le profil n'hérite pas de son plein écran.
+//   ⑤ PRO-C11 / C12 / C14 / C15 : textes justes, réseaux remplis seulement.
+//   ⑥ PRO-C18 / C19 / C21 : fichier non image refusé à voix haute ; « Déjà
+//      ajoutée » ; pastille de compte dans la vignette.
+// Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
+// ═══════════════════════════════════════════════════════════════════════════
+const { test, expect } = require("@playwright/test");
+const { bootOnboarded } = require("./app-helper");
+
+test("① PRO-C04 : formats en multi-sélection, « Tout » exclusif", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    goTo("profiles");
+    switchProfileTab("posts");
+    switchProfileTab("photos");
+    const apresPhotos = [...profileTabSelection];
+    switchProfileTab("videos");
+    const apresVideos = [...profileTabSelection].sort();
+    switchProfileTab("photos"); switchProfileTab("videos");
+    const apresRetouche = [...profileTabSelection];
+    switchProfileTab("bobines"); switchProfileTab("posts");
+    const apresTout = [...profileTabSelection];
+    window._visited = { authorId: "u_lea", posts: [
+      { id: "a", type: "photo", image: "x.jpg" }, { id: "b", type: "video" },
+      { id: "c", type: "text" }, { id: "d", isReel: true, type: "video" },
+    ], passionSel: new Set(), tabSel: new Set(), locked: false };
+    switchVisitedTab("photos"); switchVisitedTab("videos");
+    const visite = [...window._visited.tabSel].sort();
+    switchVisitedTab("photos");
+    const visiteRetouche = [...window._visited.tabSel];
+    switchVisitedTab("posts");
+    return { apresPhotos, apresVideos, apresRetouche, apresTout, visite, visiteRetouche, visiteTout: [...window._visited.tabSel] };
+  });
+  expect(r.apresPhotos, "« Photos » remplace « Tout »").toEqual(["photos"]);
+  expect(r.apresVideos, "« Vidéos » S'AJOUTE à « Photos »").toEqual(["photos", "videos"]);
+  expect(r.apresRetouche, "tout décoché rend « Tout »").toEqual(["posts"]);
+  expect(r.apresTout, "« Tout » retire les formats").toEqual(["posts"]);
+  expect(r.visite, "profil visité : deux formats à la fois").toEqual(["photos", "videos"]);
+  expect(r.visiteRetouche).toEqual(["videos"]);
+  expect(r.visiteTout).toEqual([]);
+});
+
+test("① bis : profil visité — photos + vidéos affichées ensemble, onglets pressés", async ({ page }) => {
+  await bootOnboarded(page);
+  await page.evaluate(() => { state.user.following = ["u_lea"]; return openUserProfile("u_lea"); });
+  await page.waitForTimeout(500);
+  const r = await page.evaluate(() => {
+    const v = window._visited;
+    v.posts = [
+      { id: "vp_a", author: "u_lea", type: "photo", image: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", text: "photo", likes: 0, comments: [] },
+      { id: "vp_b", author: "u_lea", type: "video", video: "", text: "video", likes: 0, comments: [] },
+      { id: "vp_c", author: "u_lea", type: "text", text: "texte", likes: 0, comments: [] },
+    ];
+    switchVisitedTab("photos"); switchVisitedTab("videos");
+    const presses = [...document.querySelectorAll("#visitedTabs .profile-tab[aria-pressed=true]")].map(b => b.dataset.vtab).sort();
+    const html = document.getElementById("visitedContent").innerHTML;
+    return { presses, a: html.includes("vp_a"), b: html.includes("vp_b"), c: html.includes("vp_c") };
+  });
+  expect(r.presses).toEqual(["photos", "videos"]);
+  expect(r.a && r.b, "les deux formats sont affichés").toBe(true);
+  expect(r.c, "le texte seul est filtré").toBe(false);
+});
+
+test("② PRO-C07 / C08 / C09 / C17 : le profil visité", async ({ page }) => {
+  await bootOnboarded(page);
+  await page.evaluate(() => { state.user.following = ["u_lea"]; return openUserProfile("u_lea"); });
+  await page.waitForTimeout(500);
+  const m = page.locator("#modalContent");
+  expect(await m.locator(".modal-close").count(), "une seule croix").toBe(1);
+  await expect(m.locator(".main-profile-stat span").nth(1)).toHaveText(/^publications?$/);
+  const msg = m.locator("#visitedProfileActions .btn.primary");
+  expect((await msg.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  const suivi = await page.evaluate(() => getComputedStyle(document.getElementById("followBtn_u_lea")).backgroundColor);
+  expect(suivi, "« ✓ Suivi » n'est plus un bouton plein").not.toBe("rgb(124, 58, 237)");
+
+  await page.evaluate(() => { closeModal(); state.user.blocked = ["u_lea"]; return openUserProfile("u_lea"); });
+  await page.waitForTimeout(500);
+  await expect(m.locator(".profil-bloque")).toContainText("Tu as bloqué ce compte");
+  await expect(m.locator(".profil-bloque button")).toHaveText("Débloquer");
+  await expect(m.locator("#visitedProfileActionsMasquees")).toBeHidden();
+});
+
+test("③ PRO-C10 : un profil ouvert depuis « Abonnements » y ramène", async ({ page }) => {
+  await bootOnboarded(page);
+  await page.evaluate(() => { state.user.following = ["u_lea"]; openFollowingList(); });
+  const ligne = page.locator("#modalContent .personne-ligne").first();
+  await expect(ligne).toHaveAttribute("role", "button");
+  expect(await page.locator("#modalContent .modal-close").count(), "une seule croix sur la liste").toBe(1);
+  await ligne.click();
+  const retour = page.locator("#modalContent .profil-retour-liste");
+  await expect(retour).toHaveText("← Abonnements");
+  await retour.click();
+  await expect(page.locator("#modalContent .modal-title")).toHaveText("Abonnements");
+});
+
+test("④ PRO-C22 : « Signaler » n'hérite pas du plein écran du profil", async ({ page }) => {
+  await bootOnboarded(page);
+  await page.evaluate(() => openUserProfile("u_lea"));
+  await page.waitForTimeout(400);
+  const r = await page.evaluate(() => {
+    const avant = document.querySelector(".modal").classList.contains("modal-fullscreen");
+    openModal('<div class="modal-title">Signaler ce compte</div>');
+    return { avant, apres: document.querySelector(".modal").classList.contains("modal-fullscreen") };
+  });
+  expect(r).toEqual({ avant: true, apres: false });
+});
+
+test("⑤ PRO-C11 / C14 / C15 : textes justes, réseaux remplis seulement", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    goTo("profiles");
+    state.user.general = state.user.general || {};
+    state.user.general.rsLinks = [{ platform: "tiktok", url: "https://www.tiktok.com/@x" }];
+    openEditMainProfile();
+    const m = document.getElementById("modalContent");
+    const visibles = [...m.querySelectorAll(".rs-ligne")].filter((l) => !l.hidden).map((l) => l.querySelector("input").getAttribute("aria-label"));
+    const out = { titre: m.querySelector(".modal-title").textContent, visibles, ajouter: !!m.querySelector(".rs-ajouter") };
+    m.querySelector(".rs-ajouter").click();
+    out.apresAjout = [...m.querySelectorAll(".rs-ligne")].filter((l) => !l.hidden).length;
+    return out;
+  });
+  expect(r.titre).toBe("Modifier mon profil");
+  expect(r.visibles).toEqual(["TikTok"]);
+  expect(r.ajouter).toBe(true);
+  expect(r.apresAjout).toBe(8);
+});
+
+// 2026-11-13 (Benjamin : « supprime les chiffres sur les onglets de passion ») :
+// la pastille de compte de PRO-C21 est RETIRÉE — plus aucune bulle n'en porte,
+// même quand l'appelant passe encore un `count`.
+test("⑥ PRO-C18 / C21 : un fichier non image le dit ; aucune bulle ne porte de chiffre", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(async () => {
+    const toasts = [];
+    const t0 = window.toast;
+    window.toast = (m) => { toasts.push(m); };
+    let refus = null;
+    try { await _readAndCrop(new File(["x"], "clip.mp4", { type: "video/mp4" }), { aspect: 1 }); } catch (e) { refus = e.message; }
+    window.toast = t0;
+    const html = passionTileHTML({ emoji: "🎸", label: "Guitare", count: 12 });
+    const scene = document.createElement("div");
+    scene.innerHTML = html;
+    const chiffre = scene.querySelector(".profile-tile-count");
+    const texte = scene.textContent;
+    // Les deux rails réels : Fil (#profileStrip) et Profil (#v9ProfilePassions).
+    renderProfileStrip();
+    if (typeof renderProfilePassionRail === "function") renderProfilePassionRail();
+    const rails = document.querySelectorAll("#profileStrip .profile-tile-count, #v9ProfilePassions .profile-tile-count").length;
+    return { toasts, refus, chiffre: !!chiffre, texte, rails };
+  });
+  expect(r.refus).toBe("pas une image");
+  expect(r.toasts.join(" ")).toContain("Ce fichier n'est pas une image");
+  expect(r.chiffre, "la bulle ne rend plus de pastille").toBe(false);
+  expect(r.texte).not.toMatch(/12/);
+  expect(r.rails, "ni le rail du Fil ni celui du Profil").toBe(0);
+});

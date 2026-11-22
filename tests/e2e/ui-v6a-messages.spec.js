@@ -4,12 +4,11 @@
 //   ① la tête est en place : « Messages », un « + », puis la recherche —
 //      et les deux gros boutons ont cédé la place ;
 //   ② le « + » regroupe les deux gestes et appelle les moteurs EXISTANTS ;
-//   ③ une conversation 1:1 porte la Passio de son interlocuteur devant
-//      l'aperçu, un groupe n'en porte pas ;
-//   ④ LE contrôle central : cette ligne SURVIT à un nouveau rendu.
-//      `renderMessages()` repart de zéro à chaque envoi, chaque réception et
-//      chaque frappe dans la recherche — une décoration posée une seule fois
-//      disparaîtrait au premier message reçu, en silence ;
+//   ③ AUCUNE passion sur une carte de conversation (retrait du 2026-11-13,
+//      demande de Benjamin : « ce n'est pas joli et trop chargé ») — l'aperçu
+//      commence par le message, en 1:1 comme en groupe ;
+//   ④ et elle ne revient pas au rendu suivant : `renderMessages()` repart de
+//      zéro à chaque envoi, chaque réception et chaque frappe dans la recherche ;
 //   ⑤ la recherche DÉPLACÉE alimente toujours le même moteur ;
 //   ⑥ les deux kill switches, au boot et en cours de session, rendent l'inbox
 //      historique — boutons, recherche à sa place, aucune ligne de Passio ;
@@ -135,24 +134,55 @@ test.describe("UI-6A — inbox Messages", () => {
     await expect(page.locator("[data-v6a-plus]")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("« Passio · aperçu » sur une conversation 1:1, rien sur un groupe", async ({ page }) => {
+  // ⚠️ ASSERTION RETOURNÉE LE 2026-11-13, jamais vidée. Ce test exigeait
+  // « Voyage · On part quand ? » ; Benjamin a fait retirer les passions des
+  // cartes (« ce n'est pas joli et trop chargé »).
+  test("aucune passion sur une carte : l'aperçu commence par le message", async ({ page }) => {
     await boot(page);
     await poserConversations(page);
     await ouvrirMessages(page);
 
-    const attendu = await page.evaluate(() => passionById(userById("u_nina").passion).label);
-    await expect(carte(page, "v6a_nina").locator(".v6a-psn")).toHaveText(attendu + " · ");
-    // L'aperçu historique n'a pas été remplacé : il est préfixé.
-    await expect(carte(page, "v6a_nina").locator(".msg-preview")).toContainText("On part quand ?");
-    // Un groupe n'a pas d'interlocuteur unique : aucune Passio à annoncer.
-    await expect(carte(page, "v6a_groupe").locator(".v6a-psn")).toHaveCount(0);
+    // Prémisse : Nina A une passion à afficher — sinon le test serait vert
+    // sur une interlocutrice qui n'a rien à montrer.
+    const passion = await page.evaluate(() => identitePassionsTexte(userById("u_nina")));
+    expect(passion, "prémisse : l'interlocutrice a une passion publiée").not.toBe("");
+
+    await expect(page.locator("#messageList .v6a-psn, #messageList .ident-passions")).toHaveCount(0);
+    const apercu = (await carte(page, "v6a_nina").locator(".msg-preview").innerText()).trim();
+    expect(apercu, "l'aperçu ne nomme aucune passion").not.toContain(passion);
+    expect(apercu.startsWith("On part quand ?"), "il commence par le message : " + apercu).toBe(true);
+    await expect(carte(page, "v6a_groupe").locator(".msg-preview")).toContainText("Rendez-vous à 9h");
   });
 
-  test("LE contrôle : la ligne de Passio survit à un nouveau rendu", async ({ page }) => {
+  // 2026-11-13, même demande : « Nouveau message » montrait aussi les passions
+  // sous le pseudo de chaque résultat. Le pseudo seul, désormais.
+  test("« Nouveau message » : aucun résultat ne porte de passion sous le pseudo", async ({ page }) => {
+    await boot(page);
+    const vu = await page.evaluate(async () => {
+      window.supaSearchUsers = async () => [];
+      let box = document.getElementById("msgUserResults");
+      if (!box) { box = document.createElement("div"); box.id = "msgUserResults"; document.body.appendChild(box); }
+      const nina = userById("u_nina");
+      searchUsers(nina.name);
+      await new Promise((r) => setTimeout(r, 300));
+      return {
+        passion: identitePassionsTexte(nina),
+        lignes: box.querySelectorAll(".msg-user-result-row").length,
+        identites: box.querySelectorAll(".ident-passions").length,
+        texte: box.textContent,
+      };
+    });
+    expect(vu.passion, "prémisse : le résultat a une passion publiée").not.toBe("");
+    expect(vu.lignes, "prémisse : la recherche rend au moins un résultat").toBeGreaterThan(0);
+    expect(vu.identites, "aucune ligne de passions sous le pseudo").toBe(0);
+    expect(vu.texte, "le nom de la passion n'est écrit nulle part").not.toContain(vu.passion);
+  });
+
+  test("et elle ne revient pas au rendu suivant", async ({ page }) => {
     await boot(page);
     await poserConversations(page);
     await ouvrirMessages(page);
-    await expect(carte(page, "v6a_nina").locator(".v6a-psn")).toHaveCount(1);
+    await expect(carte(page, "v6a_nina").locator(".v6a-psn")).toHaveCount(0);
 
     // Exactement ce que fait un message reçu : la liste est reconstruite.
     await page.evaluate(() => {
@@ -163,8 +193,10 @@ test.describe("UI-6A — inbox Messages", () => {
     });
     await page.waitForTimeout(300);
 
-    await expect(carte(page, "v6a_nina").locator(".v6a-psn")).toHaveCount(1);
-    await expect(carte(page, "v6a_nina").locator(".msg-preview")).toContainText("Je réserve le train");
+    await expect(page.locator("#messageList .v6a-psn")).toHaveCount(0);
+    await expect(page.locator("#v6aHead"), "la tête, elle, survit au rendu").toHaveCount(1);
+    const apercu = (await carte(page, "v6a_nina").locator(".msg-preview").innerText()).trim();
+    expect(apercu.startsWith("Je réserve le train"), apercu).toBe(true);
   });
 
   test("la recherche déplacée alimente toujours le même moteur", async ({ page }) => {

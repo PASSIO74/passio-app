@@ -2,9 +2,9 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>PASSIO – MVP Beta</title>
+  <title>PASSIO — Le réseau social de tes passions</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="description" content="PASSIO – Le réseau social des passions des utilisateurs. MVP beta testable." />
+  <meta name="description" content="Partage tes passions et rejoins une communauté qui les vit comme toi. PASSIO, le réseau social des passionnés." />
   <meta name="theme-color" content="#6d32f4" />
 
   <!-- Open Graph / Twitter : aperçu riche quand le lien est partagé (WhatsApp, Facebook, X, iMessage…) -->
@@ -90,6 +90,14 @@
 </head>
 <body>
 
+<!-- ENT-C12 (audit UX/UI du 2026-11-10) : premier arrêt du clavier — changer
+     d'écran sans traverser tout le fil. Des boutons, pas des ancres : un
+     changement de `#` passerait pour une navigation (popstate, NAV_SCREENS). -->
+<div class="liens-evitement">
+  <button type="button" class="lien-evitement" onclick="allerA('navigation')">Aller à la navigation</button>
+  <button type="button" class="lien-evitement" onclick="allerA('contenu')">Aller au contenu</button>
+</div>
+
 <div class="app-shell">
 
   <!-- ============ LANDING / PITCH ============ -->
@@ -120,7 +128,7 @@
       <div class="landing-pillar">
         <div class="landing-pillar-emoji">🎨</div>
         <div>
-          <div class="landing-pillar-title">Choisis ton humeur du moment</div>
+          <div class="landing-pillar-title">Choisis ton envie du moment</div>
           <div class="landing-pillar-text">Envie d'apprendre, de créer, de te détendre ? Le fil s'adapte à toi, à ton rythme.</div>
         </div>
       </div>
@@ -154,12 +162,12 @@
       </div>
     </div>
 
+    <!-- ENT-C13 (audit UX/UI du 2026-11-10) : UNE action principale (« Créer un
+         compte »), la connexion en secondaire, l'installation en lien. -->
     <div class="landing-cta">
-      <div style="display:flex;gap:8px;">
-        <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Se connecter</button>
-        <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Créer un compte</button>
-      </div>
-      <button id="btn-install-app" onclick="pwaInstall()" class="btn primary block" style="margin-top:10px;font-size:15px;padding:14px;font-weight:800;display:none;">Installer l'application</button>
+      <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="font-size:15px;padding:14px;font-weight:800;min-height:48px;">Créer un compte</button>
+      <button onclick="exitLandingAsAuth('signin')" class="btn ghost block landing-cta-secondaire" style="margin-top:8px;font-size:15px;padding:12px;font-weight:700;min-height:44px;">Se connecter</button>
+      <button id="btn-install-app" onclick="pwaInstall()" class="landing-cta-lien" style="display:none;">Installer l'application</button>
     </div>
 
   </div>
@@ -173,15 +181,15 @@
         <div style="font-size:13px;font-weight:700;" id="storyAuthor">Créateur</div>
         <div style="font-size:11px;opacity:0.75;" id="storyTime">il y a 1h</div>
       </div>
-      <div class="story-viewer-close" onclick="closeStoryViewer()">✕</div>
+      <button type="button" class="story-viewer-close" onclick="closeStoryViewer()" aria-label="Fermer">✕</button>
     </div>
     <div class="story-viewer-stage">
       <div class="story-viewer-card" id="storyCard">
         <div id="storyMedia" class="story-media-layer"></div>
         <div id="storyOverlays" class="story-overlays-layer"></div>
         <div id="storyContent"></div>
-        <div class="story-viewer-tap story-tap-prev" onclick="storyPrev()"></div>
-        <div class="story-viewer-tap story-tap-next" onclick="storyNext()"></div>
+        <div class="story-viewer-tap story-tap-prev" onclick="storyTap('prev')"></div>
+        <div class="story-viewer-tap story-tap-next" onclick="storyTap('next')"></div>
       </div>
     </div>
   </div>
@@ -223,10 +231,10 @@
     <!-- Outils d'édition (overlays) -->
     <div class="me-toolbar">
       <div class="me-tool-group">
-        <button class="me-tool" onclick="meAddText()" title="Texte">Aa</button>
-        <button class="me-tool" onclick="meAddEmoji()" title="Emoji">😀</button>
-        <button class="me-tool" onclick="meAddGif()" title="GIF">GIF</button>
-        <button class="me-tool" onclick="mePickMedia()" title="Changer de média">🖼️</button>
+        <button type="button" class="me-tool" onclick="meAddText()" title="Texte" aria-label="Ajouter un texte">Aa</button>
+        <button type="button" class="me-tool" onclick="meAddEmoji()" title="Emoji" aria-label="Ajouter un emoji">😀</button>
+        <button type="button" class="me-tool" onclick="meAddGif()" title="GIF" aria-label="Ajouter un GIF">GIF</button>
+        <button type="button" class="me-tool" onclick="mePickMedia()" title="Changer de média" aria-label="Changer de média">🖼️</button>
       </div>
     </div>
     <div class="me-bottom">
@@ -249,9 +257,9 @@
 
       <!-- Onglets Se connecter / Créer un compte -->
       <div style="padding:0 20px;width:100%;box-sizing:border-box;">
-        <div class="onb-auth-toggle" style="margin-bottom:20px;">
-          <button class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
-          <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
+        <div class="onb-auth-toggle" role="tablist" aria-label="Compte" style="margin-bottom:20px;">
+          <button type="button" role="tab" aria-selected="true" class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
+          <button type="button" role="tab" aria-selected="false" class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
         </div>
 
         <div id="authMsg" class="onb-auth-msg"></div>
@@ -288,7 +296,7 @@
              SEULEMENT (`switchAuthTab` pose `display: flex`, jamais `""`). -->
         <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
           <input type="checkbox" id="authConsent" style="width:20px;height:20px;min-width:20px;margin:1px 0 0;accent-color:var(--accent);"/>
-          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
+          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" class="auth-lien-legal" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" class="auth-lien-legal" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
         </label>
 
         <!-- ⚠️ L'ÉCHO DU REFUS VIT HORS DE L'ÉTIQUETTE, ET CE N'EST PAS UN DÉTAIL DE MISE EN PAGE.
@@ -372,10 +380,12 @@
           <div id="authPwdRefus" style="display:none;font-size:12px;line-height:1.45;margin-top:6px;"></div>
           <button type="button" id="authPwdSuggest" onclick="authProposerMotDePasse()" style="margin-top:6px;min-height:44px;padding:6px 0;background:none;border:none;font-size:12px;font-weight:800;color:var(--accent);text-decoration:underline;text-align:left;cursor:pointer;">🎲 Proposer un mot de passe</button>
         </div>
-        <label class="field" id="authPasswordConfirmWrap" style="display:none;">
-          <span>Confirmer le mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
-        </label>
+        <!-- PLUS DE « CONFIRMER LE MOT DE PASSE » (parcours du nouvel inscrit,
+             2026-11-20). 10 comptes sur 13 sont nés par ce formulaire, sur un
+             téléphone le plus souvent : taper deux fois le même mot de passe
+             était le cinquième champ à remplir. Le bouton 👁 montre ce qu'on a
+             tapé, « Proposer un mot de passe » l'écrit en clair, et « Mot de passe
+             oublié ? » rattrape une faute de frappe. -->
 
         <!-- Art. 13 RGPD : l'identité du responsable du traitement, AU MOMENT de la collecte
              (ASTRA-09). Rempli par switchAuthTab depuis js/legal-textes.js, en mode inscription seulement. -->
@@ -384,8 +394,8 @@
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <div id="authCaptcha" style="display:none;margin:0 0 2px;"></div>
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
-          <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</span>
-          <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</span>
+          <button type="button" class="auth-lien" id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</button>
+          <button type="button" class="auth-lien" id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</button>
         </div>
       </div>
     </div>
@@ -403,7 +413,8 @@
       <p class="onb-text">PASSIO est réservé aux personnes majeures. Ton année de naissance est déclarative : elle n'est vérifiée par aucun contrôle automatique.</p>
       <label class="field">
         <span>Ton année de naissance</span>
-        <input type="number" class="input" id="birthYear" placeholder="1995" min="1900" max="2020" />
+        <input type="number" class="input" id="birthYear" placeholder="1995" min="1900" max="2020" inputmode="numeric" autocomplete="bday-year" style="font-size:16px;" />
+        <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">PASSIO est réservé aux 18 ans et plus. Ton année n'est jamais affichée sur ton profil.</span>
       </label>
       <div class="onb-footer">
         <button class="btn ghost" onclick="onbPrev()">← Retour</button>
@@ -417,8 +428,9 @@
       <div class="onb-title" style="font-size:22px;">Comment t'appelles-tu ?</div>
       <p class="onb-text">C'est ton nom public, le même partout. Tu pourras ajouter d'autres passions ensuite.</p>
       <label class="field">
-        <span>Ton prénom</span>
-        <input type="text" class="input" id="userName" placeholder="Benjamin" maxlength="40" />
+        <span>Nom d'utilisateur</span>
+        <input type="text" class="input" id="userName" placeholder="Benjamin" maxlength="40" autocomplete="nickname" style="font-size:16px;" />
+        <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">C'est ton nom public sur PASSIO. Tu pourras le changer plus tard.</span>
       </label>
       <div class="onb-footer">
         <button class="btn ghost" onclick="onbPrev()">← Retour</button>
@@ -476,13 +488,19 @@
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
       </div>
-      <div class="hamburger" onclick="toggleDevPanel()" role="button" tabindex="0" aria-label="Paramètres">⋯</div>
+      <div class="hamburger" id="topbarParametres" onclick="toggleDevPanel()" role="button" tabindex="0" aria-label="Paramètres" aria-haspopup="dialog" aria-controls="devPanel" aria-expanded="false">⋯</div>
     </div>
   </div>
 
   <!-- Dev / demo panel -->
-  <div id="devPanel" class="dev-panel">
-    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:12px;text-align:center;">Paramètres</div>
+  <!-- ENT-C06 (audit UX/UI du 2026-11-10) : le panneau se ferme comme une feuille —
+       fond assombri (toucher dehors), croix de 44 px, Échap, retour système. -->
+  <div id="devPanelFond" class="dev-panel-fond" onclick="fermerParametres()" aria-hidden="true"></div>
+  <div id="devPanel" class="dev-panel" role="dialog" aria-label="Paramètres">
+    <div class="dev-panel-tete">
+      <span class="dev-panel-titre">Paramètres</span>
+      <button type="button" class="dev-panel-fermer" onclick="fermerParametres()" aria-label="Fermer les paramètres">×</button>
+    </div>
 
     <!-- COMPTE -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
@@ -500,7 +518,9 @@
              autre compte » pour un compte connecté. Sans lui, le parcours de
              première visite n'offrait AUCUN chemin vers un compte existant. -->
         <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">Se connecter avec un autre compte</button>
-        <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">Voir l'onboarding</button>
+        <!-- ENT-C06 : la destruction du compte vit dans « Compte », loin de la déconnexion.
+             🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales). -->
+        <button class="btn ghost dev-panel-danger" id="settingsDeleteAccount" onclick="event.stopPropagation();toggleDevPanel();openDeleteAccountConfirm()">Supprimer mon compte</button>
       </div>
     </div>
 
@@ -511,11 +531,11 @@
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openConfigurator()">Apparence & thème</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openConfigurator()">Affichage</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openNotifSettings()">Notifications</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacySettings()">Confidentialité</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openBlockedList()">Comptes bloqués</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openContentSettings()">Contenu & feed</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openContentSettings()">Vidéos et données</button>
         <!-- Première visite : le panneau de passions et les trois repères
              contextuels restent atteignables depuis les options (exigence
              « relançable depuis l'aide ou les options »). `.fr-only` les masque
@@ -526,18 +546,6 @@
       </div>
     </div>
 
-    <!-- BIEN-ÊTRE -->
-    <div class="settings-section" onclick="toggleSettingsSection(this)">
-      <div class="settings-section-header">
-        <span>Bien-être digital</span>
-        <span class="settings-arrow">›</span>
-      </div>
-      <div class="settings-section-body">
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openScreenTime()">Temps d'écran</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPauseMode()">Mode pause</button>
-      </div>
-    </div>
-
     <!-- SUPPORT -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
@@ -545,7 +553,7 @@
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();feedbackModal()">Feedback & aide</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();feedbackModal()">Aide et retour</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openLimitesPilote()">Limites de cette version pilote</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacyPolicy()">Politique de confidentialité</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openTermsOfService()">Conditions générales d'utilisation</button>
@@ -555,8 +563,8 @@
       </div>
     </div>
 
-    <!-- DÉMO -->
-    <div class="settings-section" onclick="toggleSettingsSection(this)">
+    <!-- DÉMO — ENT-C06 : masquée hors mode démo (majSectionDemo, app-02). -->
+    <div class="settings-section" id="settingsDemo" style="display:none" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
         <span>Démo</span>
         <span class="settings-arrow">›</span>
@@ -591,10 +599,7 @@
 
     <!-- DANGER ZONE -->
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-      <button class="btn ghost" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Se déconnecter</button>
-      <!-- 🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales),
-           avant ce bouton ne vidait que le localStorage -->
-      <button class="btn ghost" id="settingsDeleteAccount" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Supprimer mon compte</button>
+      <button class="btn ghost dev-panel-danger" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()">Se déconnecter</button>
     </div>
   </div>
 
@@ -653,7 +658,7 @@
 
       <div id="feedEmpty" class="empty" style="display:none;">
         <div class="empty-icon">🪷</div>
-        <div class="empty-title">Aucun post pour ce mood</div>
+        <div class="empty-title">Aucune publication pour cette envie</div>
         <div class="empty-text">Change de mood ou crée le premier contenu.</div>
       </div>
     </section>
@@ -677,6 +682,11 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
+            <!-- ⚠️ PLUS DE BOUTON « Partager mon profil » (retiré le 2026-11-14 sur
+                 demande de Benjamin : « supprime "partager profil", il sert à
+                 rien »). Il venait de LOT-12 (PAR-C14) ; `partagerMonProfil` et ses
+                 styles sont partis avec lui. Le lien de MON profil reste à un geste :
+                 crayon → « Inviter des amis » (`inviterDesAmis`, app-06). -->
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <!-- ⚠️ 2026-08-31 : plus AUCUNE pastille sous le pseudo. ADR-009 avait
@@ -688,13 +698,15 @@
                « Ajoute une biographie… » : une invitation explicite qui, jusqu'ici,
                ne réagissait à aucun tap — le clic mort exact que ce projet traque.
                Le seul moteur reste `openEditMainProfile`, celui du crayon. -->
+          <!-- ⚠️ AUCUN `onkeydown` ICI (retiré le 2026-11-14) : le délégué clavier
+               d'app-08 active déjà tout `[role="button"]` à Entrée/Espace, et il ne
+               lit pas `defaultPrevented` — Entrée ouvrait l'éditeur DEUX fois. -->
           <div class="main-profile-bio" id="mainProfileBio" role="button" tabindex="0"
                onclick="openEditMainProfile()"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMainProfile();}"
                title="Modifier ta biographie">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
           <div class="main-profile-stats">
-            <div class="main-profile-stat" onclick="openMyPostsTab()" style="cursor:pointer;"><span id="mainStatPosts">0</span><span>posts</span></div>
+            <div class="main-profile-stat" onclick="openMyPostsTab()" style="cursor:pointer;"><span id="mainStatPosts">0</span><span>publications</span></div>
             <div class="main-profile-stat" onclick="openFollowersList()" style="cursor:pointer;"><span id="mainStatFollowers">0</span><span>abonnés</span></div>
             <div class="main-profile-stat" onclick="ouvrirGestionPassions()" style="cursor:pointer;"><span id="mainStatPassions">0</span><span>passions</span></div>
             <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
@@ -836,7 +848,7 @@
       </div>
 
       <!-- ONGLETS CONTENU -->
-      <div class="profile-tabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">
+      <div class="profile-tabs" role="group" aria-label="Filtrer par format de contenu">
         <button class="profile-tab active" data-tab="posts" aria-pressed="true" onclick="switchProfileTab('posts',this)" title="Tout" aria-label="Tout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span class="profile-tab-lbl">Tout</span>
         </button>
@@ -911,7 +923,7 @@
         <div class="recorder">
           <div class="rec-time" id="recTime">00:00</div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <div class="rec-btn" id="recBtn" onclick="toggleRecording()"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
+            <div class="rec-btn" id="recBtn" onclick="toggleRecording()" role="button" tabindex="0" aria-label="Enregistrer un audio"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
             <div class="rec-btn" id="audioFileBtn" onclick="$('#audioInput').click()" title="Choisir un fichier audio" style="flex:1;text-align:center;font-size:12px;">Choisir fichier</div>
           </div>
           <div class="rec-status" id="recStatus">Tap pour démarrer l'enregistrement</div>
@@ -938,7 +950,7 @@
       </label>
 
       <label class="field" id="fieldMood">
-        <span>Mood</span>
+        <span>Envie</span>
         <div class="pill-row" id="postMoodRow">
           <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
                Apprendre · Idées · Rencontrer) : on publie avec le mot qu'on lit.
@@ -949,8 +961,9 @@
                Pas de pastille « Explorer » : cette intention se calcule côté
                lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
                le mood — une pastille y serait purement décorative. -->
-          <button type="button" class="pill active" data-postmood="creation">Idées</button>
+          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · Rencontrer). -->
           <button type="button" class="pill" data-postmood="learn">Apprendre</button>
+          <button type="button" class="pill active" data-postmood="creation">Idées</button>
           <button type="button" class="pill" data-postmood="irl">Rencontrer</button>
           <button type="button" class="pill" data-postmood="all">Tous</button>
         </div>
@@ -972,11 +985,12 @@
       <div id="exPanel_search">
         <div class="explorer-hero">
           <h3>Explorer par passion</h3>
-          <p>Tape ce que tu aimes : tout le référentiel des passions et les membres du réseau.</p>
+          <p>Cherche une passion ou une personne.</p>
           <div style="position:relative;">
             <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:10px 14px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:15px;height:15px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-              <input type="text" id="explorerSearch" placeholder="Enduro, guitare électrique, un pseudo…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;min-width:0;border:none;background:transparent;font-size:16px;color:var(--text);outline:none;"/><!-- ⚠️ `min-width:0` : un élément flex a un `min-width: auto`, et un `<input>`
+              <input type="search" id="explorerSearch" enterkeyhint="search" aria-label="Chercher une passion ou une personne" placeholder="Une passion, une personne…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" onfocus="exRouvrirResultats()" autocomplete="off" style="flex:1;min-width:0;border:none;background:transparent;font-size:16px;color:var(--text);outline:none;"/>
+              <button type="button" id="explorerClear" class="explorer-clear" onclick="exEffacerRecherche()" aria-label="Effacer la recherche" hidden>×</button><!-- ⚠️ `min-width:0` : un élément flex a un `min-width: auto`, et un `<input>`
      a une largeur intrinsèque d'environ 20 caractères (204 px ici). Il refusait
      donc de rétrécir et poussait le bouton « OK » hors de l'écran à 320 px —
      défaut ANTÉRIEUR à ce lot (mesuré identique avec l'ancien libellé d'invite),
@@ -992,7 +1006,10 @@
 
         <!-- Contenu normal (masqué pendant la recherche) -->
         <div id="exploreNormalContent">
-        <div class="section-title" style="margin-top:16px;">Passions tendance <span class="tag-hot">Hot</span></div>
+        <!-- LOT-11 (REC-C14) : le titre est écrit par renderExplorer — « Passions actives »
+             quand des passions ont des publications, « Pour commencer » sinon. Plus de
+             « Hot » : il affirmait une mesure qui n'existait pas. -->
+        <div class="section-title" id="trendingTitle" style="margin-top:16px;">Passions actives</div>
         <div class="trending-row" id="trendingGrid"></div>
 
         <div class="section-title" style="margin-top:16px;">Toutes les passions</div>
@@ -1030,7 +1047,7 @@
            que le kill switch passio_ui_4a0="0" le restitue. -->
       <div class="irl-actionbar">
         <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
-          <span class="irl-chip-label">Créer un événement</span>
+          <span class="irl-chip-label">Créer une activité</span>
         </button>
         <button type="button" class="ctx-trigger" id="irlToolsBtn"
           onclick="ContextualTools.open('irl', this)" aria-haspopup="dialog"
@@ -1059,6 +1076,7 @@
             <path d="M4 15 V20 H9"/>
             <path d="M20 15 V20 H15"/>
           </svg>
+          <span class="irl-map-expand-txt" aria-hidden="true">Fermer la carte</span>
         </button>
         <div class="irl-map-hint">Carte interactive, pince ou molette pour zoomer, glisse pour naviguer</div>
       </div>
@@ -1170,7 +1188,7 @@
                d'événements restaient avant de refermer la feuille. -->
           <div style="display:flex;gap:8px;">
             <button class="btn secondary block" id="irlFiltersResetBtn" onclick="clearAllIrlFilters()">✕ Réinitialiser</button>
-            <button class="btn primary block" id="irlFiltersDoneBtn" onclick="closeIrlFiltersPanel()">Voir les événements</button>
+            <button class="btn primary block" id="irlFiltersDoneBtn" onclick="closeIrlFiltersPanel()">Voir les activités</button>
           </div>
         </div>
       </div>
@@ -1181,10 +1199,10 @@
       <div id="irlSearchRow" style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
   <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:16px;color:var(--text);outline:none;flex:1;"/>
+    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, une activité…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:16px;color:var(--text);outline:none;flex:1;"/>
   </div>
 </div>
-<div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucun événement trouvé pour cette recherche.</div>
+<div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucune activité trouvée pour cette recherche.</div>
 <div id="eventList"></div>
     </section>
 
@@ -1199,8 +1217,10 @@
 
       <div style="position:relative;margin-bottom:10px;">
         <input id="convGlobalSearch" type="text" class="input" autocomplete="off"
-          placeholder="Rechercher une conversation ou un message…"
-          oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;" />
+          placeholder="Rechercher une conversation…" aria-label="Rechercher une conversation"
+          oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;padding-right:48px;" />
+        <button type="button" id="convGlobalSearchClear" hidden onclick="_effacerRechercheMessages()" aria-label="Effacer la recherche"
+          style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;">✕</button>
       </div>
       <div id="archivedToggleRow" style="margin-bottom:8px;"></div>
       <div id="msgFilterRow"></div>
@@ -1210,7 +1230,7 @@
       <div id="messagesEmpty" class="empty" style="display:none;">
         <div class="empty-icon">💬</div>
         <div class="empty-title">Aucune conversation</div>
-        <div class="empty-text">Recherche un utilisateur ci-dessus pour démarrer une discussion.</div>
+        <div class="empty-text">Écris à une personne pour démarrer une discussion.</div>
       </div>
     </section>
 
@@ -1247,16 +1267,17 @@
        exceptions, et exactement celles qui cassaient. Aucun style ni aucun
        script ne dépendait de leur ancien emplacement (mesuré au grep). -->
     <!-- Banner mode hors-ligne (affiché par le SW quand réseau indisponible) -->
-    <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e1b4b;color:#fff;text-align:center;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;font-size:13px;font-weight:600;letter-spacing:.01em;">
-      Mode hors-ligne — contenu en cache
-      <button onclick="document.getElementById('offlineBanner').style.display='none'" style="background:none;border:none;color:#c4b5fd;font-size:16px;cursor:pointer;margin-left:8px;">×</button>
+    <!-- FIL-C25 : le bandeau ne recouvre plus la barre du haut — il se pose au-dessus de la barre d'onglets ; croix nommée, 44 px. -->
+    <div id="offlineBanner" class="bandeau-hors-ligne" role="status" style="display:none;">
+      <span>Mode hors-ligne — contenu en cache</span>
+      <button type="button" aria-label="Fermer le bandeau hors ligne" onclick="document.getElementById('offlineBanner').style.display='none'">×</button>
     </div>
 
     <!-- Post detail full-screen overlay -->
-    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:#ede9fe;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
-      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
+    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg-deep);flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
+      <div style="position:sticky;top:0;z-index:2;background:var(--bg-deep);border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
         <button onclick="closePost()" aria-label="Fermer la publication" title="Fermer" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);line-height:1;padding:0;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;margin:-11px -13px;">←</button>
-        <span style="font-size:15px;font-weight:800;">Post</span>
+        <span style="font-size:15px;font-weight:800;">Publication</span>
       </div>
       <div id="postDetailContent" style="padding:16px 16px 100px;"></div>
     </div>
@@ -1298,21 +1319,14 @@
     <div class="reel-comments-panel" id="reelCommentsPanel">
       <div class="reel-comments-header">
         <div class="reel-comments-title">Commentaires</div>
-        <div class="reel-comments-close" onclick="closeReelComments()">−</div>
+        <!-- LOT-14 (BOB-C13) : « Fermer » en toutes lettres, 44 px. -->
+        <button type="button" class="reel-comments-close" onclick="closeReelComments()">Fermer</button>
       </div>
       <div class="reel-comments-list" id="reelCommentsList"></div>
       <div class="reel-comments-input-section">
-        <div class="reel-emoji-reactions" id="reelEmojiReactions">
-          <button class="reel-emoji-btn" onclick="reactToReel('❤️')" title="J'aime">❤️</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('🔥')" title="C'est chaud">🔥</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😂')" title="Hilarant">😂</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('👏')" title="Bravo">👏</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😍')" title="J'adore">😍</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😮')" title="Surpris">😮</button>
-        </div>
         <div class="reel-comments-input-wrapper">
-          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Lancez la conversation..." rows="1" oninput="autoResizeReelCommentInput()"></textarea>
-          <button class="reel-comments-send" onclick="submitReelComment()" title="Envoyer">↑</button>
+          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Écris un commentaire…" aria-label="Écris un commentaire" rows="1" oninput="autoResizeReelCommentInput()"></textarea>
+          <button type="button" class="reel-comments-send" onclick="submitReelComment()" aria-label="Envoyer le commentaire">↑</button>
         </div>
       </div>
     </div>
@@ -1356,7 +1370,7 @@
       </svg></span>
       <span class="nav-label">Créer</span>
     </div>
-    <div class="nav-item" data-screen="irl" role="button" tabindex="0" aria-label="Événements IRL">
+    <div class="nav-item" data-screen="irl" role="button" tabindex="0" aria-label="Rencontrer">
       <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/></svg></span>
       <span class="nav-label">IRL</span>
     </div>
@@ -1381,8 +1395,8 @@
       <div class="tour-actions">
         <div class="tour-dots" id="tourDots"></div>
         <div style="display:flex;gap:6px;">
-          <button class="btn ghost small" onclick="endTour()">Quitter</button>
-          <button class="btn primary small" id="tourNextBtn" onclick="tourNext()">Suivant →</button>
+          <button class="btn ghost small tour-btn" onclick="endTour()">Quitter</button>
+          <button class="btn primary small tour-btn" id="tourNextBtn" onclick="tourNext()">Suivant →</button>
         </div>
       </div>
     </div>
@@ -1393,12 +1407,12 @@
     <div class="conv-fp-head" id="convFpHead"></div>
 
     <!-- Settings panel (glisse par-dessus) -->
-    <div id="convSettingsPanel">
+    <div id="convSettingsPanel" role="dialog" aria-label="Paramètres de la conversation">
       <div class="conv-fp-head" style="gap:10px;">
         <button class="conv-fp-back" onclick="closeConvSettings()" aria-label="Retour">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <div style="font-weight:800;font-size:16px;color:var(--text);">Paramètres</div>
+        <div id="convSettingsTitre" style="font-weight:800;font-size:16px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">Paramètres</div>
       </div>
       <div style="overflow-y:auto;flex:1;" id="convSettingsContent"></div>
     </div>
@@ -1424,8 +1438,8 @@
     <div id="voiceRecordBar">
       <div class="voice-dot"></div>
       <span id="voiceRecordTimer" style="font-size:13px;font-weight:700;color:#ef4444;min-width:40px;">0:00</span>
-      <span style="flex:1;font-size:12px;color:var(--muted);">Enregistrement en cours…</span>
-      <button onclick="cancelVoiceRecord()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0;">✕</button>
+      <span id="voiceRecordConsigne" style="flex:1;font-size:12px;color:var(--muted);">Relâche pour envoyer · glisse vers la gauche pour annuler</span>
+      <button type="button" class="voice-annuler" onclick="cancelVoiceRecord()" aria-label="Annuler l'enregistrement">Annuler</button>
     </div>
 
       <!-- Barre de saisie principale -->
@@ -1462,14 +1476,9 @@
         <div class="conv-input-wrap">
           <textarea id="convFpInput" rows="1" placeholder="Message…" oninput="onConvInputTyping();autoResizeTextarea(this)"></textarea>
         </div>
-        <button class="conv-tool-btn" title="Ajouter un GIF" onclick="showGifPickerForMessage()" aria-label="Ajouter un GIF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 5v14M17 5v14M3 9.7h4M3 14.3h4M17 9.7h4M17 14.3h4"/></svg></button>
-        <button class="conv-tool-btn" id="btnVoice" title="Maintenir pour enregistrer"
-          onmousedown="if(typeof startVoiceRecord==='function')startVoiceRecord()"
-          onmouseup="if(typeof stopVoiceRecord==='function')stopVoiceRecord()"
-          onmouseleave="if(typeof stopVoiceRecord==='function'&&window._isRecording)stopVoiceRecord()"
-          ontouchstart="event.preventDefault();if(typeof startVoiceRecord==='function')startVoiceRecord()"
-          ontouchend="event.preventDefault();if(typeof stopVoiceRecord==='function')stopVoiceRecord()"
-          ontouchcancel="if(typeof cancelVoiceRecord==='function')cancelVoiceRecord()" aria-label="Maintenir pour enregistrer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/></svg></button>
+        <!-- LOT-4 (MSG-C60) : le bouton GIF séparé a disparu — l'onglet GIF du panneau 😊 le couvre. -->
+        <!-- LOT-4 (MSG-C53/C54) : le geste est branché par _brancherBoutonVocal (app-09). -->
+        <button type="button" class="conv-tool-btn" id="btnVoice" title="Maintenir pour enregistrer" aria-label="Maintenir pour enregistrer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/></svg></button>
         <button class="conv-send-btn" id="convFpSendBtn" title="Envoyer" aria-label="Envoyer le message">
           <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -1688,13 +1697,6 @@
 <script src="js/passion-selector.js"></script>
 <script src="js/passions-flat-ui.js"></script>
 
-<!-- RÉCAP DE LA SEMAINE (2026-10-06) — hors bloc app : composant autonome (IIFE
-     window.PassioRecapSemaine), inliné individuellement au build. Une carte en
-     tête du fil, au plus une fois par semaine et par compte, dans l'app
-     seulement. Coupé par localStorage.passio_recap_semaine="0",
-     window.PASSIO_RECAP_SEMAINE=false, ou Paramètres › Notifications. -->
-<script src="js/recap-semaine.js"></script>
-
 <!-- AFFICHE DE LA RENCONTRE (2026-11-01, lancement gratuit) — hors bloc app :
      composant autonome (IIFE window.PassioAffiche), inliné individuellement au
      build. Un bouton « Affiche à imprimer » à côté du QR d'accueil de
@@ -1728,21 +1730,16 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 <div id="convEmojiPanel">
   <!-- BARRE SUPÉRIEURE: Onglets Emoji/GIF + Recherche -->
-  <div id="emojiTopBar" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
-    <button onclick="switchEmojiTab('emoji',this)" style="flex:1;padding:10px;border:none;background:#7c3aed;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Emoji</button>
-    <button onclick="switchEmojiTab('gif',this)" style="flex:1;padding:10px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">GIF</button>
+  <div id="emojiTopBar" role="tablist" aria-label="Emoji ou GIF" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
+    <button type="button" role="tab" aria-selected="true" class="emoji-onglet actif" onclick="switchEmojiTab('emoji',this)">Emoji</button>
+    <button type="button" role="tab" aria-selected="false" class="emoji-onglet" onclick="switchEmojiTab('gif',this)">GIF</button>
   </div>
 
   <!-- TAB EMOJI AVEC CATÉGORIES -->
   <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="emojiSearchInput" placeholder="Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
-    </div>
-
-    <!-- Catégories d'emojis (icônes en haut) -->
-    <div id="emojiCategoriesBar" style="display:flex;gap:0;padding:8px;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;">
-      <!-- Les catégories seront ajoutées par JS -->
+      <input type="text" id="emojiSearchInput" placeholder="Chercher un emoji…" aria-label="Chercher un emoji" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
     </div>
 
     <!-- Grille d'emojis -->

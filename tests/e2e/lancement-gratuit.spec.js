@@ -53,7 +53,7 @@ async function poser(page, vivantes, { vitrineReelle = false } = {}) {
 const fenetrePayante = (page) => page.evaluate(() => {
   const m = document.getElementById("modalContent");
   const t = (m && m.textContent) || "";
-  return /passions offertes|formule payante/i.test(t);
+  return /passions à la fois|formule payante/i.test(t);
 });
 
 test("① par défaut, une 4ᵉ et une 5ᵉ passion s'ajoutent sans fenêtre payante", async ({ page }) => {

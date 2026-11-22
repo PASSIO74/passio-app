@@ -35,16 +35,64 @@ function openModal(html, panel) {
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
   if (backdrop && !backdrop.classList.contains("active")) {
     pushOverlayHistory("modal", "#modal");
+    // LOT-17 (TRA-C21) : d'où l'on vient — le focus y retourne à la fermeture.
+    try { _modalFocusAvant = document.activeElement; } catch (e) { _modalFocusAvant = null; }
   }
 
+  // LOT-16 (PRO-C22) : une fenêtre qui en REMPLACE une autre n'hérite pas de son
+  // plein écran (« Signaler ce compte » prenait celui du profil visité). Celle
+  // qui le veut le repose après l'ouverture (`openUserProfile`).
+  try { const _m = document.querySelector(".modal"); if (_m) _m.classList.remove("modal-fullscreen"); } catch (e) {}
   // Injecte un bouton × de fermeture en haut à droite de tous les modals
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
   if (backdrop) backdrop.classList.add("active");
+  try { _modalAccessible(); } catch (e) {}
   // `panel` explicite (appelant) sinon dérivé du gabarit — voir _panelDepuisHtml.
   _modalPanelCourant = (typeof panel === "string" && panel) ? panel.slice(0, 40) : _panelDepuisHtml(html);
   try { window.tel && tel.action("ui_open", { panel: _modalPanelCourant }); } catch (e) {}
 }
+// LOT-17 (audit UX/UI du 2026-11-10, TRA-C21) — LA FENÊTRE COMMUNE EST UNE
+// FENÊTRE pour le clavier et le lecteur d'écran : elle se nomme (son premier
+// titre), reçoit le focus, le garde (tabulation bouclée), et le rend en se
+// fermant. Une modification ici corrige les 69 fenêtres qui passent par elle.
+var _modalFocusAvant = null;
+function _modalAccessible() {
+  var boite = document.querySelector("#modalBackdrop .modal") || document.getElementById("modalContent");
+  var contenu = document.getElementById("modalContent");
+  if (!boite || !contenu) return;
+  boite.setAttribute("role", "dialog");
+  boite.setAttribute("aria-modal", "true");
+  var titre = contenu.querySelector(".modal-title, h2, h3");
+  if (titre) {
+    if (!titre.id) titre.id = "modalTitreCourant";
+    boite.setAttribute("aria-labelledby", titre.id);
+    boite.removeAttribute("aria-label");
+  } else {
+    boite.removeAttribute("aria-labelledby");
+    boite.setAttribute("aria-label", "Fenêtre");
+  }
+  // Le focus entre dans la fenêtre — sauf si l'appelant l'y a déjà mis (un champ).
+  if (!contenu.contains(document.activeElement)) {
+    var cible = titre || contenu.querySelector("button, [href], input, select, textarea, [tabindex]");
+    if (cible) {
+      if (cible === titre && !titre.hasAttribute("tabindex")) titre.setAttribute("tabindex", "-1");
+      try { cible.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+}
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Tab") return;
+  var bd = document.getElementById("modalBackdrop");
+  var contenu = document.getElementById("modalContent");
+  if (!bd || !contenu || !bd.classList.contains("active")) return;
+  var f = Array.prototype.filter.call(contenu.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'), function (el) { return el.offsetParent !== null; });
+  if (!f.length) return;
+  var premier = f[0], dernier = f[f.length - 1];
+  var dedans = contenu.contains(document.activeElement);
+  if (e.shiftKey && (document.activeElement === premier || !dedans)) { e.preventDefault(); dernier.focus(); }
+  else if (!e.shiftKey && (document.activeElement === dernier || !dedans)) { e.preventDefault(); premier.focus(); }
+});
 function closeModal() {
   // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
   // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
@@ -57,6 +105,9 @@ function closeModal() {
   const etaitOuverte = !!(bd && bd.classList.contains("active"));
   if (bd) bd.classList.remove("active");
   if (etaitOuverte) {
+    // LOT-17 (TRA-C21) : le focus revient d'où l'on est parti, s'il existe encore.
+    var _retour = _modalFocusAvant; _modalFocusAvant = null;
+    try { if (_retour && document.contains(_retour) && typeof _retour.focus === "function") _retour.focus({ preventScroll: true }); } catch (e) {}
     releaseOverlayHistory();
     // Seulement quand une modale ÉTAIT ouverte : `closeModal()` est appelée par
     // précaution un peu partout, et un `ui_close` sans `ui_open` serait un mensonge.
@@ -110,7 +161,7 @@ const TOUR_STEPS = [
     title: "Retrouvez-vous en vrai",
     lede: "Le cœur de PASSIO : transformer une passion en moments réels avec d'autres.",
     points: [
-      "Événements près de chez toi, organisés par la communauté",
+      "Activités près de chez toi, organisées par la communauté",
       "Carte interactive France et Europe",
       "Skate jam, atelier, dégustation, book club…"
     ]
@@ -268,14 +319,21 @@ function shareBeta() {
 // ce que le texte dit désormais, au lieu de promettre un export imaginaire.
 function feedbackModal() {
   $("#devPanel").classList.remove("active");
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C29) : « Feedback & aide » n'offrait
+  // aucune aide. « Aide et retour » commence par les réponses qui existent déjà
+  // (limites du pilote, confidentialité), et le bouton dit où part l'envoi.
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Ton retour sur la beta</div>
-    <div class="modal-subtitle">Il part par e-mail à l'équipe, et une copie reste sur ton téléphone.</div>
+    <div class="modal-title">Aide et retour</div>
+    <div class="aide-liens">
+      <button type="button" class="btn ghost block" onclick="openLimitesPilote()">Ce que cette version pilote fait (et ne fait pas)</button>
+      <button type="button" class="btn ghost block" onclick="openPrivacyPolicy()">Tes données et la confidentialité</button>
+    </div>
+    <div class="modal-subtitle">Ton retour part par e-mail à l'équipe, et une copie reste sur ton téléphone.</div>
     <label class="field"><span>Ce que tu as aimé</span><textarea class="textarea" id="fbLike"></textarea></label>
     <label class="field"><span>Ce qui ne va pas / bugs</span><textarea class="textarea" id="fbBad"></textarea></label>
-    <label class="field"><span>Une feature à ajouter</span><textarea class="textarea" id="fbIdea"></textarea></label>
-    <button class="btn primary block" onclick="saveFeedback()">Envoyer</button>
+    <label class="field"><span>Une fonctionnalité à ajouter</span><textarea class="textarea" id="fbIdea"></textarea></label>
+    <button class="btn primary block" onclick="saveFeedback()">Envoyer (s'ouvre dans ta messagerie)</button>
   `);
 }
 
@@ -295,7 +353,7 @@ function openLimitesPilote() {
       <li><strong>En test</strong> : les notifications, l'export de tes données, la suppression de compte. Elles fonctionnent ; si l'une d'elles te répond par une erreur, elle te dit quoi faire — et rien n'est annoncé comme fait s'il ne l'est pas.</li>
       <li><strong>Pas de garantie de disponibilité</strong> : c'est une beta. Garde une copie de ce qui compte pour toi (« Exporter mes données » dans les réglages).</li>
       <li><strong>Tes données</strong> : la <span role="button" tabindex="0" onclick="openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span> dit ce qui est collecté et pourquoi. Tu peux supprimer ton compte à tout moment.</li>
-      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Feedback & aide » pour écrire depuis l'app)` : "le bouton « Feedback & aide »"}, ou le bouton « Signaler » sur chaque contenu.</li>
+      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Aide et retour » pour écrire depuis l'app)` : "le bouton « Aide et retour »"}, ou le bouton « Signaler » sur chaque contenu.</li>
     </ul>
     <button class="btn primary block" onclick="closeModal()">Compris</button>
   `);
@@ -349,12 +407,8 @@ function saveFeedback() {
 }
 
 // ======== RESET ========
-function resetApp() {
-  if (!confirm("Tout réinitialiser ? (onboarding, profils, posts)")) return;
-  try { discardPendingStateSave(); } catch (e) {}
-  localStorage.removeItem(STATE_KEY);
-  location.reload();
-}
+// `resetApp` RETIRÉE (LOT-6, TRA-C11) : plus aucun appelant, et elle portait une
+// boîte native qui effaçait tout l'état local.
 
 // ======== LANDING ========
 function showLanding() {
@@ -372,9 +426,15 @@ function showLanding() {
 // ⚠️ PAS de `supaInit()` : il lit les tables privées sous `MY_UID`, et
 // `supaLoadMyConversations` REMPLACE l'entrée locale par son résultat — vide
 // sans session. Lire le public serait possible, écraser le local ne l'est pas.
+// ⚠️ LE JETON OU LA MARQUE (2026-11-13, suite d'ETAT-02) : une session finie en
+// cours de route (`SIGNED_OUT`, 401) a vu le SDK retirer son jeton — la preuve est
+// alors la marque `passio_session_expiree_v1` que `poserSessionExpiree` (app-02) a
+// posée, pour ce même `passio_uid`. Sans elle, ce démarrage-là tombait sur la landing.
 function entrerEnSessionExpiree() {
   if (!(state && state.onboarded)) return false;
-  if (typeof _sessionSdkPersistee !== "function" || !_sessionSdkPersistee()) return false;
+  const jeton = typeof _sessionSdkPersistee === "function" && !!_sessionSdkPersistee();
+  const marque = typeof _marqueSessionExpiree === "function" && _marqueSessionExpiree();
+  if (!jeton && !marque) return false;
   window._sessionExpiree = true;
   try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
   try { restoreFeedPassions(); } catch (e) {}
@@ -397,8 +457,7 @@ function entrerEnSessionExpiree() {
 // retombait sur `showLanding()`, un écran qu'aucun appareil ne devrait plus voir.
 //
 // Il n'y a ici RIEN de local à protéger (pas d'état onboardé) : on termine donc
-// la déconnexion que la session morte a commencée, exactement comme le bouton
-// « Se reconnecter » du bandeau (`doLogout("signin")`) — purge des clés de
+// la déconnexion que la session morte a commencée — purge des clés de
 // compte et du jeton, intention « signin », rechargement. Le démarrage suivant
 // entre dans le fil invité avec l'écran de connexion par-dessus.
 // ⚠️ Pas quand `getSession()` a dépassé son délai (appelant) : la session peut
@@ -429,6 +488,40 @@ function sortirCompteSansSession() {
       try { location.reload(); } catch (e) {}
     });
   return true;
+}
+
+// ======== UNE SESSION QUI FINIT AILLEURS (ETAT-02 / R19, 2026-11-10) ========
+// Quand le démarrage trouve une session, `boot()` rend la main AVANT d'enregistrer
+// `onAuthStateChange` : la fin de cette session n'était entendue par personne. Or
+// elle arrive sans geste ici — déconnexion « partout » faite ailleurs, jeton révoqué,
+// rafraîchissement refusé : le SDK retire la session et émet `SIGNED_OUT`. L'écran
+// restait « connecté », les lectures privées rendaient vide, les écritures partaient
+// en 401. On pose alors le mode « session expirée » (lecture seule, files gardées,
+// bandeau « Se reconnecter ») — jamais une purge.
+// ⚠️ AUCUNE requête dans le rappel (verrou auth du SDK) : `setTimeout(…, 0)`.
+// ⚠️ Pas pendant une déconnexion ou un rechargement annoncés (`rechargementImminent`),
+// ni pour un visiteur. Enregistré une seule fois par page.
+function _ecouterFinDeSession() {
+  if (window._finDeSessionEcoutee) return;
+  try {
+    if (!(supa && supa.auth && typeof supa.auth.onAuthStateChange === "function")) return;
+    window._finDeSessionEcoutee = true;
+    supa.auth.onAuthStateChange(function (event, session) {
+      // Révocation synchrone sur le chemin qui démarre déjà connecté aussi.
+      // Aucun appel SDK ici : seul le bandeau de fin de session reste différé.
+      if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) passioMediaProteges.authChanged(session, event);
+      if (event !== "SIGNED_OUT") return;
+      setTimeout(function () {
+        try {
+          if (typeof rechargementImminent === "function" && rechargementImminent()) return;
+          if (window._suppressionEnCours) return;
+          if (!_compteAuthReel()) return;
+          if (typeof poserSessionExpiree === "function") poserSessionExpiree("signed_out");
+          _poserBandeauSessionExpiree();
+        } catch (e) { try { diagLog("fin de session : " + (e && e.message)); } catch (_) {} }
+      }, 0);
+    });
+  } catch (e) { window._finDeSessionEcoutee = false; }
 }
 
 // Le bandeau vit entre la barre du haut et `#appMain`, en flux (l'app-shell
@@ -614,13 +707,13 @@ function buildStoryGroups() {
 function _storyBubbleInner(g) {
   const withMedia = g.stories.slice().reverse().find(s => s.media && s.mediaType !== "video");
   if (withMedia) {
-    return `<img loading="lazy" decoding="async" src="${safeUrlAttr(withMedia.media)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+    return `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioMediaProteges.route(withMedia.media,{type:"stories",id:withMedia.id}))}="${safeUrlAttr(passioMediaProteges.route(withMedia.media,{type:"stories",id:withMedia.id}))}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   const withPhoto = g.stories.slice().reverse().find(s => s.photo);
   if (withPhoto) {
     // `photo` est un identifiant d'exemple : hors de la liste servie par PASSIO, `imageDemo` rend null et l'emoji reste.
     const photoUrl = imageDemo(withPhoto.photo, "mini");
-    if (photoUrl) return `<img loading="lazy" decoding="async" src="${safeUrlAttr(photoUrl)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+    if (photoUrl) return `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(photoUrl)}="${safeUrlAttr(photoUrl)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   // `profiles.emoji` est un champ libre d'un autre compte (aucune contrainte en base) :
   // ce retour part tel quel dans le HTML du rail (audit 2026-11-06).
@@ -644,7 +737,7 @@ function renderStories() {
   const myEmoji = (myGroup && myGroup.emoji) || me.emoji || "✨";
   const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
   const myAvatarHtml = myAvatar
-    ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
+    ? `<img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(myAvatar)}="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
     : escapeHtml(myEmoji);
 
   let html;
@@ -811,6 +904,25 @@ var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], b
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C10) : avant « Publier », une ligne dit
+// POUR QUI et COMBIEN DE TEMPS — « Visible 24 h par ta communauté · 🎸 Musique ».
+// Un compte privé lit « par tes abonnés ». Texte calculé ici, jamais saisi.
+function ligneAudience(mode) {
+  var prive = !!(state.user && state.user.general && state.user.general.isPrivate);
+  var qui = prive ? "tes abonnés" : "ta communauté";
+  var prof = (typeof currentProfile === "function") ? currentProfile() : null;
+  var p = (prof && prof.passion && typeof passionById === "function") ? passionById(prof.passion) : null;
+  var passion = (p && p.label && mode === "story") ? " · " + (p.emoji ? p.emoji + " " : "") + p.label : "";
+  return (mode === "story" ? "Visible 24 h par " : "Visible par ") + qui + passion;
+}
+function peindreLigneAudience(bouton, mode) {
+  if (!bouton || !bouton.parentNode) return;
+  var id = "ligneAudience_" + (bouton.id || mode);
+  var l = document.getElementById(id);
+  if (!l) { l = document.createElement("p"); l.id = id; l.className = "ligne-audience"; bouton.parentNode.insertBefore(l, bouton); }
+  l.textContent = ligneAudience(mode);
+}
+
 function meOpen(mode) {
   // ⚠️ GARDE AVANT TOUT LE RESTE. `mePublish` était gardée, pas `meOpen` — or
   // c'est `meOpen` qui ouvre l'éditeur média en `phase-capture`, donc qui
@@ -841,6 +953,7 @@ function meOpen(mode) {
   var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = isBob ? "none" : "";
   var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
+  try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
@@ -1107,7 +1220,9 @@ function _meReadFile(file) {
 }
 
 // ── Overlay de progression (compression vidéo) ──
-function _meShowProgress(label) {
+// LOT-15 (CRE-C18) : `surAnnuler` pose un bouton « Annuler » — la préparation
+// d'une vidéo lourde pouvait durer 90 s sans aucune commande.
+function _meShowProgress(label, surAnnuler) {
   _meHideProgress();
   var d = document.createElement("div");
   d.id = "meProgressOv";
@@ -1115,6 +1230,13 @@ function _meShowProgress(label) {
   d.innerHTML = '<div style="font-weight:800;font-size:15px;">' + escapeHtml(label || "Traitement…") + '</div>'
     + '<div style="width:min(260px,70vw);height:8px;border-radius:999px;background:rgba(255,255,255,0.2);overflow:hidden;"><div id="meProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 120ms linear;"></div></div>'
     + '<div id="meProgressPct" style="font-size:12px;color:rgba(255,255,255,0.7);">0 %</div>';
+  if (typeof surAnnuler === "function") {
+    var b = document.createElement("button");
+    b.type = "button"; b.id = "meProgressAnnuler"; b.className = "btn ghost"; b.textContent = "Annuler";
+    b.style.cssText = "min-height:44px;min-width:120px;color:#fff;border-color:rgba(255,255,255,0.6);";
+    b.addEventListener("click", function () { surAnnuler(); });
+    d.appendChild(b);
+  }
   document.body.appendChild(d);
 }
 function _meUpdateProgress(p) {
@@ -1268,7 +1390,9 @@ async function passioVideoPourEnvoi(file) {
   }
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
-    _meShowProgress("Optimisation de la vidéo…");
+    var _annuler;
+    var _annulation = new Promise(function (_r, rej) { _annuler = function () { var e = _erreurVideo("Préparation annulée."); e.annulee = true; rej(e); }; });
+    _meShowProgress("Optimisation de la vidéo…", function () { _annuler(); });
     // ⚠️ `passioCompressVideo` PEUT NE JAMAIS SE RÉGLER, et l'overlay ne se
     // retire que sur une sortie. Sa boucle de dessin est un `requestAnimationFrame`
     // et elle ne conclut que sur `video.onended` : une page passée en arrière-plan
@@ -1288,7 +1412,8 @@ async function passioVideoPourEnvoi(file) {
       passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress),
       new Promise(function (_r, rej) {
         _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
-      })
+      }),
+      _annulation
     ]);
     clearTimeout(_minuteur);
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
@@ -1308,6 +1433,8 @@ async function passioVideoPourEnvoi(file) {
     // c'est-à-dire sur le défaut même que ce lot ferme — et le seul symptôme
     // serait la courbe de Storage qui remonte des semaines plus tard. Ni la
     // Sentinelle ni le pilotage ne verraient rien. Famille du bug `diagLog`.
+    // Annulée par la personne : ni repli brut, ni trace d'incident.
+    if (e && e.annulee) throw e;
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
@@ -1367,7 +1494,7 @@ function meSetMedia(dataUrl, type) {
     vid.muted = true; vid.defaultMuted = true; vid.loop = true; vid.autoplay = true;
     vid.preload = "auto"; vid.playsInline = true;
     vid.setAttribute("muted", ""); vid.setAttribute("playsinline", ""); vid.setAttribute("webkit-playsinline", "");
-    vid.src = src;
+    if(!passioMediaProteges.poserVideo(vid,src))vid.src=src;
     box.appendChild(vid);
     // iOS ne peint pas la 1ʳᵉ image tant que la lecture n'a pas démarré → on
     // force un micro-seek pour afficher une vraie image au lieu d'un cadre noir.
@@ -1375,7 +1502,7 @@ function meSetMedia(dataUrl, type) {
     _meTryPlayPreview(vid);
     _meSetupVideoPreviewControls(vid);
   } else {
-    box.innerHTML = '<img src="' + escapeHtml(dataUrl) + '" alt=""/>';
+    box.innerHTML = '<img ' + passioMediaProteges.attributImage(dataUrl) + '="' + safeUrlAttr(dataUrl) + '" alt=""/>';
   }
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
@@ -1448,26 +1575,40 @@ function _meSetupVideoPreviewControls(video) {
   canvas.appendChild(bar);
   syncPlay(); syncSound();
 }
-function meAddText() {
-  var t = prompt("Ton texte :"); if (t == null) return; t = t.trim(); if (!t) return;
+async function meAddText() {
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var t = await demanderTexte({ titre: "Ajouter un texte", placeholder: "Ton texte", libelle: "Ajouter", max: 200 }); if (t == null) return; t = t.trim(); if (!t) return;
   meAddOverlay({ type: "text", text: t, color: "#ffffff", x: 50, y: 45, size: 26 });
 }
 var ME_EMOJIS = ["🔥","😂","❤️","✨","😍","🎉","👏","🙌","💯","🎸","📸","🌍","☕","🍕","⚽","🎬","💜","😎","🥳","🤩"];
 function meAddEmoji() {
   var existing = document.getElementById("meEmojiBar"); if (existing) { existing.remove(); return; }
-  var bar = document.createElement("div"); bar.id = "meEmojiBar";
-  bar.style.cssText = "position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-wrap:wrap;gap:4px;max-width:320px;z-index:4100;box-shadow:0 8px 24px rgba(0,0,0,0.3);";
+  // LOT-15 (CRE-C11) : le panneau passe AU-DESSUS de la barre d'outils (il
+  // couvrait le bouton qui le referme), pleine largeur, 44 px par emoji ; un
+  // toucher dehors le referme (`_meFermerPanneauxDehors`).
+  var bar = document.createElement("div"); bar.id = "meEmojiBar"; bar.className = "me-panneau";
+  bar.setAttribute("role", "dialog"); bar.setAttribute("aria-label", "Choisir un emoji");
   ME_EMOJIS.forEach(function(em) {
-    var b = document.createElement("button"); b.textContent = em;
-    b.style.cssText = "font-size:24px;background:none;border:none;cursor:pointer;padding:4px;";
+    var b = document.createElement("button"); b.type = "button"; b.textContent = em; b.className = "me-panneau-emoji"; b.setAttribute("aria-label", "Ajouter " + em);
     b.onclick = function() { meAddOverlay({ type: "emoji", emoji: em, x: 50, y: 55, size: 52 }); bar.remove(); };
     bar.appendChild(b);
   });
   document.body.appendChild(bar);
 }
+(function _meFermerPanneauxDehors() {
+  document.addEventListener("pointerdown", function (e) {
+    ["meEmojiBar", "meGifPanel"].forEach(function (id) {
+      var p = document.getElementById(id);
+      if (!p || p.contains(e.target)) return;
+      // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
+      if (e.target.closest && e.target.closest(".me-tool")) return;
+      p.remove();
+    });
+  }, true);
+})();
 function meAddGif() {
   if (typeof passioGifPanel !== "function") { toast("GIF indisponible"); return; }
-  passioGifPanel({ id: "meGifPanel", position: "left:50%;bottom:84px;transform:translateX(-50%);", onPick: function(url) { meAddOverlay({ type: "gif", url: url, x: 50, y: 55 }); } });
+  passioGifPanel({ id: "meGifPanel", position: "left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 140px);", onPick: function(url) { meAddOverlay({ type: "gif", url: url, x: 50, y: 55 }); } });
 }
 function meAddOverlay(ov) {
   ov.id = "ov_" + (++meState._seq);
@@ -1500,15 +1641,22 @@ function _meRenderOverlay(ov) {
   var content = document.createElement("span");
   if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
-  else if (ov.type === "gif") { content.innerHTML = '<img src="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
+  else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
   el.appendChild(content);
-  var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕";
+  var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
   el.appendChild(del);
   var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
   el.appendChild(rsz);
   if (ov.type === "text") {
-    el.addEventListener("dblclick", function(e) { e.stopPropagation(); var nt = prompt("Modifier le texte :", ov.text); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
+    var modifier = async function(e) { if (e) e.stopPropagation(); var nt = await demanderTexte({ titre: "Modifier le texte", valeur: ov.text, libelle: "Enregistrer", max: 200 }); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } };
+    el.addEventListener("dblclick", modifier);
+    // LOT-15 (CRE-C09) : modifier un texte ne demande plus un double-clic de souris —
+    // un bouton ✎ le fait au doigt.
+    var edit = document.createElement("button"); edit.type = "button"; edit.className = "me-ov-edit me-ov-ctrl"; edit.textContent = "✎"; edit.setAttribute("aria-label", "Modifier le texte");
+    edit.addEventListener("pointerdown", function(e) { e.stopPropagation(); });
+    edit.onclick = modifier;
+    el.appendChild(edit);
   }
   _meApplyTransform(el, ov);
   _meMakeInteractive(el, ov, rsz);
@@ -1755,6 +1903,7 @@ function _verdictPublication(post, ok) {
   try { saveState(); } catch (e) {}
 }
 function _publicationRejouable(p) {
+  if(p._pmpOwner===MY_UID&&passioMediaProteges.parser(p._pmpReference))return true;
   if (p.type === "photo") return typeof p.image === "string" && p.image.length > 0;
   if (p.type === "video") return typeof p.video === "string" && p.video.length > 0;
   if (p.type === "audio") return typeof p.audio === "string" && p.audio.length > 0;
@@ -1906,7 +2055,7 @@ function _storyOverlaysHtml(overlays) {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
     }
     if (o.type === "gif") {
-      return '<div class="story-ov gif" style="' + pos + '"><img src="' + safeUrlAttr(o.url || "") + '" alt="GIF"/></div>';
+      return '<div class="story-ov gif" style="' + pos + '"><img ' + passioMediaProteges.attributImage(o.url || "") + '="' + safeUrlAttr(o.url || "") + '" alt="GIF"/></div>';
     }
     return "";
   }).join("");
@@ -1918,7 +2067,7 @@ function playCurrentStory() {
   if (!group) return closeStoryViewer();
   const stories = group.stories;
   if (!stories[storyItemIdx]) return closeStoryViewer();
-  const s = stories[storyItemIdx];
+  const s = passioMediaProteges.contextualiser(stories[storyItemIdx],{type:"stories",id:stories[storyItemIdx].id});
   // Priorité aux infos embarquées dans la story (Supabase), sinon fallback userById
   const uLocal = userById(s.authorId);
   const u = {
@@ -1927,8 +2076,10 @@ function playCurrentStory() {
     profileEmoji: s.authorEmoji || uLocal?.profileEmoji || "✨",
   };
 
-  $("#storyAvatar").style.background = u.avatar;
-  $("#storyAvatar").textContent = (u.profileEmoji || u.name[0] || "?");
+  // LOT-14 (BOB-C17) : la photo de profil quand elle existe, l'emoji sinon.
+  const _photoStory = (typeof _userPhoto === "function") ? _userPhoto(uLocal) : null;
+  $("#storyAvatar").style.background = _photoStory ? avatarBg({ photoUrl: _photoStory, avatar: u.avatar }) : u.avatar;
+  $("#storyAvatar").textContent = _photoStory ? "" : (u.profileEmoji || u.name[0] || "?");
   $("#storyAvatar").style.cursor = "pointer";
   $("#storyAvatar").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
   $("#storyAuthor").textContent = u.name;
@@ -1941,15 +2092,29 @@ function playCurrentStory() {
   // inline avec un identifiant d'autrui — règle MSG-02).
   try {
     var _hdr = document.querySelector("#storyViewer .story-viewer-header");
-    var _old = document.getElementById("storyReportBtn"); if (_old) _old.remove();
+    ["storyReportBtn", "storyOptionsBtn"].forEach(function (_id) { var _old = document.getElementById(_id); if (_old) _old.remove(); });
     var _reel = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && s.authorId && s.authorId !== MY_UID && !/^u_/.test(String(s.authorId));
+    // LOT-14 (BOB-C21) : MA story a son « ⋯ » : la supprimer.
+    var _mienne = s.authorId && (s.authorId === MY_UID || s.authorId === "me");
+    if (_hdr && _mienne) {
+      var _b2 = document.createElement("button");
+      _b2.id = "storyOptionsBtn"; _b2.type = "button"; _b2.className = "story-more-btn"; _b2.setAttribute("aria-label", "Options de ma story");
+      _b2.textContent = "⋯";
+      _b2.addEventListener("click", function (e) {
+        e.stopPropagation();
+        window._storyEnPause = true;
+        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: [{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }], surAnnuler: function () { window._storyEnPause = false; } });
+      });
+      _hdr.insertBefore(_b2, _hdr.querySelector(".story-viewer-close"));
+    }
     if (_hdr && _reel) {
       var _btn = document.createElement("button");
       _btn.id = "storyReportBtn"; _btn.type = "button"; _btn.setAttribute("aria-label", "Signaler cette story");
-      _btn.textContent = "⋯"; _btn.style.cssText = "background:none;border:none;color:#fff;font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;margin-left:auto;";
-      _btn.addEventListener("click", function (e) { e.stopPropagation(); clearInterval(storyTimer); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
+      _btn.textContent = "⋯"; _btn.className = "story-more-btn";
+      _btn.addEventListener("click", function (e) { e.stopPropagation(); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
       _hdr.insertBefore(_btn, _hdr.querySelector(".story-viewer-close"));
     }
+    _barreReponseStory(s, u.name, _reel);
   } catch (e) {}
 
   const card = $("#storyCard");
@@ -1971,7 +2136,7 @@ function playCurrentStory() {
       sv.loop = true; sv.playsInline = true; sv.preload = "none";
       sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
       sv.setAttribute("playsinline", ""); sv.setAttribute("webkit-playsinline", "");
-      sv.setAttribute("data-video-public-src", s.media);
+      sv.setAttribute("data-video-public-src", passioMediaProteges.route(s.media,{type:"stories",id:s.id}));
       mediaLayer.appendChild(sv);
       storyVideo = sv;
       card.insertAdjacentHTML("beforeend", boutonVideoPubliqueHTML());
@@ -1989,7 +2154,7 @@ function playCurrentStory() {
       card.appendChild(sb);
       lancerVideoPublique(sv, false);
     } else if (s.media) {
-      mediaLayer.innerHTML = `<img src="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
+      mediaLayer.innerHTML = `<img ${passioMediaProteges.attributImage(s.media)}="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
     } else { mediaLayer.innerHTML = ""; }
   }
 
@@ -2024,18 +2189,37 @@ function playCurrentStory() {
     try { if (typeof supaMarkStoryView === "function") supaMarkStoryView(s.id); } catch (e) {}
   }
 
+  _storyPrecharger();
+
   // Animate current bar
   const bar = document.getElementById("sp-" + storyItemIdx);
   if (bar) {
-    let ecoule = 0, dernierTour = Date.now();
+    let ecoule = 0, dernierTour = Date.now(), derniereT = 0, vueEntiere = false;
     storyTimer = setInterval(() => {
       const maintenant = Date.now(), pas = maintenant - dernierTour;
       dernierTour = maintenant;
       // En mode économe/manuel, on attend le geste : la story ne disparaît pas
       // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
-      if (document.hidden || (storyVideo && storyVideo.paused)) return;
-      ecoule += pas;
-      const p = Math.min(100, (ecoule / STORY_DURATION) * 100);
+      // Une feuille ouverte par-dessus (partage, signalement, porte de compte)
+      // met la story en pause ; elle reprend à la fermeture.
+      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause
+          || document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
+      // Une story VIDÉO dure le temps de sa vidéo (bornée à 60 s), et sa barre
+      // suit la LECTURE réelle : ni l'attente des métadonnées ni un temps de mise
+      // en mémoire ne comptent (réseau lent), et la fin se lit au retour en
+      // arrière de la boucle, jamais à l'horloge.
+      let p;
+      if (storyVideo) {
+        if (storyVideo.readyState < 3 || !isFinite(storyVideo.duration) || !(storyVideo.duration > 0)) return;
+        const d = Math.min(60, storyVideo.duration);
+        const t = storyVideo.currentTime;
+        if (t + 0.5 < derniereT) vueEntiere = true;
+        derniereT = t;
+        p = vueEntiere || t >= d - 0.15 ? 100 : Math.min(100, (t / d) * 100);
+      } else {
+        ecoule += pas;
+        p = Math.min(100, (ecoule / STORY_DURATION) * 100);
+      }
       bar.style.width = p + "%";
       if (p >= 100) {
         clearInterval(storyTimer);
@@ -2043,6 +2227,122 @@ function playCurrentStory() {
       }
     }, 80);
   }
+}
+
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C07) : MAINTENIR met en pause, et le
+// relâchement ne navigue pas ; un toucher bref avance ou recule. Clavier : Échap
+// ferme, ← → naviguent, Espace met en pause.
+const STORY_MAINTIEN_MS = 300;
+// Un commentaire en cours de saisie ne se perd pas d'un toucher sur la story.
+function _storyBrouillonEnCours() {
+  var champSaisi = document.querySelector("#storyReplyBar .story-reply-input");
+  return !!(champSaisi && champSaisi.value && champSaisi.value.trim());
+}
+function storyTap(sens) {
+  if (window._storyClicIgnore) { window._storyClicIgnore = false; return; }
+  if (_storyBrouillonEnCours()) return;
+  if (sens === "prev") storyPrev(); else storyNext();
+}
+(function _brancherMaintienStory() {
+  // Gestes (2026-11-14, façon Instagram) : maintenir = pause et l'interface
+  // s'efface ; balayer vers le BAS ferme ; balayer à GAUCHE / à DROITE passe à
+  // l'auteur suivant / précédent. Un geste ne compte jamais comme un toucher
+  // bref (`_storyClicIgnore`).
+  var debut = 0, x0 = 0, y0 = 0, glisse = false, minuteurMaintien = null;
+  var SEUIL_GLISSE = 12, SEUIL_FERMER = 90, SEUIL_AUTEUR = 60;
+  var carteDe = function () { return document.getElementById("storyCard"); };
+  var viewer = function () { return document.getElementById("storyViewer"); };
+  document.addEventListener("pointerdown", function (e) {
+    var carte = carteDe();
+    if (!carte || !carte.contains(e.target) || e.target.closest("button")) return;
+    debut = Date.now(); x0 = e.clientX; y0 = e.clientY; glisse = false;
+    window._storyEnPause = true;
+    clearTimeout(minuteurMaintien);
+    minuteurMaintien = setTimeout(function () { var v = viewer(); if (debut && !glisse && v) v.classList.add("story-maintenu"); }, 250);
+  }, true);
+  document.addEventListener("pointermove", function (e) {
+    if (!debut) return;
+    var dx = e.clientX - x0, dy = e.clientY - y0;
+    if (!glisse && Math.abs(dx) < SEUIL_GLISSE && Math.abs(dy) < SEUIL_GLISSE) return;
+    glisse = true;
+    var carte = carteDe();
+    if (!carte) return;
+    if (dy > 0 && dy > Math.abs(dx)) {
+      carte.style.transform = "translateY(" + dy + "px) scale(" + Math.max(0.85, 1 - dy / 1600) + ")";
+      carte.style.opacity = String(Math.max(0.4, 1 - dy / 600));
+    } else if (Math.abs(dx) > Math.abs(dy)) {
+      carte.style.transform = "translateX(" + (dx * 0.5) + "px)";
+    }
+  }, true);
+  var relacher = function (e) {
+    if (!debut) return;
+    clearTimeout(minuteurMaintien);
+    var v = viewer(); if (v) v.classList.remove("story-maintenu");
+    var carte = carteDe();
+    if (carte) { carte.style.transform = ""; carte.style.opacity = ""; }
+    var dx = e && typeof e.clientX === "number" ? e.clientX - x0 : 0;
+    var dy = e && typeof e.clientY === "number" ? e.clientY - y0 : 0;
+    var annule = e && e.type === "pointercancel";
+    window._storyClicIgnore = glisse || (Date.now() - debut) >= STORY_MAINTIEN_MS;
+    // Le clic qui suit un relâchement part dans la même rafale ; s'il ne vient
+    // pas (un balayage tactile n'en produit pas), le drapeau ne doit pas avaler
+    // le PROCHAIN toucher.
+    if (window._storyClicIgnore) setTimeout(function () { window._storyClicIgnore = false; }, 400);
+    debut = 0;
+    var brouillon = _storyBrouillonEnCours();
+    if (!brouillon) window._storyEnPause = false;
+    if (brouillon) return;
+    if (!glisse || annule || !v || !v.classList.contains("active")) return;
+    if (dy > SEUIL_FERMER && dy > Math.abs(dx)) { closeStoryViewer(); return; }
+    if (Math.abs(dx) > SEUIL_AUTEUR && Math.abs(dx) > Math.abs(dy)) storyGroupeVoisin(dx < 0 ? +1 : -1);
+  };
+  document.addEventListener("pointerup", relacher, true);
+  document.addEventListener("pointercancel", relacher, true);
+  document.addEventListener("keydown", function (e) {
+    var sv = document.getElementById("storyViewer");
+    if (!sv || !sv.classList.contains("active")) return;
+    if (document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.key === "Escape") { e.preventDefault(); closeStoryViewer(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); storyNext(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); storyPrev(); }
+    else if (e.key === " ") { e.preventDefault(); window._storyEnPause = !window._storyEnPause; }
+  });
+})();
+
+// LOT-14 (BOB-C21) : supprimer MA story — la base d'abord (`{ error }` lu, zéro
+// ligne = refus), puis l'état local et le rail. Une story locale (sans compte)
+// part seulement de l'appareil.
+async function supprimerMaStory(id) {
+  var s = (state.seed.stories || []).find(function (x) { return x && x.id === id; });
+  if (!s) return false;
+  if (s.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal) {
+    try {
+      var r = await supa.from("stories").delete().eq("id", id).eq("author_id", MY_UID).select("id");
+      if (r.error || !r.data || !r.data.length) { toast("Suppression impossible — réessaie.", "warning"); window._storyEnPause = false; return false; }
+    } catch (e) { toast("Suppression impossible — réessaie.", "warning"); window._storyEnPause = false; return false; }
+  }
+  state.seed.stories = (state.seed.stories || []).filter(function (x) { return x && x.id !== id; });
+  try { saveState(); } catch (e) {}
+  window._storyEnPause = false;
+  closeStoryViewer();
+  toast("Story supprimée", "success");
+  return true;
+}
+
+function _estMonGroupeStory(g) {
+  return !!g && (String(g.authorId) === String(MY_UID) || g.authorId === "me");
+}
+// Le groupe voisin dans le sens donné ; mon propre groupe est sauté, sauf si
+// c'est lui que je regarde.
+function _groupeStoryVoisin(depuis, sens) {
+  var monTour = _estMonGroupeStory(storyGroups[depuis]);
+  for (var i = depuis + sens; i >= 0 && i < storyGroups.length; i += sens) {
+    if (!monTour && _estMonGroupeStory(storyGroups[i])) continue;
+    return i;
+  }
+  return -1;
 }
 
 function storyNext() {
@@ -2055,9 +2355,11 @@ function storyNext() {
     playCurrentStory();
     return;
   }
-  // …sinon on passe à l'auteur suivant…
-  if (storyGroupIdx < storyGroups.length - 1) {
-    storyGroupIdx++;
+  // …sinon on passe à l'auteur suivant — jamais à MOI quand je parcours les
+  // stories des autres (LOT-14, BOB-C21)…
+  var suivant = _groupeStoryVoisin(storyGroupIdx, +1);
+  if (suivant > -1) {
+    storyGroupIdx = suivant;
     storyItemIdx = 0;
     playCurrentStory();
     return;
@@ -2075,8 +2377,9 @@ function storyPrev() {
     return;
   }
   // …sinon dernière story de l'auteur précédent…
-  if (storyGroupIdx > 0) {
-    storyGroupIdx--;
+  var precedent = _groupeStoryVoisin(storyGroupIdx, -1);
+  if (precedent > -1) {
+    storyGroupIdx = precedent;
     const g = storyGroups[storyGroupIdx];
     storyItemIdx = g ? Math.max(0, g.stories.length - 1) : 0;
     playCurrentStory();
@@ -2086,12 +2389,594 @@ function storyPrev() {
   closeStoryViewer();
 }
 
+// ═══ STORY FAÇON INSTAGRAM (2026-11-14) ═══════════════════════════════════
+// Sous chaque story, une barre d'actions : « Envoyer un message… », ❤️ et
+// partager — plus, champ en main, une rangée de réactions rapides. LOT-49
+// (BOB-C09) avait posé la réponse, mais elle QUITTAIT la story et préremplissait
+// la conversation ; comme sur Instagram, réponse, réaction et j'aime partent
+// maintenant SANS quitter la visionneuse, dans le fil direct avec l'auteur
+// (`_envoyerALAuteurStory`) — le seul canal entre deux comptes que la base
+// connaît pour une story (aucune table de j'aime de story n'existe : `story_views`
+// est en `select_own`). Rien ne part sans un geste : taper « Envoyer », toucher
+// une réaction, toucher ❤️.
+//   · story d'un COMPTE RÉEL autre que moi, non bloqué : message, réactions, ❤️
+//     (le premier j'aime d'une story prévient l'auteur, une seule fois), partager ;
+//   · story d'exemple : ❤️ local et partager — aucun message vers un compte
+//     qui n'existe pas ;
+//   · MA story : « Nouvelle story » et partager ;
+//   · compte bloqué : aucune barre.
+// Rendu DOM, aucun onclick inline (identifiants d'autrui — règle MSG-02).
+var STORY_REACTIONS = ["😂", "😮", "😍", "😢", "👏", "🔥"];
+var STORY_COEUR_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.4 2.4h1.8c.8-1.2 2.3-2.4 4.4-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>';
+var STORY_BULLE_SVG = '<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.6L3 20.5l1.4-4.9A8.5 8.5 0 1 1 20.5 11.5z"/></svg>';
+var STORY_PARTAGE_SVG = '<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M22 3 9.2 13.6"/><path d="M22 3 15 21l-4.2-7.8L3 9z"/></svg>';
+
+function _storyAimee(id) {
+  var l = (state.user && state.user.likedStories) || [];
+  return l.indexOf(id) > -1;
+}
+function _storyExtrait(s) {
+  return String((s && (s.text || s.content)) || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+// Écrit `texte` dans la conversation DIRECTE avec l'auteur de la story, sans
+// l'ouvrir. Mêmes garde-fous que la messagerie : visiteur → porte de compte,
+// compte bloqué → refus, recherche du fil en panne → on ne devine pas (un fil
+// existe peut-être, en créer un second le doublerait chez l'autre). Sans fil,
+// un BROUILLON local que `_sendTextToSupa` matérialise au premier envoi
+// (`_materialiserConv`, LOT-43).
+// Rend "envoye" (parti au serveur), "file" (hors ligne : en file, partira au
+// retour du réseau) ou false (rien n'est parti) — l'écran ne dit « envoyé »
+// que dans le premier cas (relecture audit-passio du 2026-11-14).
+async function _envoyerALAuteurStory(s, nom, texte) {
+  try {
+    if (!s || !s.authorId || !texte) return false;
+    if (window.requireAuthentication && !requireAuthentication("message")) return false;
+    // AUTH-06 : l'identité qui ÉCRIT est celle du geste, capturée AVANT tout
+    // `await` réseau ; `_sendTextToSupa` refuse si le compte a changé entre-temps.
+    var moi = (typeof MY_UID !== "undefined") ? MY_UID : null;
+    var auteur = s.authorId;
+    if (typeof isBlocked === "function" && isBlocked(auteur)) { toast("Compte bloqué — débloque-le pour lui écrire", "warning"); return false; }
+    var trouver = function () {
+      var l = getConversations().filter(function (x) { return x && !x.isGroup && x.userId === auteur; });
+      return l.find(function (x) { return !x._brouillon; }) || l[0] || null;
+    };
+    var c = trouver();
+    // Un BROUILLON local peut être périmé : l'autre a pu ouvrir le fil depuis.
+    // Comme `startDirectMessage`, on demande à la base avant de le matérialiser
+    // — sinon un second fil naissait chez l'autre (LOT-43).
+    if (!c || c._brouillon) {
+      var r = (typeof supa !== "undefined" && supa && window._supaReal) ? await _chercherConvDirecte(auteur) : { id: null, absenceProuvee: true };
+      if (!r.id && !r.absenceProuvee) { toast("Pas envoyé — vérifie ta connexion et réessaie.", "warning"); return false; }
+      var convs = getConversations();
+      c = trouver();
+      if (c && c._brouillon && r.id) {
+        var deja = convs.find(function (x) { return x && x.id === r.id; });
+        if (deja) c = deja; else { c.id = r.id; delete c._brouillon; }
+      }
+      if (!c) {
+        var uLoc = (typeof userById === "function" && userById(auteur)) || {};
+        c = { id: r.id || ("conv_" + uid()), userId: auteur, userName: nom || s.authorName || "Passionné", userEmoji: s.authorEmoji || uLoc.profileEmoji || "✨", userColor: s.authorColor || uLoc.avatar || "#8b5cf6", userPhoto: uLoc.photoUrl || null, passion: null, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
+        if (!r.id) c._brouillon = true;
+        convs.unshift(c);
+        conversationsState = convs;
+      }
+    }
+    if (texte.length > MSG_TEXTE_MAX) texte = texte.slice(0, MSG_TEXTE_MAX);
+    var msgId = "msg_" + uid();
+    if (!c.messages) c.messages = [];
+    c.messages.push({ id: msgId, from: "me", text: texte, at: Date.now(), status: "sending", de: _fileProprietaire() });
+    c.lastAt = Date.now();
+    saveConversations();
+    try { renderMessages(); } catch (_r) {}
+    var enLigne = !(navigator && navigator.onLine === false) && !!window._supaReal;
+    _sendTextToSupa(c.id, msgId, _withSenderMeta(texte), moi);
+    return enLigne ? "envoye" : "file";
+  } catch (e) {
+    try { diagLog("story_envoi " + (e && e.message)); } catch (_) {}
+    toast("Pas envoyé — réessaie.", "warning");
+    return false;
+  }
+}
+
+// Une grande icône qui éclot au centre de la story (j'aime, réaction).
+function _storyEclosion(contenu) {
+  try {
+    var carte = document.getElementById("storyCard");
+    if (!carte) return;
+    var d = document.createElement("div");
+    d.className = "story-eclosion";
+    d.setAttribute("aria-hidden", "true");
+    if (contenu === "coeur") d.innerHTML = STORY_COEUR_SVG; else d.textContent = contenu;
+    carte.appendChild(d);
+    setTimeout(function () { d.remove(); }, 900);
+  } catch (e) {}
+}
+
+function storyBasculerJaime(s, nom, reel) {
+  if (!s || !s.id || !state.user) return;
+  // Sur un compte réel, le j'aime engage le compte : la porte AVANT de basculer
+  // (sinon le cœur restait rouge et l'auteur n'était jamais prévenu).
+  if (reel && !_storyAimee(s.id) && window.requireAuthentication && !requireAuthentication("message")) return;
+  if (!Array.isArray(state.user.likedStories)) state.user.likedStories = [];
+  var l = state.user.likedStories;
+  var i = l.indexOf(s.id);
+  var aime = i < 0;
+  if (aime) { l.push(s.id); if (l.length > 600) state.user.likedStories = l.slice(-500); }
+  else l.splice(i, 1);
+  try { saveState(); } catch (e) {}
+  var b = document.getElementById("storyLikeBtn");
+  if (b) { b.classList.toggle("aimee", aime); b.setAttribute("aria-pressed", aime ? "true" : "false"); b.setAttribute("aria-label", aime ? "Je n'aime plus" : "J'aime"); }
+  if (aime) {
+    _storyEclosion("coeur");
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("story_like", { reel: !!reel }); } catch (_t) {}
+  }
+  if (!reel) return;
+  // Table `story_likes` présente : le j'aime s'écrit EN BASE (l'auteur le voit
+  // dans l'activité de sa story), aucun message. Refus = l'affichage revient.
+  if (storyIxPossible(s)) {
+    Promise.resolve(supaStoryAimer(s.id, aime)).then(function (r) {
+      if (r && r.ok) return;
+      if (r && r.absente) { if (aime) _storyPrevenirParMessage(s, nom); return; }
+      _storyNoterJaimeLocal(s.id, !aime);
+      var bb = document.getElementById("storyLikeBtn");
+      if (bb) { bb.classList.toggle("aimee", !aime); bb.setAttribute("aria-pressed", !aime ? "true" : "false"); }
+      toast("J'aime non enregistré — réessaie.", "warning");
+    });
+    return;
+  }
+  if (aime) _storyPrevenirParMessage(s, nom);
+}
+
+function _storyNoterJaimeLocal(id, oui) {
+  if (!state.user) return;
+  if (!Array.isArray(state.user.likedStories)) state.user.likedStories = [];
+  var l = state.user.likedStories, i = l.indexOf(id);
+  if (oui && i < 0) l.push(id);
+  if (!oui && i > -1) l.splice(i, 1);
+  try { saveState(); } catch (e) {}
+}
+
+// Repli sans table `story_likes` : l'auteur n'est prévenu qu'au PREMIER j'aime
+// d'une story, par un message direct — défaire et refaire ne l'inonde pas.
+function _storyPrevenirParMessage(s, nom) {
+  if (!Array.isArray(state.user.storyLikesPrevenus)) state.user.storyLikesPrevenus = [];
+  if (state.user.storyLikesPrevenus.indexOf(s.id) > -1 || window._storyLikeEnVol === s.id) return;
+  window._storyLikeEnVol = s.id;
+  var ex = _storyExtrait(s);
+  // « Prévenu » n'est noté que si le message est parti (ou en file) : un envoi
+  // refusé laisse le prochain j'aime retenter.
+  Promise.resolve(_envoyerALAuteurStory(s, nom, "❤️ J'ai aimé ta story" + (ex ? " « " + ex + " »" : ""))).then(function (ok) {
+    window._storyLikeEnVol = null;
+    if (!ok) return;
+    var lp = state.user.storyLikesPrevenus;
+    if (lp.indexOf(s.id) < 0) lp.push(s.id);
+    if (lp.length > 600) state.user.storyLikesPrevenus = lp.slice(-500);
+    try { saveState(); } catch (e) {}
+  });
+}
+
+function _storyAnnoncerEnvoi(verdict, phrase) {
+  if (verdict === "envoye") toast(phrase, "success");
+  else if (verdict === "file") toast("Hors ligne — ça partira au retour du réseau", "info");
+}
+
+function storyReagir(s, nom, emoji) {
+  if (STORY_REACTIONS.indexOf(emoji) < 0) return;
+  _storyEclosion(emoji);
+  var ex = _storyExtrait(s);
+  Promise.resolve(_envoyerALAuteurStory(s, nom, emoji + " Réaction à ta story" + (ex ? " « " + ex + " »" : ""))).then(function (ok) {
+    if (ok) _storyAnnoncerEnvoi(ok, "Réaction envoyée à " + (nom || "l'auteur"));
+  });
+  try { if (window.tel && tel.action) tel.action("story_reaction", {}); } catch (_t) {}
+}
+
+function storyPartager(s, nom, mienne) {
+  if (!s) return;
+  // Pas de `_storyEnPause` : la feuille ouverte suffit à suspendre la lecture
+  // (minuteur de playCurrentStory), et sa fermeture la relance d'elle-même.
+  var rawUrl = (typeof lienPartageDe === "function") ? lienPartageDe("user", s.authorId) : location.origin + location.pathname + "#user-" + s.authorId;
+  var url = rawUrl;
+  try { if (window.tel && tel.shareLink) url = tel.shareLink(rawUrl, "profile", s.authorId, navigator.share ? "native" : "clipboard"); } catch (_t) {}
+  var vignette = (s.media && s.mediaType !== "video") ? s.media : "";
+  ouvrirFeuillePartage({
+    quoi: "story", titre: mienne ? "Ma story" : ("Story de " + (nom || "ce profil")), auteur: nom || "", extrait: _storyExtrait(s), vignette: vignette, url: url,
+    message: mienne ? "Regarde ma story sur PASSIO" : ("Regarde la story de " + (nom || "ce profil") + " sur PASSIO"),
+    voit: "La personne qui reçoit le lien ouvre le profil dans PASSIO, avec ses stories du moment.",
+    idEnvoyer: "_storyPartageEnvoyer",
+  });
+  try { if (window.tel && tel.action) tel.action("story_partage", {}); } catch (_t) {}
+}
+
+// ── Feuilles « Commentaires » et « Activité » (2026-11-14) ─────────────────
+// Rendu DOM uniquement : nom, texte et photo d'autrui passent par textContent
+// et avatarBg/safeUrl — jamais par innerHTML.
+function _storyProfilAffiche(id, profs) {
+  if (id && id === MY_UID) {
+    var cp = (typeof currentProfile === "function" && currentProfile()) || {};
+    return { nom: cp.name || "Moi", emoji: cp.emoji || "✨", couleur: cp.color || "#7c3aed", photo: (state.user && state.user.photoUrl) || null };
+  }
+  var p = (profs && profs[id]) || {};
+  var u = (typeof userById === "function" && userById(id)) || {};
+  return { nom: p.username || u.name || "Passionné", emoji: p.emoji || u.profileEmoji || "✨", couleur: p.color || u.avatar || "#8b5cf6", photo: p.avatar_url || u.photoUrl || null };
+}
+function _storyAvatarEl(pr) {
+  var a = document.createElement("div");
+  a.className = "avatar sm story-feuille-avatar";
+  try { a.style.background = pr.photo && typeof avatarBg === "function" ? avatarBg({ photoUrl: pr.photo, avatar: pr.couleur }) : pr.couleur; } catch (e) { a.style.background = pr.couleur; }
+  if (!pr.photo) a.textContent = pr.emoji || "✨";
+  return a;
+}
+function _storyLigneProfil(id, profs, droite) {
+  var pr = _storyProfilAffiche(id, profs);
+  var ligne = document.createElement("div");
+  ligne.className = "story-feuille-ligne";
+  ligne.appendChild(_storyAvatarEl(pr));
+  var nomEl = document.createElement("button");
+  nomEl.type = "button";
+  nomEl.className = "story-feuille-nom";
+  nomEl.textContent = pr.nom;
+  nomEl.addEventListener("click", function () { try { closeModal(); closeStoryViewer(); openUserProfile(id); } catch (e) {} });
+  ligne.appendChild(nomEl);
+  if (droite) ligne.appendChild(droite);
+  return ligne;
+}
+
+function ouvrirCommentairesStory(s, nom) {
+  if (!s) return;
+  openModal('<div class="modal-handle"></div><div class="modal-title">Commentaires</div>'
+    + '<div id="storyComList" class="story-com-list" aria-live="polite"><div class="story-com-vide">Chargement…</div></div>'
+    + '<form id="storyComForm" class="story-com-form"><input id="storyComInput" class="story-com-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" aria-label="Ajouter un commentaire" placeholder="Ajoute un commentaire…"><button type="submit" class="btn primary story-com-publier" id="storyComPublier">Publier</button></form>');
+  var liste = document.getElementById("storyComList");
+  var form = document.getElementById("storyComForm");
+  var champ = document.getElementById("storyComInput");
+  var bouton = document.getElementById("storyComPublier");
+  if (!liste || !form || !champ) return;
+  var storyAMoi = s.authorId === MY_UID;
+  var commentaires = [];
+  var profs = {};
+  var peindre = function () {
+    if (!document.body.contains(liste)) return;
+    liste.innerHTML = "";
+    if (!commentaires.length) {
+      var vide = document.createElement("div");
+      vide.className = "story-com-vide";
+      vide.textContent = "Aucun commentaire pour l'instant. Sois le premier !";
+      liste.appendChild(vide);
+      return;
+    }
+    commentaires.forEach(function (c) {
+      var bloc = document.createElement("div");
+      bloc.className = "story-com-row";
+      bloc.setAttribute("data-id", String(c.id));
+      var pr = _storyProfilAffiche(c.authorId, profs);
+      bloc.appendChild(_storyAvatarEl(pr));
+      var corps = document.createElement("div");
+      corps.className = "story-com-corps";
+      var tete = document.createElement("div");
+      tete.className = "story-com-tete";
+      var n = document.createElement("b"); n.textContent = pr.nom;
+      var h = document.createElement("span"); h.className = "story-com-heure"; h.textContent = fmtTime(c.at);
+      tete.appendChild(n); tete.appendChild(h);
+      var t = document.createElement("div"); t.className = "story-com-texte"; t.textContent = c.text;
+      corps.appendChild(tete); corps.appendChild(t);
+      bloc.appendChild(corps);
+      if (c.authorId === MY_UID || storyAMoi) {
+        var del = document.createElement("button");
+        del.type = "button"; del.className = "story-com-suppr"; del.setAttribute("aria-label", "Supprimer ce commentaire"); del.textContent = "🗑";
+        del.addEventListener("click", function () {
+          del.disabled = true;
+          Promise.resolve(supaStorySupprimerCommentaire(c.id)).then(function (ok) {
+            if (!ok) { del.disabled = false; toast("Suppression impossible — réessaie.", "warning"); return; }
+            commentaires = commentaires.filter(function (x) { return x.id !== c.id; });
+            peindre();
+          });
+        });
+        bloc.appendChild(del);
+      }
+      liste.appendChild(bloc);
+    });
+    liste.scrollTop = liste.scrollHeight;
+  };
+  Promise.resolve(supaStoryCommentaires(s.id)).then(function (r) {
+    if (r && r.absente) {
+      try { closeModal(); } catch (e) {}
+      var champMsg = document.querySelector("#storyReplyBar .story-reply-input");
+      if (champMsg) { toast("Commentaires publics bientôt disponibles — envoie un message à " + (nom || "l'auteur"), "info"); champMsg.focus(); }
+      return;
+    }
+    if (!r || r.erreur) { liste.innerHTML = ""; var e = document.createElement("div"); e.className = "story-com-vide"; e.textContent = "Commentaires indisponibles — vérifie ta connexion."; liste.appendChild(e); return; }
+    commentaires = r.liste;
+    peindre();
+    var ids = commentaires.map(function (c) { return c.authorId; }).filter(function (id) { return id !== MY_UID; });
+    if (ids.length && typeof _resolveProfilesByIds === "function") {
+      Promise.resolve(_resolveProfilesByIds(ids)).then(function (p) { profs = p || {}; peindre(); }).catch(function () {});
+    }
+  });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var texte = champ.value.trim();
+    if (!texte) { champ.focus(); return; }
+    if (window.requireAuthentication && !requireAuthentication("message")) return;
+    bouton.disabled = true;
+    Promise.resolve(supaStoryCommenter(s.id, texte.slice(0, 500))).then(function (r) {
+      bouton.disabled = false;
+      if (!r || !r.ok) { toast(r && r.absente ? "Commentaires publics bientôt disponibles" : "Commentaire non publié — réessaie.", "warning"); return; }
+      commentaires.push({ id: r.id, authorId: MY_UID, text: texte.slice(0, 500), at: r.at || Date.now() });
+      champ.value = "";
+      peindre();
+      _storyMajPastilleCommentaires(commentaires.length);
+      try { if (window.tel && tel.action) tel.action("story_commentaire", {}); } catch (_t) {}
+    });
+  });
+  setTimeout(function () { try { champ.focus(); } catch (e) {} }, 250);
+}
+function _storyMajPastilleCommentaires(n) {
+  var b = document.getElementById("storyCommentBtn");
+  if (!b) return;
+  var p = b.querySelector(".story-action-badge");
+  if (!n) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement("span"); p.className = "story-action-badge"; b.appendChild(p); }
+  p.textContent = n > 99 ? "99+" : String(n);
+}
+
+function ouvrirActiviteStory(s) {
+  if (!s) return;
+  openModal('<div class="modal-handle"></div><div class="modal-title">Activité de ta story</div>'
+    + '<div id="storyActResume" class="story-act-resume">Chargement…</div>'
+    + '<div id="storyActListe" class="story-com-list"></div>'
+    + '<button type="button" class="btn secondary block" id="storyActCommentaires">💬 Voir les commentaires</button>');
+  var resume = document.getElementById("storyActResume");
+  var liste = document.getElementById("storyActListe");
+  var voir = document.getElementById("storyActCommentaires");
+  if (voir) voir.addEventListener("click", function () { ouvrirCommentairesStory(s, ""); });
+  Promise.resolve(supaStoryActivite(s.id)).then(function (a) {
+    if (!resume || !document.body.contains(resume)) return;
+    if (!a || a.absente || a.erreur) { resume.textContent = a && a.absente ? "L'activité arrive bientôt." : "Activité indisponible — vérifie ta connexion."; return; }
+    var aimeurs = new Set(a.jaime);
+    resume.textContent = "👁 Vu par " + a.vues.length + "   ·   ❤️ " + a.jaime.length + " j'aime";
+    var ids = a.vues.map(function (v) { return v.userId; });
+    a.jaime.forEach(function (id) { if (ids.indexOf(id) < 0 && id !== MY_UID) ids.push(id); });
+    var peindre = function (profs) {
+      liste.innerHTML = "";
+      if (!ids.length) { var v = document.createElement("div"); v.className = "story-com-vide"; v.textContent = "Personne ne l'a encore vue."; liste.appendChild(v); return; }
+      // Ceux qui ont aimé d'abord (comme Instagram), puis l'ordre des vues.
+      ids.slice().sort(function (x, y) { return (aimeurs.has(y) ? 1 : 0) - (aimeurs.has(x) ? 1 : 0); }).forEach(function (id) {
+        var coeur = null;
+        if (aimeurs.has(id)) { coeur = document.createElement("span"); coeur.className = "story-act-coeur"; coeur.textContent = "❤️"; coeur.setAttribute("aria-label", "a aimé"); }
+        liste.appendChild(_storyLigneProfil(id, profs, coeur));
+      });
+    };
+    peindre({});
+    if (ids.length && typeof _resolveProfilesByIds === "function") {
+      Promise.resolve(_resolveProfilesByIds(ids)).then(function (p) { if (document.body.contains(liste)) peindre(p || {}); }).catch(function () {});
+    }
+  });
+}
+
+function _barreReponseStory(s, nom, reel) {
+  try {
+    var sv = document.getElementById("storyViewer");
+    if (!sv) return;
+    ["storyActionsBar", "storyReplyBar", "storyReactions"].forEach(function (id) { var a = document.getElementById(id); if (a) a.remove(); });
+    sv.classList.remove("story-ecrit");
+    var bloque = typeof isBlocked === "function" && isBlocked(s.authorId);
+    if (bloque) return;
+    var mienne = !!s.authorId && (s.authorId === MY_UID || s.authorId === "me");
+    var barre = document.createElement("div");
+    barre.id = "storyActionsBar";
+    barre.className = "story-actions-bar";
+    ["pointerdown", "click", "touchstart"].forEach(function (t) { barre.addEventListener(t, function (e) { e.stopPropagation(); }); });
+
+    if (reel && !mienne) {
+      var form = document.createElement("form");
+      form.id = "storyReplyBar";
+      form.className = "story-reply-bar";
+      var champ = document.createElement("input");
+      champ.type = "text";
+      champ.maxLength = 500;
+      champ.className = "story-reply-input";
+      champ.placeholder = "Envoyer un message à " + (nom || "cette personne") + "…";
+      champ.setAttribute("aria-label", "Envoyer un message à " + (nom || "cette personne"));
+      champ.setAttribute("enterkeyhint", "send");
+      champ.setAttribute("autocomplete", "off");
+      var envoyer = document.createElement("button");
+      envoyer.type = "submit";
+      envoyer.className = "story-reply-send";
+      envoyer.textContent = "Envoyer";
+      form.appendChild(champ);
+      form.appendChild(envoyer);
+      barre.appendChild(form);
+
+      // Réactions rapides : visibles le champ en main (comme Instagram).
+      var rangee = document.createElement("div");
+      rangee.id = "storyReactions";
+      rangee.className = "story-reactions";
+      rangee.setAttribute("role", "group");
+      rangee.setAttribute("aria-label", "Réactions rapides");
+      STORY_REACTIONS.forEach(function (emo) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "story-reaction-btn";
+        b.textContent = emo;
+        b.setAttribute("aria-label", "Réagir " + emo);
+        // `pointerdown` + preventDefault : le champ garde le focus, la rangée
+        // ne disparaît pas avant que le toucher ne soit compté.
+        b.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+        b.addEventListener("click", function (e) {
+          e.preventDefault(); e.stopPropagation();
+          storyReagir(s, nom, emo);
+          try { champ.blur(); } catch (_) {}
+        });
+        rangee.appendChild(b);
+      });
+      ["pointerdown", "click", "touchstart"].forEach(function (t) { rangee.addEventListener(t, function (e) { e.stopPropagation(); }); });
+      sv.appendChild(rangee);
+
+      var ecrit = function (oui) { sv.classList.toggle("story-ecrit", !!oui); };
+      champ.addEventListener("focus", function () { window._storyEnPause = true; ecrit(true); });
+      champ.addEventListener("input", function () { window._storyEnPause = true; form.classList.toggle("a-du-texte", !!champ.value.trim()); });
+      champ.addEventListener("blur", function () {
+        setTimeout(function () { if (document.activeElement !== champ) { ecrit(false); if (!champ.value.trim()) window._storyEnPause = false; } }, 120);
+      });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var texte = champ.value.trim();
+        if (!texte) { champ.focus(); return; }
+        var ex = _storyExtrait(s);
+        var message = "↩️ Ta story" + (ex ? " « " + ex + " »" : "") + "\n" + texte;
+        envoyer.disabled = true;
+        Promise.resolve(_envoyerALAuteurStory(s, nom, message)).then(function (ok) {
+          envoyer.disabled = false;
+          if (!ok) return;
+          champ.value = "";
+          form.classList.remove("a-du-texte");
+          try { champ.blur(); } catch (_) {}
+          ecrit(false);
+          window._storyEnPause = false;
+          _storyAnnoncerEnvoi(ok, "Message envoyé à " + (nom || "l'auteur"));
+        });
+        try { if (window.tel && tel.action) tel.action("story_reponse", {}); } catch (_t) {}
+      });
+    } else if (mienne) {
+      // « Activité » (comme Instagram) : qui a vu, qui a aimé — ma story RÉELLE seulement.
+      if (storyIxPossible(s)) {
+        var activite = document.createElement("button");
+        activite.type = "button";
+        activite.id = "storyActiviteBtn";
+        activite.className = "story-activite-btn";
+        activite.textContent = "👁 Activité";
+        activite.addEventListener("click", function () { ouvrirActiviteStory(s); });
+        barre.appendChild(activite);
+        Promise.resolve(supaStoryActivite(s.id)).then(function (a) {
+          if (!a || !a.vues || !document.body.contains(activite)) return;
+          activite.textContent = "👁 " + a.vues.length + (a.jaime.length ? "  ❤️ " + a.jaime.length : "");
+          activite.setAttribute("aria-label", "Activité : " + a.vues.length + " vue(s), " + a.jaime.length + " j'aime");
+        });
+      }
+      var nouvelle = document.createElement("button");
+      nouvelle.type = "button";
+      nouvelle.id = "storyNouvelleBtn";
+      nouvelle.className = "story-nouvelle-btn";
+      nouvelle.textContent = storyIxPossible(s) ? "＋" : "＋ Nouvelle story";
+      nouvelle.setAttribute("aria-label", "Nouvelle story");
+      if (storyIxPossible(s)) nouvelle.classList.add("compacte");
+      nouvelle.addEventListener("click", function () { closeStoryViewer(); try { openStudioAsStory(); } catch (_) {} });
+      barre.appendChild(nouvelle);
+    } else {
+      var espace = document.createElement("div");
+      espace.className = "story-actions-espace";
+      barre.appendChild(espace);
+    }
+
+    // 💬 Commenter : les commentaires PUBLICS de la story (feuille), visibles
+    // de tous ceux qui voient la story — table `story_comments`. Tant que la
+    // migration n'est pas appliquée, ou sur une story d'exemple : le champ
+    // « Envoyer un message » (fil direct de l'auteur).
+    if (storyIxPossible(s) || !mienne) {
+      var bulle = document.createElement("button");
+      bulle.type = "button";
+      bulle.id = "storyCommentBtn";
+      bulle.className = "story-action-btn story-comment-btn";
+      bulle.setAttribute("aria-label", "Commentaires");
+      bulle.innerHTML = STORY_BULLE_SVG;
+      bulle.addEventListener("click", function () {
+        if (storyIxPossible(s)) { ouvrirCommentairesStory(s, nom); return; }
+        var champCom = document.querySelector("#storyReplyBar .story-reply-input");
+        if (champCom) { champCom.focus(); return; }
+        toast("Story d'exemple — commente la story d'un vrai membre", "info");
+      });
+      barre.appendChild(bulle);
+      if (storyIxPossible(s)) {
+        Promise.resolve(supaStoryNbCommentaires(s.id)).then(function (n) {
+          if (!n || !document.body.contains(bulle)) return;
+          var pastille = document.createElement("span");
+          pastille.className = "story-action-badge";
+          pastille.textContent = n > 99 ? "99+" : String(n);
+          bulle.appendChild(pastille);
+          bulle.setAttribute("aria-label", "Commentaires (" + n + ")");
+        });
+      }
+    }
+    if (!mienne) {
+      var coeur = document.createElement("button");
+      coeur.type = "button";
+      coeur.id = "storyLikeBtn";
+      coeur.className = "story-action-btn story-like-btn" + (_storyAimee(s.id) ? " aimee" : "");
+      coeur.setAttribute("aria-pressed", _storyAimee(s.id) ? "true" : "false");
+      coeur.setAttribute("aria-label", _storyAimee(s.id) ? "Je n'aime plus" : "J'aime");
+      coeur.innerHTML = STORY_COEUR_SVG;
+      coeur.addEventListener("click", function () { storyBasculerJaime(s, nom, reel && !mienne); });
+      barre.appendChild(coeur);
+      // Le cœur dit l'état EN BASE (un autre appareil a pu aimer ou défaire).
+      if (storyIxPossible(s)) {
+        Promise.resolve(supaStoryMesJaime([s.id])).then(function (ids) {
+          if (!Array.isArray(ids) || !document.body.contains(coeur)) return;
+          var oui = ids.indexOf(String(s.id)) > -1;
+          _storyNoterJaimeLocal(s.id, oui);
+          coeur.classList.toggle("aimee", oui);
+          coeur.setAttribute("aria-pressed", oui ? "true" : "false");
+          coeur.setAttribute("aria-label", oui ? "Je n'aime plus" : "J'aime");
+        });
+      }
+    }
+    var partage = document.createElement("button");
+    partage.type = "button";
+    partage.id = "storyShareBtn";
+    partage.className = "story-action-btn story-share-btn";
+    partage.setAttribute("aria-label", "Partager");
+    partage.innerHTML = STORY_PARTAGE_SVG;
+    partage.addEventListener("click", function () { storyPartager(s, nom, mienne); });
+    barre.appendChild(partage);
+    sv.appendChild(barre);
+  } catch (e) { try { diagLog("story_barre " + (e && e.message)); } catch (_) {} }
+}
+
+// Préchargement de l'image de la story SUIVANTE : l'enchaînement ne montre
+// plus un fond vide le temps du téléchargement. Une seule à la fois ; les
+// vidéos ne sont pas préchargées (données mobiles).
+function _storyPrecharger() {
+  try {
+    var g = storyGroups[storyGroupIdx];
+    var suiv = g && g.stories[storyItemIdx + 1];
+    if (!suiv) {
+      var gi = _groupeStoryVoisin(storyGroupIdx, +1);
+      suiv = gi > -1 && storyGroups[gi] ? storyGroups[gi].stories[0] : null;
+    }
+    if (!suiv || !suiv.media || suiv.mediaType === "video") return;
+    var src = passioMediaProteges.route(String(suiv.media),{type:"stories",id:suiv.id});
+    if (window._storyPrecharge === src || /^(javascript|data:text)/i.test(src)) return;
+    window._storyPrecharge = src;
+    if(passioMediaProteges.local(src))return; // Pas de prefetch prive detache du DOM/client vivant.
+    var im = new Image();
+    im.decoding = "async";
+    im.src = src;
+  } catch (e) {}
+}
+
+// Passer à l'auteur suivant / précédent d'un geste (balayage horizontal).
+function storyGroupeVoisin(sens) {
+  clearInterval(storyTimer);
+  var gi = _groupeStoryVoisin(storyGroupIdx, sens);
+  if (gi < 0) { closeStoryViewer(); return; }
+  storyGroupIdx = gi;
+  var g = storyGroups[gi];
+  var seen = (state.user && state.user.seenStories) || [];
+  var ii = sens > 0 && g ? g.stories.findIndex(function (x) { return seen.indexOf(x.id) < 0; }) : 0;
+  storyItemIdx = ii < 0 ? 0 : ii;
+  playCurrentStory();
+}
+
 function closeStoryViewer() {
   clearInterval(storyTimer);
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
   if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
-  if (sv) sv.classList.remove("active");
+  if (sv) sv.classList.remove("active", "story-ecrit", "story-maintenu");
+  try { var _c = document.getElementById("storyCard"); if (_c) { _c.style.transform = ""; _c.style.opacity = ""; } } catch (e) {}
+  window._storyEnPause = false;
+  window._storyClicIgnore = false;
   renderStories();
   // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
   // sans cela, chaque story consultée mangeait un appui sur « retour ».
@@ -2103,6 +2988,13 @@ function unreadCount() {
   return (state.notifications || []).filter(n => n.unread).length;
 }
 
+// LOT-24 (MSG-C15) : un message reçu comptait DEUX FOIS au titre et à l'icône
+// de l'application — son non-lu de messagerie ET sa notification de cloche.
+// Le total ne prend, côté cloche, que ce qui n'est pas un message.
+function _notifsNonLuesHorsMessages() {
+  return (state.notifications || []).filter(function (n) { return n && n.unread && n.kind !== "message"; }).length;
+}
+
 function renderBell() {
   const dot = $("#bellDot");
   if (dot) {
@@ -2112,7 +3004,7 @@ function renderBell() {
   // Badge titre de l'onglet navigateur (notifs + messages non-lus)
   try {
     let _total = 0;
-    try { _total += unreadCount(); } catch(e) {}
+    try { _total += _notifsNonLuesHorsMessages(); } catch(e) {}
     try { _total += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch(e) {}
     document.title = _total > 0 ? `(${_total > 99 ? "99+" : _total}) PASSIO` : "PASSIO";
   } catch(e) {}
@@ -2126,7 +3018,7 @@ function updateAppBadge() {
   try {
     if (!("setAppBadge" in navigator)) return;
     let n = 0;
-    try { n += unreadCount(); } catch (e) {}
+    try { n += _notifsNonLuesHorsMessages(); } catch (e) {}
     try { n += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch (e) {}
     if (n > 0) navigator.setAppBadge(n).catch(() => {});
     else navigator.clearAppBadge().catch(() => {});
@@ -2220,47 +3112,60 @@ function renderMsgBadge() {
 // échappé la partie variable, et le contenu de démonstration fait de même.
 // Les échapper toutes afficherait « &lt;b&gt; » à l'écran.
 //
-// La confiance est donc EXPLICITE, et le défaut est le refus : tout producteur
-// futur qui oublie de se déclarer sera échappé, pas exécuté.
-//   · `html: true`      — posé par `pushNotification` et le contenu de démo ;
-//   · `kind === "local"` — les notifications déjà PERSISTÉES chez les comptes
-//     existants, écrites avant que le drapeau n'existe.
-// ⚠️ RÉCONCILIATION DE DEUX CORRECTIFS PARALLÈLES (2026-08-29, nuit).
-// Deux sessions ont fermé la même XSS le même soir, chacune à un bout de la
-// chaîne : neutralisation des chevrons à l'ENTRÉE (`mergeSupaNotifs`, #202) et
-// modèle de confiance explicite au RENDU (celui-ci, #200). Les deux fusionnés,
-// main est devenu ROUGE — et pas seulement sur des tests : `escapeHtml` appliqué
-// ici DOUBLE-ÉCHAPPAIT un texte déjà échappé à la source. `supaInsertNotif`
-// compose `escapeHtml(nom) + " " + libellé` : un pseudo avec apostrophe est
-// stocké « Ben&#39;j », et un second échappement l'affichait tel quel à l'écran.
-//
-// Le modèle de confiance de #200 est conservé — il est meilleur : le défaut est
-// le REFUS, tout producteur futur qui oublie de se déclarer est neutralisé. Seul
-// le désinfectant change pour le texte non fiable : on neutralise les CHEVRONS
-// au lieu d'échapper toutes les entités. C'est suffisant ici — le texte est
-// inséré entre deux balises, pas dans un attribut, et `<` et `>` sont les seuls
-// caractères qui peuvent y créer du balisage — et c'est idempotent, donc la
-// neutralisation d'entrée et celle-ci se composent sans se marcher dessus.
+// Le blob synchronisé et le cache local peuvent porter html:true ou kind:local.
+// Ces indicateurs ne donnent aucun droit d'exécuter du HTML. Seul le gras sans
+// attribut, utilisé par les notifications locales, est rétabli après neutralisation.
+// Les entités restent intactes pour éviter le double échappement des pseudos.
 function _notifTexteHtml(n) {
   if (!n) return "";
-  var deConfiance = n.html === true || n.kind === "local";
-  return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
+  var texte = _neutraliserBalisesNotif(n.text);
+  return n.html === true || n.kind === "local"
+    ? texte.replace(/&lt;(\/?b)&gt;/g, "<$1>") : texte;
 }
 
-// §2 : sous le texte d'une notification, les passions de la personne qui l'a
-// déclenchée — quand on sait qui c'est. `identitePassionsHTML` rend "" pour un
-// émetteur inconnu ou sans passion publiée, et on ne peint alors rien.
-function _notifIdentiteHtml(n) {
-  try {
-    var id = n && (n.fromId || n.authorId);
-    if (!id || id === "me") return "";
-    var u = (typeof userById === "function") ? userById(id) : null;
-    return u ? identitePassionsHTML(u, "ident-passions-sm") : "";
-  } catch (e) { return ""; }
+// 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
+// le texte d'une notification (« trop chargé »). _notifIdentiteHtml est retirée.
+
+// LOT-26 (audit UX/UI du 2026-11-10, TRA-C14) : une publication qui plaît
+// noyait le reste — une ligne par j'aime. Les j'aime (et les réactions) d'une
+// même cible sont regroupés en UNE ligne, à la place de la plus récente :
+// « Léa, Malik et 3 autres ont aimé ta publication ». Toucher la ligne ouvre la
+// cible, comme avant ; elle est non lue si l'une des notifications l'est.
+var _NOTIF_REGROUPABLES = { like: "ont aimé ta publication", reaction: "ont réagi à ta publication" };
+function _regrouperNotifs(notifs) {
+  var groupes = {}, sortie = [];
+  (notifs || []).forEach(function (n) {
+    if (!n || !_NOTIF_REGROUPABLES[n.kind] || !n.refId) { sortie.push(n); return; }
+    var cle = n.kind + "|" + n.refId;
+    if (!groupes[cle]) { groupes[cle] = { tete: n, membres: [n] }; sortie.push(groupes[cle]); }
+    else groupes[cle].membres.push(n);
+  });
+  return sortie.map(function (x) {
+    if (!x || !x.membres) return x;
+    if (x.membres.length === 1) return x.tete;
+    var vus = [], noms = [];
+    x.membres.forEach(function (m) {
+      var id = m.fromId || "";
+      if (vus.indexOf(id) > -1) return;
+      vus.push(id);
+      var u = (typeof userById === "function" && id) ? userById(id) : null;
+      noms.push((u && u.name) || "Quelqu'un");
+    });
+    var reste = noms.length - 2;
+    var qui = noms.length === 1 ? "<b>" + escapeHtml(noms[0]) + "</b>"
+      : noms.length === 2 ? "<b>" + escapeHtml(noms[0]) + "</b> et <b>" + escapeHtml(noms[1]) + "</b>"
+      : "<b>" + escapeHtml(noms[0]) + "</b>, <b>" + escapeHtml(noms[1]) + "</b> et " + reste + " autre" + (reste > 1 ? "s" : "");
+    var verbe = noms.length === 1 ? _NOTIF_REGROUPABLES[x.tete.kind].replace(/^ont /, "a ") : _NOTIF_REGROUPABLES[x.tete.kind];
+    return Object.assign({}, x.tete, {
+      unread: x.membres.some(function (m) { return m.unread; }),
+      _texteGroupe: qui + " " + verbe,
+      _ids: x.membres.map(function (m) { return m.id; }),
+    });
+  });
 }
 
 function _notifListHtml(notifs) {
-  notifs = notifs || [];
+  notifs = _regrouperNotifs(notifs || []);
   if (!notifs.length) return `
     <div class="empty">
       <div class="empty-icon">🔕</div>
@@ -2271,13 +3176,27 @@ function _notifListHtml(notifs) {
     <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
-        <div class="notif-text">${_notifTexteHtml(n)}</div>
-        ${_notifIdentiteHtml(n)}
+        <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteHtml(n)}</div>
         ${_notifDemandeAbonnementHtml(n)}
-        <div class="notif-meta">${fmtTime(n.createdAt)}</div>
+        <div class="notif-meta">${escapeHtml(fmtNotifHeure(n.createdAt))}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
     </div>`).join("");
+}
+
+// LOT-21 (audit UX/UI du 2026-11-10, TRA-C13) : au-delà d'une heure, l'heure
+// seule (« 19:25 », « 00:30 ») ne disait pas de quel jour. Jours CALENDAIRES.
+function fmtNotifHeure(ts) {
+  if (!ts) return "";
+  var t = typeof ts === "string" ? supaTs(ts) : Number(ts);
+  if (!isFinite(t)) return "";
+  if (Date.now() - t < 3600e3) return fmtTime(t);
+  var d = new Date(t);
+  var hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  var j = -joursCalendairesAvant(t);
+  if (j <= 0) return "Aujourd'hui, " + hm;
+  if (j === 1) return "Hier, " + hm;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + ", " + hm;
 }
 
 // Une demande d'abonnement (compte privé) se tranche DEPUIS la notification :
@@ -2326,6 +3245,18 @@ function _neutraliserBalisesNotif(t) {
   return String(t == null ? "" : t).replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// LOT-7 (audit UX/UI du 2026-11-10, MSG-C02) — LA SOURDINE D'UNE CONVERSATION.
+// « Couper les notifications » posait `_muted` et rien ne le lisait : son, cloche,
+// badge et titre continuaient. Une conversation en sourdine : ni son, ni entrée
+// de cloche, ni unité aux badges ; sa ligne garde son point non lu.
+function convEnSourdine(convId) {
+  if (!convId) return false;
+  try {
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    return !!(c && (c._muted || c.muted));
+  } catch (e) { return false; }
+}
+
 function mergeSupaNotifs(ns) {
   if (!ns || !ns.length) return;
   // Point de passage UNIQUE des notifications distantes : la lecture REST
@@ -2361,6 +3292,9 @@ function mergeSupaNotifs(ns) {
   } catch (e) { try { diagLog("notifs : fusion des demandes acceptées — " + (e && e.message)); } catch (_) {} }
   // Ignorer les notifs émises par un utilisateur bloqué (modération)
   if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
+  // LOT-7 (MSG-C02) : un message d'une conversation EN SOURDINE n'entre pas dans
+  // la cloche — l'expéditeur l'écrit en base sans connaître ce réglage local.
+  ns = ns.filter(n => !(n && n.kind === "message" && convEnSourdine(n.refId)));
   if (!ns.length) return;
   // Mémoire locale des notifs déjà vues : même si le `seen` Supabase n'a pas
   // été persisté (ou pas encore propagé), une notif vue ici ne doit JAMAIS
@@ -2380,6 +3314,19 @@ function mergeSupaNotifs(ns) {
   if (list) list.innerHTML = _notifListHtml(state.notifications);
 }
 
+// LOT-21 (TRA-C28) : après un refus, aucun endroit ne disait si le téléphone
+// autorise les notifications. Une ligne d'état, lue sur `Notification.permission`
+// (aucune demande système n'est faite ici).
+function _etatPermissionNotifHtml() {
+  try {
+    if (typeof Notification === "undefined" || !Notification.permission) return "";
+    var p = Notification.permission;
+    if (p === "granted") return '<div class="notif-permission" data-permission="granted">Notifications du téléphone : autorisées.</div>';
+    if (p === "denied") return '<div class="notif-permission" data-permission="denied">Notifications du téléphone : bloquées. Pour les réactiver, ouvre les réglages de ton navigateur (ou de ton téléphone) pour PASSIO, puis « Notifications ».</div>';
+    return '<div class="notif-permission" data-permission="default">Notifications du téléphone : pas encore activées. PASSIO te les proposera au bon moment (rappel d\'une activité, premier message).</div>';
+  } catch (e) { return ""; }
+}
+
 function openNotifications() {
   const notifs = state.notifications || [];
   const html = `
@@ -2389,11 +3336,13 @@ function openNotifications() {
     <div class="notif-list">
       ${_notifListHtml(notifs)}
     </div>
+    ${_etatPermissionNotifHtml()}
     <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn ghost block" onclick="markAllNotifsRead()">Tout marquer lu</button>
-      <button class="btn primary block" onclick="closeModal()">OK</button>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
     </div>
   `;
+  // LOT-21 (TRA-C13) : « Tout marquer lu » n'avait plus rien à faire — ouvrir le
+  // panneau marque déjà tout lu (`_resetNotifBadge`). Un seul bouton : « Fermer ».
   openModal(html);
   // Rafraîchir depuis Supabase à l'ouverture : garantit l'affichage des notifs
   // reçues même si le realtime ne les a pas livrées. La liste se met à jour en
@@ -2469,6 +3418,12 @@ function clickNotif(id) {
 //  message                       → la conversation
 function openNotifTarget(n) {
   if (!n) return;
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C12) : toucher une notification
+  // dont la cible a disparu fermait le panneau et laissait sur le fil, sans un
+  // mot (`openPost` et consorts sortent en silence). On vérifie AVANT de fermer ;
+  // une cible absente le dit, et le panneau reste ouvert.
+  const manque = _cibleNotifAbsente(n);
+  if (manque) { toast(manque); return; }
   try { closeModal(); } catch (e) {}
   const ref = n.refId, from = n.fromId;
   switch (n.kind) {
@@ -2513,6 +3468,37 @@ function openNotifTarget(n) {
   }
 }
 
+// Rend le message à dire quand la cible d'une notification n'existe plus ici,
+// sinon "". Seules les cibles qui se cherchent EN MÉMOIRE sont jugées (une
+// cible inconnue de ce type n'est pas déclarée absente).
+function _cibleNotifAbsente(n) {
+  try {
+    const ref = n && n.refId;
+    switch (n && n.kind) {
+      case "like": case "comment": case "mention": case "reaction":
+        if (!ref) return "";
+        // Une pierre tombale le PROUVE ; une publication simplement absente de
+        // la mémoire peut exister en base (la mention sur la publication d'un
+        // autre) : on le dit sans l'affirmer.
+        if (typeof postSupprime === "function" && postSupprime(ref)) return "Cette publication n'existe plus";
+        return (typeof findPostAnywhere === "function" && !findPostAnywhere(ref)) ? "Publication introuvable ici — elle a peut-être été supprimée" : "";
+      case "event_join": case "event_comment": case "event_update": case "event_cancelled":
+      case "event_reminder": case "event_invite": case "event_feedback": {
+        if (!ref) return "";
+        const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
+          || (typeof allEvents === "function" && allEvents().find(function (e) { return e && e.id === ref; }));
+        return ev ? "" : "Cette activité n'existe plus";
+      }
+      // `message` n'est pas jugé : une conversation NEUVE arrive souvent avant
+      // la relecture de la liste, et `openConversation` sait l'aller chercher.
+      case "moderation":
+        return "Décision de modération : la publication concernée a été retirée. Pour la contester, écris à l'équipe depuis « Aide et retour ».";
+      default:
+        return "";
+    }
+  } catch (e) { return ""; }
+}
+
 function markAllNotifsRead() {
   const supaIds = [];
   state.notifications.forEach(n => {
@@ -2546,7 +3532,7 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
     id: _id, kind: (opts && opts.kind) || "local", refId: (opts && opts.refId) || null,
     fromId, text, createdAt: Date.now(), unread: true, emoji,
     // Ce texte est composé ICI, ses parties variables déjà échappées par
-    // l'appelant : c'est du HTML de confiance (cf. `_notifTexteHtml`).
+    // l'appelant ; seul le gras sans attribut survit au rendu `_notifTexteHtml`.
     html: true,
   });
   saveState();
@@ -2561,7 +3547,8 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
 // ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========
 // Topbar, barre IRL, éléments générés… : tout div role="button" tabindex="0"
 // s'active à Entrée/Espace via ce délégué unique (les .nav-item ont déjà leur
-// listener dédié ci-dessous → exclus pour ne pas activer deux fois).
+// listener dédié — ci-dessous pour `#appNav`, dans ui-v2-shell.js pour
+// `#appNavV2` → exclus pour ne pas activer deux fois).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
   const cible = e.target;
@@ -2581,7 +3568,7 @@ document.addEventListener("keydown", (e) => {
   if (el !== cible) return;
   const tag = el.tagName;
   if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return; // natifs : déjà gérés
-  if (el.classList.contains("nav-item")) return; // listener dédié plus bas
+  if (el.classList.contains("nav-item")) return; // listener dédié (plus bas, ou ui-v2-shell.js)
   e.preventDefault(); // Espace ne doit pas défiler la page
   el.click();
 });
@@ -2658,7 +3645,20 @@ document.addEventListener("keydown", (e) => {
 // ======== NAV CLICKS + CLAVIER ========
 // Les nav-item sont des role="button" tabindex="0" (accessibilité) : on active
 // donc aussi au clavier (Entrée / Espace), pas seulement au clic souris/tactile.
-$$(".nav-item").forEach(n => {
+// ⚠️ LA SEULE BARRE HISTORIQUE (`#appNav`), JAMAIS `.nav-item` SEUL (2026-11-12).
+// Les boutons de la barre v2 (`#appNavV2`, js/ui-v2-shell.js) portent LEUR
+// écouteur. En développement ce fichier tourne avant eux et ne les voyait pas ;
+// en PRODUCTION, le bloc app sort en 9 scripts injectés qui tournent d'ordinaire
+// APRÈS les modules de fin de page — la barre v2 est déjà construite ici, et
+// `$$(".nav-item")` la branchait une seconde fois. Mesuré en production
+// (b918d9a9 puis 0677abc2), Chromium et WebKit, à chaque ouverture : un toucher
+// = deux `goTo`, deux entrées d'historique — le premier retour (bouton Android,
+// glissement Safari) ne faisait rien, et le plafond d'historique de WebKit
+// s'épuisait deux fois plus vite — et deux `screen_view` de télémétrie (22
+// touchers publics sur 22 en trois jours) ; et le `preventDefault` du `keydown`
+// ci-dessous tuait l'activation au clavier du bouton natif « Créer ».
+// Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑪ ⑫ (artefact, deux moteurs).
+$$("#appNav .nav-item").forEach(n => {
   const activate = () => {
     const s = n.getAttribute("data-screen");
     if (s === "bobines") { openReels(); return; }
@@ -2693,6 +3693,7 @@ function renderEverything() {
 function initApp() {
   try { renderEverything(); } catch(e) {}
   document.body.classList.add("screen-feed-active");
+  try { ouvrirEcranDeLAncre(); } catch(e) {}
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
   // ✅ LANCER LE TOUR SEULEMENT SI C'EST LA PREMIÈRE VISITE
   if (!state.tourSeen) {
@@ -2700,6 +3701,24 @@ function initApp() {
     saveState();
     launchTourSafe();
   }
+}
+
+// ENT-C09 (audit UX/UI du 2026-11-10) : recharger sur « Messages » rouvrait le
+// Fil, et l'adresse gardait #messages — l'écran et l'adresse se contredisaient.
+// L'ancre n'est suivie que si elle nomme un écran de la liste FERMÉE NAV_SCREENS ;
+// tout autre ancre (#post-…, retour d'authentification) reste à son lecteur.
+// Aucune entrée d'historique n'est poussée : on RÉÉCRIT celle du chargement.
+function ouvrirEcranDeLAncre() {
+  var h = "";
+  try { h = (location.hash || "").replace(/^#/, ""); } catch (e) { return false; }
+  if (!h || h === "feed" || typeof NAV_SCREENS === "undefined" || NAV_SCREENS.indexOf(h) < 0) return false;
+  // Déjà sur cet écran (la personne a navigué avant l'appel différé d'initApp) : rien à faire.
+  var deja = document.getElementById("screen-" + h);
+  if (deja && deja.classList.contains("active")) return false;
+  isNavigatingBack = true;
+  try { goTo(h); } finally { isNavigatingBack = false; }
+  try { if (typeof replaceHistorySafe === "function") replaceHistorySafe({ screen: h }, "#" + h); } catch (e) {}
+  return true;
 }
 
 // navigateTo — alias de goTo pour la compatibilité (utilisé dans les cartes IA)
@@ -2817,6 +3836,14 @@ async function boot() {
   // juste avant le rechargement que `_showPasswordRecoveryUI` déclenche
   // lui-même, une fois le mot de passe changé (app-02).
   const _recuperationEnCours = (window.location.hash || "").indexOf("type=recovery") !== -1;
+  // Lien reçu par e-mail REFUSÉ (périmé, déjà utilisé) : relevé avant tout le
+  // reste, puis retiré de l'adresse. Il ne s'affiche qu'à un visiteur, plus bas,
+  // une fois l'entrée invitée construite — une session présente n'a rien à
+  // apprendre d'un lien devenu inutile (2026-11-20, `lireRefusLienAuth`, app-02).
+  let _refusLienAuth = null;
+  // Pas de `catch` muet (audit du lot) : un renommage ferait taire la fonction
+  // sans une trace — le démarrage continue, mais la console le dit.
+  try { _refusLienAuth = lireRefusLienAuth(); if (_refusLienAuth) nettoyerRefusLienAuth(); } catch (e) { console.warn("lien refusé (lecture):", e); }
   if (_recuperationEnCours) {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }
@@ -2880,7 +3907,8 @@ async function boot() {
       // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
       // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
       try {
-        const _so = await supa.auth.signOut();
+        // Portée LOCALE : ne pas révoquer les sessions des autres appareils (ETAT-02).
+        const _so = await supa.auth.signOut({ scope: "local" });
         if (_so && _so.error) console.warn("signOut refusé :", _so.error.message || _so.error);
       } catch (e) { console.warn("signOut indisponible :", e); }
       try { purgerJetonAuthLocal(); } catch (e) {}
@@ -2890,6 +3918,10 @@ async function boot() {
       return;
     }
     if (session?.user && (!_authIntent || _recuperationEnCours)) {
+      // Une session est là : la marque d'une session perdue n'a plus de cause.
+      try { if (typeof _oublierMarqueSessionExpiree === "function") _oublierMarqueSessionExpiree(); } catch (e) {}
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
       // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
       // les entrées qui ne passent PAS par `onbDoAuth` : retour de
@@ -3084,6 +4116,9 @@ async function boot() {
         try { restoreFeedPassions(); } catch (e) { _activeFeedPassions = new Set(); }
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
+        // La fin de session, sur CE chemin aussi (ETAT-02 / R19) : le gestionnaire plus bas
+        // n'est enregistré que lorsqu'aucune session n'a été trouvée.
+        try { _ecouterFinDeSession(); } catch (e) {}
         try { supaInit(); } catch(e) {}
         // Compte NEUF venu par un lien d'invitation (app-06) : il suit l'invitant
         // qui lui a été ANNONCÉ à l'inscription, ou on lui DEMANDE s'il veut le
@@ -3116,11 +4151,14 @@ async function boot() {
   // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {
     supa.auth.onAuthStateChange((event, session) => {
+      passioMediaProteges.authChanged(session,event);
       // Lien « mot de passe oublié » → afficher l'UI de nouveau mot de passe.
       if (event === "PASSWORD_RECOVERY") {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
         return;
       }
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { if (session?.user) window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       if (session?.user && window._sessionExpiree === true) {
         // SESSION REVENUE EN MODE EXPIRÉ (UXO-02) : le SDK a rafraîchi seul le
         // jeton (retour du réseau), ou une connexion vient d'aboutir. On ne
@@ -3287,6 +4325,12 @@ async function boot() {
   // pitch. Il n'y a pas de piège à défaire dans ce cas-là.
   if (_authIntent && _entreeInvite) {
     try { openAuthScreen(_authIntent); } catch (e) { console.warn("auth intent:", e); }
+  }
+
+  // ── Lien reçu par e-mail refusé : l'écran de connexion, le pourquoi, les sorties ──
+  // Même règle d'ordre que l'intention ci-dessus : l'entrée invitée d'abord.
+  if (_refusLienAuth && _entreeInvite) {
+    try { montrerRefusLienAuth(_refusLienAuth); } catch (e) { console.warn("lien refusé:", e); }
   }
 
   if (_entreeInvite) return;
@@ -3645,22 +4689,23 @@ function _conflitClePrimaireProfiles(e) {
 // ══════════════════════════════════════════════════════════════════════════
 // Règle produit (Benjamin, 2026-08-31) : choix explicitement PROUVÉ → on le
 // respecte ; choix absent, ambigu, ou simple valeur initiale → profil PRIVÉ.
+// ⚠️ RÈGLE CHANGÉE LE 2026-11-12 (Benjamin, audit de stabilisation, STAB-04) :
+// une ligne NEUVE sans choix exprimé naît PUBLIQUE. Mesuré en production le 10/11 :
+// 9 profils sur 13 privés, dont 7 des 8 créés depuis septembre sans l'avoir choisi ;
+// un visiteur ne lisait qu'UNE publication réelle, et ce qu'un nouvel inscrit
+// publiait n'était vu de personne — l'inverse de « Découvrir → Partager ».
+// CE QUI NE CHANGE PAS, et c'était le cœur du correctif P0 du 31/08 : cette valeur
+// ne sert qu'à l'INSERT d'une ligne absente (`_insertProfilMinimalSiAbsent`) ; une
+// ligne existante n'est jamais réécrite, donc un compte PRIVÉ ne redevient jamais
+// public tout seul. Et un `isPrivate === true` local reste respecté.
 //
-// ⚠️ NE JAMAIS écrire `is_private: !!g.isPrivate` ici : `undefined` y devient
-// `false` en silence, donc « je ne sais pas » deviendrait « public ».
-//
-// Ce que l'application sait réellement, vérifié sur tout le dépôt : `general`
-// vaut `{}` par défaut (`isPrivate` est donc `undefined`, jamais `false`), et
-// il n'existe qu'UNE seule assignation, dans `saveMainProfile`. Un `false` n'y
-// prouve rien — la case peut simplement avoir été décochée pendant qu'on
-// enregistrait sa bio. D'où le marqueur `privacyChoisi`, posé par
-// `saveMainProfile` UNIQUEMENT quand la personne agit sur le contrôle : elle
-// coche la case, ou elle décoche une case qui était cochée.
+// Depuis le 12/11, « je ne sais pas » vaut public À LA CRÉATION de la ligne, et
+// seulement là. Seul un `isPrivate === true` local la fait naître privée : le
+// marqueur `privacyChoisi` (posé par `saveMainProfile` quand la personne agit sur
+// la case) n'est plus lu ici — un choix public n'a plus rien à prouver.
 function _confidentialiteDeLaLigneMinimale(g) {
-  if (!g || typeof g !== "object") return true;        // rien à prouver → privé
-  if (g.isPrivate === true) return true;               // privé : le choix se prouve lui-même
-  if (g.privacyChoisi === true && g.isPrivate === false) return false;  // public, explicitement prouvé
-  return true;                                         // inconnu, ou ambigu → privé
+  if (g && typeof g === "object" && g.isPrivate === true) return true;  // privé : le choix se prouve lui-même
+  return false;                                        // aucun choix privé exprimé → public (STAB-04)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4310,6 +5355,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   finally { if (fin) fin(); }
 }
 async function _publierAvecEssais(post, maxRetries) {
+  var _pmpCompte=passioMediaProteges.capture();
   // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
   // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
   // pas regrouper les publications par passion. Même valeur, nom neutre.
@@ -4319,6 +5365,7 @@ async function _publierAvecEssais(post, maxRetries) {
   var _pubCid = null;
   try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     try { _verdictPublication(post, ok); } catch (e) {}
     return ok;
@@ -4346,61 +5393,12 @@ async function _publierAvecEssais(post, maxRetries) {
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaEnsureProfileExists(); } catch(e) {}
 
-  // Timeout d'upload PROPORTIONNEL à la taille du média : l'ancien plafond fixe
-  // (20 s vidéo) expirait systématiquement sur une vidéo de 15-25 Mo → le retry
-  // ré-uploadait tout, puis échouait pareil → bobines/posts sans média en prod.
-  // ~5 s par Mo + 15 s de marge, borné à 3 min. (Déjà une URL http → 5 s symbolique.)
-  const _uploadTimeoutMs = (b64) => {
-    if (!b64 || typeof b64 !== "string" || b64.indexOf("data:") !== 0) return 5000;
-    const mb = (b64.length * 0.75) / 1048576;
-    return Math.min(180000, 15000 + Math.ceil(mb) * 5000);
-  };
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // STEP 1: Uploader les médias
-      let mediaUrl = null;
-      let hadMedia = false; // le post embarque un média (base64 ou URL)
-
-      if (post.type === "photo" && post.image) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "photos", post.image, "image", { legere: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.image)))
-        ]);
-      } else if (post.type === "video" && post.video) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "videos", post.video, "video"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.video)))
-        ]);
-      } else if (post.type === "audio" && post.audio) {
-        hadMedia = true;
-        mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "audios", post.audio, "audio"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.audio)))
-        ]);
-      }
-
-      // ⚠️ Un post MÉDIA sans URL Storage ne doit JAMAIS être inséré : la ligne
-      // serait créée avec media_url NULL (le base64 est filtré plus bas) → une
-      // bobine/vidéo invisible et irréparable. On échoue → retry (ou échec franc,
-      // remonté à l'appelant qui garde la copie locale et réessaie).
-      if (hadMedia && !(mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0)) {
-        throw new Error("Upload média échoué (pas d'URL Storage)");
-      }
-
-      // Réécrire l'URL Storage dans le post local : le base64 est remplacé par
-      // l'URL → l'affichage et la persistance (saveState) n'utilisent plus le
-      // base64 (évite le quota localStorage et garde l'image après reload).
-      // saveState() tout de suite : un retry (insert lent) ne ré-uploadera pas,
-      // supaUploadMedia renvoie l'URL http telle quelle.
-      if (mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0) {
-        if (post.type === "photo") post.image = mediaUrl;
-        else if (post.type === "video") post.video = mediaUrl;
-        else if (post.type === "audio") post.audio = mediaUrl;
-        try { saveState(); } catch (e) {}
-      }
+      if(!passioMediaProteges.courant(_pmpCompte)||!_pmpCompte.uid)return false;
+      const mediaProtege=await passioMediaProteges.envoyer("posts",post);
+      const mediaUrl=mediaProtege?mediaProtege.reference:null;
+      if(!passioMediaProteges.courant(_pmpCompte))return false;
 
       // ⚠️ La construction du blob jsonb `vlog` a été retirée avec le Carnet de
       // voyage (§6) : plus aucun chemin ne produit une publication de ce type.
@@ -4410,7 +5408,7 @@ async function _publierAvecEssais(post, maxRetries) {
       // STEP 2: Créer le post
       const postData = {
         id: post.id,
-        author_id: MY_UID,
+        author_id: _pmpCompte.uid,
         passion_id: _clsPassion.valeur,
         mood: post.mood || "all",
         content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
@@ -4421,7 +5419,10 @@ async function _publierAvecEssais(post, maxRetries) {
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
-        ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
+        // Une carte d'activité porte son snapshot sans republication de post
+        // (donc sans sharedReel / shared_from_post_id). Le conserver aussi.
+        ...(post.sharedReelData && (post.sharedReel || post.sharedReelData.kind === "event") ? {shared_data:JSON.stringify(post.sharedReelData)} : mediaProtege ?
+          {shared_data:{passio_media:{protocol:1,type:post.type,poster:mediaProtege.poster}}} : {}),
         // Album d'événement : le post remonte sur la fiche de l'événement.
         ...(post.eventId ? { event_id: post.eventId } : {}),
       };
@@ -4429,11 +5430,10 @@ async function _publierAvecEssais(post, maxRetries) {
       // Timeout d'insert : l'ancien 3 s était trop court juste après un gros upload
       // (connexion encore saturée) → la ligne n'était jamais créée alors que la
       // vidéo, elle, était bien sur Storage (bobines orphelines constatées en prod).
-      const insertPromise = supa.from("posts").insert([postData]).select();
-      const { data, error, status } = await Promise.race([
-        insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 12000))
-      ]);
+      const { data, error, status } = await passioMediaProteges.avecSession(async function(c){
+        return supa.from("posts").insert([postData]).select("id,author_id,media_url").abortSignal(c.signal);
+      });
+      if(!passioMediaProteges.courant(_pmpCompte))return false;
       // ⚠️ 401 = JETON ABSENT OU INVALIDE (PGRST301/302/303, ou rôle anon) : la
       // session est morte, pas le réseau. Réessayer est un 401 certain, et
       // chaque essai est une alerte « Action en échec » au pilotage (5 pour 1
@@ -4454,16 +5454,22 @@ async function _publierAvecEssais(post, maxRetries) {
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
         delete postData.event_id;
-        const retry = await supa.from("posts").insert([postData]).select();
-        if (!retry.error || String(retry.error.code) === "23505") return _pubDone(true);
+        const retry = await passioMediaProteges.avecSession(async function(c){return supa.from("posts").insert([postData]).select("id,author_id,media_url").abortSignal(c.signal);});
+        if (!retry.error || String(retry.error.code) === "23505") {
+          const confirme=await passioMediaProteges.verifierParent("posts",postData,retry);
+          if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
+        }
         throw retry.error;
       }
       // Clé dupliquée = un insert précédent (timeout côté client) a en fait réussi
       // côté serveur → le post existe, c'est un succès.
-      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) return _pubDone(true);
+      if (error && error.code === "23505") {
+        const confirme=await passioMediaProteges.verifierParent("posts",postData,{error:error});
+        if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
+      }
       if (error) throw error;
-
-      return _pubDone(true);
+      const confirme=await passioMediaProteges.verifierParent("posts",postData,{data:data});
+      if(confirme)passioMediaProteges.appliquerEnvoi(post,mediaProtege);return _pubDone(confirme);
 
     } catch (e) {
       // 23503 = clé étrangère. Erreur de DONNÉES, donc définitive : la réessayer
@@ -4624,7 +5630,124 @@ function _blobDepuisDataUrl(dataUrl) {
 // navigateur garderait sinon l'ancienne image un an. Supabase purge son CDN
 // lui-même à la réécriture ; le navigateur, lui, ne le sait pas.
 const DOSSIERS_IMAGE_LEGERE = ["photos", "avatars", "covers", "passion_photos", "passion_covers", "events"];
+// PRIVATE MEDIA UPLOAD v1 : reservation avant flux, parent lie par son vrai INSERT.
+passioMediaProteges.envoyer = (function(){
+  var plans=new WeakMap(),MAX=27262976;
+  var extensions={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","video/mp4":"mp4","video/webm":"webm","audio/mp4":"m4a","audio/webm":"webm","audio/ogg":"ogg","audio/mpeg":"mp3"};
+  function erreur(){return new Error("media_protege_envoi_refuse");}
+  async function requete(chemin,init){
+    return passioMediaProteges.avecSession(async function(c){
+      var headers=Object.assign({apikey:SUPABASE_KEY},c.headers,init.headers||{});
+      return fetch(new URL(chemin,SUPABASE_URL).href,Object.assign({},init,{headers:headers,signal:c.signal,cache:"no-store",credentials:"omit",redirect:"error"}));
+    });
+  }
+  async function envoyer(genre,obj){
+    if(!obj||!window._supaReal||!supa||!/^(posts|stories)$/.test(genre))throw erreur();
+    var capture=passioMediaProteges.capture();
+    if(!capture.uid||(obj.authorId&&obj.authorId!=="me"&&obj.authorId!==capture.uid))throw erreur();
+    if(!obj.id)obj.id=(genre==="stories"?"story_":"post_")+uid();
+    if(!/^[A-Za-z0-9_-]{1,120}$/.test(obj.id))throw erreur();
+    // Une republication n'enregistre aucun nouvel asset : son lien SQL prouve sa source.
+    if(genre==="posts"&&obj.sharedReel)return null;
+    var valeur=genre==="stories"?obj.media:obj.type==="video"?obj.video:obj.type==="audio"?obj.audio:obj.image;
+    if(!valeur&&obj._pmpOwner===capture.uid)valeur=obj._pmpReference;
+    if(!valeur&&((genre==="posts"&&/^(video|audio)$/.test(obj.type))||(genre==="stories"&&/^(photo|video)$/.test(obj.mediaType))))throw erreur();
+    if(!valeur)return null;
+    var existant=plans.get(obj);
+    if(existant&&passioMediaProteges.courant(existant.capture)&&existant.promise)return existant.promise;
+    var sauvegarde=obj._pmpReference&&obj._pmpOwner===capture.uid?obj._pmpReference:valeur;
+    var connue=passioMediaProteges.parser(sauvegarde);
+    if(connue){if(connue.type!==genre||connue.id!==obj.id)throw erreur();return {reference:sauvegarde,poster:obj._pmpPoster||null};}
+    if(typeof valeur!=="string"||valeur.indexOf("data:")!==0)throw erreur(); // Aucun repli public ou copie distante implicite.
+    var plan=existant&&passioMediaProteges.courant(existant.capture)?existant:{capture:capture,cle:crypto.randomUUID(),variantes:null,uploads:new Set(),id:obj.id,genre:genre};
+    if(plan.id!==obj.id||plan.genre!==genre)throw erreur();plans.set(obj,plan);
+    plan.promise=(async function(){
+      await passioMediaProteges.capacites();
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var variantes=plan.variantes||[];
+      function ajouter(nom,data){
+        var blob=_blobDepuisDataUrl(data),mime=blob.type.toLowerCase();
+        if(!extensions[mime]||!blob.size||blob.size>MAX||(nom!=="original"&&mime.indexOf("image/")!==0))throw erreur();
+        variantes.push({variant:nom,mime_type:mime,byte_size:blob.size,blob:blob});
+      }
+      if(!plan.variantes){
+        var image=valeur.indexOf("data:image/")===0&&valeur.indexOf("data:image/gif")!==0;
+        if(image)valeur=await _downscaleImageForUpload(valeur);
+        ajouter("original",valeur);
+        if(image&&genre==="posts"){
+          var legere=await _imageLegerePourFil(valeur);if(legere&&legere.dataUrl)ajouter("v720",legere.dataUrl);
+        }
+        if(genre==="posts"&&obj.type==="video"&&(obj.poster||obj.image)){
+          var poster=obj.poster||obj.image;
+          if(typeof poster!=="string"||poster.indexOf("data:image/")!==0)throw erreur();
+          ajouter("poster",await _downscaleImageForUpload(poster));
+        }
+        plan.variantes=variantes;
+      }
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var cle=plan.cle;
+      var reservation=await requete('/rest/v1/rpc/media_reserver',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({p_type:genre,p_source_id:obj.id,p_cle_idempotence:cle,
+        p_variantes:variantes.map(function(v){return {variant:v.variant,mime_type:v.mime_type,byte_size:v.byte_size};})})});
+      if(!reservation.ok)throw erreur();var r=await reservation.json();
+      if(!r||r.asset_id!==cle||r.bucket_id!=="content-protected"||!Array.isArray(r.objects)||r.objects.length!==variantes.length)throw erreur();
+      for(var i=0;i<variantes.length;i++){
+        if(!passioMediaProteges.courant(capture))throw erreur();
+        var v=variantes[i],objet=r.objects.find(function(o){return o&&o.variant===v.variant;});
+        var chemin=capture.uid+"/"+cle+"/"+v.variant+"."+extensions[v.mime_type];
+        var reference="https://media.passio.invalid/private-media/"+genre+"/"+obj.id+"/"+cle+"/"+v.variant;
+        if(!objet||objet.object_key!==chemin||objet.reference!==reference||objet.mime_type!==v.mime_type||objet.byte_size!==v.byte_size)throw erreur();
+        if(!plan.uploads.has(v.variant)){
+          var upload=await requete('/storage/v1/object/content-protected/'+chemin.split('/').map(encodeURIComponent).join('/'),{method:"POST",headers:{"Content-Type":v.mime_type,"cache-control":"max-age=0","x-upsert":"false"},body:v.blob});
+        // Un conflit sur NOTRE chemin immuable peut etre un retry d'un flux deja termine.
+        // La liaison DB relit ensuite owner/MIME/taille reels : le conflit seul n'est jamais un succes de publication.
+          await upload.body?.cancel();if(!upload.ok&&upload.status!==409)throw erreur();plan.uploads.add(v.variant);
+        }
+        v.reference=reference;
+      }
+      if(!passioMediaProteges.courant(capture))throw erreur();
+      var original=variantes.find(function(v){return v.variant==="original";}),vignette=variantes.find(function(v){return v.variant==="v720";}),couverture=variantes.find(function(v){return v.variant==="poster";});
+      var resultat={reference:(vignette||original).reference,poster:couverture?couverture.reference:null};
+      obj._pmpOwner=capture.uid;obj._pmpReference=resultat.reference;obj._pmpPoster=resultat.poster;return resultat;
+    })();
+    try{return await plan.promise;}catch(error){plan.promise=null;throw error;}
+  };
+  envoyer.terminer=function(obj){plans.delete(obj);};
+  passioMediaProteges.surInvalidation(function(){plans=new WeakMap();});
+  return envoyer;
+})();
+passioMediaProteges.verifierParent=async function(genre,attendu,resultat){
+  var capture=passioMediaProteges.capture();
+  if(!/^(posts|stories)$/.test(genre)||!attendu||attendu.author_id!==capture.uid||!/^[A-Za-z0-9_-]{1,120}$/.test(attendu.id||""))return false;
+  var donnees=resultat&&resultat.data;
+  if(resultat&&resultat.error){
+    if(resultat.error.code!=="23505")return false;
+    var relu=await passioMediaProteges.avecSession(async function(c){return supa.from(genre).select("id,author_id,media_url").eq("id",attendu.id).maybeSingle().abortSignal(c.signal);});
+    if(relu.error)return false;donnees=relu.data;
+  }
+  var row=Array.isArray(donnees)?donnees.length===1&&donnees[0]:donnees;
+  return passioMediaProteges.courant(capture)&&!!row&&row.id===attendu.id&&row.author_id===capture.uid&&row.media_url===attendu.media_url;
+};
+passioMediaProteges.appliquerEnvoi=function(obj,resultat){
+  if(resultat){
+    if(Object.prototype.hasOwnProperty.call(obj,"media"))obj.media=resultat.reference;
+    else if(obj.type==="video")obj.video=resultat.reference;else if(obj.type==="audio")obj.audio=resultat.reference;else obj.image=resultat.reference;
+    if(resultat.poster){obj.poster=resultat.poster;obj.image=resultat.poster;}
+  }
+  passioMediaProteges.envoyer.terminer(obj);
+};
+// Presentation seulement : ces metadonnees ne prouvent aucun droit ni MIME.
+passioMediaProteges.presentation=function(row){
+  var ref=passioMediaProteges.parser(row&&row.media_url);if(!ref||ref.type!=="posts"||ref.id!==row.id)return null;
+  var raw=row.shared_data;try{if(typeof raw==="string")raw=JSON.parse(raw);}catch(_){return null;}
+  var info=raw&&raw.passio_media;
+  if(!info||info.protocol!==1||["photo","video","audio"].indexOf(info.type)===-1)return null;
+  var poster=passioMediaProteges.parser(info.poster),couverture=null;
+  if(poster&&poster.type===ref.type&&poster.id===ref.id&&poster.asset===ref.asset&&poster.variant==="poster")couverture=info.poster;
+  return {type:info.type,image:info.type==="photo"?row.media_url:couverture,video:info.type==="video"?row.media_url:null,audio:info.type==="audio"?row.media_url:null,poster:couverture};
+};
+// END PRIVATE MEDIA UPLOAD v1
 async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
+  if(["photos","videos","audios"].indexOf(folder)!==-1)return null; // Publications/stories : reservation protegee obligatoire.
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
 
   if (!base64Data || !base64Data.startsWith("data:")) {
@@ -4800,7 +5923,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // « Voir l'activité » du fil (lot UI-3B) ne fonctionnait donc que sur le
     // contenu de démonstration. Défaut silencieux : rien n'échouait, la porte
     // vers l'IRL disparaissait simplement.
-    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
+    // `edited_at` (CRE-C16 / FIL-C24, migration du 2026-11-13) : la mention
+    // « modifié ». Même repli qu'`event_id` sur une base pas encore migrée.
+    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, edited_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
@@ -4815,6 +5940,10 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
     let { data, error, status } = await _interroger(COLONNES);
+    if (error && /edited_at/.test(error.message || "")) {
+      COLONNES = COLONNES.replace(" edited_at,", "");
+      ({ data, error, status } = await _interroger(COLONNES));
+    }
     // Repli symétrique de celui de l'écriture : sur une base où la migration
     // IRL v2 n'est pas appliquée, un SELECT nommant `event_id` échoue en bloc
     // et VIDERAIT le fil. On réessaie sans la colonne plutôt que de tout perdre.
@@ -4834,9 +5963,12 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         noterLectureTeteFil(estEchecReseau(error) || status >= 500 || status === 429);
       }
+      if (options.propagerErreur) throw error;
       return [];
     }
     if (!lectureValide()) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
+    if(!lectureValide())return [];
     const lignesBrutes = data || [];
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
@@ -4902,18 +6034,43 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (!lectureValide()) return [];
     // Résout les auteurs des aperçus en une requête (sans embed) — le cache ne
     // redemande que les manquants.
-    const commentProfs = await _resolveProfilesByIds(complements.auteursApercus, lectureValide);
+    // ⚠️ ET LEURS RÉPONSES ET « J'AIME » (2026-11-13, retour de Benjamin, captures
+    // à l'appui). `fil_compteurs` rend le TEXTE des deux aperçus, pas leurs
+    // interactions : sur la carte du fil, un commentaire qui portait quatre
+    // réponses et sept « j'aime » s'affichait nu, et la bulle disait « 1 » — il
+    // fallait ouvrir la publication pour voir qu'on lui avait répondu. Une lecture
+    // de plus par page, bornée aux DEUX aperçus que la carte montre (le repli
+    // sans `fil_compteurs` en rend jusqu'à 200 : on ne lit pas les leurs).
+    const idsApercus = [];
+    complements.parPost.forEach(function (c) { (c.apercus || []).slice(0, FIL_APERCUS_PEINTS).forEach(function (a) { if (a && a.id) idsApercus.push(a.id); }); });
+    const [commentProfs, interApercus] = await Promise.all([
+      _resolveProfilesByIds(complements.auteursApercus, lectureValide),
+      idsApercus.length ? supaLoadCommentInteractions(idsApercus) : Promise.resolve(null),
+    ]);
     if (!lectureValide()) return [];
     memoriserPage();
     servir();
     return data.map((r, idx) => {
-      const cpl = complements.parPost.get(r.id) || _complementFilVide();
+      // Compléments en échec (D14-01) : la copie précédente fait foi, rien n'est
+      // remis à zéro ; une publication jamais vue retombe sur le vide.
+      const cpl = complements.parPost.get(r.id)
+        || (complements.source === "echec" ? _complementConserve(r.id) : null)
+        || _complementFilVide();
       // Une discussion déjà ouverte tient plus que les deux aperçus : le filet
       // remplace l'objet à chaque tour, il ne doit pas la ramener à deux lignes
       // (ni perdre son curseur) sous un titre qui en annonce quarante.
       const precedent = _discussionChargee(r.id, cpl.apercus, commentProfs);
-      const postComments = precedent ? precedent.comments : cpl.apercus.map(c => {
+      // Les interactions d'un aperçu : celles que la lecture vient de rendre ;
+      // sinon (lecture en échec, ou aucune ligne pour lui) celles que sa copie
+      // précédente portait — même règle que `hydrateCommentInteractions`, qui ne
+      // touche pas un commentaire sans ligne. Sans ce report, chaque tour du
+      // filet (l'objet est refait à chaque lecture) effaçait une réponse ou un
+      // « j'aime » encore en route.
+      const avantPost = (!precedent && typeof findPostAnywhere === "function") ? findPostAnywhere(r.id) : null;
+      const avantCommentaires = (avantPost && Array.isArray(avantPost.comments)) ? avantPost.comments : [];
+      const postComments = precedent ? precedent.comments : cpl.commentairesAvant ? cpl.commentairesAvant : cpl.apercus.map(c => {
         const cp = commentProfs[c.author_id] || {};
+        const inter = (interApercus && interApercus[c.id]) || avantCommentaires.find(function (x) { return x && x.id === c.id; }) || null;
         return {
         id: c.id, authorId: c.author_id,
         authorName: cp.username || "Profil",
@@ -4921,10 +6078,11 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         text: c.content || "", content: c.content || "",
         createdAt: supaTs(c.created_at),
         fromSupabase: true,
+        ...(inter ? { likes: inter.likes || 0, likedBy: (inter.likedBy || []).slice(), replies: (inter.replies || []).slice() } : {}),
       };});
 
       // Diagnostic du premier post
-      if (idx === 0) {
+      if (idx === 0 && !passioMediaProteges.parser(r.media_url)) {
         diagLog(`📌 Post #1 détails:`);
         diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - passion_id: "${r.passion_id}"`);
@@ -4952,12 +6110,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       // Cache le profil de l'auteur (photo comprise) → propagation partout.
       // La passion du POST n'est pas celle du PROFIL : cet embed ne la relit pas.
       try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url }); } catch(e) {}
+      const _pmpRef=passioMediaProteges.parser(r.media_url),_pmpPresentation=_pmpRef?passioMediaProteges.presentation(r):null;
       const loadedPost = {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username depuis Supabase!
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         authorAvatar: r.profiles?.avatar_url || null,  // 📷 Photo de profil (URL Storage) si définie
+        authorPrive: r.profiles?.is_private === true,  // FIL-C27 : cadenas « Réservé aux abonnés »
         // ⚠️ Jamais « autre » : cette valeur fantôme n'est dans aucun des 19
         // identifiants du référentiel. Elle ne changeait rien à l'affichage
         // (`passionById` retombe sur son défaut dans les deux cas) mais elle
@@ -4974,6 +6134,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           // ligne ferait retomber un carnet « Privé » sur son type de média et
           // l'afficherait, en clair, dans le fil de tout le monde.
           if (r.vlog) return "vlog";
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.type:"text";
           if (!r.media_url) return "text";
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return "video";
@@ -4984,6 +6145,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         text: r.content || "",
         // ✅ Charger media_url dans la bonne variable selon le type détecté
         image: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.image:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return null;
@@ -4991,22 +6153,26 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           return r.media_url;
         })(),
         video: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.video:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return r.media_url;
           return null;
         })(),
         audio: (() => {
+          if(_pmpRef)return _pmpPresentation?_pmpPresentation.audio:null;
           if (!r.media_url) return null;
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return r.media_url;
           return null;
         })(),
         createdAt: supaTs(r.created_at),  // ✅ Ajouter Z pour indiquer que c'est UTC!
+        editedAt: r.edited_at ? supaTs(r.edited_at) : null,  // « modifié » (CRE-C16 / FIL-C24)
         likes: cpl.likes,
         liked: cpl.aime,
         comments: postComments, fromSupabase: true,
-        ...(precedent ? { _commentsSuite: precedent.suite, ...(precedent.pagine ? { _commentsPagine: true } : {}) } : {}),
+        ...(precedent ? { _commentsSuite: precedent.suite, ...(precedent.pagine ? { _commentsPagine: true } : {}) }
+          : (cpl.commentairesAvant && cpl.suite !== undefined) ? { _commentsSuite: cpl.suite, ...(cpl.pagine ? { _commentsPagine: true } : {}) } : {}),
         // Compte EXACT des commentaires de premier niveau (RLS du lecteur) ;
         // `comments` ne porte plus que les aperçus. `nbCommentairesPost` (app-02)
         // est la seule autorité d'affichage. Absent (repli), on compte la liste.
@@ -5016,7 +6182,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // cet appareil a déjà lu ou reçu la ligne (`_ciRetrouverId`, app-04).
         // Une réaction dont le retrait est arrivé PENDANT cette lecture ne revient
         // pas : sa pierre tombale par clé l'écarte (RV-39, `_ciReactionPostTombee`).
-        reactions: cpl.reactions.filter(x => !(typeof _ciReactionPostTombee === "function" && _ciReactionPostTombee(r.id, x)))
+        reactions: cpl.reactionsAvant ? cpl.reactionsAvant : cpl.reactions.filter(x =>!(typeof _ciReactionPostTombee === "function" && _ciReactionPostTombee(r.id, x)))
           .map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
             ci: x.id || (typeof _ciRetrouverId === "function"
               ? _ciRetrouverId({ comment_id: r.id, user_id: x.user_id, kind: x.kind, payload: x.payload, created_at: x.created_at })
@@ -5035,9 +6201,15 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // ancien pour l'écarter de l'affichage.
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
+        ...(_pmpPresentation&&{poster:_pmpPresentation.poster}),
         ...(r.shared_data && { sharedReelData: (() => {
           try {
-            return typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
+            const partage = typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
+            // Les activités ne référencent pas un post source. À l'inverse,
+            // passio_media seul n'est jamais un snapshot de republication.
+            return partage && typeof partage === "object" && !Array.isArray(partage)
+              && (r.shared_from_post_id || (partage.kind === "event" && typeof partage.id === "string" && partage.id))
+              ? partage : null;
           } catch(e) {
             console.warn("Failed to parse shared_data:", e);
             return null;
@@ -5060,6 +6232,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) {
+    if (options.propagerErreur) throw e;
     // Une exception qui n'est pas réseau ne dit rien du réseau : verdict inchangé.
     if (teteSeq && teteSeq > _feedTeteDerniereServie && estEchecReseau(e)) noterLectureTeteFil(true);
     return [];
@@ -5080,17 +6253,34 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
 // le GET d'avant, ni plus ni moins.
 // Tant que la fonction n'est pas en base (PGRST202), on retombe sur les lectures
 // d'avant et on le MÉMORISE pour la release : un seul 404 par session, jamais un
-// par page. Toute autre erreur (refus, délai, réseau) retombe AUSSI sur les
-// lectures d'avant pour la page en cours — des compteurs justes valent quatre
-// lectures de plus — et, après `FIL_COMPTEURS_ECHECS_MAX` échecs consécutifs,
-// la fonction n'est plus tentée de la session : un grant manquant ou une
-// fonction retirée sans rechargement du cache ne doivent ni peindre un fil à
-// « 0 », ni payer un essai raté à chaque page. Un succès remet le compte à zéro.
+// par page.
+// ⚠️ UNE ERREUR DE CHARGE N'EST PAS UNE ABSENCE (D14-01, revérification du
+// 2026-11-20). Jusque-là, un délai, un 503 ou un refus retombait AUSSI sur les
+// lectures d'avant pour la page — trois lectures sous RLS, contrôle par ligne,
+// `post_likes` sans limite — et, après trois échecs, toute la session y passait.
+// Quand la base sature, chaque onglet remplaçait donc un appel bon marché par le
+// chemin coûteux d'avant la correction, à la même cadence ; et comme ce repli
+// « réussissait », le filet du fil ne reculait pas. Désormais : on GARDE les
+// compteurs déjà affichés (`source: "echec"`, la copie précédente fait foi), on
+// ne relit RIEN d'autre, et la fonction n'est retentée qu'après un recul
+// exponentiel avec gigue (`reculSurErreur`, app-02). Le filet du fil compte ce
+// tour comme un échec (`_filComplementsDegradesSeq`) et recule lui aussi.
+// Une erreur DURABLE (4xx, 42501, PGRST203…) n'est pas une charge : elle prend
+// le chemin d'avant comme une absence (`_filCompteursErreurPassagere`).
 const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
-// Échecs CONSÉCUTIFS de la fonction (hors « absente ») avant de cesser de la
-// tenter pour la session. En mémoire seulement : la session suivante réessaie.
-const FIL_COMPTEURS_ECHECS_MAX = 3;
-let _filCompteursEchecs = 0;
+// Nombre d'aperçus de commentaires que la carte du fil peint (`renderPostHTML`,
+// app-02 : `slice(0, 2)`) — ceux dont `supaLoadPosts` lit les interactions.
+const FIL_APERCUS_PEINTS = 2;
+// Base du recul de la fonction après un échec (hors « absente ») : 30 s au
+// premier échec (15 s × 2), puis ×2, plafond 10 min, gigue ±20 %.
+const FIL_COMPTEURS_RECUL_BASE_MS = 15000;
+let _filCompteursEchecs = 0;          // échecs consécutifs (hors « absente »)
+let _filCompteursProchainEssai = 0;   // Date.now() avant lequel on ne retente pas
+// Compte MONOTONE des appels `fil_compteurs` réellement partis et en échec
+// (l'attente du recul n'en est pas un) : le filet du fil le relit avant et après son tour pour savoir s'il a
+// été dégradé, sans qu'une exception fasse perdre les publications lues.
+window._filComplementsDegradesSeq = 0;
+window._filComplementsReculSeq = 0;
 // `reactionsLues` (RV-39) : la liste `reactions` est-elle la réponse du serveur ?
 // Faux ici : une publication absente de la réponse n'a rien prouvé.
 function _complementFilVide() {
@@ -5131,18 +6321,60 @@ function _erreurFonctionAbsente(err) {
   if (err.code === "PGRST202" || err.code === "42883") return true;
   return /could not find the function/i.test(String(err.message || ""));
 }
+// ⚠️ UNE ERREUR DURABLE N'EST PAS UNE CHARGE (contre-revue du 2026-11-20). Seule
+// une erreur PASSAGÈRE justifie de reculer en gardant les compteurs : réseau ou
+// délai (aucun code), 5xx/401/408/429 sans code, 57014 (délai de requête), classes
+// 53 (ressources), 08 (connexion), 40 (sérialisation), PGRST000-003 (pool,
+// connexion), PGRST3xx (jeton expiré ou invalide : le rafraîchissement de session
+// la règle, et le chemin d'avant échouerait de même). Tout autre code ou 4xx — 42501 après un droit retiré, PGRST203
+// (surcharge ambiguë), 42703… — ne se règle pas en attendant : reculer « sans
+// repli » figeait le fil à 0 pour toute publication neuve, indéfiniment, et
+// faisait monter le filet du fil à 10 min. Une erreur durable se traite donc
+// comme une absence : chemin d'avant, mémorisé pour l'heure (TTL ci-dessus).
+function _filCompteursErreurPassagere(err, status) {
+  if (!err) return true;
+  var code = (typeof err.code === "string") ? err.code : "";
+  var st = Number(status != null ? status : err.status);
+  // Revue second modèle (2026-11-20) : un 5xx est TOUJOURS passager, même avec
+  // un SQLSTATE (57P03 « serveur indisponible » rendait la fonction « absente »
+  // et rouvrait le chemin coûteux pendant une heure, en pleine panne).
+  if (Number.isFinite(st) && st >= 500) return true;
+  if (code) return code === "57014" || code === "55P03" || /^57P0[1-3]$/.test(code) || /^(53|08|40)/.test(code) || /^PGRST00[0-3]$/.test(code) || /^PGRST3[0-9][0-9]$/.test(code);
+  if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 401 && st !== 408 && st !== 429) return false;
+  return true;
+}
+// ⚠️ UN SEUL RECUL POUR LA FONCTION, QUEL QUE SOIT L'APPELANT (contre-revue du
+// 2026-11-20). Le fil (`_chargerComplementsFil`) et les cartes (app-03,
+// `_postLikeLireGroupe`) appellent la même fonction : chacun tapait la fonction
+// saturée sur son propre calendrier, et un succès de l'un ne levait pas le
+// recul de l'autre. Ils lisent et écrivent désormais le même état ; une rafale
+// d'échecs concurrents (fil, profil et Bobines au démarrage) ne compte qu'UN
+// échec par fenêtre de recul.
+function _filCompteursEnRecul() {
+  return _filCompteursEchecs > 0 && Date.now() < _filCompteursProchainEssai;
+}
+function _filCompteursNoterSucces() {
+  _filCompteursEchecs = 0;
+  _filCompteursProchainEssai = 0;
+}
 async function _chargerComplementsFil(postIds) {
   const parPost = new Map();
   const ids = [...new Set((postIds || []).filter(Boolean))];
   const out = { parPost, auteursApercus: [], source: "vide" };
   if (!ids.length) return out;
-  const legacy = !window._supaReal || _filCompteursMemoAbsence() || _filCompteursEchecs >= FIL_COMPTEURS_ECHECS_MAX;
+  // Le chemin d'avant ne sert plus que quand la fonction N'EXISTE PAS (ou sans
+  // SDK réel) : jamais sur une erreur de charge.
+  const legacy = !window._supaReal || _filCompteursMemoAbsence();
   if (!legacy) {
+    // Recul en cours (partagé avec les cartes) : aucune lecture des compteurs,
+    // ceux affichés restent. L'ATTENTE n'est pas un échec du filet : aucun appel
+    // n'est parti (seul un appel réellement en échec le fait reculer).
+    if (_filCompteursEnRecul()) return _complementsFilEnEchec(out, false);
     try {
       // POST, jamais GET : un identifiant de publication est un texte choisi par
       // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
       // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
-      const { data, error } = await supa.rpc("fil_compteurs", { _post_ids: ids });
+      const { data, error, status } = await supa.rpc("fil_compteurs", { _post_ids: ids });
       if (!error && Array.isArray(data)) {
         data.forEach(function (row) {
           if (!row || !row.post_id) return;
@@ -5159,7 +6391,7 @@ async function _chargerComplementsFil(postIds) {
             reactionsLues: Array.isArray(row.reactions),
           });
         });
-        _filCompteursEchecs = 0;
+        _filCompteursNoterSucces();
         out.source = "rpc";
         out.auteursApercus = [].concat(...Array.from(parPost.values()).map(function (c) { return c.apercus.map(function (a) { return a.author_id; }); }));
         return out;
@@ -5167,16 +6399,64 @@ async function _chargerComplementsFil(postIds) {
       if (error && _erreurFonctionAbsente(error)) {
         _filCompteursNoterAbsence();
         diagLog("fil_compteurs: fonction absente sur ce projet, repli sur les lectures d'avant pour la session");
-      } else {
-        _filCompteursEchecs++;
-        diagLog("fil_compteurs: " + ((error && error.message) || "réponse invalide") + " (échec " + _filCompteursEchecs + "/" + FIL_COMPTEURS_ECHECS_MAX + ", lectures d'avant pour cette page)");
+        return _chargerComplementsFilLegacy(ids, out);
       }
+      if (error && !_filCompteursErreurPassagere(error, status)) {
+        // Erreur durable (droit retiré, surcharge ambiguë…) : attendre ne la
+        // règle pas. Chemin d'avant, mémorisé pour l'heure comme une absence.
+        _filCompteursNoterAbsence();
+        diagLog("fil_compteurs: erreur durable " + String(error.code || status || "") + ", repli sur les lectures d'avant pour l'heure");
+        return _chargerComplementsFilLegacy(ids, out);
+      }
+      _filCompteursNoterEchec((error && error.message) || "réponse invalide");
     } catch (e) {
-      _filCompteursEchecs++;
-      diagLog("fil_compteurs: " + (e && e.message) + " (échec " + _filCompteursEchecs + "/" + FIL_COMPTEURS_ECHECS_MAX + ", lectures d'avant pour cette page)");
+      _filCompteursNoterEchec(e && e.message);
     }
+    return _complementsFilEnEchec(out, true);
   }
   return _chargerComplementsFilLegacy(ids, out);
+}
+function _filCompteursNoterEchec(motif) {
+  // Un échec arrivé PENDANT une fenêtre de recul (appel concurrent parti avant
+  // le premier échec) ne compte pas : une rafale vaut un échec, pas n.
+  if (_filCompteursEnRecul()) return;
+  _filCompteursEchecs++;
+  const attente = (typeof reculSurErreur === "function")
+    ? reculSurErreur(FIL_COMPTEURS_RECUL_BASE_MS, _filCompteursEchecs, Math.random())
+    : FIL_COMPTEURS_RECUL_BASE_MS * 2;
+  _filCompteursProchainEssai = Date.now() + attente;
+  try { diagLog("fil_compteurs: " + (motif || "erreur") + " (échec " + _filCompteursEchecs + ", compteurs affichés conservés, nouvel essai dans " + Math.round(attente / 1000) + " s)"); } catch (_e) {}
+}
+// Une page servie SANS compléments frais : `supaLoadPosts` reprend, publication
+// par publication, ce que la copie précédente portait (`_complementConserve`).
+// `appelEchoue` : un appel est réellement parti et a échoué — seul cas compté
+// pour le filet du fil (`_filComplementsDegradesSeq`).
+function _complementsFilEnEchec(out, appelEchoue) {
+  out.source = "echec";
+  out.auteursApercus = [];
+  if (appelEchoue) window._filComplementsDegradesSeq = (window._filComplementsDegradesSeq || 0) + 1;
+  // Revue second modèle (2026-11-20) : l'ATTENTE du recul n'est pas un échec
+  // compté (le recul partagé n'est pas prolongé), mais le filet du fil doit la
+  // voir pour reculer lui aussi au lieu de relire `posts` à pleine cadence.
+  else window._filComplementsReculSeq = (window._filComplementsReculSeq || 0) + 1;
+  return out;
+}
+// Les compléments d'une publication quand la lecture a échoué : ceux de sa copie
+// précédente (compteurs, mon like, aperçus, réactions, total), sinon le vide.
+// `reactionsLues: false` : rien n'a été lu, `supaLoadPosts` ne recopie rien.
+function _complementConserve(postId) {
+  const avant = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!avant) return null;
+  return {
+    likes: Number.isSafeInteger(avant.likes) && avant.likes >= 0 ? avant.likes : 0,
+    aime: avant.liked === true,
+    commentaires: Number.isSafeInteger(avant.commentsTotal) ? avant.commentsTotal : undefined,
+    commentairesAvant: Array.isArray(avant.comments) ? avant.comments.slice() : [],
+    suite: Object.prototype.hasOwnProperty.call(avant, "_commentsSuite") ? avant._commentsSuite : undefined,
+    pagine: avant._commentsPagine === true,
+    reactionsAvant: Array.isArray(avant.reactions) ? avant.reactions.slice() : [],
+    apercus: [], reactions: [], reactionsLues: false,
+  };
 }
 // La copie précédente d'une publication porte-t-elle une discussion CHARGÉE
 // (page de 30 ou plus, curseur posé par la modale/le détail) ? Si oui, on la
@@ -5632,36 +6912,20 @@ async function supaPublishStory(story) {
   finally { fin(); }
 }
 async function _envoyerStory(story) {
+  var _pmpCompte=passioMediaProteges.capture();
+  if(!story.id)story.id="story_"+uid();
   // Upload média + insert = plusieurs requêtes → confirmation explicite, comme
   // pour la publication (l'auto-tag réseau désignerait l'upload, pas le résultat).
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("publish_story", { postId: story && story.id }); } catch (e) {}
   try {
     await supaEnsureProfileExists();
-    // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
-    var mediaUrl = null, mediaType = story.mediaType || null;
-    var _uploadeIci = false;   // a-t-on créé un fichier Storage dans CET appel ?
-    if (story.media && typeof story.media === "string") {
-      if (story.media.startsWith("data:") && typeof supaUploadMedia === "function") {
-        var folder = (mediaType === "video") ? "videos" : "photos";
-        try { mediaUrl = await supaUploadMedia(story.id, folder, story.media, mediaType || "photo"); } catch(e) {}
-        if (mediaUrl && mediaUrl.indexOf("data:") !== 0) _uploadeIci = true;
-        if (mediaUrl && mediaUrl.indexOf("data:") === 0) mediaUrl = null;
-        if (mediaUrl) { story.media = mediaUrl; try { saveState(); renderStories(); } catch(e) {} }
-      } else if (story.media.indexOf("data:") !== 0) {
-        mediaUrl = story.media;
-      }
-      // ⚠️ L'upload a échoué (mediaUrl est resté null alors que la story PORTE un
-      // média) : insérer quand même créait une story vide côté serveur, correcte
-      // chez son auteur et muette pour tout le monde. On échoue franchement.
-      if (!mediaUrl) {
-        console.warn("story : média non uploadé, publication abandonnée");
-        try { window.tel && tel.settle(_cid, "saved", false, { message: "média non uploadé" }); } catch (e) {}
-        return false;
-      }
-    }
-    const res = await supa.from("stories").insert({
-      id: story.id || uid(), author_id: MY_UID,
+    if(!passioMediaProteges.courant(_pmpCompte)||!_pmpCompte.uid)return false;
+    const mediaProtege=await passioMediaProteges.envoyer("stories",story);
+    var mediaUrl=mediaProtege?mediaProtege.reference:null,mediaType=story.mediaType||null;
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
+    const payload={
+      id: story.id, author_id: _pmpCompte.uid,
       // Politique FACULTATIVE (ADR-010) : une story éphémère vaut d'être
       // publiée même sans classement — le refuser pour ça la ferait disparaître.
       passion_id: optionalCanonicalPassion(story.passion),
@@ -5671,26 +6935,27 @@ async function _envoyerStory(story) {
       media_type: mediaType,
       overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
-    });
+    };
+    const res=await passioMediaProteges.avecSession(async function(c){return supa.from("stories").insert(payload).select("id,author_id,media_url").abortSignal(c.signal);});
+    if(!passioMediaProteges.courant(_pmpCompte))return false;
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
     // restait « publiée » côté auteur et invisible pour tout le monde.
-    const ok = _writeVerdict(res, { label: "publication de story" }).ok;
-    // ⚠️ ORPHELIN. L'insert vient d'être refusé alors que le média est DÉJÀ dans
-    // Storage : plus aucune ligne ne le référencera jamais, et il reste facturé.
-    // On ne retire que ce que CET appel a uploadé — une story qui portait déjà une
-    // URL ne doit pas voir son fichier supprimé sous elle.
-    if (!ok && _uploadeIci && mediaUrl) {
-      try {
-        var _chemin = String(mediaUrl).split("/content/")[1];
-        if (_chemin) {
-          await supa.storage.from("content").remove(cheminsImageStorage(decodeURIComponent(_chemin)));
-          console.warn("story refusée : média orphelin retiré de Storage —", _chemin);
-        }
-      } catch (e) {}
-    }
+    if(res.error&&res.error.code!=="23505")_writeVerdict(res,{label:"publication de story"});
+    const ok=await passioMediaProteges.verifierParent("stories",payload,res);
+    if(ok){passioMediaProteges.appliquerEnvoi(story,mediaProtege);saveState();renderStories();}
+    // Les objets prives non lies et leur provision attendent la collecte revue ; aucun DELETE public par URL.
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     return ok;
   } catch(e) { console.warn("publication de story :", e && e.message); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
+}
+
+async function rafraichirBandeauStories() {
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const stories = await supaLoadStories();
+  if (!stories.length || lecteur !== MY_UID || generation !== _profileCacheGeneration) return;
+  state.seed.stories = stories;
+  renderStories();
 }
 
 async function supaLoadStories() {
@@ -5700,7 +6965,7 @@ async function supaLoadStories() {
     if (error) { console.warn("supaLoadStories:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, fromSupabase: true }; });
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, createdAt: supaTs(r.created_at), fromSupabase: true }; });
   } catch(e) { return []; }
 }
 
@@ -5738,8 +7003,13 @@ function _eventRow(event) {
     contact: event.contact || null,
     external_link: event.externalLink || null,
     event_type: event.eventType || "Autre",
-    cover_url: event.coverUrl || null,
-    co_organizers: event.coOrganizers || [],
+    // https seulement (`events_cover_url_forme`, lot 4 du 2026-11-15) : une couverture encore
+    // locale (data:) passe par Storage avant (app-07) ; sinon elle ne part pas.
+    cover_url: (typeof event.coverUrl === "string" && /^https:\/\//i.test(event.coverUrl)) ? event.coverUrl : null,
+    // CLI-01 : la base n'accepte plus qu'un tableau d'uuid en minuscules (au plus
+    // 20) — un identifiant de démonstration ferait refuser TOUTE l'activité.
+    co_organizers: (event.coOrganizers || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
+      .map(function (x) { return x.toLowerCase(); }).slice(0, 20),
     series_id: event.seriesId || null,
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
@@ -6201,11 +7471,13 @@ async function supaLoadEvents(authorId) {
       authorId: r.author_id,
       organizerId: r.organizer_id || r.author_id,
       organizerName: (profs[r.organizer_id || r.author_id] || {}).username || "Passionné",
-      title: r.title || "Événement",
+      title: r.title || "Activité",
       passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
-      emoji: r.emoji || "📍",
+      // LOT-19 (IRL-C08) : sans emoji propre, celui de la PASSION (comme les
+      // marqueurs de la carte) — l'épingle « 📍 » ne disait plus de quoi il s'agit.
+      emoji: r.emoji || (function () { try { var ps = r.passion_id && typeof passionById === "function" ? passionById(r.passion_id) : null; return (ps && ps.id === r.passion_id && ps.emoji) || "📍"; } catch (e) { return "📍"; } })(),
       // supaTs : date_at est stockée en UTC SANS fuseau → un parse local décalait
       // l'heure affichée de l'événement (ex. -2h en été) chez tous les comptes.
       date: r.date_at ? supaTs(r.date_at) : Date.now(),
@@ -6224,7 +7496,13 @@ async function supaLoadEvents(authorId) {
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
       createdAt: r.created_at ? supaTs(r.created_at) : null,   // borne du rattrapage au fil (app-07)
-      coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
+      // ⚠️ SEULS DES IDENTIFIANTS DE COMPTE (2026-11-10, CLI-01). La base n'exige de
+      // `co_organizers` que d'être un tableau (`events_co_organizers_tableau`) : ses
+      // éléments sont écrits par l'auteur de l'activité, et la fiche ouvre le profil de
+      // chacun. Un élément qui n'est pas un identifiant de compte n'a rien à y faire.
+      coOrganizers: Array.isArray(r.co_organizers)
+        ? r.co_organizers.filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
+        : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
       convId: r.conv_id || null,
@@ -6285,6 +7563,12 @@ async function rafraichirEvenements(force, apresLecture) {
     if (change) {
       const irl = document.getElementById("screen-irl");
       if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+      // LOT-3 (audit UX/UI du 2026-11-10, PCS-C01 / FIL-C01) : une publication
+      // reliée à une activité n'avait pas sa porte « Voir l'activité » tant que
+      // l'activité n'était pas en mémoire, et rien ne la redécorait à son arrivée
+      // (mesuré : absente à 5, 20 et 40 s, présente à 60 s). On redécore les
+      // cartes DÉJÀ peintes — sans repeindre le fil, donc sans saut de défilement.
+      try { if (window.PassioUIV3 && typeof PassioUIV3.decorateFeed === "function") PassioUIV3.decorateFeed(null); } catch (e) {}
     }
     return change;
   } catch (e) {
@@ -6474,6 +7758,30 @@ async function supaLoadEventCommentCounts(eventIds) {
 
 // ---- MESSAGERIE TEMPS RÉEL ----
 
+// Motif POSIX (pour `imatch`) qui trouve une saisie quelles que soient ses
+// accentuations : « lea » → « l[eéèêë]a ». Rend "" si la saisie, une fois
+// pliée et réduite au jeu sûr (lettres, chiffres, espace, ' et -), est vide.
+// Aucun métacaractère de regex ni de syntaxe PostgREST ne peut y entrer.
+var _VARIANTES_ACCENTS = { a: "aàâäáãå", e: "eéèêë", i: "iîïíì", o: "oôöóòõ", u: "uùûüú", c: "cç", y: "yÿ", n: "nñ" };
+function _motifSansAccents(q) {
+  var plie = (typeof plierRecherche === "function") ? plierRecherche(q) : String(q || "").toLowerCase();
+  plie = plie.replace(/[^a-z0-9 '\-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!plie) return "";
+  return plie.split("").map(function (ch) {
+    if (_VARIANTES_ACCENTS[ch]) return "[" + _VARIANTES_ACCENTS[ch] + "]";
+    if (ch === "-") return "[-]";
+    return ch;
+  }).join("");
+}
+
+// PURE : la saisie, pliée et réduite aux lettres et chiffres, a-t-elle au moins
+// RECHERCHE_PERSONNES_MIN caractères ? (verrou : tests/unit/abus-capacite.test.mjs)
+var RECHERCHE_PERSONNES_MIN = 3;
+function recherchePersonnesAssezLongue(q) {
+  var plie = (typeof plierRecherche === "function") ? plierRecherche(q) : String(q || "").toLowerCase();
+  return String(plie || "").replace(/[^a-z0-9]/g, "").length >= RECHERCHE_PERSONNES_MIN;
+}
+
 async function supaSearchUsers(query) {
   try {
     const cleanQuery = (query || "").trim();
@@ -6489,6 +7797,11 @@ async function supaSearchUsers(query) {
     // échappe les jokers ; on borne aussi la longueur.
     const safe = cleanQuery.slice(0, 60).replace(/[,()*]/g, " ").replace(/[%_]/g, "").trim();
     if (!safe) return [];
+    // Lot 4 du 2026-11-15 (capacité) : SOUS TROIS CARACTÈRES, ON NE DEMANDE RIEN
+    // AU SERVEUR — même plancher que les passions (passions-flat.js). Une ou deux
+    // lettres retiennent presque toute la table, et l'index trigramme de
+    // `profiles` (username, bio) ne sert qu'à partir de trois.
+    if (!recherchePersonnesAssezLongue(safe)) return [];
     // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
     const searchPattern = `%${safe}%`;
     // ⚠️ BORNE. Cette requête n'avait AUCUNE limite : chercher « a » ramenait
@@ -6496,11 +7809,24 @@ async function supaSearchUsers(query) {
     // avec bio et avatar_url, à chaque frappe. Invisible à trente comptes de
     // beta, ruineux à dix mille. Les appelants n'affichent au mieux que 8
     // résultats ; 30 laisse de la marge pour leur filtrage local.
+    // LOT-22 (audit UX/UI du 2026-11-10, MSG-C06, côté serveur) : « lea » ne
+    // trouvait pas « Léa » — `ilike` compare les lettres exactes. Sans migration
+    // (`unaccent` n'est pas installé), le motif accepte les variantes accentuées
+    // de chaque lettre (`imatch`, regex insensible à la casse) ; il est BÂTI ICI
+    // à partir de la saisie réduite à des lettres, chiffres, espaces, ' et -.
+    // Le filtrage local fin (`plierRecherche`) reste celui d'avant.
+    const motif = _motifSansAccents(safe);
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, passions, bio, avatar_url")
-      .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
+      .or(motif
+        ? `username.imatch.${motif},bio.imatch.${motif}`
+        : `username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
       .limit(30);
 
+    // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : une panne n'est pas une
+    // absence. Le tableau vide porte `echec` : l'appelant dit « Pas de connexion »
+    // au lieu de « Aucun utilisateur trouvé ».
+    if (error) return _rechercheEchouee();
     if (!data) return [];
 
     const results = data.map(profile => {
@@ -6524,13 +7850,27 @@ async function supaSearchUsers(query) {
         bio: profile.bio || "",
         passions
       };
-    }).slice(0, 8);
-
-    return results;
+    });
+    // LOT-11 (REC-C16) : « tom » rendait Victor Aubry (bio « … automobile … »).
+    // Le pseudo compte partout ; la bio, en DÉBUT DE MOT sous 4 lettres. Les
+    // pseudos qui correspondent passent devant.
+    const _q = (typeof plierRecherche === "function") ? plierRecherche(cleanQuery) : cleanQuery.toLowerCase();
+    const _pli = (x) => (typeof plierRecherche === "function") ? plierRecherche(x || "") : String(x || "").toLowerCase();
+    const _parPseudo = (r) => _pli(r.username).includes(_q);
+    const _parBio = (r) => _q.length >= 4 ? _pli(r.bio).includes(_q) : _pli(r.bio).split(/[^a-z0-9]+/).some((mot) => mot.startsWith(_q));
+    return results.filter((r) => _parPseudo(r) || _parBio(r))
+      .sort((a, b) => (_parPseudo(b) ? 1 : 0) - (_parPseudo(a) ? 1 : 0))
+      .slice(0, 8);
   } catch(e) {
     console.error("[SEARCH] Error:", e);
-    return [];
+    return _rechercheEchouee();
   }
+}
+
+function _rechercheEchouee() {
+  const vide = [];
+  vide.echec = true;
+  return vide;
 }
 
 // Unicité des pseudos : un même pseudo ne doit jamais être porté par deux comptes
@@ -6551,20 +7891,46 @@ async function supaUsernameTaken(name) {
 }
 window.supaUsernameTaken = supaUsernameTaken;
 
-async function supaCreateConversation(withUserId) {
+// LOT-43 (audit UX/UI du 2026-11-10, MSG-C22) : `idImpose` (facultatif) crée la
+// conversation sous l'identifiant d'un BROUILLON local — celui que le fil affiche
+// déjà —, au premier message. Rejouable : un conflit de clé (23505, la ligne
+// existe déjà d'un essai précédent dont la réponse s'est perdue) n'est pas un
+// échec, ni pour la conversation ni pour un membre.
+async function supaCreateConversation(withUserId, _passion, idImpose) {
   try {
     await supaEnsureProfileExists();
-    const convId = "conv_" + uid();
+    const convId = idImpose || ("conv_" + uid());
+    const _dejaLa = (r) => r && r.error && /23505|duplicate|already exists/i.test(String(r.error.code || "") + " " + String(r.error.message || ""));
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: false,
       passion_id: null, created_by: MY_UID,
     });
-    if (rConv.error) { console.warn("Conv error (conversations):", rConv.error.message); return null; }
+    if (rConv.error && !(idImpose && _dejaLa(rConv))) {
+      if (idImpose) supaCreateConversation.dernierRefus = (Number(rConv.status) === 403 || String(rConv.error.code || "") === "42501") ? "42501" : null;
+      console.warn("Conv error (conversations):", rConv.error.message); return null;
+    }
     // Inserts séparés : un échec sur l'autre membre ne doit pas annuler le nôtre.
     // ⚠️ L'ajout de l'AUTRE membre exige la policy de migration_fix_conv_members_insert.sql
     // (sans elle, RLS v2 refuse → la conv serait invisible pour le destinataire).
-    const rMe = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
-    const rHim = await supa.from("conv_members").insert({ conv_id: convId, user_id: withUserId });
+    let rMe = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    let rHim = await supa.from("conv_members").insert({ conv_id: convId, user_id: withUserId });
+    if (idImpose) {
+      if (_dejaLa(rMe)) rMe = { error: null };
+      if (_dejaLa(rHim)) rHim = { error: null };
+      // ⚠️ JAMAIS DE NETTOYAGE SOUS UN ID IMPOSÉ (relecture audit-passio, LOT-43) :
+      // la conversation peut EXISTER déjà (créée par l'autre) — le DELETE ci-dessous
+      // m'en retirait, et « Suppression admin » retirait les DEUX membres. On
+      // rend le verdict : `supaCreateConversation.dernierRefus` porte le code
+      // d'un refus de règle (42501 : pas créateur, blocage), sinon null.
+      supaCreateConversation.dernierRefus = null;
+      const _refus = (r) => r && r.error && (Number(r.status) === 403 || String(r.error.code || "") === "42501");
+      if (rMe.error || rHim.error) {
+        supaCreateConversation.dernierRefus = (_refus(rMe) || _refus(rHim)) ? "42501" : null;
+        console.warn("Conv error (conv_members, id imposé):", (rMe.error || rHim.error).message);
+        return null;
+      }
+      return convId;
+    }
     if (rMe.error || rHim.error) {
       console.warn("Conv error (conv_members):", (rMe.error || rHim.error).message);
       // Conversation inutilisable côté serveur → nettoyer et laisser le fallback local
@@ -6576,7 +7942,11 @@ async function supaCreateConversation(withUserId) {
   } catch(e) { console.warn("Conv error:", e); return null; }
 }
 
-async function supaCreateGroup(groupName, memberIds, passionId) {
+// `rapport` (facultatif, LOT-5 / MSG-C04) : reçoit `refuses`, les membres dont
+// l'ajout a été refusé par la base — l'appelant le dit au lieu d'annoncer un
+// groupe complet. La valeur rendue (l'identifiant ou null) ne change pas.
+async function supaCreateGroup(groupName, memberIds, passionId, rapport) {
+  if (rapport) rapport.refuses = [];
   // ⚠️ SDK NON CHARGÉ (revue du lot C-02, 06/11) : le client de repli rend
   // `{ error: null }` à tout, donc un groupe « créé » ici aurait reçu un `grp_…`
   // sans exister en base — et `removeGroupMember`, qui ne reconnaît une ébauche
@@ -6599,7 +7969,7 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
     let anyMemberError = null;
     for (const m of members) {
       const r = await supa.from("conv_members").insert(m);
-      if (r.error && m.user_id !== MY_UID) anyMemberError = r.error;
+      if (r.error && m.user_id !== MY_UID) { anyMemberError = r.error; if (rapport) rapport.refuses.push(m.user_id); }
     }
     if (anyMemberError) console.warn("Group error (conv_members):", anyMemberError.message);
     return convId;
@@ -6831,24 +8201,15 @@ async function supaLoadMessages(convId) {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
 
-      // Essayer de décoder le content comme JSON
-      var contentData = null;
-      var contentText = r.content || "";
-      try {
-        // Toujours essayer de parser comme JSON
-        contentData = JSON.parse(r.content);
-        _diag("supaLoadMessages: JSON parsé - type=" + (contentData.type || "N/A"));
-      } catch(e) {
-        // content n'est pas du JSON, c'est du texte normal
-        contentData = null;
-      }
+      var contentData = _messageContentData(r.content);
+      var contentText = contentData ? (typeof contentData.text === "string" ? contentData.text : (r.content || "")) : "[Message invalide]";
 
       var msg = {
         id: r.id,
         from: r.from_id === MY_UID ? "me" : r.from_id,
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
-        text: contentData && contentData.text ? contentData.text : contentText,
+        text: contentText,
         at: supaTs(r.created_at) + _fractionMicrosecondes(r.created_at),
       };
 
@@ -6969,6 +8330,82 @@ function _accuseLectureReparable(convId, moi) {
   } catch (e) { return false; }
 }
 
+// conv_reads_budget_reprise_v1 : une dernière lecture par conversation, sans
+// rejouer sous le compte suivant et sans dater la reprise comme une lecture neuve.
+var CONV_READS_BUDGET_REPRISE = "conv_reads_budget_reprise_v1";
+function _rtLectureBudgetTrace(message) {
+  try { if (typeof diagLog === "function") diagLog(message); } catch (e) {}
+}
+function _rtLectureBudgetDelai(erreur) {
+  if (!erreur || String(erreur.code || "") !== "P0001") return 0;
+  try {
+    var d = JSON.parse(erreur.details || "null");
+    var ms = Number(d && d.reessai_ms);
+    return d && d.budget === "realtime" && Number.isFinite(ms) && ms >= 1000 && ms <= 86400000
+      ? Math.ceil(ms) : 0;
+  } catch (e) { return 0; }
+}
+function _rtLectureBudgetFile() {
+  if (!window._rtLecturesBudget) window._rtLecturesBudget = Object.create(null);
+  var file = window._rtLecturesBudget;
+  Object.keys(file).forEach(function (id) {
+    if (file[id].compte !== MY_UID) {
+      if (file[id].timer != null) clearTimeout(file[id].timer);
+      delete file[id];
+    }
+  });
+  return file;
+}
+function _rtLectureBudgetArmer(entree, delai) {
+  if (entree.timer != null) clearTimeout(entree.timer);
+  entree.timer = setTimeout(function () {
+    var file = _rtLectureBudgetFile();
+    if (file[entree.convId] !== entree || MY_UID !== entree.compte) return;
+    entree.timer = null;
+    if (!_compteAuthReel() || !window._supaReal || _identiteDivergeDeLaSession(entree.compte)) {
+      delete file[entree.convId];
+      return;
+    }
+    entree.essais++;
+    supaMarkRead(entree.convId, entree);
+  }, delai);
+}
+function _rtLectureBudgetReporter(convId, compte, instant, erreur) {
+  var delai = _rtLectureBudgetDelai(erreur);
+  if (!delai) return false;
+  var file = _rtLectureBudgetFile();
+  if (MY_UID !== compte) return true;
+  var entree = file[convId];
+  if (!entree) {
+    if (Object.keys(file).length >= 64) { _rtLectureBudgetTrace("conv_reads budget : file pleine"); return true; }
+    entree = file[convId] = { convId: convId, compte: compte, instant: instant, essais: 0, timer: null, prochain: 0 };
+  }
+  if (instant > entree.instant) entree.instant = instant;
+  entree.prochain = Math.max(entree.prochain, Date.now() + delai);
+  if (entree.essais >= 4) {
+    entree.epuise = true;
+    _rtLectureBudgetTrace("conv_reads budget : reprise epuisee");
+    return true;
+  }
+  _rtLectureBudgetTrace("conv_reads budget : lecture differee");
+  _rtLectureBudgetArmer(entree, Math.max(1000, entree.prochain - Date.now()));
+  return true;
+}
+function _rtLectureBudgetFin(convId, compte, instant, succes) {
+  var file = _rtLectureBudgetFile(), entree = file[convId];
+  if (!entree || entree.compte !== compte) return;
+  if (entree.instant > instant) {
+    if (succes) { entree.essais = 0; entree.epuise = false; _rtLectureBudgetArmer(entree, 1000); }
+    else if (entree.timer == null) {
+      // Une panne de la requête en vol ne doit pas laisser une file sans
+      // minuteur qui absorberait toutes les prochaines lectures.
+      entree.epuise = true; entree.prochain = Date.now();
+    }
+    return;
+  }
+  if (entree.timer != null) clearTimeout(entree.timer);
+  delete file[convId];
+}
 async function supaMarkRead(convId) {
   // Trace SANS donnée personnelle : ni identifiant de conversation, ni compte,
   // ni contenu — un code d'erreur et une étape.
@@ -6979,6 +8416,8 @@ async function supaMarkRead(convId) {
     // d'un visiteur est refusé (13 × 401, 0 compte). Un visiteur n'a de toute
     // façon aucune conversation à marquer comme lue.
     if (typeof supa === "undefined" || !supa || !_compteAuthReel() || !window._supaReal || !convId) return;
+    // LOT-43 (MSG-C22) : un brouillon n'existe pas encore en base — rien à marquer.
+    if (typeof _convBrouillon === "function" && _convBrouillon(convId)) return;
     // Identité prouvée divergente : la ligne serait refusée (`reads_upsert`
     // exige `user_id = auth.uid()`). On le TRACE au lieu de le taire — sans
     // trace, une divergence d'identité est indiscernable d'un calme plat.
@@ -6989,14 +8428,24 @@ async function supaMarkRead(convId) {
     // L'identité est CAPTURÉE : la reprise après réparation ne part que sous le
     // compte qui a ouvert la conversation (même règle qu'ASTRA-21 à l'envoi).
     var moi = MY_UID;
+    var reprise = arguments[1], fileBudget = _rtLectureBudgetFile(), attenteBudget = fileBudget[convId];
+    if (reprise && reprise !== attenteBudget) return;
+    if (!reprise && attenteBudget) {
+      attenteBudget.instant = new Date().toISOString();
+      if (!attenteBudget.epuise || Date.now() < attenteBudget.prochain) return;
+      attenteBudget.essais = 0; attenteBudget.epuise = false;
+    }
+    var instantLecture = attenteBudget ? attenteBudget.instant : new Date().toISOString();
     var poser = function () {
       return supa.from("conv_reads").upsert(
-        { conv_id: convId, user_id: moi, last_read_at: new Date().toISOString() },
+        { conv_id: convId, user_id: moi, last_read_at: instantLecture },
         { onConflict: "conv_id,user_id" }
       );
     };
     var r = await poser();
-    if (!r || !r.error) return;
+    if (!r || !r.error) { _rtLectureBudgetFin(convId, moi, instantLecture, true); return; }
+    if (_rtLectureBudgetReporter(convId, moi, instantLecture, r.error)) return;
+    _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Panne réseau : rien à réparer, rien à marquer.
     if (typeof estEchecReseau === "function" && estEchecReseau(r.error)) return;
     var code = String((r.error && r.error.code) || "");
@@ -7019,9 +8468,11 @@ async function supaMarkRead(convId) {
     if (MY_UID !== moi) return;
     var r2 = await poser();
     if (r2 && r2.error) {
+      if (_rtLectureBudgetReporter(convId, moi, instantLecture, r2.error)) return;
       tracer("conv_reads refus apres reparation " + (String(r2.error.code || "") || r2.status || "?"));
-    }
+    } else _rtLectureBudgetFin(convId, moi, instantLecture, true);
   } catch (e) {
+    if (typeof moi !== "undefined" && typeof instantLecture !== "undefined") _rtLectureBudgetFin(convId, moi, instantLecture, false);
     // Une exception n'est pas un refus : soit le réseau (un fetch avorté peut
     // lever), soit un défaut de code — et celui-là se TRACE : un catch muet a
     // déjà caché une ReferenceError six jours (diagLog).
@@ -7077,7 +8528,22 @@ async function _rafraichirConversationsServeur(opts) {
     supaConvs.forEach(function (sc) {
       const lc = localConvs.find(function (x) { return x && x.id === sc.id; });
       if (!lc || !Array.isArray(lc.messages)) return;
-      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && m.pj && (m.status === "sending" || m.status === "failed"); });
+      // ⚠️ ET MES BULLES TEXTE AUSSI, ET LE BROUILLON (ETAT-07, 2026-11-10). Le filtre
+      // portait `m.pj` : une bulle texte « envoi… » ou « réessayer » (refus, session
+      // morte, onze essais) disparaissait au démarrage, comme le brouillon tapé dans la
+      // conversation — alors que l'écran avait promis « le message reste, marqué échec ».
+      if (lc.draft && !sc.draft) sc.draft = lc.draft;
+      // LOT-4 (audit UX/UI du 2026-11-10, MSG-C01) : épingle, archive, sourdine,
+      // fond, description et photo de groupe n'existent QUE dans la copie locale —
+      // l'entrée serveur ne les porte pas. Ils s'effaçaient à chaque démarrage (la
+      // conversation archivée revenait dans la liste). On les reporte comme le
+      // brouillon. Coupure le temps d'une version : localStorage.passio_conv_prefs_boot="0".
+      if (_reporterReglagesConvActif()) {
+        CHAMPS_LOCAUX_CONV.forEach(function (k) {
+          if (lc[k] !== undefined && lc[k] !== null && (sc[k] === undefined || sc[k] === null)) sc[k] = lc[k];
+        });
+      }
+      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && (m.status === "sending" || m.status === "failed"); });
       if (!enAttente.length) return;
       const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
       sc.messages = (sc.messages || []).concat(enAttente.filter(function (m) { return !connus.has(m.id); }))
@@ -7090,7 +8556,14 @@ async function _rafraichirConversationsServeur(opts) {
   _primeProfileCache(conversationsState); // pré-remplir cache → 0 requête lors de la réception
   saveConversations();
   window._convNetLoaded = true; // fin du squelette de la liste de conversations
+  window._convChargementLent = false; // LOT-20 (MSG-C32) : la lecture est revenue
   try { renderMessages(); } catch(e) {}
+}
+
+// Champs d'une conversation tenus par CET appareil seul (aucune colonne serveur).
+var CHAMPS_LOCAUX_CONV = ["pinned", "archived", "_muted", "muted", "bg", "groupDesc", "groupPhoto", "groupPassions", "createdBy"];
+function _reporterReglagesConvActif() {
+  try { return localStorage.getItem("passio_conv_prefs_boot") !== "0"; } catch (e) { return true; }
 }
 
 // Pour chaque conversation serveur déjà connue localement : l'objet LOCAL est
@@ -7128,11 +8601,21 @@ function _fusionnerConvsServeurDansLocal(supaConvs) {
 async function supaLoadMyConversations() {
   if (!_compteAuthReel()) return [];
   try {
-    const { data: memberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
-    if (!memberships?.length) return [];
-    const convIds = memberships.map(m => m.conv_id);
-    const { data: convs } = await supa.from("conversations").select("*").in("id", convIds);
-    if (!convs) return [];
+    // ⚠️ B06-N1 (revérification du 2026-11-20) : UNE LIGNE INVALIDE NE VIDE PAS LA
+    // LISTE. Ce `try` enveloppe toute la fonction : une seule ligne de forme
+    // inattendue (nulle, sans `conv_id`, `content` non textuel, conversation sans
+    // `id`) qui levait dans un `forEach` ou dans le `map` final rendait `[]` —
+    // toutes les conversations disparaissaient d'un appareil neuf. Les lignes
+    // sont donc filtrées à l'entrée (`_lignesConv`), et chaque conversation est
+    // construite sous son propre `try` (dans le `map` ci-dessous) : une conversation
+    // illisible est écartée et tracée, les autres restent.
+    const { data: membershipsBrutes } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
+    const memberships = (Array.isArray(membershipsBrutes) ? membershipsBrutes : []).filter(_ligneConvValide);
+    if (!memberships.length) return [];
+    const convIds = [...new Set(memberships.map(m => m.conv_id))];
+    const { data: convsBrutes } = await supa.from("conversations").select("*").in("id", convIds);
+    if (!Array.isArray(convsBrutes)) return [];
+    const convs = convsBrutes.filter(function (c) { return c && typeof c === "object" && c.id != null && c.id !== ""; });
 
     // 2 requêtes TOTAL (au lieu de 2 PAR conversation : 60 requêtes au boot pour
     // 30 convs). Les messages récents de toutes les convs partent en un seul
@@ -7154,13 +8637,28 @@ async function supaLoadMyConversations() {
       // depuis `conv_reads`, la même source que le ✓✓ de `supaLoadOtherRead`.
       supa.from("conv_reads").select("conv_id,last_read_at").eq("user_id", MY_UID).in("conv_id", convIds),
     ]);
+    // ⚠️ UNE SOUS-LECTURE EN ÉCHEC NE FABRIQUE PAS D'ENTRÉES (contre-revue du
+    // 2026-11-20). Messages, membres ou accusés illisibles donnaient des
+    // conversations sans aperçu, à 0 non-lu (ou tout non-lu), au partenaire mal
+    // résolu — qui REMPLAÇAIENT la copie locale au démarrage et l'écrasaient au
+    // réveil. La lecture serveur est alors abandonnée : `[]` = garder le local
+    // (`_rafraichirConversationsServeur`), le prochain réveil retente.
+    const sousLectureEnEchec = [msgsRes, membersRes, readsRes].some(function (res) {
+      return !res || !!res.error;
+    });
+    if (sousLectureEnEchec) {
+      try { if (typeof diagLog === "function") diagLog("conv_liste_sous_lecture_echec : liste locale conservee"); } catch (_e) {}
+      return [];
+    }
+    const lignesMsgs = _lignesConv(msgsRes).filter(function (m) { return m.content == null || typeof m.content === "string"; });
+    const lignesMembres = _lignesConv(membersRes);
     const luJusquA = {};
-    (readsRes && readsRes.data || []).forEach(r => { luJusquA[r.conv_id] = supaTs(r.last_read_at) || 0; });
+    _lignesConv(readsRes).forEach(r => { luJusquA[r.conv_id] = supaTs(r.last_read_at) || 0; });
     // Messages d'AUTRES membres postérieurs à ma dernière lecture. Une
     // conversation jamais ouverte n'a aucune ligne `conv_reads` : tout ce qui
     // vient d'un autre y est non lu, ce qui est exactement le cas vécu.
     const nonLusParConv = {};
-    (msgsRes.data || []).forEach(m => {
+    lignesMsgs.forEach(m => {
       if (!m || m.from_id === MY_UID) return;
       if (typeof m.content === "string" && m.content.charAt(0) === "{") {
         // Les messages de CONTRÔLE (réaction, suppression) ne sont pas des
@@ -7172,16 +8670,16 @@ async function supaLoadMyConversations() {
       }
     });
     const msgsByConv = {};
-    (msgsRes.data || []).forEach(m => {
+    lignesMsgs.forEach(m => {
       const arr = msgsByConv[m.conv_id] || (msgsByConv[m.conv_id] = []);
       if (arr.length < 5) arr.push(m); // déjà trié récent→ancien par la requête
     });
     const membersByConv = {};
-    (membersRes.data || []).forEach(m => {
+    lignesMembres.forEach(m => {
       (membersByConv[m.conv_id] || (membersByConv[m.conv_id] = [])).push(m);
     });
 
-    const result = convs.map((c) => {
+    const result = convs.map((c) => { try {
       // Premier message NON de contrôle (on saute les événements react/del qui ne
       // doivent pas servir d'aperçu de conversation).
       const _recent = msgsByConv[c.id] || [];
@@ -7218,6 +8716,8 @@ async function supaLoadMyConversations() {
       const lastSp = (last && last.from_id !== MY_UID && lastMsg && lastMsg.senderProfile) ? lastMsg.senderProfile : null;
       return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
+        createdBy: c.created_by || null, // LOT-4 (MSG-C08) : le rôle se tire du créateur
+        groupDesc: c.description || null, // la description vit en base (conversations.description)
         passion: null,
         userId: otherId,
         userEmoji: lastSp?.e || otherProf?.emoji || "✨",
@@ -7230,7 +8730,11 @@ async function supaLoadMyConversations() {
         messages: lastMsg ? [lastMsg] : [],
         fromSupabase: true,
       };
-    });
+    } catch (eConv) {
+      // Une conversation illisible est écartée, jamais toute la liste (B06-N1).
+      try { if (typeof diagLog === "function") diagLog("conv_ligne_ecartee " + String(eConv && eConv.name || "Error")); } catch (_e) {}
+      return null;
+    } }).filter(Boolean);
 
     // Dédupliquer par userId (garder la conv la plus récente par paire). Quand
     // userId a pu être résolu, deux conversations Supabase entre les deux mêmes
@@ -7243,15 +8747,32 @@ async function supaLoadMyConversations() {
       if (!seenUsers[key]) { seenUsers[key] = true; deduped.push(c); }
     }
     return deduped;
-  } catch(e) { return []; }
+  } catch(e) {
+    try { if (typeof diagLog === "function") diagLog("conv_liste_echec " + String(e && e.name || "Error")); } catch (_e) {}
+    return [];
+  }
+}
+
+// Une ligne serveur rattachée à une conversation : un objet avec un `conv_id`
+// non vide. Tout le reste est écarté AVANT les regroupements (B06-N1).
+// Placées APRÈS `supaLoadMyConversations` : le banc tests/unit/messagerie-forme
+// découpe la source de cette fonction jusqu'au commentaire suivant.
+function _ligneConvValide(l) {
+  return !!l && typeof l === "object" && !Array.isArray(l) && l.conv_id != null && l.conv_id !== "";
+}
+function _lignesConv(res) {
+  var data = res && !res.error ? res.data : null;
+  return Array.isArray(data) ? data.filter(_ligneConvValide) : [];
 }
 
 // supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
 
 // ---- NOTIFICATIONS ----
+// LOT-19 (IRL-C63) : rend le VERDICT (vrai = ligne écrite) — les appelants qui
+// l'ignorent ne changent pas ; « Prévenir les inscrits » compte les réussites.
 async function supaInsertNotif(toUserId, kind, refId, content) {
   try {
-    if (toUserId === MY_UID) return;
+    if (toUserId === MY_UID) return false;
     const prof = currentProfile();
     const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
     const fullText = `${safeName} ${content}`;
@@ -7263,7 +8784,25 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     });
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
-  } catch(e) {}
+    return !error;
+  } catch(e) { return false; }
+}
+// ⚠️ SRV-02 (2026-11-13) : UNE NOTIFICATION EST L'ÉCHO D'UNE ÉCRITURE ACCEPTÉE.
+// La base exige désormais l'événement métier derrière chaque `like`, `comment`,
+// `event_*` et `live_video` (`trg_notifications_preuve`, migration du 13/11) :
+// « X a aimé ton post » sans j'aime réel est refusé. Une notification qui partait
+// EN PARALLÈLE de son écriture arrivait donc avant elle, et se faisait refuser —
+// une notification légitime perdue. On attend le verdict : `ecriture` est la
+// promesse de l'écriture (vrai, `{ ok: true }` ou un identifiant = acceptée) ;
+// refusée ou en échec, rien ne part. Le motif ci-dessous est le PREREQUIS-CLIENT
+// de la migration : elle ne s'applique pas tant que le client servi ne le porte pas.
+var NOTIF_APRES_ECRITURE = "notifications:apres-ecriture";
+function notifierApresEcriture(ecriture, toUserId, kind, refId, content) {
+  return Promise.resolve(ecriture).then(function (r) {
+    var acceptee = r === true || (!!r && typeof r === "object" && r.ok === true) || (typeof r === "string" && r.length > 0);
+    if (!acceptee || typeof supaInsertNotif !== "function") return false;
+    return Promise.resolve(supaInsertNotif(toUserId, kind, refId, content)).then(function () { return true; });
+  }).catch(function () { return false; });
 }
 // ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
 // porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie
@@ -7367,13 +8906,28 @@ async function _handleIncomingConvMessage(r, opts) {
   // prochaines notifications de message repart de zéro (cf. `_notifierMessage`).
   try { if (window._msgNotifDerniere) delete window._msgNotifDerniere[r.conv_id]; } catch (e) {}
   if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
+  // Diffusion TRONQUÉE (D10-01, contrat du lot base du 2026-11-20) : le serveur
+  // ne recopie plus un long message entier à chaque membre ; la charge porte
+  // `tronque: true` et l'`id`. On relit la ligne complète par l'API — jamais le
+  // contenu tronqué affiché comme s'il était entier. Ancien format (sans
+  // drapeau) : inchangé, le client part AVANT la migration.
+  // ⚠️ SEULEMENT SUR `user:<moi>` (contre-revue du 2026-11-20) : aucun client ne
+  // peut y émettre. Sur `conv:<id>`, tout membre émet : relire l'identifiant
+  // qu'il désigne rendait authentique un ANCIEN contrôle (react, del) d'un autre
+  // membre, et chaque charge forgée coûtait une lecture par abonné. Le serveur
+  // n'y émet jamais de drapeau : une telle charge est jetée.
+  if (_diffusionTronquee(r) && _diffusionMembre) {
+    try { diagLog("msg_tronque_jete : drapeau sur un canal ou tout membre emet"); } catch (e) {}
+    return;
+  }
+  if (_diffusionTronquee(r) && !(opts && opts.relu)) return _relireMessageTronque(r, opts);
   // Preuve de livraison cross-device : ce message vient d'un AUTRE appareil.
   try { window.tel && tel.recv("message", { convId: r.conv_id }); } catch (e) {}
 
   // Messages de contrôle (pas de bulle) : suppression « pour tous » et réactions.
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
-      var _dd = JSON.parse(r.content);
+      var _dd = _messageContentData(r.content);
       // ⚠️ CANAL v2 : UN CONTRÔLE DIFFUSÉ N'EST JAMAIS APPLIQUÉ (revue du
       // 2026-11-03). La règle « l'expéditeur est le `from_id` DE LA LIGNE » ne
       // tient que si la ligne vient du serveur (RLS d'INSERT : `from_id =
@@ -7508,16 +9062,20 @@ async function _handleIncomingConvMessage(r, opts) {
     try {
       const fp = document.getElementById("conv-fullpage");
       const displayName = fp ? fp.getAttribute("data-display-name") : (conv.userName || "");
-      renderConvFpThread(conv, displayName);
+      // LOT-4 (MSG-C55) : on ne ramène plus en bas quelqu'un qui relit l'historique.
+      if (typeof _convMessageEntrant === "function") _convMessageEntrant(conv, displayName); else renderConvFpThread(conv, displayName);
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
   } else {
     conv.unread = (conv.unread || 0) + 1;
     conversationsState = convs;
     saveConversations();
-    _playMsgSound();
+    // LOT-7 (MSG-C02) : en sourdine, le message est rangé (point non lu sur la
+    // ligne) mais rien ne sonne ni ne s'ajoute à la cloche.
+    const _sourdine = !!(conv._muted || conv.muted);
+    if (!_sourdine) _playMsgSound();
     // Notif dans l'onglet 🔔 Notifications (+ badge cloche + titre onglet)
-    try {
+    if (!_sourdine) try {
       // Signature : pushNotification(text, emoji, fromId) — l'ancien appel
       // (sender, body, "✉️") mettait le corps dans l'emoji et rendait le pseudo
       // BRUT (innerHTML) comme texte. escapeHtml : pseudo contrôlé par l'expéditeur.
@@ -7540,6 +9098,116 @@ async function _handleIncomingConvMessage(r, opts) {
 }
 window._handleIncomingConvMessage = _handleIncomingConvMessage;
 
+// ── Diffusion tronquée d'un message (D10-01, client prêt AVANT la migration) ──
+// Contrat proposé au lot base : la charge diffusée porte `tronque: true` et l'`id`
+// du message (dans `record`, ou au niveau de la charge), sur `user:<membre>`
+// SEULEMENT — sur `conv:<id>`, où tout membre émet, la charge est jetée
+// (contre-revue du 2026-11-20). Le client relit `conv_messages`
+// par identifiant, sous SA règle de lecture (membre de la conversation), puis
+// traite la ligne SERVEUR comme un message reçu : son `from_id` est prouvé.
+// Bornes :
+//   · une relecture par identifiant à la fois, et jamais deux fois le même ;
+//   · au plus MSG_RELECTURE_MAX_MIN relectures par minute, et
+//     MSG_RELECTURE_MAX_MIN_CONV par conversation (au-delà : pas de bulle, mais
+//     la pastille non lue ; le prochain chargement apporte le contenu) ;
+//   · une ligne d'une AUTRE conversation que celle annoncée est jetée ;
+//   · un échec est retenté UNE fois, après MSG_RELECTURE_RETRY_MS — puis
+//     abandonné (jamais le contenu tronqué peint comme entier ; pastille seule).
+var MSG_RELECTURE_MAX_MIN = 60;
+// Budget PAR CONVERSATION (contre-revue du 2026-11-20) : un membre qui envoie
+// beaucoup de longs messages dans un groupe ne consomme plus le budget des
+// autres conversations.
+var MSG_RELECTURE_MAX_MIN_CONV = 20;
+var MSG_RELECTURE_RETRY_MS = 3000;
+var _msgRelecturesEnCours = new Set();
+var _msgRelecturesFaites = new Set();
+var _msgRelecturesFenetre = [];
+function _diffusionTronquee(r) {
+  return !!r && r.tronque === true;
+}
+// Rend "ok", "deja" (en cours ou faite) ou "budget" (hors budget).
+function _msgRelectureAutorisee(id, convId) {
+  if (_msgRelecturesEnCours.has(id) || _msgRelecturesFaites.has(id)) return "deja";
+  return _msgRelectureBudget(convId) ? "ok" : "budget";
+}
+// Le budget compte des REQUÊTES, pas des identifiants (revue second modèle du
+// 2026-11-20) : le nouvel essai d'une relecture en échec le consomme aussi.
+function _msgRelectureBudget(convId) {
+  var maintenant = Date.now();
+  _msgRelecturesFenetre = _msgRelecturesFenetre.filter(function (e) { return maintenant - e.t < 60000; });
+  if (_msgRelecturesFenetre.length >= MSG_RELECTURE_MAX_MIN) return false;
+  var cle = String(convId);
+  if (_msgRelecturesFenetre.filter(function (e) { return e.c === cle; }).length >= MSG_RELECTURE_MAX_MIN_CONV) return false;
+  _msgRelecturesFenetre.push({ t: maintenant, c: cle });
+  return true;
+}
+// Message annoncé mais pas relu (hors budget, relecture en échec) : pas de
+// bulle — jamais le contenu tronqué — mais la conversation remonte avec sa
+// pastille non lue, et le contenu arrive au prochain chargement. Seulement pour
+// une conversation CONNUE (aucune n'est créée ici), et une fois par message.
+var _msgSignalesSansContenu = new Set();
+function _signalerMessageNonRelu(r) {
+  try {
+    if (!r || typeof r.id !== "string" || _msgSignalesSansContenu.has(r.id)) return;
+    var convs = getConversations();
+    var conv = convs.find(function (c) { return c && c.id === r.conv_id; });
+    if (!conv || (conv.messages || []).some(function (m) { return m && m.id === r.id; })) return;
+    _msgSignalesSansContenu.add(r.id);
+    if (_msgSignalesSansContenu.size > 500) _msgSignalesSansContenu.delete(_msgSignalesSansContenu.values().next().value);
+    var at = supaTs(r.created_at) || Date.now();
+    if (!(conv.lastAt >= at)) conv.lastAt = at;
+    if (window._openedConvId !== conv.id) conv.unread = (conv.unread || 0) + 1;
+    conversationsState = convs;
+    saveConversations();
+    try { renderMessages(); } catch (e) {}
+    try { renderMsgBadge(); } catch (e) {}
+  } catch (e) {}
+}
+async function _relireMessageTronque(r, opts) {
+  var id = r && r.id;
+  if (typeof id !== "string" || !id || id.length > 200 || typeof supa === "undefined" || !supa) return;
+  var autorisation = _msgRelectureAutorisee(id, r.conv_id);
+  if (autorisation !== "ok") {
+    try { diagLog("msg_tronque_ignore : relecture deja faite, en cours ou hors budget"); } catch (e) {}
+    if (autorisation === "budget") _signalerMessageNonRelu(r);
+    return;
+  }
+  _msgRelecturesEnCours.add(id);
+  try {
+    for (var essai = 0; essai < 2; essai++) {
+      if (essai) {
+        await new Promise(function (ok) { setTimeout(ok, MSG_RELECTURE_RETRY_MS); });
+        if (!_msgRelectureBudget(r.conv_id)) break;
+      }
+      var res = null;
+      try {
+        res = await supa.from("conv_messages")
+          .select("id, conv_id, from_id, content, created_at")
+          .eq("id", id).limit(1);
+      } catch (e) { res = { error: e }; }
+      if (res && !res.error && Array.isArray(res.data)) {
+        var ligne = res.data[0];
+        _msgRelecturesFaites.add(id);
+        if (_msgRelecturesFaites.size > 500) _msgRelecturesFaites.delete(_msgRelecturesFaites.values().next().value);
+        if (!ligne || typeof ligne !== "object") return; // supprimé, ou hors de ma lecture
+        if (ligne.id !== id || String(ligne.conv_id) !== String(r.conv_id)) {
+          try { diagLog("msg_tronque_refuse : ligne relue hors de la conversation annoncee"); } catch (e) {}
+          return;
+        }
+        // La ligne vient du SERVEUR : plus une charge de membre (`diffusionMembre`).
+        var suite = Object.assign({}, opts || {}, { relu: true });
+        delete suite.diffusionMembre;
+        return _handleIncomingConvMessage(ligne, suite);
+      }
+    }
+    try { diagLog("msg_tronque_echec : relecture impossible, rattrapee au prochain chargement"); } catch (e) {}
+    _signalerMessageNonRelu(r);
+  } finally {
+    _msgRelecturesEnCours.delete(id);
+  }
+}
+window._relireMessageTronque = _relireMessageTronque;
+
 // v2 : s'abonne au canal PRIVÉ d'une conversation (Broadcast-from-Database).
 // Idempotent (dedup via _privateConvChans). No-op si supa absent.
 window._privateConvChans = window._privateConvChans || {};
@@ -7550,6 +9218,9 @@ function _subscribePrivateConv(convId) {
     .on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
       var r = p && (p.record || p.new || p); // selon le format broadcast_changes
+      // Un drapeau `tronque` (dans `record` ou au niveau de la charge) n'est
+      // jamais honoré ici : `_handleIncomingConvMessage` jette la charge.
+      if (r && r !== p && p.tronque === true && r.tronque !== true) r = Object.assign({}, r, { tronque: true });
       // ⚠️ `passio_rt_emettre` laisse tout MEMBRE diffuser sur `conv:<id>` :
       // cette charge n'est pas forcément celle du trigger, et son `from_id`
       // n'est pas prouvé. D'où `diffusionMembre` : aucun contrôle (del, react)
@@ -7761,6 +9432,7 @@ function _subscribeUserTopic() {
       // sous ce nom n'est PAS un message (voir l'en-tête R25 ci-dessus).
       if (p && p.table && p.table !== "conv_messages") return;
       var r = p && (p.record || p.new || p);
+      if (r && r !== p && p.tronque === true && r.tronque !== true) r = Object.assign({}, r, { tronque: true });
       if (r && r.conv_id) _handleIncomingConvMessage(r);
     });
   }
@@ -8584,6 +10256,9 @@ function _erreurColonneStatutAbsente(err) {
 }
 
 async function supaFollowUser(targetId) {
+  // LOT-5 (REC-C02) : garde AU POINT D'ÉCRITURE — `follows.following_id` n'a pas de
+  // clé étrangère, un suivi vers un personnage d'exemple passait en base.
+  if (typeof estPersonneExemple === "function" && estPersonneExemple(targetId)) return { ok: false, exemple: true };
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("follow_user", { target: targetId }); } catch (e) {}
   try {
@@ -8688,11 +10363,25 @@ function _demandeAbonnementTraitee(notifId, verdict) {
 }
 
 async function supaUnfollowUser(targetId) {
+  // Un visiteur (pas un uuid) n'a aucune ligne `follows` : son retrait est local,
+  // et réussi. Sans cette garde, l'échec forcé du DELETE faisait REVENIR le suivi
+  // depuis que l'appelant lit le verdict (ETAT-08).
+  if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return { ok: true, local: true };
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("unfollow_user", { target: targetId }); } catch (e) {}
   try {
-    const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
-    const ok = !!(!res || !res.error);
+    const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId).select("following_id");
+    let ok = !!(!res || !res.error);
+    // ⚠️ 0 LIGNE N'EST UN SUCCÈS QUE SOUS LA SESSION DE CE COMPTE (ETAT-08 / ETAT-05) :
+    // sous une session morte, la RLS filtre le DELETE sans erreur. Déjà plus suivi
+    // (0 ligne sous MA session) reste un succès : l'état voulu est atteint.
+    if (ok && res && Array.isArray(res.data) && res.data.length === 0 && supa.auth && supa.auth.getSession) {
+      try {
+        const ses = await supa.auth.getSession();
+        const su = ses && ses.data && ses.data.session && ses.data.session.user;
+        if (!su || su.id !== MY_UID) ok = false;
+      } catch (e) { ok = false; }
+    }
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     // ⚠️ LE VERDICT REMONTE (2026-09-22). Cette fonction avalait `{ error }` et
     // ne rendait RIEN : un DELETE refusé (RLS, réseau) laissait l'écran annoncer
@@ -8712,13 +10401,17 @@ async function supaLoadFollowing() {
       if (res && res.error && _erreurColonneStatutAbsente(res.error)) { window._followsSansStatut = true; res = null; }
     }
     if (!res) res = await supa.from("follows").select("following_id").eq("follower_id", MY_UID);
-    const lignes = (res && res.data) || [];
+    // ⚠️ `null` SUR UN ÉCHEC, `[]` POUR « AUCUN SUIVI » (ETAT-08, audit du 2026-11-10) :
+    // l'appelant ne pouvait pas distinguer une panne d'une liste vide, et ne faisait
+    // donc qu'AJOUTER — un désabonnement revenait au démarrage suivant.
+    if (!res || res.error) return null;
+    const lignes = res.data || [];
     // Les demandes EN ATTENTE ne sont pas des abonnements : elles n'entrent ni
     // dans « Suivis » ni dans le verrou du profil visité, mais le bouton les dit.
     const enAttente = lignes.filter(r => r.status === "pending").map(r => r.following_id);
     if (state && state.user) state.user.followingPending = enAttente;
     return lignes.filter(r => r.status !== "pending").map(r => r.following_id);
-  } catch(e) { return []; }
+  } catch(e) { return null; }
 }
 
 // ---- MODÉRATION : BLOCAGE / SIGNALEMENT ----
@@ -8776,9 +10469,10 @@ async function supaUnblockUser(targetId) {
 async function supaLoadBlocks() {
   if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
   try {
-    const { data } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
+    const { data, error } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
+    if (error) return null;   // ETAT-08 : une panne n'est pas « aucun blocage »
     return (data || []).map(r => r.blocked_id);
-  } catch(e) { return []; }
+  } catch(e) { return null; }
 }
 // Renvoie true seulement si le signalement est réellement en base. Sans ce verdict,
 // une policy INSERT absente ou cassée faisait disparaître le signalement sans le
@@ -8802,9 +10496,13 @@ async function supaReport(targetType, targetId, reason) {
     // 23505 — « le cas le plus fréquent » (app-04). C'est une règle, pas une panne.
     const code = v.ok ? null : String(v.error && v.error.code) === "23505" ? "doublon" : (typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(v.error) : null);
     _repRegle(v.ok, code ? { code, message: code } : v.error);
+    // LOT-26 (TRA-C18) : le motif du dernier refus, lu par `messageSignalement`
+    // (app-04) — « déjà signalé » n'est pas une panne.
+    window._dernierSignalementMotif = code;
     return v.ok;
   } catch(e) {
     console.warn("signalement :", e && e.message);
+    window._dernierSignalementMotif = null;
     const code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(e) : null;
     _repRegle(false, code ? { code, message: code } : e);
     return false;
@@ -8812,6 +10510,96 @@ async function supaReport(targetType, targetId, reason) {
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----
+// ═══ J'AIME, « VU PAR », COMMENTAIRES D'UNE STORY (2026-11-14) ═════════════
+// Tables `story_likes` / `story_comments` et la policy « Vu par » de
+// `story_views` : migration_story_interactions_2026-11-14.sql. Tant qu'elle
+// n'est pas appliquée, la base répond 42P01 / PGRST205 : `_storyIxDispo`
+// passe à faux et la visionneuse garde son repli (j'aime et réactions en
+// message direct). Seules les stories RÉELLES (`fromSupabase`) d'un COMPTE en
+// ont : une story d'exemple n'a pas de ligne en base.
+var _storyIxDispo = null; // null = inconnu, true = tables présentes, false = absentes
+function _storyIxAbsente(err) {
+  if (!err) return false;
+  var code = String(err.code || "");
+  var m = String(err.message || "");
+  return code === "42P01" || code === "PGRST205" || /story_(likes|comments)/.test(m) && /does not exist|schema cache|introuvable/i.test(m);
+}
+function _storyIxNoter(res) {
+  if (res && res.error && _storyIxAbsente(res.error)) { _storyIxDispo = false; return false; }
+  if (res && !res.error) _storyIxDispo = true;
+  return true;
+}
+function storyIxPossible(s) {
+  return _storyIxDispo !== false && !!(s && s.fromSupabase && s.id)
+    && !!window._supaReal && typeof supa !== "undefined" && !!supa
+    && typeof _compteAuthReel === "function" && _compteAuthReel();
+}
+// J'aime : l'INTENTION locale part telle quelle (jamais re-déduite d'une
+// lecture). Rend { ok, absente }.
+async function supaStoryAimer(storyId, aime) {
+  try {
+    var r = aime
+      ? await supa.from("story_likes").upsert({ story_id: String(storyId), user_id: MY_UID }, { onConflict: "story_id,user_id", ignoreDuplicates: true })
+      : await supa.from("story_likes").delete().eq("story_id", String(storyId)).eq("user_id", MY_UID);
+    if (!_storyIxNoter(r)) return { ok: false, absente: true };
+    if (r.error) { try { diagLog("story_like_refus " + String(r.error.code || "")); } catch (_) {} return { ok: false }; }
+    return { ok: true };
+  } catch (e) { return { ok: false }; }
+}
+// Mes j'aime parmi une liste de stories (pour peindre le cœur).
+async function supaStoryMesJaime(ids) {
+  try {
+    if (!ids || !ids.length) return [];
+    var r = await supa.from("story_likes").select("story_id").eq("user_id", MY_UID).in("story_id", ids.map(String));
+    if (!_storyIxNoter(r) || r.error) return null;
+    return (r.data || []).map(function (x) { return x.story_id; });
+  } catch (e) { return null; }
+}
+// Activité de MA story : qui l'a vue, qui l'a aimée.
+async function supaStoryActivite(storyId) {
+  try {
+    var id = String(storyId);
+    var rv = await supa.from("story_views").select("user_id, seen_at").eq("story_id", id).order("seen_at", { ascending: false }).limit(500);
+    var rl = await supa.from("story_likes").select("user_id").eq("story_id", id).limit(1000);
+    if (!_storyIxNoter(rl)) return { absente: true };
+    if (rv.error || rl.error) return { erreur: true };
+    return {
+      vues: (rv.data || []).filter(function (v) { return v.user_id !== MY_UID; }).map(function (v) { return { userId: v.user_id, at: supaTs(v.seen_at) }; }),
+      jaime: (rl.data || []).map(function (l) { return l.user_id; }),
+    };
+  } catch (e) { return { erreur: true }; }
+}
+async function supaStoryCommentaires(storyId) {
+  try {
+    var r = await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
+    if (!_storyIxNoter(r)) return { absente: true };
+    if (r.error) return { erreur: true };
+    return { liste: (r.data || []).map(function (c) { return { id: c.id, authorId: c.author_id, text: c.content || "", at: supaTs(c.created_at) }; }) };
+  } catch (e) { return { erreur: true }; }
+}
+async function supaStoryNbCommentaires(storyId) {
+  try {
+    var r = await supa.from("story_comments").select("id", { count: "exact", head: true }).eq("story_id", String(storyId));
+    if (!_storyIxNoter(r) || r.error) return null;
+    return typeof r.count === "number" ? r.count : null;
+  } catch (e) { return null; }
+}
+async function supaStoryCommenter(storyId, texte) {
+  try {
+    var r = await supa.from("story_comments").insert({ story_id: String(storyId), author_id: MY_UID, content: texte }).select("id, created_at");
+    if (!_storyIxNoter(r)) return { absente: true };
+    if (r.error || !r.data || !r.data.length) { try { diagLog("story_commentaire_refus " + String((r.error && r.error.code) || "0")); } catch (_) {} return { ok: false }; }
+    return { ok: true, id: r.data[0].id, at: supaTs(r.data[0].created_at) };
+  } catch (e) { return { ok: false }; }
+}
+async function supaStorySupprimerCommentaire(id) {
+  try {
+    var r = await supa.from("story_comments").delete().eq("id", String(id)).select("id");
+    if (r.error || !r.data || !r.data.length) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
 // Table story_views (story_id, user_id) : quelles stories J'AI vues, pour que
 // les anneaux vus/non-vus (Instagram) survivent au changement d'appareil.
 // Les ids des stories seed (« s1 »…) y passent aussi : mêmes ids partout →
@@ -9064,17 +10852,96 @@ async function supaFirstWaitlisted(eventId) {
 }
 
 // Mes participations AVEC leur état (pour rehydrater les RSVP au boot).
+// ══════════════════════════════════════════════════════════════════════════
+// LES RETRAITS CONVERGENT : APRÈS UNE LECTURE RÉUSSIE, LA BASE FAIT FOI (ETAT-08)
+// ──────────────────────────────────────────────────────────────────────────
+// Audit de stabilisation du 2026-11-10. Le démarrage ne faisait qu'AJOUTER ce que
+// la base rendait (union) — et les lecteurs rendaient `[]`/`{}` aussi bien sur
+// une panne que sur une liste vide, si bien qu'aucun remplacement n'était sûr.
+// Un désabonnement, un déblocage, une désinscription faits sur un autre appareil
+// (ou hors ligne) revenaient donc au démarrage suivant, et l'appareil qui les
+// portait encore les repoussait aux autres par le blob d'état.
+// Désormais : un lecteur rend `null` sur un échec (on ne touche à rien) ; sur un
+// succès, la liste du serveur REMPLACE la liste locale, sauf :
+//   · un identifiant dont l'écriture est EN VOL — l'état local décide, dans les
+//     deux sens (suivre comme ne plus suivre) ;
+//   · un profil d'EXEMPLE (pas un uuid) — il n'existe pas en base, il reste local.
+// ⚠️ LE REMPLACEMENT N'EST SÛR QUE SOUS LA SESSION DE CE COMPTE (revue du 12/11) :
+// sous une session morte, la lecture passe en rôle anonyme et rend 0 ligne SANS
+// erreur (`blocks` n'est lisible que par son auteur) — remplacer effacerait tous
+// les blocages. Sans session vérifiée, on retombe sur l'union d'avant.
+async function _sessionEstMoi() {
+  try {
+    if (typeof supa === "undefined" || !supa || !supa.auth || !supa.auth.getSession) return false;
+    var ses = await supa.auth.getSession();
+    var su = ses && ses.data && ses.data.session && ses.data.session.user;
+    return !!(su && su.id === MY_UID);
+  } catch (e) { return false; }
+}
+function _fusionnerSuivisServeur(ids, remplacer) {
+  if (!Array.isArray(ids) || !state || !state.user) return false;
+  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...ids])]; }
+  else {
+    var enVol = Object.keys((typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {});
+    state.user.following = [...new Set([
+      ...ids.filter(function (id) { return enVol.indexOf(id) < 0; }),
+      ...(state.user.following || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+    ])];
+  }
+  // FIL-C30 : « Passionnés à découvrir » ne propose pas un compte déjà suivi.
+  try { if (window.PassioUIV2 && typeof window.PassioUIV2.rafraichirPassionnes === "function") window.PassioUIV2.rafraichirPassionnes(); } catch (e) {}
+  return true;
+}
+// ⚠️ Rend VRAI seulement si la liste a CHANGÉ (2026-11-12, LOT-13) : elle rendait
+// vrai à chaque démarrage, et l'appelant repeignait le fil pour rien, juste après
+// le boot — un rendu qui effaçait ce qui venait d'être peint (feed-irl-bridge).
+function _signatureBlocages(liste) { return (liste || []).map(String).sort().join("\u0001"); }
+function _fusionnerBlocagesServeur(bl, remplacer) {
+  if (!Array.isArray(bl) || !state || !state.user) return false;
+  var avant = _signatureBlocages(state.user.blocked);
+  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return _signatureBlocages(state.user.blocked) !== avant; }
+  var enVol = Object.keys((typeof _ecritureBlocageEnCours !== "undefined" && _ecritureBlocageEnCours) || {});
+  state.user.blocked = [...new Set([
+    ...bl.filter(function (id) { return enVol.indexOf(id) < 0; }),
+    ...(state.user.blocked || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+  ])];
+  return _signatureBlocages(state.user.blocked) !== avant;
+}
+// Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
+// désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
+// activités d'exemple, qui n'existent qu'ici, gardent leur réponse locale.
+function _fusionnerRsvpServeur(map, remplacer) {
+  if (!map || typeof map !== "object" || !state || !state.user) return false;
+  state.user.eventRsvp = state.user.eventRsvp || {};
+  state.user.checkedInEvents = state.user.checkedInEvents || [];
+  if (remplacer === true) Object.keys(state.user.eventRsvp).forEach(function (evId) {
+    if (map[evId]) return;
+    var ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null;
+    if (ev && ev.fromSupabase) delete state.user.eventRsvp[evId];
+  });
+  Object.keys(map).forEach(function (evId) {
+    state.user.eventRsvp[evId] = map[evId].rsvp;
+    if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1) state.user.checkedInEvents.push(evId);
+  });
+  state.user.joinedEvents = Object.keys(state.user.eventRsvp)
+    .filter(function (k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+  return true;
+}
+
 async function supaLoadMyRsvps() {
   // ⚠️ CE CHEMIN COÛTAIT DEUX REFUS, PAS UN : `if (error) throw error` tombait
   // dans le repli ci-dessous, qui REFAISAIT la même requête refusée. Sans compte
   // réel, le filtre `user_id = MY_UID` ne pourrait de toute façon rendre aucune
   // ligne utile — et `{}` est déjà ce que la fonction rend quand elle échoue.
-  if (!_attendeesLisibles()) return {};
+  // Un visiteur n'a aucune inscription (`{}`) ; un COMPTE dont la lecture est
+  // refusée (mémo de refus) ne sait pas : `null` (ETAT-08, revue du 12/11).
+  if (!_attendeesLisibles()) return _compteAuthReel() ? null : {};
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
     // Un refus est définitif : on ne passe PAS au repli « sans la colonne rsvp ».
-    if (error && _attendeesRefusMemorise(error, "supaLoadMyRsvps")) return {};
+    // ETAT-08 : un refus ou une panne rend `null` — « je ne sais pas », jamais « aucune inscription ».
+    if (error && _attendeesRefusMemorise(error, "supaLoadMyRsvps")) return null;
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
@@ -9083,16 +10950,16 @@ async function supaLoadMyRsvps() {
     // Repli sans la colonne rsvp.
     try {
       const { data, error } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
-      if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return {}; }
+      if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return null; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
       return out;
-    } catch(e2) { return {}; }
+    } catch(e2) { return null; }
   }
 }
 
 async function supaLoadJoinedEvents() {
-  const rsvps = await supaLoadMyRsvps();
+  const rsvps = (await supaLoadMyRsvps()) || {};
   // « Inscrit » = je viens ou peut-être (pas les refus ni la liste d'attente).
   return Object.keys(rsvps).filter(id => rsvps[id].rsvp === "going" || rsvps[id].rsvp === "maybe");
 }
@@ -9100,14 +10967,15 @@ async function supaLoadJoinedEvents() {
 // ---- ALBUM D'ÉVÉNEMENT : posts rattachés à un événement ----
 async function supaLoadEventPosts(eventId) {
   try {
-    const { data, error } = await supa.from("posts")
-      .select("*").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
+    let { data, error } = await supa.from("posts")
+      .select("id,author_id,content,media_url,shared_data,created_at,event_id").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
     if (error) return [];
+    data=await passioMediaProteges.projeterHeritageLignes(data||[]);
     const profs = await _resolveProfilesByIds((data || []).map(r => r.author_id));
     return (data || []).map(r => ({
       id: r.id, authorId: r.author_id,
       authorName: (profs[r.author_id] || {}).username || "Passionné",
-      text: r.content || "", image: r.media_url || null,
+      text: r.content || "", image: passioMediaProteges.parser(r.media_url)?(passioMediaProteges.presentation(r)||{}).image||null:r.media_url||null,
       createdAt: supaTs(r.created_at), eventId: r.event_id,
     }));
   } catch(e) { return []; }
@@ -9117,20 +10985,30 @@ async function supaLoadEventPosts(eventId) {
 // Créée à la demande, puis mémorisée dans events.conv_id : tous les inscrits
 // rejoignent la même conversation (le levier n°1 de participation réelle).
 async function supaCreateEventConversation(ev) {
+  if (!ev || !ev.id || !MY_UID) return null;
   try {
-    await supaEnsureProfileExists();
-    const convId = "evgrp_" + (ev.id || uid());
+    if (await supaEnsureProfileExists() !== true) return null;
+    const convId = "evgrp_" + ev.id;
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
-      group_name: "📍 " + String(ev.title || "Événement").slice(0, 40),
-      // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
-      // doit pas être bloquée par le classement de son événement.
+      group_name: "📍 " + String(ev.title || "Activité").slice(0, 40),
       passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
-    if (r.error && String(r.error.code) !== "23505") return null;
-    // Le créateur doit être membre, sinon la discussion existe sans lui (IRL-10).
+    if (!r || (r.error && String(r.error.code) !== "23505")) return null;
+    // Prouver aussi l'identité d'une conversation déjà présente (23505).
+    const c = await supa.from("conversations").select("id,created_by,is_group")
+      .eq("id", convId).single();
+    if (!c || c.error || !c.data || c.data.id !== convId ||
+        c.data.created_by !== MY_UID || c.data.is_group !== true) return null;
+    // Le lien serveur doit exister AVANT le membre : la garde le relit.
+    const lien = await supa.from("events").update({ conv_id: convId })
+      .eq("id", ev.id).select("id,conv_id").single();
+    if (!lien || lien.error || !lien.data || lien.data.id !== ev.id || lien.data.conv_id !== convId) return null;
     const m = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
-    if (m && m.error && String(m.error.code) !== "23505") { console.warn("discussion créée, créateur non membre —", m.error.message); return null; }
+    if (!m || (m.error && String(m.error.code) !== "23505")) return null;
+    const preuve = await supa.from("conv_members").select("conv_id,user_id")
+      .eq("conv_id", convId).eq("user_id", MY_UID).single();
+    if (!preuve || preuve.error || !preuve.data || preuve.data.conv_id !== convId || preuve.data.user_id !== MY_UID) return null;
     return convId;
   } catch(e) { return null; }
 }
@@ -9388,6 +11266,7 @@ function _feedPostsSig(posts) {
 // autorité PARTAGÉE avec le filet des lives : deux copies d'une même politique
 // finissent toujours par diverger sur celle qu'on oublie.
 let _feedFiletPas = 60000;
+let _feedFiletEchecs = 0;   // tours en échec d'affilée (lot 4 du 2026-11-15, `reculSurErreur`)
 
 // Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
 // l'écran et par les gestionnaires temps réel : il vient de se passer quelque
@@ -9413,13 +11292,19 @@ function startFeedRefreshLoop() {
     // rendez-vous de celui-ci en sortant sur la garde « en vol ».
     if (_feedRefreshInFlight) { _feedRefreshRelance = true; return; }
     _feedRefreshInFlight = true;
-    let vivant = false;
+    let vivant = false, echec = false;
     try {
       if (document.hidden) return;                    // onglet en arrière-plan : pas de requête (batterie/quota)
       if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
       const feedEl = document.getElementById("screen-feed");
       if (!feedEl || !feedEl.classList.contains("active")) return;
-      const posts = await supaLoadPosts(0, null, { generation });
+      const degradesAvant = window._filComplementsDegradesSeq || 0;
+      const reculAvant = window._filComplementsReculSeq || 0;
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
+      // D14-01 : des compteurs en échec (ou en recul) sont un ÉCHEC du tour, pas
+      // un calme ni un succès — le tour suivant recule (`reculSurErreur`).
+      if ((window._filComplementsDegradesSeq || 0) !== degradesAvant) echec = true;
+      if ((window._filComplementsReculSeq || 0) !== reculAvant) echec = true;
       if (generation !== _feedRefreshGeneration) return;
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
@@ -9434,11 +11319,13 @@ function startFeedRefreshLoop() {
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
     } catch (e) {
-      // ⚠️ Une panne n'est PAS un calme : reculer sur une coupure réseau ferait
-      // mettre cinq minutes à retrouver le fil au retour de la connexion. On
-      // laisse le pas où il est.
+      // ⚠️ Une panne n'est PAS un calme : le PAS ne recule pas (le retour de la
+      // connexion relit vite, `online` réveille le filet). Mais le PROCHAIN TOUR,
+      // lui, recule (lot 4 du 2026-11-15, `reculSurErreur`, app-02) : relancer
+      // une base saturée au rythme le plus vif entretenait la surcharge.
       try { diagLog("feed_filet", e && e.message); } catch (_e) {}
       vivant = true;
+      echec = true;
     } finally {
       _feedRefreshInFlight = false;
       if (_feedRefreshRelance && _feedRefreshTour && _feedRefreshInterval !== null) {
@@ -9457,9 +11344,19 @@ function startFeedRefreshLoop() {
         // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) — voir
         // son commentaire. Pinné partout, ce filet coûtait 4 req/min par onglet
         // visiteur, ×5 du régime d'avant.
+        // ⚠️ LOT 4 DU 2026-11-15 (capacité) : épinglé à 60 s tant que le fil
+        // était à l'écran, il refaisait chaque minute, pour chaque onglet
+        // (visiteurs compris), la page et l'appel groupé des compteurs. Il
+        // recule désormais comme les autres, BORNÉ à 3 min quand il est le seul
+        // chemin (`filetBorneSeulChemin`, app-02) ; et un tour en échec espace
+        // le suivant (`reculSurErreur`) au lieu de le relancer au plus vif.
         const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
-        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));
+        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant, document.hidden);
+        _feedFiletPas = filetBorneSeulChemin(_feedFiletPas, seulChemin);
+        _feedFiletEchecs = echec ? _feedFiletEchecs + 1 : 0;
+        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletEchecs
+          ? reculSurErreur(_feedFiletPas, _feedFiletEchecs, Math.random())
+          : _feedFiletPas));
       }
     }
   };
@@ -9482,6 +11379,12 @@ function stopFeedRefreshLoop() {
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) return;
   feedFiletReveiller(true);
+});
+// Le réseau revient : le recul sur erreur (lot 4 du 2026-11-15) ne doit pas faire
+// attendre des minutes une connexion qui vient de se rétablir.
+window.addEventListener("online", function () {
+  _feedFiletEchecs = 0;
+  if (!document.hidden) feedFiletReveiller(true);
 });
 
 // ═══ ANALYTICS LÉGÈRES ═══
@@ -9739,6 +11642,13 @@ async function supaInit() {
       renderFeed();
     }
 
+    // 1bis. MES PUBLICATIONS, relues dans `posts` (2026-11-14) : le profil ne
+    // dépend plus d'une copie locale que la synchronisation peut perdre, et une
+    // passion où j'ai publié après l'avoir archivée revient (app-06).
+    if (_compteAuthReel() && typeof rapatrierMesPublications === "function") {
+      rapatrierMesPublications().catch(function () {});
+    }
+
     // 2. D\u00c9MARRER LE REFRESH AUTOMATIQUE DU FEED
     // Cela garantit que les posts d'autres utilisateurs apparaissent en temps quasi-r\u00e9el
     startFeedRefreshLoop();
@@ -9746,8 +11656,7 @@ async function supaInit() {
 
     // 3. Les autres requ\u00eates peuvent attendre (moins critiques)
     setTimeout(() => {
-      if (typeof supaLoadStories === "function")
-        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
+      rafraichirBandeauStories().catch(() => console.warn("Actualisation du bandeau des stories indisponible"));
       // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
       // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events ; et
       // repeindre « Rencontrer » s'il est déjà affiché. Tout est dans
@@ -9779,17 +11688,8 @@ async function supaInit() {
       // RSVP (je viens / peut-être / liste d'attente) + check-ins : rechargés
       // depuis le serveur pour être cohérents d'un appareil à l'autre.
       if (typeof supaLoadMyRsvps === "function") {
-        supaLoadMyRsvps().then(function(map) {
-          if (!map) return;
-          state.user.eventRsvp = state.user.eventRsvp || {};
-          state.user.checkedInEvents = state.user.checkedInEvents || [];
-          Object.keys(map).forEach(function(evId) {
-            state.user.eventRsvp[evId] = map[evId].rsvp;
-            if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1)
-              state.user.checkedInEvents.push(evId);
-          });
-          state.user.joinedEvents = Object.keys(state.user.eventRsvp)
-            .filter(function(k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+        supaLoadMyRsvps().then(async function(map) {
+          if (!_fusionnerRsvpServeur(map, await _sessionEstMoi())) return;   // ETAT-08 : la base fait foi, voir la fonction
           saveState();
           try {
             var s = document.getElementById("screen-irl");
@@ -9802,9 +11702,8 @@ async function supaInit() {
       if (typeof _irlWeeklyDigest === "function") setTimeout(_irlWeeklyDigest, 4000);
       // Liste de blocage (modération) : fusion avec le cache local.
       if (typeof supaLoadBlocks === "function")
-        supaLoadBlocks().then(bl => {
-          if (bl && bl.length) {
-            state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])];
+        supaLoadBlocks().then(async bl => {
+          if (_fusionnerBlocagesServeur(bl, await _sessionEstMoi())) {   // ETAT-08 : la base fait foi
             try { saveState(); } catch(e) {}
             try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
           }
@@ -9820,11 +11719,13 @@ async function supaInit() {
         }).catch(e => {});
       // Follows : restaure depuis Supabase (le code mort après return; ne s'exécutait jamais).
       if (typeof supaLoadFollowing === "function")
-        supaLoadFollowing().then(ids => {
-          if (ids && ids.length) {
-            state.user.following = [...new Set([...(state.user.following || []), ...ids])];
-            try { saveState(); } catch(e) {}
-          }
+        supaLoadFollowing().then(async ids => {
+          if (_fusionnerSuivisServeur(ids, await _sessionEstMoi())) { try { saveState(); } catch(e) {} }   // ETAT-08 : la base fait foi
+          // LOT-6 (audit UX/UI du 2026-11-10, REC-C01) : un écran ouvert AVANT cette
+          // lecture disait « Suivre » sur des personnes déjà suivies — et l'appui
+          // désabonnait. Les boutons visibles sont repeints dès que l'état arrive
+          // (abonnements ET demandes en attente, posées par supaLoadFollowing).
+          try { if (typeof repeindreBoutonsSuiviVisibles === "function") repeindreBoutonsSuiviVisibles(); } catch (e) {}
         }).catch(e => {});
     }, 2000);
 
@@ -10004,22 +11905,6 @@ function attachMsgPhoto(input) {
 // Profil chips dans feed
 // toggleProfileFilter et selectAllProfiles définis plus haut
 
-
-function resetOnboarding() {
-  toggleDevPanel();
-  state.onboarded = false;
-  state.landingSeen = false;
-  saveState();
-  // Cacher l'app, montrer l'onboarding
-  // 🔧 FIX AUDIT 2026-06-10 : #appShell n'existe pas (TypeError qui
-  // interrompait le reset) — l'élément est .app-shell, sans état "active".
-  document.body.classList.remove("screen-feed-active");
-  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  document.getElementById("onboarding").classList.add("active");
-  document.getElementById("landing").classList.remove("active");
-  onbStepIdx = 0;
-  showOnbStep(onbSteps[0]);
-}
 
 function exitLandingAsAuth(mode) {
   document.getElementById("landing").classList.remove("active");

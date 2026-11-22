@@ -16,11 +16,18 @@
 //   ③ la minification du build : chaque empreinte devient celle des octets minifiés,
 //     à sa place, et ni le buildId ni les `?v=` ne bougent (un build local rend ceux
 //     de la production) — mutation : ne pas remplacer l'empreinte → ③ rouge ;
-//   ④ un script que le minifieur n'arrive pas à traiter part brut, avec l'empreinte
-//     du brut — l'ancienne règle du workflow, sans casser la page.
+//   ④ un script refusé par le minifieur bloque le build public.
+// LA FEUILLE DE STYLE, LE MÊME JOUR (scripts/build.js, étapes 2 et 2 bis ;
+// tests/e2e/app-scripts-par-fichier.spec.js ⑨ ⑩) : ① son <link> porte l'empreinte du
+// fichier écrit, et sa reprise est posée AVANT lui ; ② le contrôle refuse un octet
+// changé, un <link> sans empreinte, une page sans feuille, une page sans la reprise ;
+// ③ minifiée par le build,
+// elle porte l'empreinte des octets minifiés, sans que son `?v=` ni le buildId ne
+// bougent ; ⑤ si le minifieur la refuse, le build public échoue.
 // Le banc construit dans un arbre jetable, avec un FAUX terser
-// (`node_modules/terser/bin/terser`) : le job « Audits » de la CI n'a pas de
-// node_modules. Le vrai terser est éprouvé par la passe « Gates artefact » (le build y
+// (`node_modules/terser/bin/terser`) et un FAUX clean-css
+// (`node_modules/clean-css-cli/bin/cleancss`) : le job « Audits » de la CI n'a pas de
+// node_modules. Les vrais sont éprouvés par la passe « Gates artefact » (le build y
 // minifie, et scripts/servir-dist.js refuse un artefact incohérent) et par le
 // déploiement.
 import { test, before, after } from "node:test";
@@ -35,7 +42,7 @@ import { fileURLToPath } from "node:url";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(import.meta.url);
-const { controler, lirePaires } = require(path.join(RACINE, "scripts", "verifier-integrite-app.js"));
+const { controler, lirePaires, lireFeuilles } = require(path.join(RACINE, "scripts", "verifier-integrite-app.js"));
 const sri = (octets) => "sha384-" + crypto.createHash("sha384").update(octets).digest("base64");
 
 // Le faux minifieur : même interface que la commande du build (`<f> -o <sortie>
@@ -48,6 +55,33 @@ const [entree, , sortie] = process.argv.slice(2);
 if (process.env.FAUX_TERSER_ECHEC && entree.endsWith(process.env.FAUX_TERSER_ECHEC)) { console.error("refus du faux terser"); process.exit(1); }
 fs.writeFileSync(sortie, fs.readFileSync(entree, "utf8").split("\\n").filter((l) => !/^\\s*\\/\\//.test(l)).join("\\n"));
 `;
+// Le faux clean-css : même interface que la commande du build (`-o <sortie> <entrée>`).
+// Il retire les lignes vides — des octets différents, une feuille toujours valide — et
+// échoue quand FAUX_CLEANCSS_ECHEC est posée.
+const FAUX_CLEANCSS = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const i = args.indexOf("-o");
+const sortie = args[i + 1];
+const entree = args.filter((a, j) => j !== i && j !== i + 1)[0];
+if (process.env.FAUX_CLEANCSS_ECHEC) { console.error("refus du faux clean-css"); process.exit(1); }
+fs.writeFileSync(sortie, fs.readFileSync(entree, "utf8").split("\\n").filter((l) => l.trim() !== "").join("\\n"));
+`;
+
+// Le faux minifieur de PAGE (STAB-10, 2026-11-12) : même interface que la commande du
+// build (`--collapse-whitespace … -o <sortie> <entrée>`, `cli.js` à la racine du paquet).
+// Il retire l'indentation et les lignes vides — `fauxPage`, la même transformation, dit
+// ce qu'il doit rendre — et échoue quand FAUX_HTMLMIN_ECHEC est posée.
+const fauxPage = (s) => s.split("\n").map((l) => l.trimStart()).filter((l) => l !== "").join("\n");
+const FAUX_HTMLMIN = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const i = args.indexOf("-o");
+const sortie = args[i + 1];
+const entree = args[args.length - 1];
+if (process.env.FAUX_HTMLMIN_ECHEC) { console.error("refus du faux html-minifier-terser"); process.exit(1); }
+fs.writeFileSync(sortie, (${fauxPage.toString()})(fs.readFileSync(entree, "utf8")));
+`;
 
 let arbre;
 before(() => {
@@ -55,10 +89,17 @@ before(() => {
   fs.mkdirSync(path.join(arbre, "scripts"));
   for (const d of ["js", "data"]) fs.cpSync(path.join(RACINE, d), path.join(arbre, d), { recursive: true });
   for (const f of ["index.html", "styles.css", "sw.js", "scripts/build.js"]) fs.copyFileSync(path.join(RACINE, f), path.join(arbre, f));
-  const terser = path.join(arbre, "node_modules", "terser");
-  fs.mkdirSync(path.join(terser, "bin"), { recursive: true });
-  fs.writeFileSync(path.join(terser, "package.json"), JSON.stringify({ name: "terser", version: "0.0.0-banc" }));
-  fs.writeFileSync(path.join(terser, "bin", "terser"), FAUX_TERSER);
+  for (const [nom, bin, source] of [["terser", "terser", FAUX_TERSER], ["clean-css-cli", "cleancss", FAUX_CLEANCSS]]) {
+    const paquet = path.join(arbre, "node_modules", nom);
+    fs.mkdirSync(path.join(paquet, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(paquet, "package.json"), JSON.stringify({ name: nom, version: "0.0.0-banc" }));
+    fs.writeFileSync(path.join(paquet, "bin", bin), source);
+  }
+  const paquetPage = path.join(arbre, "node_modules", "html-minifier-terser");
+  fs.mkdirSync(paquetPage, { recursive: true });
+  // Comme le vrai : `cli.js` n'est pas exporté, seul `package.json` l'est.
+  fs.writeFileSync(path.join(paquetPage, "package.json"), JSON.stringify({ name: "html-minifier-terser", version: "0.0.0-banc", exports: { "./package.json": "./package.json" } }));
+  fs.writeFileSync(path.join(paquetPage, "cli.js"), FAUX_HTMLMIN);
 });
 after(() => { if (arbre) fs.rmSync(arbre, { recursive: true, force: true }); });
 
@@ -69,7 +110,7 @@ function construire(sortie, variables = {}) {
   const dossier = path.join(arbre, sortie);
   execFileSync(process.execPath, ["scripts/build.js", path.join(dossier, "index.html")], { cwd: arbre, env, stdio: "pipe", timeout: 120000 });
   const html = fs.readFileSync(path.join(dossier, "index.html"), "utf8");
-  return { dossier, html, paires: lirePaires(html), release: JSON.parse(fs.readFileSync(path.join(dossier, "release.json"), "utf8")) };
+  return { dossier, html, paires: lirePaires(html), feuilles: lireFeuilles(html), release: JSON.parse(fs.readFileSync(path.join(dossier, "release.json"), "utf8")) };
 }
 
 // Une copie d'artefact qu'un cas peut abîmer sans toucher aux autres.
@@ -91,6 +132,25 @@ test("① un vrai build : 9 paires (adresse, empreinte), chacune celle du fichie
   // Le chargeur pose l'empreinte sur le preload ET sur le <script>.
   assert.match(brut.html, /if \(integrite\) l\.integrity = integrite;/);
   assert.match(brut.html, /s\.integrity = scripts\[i\]\[1\];/);
+});
+
+test("① la feuille de style : UN <link> avec l'empreinte du fichier écrit, et sa reprise posée AVANT lui", () => {
+  assert.equal(brut.feuilles.length, 1, JSON.stringify(brut.feuilles));
+  const [f] = brut.feuilles;
+  assert.equal(f.adresse, "styles.css?v=" + brut.release.cssHash, "l'adresse reste l'empreinte de la source");
+  assert.equal(f.integrite, sri(fs.readFileSync(path.join(brut.dossier, "styles.css"))));
+  // La reprise écoute `error` en capture sur le document, et elle est posée AVANT le
+  // <link> : son échec part avant les scripts du <body> (qui attendent la feuille), un
+  // écouteur posé après lui ne le verrait jamais (tests/e2e/app-scripts-par-fichier.spec.js ⑨ ⑩).
+  // La reprise est l'écouteur `error` en capture le plus proche AVANT le <link> : la
+  // télémétrie inlinée plus haut en pose un autre (médias qui ne s'affichent pas, T5).
+  const lien = brut.html.indexOf('<link rel="stylesheet" href="styles.css?v=');
+  const reprise = brut.html.lastIndexOf('document.addEventListener("error"', lien);
+  assert.ok(reprise > 0 && lien > reprise, `reprise à ${reprise}, <link> à ${lien}`);
+  assert.equal(brut.html.slice(reprise, lien).includes("<script"), false, "rien d'autre ne s'exécute entre la reprise et le <link>");
+  assert.match(brut.html.slice(reprise, lien), /fetch\(adresse, \{ cache: "reload" \}\)/);
+  assert.match(brut.html.slice(reprise, lien), /replaceChild\(secours, l\)/, "le secours prend la place du <link> refusé (la cascade)");
+  assert.match(brut.html.slice(reprise, lien), /insertBefore\(n, secours\.nextSibling\)/, "le <link> avec empreinte se pose juste après le secours");
 });
 
 test("② le contrôle refuse un octet changé, un fichier absent ou de trop, une adresse sans empreinte", () => {
@@ -121,6 +181,41 @@ test("② le contrôle refuse un octet changé, un fichier absent ou de trop, un
   assert.match(controler(sansPage).problemes.join("\n"), /introuvable/);
 });
 
+test("② le contrôle refuse une feuille changée d'un octet, un <link> sans empreinte, une page sans feuille", () => {
+  const unOctet = copie(brut, "abime-feuille-octet");
+  fs.appendFileSync(path.join(unOctet, "styles.css"), "\n");
+  const r1 = controler(unOctet).problemes;
+  assert.equal(r1.length, 1, JSON.stringify(r1));
+  assert.match(r1[0], /^styles\.css\?v=[0-9a-f]+ : la page déclare sha384-.*le fichier servi est sha384-/);
+
+  const page = (d) => path.join(d, "index.html");
+  const sansEmpreinte = copie(brut, "abime-feuille-sans-empreinte");
+  fs.writeFileSync(page(sansEmpreinte), fs.readFileSync(page(sansEmpreinte), "utf8").replace(/(<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]+") integrity="[^"]+"/, "$1"));
+  assert.deepEqual(controler(sansEmpreinte).problemes, [`styles.css?v=${brut.release.cssHash} : citée par la page sans empreinte`]);
+
+  const sansFeuille = copie(brut, "abime-sans-feuille");
+  fs.writeFileSync(page(sansFeuille), fs.readFileSync(page(sansFeuille), "utf8").replace(/<link rel="stylesheet" href="styles\.css\?v=[^>]+>/, ""));
+  assert.match(controler(sansFeuille).problemes.join("\n"), /la page cite 0 feuille\(s\) de style versionnée\(s\)/);
+
+  const sansFichier = copie(brut, "abime-feuille-absente");
+  fs.rmSync(path.join(sansFichier, "styles.css"));
+  assert.match(controler(sansFichier).problemes.join("\n"), /styles\.css introuvable/);
+
+  // L'empreinte SANS la reprise : le moindre refus laisserait la page sans styles.
+  const sansReprise = copie(brut, "abime-sans-reprise");
+  const avant = fs.readFileSync(page(sansReprise), "utf8");
+  const sansElle = avant.replace(/<script>\n\/\* Reprise de la feuille de style[\s\S]*?<\/script>\n/, "");
+  assert.ok(sansElle.length < avant.length, "prémisse : la reprise a bien été retirée de la page");
+  fs.writeFileSync(page(sansReprise), sansElle);
+  assert.deepEqual(controler(sansReprise).problemes, [`styles.css?v=${brut.release.cssHash} : sa reprise (scripts/build.js, étape 2) manque AVANT son <link> — un refus laisserait la page sans styles`]);
+});
+
+test("② il lit le <link> de la page minifiée : attributs dans tout ordre, guillemets doubles, simples ou absents", () => {
+  const html = '<head><link rel=icon href=icon-192.png><link integrity=\'sha384-AAAA+/9=\' rel=stylesheet href=styles.css?v=0123456789abc><link rel="stylesheet" href="js/vendor/maplibre.css"></head>';
+  assert.deepEqual(lireFeuilles(html), [{ adresse: "styles.css?v=0123456789abc", integrite: "sha384-AAAA+/9=" }]);
+  assert.deepEqual(lireFeuilles('<link rel="stylesheet" href="styles.css?v=0123456789">'), [{ adresse: "styles.css?v=0123456789", integrite: null }]);
+});
+
 test("② il lit la page minifiée, guillemets simples ou doubles", () => {
   const html = '<script>!function(){var e=[["app/app-01-diag-seed.js?v=0123456789","sha384-AAAA+/9="],[\'app/app-09-boot-pwa.js?v=abcdef0123\',\'sha384-BBBB\']];}()</script>';
   assert.deepEqual(lirePaires(html), [
@@ -142,16 +237,39 @@ test("③ la minification du build : chaque empreinte devient celle des octets m
   assert.ok(changes >= 8, `prémisse : le faux minifieur a bien changé les octets (${changes} fichiers sur 9)`);
   assert.equal(mini.release.buildId, brut.release.buildId, "même buildId : un build local rend celui de la production");
   assert.equal(mini.release.appHash, brut.release.appHash);
-  // Rien d'autre n'a bougé dans la page que les empreintes.
+  // La feuille de style : minifiée, avec l'empreinte des octets minifiés, sous la même adresse.
+  assert.ok(!fs.readFileSync(path.join(mini.dossier, "styles.css")).equals(fs.readFileSync(path.join(brut.dossier, "styles.css"))), "prémisse : le faux minifieur a bien changé la feuille");
+  assert.equal(mini.feuilles[0].integrite, sri(fs.readFileSync(path.join(mini.dossier, "styles.css"))), "l'empreinte du <link> est celle de la feuille minifiée");
+  assert.notEqual(mini.feuilles[0].integrite, brut.feuilles[0].integrite);
+  assert.equal(mini.feuilles[0].adresse, brut.feuilles[0].adresse, "même adresse (le ?v= reste l'empreinte de la source)");
+  assert.equal(mini.release.cssHash, brut.release.cssHash);
+  // Rien d'autre n'a bougé dans la page que les empreintes — et la minification de la
+  // page elle-même (étape 6 ter, le faux minifieur : `fauxPage`).
   const sansEmpreintes = (h) => h.replace(/"sha384-[A-Za-z0-9+/]+={0,2}"/g, '"…"');
-  assert.equal(sansEmpreintes(mini.html), sansEmpreintes(brut.html));
+  assert.equal(sansEmpreintes(mini.html), sansEmpreintes(fauxPage(brut.html)));
 });
 
-test("④ un script que le minifieur refuse part brut, avec l'empreinte du brut", () => {
-  const r = construire("dist-echec", { PASSIO_MINIFIER_APP: "1", FAUX_TERSER_ECHEC: "app-03-posts-vlogs.js" });
-  assert.deepEqual(controler(r.dossier).problemes, []);
-  const p = r.paires.find((x) => x.nom === "app-03-posts-vlogs.js");
-  assert.equal(p.integrite, brut.paires.find((x) => x.nom === "app-03-posts-vlogs.js").integrite, "le brut garde son empreinte");
-  assert.ok(fs.readFileSync(path.join(r.dossier, "app", p.nom)).equals(fs.readFileSync(path.join(brut.dossier, "app", p.nom))), "le fichier servi est le brut");
-  assert.ok(!fs.existsSync(path.join(r.dossier, "app", p.nom + ".min")), "aucun reste du minifieur");
+// STAB-10 (2026-11-12) : la PAGE est minifiée par le build, plus par le seul job de
+// déploiement après tous les tests — la passe « Gates artefact » joue donc ses suites
+// sur les octets qui partent. Mutation : retirer l'étape 6 ter → ⑥ rouge.
+test("⑥ la page est minifiée par le build, ses empreintes restent celles des fichiers servis", () => {
+  const mini = construire("dist-page", { PASSIO_MINIFIER_APP: "1" });
+  assert.notEqual(mini.html, brut.html, "la page servie n'est plus la page brute");
+  assert.equal(mini.html, fauxPage(mini.html), "la page a bien traversé le minifieur");
+  assert.ok(!fs.existsSync(path.join(mini.dossier, "index.html.min")), "aucun reste du minifieur");
+  assert.deepEqual(controler(mini.dossier).problemes, [], "chaque empreinte de la page minifiée est celle de son fichier");
+  // Sans le drapeau (développement, passe des suites sur le dev) : page brute.
+  assert.notEqual(brut.html, fauxPage(brut.html), "prémisse : la page brute porte de l'indentation");
+});
+
+test("⑦ une page refusée par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-⑦", { PASSIO_MINIFIER_APP: "1", FAUX_HTMLMIN_ECHEC: "1" }), /Minification obligatoire échouée/);
+});
+
+test("④ un script refusé par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-④", { PASSIO_MINIFIER_APP: "1", FAUX_TERSER_ECHEC: "app-03-posts-vlogs.js" }), /Minification obligatoire échouée/);
+});
+
+test("⑤ une feuille refusée par le minifieur bloque le build public", () => {
+  assert.throws(() => construire("dist-echec-⑤", { PASSIO_MINIFIER_APP: "1", FAUX_CLEANCSS_ECHEC: "1" }), /Minification obligatoire échouée/);
 });

@@ -125,7 +125,13 @@ test.describe("Rechargement imminent : bruit transitoire, pas un défaut", () =>
     expect(annonce, "… AVANT le flush d'état (premier appel réseau)").toBeLessThan(corps.indexOf("await supaSaveUserState()"));
     const reconnexion = app02.slice(app02.indexOf("async function reconnecterSession("), app02.indexOf("window.reconnecterSession"));
     expect(reconnexion.indexOf("annoncerRechargement()"), "reconnecterSession annonce avant son reload").toBeLessThan(reconnexion.indexOf("location.reload()"));
-    expect(app02).toMatch(/function _sondeServeurReconnecter\(\)[\s\S]{0,200}doLogout\("signin"\)/);
+    // ⚠️ ATTENDU CHANGÉ LE 2026-11-10 (ETAT-06, audit de stabilisation) : le bouton passait par
+    // `doLogout("signin")`, donc par la PURGE — messages en file et état non synchronisé perdus.
+    // Il passe désormais par `reconnecterSession`, qui annonce elle-même avant son rechargement
+    // (vérifié juste au-dessus). Verrou du comportement : session-fin-a-distance.spec.js ④.
+    const sonde = app02.slice(app02.indexOf("function _sondeServeurReconnecter()"), app02.indexOf("function _sondeServeurReponse("));
+    expect(sonde, "le bandeau reconnecte").toMatch(/reconnecterSession\(\)/);
+    expect(sonde, "… sans passer par la purge de doLogout").not.toMatch(/doLogout\(/);
     expect(tel, "le hook fetch nomme la preuve").toMatch(/rechargement:\s*_rechargement/);
     expect((app08.match(/_rechargementImminent === true\) return/g) || []).length, "boucle 60 s ET retour d'arrière-plan s'abstiennent").toBeGreaterThanOrEqual(2);
   });

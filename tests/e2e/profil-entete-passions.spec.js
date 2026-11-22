@@ -380,7 +380,7 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
   const vu = await page.evaluate(() => {
     const m = document.getElementById("modalContent");
     return {
-      murOuvert: !!(m && (m.textContent || "").includes("Trois passions offertes")),
+      murOuvert: !!(m && (m.textContent || "").includes("Trois passions à la fois")),
       renvoiPanneau: !!(m && m.querySelector('[data-tel="passion_paywall_gerer"]')),
       // La sortie restante prend le style primaire : une fenêtre à une seule
       // issue ne laisse pas deviner laquelle.
@@ -1049,6 +1049,76 @@ test("une carte de publication ne nomme la passion QU'UNE FOIS", async ({ page }
   expect(vu.boutons, "aucune pastille cliquable dans une carte de publication").toBe(0);
 });
 
+test("un commentaire ne porte AUCUNE passion sous le pseudo", async ({ page }) => {
+  // Retrait du 2026-11-13, demande de Benjamin : « supprime les noms des
+  // passions dessous les pseudos, ce n'est pas joli et trop chargé ». Trois
+  // rendus : le commentaire et sa réponse dans la feuille, l'aperçu du fil.
+  await poser(page);
+  const vu = await page.evaluate(() => {
+    const auteur = state.seed.users.find((u) => identitePassionsTexte(u));
+    const c = {
+      id: "c_x", authorId: auteur.id, text: "Bravo", createdAt: Date.now(), likes: 0,
+      replies: [{ id: "r_x", authorId: auteur.id, text: "Merci", createdAt: Date.now() }],
+    };
+    window._repliesExpanded = { c_x: true };
+    const feuille = document.createElement("div");
+    feuille.innerHTML = _renderCommentsList([c], "p_x");
+    const carte = document.createElement("div");
+    carte.innerHTML = renderPostHTML({
+      id: "p_x", authorId: "me", passion: "moto", type: "text", text: "Coucou",
+      mood: "all", createdAt: Date.now(), likes: 0, comments: [c], _source: "me",
+    });
+    return {
+      passion: identitePassionsTexte(auteur),
+      feuilleCommentaires: feuille.querySelectorAll(".comment").length,
+      feuilleReponses: feuille.querySelectorAll(".comment-reply").length,
+      feuilleIdentites: feuille.querySelectorAll(".ident-passions").length,
+      carteCommentaires: carte.querySelectorAll(".comment").length,
+      carteIdentites: carte.querySelectorAll(".ident-passions").length,
+    };
+  });
+  expect(vu.passion, "prémisse : l'auteur a une passion à afficher").not.toBe("");
+  expect(vu.feuilleCommentaires, "prémisse : le commentaire est rendu").toBe(1);
+  expect(vu.feuilleReponses, "prémisse : sa réponse aussi").toBe(1);
+  expect(vu.carteCommentaires, "prémisse : l'aperçu du fil le rend").toBe(1);
+  expect(vu.feuilleIdentites, "feuille des commentaires : rien sous le pseudo").toBe(0);
+  expect(vu.carteIdentites, "aperçu du fil : rien sous le pseudo").toBe(0);
+});
+
+test("listes de personnes, recherche Explorer, notifications : AUCUNE passion sous le pseudo", async ({ page }) => {
+  // Suite du retrait du 2026-11-13 (« supprime également à ces endroits ») :
+  // les trois surfaces qui gardaient la ligne `.ident-passions`.
+  await poser(page);
+  const vu = await page.evaluate(async () => {
+    const auteur = state.seed.users.find((u) => identitePassionsTexte(u));
+    const ligne = document.createElement("div");
+    ligne.innerHTML = _personRowHTML(auteur.id, auteur, "abonnes");
+    const notifs = document.createElement("div");
+    notifs.innerHTML = _notifListHtml([{ id: "n_x", text: "a aimé ta publication", fromId: auteur.id, createdAt: Date.now(), unread: true }]);
+    let res = document.getElementById("exploreSearchResults");
+    if (!res) { res = document.createElement("div"); res.id = "exploreSearchResults"; document.body.appendChild(res); }
+    window.supaSearchUsers = () => Promise.resolve([]);
+    _exSearchLancer(auteur.name);
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      passion: identitePassionsTexte(auteur),
+      ligneNom: ligne.textContent.includes(auteur.name),
+      ligneIdentites: ligne.querySelectorAll(".ident-passions").length,
+      notifLignes: notifs.querySelectorAll(".notif-row").length,
+      notifIdentites: notifs.querySelectorAll(".ident-passions").length,
+      rechercheNom: res.textContent.includes(auteur.name),
+      rechercheIdentites: res.querySelectorAll(".ident-passions").length,
+    };
+  });
+  expect(vu.passion, "prémisse : la personne a une passion à afficher").not.toBe("");
+  expect(vu.ligneNom, "prémisse : la ligne de personne porte le nom").toBe(true);
+  expect(vu.notifLignes, "prémisse : la notification est rendue").toBe(1);
+  expect(vu.rechercheNom, "prémisse : la recherche trouve la personne").toBe(true);
+  expect(vu.ligneIdentites, "liste d'abonnés : rien sous le pseudo").toBe(0);
+  expect(vu.notifIdentites, "notification : rien sous le texte").toBe(0);
+  expect(vu.rechercheIdentites, "recherche Explorer : rien sous le pseudo").toBe(0);
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 // ④ LE COMPTEUR « PASSIONS » DE L'EN-TÊTE (2026-09-04)
 // ══════════════════════════════════════════════════════════════════════════
@@ -1108,7 +1178,8 @@ test("④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre 
   const ordre = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#screen-profiles .main-profile-stats .main-profile-stat"))
       .map((d) => (d.querySelector("span:last-child") || {}).textContent));
-  expect(ordre).toEqual(["posts", "abonnés", "passions", "abonnements"]);
+  // LOT-34 (FIL-C22) : le compteur dit « publications », plus « posts ».
+  expect(ordre).toEqual(["publications", "abonnés", "passions", "abonnements"]);
 
   await page.evaluate(() => {
     document.querySelector("#mainStatPassions").closest(".main-profile-stat").click();

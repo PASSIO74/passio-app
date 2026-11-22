@@ -1169,7 +1169,7 @@
     .post-action:hover { color: var(--text); background: var(--bg-soft); }
     .post-action:active { transform: scale(0.94); }
 
-    .post-action.liked { color: var(--accent); }
+    .post-action.liked { color: #ef4444; }
 
     .post-action svg { width: 17px; height: 17px; display: block; }
 
@@ -1481,7 +1481,25 @@
       align-items: center;
       gap: 6px;
       pointer-events: none;
-      z-index: 200;
+      /* LOT-1 (audit UX/UI du 2026-11-10, TRA-C01 : PAR-C03, IRL-C65, MSG-C85,
+         BOB-C20). La pile �tait � 200 : toute fen�tre (10001), conversation
+         (1200), lecteur de bobines (9999), panneau Param�tres (50000) ou feuille
+         la recouvrait, et les refus, validations et confirmations �mis pendant
+         qu'elles �taient ouvertes ne se voyaient JAMAIS. Elle passe au-dessus de
+         tout ce que l'application superpose (le plus haut : la bo�te des
+         @mentions, 100004). Elle reste `pointer-events: none` : elle ne vole
+         aucun toucher (un toast cliquable r�tablit les siens). */
+      z-index: 100010;
+    }
+
+    /* Une superposition occupe le bas de l'�cran (champ de saisie d'une
+       conversation, bouton d'une fen�tre, pied d'une fiche, commandes du
+       lecteur) : la pile se pose EN HAUT, sous la zone s�re, pour ne masquer ni
+       le champ ni le bouton principal. Sans `:has` (navigateurs anciens), la
+       pile reste en bas, et reste visible gr�ce au z-index ci-dessus. */
+    body:has(#conv-fullpage.active, #modalBackdrop.active, .reels-viewer.open, .event-detail-page:not([style*="none"]), .cmt-sheet-ov, .v2-sheet-backdrop.open, .v7-sheet-backdrop.open, .dev-panel.active, #storyViewer.active, #storyViewer.open) .toast-stack {
+      top: calc(env(safe-area-inset-top, 0px) + 14px);
+      bottom: auto;
     }
 
     .toast {
@@ -1566,6 +1584,15 @@
       flex-direction: column;
       overflow: hidden;
     }
+
+    /* LOT-2 (audit UX/UI du 2026-11-10, PAR-C01, P0) : ouvert par le mode
+       invit� depuis une publication (200), une fiche d'activit� (200) ou le
+       lecteur de bobines (9999), le formulaire (50) s'ouvrait DESSOUS : � Cr�er
+       mon compte � ne changeait rien � l'�cran. Il passe au-dessus du contenu,
+       qui reste ouvert dessous (le retour syst�me ferme le formulaire et le
+       rend tel quel). Il reste SOUS les fen�tres (10001 : CGU, confidentialit�)
+       et les toasts. Classe pos�e et retir�e par `ouvrirAuth` (first-run.js). */
+    body.fr-auth-dessus #onboarding.onboarding-shell { z-index: 10000; }
 
     .onboarding-shell.active { display: flex; }
 
@@ -4824,21 +4851,6 @@
     }
     .story-sound-btn:active { transform: scale(0.92); }
 
-    .reel-tag-mood {
-      position: absolute;
-      top: calc(64px + env(safe-area-inset-top));
-      left: 14px;
-      padding: 5px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.16);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
 
     .reel-info {
       position: absolute;
@@ -4919,7 +4931,7 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
-    .reel-action-btn.liked .reel-action-icon { background: rgba(236, 72, 153, 0.85); border-color: #ec4899; }
+    .reel-action-btn.liked .reel-action-icon { background: rgba(239, 68, 68, 0.9); border-color: #ef4444; }
     .reel-action-btn.liked .reel-action-icon svg { fill: #fff; stroke: #fff; }
     .reel-action-btn.tipped .reel-action-icon { background: rgba(167, 139, 250, 0.95); border-color: #a78bfa; }
     .reel-action-label {
@@ -5225,10 +5237,10 @@
       transition: color 200ms;
     }
     .reel-comment-like:hover {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-like.liked {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-reply {
       cursor: pointer;
@@ -5236,14 +5248,6 @@
       transition: color 200ms;
     }
     .reel-comment-reply:hover {
-      color: var(--text);
-    }
-    .reel-comment-action {
-      cursor: pointer;
-      color: var(--muted);
-      transition: color 200ms;
-    }
-    .reel-comment-action:hover {
       color: var(--text);
     }
     .reel-comment-reply-count {
@@ -5287,28 +5291,6 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
-    }
-    .reel-emoji-reactions {
-      display: none;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .reel-emoji-btn {
-      background: transparent;
-      border: none;
-      border-radius: 20px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-size: 20px;
-      transition: transform 150ms, background 200ms;
-      opacity: 0.7;
-    }
-    .reel-emoji-btn:hover {
-      opacity: 1;
-      background: var(--bg-soft);
-    }
-    .reel-emoji-btn:active {
-      transform: scale(1.2);
     }
 
     .reel-comments-input-wrapper {
@@ -6786,37 +6768,10 @@
 
     .irl-tile-mine { font-size: 9px; vertical-align: super; color: var(--accent); }
 
-    /* Barre de passions : mes profils en principal + panneau « Autres » à cocher */
+    /* Barre de passions : mes profils en principal */
     /* Aligné à gauche (et non space-around comme la messagerie) : un compte n'a
        souvent qu'un ou deux profils passion, l'écartement les faisait flotter. */
     .irl-passion-zone .msg-filter-tiles { justify-content: flex-start; gap: 10px; }
-    .irl-tile-more .msg-tile-icon { font-weight: 700; color: var(--muted); }
-    .irl-tile-more.active .msg-tile-icon { color: var(--accent); }
-    .irl-extra-panel {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 14px; padding: 12px; margin: 8px 0 4px;
-    }
-    .irl-extra-title {
-      font-size: 11px; font-weight: 800; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
-    }
-    .irl-extra-list { display: flex; flex-wrap: wrap; gap: 6px; }
-    .irl-extra-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid var(--border); background: transparent; color: var(--text);
-      font-size: 12px; font-weight: 600; border-radius: 999px;
-      padding: 7px 12px; min-height: 34px; cursor: pointer;
-    }
-    .irl-extra-chip.on { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.07); }
-    .irl-extra-chip b { font-size: 10px; color: var(--muted); font-weight: 700; }
-    .irl-extra-chip.on b { color: var(--accent); }
-    .irl-extra-box {
-      width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--border);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 10px; line-height: 1; flex-shrink: 0;
-    }
-    .irl-extra-chip.on .irl-extra-box { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .irl-extra-empty { font-size: 12px; color: var(--muted); }
 
     .event-card-banner {
       font-size: 11px; font-weight: 800; border-radius: 10px;
@@ -8407,8 +8362,87 @@ body.ctx-locked #appMain { overflow: hidden; }
    son propre « Voir » et la Passio répétée. UI-3B la masque seulement sur les
    cartes réellement décorées et identifiées comme `shared`. Le DOM reste en
    place et réapparaît dès que la classe racine est retirée par un kill switch. */
-:root.passio-ui-3 .post[data-v3-decore][data-v3-activity-source="shared"] .post-vlog-card {
-  display: none;
+/* 2026-11-14 (Benjamin) : la sous-carte n'est PLUS masquée — elle est devenue
+   la mise en avant de l'activité (photo + bloc date corail), identique dans le
+   fil et sur le profil. Seul son doublon de porte a disparu (plus de « Voir »). */
+.post-activite.post-vlog-card {
+  margin: 10px 0 0;
+  border: 1px solid rgba(109, 50, 244, 0.16);
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg-card, #fff);
+}
+.post-activite-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--accent-tile, #f5f3ff);
+}
+.post-activite-titre {
+  padding: 12px 14px 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.post-activite-desc {
+  padding: 6px 14px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-dim, #4a4663);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.post-activite-rdv {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1ebfe, #ffeeeb);
+  min-width: 0;
+}
+.post-activite-tuile {
+  flex-shrink: 0;
+  width: 56px;
+  padding: 8px 0;
+  border-radius: 14px;
+  background: #c13d28;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.post-activite-jour { font-size: 23px; font-weight: 900; }
+.post-activite-mois {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+.post-activite-corps { min-width: 0; flex: 1; }
+.post-activite-quand {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #1f1147;
+}
+.post-activite-quand::first-letter { text-transform: uppercase; }
+.post-activite-ou {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a3f6b;
+  margin-top: 3px;
 }
 
 :root.passio-ui-3 #eventDetailCta .v3-rsvp {
@@ -8671,6 +8705,44 @@ body.ctx-locked #appMain { overflow: hidden; }
   border-radius: 8px;
 }
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:hover { color: var(--text); }
+/* LOT-3 (audit UX/UI du 2026-11-10, PCS-C03, IRL-C50) : l'état « inscrit » dit
+   QUAND, propose la SUITE (écrire aux participants, inviter) à la place du
+   bouton, et éloigne le retrait du doigt qui vient de s'inscrire. Confirmation
+   verte opaque (#0f5c3d sur #e9f8ef : 7,0:1), jamais une teinte translucide. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-etat {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 10px 14px 0;
+  border: 1px solid #bfe8d0;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: #e9f8ef;
+  color: #0b4d2e;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-detail {
+  margin-top: -4px;
+  padding: 2px 14px 10px;
+  border: 1px solid #bfe8d0;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  background: #e9f8ef;
+  color: #0f5c3d;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite .btn {
+  min-height: 48px;
+  font-size: 14px;
+  white-space: normal;
+  line-height: 1.2;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-retirer { margin-top: 4px; }
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-go:focus-visible,
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:focus-visible {
   outline: 2px solid var(--v4b-coral-texte, #c13d28);
@@ -8870,8 +8942,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v4a2-coral: var(--v3-coral-texte, #c13d28);
 }
 
-/* La carte décorée devient une colonne ordonnée. Trois enfants seulement
-   restent visibles : le bandeau d'état (annulé / en cours), le bloc du lot, et
+/* La carte décorée devient une colonne ordonnée. Quatre enfants seulement
+   restent visibles (le quatrième, la barre sociale, depuis le 2026-11-14) : le bandeau d'état (annulé / en cours), le bloc du lot, et
    la preuve sociale historique — la seule surface où des personnes sont
    nommées, et elle est déjà bornée par le moteur aux comptes suivis. */
 :root.passio-ui-4a2 .event-card[data-v4a2] {
@@ -8891,6 +8963,28 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner { display: block !important; order: 0; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .v4a2 { display: flex !important; order: 1; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-social-proof { display: flex !important; order: 2; }
+/* 2026-11-14 (demande de Benjamin) : aimer, commenter et partager DIRECTEMENT sur
+   la carte. La barre sociale historique n'est plus recouverte : ce sont les mêmes
+   nœuds, donc les mêmes moteurs (`toggleEventLike`, `openCommentSheet`,
+   `shareEvent`) et les mêmes ancres `data-evlike` / `data-evc` que les
+   chargements asynchrones repeignent — aucun second bouton à tenir synchronisé.
+   La réaction emoji et sa pastille restent dans la fiche. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions {
+  display: flex !important;
+  order: 3;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 4px;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  box-sizing: border-box;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="showEmojiPickerForEvent"],
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .event-react-chip-holder { display: none !important; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="shareEvent"] { margin-left: auto; }
 
 /* Le barré historique de l'activité annulée vit sur `.event-title`, que le lot
    ne montre plus : il est reporté sur le titre du bloc. */
@@ -9145,6 +9239,25 @@ body.ctx-locked #appMain { overflow: hidden; }
   -ms-overflow-style: none;
 }
 :root.passio-ui-5 .v5-actions::-webkit-scrollbar { display: none; }
+/* LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : les quatre actions tiennent en
+   grille 2 × 2, sans défilement — les deux sorties vers le réel étaient hors de
+   l'écran à 390 px. Les sorties IRL portent un liseré corail (§5 : le corail
+   signale le passage au réel). Cibles de 44 px conservées. */
+:root.passio-ui-5 .v5-actions.v5-actions-grille {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  overflow: visible;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip {
+  width: 100%;
+  padding: 11px 10px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip-irl {
+  border: 2px solid var(--v2-coral, #ff6b57);
+}
 
 /* Verre dépoli sur la vidéo : les chips doivent rester lisibles sur n'importe
    quelle image, sans assombrir la bobine. Le texte est blanc plein, le fond
@@ -9567,9 +9680,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-6a .v6a-menu-item:hover { background: var(--bg-soft); }
 
-/* « Musique · Dernier message… » — la Passio devant l'aperçu (§10). */
-:root.passio-ui-6a .v6a-psn { color: var(--accent); font-weight: 700; }
-
 @media (max-width: 380px) {
   :root.passio-ui-6a .v6a-title { font-size: 20px; }
 }
@@ -9800,12 +9910,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   bottom: -3px;
   right: -3px;
   font-size: 11px;
-  border-width: 1.5px;
-}
-:root.passio-ui-7 #screen-feed .profile-tile-count {
-  top: -4px;
-  right: -4px;
-  font-size: 8px;
   border-width: 1.5px;
 }
 :root.passio-ui-7 #screen-feed .profile-tile-label {
@@ -10235,11 +10339,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   right: -3px;
   font-size: 13px;
 }
-#v9ProfilePassions .profile-tile-count {
-  top: -4px;
-  right: -4px;
-  font-size: 9px;
-}
 #v9ProfilePassions .profile-tile-label { font-size: 10px; max-width: 64px; }
 #v9ProfilePassions .profile-tile.active .profile-tile-label { font-size: 11.5px; }
 
@@ -10331,16 +10430,32 @@ body.ctx-locked #appMain { overflow: hidden; }
      écrans. La quatrième est la borne de SURVIE : elle garde 488 px pour tout
      le reste, donc sur un très petit écran c'est la photo qui cède, jamais les
      commandes. Les quatre sont des `min()` : aucune ne peut agrandir. */
-  --couverture-profil: min(
+  /* ⚠️ 2026-11-14 : LE CORPS DE LA CARTE EST MESURÉ, PLUS SUPPOSÉ.
+     La formule comptait 145 px fixes pour le corps (pseudo, bio d'une ligne,
+     statistiques). Une bio réelle (98 px chez Benjamin) et le bouton
+     « Partager mon profil » (LOT-12, après la formule) en faisaient 249 : la
+     formule voyait 104 px qui n'existaient pas, saturait à 36 px trois fois, et
+     les onglets passaient SOUS la barre du bas — la régression exacte de « tout
+     doit tenir sur une page » (2026-09-10). `--corps-carte-profil` est posé par
+     `_suivreCorpsCarteProfil` (app-06, un ResizeObserver, jamais de rAF) ; 145 px
+     reste le repli avant la première mesure.
+     La borne de survie (4e terme) suit la même mesure, avec un PLANCHER de
+     140 px : l'avatar (116 + 14 de garde) doit toujours tenir sur la photo. */
+  --couverture-profil: max(140px, min(
     calc((min(100vw, 440px) - 32px) / 1.5),
     calc(var(--app-vh, 100svh) * 0.34),
     420px,
-    calc(var(--app-vh, 100svh) - 488px)
-  );
-  /* Le tiers de ce qui reste une fois la couverture posée et les 470 px
-     incompressibles retirés (haut de page 80, corps de la carte 145, rail 65,
-     onglets 52, rangée de formats 56, barre 62, talon 10). */
-  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 470px - var(--couverture-profil)) / 3), 36px);
+    calc(var(--app-vh, 100svh) - 349px - var(--corps-carte-profil, 145px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+  ));
+  /* Le tiers de ce qui reste une fois la couverture et le corps de la carte
+     posés, et les 331 px incompressibles retirés (haut de page 80, rail 65,
+     onglets 52, rangée de formats 56, barre 66 — mesurée, `--v2-nav-height` —,
+     bordures de la carte 2, talon 10) — PLUS les zones sûres de l'iPhone :
+     `--app-vh` vaut `innerHeight`, la page est en `viewport-fit=cover`, et
+     `.app-shell` porte `env(safe-area-inset-top)` en haut, la barre du bas
+     `env(safe-area-inset-bottom)` en plus de ses 66 px. Sans elles, une PWA
+     installée (47 + 34 px) remettait les formats 68 px sous la barre. */
+  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 331px - var(--corps-carte-profil, 145px) - var(--couverture-profil) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 3), 36px);
 }
 #screen-profiles .main-profile-cover { max-height: var(--couverture-profil); }
 #screen-profiles .main-profile-card { margin-bottom: 0; }
@@ -11991,7 +12106,6 @@ button, a, label, select, summary,
   border: 0;
   box-shadow: none;
 }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile {
   min-width: 0;
   width: 100%;
@@ -12035,9 +12149,8 @@ button, a, label, select, summary,
 /* La tuile « Chercher » de la rangée fait DOUBLE EMPLOI avec la case
    « Chercher » de la ligne du dessus, qui appelle exactement la même fonction
    (`ouvrirRecherchePassionIRL`). Masquée ici, rendue par la coupure.
-   ⚠️ « Autres » (`#irlExtraToggle`), lui, RESTE : il ne cherche pas, il ajoute
-   durablement une passion à la rangée (`state.user.irlExtraPassions`), et
-   aucune autre porte ne fait ça. */
+   ⚠️ « Autres » (`#irlExtraToggle`) est RETIRÉ (2026-11-14) : « Chercher »
+   couvre le besoin. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.psel-tile-chercher { display: none; }
 
 /* Coché = violet plein, comme toutes les cases de la page. */
@@ -12051,32 +12164,6 @@ button, a, label, select, summary,
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-/* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
-   même langue : des pastilles au lavis violet, écriture violet foncé, et la
-   case à cocher qui se remplit de violet une fois cochée. */
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
-  border-color: var(--accent-tile-line);
-  background: var(--accent-tile);
-  color: var(--accent-2);
-  min-height: 38px;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
-  border-color: var(--accent);
-  background: var(--accent-tile-on);
-  color: var(--accent-2);
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: var(--accent); }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
-  border-color: var(--accent);
-  color: #fff;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 /* ── ⑤ Les raccourcis personnels : UNE ligne, visuellement secondaire ──────
@@ -12352,5 +12439,1492 @@ button, a, label, select, summary,
    rangée de capsules (« Ça m'intéresse », « À vivre près de moi »…) et sur le
    « Co » de « Commentaire », cinq secondes à CHAQUE ouverture du lecteur.
    260 px : au-dessus du bloc auteur même avec une légende de quatre lignes,
-   sous le premier bouton de la colonne d'actions. */
-:root.passio-ui-5 .reels-hint { bottom: calc(260px + env(safe-area-inset-bottom)); }
+   sous le premier bouton de la colonne d'actions. LOT-3 : 310 px, la rangée
+   de capsules tient désormais sur deux lignes (grille 2 × 2). */
+:root.passio-ui-5 .reels-hint { bottom: calc(310px + env(safe-area-inset-bottom)); }
+
+/* LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) : retour aux derniers messages.
+   Rond de 44 px au-dessus de la saisie ; avec un compte, il devient une pastille
+   « 2 nouveaux messages ↓ ». Posé par _convMajBoutonBas (app-04), `top` mesuré. */
+#conv-fullpage .conv-fp-bas {
+  position: fixed;
+  right: 14px;
+  z-index: 30;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border, #e4defa);
+  border-radius: 22px;
+  background: #fff;
+  color: #5b21b6;
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(40, 20, 90, 0.18);
+  cursor: pointer;
+}
+#conv-fullpage .conv-fp-bas.conv-fp-bas-compte {
+  right: 50%;
+  transform: translateX(50%);
+  background: #5b21b6;
+  border-color: #5b21b6;
+  color: #fff;
+  font-size: 14px;
+}
+#conv-fullpage .conv-fp-bas[hidden] { display: none; }
+/* LOT-4 (MSG-C56, MSG-C58, MSG-C09) : feuille de confirmation de la messagerie.
+   Au-dessus de la conversation et des modales, sous les toasts (100010). Boutons
+   de 48 px ; le destructeur est rouge plein (#b91c1c sur blanc : 6,5:1). */
+.feuille-conf-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 100005;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(20, 10, 40, 0.48);
+}
+.feuille-conf {
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  padding: 20px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  background: #fff;
+  color: #1f1235;
+  box-shadow: 0 -8px 30px rgba(20, 10, 40, 0.25);
+}
+.feuille-conf-titre {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.feuille-conf-texte {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #4b4060;
+}
+.feuille-conf-btn {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.feuille-conf-btn:first-of-type { margin-top: 14px; }
+.feuille-conf-primaire { background: #5b21b6; color: #fff; }
+.feuille-conf-danger { background: #fff; color: #b91c1c; border-color: rgba(185, 28, 28, 0.4); }
+.feuille-conf-annuler { background: #f3f0fa; color: #1f1235; }
+@media (min-width: 600px) {
+  .feuille-conf-ov { align-items: center; }
+  .feuille-conf { border-radius: 20px; }
+}
+/* LOT-4 (MSG-C60) : un champ de saisie large. Le bouton GIF séparé a disparu
+   (l'onglet GIF du panneau emoji le couvre) ; UN bouton rond à droite : le micro
+   quand le champ est vide, la flèche d'envoi dès qu'il contient du texte
+   (`:placeholder-shown` d'un textarea vide). Sans `:has`, les deux restent. */
+#conv-fullpage .conv-toolbar:has(#convFpInput:placeholder-shown) #convFpSendBtn { display: none; }
+#conv-fullpage .conv-toolbar:not(:has(#convFpInput:placeholder-shown)) #btnVoice { display: none; }
+
+/* LOT-4 (MSG-C53/C54) : le micro se maintient, sans menu ni sélection ; la barre
+   dit « relâche pour envoyer · glisse pour annuler », et vire au gris quand le
+   relâcher annulera. « Annuler » : 44 px. */
+#btnVoice {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#voiceRecordBar .voice-annuler {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  border-radius: 22px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+#voiceRecordBar.voice-annule { background: #f3f0fa; border-top-color: var(--border, #e4defa); }
+#voiceRecordBar.voice-annule #voiceRecordConsigne { color: #b91c1c; font-weight: 800; }
+
+/* LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : la bobine d'exemple porte la même
+   étiquette que le fil, et la liste a une fin qui le dit. */
+.reel-passion .reel-exemple { margin-left: 4px; }
+.reels-fin {
+  height: 100vh;
+  height: var(--app-vh, 100svh);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  color: #fff;
+  text-align: center;
+}
+.reels-fin-emoji { font-size: 44px; }
+.reels-fin-titre { font-size: 20px; font-weight: 800; }
+.reels-fin-texte { font-size: 14px; color: rgba(255, 255, 255, 0.85); margin-bottom: 8px; }
+
+/* LOT-5 (IRL-C01) : une activité d'exemple montre une pastille d'état, pas un
+   « Je participe » corail ; la bulle de carte le dit aussi. */
+:root.passio-ui-4a2 .v4a2-etat.v4a2-etat-exemple { color: #4b4060; background: #f3f0fa; border: 1px dashed #b7a8e0; }
+.irl-popup-exemple { font-size: 11px; font-weight: 700; color: #5b21b6; margin-bottom: 2px; }
+
+/* LOT-7 (audit UX/UI du 2026-11-10, TRA-C04) : l'état de la permission de
+   notification du téléphone, dans le panneau Notifications. */
+.notif-perm { font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; background: var(--bg-soft); margin-bottom: 12px; color: var(--text); }
+.notif-perm-granted { color: #0f5c3d; }
+.notif-perm-denied { color: #9a3412; }
+.notif-perm-absent { color: var(--muted); }
+/* LOT-8 (audit UX/UI du 2026-11-10, FIL-C02) : la barre d'actions d'une
+   publication — icônes SVG, nombres lisibles à l'encre, cœur plein (rouge)
+   quand on aime. */
+.post-action .pa-ico { width: 19px; height: 19px; display: block; flex: 0 0 auto; }
+.post-action .pa-n { font-size: 13.5px; font-weight: 700; color: var(--text); }
+/* 2026-11-14 (retour de Benjamin) : le cœur d'une publication aimée est ROUGE,
+   comme celui d'un commentaire (❤️) — le violet ne se lisait pas comme « aimé ».
+   Icône #ef4444 ; nombre #dc2626 (4,8:1 sur blanc, AA). */
+.post-action.liked { color: #ef4444; }
+.post-action.liked .pa-n { color: #dc2626; }
+
+/* LOT-8 (SOC-C01) : 44 px de cible pour les commandes fréquentes qui n'en
+   avaient pas. Les commandes de TEXTE grandissent ; les ICÔNES gardent leur
+   taille visible et reçoivent une zone par pseudo-élément. */
+.app-topbar .topbar-left { min-height: 44px; }
+.onb-auth-tab { min-height: 44px; }
+#settingsLogout { min-height: 44px; font-size: 13px !important; }
+.main-profile-stat { min-height: 44px; }
+.explorer-hero #explorerSearch { min-height: 44px; }
+.explorer-hero button[onclick="filterExplore()"] { min-height: 44px; min-width: 44px; }
+#postMoodRow .pill { min-height: 44px; }
+#visitedProfileActions .btn { min-height: 44px; }
+.profile-dots-btn::after { content: ""; position: absolute; inset: -5px; min-width: 44px; min-height: 44px; }
+.cmt-react-chip { position: relative; }
+.cmt-react-chip::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; transform: translateY(-50%); }
+.profile-dots-btn:not(.on-cover) { position: relative; }
+
+/* LOT-6 (audit UX/UI du 2026-11-10, TRA-C17) : le bas de la fiche d'activité
+   dégage TOUJOURS le pied collant. La marge fixe (100 px) était plus courte que
+   le pied (129 px, plus encore à l'état « inscrit ») : « Signaler cet
+   événement » et « Inviter » restaient dessous, intouchables. La hauteur du
+   pied est mesurée (`--fiche-pied`, posée par app-07). */
+#eventDetailPage .event-detail-body {
+  padding-bottom: calc(var(--fiche-pied, 140px) + 20px + env(safe-area-inset-bottom, 0px));
+}
+
+/* LOT-6 (PRO-C03) : l'erreur d'un champ, sous le champ. */
+.champ-erreur { display: block; margin-top: 6px; font-size: 13px; font-weight: 600; color: #b42318; }
+.champ-erreur[hidden] { display: none; }
+
+/* LOT-6 (TRA-C11) : le champ d'une feuille de l'application (plus de prompt()). */
+.feuille-conf-champ {
+  display: block; width: 100%; box-sizing: border-box; margin: 6px 0 4px;
+  padding: 12px 14px; border: 1.5px solid var(--border, #e4defa); border-radius: 12px;
+  font: inherit; font-size: 16px; color: inherit; background: #fff; resize: vertical;
+}
+.feuille-conf-champ:focus { outline: none; border-color: #7c3aed; }
+
+/* LOT-10 (audit UX/UI du 2026-11-10, PAR-C06) : la carte citée d'un repartage —
+   l'originale (vignette, auteur, passion, extrait), qui mène à elle. */
+.post-citee { margin-top: 8px; border: 1px solid var(--border, #e4defa); border-radius: 14px; padding: 10px 12px; background: var(--bg-soft, #f7f5fc); cursor: pointer; }
+.post-citee:focus-visible { outline: 2px solid #7c3aed; outline-offset: 2px; }
+.post-citee-tete { font-size: 12px; font-weight: 700; color: var(--muted, #6b6280); margin-bottom: 6px; }
+.post-citee-corps { display: flex; gap: 10px; align-items: flex-start; }
+.post-citee-media { width: 72px; height: 72px; flex: 0 0 72px; object-fit: cover; border-radius: 10px; background: #e9e4f7; }
+.post-citee-texte { min-width: 0; }
+.post-citee-auteur { font-size: 13.5px; font-weight: 700; color: var(--text, #1f1235); }
+.post-citee-passion { font-weight: 600; color: var(--muted, #6b6280); }
+.post-citee-extrait { margin-top: 4px; font-size: 13.5px; line-height: 1.4; color: var(--text, #1f1235); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* LOT-11 (audit UX/UI du 2026-11-10) — l'écran Rechercher.
+   REC-C07 / C13 : une croix d'effacement de 44 px dans le champ. */
+.explorer-clear {
+  flex: 0 0 auto; width: 44px; height: 44px; margin: -10px -6px -10px 0;
+  border: none; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer;
+}
+.explorer-clear[hidden] { display: none; }
+#explorerSearch::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+/* REC-C06 : « Voir N autres passions ». */
+.ex-voir-plus {
+  display: block; width: 100%; min-height: 44px; border: none; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--accent); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+/* REC-C09 : « 6 sur N · Voir dans le fil ». */
+.pex-suite { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 4px; font-size: 13px; color: var(--muted); }
+/* REC-C10 / C17 / C18 : les commandes de la fiche d'une passion à 44 px. */
+#modalContent .pex-ajouter, #modalContent .pex-publier, #modalContent .pex-suite .btn,
+#pexCreators .btn.small, #pexLiees .pill, .ex-suggestions .pill { min-height: 44px; }
+#modalContent .pex-publier { margin-top: 12px; }
+/* LOT-11 (REC-C06) : une ligne de passion repliée reste repliée — son `display:flex`
+   en ligne battait l'attribut `hidden`. */
+#exploreSearchResults .ex-passion-plus[hidden] { display: none !important; }
+
+/* LOT-12 (audit UX/UI du 2026-11-10) — le partage.
+   PAR-C07 / C18 : la feuille unique — aperçu, ce que verra la personne, 48 px. */
+.partage-apercu { display: flex; gap: 12px; align-items: flex-start; background: var(--bg-soft); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+.partage-apercu-media { width: 64px; height: 64px; flex: 0 0 64px; object-fit: cover; border-radius: 10px; background: #e9e4f7; }
+.partage-apercu-texte { min-width: 0; }
+.partage-apercu-titre { font-weight: 800; font-size: 14px; color: var(--text); }
+.partage-apercu-auteur { font-weight: 700; font-size: 13.5px; color: var(--text); }
+.partage-apercu-extrait { font-size: 13.5px; line-height: 1.4; color: var(--text); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.partage-qui-voit, .partage-signe { font-size: 12.5px; line-height: 1.45; color: var(--muted); margin: 0 0 8px; }
+.partage-signe { color: #5b21b6; font-weight: 600; }
+.partage-btn { min-height: 48px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+/* PAR-C13 : la feuille d'invitation — noms sur deux lignes, boutons de 44 px. */
+.event-invite-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.event-invite-nom { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.event-invite-btn { min-height: 44px; min-width: 88px; }
+.event-invite-fait { font-size: 13px; font-weight: 700; color: #0f5c3d; padding: 0 8px; }
+.event-invite-section { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
+.event-invite-lien { min-height: 48px; margin-top: 12px; }
+/* PAR-C16 : le souvenir rattaché à l'album d'une activité se voit et se retire. */
+.studio-souvenir { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; margin-bottom: 8px; border-radius: 12px; background: #fff4ef; border: 1px solid #f6c5b5; color: #8a2f1c; font-size: 13px; font-weight: 600; }
+.studio-souvenir-texte { flex: 1; min-width: 0; }
+.studio-souvenir-retirer { width: 44px; height: 44px; flex: 0 0 44px; border: none; background: transparent; color: inherit; font-size: 20px; cursor: pointer; }
+/* PAR-C14 : le bouton « Partager mon profil » a été RETIRÉ le 2026-11-14 sur demande
+   de Benjamin (« il sert à rien ») ; sa règle part avec lui (cible supprimée). */
+/* PAR-C20 : l'invitation reste visible, en bas, au-dessus de la barre d'onglets. */
+.invitation-bandeau {
+  position: fixed; left: 12px; right: 12px; z-index: 900;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 10px; padding: 10px 6px 10px 14px;
+  border-radius: 16px; background: #fff; border: 1px solid var(--border, #e4defa);
+  box-shadow: 0 8px 24px rgba(40, 20, 90, 0.18);
+}
+.invitation-bandeau-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; line-height: 1.35; color: #4b4060; }
+.invitation-bandeau-nom { font-size: 14px; color: #1f1235; }
+.invitation-bandeau-cta { min-height: 44px; white-space: nowrap; }
+.invitation-bandeau-fermer { width: 44px; height: 44px; border: none; background: transparent; color: #6b6280; font-size: 20px; cursor: pointer; }
+
+/* LOT-13 (audit UX/UI du 2026-11-10) — l'entrée, le compte, la navigation.
+   ENT-C03 : la sortie « ← Continuer à explorer » est une BARRE en tête de la
+   colonne de l'onboarding, plus une pastille flottante posée sur le contenu. */
+.fr-back-explore {
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: calc(44px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 16px 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(24, 18, 48, 0.1);
+  text-align: left;
+  font-size: 14px;
+}
+/* ENT-C06 : le panneau Paramètres se ferme comme une feuille. */
+.dev-panel-fond { position: fixed; inset: 0; z-index: 49999; background: rgba(20, 14, 40, 0.32); display: none; }
+.dev-panel-fond.active { display: block; }
+.dev-panel-tete { display: flex; align-items: center; justify-content: space-between; margin: -6px -6px 8px 4px; }
+.dev-panel-titre { font-weight: 800; font-size: 14px; color: var(--text); }
+.dev-panel-fermer { width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: 12px; }
+.dev-panel-fermer:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dev-panel .btn.dev-panel-danger { color: #b91c1c; border-color: rgba(239, 68, 68, 0.3); min-height: 44px; font-size: 13px; }
+.dev-panel .settings-section-body .btn { min-height: 44px; font-size: 13px; }
+/* ENT-C11 : onglets de 44 px, sorties du formulaire en vrais boutons, liens légaux à 44 px. */
+.onb-auth-tab { min-height: 44px; }
+.auth-lien { border: none; background: transparent; font-family: inherit; font-weight: 600; width: 100%; }
+.auth-lien:focus-visible, .auth-lien-legal:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Interligne élargi plutôt que des liens qui débordent : à marges négatives, la ligne
+   suivante recouvrait la précédente (« politique » interceptait les CGU, CI Linux). */
+.auth-lien-legal { display: inline; padding: 4px 0; }
+#authConsentWrap > span { line-height: 2 !important; }
+/* ENT-C16 : « Avant de continuer » — case de 22 px dans une ligne de 44 px, deux réponses. */
+.consent-requis-ligne { display: flex; gap: 12px; align-items: flex-start; min-height: 44px; padding: 6px 0; cursor: pointer; }
+.consent-requis-ligne input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--accent); }
+.consent-requis-btn { min-height: 48px; margin-top: 10px; }
+.consent-requis-refus { min-height: 44px; margin-top: 6px; font-weight: 600; color: var(--muted); border-color: transparent; }
+/* ENT-C05 : le repère est une carte qui ne recouvre pas sa cible ; la cible a un contour. */
+.fr-tip.fr-tip-carte { max-width: 360px; }
+.fr-tip-cible { outline: 2px solid var(--accent) !important; outline-offset: 3px; border-radius: 12px; }
+.fr-tip-ok, .fr-tip-skip { min-height: 44px; }
+/* ENT-C14 : l'aide pointe vers le nom ; « Compris » à 44 px. */
+.passio-hint { position: fixed; }
+.passio-hint-ok { min-height: 44px; }
+.passio-hint.passio-hint-sous::before, .passio-hint.passio-hint-sur::after {
+  content: ""; position: absolute; left: var(--hint-fleche, 24px); width: 12px; height: 12px;
+  background: var(--accent); transform: translateX(-50%) rotate(45deg);
+}
+.passio-hint.passio-hint-sous::before { top: -5px; }
+.passio-hint.passio-hint-sur::after { bottom: -5px; }
+/* ENT-C15 : passions gardées sur l'appareil — la porte du compte, une fois. */
+/* Parcours du nouvel inscrit (2026-11-20) : à 390 px, texte, bouton et × passaient chacun sur leur ligne, le × seul en bas à gauche (124 px de haut). Le × sort du flux, à droite, centré : deux lignes au plus. */
+.fr-note-locale { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 6px 12px 2px; padding: 4px 48px 4px 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); font-size: 12.5px; color: var(--text); }
+.fr-note-locale-texte { color: var(--muted); }
+.fr-note-locale-cta { flex: 1 1 auto; min-height: 44px; border: none; background: transparent; color: #5b21b6; font: inherit; font-weight: 700; text-align: left; cursor: pointer; padding: 0 4px; }
+.fr-note-locale-fermer { position: absolute; top: 50%; right: 2px; transform: translateY(-50%); width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
+/* ENT-C12 : liens d'évitement, visibles au focus seulement. */
+.liens-evitement { position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); z-index: 100010; }
+.lien-evitement { position: absolute; left: -9999px; top: 8px; min-height: 44px; padding: 0 16px; border: none; border-radius: 12px; background: #4c1d95; color: #fff; font: inherit; font-weight: 700; white-space: nowrap; }
+.lien-evitement:focus { left: 8px; outline: 3px solid #fff; outline-offset: -5px; }
+/* ENT-C13 : une action principale ; installation en lien ; boutons du tour à 44 px. */
+.landing-cta-lien { display: block; margin: 8px auto 0; min-height: 44px; padding: 0 12px; border: none; background: transparent; color: #5b21b6; font: inherit; font-size: 14px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.tour-btn { min-height: 44px; }
+/* ENT-C17 : en paysage, les barres rendent la hauteur au contenu. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-topbar { min-height: 0 !important; padding-top: 2px !important; padding-bottom: 2px !important; }
+  #appNavV2.app-nav-v2 .nav-label { display: none; }
+}
+/* ENT-C03 : la barre occupe désormais sa propre ligne ; le bandeau du formulaire
+   n'a plus à réserver 48 px pour l'ancienne pastille flottante (iPhone SE : le
+   bouton Google repassait sous le pli). */
+.fr-back-explore ~ .onb-step[data-onb-step="splash"] > div:first-child { padding-top: 16px !important; padding-bottom: 20px !important; margin-bottom: 14px !important; }
+
+/* LOT-14 (audit UX/UI du 2026-11-10) — bobines et stories.
+   BOB-C11 : la barre du direct sur deux lignes — le statut en haut, le nom en
+   clair dessous ; Suivre et Partager à 44 px. */
+.vlive-topbar { flex-wrap: wrap; row-gap: 4px; }
+.vlive-topbar .vlive-name { order: 2; flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+.vlive-topbar .vlive-follow, .vlive-topbar .vlive-icon-btn { min-height: 44px; min-width: 44px; }
+/* BOB-C13 : commandes des commentaires de bobine à 44 px, « Fermer » en toutes lettres. */
+.reel-comments-close { min-height: 44px; min-width: 44px; padding: 0 14px; width: auto; height: auto; border: none; border-radius: 12px; background: rgba(124, 58, 237, 0.1); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.reel-comments-send { min-width: 44px; min-height: 44px; }
+.reel-comment-like, .reel-comment-reply { min-height: 44px; padding: 0 10px; border: none; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+/* BOB-C14 : fermer le lecteur à 44 px. */
+.reels-close { width: 44px; height: 44px; }
+/* BOB-C16 : piste des barres visible, « ⋯ » collé à ✕, 44 px, ✕ nommé. */
+.story-progress { background: rgba(255, 255, 255, 0.35); }
+.story-viewer-header .story-more-btn { margin-left: auto; min-width: 44px; min-height: 44px; background: none; border: none; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+.story-viewer-header .story-more-btn + .story-viewer-close { margin-left: 4px; }
+.story-viewer-close { width: 44px; height: 44px; border: none; color: #fff; font: inherit; }
+
+/* LOT-15 (audit UX/UI du 2026-11-10) — le Studio et l'éditeur média.
+   CRE-C05 : le brouillon automatique se propose au-dessus du champ. */
+.studio-brouillon { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); font-size: 13px; color: var(--text); }
+.studio-brouillon-texte { flex: 1 1 100%; min-width: 0; }
+.studio-brouillon .btn { min-height: 44px; }
+/* CRE-C06 : les envies à 44 px / 13 px. */
+#postMoodRow .pill { min-height: 44px; font-size: 13px; padding-left: 14px; padding-right: 14px; }
+/* CRE-C07 : sous UI-6, les boutons du composer suffisent — plus de seconde zone d'envoi sombre. */
+:root.passio-ui-6 #uploadZone, :root.passio-ui-6 #videoUploadZone { display: none; }
+/* CRE-C08 : « Retirer » et les commandes des éléments de l'éditeur, 44 px de zone. */
+.photo-clear { border: none; cursor: pointer; }
+.photo-clear::after { content: ""; position: absolute; inset: -8px; }
+.me-overlay .me-ov-ctrl::after { content: ""; position: absolute; inset: -10px; }
+.me-overlay .me-ov-edit {
+  position: absolute; top: -10px; left: -10px;
+  width: 24px; height: 24px; border-radius: 999px;
+  background: rgba(0,0,0,0.65); color: #fff; border: none;
+  font-size: 12px; cursor: pointer; display: none;
+  align-items: center; justify-content: center; line-height: 1;
+}
+.me-overlay.selected .me-ov-edit { display: flex; }
+.me-tool { min-width: 44px; height: 44px; }
+/* CRE-C10 : pour qui, combien de temps. */
+.ligne-audience { margin: 0 0 8px; font-size: 12.5px; line-height: 1.4; color: var(--muted); text-align: center; }
+.me-bottom .ligne-audience { color: rgba(255, 255, 255, 0.85); }
+/* CRE-C11 : panneaux emoji / GIF au-dessus de la barre d'outils, pleine largeur, 44 px. */
+.me-panneau {
+  position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 140px); z-index: 4100;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px;
+  padding: 10px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.me-panneau-emoji { min-width: 44px; min-height: 44px; font-size: 24px; background: none; border: none; cursor: pointer; border-radius: 10px; }
+/* CRE-C12 : « Recommencer » lisible sur l'aperçu. */
+:root.passio-ui-7 .v7-bobine-actions [data-v7-bobine-act="recommencer"] { min-height: 48px; color: #fff; border: 2px solid #fff; background: rgba(0, 0, 0, 0.35); }
+/* CRE-C17 : le titre ne passe plus sous la croix ; la ligne choisie se voit. */
+.psel-titre { padding-right: 48px; }
+.psel-item.psel-item-choisie { background: rgba(124, 58, 237, 0.08); }
+.psel-item.psel-item-choisie .psel-item-plus { color: var(--accent); font-weight: 800; }
+.psel-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: #5b21b6; font-weight: 600; }
+:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }
+
+/* LOT-16 (audit UX/UI du 2026-11-10) — le profil.
+   PRO-C21 : la pastille du nombre de publications est RETIRÉE (2026-11-13,
+   plus aucun chiffre sur les bulles de passion). */
+/* PRO-C13 : le badge photo d'une passion, 28 px (sa zone reste de 44 px). */
+.passion-photo-badge { width: 28px; height: 28px; font-size: 14px; }
+/* PRO-C17 : les actions du profil visité à 44 px, texte 14 px. */
+.btn.profil-action { min-height: 44px; font-size: 14px; padding: 10px 18px; }
+/* PRO-C07 : un compte que j'ai bloqué le dit, à la place des actions. */
+#visitedProfileActionsMasquees { display: none !important; }
+.profil-bloque { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 4px; padding: 10px 12px; border-radius: 14px; background: #fff1f2; border: 1px solid #fecdd3; color: #9f1239; font-size: 14px; font-weight: 600; }
+/* PRO-C10 : revenir à la liste d'où le profil a été ouvert. */
+.profil-retour-liste { position: absolute; top: 12px; left: 12px; z-index: 21; min-height: 44px; padding: 0 14px; border: none; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #4c1d95; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 10px rgba(24, 18, 48, 0.18); }
+/* PRO-C09 : une ligne de personne est un bouton (focus visible). */
+.personne-ligne:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* PRO-C15 : « Ajouter un réseau », et la barre d'enregistrement reste à portée. */
+.rs-ajouter { min-height: 44px; font-size: 13px; }
+.edit-profil-actions { position: sticky; bottom: -1px; z-index: 2; padding: 10px 0 4px; background: var(--bg-card, #fff); }
+/* PRO-C19 : une passion déjà mienne n'est pas une idée. */
+.psel-item.psel-item-possedee { opacity: 0.6; cursor: default; }
+.psel-item-deja { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+/* LOT-17 (audit UX/UI du 2026-11-10) — règles transverses.
+   TRA-C02 : un toast long ne touche plus les bords ; coins de carte dès deux lignes. */
+.toast { max-width: min(440px, calc(100% - 32px)); border-radius: 16px; }
+/* TRA-C09 : « Débloquer » à 44 px. */
+.btn.bloque-debloquer { min-height: 44px; font-size: 13px; padding: 8px 14px; }
+/* TRA-C27 : la copie de ses données, proposée avant la suppression. */
+.suppression-export { margin: 0 0 12px; padding: 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); border: 1px solid rgba(124, 58, 237, 0.2); }
+.suppression-export .btn { min-height: 44px; }
+/* TRA-C21 : le titre qui reçoit le focus ne dessine pas de cadre à la souris. */
+#modalContent .modal-title:focus:not(:focus-visible) { outline: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-18 (audit UX/UI du 2026-11-10) — le fil
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* FIL-C04 : la discussion prend la hauteur disponible (elle se lisait par une
+   lucarne de 260 px, la moitié haute de l'écran restant vide). */
+#commentsBox.cmt-fil-liste {
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  margin-bottom: 12px;
+  overscroll-behavior: contain;
+}
+/* FIL-C29 : la limite se dit, à partir de 350 caractères. */
+.cmt-compteur {
+  margin-top: 4px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cmt-compteur.plein { color: #b45309; font-weight: 700; }
+/* FIL-C11 : « Publier » à 46 px ; actions d'un commentaire à 44 px de large. */
+.cmt-publier { min-height: 46px; }
+.comment-actions .comment-action {
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* FIL-C12 : la page d'une publication — intertitre, état vide lisible (4,5:1),
+   et un geste pour écrire. */
+.post-page-intertitre {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, #4b4563);
+  margin-bottom: 10px;
+}
+.post-page-vide {
+  font-size: 13px;
+  color: var(--text-dim, #4b4563);
+  text-align: center;
+  padding: 20px 0;
+}
+.post-page-ecrire {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 12px;
+}
+/* FIL-C18 : une image qui ne charge pas le dit. */
+.post-image-indisponible {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  background: var(--accent-tile, #f5efff);
+  color: var(--text-dim, #4b4563);
+  font-size: 13px;
+  font-weight: 600;
+}
+/* FIL-C19 : une photo très haute ne dépasse plus l'écran dans le fil (l'image
+   entière reste sur la page de la publication). */
+#feedList .post-media img {
+  max-height: min(480px, 70vh);
+  object-fit: cover;
+  object-position: center;
+}
+/* FIL-C13 retiré le 2026-11-13 sur demande de Benjamin : les pastilles cernées
+   de 44 px étaient trop grosses. Les envies reprennent leur forme d'avant —
+   onglets soulignés, règles de `.feed-intent-btn` plus haut dans ce fichier. */
+/* FIL-C14 : sur un petit écran, le premier contenu remonte ; ailleurs, les
+   libellés des stories passent à 11 px. */
+#storiesRowFeed .story-label { font-size: 11px; }
+@media (max-height: 660px) {
+  #storiesRowFeed .story-label { display: none; }
+}
+/* FIL-C25 : le bandeau hors ligne ne recouvre plus la barre du haut — il se
+   pose au-dessus de la barre d'onglets ; croix de 44 px. */
+.bandeau-hors-ligne {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 9999;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 14px;
+  background: #1e1b4b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(30, 27, 75, 0.25);
+}
+.bandeau-hors-ligne button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: #c4b5fd;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-19 (audit UX/UI du 2026-11-10) — rencontrer (IRL)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* IRL-C09 : les commandes de la carte à 44 px (zoom 29, replier / plein écran 38). */
+.maplibregl-ctrl-group button { width: 44px; height: 44px; }
+.irl-map-collapse,
+.irl-map-expand { width: 44px; height: 44px; }
+.irl-map-collapse { right: 62px; }
+/* IRL-C10 : en plein écran, la sortie se lit — « Fermer la carte ». */
+.irl-map-expand-txt { display: none; }
+.irl-map-wrap.fullscreen .irl-map-expand {
+  width: auto;
+  padding: 0 14px 0 10px;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.irl-map-wrap.fullscreen .irl-map-expand-txt { display: inline; }
+.irl-map-wrap.fullscreen .maplibregl-popup-close-button {
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+}
+/* IRL-C11 : le rouge de l'annulation passe l'AA (#ef4444 : 3,23:1 et 3,76:1). */
+.event-card-banner.cancelled,
+.event-detail-urgency.cancelled,
+:root.passio-ui-4a2 .v4a2-etat-annule { color: #b42318; }
+:root.passio-ui-4a2 .v4a2-etat-annule { border-color: rgba(180, 35, 24, 0.45); }
+/* IRL-C57 : l'annulation en tête de fiche se voit — bandeau plein, pas une pastille. */
+.event-detail-urgency.cancelled {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  background: #fef3f2;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+/* IRL-C16 : flèches de mois à 44 px. */
+.irl-cal-nav,
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-nav { width: 44px; height: 44px; }
+/* IRL-C17 : « C'est maintenant » et « En cours » disaient deux fois la même
+   chose sur la même carte — la ligne « En cours » du corps reste seule. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner.live { display: none !important; }
+/* IRL-C68 : petites commandes des fenêtres d'organisation — zone de 44 px. */
+#modalContent .btn.small { position: relative; }
+#modalContent .btn.small::after {
+  content: "";
+  position: absolute;
+  inset: 50% -2px auto -2px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+/* IRL-C69 : sur ordinateur, la fiche garde une largeur de lecture. */
+@media (min-width: 900px) {
+  #eventDetailContent,
+  #eventDetailCta {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+/* IRL-C58 : la note sous « Lieu » quand l'adresse est réservée. */
+.event-detail-info-note { font-size: 12.5px; color: var(--muted); }
+/* IRL-C53 / C66 : pied de l'organisation et d'un exemple. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-exemple .v4b-rsvp-etat { color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-20 (audit UX/UI du 2026-11-10) — messagerie
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* MSG-C62 : un seul état par message, en toutes lettres. */
+.msg-st { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.msg-st-envoi { opacity: 0.8; }
+.msg-st-echec {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  margin: -12px 0 -12px 4px;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318;
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  cursor: pointer;
+}
+.msg-st-echec:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* MSG-C83 : le nom d'un fichier sur deux lignes, en entier au survol. */
+.msg-fichier-nom {
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 200px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  line-height: 1.3;
+}
+/* MSG-C67 : un lien dans un message, souligné dans la couleur du texte. */
+.msg-lien { color: inherit; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+/* MSG-C19 / C32 : l'état vide se termine par une action. */
+.msg-vide-action { margin-top: 12px; min-height: 44px; }
+/* Décisions de Benjamin du 2026-11-13 (CRE-C16 / FIL-C24, CRE-C13). */
+.post-modifie { color: var(--muted); font-style: italic; }
+.v7-passion-ligne { display: flex; gap: 8px; align-items: center; }
+.v7-passion-ligne select { flex: 1; min-width: 0; }
+.v7-passion-ligne .btn { min-height: 44px; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-21 (audit UX/UI du 2026-11-10) — règles transverses (suite)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* TRA-C13 : Accepter / Refuser une demande d'abonnement à 44 px. */
+.notif-demande-actions .btn.small { min-height: 44px; padding: 0 16px; font-size: 13px; }
+/* TRA-C28 : l'état de la permission du téléphone. */
+.notif-permission {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent-tile, #f5efff);
+  color: var(--text-dim, #4b4563);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+/* TRA-C29 : « Aide et retour » commence par les réponses qui existent. */
+.aide-liens { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.aide-liens .btn { min-height: 44px; justify-content: flex-start; text-align: left; }
+/* TRA-C06 : « Affichage » — la taille du texte seulement. */
+.config-tailles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.config-taille {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.config-taille.actif { border-color: var(--accent); background: var(--accent-tile, #f5efff); }
+.config-taille-aa { font-weight: 800; line-height: 1; }
+
+/* LOT-23 (audit UX/UI du 2026-11-10, MSG-C78 / C87) : à la place de la saisie
+   d'une conversation qui ne peut pas aboutir, une ligne qui dit pourquoi. */
+.conv-issue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim, #4b4563);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.conv-issue span { flex: 1; min-width: 0; }
+.conv-issue .btn { min-height: 44px; flex-shrink: 0; }
+
+/* LOT-24 (audit UX/UI du 2026-11-10) — messagerie (suite) */
+/* MSG-C72 : aperçu d'une photo avant envoi. */
+.pj-apercu { display: flex; justify-content: center; background: var(--bg-soft); border-radius: 14px; overflow: hidden; }
+.pj-apercu img { max-width: 100%; max-height: 55vh; display: block; object-fit: contain; }
+/* MSG-C65 : le bouton d'actions d'une vidéo. */
+.conv-actions-btn {
+  align-self: flex-start;
+  min-width: 44px;
+  min-height: 32px;
+  margin-top: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim, #4b4563);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.conv-bubble-wrap.me .conv-actions-btn { align-self: flex-end; }
+/* MSG-C76 : ma réaction se retire d'un toucher ; une bulle se voit au clavier. */
+.conv-react-badge.mine {
+  border: 1px solid var(--accent);
+  background: var(--accent-tile, #f5efff);
+  font: inherit;
+  cursor: pointer;
+  min-height: 28px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.conv-bubble-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 16px; }
+/* MSG-C14 : les non-lus des conversations archivées se voient. */
+.archives-pastille { color: var(--accent); font-weight: 800; }
+
+/* LOT-25 (audit UX/UI du 2026-11-10) — Rencontrer (suite) */
+/* IRL-C05 : un pied sans résultat dit pourquoi et porte la sortie. */
+.v4a5-pied-vide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-dim, #4b4563);
+}
+.v4a5-pied-vide span { flex: 1; min-width: 0; }
+.v4a5-pied-vide .btn { min-height: 44px; flex-shrink: 0; }
+/* Le pied V4A5 est en pointer-events: none (seul « Afficher » capte le toucher) : le bloc d'issue doit l'être aussi. */
+.v4a5-pied-vide { pointer-events: auto; background: #f6f5fa; border-radius: 12px; padding: 6px 8px; }
+
+/* LOT-26 (audit UX/UI du 2026-11-10) — FIL-C27 : la publication d'un compte privé le dit. */
+
+/* LOT-27 (audit UX/UI du 2026-11-10, MSG-C13) : la ligne dit COMBIEN de non-lus
+   (pastille chiffrée de 20 px, au lieu d'un point de 9 px dont le nombre était
+   écrit en taille 0) ; le nom tient sur une ligne. */
+.msg-card .msg-badge {
+  min-width: 20px;
+  max-width: none;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 20px;
+}
+.msg-card .msg-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-card .msg-head { min-width: 0; }
+
+/* LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : le bandeau de l'équipe vit
+   au-dessus de la barre d'onglets ; quand le bandeau hors ligne y est aussi, il
+   monte d'un cran pour que les deux restent lisibles et touchables. */
+body.passio-hors-ligne #passioBandeauDistant {
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* LOT-32 (audit UX/UI du 2026-11-10, MSG-C10 / MSG-C75) : retour (36 px) et
+   boutons d'icône de l'en-tête de conversation (34 px, zone 38 × 46) portés à
+   44 × 44. Les icônes gardent leur taille ; la zone ::after d'avant devient
+   inutile. Même règle pour le retour du panneau Paramètres. */
+#conv-fullpage .conv-fp-back,
+#convSettingsPanel .conv-fp-back,
+#conv-fullpage .conv-action-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+}
+#conv-fullpage .conv-action-btn::after { content: none; }
+#conv-fullpage .conv-actions { gap: 0; }
+
+/* LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : lecture d'un vocal (34 px) et
+   vitesse (24 × 18) gardent leur taille visible ; leur zone tactile fait 44 px. */
+.voice-play-btn,
+.voice-speed-btn { position: relative; }
+.voice-play-btn::after,
+.voice-speed-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+/* LOT-35 (audit UX/UI du 2026-11-10, MSG-C17) : les actions qui effacent ou font
+   sortir, dans un rouge lisible (#B42318 sur #F7F5FC ≈ 6:1, l'ancien #EF4444
+   tombait à 3,5:1) ; l'aide sous un réglage qui vaut pour tout le compte. */
+.csetting-item.csetting-danger .csetting-label { color: #b42318; }
+.csetting-aide { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+
+/* LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : une pastille chiffrée pour les
+   activités d'un même lieu, sa bulle qui les liste, et le message posé sur la
+   carte quand le fond ne charge pas. */
+.passio-marker.passio-marker-groupe { width: 40px; height: 40px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.irl-popup-liste { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; margin-top: 6px; }
+.irl-popup-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.irl-popup-ligne:hover, .irl-popup-ligne:focus-visible { background: rgba(109, 50, 244, 0.08); }
+.irl-popup-ligne-titre { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.irl-popup-ligne-meta { font-size: 12px; color: var(--muted); }
+.irl-map-fallback.irl-map-tuiles { position: absolute; inset: 0; z-index: 2; height: auto; background: var(--bg-card, #fff); pointer-events: none; }
+
+/* LOT-37 (audit UX/UI du 2026-11-10, MSG-C70) : panneau emoji — onglets de
+   44 px à la couleur d'accent, huit colonnes de cases de 44 px (l'ancienne
+   grille en serrait douze de 31 px). */
+#emojiTopBar .emoji-onglet { flex: 1; min-height: 44px; padding: 0 10px; border: none; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+#emojiTopBar .emoji-onglet.actif { background: var(--accent); color: #fff; }
+#convEmojiPanel #emojiGrid { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; gap: 0 !important; padding: 6px 8px !important; }
+#convEmojiPanel .emoji-item { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0; border: 0; background: transparent; font-size: 26px; font-family: inherit; color: inherit; }
+#convEmojiPanel .emoji-item:hover { transform: none; }
+
+/* LOT-38 (audit UX/UI du 2026-11-10, MSG-C26) : écrans d'appel — minuteur blanc
+   (#6D32F4 sur fond nuit tombait à 2,1:1), Refuser et Répondre écartés et
+   légendés, la photo de la personne dans l'avatar. */
+.call-overlay .call-timer { color: #fff; }
+.call-overlay .call-timer[hidden] { display: none; }
+.call-controls.call-controls-entrant { gap: 72px; }
+.call-commande { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.call-commande > span { font-size: 13px; font-weight: 600; color: #fff; }
+.call-avatar.call-avatar-photo { overflow: hidden; padding: 0; }
+.call-avatar.call-avatar-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.call-overlay .call-control-btn.mute, .call-overlay .call-control-btn.video { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+/* LOT-39 (audit UX/UI du 2026-11-10, FIL-C23, MSG-C82) : pictogrammes au trait
+   dans les menus — même taille partout, couleur du texte (rouge lisible pour
+   une action grave). */
+.csetting-icon { display: flex; align-items: center; justify-content: center; color: var(--text); }
+.csetting-icon .picto, .cmt-sheet-ic .picto, .post-option .picto { width: 22px; height: 22px; flex-shrink: 0; }
+.csetting-item.csetting-danger .csetting-icon { color: #b42318; }
+.cmt-sheet-ic { display: inline-flex; align-items: center; justify-content: center; }
+.post-option .picto { margin-right: 2px; }
+
+/* LOT-41 (audit UX/UI du 2026-11-10, MSG-C77) : une série de messages se serre
+   (4 px au lieu de 12) ; l'heure est sous son dernier message ; le porte-statut
+   d'un de mes messages au milieu d'une série ne prend pas de place à vide. */
+.conv-bubble-wrap.conv-serie { margin-bottom: 4px; }
+.conv-bubble-time.conv-bubble-time-statut { margin-top: 0; min-height: 0; }
+.conv-bubble-time.conv-bubble-time-statut:has(> [data-msgst]:empty) { display: none; }
+.msg-actions-heure { text-align: center; font-size: 12px; color: var(--muted); padding: 2px 0 8px; }
+
+/* LOT-44 (audit UX/UI du 2026-11-10, TRA-C26) : sommaire des textes légaux —
+   des liens de 44 px qui mènent au point, au-dessus du texte qui défile. */
+.legal-sommaire { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 4px 0 10px; max-height: 22vh; overflow-y: auto; }
+.legal-sommaire-lien { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 22px; background: var(--bg-card); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.legal-sommaire-lien:hover, .legal-sommaire-lien:focus-visible { border-color: var(--accent); color: var(--accent); }
+.legal-corps { scroll-behavior: smooth; }
+/* LOT-45 (audit UX/UI du 2026-11-10, IRL-C07) : trois filtres actifs, la vue
+   Liste disait « Rien avec ces filtres » et l'onglet « Filtre » ne portait
+   aucune marque — la pastille, alimentée à chaque rendu, était masquée par la
+   maquette du 2026-09-04. Elle réapparaît QUAND un filtre est actif (le moteur
+   pose display:block), en nombre blanc sur l'accent ; à zéro, rien. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger .ctx-trigger-badge[style*="block"] {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger:not([aria-selected="true"]) .ctx-trigger-badge[style*="block"] {
+  background: var(--accent);
+  color: #fff;
+}
+/* LOT-46 (audit UX/UI du 2026-11-10, MSG-C63) : hors ligne, le bandeau global
+   (fixe, au-dessus de tout) recouvrait l'en-tête de la conversation — retour,
+   nom et ⋯ ne répondaient plus. Dans une conversation, le bandeau s'efface et
+   l'état se dit SOUS l'en-tête, en une ligne. */
+body.passio-hors-ligne:has(#conv-fullpage.active) #offlineBanner { display: none !important; }
+body.passio-hors-ligne #conv-fullpage .conv-fp-head { position: relative; }
+body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
+  content: "Hors ligne — tes messages partiront au retour du réseau";
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 5;
+  padding: 4px 14px; font-size: 12px; font-weight: 600; line-height: 1.4;
+  background: #fef3c7; color: #78350f; border-bottom: 1px solid #fde68a;
+}
+/* MSG-C69 : le bouton d'en-tête « Proposer un moment IRL » porte la couleur
+   du passage au réel (corail), comme l'entrée du menu « + ». */
+#conv-fullpage .conv-action-btn.irl-proposal-action { color: #E5533F; }
+
+/* LOT-47 (audit UX/UI du 2026-11-10, IRL-C59) : la feuille à trois états —
+   le titre au-dessus de sa description, alignés à gauche, cibles de 56 px. */
+.btn.block.rsvp-option { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 56px; height: auto; white-space: normal; padding-top: 10px; padding-bottom: 10px; }
+.btn.block.rsvp-option > b { display: block; }
+/* LOT-48 (audit UX/UI du 2026-11-10, PAR-C18, PRO-C23) : cibles de 44 px —
+   « × » des fenêtres (34 px visibles, zone élargie sans la déplacer : elle est
+   déjà en position absolue), entrées du menu ⋯ du profil, « Inviter », boutons
+   pleine largeur des feuilles. */
+.modal-close::after { content: ""; position: absolute; inset: -5px; }
+.profile-dots-menu button { min-height: 44px; }
+.event-invite-btn { min-height: 44px; }
+.modal .btn.block, #modalContent .btn.block { min-height: 44px; }
+
+/* LOT-49 (audit UX/UI du 2026-11-10, BOB-C09) : répondre à une story — un champ
+   en bas de la visionneuse, au-dessus de la zone sûre. */
+.story-reply-bar {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 6; display: flex; gap: 8px; align-items: center;
+}
+.story-reply-input {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); border-radius: 22px;
+  background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 16px;
+}
+.story-reply-input::placeholder { color: rgba(255, 255, 255, 0.85); }
+.story-reply-send {
+  min-height: 44px; padding: 0 16px; border-radius: 22px;
+  background: #fff; color: #1f1147; font-weight: 800; font-size: 14px;
+}
+
+/* LOT-51 (audit UX/UI du 2026-11-10, SOC-C03) : la colonne élargie à 640 px du
+   grand écran est REMPLACÉE, depuis le 2026-11-14, par la disposition pleine
+   page (bloc ORDINATEUR-PLEINE-PAGE, en fin de feuille). */
+
+/* LOT-52 (audit UX/UI du 2026-11-10, PCS-C05) : le rappel de la publication
+   d'origine, au-dessus du champ — une ligne qu'on peut fermer. */
+.conv-contexte { display: flex; align-items: center; gap: 8px; margin: 0 10px 6px; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--accent-wash, #f1ebfe); color: var(--text); font-size: 13px; }
+.conv-contexte-texte { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-contexte-fermer { flex-shrink: 0; width: 44px; height: 44px; border-radius: 22px; font-size: 20px; color: var(--muted); }
+
+/* LOT-53 (audit UX/UI du 2026-11-10, PRO-C23) : petites cibles du profil — le
+   « Réactiver » d'une passion archivée et le curseur du recadreur à 44 px
+   (le ⋯ du profil visité et le badge photo avaient déjà leur zone). */
+.v8-switch-go { min-height: 44px; }
+#pcropZoom { min-height: 44px; }
+
+/* ═══ PROFIL-ERGONOMIE:DEBUT ════════════════════════════════════════════════
+   « Améliore la page de profil, je ne la trouve pas ergonomique et pratique »
+   (Benjamin, 2026-11-14, capture de son profil à l'appui). Fiche :
+   docs/lots-ui/31-PROFIL-ERGONOMIE-2026-11-14.md. Verrou :
+   tests/e2e/profil-ergonomie.spec.js.
+   ⚠️ Toutes les règles de MISE EN PAGE sont bornées à `#screen-profiles` (ou à
+   un identifiant de mon profil) : les classes `.main-profile-*`, `.profile-strip`
+   et `.v7-tabs` servent AUSSI le profil visité et le Fil. Seule exception,
+   voulue : les paragraphes de biographie, communs aux deux profils.
+   ⚠️ Posé AVANT le bloc ORDINATEUR-PLEINE-PAGE, qui reste le dernier. */
+
+/* ① La biographie en paragraphes (`bioEnParagraphesHtml`, app-02) : une ligne
+   vide devient un écart de 6 px au lieu d'une ligne blanche de 19,5 px. Les
+   sauts SIMPLES restent rendus par le `pre-line` hérité de `.main-profile-bio`.
+   Le séparateur porte `hidden` : il n'est pas peint, mais il reste dans le
+   `textContent`, et la règle adjacente le traverse. */
+.main-profile-bio .bio-para { display: block; }
+.main-profile-bio .bio-sep + .bio-para { margin-top: 6px; }
+/* La bio d'un AUTRE compte n'ouvre rien (aucun rôle, aucun clic) : le curseur
+   « main » de la règle de base y promettait un geste qui n'existe pas. */
+.main-profile-bio:not([role="button"]) { cursor: auto; }
+/* ② (Le bouton « Partager mon profil », posé un temps à droite de l'avatar, a
+   été RETIRÉ le 2026-11-14 sur demande de Benjamin — « il sert à rien ». Ses
+   règles sont parties avec lui. Le lien de mon profil reste au menu du crayon,
+   « Inviter des amis ».) */
+
+/* ③ Le rail des passions VA JUSQU'AUX BORDS DE L'ÉCRAN, et il dit qu'il défile.
+   Capture de Benjamin : 7 passions, 4 bulles visibles, coupées PILE dans la
+   marge de la 5e — rien ne disait qu'il y en avait trois autres. Le rail
+   s'étend sous la gouttière de `#appMain` (16 px de chaque côté) en gardant son
+   padding de 16 px : à 390 px, la 5e vignette dépasse d'environ 28 px du bord —
+   l'indice universel d'une rangée qui coulisse, sans chiffre (« supprime les
+   chiffres sur les onglets de passion », 2026-11-13) ni flèche.
+   ⚠️ Ce qui ne change pas : la largeur FIXE et égale des bulles (jamais
+   `flex: 1 1 0`), le centrage par marges `auto` quand la rangée tient (jamais
+   `justify-content: center`), le départ à 0 du bord intérieur quand elle
+   déborde, la position de défilement (`ecrireRailCoulissant`). Le pas reste de
+   82 px (74 + 8 au lieu de 72 + 10).
+   ⚠️ Le libellé gagne 6 px (64 → 70) : « Course à pied » (66 px à 10 px)
+   s'écrit en entier au lieu de « Course à p… ». Toujours 10 px, jamais moins.
+   ⚠️ Borné à l'IDENTIFIANT : le Fil (`#profileStrip`) et le profil visité
+   (`#visitedPassions`) partagent `.profile-strip`. */
+#screen-profiles #v9ProfilePassions.v9-profile-strip {
+  margin-left: -16px;
+  margin-right: -16px;
+  gap: 8px;
+}
+#screen-profiles #v9ProfilePassions .profile-tile { width: 74px; padding: 2px 2px 2px; }
+#screen-profiles #v9ProfilePassions .profile-tile-label { max-width: 70px; }
+/* ④ Les onglets « Publications | Activité » RESTENT À PORTÉE quand on défile.
+   Une fois dans ses publications, il fallait remonter tout le profil pour
+   passer à « Activité ». `position: sticky` : aucun écouteur de défilement,
+   aucun rAF, aucune classe basculée (UI-6B et UI-7 observent `class`) — la
+   barre reste dans le flux, et à `scrollTop` 0 rien ne bouge (les verrous de
+   géométrie mesurent là). Jamais `fixed` dans `#appMain` (WebKit).
+   ⚠️ `top: -16px` : le collage se fait au bord du CONTENU de `#appMain`, sous
+   son `padding-top` de 16 px ; sans ce décalage, les publications défileraient
+   visibles dans la bande de 16 px au-dessus de la barre. Sur ordinateur le
+   padding vaut 28 px : la règle correspondante vit dans le bloc
+   ORDINATEUR-PLEINE-PAGE.
+   ⚠️ Fond opaque déjà posé (`--bg-card`) ; `z-index: 6` passe au-dessus des
+   enfants positionnés des cartes de publication, très en dessous des feuilles
+   (1200), du lecteur de bobines (9999), des fenêtres (10001) et du menu ⋯
+   (10002). Sous la page « Mes passions », la règle `!important` qui masque les
+   frères de `#passionManager` l'emporte. Le défilement vers une section garde
+   la barre au-dessus de sa cible (`scroll-margin-top`). */
+:root.passio-ui-7 #screen-profiles #v7ProfileTabs {
+  position: sticky;
+  top: -16px;
+  z-index: 6;
+  box-shadow: 0 6px 16px -10px rgba(15, 8, 40, 0.35);
+  /* Fond OPAQUE dans tous les thèmes : en « Sombre », `--bg-card` vaut
+     rgba(30,27,75,.92) (app-05) et les publications transparaissaient sous la
+     barre collée. La couche du dessus garde le jeton ; la sous-couche (la même
+     teinte, pleine) ne se voit qu'à travers une carte translucide. */
+  background: linear-gradient(var(--bg-card), var(--bg-card)), #1e1b4b;
+}
+:root.passio-ui-7 #screen-profiles #myPosts,
+:root.passio-ui-7 #screen-profiles .v7-pan { scroll-margin-top: 60px; }
+/* ⑤ La couverture de MON profil n'ouvre rien (aucun gestionnaire, mesuré) : le
+   curseur « main » de la règle de base promettait un geste qui n'existe pas. Le
+   crayon, lui, garde le sien. */
+#screen-profiles .main-profile-cover { cursor: default; }
+/* ⑥ LE CONTENU D'ABORD (relu par l'arbitrage des conceptions, sur le compte
+   réel de Benjamin : 0 publication).
+   — (Retiré le 2026-11-14 : la rangée de formats est TOUJOURS peinte.) Elle ne se peignait que si elle filtrait quelque chose
+     (`data-formats`, posé par `_majRangeeFormats`, app-06) ; le contenu prend sa
+     place, à un `--espace-profil` des onglets : la formule ne change pas, et rien
+     au-dessus des onglets ne bouge. Avec un média, la rangée revient, en bas de
+     page comme décidé le 2026-09-10.
+   — L'état vide de MON profil est compact (icône à gauche, bouton pleine
+     largeur dessous) : 168 → 110 px, et son texte remonte à 12 px (plancher de
+     LOT-53). Le texte « Créer une publication » ne change pas.
+   — Dans « Activité », le titre « Mes activités » répète l'onglet : masqué à
+     l'ÉCRAN seulement — il reste dans le DOM avec son texte (UI-7 le retrouve
+     par `titreContenant`, et un lecteur d'écran le lit). Le panneau prend le
+     même rythme que « Publications ».
+   ⚠️ Tout est sous `:root.passio-ui-7` : sans UI-7, l'écran d'avant revient. */
+:root.passio-ui-7 #screen-profiles #myPosts > .empty {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+}
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-icon {
+  grid-row: 1 / span 2;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  margin: 0;
+}
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-title { align-self: end; margin: 0; }
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .empty-text { align-self: start; margin: 2px 0 0; max-width: none; font-size: 12px; }
+:root.passio-ui-7 #screen-profiles #myPosts > .empty .btn { grid-column: 1 / -1; margin-top: 8px; min-height: 44px; }
+:root.passio-ui-7 #screen-profiles #v7Pan-activites > .section-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+:root.passio-ui-7 #screen-profiles #v7Pan-activites { padding-top: var(--espace-profil); }
+/* ═══ PROFIL-ERGONOMIE:FIN ═══ */
+
+/* ═══ ORDINATEUR-PLEINE-PAGE:DEBUT ═══════════════════════════════════════════
+   Demande de Benjamin du 2026-11-14 : « pour l'utilisation sur ordinateur, fais
+   en sorte que cela ressemble à un vrai site qui prend toute la page ».
+   À partir de 1024 px de large, l'app n'est plus une colonne de téléphone
+   posée au milieu de l'écran : la coque occupe toute la fenêtre, l'en-tête
+   court sur toute la largeur, la navigation devient un menu latéral à gauche
+   et le contenu se cale dans une largeur de lecture.
+   CSS seul : aucun nœud n'est créé ni déplacé, aucun calcul de l'app ne lit la
+   largeur de la coque. Sous 1024 px, rien ne change.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  :root {
+    --pc-rail: 248px;   /* largeur du menu latéral */
+    --pc-tete: 64px;    /* hauteur de l'en-tête (celle de .app-topbar) */
+  }
+  html, body { background: #f6f5fa; }
+
+  /* ── La coque : toute la fenêtre, en grille ──────────────────────────────
+     Seuls les enfants DANS LE FLUX sont des cellules (en-tête, contenu, pied
+     des filtres, barres de navigation) ; les panneaux absolus et fixes
+     (accueil, inscription, stories, conversation…) ne sont pas concernés. */
+  .app-shell {
+    width: 100%;
+    max-width: none;
+    height: var(--app-vh, 100svh);
+    max-height: var(--app-vh, 100svh);
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: grid;
+    grid-template-columns: var(--pc-rail) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .app-shell > .app-topbar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    height: var(--pc-tete);
+    padding: 8px 28px 8px 24px;
+  }
+  .app-shell > .app-main {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 28px 32px 56px;
+    scrollbar-gutter: stable;
+  }
+  .app-main::-webkit-scrollbar { width: 10px; }
+  /* Le contenu : une largeur de lecture, centrée dans la zone de droite. */
+  .app-main > .screen { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+  /* ── Le menu latéral ─────────────────────────────────────────────────── */
+  .app-shell > .app-nav,
+  #appNav.app-nav,
+  #appNavV2.app-nav-v2 {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    grid-template-columns: none;
+    padding: 20px 14px;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.72);
+    overflow-y: auto;
+  }
+  .app-shell > .app-nav .nav-item,
+  #appNavV2 .nav-v2-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    flex: 0 0 auto;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 15px;
+    color: var(--text-dim, #4b4563);
+    transition: background 140ms ease, color 140ms ease;
+  }
+  .app-shell > .app-nav .nav-label,
+  #appNavV2 .nav-label {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .app-shell > .app-nav .nav-item:hover,
+  #appNavV2 .nav-v2-item:hover { background: rgba(124, 58, 237, 0.07); color: var(--text); }
+  .app-shell > .app-nav .nav-item.active,
+  #appNavV2 .nav-v2-item.active { background: var(--accent-wash, #f1ebfe); color: var(--accent); }
+  #appNavV2 .nav-v2-item.active .nav-icon { transform: none; }
+  #appNavV2 .nav-v2-item.active::before {
+    top: 12px;
+    bottom: 12px;
+    left: 0;
+    width: 3px;
+    height: auto;
+  }
+  /* « Créer » : le bouton principal du menu, sous les destinations. */
+  #appNavV2 .nav-v2-cta {
+    order: 10;
+    margin-top: 14px;
+    justify-content: center;
+    gap: 8px;
+    background: var(--grad-hero);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(124, 58, 237, 0.28);
+  }
+  #appNavV2 .nav-v2-cta:hover { background: var(--grad-hero); color: #fff; filter: brightness(1.06); }
+  #appNavV2 .nav-v2-cta .nav-icon {
+    width: 24px;
+    height: 24px;
+    margin-top: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  #appNavV2 .nav-v2-cta .nav-icon svg { width: 22px; height: 22px; }
+  #appNavV2 .nav-v2-cta .nav-label { color: #fff; }
+
+  /* ── Écrans à grille : la largeur sert à montrer plus, pas à étirer ───── */
+  .app-main > #screen-irl,
+  .app-main > #screen-explore { max-width: 1080px; }
+  #eventList {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    align-items: start;
+  }
+  #eventList > :not(.event-card) { grid-column: 1 / -1; }
+  #screen-explore .passion-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  #screen-explore .trending-row { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+
+  /* ── Fenêtres : des dialogues centrés, plus des feuilles montées du bas ── */
+  .modal-backdrop { align-items: center; padding: 32px; }
+  .modal {
+    width: min(560px, 100%);
+    max-height: min(100%, 820px);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding-bottom: 24px;
+    box-shadow: 0 24px 64px rgba(24, 18, 48, 0.28);
+    animation: fadeIn 180ms ease-out;
+  }
+  .v2-sheet-backdrop { align-items: center; padding: 32px; }
+  .v2-sheet { max-width: 460px; border-radius: var(--v2-radius); padding-bottom: 18px; }
+  .v2-sheet-grip { display: none; }
+
+  /* ── Conversation : dans la zone de contenu, le menu et l'en-tête restent ── */
+  #conv-fullpage {
+    top: var(--pc-tete);
+    left: var(--pc-rail);
+    max-height: none;
+    border-left: 1px solid var(--border);
+  }
+
+  #conv-fullpage > .conv-fp-head,
+  #conv-fullpage > .conv-fp-thread,
+  #conv-fullpage > .conv-issue,
+  #conv-fullpage > .conv-toolbar,
+  #conv-fullpage > #convTypingBar,
+  #conv-fullpage > #voiceRecordBar {
+    padding-left: max(20px, calc((100% - 880px) / 2));
+    padding-right: max(20px, calc((100% - 880px) / 2));
+  }
+
+  /* ── Fiches (publication, activité) : des pages du site, sous l'en-tête ── */
+  /* `!important` : #postDetailPage porte `inset:0` en style en ligne. */
+  #postDetailPage,
+  #eventDetailPage.event-detail-page {
+    top: var(--pc-tete) !important;
+    left: var(--pc-rail) !important;
+    border-left: 1px solid var(--border);
+  }
+  #postDetailPage > * {
+    width: 100%;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  /* ── Ce qui se calait sur la barre du bas ─────────────────────────────── */
+  .toast-stack { left: var(--pc-rail); bottom: 28px; }
+  :root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-pied { left: var(--pc-rail); bottom: 0; }
+
+  /* ── Page d'accueil : deux colonnes, comme la page d'entrée d'un site ──── */
+  .landing {
+    padding: 28px max(40px, calc((100% - 1120px) / 2)) 40px;
+  }
+  .landing.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 72px;
+  }
+  .landing-header { grid-column: 1 / -1; grid-row: 1; margin-bottom: 12px; }
+  .landing-hero { grid-column: 1; grid-row: 2; align-self: end; padding-bottom: 8px; }
+  .landing-title { font-size: clamp(40px, 3.5vw, 54px); text-align: left; margin: 14px 0 20px; }
+  .landing-subtitle { font-size: 22px; text-align: left; margin-bottom: 24px; }
+  .landing-cta {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    position: static;
+    max-width: 420px;
+    margin: 0;
+    padding: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .landing-cta .landing-cta-lien { margin-left: 0; }
+  .landing-pillars { grid-column: 2; grid-row: 2 / 4; align-self: center; }
+
+  /* ── Inscription et connexion : une colonne centrée ───────────────────── */
+  .onboarding-shell > .onb-step {
+    align-self: center;
+    width: 100%;
+    max-width: 560px;
+    scrollbar-width: thin;
+  }
+  /* ── Profil : la barre d'onglets collée se pose au ras de l'en-tête ─────────
+     (bloc PROFIL-ERGONOMIE, ④) : ici `#appMain` a 28 px de padding haut, pas 16. */
+  :root.passio-ui-7 #screen-profiles #v7ProfileTabs { top: -28px; }
+}
+/* ═══ ORDINATEUR-PLEINE-PAGE:FIN ═══ */
+
+
+/* ═══ STORY FAÇON INSTAGRAM (2026-11-14) — barre d'actions, réactions, gestes ═══
+   Une barre en bas de la visionneuse : « Répondre… » (compte réel), ❤️, partager.
+   Champ en main : la rangée de réactions rapides apparaît au-dessus. Maintenir
+   la story efface l'interface ; balayer vers le bas la ferme. */
+#storyCard { touch-action: none; transition: transform 160ms ease, opacity 160ms ease; will-change: auto;
+  /* Maintenir ne doit ni sélectionner le texte (un 2e balayage le TIRAIT : pointercancel)
+     ni ouvrir le menu « copier » d'iOS. */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#storyCard img { -webkit-user-drag: none; }
+.story-actions-bar {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 6; display: flex; gap: 6px; align-items: center;
+  transition: opacity 180ms ease;
+}
+.story-actions-bar .story-reply-bar { position: static; flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; }
+.story-actions-bar .story-reply-send { display: none; }
+.story-actions-bar .story-reply-bar.a-du-texte .story-reply-send { display: inline-flex; align-items: center; }
+.story-actions-espace { flex: 1; }
+.story-action-btn {
+  flex-shrink: 0; width: 44px; height: 44px; border-radius: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; color: #fff; cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+.story-action-btn:active { transform: scale(0.88); }
+.story-like-btn svg path { fill: none; stroke: #fff; stroke-width: 1.9; }
+.story-like-btn.aimee svg path { fill: #ff3040; stroke: #ff3040; }
+.story-like-btn.aimee svg { animation: storyCoeurPop 320ms cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes storyCoeurPop { 0% { transform: scale(.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.story-nouvelle-btn {
+  flex: 1; min-height: 44px; border-radius: 22px; padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.35);
+  color: #fff; font-weight: 700; font-size: 14px; text-align: left;
+}
+.story-reactions {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  z-index: 7; display: none; justify-content: space-around;
+  padding: 10px 6px; border-radius: 22px;
+  background: rgba(10, 8, 24, 0.72);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.story-viewer.story-ecrit .story-reactions { display: flex; animation: fadeIn 160ms ease; }
+.story-reaction-btn { width: 48px; height: 48px; font-size: 30px; line-height: 1; background: none; border: none; cursor: pointer; }
+.story-reaction-btn:active { transform: scale(1.3); }
+.story-eclosion {
+  position: absolute; left: 50%; top: 45%; z-index: 8; pointer-events: none;
+  font-size: 96px; line-height: 1; color: #ff3040;
+  transform: translate(-50%, -50%) scale(.2); opacity: 0;
+  animation: storyEclosion 850ms cubic-bezier(.2, 1.4, .4, 1) forwards;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.35));
+}
+.story-eclosion svg { width: 110px; height: 110px; display: block; }
+@keyframes storyEclosion {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.2); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  55% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
+}
+/* Maintenir : l'interface s'efface, la story reste seule. */
+.story-viewer.story-maintenu .story-viewer-header,
+.story-viewer.story-maintenu .story-progress-row,
+.story-viewer.story-maintenu .story-actions-bar,
+.story-viewer.story-maintenu .story-sound-btn { opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
+.story-viewer-header, .story-progress-row { transition: opacity 180ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .story-eclosion, .story-like-btn.aimee svg { animation-duration: 1ms; }
+  #storyCard { transition: none; }
+}
+
+
+/* ═══ STORY : COMMENTAIRES PUBLICS, ACTIVITÉ, COMPTEURS (2026-11-14) ═══ */
+.story-comment-btn { position: relative; }
+.story-action-badge {
+  position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: #ff3040; color: #fff; font-size: 11px; font-weight: 800;
+  line-height: 18px; text-align: center; filter: none;
+}
+.story-activite-btn {
+  flex: 1; min-height: 44px; border-radius: 22px; padding: 0 16px; text-align: left;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.35);
+  color: #fff; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.story-nouvelle-btn.compacte { flex: 0 0 auto; width: 44px; padding: 0; text-align: center; font-size: 20px; }
+.story-com-list { max-height: 52vh; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 12px; margin: 6px 0 12px; }
+.story-com-vide { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 8px; }
+.story-com-row { display: flex; gap: 10px; align-items: flex-start; }
+.story-feuille-avatar { flex-shrink: 0; width: 36px; height: 36px; font-size: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background-size: cover; background-position: center; }
+.story-com-corps { flex: 1; min-width: 0; }
+.story-com-tete { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.story-com-heure { color: var(--muted); font-size: 12px; }
+.story-com-texte { font-size: 15px; line-height: 1.35; white-space: pre-line; word-break: break-word; }
+.story-com-suppr { flex-shrink: 0; width: 44px; height: 44px; border: none; background: none; font-size: 16px; opacity: .7; cursor: pointer; }
+.story-com-form { display: flex; gap: 8px; align-items: center; }
+.story-com-input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1.5px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 16px; }
+.story-com-publier { min-height: 44px; border-radius: 22px; padding: 0 16px; }
+.story-act-resume { font-weight: 800; font-size: 15px; margin: 4px 0 8px; }
+.story-feuille-ligne { display: flex; align-items: center; gap: 10px; }
+.story-feuille-nom { flex: 1; min-width: 0; min-height: 44px; text-align: left; background: none; border: none; color: var(--text); font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.story-act-coeur { font-size: 18px; }
+
+/* Studio : aucune passion sur le profil -> sortie vers « Gérer mes passions » (2026-11-14) */
+.psel-vide-profil { padding: 8px 0; }
+.psel-vide-profil .btn { margin-top: 12px; }
+/* « Affichage » (2026-11-14) : les couleurs et la police reviennent à côté de la
+   taille du texte. Des boutons de 44 px au moins, l'état choisi au contour. */
+.config-rubrique { font-weight: 700; font-size: 13px; color: var(--text); margin: 14px 0 8px; }
+.config-couleurs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.config-couleur {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 10px 4px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.config-couleur.actif, .config-taille.actif { border-color: var(--accent); background: var(--bg-deep, #f5efff); }
+.config-couleur-pastille { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; }
+.config-police {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.config-police-nom { flex: 1; font-size: 16px; font-weight: 800; }
+.config-police-liste {
+  margin-top: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.config-police-choix {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.config-police-choix:last-child { border-bottom: 0; }
+.config-police-choix.actif { background: var(--bg-deep, #f5efff); }
+.config-police-choix-texte { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.config-police-choix-nom { font-size: 20px; font-weight: 800; }
+.config-police-choix-desc { font-size: 12px; color: var(--text-dim, #4b4563); }
+.config-police-choix-coche { font-size: 18px; color: var(--accent); }

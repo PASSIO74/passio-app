@@ -258,7 +258,9 @@ test("une seule action primaire, et aucune écriture avant le geste", async ({ p
 
   // Le moteur historique a fait tout le travail — rien n'a été redéveloppé.
   await expect(cta.locator('[data-v4b-rsvp-etat="going"]')).toBeVisible();
-  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("✓ Je participe");
+  // LOT-3 (audit UX/UI, PCS-C03) : l'état parle à la personne, et dit la suite.
+  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("✓ Tu participes");
+  await expect(cta.locator("[data-v4b-rsvp-chat]")).toHaveText("Écrire aux participants");
   expect(await page.evaluate(() => myRsvp("ev_jam"))).toBe("going");
   expect(await page.evaluate(() => (state.user.joinedEvents || []).includes("ev_jam"))).toBe(true);
   expect(await page.evaluate(() => (_findCanonicalEvent("ev_jam").attendees || []).length)).toBe(3);
@@ -271,6 +273,9 @@ test("une seule action primaire, et aucune écriture avant le geste", async ({ p
 
   // Le retrait reste possible, en secondaire, et repasse par le moteur existant.
   await page.evaluate(() => document.querySelectorAll(".toast").forEach((t) => t.remove()));
+  // Le retrait est inerte 1,2 s après l'inscription (LOT-3, IRL-C50) : un geste
+  // délibéré vient après.
+  await page.waitForTimeout(1300);
   await cta.locator("[data-v4b-rsvp-remove]").click();
   await expect(cta.locator("[data-v4b-rsvp-go]")).toHaveCount(1);
   expect(await page.evaluate(() => myRsvp("ev_jam"))).toBeNull();
@@ -295,7 +300,7 @@ test("complet : le libellé annonce la liste d'attente, le moteur l'applique", a
 
   await go.click();
   await expect(page.locator('#eventDetailCta [data-v4b-rsvp-etat="waitlist"]')).toBeVisible();
-  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("Sur liste d'attente");
+  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("Tu es sur la liste d'attente"); // LOT-19 (IRL-C55)
   expect(await page.evaluate(() => myRsvp("ev_full"))).toBe("waitlist");
   expect(await page.evaluate(() => (_findCanonicalEvent("ev_full").attendees || []).length)).toBe(2);
 });

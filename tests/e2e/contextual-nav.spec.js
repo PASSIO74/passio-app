@@ -66,8 +66,9 @@ test.describe("ContextualTools — aucune fonctionnalité perdue", () => {
     const body = page.locator("#ctxToolsBody");
     await expect(body).toContainText("Choisir une ville");
     await expect(body).toContainText("Date, distance, horaire");
-    await expect(body).toContainText("Mes événements");
-    await expect(body).toContainText("Mes inscriptions");
+    // LOT-47 (TRA-C23, IRL-C62) : « activité » pour l'objet, « Je participe » pour le geste.
+    await expect(body).toContainText("Mes activités");
+    await expect(body).toContainText("Je participe");
 
     // Le lanceur « Filtres » ouvre bien le panneau de filtres existant.
     await body.locator('[onclick*="openIrlFiltersPanel"]').click();

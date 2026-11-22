@@ -316,7 +316,9 @@ test("⑩ au plafond, choisir le remplissage au Studio ne fait pas pointer `#pos
   });
   expect(r.absent).toBeFalsy();
   expect(r.pasDeBranche).toBeFalsy();
-  expect(r.paywall).toBe(1);              // le mur s'est bien affiché
+  // 2026-11-14 : une passion hors profil est refusée AVANT toute acquisition —
+  // le Studio ne publie que dans les passions du profil, sans mur payant.
+  expect(r.paywall).toBe(0);
   expect(r.valeur).toBe("sport");         // …et on publie toujours dans Sport
   expect(r.option).toBe(false);           // l'option orpheline est retirée
   expect(r.possedees).not.toContain("musique");

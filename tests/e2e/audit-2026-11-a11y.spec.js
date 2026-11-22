@@ -281,8 +281,6 @@ test.describe("AUDIT D — captures et relevés d'accessibilité", () => {
       ["modal-confidentialite", "openPrivacySettings()"],
       ["modal-comptes-bloques", "openBlockedList()"],
       ["modal-contenu-feed", "openContentSettings()"],
-      ["modal-temps-ecran", "openScreenTime()"],
-      ["modal-mode-pause", "openPauseMode()"],
       ["modal-feedback", "feedbackModal()"],
       ["modal-limites-pilote", "openLimitesPilote()"],
       ["modal-cgu", "openTermsOfService()"],
