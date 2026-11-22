@@ -1,4 +1,4 @@
--- Définitions de PRODUCTION de post_masque, abonne_accepte_non_bloque et post_is_visible (pg_get_functiondef, mesurée le 2026-11-22 ; staging identique)
+-- Définitions de PRODUCTION de post_masque, abonne_accepte_non_bloque, post_is_visible et interactions_cibles (pg_get_functiondef, mesurée le 2026-11-22 ; staging identique)
 -- (les deux premières lues par post_is_visible, que réécrit migration_blocage_lecture_activites_bis_2026-11-22.sql).
 -- NE PAS RETOUCHER À LA MAIN : la garde de la migration compare l'empreinte md5 du corps.
 
@@ -64,4 +64,38 @@ AS $function$
       )
     )
   end
+$function$;
+
+-- interactions_cibles(_comment_ids text[], _kinds text[], _limite integer) md5 25e050030451ee802007b063ae088f41 (#1023, appliquée en production)
+CREATE OR REPLACE FUNCTION public.interactions_cibles(_comment_ids text[], _kinds text[] DEFAULT NULL::text[], _limite integer DEFAULT 1000)
+ RETURNS TABLE(id text, comment_id text, post_id text, user_id text, kind text, payload text, created_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  with cibles as materialized (
+    -- 300 identifiants au plus, dédupliqués, sans NULL, bornés APRÈS aplatissement.
+    select distinct s.cid
+      from (select u.cid from unnest(coalesce(_comment_ids, '{}'::text[])) with ordinality as u(cid, n)
+             where u.cid is not null order by u.n limit 300) s
+  ),
+  lignes as (
+    select i.id, i.comment_id, i.post_id, i.user_id, i.kind, i.payload, i.created_at
+      from public.comment_interactions i
+      join cibles c on c.cid = i.comment_id
+     where _kinds is null or i.kind = any(_kinds)
+  ),
+  -- ⚠️ La règle de lecture, « user_id = moi OR comment_target_visible(comment_id, post_id) »,
+  -- décidée ici pour chaque couple présent au lieu de l'être pour chaque ligne.
+  fils as materialized (
+    select d.comment_id, d.post_id, coalesce(public.comment_target_visible(d.comment_id, d.post_id), false) as visible
+      from (select distinct l.comment_id, l.post_id from lignes l) d
+  )
+  select l.id, l.comment_id, l.post_id, l.user_id, l.kind, l.payload, l.created_at
+    from lignes l
+   where l.user_id = (select auth.uid())::text
+      or exists (select 1 from fils f
+                  where f.comment_id = l.comment_id and f.post_id is not distinct from l.post_id and f.visible)
+   order by l.created_at, l.id
+   limit greatest(1, least(coalesce(_limite, 1000), 1000));
 $function$;

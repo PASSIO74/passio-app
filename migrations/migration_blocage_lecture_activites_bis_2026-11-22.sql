@@ -4,7 +4,7 @@
 -- appliquée au staging et en production le même jour)
 --
 -- `npm run migration:appliquer -- migrations/migration_blocage_lecture_activites_bis_2026-11-22.sql --projet <ref>`
--- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (18 lignes) LÈVE
+-- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (19 lignes) LÈVE
 -- si une seule ligne est en ECHEC : rien n'est alors validé. Aucun prérequis
 -- client. PRÉREQUIS SERVEUR : la première migration (garde ci-dessous).
 --
@@ -74,6 +74,10 @@
 --    (`comment_interactions`) et les « j'aime » de commentaires
 --    (`comment_likes`) d'un compte en blocage avec moi : je ne les lis plus,
 --    sauf sur MON fil (activité ou publication) quand c'est moi qui ai bloqué.
+--    La même règle entre dans `interactions_cibles` (#1023, SECURITY DEFINER,
+--    appliquée en production le 2026-11-22) : c'est par elle que le client LIT
+--    les réactions et réponses ; sans elle, la policy ne fermait que la
+--    lecture directe de l'API.
 --    PORTÉE : commentaires d'ACTIVITÉ, réactions d'activité, réponses et
 --    « j'aime » de commentaires. PAS les commentaires de premier niveau ni
 --    les « j'aime » d'une PUBLICATION (`post_comments`, `post_likes`) sur le
@@ -114,6 +118,10 @@
 --   · `events.id` reste modifiable par l'organisateur (`posts.id` ne l'est
 --     plus depuis #888, `post_comments.id` est figé, `event_comments` n'a pas
 --     de policy UPDATE) : jamais vers un homonyme ;
+--   · REJOUER APRÈS CETTE BIS `migration_capacite_lectures_groupees_2026-11-22.sql`
+--     échoue (sa garde compare les règles de lecture de comment_interactions,
+--     qui en ont une de plus) et écraserait `interactions_cibles` sans le
+--     blocage : elle est appliquée ; ne pas la rejouer telle quelle ;
 --   · REJOUER APRÈS CETTE BIS les épreuves embarquées de
 --     `migration_epingle_commentaire_2026-11-05.sql` et de
 --     `migration_publications_supprimees_2026-11-04.sql` échoue : elles
@@ -227,6 +235,38 @@
 --| $function$;
 --| drop policy if exists comment_interactions_lecture_hors_blocage on public.comment_interactions;
 --| drop policy if exists comment_likes_lecture_hors_blocage on public.comment_likes;
+--| CREATE OR REPLACE FUNCTION public.interactions_cibles(_comment_ids text[], _kinds text[] DEFAULT NULL::text[], _limite integer DEFAULT 1000)
+--|  RETURNS TABLE(id text, comment_id text, post_id text, user_id text, kind text, payload text, created_at timestamp with time zone)
+--|  LANGUAGE sql
+--|  STABLE SECURITY DEFINER
+--|  SET search_path TO ''
+--| AS $function$
+--|   with cibles as materialized (
+--|     -- 300 identifiants au plus, dédupliqués, sans NULL, bornés APRÈS aplatissement.
+--|     select distinct s.cid
+--|       from (select u.cid from unnest(coalesce(_comment_ids, '{}'::text[])) with ordinality as u(cid, n)
+--|              where u.cid is not null order by u.n limit 300) s
+--|   ),
+--|   lignes as (
+--|     select i.id, i.comment_id, i.post_id, i.user_id, i.kind, i.payload, i.created_at
+--|       from public.comment_interactions i
+--|       join cibles c on c.cid = i.comment_id
+--|      where _kinds is null or i.kind = any(_kinds)
+--|   ),
+--|   -- ⚠️ La règle de lecture, « user_id = moi OR comment_target_visible(comment_id, post_id) »,
+--|   -- décidée ici pour chaque couple présent au lieu de l'être pour chaque ligne.
+--|   fils as materialized (
+--|     select d.comment_id, d.post_id, coalesce(public.comment_target_visible(d.comment_id, d.post_id), false) as visible
+--|       from (select distinct l.comment_id, l.post_id from lignes l) d
+--|   )
+--|   select l.id, l.comment_id, l.post_id, l.user_id, l.kind, l.payload, l.created_at
+--|     from lignes l
+--|    where l.user_id = (select auth.uid())::text
+--|       or exists (select 1 from fils f
+--|                   where f.comment_id = l.comment_id and f.post_id is not distinct from l.post_id and f.visible)
+--|    order by l.created_at, l.id
+--|    limit greatest(1, least(coalesce(_limite, 1000), 1000));
+--| $function$;
 --| drop trigger if exists zz_identifiant_sans_homonyme on public.posts;
 --| drop trigger if exists zz_identifiant_sans_homonyme on public.events;
 --| drop trigger if exists zz_identifiant_sans_homonyme on public.post_comments;
@@ -255,19 +295,21 @@ begin
     select p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as sig,
            md5(replace(p.prosrc, chr(13), '')) as emp
       from pg_proc p
-     where p.pronamespace = 'public'::regnamespace and p.proname in ('comment_target_visible', 'post_is_visible')
+     where p.pronamespace = 'public'::regnamespace and p.proname in ('comment_target_visible', 'post_is_visible', 'interactions_cibles')
   loop
     n := n + 1;
     if not (
          -- comment_target_visible : celles de la première migration, que cette bis NE réécrit PAS.
          (r.sig = 'comment_target_visible(cid text, pid text)' and r.emp = '3cf606d2b4bf8605e403643342c11f5d')
       or (r.sig = 'comment_target_visible(cid text)'           and r.emp = '0d830765c94045194263714b9b7f2bf9')
-      or (r.sig = 'post_is_visible(pid text)'                  and r.emp in ('08d910fbe202c6aaa5e73dce487b6364', '3e3d52b23aac8d5e931d63f4a61288ee'))) then
+      or (r.sig = 'post_is_visible(pid text)'                  and r.emp in ('08d910fbe202c6aaa5e73dce487b6364', '3e3d52b23aac8d5e931d63f4a61288ee'))
+      or (r.sig = 'interactions_cibles(_comment_ids text[], _kinds text[], _limite integer)'
+                                                                and r.emp in ('25e050030451ee802007b063ae088f41', 'b85e5b725a7fbc1e8c4b424b9eb67178'))) then
       raise exception '% a changé depuis la mesure du 2026-11-22 (md5 %) : relire avant de réécrire', r.sig, r.emp;
     end if;
   end loop;
-  if n <> 3 then
-    raise exception '% définition(s) trouvée(s) parmi comment_target_visible(cid), comment_target_visible(cid, pid), post_is_visible(pid) : 3 attendues', n;
+  if n <> 4 then
+    raise exception '% définition(s) trouvée(s) parmi comment_target_visible(cid), comment_target_visible(cid, pid), post_is_visible(pid), interactions_cibles(…) : 4 attendues', n;
   end if;
   select count(*) into h from (
     select id from (select id from public.posts union all select id from public.events
@@ -501,6 +543,50 @@ as $function$
   end
 $function$;
 
+-- ── interactions_cibles (#1023) : la lecture GROUPÉE du client suit la même règle ──
+-- Corps identique à la définition mesurée, sauf le filtre marqué BLOC-ACT bis.
+create or replace function public.interactions_cibles(_comment_ids text[], _kinds text[] DEFAULT NULL::text[], _limite integer DEFAULT 1000)
+ RETURNS TABLE(id text, comment_id text, post_id text, user_id text, kind text, payload text, created_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  with cibles as materialized (
+    -- 300 identifiants au plus, dédupliqués, sans NULL, bornés APRÈS aplatissement.
+    select distinct s.cid
+      from (select u.cid from unnest(coalesce(_comment_ids, '{}'::text[])) with ordinality as u(cid, n)
+             where u.cid is not null order by u.n limit 300) s
+  ),
+  lignes as (
+    select i.id, i.comment_id, i.post_id, i.user_id, i.kind, i.payload, i.created_at
+      from public.comment_interactions i
+      join cibles c on c.cid = i.comment_id
+     where _kinds is null or i.kind = any(_kinds)
+  ),
+  -- ⚠️ La règle de lecture, « user_id = moi OR comment_target_visible(comment_id, post_id) »,
+  -- décidée ici pour chaque couple présent au lieu de l'être pour chaque ligne.
+  fils as materialized (
+    select d.comment_id, d.post_id, coalesce(public.comment_target_visible(d.comment_id, d.post_id), false) as visible
+      from (select distinct l.comment_id, l.post_id from lignes l) d
+  )
+  select l.id, l.comment_id, l.post_id, l.user_id, l.kind, l.payload, l.created_at
+    from lignes l
+   where (l.user_id = (select auth.uid())::text
+      or exists (select 1 from fils f
+                  where f.comment_id = l.comment_id and f.post_id is not distinct from l.post_id and f.visible))
+     -- Ce qu'a écrit un compte en blocage avec moi ne se lit plus, sauf sur MON fil quand c'est moi
+     -- qui ai bloqué : la règle de comment_interactions_lecture_hors_blocage, que cette fonction
+     -- SECURITY DEFINER contournerait sinon (BLOC-ACT bis, 2026-11-22).
+     and (l.user_id = (select auth.uid())::text
+          or not public.is_blocked_with(l.user_id)
+          or ((exists (select 1 from public.events e where e.id = l.post_id
+                        and (e.author_id = (select auth.uid())::text or e.organizer_id = (select auth.uid())::text))
+               or exists (select 1 from public.posts p where p.id = l.post_id and p.author_id = (select auth.uid())::text))
+              and exists (select 1 from public.blocks b where b.blocker_id = (select auth.uid())::text and b.blocked_id = l.user_id)))
+   order by l.created_at, l.id
+   limit greatest(1, least(coalesce(_limite, 1000), 1000));
+$function$;
+
 -- ── Verdict : il LÈVE sur la moindre ligne en ECHEC ────────────────────────
 create temp table _verdict_bloc_act_bis on commit drop as
 select 1 as n, '① publication_masquee_pour_moi : security definer, search_path vide, FAUX sans compte (identifiant réel)' as controle,
@@ -562,6 +648,11 @@ select 18, '⑱ les restrictives d''INSERT par visibilité sont là (une interac
                    and (tablename, policyname) in (('comment_interactions', 'ci_visibilite_insert'), ('comment_likes', 'comment_likes_visibilite_insert'),
                                                    ('post_comments', 'post_comments_visibilite_insert'), ('post_likes', 'post_likes_visibilite_insert'))) = 4
              then 'OK' else 'ECHEC' end
+union all
+select 19, '⑲ interactions_cibles (lecture groupée du client) applique le blocage de comment_interactions, droits conservés',
+       case when (select prosrc from pg_proc where oid = 'public.interactions_cibles(text[],text[],integer)'::regprocedure) like '%or not public.is_blocked_with(l.user_id)%'
+             and (select prosrc from pg_proc where oid = 'public.interactions_cibles(text[],text[],integer)'::regprocedure) like '%b.blocker_id = (select auth.uid())::text and b.blocked_id = l.user_id%'
+             and has_function_privilege('authenticated', 'public.interactions_cibles(text[],text[],integer)', 'EXECUTE') then 'OK' else 'ECHEC' end
 union all
 select 17, '⑰ ce que lisent le déclencheur et les policies existe : identifiants retirés, blocks lisible par authenticated',
        case when to_regclass('rencontres_prive.identifiants_retires') is not null
