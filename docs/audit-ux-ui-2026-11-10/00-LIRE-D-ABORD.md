@@ -4,6 +4,13 @@
 > la production servie ce jour-là (`release.json` : `buildId 3d8e98bb12ad`). Branche du dossier :
 > `docs/audit-ux-ui-2026-11-10`. Aucun fichier de l'application n'a été modifié.
 
+> **Les 1 647 captures (51 Mo) ne sont pas dans `main`** (22/11/2026). Elles auraient augmenté la taille
+> du dépôt de moitié, et chaque job de CI les aurait retéléchargées. Elles sont conservées, avec tout le
+> dossier, sous l'étiquette **`archive/audit-ux-ui-2026-11-10`**. Pour les voir dans la galerie :
+> `git worktree add ../audit-ux archive/audit-ux-ui-2026-11-10`, puis ouvrir
+> `../audit-ux/docs/audit-ux-ui-2026-11-10/galerie/index.html`. Dans `main`, la galerie s'ouvre mais
+> affiche ses tuiles sans images. Les textes, données, rapports et prototypes sont complets.
+
 ## Par où commencer
 
 | Je veux… | J'ouvre |
