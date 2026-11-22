@@ -1246,6 +1246,22 @@ function _meUpdateProgress(p) {
   if (bar) bar.style.width = v + "%";
   if (pct) pct.textContent = v + " %";
 }
+// iOS : la lecture sonore exige un toucher. Un bouton DANS l'overlay de
+// progression ; `relancer` est appelé dans le gestionnaire de clic (le geste).
+function _meDemanderToucher(relancer) {
+  var d = document.getElementById("meProgressOv");
+  if (!d) return false;
+  var b = document.getElementById("meProgressToucher");
+  if (b) b.remove();
+  b = document.createElement("button");
+  b.type = "button"; b.id = "meProgressToucher"; b.className = "btn primary";
+  b.textContent = "Toucher pour préparer la vidéo";
+  b.style.cssText = "min-height:48px;min-width:220px;font-weight:800;";
+  b.addEventListener("click", function () { b.remove(); relancer(); });
+  var annuler = document.getElementById("meProgressAnnuler");
+  if (annuler) d.insertBefore(b, annuler); else d.appendChild(b);
+  return true;
+}
 function _meHideProgress() { var d = document.getElementById("meProgressOv"); if (d) d.remove(); }
 
 // Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder), avec
@@ -1258,14 +1274,21 @@ function passioCompressVideo(file, opts, onProgress) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
     var url = URL.createObjectURL(file);
     var actx = null; // AudioContext du routage audio (fermé au cleanup)
-    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} try { if (actx) actx.close(); } catch (e) {} }
+    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} try { if (actx) { var a = actx; actx = null; var pc = a.close(); if (pc && pc.catch) pc.catch(function () {}); } } catch (e) {} }
     var video = document.createElement("video");
     video.playsInline = true; video.preload = "auto"; video.src = url; video.volume = 0;
     video.onerror = function() { cleanup(); reject(new Error("video load failed")); };
     video.onloadedmetadata = function() {
       var dur = video.duration;
       if (!isFinite(dur) || dur <= 0) { cleanup(); reject(new Error("bad duration")); return; }
-      if (dur > 65) { cleanup(); reject(new Error("too long")); return; }
+      // ⚠️ UNE VIDÉO LONGUE SE COUPE, ELLE NE SE REFUSE PLUS (2026-11-22). La
+      // garde `dur > 65 → reject("too long")` faisait de TOUTE vidéo de
+      // galerie de plus d'une minute un refus — mesuré : une testeuse iPhone,
+      // vidéo de 34 Mo, refusée deux fois de suite. On encode les
+      // VIDEO_DUREE_MAX premières secondes (comme une story ailleurs).
+      var durMax = opts.dureeMax || 60;
+      var coupee = dur > durMax + 0.5;
+      var durEff = coupee ? durMax : dur;
       var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
       // H.264 attend des dimensions paires : 1920×1080 ramené à 720 donnerait
       // sinon 720×405, refusé par certains encodeurs matériels.
@@ -1316,18 +1339,46 @@ function passioCompressVideo(file, opts, onProgress) {
         // Type sans paramètres codecs (virgule interdite dans une data URL — cf. _meOnRecordingStop).
         var blob = new Blob(chunks, { type: ((chunks[0] && chunks[0].type) || "video/webm").split(";")[0] });
         var r = new FileReader();
-        r.onload = function() { cleanup(); resolve(r.result); };
+        r.onload = function() { cleanup(); if (coupee && opts.surCoupe) { try { opts.surCoupe(durMax); } catch (_) {} } resolve(r.result); };
         r.onerror = function() { cleanup(); reject(r.error); };
         r.readAsDataURL(blob);
       };
       function draw() {
         try { ctx.drawImage(video, 0, 0, w, h); } catch (e) {}
-        if (onProgress) onProgress(Math.min(1, video.currentTime / dur));
+        if (onProgress) onProgress(Math.min(1, video.currentTime / durEff));
+        if (coupee && video.currentTime >= durEff) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} return; }
         if (!video.ended) raf = requestAnimationFrame(draw);
       }
       video.onended = function() { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} };
-      try { rec.start(); } catch (e) { cleanup(); reject(e); return; }
-      video.play().then(function() { draw(); }).catch(function(e) { try { rec.stop(); } catch (_) {} cleanup(); reject(e); });
+      // ⚠️ iOS REFUSE `play()` D'UN ÉLÉMENT SONORE HORS D'UN TOUCHER
+      // (NotAllowedError, mesuré le 2026-11-22 : 4 refus de suite sur une vidéo
+      // de 41 Mo, trop lourde pour le repli brut). Le `change` du sélecteur de
+      // fichier, suivi d'`await`, n'est plus un geste. Au lieu de rejeter, on
+      // demande UN toucher (`opts.demanderGeste`) et on relance DANS ce geste —
+      // muter la vidéo aurait publié une vidéo sans son.
+      function lancer() {
+        try { if (actx && actx.state === "suspended") actx.resume(); } catch (_) {}
+        var p = video.play();
+        if (!p || !p.then) { demarrer(); return Promise.resolve(); }
+        return p.then(demarrer);
+      }
+      var demarre = false;
+      function demarrer() {
+        if (demarre) return; demarre = true;
+        try { rec.start(); } catch (e) { try { video.pause(); } catch (_) {} cleanup(); reject(e); return; }
+        if (opts.surDemarrage) { try { opts.surDemarrage(durEff); } catch (_) {} }
+        draw();
+      }
+      function echec(e) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} cleanup(); reject(e); }
+      // L'appelant qui renonce (annulation, expiration) LIBÈRE tout : sinon
+      // l'AudioContext survit, et iOS en plafonne le nombre — la vidéo suivante
+      // partirait sans son.
+      if (opts.abandon) opts.abandon(function () { cancelAnimationFrame(raf); echec(new Error("abandon")); });
+      lancer().catch(function(e) {
+        if (e && e.name === "NotAllowedError" && typeof opts.demanderGeste === "function") {
+          opts.demanderGeste(function () { lancer().catch(echec); });
+        } else echec(e);
+      });
     };
   });
 }
@@ -1354,6 +1405,7 @@ var VIDEO_COMPRESSER_AU_DELA = 2 * 1024 * 1024;   // au-delà : profil mobile 72
 var VIDEO_BRUT_MAX = 25 * 1024 * 1024;            // repli brut si la compression échoue
 var VIDEO_PLAFOND_DUR = 150 * 1024 * 1024;        // garde-fou mémoire absolu
 var VIDEO_COMPRESSION_DELAI_MAX = 90000;          // au-delà : la compression n'a pas de verdict
+var VIDEO_DUREE_MAX = 60;                         // secondes encodées ; au-delà la vidéo est COUPÉE
 
 function _erreurVideo(motif) {
   var e = new Error("video-refusee");
@@ -1386,7 +1438,7 @@ async function passioVideoPourEnvoi(file) {
   var transcodageRequis = _isWebm && _canMp4;
   if (file.size <= VIDEO_COMPRESSER_AU_DELA && !transcodageRequis) return retourVideoPreparee(file, await _meReadFile(file), "original");
   if (file.size > VIDEO_PLAFOND_DUR) {
-    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo de moins d'une minute.");
+    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo plus légère.");
   }
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
@@ -1407,11 +1459,26 @@ async function passioVideoPourEnvoi(file) {
     // appliquer le patron `Promise.race` que le même lot cite ailleurs
     // (`_referentielEnCours`, passions-flat.js). L'expiration retombe dans le
     // `catch` ci-dessous : repli brut sous 25 Mo, sinon refus NOMMÉ.
-    var _minuteur;
+    var _minuteur, _expirer, _abandonner = null, _coupeA = 0;
+    // Le minuteur ne compte que le TRAVAIL : il se suspend pendant qu'on attend
+    // le toucher (iOS) et se ré-arme au démarrage réel, à la durée encodée
+    // + marge — un délai fixe de 90 s coupait une vidéo de 60 s sur un
+    // téléphone lent.
+    function _armer(ms) { clearTimeout(_minuteur); _minuteur = setTimeout(_expirer, ms); }
     var dataUrl = await Promise.race([
-      passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress),
+      passioCompressVideo(file, {
+        maxDim: 720, bitrate: 1200000, dureeMax: VIDEO_DUREE_MAX,
+        surCoupe: function (s) { _coupeA = s; },
+        surDemarrage: function (d) { _armer(Math.max(VIDEO_COMPRESSION_DELAI_MAX, Math.round(d * 1000) + 45000)); },
+        abandon: function (f) { _abandonner = f; },
+        demanderGeste: function (relancer) {
+          if (_meDemanderToucher(function () { _armer(VIDEO_COMPRESSION_DELAI_MAX); relancer(); })) clearTimeout(_minuteur);
+          else _expirer();
+        }
+      }, _meUpdateProgress),
       new Promise(function (_r, rej) {
-        _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
+        _expirer = function () { rej(new Error("compression-sans-verdict")); };
+        _armer(VIDEO_COMPRESSION_DELAI_MAX);
       }),
       _annulation
     ]);
@@ -1419,7 +1486,8 @@ async function passioVideoPourEnvoi(file) {
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
     // Réencoder une source déjà efficace peut la grossir. Garder l'original,
     // sauf conversion WebM→MP4 nécessaire à la compatibilité iPhone.
-    if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
+    if (_coupeA) { try { toast("Vidéo coupée aux " + _coupeA + " premières secondes"); } catch (_) {} }
+    else if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
       return retourVideoPreparee(file, await _meReadFile(file), "original_plus_petit");
     }
     return retourVideoPreparee(file, dataUrl, transcodageRequis ? "transcodage" : "compression");
@@ -1438,12 +1506,14 @@ async function passioVideoPourEnvoi(file) {
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
-    // ⚠️ Le motif le plus fréquent n'est PAS la taille : `passioCompressVideo`
-    // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
-    // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
-    throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
+    // Une vidéo longue n'est plus un motif de refus (coupée à VIDEO_DUREE_MAX,
+    // 2026-11-22) : ici, c'est l'appareil qui n'a pas su l'encoder.
+    throw _erreurVideo("Vidéo impossible à préparer sur cet appareil (" + mo + " Mo). Réessaie, ou filme directement dans l'app.");
   } finally {
     clearTimeout(_minuteur);
+    // Annulée ou expirée : le compresseur encore en vol libère son AudioContext
+    // (sans effet s'il a déjà conclu : `echec` sur une promesse réglée).
+    if (_abandonner && !dataUrl) { try { _abandonner(); } catch (_) {} }
     // ⚠️ UN SEUL POINT DE RETRAIT. Il était appelé sur les deux branches, ce qui
     // laissait une troisième sortie découverte : un `return`/`throw` ajouté plus
     // tard dans le `try`. Un overlay plein écran qui survit à sa cause n'est pas
