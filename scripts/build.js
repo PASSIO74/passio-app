@@ -340,8 +340,9 @@ const release = {
 const cibleUrl = (process.env.PASSIO_SUPABASE_URL || "").trim(), cibleAnon = (process.env.PASSIO_SUPABASE_ANON || "").trim();
 if (!!cibleUrl !== !!cibleAnon) throw new Error("PASSIO_SUPABASE_URL et PASSIO_SUPABASE_ANON vont ensemble (une seule des deux est posée)");
 if (cibleUrl && !/^https:\/\/[a-z]{20}\.supabase\.co$/.test(cibleUrl)) throw new Error("PASSIO_SUPABASE_URL doit être https://<ref>.supabase.co");
+const ciblePublique = cibleUrl ? JSON.stringify({ url: cibleUrl, anon: cibleAnon }).replace(/</g, "\\u003c") : null;
 const cibleBootstrap = cibleUrl
-  ? '  <script>window.PASSIO_SUPABASE_CIBLE=' + JSON.stringify({ url: cibleUrl, anon: cibleAnon }).replace(/</g, "\\u003c") + ';</script>\n'
+  ? '  <script>window.PASSIO_SUPABASE_CIBLE=' + ciblePublique + ';</script>\n'
   : "";
 if (cibleUrl) console.log("cible Supabase de l'artefact : " + cibleUrl + " (PAS la production)");
 const releaseBootstrap = '  <script>window.PASSIO_RELEASE=' + JSON.stringify(release).replace(/</g, "\\u003c") + ';</script>';
@@ -534,13 +535,16 @@ if (fs.existsSync(fontsDir)) {
   console.log("  + fonts/ :", nFonts, "fichier(s) copié(s)");
 }
 // 9. Le PILOTAGE NUAGE (pilotage/) — page téléphone autonome, hors du monolithe
-//    (ses scripts ne doivent jamais être inlinés dans l'app). Copié tel quel,
+//    (ses scripts ne doivent jamais être inlinés dans l'app). Copié avec la cible publique de l’application,
 //    même règle que data/ et js/vendor/ : un asset qui n'existe qu'en CI est un
 //    asset qu'on découvre manquant en production.
 const pilotageDir = path.join(root, "pilotage");
 if (fs.existsSync(pilotageDir)) {
   const cible = path.join(path.dirname(outPath), "pilotage");
   fs.cpSync(pilotageDir, cible, { recursive: true });
+  if (ciblePublique) {
+    fs.writeFileSync(path.join(cible, "config.js"), "window.PILOTAGE_SUPABASE=" + ciblePublique + ";\n");
+  }
   console.log("  + pilotage/ : copié");
 }
 console.log("Build OK →", outPath,
