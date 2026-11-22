@@ -1,0 +1,143 @@
+{
+ "id": "MSG-037",
+ "domaine": "msg-liste",
+ "scenario": "exemples",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Messages — état vide (toutes les conversations supprimées par de vrais gestes)",
+ "note": "",
+ "prisLe": "2026-11-10T17:44:06.213Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-037--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 27730,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Recherche un utilisateur ci-dessus » : le champ ci-dessus ne cherche pas de personnes",
+   "x": 0.5,
+   "y": 0.611,
+   "w": 0.694,
+   "h": 0.056,
+   "sel": "#messagesEmpty .empty-text",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La vraie porte est ce « + », que le texte ne cite pas",
+   "x": 0.894,
+   "y": 0.159,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": ".v6a-plus",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-037--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 33994,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une action principale, celle du « + »",
+   "x": 0.5,
+   "y": 0.702,
+   "w": 0.494,
+   "h": 0.075,
+   "sel": ".mq-cta",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le texte ne renvoie plus à un champ qui ne fait pas cela",
+   "x": 0.5,
+   "y": 0.611,
+   "w": 0.694,
+   "h": 0.056,
+   "sel": "#messagesEmpty .empty-text",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

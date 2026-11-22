@@ -1,0 +1,232 @@
+{
+ "id": "FIL-002",
+ "domaine": "fil",
+ "scenario": "fil-cartes",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Carte de publication — photo, barre d'actions, pastille de réactions",
+ "note": "",
+ "prisLe": "2026-11-10T17:47:22.757Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-002--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 38610,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Barre d'actions",
+    "fichier": "captures/fil/FIL-002--m360--avant-zoom-actions.webp",
+    "largeur": 620,
+    "hauteur": 116,
+    "octets": 2366
+   },
+   {
+    "nom": "entete",
+    "titre": "En-tête de carte",
+    "fichier": "captures/fil/FIL-002--m360--avant-zoom-entete.webp",
+    "largeur": 612,
+    "hauteur": 104,
+    "octets": 5950
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 🤍 5 » : cœur gris alors que le serveur dit que j'ai déjà aimé ; nom accessible = l'emoji",
+   "x": 0.155,
+   "y": 0.715,
+   "w": 0.126,
+   "h": 0.041,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-action=\"like\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« 💬 34 » en 12,5 px ; la discussion titrera « (37) »",
+   "x": 0.301,
+   "y": 0.715,
+   "w": 0.146,
+   "h": 0.041,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-cmtcount]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » de 30 px, intitulé « Signaler ou bloquer »",
+   "x": 0.727,
+   "y": 0.177,
+   "w": 0.083,
+   "h": 0.047,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .post-menu-btn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 21,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 153.8,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip",
+     "texte": "🔥 3",
+     "w": 30.5,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 236,
+     "h": 16,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "article.post > div > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:60688/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-002--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 39426,
+  "zooms": [
+   {
+    "nom": "actions",
+    "titre": "Barre d'actions",
+    "fichier": "captures/fil/FIL-002--m360--apres-zoom-actions.webp",
+    "largeur": 620,
+    "hauteur": 142,
+    "octets": 2844
+   },
+   {
+    "nom": "entete",
+    "titre": "En-tête de carte",
+    "fichier": "captures/fil/FIL-002--m360--apres-zoom-entete.webp",
+    "largeur": 612,
+    "hauteur": 104,
+    "octets": 5950
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Icône SVG pleine et violette : mon j'aime lu du serveur est affiché ; nom « J'aime — 5 »",
+   "x": 0.163,
+   "y": 0.725,
+   "w": 0.144,
+   "h": 0.069,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-action=\"like\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Compteurs en 13,5 px, encre pleine, cibles de 44 px",
+   "x": 0.329,
+   "y": 0.725,
+   "w": 0.165,
+   "h": 0.069,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] [data-cmtcount]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« ⋯ » porté à 44 px",
+   "x": 0.727,
+   "y": 0.177,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": "#feedList .post[data-postid=\"pa_lea_1\"] .post-menu-btn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

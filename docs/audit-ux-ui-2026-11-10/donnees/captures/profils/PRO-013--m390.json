@@ -1,0 +1,202 @@
+{
+ "id": "PRO-013",
+ "domaine": "profils",
+ "scenario": "modifier",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Pseudo vidé puis « Sauvegarder » : « Profil mis à jour »",
+ "note": "",
+ "prisLe": "2026-11-10T18:19:01.244Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-013--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 60676,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Accepté sans contrôle (2 à 40 caractères attendus)",
+   "x": 0.5,
+   "y": 0.87,
+   "w": 0.338,
+   "h": 0.046,
+   "sel": ".toast",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "L'écran garde l'ancien nom ; le serveur a reçu « »",
+   "x": 0.5,
+   "y": 0.396,
+   "w": 0.831,
+   "h": 0.028,
+   "sel": "#mainProfileUsername",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "📸 instagram",
+     "w": 91.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "▶️ youtube",
+     "w": 82.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "22 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 PASSIONS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNEMENTS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab.active",
+     "texte": "Tout",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Photos",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Vidéos",
+     "w": 68,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Bobines",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Audio / podcast",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-013--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 55560,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Erreur sous le champ, modale ouverte, rien n'est envoyé",
+   "x": 0.5,
+   "y": -0.024,
+   "w": 0.908,
+   "h": 0.02,
+   "sel": "#mqErrPseudo",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#",
+   "Audio failed: http://127.0.0.1:62787/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

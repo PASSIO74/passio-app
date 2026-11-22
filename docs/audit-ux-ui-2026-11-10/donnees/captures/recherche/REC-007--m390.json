@@ -1,0 +1,153 @@
+{
+ "id": "REC-007",
+ "domaine": "recherche",
+ "scenario": "saisie",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Résultats « tom » : une personne bloquée, une bio qui contient « tom »",
+ "note": "",
+ "prisLe": "2026-11-10T19:32:54.560Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-007--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 61632,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Tom Girard est bloqué par ce compte : il est proposé comme n'importe qui.",
+   "x": 0.5,
+   "y": 0.453,
+   "w": 0.815,
+   "h": 0.077,
+   "sel": "#exploreSearchResults > div:nth-child(4)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Victor Aubry sort parce que sa bio contient « au-TOM-obile ».",
+   "x": 0.5,
+   "y": 0.62,
+   "w": 0.815,
+   "h": 0.086,
+   "sel": "#exploreSearchResults > div:nth-child(6)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 218.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 19,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#exploreSearchResults > div > div > div",
+    "texte": "Commissaire de piste bénévole · Le Mans",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-007--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53686,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les comptes bloqués sont retirés ; la bio ne compte qu'en début de mot.",
+   "x": 0.5,
+   "y": 0.455,
+   "w": 0.815,
+   "h": 0.086,
+   "sel": "#exploreSearchResults > div:nth-child(5)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

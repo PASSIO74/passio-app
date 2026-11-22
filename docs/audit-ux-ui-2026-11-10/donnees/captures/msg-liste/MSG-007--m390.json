@@ -1,0 +1,119 @@
+{
+ "id": "MSG-007",
+ "domaine": "msg-liste",
+ "scenario": "compte-neuf",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Nouveau message — compte sans conversation : cinq lignes « Passionné »",
+ "note": "",
+ "prisLe": "2026-11-10T17:39:40.883Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-007--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29274,
+  "zooms": [
+   {
+    "nom": "liste",
+    "titre": "Suggestions",
+    "fichier": "captures/msg-liste/MSG-007--m390--avant-zoom-liste.webp",
+    "largeur": 732,
+    "hauteur": 664,
+    "octets": 18198
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Cinq lignes identiques « Passionné » : les personnages des conversations d'exemple, sans nom ni étiquette",
+   "x": 0.5,
+   "y": 0.63,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#_nmSearch",
+    "placeholder": "Chercher un utilisateur…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-007--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 22778,
+  "zooms": [
+   {
+    "nom": "liste",
+    "titre": "Suggestions",
+    "fichier": "captures/msg-liste/MSG-007--m390--apres-zoom-liste.webp",
+    "largeur": 732,
+    "hauteur": 264,
+    "octets": 9796
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Pas de faux contacts : une consigne claire tant qu'il n'y a personne à proposer",
+   "x": 0.5,
+   "y": 0.9,
+   "w": 0.908,
+   "h": 0.143,
+   "sel": "#_nmResults",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

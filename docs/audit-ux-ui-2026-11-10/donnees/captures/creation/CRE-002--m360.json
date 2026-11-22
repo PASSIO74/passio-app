@@ -1,0 +1,210 @@
+{
+ "id": "CRE-002",
+ "domaine": "creation",
+ "scenario": "studio",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Studio — composer vide (UI-6)",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:27.256Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-002--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 35770,
+  "zooms": [
+   {
+    "nom": "envie",
+    "titre": "Bloc « MOOD » et pastilles",
+    "fichier": "captures/creation/CRE-002--m360--avant-zoom-envie.webp",
+    "largeur": 680,
+    "hauteur": 206,
+    "octets": 5408
+   },
+   {
+    "nom": "destination",
+    "titre": "Publier dans",
+    "fichier": "captures/creation/CRE-002--m360--avant-zoom-destination.webp",
+    "largeur": 680,
+    "hauteur": 108,
+    "octets": 3894
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« MOOD » (anglais) ; le Fil dit « Envie du moment »",
+   "x": 0.5,
+   "y": 0.632,
+   "w": 0.839,
+   "h": 0.027,
+   "sel": "#fieldMood > span",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Pastilles 40 px, texte 11 px ; ordre différent du Fil",
+   "x": 0.36,
+   "y": 0.693,
+   "w": 0.22,
+   "h": 0.063,
+   "sel": "#postMoodRow .pill[data-postmood=\"learn\"]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Deux portes média, aucune trace d'un brouillon",
+   "x": 0.5,
+   "y": 0.461,
+   "w": 0.911,
+   "h": 0.075,
+   "sel": ".v6-media",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 18,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill.active",
+     "texte": "Idées",
+     "w": 55,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Apprendre",
+     "w": 79.3,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Rencontrer",
+     "w": 80.9,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Tous",
+     "w": 48.7,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-002--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 34468,
+  "zooms": [
+   {
+    "nom": "envie",
+    "titre": "Bloc « MOOD » et pastilles",
+    "fichier": "captures/creation/CRE-002--m360--apres-zoom-envie.webp",
+    "largeur": 680,
+    "hauteur": 314,
+    "octets": 5732
+   },
+   {
+    "nom": "destination",
+    "titre": "Publier dans",
+    "fichier": "captures/creation/CRE-002--m360--apres-zoom-destination.webp",
+    "largeur": 680,
+    "hauteur": 108,
+    "octets": 3894
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Envie » : le mot du Fil",
+   "x": 0.5,
+   "y": 0.632,
+   "w": 0.839,
+   "h": 0.027,
+   "sel": "#fieldMood > span",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 px, 13 px, même ordre que le rail du Fil",
+   "x": 0.21,
+   "y": 0.696,
+   "w": 0.258,
+   "h": 0.069,
+   "sel": "#postMoodRow .pill[data-postmood=\"learn\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

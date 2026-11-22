@@ -1,0 +1,175 @@
+{
+ "id": "IRL-043",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-filtre",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Filtres combinés sans résultat — pied « Aucun résultat » grisé",
+ "note": "",
+ "prisLe": "2026-11-10T18:01:56.642Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-043--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 24058,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied fixe",
+    "fichier": "captures/irl-decouvrir/IRL-043--m360--avant-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 172,
+    "octets": 2746
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Désactivé, sans issue ; « Tout effacer » est hors écran, en haut",
+   "x": 0.164,
+   "y": 0.844,
+   "w": 0.911,
+   "h": 0.081,
+   "sel": "#v4a5Done",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 22,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 175,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 126,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 11,
+   "sousSeuil": [
+    {
+     "el": "button#v4a5Done",
+     "texte": "Aucun résultat",
+     "ratio": 2.87,
+     "seuil": 4.5,
+     "couleur": "#bda3fa",
+     "fond": "#6d32f4",
+     "px": 15.5
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-043--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 28606,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied fixe",
+    "fichier": "captures/irl-decouvrir/IRL-043--m360--apres-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 290,
+    "octets": 7584
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le pied dit ce qui bloque",
+   "x": 0.164,
+   "y": 0.736,
+   "w": 0.911,
+   "h": 0.053,
+   "sel": "#maqAide",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Issue à portée de pouce",
+   "x": 0.164,
+   "y": 0.83,
+   "w": 0.911,
+   "h": 0.109,
+   "sel": "#maqRaz",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

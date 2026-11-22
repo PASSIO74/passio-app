@@ -1,0 +1,138 @@
+{
+ "id": "PRO-008",
+ "domaine": "profils",
+ "scenario": "menu-et-listes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Liste « Abonnés » (22 lignes) — emoji au lieu des photos",
+ "note": "",
+ "prisLe": "2026-11-10T18:16:46.313Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Abonnés",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-008--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31638,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne",
+    "fichier": "captures/profils/PRO-008--m390--avant-zoom-ligne.webp",
+    "largeur": 732,
+    "hauteur": 140,
+    "octets": 3458
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Emoji de passion, pas la photo de la personne",
+   "x": 0.121,
+   "y": 0.406,
+   "w": 0.103,
+   "h": 0.047,
+   "sel": "#peopleListBody > div:first-child > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ni passions ni état de suivi",
+   "x": 0.5,
+   "y": 0.406,
+   "w": 0.908,
+   "h": 0.069,
+   "sel": "#peopleListBody > div:first-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-008--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37062,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne",
+    "fichier": "captures/profils/PRO-008--m390--apres-zoom-ligne.webp",
+    "largeur": 732,
+    "hauteur": 136,
+    "octets": 4242
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Photo de la personne quand elle en a une",
+   "x": 0.121,
+   "y": 0.405,
+   "w": 0.103,
+   "h": 0.047,
+   "sel": "#peopleListBody > div:first-child > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ses passions, comme dans « Abonnements »",
+   "x": 0.303,
+   "y": 0.405,
+   "w": 0.211,
+   "h": 0.039,
+   "sel": "#peopleListBody > div:first-child > div:last-child",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:49360/index.html#",
+   "Audio failed: http://127.0.0.1:49360/index.html#",
+   "Audio failed: http://127.0.0.1:49360/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

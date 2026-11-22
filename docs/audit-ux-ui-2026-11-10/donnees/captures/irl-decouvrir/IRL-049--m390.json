@@ -1,0 +1,76 @@
+{
+ "id": "IRL-049",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-selecteurs",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Quelles passions ? » → Chercher : recherche de passion",
+ "note": "",
+ "prisLe": "2026-11-10T18:10:15.805Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": "Quelles activités ?",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-049--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31674,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#pselHote > div.psel-pied > button.btn.primary",
+     "texte": "Voir les activités",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

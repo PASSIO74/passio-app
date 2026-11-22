@@ -1,0 +1,67 @@
+{
+ "id": "BOB-011",
+ "domaine": "bobines",
+ "scenario": "lecteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — après un toucher sur la vidéo : elle continue, rien ne change",
+ "note": "Sonde bobines-04 : `paused` reste false après le toucher ; aucun bouton pause, aucun indicateur.",
+ "prisLe": "2026-11-10T19:15:40.123Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-011--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41490,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Toucher ici : la vidéo ne s'arrête pas",
+   "x": 0.5,
+   "y": 0.45,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": null,
+ "apres": {
+  "fichier": "captures/bobines/BOB-011--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42410,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Toucher = pause, avec un repère visible ; retoucher = lecture",
+   "x": 0.5,
+   "y": 0.45,
+   "w": 0.185,
+   "h": 0.085,
+   "sel": "[data-mq=\"pause\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

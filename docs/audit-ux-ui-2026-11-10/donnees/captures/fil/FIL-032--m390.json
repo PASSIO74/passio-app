@@ -1,0 +1,250 @@
+{
+ "id": "FIL-032",
+ "domaine": "fil",
+ "scenario": "discussion",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Discussion — commentaire long en cours de saisie",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:26.551Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Discussion (37)",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-032--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 63440,
+  "zooms": [
+   {
+    "nom": "saisie",
+    "titre": "Champ rempli",
+    "fichier": "captures/fil/FIL-032--m390--avant-zoom-saisie.webp",
+    "largeur": 780,
+    "hauteur": 400,
+    "octets": 32658
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Limite de 400 caractères sans compteur : la saisie s'arrête sans explication",
+   "x": 0.5,
+   "y": 0.836,
+   "w": 0.908,
+   "h": 0.142,
+   "sel": "#newComment",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "div#commentsBox > div.cmt-sortbar > button.cmt-sort",
+     "texte": "Pertinents",
+     "w": 77.7,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.cmt-sortbar > button.cmt-sort.active",
+     "texte": "Récents",
+     "w": 63.5,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 34,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 34,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment-body > div.comment-actions > span.cmt-chip-holder > span.cmt-react-chip",
+     "texte": "👍 1",
+     "w": 29.1,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-reply-count",
+     "texte": "⌵ Voir 2 réponses",
+     "w": 95.7,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 34,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#commentsBox > div.comment > div.comment-body > div.comment-author",
+     "texte": "Camille Audit",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "Publier",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 21
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#commentsBox > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:50464/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#commentsBox > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:50464/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#newComment",
+    "placeholder": "Ajoute un commentaire…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

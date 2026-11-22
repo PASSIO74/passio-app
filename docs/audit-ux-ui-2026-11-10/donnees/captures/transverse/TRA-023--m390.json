@@ -1,0 +1,94 @@
+{
+ "id": "TRA-023",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Conditions générales d'utilisation — haut",
+ "note": "",
+ "prisLe": "2026-11-10T19:53:48.195Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Conditions générales d'utilisation",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-023--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 115320,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "7 600 caractères, « Version du 2026-09-10 »",
+   "x": 0.5,
+   "y": 0.336,
+   "w": 0.908,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > button.btn.block",
+     "texte": "Mentions légales",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "J'ai compris",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

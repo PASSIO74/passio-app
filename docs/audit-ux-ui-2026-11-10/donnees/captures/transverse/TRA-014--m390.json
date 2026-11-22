@@ -1,0 +1,154 @@
+{
+ "id": "TRA-014",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Apparence & thème (configurateur) — haut",
+ "note": "",
+ "prisLe": "2026-11-10T19:53:27.764Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-014--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30294,
+  "zooms": [
+   {
+    "nom": "croix",
+    "titre": "Coin supérieur droit",
+    "fichier": "captures/transverse/TRA-014--m390--avant-zoom-croix.webp",
+    "largeur": 124,
+    "hauteur": 132,
+    "octets": 836
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Deux « × » superposés (bouton injecté par openModal + span du gabarit)",
+   "x": 0.926,
+   "y": 0.176,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": "#modalContent span.modal-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Sombre » : le mode sombre retiré du produit revient par ici",
+   "x": 0.5,
+   "y": 0.787,
+   "w": 0.908,
+   "h": 0.071,
+   "sel": "#modalContent [onclick*=\"'noir'\"]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Six teintes remplacent le violet de la charte",
+   "x": 0.5,
+   "y": 0.396,
+   "w": 0.908,
+   "h": 0.071,
+   "sel": "#modalContent [onclick*=\"'rose'\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-014--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 21778,
+  "zooms": [
+   {
+    "nom": "croix",
+    "titre": "Coin supérieur droit",
+    "fichier": "captures/transverse/TRA-014--m390--apres-zoom-croix.webp",
+    "largeur": 124,
+    "hauteur": 132,
+    "octets": 784
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une seule croix ; l'écran devient « Affichage »",
+   "x": 0.5,
+   "y": 0.726,
+   "w": 0.908,
+   "h": 0.047,
+   "sel": "#maqCfgTitre",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Reste la taille du texte (utile à la lecture) ; palettes, sombre, polices et coins retirés",
+   "x": 0.152,
+   "y": 0.846,
+   "w": 0.212,
+   "h": 0.09,
+   "sel": "#modalContent [onclick*='fontSize']",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Fermer » : le réglage s'applique déjà au toucher, « Appliquer » mentait",
+   "x": 0.5,
+   "y": 0.947,
+   "w": 0.908,
+   "h": 0.05,
+   "sel": "#maqCfgFermer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

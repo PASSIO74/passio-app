@@ -1,0 +1,190 @@
+{
+ "id": "IRL-134",
+ "domaine": "irl-fiche",
+ "scenario": "etats",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Infos pratiques sans adresse lisible (organisateur au compte privé)",
+ "note": "Deux lignes « Adresse » : « 69001, Lyon » + « Voir sur Google Maps → » (pointe la ville), puis « Adresse exacte : Communiquée une fois inscrit·e » (app-07:4382-4385).",
+ "prisLe": "2026-11-10T18:02:36.485Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_if_passee"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-134--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41410,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Un lien de carte vers… une ville entière.",
+   "x": 0.253,
+   "y": 0.223,
+   "w": 0.341,
+   "h": 0.019,
+   "sel": ".event-detail-info-link",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La vraie information, deux lignes plus bas.",
+   "x": 0.5,
+   "y": 0.357,
+   "w": 0.913,
+   "h": 0.072,
+   "sel": "[data-v4b-sec=infos] .event-detail-info-row:nth-child(4)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 7,
+   "sous44": [
+    {
+     "el": "div.event-detail-info-row > div > div > a.event-detail-info-link",
+     "texte": "Voir sur Google Maps →",
+     "w": 133.1,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "w": 45.3,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "Partager",
+     "w": 44,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 21,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Participants (1)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Album de l'événement",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventAlbum > div.event-album-empty",
+     "texte": "Aucune photo pour l'instant — sois le premier à pa",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Échanges",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12.5
+    }
+   ],
+   "nbSousSeuil": 6
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-134--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 46050,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une seule ligne : la zone publique, et quand l'adresse sera donnée. Règle de confidentialité inchangée.",
+   "x": 0.5,
+   "y": 0.111,
+   "w": 0.913,
+   "h": 0.071,
+   "sel": "[data-v4b-sec=infos] .event-detail-info-row",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

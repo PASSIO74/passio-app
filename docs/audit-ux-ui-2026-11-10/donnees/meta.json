@@ -1,0 +1,13 @@
+{
+  "version": "main @ 4e1d8ed1152867f309668a4a6847b8219d2f6622 (PR #820, 2026-11-10 14:08 UTC) — identique à la production (release.json : buildId 3d8e98bb12ad)",
+  "versionCourte": "main@4e1d8ed1 · production 3d8e98bb12ad · 10 nov. 2026",
+  "commit": "4e1d8ed1152867f309668a4a6847b8219d2f6622",
+  "buildIdProduction": "3d8e98bb12ad",
+  "dateAudit": "2026-11-10",
+  "chromium": "158.0.8127.18",
+  "webkit": "27.2",
+  "playwright": "1.65.0",
+  "modele": "Claude Fable 5 (identifiant de session : claude-fable-5-2), dans l'application de bureau Claude (onglet Code), avec des sous-agents du même modèle par domaine",
+  "chapo": "Chaque écran, sous-onglet, menu et état de l'application a été inventorié à partir du code et ouvert dans un navigateur isolé de la production, avec des données fictives. Pour chaque surface : la capture réelle de la version auditée (avant), la maquette de la proposition (après), les annotations, les mesures et les constats qui s'y rattachent.",
+  "methode": "- **Version auditée** : `main` au commit `4e1d8ed1` — le même que celui que sert la production (`release.json`, `buildId 3d8e98bb12ad`).\n- **Banc isolé** : l'application est servie depuis le dépôt et ouverte par Playwright ; tout appel à Supabase est servi par un faux serveur en mémoire ou un projet vide ; le canal temps réel et le service worker sont coupés ; aucun message, invitation, publication ni notification n'est parti vers de vraies personnes.\n- **Avant** : capture de l'application telle quelle, jamais retouchée. **Après** : la même page, au même état et aux mêmes dimensions, avec la proposition appliquée par une feuille de style ou un script de maquette — jamais dans le code de l'application.\n- **Gabarits** : mobile 390×844 partout, 360×640 et 320×568 pour les petits écrans, tablette 768×1024, ordinateur 1440×900. Ce sont des **émulations** (Chromium 158, et WebKit 27.2 pour un sous-ensemble) : aucun véritable appareil n'a été utilisé.\n- **Mesures** : cibles tactiles (sondées par `elementFromPoint`), taille des champs, contrastes AA, noms accessibles, débordements, textes tronqués — relevées automatiquement sur chaque capture puis vérifiées à l'œil.\n- **Statuts** : *observé* (atteint par de vrais gestes), *simulé* (état forcé dans le banc), *code* (lu dans le code, non rendu), *inaccessible* (non vérifiable ici)."
+}

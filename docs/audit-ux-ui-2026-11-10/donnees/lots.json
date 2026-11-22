@@ -1,0 +1,151 @@
+[
+  {
+    "id": "LOT-1", "vague": "1 · corrections rapides", "risque": "normal",
+    "titre": "Ce que l'application dit se voit, et dit vrai",
+    "resultat": "Chaque confirmation, refus ou erreur est visible au-dessus de la fenêtre ouverte, et aucune action refusée par le serveur n'est plus annoncée réussie.",
+    "perimetre": "Pile des toasts au-dessus de toute superposition (TRA-C01 : MSG-C85, PAR-C03, IRL-C65, BOB-C20) ; lecture systématique de `{ error }` et annulation de l'affichage optimiste sur refus (TRA-C03 : PRO-C01, FIL-C06, MSG-C05, MSG-C57, CRE-C04).",
+    "constats": ["TRA-C01", "MSG-C85", "PAR-C03", "IRL-C65", "TRA-C03", "PRO-C01", "FIL-C06", "MSG-C05", "MSG-C57", "CRE-C04"],
+    "criteres": [
+      "Conversation, profil visité, lecteur de bobines, fiche d'activité et modale ouverts : un toast émis est le premier élément peint à son emplacement (`elementFromPoint` sur un toast rendu cliquable le temps du test), au-dessus de la barre basse et du clavier.",
+      "Refus RLS simulé (403) sur l'enregistrement du profil, la suppression d'un commentaire, l'ajout d'un membre, l'envoi d'un GIF et la publication : aucun message de réussite, l'état affiché revient à l'état serveur, un message dit pourquoi."
+    ],
+    "fichiers": ["styles.css", "js/app-02-state-utils.js", "js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/app-06-reels-partage.js", "js/app-09-boot-pwa.js"],
+    "verifications": "Suites e2e des domaines touchés + un banc « refus serveur » sur le faux serveur partagé (`audit-2026-11-parcours-faux-serveur.js`, pannes programmées) ; WebKit pour l'empilement.",
+    "pilotage": "Oui : émettre `tel.error` sur chaque refus d'écriture affiché, pour que la Sentinelle voie la fréquence des refus réels (aujourd'hui masqués par les faux succès).",
+    "metrique": "Nombre de refus d'écriture affichés par jour (télémétrie) ; baisse des actions répétées (double geste) — à mesurer, pas à prédire.",
+    "retourArriere": "CSS d'empilement et lecture d'erreur sans drapeau ; un revert de PR suffit."
+  },
+  {
+    "id": "LOT-2", "vague": "1 · corrections rapides", "risque": "critique",
+    "titre": "Arriver par un lien, créer son compte, retrouver le contenu",
+    "resultat": "Une personne qui ne connaît pas PASSIO ouvre un lien, voit le contenu, crée son compte sur un formulaire visible et retombe exactement sur ce contenu.",
+    "perimetre": "Formulaire de compte au-dessus du contenu (PAR-C01, P0) ; réouverture du contenu visé après inscription (PAR-C02) ; état d'arrivée d'un lien mort, privé ou inconnu (PAR-C05) ; retour système qui ferme le formulaire (ENT-C01) ; formulaire d'inscription en deux temps, bouton visible, erreurs sous le champ (ENT-C02) ; profil d'un visiteur qui propose le compte (ENT-C04). Prototypes : partage.html, premiere-visite.html.",
+    "constats": ["PAR-C01", "PAR-C02", "PAR-C05", "ENT-C01", "ENT-C02", "ENT-C04"],
+    "criteres": [
+      "Visiteur sur `#post-<id>`, une fiche d'activité ou une bobine : « Créer mon compte » rend le formulaire visible au premier plan en moins de 300 ms.",
+      "Après inscription confirmée, la publication, l'activité ou la bobine du lien est rouverte (preuve : l'identifiant visé est à l'écran).",
+      "Lien mort ou privé : un écran d'arrivée explicite s'affiche en moins de 2 s, avec une sortie vers le fil.",
+      "Retour système depuis le formulaire : le formulaire se ferme, l'écran dessous n'a pas changé."
+    ],
+    "fichiers": ["js/app-06-reels-partage.js", "js/app-02-state-utils.js", "js/first-run.js", "js/app-08-ui-modals-tour.js", "index.html", "styles.css"],
+    "verifications": "Suites first-run, lien-inscription, partage-*, historique-retour-en-vol, en Chromium ET WebKit (iPhone) ; essai réel sur iPhone d'un lien reçu par messagerie.",
+    "pilotage": "Oui : l'entonnoir des liens existe (`link_*`) — ajouter l'étape « inscription depuis un lien » puis « contenu rouvert » pour mesurer la continuité.",
+    "metrique": "Part des inscriptions issues d'un lien qui aboutissent au contenu visé (entonnoir `link_*`).",
+    "retourArriere": "Touche au parcours d'authentification (critique) : revue indépendante obligatoire, aucune modification de l'auth elle-même (Supabase, consentements, majorité) — seulement l'ordre d'affichage et la mémoire du contenu visé ; revert de PR."
+  },
+  {
+    "id": "LOT-3", "vague": "2 · parcours principaux", "risque": "normal",
+    "titre": "Du fil à la rencontre, sans rupture",
+    "resultat": "Une publication qui annonce une activité y mène tout de suite ; l'inscription est confirmée et propose la suite ; on revient toujours d'où l'on vient.",
+    "perimetre": "Repeint des cartes à l'arrivée des activités (PCS-C01 / FIL-C01) ; confirmation et étape suivante après « Je participe » (PCS-C03) ; pas de désinscription au second appui (IRL-C50) ; sorties vers le réel visibles dans le lecteur de bobines (BOB-C03) ; la fiche passion mène à Rencontrer (REC-C04) ; retour vers l'origine depuis une conversation (PCS-C02) ; un seul mot pour l'inscription (PCS-C06). Prototype : rejoindre-activite.html.",
+    "constats": ["PCS-C01", "FIL-C01", "PCS-C03", "IRL-C50", "BOB-C03", "REC-C04", "PCS-C02", "PCS-C06"],
+    "criteres": [
+      "« Voir l'activité » visible au plus 1 s après l'arrivée des activités, sans geste ni saut de défilement.",
+      "Après « Je participe » : confirmation `role=status` avec la date, action « Écrire aux participants » visible sans défilement, et la désinscription n'est jamais sous le doigt qui vient de s'inscrire.",
+      "Fil → profil → Message → Retour : le profil est rétabli sur le fil, à la même position."
+    ],
+    "fichiers": ["js/app-08-ui-modals-tour.js", "js/ui-v3-passerelle.js", "js/ui-v4b-fiche.js", "js/ui-v5-bobines.js", "js/app-07-ia-explore-irl.js", "js/app-04-comments-shop.js", "styles.css"],
+    "verifications": "Suites ui-v3-passerelle, ui-v4b-fiche, feed-premier-rendu, conv-ouverture-fil, historique-retour-en-vol ; parcours cœur rejoué au banc (`outils/scenarios/parcours.js`).",
+    "pilotage": "Oui : c'est la boucle centrale. Mesurer `fil → voir l'activité → inscription` comme un parcours (`tel.flowStart`) pour suivre le taux de passage.",
+    "metrique": "Taux de passage publication « Rencontrer » → fiche → inscription.",
+    "retourArriere": "Modules sous drapeau existants (UI-3, UI-4B, UI-5) : la coupure rend l'état d'avant."
+  },
+  {
+    "id": "LOT-4", "vague": "2 · parcours principaux", "risque": "normal",
+    "titre": "Une messagerie fiable et confortable",
+    "resultat": "Écrire, enregistrer un vocal, joindre un média et relire l'historique se font sans surprise ; les réglages d'une conversation tiennent.",
+    "perimetre": "Préférences de conversation conservées au démarrage (MSG-C01, et brouillon MSG-C74) ; arrêt sur le dernier message (MSG-C52) ; vocal : maintenir / relâcher / glisser pour annuler (MSG-C53, MSG-C54) ; pas de saut forcé en bas, pastille « nouveaux messages » (MSG-C55) ; confirmation avant d'envoyer sa position (MSG-C56) ; suppression confirmée et annulable (MSG-C58, MSG-C09) ; champ de saisie élargi (MSG-C60) ; contraste des bulles média (MSG-C50) ; recherche insensible aux accents (MSG-C06) ; fenêtre des membres exacte (MSG-C08). Prototype : messagerie.html.",
+    "constats": ["MSG-C01", "MSG-C52", "MSG-C53", "MSG-C54", "MSG-C55", "MSG-C56", "MSG-C58", "MSG-C09", "MSG-C60", "MSG-C50", "MSG-C06", "MSG-C08"],
+    "criteres": [
+      "Épingle, archive, sourdine et brouillon survivent à un rechargement.",
+      "Toucher bref sur le micro : aucune captation, une consigne s'affiche ; maintien puis glisser : annulé ; relâcher : envoyé.",
+      "Lecture de l'historique + message reçu : la position ne bouge pas, une pastille « 1 nouveau message » apparaît.",
+      "Contraste ≥ 4,5:1 dans toutes les bulles ; champ de saisie ≥ 220 px à 390 px."
+    ],
+    "fichiers": ["js/app-04-comments-shop.js", "js/app-09-boot-pwa.js", "js/app-05-config-profil.js", "js/ui-v6a-messages.js", "styles.css"],
+    "verifications": "Suites conv-*, audit-2026-11-parcours-social-session, audit-2026-11-messagerie-pagination ; essai réel sur iPhone et Android (appui long, clavier, micro).",
+    "pilotage": "Oui : compter les vocaux annulés vs envoyés et les envois en échec repris.",
+    "metrique": "Part des envois en échec repris avec succès ; vocaux annulés par erreur (signalements).",
+    "retourArriere": "La fusion des préférences (MSG-C01) touche l'état synchronisé : garder l'ancien chemin derrière une coupure le temps d'une version."
+  },
+  {
+    "id": "LOT-5", "vague": "2 · parcours principaux", "risque": "normal",
+    "titre": "Les exemples ne se font plus passer pour de vraies personnes",
+    "resultat": "Tout contenu d'exemple est marqué comme tel partout, et aucune action réelle (suivre, écrire, inviter, s'inscrire) ne peut le viser.",
+    "perimetre": "Personnages d'exemple dans « Nouveau message », « Nouveau groupe », la recherche et les créateurs à suivre (MSG-C03, MSG-C04, REC-C02) ; bouton d'inscription des exemples (IRL-C01) ; bobines d'exemple non marquées (BOB-C22) ; conversations d'exemple mêlées aux vraies (PCS-006).",
+    "constats": ["MSG-C03", "MSG-C04", "REC-C02", "IRL-C01", "BOB-C22"],
+    "criteres": [
+      "Aucune ligne `follows`, `conv_members` ou `event_attendees` ne peut viser un identifiant `u_*` d'exemple (garde au point d'écriture).",
+      "Chaque carte, ligne ou bobine d'exemple porte la même marque « Exemple » ; leurs boutons d'action sont visiblement inactifs."
+    ],
+    "fichiers": ["js/app-01-diag-seed.js", "js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/app-07-ia-explore-irl.js", "js/ui-v4a2-cartes.js", "js/ui-v5-bobines.js"],
+    "verifications": "Suites fil-reel-dabord, first-run ; balayage du banc en mode compte neuf.",
+    "pilotage": "Oui : un `tel.error` si une écriture vise un identifiant d'exemple (ne devrait jamais arriver).",
+    "metrique": "Zéro écriture vers un identifiant d'exemple.",
+    "retourArriere": "Revert de PR ; les exemples eux-mêmes ne changent pas."
+  },
+  {
+    "id": "LOT-6", "vague": "2 · parcours principaux", "risque": "critique",
+    "titre": "Confiance : suivre, bloquer, signaler, confirmer",
+    "resultat": "Le suivi affiché est exact, un compte bloqué disparaît vraiment, tout peut être signalé, et chaque geste destructeur demande une confirmation de l'application.",
+    "perimetre": "« Suivre » affiché à tort et désabonnement involontaire (REC-C01) ; comptes bloqués proposés (REC-C03) ; signalement des bobines (BOB-C04) ; signaler sous le pied collant (TRA-C17) ; quatre portes de blocage (TRA-C10) ; 8 `confirm()` et 4 `prompt()` remplacés par des feuilles de l'application (TRA-C11) ; demande en attente comptée comme abonné (PRO-C05) ; pseudo non validé à l'édition (PRO-C03).",
+    "constats": ["REC-C01", "REC-C03", "BOB-C04", "TRA-C17", "TRA-C10", "TRA-C11", "PRO-C05", "PRO-C03"],
+    "criteres": [
+      "L'état de suivi est le même sur les CINQ surfaces qui le peignent, dès l'ouverture de l'écran.",
+      "Un compte bloqué n'apparaît dans aucune suggestion ni résultat.",
+      "Aucun `confirm()` / `prompt()` natif restant (recherche dans js/) ; chaque destruction se confirme dans une feuille de l'application, avec 5 s pour annuler quand c'est possible."
+    ],
+    "fichiers": ["js/app-04-comments-shop.js", "js/app-07-ia-explore-irl.js", "js/app-08-ui-modals-tour.js", "js/app-09-boot-pwa.js", "js/app-05-config-profil.js", "js/app-06-reels-partage.js"],
+    "verifications": "Suites blocage-acces, confidentialite, authz-critical ; revue indépendante (droits, modération).",
+    "pilotage": "Oui : signalements par type de cible ; blocages ; désabonnements dans les 10 s suivant un abonnement (signe d'erreur).",
+    "metrique": "Signalements de bobines (aujourd'hui impossibles) ; désabonnements involontaires.",
+    "retourArriere": "Garde-fous serveur inchangés (RLS, `trg_follows_statut`) ; seules les portes changent ; revert de PR."
+  },
+  {
+    "id": "LOT-7", "vague": "2 · parcours principaux", "risque": "normal",
+    "titre": "Des réglages qui font ce qu'ils disent",
+    "resultat": "Chaque interrupteur visible a un effet réel, ou disparaît.",
+    "perimetre": "Cinq interrupteurs de notifications sur six sans effet (TRA-C04) ; « Bien-être digital » inopérant (TRA-C05) ; « Couper les notifications » d'une conversation (MSG-C02) ; rappel d'activité mal daté (TRA-C15).",
+    "constats": ["TRA-C04", "TRA-C05", "MSG-C02", "TRA-C15"],
+    "criteres": [
+      "Pour chaque interrupteur restant, un test montre l'effet (notification non émise, son coupé, limite appliquée).",
+      "Un rappel d'une activité du lendemain dit « demain »."
+    ],
+    "fichiers": ["js/app-02-state-utils.js", "js/app-08-ui-modals-tour.js", "js/app-04-comments-shop.js"],
+    "verifications": "Tests unitaires des préférences, e2e notifications ; vérification d'une push réelle sur appareil.",
+    "pilotage": "Oui : la veille des rappels (`_shared/rappels.js`) doit lire les mêmes préférences.",
+    "metrique": "Désactivations de notifications ; plaintes de notifications non désirées.",
+    "retourArriere": "Retirer un interrupteur inopérant ne casse rien ; le rebrancher se fait derrière une coupure."
+  },
+  {
+    "id": "LOT-8", "vague": "3 · harmonisation", "risque": "normal",
+    "titre": "Un seul vocabulaire, une seule famille d'icônes, des cibles de 44 px",
+    "resultat": "Les mêmes mots, icônes et gestes pour les mêmes actions dans toute l'application ; l'accessibilité au clavier et au toucher tenue partout.",
+    "perimetre": "Lexique unique (publication, activité, envie, fil — constats de vocabulaire de chaque domaine, synthèse transverse) ; icônes SVG pour les fonctions (FIL-C02) ; boutons de fermeture uniques (doubles « × ») ; cibles ≥ 44 px (SOC-C01) ; panneaux fermés inertes (SOC-C02) ; tutoiement partout.",
+    "constats": ["SOC-C01", "SOC-C02", "FIL-C02"],
+    "criteres": [
+      "Lexique publié dans le dépôt ; une recherche des termes bannis dans index.html et js/ ne rend que des commentaires.",
+      "Mesure automatique du banc : 0 cible < 44 px et 0 commande tabulable invisible sur les six écrans principaux."
+    ],
+    "fichiers": ["index.html", "styles.css", "js/"],
+    "verifications": "Banc de mesure (`outils/scenarios/socle.js` + `synthese-mesures.js`) rejoué avant/après ; suites qui cherchent des libellés exacts mises à jour.",
+    "pilotage": "Non nécessaire.",
+    "metrique": "Compteurs de 05-MESURES.md.",
+    "retourArriere": "Changements de libellés et de CSS ; revert de PR."
+  },
+  {
+    "id": "LOT-9", "vague": "4 · évolutions", "risque": "normal",
+    "titre": "Évolutions à arbitrer après mesure",
+    "resultat": "Des améliorations plus lourdes, décidées sur données plutôt que sur intuition.",
+    "perimetre": "Mise en page tablette / ordinateur (SOC-C03) ; rappel du contexte à l'ouverture d'une conversation (PCS-C05, hypothèse) ; réponse à une story (BOB-C09) ; distances sans position réelle (IRL-C02, avec demande de position contextuelle) ; filtres actifs visibles hors de la vue Filtre (IRL-C07).",
+    "constats": ["SOC-C03", "PCS-C05", "BOB-C09", "IRL-C02", "IRL-C07"],
+    "criteres": [
+      "Chaque évolution part d'une mesure (part de trafic hors mobile, test utilisateur) consignée dans la PR."
+    ],
+    "fichiers": ["styles.css", "js/ui-v2-shell.js", "js/app-07-ia-explore-irl.js", "js/ui-v4a5-filtres.js"],
+    "verifications": "Tests utilisateurs ciblés ; suites de cadrage.",
+    "pilotage": "Oui : instrumenter avant de construire.",
+    "metrique": "Selon l'évolution.",
+    "retourArriere": "Sous drapeau, selon la règle des lots d'interface (un drapeau ne sait qu'enlever)."
+  }
+]

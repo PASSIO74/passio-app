@@ -1,0 +1,236 @@
+{
+ "id": "PCS-009",
+ "domaine": "parcours",
+ "scenario": "coeur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Étape 9 — Après « Je participe » : l'inscription est enregistrée, mais rien ne dit la suite",
+ "note": "Mesuré : la ligne `event_attendees` passe à « going » (4 participants), aucun toast ne confirme. Le bouton plein devient un bouton pâle « ✓ Je participe » et un lien « Retirer ma participation » apparaît. Aucune étape suivante n'est proposée (discussion des participants, rappel, partage) alors que ces fonctions existent.",
+ "prisLe": "2026-11-10T17:38:17.923Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_parcours_boeuf"
+ },
+ "avant": {
+  "fichier": "captures/parcours/PCS-009--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47126,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied de fiche après inscription",
+    "fichier": "captures/parcours/PCS-009--m390--avant-zoom-pied.webp",
+    "largeur": 590,
+    "hauteur": 268,
+    "octets": 5016
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "L'état « inscrit » ressemble à un bouton inactif : on ne sait pas si l'action a réussi ni ce qu'il faut faire ensuite.",
+   "x": 0.5,
+   "y": 0.891,
+   "w": 0.918,
+   "h": 0.057,
+   "sel": "text=✓ Je participe",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seule action proposée : se désinscrire.",
+   "x": 0.5,
+   "y": 0.95,
+   "w": 0.399,
+   "h": 0.052,
+   "sel": "text=Retirer ma participation",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Rencontre",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Bœuf acoustique au parc de la Tête d'Or",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.soon",
+     "texte": "Dans 3 jours",
+     "ratio": 1.68,
+     "seuil": 4.5,
+     "couleur": "#f59e0b",
+     "fond": "#eee0e1",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 9
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/parcours/PCS-009--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 51484,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied de fiche après inscription",
+    "fichier": "captures/parcours/PCS-009--m390--apres-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 484,
+    "octets": 18542
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Confirmation explicite, avec la date et ce qui va se passer (organisateur prévenu, rappel) — `role=status`, lue par les lecteurs d'écran.",
+   "x": 0.5,
+   "y": 0.714,
+   "w": 0.836,
+   "h": 0.122,
+   "sel": ".audit-pcs-ok",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "L'étape suivante du passage au réel : la discussion des participants (fonction existante : `openEventChat`).",
+   "x": 0.5,
+   "y": 0.815,
+   "w": 0.836,
+   "h": 0.057,
+   "sel": ".audit-pcs-suite .plein",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Actions secondaires existantes ou simples : itinéraire (lien de carte déjà présent dans la fiche), inviter (`openEventInvite`) — aucune fonction nouvelle.",
+   "x": 0.286,
+   "y": 0.882,
+   "w": 0.408,
+   "h": 0.057,
+   "sel": ".audit-pcs-suite button:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "La désinscription reste disponible, formulée du point de vue de la personne.",
+   "x": 0.5,
+   "y": 0.95,
+   "w": 0.357,
+   "h": 0.052,
+   "sel": "text=Je ne peux plus venir",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

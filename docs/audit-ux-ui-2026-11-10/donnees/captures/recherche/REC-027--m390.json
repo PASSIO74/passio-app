@@ -1,0 +1,174 @@
+{
+ "id": "REC-027",
+ "domaine": "recherche",
+ "scenario": "suivi-perime",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Créateurs à suivre » ouvert dès le démarrage : « Suivre » sur des personnes déjà suivies",
+ "note": "4 s après l'ouverture de l'écran, l'état local connaît 3 suivis et 1 demande(s) en attente ; les boutons, peints avant leur arrivée, ne sont jamais repeints.",
+ "prisLe": "2026-11-10T19:31:59.316Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-027--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 76042,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Léa est suivie : le bouton dit « Suivre ».",
+   "x": 0.856,
+   "y": 0.189,
+   "w": 0.149,
+   "h": 0.034,
+   "sel": "#suggestedCreators .list-row:nth-child(1) button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Demande en attente vers Sacha : le bouton dit aussi « Suivre ».",
+   "x": 0.779,
+   "y": 0.547,
+   "w": 0.303,
+   "h": 0.034,
+   "sel": "#suggestedCreators .list-row:nth-child(5) button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000c003",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000d004",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000e005",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000f006",
+     "texte": "Demande envoyée — appuie pour l'annuler",
+     "w": 118.2,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-000000001007",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_lea",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_karim",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_nina",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 25,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 12
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 26,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

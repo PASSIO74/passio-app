@@ -1,0 +1,158 @@
+{
+ "id": "CRE-001",
+ "domaine": "creation",
+ "scenario": "feuille-creer",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Barre basse « Créer » → feuille Créer (six entrées)",
+ "note": "",
+ "prisLe": "2026-11-10T18:14:27.688Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-001--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 41316,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille",
+    "fichier": "captures/creation/CRE-001--m360--avant-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 692,
+    "octets": 18380
+   },
+   {
+    "nom": "fermer",
+    "titre": "Fermer",
+    "fichier": "captures/creation/CRE-001--m360--avant-zoom-fermer.webp",
+    "largeur": 108,
+    "hauteur": 108,
+    "octets": 460
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Photo / vidéo » : le texte seul n'est pas annoncé",
+   "x": 0.267,
+   "y": 0.681,
+   "w": 0.189,
+   "h": 0.021,
+   "sel": "[data-v2-create=\"post\"] .v2-sheet-item-hint",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Fermer : 34 × 34 px",
+   "x": 0.908,
+   "y": 0.525,
+   "w": 0.094,
+   "h": 0.053,
+   "sel": ".v2-sheet-close",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 7,
+   "sous44": [
+    {
+     "el": "div#v2CreateSheet > div.v2-sheet > div.v2-sheet-head > button.v2-sheet-close",
+     "texte": "Fermer",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-001--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 41554,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille",
+    "fichier": "captures/creation/CRE-001--m360--apres-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 716,
+    "octets": 18082
+   },
+   {
+    "nom": "fermer",
+    "titre": "Fermer",
+    "fichier": "captures/creation/CRE-001--m360--apres-zoom-fermer.webp",
+    "largeur": 128,
+    "hauteur": 128,
+    "octets": 470
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Dit tout ce que la publication accepte",
+   "x": 0.267,
+   "y": 0.68,
+   "w": 0.328,
+   "h": 0.023,
+   "sel": "[data-v2-create=\"post\"] .v2-sheet-item-hint",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Fermer porté à 44 × 44 px",
+   "x": 0.894,
+   "y": 0.516,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": ".v2-sheet-close",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

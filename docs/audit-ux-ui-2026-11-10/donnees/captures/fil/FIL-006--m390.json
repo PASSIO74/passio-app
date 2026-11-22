@@ -1,0 +1,145 @@
+{
+ "id": "FIL-006",
+ "domaine": "fil",
+ "scenario": "fil-cartes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Carte — texte long tronqué (« Lire la suite »)",
+ "note": "",
+ "prisLe": "2026-11-10T17:37:36.660Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 61712,
+  "zooms": [
+   {
+    "nom": "texte",
+    "titre": "Texte tronqué",
+    "fichier": "captures/fil/FIL-006--m390--avant-zoom-texte.webp",
+    "largeur": 672,
+    "hauteur": 338,
+    "octets": 24078
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Coupure à 220 caractères, au milieu d'une liste ; « Lire la suite » ouvre la page de la publication",
+   "x": 0.5,
+   "y": 0.263,
+   "w": 0.831,
+   "h": 0.186,
+   "sel": "#feedList .post[data-postid=\"pf_texte_long\"] .post-body",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 17:22",
+     "w": 149.3,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Malik Benali",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Malik Benali 🏋️ Sport · 17:02",
+     "w": 234,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Sortie falaise du dimanche. Le rocher était parfait.",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

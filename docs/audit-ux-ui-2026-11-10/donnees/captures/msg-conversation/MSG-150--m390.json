@@ -1,0 +1,194 @@
+{
+ "id": "MSG-150",
+ "domaine": "msg-conversation",
+ "scenario": "pieces-jointes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Menu « + »",
+ "note": "",
+ "prisLe": "2026-11-10T19:00:28.763Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-150--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 38568,
+  "zooms": [
+   {
+    "nom": "menu",
+    "titre": "Menu « + »",
+    "fichier": "captures/msg-conversation/MSG-150--m390--avant-zoom-menu.webp",
+    "largeur": 444,
+    "hauteur": 820,
+    "octets": 13000
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Proposer un IRL » : violet, poignée de main ; l'en-tête dit « Proposer un moment IRL » avec une épingle.",
+   "x": 0.269,
+   "y": 0.501,
+   "w": 0.492,
+   "h": 0.071,
+   "sel": "#v6cProposerIrl",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Localisation » : un toucher envoie la position exacte, sans confirmation.",
+   "x": 0.269,
+   "y": 0.804,
+   "w": 0.492,
+   "h": 0.071,
+   "sel": "#convAttachMenu .attach-item:has-text(\"Localisation\")",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-150--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 39518,
+  "zooms": [
+   {
+    "nom": "menu",
+    "titre": "Menu « + »",
+    "fichier": "captures/msg-conversation/MSG-150--m390--apres-zoom-menu.webp",
+    "largeur": 502,
+    "hauteur": 820,
+    "octets": 13864
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même libellé qu'en en-tête, teinte corail réservée au passage au réel.",
+   "x": 0.307,
+   "y": 0.501,
+   "w": 0.568,
+   "h": 0.071,
+   "sel": "#v6cProposerIrl",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Localisation » ouvre d'abord une confirmation (voir MSG-157).",
+   "x": 0.307,
+   "y": 0.804,
+   "w": 0.568,
+   "h": 0.071,
+   "sel": "#convAttachMenu .attach-item:has-text(\"Localisation\")",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

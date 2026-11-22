@@ -1,0 +1,83 @@
+{
+ "id": "IRL-149",
+ "domaine": "irl-fiche",
+ "scenario": "modales",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Ton activité est en ligne 🎉 » — proposition d'invitation après création",
+ "note": "Appelée directement (`proposerInvitationActivite`) : sur le banc la création réelle ouvre la même fenêtre si l'écriture réussit.",
+ "prisLe": "2026-11-10T18:04:48.019Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Ton activité est en ligne 🎉",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-149--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31380,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#_inviteEvBtn",
+     "texte": "Inviter mes amis",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#_inviteEvPlusTard",
+     "texte": "Plus tard",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

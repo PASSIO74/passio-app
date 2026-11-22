@@ -1,0 +1,97 @@
+{
+ "id": "TRA-065",
+ "domaine": "transverse",
+ "scenario": "installation",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Installer l'application, sans invite du navigateur : « Installe via Chrome »",
+ "note": "pwaInstall() appelé directement (simulé) : Chromium de Playwright ne déclenche pas `beforeinstallprompt`. Agent Android émulé.",
+ "prisLe": "2026-11-10T20:02:19.160Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-065--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31124,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Regarde en haut à droite dans la barre d'adresse » : sur un téléphone Android, l'installation est dans le menu ⋮",
+   "x": 0.5,
+   "y": 0.547,
+   "w": 0.754,
+   "h": 0.379,
+   "sel": "#pwa-content",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 2,
+   "sous44": [
+    {
+     "el": "div#pwa-content > div > button.pwa-btn-skip",
+     "texte": "Fermer",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#pwa-content > div > button.pwa-btn-skip",
+     "texte": "Fermer",
+     "ratio": 2.54,
+     "seuil": 4.5,
+     "couleur": "#9ca3af",
+     "fond": "#ffffff",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

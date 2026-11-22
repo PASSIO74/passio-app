@@ -1,0 +1,180 @@
+{
+ "id": "PRO-017",
+ "domaine": "profils",
+ "scenario": "recadreur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Couverture changée DEPUIS « Modifier » : le recadreur s'ouvre sous la modale",
+ "note": "",
+ "prisLe": "2026-11-10T19:16:17.474Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Mon profil principal",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-017--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 66858,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Photo choisie… rien ne bouge",
+   "x": 0.373,
+   "y": 0.279,
+   "w": 0.653,
+   "h": 0.076,
+   "sel": "#editCoverPreview",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Recadreur caché derrière (z-index 6000 < 10001)",
+   "x": 0.5,
+   "y": 0.165,
+   "w": 0.113,
+   "h": 0.005,
+   "sel": ".modal-handle",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#modalContent > div.field > div > button.btn.ghost",
+     "texte": "Changer",
+     "w": 91.4,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "input#editIsPrivate",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Instagram URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Tiktok URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Facebook URL",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > input.input.rs-link-input",
+     "texte": "Youtube URL",
+     "w": 322,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 6,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Instagram URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Tiktok URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Facebook URL"
+   },
+   {
+    "el": "div#modalContent > div > div > input.input.rs-link-input",
+    "placeholder": "Youtube URL"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-017--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33922,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le recadreur passe devant la modale",
+   "x": 0.5,
+   "y": 0.449,
+   "w": 0.877,
+   "h": 0.27,
+   "sel": "#pcropView",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Valider rouvre « Modifier » avec la saisie",
+   "x": 0.726,
+   "y": 0.673,
+   "w": 0.426,
+   "h": 0.05,
+   "sel": "#pcropOk",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#",
+   "Audio failed: http://127.0.0.1:62387/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

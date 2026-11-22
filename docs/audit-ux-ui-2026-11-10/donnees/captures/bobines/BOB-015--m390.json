@@ -1,0 +1,118 @@
+{
+ "id": "BOB-015",
+ "domaine": "bobines",
+ "scenario": "lecteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — ma propre bobine : mêmes sorties que chez autrui, aucun moyen de la supprimer ici",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:52.807Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-015--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41090,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Ça m'intéresse » sur MA bobine",
+   "x": 0.395,
+   "y": 0.883,
+   "w": 0.728,
+   "h": 0.055,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_moi\"] .v5-actions",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ni « ⋯ », ni supprimer, ni vues",
+   "x": 0.872,
+   "y": 0.831,
+   "w": 0.205,
+   "h": 0.267,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_moi\"] .reel-actions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > button.reel-sound-btn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelsList > div.reel-item > div.reel-info > div.reel-author",
+     "texte": "🎧 Camille Audit 🎸 Musique",
+     "w": 241,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsPrevBtn",
+     "texte": "Bobine précédente",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsNextBtn",
+     "texte": "Bobine suivante",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,113 @@
+{
+ "id": "MSG-120",
+ "domaine": "msg-conversation",
+ "scenario": "saisie",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Clavier virtuel ouvert (simulé : fenêtre réduite de 300 px)",
+ "note": "ÉMULATION : la fenêtre est réduite, la coque de l'application garde ses 844 px (--app-vh n'est pas recalculé pendant la frappe) ; le navigateur fait glisser la page pour garder le champ visible, l'en-tête sort par le haut. À vérifier sur un vrai téléphone.",
+ "prisLe": "2026-11-10T18:55:54.644Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-120--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1088,
+  "octets": 21270,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "L'en-tête (retour, nom de l'interlocutrice) n'est plus à l'écran pendant la frappe.",
+   "x": 0.5,
+   "y": 0.04,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 544
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 44,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 44,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,314 @@
+{
+ "id": "BOB-020",
+ "domaine": "bobines",
+ "scenario": "commentaires",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau « Commentaires » d'une bobine",
+ "note": "",
+ "prisLe": "2026-11-10T19:21:47.140Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-020--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 45600,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Fermeture du panneau",
+    "fichier": "captures/bobines/BOB-020--m360--avant-zoom-entete.webp",
+    "largeur": 720,
+    "hauteur": 138,
+    "octets": 2974
+   },
+   {
+    "nom": "saisie",
+    "titre": "Champ et envoi",
+    "fichier": "captures/bobines/BOB-020--m360--avant-zoom-saisie.webp",
+    "largeur": 688,
+    "hauteur": 118,
+    "octets": 2660
+   },
+   {
+    "nom": "actions",
+    "titre": "Actions d'un commentaire",
+    "fichier": "captures/bobines/BOB-020--m360--avant-zoom-actions.webp",
+    "largeur": 596,
+    "hauteur": 72,
+    "octets": 962
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« − » de 28 px pour fermer",
+   "x": 0.917,
+   "y": 0.348,
+   "w": 0.078,
+   "h": 0.044,
+   "sel": ".reel-comments-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Envoi « ↑ » 36 px, sans fond",
+   "x": 0.906,
+   "y": 0.947,
+   "w": 0.1,
+   "h": 0.056,
+   "sel": ".reel-comments-send",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "J'aime / répondre / réagir : 16 px, sans libellé",
+   "x": 0.569,
+   "y": 0.547,
+   "w": 0.772,
+   "h": 0.025,
+   "sel": ".reel-comment-item:first-child .reel-comment-footer",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Lancez » : vouvoiement, seul écran",
+   "x": 0.436,
+   "y": 0.941,
+   "w": 0.783,
+   "h": 0.067,
+   "sel": "#reelCommentInput",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > button.reel-sound-btn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsPanel > div.reel-comments-header > div.reel-comments-close",
+     "texte": "−",
+     "w": 28,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 241,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-like",
+     "texte": "🤍 0",
+     "w": 26,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-reply",
+     "texte": "💬",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-action",
+     "texte": "😊",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Inès Moreau",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Inès Moreau",
+     "w": 74.9,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-like",
+     "texte": "🤍 0",
+     "w": 26,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-reply",
+     "texte": "💬",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-action",
+     "texte": "😊",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Malik Benali",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Malik Benali",
+     "w": 74.3,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#reelCommentInput",
+     "texte": "Lancez la conversation...",
+     "w": 241,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsPanel > div.reel-comments-input-section > div.reel-comments-input-wrapper > button.reel-comments-send",
+     "texte": "↑",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 16
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#reelCommentInput",
+    "placeholder": "Lancez la conversation..."
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-020--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 45994,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Fermeture du panneau",
+    "fichier": "captures/bobines/BOB-020--m360--apres-zoom-entete.webp",
+    "largeur": 720,
+    "hauteur": 170,
+    "octets": 3828
+   },
+   {
+    "nom": "saisie",
+    "titre": "Champ et envoi",
+    "fichier": "captures/bobines/BOB-020--m360--apres-zoom-saisie.webp",
+    "largeur": 688,
+    "hauteur": 120,
+    "octets": 4142
+   },
+   {
+    "nom": "actions",
+    "titre": "Actions d'un commentaire",
+    "fichier": "captures/bobines/BOB-020--m360--apres-zoom-actions.webp",
+    "largeur": 596,
+    "hauteur": 80,
+    "octets": 968
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Fermer » en toutes lettres, 44 px",
+   "x": 0.87,
+   "y": 0.361,
+   "w": 0.17,
+   "h": 0.069,
+   "sel": ".reel-comments-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Envoi 44 px, plein violet",
+   "x": 0.894,
+   "y": 0.941,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": ".reel-comments-send",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Cibles de 44 px autour des icônes",
+   "x": 0.569,
+   "y": 0.575,
+   "w": 0.772,
+   "h": 0.031,
+   "sel": ".reel-comment-item:first-child .reel-comment-footer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

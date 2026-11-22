@@ -1,0 +1,206 @@
+{
+ "id": "PRO-036",
+ "domaine": "profils",
+ "scenario": "mes-passions",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Mes passions » — en-tête, cartes, ajouter",
+ "note": "",
+ "prisLe": "2026-11-10T19:23:25.944Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-036--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 42112,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Une carte : trois emojis, badge 20 px",
+    "fichier": "captures/profils/PRO-036--t768--avant-zoom-carte.webp",
+    "largeur": 780,
+    "hauteur": 117,
+    "octets": 4212
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 3 passions actives » (icône de personnes)…",
+   "x": 0.5,
+   "y": 0.198,
+   "w": 0.661,
+   "h": 0.051,
+   "sel": "#passionsResume",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "… puis « Passions actives » en 26 px",
+   "x": 0.5,
+   "y": 0.256,
+   "w": 0.656,
+   "h": 0.029,
+   "sel": "#passionManager h3, #passionManager .section-title",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Badge photo 20 × 20 px",
+   "x": 0.23,
+   "y": 0.329,
+   "w": 0.026,
+   "h": 0.02,
+   "sel": "#passionManager .passion-photo-badge",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-036--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 37838,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Une carte : trois emojis, badge 20 px",
+    "fichier": "captures/profils/PRO-036--t768--apres-zoom-carte.webp",
+    "largeur": 780,
+    "hauteur": 117,
+    "octets": 4264
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un seul titre, le compte dans la rubrique",
+   "x": 0.5,
+   "y": 0.105,
+   "w": 0.526,
+   "h": 0.029,
+   "sel": "#passionManagerTitre",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Un emoji (celui de l'avatar), pas trois",
+   "x": 0.499,
+   "y": 0.237,
+   "w": 0.495,
+   "h": 0.02,
+   "sel": "#passionManager .profile-card-name",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Badge 28 px, zone de 44 px",
+   "x": 0.23,
+   "y": 0.258,
+   "w": 0.036,
+   "h": 0.027,
+   "sel": "#passionManager .passion-photo-badge",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

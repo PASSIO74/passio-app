@@ -1,0 +1,76 @@
+{
+ "id": "IRL-061",
+ "domaine": "irl-decouvrir",
+ "scenario": "entrees",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Après le CTA du Fil — feuille / écran d'arrivée",
+ "note": "",
+ "prisLe": "2026-11-10T18:07:54.903Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#feed"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-061--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37952,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#v3PassioSheet > div.v2-sheet.v3-sheet > div.v2-sheet-head > button.v2-sheet-close",
+     "texte": "Fermer",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

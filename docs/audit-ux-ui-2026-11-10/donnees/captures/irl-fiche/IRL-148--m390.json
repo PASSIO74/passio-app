@@ -1,0 +1,116 @@
+{
+ "id": "IRL-148",
+ "domaine": "irl-fiche",
+ "scenario": "modales",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Ton retour (avis après l'activité)",
+ "note": "Cinq étoiles (role=button, clavier), commentaire facultatif. « Merci pour ton retour » s'affiche avant le verdict de `supaRateEvent` (non attendu, app-07:7692-7694).",
+ "prisLe": "2026-11-10T18:04:42.105Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Ton retour",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-148--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 20836,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "div#evRatingStars > span.ev-rating-star",
+     "texte": "1 étoile",
+     "w": 26.6,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#evRatingStars > span.ev-rating-star",
+     "texte": "2 étoiles",
+     "w": 26.6,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#evRatingStars > span.ev-rating-star",
+     "texte": "3 étoiles",
+     "w": 26.6,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#evRatingStars > span.ev-rating-star",
+     "texte": "4 étoiles",
+     "w": 26.6,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#evRatingStars > span.ev-rating-star",
+     "texte": "5 étoiles",
+     "w": 26.6,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Envoyer mon retour",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#evFeedbackText",
+    "placeholder": "Un mot sur ce moment ? (optionnel)"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

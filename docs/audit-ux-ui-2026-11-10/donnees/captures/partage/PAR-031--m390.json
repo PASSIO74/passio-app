@@ -1,0 +1,131 @@
+{
+ "id": "PAR-031",
+ "domaine": "partage",
+ "scenario": "profil-invitation",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Profil visité — après « Partager le profil » (copie) : aucun retour visible",
+ "note": "Toast « Lien du profil copié » émis et figé (contournement ①), peint sous la modale plein écran du profil.",
+ "prisLe": "2026-11-10T17:53:10.408Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-031--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48686,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.profile-dots-btn.on-cover",
+     "texte": "Options du profil",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedProfileActions > button.btn.primary",
+     "texte": "Message",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedContent > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 173.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-031--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 40878,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même feuille que pour une publication",
+   "x": 0.5,
+   "y": 0.656,
+   "w": 0.908,
+   "h": 0.092,
+   "sel": "[data-mq='apercu']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Confirmation visible",
+   "x": 0.5,
+   "y": 0.947,
+   "w": 0.908,
+   "h": 0.049,
+   "sel": "[data-mq='ok']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

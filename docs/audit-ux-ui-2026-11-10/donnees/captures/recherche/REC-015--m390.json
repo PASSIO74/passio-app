@@ -1,0 +1,261 @@
+{
+ "id": "REC-015",
+ "domaine": "recherche",
+ "scenario": "fiche",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche « Escalade » (pas encore à moi) : « + Créer profil », passions proches",
+ "note": "",
+ "prisLe": "2026-11-10T19:34:22.402Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": "Escalade",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-015--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 88498,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et bouton d'ajout",
+    "fichier": "captures/recherche/REC-015--m390--avant-zoom-entete.webp",
+    "largeur": 716,
+    "hauteur": 120,
+    "octets": 828
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« + Créer profil » (90 × 29 px) ajoute en fait une PASSION au profil unique.",
+   "x": 0.839,
+   "y": -1.069,
+   "w": 0.23,
+   "h": 0.034,
+   "sel": "#modalContent .btn.primary",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Passions proches : 29 px de haut.",
+   "x": 0.206,
+   "y": -0.714,
+   "w": 0.32,
+   "h": 0.034,
+   "sel": "#pexLiees .pill",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 30,
+   "sous44": [
+    {
+     "el": "div#modalContent > article.post > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "w": 45,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-actions > span.post-action",
+     "texte": "💬 0",
+     "w": 45,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-actions > span.post-action",
+     "texte": "Partager",
+     "w": 44,
+     "h": 31,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Alexandre Kim",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.post-author",
+     "texte": "Alexandre Kim 🏋️ Escalade · 1 j",
+     "w": 213,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "⛰",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Marc Delaunay",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 5",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "🏔",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Camille Ferrand",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 3",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Alexandre Kim",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.post-author",
+     "texte": "Alexandre Kim 🏋️ Escalade · 10 j",
+     "w": 183.7,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 18
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 28,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-015--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 88548,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête et bouton d'ajout",
+    "fichier": "captures/recherche/REC-015--m390--apres-zoom-entete.webp",
+    "largeur": 716,
+    "hauteur": 120,
+    "octets": 828
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le mot de « Mes passions » : « Ajouter à mes passions », 44 px.",
+   "x": 0.755,
+   "y": -1.091,
+   "w": 0.398,
+   "h": 0.052,
+   "sel": "#modalContent .btn.primary",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Pastilles à 44 px.",
+   "x": 0.206,
+   "y": -0.723,
+   "w": 0.32,
+   "h": 0.052,
+   "sel": "#pexLiees .pill",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

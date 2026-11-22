@@ -1,0 +1,207 @@
+{
+ "id": "MSG-140",
+ "domaine": "msg-conversation",
+ "scenario": "menu-message",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille d'actions d'un message reçu",
+ "note": "Feuille ouverte par appui maintenu puis glissé (voir MSG-148).",
+ "prisLe": "2026-11-10T19:02:34.871Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-140--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 22950,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "Feuille d'actions",
+    "fichier": "captures/msg-conversation/MSG-140--m390--avant-zoom-feuille.webp",
+    "largeur": 780,
+    "hauteur": 788,
+    "octets": 18012
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Réactions : 36 × 35 px.",
+   "x": 0.13,
+   "y": 0.605,
+   "w": 0.091,
+   "h": 0.041,
+   "sel": "#modalContent span[onclick^='_reactAndClose']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Rien ne rappelle le message concerné (le fil est flouté).",
+   "x": 0.5,
+   "y": 0.558,
+   "w": 0.113,
+   "h": 0.005,
+   "sel": "#modalContent .modal-handle",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Suppression immédiate, sans confirmation.",
+   "x": 0.5,
+   "y": 0.938,
+   "w": 0.908,
+   "h": 0.066,
+   "sel": "#modalContent .csetting-item:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "❤️",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😂",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "👍",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😮",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😢",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "🔥",
+     "w": 35.6,
+     "h": 26,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#modalContent > div.csetting-item > div.csetting-label",
+     "texte": "Supprimer pour moi",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 14
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-140--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27078,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "Feuille d'actions",
+    "fichier": "captures/msg-conversation/MSG-140--m390--apres-zoom-feuille.webp",
+    "largeur": 780,
+    "hauteur": 984,
+    "octets": 22934
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Réactions de 44 px.",
+   "x": 0.13,
+   "y": 0.572,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#modalContent .maq-react",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Rappel du message visé.",
+   "x": 0.433,
+   "y": 0.493,
+   "w": 0.764,
+   "h": 0.064,
+   "sel": "#modalContent .maq-apercu",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Une seule entrée « Supprimer… », séparée ; elle ouvre une confirmation.",
+   "x": 0.5,
+   "y": 0.933,
+   "w": 0.908,
+   "h": 0.077,
+   "sel": "#modalContent .maq-sep",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

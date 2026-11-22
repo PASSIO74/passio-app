@@ -1,0 +1,187 @@
+{
+ "id": "TRA-001",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paramètres — panneau ouvert par « ⋯ », sections repliées",
+ "note": "",
+ "prisLe": "2026-11-10T19:55:56.129Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-001--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 40088,
+  "zooms": [
+   {
+    "nom": "danger",
+    "titre": "Déconnexion et suppression",
+    "fichier": "captures/transverse/TRA-001--m360--avant-zoom-danger.webp",
+    "largeur": 610,
+    "hauteur": 266,
+    "octets": 8338
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Porte : « ⋯ » de 34 × 34 px, nommée « Paramètres »",
+   "x": 0.914,
+   "y": 0.049,
+   "w": 0.094,
+   "h": 0.053,
+   "sel": ".hamburger[onclick*='toggleDevPanel']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Section « Démo » (pitch investisseurs, tour démo) ouverte à tout le monde",
+   "x": 0.611,
+   "y": 0.543,
+   "w": 0.639,
+   "h": 0.073,
+   "sel": "#devPanel .settings-section:has([onclick*='startTour']) .settings-section-header",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Se déconnecter » et « Supprimer mon compte » : 33 px de haut, texte de 11 px",
+   "x": 0.611,
+   "y": 0.691,
+   "w": 0.639,
+   "h": 0.052,
+   "sel": "#settingsDeleteAccount",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 21,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsLogout",
+     "texte": "Se déconnecter",
+     "w": 230,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsDeleteAccount",
+     "texte": "Supprimer mon compte",
+     "w": 230,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 12,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-001--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 39348,
+  "zooms": [
+   {
+    "nom": "danger",
+    "titre": "Déconnexion et suppression",
+    "fichier": "captures/transverse/TRA-001--m360--apres-zoom-danger.webp",
+    "largeur": 610,
+    "hauteur": 288,
+    "octets": 9944
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Quatre sections utiles ; « Démo » et « Bien-être digital » (inopérant) retirées",
+   "x": 0.611,
+   "y": 0.304,
+   "w": 0.639,
+   "h": 0.073,
+   "sel": "#devPanel .settings-section:has([onclick*='openNotifSettings']) .settings-section-header",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Cibles de 44 px, texte de 13 px",
+   "x": 0.611,
+   "y": 0.558,
+   "w": 0.639,
+   "h": 0.069,
+   "sel": "#settingsDeleteAccount",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

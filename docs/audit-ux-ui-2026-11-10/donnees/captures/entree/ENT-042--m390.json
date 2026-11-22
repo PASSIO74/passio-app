@@ -1,0 +1,101 @@
+{
+ "id": "ENT-042",
+ "domaine": "entree",
+ "scenario": "hors-ligne",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Connexion hors ligne — ce que dit l'écran",
+ "note": "Émulé : `context.setOffline(true)` avant l'envoi.",
+ "prisLe": "2026-11-10T19:34:25.407Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-042--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42232,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Message après l'envoi hors ligne.",
+   "x": 0.5,
+   "y": 0.448,
+   "w": 0.785,
+   "h": 0.04,
+   "sel": "#authMsg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#offlineBanner > button",
+     "texte": "×",
+     "w": 23.1,
+     "h": 23,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

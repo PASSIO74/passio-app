@@ -1,0 +1,94 @@
+{
+ "id": "ENT-019",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "« Mot de passe oublié ? » sans adresse — consigne",
+ "note": "",
+ "prisLe": "2026-11-10T19:30:23.370Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-019--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 44750,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La consigne renvoie au champ « ci-dessus ».",
+   "x": 0.5,
+   "y": 0.457,
+   "w": 0.785,
+   "h": 0.059,
+   "sel": "#authMsg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

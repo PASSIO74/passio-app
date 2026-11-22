@@ -1,0 +1,198 @@
+{
+ "id": "CRE-019",
+ "domaine": "creation",
+ "scenario": "bobine",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Bobine — aperçu : Recommencer / Continuer",
+ "note": "",
+ "prisLe": "2026-11-10T18:18:25.699Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-019--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 25106,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Outils et issues",
+    "fichier": "captures/creation/CRE-019--m390--avant-zoom-bas.webp",
+    "largeur": 780,
+    "hauteur": 304,
+    "octets": 8292
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Recommencer » presque invisible (gris sur sombre)",
+   "x": 0.263,
+   "y": 0.959,
+   "w": 0.454,
+   "h": 0.05,
+   "sel": "[data-v7-bobine-act=\"recommencer\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Outils 40 px, nommés par une bulle seulement",
+   "x": 0.5,
+   "y": 0.882,
+   "w": 0.484,
+   "h": 0.047,
+   "sel": "#mediaEditor .me-tool-group",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "button#meBackBtn",
+     "texte": "Fermer",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mePreviewCtrls > button.me-prev-btn",
+     "texte": "Activer le son",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mePreviewCtrls > button.me-prev-btn",
+     "texte": "Lecture / pause",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "Aa",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "😀",
+     "w": 42,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "GIF",
+     "w": 45.9,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "🖼️",
+     "w": 42,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7BobineActions > button.btn.ghost",
+     "texte": "Recommencer",
+     "w": 177,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7BobineActions > button.btn.primary",
+     "texte": "Continuer",
+     "w": 177,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 9
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 3,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-019--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 26418,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Outils et issues",
+    "fichier": "captures/creation/CRE-019--m390--apres-zoom-bas.webp",
+    "largeur": 780,
+    "hauteur": 316,
+    "octets": 10126
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Lisible, secondaire, 48 px",
+   "x": 0.263,
+   "y": 0.955,
+   "w": 0.454,
+   "h": 0.057,
+   "sel": "[data-v7-bobine-act=\"recommencer\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Outils 44 px",
+   "x": 0.5,
+   "y": 0.879,
+   "w": 0.502,
+   "h": 0.052,
+   "sel": "#mediaEditor .me-tool-group",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,140 @@
+{
+ "id": "PRO-006",
+ "domaine": "profils",
+ "scenario": "mon-profil-activite",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Mon profil — onglet Activité (une activité rejointe)",
+ "note": "",
+ "prisLe": "2026-11-10T18:16:19.109Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 55526,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Titre 12,5 px, date 10,5 px",
+   "x": 0.5,
+   "y": 0.754,
+   "w": 0.918,
+   "h": 0.073,
+   "sel": "#profileEvents > div",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 22,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "📸 instagram",
+     "w": 91.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "▶️ youtube",
+     "w": 82.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "22 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 PASSIONS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNEMENTS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:49298/index.html#",
+   "Audio failed: http://127.0.0.1:49298/index.html#",
+   "Audio failed: http://127.0.0.1:49298/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

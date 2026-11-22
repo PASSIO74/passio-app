@@ -1,0 +1,134 @@
+{
+ "id": "CRE-031",
+ "domaine": "creation",
+ "scenario": "visiteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — Créer → Audio / podcast → micro demandé avant tout compte",
+ "note": "Le toast « Micro refusé » prouve que getUserMedia a été appelé (banc sans micro).",
+ "prisLe": "2026-11-10T19:15:41.770Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-031--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53500,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Demande le micro à un visiteur ; la porte n'arrive qu'à Publier",
+   "x": 0.192,
+   "y": 0.287,
+   "w": 0.226,
+   "h": 0.104,
+   "sel": "#recBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill.active",
+     "texte": "Idées",
+     "w": 55,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Apprendre",
+     "w": 79.3,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Rencontrer",
+     "w": 80.9,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postMoodRow > button.pill",
+     "texte": "Tous",
+     "w": 48.7,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#recBtn",
+    "html": "<div class=\"rec-btn\" id=\"recBtn\" onclick=\"toggleRecording()\" tabindex=\"0\" data-tabulable=\"1\" role=\"button\"><sv"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

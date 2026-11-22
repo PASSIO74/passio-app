@@ -1,0 +1,89 @@
+{
+ "id": "ENT-028",
+ "domaine": "entree",
+ "scenario": "etapes-apres-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Étape « Vérification d'âge » (chemin Google — simulé)",
+ "note": "Simulé : `showOnbStep('age')`. Après une inscription Google, le formulaire e-mail n'a pas recueilli l'année : cette étape la demande.",
+ "prisLe": "2026-11-10T19:32:16.628Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO – MVP Beta",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-028--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 25306,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Champ sans `inputmode` ni `autocomplete` (le formulaire e-mail les a).",
+   "x": 0.5,
+   "y": 0.341,
+   "w": 0.887,
+   "h": 0.058,
+   "sel": "#birthYear",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« ← Retour » ramène au formulaire de compte, déjà ouvert.",
+   "x": 0.5,
+   "y": 0.945,
+   "w": 0.887,
+   "h": 0.109,
+   "sel": ".onb-step.active .onb-footer",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 5,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

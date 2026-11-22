@@ -1,0 +1,213 @@
+{
+ "id": "ENT-001",
+ "domaine": "entree",
+ "scenario": "premiere-visite",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Première visite — entrée directe dans Découvrir, carte de bienvenue",
+ "note": "Appareil vierge, aucune session. Les publications sont les exemples du socle (« Exemple PASSIO »).",
+ "prisLe": "2026-11-10T19:27:26.916Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-001--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 43114,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte de bienvenue",
+    "fichier": "captures/entree/ENT-001--d1440--avant-zoom-carte.webp",
+    "largeur": 400,
+    "hauteur": 202,
+    "octets": 7068
+   },
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure d'un visiteur",
+    "fichier": "captures/entree/ENT-001--d1440--avant-zoom-barre.webp",
+    "largeur": 440,
+    "hauteur": 64,
+    "octets": 2512
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Une action principale (« Choisir mes passions »), deux liens secondaires : la carte est claire.",
+   "x": 0.5,
+   "y": 0.441,
+   "w": 0.267,
+   "h": 0.208,
+   "sel": "#frWelcome",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le logo s'annonce « Mon profil » à quelqu'un qui n'a pas de compte.",
+   "x": 0.418,
+   "y": 0.062,
+   "w": 0.121,
+   "h": 0.04,
+   "sel": ".app-topbar .topbar-left",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Envies : « Explorer » et « Rencontrer » sont aussi les noms de la loupe et d'un onglet.",
+   "x": 0.5,
+   "y": 0.22,
+   "w": 0.283,
+   "h": 0.049,
+   "sel": "#feedIntentSelector",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 38,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Théo Roussel",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Théo Roussel 🍳 Cuisine · 19:02",
+     "w": 215.8,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 22,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

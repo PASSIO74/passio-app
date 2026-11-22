@@ -1,0 +1,208 @@
+{
+ "id": "ENT-013",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Formulaire « Créer un compte » — haut de l'écran",
+ "note": "",
+ "prisLe": "2026-11-10T19:30:01.925Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-013--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52854,
+  "zooms": [
+   {
+    "nom": "onglets",
+    "titre": "Onglets et case de consentement",
+    "fichier": "captures/entree/ENT-013--m390--avant-zoom-onglets.webp",
+    "largeur": 636,
+    "hauteur": 94,
+    "octets": 4470
+   },
+   {
+    "nom": "consentement",
+    "titre": "Case de consentement",
+    "fichier": "captures/entree/ENT-013--m390--avant-zoom-consentement.webp",
+    "largeur": 628,
+    "hauteur": 160,
+    "octets": 11164
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Onglets de 35 px de haut.",
+   "x": 0.5,
+   "y": 0.383,
+   "w": 0.785,
+   "h": 0.041,
+   "sel": ".onb-auth-toggle",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Liens des conditions : 16 px de haut, au milieu d'une phrase.",
+   "x": 0.617,
+   "y": 0.438,
+   "w": 0.295,
+   "h": 0.019,
+   "sel": "#authCguLink",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Sept champs et aides avant le bouton : « Créer mon compte » est à 1 117 px (écran : 844).",
+   "x": 0.5,
+   "y": 0.693,
+   "w": 0.785,
+   "h": 0.123,
+   "sel": "#authNameWrap",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "input#authConsent",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "span#authCguLink",
+     "texte": "conditions générales",
+     "w": 115,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 3,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 14,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-013--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 46842,
+  "zooms": [
+   {
+    "nom": "onglets",
+    "titre": "Onglets",
+    "fichier": "captures/entree/ENT-013--m390--apres-zoom-onglets.webp",
+    "largeur": 636,
+    "hauteur": 112,
+    "octets": 4008
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Onglets portés à 44 px.",
+   "x": 0.5,
+   "y": 0.197,
+   "w": 0.785,
+   "h": 0.052,
+   "sel": ".onb-auth-toggle",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Étape 1 sur 2 : l'accès seulement (Google, ou e-mail + mot de passe).",
+   "x": 0.5,
+   "y": 0.407,
+   "w": 0.785,
+   "h": 0.122,
+   "sel": "#authGoogleBloc",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Nom public et année de naissance passent à l'étape 2, sans rien retirer du contrôle 18+.",
+   "x": 0.5,
+   "y": 0.539,
+   "w": 0.785,
+   "h": 0.058,
+   "sel": "#authEmail",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Le bouton d'action est visible sans défiler.",
+   "x": 0.5,
+   "y": 0.797,
+   "w": 0.785,
+   "h": 0.06,
+   "sel": "#authSubmitBtn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

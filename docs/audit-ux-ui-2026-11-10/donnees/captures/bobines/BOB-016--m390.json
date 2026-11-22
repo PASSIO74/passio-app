@@ -1,0 +1,97 @@
+{
+ "id": "BOB-016",
+ "domaine": "bobines",
+ "scenario": "lecteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — dernière bobine (27 / 27) : flèche ↓ éteinte, rien d'autre",
+ "note": "Les 20 bobines d'EXEMPLE du socle suivent celles des comptes, sans marque « Exemple » dans le lecteur.",
+ "prisLe": "2026-11-10T19:15:55.273Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-016--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31578,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "27 / 27 : 7 bobines de comptes, 20 d'exemple",
+   "x": 0.767,
+   "y": 0.039,
+   "w": 0.148,
+   "h": 0.03,
+   "sel": "#reelsCounter",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seul signe de fin : une flèche grisée",
+   "x": 0.5,
+   "y": 0.959,
+   "w": 0.108,
+   "h": 0.05,
+   "sel": "#reelsNextBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 2,
+   "sous44": [
+    {
+     "el": "div#reelsPause > div.reels-pause-card > div.reels-pause-actions > button.reels-pause-btn.primary",
+     "texte": "Je sors, merci",
+     "w": 241,
+     "h": 43,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 3,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

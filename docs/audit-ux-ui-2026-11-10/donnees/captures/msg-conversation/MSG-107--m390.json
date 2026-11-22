@@ -1,0 +1,385 @@
+{
+ "id": "MSG-107",
+ "domaine": "msg-conversation",
+ "scenario": "fil-1a1",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Vocal, document et fichier audio — reçus (lisibles) et envoyés (fantômes)",
+ "note": "",
+ "prisLe": "2026-11-10T18:02:06.321Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-107--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29530,
+  "zooms": [
+   {
+    "nom": "vocal-recu",
+    "titre": "Vocal reçu : lecteur",
+    "fichier": "captures/msg-conversation/MSG-107--m390--avant-zoom-vocal-recu.webp",
+    "largeur": 416,
+    "hauteur": 146,
+    "octets": 1722
+   },
+   {
+    "nom": "vocal-envoye",
+    "titre": "Mon vocal envoyé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--avant-zoom-vocal-envoye.webp",
+    "largeur": 412,
+    "hauteur": 142,
+    "octets": 742
+   },
+   {
+    "nom": "doc-recu",
+    "titre": "Document reçu : nom coupé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--avant-zoom-doc-recu.webp",
+    "largeur": 460,
+    "hauteur": 182,
+    "octets": 3954
+   },
+   {
+    "nom": "doc-envoye",
+    "titre": "Mon document envoyé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--avant-zoom-doc-envoye.webp",
+    "largeur": 456,
+    "hauteur": 178,
+    "octets": 1148
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Mon vocal : bouton, barre, durée et vitesse en blanc sur fond lavande.",
+   "x": 0.718,
+   "y": 0.259,
+   "w": 0.462,
+   "h": 0.04,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_11\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Mon document : nom et « Télécharger » en blanc sur fond lavande.",
+   "x": 0.69,
+   "y": 0.602,
+   "w": 0.518,
+   "h": 0.062,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_13b\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Lecture : 34 × 34 px, nommée « ▶ » ; vitesse : 24 × 18 px.",
+   "x": 0.097,
+   "y": 0.154,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] button",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Nom coupé à 140 px : « Programme-stage-lu… ».",
+   "x": 0.313,
+   "y": 0.373,
+   "w": 0.523,
+   "h": 0.064,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_12\"] .conv-bubble",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Fontaine Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea10",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+     "texte": "",
+     "w": 68,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > button.voice-speed-btn",
+     "texte": "1×",
+     "w": 24,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea11",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+     "texte": "",
+     "w": 68,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "w": 24,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 23,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "span#dur_aud_mlea11",
+     "texte": "0:07",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfdfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "ratio": 1.07,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f8f7fd",
+     "px": 10
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "tablature-pont-re-mineur.pdf",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "Télécharger",
+     "ratio": 1.05,
+     "seuil": 4.5,
+     "couleur": "#fcfbfe",
+     "fond": "#f7f5fc",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 4
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:point"
+   },
+   {
+    "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;cursor:point"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "a > div > div > div",
+    "texte": "Programme-stage-lutherie-novembre-2026.pdf",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "maquette-pont-re-mineur.mp3",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "tablature-pont-re-mineur.pdf",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-107--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36800,
+  "zooms": [
+   {
+    "nom": "vocal-recu",
+    "titre": "Vocal reçu : lecteur",
+    "fichier": "captures/msg-conversation/MSG-107--m390--apres-zoom-vocal-recu.webp",
+    "largeur": 568,
+    "hauteur": 198,
+    "octets": 2276
+   },
+   {
+    "nom": "vocal-envoye",
+    "titre": "Mon vocal envoyé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--apres-zoom-vocal-envoye.webp",
+    "largeur": 564,
+    "hauteur": 194,
+    "octets": 3252
+   },
+   {
+    "nom": "doc-recu",
+    "titre": "Document reçu : nom coupé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--apres-zoom-doc-recu.webp",
+    "largeur": 648,
+    "hauteur": 240,
+    "octets": 6974
+   },
+   {
+    "nom": "doc-envoye",
+    "titre": "Mon document envoyé",
+    "fichier": "captures/msg-conversation/MSG-107--m390--apres-zoom-doc-envoye.webp",
+    "largeur": 578,
+    "hauteur": 210,
+    "octets": 6800
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le vocal garde la bulle violette : tout redevient lisible sans changer ses couleurs.",
+   "x": 0.621,
+   "y": 0.305,
+   "w": 0.656,
+   "h": 0.071,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_11\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Idem pour le document.",
+   "x": 0.611,
+   "y": 0.727,
+   "w": 0.674,
+   "h": 0.081,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_13b\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Lecture 44 px, vitesse 44 × 36 px.",
+   "x": 0.141,
+   "y": 0.17,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_10\"] button",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Nom du fichier sur deux lignes.",
+   "x": 0.433,
+   "y": 0.452,
+   "w": 0.764,
+   "h": 0.099,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_12\"] .conv-bubble",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

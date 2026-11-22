@@ -1,0 +1,59 @@
+{
+ "id": "FIL-016",
+ "domaine": "fil",
+ "scenario": "fil-modules",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rangée de stories (porte d'entrée)",
+ "note": "",
+ "prisLe": "2026-11-10T17:54:08.883Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-016--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 75578,
+  "zooms": [
+   {
+    "nom": "stories",
+    "titre": "Rangée de stories",
+    "fichier": "captures/fil/FIL-016--m390--avant-zoom-stories.webp",
+    "largeur": 756,
+    "hauteur": 154,
+    "octets": 17718
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Bulles de 48 × 59 px, prénom seul en 9,5 px ; stories réelles et d'exemple mêlées sans distinction",
+   "x": 0.244,
+   "y": 0.279,
+   "w": 0.123,
+   "h": 0.07,
+   "sel": "#storiesRowFeed .story-item:nth-child(2)",
+   "trouve": true
+  }
+ ],
+ "mesures": null,
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

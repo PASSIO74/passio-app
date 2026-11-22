@@ -1,0 +1,111 @@
+{
+ "id": "CRE-023",
+ "domaine": "creation",
+ "scenario": "story",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story — capture, caméra indisponible (galerie ou fond coloré)",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:06.721Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-023--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 21980,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« …ou un fond coloré » : le chemin texte seul",
+   "x": 0.5,
+   "y": 0.588,
+   "w": 0.394,
+   "h": 0.05,
+   "sel": "#meGradientBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "button#meBackBtn",
+     "texte": "Fermer",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mePlaceholder > button.btn.primary",
+     "texte": "Choisir un média",
+     "w": 141.1,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#meGradientBtn",
+     "texte": "…ou un fond coloré",
+     "w": 153.6,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "button#meGradientBtn",
+     "texte": "…ou un fond coloré",
+     "ratio": 2.11,
+     "seuil": 4.5,
+     "couleur": "#47435f",
+     "fond": "#0a0a0a",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

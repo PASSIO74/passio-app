@@ -1,0 +1,97 @@
+{
+ "id": "ENT-030",
+ "domaine": "entree",
+ "scenario": "etapes-apres-compte",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Étape « passions » — « Entrer sur PASSIO » (simulé)",
+ "note": "Simulé : `showOnbStep('passions')` + `renderPassionGrid()`.",
+ "prisLe": "2026-11-10T19:32:20.334Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO – MVP Beta",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-030--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 38584,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Dernière étape, après le compte.",
+   "x": 0.5,
+   "y": 0.097,
+   "w": 0.887,
+   "h": 0.026,
+   "sel": "#onbPassionsTitle",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Entrer sur PASSIO ».",
+   "x": 0.656,
+   "y": 0.943,
+   "w": 0.576,
+   "h": 0.071,
+   "sel": ".onb-step.active .onb-footer .btn.primary",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#passionGrid > div.psel-liste > button.psel-item",
+     "texte": "💪 Musculation +",
+     "w": 241,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 5,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

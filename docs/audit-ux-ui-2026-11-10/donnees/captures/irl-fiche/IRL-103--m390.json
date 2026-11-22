@@ -1,0 +1,332 @@
+{
+ "id": "IRL-103",
+ "domaine": "irl-fiche",
+ "scenario": "fiche-avenir",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche — échanges et « Autres actions » (bas de fiche)",
+ "note": "Réactions, commentaires, puis « Autres actions » : Ajouter au calendrier, Partager, Inviter, Signaler. Partager existe aussi en haut de fiche et dans la barre d'échanges.",
+ "prisLe": "2026-11-10T17:54:17.560Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_if_avenir"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-103--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33368,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Calendrier et Inviter — les deux gestes utiles après l'inscription — sont rangés tout en bas, sous les commentaires.",
+   "x": 0.5,
+   "y": 0.614,
+   "w": 0.918,
+   "h": 0.018,
+   "sel": "[data-v4b-sec=secondaire] .v4b-sec-titre",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Partager : troisième occurrence sur la même fiche.",
+   "x": 0.347,
+   "y": 0.137,
+   "w": 0.113,
+   "h": 0.037,
+   "sel": "[data-v4b-sec=echanges] .post-action[title=Partager]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 28,
+   "sous44": [
+    {
+     "el": "div#eventCommentsList > div > button",
+     "texte": "Récents",
+     "w": 59.9,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventCommentsList > div > button",
+     "texte": "Aimés",
+     "w": 51.7,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.comment-body > div.comment-author",
+     "texte": "Tom Girard",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.comment-body > div.comment-author",
+     "texte": "Léa Fontaine",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "input#eventCommentInput",
+     "texte": "Écris un commentaire…",
+     "w": 228.5,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 79.5,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Ajouter au calendrier",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Partager",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Inviter",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
+     "texte": "Signaler cet événement",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 19
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 21,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Échanges",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12.5
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Commentaires",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventCommentsList > div.cmt-sortbar > button.cmt-sort",
+     "texte": "Pertinents",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.comment-body > div.comment-meta",
+     "texte": "17:54",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventCommentsList > div.comment > div.comment-body > div.comment-meta",
+     "texte": "17:34",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Autres actions",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
+     "texte": "Signaler cet événement",
+     "ratio": 4.42,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#eeeafe",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [
+   {
+    "el": "div#eventAlbum > div.event-album-cell",
+    "html": "<div class=\"event-album-cell\" onclick=\"openPost('pa_if_tom')\" tabindex=\"0\" data-tabulable=\"1\" role=\"button\"> <"
+   },
+   {
+    "el": "div#eventCommentsList > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:63089/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#eventCommentsList > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:63089/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventCommentInput",
+    "placeholder": "Écris un commentaire…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

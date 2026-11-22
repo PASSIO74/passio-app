@@ -1,0 +1,222 @@
+{
+ "id": "BOB-010",
+ "domaine": "bobines",
+ "scenario": "lecteur",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur de bobines — bobine vidéo d'un compte suivi (ouverte par le rail)",
+ "note": "Vidéo remplacée par le banc (①). Ouverture par un vrai toucher sur la vignette.",
+ "prisLe": "2026-11-10T19:16:41.104Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-010--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 38498,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Bas de la bobine : auteur, légende, sorties vers le réel",
+    "fichier": "captures/bobines/BOB-010--m360--avant-zoom-bas.webp",
+    "largeur": 540,
+    "hauteur": 312,
+    "octets": 18008
+   },
+   {
+    "nom": "haut",
+    "titre": "Haut : fermeture, compteur, étiquette",
+    "fichier": "captures/bobines/BOB-010--m360--avant-zoom-haut.webp",
+    "largeur": 720,
+    "hauteur": 320,
+    "octets": 7954
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Fermer : 38 × 38 px",
+   "x": 0.908,
+   "y": 0.052,
+   "w": 0.106,
+   "h": 0.059,
+   "sel": ".reels-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "4 sorties, 2 visibles : « À vivre près de moi » et « Proposer une sortie » coupées",
+   "x": 0.386,
+   "y": 0.845,
+   "w": 0.706,
+   "h": 0.072,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] .v5-actions",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Étiquette qui redit la passion et touche la flèche ↑",
+   "x": 0.234,
+   "y": 0.121,
+   "w": 0.39,
+   "h": 0.042,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] .reel-tag-mood",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Pas de « ⋯ » : ni signaler, ni supprimer",
+   "x": 0.861,
+   "y": 0.777,
+   "w": 0.222,
+   "h": 0.352,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] .reel-actions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > button.reel-sound-btn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelsList > div.reel-item > div.reel-info > div.reel-author",
+     "texte": "🎸 Léa Fontaine 🎸 Musique",
+     "w": 241,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsNextBtn",
+     "texte": "Bobine suivante",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-010--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 46084,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Bas de la bobine : auteur, légende, sorties vers le réel",
+    "fichier": "captures/bobines/BOB-010--m360--apres-zoom-bas.webp",
+    "largeur": 540,
+    "hauteur": 428,
+    "octets": 26662
+   },
+   {
+    "nom": "haut",
+    "titre": "Haut : fermeture, compteur",
+    "fichier": "captures/bobines/BOB-010--m360--apres-zoom-haut.webp",
+    "largeur": 720,
+    "hauteur": 332,
+    "octets": 6578
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Fermer à 44 px",
+   "x": 0.9,
+   "y": 0.056,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": ".reels-close",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les 4 sorties visibles ; les 2 vers le réel bordées de corail",
+   "x": 0.386,
+   "y": 0.8,
+   "w": 0.706,
+   "h": 0.162,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] .v5-actions",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Passion et envie sur une ligne ; étiquette du haut retirée",
+   "x": 0.295,
+   "y": 0.616,
+   "w": 0.257,
+   "h": 0.023,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] [data-mq=\"passion\"]",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Plus » : signaler (ou supprimer sa bobine)",
+   "x": 0.861,
+   "y": 0.904,
+   "w": 0.128,
+   "h": 0.098,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] [data-mq=\"plus\"]",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "Le nombre de commentaires (3), comme le j'aime",
+   "x": 0.861,
+   "y": 0.651,
+   "w": 0.128,
+   "h": 0.098,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_lea\"] .reel-action-btn[aria-label=\"Commenter\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,260 @@
+{
+ "id": "TRA-050",
+ "domaine": "transverse",
+ "scenario": "signalement",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche d'activité défilée jusqu'en bas : « Signaler cet événement » reste sous le pied collant",
+ "note": "",
+ "prisLe": "2026-11-10T20:00:47.245Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_tra_atelier"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-050--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 34684,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Bas de la fiche",
+    "fichier": "captures/transverse/TRA-050--m390--avant-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 338,
+    "octets": 4598
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le pied « Je participe » recouvre « Signaler cet événement » même au bout du défilement (elementFromPoint = #eventDetailCta)",
+   "x": 0.5,
+   "y": 0.924,
+   "w": 1,
+   "h": 0.153,
+   "sel": "#eventDetailCta",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
+     "texte": "Discussion des participants",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "input#eventCommentInput",
+     "texte": "Écris un commentaire…",
+     "w": 228.5,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 79.5,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Ajouter au calendrier",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Partager",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Inviter",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Participants (1 / 8 max)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > span",
+     "texte": "7 places disponibles",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Album de l'événement",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventAlbum > div.event-album-empty",
+     "texte": "Aucune photo pour l'instant — sois le premier à pa",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Échanges",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12.5
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Commentaires",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventCommentsList > div",
+     "texte": "Aucun commentaire — lance la conversation !",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Autres actions",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailCta > div.v4b-rsvp > button.v4b-rsvp-retirer",
+     "texte": "Retirer ma participation",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventCommentInput",
+    "placeholder": "Écris un commentaire…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-050--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33994,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Bas de la fiche",
+    "fichier": "captures/transverse/TRA-050--m390--apres-zoom-pied.webp",
+    "largeur": 780,
+    "hauteur": 338,
+    "octets": 5500
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une marge basse égale au pied : le bouton devient atteignable ; un seul mot, « activité »",
+   "x": 0.5,
+   "y": 0.798,
+   "w": 0.918,
+   "h": 0.049,
+   "sel": "button[onclick*='reportEvent']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

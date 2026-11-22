@@ -1,0 +1,131 @@
+{
+ "id": "CRE-005",
+ "domaine": "creation",
+ "scenario": "studio",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Choix de la passion — passion fine sélectionnée, avant validation",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:09.673Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": "Associer cette publication à une passion",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-005--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 45288,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« TES PASSIONS » : la passion va rejoindre le compte",
+   "x": 0.5,
+   "y": 0.491,
+   "w": 0.908,
+   "h": 0.077,
+   "sel": ".modal .psel-choisies",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Rien ne le dit au moment de valider",
+   "x": 0.5,
+   "y": 0.947,
+   "w": 0.908,
+   "h": 0.05,
+   "sel": ".modal button.btn.primary, .modal .psel-valider, .modal button:has-text('Publier dans cette passion')",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#pselHote > div.psel-choisies > span.psel-puce > button.psel-puce-x",
+     "texte": "Retirer Escalade de bloc",
+     "w": 26,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#pselHote > div.psel-pied > button.btn.primary",
+     "texte": "Publier dans cette passion",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-005--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53692,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le choix porte sur la publication",
+   "x": 0.5,
+   "y": 0.422,
+   "w": 0.908,
+   "h": 0.077,
+   "sel": ".modal .psel-choisies",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La conséquence sur le compte est dite avant de valider",
+   "x": 0.5,
+   "y": 0.505,
+   "w": 0.908,
+   "h": 0.069,
+   "sel": "[data-mq='note']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
