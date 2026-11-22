@@ -36,7 +36,10 @@ const fs = require("fs");
 const path = require("path");
 const { signupUser } = require("./qa-helper");
 const { configAdmin } = require("./compte-e2e");
+const { cibleSupabase } = require("./cible-supabase");
 
+// Même valeur que `scripts/lib/charge-realiste.mjs` (module ES, non chargeable
+// ici) : le lanceur la transmet (`PASSIO_STAGING_REF`) et la garde exige l'égalité.
 const STAGING_REF = "fcksxofaelcdmmifnwjo";
 const SORTIE = path.resolve(__dirname, "..", "..", "test-results", "village");
 
@@ -56,31 +59,49 @@ const PERSONAS = [
 const [LEA, MARC, INES, HUGO, CHLOE, TOM, SARAH, NINA, KEVIN, JADE] = PERSONAS.map((_, i) => i);
 
 // Ordre de purge : celui de scripts/purge-e2e-rest.js (des enfants vers les
-// parents), plus les tables que ce scénario écrit et que la purge générale
-// laisse au CASCADE (`event_comments`, `reports`).
+// parents, `cdv_*` exceptées : ADR-011, plus écrites), plus les tables que ce
+// scénario écrit et que la purge générale laisse au CASCADE (`event_comments`,
+// `reports`) ou à l'onboarding (`user_passions`). ⚠️ `purge-e2e-rest.js` n'est
+// pas importable : il PURGE dès qu'on le charge.
 const TABLES_PURGE = [
+  ["conv_messages", ["from_id"]],
+  ["conv_reads", ["user_id"]],
+  ["conv_members", ["user_id"]],
   ["notifications", ["user_id", "from_id"]],
   ["comment_interactions", ["user_id"]],
   ["post_comments", ["author_id"]],
   ["post_likes", ["user_id"]],
   ["follows", ["follower_id", "following_id"]],
   ["reports", ["reporter_id"]],
+  ["posts", ["author_id"]],
+  ["stories", ["author_id"]],
   ["event_comments", ["author_id"]],
   ["event_attendees", ["user_id"]],
   ["event_reactions", ["user_id"]],
   ["events", ["author_id"]],
-  ["posts", ["author_id"]],
-  ["stories", ["author_id"]],
   ["blocks", ["blocker_id", "blocked_id"]],
   ["push_subscriptions", ["user_id"]],
   ["user_state", ["user_id"]],
+  ["user_passions", ["user_id"]],
   ["profiles", ["id"]],
 ];
 
+// La garde regarde les TROIS cibles, pas une : celle du navigateur
+// (`cibleSupabase()`, qui exige URL ET clé anon — sans clé anon, les dix
+// navigateurs démarreraient sur la PRODUCTION), celle de la clé de service
+// (`configAdmin()`), et le projet que la clé de service désigne elle-même
+// (charge du JWT : `ref`). Une clé illisible est un refus, jamais un « sans doute ».
+function refDeLaCle(cle) {
+  try { return JSON.parse(Buffer.from(String(cle).split(".")[1], "base64url").toString("utf8")).ref || null; }
+  catch (e) { return null; }
+}
 function cibleEstLeStaging() {
-  const url = process.env.PASSIO_SUPABASE_URL || "";
+  const url = `https://${STAGING_REF}.supabase.co`;
+  const navigateur = cibleSupabase();
   const cfg = configAdmin();
-  return url === `https://${STAGING_REF}.supabase.co` && !!cfg && cfg.url === url;
+  return (!process.env.PASSIO_STAGING_REF || process.env.PASSIO_STAGING_REF === STAGING_REF)
+    && !!navigateur && navigateur.url === url
+    && !!cfg && cfg.url === url && refDeLaCle(cfg.cle) === STAGING_REF;
 }
 
 // ── Lecture/écriture « vérité base » avec la clé de service (staging) ──────
@@ -97,7 +118,10 @@ function admin() {
       const r = await fetch(`${cfg.url}/rest/v1/${table}?${query}`, { method: "DELETE", headers: Object.assign({ Prefer: "return=representation" }, h) });
       if (!r.ok) {
         const t = await r.text();
-        if (r.status === 404 || /does not exist|schema cache/i.test(t)) return 0;
+        // Seule une TABLE absente est tolérée (le schéma du staging dérive) ;
+        // une COLONNE absente (« column … does not exist ») est une liste de
+        // purge fausse : elle laisserait ses lignes en silence.
+        if (/Could not find the table|relation "[^"]+" does not exist/i.test(t)) return 0;
         throw new Error(`${table} : HTTP ${r.status} ${t.slice(0, 160)}`);
       }
       const l = await r.json();
@@ -106,6 +130,26 @@ function admin() {
     async supprimerCompte(id) {
       const r = await fetch(`${cfg.url}/auth/v1/admin/users/${id}`, { method: "DELETE", headers: h });
       if (!r.ok && r.status !== 404) throw new Error(`compte ${id.slice(0, 8)}… : HTTP ${r.status}`);
+    },
+    async compteExiste(id) {
+      const r = await fetch(`${cfg.url}/auth/v1/admin/users/${id}`, { headers: h });
+      if (r.status === 404) return false;
+      if (!r.ok) throw new Error(`compte ${id.slice(0, 8)}… illisible : HTTP ${r.status}`);
+      return true;
+    },
+    // Les comptes de CETTE séance, par le préfixe de leur adresse — y compris
+    // ceux dont l'inscription a cassé après la création (uid jamais rendu).
+    async comptesDeLaSeance(prefixe) {
+      const ids = [];
+      for (let p = 1; p <= 50; p++) {
+        const r = await fetch(`${cfg.url}/auth/v1/admin/users?page=${p}&per_page=200`, { headers: h });
+        if (!r.ok) throw new Error(`liste des comptes : HTTP ${r.status}`);
+        const d = await r.json();
+        const lot = d.users || [];
+        for (const u of lot) if (typeof u.email === "string" && u.email.startsWith(`e2e_${prefixe}_`) && u.email.endsWith("@passio-e2e.test")) ids.push(u.id);
+        if (lot.length < 200) break;
+      }
+      return ids;
     },
   };
 }
@@ -124,12 +168,17 @@ async function attendre(fn, { delai = 15000, pas = 1000 } = {}) {
 
 test.describe("Le village — 10 comptes, partage de contenu et activités", () => {
   test.skip(!process.env.PASSIO_E2E_VILLAGE, "opt-in : npm run village (staging seulement)");
+  // Simulation de POSTE : même si un futur job vise le staging et pose la variable.
+  test.skip(!!(process.env.CI || process.env.GITHUB_ACTIONS), "jamais en CI : dix navigateurs");
 
   test("une semaine dans le village", async ({ browser }) => {
     test.setTimeout(25 * 60 * 1000);
     if (!cibleEstLeStaging()) throw new Error("CIBLE_HORS_STAGING : le village n'écrit que sur le staging (npm run village pose la cible).");
 
     const db = admin();
+    // Préfixe d'adresse propre à CETTE séance (`e2e_village<6>_…`) : la purge le
+    // retrouve même sans uid, et n'atteint jamais les comptes d'une autre suite.
+    const PREFIXE = "village" + Math.random().toString(36).slice(2, 8);
     const t0 = Date.now();
     const log = (m) => console.log(`[village ${String(((Date.now() - t0) / 1000) | 0).padStart(4)}s] ${m}`);
     fs.mkdirSync(path.join(SORTIE, "captures"), { recursive: true });
@@ -175,7 +224,9 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const page = await ctx.newPage();
         rapport.erreursConsole[p.nom] = [];
         rapport.erreursHttp[p.nom] = [];
-        page.on("console", (m) => { if (m.type() === "error") rapport.erreursConsole[p.nom].push(m.text().slice(0, 200)); });
+        // La clé anon voyage dans l'URL des WebSockets (« …?apikey=… failed ») :
+        // publique, mais elle n'a rien à faire dans un rapport.
+        page.on("console", (m) => { if (m.type() === "error") rapport.erreursConsole[p.nom].push(m.text().replace(/apikey=[^&\s"']+/gi, "apikey=…").slice(0, 200)); });
         page.on("response", (resp) => {
           if (resp.status() >= 400 && resp.url().includes("supabase.co")) rapport.erreursHttp[p.nom].push(`${resp.status()} ${resp.request().method()} ${resp.url().split("?")[0].slice(-70)}`);
         });
@@ -184,13 +235,16 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
       log("inscription des 10 personnages (par lots de 5)…");
       for (const lot of [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]) {
         await Promise.all(lot.map(async (i) => {
-          try { uids[i] = await signupUser(pages[i], `${nom(i)} Village`, i); }
+          try { uids[i] = await signupUser(pages[i], `${nom(i)} Village`, i, PREFIXE); }
           catch (e) { log(`❌ inscription de ${nom(i)} : ${String(e.message).slice(0, 200)}`); }
         }));
       }
       rapport.personas = PERSONAS.map((p, i) => ({ nom: p.nom, role: p.role, inscrit: !!uids[i] }));
       const inscrits = uids.filter(Boolean).length;
       expect(inscrits, "les 10 personnages doivent être inscrits pour que le village ait un sens").toBe(10);
+      // Le témoin côté NAVIGATEUR : la constante que l'app a réellement prise.
+      const ciblesPages = await Promise.all(pages.map((p) => p.evaluate(() => (typeof SUPABASE_URL === "string" ? SUPABASE_URL : null))));
+      expect(ciblesPages.every((u) => u === `https://${STAGING_REF}.supabase.co`), `les 10 navigateurs visent le staging (lu : ${[...new Set(ciblesPages)].join(", ")})`).toBe(true);
 
       // Les comptes du banc naissent par l'API d'administration, SANS accord
       // CGU tracé (`user_metadata.cgu_accepted_at`) : l'app leur présente donc
@@ -367,7 +421,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const lien = partageInes && (partageInes.shared_from_post_id === postLea || JSON.stringify(partageInes.shared_data || "").includes(postLea));
         return { ok: !!lien, detail: partageInes ? `shared_from_post_id=${partageInes.shared_from_post_id || "∅"}` : "aucun partage" };
       });
-      await verifier("A11", "Hugo (abonné d'Inès) voit le partage dans son fil", async () => {
+      await verifier("A11", "Hugo (abonné d'Inès) retrouve le partage en rechargeant son fil (lecture serveur)", async () => {
         const vu = partageInes && await attendre(() => chargerPost(HUGO, partageInes.id), { delai: 15000, pas: 1500 });
         return { ok: !!vu };
       });
@@ -383,10 +437,11 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const { error } = await supa.from("posts").insert([{ id, author_id: MY_UID, passion_id: "musique", mood: "all", content: "Ma playlist secrète 🎧 [village]", media_url: null, created_at: new Date().toISOString() }]);
         return error ? null : id;
       });
-      const lirePost = (i, pid) => ev(i, async (id) => { const { data } = await supa.from("posts").select("id").eq("id", id); return (data || []).length; }, pid);
+      // { n, erreur } : une lecture en ERREUR (400, réseau, session) n'est pas « rien de visible ».
+      const lirePost = (i, pid) => ev(i, async (id) => { const { data, error } = await supa.from("posts").select("id").eq("id", id); return { n: (data || []).length, erreur: error ? String(error.code || error.message) : null }; }, pid);
       await verifier("A13", "compte privé : Hugo (non abonné) ne peut pas lire le post de Nina, même par l'API", async () => {
-        const n = await lirePost(HUGO, postNina);
-        return { ok: !!postNina && n === 0, detail: `${n} ligne(s) lisible(s)` };
+        const r = await lirePost(HUGO, postNina);
+        return { ok: !!postNina && !r.erreur && r.n === 0, detail: r.erreur ? `lecture en erreur : ${r.erreur}` : `${r.n} ligne(s) lisible(s)` };
       });
       await ev(CHLOE, (t) => supaFollowUser(t), uids[NINA]);
       await verifier("A14", "Chloé demande à suivre Nina : la demande reste en attente", async () => {
@@ -394,8 +449,8 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         return { ok: r.length === 1 && r[0].status === "pending", detail: r[0] ? `statut ${r[0].status}` : "aucune ligne" };
       });
       await verifier("A15", "tant que Nina n'a pas accepté, Chloé ne lit rien", async () => {
-        const n = await lirePost(CHLOE, postNina);
-        return { ok: n === 0, detail: `${n} ligne(s)` };
+        const r = await lirePost(CHLOE, postNina);
+        return { ok: !r.erreur && r.n === 0, detail: r.erreur ? `lecture en erreur : ${r.erreur}` : `${r.n} ligne(s)` };
       });
       await ev(NINA, async (fromId) => {
         const ns = (await supaLoadNotifications()) || [];
@@ -403,9 +458,9 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         await accepterDemandeAbonnement(fromId, n ? n.id : null);
       }, uids[CHLOE]);
       await verifier("A16", "Nina accepte : Chloé lit maintenant son post", async () => {
-        const n = await attendre(() => lirePost(CHLOE, postNina), { delai: 10000 });
+        const l = await attendre(async () => { const x = await lirePost(CHLOE, postNina); return x.n === 1 ? x : null; }, { delai: 10000 }) || await lirePost(CHLOE, postNina);
         const r = await db.lire("follows", `select=status&follower_id=eq.${uids[CHLOE]}&following_id=eq.${uids[NINA]}`);
-        return { ok: n === 1, detail: `statut ${r[0] && r[0].status}, ${n || 0} ligne lisible` };
+        return { ok: l.n === 1, detail: `statut ${r[0] && r[0].status}, ${l.n} ligne lisible${l.erreur ? ", erreur " + l.erreur : ""}` };
       });
 
       // Kevin, le fâcheux : il spamme, Léa et Inès le signalent, Léa le bloque.
@@ -440,14 +495,18 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const vu = await ev(LEA, async ([pid, kid]) => {
           openComments(pid);
           await new Promise((r) => setTimeout(r, 1500));
-          const txt = (document.querySelector(".modal, #modal, body") || document.body).innerText;
+          const txt = (document.getElementById("modalContent") || document.body).innerText;
           closeModal();
           goTo("feed"); try { renderFeed(); } catch (e) {}
           await new Promise((r) => setTimeout(r, 800));
           const fil = (document.querySelector("#feedList") || {}).innerText || "";
-          return { commentaire: txt.includes("Réponds-moi"), post: !!findPostAnywhere(kid) && fil.includes("ACHETEZ MES FOLLOWERS") };
+          return { commentaire: txt.includes("Réponds-moi"), temoinDiscussion: txt.includes("Trop bien, je viens"),
+            postAffiche: fil.includes("ACHETEZ MES FOLLOWERS"), postEnMemoire: !!findPostAnywhere(kid), filPeint: fil.trim().length > 0 };
         }, [postLea, postKevin]);
-        return { ok: !vu.commentaire && !vu.post, detail: `commentaire visible : ${vu.commentaire}, post visible : ${vu.post}` };
+        // Témoins POSITIFS : la discussion montre le commentaire d'Inès et le fil
+        // est peint — sinon « rien de Kevin » pourrait n'être qu'un écran vide.
+        return { ok: !vu.commentaire && vu.temoinDiscussion && !vu.postAffiche && vu.filPeint,
+          detail: `commentaire de Kevin : ${vu.commentaire} · témoin (Inès) : ${vu.temoinDiscussion} · post de Kevin affiché : ${vu.postAffiche} (en mémoire : ${vu.postEnMemoire}) · fil peint : ${vu.filPeint}` };
       });
       await capturer("A-contenu", [LEA, HUGO, NINA, JADE]);
 
@@ -559,7 +618,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const r = await db.lire("notifications", `select=from_id,kind&user_id=eq.${uids[LEA]}`);
         const venants = (await lireRsvp()).filter((a) => a.rsvp === "going" && a.user_id !== uids[LEA]).map((a) => a.user_id);
         const prev = venants.filter((u) => r.some((n) => n.from_id === u && /^event/.test(n.kind || "")));
-        return { ok: prev.length === venants.length, detail: `${prev.length}/${venants.length} venants ont notifié Léa` };
+        return { ok: venants.length === 5 && prev.length === venants.length, detail: `${prev.length}/${venants.length} venants ont notifié Léa` };
       });
 
       // La discussion et les réactions de l'activité.
@@ -603,7 +662,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
           const u = new Set(r.map((n) => n.user_id));
           return u.size >= venants.length ? u.size : null;
         }, { delai: 10000 });
-        return { ok: prevenus === venants.length, detail: `${prevenus || 0}/${venants.length} prévenus` };
+        return { ok: venants.length === 5 && prevenus === venants.length, detail: `${prevenus || 0}/${venants.length} prévenus` };
       });
       await verifier("B15", "Inès voit le nouveau lieu après rechargement", async () => {
         const c = await ev(INES, async (id) => { const e = (await supaLoadEvents()).find((x) => x.id === id); return e && e.city; }, evt);
@@ -615,6 +674,13 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const r = await supa.rpc("promouvoir_attente", { p_event_id: "sonde_village_" + Date.now(), p_user_id: null });
         return !(r && r.error && String(r.error.code) === "PGRST202");
       });
+      // Instantané des notifications du futur promu AVANT le désistement : il a
+      // déjà reçu un `event_update` pour le changement de lieu (la liste
+      // d'attente est prévenue, `_destinatairesActivite`). Seules les NOUVELLES
+      // comptent pour la promotion — par identifiant, sans horloge.
+      const notifsAvantPromotion = perdant !== null
+        ? new Set((await db.lire("notifications", `select=id&user_id=eq.${uids[perdant]}`)).map((n) => n.id))
+        : new Set();
       await ev(SARAH, (id) => setEventRsvp(id, null), evt);
       if (perdant !== null) {
         await verifier("B16", `Sarah se désiste : ${nom(perdant)} (liste d'attente) récupère la place`, async () => {
@@ -624,13 +690,18 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
           return { ok: !!r && !sarah, detail: `${rpcPromotion ? "" : "RPC promouvoir_attente ABSENTE du staging ; "}${nom(perdant)} : ${(x.find((a) => a.user_id === uids[perdant]) || {}).rsvp}, Sarah : ${sarah ? sarah.rsvp : "partie"}` };
         });
         await verifier("B17", `${nom(perdant)} est prévenu·e de sa promotion`, async () => {
-          const r = await attendre(async () => { const x = await db.lire("notifications", `select=kind,created_at&user_id=eq.${uids[perdant]}&kind=eq.event_update`); return x.length ? x : null; }, { delai: 10000 }) || [];
-          return { ok: r.length >= 1, detail: `${r.length} notification(s) event_update` };
+          const nouvelles = async () => (await db.lire("notifications", `select=id,kind&user_id=eq.${uids[perdant]}`)).filter((n) => !notifsAvantPromotion.has(n.id));
+          const r = await attendre(async () => { const x = await nouvelles(); return x.length ? x : null; }, { delai: 10000 }) || [];
+          return { ok: r.length >= 1, detail: `${r.length} nouvelle(s) notification(s) depuis le désistement : ${r.map((n) => n.kind).join(", ") || "aucune"}` };
         });
       }
-      await verifier("B18", "confidentialité : Kevin (non inscrit) ne lit pas la liste des participants", async () => {
-        const n = await ev(KEVIN, async (id) => { const { data } = await supa.from("event_attendees").select("user_id").eq("event_id", id); return (data || []).length; }, evt);
-        return { ok: n === 0, detail: `${n} participant(s) lisible(s)` };
+      await verifier("B18", "confidentialité : Kevin (non inscrit) ne lit pas la liste des participants ; Léa (organisatrice) si", async () => {
+        const lire = (i) => ev(i, async (id) => { const { data, error } = await supa.from("event_attendees").select("user_id").eq("event_id", id); return { n: (data || []).length, erreur: error ? String(error.code || error.message) : null }; }, evt);
+        const k = await lire(KEVIN), l = await lire(LEA);
+        // Témoin positif : la même lecture, par l'organisatrice, rend les inscrits —
+        // sinon « 0 pour Kevin » pourrait n'être qu'une requête cassée.
+        return { ok: !k.erreur && k.n === 0 && !l.erreur && l.n >= 5,
+          detail: `Kevin lit ${k.erreur ? "une erreur " + k.erreur : k.n}, Léa lit ${l.erreur ? "une erreur " + l.erreur : l.n}` };
       });
 
       // Léa partage l'activité dans le fil.
@@ -647,7 +718,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         partageEvt = r[0] || null;
         return { ok: r.length === 1, detail: `${r.length} publication(s) portant l'activité` };
       });
-      await verifier("B19b", "Hugo voit la carte de l'activité partagée dans son fil", async () => {
+      await verifier("B19b", "Hugo retrouve la carte de l'activité partagée en rechargeant son fil (lecture serveur)", async () => {
         const vu = partageEvt && await attendre(() => chargerPost(HUGO, partageEvt.id), { delai: 12000, pas: 1500 });
         return { ok: !!vu };
       });
@@ -666,11 +737,11 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
           const u = new Set(r.filter((x) => /cancel|annul/i.test(x.kind || "")).map((x) => x.user_id));
           return u.size >= venants.length ? u.size : null;
         }, { delai: 10000 });
-        return { ok: n === venants.length, detail: `${n || 0}/${venants.length} prévenus` };
+        return { ok: venants.length === 5 && n === venants.length, detail: `${n || 0}/${venants.length} prévenus` };
       });
-      await verifier("B22", "Hugo voit l'activité annulée (pas une activité fantôme encore ouverte)", async () => {
+      await verifier("B22", "Hugo (inscrit) voit l'activité ANNULÉE, ni ouverte ni disparue", async () => {
         const s = await ev(HUGO, async (id) => { const e = (await supaLoadEvents()).find((x) => x.id === id); return e ? (e.status || "active") : "absente"; }, evt);
-        return { ok: s === "cancelled" || s === "absente", detail: `statut lu : ${s}` };
+        return { ok: s === "cancelled", detail: `statut lu : ${s}` };
       });
 
       // ═══ ACTE C — LA VRAIE VIE : RÉSEAU, DOUBLE-CLIC, ERREURS ═════════════
@@ -714,9 +785,13 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         return { ok: avec.length === 0, detail: avec.map(([n, l]) => `${n} ×${l.length}`).join(", ") };
       }, { exige: false });
     } finally {
-      // ═══ PURGE — les dix comptes de CETTE séance, par identifiant ═════════
-      const ids = uids.filter(Boolean);
-      const purge = { lignes: 0, comptes: 0, erreurs: [] };
+      // ═══ PURGE — les comptes de CETTE séance, par identifiant ══════════════
+      // Les uid rendus PLUS ceux que le préfixe de séance retrouve : un compte
+      // créé dont l'inscription a cassé ensuite n'a jamais rendu son uid.
+      const purge = { lignes: 0, comptes: 0, erreurs: [], restants: [] };
+      let retrouves = [];
+      try { retrouves = await db.comptesDeLaSeance(PREFIXE); } catch (e) { purge.erreurs.push(e.message); }
+      const ids = [...new Set([...uids.filter(Boolean), ...retrouves])];
       if (ids.length) {
         const liste = `(${ids.join(",")})`;
         for (const [table, cols] of TABLES_PURGE) {
@@ -724,9 +799,13 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
           try { purge.lignes += await db.supprimer(table, q); } catch (e) { purge.erreurs.push(e.message); }
         }
         for (const id of ids) { try { await db.supprimerCompte(id); purge.comptes++; } catch (e) { purge.erreurs.push(e.message); } }
+        // La preuve, pas le code de retour : chaque compte doit répondre 404.
+        for (const id of ids) {
+          try { if (await db.compteExiste(id)) purge.restants.push(id); } catch (e) { purge.erreurs.push(e.message); purge.restants.push(id); }
+        }
       }
       rapport.purge = purge;
-      log(`purge : ${purge.lignes} lignes, ${purge.comptes}/${ids.length} comptes${purge.erreurs.length ? " — erreurs : " + purge.erreurs.join(" ; ") : ""}`);
+      log(`purge : ${purge.lignes} lignes, ${purge.comptes}/${ids.length} comptes supprimés, ${purge.restants.length} restant(s)${purge.erreurs.length ? " — erreurs : " + purge.erreurs.join(" ; ") : ""}`);
       for (const c of contexts) { try { await c.close(); } catch (e) {} }
       rapport.dureeS = Math.round((Date.now() - t0) / 1000);
       ecrireRapport(rapport);
@@ -735,6 +814,8 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
 
     const echecs = rapport.controles.filter((c) => c.statut === "ÉCHEC").map((c) => `[${c.code}] ${c.libelle} — ${c.detail}`);
     expect(echecs, "contrôles EXIGÉS en échec (détail : test-results/village/rapport.md)").toEqual([]);
+    // Une purge incomplète laisse des comptes sur le staging : c'est un échec, pas un détail.
+    expect({ erreurs: rapport.purge.erreurs, restants: rapport.purge.restants.length }, "purge de la séance complète").toEqual({ erreurs: [], restants: 0 });
   });
 });
 
@@ -746,7 +827,7 @@ function ecrireRapport(r) {
   let md = `# Le village — rapport de simulation\n\n`;
   md += `- Date : ${r.date} · cible : ${r.cible} · durée : ${r.dureeS} s\n`;
   md += `- Contrôles : **${n("OK")} OK · ${n("ÉCHEC")} échec(s) exigé(s) · ${n("À REGARDER")} observation(s)**\n`;
-  md += `- Purge : ${r.purge ? `${r.purge.lignes} lignes, ${r.purge.comptes} comptes${r.purge.erreurs.length ? " — ⚠️ " + r.purge.erreurs.join(" ; ") : ""}` : "non faite"}\n\n`;
+  md += `- Purge : ${r.purge ? `${r.purge.lignes} lignes, ${r.purge.comptes} comptes supprimés, **${r.purge.restants.length} restant(s)**${r.purge.erreurs.length ? " — ⚠️ " + r.purge.erreurs.join(" ; ") : ""}` : "non faite"}\n\n`;
   md += `## Les personnages\n\n| # | Personnage | Rôle | Inscrit |\n|--|--|--|--|\n`;
   r.personas.forEach((p, i) => { md += `| ${i + 1} | ${p.nom} | ${p.role} | ${p.inscrit ? "oui" : "**non**"} |\n`; });
   let acte = null;

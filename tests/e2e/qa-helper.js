@@ -19,7 +19,11 @@ const RT_MODE = process.env.PASSIO_E2E_RT || "";
 // public (jamais d'e-mail dans l'app). Copie fidèle de signupAnonymous, isolée
 // ici pour être partagée par la campagne. Robuste : lève une erreur claire si
 // une étape échoue, pour que la campagne la classe en échec de setup.
-async function signupUser(page, label, passionIndex = 0) {
+// `prefixe` (défaut « qa », la campagne) marque l'adresse `e2e_<prefixe>_…` : une
+// suite qui passe un préfixe propre à SA séance (le village) retrouve ses comptes
+// même quand l'inscription casse APRÈS leur création, donc avant que l'uid lui
+// soit rendu — et les purge sans toucher ceux des autres.
+async function signupUser(page, label, passionIndex = 0, prefixe = "qa") {
   const step = (m) => console.log(`[signup ${label}] ${m}`);
   // TCI-01 (2026-09-15) : ce parcours passe par la LANDING HISTORIQUE et son
   // onboarding (« Créer un compte », année, prénom, passions). Depuis la
@@ -37,7 +41,7 @@ async function signupUser(page, label, passionIndex = 0) {
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 25000 });
   // Compte réel PRÉ-CONFIRMÉ (compte-e2e.js) : depuis l'activation de « Confirm
   // email », signUp ne rend plus de session et l'attente de MY_UID expirait.
-  await creerCompteE2E(page, "qa");
+  await creerCompteE2E(page, prefixe);
   await page.evaluate(() => { if (typeof onbNext === "function") onbNext(); });
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 25000 });
   await page.locator("#birthYear").fill("1995");
