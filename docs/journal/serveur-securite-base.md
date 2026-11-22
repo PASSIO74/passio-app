@@ -2130,7 +2130,8 @@ Le récit complet (la sélection par l'état servi, la retenue partielle, la lig
 
 ## 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 
-`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **pas encore appliquée** (contre-revue attendue ; staging puis production).
+`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **appliquée au STAGING le 2026-11-22** (sur ordre de Benjamin, auto-revue de mainteneur unique n°6013447731 sur #1017, verdict 10/10, journalisée), **pas en production**.
+- Mesuré ensuite au staging : les 5 policies RESTRICTIVE `{authenticated}`, les deux aides (EXECUTE sans `anon`), les empreintes neuves de `comment_target_visible`, aucune table publiée.
 
 Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa bloque Kevin, Kevin appelle `supaLoadEvents()` et lit l'activité de Léa — titre, ville, heure. Bloquer ne fermait que des ÉCRITURES (six policies INSERT, fiche « BLOQUER N'AVAIT D'EFFET QUE SUR `conv_members` ») et, côté client, le profil (PRO-C20). Les LECTURES restaient ouvertes : `events`, `event_comments`, `event_reactions` en `true`, les publications d'un compte public, et la carte « A partagé une activité » qu'un TIERS republie (ville et date dans `content` ET dans `shared_data`).
 
