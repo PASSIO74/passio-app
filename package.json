@@ -48,7 +48,8 @@
     "passions:decouper": "node scripts/decouper-migration-passions.js",
     "moderation": "node scripts/moderation.js",
     "test:unit": "node scripts/tests-unit.mjs",
-    "charge:realiste": "node scripts/charge-realiste.mjs"
+    "charge:realiste": "node scripts/charge-realiste.mjs",
+    "village": "node scripts/village.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
