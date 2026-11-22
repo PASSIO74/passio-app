@@ -7149,10 +7149,14 @@ async function _poserConsentementOAuth() {
   }
 }
 
-// ── Consentement REQUIS après un retour Google sans accord (AUTH-03) ──────
-// Un compte que Google vient de créer depuis l'écran de connexion n'a rien
-// accepté : on le lui DEMANDE, on n'invente rien. Le critère est celui du
-// serveur : aucun `cgu_accepted_at` dans `user_metadata`.
+// ── Consentement REQUIS pour tout compte sans accord tracé (AUTH-03) ──────
+// Né pour le compte que Google crée depuis l'écran de connexion (il n'a rien
+// accepté), il vaut pour TOUT compte sans accord : on le lui DEMANDE, on
+// n'invente rien. Le critère est celui du serveur : aucun `cgu_accepted_at`
+// dans `user_metadata`. Le TEXTE dépend du motif (`_motifConsentement`) : le
+// compte Google tout juste né apprend qu'il est neuf — c'est souvent un DOUBLON
+// d'un compte e-mail (même personne, autre adresse) —, les autres apprennent
+// qu'il n'y a pas de trace de leur accord aux conditions en vigueur.
 // ⚠️ PLUS DE BORNE À QUINZE MINUTES (contre-revue Astra du 2026-09-15, AUTH-02/03
 // PARTIEL) : « un compte créé depuis seize minutes : absence de rappel
 // reproduite ». La borne renvoyait les comptes anciens sans trace à un autre
@@ -7169,10 +7173,23 @@ async function _verifierConsentementApresOAuth() {
   if (!user || !user.id) return false;
   var meta = user.user_metadata || {};
   if (meta.cgu_accepted_at) return false;
+  window._consentementMotif = _motifConsentement(user);
   try { localStorage.setItem(CONSENTEMENT_REQUIS_KEY, "1"); } catch (e) {}
-  try { if (typeof diagLog === "function") diagLog("cgu_oauth_requis compte neuf sans accord"); } catch (e) {}
+  try { if (typeof diagLog === "function") diagLog("cgu_requis sans accord (" + window._consentementMotif + ")"); } catch (e) {}
   planifierConsentementRequis();
   return true;
+}
+// « google_neuf » : compte né par Google il y a moins de 30 min ; sinon « sans_trace ».
+// Le motif ne sert QU'AU TEXTE ; inconnu (rappel rouvert avant la vérification),
+// c'est le texte neutre, vrai pour tous.
+function _motifConsentement(user) {
+  try {
+    var app = (user && user.app_metadata) || {};
+    var parGoogle = app.provider === "google"
+      || ((user && user.identities) || []).some(function (i) { return i && i.provider === "google"; });
+    var age = Date.now() - new Date(user && user.created_at).getTime();
+    return parGoogle && age >= 0 && age < 30 * 60 * 1000 ? "google_neuf" : "sans_trace";
+  } catch (e) { return "sans_trace"; }
 }
 function consentementRequis() {
   try { return localStorage.getItem(CONSENTEMENT_REQUIS_KEY) === "1"; } catch (e) { return false; }
@@ -7203,7 +7220,17 @@ function ouvrirConsentementRequis() {
   // le refus en action secondaire.
   openModal(
     '<div class="modal-title">Avant de continuer</div>' +
-    '<p style="font-size:13px;color:var(--muted);margin:8px 0 12px;">Ton compte vient d’être créé avec Google. Pour l’utiliser, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.</p>' +
+    // Texte VRAI selon le motif (2026-11-22, simulation « village ») : la feuille
+    // s'ouvre pour TOUT compte sans accord tracé, dont les comptes e-mail d'avant
+    // le 10/09 — « Ton compte vient d'être créé avec Google » était faux pour eux.
+    // Le compte Google neuf garde l'alerte, utile : il est souvent le doublon
+    // d'un compte e-mail, et la sortie est de refuser. Les deux textes disent que
+    // rien n'a été accepté à sa place. Verrous : consentement-google.spec.js ⑥ ⑦.
+    '<p id="consentRequisIntro" style="font-size:13px;color:var(--muted);margin:8px 0 12px;">' +
+      (window._consentementMotif === "google_neuf"
+        ? 'Ton compte vient d’être créé avec Google. Si tu avais déjà un compte PASSIO avec ton e-mail, refuse et reconnecte-toi avec lui. Sinon, accepte les conditions générales et la politique de confidentialité pour l’utiliser — rien n’a été accepté à ta place.'
+        : 'Nous n’avons pas de trace de ton accord aux conditions en vigueur, réservées aux 18 ans et plus. Pour continuer à utiliser ton compte, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.') +
+    '</p>' +
     '<label class="field consent-requis-ligne">' +
       '<input type="checkbox" id="consentRequisCase"/>' +
       '<span style="font-size:13px;">J’ai 18 ans ou plus et j’accepte les <a href="#" onclick="event.preventDefault();event.stopPropagation();openTermsOfService();return false;">conditions générales</a> et la <a href="#" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy();return false;">politique de confidentialité</a>.</span>' +
@@ -7236,13 +7263,13 @@ async function accepterConsentementRequis() {
   } catch (e) {}
   try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
   closeModal();
-  toast("Merci — bienvenue sur PASSIO");
+  toast("Merci — c’est enregistré");
   return true;
 }
 async function refuserConsentementRequis() {
   try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
   closeModal();
-  toast("Compte non activé : tu es déconnecté");
+  toast("Conditions refusées : tu es déconnecté");
   try { if (typeof doLogout === "function") await doLogout("signin"); } catch (e) {}
 }
 

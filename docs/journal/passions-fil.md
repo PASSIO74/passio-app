@@ -1171,3 +1171,16 @@ de nouvelle collecte. Prévention par tests et CI, retour arrière par revert de
 la PR. Limite : une publication écrite pendant la régression sans `shared_data`
 ne peut pas retrouver un snapshot que le serveur n'a jamais reçu ; aucune
 reconstruction approximative ni réécriture de données de production.
+
+## 🧭 LES PASSIONS D'UN MEMBRE NE SE LISENT PLUS QUE PAR LUI, ET PLUS DU TOUT SANS COMPTE (D10-03 — 2026-11-22)
+
+`user_passions` (une ligne par passion et par membre, le miroir normalisé du 2026-09-01) était lisible EN ENTIER par tous, visiteurs compris : une seule règle de lecture, `true`. C'est la table qui grandit avec l'audience, et la lecture imbriquée la plus coûteuse qui restait ouverte sans compte après la fermeture des liens du référentiel (2026-11-20).
+
+- **Personne ne la lisait.** Le client n'y fait qu'un `upsert … on conflict` et un `delete` filtrés sur son propre compte (`supaMiroirUserPassions`, app-08). Les six fonctions qui la lisent pour un autre compte sont SECURITY DEFINER, sans droit pour `anon`. Aucune policy ni aucune vue ne la nomme, et elle n'est pas publiée en temps réel. `pg_stat_statements` (cumul depuis le 13/05) compte 6 appels de `anon`, tous des sondes d'audit.
+- `migration_securite_p1_passions_membres_2026-11-22.sql` :
+  - ① `anon` perd tout droit sur la table : une imbrication sans compte qui la traverse est refusée en entier (42501) ;
+  - ② la lecture devient `user_passions_select_own` : un compte connecté ne lit que SES lignes, ce qui suffit à l'`upsert` et au `delete` du client.
+- La garde s'arrête si une policy d'une autre table, une vue ou une fonction SECURITY INVOKER lit la table : sous l'identité de l'appelant, elle se mettrait à rendre vide sans un mot.
+- Banc : `tests/sql/migration-securite-p1-passions-membres-2026-11-22.test.sh`. Il mesure le défaut, joue la migration deux fois, puis éprouve les deux écritures du client, le refus du visiteur, la fonction DEFINER et la garde.
+
+⚠️ **UNE RÈGLE DE LECTURE `true` SE JUSTIFIE PAR UN LECTEUR.** Quand aucun écran ne lit une table, sa lecture ouverte ne sert qu'à qui veut la parcourir ou l'imbriquer. Avant d'ouvrir une table en lecture, nommer l'écran qui la lit ; et si cet écran disparaît, refermer la table avec lui.

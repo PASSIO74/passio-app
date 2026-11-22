@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🪪 LA FEUILLE « AVANT DE CONTINUER » DIT VRAI À CHAQUE COMPTE (2026-11-22)
 - 🚧 CONNEXION — CHAQUE IMPASSE LAISSE UNE TRACE ET DIT VRAI (2026-11-21)
 - 🧭 PARCOURS DU NOUVEL INSCRIT — cinq frictions retirées avant les premiers testeurs (2026-11-20)
 - 🧪 FIXTURES À COMPTES RÉELS — reprise bornée des429 et adhésion vérifiée (2026-11-17)
@@ -928,3 +929,27 @@ Deux mutations de plus à la seconde relecture, même protocole.
 - **`traduireRefusCaptcha` rendait encore « Pas de connexion internet » sans lire `navigator.onLine`.** Il passe par `messagePanneAuth("reseau")`. ⚠️ Le relecteur écrivait que `lot13-entree` resterait vert : faux. Son cas ⑥ appelait la fonction AVANT de couper le réseau, appareil en ligne, et exigeait le message hors ligne — il verrouillait le défaut. Il mesure maintenant les deux états : en ligne, « Impossible de joindre PASSIO… » et jamais « Pas de connexion internet » ; hors ligne, le texte d'avant, à l'identique. Le parcours du formulaire hors ligne (`authHorsLigne()`) n'a pas bougé.
 
 **Contre-vérification.** Le plan a été contredit contre le code avant l'écriture. Corrections reprises : la porte « Renvoyer le lien », oubliée ; le code `envoi` et son message ; `rcExceptionAuth(null)` ; la garde `!_panne` ; les textes affirmés par le cas ⑩. Deux écarts au plan, nés de la mesure dans le navigateur : la sortie Google est dite « plus bas » (et non « juste au-dessus »), et `_showPanneAuth` amène le message à l'écran.
+
+## 🪪 LA FEUILLE « AVANT DE CONTINUER » DIT VRAI À CHAQUE COMPTE (2026-11-22)
+
+**Constat** (simulation à 10 comptes, PR #1012, sur les captures) : la feuille de consentement
+requis (AUTH-03, `ouvrirConsentementRequis`, app-02) s'ouvre pour TOUT compte sans
+`user_metadata.cgu_accepted_at`, y compris les comptes e-mail d'avant le 10/09 que le test ③
+sollicite exprès. Elle leur disait « Ton compte vient d'être créé avec Google » : faux.
+
+**Le texte dépend du motif** (`_motifConsentement`, posé par `_verifierConsentementApresOAuth`) :
+- `google_neuf` (né par Google il y a moins de 30 min) : on garde l'alerte, qui est UTILE. Ce
+  compte est souvent le DOUBLON d'un compte e-mail (même personne, autre adresse Google, depuis
+  l'écran de connexion). Le texte donne la sortie : « refuse et reconnecte-toi avec lui ».
+  ⚠️ Une première version neutre unique l'avait effacée : relecture indépendante, constat 1.
+- `sans_trace` (tous les autres, et le motif inconnu) : « Nous n'avons pas de trace de ton accord
+  aux conditions en vigueur, réservées aux 18 ans et plus ». Un accord redemandé dit pourquoi.
+- Les deux gardent « rien n'a été accepté à ta place », la phrase qui compte juridiquement.
+
+Toasts alignés : « Merci — c'est enregistré » ; « Conditions refusées : tu es déconnecté » (« Compte
+non activé » était faux pour un compte ancien). Diagnostic : `cgu_requis sans accord (<motif>)`.
+Verrous : `consentement-google.spec.js` ⑥ ⑦, par le vrai chemin, sur `#consentRequisIntro` (le
+libellé de la case contient déjà « accepte les conditions générales » : lire toute la modale
+laisserait passer la disparition de l'intro).
+Hors périmètre, relevé : un compte dont l'accord date d'une version ANTÉRIEURE des CGU (régime
+13 ans) n'est jamais re-sollicité, car le critère ignore `cgu_version`.
