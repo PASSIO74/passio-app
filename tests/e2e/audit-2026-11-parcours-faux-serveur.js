@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
 const { bootOnboarded, onboardedState } = require("./app-helper");
+const { randomUUID } = require("node:crypto");
 
 const PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
@@ -83,6 +84,9 @@ class FauxServeur {
     // `true` = la RPC d'avant, en production jusqu'à l'application : le client
     // doit tenir dans les deux mondes.
     this.promotionNommeeATous = false;
+    // Opt-in limité au trigger de notification du 16/11 ; les autres policies
+    // restent celles du monde historique choisi par chaque suite.
+    this.notificationsParticipationServeur = false;
   }
 
   /** Bascule le banc dans le monde « migration C-04 appliquée ». */
@@ -92,6 +96,8 @@ class FauxServeur {
     this.rpcParticipants = true;
     return this;
   }
+
+  migrerNotificationsParticipation() { this.notificationsParticipationServeur = true; return this; }
 
   // ── Fonctions des policies (recopie des fonctions SECURITY DEFINER) ──────
   prof(id) { return this.t.profiles.find((p) => p.id === id) || null; }
@@ -291,6 +297,18 @@ class FauxServeur {
     this.t.notifications = this.t.notifications.filter((n) => n.id !== ident);
     this.t.notifications.push({ id: ident, user_id: dest, from_id: de, kind, ref_id: de, content: texte, seen: false, created_at: new Date().toISOString(), _origine: "serveur" });
   }
+  // Miroir de rencontres_prive.inscription_tracee (banc PostgreSQL natif dédié) :
+  // une transition acceptée vers going crée une demande, jamais un UPDATE inchangé.
+  notifierDemandeParticipation(r, avant) {
+    if (!this.notificationsParticipationServeur || (avant && r.rsvp === avant.rsvp) || r.rsvp !== "going") return;
+    const ev = this.t.events.find((e) => e.id === r.event_id);
+    if (!ev || !this.prof(r.user_id)) return;
+    const orga = ev.organizer_id == null ? ev.author_id : ev.organizer_id;
+    if (orga == null || orga === r.user_id) return;
+    this.t.notifications.push({ id: "n_rv_" + randomUUID(), user_id: orga, kind: "event_join", from_id: r.user_id,
+      ref_id: r.event_id, content: "demande à participer à ton activité", seen: false,
+      created_at: new Date().toISOString(), origine: "serveur" });
+  }
   trgReportsPretri(r) {
     if (r.target_type !== "post") return;
     const signaleurs = new Set(this.t.reports.filter((x) => x.target_type === "post" && x.target_id === r.target_id).map((x) => x.reporter_id));
@@ -465,7 +483,9 @@ class FauxServeur {
         }
         const ligne = this.t.event_attendees.find((a) => a.event_id === evId && a.user_id === cible && a.rsvp === "waitlist");
         if (!ligne) return repondre({ ok: false, motif: "pas_en_attente" });
+        const avant = Object.assign({}, ligne);
         ligne.rsvp = "going";
+        this.notifierDemandeParticipation(ligne, avant);
         const nid = "n_pa_" + String(evId).slice(0, 12) + "_" + String(cible).slice(0, 8);
         const existante = this.t.notifications.find((n) => n.id === nid);
         const notif = { id: nid, user_id: cible, kind: "event_update", from_id: ev.author_id, ref_id: evId, content: "Une place s'est libérée pour « " + String(ev.title || "une activité").slice(0, 60) + " » : tu es inscrit·e !", seen: false, created_at: new Date().toISOString(), origine: "serveur" };
@@ -550,6 +570,7 @@ class FauxServeur {
       const upsert = /resolution=merge-duplicates/.test(prefer) || /resolution=ignore-duplicates/.test(prefer);
       const ignorer = /resolution=ignore-duplicates/.test(prefer);
       const inseres = [];
+      const demandes = [];
       for (const l of lignes) {
         const r = Object.assign({}, l);
         if (table === "follows") this.trgFollowsStatut(r);
@@ -565,32 +586,42 @@ class FauxServeur {
           if (!upsert) return json(409, { code: "23505", message: "duplicate key value violates unique constraint \"" + table + "_pkey\"", details: "Key already exists." });
           if (table === "event_attendees") { const motif = this.trgCapacite(r, existant, me); if (motif) return json(400, { code: "P0001", message: motif, details: null, hint: null }); }
           if (!this.updateOk(table, existant, me, role)) continue;
+          const avant = Object.assign({}, existant);
+          if (table === "event_attendees") demandes.push([Object.assign({}, existant, r), avant]);
           Object.assign(existant, r); inseres.push(existant); continue;
         }
         if (table === "event_attendees") { const motif = this.trgCapacite(r, null, me); if (motif) return json(400, { code: "P0001", message: motif, details: null, hint: null }); }
         rows.push(r); inseres.push(r);
+        if (table === "event_attendees") demandes.push([Object.assign({}, r), null]);
         if (table === "follows") this.followsNotifier(r, null);
         if (table === "reports") this.trgReportsPretri(r);
       }
-      if (!representation) return { status: 201, headers: { "access-control-allow-origin": "*" } };
+      if (!representation) {
+        demandes.forEach(([r, avant]) => this.notifierDemandeParticipation(r, avant));
+        return { status: 201, headers: { "access-control-allow-origin": "*" } };
+      }
       // RETURNING repasse par la policy SELECT (comme PostgREST).
       const relus = inseres.filter((r) => this.selectOk(table, r, me, role));
       if (relus.length !== inseres.length) return json(role === "authenticated" ? 403 : 401, { code: "42501", message: "new row violates row-level security policy (RETURNING) for table \"" + table + "\"" });
+      demandes.forEach(([r, avant]) => this.notifierDemandeParticipation(r, avant));
       return rendre(201, this.projette(table, relus, url.searchParams.get("select")));
     }
 
     if (m === "PATCH") {
       const cibles = this.filtre(rows.filter((r) => this.updateOk(table, r, me, role)), params);
       const modifies = [];
+      const demandes = [];
       for (const r of cibles) {
         const apres = Object.assign({}, r, body || {});
         if (!this.updateCheck(table, apres, me)) return json(403, { code: "42501", message: "new row violates row-level security policy for table \"" + table + "\"" });
         if (table === "event_attendees") { const motif = this.trgCapacite(apres, r, me); if (motif) return json(400, { code: "P0001", message: motif }); }
         const avant = Object.assign({}, r);
         Object.assign(r, body || {});
+        if (table === "event_attendees") demandes.push([Object.assign({}, r), avant]);
         if (table === "follows") this.followsNotifier(r, avant);
         modifies.push(r);
       }
+      demandes.forEach(([r, avant]) => this.notifierDemandeParticipation(r, avant));
       if (!representation) return { status: 204, headers: { "access-control-allow-origin": "*" } };
       return rendre(200, this.projette(table, modifies, url.searchParams.get("select")));
     }

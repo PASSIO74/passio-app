@@ -333,7 +333,12 @@
         track("ui_v2_create", { choice: c.key });
         // Toute entrée ouvre désormais un éditeur : on referme AVANT de lancer,
         // sinon le fond assombri resterait au-dessus de l'éditeur média.
-        closeCreateSheet();
+        // `rendreFocus:false` (2026-11-15) : on part VERS un éditeur, pas en
+        // arrière. Rendre le focus au « + » le faisait mémoriser par la fenêtre
+        // suivante (`_modalFocusAvant`), qui le re-focalisait au retour — après
+        // une saisie au clavier, Chrome Android y peignait l'anneau de focus :
+        // « Créer » restait encadré sur le Fil. Même règle que la feuille UI-3.
+        closeCreateSheet({ rendreFocus: false });
         c.run();
       });
       list.appendChild(btn);
@@ -376,7 +381,7 @@
     track("ui_v2_create_open", {});
   }
 
-  function closeCreateSheet() {
+  function closeCreateSheet(opts) {
     var wrap = document.getElementById("v2CreateSheet");
     if (!wrap || wrap.hidden) return;
     wrap.classList.remove("open");
@@ -385,7 +390,11 @@
     if (cta) cta.setAttribute("aria-expanded", "false");
     document.removeEventListener("keydown", onSheetKeydown, true);
     try { if (typeof window.releaseOverlayHistory === "function") window.releaseOverlayHistory(); } catch (e) {}
-    if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
+    if (opts && opts.rendreFocus === false) {
+      // Le choix vient d'être caché avec la feuille : on lâche le focus plutôt
+      // que de le laisser sur un nœud masqué ou de le poser sur le « + ».
+      try { if (wrap.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
+    } else if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
     lastFocused = null;
   }
 

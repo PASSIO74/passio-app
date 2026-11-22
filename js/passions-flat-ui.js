@@ -170,13 +170,39 @@
     }, rafraichirBoutonStudio);
   }
 
+  // ⚠️ ON NE PUBLIE QUE DANS SES PROPRES PASSIONS (2026-11-14, Benjamin :
+  // « l'utilisateur ne doit pouvoir partager que dans les passions enregistrées
+  // sur son profil »). Le sélecteur ne montrait que des « idées » tirées des
+  // 1 900 passions du référentiel ; il ne montre plus que
+  // `passionsPossedeesIds()` — jamais le profil de remplissage. Acquérir une
+  // passion se fait au PROFIL (« Gérer mes passions »), pas à la publication.
+  function passionsDuProfil() {
+    try { return typeof passionsPossedeesIds === "function" ? passionsPossedeesIds() : []; }
+    catch (e) { journal("possedees", e); return []; }
+  }
+
   function ouvrirChoixPassion(sel, apres, apresRefus) {
     if (!actif()) return false;
     if (!sel) return false;
+    var miennes = passionsDuProfil();
+    var courante = sel.value && miennes.indexOf(sel.value) > -1 ? [sel.value] : [];
     selecteur().ouvrir({
       mode: "unique",
       titre: "Associer cette publication à une passion",
-      sousTitre: "Tu peux choisir directement « Enduro » — sans passer par « Moto ».",
+      sousTitre: "Choisis parmi les passions de ton profil.",
+      parmi: miennes,
+      placeholder: "Rechercher dans tes passions…",
+      titreParmi: "Tes passions",
+      selection: courante,
+      vide: '<div class="psel-vide-profil"><p class="psel-vide">Tu n\'as encore aucune passion sur ton profil. '
+        + 'Ajoute-en une pour pouvoir publier dedans.</p>'
+        + '<button type="button" class="btn primary block" data-psel="gerer">Ajouter une passion à mon profil</button></div>',
+      onGerer: function () {
+        try {
+          if (typeof ouvrirGestionPassions === "function") ouvrirGestionPassions();
+          else if (typeof closeModal === "function") closeModal();
+        } catch (e) { journal("gerer", e); }
+      },
       permettreDemande: false,   // on ne dépose pas une demande depuis le Studio :
                                  // elle ne serait pas publiable, donc inutile ici.
       // ⚠️ UN BOUTON DE VALIDATION, ET C'EST NÉCESSAIRE. Sans lui, le tap sur un
@@ -189,15 +215,8 @@
       // publication l'ajoute aussi aux passions du compte — on le DIT avant de
       // valider, et la zone du haut ne s'appelle plus « Tes passions ».
       titreChoisies: "Pour cette publication",
-      note: function (ids) {
-        var id = ids && ids[0];
-        if (!id) return "";
-        var possedee = false;
-        try { possedee = (typeof passionsPossedeesIds === "function") && passionsPossedeesIds().indexOf(id) > -1; } catch (e) {}
-        if (possedee) return "";
-        var p = moteur().parId(id);
-        return "« " + ((p && p.label) || id) + " » rejoindra aussi tes passions.";
-      },
+      // (La note « … rejoindra aussi tes passions » est retirée le 2026-11-14 :
+      // on ne choisit plus que parmi les passions déjà à soi.)
       // Le motif du refus s'affiche DANS LE PIED, avant même de valider, et
       // désactive le bouton. Une passion absente du référentiel SERVEUR ne peut
       // pas être écrite (clé étrangère de `posts.passion_id`) : laisser publier
@@ -212,6 +231,13 @@
       onValider: function (ids) {
         var id = ids && ids[0];
         if (!id) return;
+        // Garde au POINT D'ÉCRITURE : une passion qui n'est pas (ou plus) sur le
+        // profil ne devient jamais la destination — rien n'est ajouté au compte.
+        if (passionsDuProfil().indexOf(id) < 0) {
+          try { if (typeof toast === "function") toast("Tu ne peux publier que dans les passions de ton profil", "warning"); } catch (e) {}
+          if (typeof apresRefus === "function") apresRefus();
+          return;
+        }
         try {
           // Le `<select>` ne contient que les passions du compte : on ajoute
           // l'option si elle manque, sinon `sel.value = id` ne prend pas.

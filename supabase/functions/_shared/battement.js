@@ -43,7 +43,7 @@ const court = (x, n = 80) => String(x == null ? "" : x).replace(/[\u0000-\u001f]
  * Le contenu d'un battement, à partir de ce que la veille a fait. PUR.
  * `lectures` : { nom → PromiseSettledResult } ; `gestes` : { nom → résultat d'étape }.
  */
-export function contenuBattement({ lectures = {}, verdict = null, sonne = false, gestes = {}, politique = null, parcours = null, revision = "dev", dureeMs = null } = {}) {
+export function contenuBattement({ lectures = {}, verdict = null, sonne = false, gestes = {}, politique = null, parcours = null, revision = "dev", dureeMs = null, echelle = null } = {}) {
   const l = {};
   for (const [k, r] of Object.entries(lectures)) l[k] = etatLecture(r);
   const g = {};
@@ -68,8 +68,16 @@ export function contenuBattement({ lectures = {}, verdict = null, sonne = false,
     politique: politique ? { version: politique.version, mode: court(politique.mode, 20), valide: !!politique.valide } : null,
     parcours: { panne: p.filter((x) => x.etat === "panne").length, degrade: p.filter((x) => x.etat === "degrade").length,
       juges: p.reduce((s, x) => s + (Number(x.juges) || 0), 0), tronque: !!(parcours && parcours.tronque) },
+    // La mesure d'ÉCHELLE (2026-11-21, audit « 100 000 », T3) : la seule trace qui permettra de calibrer
+    // les taux du voyant (TAUX_VOYANT_PM) — comptes connectés (5 min), comptes touchés ET lignes (15 min).
+    // Des NOMBRES seulement (un objet de santé entier ne passe pas) ; absent ou illisible → null. Aucune
+    // clé dans `lectures` : un battement d'avant ce lot reste lisible tel quel.
+    echelle: echelle && typeof echelle === "object" ? Object.fromEntries(CLES_ECHELLE.map((k) => [k, nombreFini(echelle[k])])) : null,
   };
 }
+/** Ce que le battement garde de la santé lue : comptes connectés, comptes touchés, lignes. */
+export const CLES_ECHELLE = Object.freeze(["connectes5", "comptesErreurs15", "comptes5xx15", "erreursJs15", "api5xx15"]);
+const nombreFini = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? Math.floor(x) : null);
 
 const t = (v) => {
   if (v == null || v === "") return NaN;
@@ -109,6 +117,14 @@ export function resumerBattement(ligne, n24 = null, maintenant = Date.now()) {
   // sonne encore un rouge, mais ne peut dire ni « résolu » ni « toujours ». Même règle que les
   // rappels : un battement d'avant ce lot, sans la clé, n'en dit rien.
   if (lectures.memoire === "ko") raisons.push("la veille n'a pas pu relire son dernier voyant : à ce passage elle ne pouvait que sonner une alerte, pas annoncer un retour au calme");
+  // La table de télémétrie (2026-11-21, T2) : son remplissage et la mémoire de la sonde entrent dans le
+  // voyant de la veille, qui se TIENT quand l'une de ces lectures manque — sans cette raison, le battement
+  // disait « toutes les lectures abouties » pendant qu'une table pleine ne se serait pas vue. Même règle que
+  // les rappels : clé absente = rien. ⚠️ Ces deux noms n'entrent PAS dans LECTURES_BATTEMENT : entre la
+  // fusion et le déploiement de la fonction, les battements de l'ancienne version n'ont pas la clé, et le
+  // chien de garde GitHub (signalBattement) lirait « n'a pas pu lire » sur une veille qui a tout lu.
+  const telemetrieKo = [lectures.remplissage === "ko" ? "le remplissage de la télémétrie" : null, lectures.canari === "ko" ? "la mémoire de sa sonde" : null].filter(Boolean);
+  if (telemetrieKo.length) raisons.push("la veille n'a pas pu lire " + telemetrieKo.join(" ni ") + " : à ce passage, une table de télémétrie pleine ne se serait pas vue");
   if (politiqueInvalide) raisons.push("politique d'automatisation invalide : aucun geste automatique");
   if (raisons.length) return { ...base, etat: "incomplet", frais: true, raisons };
   return { ...base, etat: "vivant", frais: true, raisons: [`battement il y a ${Math.round(ageMs / 60e3)} min, toutes les lectures abouties`] };

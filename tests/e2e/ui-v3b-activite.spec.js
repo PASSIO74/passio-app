@@ -222,8 +222,19 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   await boot(page, { errors });
   await seedFeed(page, POSTS, EVENTS);
 
-  // ③ Les deux références portent le même lien, unique.
-  for (const id of ["p_direct", "p_share"]) {
+  // ③ Les deux références mènent à la même activité, par une porte unique.
+  // 2026-11-15 (Benjamin) : le partage n'a plus de lien en bas — sa carte
+  // (rectangle orange) EST la porte, et porte les attributs du lien.
+  {
+    const carte = page.locator('article.post[data-postid="p_share"]');
+    await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
+    await expect(carte.locator(".post-activite")).toHaveAttribute("data-v3-activity", "ev_jam");
+    await expect(carte.locator("[data-v3-bridge]")).toHaveCount(0);
+    expect(await carte.innerText()).not.toContain("Voir l'activité");
+    await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
+    await expect(carte.locator("[data-v3-rsvp-go]")).toHaveCount(0);
+  }
+  for (const id of ["p_direct"]) {
     const carte = page.locator(`article.post[data-postid="${id}"]`);
     await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
     await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
@@ -245,7 +256,11 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   const partagee = page.locator('article.post[data-postid="p_share"]');
   const apercuHistorique = partagee.locator(".post-vlog-card");
   await expect(apercuHistorique).toHaveCount(1);
-  await expect(apercuHistorique).toBeHidden();
+  // 2026-11-14 (Benjamin) : la sous-carte est devenue la MISE EN AVANT de
+  // l'activité — visible, avec le bloc date corail, sans second bouton « Voir ».
+  await expect(apercuHistorique).toBeVisible();
+  await expect(apercuHistorique.locator(".post-activite-tuile")).toBeVisible();
+  await expect(apercuHistorique.locator(".btn")).toHaveCount(0);
   await expect(partagee.locator("[data-v3-activity]")).toBeVisible();
 
   // ① Aucun des libellés écartés par Benjamin n'apparaît dans le fil.
@@ -271,7 +286,7 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   await page.evaluate(() => { window.PASSIO_UI_3 = false; window.PassioUIV3.apply(); });
   await expect(apercuHistorique).toBeVisible();
   await expect(partagee.locator("[data-v3-activity]")).toHaveCount(0);
-  expect(await apercuHistorique.innerText()).toContain("Voir");
+  await expect(apercuHistorique.locator(".post-activite-tuile")).toBeVisible();
 
   expect(errors.js, "exceptions JS").toEqual([]);
 });

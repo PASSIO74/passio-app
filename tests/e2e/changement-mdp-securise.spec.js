@@ -75,7 +75,11 @@ test("④ session de plus de 24 h : le serveur veut une preuve → code par e-ma
   // Premier tour : refus « preuve requise » → reauthenticate() appelé UNE fois,
   // le champ du code apparaît, le message explique, le bouton est rendu.
   await expect(page.locator("#cpNonceWrap")).toBeVisible();
-  await expect(page.locator("#cpMsg")).toHaveText(/code à 6 chiffres/i);
+  await expect(page.locator("#cpMsg")).toHaveText(/code de vérification/i);
+  // La longueur du code est un réglage serveur (8 en production) : l'écran
+  // n'en promet aucune.
+  await expect(page.locator("#cpMsg")).not.toHaveText(/\d\s*chiffres/i);
+  await expect(page.locator("#cpNonce")).not.toHaveAttribute("placeholder", /^\d+$/);
   expect(await page.evaluate(() => window.__cp.reauthenticate)).toBe(1);
   await expect(page.locator("#cpBtn")).toBeEnabled();
   // Le mot de passe saisi n'a pas été perdu.

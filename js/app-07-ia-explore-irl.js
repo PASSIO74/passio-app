@@ -362,7 +362,7 @@ function _exSearchLancer(query) {
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
-          ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          ? "<img " + passioMediaProteges.attributImage(_photo) + "='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
           : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
         // Attribut style en quotes SIMPLES : une apostrophe dans la couleur d'un
         // autre compte en sortait. _cssColor refuse quotes, url( et expression(.
@@ -2123,12 +2123,13 @@ document.addEventListener("keydown", (e) => {
 
 // Barre de passions (refondue le 2026-07-22) : en PRINCIPAL, les passions de mes
 // profils — c'est mon écran, il doit ressembler à mes centres d'intérêt. Les
-// autres passions restent atteignables (les événements des autres ne doivent
-// jamais être inatteignables, c'était le bug du 2026-07-21) mais via un petit
-// panneau « + Autres passions » à cocher : une passion cochée vient s'ajouter à
-// la barre principale, où elle se comporte exactement comme les miennes.
-// ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
-// la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+// autres passions restent atteignables par « Chercher »
+// (`ouvrirRecherchePassionIRL`) : une passion choisie là devient un filtre, et
+// une passion filtrée a toujours sa tuile dans la barre.
+// ⚠️ La tuile « Autres » et son panneau à cocher sont RETIRÉS (2026-11-14,
+// demande de Benjamin : « il y a déjà Chercher ») — deux portes pour le même
+// besoin. `state.user.irlExtraPassions` n'est plus lu : une passion cochée
+// autrefois ne garde pas de tuile, faute de porte pour la retirer.
 // ⚠️ « Mes passions » doit dire la MÊME chose sur Rencontrer et sur le Fil.
 // Mesuré avant correctif, juste après avoir archivé « Cuisine » :
 //   renderProfileStrip (Fil)  → ["musique"]
@@ -2148,29 +2149,6 @@ function _irlMyPassions() {
     : (state.user.profiles || []);
   return [...new Set(source.map(p => p.passion).filter(Boolean))];
 }
-function _irlExtraPassions() {
-  if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
-  return state.user.irlExtraPassions;
-}
-function toggleIrlExtraPassion(pid) {
-  const extra = _irlExtraPassions();
-  const i = extra.indexOf(pid);
-  if (i > -1) {
-    extra.splice(i, 1);
-    // Retirer la tuile doit aussi retirer son filtre, sinon on filtre sur une
-    // passion qui n'est plus affichée (donc plus décochable).
-    if (irlPassionFilters) irlPassionFilters.delete(pid);
-  } else {
-    extra.push(pid);
-  }
-  saveState();
-  renderIRL();
-}
-function toggleIrlExtraPanel() {
-  window._irlExtraOpen = !window._irlExtraOpen;
-  renderIrlPassionTiles();
-}
-
 // ⚠️ FONCTION GLOBALE : `audit:handlers` exige qu'un `onclick` inline désigne
 // une fonction globale EXISTANTE. Elle ne fait que déléguer.
 function ouvrirRecherchePassionIRL() {
@@ -2193,10 +2171,9 @@ function renderIrlPassionTiles() {
 
   const mine = _irlMyPassions();
   const mineSet = new Set(mine);
-  const extra = _irlExtraPassions().filter(pid => !mineSet.has(pid));
-  // Une passion filtrée reste toujours affichée, même si elle n'est ni mienne ni
-  // cochée (sinon la tuile active disparaît et le filtre devient indécochable).
-  const shown = [...new Set(mine.concat(extra, [...irlPassionFilters]))];
+  // Une passion filtrée reste toujours affichée, même si elle n'est pas mienne
+  // (sinon la tuile active disparaît et le filtre devient indécochable).
+  const shown = [...new Set(mine.concat([...irlPassionFilters]))];
 
   const tileHtml = (pid) => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
@@ -2205,19 +2182,11 @@ function renderIrlPassionTiles() {
     const isMine = mineSet.has(pid);
     return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
         aria-pressed="${escapeHtml(isActive)}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
-      <span class="msg-tile-icon">${p.emoji}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
+      <span class="msg-tile-icon">${escapeHtml(p.emoji)}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
   };
-
-  // Panneau « autres passions » : tout ce qui a au moins un événement et qui
-  // n'est pas déjà dans la barre.
-  const others = Object.keys(counts)
-    .filter(pid => !mineSet.has(pid) && extra.indexOf(pid) === -1)
-    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
-  const open = !!window._irlExtraOpen;
-  const nExtra = extra.length;
 
   // ── Lot flat_passions_v1 : chercher une passion précise ──────────────────
   // ⚠️ Posée DANS le rendu : `renderIrlPassionTiles` réécrit `#irlPassionRow`
@@ -2239,32 +2208,7 @@ function renderIrlPassionTiles() {
   row.innerHTML = `
     <div class="msg-filter-tiles">${chercheTile}
       ${shown.map(tileHtml).join("")}
-      <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
-        aria-expanded="${escapeHtml(open)}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
-        <span class="msg-tile-icon">＋</span>
-        <span class="msg-tile-label">Autres</span>
-        ${nExtra > 0 ? `<span class="msg-tile-badge">${nExtra}</span>` : ""}
-      </button>
-    </div>
-    ${open ? `<div class="irl-extra-panel" id="irlExtraPanel">
-      <div class="irl-extra-title">Ajouter des passions à ma barre</div>
-      <div class="irl-extra-list">
-        ${extra.map(pid => _irlExtraChipHtml(pid, counts, true)).join("")}
-        ${others.map(pid => _irlExtraChipHtml(pid, counts, false)).join("")}
-        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des activités pour le moment.</span>' : ""}
-      </div>
-    </div>` : ""}`;
-}
-
-function _irlExtraChipHtml(pid, counts, checked) {
-  const p = passionById(pid) || { label: pid, emoji: "✨" };
-  const cnt = counts[pid] || 0;
-  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${escapeHtml(checked)}"
-      onclick="toggleIrlExtraPassion('${escapeJsArg(pid)}')">
-    <span class="irl-extra-box" aria-hidden="true">${checked ? "✓" : ""}</span>
-    <span>${p.emoji} ${escapeHtml(p.label)}</span>
-    ${cnt > 0 ? `<b>${cnt}</b>` : ""}
-  </button>`;
+    </div>`;
 }
 
 var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
@@ -2571,14 +2515,14 @@ function irlLieuReference() {
   // LOT-25 (IRL-C04) : après un REFUS, le point est le repli Paris — jamais
   // « Position actuelle », que l'écran affichait pour un point qu'il n'a pas.
   if (irlUserLocation && typeof irlUserLocationError !== "undefined" && irlUserLocationError) {
-    return { nom: "Choisir une ville", sub: "Aucune position (repli : Paris)" };
+    return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
   }
   if (irlUserLocation) {
     var el = document.getElementById("irlUserCityName");
     var n = (el && el.textContent && el.textContent !== "…") ? el.textContent : "Ma position";
     return { nom: n, sub: "Position actuelle" };
   }
-  return { nom: "Choisir une ville", sub: "Aucune position" };
+  return { nom: "Choisir une ville", sub: "Choisis ta ville pour voir les distances" };
 }
 
 // Résumé lisible du filtre de date. UN SEUL constructeur : `_syncIrlDateBtn`
@@ -3171,30 +3115,11 @@ function _scheduleIrlMapUpdate() {
   }, 60);
 }
 
-// LOT-25 (audit UX/UI du 2026-11-10, IRL-C03) : la seule porte vers « ma
-// position » était enfouie à trois gestes, dans le panneau Filtre — et les
-// distances se calculaient en silence depuis Paris. Tant qu'aucune référence
-// réelle n'existe (ni ville choisie, ni position), une ligne en TÊTE de la
-// liste l'offre ; elle disparaît dès qu'une référence existe. Posée DANS
-// `#eventList` (repeinte à chaque rendu) : le commutateur Liste / Carte et la
-// carte restent ses voisins immédiats (verrou ui-v4a3-vue).
-function _peindreInvitationVille(list) {
-  try {
-    if (!list) return;
-    var ancien = document.getElementById("irlVilleInvite");
-    if (ancien) ancien.remove();
-    // Le repli Paris d'un refus n'est pas une référence (IRL-C04).
-    var aReference = _irlAReferenceReelle();
-    if (aReference || irlShowPast) return;
-    var b = document.createElement("button");
-    b.type = "button";
-    b.id = "irlVilleInvite";
-    b.className = "irl-ville-invite";
-    b.textContent = "📍 Choisis ta ville pour voir les distances";
-    b.addEventListener("click", function () { if (typeof openIrlCitySelector === "function") openIrlCitySelector(); });
-    list.insertBefore(b, list.firstChild);
-  } catch (e) { try { diagLog("invitation ville : " + (e && e.message)); } catch (_) {} }
-}
+// LOT-25 (IRL-C03) puis 2026-11-14 : l'invitation « Choisis ta ville pour
+// voir les distances » vivait en tête de la liste ; Benjamin la veut DANS le
+// filtre, pas au-dessus des activités. Elle est désormais le sous-titre de la
+// carte « Où ? » de la page Filtre (`irlLieuReference`), qui ouvre déjà le
+// sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
@@ -3265,7 +3190,6 @@ function renderIRL() {
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
-    _peindreInvitationVille(list);
     return;
   }
 
@@ -3340,7 +3264,7 @@ function renderIRL() {
         </div>
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
-          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
+          <div class="event-meta">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
         </div>
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
@@ -3352,8 +3276,8 @@ function renderIRL() {
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
+        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}"${attrsLikePost(evLiked, evLikeCount)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${contenuLikePost(evLiked, evLikeCount)}</span>
+        <span class="post-action" data-evc="${escapeHtml(e.id)}"${attrsCommentairesPost(_eventCmtBadge(e.id))} onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">${contenuCommentairesPost(_eventCmtBadge(e.id))}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(e.id)}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(e.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(e.id)}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
@@ -3363,7 +3287,6 @@ function renderIRL() {
   }).join("") + (rest > 0
     ? `<button class="btn ghost block" style="margin-top:10px;" onclick="_showMoreIrlEvents()">Afficher plus (${rest} restant${rest > 1 ? "s" : ""})</button>`
     : "");
-  _peindreInvitationVille(list);
 
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
@@ -3392,7 +3315,8 @@ async function _loadEventReactions(ids) {
       if (_prev && _prev.gifs && _prev.gifs.length && (!d.gifs || !d.gifs.length)) d.gifs = _prev.gifs;
       window._eventLikes[id] = d;
       var lk = document.querySelector('[data-evlike="' + id + '"]');
-      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+      // Tous les exemplaires (carte de la liste ET fiche), icônes de LOT-8.
+      _peindreLikeEvenement(id, d, lk);
       if (typeof _patchEventReactChip === "function") _patchEventReactChip(id);
     });
   } catch (e) {}
@@ -3457,8 +3381,7 @@ function _peindreLikeEvenement(id, cur, el) {
   var _els = document.querySelectorAll('[data-evlike="' + CSS.escape(String(id)) + '"]');
   if (!_els.length && el) _els = [el];
   [].forEach.call(_els, function (n) {
-    n.classList.toggle("liked", cur.liked);
-    n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
+    peindreLikePost(n, !!cur.liked, cur.likes || 0);
   });
 }
 
@@ -3657,7 +3580,7 @@ async function _fillEventReactionDetail(eventId) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        ? '<img loading="lazy" ' + passioMediaProteges.attributImage(r.emoji) + '="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
         : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
@@ -3671,7 +3594,7 @@ async function _fillEventReactionDetail(eventId) {
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
   body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" ' + passioMediaProteges.attributImage(g) + '="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -3757,7 +3680,7 @@ async function _loadEventCommentCounts(ids) {
     if (typeof _persistEventComments === "function") _persistEventComments();
     ids.forEach(function(id){
       var el = document.querySelector('[data-evc="' + CSS.escape(String(id)) + '"]');
-      if (el) el.textContent = "💬 " + _eventCmtBadge(id);
+      if (el) peindreCommentairesPost(el, _eventCmtBadge(id));
     });
   } catch (e) {}
 }
@@ -3930,14 +3853,15 @@ async function setEventRsvp(id, rsvp) {
   }
 
   if (rsvp === "going" && prev !== "going") {
-    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
+    pushNotification(`Demande envoyée pour <b>${escapeHtml(ev.title)}</b> · accès privés après validation`, "🤝");
   } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
-  // Notifier l'organisateur (interaction cross-compte sur SON événement) — sur
-  // une inscription ÉCRITE seulement (SRV-02 : la base exige la ligne réelle).
-  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
-    supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
+  // La base écrit la demande de participation ; une insertion client ferait un
+  // doublon. Le push seul réveille l'organisation après le verdict de l'écriture.
+  // notify-call relit cette ligne serveur et ignore le texte fourni par le client.
+  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof _pousserPushNotif === "function") {
+    _pousserPushNotif(ev.organizerId, "event_join", "");
   }
   // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
   // ⚠️ « peut-être » n'y entre plus (C-04, troisième contre-revue du
@@ -4182,7 +4106,6 @@ async function _joinEventConversation(ev) {
       if (!convId) return false;
       ev.convId = convId;
       saveState();
-      await supaUpdateEvent(ev);
     } else {
       const membre = await supaJoinEventConversation(ev.convId);
       if (!membre) {
@@ -4250,12 +4173,11 @@ async function openEventChat(id) {
         : "La discussion n'est pas encore ouverte par l'organisation de l'activité"));
     return;
   }
-  // Déjà membre localement : on ouvre. Sinon on DEMANDE l'entrée au serveur et
+  // Le cache local ne prouve pas le droit actuel : on DEMANDE au serveur et
   // on ne montre la discussion que s'il l'accorde (IRL-10).
-  const dejaLocal = typeof getConversations === "function" && getConversations().some(c => c.id === ev.convId);
-  if (!dejaLocal && window._supaReal) {
+  if (window._supaReal) {
     const entre = await _joinEventConversation(ev);
-    if (!entre) { toast("⚠️ Impossible de rejoindre la discussion pour le moment — réessaie", "warning"); return; }
+    if (!entre) { toast("La discussion nécessite la validation de l’organisation.", "warning"); return; }
   } else {
     _ensureLocalEventConv(ev);
   }
@@ -4603,6 +4525,8 @@ function _lienContactEvenement(contact) {
 })();
 
 function openEventDetails(id) {
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) return;
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("activite"); } catch (e) {}
@@ -4625,11 +4549,18 @@ function openEventDetails(id) {
       if (typeof closeConversation === "function") closeConversation();
       else _conv.classList.remove("active");
     }
-    pushOverlayToHistory("event", id);
+    const carte = document.getElementById("irlMapWrap");
+    if (carte && carte.classList.contains("fullscreen")) {
+      // La carte (z 9000) masquait la fiche (z 200). La quitter et réutiliser
+      // son entrée, comme un remplacement de modale : aucun retour mort.
+      toggleIrlMapFullscreen();
+      if (irlMap) irlMap.closePopup();
+      pushOverlayHistory("event", "#event-" + id);
+    } else {
+      pushOverlayToHistory("event", id);
+    }
   }
 
-  const ev = allEvents().find(e => e.id === id);
-  if (!ev) return;
   window._openEventDetailId = id; // pour le refresh realtime des commentaires
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
@@ -4649,7 +4580,7 @@ function openEventDetails(id) {
     // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
     // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
     // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" ${passioMediaProteges.attributImage(urlMediaDirecte(ev.coverUrl))}="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
     const coverImg = coverEl.querySelector("img");
     if (coverImg) {
       const coverFb = ev.emoji || passion.emoji || "✨";
@@ -4673,7 +4604,7 @@ function openEventDetails(id) {
     // Le <select> de création ne propose que des valeurs fixes, mais rien
     // n'empêche une insertion REST directe.
     heroTitle.innerHTML = `
-      <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
+      <div class="event-detail-passion-badge">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
       <div class="event-detail-title">${escapeHtml(ev.title || "Activité")}</div>
     `;
   }
@@ -4740,7 +4671,7 @@ function openEventDetails(id) {
   // ville entière, puis « Adresse exacte : Communiquée une fois inscrit·e » —
   // deux lignes qui se contredisaient. Une seule ligne « Lieu » désormais, sans
   // lien tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.
-  const adresseReservee = !!(ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going");
+  const adresseReservee = !!(ev.fromSupabase && !ev.address);
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
@@ -4752,8 +4683,8 @@ function openEventDetails(id) {
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
     adresseReservee
       ? (lieuReserve
-        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche ici dès que tu participes.</span>')
-        : infoRow("Lieu", "L'adresse exacte s'affiche ici dès que tu participes."))
+        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche après validation par l\'organisation.</span>')
+        : infoRow("Lieu", "L'adresse exacte s'affiche après validation par l'organisation."))
       : (addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : "")),
     (ev.venue && !adresseReservee) ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
     infoRow("Prix", priceStr),
@@ -4868,7 +4799,7 @@ function openEventDetails(id) {
          handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
          personne ». -->
     <div class="post-actions" style="margin-top:18px;">
-      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
+      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}"${attrsLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${contenuLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
       <!-- LOT-12 (PAR-C12) : deux portes de partage sur la fiche — l'icône du haut et celle-ci.
            IRL-C67 proposait de n'en garder qu'une : la décision de LOT-12, déjà livrée, l'emporte. -->
@@ -5005,27 +4936,34 @@ function shareEventExperience(id) {
 async function _loadEventAlbum(eventId) {
   const box = document.getElementById("eventAlbum");
   if (!box) return;
-  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
-    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  const lecteur = MY_UID;
+  const generation = _profileCacheGeneration;
+  const requete = {};
+  box._requeteAlbum = requete;
+  const locaux = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: projectionHeritageLecture().candidat(p.image) ? null : (p.image || null),
+    text: p.text || "", authorName: p.authorName || "Moi",
   }));
+  let distants = [];
   if (window._supaReal && typeof supaLoadEventPosts === "function") {
     try {
-      const remote = await supaLoadEventPosts(eventId);
-      const seen = new Set(items.map(i => i.id));
-      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
-    } catch (e) {}
+      distants = await supaLoadEventPosts(eventId) || [];
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("album", "lecture_distante_indisponible");
+    }
   }
-  // La fiche a pu être fermée ou changée pendant la requête.
-  if (window._openEventDetailId !== eventId) return;
-  const box2 = document.getElementById("eventAlbum");
-  if (!box2) return;
+  if (MY_UID !== lecteur || _profileCacheGeneration !== generation || window._openEventDetailId !== eventId ||
+      document.getElementById("eventAlbum") !== box || box._requeteAlbum !== requete) return;
+  // Les lignes synchronisées portent le résultat de la projection privée, y compris un refus.
+  const synchronises = new Set(distants.map(p => p.id));
+  const items = locaux.filter(p => !synchronises.has(p.id)).concat(distants);
   if (!items.length) {
-    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    box.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
     return;
   }
-  box2.innerHTML = items.slice(0, 12).map(p => p.image
+  box.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
-         <img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(p.image, 400))}" alt=""/>
+         <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}="${safeUrlAttr(passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 400))}" alt=""/>
        </div>`
     : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
          <span>${escapeHtml((p.text || "").slice(0, 60))}</span>
@@ -5484,7 +5422,8 @@ function shareEvent(id) {
   ouvrirFeuillePartage({
     quoi: "activité", titre: ev.title || "Activité", extrait: quand + (ev.city ? " · " + ev.city : ""),
     url: url,
-    message: (ev.title || "Une activité") + " — " + quand + (ev.city ? " · " + ev.city : "") + ". Sur PASSIO 👇",
+    // Texte court et engageant (2026-11-14) : l'aperçu montre déjà titre et photo.
+    message: "Ça te dit ? " + (ev.title || "Une activité") + ", " + quand + (ev.city ? " à " + ev.city : "") + " 👇",
     voit: "La personne qui reçoit le lien voit l'activité et peut s'y inscrire, même sans compte.",
     idEnvoyer: "_shareEvOutBtn", idRepublier: "_shareEvInFeedBtn",
     republier: function () { shareEventInFeed(id); },
@@ -5587,6 +5526,10 @@ function _postActiviteAuFil(ev, authorName, postId) {
       venue: ev.venue || "",
       date: ev.date || null,
       passion: ev.passion || null,
+      // Description, pour la carte du fil tant que l'activité n'est pas chargée.
+      desc: String(ev.desc || "").slice(0, 280),
+      // Photo de l'activité, pour la carte du fil (jamais de base64 en base).
+      coverUrl: /^https?:/.test(String(ev.coverUrl || "")) ? ev.coverUrl : "",
     },
   };
 }
@@ -5861,7 +5804,7 @@ async function addEventComment(eventId) {
     window._eventCommentCounts = window._eventCommentCounts || {};
     window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
     var _badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
-    if (_badge) _badge.textContent = "💬 " + _eventCmtBadge(eventId);
+    if (_badge) peindreCommentairesPost(_badge, _eventCmtBadge(eventId));
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
@@ -5897,7 +5840,7 @@ function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
   try {
     if (window._eventCommentCounts && window._eventCommentCounts[eventId] > 0) window._eventCommentCounts[eventId]--;
     var badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
-    if (badge) badge.textContent = "💬 " + _eventCmtBadge(eventId);
+    if (badge) peindreCommentairesPost(badge, _eventCmtBadge(eventId));
   } catch (e) {}
   try { _renderEventComments(eventId); } catch (e) {}
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
@@ -7131,7 +7074,8 @@ function openEventManage(id) {
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
@@ -7144,46 +7088,9 @@ function openEventManage(id) {
 // Un événement porté par une seule personne meurt avec elle : on partage les
 // droits d'édition (policy « Update organisateurs » côté RLS).
 function openEventCoOrganizers(id) {
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
-  if (!ev) return;
-  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  const co = ev.coOrganizers || [];
-  // Candidats : les participants (hors moi), c'est là que se trouvent les motivés.
-  const candidates = (ev.attendees || []).concat(ev.maybes || [])
-    .filter(u => u && u !== meId && u !== "me");
-  const row = (uidx) => {
-    const u = userById(uidx) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
-    const isCo = co.indexOf(uidx) > -1;
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name || "Participant")}</span>
-      <button class="btn small ${isCo ? "ghost" : "primary"}" onclick="toggleEventCoOrganizer('${escapeJsArg(id)}','${escapeJsArg(uidx)}')">${isCo ? "Retirer" : "Ajouter"}</button>
-    </div>`;
-  };
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Co-organisateurs</div>
-    <div class="modal-subtitle">Ils pourront modifier l'activité et prévenir les inscrits.</div>
-    <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
-      ${[...new Set(co.concat(candidates))].map(row).join("")
-        || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Aucun participant à promouvoir pour l\'instant.</div>'}
-    </div>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
-  `);
+  toast("La coorganisation est suspendue en attendant les invitations avec consentement.");
 }
-
 async function toggleEventCoOrganizer(id, userId) {
-  const ev = _findCanonicalEvent(id);
-  if (!ev || !_canManageEvent(ev)) return;
-  ev.coOrganizers = ev.coOrganizers || [];
-  const isCo = ev.coOrganizers.indexOf(userId) > -1;
-  ev.coOrganizers = isCo ? ev.coOrganizers.filter(x => x !== userId) : ev.coOrganizers.concat([userId]);
-  saveState();
-  if (window._supaReal) await supaUpdateEvent(ev);
-  if (!isCo && typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_update", id, "t'a nommé·e co-organisateur·ice");
-  }
-  toast(isCo ? "Co-organisateur retiré" : "Co-organisateur ajouté");
   openEventCoOrganizers(id);
 }
 
@@ -7691,8 +7598,8 @@ function inviterActivite(ev, quand) {
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
   const canal = navigator.share ? "native" : "clipboard";
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", ev.id, canal) : rawUrl;
-  const texte = "Je t'invite : " + (ev.title || "une activité")
-    + (quand ? " — " + quand : "") + (ev.city ? " · " + ev.city : "") + ". Rejoins-moi sur PASSIO 👇";
+  const texte = "Je t'invite ! " + (ev.title || "Une activité")
+    + (quand ? ", " + quand : "") + (ev.city ? " à " + ev.city : "") + ". Tu viens ? 👇";
   try { if (window.tel && tel.action) tel.action("activite_invite_partagee", { v: 1, canal: canal }); } catch (e) {}
   partagerOuCopier({ title: ev.title || "PASSIO", text: texte, url: url }, "Lien d'invitation copié — colle-le dans ta conversation");
   closeModal();
@@ -8755,3 +8662,31 @@ window.addEventListener("passio:app-ready", function () {
   _irlCkLinkAttentes = 0; _irlCkLinkEssais = 0;
   _openIrlCheckinFromHash();
 });
+
+// rencontres:validation-organisation-v1
+var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
+async function openEventParticipantValidation(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
+  let r;
+  try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
+  catch (e) { toast("Liste indisponible — réessaie"); return; }
+  if (r.error) { toast("Liste indisponible — réessaie"); return; }
+  const lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
+  openModal('<div class="modal-title">Participants</div><div class="modal-subtitle">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
+    + lignes.map(a => '<div style="padding:12px 0"><span>' + escapeHtml((userById(a.user_id) || {}).name || "Participant")
+      + '</span> <span>' + (a.valide ? 'Validé' : 'En attente') + '</span> '
+      + (a.rsvp === 'going' && !a.valide ? '<button class="btn small" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id)
+      + '\',true)">Valider</button> ' : '') + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\''
+      + escapeJsArg(a.user_id) + '\',false)">Retirer</button></div>').join("")
+    + (lignes.length ? '' : '<p>Aucune demande en cours.</p>'));
+}
+async function validerEventParticipant(id, uid, accepter) {
+  try {
+    const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
+    if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    toast(accepter ? "Participation validée" : "Participant retiré");
+    await openEventParticipantValidation(id);
+    return true;
+  } catch (e) { toast("Modification non confirmée — réessaie"); return false; }
+}

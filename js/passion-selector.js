@@ -90,6 +90,15 @@
       onChoisir: null,
       onValider: null,
       onChangement: null,
+      // LISTE FERMÉE (2026-11-14, demande de Benjamin : « ne propose de
+      // partager que dans mes passions sélectionnées sur mon profil »). Un
+      // tableau d'identifiants = le sélecteur ne montre, ne cherche et ne
+      // laisse choisir QUE ceux-là — ni « Récemment utilisées », ni
+      // « Quelques idées » tirées du référentiel. `null` = le référentiel
+      // entier, comme avant. `vide` = le HTML affiché quand la liste est vide.
+      parmi: null,
+      titreParmi: "Tes passions",
+      vide: "",
     }, config || {});
     this.selection = (this.cfg.selection || []).slice();
     this.frappe = "";
@@ -163,12 +172,19 @@
       if (action === "retirer" && id) { self.retirer(id); return; }
       if (action === "ajouter") { self.creer(); return; }
       if (action === "valider") { self.valider(); return; }
+      if (action === "gerer" && typeof self.cfg.onGerer === "function") {
+        try { self.cfg.onGerer(); } catch (x) { journal("onGerer", x); }
+        return;
+      }
     });
 
     this.rendreChoisies();
     this.zoneListe.innerHTML = '<p class="psel-vide">Chargement des passions…</p>';
     var m = moteur();
-    if (!m) { this.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible.</p>'; return; }
+    if (!m) {
+      if (Array.isArray(this.cfg.parmi)) { this.chercher(); return; }
+      this.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible.</p>'; return;
+    }
     // ⚠️ REPEINDRE LES PUCES APRÈS LE CHARGEMENT, pas seulement à la sélection.
     // Mesuré à l'écran : une passion déjà choisie s'affichait « ✨ musique » —
     // son identifiant brut et l'emoji générique — parce que `parId()` rend
@@ -193,8 +209,36 @@
     this.minuteur = setTimeout(function () { self.chercher(); }, DEBOUNCE_MS);
   };
 
+  // Recherche DANS la liste fermée : locale, synchrone, sur le libellé et les
+  // alias — quelques passions au plus, le serveur n'a rien à y ajouter.
+  Selecteur.prototype.chercherParmi = function () {
+    var m = moteur();
+    var q = String(this.frappe || "").trim();
+    var n = function (x) {
+      try { if (m && typeof m.norme === "function") return m.norme(x); } catch (e) {}
+      return String(x || "").toLowerCase();
+    };
+    var nq = n(q);
+    var vus = {};
+    this.resultats = (this.cfg.parmi || []).map(function (id) {
+      if (typeof id !== "string" || !id || vus[id]) return null;
+      vus[id] = 1;
+      var p = m && m.parId(id);
+      if (!p) { try { p = typeof passionById === "function" ? passionById(id) : null; } catch (e) { p = null; } }
+      return { id: id, label: (p && p.label) || id, emoji: (p && p.emoji) || "✨", aliases: (p && p.aliases) || [] };
+    }).filter(function (p) {
+      if (!p) return false;
+      if (!nq) return true;
+      if (n(p.label).indexOf(nq) > -1) return true;
+      return (p.aliases || []).some(function (a) { return n(a).indexOf(nq) > -1; });
+    });
+    this.frappeRendue = this.frappe;
+    this.rendreListe();
+  };
+
   Selecteur.prototype.chercher = function () {
     var self = this;
+    if (Array.isArray(this.cfg.parmi)) { this.jeton++; return this.chercherParmi(); }
     var m = moteur();
     if (!m) return;
     var mien = ++this.jeton;
@@ -250,6 +294,22 @@
     var m = moteur();
     var q = String(this.frappe || "").trim();
     var html = "";
+
+    if (Array.isArray(this.cfg.parmi)) {
+      var vide = !this.cfg.parmi.length;
+      // Rien à chercher ni à valider dans une liste vide : seule la sortie reste.
+      try { var champ = this.hote.querySelector(".psel-champ"); if (champ) champ.style.display = vide ? "none" : ""; } catch (e) {}
+      if (vide) html = this.cfg.vide || '<p class="psel-vide">Aucune passion disponible.</p>';
+      else {
+        if (!q) html += '<p class="psel-section">' + ech(this.cfg.titreParmi || "Tes passions") + "</p>";
+        html += this.resultats.length
+          ? this.resultats.map(this.ligneHTML, this).join("")
+          : '<p class="psel-vide">Aucune de tes passions ne correspond.</p>';
+      }
+      this.zoneListe.innerHTML = html;
+      this.rendrePied();
+      return;
+    }
 
     if (!q) {
       var rec = (m ? m.recentes() : []).filter(function (r) { return this.selection.indexOf(r.id) < 0; }, this);
@@ -332,7 +392,7 @@
           + ' value="' + ech(this.alias || "") + '">';
       }
     }
-    if (this.cfg.valider) {
+    if (this.cfg.valider && !(Array.isArray(this.cfg.parmi) && !this.cfg.parmi.length)) {
       var n = this.selection.length;
       var refus = this.motifRefus();
       if (refus) html += '<p class="psel-refus" role="status">' + ech(refus) + "</p>";
@@ -395,6 +455,9 @@
   // ── Sélection ────────────────────────────────────────────────────────────
   Selecteur.prototype.basculer = function (id) {
     var m = moteur();
+    // Liste fermée : un identifiant hors liste (touche Entrée, appel
+    // programmatique) ne se sélectionne pas.
+    if (Array.isArray(this.cfg.parmi) && this.cfg.parmi.indexOf(id) < 0) return;
     if (this.cfg.mode === "unique") {
       this.selection = [id];
       if (m) m.noterUtilisation(id);

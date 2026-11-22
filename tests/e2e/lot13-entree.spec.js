@@ -129,9 +129,23 @@ test("⑤ ENT-C11 / C19 : onglets, sorties et champs du compte", async ({ page }
 
 test("⑥ ENT-C18 : hors ligne, le formulaire dit « pas de connexion »", async ({ page, context }) => {
   await bootOnboarded(page);
-  expect(await page.evaluate(() => [traduireRefusCaptcha("Failed to fetch"), traduireRefusCaptcha("Load failed"), traduireRefusCaptcha("NetworkError when attempting to fetch resource.")]))
-    .toEqual(Array(3).fill("Pas de connexion internet — réessaie quand tu es en ligne."));
+  const ECHECS = ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."];
+  const traduire = () => page.evaluate((l) => ({ enLigne: navigator.onLine, textes: l.map((m) => traduireRefusCaptcha(m)) }), ECHECS);
+  // (2026-11-21) Appareil EN LIGNE + échec réseau = le service est injoignable :
+  // on ne lui dit pas « pas de connexion internet » (il irait vérifier un Wi-Fi
+  // qui marche). Le message reste en français, jamais le texte brut du moteur.
+  // MUTATION : rendre `AUTH_HORS_LIGNE` dans traduireRefusCaptcha → rouge ici.
+  const enLigne = await traduire();
+  expect(enLigne.enLigne).toBe(true);
+  for (const t of enLigne.textes) {
+    expect(t).toContain("Impossible de joindre PASSIO");
+    expect(t).not.toContain("Pas de connexion internet");
+  }
   await context.setOffline(true);
+  // Appareil réellement hors ligne : inchangé.
+  const horsLigne = await traduire();
+  expect(horsLigne.enLigne).toBe(false);
+  expect(horsLigne.textes).toEqual(Array(3).fill("Pas de connexion internet — réessaie quand tu es en ligne."));
   const msg = await page.evaluate(async () => {
     document.getElementById("onboarding").classList.add("active");
     switchAuthTab("signin");

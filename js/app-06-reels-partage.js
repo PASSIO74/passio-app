@@ -918,7 +918,7 @@ window.addEventListener("passio:app-ready", function () {
 // Portes : Paramètres → Support (`shareBeta`), le menu ⋯ (crayon) de mon profil,
 // le séparateur « Exemples PASSIO » du fil (compte seulement).
 // ═══════════════════════════════════════════════════════════════════════════
-var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
+var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions. Viens me rejoindre 👇";
 
 function lienInvitationAmis() {
   if (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) return lienPartageDe("user", MY_UID);
@@ -1387,7 +1387,7 @@ function _myProfileEventsHTML() {
       if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
     } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(urlMediaDirecte(e.coverUrl)) + '="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
         + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
         + 'onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
@@ -1413,6 +1413,106 @@ function _myProfileEventsHTML() {
   }).join("");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// MES PUBLICATIONS ET MES PASSIONS NE DISPARAISSENT JAMAIS (2026-11-14)
+// ──────────────────────────────────────────────────────────────────────────
+// Défaut vécu par Benjamin : publier « soirée trkl a la maisons » en Course à
+// pied depuis l'ordinateur, fermer, rouvrir — la passion et le post avaient
+// disparu du profil. Le post était BIEN en base ; c'est l'appareil qui l'avait
+// perdu : ① l'onglet « Publications » ne lisait que `state.userPosts`, une
+// copie locale que l'état serveur remplaçait à la réouverture ; ② la passion,
+// réactivée ici, avait été re-archivée par un blob serveur plus ancien.
+//
+// La règle : la table `posts` est la vérité de MES publications, et une passion
+// dans laquelle j'ai publié APRÈS l'avoir archivée est une passion que j'ai
+// reprise. Rien n'est jamais supprimé ni masqué sans un geste de l'utilisateur.
+window._mesPublicationsServeur = window._mesPublicationsServeur || [];
+
+// Toutes mes publications connues de l'appareil : copie locale + relecture
+// serveur dédiée + celles du fil. Dédoublonnées par id, pierres tombales exclues.
+function mesPublicationsConnues() {
+  var moi = (typeof MY_UID !== "undefined") ? MY_UID : null;
+  var vus = Object.create(null);
+  var out = [];
+  function prendre(p, exigerAuteur) {
+    if (!p || !p.id || vus[p.id]) return;
+    if (exigerAuteur && (!moi || p.authorId !== moi)) return;
+    try { if (typeof postSupprime === "function" && postSupprime(p.id)) return; } catch (e) {}
+    vus[p.id] = 1;
+    out.push(p);
+  }
+  (state.userPosts || []).forEach(function (p) { prendre(p, false); });
+  (window._mesPublicationsServeur || []).forEach(function (p) { prendre(p, true); });
+  (state.supabasePosts || []).forEach(function (p) { prendre(p, true); });
+  return out;
+}
+
+// Une passion ARCHIVÉE dans laquelle j'ai publié APRÈS son archivage revient,
+// en silence et sans consommer de changement : publier dedans EST le geste de
+// la reprendre (le Studio refuse de publier dans une passion archivée, donc
+// elle était vivante à ce moment-là — c'est la synchronisation qui l'a perdue).
+// Un archivage postérieur à ma dernière publication reste, lui, respecté.
+function reactiverPassionsPubliees() {
+  if (!state || !state.user || !Array.isArray(state.user.profiles)) return 0;
+  var derniere = Object.create(null);   // passion → date de ma dernière publication
+  mesPublicationsConnues().forEach(function (p) {
+    if (!p || !p.passion) return;
+    var t = Number(p.createdAt) || 0;
+    if (t > (derniere[p.passion] || 0)) derniere[p.passion] = t;
+  });
+  var reprises = [];
+  state.user.profiles.forEach(function (pr) {
+    if (!pr || !pr.archived || !pr.passion) return;
+    var t = derniere[pr.passion];
+    if (!t || t <= (Number(pr.archivedAt) || 0)) return;
+    // Une passion « vivante » de même identifiant existe déjà : rien à reprendre.
+    if (state.user.profiles.some(function (x) { return x && x !== pr && x.passion === pr.passion && !x.archived; })) return;
+    pr.archived = false;
+    delete pr.archivedAt;
+    delete pr._parDefaut;
+    pr.restoredAt = t;
+    reprises.push(pr.passion);
+  });
+  if (!reprises.length) return 0;
+  reprises.forEach(function (id) { try { ajouterPassionAuFil(id); } catch (e) {} });
+  try { saveState(); } catch (e) {}
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  try { if (typeof diagLog === "function") diagLog("passions_reprises_par_publication " + reprises.join(",")); } catch (e) {}
+  return reprises.length;
+}
+
+// Relit MES publications dans la table `posts` (60 dernières) et repeint le
+// profil. Lecture « de moi » : réservée à un compte réel (un visiteur n'a rien).
+var _rapatriementEnCours = null;
+function rapatrierMesPublications() {
+  if (_rapatriementEnCours) return _rapatriementEnCours;
+  _rapatriementEnCours = (async function () {
+    try {
+      if (!window._supaReal || typeof supaLoadPosts !== "function") return 0;
+      if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return 0;
+      var moi = MY_UID;
+      var lus = await supaLoadPosts(0, moi);
+      if (moi !== MY_UID) return 0;                       // le compte a changé pendant la lecture
+      window._mesPublicationsServeur = (lus || []).filter(function (p) { return p && p.authorId === moi; });
+      var reprises = reactiverPassionsPubliees();
+      try {
+        var ecran = document.getElementById("screen-profiles");
+        if (ecran && ecran.classList.contains("active")) {
+          if (reprises && typeof renderProfilesScreen === "function") renderProfilesScreen();
+          else renderProfileContent();
+        }
+        if (reprises && typeof renderProfileStrip === "function") renderProfileStrip();
+      } catch (e) { if (typeof diagLog === "function") diagLog("rapatrier_publications_rendu " + (e && e.message)); }
+      return window._mesPublicationsServeur.length;
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("rapatrier_publications " + (e && e.message));
+      return 0;
+    } finally { _rapatriementEnCours = null; }
+  })();
+  return _rapatriementEnCours;
+}
+
 // Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
 // Sélection vide => invite à sélectionner (pas de fallback profil actif).
 function renderProfileContent() {
@@ -1435,7 +1535,10 @@ function renderProfileContent() {
   // `allFeedPosts` les exclut déjà pour le fil, mais cette liste-ci lit
   // `state.userPosts` en direct : sans ce filtre, un carnet ancien s'y
   // afficherait avec un `onclick` vers un viewer qui n'existe plus.
-  var mine = state.userPosts.filter(function (p) { return p && p.type !== "vlog"; });
+  // ⚠️ `mesPublicationsConnues()` ET NON `state.userPosts` SEUL (2026-11-14) :
+  // la copie locale peut avoir perdu un post que la base, elle, a gardé.
+  var mine = mesPublicationsConnues().filter(function (p) { return p && p.type !== "vlog"; });
+  mine.sort(function (a, b) { return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0); });
 
   if (passionsUnifieesActives()) {
     // ── LOT UI-8 : le filtre de contenu vit ICI, dans « Publications », et il
@@ -1500,7 +1603,7 @@ function renderProfileContent() {
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(passioMediaProteges.route(p.image,{type:"posts",id:p.id}), 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(src) + '="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
@@ -1509,6 +1612,7 @@ function renderProfileContent() {
     var bobines = mine.filter(function(p){return p.isReel;});
     myPostsDiv.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
+          p=passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
           var poster = p.image || p.poster || "";
           var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
@@ -1682,7 +1786,7 @@ function passioOpenCropper(src, opts) {
       apply();
     };
     img.onerror = function() { ov.remove(); reject(new Error("img load failed")); };
-    img.src = src;
+    if(!passioMediaProteges.poserImage(img,src))img.src=src;
 
     zoomEl.addEventListener("input", function() { zoomTo(parseFloat(zoomEl.value), VW / 2, VH / 2); });
     view.addEventListener("wheel", function(e) {
@@ -2998,6 +3102,9 @@ function restaurerPassion(profileId, silencieux) {
   }
   pr.archived = false;
   delete pr.archivedAt;
+  // Date du geste : c'est elle qui arbitre la fusion avec un blob serveur plus
+  // ancien (app-02) — sans elle, la réactivation était annulée à la réouverture.
+  pr.restoredAt = Date.now();
   // ⚠️ RESTAURER, C'EST POSSÉDER. Sans cette ligne, réactiver un remplissage
   // archivé consommait un changement et ne faisait RÉAPPARAÎTRE RIEN — ni
   // carte, ni bulle, ni compteur, puisque `passionsVivantes()` l'écarte. Un
@@ -3506,7 +3613,7 @@ function renderProfilesScreen() {
         </div>
         <div class="profile-card-body" style="flex:1;">
           <div class="profile-card-name">
-            ${passion.emoji} ${passion.label}
+            ${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}
           </div>
           ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
         </div>
@@ -4776,7 +4883,7 @@ function openCreateProfile() {
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
         <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${escapeHtml(p.id)}" onclick="selectNewProfilePassion('${escapeJsArg(p.id)}')">
-          <div class="passion-tile-emoji">${p.emoji}</div>
+          <div class="passion-tile-emoji">${escapeHtml(p.emoji)}</div>
           <div class="passion-tile-label">${escapeHtml(p.label)}</div>
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
@@ -4979,7 +5086,7 @@ function renderStudio() {
   const _pool = _poolBrut.filter(p => p && estPassionCanonique(p.passion));
   sel.innerHTML = _pool.map(p => {
     const pn = passionById(p.passion);
-    return `<option value="${p.passion}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${pn.emoji} ${pn.label}</option>`;
+    return `<option value="${escapeHtml(p.passion)}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${escapeHtml(pn.emoji)} ${escapeHtml(pn.label)}</option>`;
   }).join("");
   // La ligne d'explication n'apparaît QUE si quelque chose a été écarté : sinon
   // elle inquiéterait pour rien l'immense majorité des comptes.
@@ -5189,7 +5296,7 @@ function renderPhotoPreview() {
   _libelleBoutonMedia("photo", !!photoDataUrl);
   if (!photoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <img loading="lazy" decoding="async" src="${photoDataUrl}" alt="preview"/>
+    <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(photoDataUrl)}="${safeUrlAttr(photoDataUrl)}" alt="preview"/>
     <button type="button" class="photo-clear" onclick="clearPhoto()" aria-label="Retirer la photo">✕</button>
   </div>`;
 }
@@ -5237,7 +5344,7 @@ function renderVideoPreview() {
   if (!box) return;
   if (!videoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <video src="${videoDataUrl}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
+    <video ${passioMediaProteges.local(passioMediaProteges.route(videoDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(videoDataUrl)}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
     <button type="button" class="photo-clear" onclick="clearVideo()" aria-label="Retirer la vidéo">✕</button>
   </div>`;
 }
@@ -5270,7 +5377,7 @@ $("#audioInput").addEventListener("change", (e) => {
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "Audio chargé et prêt à publier";
-    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
+    $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
     toast("Audio chargé", "success");
   };
   reader.readAsDataURL(f);
@@ -5353,7 +5460,7 @@ async function toggleRecording() {
         $("#studioVideo").style.display = "none";
         $("#studioAudio").style.display = "block";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
-        $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
+        $("#recPlayback").innerHTML = `<audio controls ${passioMediaProteges.local(passioMediaProteges.route(audioDataUrl))?"data-video-public-src":"src"}="${safeUrlAttr(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">Supprimer</button>`;
       };
       reader.readAsDataURL(blob);
@@ -6182,7 +6289,7 @@ async function aiGenerateResponse(query) {
     var cardsHTML = matched.length ? matched.map(function(e) {
       var p = passionById(e.passion) || { emoji:"📍", label: e.passion };
       return '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-        '<div class="ai-card-title">' + p.emoji + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
+        '<div class="ai-card-title">' + escapeHtml(p.emoji) + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
         '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "Bientôt") + '</div>' +
       '</div>';
     }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucune activité trouvée pour ta recherche.</div>';
@@ -6208,7 +6315,7 @@ async function aiGenerateResponse(query) {
       return '<div class="ai-card" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
-          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + p.emoji + ' ' + p.label + '</div></div>' +
+          '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</div></div>' +
         '</div>' +
       '</div>';
     }).join("");
@@ -6261,13 +6368,13 @@ async function aiGenerateResponse(query) {
 
     var html = '<div>';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-    html += '<span style="font-size:28px;">' + passionEmoji + '</span>';
-    html += '<div><div style="font-weight:800;font-size:15px;">' + passionLabel + '</div>';
+    html += '<span style="font-size:28px;">' + escapeHtml(passionEmoji) + '</span>';
+    html += '<div><div style="font-weight:800;font-size:15px;">' + escapeHtml(passionLabel) + '</div>';
     html += '<div style="font-size:11px;color:var(--muted);">Passion PASSIO</div></div></div>';
 
     if (!knowledge) {
       // Passion sans base de connaissance — réponse générique + données app
-      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + passionLabel + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
+      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + escapeHtml(passionLabel) + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
     } else if (isDebutant) {
       html += '<div class="ai-section-label">Pour débuter</div>';
       html += '<div style="font-size:13px;line-height:1.6;background:var(--bg-deep);border-radius:12px;padding:12px;margin-bottom:8px;">' + knowledge.pour_debuter + '</div>';

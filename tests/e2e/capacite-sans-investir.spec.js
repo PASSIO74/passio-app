@@ -241,11 +241,8 @@ test.describe("② le bouton Google", () => {
         const mail = document.getElementById("authEmail"); if (mail) mail.value = "essai@exemple.com";
         const mdp = document.getElementById("authPassword"); if (mdp) mdp.value = "lavande-colibri-4917";
         const nomChamp = document.getElementById("authName"); if (nomChamp) nomChamp.value = "Essai Capacite"; const anChamp = document.getElementById("authBirthYear"); if (anChamp) anChamp.value = "1995";
-        // ⚠️ `onbDoAuth` valide la confirmation du mot de passe AVANT la garde de
-        // consentement : sans ce champ, on mesurerait « les mots de passe ne
-        // correspondent pas » au lieu du refus visé. Une prémisse non posée fait
-        // rougir un cas sur autre chose que son sujet.
-        const conf = document.getElementById("authPasswordConfirm"); if (conf) conf.value = "lavande-colibri-4917";
+        // (Plus de champ de confirmation du mot de passe depuis le 2026-11-20 :
+        // la seule prémisse avant la garde de consentement est posée ci-dessus.)
         try { await window[nom](); } catch (e) {}
         // Le défilement est `smooth` : on lui laisse le temps d'aboutir, sinon on
         // mesure la géométrie d'avant — un cas vert sur une prémisse non tenue.

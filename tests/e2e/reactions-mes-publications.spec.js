@@ -27,7 +27,7 @@
 //     suivant ; celle reçue en direct PENDANT la lecture reste, puis prend son
 //     identifiant au tour d'après, sans doublon ;
 //   ⑤ une lecture qui n'a pas LU les réactions ne retire rien (publication
-//     absente de la réponse, `fil_compteurs` puis repli en échec, réponse du
+//     absente de la réponse, `fil_compteurs` en échec — sans repli —, réponse du
 //     repli à la borne) ; et le repli, quand il lit, recopie avec l'identifiant,
 //     qu'une entrée locale sans `ci` apprend (même objet) ;
 //   ⑥ (contre-revue) un compte BLOQUÉ ne compte pas sur la pastille, même revenu
@@ -395,10 +395,14 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
       // Ma publication absente de la réponse de fil_compteurs.
       __rpcSans = ["post_rv39"];
       out.absente = await etat();
-      // fil_compteurs en échec, puis la lecture des réactions du repli en échec.
+      // fil_compteurs en échec : depuis D14-01 (2026-11-20), AUCUN repli — la
+      // copie précédente fait foi (et la lecture des réactions du repli serait
+      // en échec de toute façon).
       __rpcSans = []; __rpcMode = "erreur"; __ciMode = "erreur";
       out.echec = await etat();
-      // fil_compteurs absente du projet ; le repli répond à la borne (max-rows).
+      // fil_compteurs absente du projet (le recul de l'échec est écoulé) ; le
+      // repli répond à la borne (max-rows).
+      _filCompteursProchainEssai = 0;
       __rpcMode = "absente"; __ciMode = "borne";
       out.borne = await etat();
       // Le repli lit, cette fois : les lignes portent leur identifiant.
@@ -415,7 +419,7 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
     expect(r.repli, "le repli a lu : Zoé part, Alice apprend son identifiant").toEqual({ lus: 1, reactions: ["😍:ci_A"] });
     expect(r.memeAlice, "la même entrée, qui a appris son `ci`").toBe(true);
     expect(new Set(r.limites), "le repli demande une limite explicite, sous max-rows").toEqual(new Set([500]));
-    expect(r.cheminsLus, "prémisse : le repli a bien interrogé comment_interactions, trois fois au moins").toBeGreaterThanOrEqual(3);
+    expect(r.cheminsLus, "prémisse : le repli (fonction absente) a bien interrogé comment_interactions, deux fois au moins").toBeGreaterThanOrEqual(2);
   });
   test("⑥ un compte bloqué ne compte pas sur la pastille, même revenu par la lecture ; l'ordre suit l'instant", async ({ page }) => {
     const MAL = "0f0e0d0c-0b0a-4909-8807-060504030201";

@@ -97,8 +97,6 @@ async function seedEvents(page, events) {
     if (typeof irlFilters !== "undefined") irlFilters.clear();
     irlSearchQuery = "";
     irlShowPast = false;
-    state.user.irlExtraPassions = [];
-    window._irlExtraOpen = false;
     goTo("irl");
     renderIRL();
   }, events);
@@ -120,7 +118,7 @@ test.describe("IRL — découverte et filtres", () => {
     await expect(page.locator("#irlToolsBadge")).toBeHidden();
   });
 
-  test("la barre affiche MES passions ; les autres s'ajoutent depuis le panneau", async ({ page }) => {
+  test("la barre affiche MES passions ; plus de tuile « Autres », « Chercher » suffit", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ passion: "sport" }, { passion: "musique" }, { passion: "art" }]);
     const tiles = page.locator("#irlPassionRow .msg-tile[data-irlpassion]");
@@ -131,26 +129,32 @@ test.describe("IRL — découverte et filtres", () => {
     // …mais TOUS les événements restent visibles (aucun filtre par défaut).
     await expect(cards(page)).toHaveCount(3);
 
-    // Le panneau « Autres » liste les passions restantes, à cocher.
-    await page.locator("#irlExtraToggle").click();
-    await expect(page.locator("#irlExtraPanel .irl-extra-chip")).toHaveCount(2);
-    await page.locator("#irlExtraPanel .irl-extra-chip", { hasText: "Sport" }).click();
-    await expect(tiles).toHaveCount(2);
-    // Cocher AJOUTE la tuile, ça ne filtre pas : la liste est inchangée.
-    await expect(cards(page)).toHaveCount(3);
+    // Retrait du 2026-11-14 : ni tuile « Autres », ni panneau à cocher — les
+    // autres passions passent par « Chercher », seule porte restante.
+    await expect(page.locator("#irlExtraToggle")).toHaveCount(0);
+    await expect(page.locator("#irlExtraPanel")).toHaveCount(0);
+    await expect(page.locator("#irlPassionRow .msg-tile", { hasText: "Autres" })).toHaveCount(0);
+    await expect(page.locator("#irlPassionRow .psel-tile-chercher")).toHaveCount(1);
+    expect(await page.evaluate(() => typeof window.toggleIrlExtraPanel)).toBe("undefined");
   });
 
-  test("décocher une passion ajoutée retire aussi son filtre", async ({ page }) => {
+  test("une passion filtrée garde sa tuile ; une passion cochée autrefois n'en a plus", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ passion: "musique" }, { passion: "sport" }, { passion: "art" }]);
-    await page.evaluate(() => { toggleIrlExtraPassion("sport"); });
-    await page.locator('[data-irlpassion="sport"]').click();
+    const tiles = page.locator("#irlPassionRow .msg-tile[data-irlpassion]");
+    // Un état d'avant le retrait : « art » avait été cochée dans le panneau.
+    // Sans porte pour la décocher, elle ne doit plus occuper la barre.
+    await page.evaluate(() => { state.user.irlExtraPassions = ["art"]; renderIRL(); });
+    await expect(tiles).toHaveCount(1);
+    // Ce que « Chercher » écrit : un filtre. La passion filtrée a sa tuile…
+    await page.evaluate(() => { irlPassionFilterSet().add("sport"); renderIRL(); });
+    await expect(tiles).toHaveCount(2);
     await expect(cards(page)).toHaveCount(1);
-    await page.evaluate(() => { toggleIrlExtraPassion("sport"); });
-    // Sans le nettoyage du filtre, on filtrerait sur une tuile disparue = liste
-    // vide sans moyen de la débloquer.
+    // …et c'est elle qui décoche : le filtre n'est jamais indécochable.
+    await page.locator('[data-irlpassion="sport"]').click();
     await expect(cards(page)).toHaveCount(3);
     expect(await page.evaluate(() => irlPassionFilters.size)).toBe(0);
+    await expect(tiles).toHaveCount(1);
   });
 
   test("filtrer par passion réduit la liste et la pastille de filtres le dit", async ({ page }) => {

@@ -104,7 +104,7 @@ test.describe("Le lieu d'une activité", () => {
     expect(r.ev.address).toBe("");
   });
 
-  test("⑤ la fiche dit que l'adresse existe, puis la montre une fois inscrit·e", async ({ page }) => {
+  test("⑤ la fiche montre l'adresse seulement lorsque le serveur l'a autorisée", async ({ page }) => {
     await banc(page, { compte: true, rpc: { data: [], error: null } });
     const fiche = (adresse) => page.evaluate(async (a) => {
       const id = "ev_fiche_" + Math.random().toString(36).slice(2);
@@ -116,9 +116,9 @@ test.describe("Le lieu d'une activité", () => {
       return document.body.innerText;
     }, adresse);
     // LOT-19 (IRL-C58) : une seule ligne « Lieu », sans adresse inventée.
-    expect(await fiche("")).toContain("L'adresse exacte s'affiche ici dès que tu participes.");
+    expect(await fiche("")).toContain("L'adresse exacte s'affiche après validation par l'organisation.");
     const avec = await fiche("12 rue du Domicile");
     expect(avec).toContain("12 rue du Domicile");
-    expect(avec).not.toContain("L'adresse exacte s'affiche ici");
+    expect(avec).not.toContain("L'adresse exacte s'affiche après validation");
   });
 });

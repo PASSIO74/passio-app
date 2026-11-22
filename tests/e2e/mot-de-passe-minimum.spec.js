@@ -52,7 +52,6 @@ async function remplir(page, mdp) {
   await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill(mdp);
-  await page.locator("#authPasswordConfirm").fill(mdp);
   await page.locator("#authConsent").click();
   await page.locator("#authSubmitBtn").click();
 }

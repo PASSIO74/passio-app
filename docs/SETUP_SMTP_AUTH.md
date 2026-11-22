@@ -113,7 +113,7 @@ PATCH … avec { "mailer_subjects_confirmation": "…", "mailer_templates_confir
 
 ---
 
-## 5. Autres réglages Auth en place (2026-09-11)
+## 5. Autres réglages Auth en place (2026-09-11, complété le 2026-11-21)
 
 | Réglage | Valeur | Pourquoi |
 |---|---|---|
@@ -121,6 +121,7 @@ PATCH … avec { "mailer_subjects_confirmation": "…", "mailer_templates_confir
 | `password_hibp_enabled` | true | refuse les mots de passe présents dans des fuites connues (HaveIBeenPwned) |
 | `mailer_autoconfirm` | false | la confirmation d'e-mail reste obligatoire |
 | `password_min_length` | 6 | inchangé — à remonter à 8 quand l'écran d'inscription le dira |
+| `mailer_otp_exp` | 86 400 s = 24 h (était 3 600, changé le 2026-11-21) | un lien de confirmation ouvert le lendemain doit encore marcher (décision de Benjamin). Ce réglage vaut pour TOUS les liens et codes e-mail, nouveau mot de passe compris ; `get_advisors` signale donc `auth_otp_long_expiry`, voulu |
 
 ---
 

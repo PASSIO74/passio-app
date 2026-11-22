@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LOT-7 (audit UX/UI du 2026-11-10) — DES RÉGLAGES QUI FONT CE QU'ILS DISENT
 //   ① TRA-C04 : le panneau Notifications ne montre plus cinq interrupteurs
-//        inertes ; il dit ce qui notifie et l'état du téléphone ; le récap reste.
+//        inertes ; il dit ce qui notifie et l'état du téléphone ; le récap de la semaine est retiré (2026-11-14).
 //   ② TRA-C05 : « Bien-être digital » (compteur à 0, limite et pause sans effet)
 //        a disparu, entrée et fonctions.
 //   ③ MSG-C02 : une conversation en sourdine ne sonne pas, n'entre pas dans la
@@ -14,7 +14,7 @@ const { bootOnboarded } = require("./app-helper");
 
 const AUTRE = "11111111-2222-4333-8444-555555555555";
 
-test("① TRA-C04 : plus d'interrupteur inerte ; ce qui notifie est dit ; le récap s'enregistre", async ({ page }) => {
+test("① TRA-C04 : plus d'interrupteur inerte ; ce qui notifie est dit ; plus de récap ni de « Sauvegarder »", async ({ page }) => {
   await bootOnboarded(page);
   await page.evaluate(() => openNotifSettings());
   const m = page.locator("#modalContent");
@@ -23,9 +23,14 @@ test("① TRA-C04 : plus d'interrupteur inerte ; ce qui notifie est dit ; le ré
   }
   await expect(m.locator(".notif-ce-qui-notifie")).toContainText("messages");
   await expect(m.locator("[data-notif-perm]")).toHaveCount(1);
-  await m.locator("#notifRecap").uncheck();
-  await m.locator("button", { hasText: "Sauvegarder" }).click();
-  expect(await page.evaluate(() => getCurrentConfig().notifs)).toEqual({ recap: false });
+  await expect(m.locator("#notifRecap"), "case du récap : retirée").toHaveCount(0);
+  await expect(m.locator("button", { hasText: "Sauvegarder" })).toHaveCount(0);
+  expect(await page.evaluate(() => ({
+    module: typeof window.PassioRecapSemaine, enregistrer: typeof window.saveNotifSettings,
+    balise: document.querySelectorAll('script[src*="recap-semaine"]').length,
+  }))).toEqual({ module: "undefined", enregistrer: "undefined", balise: 0 });
+  await m.locator("button", { hasText: "Fermer" }).click();
+  await expect(page.locator("#recapSemaine")).toHaveCount(0);
 });
 
 test("② TRA-C05 : « Bien-être digital » a disparu, entrée et fonctions", async ({ page }) => {

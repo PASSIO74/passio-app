@@ -77,6 +77,9 @@ function applyConfig() {
         .main-profile-cover:not([data-has-photo=\"1\"]) { background: radial-gradient(130% 140% at 12% -10%, " + c.c5 + " 0%, transparent 55%), radial-gradient(120% 130% at 95% 15%, " + c.soft + " 0%, transparent 60%), radial-gradient(160% 130% at 50% 115%, " + c.c3 + " 0%, " + c.c2 + " 70%) !important; }\
       ";
       if (c.dark) {
+        // La feuille des fenêtres est blanche en dur : en Sombre, son texte clair
+        // (`--text`) y devenait illisible. Elle prend le fond du thème.
+        colorOverride.textContent += " .modal { background: " + c.bgSoft + " !important; }";
         root.style.setProperty("--text", "#e2e8f0");
         root.style.setProperty("--text-dim", "#cbd5e1");
         root.style.setProperty("--muted", "#94a3b8");
@@ -182,41 +185,60 @@ function applyConfig() {
   }, 150);
 }
 
-// LOT-21 (audit UX/UI du 2026-11-10, TRA-C06) — « AFFICHAGE », PLUS UN
-// CONFIGURATEUR. L'écran « Apparence & thème » datait d'avant la charte UI v2 :
-// sept palettes (dont « Sombre », mode retiré), seize polices Google chargées à
-// l'ouverture, trois styles de coins, un ordre d'onglets qu'aucune barre ne lit
-// plus, et un « Appliquer » qui ne faisait que fermer. Il ne garde que la TAILLE
-// DU TEXTE (utile à la lecture). À l'ouverture, les réglages hors charte déjà
-// posés (`accent`, `fontFamily`, `radius`, `navOrder`) sont retirés de
-// `passio_config` et leurs surcharges effacées — rien d'autre n'est touché.
-var CONFIG_HORS_CHARTE = ["accent", "fontFamily", "radius", "navOrder"];
+// « AFFICHAGE » — couleurs, police, taille du texte (2026-11-14, demande de
+// Benjamin : « remets dans Affichage les choix de couleur et de typographie »).
+// LOT-21 (TRA-C06) avait réduit l'écran à la taille du texte seule ; les palettes
+// et les polices REVIENNENT. Restent retirés : les coins et l'ordre des onglets
+// (qu'aucune barre ne lit plus) et le « Appliquer » sans effet — chaque choix
+// s'applique au toucher. À l'ouverture, seules ces deux clés (`radius`,
+// `navOrder`) sortent de `passio_config`, ainsi qu'une couleur ou une police
+// qui n'existe pas dans les listes.
+var CONFIG_HORS_CHARTE = ["radius", "navOrder"];
 var PROPRIETES_THEME = ["--accent", "--accent-soft", "--accent-2", "--accent-2-soft", "--accent-3", "--accent-3-soft",
   "--accent-4", "--accent-4-soft", "--accent-5", "--accent-5-soft", "--bg-deep", "--bg-soft", "--border", "--border-strong",
   "--shadow-soft", "--shadow-strong", "--shadow-glow", "--shadow-glow-2", "--grad-hero", "--grad-hero-2", "--grad-warm",
   "--grad-cool", "--text", "--text-dim", "--muted", "--muted-2", "--bg-card",
   "--att-photo", "--att-doc", "--att-audio", "--att-lieu", "--att-fichiers", "--att-irl"];
-function retirerReglagesHorsCharte() {
-  var cfg = getCurrentConfig();
-  var avait = CONFIG_HORS_CHARTE.some(function (k) { return cfg[k] !== undefined; });
-  if (!avait) return false;
-  CONFIG_HORS_CHARTE.forEach(function (k) { delete cfg[k]; });
-  saveConfig(cfg);
+// Revenir à la couleur de la charte : aucune surcharge, la feuille de style seule.
+function effacerSurchargesCouleur() {
   var root = document.documentElement;
   PROPRIETES_THEME.forEach(function (p) { root.style.removeProperty(p); });
-  ["passio-color-override", "passio-ff-override", "passio-gfont", "passio-rd-override"].forEach(function (id) {
-    var el = document.getElementById(id); if (el) el.remove();
-  });
+  var el = document.getElementById("passio-color-override"); if (el) el.remove();
   document.body.style.background = "";
-  try { if (typeof applyNavOrder === "function") applyNavOrder(); } catch (e) {}
   try { if (typeof updateLogos === "function") updateLogos(); } catch (e) {}
+}
+function retirerReglagesHorsCharte() {
+  var cfg = getCurrentConfig();
+  var change = false;
+  CONFIG_HORS_CHARTE.forEach(function (k) { if (cfg[k] !== undefined) { delete cfg[k]; change = true; } });
+  var couleurInconnue = cfg.accent !== undefined && !ACCENT_COLORS.some(function (c) { return c.id === cfg.accent; });
+  if (couleurInconnue) { delete cfg.accent; change = true; }
+  if (cfg.fontFamily !== undefined && !FONT_FAMILIES.some(function (f) { return f.id === cfg.fontFamily; })) { delete cfg.fontFamily; change = true; }
+  if (!change) return false;
+  saveConfig(cfg);
+  var rd = document.getElementById("passio-rd-override"); if (rd) rd.remove();
+  if (couleurInconnue) effacerSurchargesCouleur();
+  try { if (typeof applyNavOrder === "function") applyNavOrder(); } catch (e) {}
   return true;
 }
 
 function openConfigurator() {
   retirerReglagesHorsCharte();
   var cfg = getCurrentConfig();
+  var accentNow = cfg.accent || "violet";
+  var fontFamilyNow = cfg.fontFamily || "default";
   var fontSizeNow = cfg.fontSize || "medium";
+  var accentHTML = ACCENT_COLORS.map(function(c) {
+    var actif = c.id === accentNow;
+    return '<button type="button" class="config-couleur' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')"><span class="config-couleur-pastille" aria-hidden="true" style="background:' + c.grad1 + ';"></span><span>' + escapeHtml(c.name) + '</span></button>';
+  }).join("");
+  var currentFF = FONT_FAMILIES.find(function(f) { return f.id === fontFamilyNow; }) || FONT_FAMILIES[0];
+  var fontFamilyHTML = '\
+    <button type="button" id="fontDropdown" class="config-police" aria-expanded="false" aria-controls="fontDropdownList" onclick="toggleFontDropdown()">\
+      <span class="config-police-nom" style="font-family:' + currentFF.family + ';">' + escapeHtml(currentFF.name) + '</span>\
+      <span id="fontDropdownArrow" aria-hidden="true">▼</span>\
+    </button>\
+    <div id="fontDropdownList" class="config-police-liste" style="display:none;"></div>';
   var fontSizeHTML = FONT_SIZES.map(function(f) {
     var actif = f.id === fontSizeNow;
     return '<button type="button" class="config-taille' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'fontSize\',\'' + escapeJsArg(f.id) + '\')"><span class="config-taille-aa" aria-hidden="true" style="font-size:' + (Number(f.px) + 4) + 'px;">Aa</span><span>' + escapeHtml(f.name) + '</span></button>';
@@ -224,7 +246,12 @@ function openConfigurator() {
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Affichage</div>\
-    <div class="modal-subtitle">La taille du texte, pour lire confortablement.</div>\
+    <div class="modal-subtitle">La couleur, la police et la taille du texte.</div>\
+    <div class="config-rubrique">Couleur</div>\
+    <div class="config-couleurs">' + accentHTML + '</div>\
+    <div class="config-rubrique">Police d\'écriture</div>\
+    ' + fontFamilyHTML + '\
+    <div class="config-rubrique">Taille du texte</div>\
     <div class="config-tailles">' + fontSizeHTML + '</div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
   ');
@@ -232,8 +259,11 @@ function openConfigurator() {
 
 function setConfig(key, value) {
   var cfg = getCurrentConfig();
-  cfg[key] = value;
-  saveConfig(cfg);
+  // Le violet et la police « Par défaut » SONT la charte : on retire le réglage
+  // au lieu de poser une surcharge qui la recopierait à peu près.
+  if (key === "accent" && value === "violet") { delete cfg.accent; saveConfig(cfg); effacerSurchargesCouleur(); }
+  else if (key === "fontFamily" && value === "default") { delete cfg.fontFamily; saveConfig(cfg); }
+  else { cfg[key] = value; saveConfig(cfg); }
   applyConfig();
   if (key !== "navOrder") openConfigurator();
 }
@@ -260,57 +290,55 @@ var _fontExamples = {
 function toggleFontDropdown() {
   var list = document.getElementById("fontDropdownList");
   var arrow = document.getElementById("fontDropdownArrow");
+  var bouton = document.getElementById("fontDropdown");
   if (!list) return;
   if (list.style.display === "block") {
     list.style.display = "none";
     if (arrow) arrow.textContent = "▼";
+    if (bouton) bouton.setAttribute("aria-expanded", "false");
     return;
   }
   if (arrow) arrow.textContent = "▲";
+  if (bouton) bouton.setAttribute("aria-expanded", "true");
+  // Les polices ne se chargent qu'ICI, quand la liste s'ouvre — jamais à
+  // l'ouverture du panneau (seize feuilles Google pour qui ne veut que la taille).
+  FONT_FAMILIES.forEach(function(f) {
+    if (!f.url || document.querySelector('link[href="' + f.url + '"]')) return;
+    var link = document.createElement("link"); link.rel = "stylesheet"; link.href = f.url;
+    document.head.appendChild(link);
+  });
   var cfg = getCurrentConfig();
   var activeId = cfg.fontFamily || "default";
-  
-  // Vider et reconstruire via DOM pour pouvoir mettre !important
   list.innerHTML = "";
-  
   FONT_FAMILIES.forEach(function(f) {
     var isActive = f.id === activeId;
-    var desc = _fontExamples[f.id] || "";
-    
-    var row = document.createElement("div");
-    row.style.cssText = "cursor:pointer;padding:14px 16px;border-bottom:1px solid var(--border);background:" + (isActive ? "var(--bg-deep)" : "transparent") + ";";
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "config-police-choix" + (isActive ? " actif" : "");
+    row.setAttribute("aria-pressed", isActive ? "true" : "false");
     row.onclick = function(e) { e.stopPropagation(); setConfig("fontFamily", f.id); };
-    
-    var nameEl = document.createElement("div");
+    var left = document.createElement("span");
+    left.className = "config-police-choix-texte";
+    var nameEl = document.createElement("span");
+    nameEl.className = "config-police-choix-nom";
     nameEl.textContent = f.name;
-    nameEl.style.cssText = "font-size:20px;font-weight:800;color:var(--text);margin-bottom:3px;";
     nameEl.style.setProperty("font-family", f.family, "important");
-    
-    var descEl = document.createElement("div");
-    descEl.textContent = desc;
-    descEl.style.cssText = "font-size:11px;color:var(--muted);";
+    var descEl = document.createElement("span");
+    descEl.className = "config-police-choix-desc";
+    descEl.textContent = _fontExamples[f.id] || "";
     descEl.style.setProperty("font-family", f.family, "important");
-    
-    var left = document.createElement("div");
-    left.style.cssText = "flex:1;";
     left.appendChild(nameEl);
     left.appendChild(descEl);
-    
-    var wrap = document.createElement("div");
-    wrap.style.cssText = "display:flex;align-items:center;gap:10px;";
-    wrap.appendChild(left);
-    
+    row.appendChild(left);
     if (isActive) {
       var check = document.createElement("span");
       check.textContent = "✓";
-      check.style.cssText = "font-size:18px;color:var(--accent);";
-      wrap.appendChild(check);
+      check.setAttribute("aria-hidden", "true");
+      check.className = "config-police-choix-coche";
+      row.appendChild(check);
     }
-    
-    row.appendChild(wrap);
     list.appendChild(row);
   });
-  
   list.style.display = "block";
 }
 
@@ -473,14 +501,14 @@ const CALL_ICE_SERVERS = [
 ];
 
 // ── Relais TURN Cloudflare, fabriqué par le serveur (2026-11-09) ────────────
-// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 6 h
+// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 1 h, liés à un live/appel autorisé
 // (secrets `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN` de la fonction : jamais dans ce
 // fichier, le dépôt est public). Ils s'AJOUTENT au tableau ci-dessus, que lisent
 // les cinq `new RTCPeerConnection` des appels et des lives : rien d'autre à
 // changer. Secrets absents, réseau coupé, réponse hors forme : le tableau reste en
 // STUN seul, comme avant — jamais un appel ou un live retardé de plus de 2,5 s.
-//   · renouvelés quand il leur reste moins de 3 h : un live ou un appel part
-//     toujours avec au moins 3 h de validité (une connexion relayée ne survit pas
+//   · renouvelés quand il leur reste moins de 30 min : un live ou un appel part
+//     toujours avec au moins 30 min de validité (une connexion relayée ne survit pas
 //     à l'expiration de ses identifiants) ;
 //   · relais coupé (`configure: false`) : les identifiants déjà posés sont RETIRÉS,
 //     et la fonction n'est pas redemandée avant une heure ;
@@ -488,7 +516,7 @@ const CALL_ICE_SERVERS = [
 //     avant 5 min — sinon chaque entrée dans un live attendrait 2,5 s de plus ;
 //   · expirés : retirés, même quand le renouvellement échoue.
 const ICE_ATTENTE_MAX_MS = 2500;
-const ICE_MARGE_MS = 3 * 3600 * 1000;
+const ICE_MARGE_MS = 30 * 60 * 1000;
 const ICE_PAUSE_ECHEC_MS = 5 * 60 * 1000;
 const ICE_PAUSE_COUPE_MS = 3600 * 1000;
 const _iceRelais = { serveurs: [], jusqua: 0, expire: 0, enCours: null };
@@ -507,9 +535,15 @@ function _iceServeursSurs(liste) {
     return !relais || (typeof s.username === "string" && !!s.username && typeof s.credential === "string" && !!s.credential);
   });
 }
-function assurerServeursIce() {
+function assurerServeursIce(contexte) {
   try {
+    // Les renouvellements synchrones retrouvent le contexte actif. Sans contexte,
+    // aucune demande ne part (ancien client : le serveur refuse également).
+    contexte = contexte || (window._vliveHost ? { liveId: window._vliveHost.id }
+      : window._vliveView ? { liveId: window._vliveView.id }
+      : window._call ? { callId: window._call.id } : null);
     if (_iceRelais.serveurs.length && Date.now() >= _iceRelais.expire) _iceRetirerRelais();
+    if (!contexte || (!contexte.liveId && !contexte.callId)) return Promise.resolve(0);
     if (Date.now() < _iceRelais.jusqua) return Promise.resolve(_iceRelais.serveurs.length);
     if (_iceRelais.enCours) return _iceRelais.enCours;
     var compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
@@ -518,7 +552,7 @@ function assurerServeursIce() {
       try { if (typeof diagLog === "function") diagLog("ice relais " + raison); } catch (_e) {}
       return -1;
     };
-    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: { type: "ice" } }))
+    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: Object.assign({ type: "ice" }, contexte) }))
       .then(function (r) {
         // Un refus du serveur (429 du plafond…) ne LÈVE pas : il arrive dans `error`.
         if (r && r.error) return echec("refusé : " + (r.error.message || r.error));
@@ -535,7 +569,7 @@ function assurerServeursIce() {
         _iceRetirerRelais();
         surs.forEach(function (s) { CALL_ICE_SERVERS.push(s); });
         _iceRelais.serveurs = surs;
-        var ttlMs = ((d && Number(d.ttl) > 0) ? Number(d.ttl) : 6 * 3600) * 1000;
+        var ttlMs = ((d && Number(d.ttl) > 0) ? Math.min(Number(d.ttl), 3600) : 3600) * 1000;
         _iceRelais.expire = Date.now() + ttlMs;
         _iceRelais.jusqua = Date.now() + Math.max(10 * 60 * 1000, ttlMs - ICE_MARGE_MS);
         return surs.length;
@@ -662,7 +696,7 @@ async function startCall(convId, kind) {
   // (2,5 s au plus) avant de créer la connexion : `new RTCPeerConnection` copie la
   // liste des serveurs à sa création — sans relais à ce moment, l'appel entre deux
   // réseaux à NAT strict échoue (audit du 2026-11-09).
-  const _relais = assurerServeursIce();
+  // Le relais sera demandé après le dépôt de l’invitation.
   const depart = {};
   window._callDepart = depart;
 
@@ -674,7 +708,6 @@ async function startCall(convId, kind) {
     if (window._callDepart === depart) window._callDepart = null;
     toast("Caméra/micro indisponible ou refusé"); return;
   }
-  try { await _relais; } catch (e) {}
   // Pendant l'attente, un autre appel a pu commencer (un appel entrant accepté) :
   // ce départ s'efface, et la caméra et le micro qu'il a obtenus sont coupés.
   const departValide = window._callDepart === depart && !window._call;
@@ -693,7 +726,6 @@ async function startCall(convId, kind) {
   };
 
   _callRenderActiveUI();
-  _callSetupPeerConnection();
   console.log("[call] startCall →", peer.id, "callId", callId, "kind", kind);
 
   // Invitation déposée sur le canal personnel du pair (`ring:<peerId>`).
@@ -751,6 +783,10 @@ async function startCall(convId, kind) {
     endCall();
     return;
   }
+
+  await assurerServeursIce({ callId: callId });
+  if (!window._call || window._call.id !== callId) return;
+  _callSetupPeerConnection();
 
   // S'abonne au canal d'appel (réponse SDP / ICE).
   const chan = _callChannel("call:" + callId);
@@ -1241,7 +1277,7 @@ async function acceptIncomingCall() {
   _appelEnPreparation();
   // Le relais TURN se demande pendant la permission caméra/micro, et on l'attend
   // (2,5 s au plus) avant de créer la connexion — même raison que `startCall`.
-  const _relais = assurerServeursIce();
+  const _relais = assurerServeursIce({ callId: inv.callId });
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) {
     if (window._callAcceptation === inv) window._callAcceptation = null;
@@ -1503,7 +1539,7 @@ function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callAvatarHtml(idn, couleur) {
   var photo = (idn && idn.photo) || "";
   // safeUrlAttr rend "#" pour une URL refusée : ce n'est PAS une photo.
-  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img src="' + safeUrlAttr(photo) + '" alt=""></div>';
+  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img ' + passioMediaProteges.attributImage(photo) + '="' + safeUrlAttr(photo) + '" alt=""></div>';
   return '<div class="call-avatar" style="background:' + _cssColor(couleur || "var(--accent)") + ';">' + _emojiSur(idn && idn.emoji) + '</div>';
 }
 // Le calque d'appel est un dialogue nommé, et le focus y entre.
@@ -2744,6 +2780,9 @@ const reelsState = {
   viewedSinceOpen: 0,
   pausePrompted: false,
   observer: null,
+  // Son ACTIVÉ par défaut (demande de Benjamin, 2026-11-14) : c'est à
+  // l'utilisateur de le couper (bouton 🔊 de chaque bobine), pas de l'activer.
+  soundOn: true,
 };
 
 // Vidéos seed embarquées, bucket Google public, garanti hotlinkable et lecture H.264
@@ -3237,6 +3276,7 @@ function authorOfReel(post) {
 }
 
 function reelMediaHTML(post) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   // ⚠️ Une bobine peut venir de N'IMPORTE QUEL compte : `video`, `poster` et
   // `fallback` sont des champs libres côté serveur. Trois contextes distincts,
   // trois helpers — se tromper ici, c'est exécuter le code d'un inconnu :
@@ -3245,7 +3285,7 @@ function reelMediaHTML(post) {
   //                l'intérieur d'un attribut onerror ; le HTML décode avant que JS
   //                ne parse, donc escapeHtml seul ne protège pas.
   if (post.type === "video" && post.video) {
-    const poster = post.poster ? ` poster="${safeUrlAttr(post.poster)}"` : "";
+    const poster = post.poster ? ` ${passioMediaProteges.attributPoster(post.poster)}="${safeUrlAttr(post.poster)}"` : "";
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
@@ -3260,7 +3300,7 @@ function reelMediaHTML(post) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
   const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
-  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
+  return `<img class="reel-media" ${passioMediaProteges.attributImage(vignette)}="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
 }
 
 function resolveCoverUrl(cover) {
@@ -3289,6 +3329,7 @@ function bobineExemple(post) {
 }
 
 function renderReelHTML(post, idx) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = moodShortLabel(post.mood);
@@ -3311,7 +3352,7 @@ function renderReelHTML(post, idx) {
           <div class="reel-avatar" style="background:${avatarBg(author)};">${avatarInner(author)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
+            <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
@@ -3547,29 +3588,49 @@ function playReelAt(idx) {
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
     if (i === idx) {
-      lancerVideoPublique(vid, false);
+      lancerVideoPublique(vid, false).then((ok) => {
+        // Un navigateur peut refuser la lecture SONORE hors geste (iOS en
+        // défilement, Chrome sans interaction préalable). Plutôt qu'une bobine
+        // figée, on relance sans son pour CETTE vidéo seulement : le choix
+        // global reste « son activé », et 🔇 affiché invite à toucher.
+        if (ok || vid.muted || !vid.paused || !vid.hasAttribute("src")) return;
+        if (reelsState.current !== idx || !reelsState.open) return;
+        if (typeof videoPubliqueAutoplay === "function" && !videoPubliqueAutoplay()) return;
+        vid.muted = true; vid.defaultMuted = true;
+        _syncReelSoundBtns();
+        lancerVideoPublique(vid, false);
+      });
     }
     else arreterVideoPublique(vid);
   });
+  _syncReelSoundBtns();
 }
 
 // Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
 // son sur une bobine l'active pour les suivantes, mémorisé pour la session.
 function toggleReelsSound(ev) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-  reelsState.soundOn = !reelsState.soundOn;
-  _syncReelSoundBtns();
   const items = document.querySelectorAll("#reelsList .reel-item");
   const cur = items[reelsState.current];
   const vid = cur && cur.querySelector("video");
+  // On bascule ce que l'utilisateur ENTEND : une vidéo relancée sans son
+  // (lecture sonore refusée par le navigateur) affiche 🔇 alors que le choix
+  // global est « son activé » — la toucher doit allumer le son, pas l'éteindre.
+  reelsState.soundOn = vid ? !!vid.muted : !reelsState.soundOn;
   if (vid) {
     vid.muted = !reelsState.soundOn; vid.defaultMuted = vid.muted;
     if (vid.paused) lancerVideoPublique(vid, true);
   }
+  _syncReelSoundBtns();
 }
 function _syncReelSoundBtns() {
-  document.querySelectorAll("#reelsList .reel-sound-btn").forEach((b) => {
-    b.textContent = reelsState.soundOn ? "🔊" : "🔇";
+  document.querySelectorAll("#reelsList .reel-item").forEach((it) => {
+    const b = it.querySelector(".reel-sound-btn");
+    if (!b) return;
+    const vid = it.querySelector("video");
+    const on = vid ? !vid.muted : !!reelsState.soundOn;
+    b.textContent = on ? "🔊" : "🔇";
+    b.setAttribute("aria-label", on ? "Couper le son" : "Activer le son");
   });
 }
 
@@ -3778,7 +3839,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
-              <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text || "")}="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
@@ -4012,7 +4073,7 @@ function openReelShareModal(postId) {
     quoi: "bobine", auteur: author.name || "Passionné", extrait: extrait,
     vignette: reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || "",
     url: url,
-    message: "Une bobine de " + (author.name || "Passionné") + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    message: "Regarde la bobine de " + (author.name || "Passionné") + " sur PASSIO 🎬",
     republier: function () { shareReelInFeed(postId); },
   });
 }
@@ -4282,8 +4343,12 @@ function _vliveFiletTour() {
     // source, il ne recule pas. BORNÉ au fil à l'écran (les bulles « 🔴 LIVE »
     // vivent dans sa barre de stories) : `filetEstLeSeulChemin` (app-02), MÊME
     // autorité que le filet du fil.
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : le seul chemin n'épingle plus 60 s, il
+    // BORNE le recul à 3 min (`filetBorneSeulChemin`, app-02), comme le filet du fil.
+    // Un live connu garde la cadence vive : ce cas-là ne change pas.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetBorneSeulChemin(_vliveFiletPas, seulChemin);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
@@ -4323,7 +4388,7 @@ function _vliveChipsHtml() {
   const mine = (typeof MY_UID !== "undefined" && MY_UID) || "";
   return (window._videoLives || []).filter(r => r.author_id !== mine).map(r => {
     const inner = r.author_photo
-      ? '<img loading="lazy" decoding="async" src="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(r.author_photo) + '="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
       : escapeHtml(r.author_emoji || "🔴");
     const tip = r.title ? (r.author_name || "Live") + " — " + r.title : "Rejoindre le live";
     return '' +
@@ -4376,6 +4441,12 @@ function _vlivePromptTitle() {
   });
 }
 
+// Lot 4 du 2026-11-15 : les colonnes d'adresse de média n'acceptent plus que https.
+var LIVE_PHOTO_HTTPS = "video_lives:photo-https";
+function _livePhotoHttps(v) {
+  return (typeof v === "string" && /^https:\/\//i.test(v) && v.length <= 2048) ? v : null;
+}
+
 async function startVideoLive() {
   if (window._call) { toast("Termine ton appel d'abord"); return; }
   if (window._vliveHost) return;
@@ -4403,7 +4474,6 @@ async function startVideoLive() {
   // rester SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide doublon et
   // capacité sur cette table ; une attente là faisait répondre « complet » à des
   // spectateurs groupés alors que des relais étaient libres, relecture du 2026-11-09).
-  const _relais = assurerServeursIce();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4414,14 +4484,16 @@ async function startVideoLive() {
       video: Object.assign({ facingMode: "user" }, VLIVE_VIDEO_QUALITY),
     });
   } catch (e) { toast("Caméra/micro indisponible ou refusé"); return; }
-  try { await _relais; } catch (e) {}
 
   const id = "vl_" + String(MY_UID).slice(0, 8) + "_" + Date.now().toString(36);
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
   const row = {
     id: id, author_id: MY_UID, author_name: _callMyName(),
     author_emoji: me.emoji || "🔴",
-    author_photo: (state.user && state.user.general && state.user.general.avatarPhoto) || null,
+    // Une adresse https seulement : une photo encore locale (data:) serait refusée par la base
+    // (`video_lives_author_photo_forme`) et ferait échouer tout le direct. `LIVE_PHOTO_HTTPS`
+    // est la chaîne que la migration exige dans le client servi (`-- PREREQUIS-CLIENT:`).
+    author_photo: _livePhotoHttps(state.user && state.user.general && state.user.general.avatarPhoto),
     title: title || null,
     status: "live",
     started_at: new Date().toISOString(), last_seen: new Date().toISOString(),
@@ -4430,6 +4502,8 @@ async function startVideoLive() {
     const { error } = await supa.from("video_lives").insert(row);
     if (error) { console.warn("[vlive] insert:", error.message); toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
   } catch (e) { toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
+
+  await assurerServeursIce({ liveId: id });
 
   window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null, title: title || "", chatLog: [], peak: 0, tree: {}, paused: false };
   _vliveRenderUI("host", row);
@@ -4541,7 +4615,7 @@ async function _vliveHostAddViewer(vid) {
   if (Object.keys(H.pcs).length >= VLIVE_MAX_VIEWERS) { _vliveSend("full", { to: vid }); return; }
   // SANS attente (voir `startVideoLive`, qui attend le relais avant d'ouvrir le live) :
   // l'appel retire tout de suite des identifiants expirés et relance le renouvellement
-  // en arrière-plan ; ceux qui restent ont au moins 3 h par construction.
+  // en arrière-plan ; ceux qui restent ont au moins 30 min par construction.
   assurerServeursIce();
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
   const entry = { pc: pc, pendingIce: [] };
@@ -4704,7 +4778,7 @@ async function joinVideoLive(liveId) {
     _appelEnPreparation();
     // Le relais TURN se demande EN MÊME TEMPS que l'état du live, et on l'attend
     // (2,5 s au plus) avant d'entrer : l'offre de l'hôte peut arriver tout de suite.
-    const _relais = assurerServeursIce();
+    const _relais = assurerServeursIce({ liveId: liveId });
     // Vérifie que le live est encore vivant (statut + heartbeat récent).
     let row = (window._videoLives || []).find(r => r.id === liveId) || null;
     try {

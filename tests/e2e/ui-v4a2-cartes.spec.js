@@ -18,8 +18,9 @@
 //   ② la carte porte EXACTEMENT ce que la direction §8 énumère :
 //      un visuel, le titre, Passio · quand, ville · distance, participants
 //      agrégés · places, puis « Voir » et « Je viens » ;
-//   ③ rien n'est retiré du DOM : le pied, la barre d'actions sociales et
-//      l'aperçu de commentaires historiques sont MASQUÉS, jamais supprimés —
+//   ③ rien n'est retiré du DOM : le pied et l'aperçu de commentaires
+//      historiques sont MASQUÉS, jamais supprimés ; la barre d'actions sociales
+//      est de nouveau VISIBLE depuis le 2026-11-14 (aimer, commenter, partager) —
 //      c'est ce qui permet aux patchs asynchrones du moteur de continuer à les
 //      retrouver, et au kill switch de rendre la carte d'avant ;
 //   ④ le masquage est BORNÉ au marqueur `data-v4a2` : une carte que le lot n'a
@@ -131,10 +132,60 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
 
     const { carte } = await premiereCarte(page);
     await expect(carte.locator(".v4a2")).toBeVisible();
-    for (const sel of [".event-footer", ".post-actions", ".event-date-block", ".event-title"]) {
+    for (const sel of [".event-footer", ".event-date-block", ".event-title", ".event-comments-inline"]) {
       await expect(carte.locator(sel)).toHaveCount(1);
       await expect(carte.locator(sel)).toBeHidden();
     }
+    // 2026-11-14 : la barre sociale n'est plus recouverte (aimer, commenter,
+    // partager sur la carte) — ce sont les nœuds historiques, rendus visibles.
+    await expect(carte.locator(".post-actions")).toBeVisible();
+  });
+
+  // 2026-11-14 (demande de Benjamin) : interagir avec une activité sans ouvrir sa
+  // fiche. Les trois gestes passent par les moteurs historiques ; la réaction
+  // emoji et sa pastille restent dans la fiche.
+  test("aimer, commenter et partager directement sur la carte", async ({ page }) => {
+    await boot(page);
+    await ouvrirIrl(page);
+    const { carte, id } = await premiereCarte(page);
+
+    const like = carte.locator(`.post-actions [data-evlike="${id}"]`);
+    const cmt = carte.locator(`.post-actions [data-evc="${id}"]`);
+    const partage = carte.locator('.post-actions .post-action[onclick*="shareEvent"]');
+    for (const b of [like, cmt, partage]) {
+      await expect(b).toBeVisible();
+      const boite = await b.boundingBox();
+      expect(boite.width).toBeGreaterThanOrEqual(44);
+      expect(boite.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(carte.locator('.post-actions .post-action[onclick*="showEmojiPickerForEvent"]')).toBeHidden();
+    await expect(carte.locator(".post-actions .event-react-chip-holder")).toBeHidden();
+    // Des icônes, pas des emojis (LOT-8), et un état « aimé » exposé.
+    expect(await like.evaluate((el) => !!el.querySelector("svg.pa-ico") && !/[🤍❤]/u.test(el.textContent))).toBe(true);
+    expect(await cmt.evaluate((el) => !!el.querySelector("svg.pa-ico") && !/💬/u.test(el.textContent))).toBe(true);
+
+    // Aimer : le geste ne doit PAS ouvrir la fiche, et l'état se peint sur place.
+    const avant = Number(await like.getAttribute("data-n"));
+    await like.click();
+    await expect(like).toHaveAttribute("aria-pressed", "true");
+    await expect(like).toHaveAttribute("data-n", String(avant + 1));
+    expect(await page.evaluate((i) => state.user.likedEvents.includes(i), id)).toBe(true);
+    expect(await page.evaluate(() => {
+      const f = document.getElementById("eventDetailPage");
+      return !!(f && getComputedStyle(f).display !== "none");
+    })).toBe(false);
+    await like.click();
+    await expect(like).toHaveAttribute("aria-pressed", "false");
+    await expect(like).toHaveAttribute("data-n", String(avant));
+
+    // Commenter : la feuille de commentaires de CETTE activité s'ouvre.
+    await cmt.click();
+    await expect(page.locator(`#cmtThreadList[data-thread="${id}"]`)).toBeVisible();
+    await page.evaluate(() => closeModal());
+
+    // Partager : la feuille de partage s'ouvre.
+    await partage.click();
+    await expect(page.locator("#_shareEvOutBtn")).toBeVisible();
   });
 
   test("la carte porte les six informations de décision", async ({ page }) => {
@@ -198,10 +249,13 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     await ouvrirIrl(page);
 
     const { carte, id } = await premiereCarte(page);
-    for (const sel of [".event-footer", ".post-actions", ".event-date-block", ".event-title"]) {
+    for (const sel of [".event-footer", ".event-date-block", ".event-title", ".event-comments-inline"]) {
       await expect(carte.locator(sel)).toHaveCount(1);
       await expect(carte.locator(sel)).toBeHidden();
     }
+    // 2026-11-14 : la barre sociale n'est plus recouverte (aimer, commenter,
+    // partager sur la carte) — ce sont les nœuds historiques, rendus visibles.
+    await expect(carte.locator(".post-actions")).toBeVisible();
     // Les ancres que les chargements asynchrones du moteur retrouvent APRÈS
     // coup sont toujours là — les retirer ferait échouer ces patchs en silence.
     for (const sel of [`[data-evlike="${id}"]`, `[data-evc="${id}"]`,

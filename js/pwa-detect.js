@@ -23,6 +23,16 @@
       // instant ni l'un ni l'autre n'existe, et recharger perdrait un appel que
       // l'utilisateur vient d'accepter. `_appelLanceA` (app-05) couvre ce trou, et
       // il est BORNÉ dans le temps : un geste abandonné ne retient pas la page.
+      // PURE (lot 4 du 2026-11-15, voir `reloadOnce`) : délai avant d'appliquer une
+      // nouvelle version. `alea` dans [0, 1] (Math.random), toute autre valeur vaut 0,5.
+      const MAJ_MASQUEE_MAX_MS = 60000;
+      const MAJ_VISIBLE_MIN_MS = 10 * 60000;
+      const MAJ_VISIBLE_MAX_MS = 30 * 60000;
+      const delaiMiseAJour = (visible, alea) => {
+        const a = (typeof alea === 'number' && alea >= 0 && alea <= 1) ? alea : 0.5;
+        return Math.round(visible ? MAJ_VISIBLE_MIN_MS + a * (MAJ_VISIBLE_MAX_MS - MAJ_VISIBLE_MIN_MS) : a * MAJ_MASQUEE_MAX_MS);
+      };
+      window.passioDelaiMiseAJour = delaiMiseAJour;
       const PREPARATION_APPEL_MS = 60000;
       const appelOuLiveEnCours = () => {
         if (window._call || window._callIncoming || window._vliveHost || window._vliveView) return true;
@@ -172,15 +182,45 @@
               if (t - calmeDepuis < CALME_AVANT_RECHARGE_MS) return;
               clearInterval(_attente);
               _attente = null;
-              reloadOnce();
+              appliquerMaj();
             }, 500);
           };
-          const reloadOnce = () => {
-            if (!hadController) return; // jamais de reload à la 1re installation
+          const appliquerMaj = () => {
             if (_reloaded) return;
             if (pageOccupee()) { attendreLaFin(); return; }
             _reloaded = true;
             window.location.reload();
+          };
+          // ══════════════════════════════════════════════════════════════════
+          // LOT 4 DU 2026-11-15 (capacité) : UNE MISE EN LIGNE NE RECHARGE PLUS
+          // TOUS LES ONGLETS DANS LA MINUTE
+          // ──────────────────────────────────────────────────────────────────
+          // Chaque onglet vérifie la version toutes les 60 s : une mise en ligne
+          // rechargeait donc TOUS les écrans ouverts en moins d'une minute, soit un
+          // démarrage complet (25 à 46 requêtes) par onglet, d'un coup — un pic que
+          // l'application s'infligeait plusieurs fois par jour, et une page rechargée
+          // sous les yeux du lecteur. La nouvelle version s'applique désormais :
+          //   · page MASQUÉE : après un délai tiré au hasard sur 0–60 s (personne ne
+          //     voit le rechargement, et les onglets ne repartent pas ensemble) ;
+          //   · page VISIBLE : après un délai tiré au hasard sur 10–30 min, ou dès
+          //     qu'elle passe en arrière-plan (l'échéance est alors retirée sur 0–60 s).
+          // Le toast « Mise à jour disponible » (app-09) reste : on peut recharger
+          // soi-même. Les reports d'avant (appel, saisie, envoi…) s'appliquent
+          // toujours au moment de recharger (`appliquerMaj`).
+          // `window.__passioMajImmediate` (bancs e2e seulement) garde l'ancien geste.
+          let _majTimer = null;
+          const planifierMaj = () => {
+            if (_reloaded || _attente !== null) return;
+            clearTimeout(_majTimer);
+            _majTimer = setTimeout(() => { _majTimer = null; appliquerMaj(); }, delaiMiseAJour(!document.hidden, Math.random()));
+          };
+          const reloadOnce = () => {
+            if (!hadController) return; // jamais de reload à la 1re installation
+            if (_reloaded) return;
+            if (window.__passioMajImmediate === true) { appliquerMaj(); return; }
+            if (_majTimer !== null) return;  // déjà planifiée (controllerchange ET SW_UPDATED)
+            planifierMaj();
+            document.addEventListener('visibilitychange', planifierMaj);
           };
           // Quand un nouveau SW prend le contrôle → recharge la page (sauf 1re fois)
           navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);

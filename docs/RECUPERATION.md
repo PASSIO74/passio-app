@@ -402,3 +402,26 @@ colonnes `bigint` de `public` étaient les deux compteurs d'identité, aucune n'
 **`supabase db dump` est inutilisable ici** (pas de Docker : fichier de 0 octet, code 1). **`supabase db query` est retiré** (ADR-012). Le seul canal vers la structure est l'API de gestion, et c'est celui des trois outils.
 
 **Le plan est Pro** : huit sauvegardes physiques quotidiennes côté Supabase, lisibles par l'API de gestion, restaurables **dans le même projet** uniquement. L'exercice ci-dessus est l'autre voie — celle qui reconstruit ailleurs, avec nos propres fichiers, et qui a été faite.
+
+## 16 novembre 2026 — récupération des schémas privés de Rencontres
+
+Le lot de sécurité étend le DDL exécutable à `rencontres_prive` et `passio_realtime_budget`, en plus de `public`. Les objets sont qualifiés ; les schémas et tables précèdent leurs dépendances. Les ACL de schéma, table, colonne et fonction, leurs options de délégation, RLS et FORCE RLS sont reconstruits. Vault et les autres schémas ne sont pas ajoutés à cette portée.
+
+La sauvegarde des données privées couvre exactement cinq tables : `coorganisations_anterieures`, `identifiants_retires`, `accords`, `inscriptions`, `decisions`. Ces tables restent inaccessibles via PostgREST. Leur export utilise l'API de gestion en lecture seule, prouvée dans chaque réponse, avec contrôle du droit SELECT et de l'absence de filtrage RLS. Le projet explicite doit correspondre à l'URL. `SUPABASE_ACCESS_TOKEN` et `SUPABASE_PROJECT_REF` deviennent donc nécessaires à cette phase, en plus des variables déjà utilisées pour les données publiques.
+
+Le manifeste porte un bloc `schemas_prives` version 1. Chaque table a ses clés primaires, comptages, octets et empreinte SHA-256 ; ses lignes NDJSON restent dans `_prive/rencontres_prive/`. La pagination utilise un curseur sur la clé primaire, y compris composée. Une évolution incompatible du comptage fait échouer l'export. Ces contrôles ne fournissent pas un instantané global des tables sous écritures concurrentes.
+
+Les données de `passio_realtime_budget.compteurs` sont **éphémères** : la structure voyage dans le DDL, le manifeste déclare explicitement une restauration vide. Les anciennes fenêtres de consommation ne sont pas annoncées comme restaurées.
+
+Le workflow de sauvegarde est limité à `main`, sans credentials Git persistés. Le schéma est écrit avant les données, afin que son empreinte entre dans le manifeste : cela corrige le risque R34 décrit plus haut. Le jeton de gestion reste limité aux phases qui en ont besoin. Le chiffrement, la destination de l'archive chiffrée et sa rétention restent ceux du workflow existant.
+
+Avant mutation, la restauration vérifie les fichiers privés et leur empreinte, le projet source, le DDL de l'archive et le fichier `--schema` effectivement choisi. Les données privées suivent leurs parents publics ; le verdict compare leur contenu, puis relit les compteurs éphémères vides. Les refus de cible de production, de projet source et de CI sont conservés.
+
+Deux limites sont explicites :
+
+- Une archive portant ces schémas privés est refusée dans le mode `--tables`, avant mutation. Ce mode ne doit jamais importer silencieusement des autorisations ou effacer des compteurs lorsqu'un opérateur demande seulement des référentiels ; utiliser une archive de référentiels dédiée.
+- `--purger` refuse une cible portant l'un de ces schémas privés. La purge globale existante ne couvre pas ce périmètre. Une ancienne archive sans bloc privé conserve sa qualification historique ; elle ne prouve pas la restauration de ces données et ne peut écraser un état privé non couvert.
+
+Les tests synthétiques exécutent les vrais helpers et phases : archive altérée, changement de cible, lecture filtrée par RLS, erreur réseau, import limité, curseur concurrent et empreinte du DDL. Le banc SQL étendu reconstruit une cible vide et contrôle les droits, les refus, le rejeu et le WAL. Son passage PostgreSQL natif reste requis avant livraison ; la prévalidation en mémoire seule ne le remplace pas.
+
+Les sauvegardes contiennent des données personnelles. Elles restent hors Git et hors des journaux de supervision ; seul l'état du workflow et les mesures techniques nécessaires à son suivi sont utilisés. Un statut d'artefact chiffré ou un décompte de fichiers ne remplace pas un exercice de restauration. Aucun projet supplémentaire ou restauration de production n'est lancé par cette procédure.

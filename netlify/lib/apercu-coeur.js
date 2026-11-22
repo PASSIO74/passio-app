@@ -84,6 +84,39 @@ export function analyserChemin(pathname) {
 }
 
 /**
+ * Jeton compact d'un lien partagé (`?s=`), fabriqué par `compacterLienPartage`
+ * (app-02) : l'invitant en base64url (22 caractères, l'uuid sur 16 octets) puis
+ * le suivi (10 caractères, `lk_` retiré). Trois longueurs seulement : 32
+ * (les deux), 22 (invitant seul), 10 (suivi seul) — toute autre forme ne
+ * donne RIEN, et chaque morceau décodé repasse ensuite par `PLK_RE`/`INV_RE`.
+ */
+export function lireJetonPartage(s) {
+  const out = {};
+  s = String(s || "");
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) return out;
+  let invB = null, lk = null;
+  if (s.length === 32) { invB = s.slice(0, 22); lk = s.slice(22); }
+  else if (s.length === 22) invB = s;
+  else if (s.length === 10) lk = s;
+  else return out;
+  // Un morceau hors forme invalide le jeton ENTIER : il n'a pas été fabriqué ici.
+  if (lk && !/^[a-z0-9]{10}$/.test(lk)) return out;
+  if (lk) out.plk = "lk_" + lk;
+  if (invB) {
+    try {
+      const bin = atob(invB.replace(/-/g, "+").replace(/_/g, "/") + "==");
+      if (bin.length === 16) {
+        let h = "";
+        for (let i = 0; i < 16; i++) h += bin.charCodeAt(i).toString(16).padStart(2, "0");
+        const u = h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+        if (INV_RE.test(u)) out.inv = u;
+      }
+    } catch (e) { /* jeton illisible : rien */ }
+  }
+  return out;
+}
+
+/**
  * Le lien profond de l'application, avec deux paramètres au plus, chacun
  * seulement s'il a SA forme : `plk` (suivi de partage) et `inv` (le compte qui
  * a partagé — l'invitation, lue par app-06). Tout le reste est jeté : rien de
@@ -92,8 +125,12 @@ export function analyserChemin(pathname) {
 export function destination(cible, search) {
   let params = null;
   try { params = new URLSearchParams(String(search || "")); } catch (e) { params = null; }
-  const plk = params ? params.get("plk") : null;
-  const inv = params ? params.get("inv") : null;
+  // Forme COMPACTE (2026-11-14) : `?s=<jeton>` remplace `?inv=…&plk=…` dans le
+  // lien que l'on partage (le texte sous l'aperçu WhatsApp était illisible).
+  // Les formes longues restent lues : un lien déjà envoyé doit toujours marcher.
+  const jeton = params ? lireJetonPartage(params.get("s")) : {};
+  const plk = params ? (params.get("plk") || jeton.plk || null) : null;
+  const inv = params ? (params.get("inv") || jeton.inv || null) : null;
   const morceaux = [];
   if (plk && PLK_RE.test(plk)) morceaux.push("plk=" + plk);
   if (inv && INV_RE.test(inv)) morceaux.push("inv=" + inv.toLowerCase());

@@ -331,6 +331,15 @@
   }
   // Types échantillonnés (bruit potentiel). 1 = tout garder.
   var SAMPLE = { click: 1, api: 1, perf: 1, nav: 1, action: 1, heartbeat: 1 };
+  // Au-delà, un toucher est « lent » : l'utilisateur voit l'écran ne pas réagir
+  // (seuil « mauvais » de l'INP du web : 500 ms).
+  var CLIC_LENT_MS = 500;
+  // Secours de la mesure d'un clic (voir l'écouteur de clic) : un minuteur qui
+  // se déclenche avec ce retard prouve un fil bloqué. Et une « latence » de plus
+  // de `CLIC_DUREE_MAX_MS` n'en est pas une : la page a dormi (gel, veille),
+  // personne n'a regardé un écran figé une demi-minute — la mesure part vide.
+  var CLIC_FIL_BLOQUE_MS = 250;
+  var CLIC_DUREE_MAX_MS = 30000;
 
   // ─── ÉCHANTILLONNAGE DU BRUIT DE LECTURE (2026-09-19) ──────────────────────
   // Mesuré sur 7 jours en production : 61 470 lignes, dont **20 575 `api` en
@@ -375,6 +384,15 @@
   // Au total ~4 lignes par session — ce n'était jamais le volume, contrairement
   // à ce que le lot avait écrit en rangeant `perf` avec les lectures `api`.
   // La seule famille qui soit réellement du volume répétitif est `api` en 200.
+  // ⚠️ « ~4 LIGNES PAR SESSION » ÉTAIT FAUX, ET LA RÈGLE RESTE JUSTE (2026-11-20).
+  // Remesuré sur 72 h : `perf` = 77 % des lignes, dont 83 % d'instantanés
+  // `ios_stat_*` « periodic » — l'agrégat CUMULÉ de chaque métrique réémis
+  // toutes les 3 min, même inchangé, même onglet masqué (`ios_stat_gate_ready` :
+  // 1 218 lignes pour 66 sessions, la valeur n'étant mesurée qu'une fois). Le
+  // volume ne venait pas de l'absence d'échantillonnage mais des RÉÉMISSIONS :
+  // c'est à la source qu'on le coupe (`snapshot`, js/perf-ios.js — une métrique
+  // ne repart que si son `n` a bougé, pas de photo périodique onglet masqué ni
+  // sous délestage), sans jamais tirer au sort un agrégat.
   var ECH_PERF = 1;        // recensement et agrégats : on garde TOUT
 
   // Rend la probabilité de GARDER l'événement. Fonction pure : c'est elle que
@@ -428,6 +446,70 @@
   // nature (un flow = 2 à 3 événements par action métier), donc sans risque.
   var CRITICAL_TYPE = { error: 1, connectivity: 1, link: 1, flow: 1, rt_recv: 1 };
 
+  // ─── PRIORITÉ DANS LA FILE (2026-11-20, audit « 100 000 », AFF-02 / CLIC-04) ──
+  // Un signal de panne passe AVANT le reste à DEUX endroits où il était traité
+  // comme le reste : le débordement de la file (300) et la composition du lot.
+  // MESURÉ sur 72 h de production : 77 % des lignes sont des `perf`, et le
+  // serveur refuse un lot ENTIER en 429 dès qu'un réservoir est plein — la file
+  // jetait alors « les plus anciens » quel que soit leur type, et le lot suivant
+  // repartait dans l'ordre d'arrivée : sous la pointe, une erreur ou la fin d'un
+  // flow attendait derrière soixante photos de performance, ou disparaissait
+  // avec elles. Exactement au moment où la Sentinelle et la veille en ont besoin.
+  // Prioritaire = type critique (jamais échantillonné) OU gravité ≥ avertissement
+  // (un appel lent, un clic lent, un refus) : ce sont les lignes qui disent
+  // qu'un utilisateur souffre. L'ordre RELATIF de chaque classe est conservé —
+  // les étapes d'un même flow (toutes `flow`) restent dans leur ordre.
+  // ⚠️ UNE LIGNE CORRÉLÉE VOYAGE AVEC SON FLOW (contre-revue du 20/11, S1). La
+  // requête `api` qui porte un `correlation_id` est l'étape « request » du flow
+  // (`tauxEchantillon` la garde entière pour cela). Non prioritaire, elle partait
+  // un lot après le `start`, ou tombait la première au débordement — et
+  // `dashboard/server/traces.js` lit un flow sans requête ni confirmation comme
+  // un « clic sans effet ». Avant ce lot, le début et sa requête vieillissaient
+  // et tombaient ensemble : la priorité ne doit pas les séparer.
+  function _estPrioritaire(ev) {
+    if (!ev) return false;
+    if (CRITICAL_TYPE[ev.type]) return true;
+    if (ev.correlation_id != null && ev.correlation_id !== "") return true;
+    var g = ev.severity;
+    return g === "warn" || g === "error" || g === "critical";
+  }
+  // Ramène une file à `max` en jetant d'abord les plus anciens NON prioritaires ;
+  // si tout est prioritaire, les plus anciens tout court (comportement d'avant).
+  function _bornerFile(q, max) {
+    var exces = q.length - max;
+    if (exces <= 0) return q;
+    var garde = [];
+    for (var i = 0; i < q.length; i++) {
+      if (exces > 0 && !_estPrioritaire(q[i])) { exces--; continue; }
+      garde.push(q[i]);
+    }
+    if (exces > 0) garde.splice(0, exces);
+    return garde;
+  }
+  // Poids d'un événement dans le corps d'un envoi, en octets (majorant : on
+  // compte 3 octets pour tout caractère hors ASCII, le pire cas en UTF-8).
+  // `KEEPALIVE_OCTETS_MAX` : ce que la télémétrie s'autorise EN VOL en keepalive,
+  // tous envois confondus — ce qu'un envoi de fermeture pesait déjà avant la
+  // priorité (vingt lignes ordinaires ≈ 12 Ko), avec une marge. Voir `flush`.
+  var KEEPALIVE_OCTETS_MAX = 16000;
+  function _poids(ev) {
+    var s = "";
+    try { s = JSON.stringify(ev) || ""; } catch (e) { return KEEPALIVE_OCTETS_MAX; }
+    var n = s.length;
+    for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) n += 2;
+    return n;
+  }
+  // Les envois keepalive encore en vol, avec leur poids. Un envoi sans réponse
+  // au bout de `EN_VOL_MAX_MS` n'est plus compté — même borne que `enVol`,
+  // même raison : une requête perdue ne doit pas bloquer la suite pour toujours.
+  var keepaliveVols = [];
+  function _poidsKeepaliveEnVol() {
+    var t = Date.now(), somme = 0;
+    keepaliveVols = keepaliveVols.filter(function (v) { return v.poids > 0 && t - v.t <= EN_VOL_MAX_MS; });
+    for (var i = 0; i < keepaliveVols.length; i++) somme += keepaliveVols[i].poids;
+    return somme;
+  }
+
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
   var MAX_QUEUE = 300;
@@ -440,6 +522,10 @@
                                 // Ils règlent le backoff ; ils ne lèvent PAS d'alarme.
   var authRetries = 0;          // rejets d'auth CONSÉCUTIFS (token expiré, ≠ coupure)
   var limite = false;           // débit refusé (429) : une seule trace par épisode
+  var derniereLimite = 0;       // instant (ms) du dernier refus de débit reçu par CET appareil
+  // Mémoire d'un refus de débit : pendant ce délai, l'appareil se sait « sous
+  // pression » et les familles qui peuvent attendre se taisent (`sousPression`).
+  var PRESSION_MEMOIRE_MS = 600000;
   var limiteJusqua = 0;         // … et rien ne repart avant cet instant (ms), quel que soit l'appelant
   var AUTH_MAX_RETRIES = 6;     // grâce (~30 s) laissée au SDK pour rafraîchir le token
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
@@ -473,7 +559,7 @@
       var raw = localStorage.getItem(BACKLOG_KEY);
       if (!raw) return;
       var arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length) queue = arr.concat(queue).slice(-MAX_QUEUE);
+      if (Array.isArray(arr) && arr.length) queue = _bornerFile(arr.concat(queue), MAX_QUEUE);
     } catch (e) {}
   }
 
@@ -520,7 +606,7 @@
 
   function enqueue(ev) {
     queue.push(ev);
-    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
+    if (queue.length > MAX_QUEUE) queue = _bornerFile(queue, MAX_QUEUE);
     persistBacklog();                      // durable : rien n'est perdu même en coupure
     // Un réessai armé = envoi en backoff après échec. Sans cette garde, l'événement
     // émis PAR un échec relançait immédiatement un envoi, qui échouait de nouveau :
@@ -652,6 +738,7 @@
     (lot || []).forEach(function (ev) {
       if (ev && ev.event_id && enVol[ev.event_id] === jeton) delete enVol[ev.event_id];
     });
+    if (jeton) jeton.poids = 0;            // rend son poids au budget keepalive
   }
 
   function flush(opts) {
@@ -677,14 +764,50 @@
     if (!opts.keepalive && sending) return;
     var max = opts.keepalive ? 20 : 60;    // keepalive : lots plus petits (limite 64 Ko)
     var batch = [];
-    for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
-      if (_peutPartir(queue[qi], !!opts.keepalive)) batch.push(queue[qi]);
+    // Deux passes : les signaux de panne d'abord (`_estPrioritaire`), le reste
+    // ensuite, chaque classe dans son ordre d'arrivée. Sous un refus 429, c'est
+    // le PREMIER lot de la minute suivante qui passe : il porte désormais les
+    // erreurs et les flows, pas soixante photos de performance.
+    // ⚠️ EN KEEPALIVE, LA TÉLÉMÉTRIE SE BORNE AUSSI EN POIDS (`KEEPALIVE_OCTETS_MAX`).
+    // Le navigateur plafonne à 64 Kio la SOMME des envois `keepalive` en vol, et
+    // la sauvegarde d'état du compte part sur le même événement, juste après
+    // (`supaSaveUserStateBeacon`, jusqu'à 60 Ko). Vingt lignes ordinaires pèsent
+    // ≈ 12 Ko ; mais les prioritaires sont désormais en tête, et ce sont les plus
+    // lourdes — mesuré le 20/11 : 1,2 à 1,8 Ko par erreur à pile pleine, 32 Ko
+    // pour vingt. Sans borne, un orage d'erreurs à la fermeture faisait refuser
+    // toute sauvegarde d'état de plus de ~32 Ko (rejouée au démarrage suivant,
+    // mais c'est l'état du compte qui attend, pour de la télémétrie).
+    // · Le budget est COMMUN aux envois keepalive en vol : deux `flush` partent
+    //   sur un même passage en arrière-plan (celui-ci, puis la photo de
+    //   js/perf-ios.js) — une borne par lot en laissait 31 Ko en vol.
+    // · La composition S'ARRÊTE au premier événement qui ne tient pas : pas de
+    //   plus léger qui double, ni de bruit qui comble devant une erreur — l'ordre
+    //   reste celui de la file.
+    // · Ce qui ne part pas reste dans la file persistée et repart au prochain
+    //   envoi (événement suivant, retour au premier plan, démarrage suivant) :
+    //   un succès keepalive n'enchaîne pas de lui-même. Le premier événement part
+    //   toujours quand rien n'est en vol — jamais de blocage sur un seul trop gros.
+    var poids = 0, plein = false;
+    var dejaEnVol = opts.keepalive ? _poidsKeepaliveEnVol() : 0;
+    var budget = KEEPALIVE_OCTETS_MAX - dejaEnVol;
+    for (var passe = 0; passe < 2 && !plein && batch.length < max; passe++) {
+      for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
+        if ((passe === 0) !== _estPrioritaire(queue[qi])) continue;
+        if (!_peutPartir(queue[qi], !!opts.keepalive)) continue;
+        if (opts.keepalive) {
+          var p = _poids(queue[qi]);
+          if ((batch.length || dejaEnVol > 0) && poids + p > budget) { plein = true; break; }
+          poids += p;
+        }
+        batch.push(queue[qi]);
+      }
     }
     if (!batch.length) return;
     // Le lot ORIGINAL (références de la file) : c'est lui qu'on retire au succès,
     // les copies désattribuées ci-dessous n'étant pas dans la file.
     var lot = batch;
-    var envoi = { seq: ++envoiSeq, keepalive: !!opts.keepalive, t: Date.now() };
+    var envoi = { seq: ++envoiSeq, keepalive: !!opts.keepalive, t: Date.now(), poids: opts.keepalive ? poids : 0 };
+    if (envoi.poids) keepaliveVols.push(envoi);
     lot.forEach(function (ev) { if (ev && ev.event_id) enVol[ev.event_id] = envoi; });
     // Un lot part en UN SEUL insert multi-lignes : une ligne refusée par la RLS
     // annule TOUTES les autres. Il suffit donc d'un événement dont l'identité ne
@@ -785,6 +908,7 @@
     if (verdictTimer) { clearTimeout(verdictTimer); verdictTimer = null; requalifierEnSoft(); }
     var attente = (61 - new Date().getSeconds()) * 1000 + Math.floor(Math.random() * 10000);
     limiteJusqua = Date.now() + attente;
+    derniereLimite = Date.now();
     if (unloading) return;                 // plus de page : rejoué au prochain chargement
     armerAttente();
     if (!limite) {
@@ -1067,6 +1191,222 @@
   var VISITE = sourceVisite();
   premierContact(VISITE);
 
+  // ─── MÉDIAS QUI NE S'AFFICHENT PAS (2026-11-21, audit de surveillance, T5) ──
+  // Une photo ou une vidéo qui ne se charge pas ne laissait AUCUNE trace : les
+  // `onerror` en ligne du produit masquent ou remplacent l'élément (un seul,
+  // `imageFilIndisponible`, écrit « Image indisponible ») et se taisent tous.
+  // Ici, chaque appareil COMPTE les emplacements de média affichés
+  // et ceux qui échouent (écouteurs en capture sur `document`, section 8 plus
+  // bas — aucun `onerror` n'est modifié), puis envoie UN bilan par période et
+  // par famille EN ÉCHEC : `media` / `bilan`, meta `{famille, ko, vus, ko_av,
+  // vus_av}`. Des nombres et un mot d'une liste fermée — jamais une adresse,
+  // un hôte, un chemin ni un identifiant. Rien ne part sans échec.
+  //   · `ko` / `vus` : emplacements en échec / affichés depuis le bilan
+  //     précédent (un DELTA, jamais un cumul) ; `ko_av` / `vus_av` : leur part
+  //     audio ou vidéo (distingue une panne de codec d'une panne de stockage).
+  //     ⚠️ `vus` est un MINORANT (fenêtre de 60 s, images détachées avant la
+  //     fin de leur chargement) : `ko / vus` n'est pas un taux d'échec.
+  //   · `stockage` : chemin /storage/v1/ sur l'hôte EXACT du projet configuré.
+  //     Tout autre `*.supabase.co` est `externe` : n'importe qui peut publier
+  //     une image pointant vers un autre projet.
+  //   · `demo` (/demo/ de la même origine), `app` (reste de la même origine),
+  //     `local` (blob:, et data: pour l'audio et la vidéo), `externe` (le reste).
+  // ⚠️ SEULES `stockage` ET `demo` PEUVENT ÊTRE « NOTABLES » (`warn`, donc
+  // prioritaires et gardées 7 jours) : les trois autres sont bruyantes par
+  // nature (hôtes tiers, adresse refusée par `safeUrlAttr`, vocal illisible).
+  // Un notable reste soumis au plancher de période, au plafond client de
+  // `track`, et — sous pression (429) — à UN SEUL envoi par session et par
+  // famille : les suivants attendent comme le bruit de fond.
+  // ⚠️ GIGUE : le premier délai et la période sont multipliés par un facteur
+  // de 0,7 à 1,3 tiré UNE fois par session (`_mediaGigue`). Sans elle, toutes
+  // les sessions touchées par la même panne émettaient à 22 s, 322 s, 622 s —
+  // un pic contre le plafond serveur au pire moment.
+  // ⚠️ CE SIGNAL DIT CE QU'UN APPAREIL A VU, PAS L'ÉTAT DU STOCKAGE : une
+  // publication à image morte le fabrique chez tous ses lecteurs. Le lecteur
+  // ne doit jamais sonner sans recoupement serveur (fiche du journal).
+  var FAMILLES_MEDIA = ["stockage", "demo", "app", "local", "externe"];
+  var FAMILLES_MEDIA_PANNE = { stockage: 1, demo: 1 };
+  var MEDIA_VERDICT_MS = 2000;     // un échec n'est compté qu'après ce délai (iOS coupe AVANT d'annoncer l'arrière-plan)
+  var MEDIA_PREMIER_MS = 20000;    // premier bilan : le temps que la rafale d'un écran se pose
+  var MEDIA_PERIODE_MS = 300000;   // puis un bilan par période au plus (× le délestage)
+  var MEDIA_AVANT_MS = 60000;      // fenêtre du dénominateur tant qu'aucun échec n'attend
+  var MEDIA_SORTIE_MS = 30000;     // plancher court du bilan de sortie (allers-retours du cache aller-retour)
+  var MEDIA_GIGUE = 0.3;           // ± 30 % sur le premier délai et sur la période
+  var MEDIA_KO_NOTABLE = 3;
+  var MEDIA_BORNE = 9999;
+  var mediaCompte = {};            // famille → { ko, vus, ko_av, vus_av }
+  var mediaDebut = Date.now();
+  var mediaDernier = 0;            // dernier bilan PARTI
+  var mediaSortie = 0;             // dernier bilan PARTI À LA SORTIE (`pagehide`) : seul repère du plancher court
+  var mediaEssai = 0;              // dernier bilan périodique TENTÉ (parti ou retenu)
+  var mediaTimer = null;
+  var mediaAttente = 0;            // échecs dont le verdict (2 s) n'est pas encore rendu
+  var mediaEpoque = 0;             // avance à chaque refus de la mesure : un verdict d'avant le refus ne compte plus
+  var mediaGigue = 0;              // facteur de gigue de la session (0 = pas encore tiré)
+  var mediaNotable = {};           // famille → 1 dès qu'un bilan notable est parti dans cette session
+  var _mediaHote = null;           // { url, hote } : l'hôte du projet, relu si la configuration change
+
+  function _mediaHoteProjet() {
+    try {
+      var cfg = supaCfg(), u = cfg && cfg.url;
+      if (!u || typeof u !== "string") return null;
+      if (!_mediaHote || _mediaHote.url !== u) _mediaHote = { url: u, hote: new URL(u).host.toLowerCase() };
+      return _mediaHote.hote;
+    } catch (e) { return null; }
+  }
+  // Pure : rend une famille de la liste fermée, ou `null` (pas un média à
+  // compter). Ne garde et ne rend jamais l'adresse. Le schéma se lit sur les
+  // cinq premiers caractères AVANT toute autre opération : une adresse `data:`
+  // peut peser plusieurs Mo (les vocaux).
+  function familleMedia(url) {
+    if (typeof url !== "string" || !url) return null;
+    var tete = url.slice(0, 5).toLowerCase();
+    if (tete === "data:") return null;
+    if (tete === "blob:") return "local";
+    var u;
+    try { u = new URL(url, location.href); } catch (e) { return "externe"; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "externe";
+    var h = String(u.host || "").toLowerCase(), p = String(u.pathname || "");
+    var projet = _mediaHoteProjet();
+    if (projet && h === projet && p.indexOf("/storage/v1/") === 0) return "stockage";
+    if (h !== String(location.host || "").toLowerCase()) return "externe";
+    return p.indexOf("/demo/") === 0 ? "demo" : "app";
+  }
+  // L'élément d'un événement de ressource → { fam, av }, ou `null`. Ordre
+  // mesuré (sondes Chrome du 21/11) : un `src` PRÉSENT et blanc d'abord —
+  // `img.src` rend alors l'adresse de la PAGE, et une vidéo vidée par `src=""`
+  // garde son ANCIENNE adresse dans `currentSrc` ; puis `currentSrc`, sinon
+  // `src` (une <source> n'a pas de `currentSrc`). Une image `data:` n'est pas
+  // un média (le pixel neutre) ; un audio ou une vidéo `data:` est `local`.
+  function _mediaClasser(el) {
+    try {
+      var balise = el && el.tagName;
+      if (balise !== "IMG" && balise !== "VIDEO" && balise !== "AUDIO" && balise !== "SOURCE") return null;
+      var av = balise !== "IMG";
+      var attr = el.getAttribute("src");
+      if (attr != null && !/\S/.test(attr) && !el.getAttribute("srcset")) return null;
+      var url = el.currentSrc || el.src;
+      if (typeof url !== "string" || !url) return null;
+      if (url.slice(0, 5).toLowerCase() === "data:") return av ? { fam: "local", av: true } : null;
+      var fam = familleMedia(url);
+      return fam ? { fam: fam, av: av } : null;
+    } catch (e) { return null; }
+  }
+  function _mediaReste() {
+    for (var i = 0; i < FAMILLES_MEDIA.length; i++) {
+      var c = mediaCompte[FAMILLES_MEDIA[i]];
+      if (c && c.ko > 0) return true;
+    }
+    return false;
+  }
+  // Dénominateur fenêtré : sans échec compté NI échec en attente de verdict,
+  // les `vus` d'une longue session noieraient la première panne. Appelée à
+  // chaque comptage ET à l'événement `error`, avant que l'échec n'attende :
+  // un échec n'entre dans `mediaCompte` que 2 s plus tard, et sans
+  // `mediaAttente` son propre verdict effaçait les affichages qui le
+  // précédaient dès que la borne des 60 s tombait dans ces 2 s (vingt images
+  // affichées + trois échecs = « ko 3 / vus 0 », un faux `warn`).
+  function _mediaFenetre(t) {
+    if (t - mediaDebut > MEDIA_AVANT_MS && !mediaAttente && !_mediaReste()) { mediaCompte = {}; mediaDebut = t; }
+  }
+  // ⚠️ Le refus de la mesure ne se juge PAS ici : les deux écouteurs sortent
+  // en tête (`!ENABLED`) et un verdict d'avant le refus est périmé par
+  // `mediaEpoque`. Tout nouvel appelant doit porter la même garde.
+  function _mediaCompter(fam, av, echec) {
+    if (FAMILLES_MEDIA.indexOf(fam) < 0) return;
+    _mediaFenetre(Date.now());
+    var c = mediaCompte[fam] || (mediaCompte[fam] = { ko: 0, vus: 0, ko_av: 0, vus_av: 0 });
+    if (echec) { c.ko++; if (av) c.ko_av++; }
+    else { c.vus++; if (av) c.vus_av++; }
+  }
+  // Le facteur de délestage se lit à l'ARMEMENT, jamais en cache (même forme
+  // que `battementDelai`) : sous délestage, les répétitions s'espacent ; le
+  // PREMIER bilan d'une session garde ses 20 s (× la gigue).
+  function _mediaGigue() {
+    if (!mediaGigue) mediaGigue = 1 - MEDIA_GIGUE + 2 * MEDIA_GIGUE * Math.random();
+    return mediaGigue;
+  }
+  function _mediaPeriode() {
+    var f = (typeof delestageFacteur === "function") ? delestageFacteur() : 1;
+    return Math.round(MEDIA_PERIODE_MS * ((f === 2 || f === 4) ? f : 1) * _mediaGigue());
+  }
+  // Un bilan qui n'est pas notable est du bruit de fond : il attend sous
+  // délestage ou sous pression (429). Sous pression, un notable n'attend que
+  // si sa famille en a déjà envoyé un dans cette session.
+  function _mediaDeleste() {
+    try { return typeof delestageFacteur === "function" && delestageFacteur() > 1; } catch (e) { return false; }
+  }
+  function _mediaPression() {
+    try { return !!Telemetry.sousPression(); } catch (e) { return false; }
+  }
+  function _mediaNombre(n) { return Math.min(MEDIA_BORNE, Math.max(0, n | 0)); }
+  // Pose une ligne par famille EN ÉCHEC et remet les compteurs à zéro (delta).
+  // `raison` : "periode" (minuteur), "masque" (arrière-plan), "sortie"
+  // (`pagehide`). Rend le nombre de lignes.
+  //   · plancher : la période depuis le dernier bilan parti ; à la sortie,
+  //     `MEDIA_SORTIE_MS` depuis la dernière SORTIE seulement (`mediaSortie`).
+  //     Une page qui entre et sort du cache aller-retour émettait une ligne
+  //     par passage ; mais compté depuis N'IMPORTE QUEL bilan (période,
+  //     masquage), ce plancher perdait les échecs d'après — panne du stockage
+  //     comprise — quand la page se fermait moins de 30 s plus tard. Pas
+  //     `e.persisted` : il est vrai à toute sortie éligible au cache, la
+  //     première comprise, et ne distingue donc pas un aller-retour.
+  //     Une horloge qui RECULE (`t` avant le repère) vaut plancher échu : sans
+  //     cela la mesure se tait jusqu'à ce que l'horloge rattrape son retard.
+  //   · à la sortie, rien n'attend (ni pression, ni famille qui a déjà parlé) :
+  //     tout part — sauf le bruit de fond sous délestage, qui est JETÉ (la
+  //     consigne est la sobriété, et il n'y aura pas de plus tard), et sauf
+  //     une seconde sortie moins de 30 s après une première (plancher court).
+  function _mediaBilan(raison) {
+    var sortie = (raison === "sortie");
+    var t = Date.now();
+    var repere = sortie ? mediaSortie : mediaDernier;
+    if (repere && t >= repere && t - repere < (sortie ? MEDIA_SORTIE_MS : _mediaPeriode())) return 0;
+    if (raison === "periode") mediaEssai = t;
+    var garde = {}, n = 0, jete = 0, deleste = null, pression = null;
+    for (var i = 0; i < FAMILLES_MEDIA.length; i++) {
+      var f = FAMILLES_MEDIA[i], c = mediaCompte[f];
+      if (!c || !(c.ko > 0)) continue;
+      var notable = FAMILLES_MEDIA_PANNE[f] === 1 && c.ko >= MEDIA_KO_NOTABLE && c.ko >= c.vus;
+      if (!notable) {
+        if (deleste === null) deleste = _mediaDeleste();
+        if (sortie) {
+          if (deleste) { jete++; continue; }
+        } else {
+          if (!deleste && pression === null) pression = _mediaPression();
+          if (deleste || pression) { garde[f] = c; continue; }
+        }
+      } else if (!sortie && mediaNotable[f] === 1) {
+        if (pression === null) pression = _mediaPression();
+        if (pression) { garde[f] = c; continue; }
+      }
+      track("media", "bilan", {
+        severity: notable ? "warn" : "info", status: "ok",
+        meta: { famille: f, ko: _mediaNombre(c.ko), vus: _mediaNombre(c.vus), ko_av: _mediaNombre(c.ko_av), vus_av: _mediaNombre(c.vus_av) },
+      });
+      if (notable) mediaNotable[f] = 1;
+      n++;
+    }
+    if (n || jete) { mediaCompte = garde; mediaDebut = t; }
+    if (n) { mediaDernier = t; if (sortie) mediaSortie = t; }
+    return n;
+  }
+  function _mediaArmer() {
+    if (mediaTimer || !_mediaReste()) return;
+    var ref = Math.max(mediaDernier, mediaEssai);
+    var premier = Math.round(MEDIA_PREMIER_MS * _mediaGigue());
+    var periode = _mediaPeriode();
+    var delai = ref ? Math.max(premier, ref + periode - Date.now()) : premier;
+    // Jamais plus d'une période : une horloge qui recule laissait un délai de
+    // plusieurs jours (au-delà de 2^31 ms, `setTimeout` sonne tout de suite).
+    delai = Math.min(delai, periode);
+    mediaTimer = setTimeout(function () {
+      mediaTimer = null;
+      try { _mediaBilan("periode"); } catch (e) {}
+      _mediaArmer();
+    }, delai);
+  }
+
   // ─── API publique ───────────────────────────────────────────────────────────
   function track(type, action, fields) {
     if (!ENABLED) return;
@@ -1235,7 +1575,17 @@
     // livraison cross-device). type dédié "rt_recv" → n'entre dans aucun compteur
     // d'activité existant ; le centre de pilotage l'apparie à l'émission par cible.
     recv: function (name, meta) { track("rt_recv", name, { meta: meta }); },
-    click: function (label, meta) { track("click", label, { meta: meta }); },
+    // Un toucher qui met plus de `CLIC_LENT_MS` à se peindre est un signal, pas
+    // du volume : `severity: "warn"` le garde entier (`tauxEchantillon`) et le
+    // fait passer en tête de lot (`_estPrioritaire`). PAS de `status: "slow"` :
+    // `dashboard/server/traces.js` juge les parcours sur ce champ, et un clic
+    // n'est pas une étape réseau. Aucun compteur ne lit `click` en `warn`
+    // (la veille ne compte que `type = error`).
+    click: function (label, meta) {
+      var lent = !!(meta && typeof meta.ms === "number" && meta.ms >= CLIC_LENT_MS);
+      if (lent) meta.lent = 1;
+      track("click", label, lent ? { meta: meta, severity: "warn" } : { meta: meta });
+    },
     _libelleClic: _libelleClic,
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },
@@ -1247,12 +1597,47 @@
     // décision. Aucune des deux n'écrit quoi que ce soit.
     _tauxEchantillon: tauxEchantillon,
     _queue: function () { return queue.slice(); },
+    _estPrioritaire: _estPrioritaire,
+    _bornerFile: function (q, max) { return _bornerFile(q.slice(), max); },
+    // Médias (T5) : la famille d'une adresse (pure), les compteurs en cours
+    // (copie) et le bilan, pour les bancs. Aucune n'écrit hors du module.
+    _familleMedia: familleMedia,
+    _medias: function () {
+      var o = {};
+      for (var f in mediaCompte) if (Object.prototype.hasOwnProperty.call(mediaCompte, f)) {
+        var c = mediaCompte[f];
+        o[f] = { ko: c.ko, vus: c.vus, ko_av: c.ko_av, vus_av: c.vus_av };
+      }
+      return o;
+    },
+    _mediaBilan: function (raison) { return _mediaBilan(raison); },
+    // Le facteur de gigue de la session (le tire s'il ne l'est pas encore).
+    _mediaGigue: function () { return _mediaGigue(); },
+    // ── Contre-pression (2026-11-20) ────────────────────────────────────────
+    // Vrai après un refus de débit (429) reçu par CET appareil : pendant
+    // l'attente, puis tant qu'AUCUN envoi n'a réussi depuis (`limite` — le tuyau
+    // n'a pas prouvé qu'il était rouvert), et encore `PRESSION_MEMOIRE_MS` après
+    // le dernier refus. Ce que la base refuse, elle le refuse à tous : un
+    // appareil qui vient d'être refusé sait que le tuyau est plein, sans
+    // attendre que la veille pose un délestage (5 min au mieux). Sur un appareil
+    // sain, le battement de la session (60 s) garantit un envoi, donc une sortie.
+    // Lu par les familles qui peuvent attendre — aujourd'hui les photos de
+    // performance (js/perf-ios.js) — jamais par un signal de panne.
+    sousPression: function () {
+      var t = Date.now();
+      if (limite || (limiteJusqua && t < limiteJusqua)) return true;
+      return !!derniereLimite && t >= derniereLimite && t - derniereLimite < PRESSION_MEMOIRE_MS;
+    },
     // ── Suivi des liens partagés (funnel honnête) ─────────────────────────────
     // linkCreate : à l'instant où l'app FABRIQUE une URL partageable. Renvoie un
     // identifiant de lien stable (à insérer dans l'URL via tagUrl) qui permettra
     // d'apparier, côté pilotage, la CRÉATION à une ÉVENTUELLE ouverture confirmée.
     linkCreate: function (kind, target) {
-      var id = "lk_" + uid16();
+      // 10 caractères [a-z0-9] (3,6·10^15 tirages) : assez pour corréler, et
+      // assez court pour le lien compact `?s=` (app-02, 2026-11-14).
+      var id = "lk_";
+      var abc = "0123456789abcdefghijklmnopqrstuvwxyz";
+      for (var k = 0; k < 10; k++) id += abc[(Math.random() * abc.length) | 0];
       track("link", "link_create", {
         correlation_id: id, severity: "info", status: "ok", message: "Lien créé",
         meta: {
@@ -1373,6 +1758,14 @@
         // Le refus vaut aussi pour ce qui attend d'être envoyé (audit 2026-11-06).
         queue = [];
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+        // … et pour ce qui était COMPTÉ en mémoire (médias, T5).
+        // Les verdicts en attente sont périmés (`mediaEpoque`) ; la gigue
+        // sera retirée à la reprise, et la réserve « un notable sous
+        // pression » repart de zéro.
+        mediaCompte = {};
+        mediaAttente = 0; mediaEpoque++; mediaGigue = 0;
+        mediaNotable = {};             // la reprise est une autre identité : son premier notable part
+        if (mediaTimer) { clearTimeout(mediaTimer); mediaTimer = null; }
         try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
       }
       else DEVICE_ID = _deviceIdRaw(true);
@@ -1420,7 +1813,11 @@
   })();
   document.addEventListener("visibilitychange", function () {
     track("lifecycle", document.hidden ? "hidden" : "visible");
-    if (document.hidden) flush({ keepalive: true });
+    // Le bilan des médias entre en file AVANT l'envoi de masquage (soumis au
+    // plancher de période) : un visiteur ne recharge jamais la page. Sous le
+    // plancher, les échecs restent en mémoire : perdus si l'onglet est tué
+    // sans `pagehide` (limite écrite dans la fiche, rien n'est persisté).
+    if (document.hidden) { _mediaBilan("masque"); flush({ keepalive: true }); }
     else {
       // Retour au premier plan : le backoff accumulé en arrière-plan n'a plus de
       // raison d'être (les envois y étaient annulés par le navigateur, pas refusés
@@ -1435,6 +1832,7 @@
   // premier et le burst de snapshots « exit » de perf-ios trouve le drapeau levé.
   window.addEventListener("pagehide", function () {
     unloading = true;
+    _mediaBilan("sortie");      // ce qui est compté part avec le lot de fermeture (plancher court entre deux sorties, bruit de fond jeté sous délestage)
     track("session", "end");
     flush({ keepalive: true });
   });
@@ -1462,10 +1860,27 @@
   });
 
   // 2) Heartbeat de présence (l'appareil est « en ligne » pour le dashboard)
-  setInterval(function () {
-    if (document.hidden) return;
-    track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
-  }, 20000);
+  // ⚠️ LOT 4 DU 2026-11-15 (capacité) : toutes les 20 s par onglet visible, le
+  // battement saturait les plafonds d'écriture de la télémétrie dès quelques
+  // centaines d'onglets — et un lot refusé emporte ses lignes d'erreur avec lui.
+  // Il passe à 60 s et SUIT LE DÉLESTAGE (×2, ×4, js/reglages-distants.js) comme
+  // les filets. Le pilotage tient un appareil « en ligne » 270 s
+  // (dashboard/server/store.js, ONLINE_MS) : compatible avec le délestage ×4.
+  // Une chaîne de `setTimeout`, pas un `setInterval` : le délai se relit à chaque tour.
+  var BATTEMENT_MS = 60000;
+  function battementDelai() {
+    var f = (typeof delestageFacteur === "function") ? delestageFacteur() : 1;
+    return BATTEMENT_MS * ((f === 2 || f === 4) ? f : 1);
+  }
+  window.passioBattementDelai = battementDelai;
+  (function battre() {
+    setTimeout(function () {
+      try {
+        if (!document.hidden) track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
+      } catch (e) {}
+      battre();
+    }, battementDelai());
+  })();
 
   // 3) Erreurs JS (complète platform.js, table distincte, usage distinct)
   // Le bug des contrôles vidéo de Safari (voir js/platform.js) laisse UNE trace
@@ -1540,6 +1955,23 @@
     });
   })();
 
+  // Horloge de la mesure des clics, et DERNIER instant où la page a cessé d'être
+  // regardée (arrière-plan, gel, départ) ou en est revenue. Un écouteur pour
+  // toute la page, pas un par clic. `emettre` (ci-dessous) s'en sert pour ne
+  // jamais prendre une absence pour une lenteur.
+  function _horloge() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+  var _occultation = -1;
+  (function suivreOccultation() {
+    var noter = function () { _occultation = _horloge(); };
+    try {
+      document.addEventListener("visibilitychange", noter);
+      document.addEventListener("freeze", noter);
+      document.addEventListener("resume", noter);
+      window.addEventListener("pagehide", noter);
+      window.addEventListener("pageshow", function (e) { if (e && e.persisted) noter(); });
+    } catch (e) {}
+  })();
+
   // 5) Clics : délégation sur les éléments intéressants (nav, boutons, [data-tel])
   document.addEventListener("click", function (e) {
     try {
@@ -1563,21 +1995,50 @@
       // la table. Filet indispensable : `requestAnimationFrame` ne se déclenche
       // JAMAIS sur un onglet caché — sans le délai de secours, tout clic suivi
       // d'un passage en arrière-plan disparaîtrait purement et simplement.
-      var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      var t0 = _horloge();
       var emis = false;
       var emettre = function (ms) {
         if (emis) return;
         emis = true;
+        // ⚠️ UNE DURÉE N'EST UNE LATENCE QUE SI QUELQU'UN REGARDAIT (contre-revue
+        // du 20/11, R2). Depuis ce lot un clic « lent » sonne (`warn`) : une
+        // durée gonflée par une page partie en arrière-plan ou gelée entre le
+        // toucher et la peinture (suspension iOS, veille, retour par le cache
+        // de navigation) fabriquerait de faux clics lents. Page occultée depuis
+        // le toucher, ou durée invraisemblable : la mesure part vide.
+        if (typeof ms === "number" && (_occultation >= t0 || ms > CLIC_DUREE_MAX_MS)) ms = null;
         Telemetry.click(String(label).slice(0, 60), { tag: t.tagName.toLowerCase(), ms: ms });
       };
       if (window.requestAnimationFrame) {
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
-            var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
-            emettre(Math.round(t1 - t0));
+            emettre(Math.round(_horloge() - t0));
           });
         });
-        setTimeout(function () { emettre(null); }, 1000);
+        // ⚠️ LE SECOURS NE DOIT NI EFFACER LE CLIC LE PLUS LENT, NI INVENTER UN
+        // DÉLAI (2026-11-20, CLIC-03). Il est armé AVANT le gestionnaire : si
+        // celui-ci bloque le fil plus d'une seconde, le minuteur échu peut passer
+        // avant la seconde peinture, et le clic le plus lent partait avec
+        // `ms: null` — indiscernable d'un passage en arrière-plan. Mais émettre
+        // « le temps écoulé » dès qu'il n'y a pas de peinture fabriquerait un
+        // délai là où rien n'a été rendu (`latence-percue.spec.js` ② le garde).
+        // Le discriminant est le RETARD DU MINUTEUR LUI-MÊME : s'il se déclenche
+        // en retard, le fil était bloqué — l'utilisateur a réellement attendu
+        // tout ce temps, on le rapporte. À l'heure, onglet masqué ou non : rien
+        // n'a été peint dans la seconde, la mesure part vide, comme avant.
+        // ⚠️ UN SEUL MINUTEUR, À 1 s, ET C'EST UN CONTRAT : la Sentinelle apparie
+        // un clic à son effet en supposant que le clic est horodaté au plus
+        // ~1 s après le toucher (`BOUTON_AVANCE_MS`, scripts/sentinelle-detecter
+        // .mjs). Attendre la peinture plus longtemps (le premier jet attendait
+        // 5 s) aurait fait passer des boutons vivants pour morts (S2).
+        setTimeout(function () {
+          if (emis) return;
+          var tF = _horloge();
+          var masque = false;
+          try { masque = document.visibilityState === "hidden"; } catch (e) {}
+          if (!masque && tF - (t0 + 1000) >= CLIC_FIL_BLOQUE_MS) { emettre(Math.round(tF - t0)); return; }
+          emettre(null);
+        }, 1000);
       } else {
         emettre(null);
       }
@@ -1714,4 +2175,59 @@
       } catch (e) {}
     }, 0);
   });
+
+  // 8) Médias : photos, vidéos et sons qui s'affichent ou échouent (T5 — le
+  // modèle et les règles sont au bloc « MÉDIAS QUI NE S'AFFICHENT PAS »).
+  // `error`, `load` et `loadedmetadata` ne remontent pas : seule la CAPTURE au
+  // niveau du document les voit, et elle passe AVANT le `onerror` en ligne qui
+  // remplace l'élément (mesuré). `loadedmetadata` et pas `loadeddata` : un
+  // `preload="metadata"` réussi n'émet que le premier.
+  // ⚠️ UN ÉCHEC N'EST COMPTÉ QU'APRÈS VERDICT (`MEDIA_VERDICT_MS`). À
+  // l'événement : rien si la page est masquée, ni dans la fenêtre qui SUIT un
+  // retour au premier plan ou une bascule réseau (les chargements coupés en
+  // arrière-plan tombent au réveil). Au verdict : rien si une occultation ou
+  // une bascule réseau est survenue depuis, ni hors ligne, ni en fermeture.
+  // Rien n'est classé ni armé tant que la mesure est refusée (`!ENABLED`).
+  var _mediaCoupure = -1;
+  (function suivreMedias() {
+    try {
+      var basculer = function () { _mediaCoupure = _horloge(); };
+      window.addEventListener("offline", basculer);
+      window.addEventListener("online", basculer);
+      var vu = function (e) {
+        if (!ENABLED) return;                              // refus de la mesure : pas même un classement
+        try { var c = _mediaClasser(e && e.target); if (c) _mediaCompter(c.fam, c.av, false); } catch (e2) {}
+      };
+      document.addEventListener("load", vu, true);
+      document.addEventListener("loadedmetadata", vu, true);
+      document.addEventListener("error", function (e) {
+        if (!ENABLED) return;
+        try {
+          // La famille se lit À L'ÉVÉNEMENT : l'élément sera remplacé une ligne plus tard.
+          var c = _mediaClasser(e && e.target);
+          if (!c) return;
+          if (contexteEchec().masquee) return;
+          var t = _horloge();
+          if (_occultation >= 0 && t - _occultation < MEDIA_VERDICT_MS) return;
+          if (_mediaCoupure >= 0 && t - _mediaCoupure < MEDIA_VERDICT_MS) return;
+          // La fenêtre du dénominateur se juge AVANT que l'échec n'attende,
+          // puis l'attente la tient ouverte jusqu'au verdict.
+          _mediaFenetre(Date.now());
+          var epoque = mediaEpoque;
+          mediaAttente++;
+          setTimeout(function () {
+            if (epoque !== mediaEpoque) return;            // la mesure a été refusée entre-temps
+            try {
+              if (_occultation >= t || _mediaCoupure >= t) return;
+              var ctx = contexteEchec();
+              if (ctx.hors_ligne || ctx.fermeture) return;
+              _mediaCompter(c.fam, c.av, true);
+              _mediaArmer();
+            } catch (e3) {
+            } finally { mediaAttente--; }
+          }, MEDIA_VERDICT_MS);
+        } catch (e1) {}
+      }, true);
+    } catch (e0) {}
+  })();
 })();

@@ -16,11 +16,10 @@
 //    jonction vers `node_modules` pour que les tests tournent sans réinstaller.
 //    Ton dépôt n'est jamais ni modifié ni déplacé.
 //
-// 2. LE SERVEUR FOURNIT LES FICHIERS, PAS LE MODÈLE. Écrire un patch demande de
-//    voir le code — mais donner un accès disque au modèle est justement ce qu'on
-//    s'est interdit (le `cwd` n'est pas une frontière, cf. claudecli.js). Le
-//    serveur lit donc lui-même les fichiers concernés, avec son garde de chemin
-//    vérifiable, et les met dans le prompt. Le modèle reste sans outils.
+// 2. AUCUN TEXTE DE RAPPORT NE DEVIENT UNE CONSIGNE. Les observations et pièces
+//    sources sont projetées en compteurs, catégories fermées et empreintes.
+//    Une analyse de modèle ne prouve pas une reproduction : sans vérificateur
+//    natif indépendant, la réparation locale refuse avant tout geste Git.
 //
 // 3. LES TESTS SONT LE JUGE, ET ILS SONT INTOUCHABLES. Le patch ne peut pas
 //    modifier `tests/`, sinon un correctif paresseux rendrait les tests verts en
@@ -32,7 +31,7 @@
 // des gestes d'un clic dans le dashboard, pas des effets de bord d'une alerte.
 // ═══════════════════════════════════════════════════════════════════════════
 import { envSansSecrets } from "./env-enfant.js";
-import { sanitizeObserved, dataBlock } from "./donnees-observees.js";
+import { blocContexteAgentSur } from "./contexte-agent-sur.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -74,6 +73,7 @@ export function repairState() {
     runsLastHour: runsWindow.filter((t) => now - t < 3600_000).length,
     maxPerHour: REPAIR.maxPerHour,
     suites: REPAIR.suites,
+    reproductionRequired: true,
   };
 }
 
@@ -176,7 +176,7 @@ export function readRepoFile(rel, maxBytes = 160_000) {
 export function buildPatchPrompt(diagnosis, fichiers) {
   const L = [];
   L.push("Tu écris un CORRECTIF pour le projet PASSIO (PWA vanilla JS + Supabase).");
-  L.push("Un diagnostic automatique a identifié un défaut. Produis le patch minimal qui le corrige.");
+  L.push("Un signal agrégé ne prouve ni cause ni reproduction indépendante. Sans preuve indépendante, réponds PAS DE CORRECTIF SÛR.");
   L.push("");
   L.push("RÈGLES ABSOLUES :");
   L.push("• Réponds par UN SEUL bloc ```diff contenant un diff unifié `git diff` applicable tel quel.");
@@ -196,16 +196,8 @@ export function buildPatchPrompt(diagnosis, fichiers) {
   L.push("• Toujours lire `{ error }` d'une écriture Supabase : le SDK ne lève pas sur un refus RLS.");
   L.push("• Garder les gardes `if (!el) return;`.");
   L.push("");
-  // L'analyse dérive d'un texte de télémétrie : elle entre comme une donnée, jamais comme une consigne (F-05).
-  L.push(dataBlock("Diagnostic produit à partir de données observées", sanitizeObserved(diagnosis.analysis, 12_000)));
-  L.push("");
-  for (const f of fichiers) {
-    L.push(`## Fichier actuel — ${f.rel}`);
-    L.push("```javascript");
-    L.push(f.content);
-    L.push("```");
-    L.push("");
-  }
+  // Aucun pont texte modèle → nouveau modèle, ni fichier choisi par son analyse.
+  L.push(blocContexteAgentSur({ diagnosis, fichiers }, "CORRECTIF"));
   L.push("Rappel : un seul bloc ```diff, ou la mention PAS DE CORRECTIF SÛR.");
   return L.join("\n");
 }
@@ -268,10 +260,18 @@ async function removeWorktree(dir, branch, { keepBranch }) {
  * @param {(prompt:object)=>Promise<{analysis?:string,error?:string}>} analyzer
  * @returns {Promise<object>} compte rendu (jamais d'exception)
  */
-export async function attemptRepair(diagnosis, analyzer) {
+export async function attemptRepair(diagnosis, analyzer, verifierReproduction = null) {
   const now = Date.now();
   const etat = repairState();
   if (!etat.possible) return { attempted: false, raison: etat.raison };
+  // Une valeur dans le diagnostic, même « reproduction=true », ne peut pas
+  // autoriser une mutation. Seul un vérificateur natif fourni par le serveur
+  // pourrait reproduire indépendamment ; aucun appelant actuel n'en fournit.
+  if (typeof verifierReproduction !== "function") return { attempted: false, raison: "reproduction indépendante absente : aucune mutation autorisée par un diagnostic" };
+  let reproduit;
+  try { reproduit = await verifierReproduction(); }
+  catch { return { attempted: false, raison: "vérification indépendante indisponible : aucune mutation autorisée" }; }
+  if (reproduit !== true) return { attempted: false, raison: "défaut non reproduit indépendamment : aucune mutation autorisée" };
   if (busy) return { attempted: false, raison: "une réparation est déjà en cours" };
   if (etat.runsLastHour >= REPAIR.maxPerHour) return { attempted: false, raison: "plafond horaire de réparations atteint" };
 

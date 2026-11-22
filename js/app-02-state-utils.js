@@ -1181,6 +1181,45 @@ function filetProchainPas(pasActuel, vivant, masquee) {
   return Math.min(FILET_PAS_MAX, Math.round(pas * 1.5));
 }
 
+// LOT 4 DU 2026-11-15 (capacité) — DEUX RÈGLES PURES DE PLUS, à côté de
+// `filetProchainPas`, qui reste la seule autorité du recul « rien ne bouge ».
+//
+// ① LE SEUL CHEMIN N'EST PLUS ÉPINGLÉ À 60 S. Depuis le 2026-11-09, le filet du
+//    fil est la seule source des publications d'autrui, et il restait à 60 s tant
+//    que le fil était à l'écran — pour tout le monde, visiteurs compris, avec à
+//    chaque tour l'appel groupé des compteurs. Il recule désormais comme les
+//    autres (×1,5 sans changement), mais NE DÉPASSE PAS 3 MIN quand il est le
+//    seul chemin : une publication d'autrui arrive en 3 min au pire, tout de
+//    suite au retour au premier plan, en revenant sur le fil (`goTo`) ou à la
+//    réception d'un commentaire (`feedFiletReveiller`).
+const FILET_SEUL_CHEMIN_MAX_MS = 180000;
+function filetBorneSeulChemin(pas, seulChemin) {
+  var p = Number(pas);
+  if (!isFinite(p) || p < FILET_PAS_MIN) p = FILET_PAS_MIN;
+  return seulChemin ? Math.min(p, FILET_SEUL_CHEMIN_MAX_MS) : p;
+}
+window.filetBorneSeulChemin = filetBorneSeulChemin;
+
+// ② SOUS PANNE, ON RECULE AU LIEU D'ACCÉLÉRER. Une erreur gardait la cadence
+//    VIVE (15 s pour les compteurs, 60 s pour le fil) : quand la base sature et
+//    répond 503, chaque onglet la relançait au rythme le plus rapide, tous sur le
+//    même calendrier, et la surcharge s'entretenait. Après `echecs` tours en
+//    échec d'affilée, le délai est `base × 2^echecs`, plafonné à 10 min, puis
+//    une gigue de ±20 % (le plafond aussi est étalé) (`alea` dans [0, 1], Math.random) pour que les onglets ne
+//    reviennent pas ensemble. Un tour réussi remet le compte à zéro (à l'appelant).
+const RECUL_ERREUR_MAX_MS = 600000;
+function reculSurErreur(base, echecs, alea) {
+  var b = Number(base);
+  if (!isFinite(b) || b <= 0) b = 1000;
+  var n = Math.floor(Number(echecs));
+  if (!isFinite(n) || n < 1) n = 1;
+  if (n > 16) n = 16;
+  var a = Number(alea);
+  if (!isFinite(a) || a < 0 || a > 1) a = 0.5;
+  return Math.round(Math.min(RECUL_ERREUR_MAX_MS, b * Math.pow(2, n)) * (0.8 + 0.4 * a));
+}
+window.reculSurErreur = reculSurErreur;
+
 // DÉLESTAGE (2026-10-11) — un délai de filet, de compteur ou de repos du temps
 // réel, multiplié par le facteur posé À DISTANCE (js/reglages-distants.js :
 // 1, 2 ou 4, depuis le pilotage ou la veille quand la charge monte). Appliqué
@@ -1825,9 +1864,33 @@ function _applyUserState(data) {
     // avoir été écrit AVANT une suppression faite ici, et la recopie brute de
     // ses clés ressusciterait le contenu au rafraîchissement suivant.
     const suppressionsLocales = Array.isArray(state.deletedPostIds) ? state.deletedPostIds.slice() : [];
+    // ⚠️ MES PUBLICATIONS NE SE REMPLACENT PAS NON PLUS, ELLES S'UNISSENT
+    // (2026-11-14). La recopie brute ci-dessous remplaçait `userPosts` par celui
+    // du blob serveur : un blob écrit AVANT la dernière publication (ou par un
+    // rejeu de file périmé) rendait `[]`, et le post publié sur cet appareil
+    // disparaissait du profil à la réouverture — alors qu'il était bien en base.
+    // On garde donc les publications locales absentes du blob, mais SEULEMENT
+    // celles du compte courant (`authorId === MY_UID`) : un état local laissé par
+    // un autre compte ne doit jamais se greffer sur celui-ci.
+    const postsLocauxAGarder = (function () {
+      try {
+        if (typeof MY_UID === "undefined" || !MY_UID || !RE_UID_COMPTE.test(MY_UID)) return [];
+        return (Array.isArray(state.userPosts) ? state.userPosts : [])
+          .filter(function (p) { return p && p.id && p.authorId === MY_UID; });
+      } catch (_e) { return []; }
+    })();
     Object.keys(data).forEach((k) => { if (k !== "seed" && k !== "supabasePosts") state[k] = data[k]; });
     state.seed = keepSeed;
     state.supabasePosts = keepSupa;
+    if (!Array.isArray(state.userPosts)) state.userPosts = [];
+    if (postsLocauxAGarder.length) {
+      const idsServeur = new Set(state.userPosts.map(function (p) { return p && p.id; }));
+      const ajouts = postsLocauxAGarder.filter(function (p) { return !idsServeur.has(p.id); });
+      if (ajouts.length) {
+        state.userPosts = ajouts.concat(state.userPosts)
+          .sort(function (a, b) { return (Number(b && b.createdAt) || 0) - (Number(a && a.createdAt) || 0); });
+      }
+    }
     if (!Array.isArray(state.deletedPostIds)) state.deletedPostIds = [];
     fusionnerPostsSupprimes(suppressionsLocales);
     // Le blob peut porter des `userPosts` antérieurs à une suppression (la
@@ -2120,6 +2183,28 @@ async function supaLoadUserState() {
           // réinjecte QUE s'il n'en a aucune — sinon une restauration serveur
           // serait annulée par un vieil état local.
           if (merged.archived === undefined && lp.archived !== undefined) merged.archived = lp.archived;
+          // ⚠️ MAIS UN GESTE DATÉ PLUS RÉCENT QUE CELUI DU SERVEUR GAGNE
+          // (2026-11-14). Sans date, la règle ci-dessus donnait TOUJOURS raison
+          // au serveur : une passion réactivée ici (restauration, ou choisie au
+          // Studio pour y publier) dont l'envoi n'avait pas abouti était
+          // RE-ARCHIVÉE à la réouverture par un blob du 1er septembre —
+          // « ma passion Course à pied a disparu ». On ne compare que des gestes
+          // DATÉS des deux côtés : une restauration locale (`restoredAt`) contre
+          // l'archivage serveur, un archivage local contre une restauration
+          // serveur datée. Un archivage sans date (`archivedAt: 0`, posé par une
+          // fusion) ne gagne jamais.
+          try {
+            const _dLoc = Number(lp.restoredAt) || 0;
+            if (lp.archived === false && sp.archived === true && _dLoc > (Number(sp.archivedAt) || 0)) {
+              merged.archived = false;
+              delete merged.archivedAt;
+              merged.restoredAt = _dLoc;
+            } else if (lp.archived === true && !sp.archived && Number(sp.restoredAt) > 0
+                       && (Number(lp.archivedAt) || 0) > Number(sp.restoredAt)) {
+              merged.archived = true;
+              merged.archivedAt = Number(lp.archivedAt);
+            }
+          } catch (_e) {}
           return merged;
         });
         // Dédup final : s'il reste deux profils pour la même passion (ne devrait
@@ -2136,6 +2221,12 @@ async function supaLoadUserState() {
       }
       // Restaure le profil actif local, et garantit qu'il est VIVANT.
       restaurerPassionActiveApresFusion(localCurrentId);
+      // Une passion où j'ai publié APRÈS l'avoir archivée revient (app-06,
+      // 2026-11-14). Différé : l'appareil doit d'abord être autorisé à écrire.
+      setTimeout(function () {
+        try { if (typeof reactiverPassionsPubliees === "function") reactiverPassionsPubliees(); }
+        catch (_e) { if (typeof diagLog === "function") diagLog("reactiver_passions_fusion " + (_e && _e.message)); }
+      }, 0);
       state._stateSyncedAt = data.updated_at;
       // ⚠️ L'état du compte est là : l'appareil peut de nouveau écrire.
       _restaurationConfirmee();
@@ -2196,6 +2287,10 @@ function estImageLegere(url) {
 // est rendue telle quelle aussi — la meilleure image CERTAINE, jamais une
 // URL devinée qui ferait un 404.
 function imageGrande(url) {
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) {
+    var prive = passioMediaProteges.parser(url) || passioMediaProteges.local(url);
+    if (prive) return passioMediaProteges.route(url).replace(/\/v720$/, "/original");
+  }
   if (!estImageLegere(url)) return url;
   var sans = url.replace(/\.v720\.(jpe?g|png|webp)/i, "");
   return _RE_EXT_IMAGE_GRANDE.test(sans.split("?")[0].split("#")[0]) ? sans : url;
@@ -2217,6 +2312,444 @@ window.estImageLegere = estImageLegere;
 window.imageGrande = imageGrande;
 window.cheminsImageStorage = cheminsImageStorage;
 
+// PRIVATE MEDIA CLIENT v1 — aucune URL signée, aucun jeton conservé par ce module.
+var passioMediaProteges = (function () {
+  var UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  var RE = new RegExp("^/private-media/(posts|stories)/([A-Za-z0-9_-]{1,120})/(" + UUID + ")/(original|v720|poster)$");
+  var MAX = 27262976, IMAGES = 33554432, epoch = 0, epochIdentite = 0, attendu, bloque = null;
+  var controles = new Set(), controlesEcriture = new Set(), canaux=new Map(), images = new Map(), imageOctets = 0, media = null, mediaSeq = 0;
+  var file = [], actifs = 0, imagesEnCours = new Map(), installe = false, invalidations=[],annulations=0,repriseTransport=null,registrationsVues=new WeakSet(),workersVus=new WeakSet(),observateurImages=null;
+  var IMAGE_NEUTRE="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  var cacheGate=Promise.resolve();
+  function erreur() { return new Error("media_protege_indisponible"); }
+  function compte() { return typeof MY_UID === "string" && new RegExp("^" + UUID + "$", "i").test(MY_UID) ? MY_UID : null; }
+  function parser(value) {
+    if (typeof value !== "string" || value.indexOf("https://media.passio.invalid/private-media/") !== 0) return null;
+    var u; try { u = new URL(value); } catch (_) { return null; }
+    if (u.origin !== "https://media.passio.invalid" || u.username || u.password || u.search || u.hash) return null;
+    var m = RE.exec(value.slice("https://media.passio.invalid".length)); return m ? { type: m[1], id: m[2], asset: m[3], variant: m[4] } : null;
+  }
+  function local(value) {
+    if(typeof value!=="string")return null;
+    var u; try { u = new URL(value, location.origin); } catch (_) { return null; }
+    var brut=value.indexOf(location.origin+"/")===0?value.slice(location.origin.length):value.charAt(0)==="/"?value:null;
+    if (u.origin !== location.origin || u.username || u.password || u.search || u.hash || brut!==u.pathname) return null;
+    var m = RE.exec(u.pathname); return m ? { type: m[1], id: m[2], asset: m[3], variant: m[4] } : null;
+  }
+  function route(value, contexte) {
+    var p = parser(value) || local(value);
+    if (!p) return typeof value === "string" && /media\.passio\.invalid/i.test(value) ? "" : value;
+    if (contexte) {
+      if (!/^(posts|stories)$/.test(contexte.type) || !/^[A-Za-z0-9_-]{1,120}$/.test(contexte.id || "")) return "";
+      p.type = contexte.type; p.id = contexte.id;
+    }
+    return location.origin + "/private-media/" + p.type + "/" + p.id + "/" + p.asset + "/" + p.variant;
+  }
+  function contextualiser(obj, contexte) {
+    function copie(v, profondeur) {
+      if (typeof v === "string") return route(v, contexte);
+      if (!v || typeof v !== "object") return v;
+      if (profondeur > 6) return null;
+      if (Array.isArray(v)) return v.slice(0, 128).map(function (x) { return copie(x, profondeur + 1); });
+      var res = {}; Object.keys(v).slice(0, 128).forEach(function (k) {
+        if (k !== "__proto__" && k !== "constructor" && k !== "prototype") res[k] = copie(v[k], profondeur + 1);
+      }); return res;
+    }
+    var res = Object.assign({}, obj);
+    ["image", "video", "audio", "poster", "media", "overlays", "sharedReelData"].forEach(function (k) { if (Object.prototype.hasOwnProperty.call(res, k)) res[k] = copie(res[k], 0); });
+    return res;
+  }
+  function retirer(entry) {
+    if (!entry) return;
+    entry.cibles.forEach(function (c) {
+      if (c.element.getAttribute(c.attribut) === entry.url) {
+        if (c.element.pause) c.element.pause(); c.element.removeAttribute(c.attribut);
+        if (c.element.load && c.attribut === "src") c.element.load();
+      }
+    }); URL.revokeObjectURL(entry.url);
+  }
+  function purgerCaches(){
+    if(typeof caches==="undefined")return cacheGate;
+    async function purger(){
+      for(var nom of await caches.keys()){
+        var cache=await caches.open(nom);
+        for(var request of await cache.keys()){
+          var url=new URL(request.url);
+          if(url.origin===location.origin&&url.pathname.indexOf("/private-media/")===0)await cache.delete(request);
+        }
+      }
+    }
+    cacheGate=cacheGate.then(purger,purger);
+    // Le rejet reste dans cacheGate et ferme session(). Cet observateur evite seulement
+    // un rejet global non gere pour les invalidations synchrones du callback Auth.
+    cacheGate.catch(function(){});return cacheGate;
+  }
+  function invalider(nouveau, transportSeulement) {
+    var ancien = compte();
+    var lectureSeule=transportSeulement===true && nouveau===ancien && (attendu===undefined||attendu===nouveau) && !bloque;
+    epoch++;
+    if(!lectureSeule){epochIdentite++;controlesEcriture.forEach(function(c){c.abort();});controlesEcriture.clear();}
+    attendu = nouveau; bloque = nouveau === undefined ? ancien : null;
+    repriseTransport=null;
+    purgerCaches();
+    canaux.forEach(function(c,port){c.annule=true;clearTimeout(c.timer);port.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCEL",nonce:c.nonce,epoch:epoch});c.timer=setTimeout(function(){canaux.delete(port);c.terminer();port.close();},1000);});
+    controles.forEach(function (c) { c.abort(); }); controles.clear();
+    file.splice(0).forEach(function (t) { t.rejeter(erreur()); });
+    imagesEnCours.clear();
+    images.forEach(retirer); images.clear(); imageOctets = 0;
+    if (media) { media.abort.abort(); retirer(media.entry); media = null; } mediaSeq++;
+    if(!lectureSeule)invalidations.forEach(function(f){f();});
+    if (typeof document !== "undefined") document.querySelectorAll("[data-pmp-epoch]").forEach(function (el) {
+      if (el.pause) el.pause(); el.removeAttribute("src"); el.removeAttribute("poster"); el.removeAttribute("data-pmp-epoch");
+      el.removeAttribute("data-video-public-src");
+      el.removeAttribute("data-pmp-src");el.removeAttribute("data-pmp-poster");delete el._pmpChargements;delete el._pmpObservation;
+      if(observateurImages)observateurImages.unobserve(el);
+      if (el.load) el.load();
+      delete el._pmpReferences;
+    });
+    if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: "PASSIO_PRIVATE_MEDIA_INVALIDATE", epoch: epoch });
+  }
+  function authChanged(session, event) {
+    var nouveau = session && session.user && session.user.id || null;
+    if (event === "SIGNED_OUT") invalider(null);
+    else if (event === "SIGNED_IN") {
+      if (nouveau !== compte() || (attendu !== undefined && nouveau !== attendu)) invalider(nouveau);
+    } else if (nouveau !== compte()) invalider(null);
+  }
+  function delai(p) {
+    var timer; return Promise.race([p, new Promise(function (_, reject) { timer = setTimeout(function () { reject(erreur()); }, 10000); })]).finally(function () { clearTimeout(timer); });
+  }
+  async function session(ecriture) {
+    var identite=ecriture===true,capture=identite?epochIdentite:epoch,auteur=compte();
+    function actuelle(){return capture===(identite?epochIdentite:epoch)&&auteur===compte()&&attendu===auteur;}
+    if (attendu === undefined) { if (bloque && auteur === bloque) throw erreur(); attendu = auteur; }
+    if (attendu !== auteur) throw erreur();
+    await cacheGate;
+    if(!actuelle())throw erreur();
+    if (!auteur) return { mode: "anon", epoch: capture };
+    if (typeof supa === "undefined" || !window._supaReal || !supa.auth || !supa.auth.getSession) throw erreur();
+    var r = await delai(supa.auth.getSession());
+    if (!actuelle() || r.error) throw erreur();
+    var s = r.data && r.data.session;
+    if (s && s.expires_at && s.expires_at * 1000 < Date.now() + 30000) {
+      r = await delai(supa.auth.refreshSession());
+      if (!actuelle() || r.error) throw erreur(); s = r.data && r.data.session;
+    }
+    if (!s || !s.user || s.user.id !== auteur || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(s.access_token || "")) throw erreur();
+    await cacheGate;
+    if(!actuelle())throw erreur();
+    return { mode: "user", token: s.access_token, epoch: capture };
+  }
+  function cible(entry, element, attribut) {
+    if (!element) return;
+    entry.cibles = entry.cibles.filter(function (c) { return c.element.isConnected && c.element !== element; }).slice(-63);
+    entry.cibles.push({ element: element, attribut: attribut || "src" });
+    element._pmpReferences=element._pmpReferences||{};element._pmpReferences[attribut||"src"]=entry.path;
+    element.setAttribute("data-pmp-epoch", String(epoch));
+  }
+  function visible(element){
+    if(!element||!element.isConnected||document.hidden)return false;
+    if(typeof element.getBoundingClientRect!=="function")return true;
+    var r=element.getBoundingClientRect();
+    return r.right>0&&r.bottom>=0&&r.left<(window.innerWidth||document.documentElement.clientWidth)&&r.top<(window.innerHeight||document.documentElement.clientHeight)&&(r.width>0||r.height>0);
+  }
+  async function avecSession(operation) {
+    var capture=epochIdentite,auteur=compte(),abort=new AbortController();controlesEcriture.add(abort);
+    var timer=setTimeout(function(){abort.abort();},180000);
+    try{
+      var auth=await session(true);
+      if(auth.mode!=="user"||capture!==epochIdentite||auteur!==compte()||abort.signal.aborted)throw erreur();
+      var resultat=await operation({headers:{Authorization:"Bearer "+auth.token},signal:abort.signal});
+      if(capture!==epochIdentite||auteur!==compte()||abort.signal.aborted)throw erreur();return resultat;
+    }finally{clearTimeout(timer);controlesEcriture.delete(abort);}
+  }
+  async function capacites() {
+    return avecSession(async function(contexte){
+      var r=await fetch(location.origin+"/private-media/capabilities",{method:"POST",headers:Object.assign({"X-Passio-Media-Read":"1"},contexte.headers),signal:contexte.signal,cache:"no-store",credentials:"omit",redirect:"error"});
+      if(!r.ok||!/no-store/i.test(r.headers.get("Cache-Control")||""))throw erreur();
+      var c=await r.json();
+      if(!c||c.protocol!==1||c.min_client!==1||c.max_bytes!==MAX||c.uploads_enabled!==true||c.reads_enabled!==true)throw erreur();return c;
+    });
+  }
+  async function telecharger(path, kind, element, attribut, imageAdmise) {
+    if (!local(path)) throw erreur();
+    var capture = epoch, abort = new AbortController(), seq = mediaSeq;
+    controles.add(abort);
+    if (kind !== "image") {
+      if (media) { media.abort.abort(); retirer(media.entry); }
+      seq = ++mediaSeq; media = { abort: abort, entry: null };
+    }
+    var timer = setTimeout(function () { abort.abort(); }, 120000);
+    try {
+      var auth = await session();
+      if (capture !== epoch || abort.signal.aborted || (kind==="image"&&element&&!visible(element)) || (imageAdmise&&!imageAdmise())) throw erreur();
+      var response = await fetch(path, {method:"POST", headers: Object.assign({"X-Passio-Media-Read":"1"},auth.mode === "user" ? { Authorization: "Bearer " + auth.token } : {}), credentials: "omit", cache: "no-store", redirect: "error", signal: abort.signal });
+      var mime = (response.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+      var longueur = response.headers.get("Content-Length");
+      if (!response.ok || !/no-store/i.test(response.headers.get("Cache-Control") || "") || !/^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm)|audio\/(mp4|webm|ogg|mpeg))$/.test(mime)
+        || (kind === "image" && mime.indexOf("image/") !== 0) || (longueur !== null && (!/^\d{1,9}$/.test(longueur) || Number(longueur) > MAX)) || !response.body) throw erreur();
+      var reader = response.body.getReader(), chunks = [], bytes = 0;
+      for (;;) {
+        var item = await reader.read();
+        if (capture !== epoch || abort.signal.aborted || (kind !== "image" && seq !== mediaSeq)) throw erreur();
+        if (item.done) break;
+        if (bytes + item.value.byteLength > MAX) throw erreur();
+        chunks.push(item.value); bytes += item.value.byteLength;
+      }
+      if (!bytes || (longueur !== null && bytes !== Number(longueur)) || (element && !element.isConnected)) throw erreur();
+      var entry = { url: URL.createObjectURL(new Blob(chunks, { type: mime })), bytes: bytes, path:path, cibles: [] };
+      cible(entry, element, attribut);
+      if (kind === "image") {
+        while (images.size && (images.size >= 24 || imageOctets + bytes > IMAGES)) {
+          var key = images.keys().next().value, ancien = images.get(key); images.delete(key); imageOctets -= ancien.bytes; retirer(ancien);
+        }
+        var precedent = images.get(path); if (precedent) { imageOctets -= precedent.bytes; retirer(precedent); images.delete(path); }
+        images.set(path, entry); imageOctets += bytes;
+      } else media.entry = entry;
+      return entry.url;
+    } catch (_) { abort.abort(); if(reader)reader.cancel().catch(function () {});else if(response&&response.body)response.body.cancel().catch(function () {}); throw erreur(); }
+    finally { controles.delete(abort); clearTimeout(timer); }
+  }
+  function pompe() {
+    while (actifs < 2 && file.length) {
+      var t = file.shift(); actifs++;
+      (function (travail) { telecharger.apply(null, travail.args).then(travail.resoudre, travail.rejeter).finally(function () { actifs--; pompe(); }); })(t);
+    }
+  }
+  function charger(value, kind, element, attribut) {
+    var path = route(value); if (!local(path)) return Promise.reject(erreur());
+    if(attendu!==undefined&&attendu!==compte())return Promise.reject(erreur());
+    if (kind !== "image") return telecharger(path, kind, element, attribut);
+    var present = images.get(path);
+    if (present) { images.delete(path); images.set(path, present); cible(present, element, attribut); return Promise.resolve(present.url); }
+    var travail = imagesEnCours.get(path);
+    if (!travail) {
+      if (file.length >= 64) return Promise.reject(erreur());
+      travail = { epoch:epoch, compte:compte(), cibles:[], autonome:false };
+      var resoudre, rejeter;
+      travail.promise = new Promise(function (resolve, reject) { resoudre=resolve; rejeter=reject; });
+      // Une seule entrée LRU et un seul Blob pour toutes les surfaces du même média.
+      // La fin d'une ancienne époque ne doit pas effacer le travail de la nouvelle.
+      var courant=travail;
+      travail.promise = travail.promise.finally(function () { if (imagesEnCours.get(path)===courant) imagesEnCours.delete(path); });
+      imagesEnCours.set(path, travail);
+      travail.demarrer = function () {
+        file.push({ args:[path,kind,null,null,function () { return courant.autonome || courant.cibles.some(function (c) { return visible(c.element); }); }], resoudre:resoudre, rejeter:rejeter });
+        pompe();
+      };
+    }
+    if (travail.cibles.length >= 64) return Promise.reject(erreur());
+    travail.cibles.push({element:element, attribut:attribut});
+    if (!element) travail.autonome=true;
+    var chargement=travail.promise.then(function (url) {
+      if (travail.epoch!==epoch || travail.compte!==compte() || (element&&!element.isConnected)) throw erreur();
+      var entree=images.get(path);
+      if (!entree || entree.url!==url) throw erreur();
+      cible(entree,element,attribut); return url;
+    });
+    if (travail.demarrer) { var demarrer=travail.demarrer; travail.demarrer=null; demarrer(); }
+    return chargement;
+  }
+  async function jouer(element, value, volontaire) {
+    var capture = epoch;
+    try { var url = await charger(value, "media", element); if(capture!==epoch || !element.isConnected) throw erreur(); element.src = url; return lancerVideoPublique(element, volontaire); }
+    catch (_) { if (typeof videoPubliqueBouton === "function") videoPubliqueBouton(element, true); return false; }
+  }
+  function pret(element) { return element && element.getAttribute("data-pmp-epoch") === String(epoch) && /^blob:/.test(element.getAttribute("src") || ""); }
+  function chargerVisuel(el,attribut){
+    var src=el._pmpReferences&&el._pmpReferences[attribut],capture=epoch;
+    if(!src||!local(src)||!visible(el))return;
+    if(el.getAttribute("data-pmp-epoch")===String(epoch)&&/^blob:/.test(el.getAttribute(attribut)||""))return;
+    var cle=String(epoch)+":"+src;el._pmpChargements=el._pmpChargements||{};
+    if(el._pmpChargements[attribut]===cle)return;el._pmpChargements[attribut]=cle;
+    charger(src,"image",el,attribut).then(function(u){if(el.isConnected&&capture===epoch&&el._pmpReferences&&el._pmpReferences[attribut]===src)el.setAttribute(attribut,u);},function(){el.setAttribute("aria-label","Média indisponible");})
+      .finally(function(){if(el._pmpChargements&&el._pmpChargements[attribut]===cle)delete el._pmpChargements[attribut];});
+  }
+  function observerVisuel(el){
+    if(observateurImages){var cle=String(epoch)+":"+JSON.stringify(el._pmpReferences||{});if(el._pmpObservation!==cle){el._pmpObservation=cle;observateurImages.unobserve(el);observateurImages.observe(el);}}
+    else{if(el.tagName==="IMG")chargerVisuel(el,"src");chargerVisuel(el,"poster");}
+  }
+  function monter(root) {
+    if (!root || !root.querySelectorAll) return;
+    var noeuds = root.matches && root.matches("img,video,audio,source") ? [root] : [];
+    noeuds = noeuds.concat(Array.from(root.querySelectorAll("img,video,audio,source")));
+    noeuds.forEach(function (el) {
+      var attente=el.getAttribute("data-pmp-src"),src=attente?route(attente):el.getAttribute("src"),path=local(src||""),differe=el.getAttribute("data-video-public-src");
+      var capture = epoch;
+      if (path || local(el.getAttribute("data-video-public-src") || "")) el.setAttribute("data-pmp-epoch",String(epoch));
+      if(path){el._pmpReferences=el._pmpReferences||{};el._pmpReferences.src=src;}
+      if (path && el.tagName === "IMG") {
+        if(!pret(el)&&el.getAttribute("src")!==IMAGE_NEUTRE)el.setAttribute("src",IMAGE_NEUTRE);
+        observerVisuel(el);
+      } else if ((path||local(differe||"")) && (el.tagName === "VIDEO" || el.tagName === "AUDIO" || el.tagName === "SOURCE")) {
+        var parent = el.tagName === "SOURCE" ? el.parentElement : el;parent.setAttribute("data-pmp-epoch",String(epoch)); if(path){el.removeAttribute("src");parent.dataset.videoPublicSrc=src;}else src=differe;
+        parent._pmpReferences=parent._pmpReferences||{};parent._pmpReferences.video=src;
+        if (parent.tagName === "AUDIO") {
+          if(!parent._pmpEcouteAudio){parent._pmpEcouteAudio=true;
+            var demanderAudio=function(event){
+              if(event.type==="keydown"&&event.key!=="Enter"&&event.key!==" ")return;
+              if(pret(parent))return;
+              var epoque=epoch,source=parent.getAttribute("data-video-public-src"),cle=String(epoque)+":"+source;
+              if(!local(source||"")||parent._pmpAudioEnCours===cle)return;parent._pmpAudioEnCours=cle;
+              charger(source,"media",parent).then(function(u){if(epoque!==epoch||!parent.isConnected)return;parent.src=u;parent.play().catch(function(){});},function(){parent.setAttribute("aria-label","Média indisponible");})
+                .finally(function(){if(parent._pmpAudioEnCours===cle)delete parent._pmpAudioEnCours;});
+            };
+            parent.addEventListener("pointerdown",demanderAudio);parent.addEventListener("click",demanderAudio);parent.addEventListener("keydown",demanderAudio);
+          }
+        } else if (parent.autoplay) jouer(parent,src,false);
+      }
+      var poster=route(el.getAttribute("data-pmp-poster")||el.getAttribute("poster")||"");
+      if(poster&&local(poster)){el._pmpReferences=el._pmpReferences||{};el._pmpReferences.poster=poster;if(!/^blob:/.test(el.getAttribute("poster")||""))el.removeAttribute("poster");observerVisuel(el);}
+    });
+  }
+  function installer() {
+    if (installe) return; installe = true;
+    purgerCaches();
+    if(typeof IntersectionObserver==="function")observateurImages=new IntersectionObserver(function(entries){entries.forEach(function(entry){entry.target._pmpDansVue=entry.isIntersecting;if(entry.isIntersecting){if(entry.target.tagName==="IMG")chargerVisuel(entry.target,"src");chargerVisuel(entry.target,"poster");}});},{rootMargin:"0px"});
+    document.addEventListener("visibilitychange",function(){if(!document.hidden)document.querySelectorAll("[data-pmp-epoch]").forEach(function(el){if(el.tagName==="IMG")chargerVisuel(el,"src");chargerVisuel(el,"poster");});});
+    if(!observateurImages){var raf=null;window.addEventListener("scroll",function(){if(raf!==null)return;raf=requestAnimationFrame(function(){raf=null;monter(document);});},{passive:true,capture:true});}
+    window.addEventListener("passio:medias-proteges",function(event){if(event.detail&&event.detail.actif===false)invalider(compte());});
+    function retenirDom(){return Array.from(document.querySelectorAll("[data-pmp-epoch]")).map(function(el){return {element:el,refs:Object.assign({},el._pmpReferences||{})};});}
+    function observerRelais(){
+      if(!navigator.serviceWorker)return;
+      navigator.serviceWorker.getRegistration().then(function(reg){
+        if(!reg||registrationsVues.has(reg))return;registrationsVues.add(reg);
+        function observer(worker){if(!worker||workersVus.has(worker))return;workersVus.add(worker);
+          // Couper des updatefound/reg.installing : attendre installed puis reveiller
+          // l'ancien controller bloque la releve Chromium (reproduction minimale locale).
+          if(navigator.serviceWorker.controller){
+            var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();invalider(auteur,true);repriseTransport={uid:auteur,noeuds:reprise};
+          }
+        }
+        reg.addEventListener("updatefound",function(){observer(reg.installing);});observer(reg.installing);
+      }).catch(function(){/* Absence de registration : Blob explicite uniquement. */});
+    }
+    observerRelais();
+    if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("message",async function(event){
+      if(!event.data||event.data.type!=="PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE"||event.origin!==location.origin||!event.ports[0])return;
+      var port=event.ports[0],nonce=event.data.nonce;
+      try{
+        if(typeof nonce!=="string"||!new RegExp("^"+UUID+"$","i").test(nonce))return;
+        var auteur=compte(),demandeEpoch=epoch;
+        var reg=await navigator.serviceWorker.getRegistration();
+        if(compte()!==auteur||epoch!==demandeEpoch||!reg||!event.source||(event.source!==reg.installing&&event.source!==reg.waiting))return;
+        var reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom(),fins=Array.from(canaux.values()).map(function(c){return c.fin;});
+        invalider(auteur,true);repriseTransport={uid:auteur,noeuds:reprise};
+        var annulationEpoch=epoch;
+        var timer;await Promise.race([Promise.all(fins),new Promise(function(resolve){timer=setTimeout(resolve,350);})]);clearTimeout(timer);
+        if(compte()!==auteur||epoch!==annulationEpoch)return;
+        port.postMessage({type:"PASSIO_PRIVATE_MEDIA_UPDATE_READY",nonce:nonce});
+      }finally{port.close();}
+    });
+    if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("controllerchange",function(){
+      var auteur=compte(),reprise=repriseTransport&&repriseTransport.uid===auteur?repriseTransport.noeuds:retenirDom();
+      invalider(auteur,true);
+      if(compte()!==auteur)return;
+      reprise.forEach(function(r){var el=r.element;if(!el.isConnected)return;
+        if(el.tagName==="IMG"&&local(r.refs.src||""))el.setAttribute("data-pmp-src",r.refs.src);
+        else if((el.tagName==="VIDEO"||el.tagName==="AUDIO")&&local(r.refs.video||r.refs.src||""))el.setAttribute("data-video-public-src",r.refs.video||r.refs.src);
+        if(local(r.refs.poster||""))el.setAttribute("data-pmp-poster",r.refs.poster);
+      });monter(document);observerRelais();
+    });
+    if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", async function (event) {
+      if (!event.data || event.data.type !== "PASSIO_PRIVATE_MEDIA_TOKEN" || event.origin !== location.origin || event.source !== navigator.serviceWorker.controller || !event.ports[0]) return;
+      var port = event.ports[0], nonce = event.data.nonce;
+      try {
+        if(canaux.size>=128||typeof nonce!=="string"||!new RegExp("^"+UUID+"$","i").test(nonce))throw erreur();
+        var s = await session();if(event.source!==navigator.serviceWorker.controller)throw erreur();
+        var terminer;var fini=new Promise(function(resolve){terminer=resolve;});
+        var fermer=function(){var c=canaux.get(port);if(c){clearTimeout(c.timer);c.terminer();}canaux.delete(port);port.close();};
+        port.onmessage=function(e){if(!e.data||e.data.nonce!==nonce)return;if(e.data.type==="PASSIO_PRIVATE_MEDIA_CANCELLED"||e.data.type==="PASSIO_PRIVATE_MEDIA_DONE"){var c=canaux.get(port);if(c&&c.annule)annulations++;fermer();}};
+        var timer=setTimeout(function(){port.postMessage({type:"PASSIO_PRIVATE_MEDIA_CANCEL",nonce:nonce,epoch:epoch});fermer();},180000);
+        canaux.set(port,{nonce:nonce,timer:timer,fin:fini,terminer:terminer});
+        port.postMessage(Object.assign({ type:"PASSIO_PRIVATE_MEDIA_TOKEN_RESULT",nonce:nonce },s));
+        s.token=undefined;s=null; // Le canal ne garde que nonce/timer, jamais le bearer remis.
+      } catch (_) { port.postMessage({ type:"PASSIO_PRIVATE_MEDIA_DENIED",nonce:nonce });port.close(); }
+    });
+    new MutationObserver(function (records) { records.forEach(function (r) { if(r.type==="attributes")monter(r.target);else{if(observateurImages)r.removedNodes.forEach(function(n){if(!n.querySelectorAll)return;if(n.matches&&n.matches("img,video"))observateurImages.unobserve(n);n.querySelectorAll("img,video").forEach(function(el){observateurImages.unobserve(el);});});r.addedNodes.forEach(monter);} }); }).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","poster","data-video-public-src","data-pmp-src","data-pmp-poster"]});
+    monter(document);
+  }
+  return { parser:parser, local:local, route:route, contextualiser:contextualiser, invalider:invalider, authChanged:authChanged, session:session,
+    charger:charger, jouer:jouer, pret:pret, installer:installer,avecSession:avecSession,capacites:capacites,
+    capture:function(){return {uid:compte(),epoch:epochIdentite};},courant:function(c){return !!c&&c.uid===compte()&&c.epoch===epochIdentite;},
+    surInvalidation:function(f){if(typeof f==="function")invalidations.push(f);},
+    purgerCaches:purgerCaches,
+    attributImage:function(value){return parser(value)||local(value)||/media\.passio\.invalid/i.test(String(value||""))?"data-pmp-src":"src";},
+    attributPoster:function(value){return parser(value)||local(value)||/media\.passio\.invalid/i.test(String(value||""))?"data-pmp-poster":"poster";},
+    poserImage:function(element,value){if(!parser(value)&&!local(value)){if(!/media\.passio\.invalid/i.test(String(value||"")))return false;element.removeAttribute("src");return true;}element.removeAttribute("src");element.setAttribute("data-pmp-src",route(value));if(installe)monter(element);return true;},
+    poserVideo:function(element,value){if(!parser(value)&&!local(value)){if(!/media\.passio\.invalid/i.test(String(value||"")))return false;element.removeAttribute("src");return true;}element.removeAttribute("src");element.setAttribute("data-video-public-src",route(value));if(installe&&element.isConnected)monter(element);return true;},
+    etat:function () { return { epoch:epoch,images:images.size,imageBytes:imageOctets,imageBudget:IMAGES,mediaResident:!!(media&&media.entry),mediaBytes:media&&media.entry?media.entry.bytes:0,activeImages:actifs,canaux:canaux.size,annulations:annulations }; } };
+})();
+// END PRIVATE MEDIA CLIENT v1
+
+// HERITAGE MEDIA READ v1 — autorité serveur, jamais de repli public.
+function creerProjectionHeritage(deps) {
+  var generation=0, controles=new Set(),enCours=new WeakMap(),statistiques={candidats:0,projetes:0,refuses:0};
+  function invalider(){generation++;controles.forEach(function(c){c.abort();});controles.clear();}
+  deps.api.surInvalidation(invalider);
+  function candidat(v){
+    if(typeof v!=="string")return false;
+    var brut=v,chemin,canonique=true;v=v.trim(); // Classification seulement ; le SHA conserve les octets bruts.
+    if(/^[.\/\\]/.test(v)&&/[\s\x00-\x1f\x7f\\%#]/.test(v)&&/(media|storage)/i.test(v))return true;
+    if(/^\.{1,2}\//.test(v)&&/(media|storage).*content/.test(v))return true;
+    if(v.charAt(0)==="/"&&v.charAt(1)!=="/"){if(!/\/(media|storage)\//.test(v)&&v.indexOf("%")===-1)return false;chemin=v.split("?")[0].split("#")[0];}
+    else{
+      var a=/^(?:(https?):)?\/\/([^/?#]*)([^?#]*)(?:\?[^#]*)?(?:#.*)?$/i.exec(v);if(!a)return false;
+      var h=a[2].toLowerCase(),owned=/njkiyoklssvefstljemx\.supabase\.co|fcksxofaelcdmmifnwjo\.supabase\.co|passio-app\.netlify\.app/.test(h);
+      if(owned&&/[\s\x00-\x1f\x7f\\%#]/.test(brut))return true;
+      if(!owned||(!/\/(media|storage)\//.test(a[3])&&a[3].indexOf("%")===-1))return false;
+      canonique=a[1]==="https"&&["njkiyoklssvefstljemx.supabase.co","fcksxofaelcdmmifnwjo.supabase.co","passio-app.netlify.app"].indexOf(a[2])!==-1;chemin=a[3];
+    }
+    var m=/^\/(?:media|storage\/v1\/(?:object\/public|render\/image\/public))\/content\/(.*)$/.exec(chemin);
+    // Autorité/route/encodage ambigus appartenant à PASSIO : fermeture, pas repli.
+    if(!m||!canonique||brut.length>8192||/[\s\x00-\x1f\x7f\\%#]/.test(brut))return true;
+    var segments=m[1].split("/");if(segments.length<2||segments.some(function(x){return !x||x==="."||x===".."||!/^[A-Za-z0-9._-]+$/.test(x);}))return true;
+    return ["avatars","covers","passion_photos","passion_covers","events"].indexOf(segments[0])===-1;
+  }
+  async function empreinte(s){var b=await deps.crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,"0");}).join("");}
+  async function projeter(rows,champ,lignes){
+    var gen=generation,uid=deps.compte(),candidats=[],uniques=new Map();
+    rows.forEach(function(r){if(r&&candidat(r[champ])){var jeton={},m=enCours.get(r)||new Map();m.set(champ,jeton);enCours.set(r,m);candidats.push({r:r,id:r.id,ancienne:r[champ],jeton:jeton});r[champ]=null;}});
+    // Effacement synchrone avant le premier await, même au refus/SDK absent.
+    if(!candidats.length)return rows;
+    statistiques.candidats+=candidats.length;
+    if(candidats.some(function(c){return !/^[A-Za-z0-9_-]{1,120}$/.test(c.id||"");})||candidats.length>300){statistiques.refuses+=candidats.length;return rows;}
+    var appliques=0;
+    var abort=new AbortController();controles.add(abort);var timer=setTimeout(function(){abort.abort();},15000);
+    function courant(){return gen===generation&&uid===deps.compte()&&!abort.signal.aborted;}
+    try{
+      for(var c of candidats){c.sha=await empreinte(c.ancienne);if(!courant())return rows;var deja=uniques.get(c.id);if(deja&&deja.reference_sha256!==c.sha)return rows;uniques.set(c.id,{id:c.id,reference_sha256:c.sha});}
+      if(uniques.size>100)return rows;
+      await deps.api.session();if(!courant())return rows;
+      var rep=await deps.sdk().rpc("media_projeter_heritage",{p_references:Array.from(uniques.values())}).abortSignal(abort.signal);
+      if(!courant()||rep.error||!Array.isArray(rep.data)||rep.data.length>uniques.size)return rows;
+      var parId=new Map();
+      for(var d of rep.data){var p=deps.api.parser(d&&d.reference);if(!d||Object.keys(d).sort().join("|")!=="post_id|reference"||!uniques.has(d.post_id)||parId.has(d.post_id)||!p||p.type!=="posts"||p.id!==d.post_id||p.variant!=="original")return rows;parId.set(d.post_id,d.reference);}
+      if(!courant())return rows;
+      for(var x of candidats){var ref=parId.get(x.id);if(!ref||x.r.id!==x.id||x.r[champ]!==null||enCours.get(x.r).get(champ)!==x.jeton)continue;
+        if(lignes){var raw=x.r.shared_data;try{if(typeof raw==="string")raw=raw?JSON.parse(raw):null;}catch(_){continue;}if(raw!==null&&raw!==undefined&&(typeof raw!=="object"||Array.isArray(raw)))continue;
+          // Présentation seulement en RAM ; aucune écriture de shared_data.
+          x.r.shared_data=Object.assign(Object.create(null),raw||{},{passio_media:{protocol:1,type:"photo",poster:null}});
+        }
+        x.r[champ]=ref;
+        appliques++;
+      }
+      return rows;
+    }catch(_){return rows;}finally{clearTimeout(timer);controles.delete(abort);for(var c of candidats){var m=enCours.get(c.r);if(m&&m.get(champ)===c.jeton)m.delete(champ);}statistiques.projetes+=appliques;statistiques.refuses+=candidats.length-appliques;if(appliques<candidats.length&&typeof deps.signaler==="function")deps.signaler({categorie:"heritage_projection_refusee",candidats:candidats.length,projetes:appliques});}
+  }
+  return {candidat:candidat,invalider:invalider,etat:function(){return Object.assign({},statistiques);},projeterLignes:function(rows){return projeter(rows,"media_url",true);},projeterCartes:function(rows){return projeter(rows,"image",false);}};
+}
+var _passioProjectionHeritage;
+function projectionHeritageLecture(){
+  if(!_passioProjectionHeritage)_passioProjectionHeritage=creerProjectionHeritage({api:passioMediaProteges,crypto:window.crypto,compte:function(){return typeof MY_UID==="string"?MY_UID:null;},sdk:function(){return supa;},signaler:function(e){if(typeof diagLog==="function")diagLog("heritage_projection",e.categorie);}});
+  return _passioProjectionHeritage;
+}
+passioMediaProteges.projeterHeritageLignes=function(rows){return projectionHeritageLecture().projeterLignes(rows);};
+passioMediaProteges.projeterHeritageCartes=function(rows){return projectionHeritageLecture().projeterCartes(rows);};
+passioMediaProteges.etatHeritage=function(){return _passioProjectionHeritage?_passioProjectionHeritage.etat():{candidats:0,projetes:0,refuses:0};};
+// END HERITAGE MEDIA READ v1
+
+
 // ── Médias servis en DIRECT par le CDN Supabase (2026-11-09) ────────────────
 // Du 2026-09-11 au 2026-11-09, les médias passaient par le relais Netlify
 // `/media/*` (netlify/edge-functions/media.js). Mesuré le 2026-11-09 : son cache
@@ -2232,6 +2765,7 @@ window.cheminsImageStorage = cheminsImageStorage;
 const MEDIA_RELAIS_HISTORIQUE = "https://passio-app.netlify.app/media/";
 const MEDIA_SUPABASE_PUBLIC = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/";
 function urlMediaDirecte(url) {
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) url = passioMediaProteges.route(url);
   if (typeof url !== "string" || url.indexOf(MEDIA_RELAIS_HISTORIQUE) !== 0) return url;
   var rel = url.slice(MEDIA_RELAIS_HISTORIQUE.length).split("#")[0].split("?")[0];
   if (rel.indexOf("content/") !== 0) return url;
@@ -2367,6 +2901,7 @@ function escapeJsArg(s) {
 // (bloque javascript: & co), et échappe les quotes pour rester dans l'attribut.
 function safeUrlAttr(u) {
   var s = String(u == null ? "" : u).trim();
+  if (typeof passioMediaProteges !== "undefined" && passioMediaProteges) s = passioMediaProteges.route(s);
   if (!/^(https?:\/\/|data:image\/|data:audio\/|data:video\/|blob:)/i.test(s)) return "#";
   return escapeHtml(s);
 }
@@ -2448,6 +2983,7 @@ function urlPieceJointeSignee(url) {
 function attrMediaSrc(url, attr) {
   attr = attr || "src";
   if (pieceJointeChemin(url)) return 'data-pj="' + escapeHtml(url) + '"';
+  if(attr==="src"&&passioMediaProteges.attributImage(url)==="data-pmp-src")return 'data-pmp-src="'+safeUrlAttr(url)+'"';
   return attr + '="' + safeUrlAttr(url) + '"';
 }
 
@@ -3332,6 +3868,7 @@ function _userPhoto(u) {
 // (comme safeUrlAttr) + neutralisation de tout ce qui peut refermer quoi que ce soit.
 function _cssUrl(u) {
   const s = String(u || "").trim();
+  if(passioMediaProteges.parser(s)||passioMediaProteges.local(s)||/media\.passio\.invalid/i.test(s))return null;
   // data:image en base64 : l'alphabet est clos, rien à neutraliser — mais on exige
   // la forme exacte, sinon on refuse (un « data:image/x;… » libre serait un vecteur).
   if (/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(s)) return s;
@@ -3886,13 +4423,15 @@ function unlockBodyScroll(owner) {
 function ouvrirFeuillePartage(o) {
   o = o || {};
   var quoi = o.quoi || "publication";
-  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil" };
+  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil", story: "Partager cette story" };
   var signe = /[?&]inv=/.test(String(o.url || ""));
+  // Le lien partagé est la forme COMPACTE (`?s=`) — `signe` est lu avant.
+  o.url = compacterLienPartage(o.url);
   var vignette = o.vignette && !/^data:/.test(String(o.vignette)) ? ((typeof passioThumb === "function") ? passioThumb(o.vignette, 192) : o.vignette) : "";
   var html = '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + shareIconSvg(20) + " " + escapeHtml(titres[quoi] || "Partager") + '</div>'
     + '<div class="partage-apercu">'
-    +   (vignette ? '<img class="partage-apercu-media" src="' + safeUrlAttr(vignette) + '" alt="" onerror="this.remove()">' : "")
+    +   (vignette ? '<img class="partage-apercu-media" ' + passioMediaProteges.attributImage(vignette) + '="' + safeUrlAttr(vignette) + '" alt="" onerror="this.remove()">' : "")
     +   '<div class="partage-apercu-texte">'
     +     (o.titre ? '<div class="partage-apercu-titre">' + escapeHtml(o.titre) + '</div>' : "")
     +     (o.auteur ? '<div class="partage-apercu-auteur">' + escapeHtml(o.auteur) + '</div>' : "")
@@ -3927,7 +4466,46 @@ function ouvrirFeuillePartage(o) {
   if (typeof o.inviter === "function") brancher("_partageInviter", function () { o.inviter(); });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LIEN DE PARTAGE COMPACT (2026-11-14, demande de Benjamin : « supprime toutes
+// ces lettres dans le texte sous la photo »). Le lien court `/e/<id>` portait
+// `?inv=<uuid 36>&plk=lk_<25>` — 90 caractères illisibles sous l'aperçu
+// WhatsApp. Il porte désormais `?s=<jeton>` : l'invitant en base64url (22) et
+// le suivi sans son `lk_` (10). L'Edge Function (`lireJetonPartage`,
+// netlify/lib/apercu-coeur.js) et le service worker le redéploient en
+// `?plk=…&inv=…` vers le lien profond : l'application ne voit RIEN changer.
+// Seule la forme courte `/[pue]/<id>` est compactée (en local, le lien profond
+// en hash garde ses paramètres longs, que l'app lit directement) ; un
+// paramètre hors forme laisse le lien INTACT plutôt que de perdre une donnée.
+// ═══════════════════════════════════════════════════════════════════════════
+function compacterLienPartage(url) {
+  var s = String(url == null ? "" : url);
+  try {
+    var m = /^(https?:\/\/[^\/?#]+\/[pue]\/[A-Za-z0-9_-]{1,100})\?([^#]*)$/.exec(s);
+    if (!m) return s;
+    var inv = null, plk = null, autre = false;
+    new URLSearchParams(m[2]).forEach(function (v, k) {
+      if (k === "inv") inv = v; else if (k === "plk") plk = v; else autre = true;
+    });
+    if (autre) return s;
+    var jeton = "";
+    if (inv) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv)) return s;
+      var hex = inv.replace(/-/g, "").toLowerCase(), bin = "";
+      for (var i = 0; i < 32; i += 2) bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+      jeton += btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+    if (plk) {
+      var lk = /^lk_([a-z0-9]{10})$/.exec(plk);
+      if (!lk) return s;
+      jeton += lk[1];
+    }
+    return jeton ? m[1] + "?s=" + jeton : s;
+  } catch (e) { return s; }
+}
+
 function partagerOuCopier(data, msgCopie) {
+  if (data && data.url) data = Object.assign({}, data, { url: compacterLienPartage(data.url) });
   const url = (data && data.url) || "";
   const texteCopie = data && data.text ? (data.text + "\n" + url) : url;
   const copier = function () {
@@ -4458,7 +5036,8 @@ function toggleSettingsSection(el) {
 // changeait rien. Même règle que la confidentialité le 2026-11-06 : un réglage ne
 // revient qu'avec son effet, branché côté émetteur ET côté `notify-call`.
 // Restent : ce qui notifie, dit en une phrase ; l'état de la permission du
-// téléphone ; le récap de la semaine (lu par js/recap-semaine.js).
+// téléphone. Le récap de la semaine et sa case ont été RETIRÉS le 2026-11-14
+// (demande de Benjamin) : plus rien à enregistrer ici, donc plus de « Sauvegarder ».
 function _etatPermissionNotif() {
   try {
     if (typeof Notification === "undefined") return "absent";
@@ -4485,25 +5064,14 @@ async function _notifAutoriser() {
   try { openNotifSettings(); } catch (e) {}
 }
 function openNotifSettings() {
-  var cfg = getCurrentConfig();
-  var notifs = cfg.notifs || {};
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Notifications</div>\
     <p class="notif-ce-qui-notifie" style="font-size:13px;line-height:1.5;margin:4px 0 12px;">Tu es prévenu·e des messages qu\'on t\'envoie, des j\'aime et des commentaires sur ce que tu publies, des abonnements, et de ce qui se passe autour des activités que tu organises ou que tu as rejointes (dont un rappel la veille et deux heures avant).</p>\
     ' + _notifPermissionHTML() + '\
-    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Récap de la semaine<br><span style="font-size:11.5px;color:var(--muted);">Une carte en tête du fil, une fois par semaine, dans l\'app seulement.</span></span><input type="checkbox" id="notifRecap" ' + (notifs.recap !== false ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <p style="font-size:12px;color:var(--muted);margin:6px 0 0;">Pour couper une conversation précise : ouvre-la, puis « Paramètres » › « Couper les notifications ».</p>\
-    <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
+    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
   ');
-}
-function saveNotifSettings() {
-  var cfg = getCurrentConfig();
-  // `recap` (2026-10-06) : le récap de la semaine, js/recap-semaine.js — absent = oui.
-  // Les clés retirées ne sont plus écrites (rien ne les lisait).
-  var recap = document.getElementById("notifRecap");
-  cfg.notifs = { recap: recap ? recap.checked : true };
-  saveConfig(cfg); closeModal(); toast("Récap de la semaine " + ((recap ? recap.checked : true) ? "activé" : "désactivé"));
 }
 
 function openPrivacySettings() {
@@ -4639,8 +5207,8 @@ function savePrivacySettings() {
 }
 
 // Politique commune aux vidéos publiques. Le mode économe interdit toute lecture
-// automatique ; un geste explicite reste toujours possible. Aucun média privé,
-// appel ou live ne passe par ces helpers.
+// automatique ; un geste explicite reste toujours possible. Les references
+// protegees passent d'abord par le Blob authentifie ; appels/live gardent leur transport.
 function preferencesVideoPublique() {
   var cfg = (typeof getCurrentConfig === "function" ? getCurrentConfig() : {}) || {};
   var content = cfg.content || {};
@@ -4673,6 +5241,10 @@ function videoPubliqueBouton(video, visible) {
 
 function lancerVideoPublique(video, volontaire) {
   if (!video || (!volontaire && !videoPubliqueAutoplay())) return Promise.resolve(false);
+  var brutProtege = video.getAttribute("data-video-public-src") || "";
+  var protege = passioMediaProteges.route(brutProtege);
+  if (!protege && /media\.passio\.invalid/i.test(brutProtege)) return Promise.resolve(false);
+  if (passioMediaProteges.local(protege || "") && !passioMediaProteges.pret(video)) return passioMediaProteges.jouer(video, protege, volontaire);
   if (volontaire) video.dataset.videoPublicVolontaire = "1";
   var src = video.getAttribute("data-video-public-src");
   if (src && !video.getAttribute("src")) video.src = src;
@@ -4734,12 +5306,14 @@ function miniatureVideoPubliqueHTML(poster, video) {
   var eco = false;
   try { eco = preferencesVideoPublique().dataEco; } catch (e) {}
   var brut = (!poster && video && !eco) ? String(video).split("#")[0] : "";
+  // Sans poster protege, garder l'aplat : aucun GET natif pour extraire une frame.
+  if(passioMediaProteges.parser(brut)||passioMediaProteges.local(brut))brut="";
   if (brut && safeUrlAttr(brut) !== "#") {
     var apercuVideo = brut + "#t=0.5";
     return '<video class="miniature-video" src="' + safeUrlAttr(apercuVideo) + '" preload="metadata" muted playsinline tabindex="-1" aria-label="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;pointer-events:none;background:#2e1065;"></video>';
   }
   return poster
-    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
+    ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(poster) + '="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
     : '<div aria-label="Bobine vidéo" style="width:100%;height:100%;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;">▶</div>';
 }
 
@@ -4872,7 +5446,11 @@ window.consommerIntentionAuth = consommerIntentionAuth;
 /* Ouvre le formulaire d'authentification, où qu'on se trouve dans l'app.
    Renvoie `false` si le balisage d'onboarding est absent — l'appelant garde
    alors la main plutôt que de laisser l'écran dans un état intermédiaire. */
-function openAuthScreen(mode) {
+// `ctx` (facultatif, 2026-11-20) : la porte qui ouvre l'écran, telle que la
+// télémétrie et le retour (`prefs().retour.action`) la retiennent. Sans lui,
+// une connexion vaut « J'ai déjà un compte » (`deja_compte`) : une ouverture
+// AUTOMATIQUE (lien refusé) se compterait comme un clic sur cette porte.
+function openAuthScreen(mode, ctx) {
   var onb = document.getElementById("onboarding");
   if (!onb) return false;
   try { closeModal(); } catch (e) {}
@@ -4887,8 +5465,8 @@ function openAuthScreen(mode) {
   // repli ci-dessous ne sert que si le module n'est pas chargé.
   try {
     if (window.PassioFirstRun) {
-      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("");
-      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion("deja_compte");
+      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription(ctx || "");
+      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion(ctx || "deja_compte");
       if (onb.classList.contains("active")) return true;
     }
   } catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen (module) : " + e); }
@@ -4924,6 +5502,88 @@ function openAuthScreen(mode) {
   return true;
 }
 window.openAuthScreen = openAuthScreen;
+
+// ── UN LIEN REÇU PAR E-MAIL QUI N'OUVRE RIEN DIT POURQUOI (2026-11-20) ──────
+//
+// Parcours du nouvel inscrit. Un lien de confirmation (ou de nouveau mot de
+// passe) périmé, DÉJÀ UTILISÉ — un antivirus de messagerie qui le
+// « prévisite » suffit — ou refusé revient avec
+// `#error=access_denied&error_code=otp_expired&error_description=…` (ou en
+// paramètres de requête). Rien ne le lisait : la personne qui venait de créer
+// son compte retombait sur le fil, en visiteur, sans un mot — exactement le
+// refus sans sortie que la règle du 17/09 interdit. Mesuré en production le
+// 20/11 : 2 inscriptions par e-mail sur 10 jamais confirmées, aucun renvoi
+// demandé.
+//
+// ⚠️ AUCUNE DURÉE ÉCRITE : la validité d'un lien est un réglage serveur
+// (`mailer_otp_exp`) qui peut changer sans que ce texte le sache.
+// ⚠️ LE CODE NE VOYAGE QUE DANS UNE LISTE FERMÉE : il vient de l'adresse, donc de
+// n'importe qui. Une simple forme (`[a-z0-9_]`) laissait passer
+// `jean_dupont_0612345678` jusqu'au pilotage (contre-revue du lot) — une
+// cardinalité libre, et une donnée personnelle injectable par un lien forgé.
+const CODES_REFUS_LIEN_AUTH = ["otp_expired", "access_denied", "flow_state_expired", "flow_state_not_found",
+  "bad_code_verifier", "bad_oauth_state", "bad_oauth_callback", "email_not_confirmed",
+  "provider_email_needs_verification", "signup_disabled", "user_banned", "server_error", "unexpected_failure"];
+function lireRefusLienAuth() {
+  var sources = [];
+  try { sources.push(String(window.location.hash || "").replace(/^#/, "")); } catch (e) {}
+  try { sources.push(String(window.location.search || "").replace(/^\?/, "")); } catch (e) {}
+  for (var i = 0; i < sources.length; i++) {
+    var brut = sources[i];
+    if (!brut || brut.indexOf("error") === -1) continue;
+    var p;
+    try { p = new URLSearchParams(brut); } catch (e) { continue; }
+    var code = p.get("error_code") || "";
+    var err = p.get("error") || "";
+    // Une réponse d'Auth porte `error_code`, ou `error` ET sa description :
+    // un fragment qui ne fait que contenir le mot « error » n'en est pas une.
+    if (!code && !(err && p.get("error_description"))) continue;
+    var c = String(code || err).toLowerCase();
+    return { code: CODES_REFUS_LIEN_AUTH.indexOf(c) !== -1 ? c : "autre" };
+  }
+  return null;
+}
+
+// Retire la réponse d'Auth de l'adresse : un rechargement ne doit pas la
+// rejouer, et un partage de l'adresse ne doit pas l'emporter.
+function nettoyerRefusLienAuth() {
+  try {
+    var u = new URL(window.location.href);
+    ["error", "error_code", "error_description"].forEach(function (k) { u.searchParams.delete(k); });
+    if (/(^|[#&])(error|error_code|error_description)=/.test(u.hash || "")) u.hash = "";
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+  } catch (e) {}
+}
+
+// Ouvre la connexion avec l'explication et les sorties sous les yeux.
+//
+// ⚠️ LE TEXTE NE PRÉSUME RIEN DE L'ÉTAT DU COMPTE (contre-revue du lot). La même
+// adresse de retour sert à la confirmation, au nouveau mot de passe ET à
+// Google : un lien refusé peut venir d'une confirmation périmée (le compte
+// attend), d'une confirmation déjà consommée par un antivirus de messagerie (le
+// compte est CONFIRMÉ), ou d'un lien de nouveau mot de passe (la connexion est
+// impossible). Le message nomme donc les trois sorties, et le texte fixe de
+// `#authResendTop` (« Ton compte attend… ») est tu (`sansAdresse`).
+// ⚠️ GOOGLE A SON PROPRE MESSAGE : un retour annulé ou refusé n'est pas un lien
+// d'e-mail, et le drapeau `passio_oauth_pending`, sinon jamais retiré sur ce
+// chemin, est consommé ici.
+function montrerRefusLienAuth(refus) {
+  if (!refus) return false;
+  let google = false;
+  try { google = !!localStorage.getItem("passio_oauth_pending"); if (google) localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+  try { window.tel && tel.action("auth_link_refused", { rc: refus.code, voie: google ? "google" : "lien" }); } catch (e) {}
+  if (!openAuthScreen("signin", "lien_refuse")) return false;
+  if (google) {
+    _showAuthMsg("La connexion avec Google n'a pas abouti. Réessaie avec le bouton Google ci-dessous, ou utilise ton adresse e-mail.", "error");
+    return true;
+  }
+  _showAuthMsg("Ce lien n'ouvre plus rien : un lien reçu par e-mail ne sert qu'une fois, et pas indéfiniment. Adresse déjà confirmée ? Connecte-toi ci-dessous. Lien de nouveau mot de passe ? Touche « Mot de passe oublié ? » sous le bouton de connexion. Adresse jamais confirmée ? Entre ton e-mail et renvoie-toi un lien.", "error");
+  _showResendConfirmation("", true);
+  return true;
+}
+window.lireRefusLienAuth = lireRefusLienAuth;
+window.nettoyerRefusLienAuth = nettoyerRefusLienAuth;
+window.montrerRefusLienAuth = montrerRefusLienAuth;
 
 /* Entrée « Compte » du panneau Paramètres. Deux situations, un seul bouton :
    • visiteur sans compte  → rien à déconnecter, on ouvre la connexion ;
@@ -4997,8 +5657,8 @@ var ACCOUNT_SCOPED_KEYS = [
   // Ajoutée le 2026-11-13 : la preuve qu'une session de CE compte a fini en cours
   // de route (`_marquerSessionExpiree`, plus haut). Elle part avec le compte.
   CLE_SESSION_EXPIREE,       // "passio_session_expiree_v1"
-  // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
-  // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
+  // Récap de la semaine RETIRÉ le 2026-11-14 : la clé reste ici pour que la marque
+  // laissée sur les appareils parte encore avec le compte.
   "passio_recap_semaine_v1",
   // Ajoutée le 2026-10-23 : les dernières villes choisies dans « Rencontrer »
   // (app-07, `irlVillesRecentes`). Une donnée de LIEU de la personne.
@@ -5031,6 +5691,7 @@ var ACCOUNT_SCOPED_KEYS = [
 // Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
 // best-effort : ne throw jamais. Renvoie une promesse résolue quand IndexedDB est vidé.
 function purgeAccountScopedData() {
+  passioMediaProteges.invalider();
   // ⚠️ EN PREMIER : le verrou. Tout ce qui suit serait vain si une écriture
   // survenait pendant les 1,2 s qui séparent la purge du rechargement.
   _accountPurged = true;
@@ -5268,6 +5929,7 @@ async function _retirerAbonnementPush(opts) {
 window._retirerAbonnementPush = _retirerAbonnementPush;
 
 async function doLogout(intention) {
+  passioMediaProteges.invalider();
   // ⚠️ AVANT `supaSaveUserState` et `signOut` : ce sont des appels réseau, et le
   // rechargement qui suit coupe ce qui est encore en vol (voir `annoncerRechargement`).
   annoncerRechargement();
@@ -5343,7 +6005,7 @@ function openChangePassword() {
     <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
       <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
     <label class="field" id="cpNonceWrap" style="display:none;margin-top:8px;"><span>Code reçu par e-mail</span>\
-      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"/></label>\
+      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="Code reçu par e-mail"/></label>\
     <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
     <div style="display:flex;gap:8px;margin-top:10px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -5421,7 +6083,10 @@ async function doChangePassword() {
         try { ra = await supa.auth.reauthenticate(); } catch (e2) { ra = { error: e2 }; }
         if (ra && ra.error) { err("Impossible d'envoyer le code de vérification. Réessaie dans un instant."); rendreBouton(); return; }
         if (nonceWrap) nonceWrap.style.display = "";
-        info("Pour ta sécurité, un code à 6 chiffres vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
+        // Aucun nombre de chiffres ici : la longueur du code est un réglage
+        // serveur (`mailer_otp_length`, 8 en production le 2026-11-21) qui
+        // peut changer sans que ce texte le sache — « 6 chiffres » était faux.
+        info("Pour ta sécurité, un code de vérification vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
         rendreBouton();
         try { if (nonceEl) nonceEl.focus(); } catch (e3) {}
         return;
@@ -5931,7 +6596,11 @@ function traduireRefusCaptcha(m) {
   // levée) passait par cette chaîne, qui ne reconnaissait pas l'échec réseau :
   // « Failed to fetch » (Chromium), « Load failed » (WebKit), « NetworkError »
   // (Firefox) s'affichaient en anglais.
-  if (/failed to fetch|load failed|networkerror|network request failed/i.test(m)) return AUTH_HORS_LIGNE;
+  // (2026-11-21) Par `messagePanneAuth`, qui LIT `navigator.onLine` : cette
+  // ligne rendait « Pas de connexion internet » à tout échec réseau, appareil
+  // en ligne compris. Ses trois appelants passent par `messagePanneAuth`
+  // d'abord, mais rien n'y oblige le quatrième.
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(m)) return messagePanneAuth("reseau");
   return m;
 }
 
@@ -5943,21 +6612,161 @@ function authHorsLigne() {
   return false;
 }
 
+// PANNES D'AUTHENTIFICATION (2026-11-21) — une panne n'est pas un refus : la
+// personne n'a rien fait de travers, et le message brut du serveur (anglais,
+// « {} », parfois une adresse) ne lui dit ni quoi ni par où sortir. Les textes
+// sont choisis par `messagePanneAuth` sur le code de `rcRefusAuth`, ou par
+// `messageExceptionAuth` sur celui de `rcExceptionAuth`.
+// ⚠️ « PAS DE CONNEXION INTERNET » NE SE DIT QU'À UN APPAREIL QUI SE DIT HORS
+// LIGNE. `authHorsLigne()` sort AVANT tout appel quand `navigator.onLine` est
+// faux : une requête « jamais arrivée » vient donc presque toujours d'un
+// appareil qui se croyait EN LIGNE, et c'est la SEULE forme que prend une
+// passerelle en panne (page d'erreur sans en-têtes CORS : le navigateur la rend
+// illisible, le SDK rend statut 0). Affirmer « pas de connexion » envoyait la
+// personne vérifier un Wi-Fi qui marche. Ce texte-ci est vrai dans les deux cas.
+const AUTH_INJOIGNABLE = "Impossible de joindre PASSIO pour l'instant. Vérifie ta connexion, puis réessaie dans un instant.";
+const AUTH_SERVICE_KO = "Le service de connexion ne répond pas pour l'instant. Réessaie dans quelques minutes — rien n'est perdu.";
+// ⚠️ « PLUS BAS », JAMAIS « AU-DESSUS » : `#authGoogleBtn` est SOUS `#authMsg`
+// dans les deux onglets (index.html ; le bloc de renvoi et la case de
+// consentement peuvent s'intercaler, d'où « un peu »). Le 20/11, « ci-dessus »
+// désignait déjà un bouton qui était ailleurs.
+// ⚠️ AUCUNE DURÉE : un e-mail qui ne part pas, c'est le relais ou son quota du
+// jour — des heures, pas des minutes — et le texte n'en sait rien. Google est
+// la sortie parce que ce chemin n'envoie aucun e-mail.
+const AUTH_ENVOI_KO = "L'e-mail n'a pas pu partir pour l'instant. Réessaie plus tard, ou passe par « Continuer avec Google », un peu plus bas : ce chemin n'a pas besoin d'e-mail.";
+// ⚠️ SUR « MOT DE PASSE OUBLIÉ ? », GOOGLE N'EST UNE SORTIE QUE SOUS CONDITION.
+// La personne a DÉJÀ un compte, à une adresse donnée. Google ouvre le compte
+// qui porte l'adresse Google — et le CRÉE s'il n'existe pas (leçon AUTH-03,
+// `onbGoogleAuth`) : dire « passe par Google » sans condition envoyait vers un
+// second compte, vide, quiconque s'est inscrit avec une autre adresse (mesuré
+// le 21/11 : 4 comptes e-mail sur 12 sont hors Gmail). À l'inscription, la
+// forme sans condition reste juste : aucun compte n'existe encore.
+const AUTH_ENVOI_KO_RECUP = "L'e-mail n'a pas pu partir pour l'instant. Réessaie plus tard. Si ton compte PASSIO porte ton adresse Google, « Continuer avec Google », un peu plus bas, y entre sans e-mail.";
+// ⚠️ PAS POUR LE FORMULAIRE DE NOUVEAU MOT DE PASSE : recharger pendant qu'il
+// est affiché condamne un lien à usage unique (`_showPasswordRecoveryUI`).
+const AUTH_IMPREVU = "Ça n'a pas abouti de notre côté. Recharge la page, puis réessaie.";
+
 // LOT E (2026-09-18) : la RAISON d'un refus d'authentification, en code fermé,
 // pour le pilotage. Déduite du message/code GoTrue SANS jamais recopier le
 // message (il peut citer l'adresse saisie). Ordre : du plus spécifique au plus
 // général — « captcha » avant tout (il peut accompagner n'importe quel refus).
-//   captcha · banni · non_confirme · deja_utilise · quota · mdp · autre
+//   captcha · sdk · reseau · envoi · serveur · banni · non_confirme · deja_utilise · quota · mdp · autre
+// (2026-11-21) LE STATUT SE LIT AVANT LE TEXTE, juste après « captcha ». Le SDK
+// embarqué (js/vendor/supabase-js-2.116.0.js) REND dans `{ error }`, sans la
+// lever, une `AuthRetryableFetchError` de statut 0 quand aucune réponse lisible
+// n'est revenue (requête jamais arrivée, réponse bloquée par le navigateur, ou
+// 2xx qui n'est pas du JSON), et du statut HTTP pour 500…504 et 520…530 — son
+// message est alors celui du corps de la réponse. Sans cette lecture, une panne
+// du service tombait en « autre », et un 5xx dont le texte cite « password » en
+// « mdp ».
+//   · sdk    : le SDK n'a PAS pu se charger (`window._supaReal` faux). `supa`
+//     est alors le client de repli (app-08), qui répond « Supabase non
+//     disponible » à toute porte SANS qu'aucune requête parte : le crochet
+//     réseau ne voit rien, et ce code est la seule trace de l'impasse « plus
+//     personne ne peut entrer ». `ensureSupabase` garde sa promesse rejetée :
+//     seul un rechargement remet le SDK. Lu sur l'ÉTAT, pas sur le texte du
+//     repli, qui peut changer sans prévenir ;
+//   · reseau : statut 0, ou pas de statut et un message d'échec réseau. Ce
+//     n'est PAS « l'appareil est hors ligne » (`authHorsLigne()` l'a déjà
+//     écarté) : coupure locale OU service injoignable ;
+//   · envoi  : 5xx ET « Error sending … » — GoTrue n'a pas pu remettre l'e-mail
+//     au relais (« Error sending confirmation email », « … confirmation mail »
+//     selon la version, « Error sending recovery email ») ;
+//   · serveur : tout autre 5xx — et toute réponse ILLISIBLE hors de la liste
+//     ci-dessus : le SDK rend alors une `AuthUnknownError` SANS statut (page
+//     HTML d'un pare-feu en 403 ou 429, 5xx hors liste comme 540), dont le
+//     message est l'erreur d'analyse, en anglais. Sur ces portes, le SDK ne
+//     fabrique cette classe que là.
 function rcRefusAuth(error) {
   var m = String((error && error.message) || "");
   var c = String((error && error.code) || "");
+  var st = (error && typeof error.status === "number") ? error.status : null;
   if (/captcha/i.test(m) || /captcha/i.test(c)) return "captcha";
+  if (typeof window !== "undefined" && !window._supaReal) return "sdk";
+  if (st === 0 || (st === null && estEchecReseau(error))) return "reseau";
+  if (st !== null && st >= 500 && /error sending/i.test(m)) return "envoi";
+  if (st !== null && st >= 500) return "serveur";
+  if (error && error.name === "AuthUnknownError") return "serveur";
   if (/banned/i.test(m) || c === "user_banned") return "banni";
   if (/not confirmed/i.test(m) || c === "email_not_confirmed") return "non_confirme";
   if (/already registered|already exists/i.test(m) || c === "user_already_exists") return "deja_utilise";
   if (/rate limit|too many|security purposes/i.test(m) || /rate_limit/.test(c)) return "quota";
   if (/invalid login|password/i.test(m) || c === "invalid_credentials" || c === "weak_password") return "mdp";
   return "autre";
+}
+
+// Le message d'une PANNE lue par `rcRefusAuth`, ou `null` quand le code n'en
+// est pas une : l'appelant garde alors sa propre traduction du refus.
+// `porte` (facultative) : la sortie nommée dépend de l'endroit d'où l'on parle.
+//   · « recover » : Google sous condition (voir `AUTH_ENVOI_KO_RECUP`) ;
+//   · « google »  : on ne propose pas Google à qui vient de le toucher ;
+//   · « sdk »     : « Recharge la page » est ici la VRAIE sortie — le SDK ne se
+//     recharge pas tout seul. Aucune porte qui passe par ici n'est le formulaire
+//     de nouveau mot de passe, où recharger condamne le lien (`AUTH_IMPREVU`).
+function messagePanneAuth(rc, porte) {
+  if (rc === "sdk") return AUTH_IMPREVU;
+  if (rc === "serveur") return AUTH_SERVICE_KO;
+  if (rc === "envoi") return porte === "recover" ? AUTH_ENVOI_KO_RECUP : (porte === "google" ? AUTH_SERVICE_KO : AUTH_ENVOI_KO);
+  if (rc === "reseau") return (typeof navigator !== "undefined" && navigator.onLine === false) ? AUTH_HORS_LIGNE : AUTH_INJOIGNABLE;
+  return null;
+}
+
+// Le message d'une EXCEPTION, sur le code rendu par `signalerExceptionAuth`.
+// Une coupure levée suit la même règle qu'une coupure rendue : « pas de
+// connexion internet » seulement si l'appareil se dit hors ligne.
+function messageExceptionAuth(rcEx) {
+  return rcEx === "reseau" ? messagePanneAuth("reseau") : AUTH_IMPREVU;
+}
+
+// ⚠️ UNE PANNE DOIT ÊTRE LUE, PAS SEULEMENT ÉCRITE (2026-11-21). Mesuré aux
+// hauteurs utiles d'un iPhone sous Safari : après « Créer mon compte », tout en
+// bas du formulaire de création, `#authMsg` est à −165…−87 px sur 390 × 664 et
+// à −338…−245 px sur 320 × 568 — AU-DESSUS de l'écran, et « Continuer avec
+// Google » avec lui sur le plus petit. Le texte de panne et la sortie qu'il
+// nomme n'auraient été lus par personne. On cale donc le message en haut
+// (`block: "start"`, la règle de `_showResendConfirmation`) : il se lit, et
+// Google est dessous, sur le même écran.
+// Le renvoi du lien l'emploie aussi : par le lien du BAS, à 320 × 568, le haut
+// du message sortait de l'écran (−20 px). « Mot de passe oublié ? » garde
+// `_showAuthMsg` : mesuré aux deux tailles, son message reste entier à l'écran
+// (haut à 145 px au plus serré) — on n'y ajoute pas un geste que rien n'éprouve.
+function _showPanneAuth(texte) {
+  _showAuthMsg(texte, "error");
+  try {
+    var el = document.getElementById("authMsg");
+    if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+  } catch (e) {}
+}
+
+// Une EXCEPTION levée sur un chemin d'authentification (2026-11-21), en code
+// fermé :   reseau · code · autre
+// ⚠️ LE RÉSEAU SE TESTE EN PREMIER : un `fetch` coupé est un TypeError
+// (« Failed to fetch ») — le classer par son nom en ferait un défaut de code.
+// Jamais le message ni la pile : ils peuvent citer une adresse.
+function rcExceptionAuth(e) {
+  if (estEchecReseau(e)) return "reseau";
+  var n = e && e.name;
+  if (n === "TypeError" || n === "ReferenceError" || n === "RangeError" || n === "SyntaxError") return "code";
+  return "autre";
+}
+
+// Les portes d'où une exception d'authentification peut partir. Liste FERMÉE :
+// `_authMode` reçoit ce que `switchAuthTab` reçoit, et une valeur de forme libre
+// voyagerait telle quelle jusqu'au pilotage (leçon du code de lien refusé, 20/11).
+const PORTES_EXCEPTION_AUTH = ["signin", "signup", "recover", "reset", "google", "resend"];
+
+// Le SEUL point d'émission d'une exception d'authentification :
+// `auth_exception { kind, rc }`. Les `catch` de ces portes n'émettaient rien et
+// répondaient « pas de connexion internet » à tout, défaut de code compris.
+// Rend `rc`, pour que l'appelant choisisse un message VRAI.
+// ⚠️ PAS DE CATCH MUET SUR UN CHEMIN CRITIQUE : hors réseau, l'exception s'écrit
+// dans la console — c'est un défaut à corriger, pas une coupure à attendre.
+function signalerExceptionAuth(kind, e) {
+  var rc = rcExceptionAuth(e);
+  var porte = PORTES_EXCEPTION_AUTH.indexOf(kind) !== -1 ? kind : "autre";
+  try { window.tel && tel.action("auth_exception", { kind: porte, rc: rc }); } catch (e2) {}
+  if (rc !== "reseau") { try { console.warn("auth (" + porte + "):", e); } catch (e3) {} }
+  return rc;
 }
 
 function switchAuthTab(mode) {
@@ -5967,7 +6776,7 @@ function switchAuthTab(mode) {
   // ENT-C11 : les deux onglets se disent onglets (role=tab) et disent lequel est choisi.
   document.getElementById("authTabSignin").setAttribute("aria-selected", mode === "signin" ? "true" : "false");
   document.getElementById("authTabSignup").setAttribute("aria-selected", mode === "signup" ? "true" : "false");
-  document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
+  // (Plus de champ « Confirmer le mot de passe » depuis le 2026-11-20 : voir index.html.)
   // Nom public : demandé UNIQUEMENT à la création (voir nomCompteValide plus bas).
   // ⚠️ Ici `""` et pas `"flex"` : `label.field` est `display:block` en CSS et
   // c'est exactement la mise en page voulue (libellé, champ, aide en dessous) —
@@ -5999,7 +6808,7 @@ function switchAuthTab(mode) {
   // 8 caractères (2026-09-13) a le droit d’entrer avec le sien.
   const pwdHint = document.getElementById("authPwdHint");
   if (pwdHint) pwdHint.style.display = mode === "signup" ? "block" : "none";
-  [["authPassword", "current-password"], ["authPasswordConfirm", "new-password"]].forEach(function (paire) {
+  [["authPassword", "current-password"]].forEach(function (paire) {
     const el = document.getElementById(paire[0]);
     if (!el) return;
     // ⚠️ Le `minlength` SUIT `MOT_DE_PASSE_MIN`, seule source du nombre. Posé
@@ -6050,10 +6859,22 @@ async function onbForgotPassword() {
     const captchaToken = await captchaJeton();
     const { error } = await supa.auth.resetPasswordForEmail(email, Object.assign({ redirectTo: window.location.origin + window.location.pathname }, captchaToken !== undefined ? { captchaToken } : {}));
     captchaReinitialiser();
-    if (error) { _showAuthMsg(traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error"); return; }
+    // (2026-11-21) La demande et son issue, jamais l'adresse. Cette porte
+    // n'émettait rien : son seul effet mesuré était la requête elle-même.
+    if (error) {
+      const rc = rcRefusAuth(error);
+      try { window.tel && tel.action("password_reset_requested", { ok: false, rc: rc }); } catch (e) {}
+      // Une panne a son message et sa sortie ; un refus garde sa traduction.
+      _showAuthMsg(messagePanneAuth(rc, "recover") || traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error");
+      return;
+    }
+    try { window.tel && tel.action("password_reset_requested", { ok: true }); } catch (e) {}
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
   } catch (e) {
-    _showAuthMsg(AUTH_HORS_LIGNE, "error");
+    // « Pas de connexion internet » n'est vrai que pour un appareil hors ligne :
+    // un défaut de code le disait aussi, et renvoyait la personne vérifier son Wi-Fi.
+    const rcEx = signalerExceptionAuth("recover", e);
+    _showAuthMsg(messageExceptionAuth(rcEx), "error");
   }
 }
 
@@ -6069,9 +6890,12 @@ async function onbForgotPassword() {
 // L'adresse est mémorisée par _showResendConfirmation pour que le lien reste
 // utilisable après un changement d'onglet piloté par le code, mais la valeur
 // SAISIE prime toujours : on renvoie là où la personne regarde.
-function _showResendConfirmation(email) {
+// `sansAdresse` (2026-11-20) : montrer la sortie sans adresse connue — un lien
+// refusé ne dit pas à qui il était destiné. `onbResendConfirmation` lit alors
+// l'adresse saisie, et demande de la saisir si le champ est vide.
+function _showResendConfirmation(email, sansAdresse) {
   _pendingConfirmEmail = String(email || "").trim();
-  const actif = !!_pendingConfirmEmail;
+  const actif = !!_pendingConfirmEmail || sansAdresse === true;
   const el = document.getElementById("authResendLink");
   if (el) el.style.display = actif ? "" : "none";
   // ⚠️ LA SORTIE DOIT ÊTRE SOUS LES YEUX, PAS SEULEMENT DANS LE DOM
@@ -6083,6 +6907,11 @@ function _showResendConfirmation(email) {
   // posé JUSTE SOUS le message : même endroit que le refus, même regard.
   const haut = document.getElementById("authResendTop");
   if (haut) haut.style.display = actif ? "block" : "none";
+  // Sans adresse connue (lien refusé), le texte fixe « Ton compte attend que tu
+  // ouvres le lien » peut être FAUX : le message au-dessus dit les cas, seul le
+  // bouton reste. Toute autre ouverture le rétablit.
+  const hautTexte = haut ? haut.querySelector("p") : null;
+  if (hautTexte) hautTexte.style.display = sansAdresse === true ? "none" : "";
   // Et on l'amène à l'écran quand le formulaire est déjà défilé : `switchAuthTab`
   // appelle cette fonction avec "" à chaque bascule, donc jamais sur ce chemin.
   // ⚠️ ON CALE LE MESSAGE EN HAUT (`block: "start"` sur #authMsg), pas le bloc au
@@ -6104,7 +6933,14 @@ async function onbResendConfirmation() {
   const saisi = (document.getElementById("authEmail")?.value || "").trim();
   const email = saisi || _pendingConfirmEmail;
   if (!email || !email.includes("@")) {
-    _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Renvoyer ».", "error");
+    // ⚠️ PAS « ci-dessus » (2026-11-20) : le bouton du haut (#authResendTop) est
+    // AU-DESSUS du champ. On nomme le champ, et on l'amène sous le doigt — la
+    // personne vient de demander l'envoi, le clavier est ce qu'elle attend.
+    _showAuthMsg("Entre ton adresse dans le champ « Adresse e-mail », puis touche à nouveau « Renvoyer ».", "error");
+    try {
+      const champ = document.getElementById("authEmail");
+      if (champ) { champ.focus(); champ.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    } catch (e) {}
     return;
   }
   if (authHorsLigne()) return;
@@ -6125,15 +6961,22 @@ async function onbResendConfirmation() {
       // Supabase impose un délai minimal entre deux envois (anti-abus) : le
       // message brut est en anglais et cite des secondes, on le rend lisible.
       if (/security purposes|rate limit|too many/i.test(m)) m = "Un e-mail vient déjà d'être envoyé. Patiente une minute avant de réessayer.";
-      _showAuthMsg(m, "error");
+      // (2026-11-21) Ce renvoi EST la sortie promise par « un refus montre
+      // toujours sa sortie » : en panne, il affichait de l'anglais ou « {} ».
+      const panne = messagePanneAuth(rcRefusAuth(error));
+      if (panne) _showPanneAuth(panne); else _showAuthMsg(m, "error");
       return;
     }
     // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
+    // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
+    // tentative, forme inchangée) ; `auth_exception` dit en plus si c'était une
+    // coupure ou un défaut.
     try { window.tel && tel.action("confirmation_resent", { ok: false }); } catch (e2) {}
-    _showAuthMsg(AUTH_HORS_LIGNE, "error");
+    const rcEx = signalerExceptionAuth("resend", e);
+    _showPanneAuth(messageExceptionAuth(rcEx));
   }
 }
 
@@ -6249,10 +7092,18 @@ async function onbGoogleAuth() {
     });
     if (error) {
       try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
-      _showAuthMsg(error.message || "Connexion Google indisponible.", "error");
+      // (2026-11-21) Un départ vers Google refusé ne laissait aucune trace :
+      // le premier chemin de l'écran pouvait tomber sans que rien ne le dise.
+      const rc = rcRefusAuth(error);
+      try { window.tel && tel.action("google_refused", { rc: rc }); } catch (e) {}
+      // Une panne a son message ici aussi : SDK non chargé, service en 5xx ou
+      // injoignable s'affichaient en texte brut (« Supabase non disponible »).
+      // Un refus (fournisseur désactivé…) garde le sien.
+      _showAuthMsg(messagePanneAuth(rc, "google") || error.message || "Connexion Google indisponible.", "error");
     }
   } catch (e) {
-    try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+    try { localStorage.removeItem("passio_oauth_pending"); } catch (e2) {}
+    signalerExceptionAuth("google", e);
     _showAuthMsg("Connexion Google indisponible.", "error");
   }
 }
@@ -6407,7 +7258,11 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
+      // 👁 (2026-11-20) : le formulaire d'inscription n'a plus de champ de
+      // confirmation ; celui-ci, qui rattrape une faute de frappe, doit au moins
+      // laisser LIRE ce qu'on tape. Même bouton, même fonction que l'inscription.
+      '<div style="position:relative;margin-bottom:8px;"><input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;padding-right:44px;"/>' +
+        '<button type="button" onclick="togglePwd(\'pwdRecoveryInput\',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';
@@ -6422,8 +7277,17 @@ function _showPasswordRecoveryUI() {
     btn.disabled = true; btn.textContent = "…";
     try {
       const { error } = await supa.auth.updateUser({ password: pwd });
-      if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
+      if (error) {
+        // (2026-11-21) L'issue du nouveau mot de passe, en code fermé : ce
+        // formulaire est la fin du parcours « Mot de passe oublié » et ne
+        // laissait aucune trace, réussite comprise.
+        try { window.tel && tel.action("password_reset_done", { ok: false, rc: rcRefusAuth(error) }); } catch (e) {}
+        msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return;
+      }
       msg.style.color = "#16a34a"; msg.textContent = "Mot de passe mis à jour.";
+      // `flush` en keepalive : la page recharge 900 ms plus loin, bien avant le
+      // minuteur d'envoi (même raison que `signin_ok`).
+      try { if (window.tel) { tel.action("password_reset_done", { ok: true }); if (tel.flush) tel.flush({ keepalive: true }); } } catch (e) {}
       // ⚠️ L'ADOPTION SE FAIT ICI, ET NULLE PART AILLEURS SUR CE PARCOURS.
       // `boot()` et le handler `onAuthStateChange` s'abstiennent tant que le
       // fragment `type=recovery` est là : recharger pendant que ce formulaire
@@ -6439,6 +7303,9 @@ function _showPasswordRecoveryUI() {
         setTimeout(function () { window.location.reload(); }, 900);
       })();
     } catch (e) {
+      // La trace seulement : le texte ne propose PAS de recharger (`AUTH_IMPREVU`),
+      // ce qui condamnerait le lien à usage unique qui a ouvert ce formulaire.
+      signalerExceptionAuth("reset", e);
       msg.style.color = "#e11d48"; msg.textContent = "Erreur réseau."; btn.disabled = false; btn.textContent = "Valider";
     }
   };
@@ -6492,7 +7359,7 @@ function traduireRefusMotDePasse(m) {
 
 // ── AIDER À CHOISIR UN MOT DE PASSE, PLUTÔT QUE DE REFUSER CELUI QU'ON A ─────
 //
-// Rapport d'essai réel (capture, 2026-09-16) : quelqu'un tape « Emma0207@ »,
+// Un refus de mot de passe doit être expliqué au plus près du champ.
 // l'écran répond « Ce mot de passe apparaît dans des fuites de données
 // connues », EN HAUT du formulaire — à quatre champs de distance du mot de
 // passe — et ne dit PAS quoi faire. Trois choses manquaient, et aucune n'est
@@ -6606,26 +7473,22 @@ function majAideMotDePasse(refus) {
   }
 }
 
-// « Proposer un mot de passe » : la sortie qui manquait. On remplit les DEUX
-// champs et on AFFICHE le mot de passe en clair — un mot de passe proposé
-// qu'on ne peut pas lire est un mot de passe perdu.
+// « Proposer un mot de passe » : la sortie qui manquait. On remplit le champ
+// et on AFFICHE le mot de passe en clair — un mot de passe proposé qu'on ne
+// peut pas lire est un mot de passe perdu. (Un seul champ depuis le
+// 2026-11-20 : la confirmation a quitté le formulaire.)
 function authProposerMotDePasse() {
   const a = document.getElementById("authPassword");
   if (!a) return;
-  const b = document.getElementById("authPasswordConfirm");
   const mdp = motDePasseSuggere();
   a.value = mdp;
-  if (b) b.value = mdp;
-  // Les deux champs passent en clair, et les boutons « œil » doivent DIRE le
-  // même état — sinon le suivant remet le masque à l'envers.
-  [a, b].forEach(function (el) {
-    if (!el) return;
-    el.type = "text";
-    try {
-      const oeil = el.parentElement ? el.parentElement.querySelector("button") : null;
-      if (oeil) oeil.textContent = "🙈";
-    } catch (e) {}
-  });
+  // Le champ passe en clair, et le bouton « œil » doit DIRE cet état — sinon
+  // le toucher suivant remet le masque à l'envers.
+  a.type = "text";
+  try {
+    const oeil = a.parentElement ? a.parentElement.querySelector("button") : null;
+    if (oeil) oeil.textContent = "🙈";
+  } catch (e) {}
   majAideMotDePasse();
   const ligne = document.getElementById("authPwdRefus");
   if (ligne) {
@@ -6709,7 +7572,6 @@ function appliquerNomCompte(session) {
 async function onbDoAuth() {
   const email = (document.getElementById("authEmail")?.value || "").trim();
   const pwd = document.getElementById("authPassword")?.value || "";
-  const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
   const nom = nomCompteValide(document.getElementById("authName")?.value || "");
   const btn = document.getElementById("authSubmitBtn");
 
@@ -6760,7 +7622,6 @@ async function onbDoAuth() {
     majAideMotDePasse();
     return;
   }
-  if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
   // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
   // Il est demandé au SEUL moment où un contrat se forme (la création de
   // compte) : l'exiger à la connexion redemanderait son accord à quelqu'un qui
@@ -6778,6 +7639,12 @@ async function onbDoAuth() {
   if (authHorsLigne()) return;
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
+
+  // ⚠️ LA PORTE EST FIGÉE ICI, pour le `catch`. Après une inscription réussie,
+  // `switchAuthTab("signin")` change `_authMode` à l'intérieur du même `try` :
+  // une exception levée ensuite partait en `kind: "signin"`, attribuée à une
+  // porte que personne n'avait poussée.
+  const _mode = _authMode;
 
   // LOT E : l'INTENTION, avant l'appel. Le seul signal qui existait était la
   // requête HTTP du hook fetch — muette sur le mode et sur l'issue que l'app lit.
@@ -6882,7 +7749,18 @@ async function onbDoAuth() {
       // jamais le message brut. Le hook fetch marque ces 400 `refus_attendu`
       // et les tait au pilotage ; « Email not confirmed » ou un captcha cassé
       // en série ne se voyaient donc nulle part.
-      try { window.tel && tel.action(_authMode === "signin" ? "signin_refused" : "signup_refused", { rc: rcRefusAuth(error) }); } catch (e) {}
+      // Calculé UNE fois : le même code choisit le signal et, plus bas, le message.
+      const _rc = rcRefusAuth(error);
+      try { window.tel && tel.action(_authMode === "signin" ? "signin_refused" : "signup_refused", { rc: _rc }); } catch (e) {}
+      // (2026-11-21) UNE PANNE PREND LE PAS SUR TOUTE TRADUCTION : service en
+      // 5xx, e-mail qui ne part pas, requête jamais arrivée, SDK non chargé. Le
+      // message brut partait à l'écran — de l'anglais, « {} », parfois une
+      // adresse technique.
+      // ⚠️ CALCULÉ AVANT les branches qui se décident sur le TEXTE du refus :
+      // sous une panne, ce texte est celui d'un corps d'erreur quelconque, et
+      // ses effets de bord (bloc de renvoi, signal de quota, aide au mot de
+      // passe) seraient ceux d'un refus qui n'a pas eu lieu.
+      const _panne = messagePanneAuth(_rc);
       let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       // Compte SUSPENDU par la modération (MOD-01, 2026-09-15) : GoTrue rend
@@ -6895,7 +7773,9 @@ async function onbDoAuth() {
       // Seule sortie possible pour qui n'a jamais reçu le lien : sans ce renvoi,
       // le compte est inaccessible pour toujours (« déjà utilisé » à
       // l'inscription, « confirme ton e-mail » à la connexion, et rien d'autre).
-      if (msg.includes("Email not confirmed")) {
+      // ⚠️ `!_panne` : un 5xx dont le corps cite « Email not confirmed » ouvrait
+      // le bloc « Renvoyer le lien » sous un message de panne.
+      if (!_panne && msg.includes("Email not confirmed")) {
         msg = "Confirme ton e-mail avant de te connecter : ouvre le lien qu'on t'a envoyé, ou fais-le renvoyer juste en dessous.";
         _showResendConfirmation(email);
       }
@@ -6910,17 +7790,23 @@ async function onbDoAuth() {
       //
       // Et surtout : la personne doit comprendre que son adresse n'est PAS
       // perdue, sinon elle s'en va pour de bon.
-      if (/rate limit|too many|security purposes/i.test(msg)) {
+      // ⚠️ `!_panne` : « remaining connection slots are reserved: too many
+      // connections » en 503 est une saturation du SERVICE. Elle émettait
+      // `signup_quota_email` — une erreur prioritaire, gardée 7 jours, qui nomme
+      // le quota d'e-mails — pour ce qui n'en est pas un.
+      if (!_panne && /rate limit|too many|security purposes/i.test(msg)) {
         msg = "Beaucoup de monde s'inscrit en ce moment. Réessaie dans quelques minutes — ton adresse n'est pas perdue.";
         // Sans cette remontée, la panne est invisible : personne ne saura que
         // des inscriptions ont été refusées ce soir-là.
         try { if (window.tel && tel.error) tel.error("signup_quota_email", { screen: "auth" }); } catch (e) {}
       }
-      _showAuthMsg(msg, "error");
+      if (_panne) _showPanneAuth(_panne); else _showAuthMsg(msg, "error");
       // Le même refus, à côté du champ, AVEC la sortie : « Proposer un mot de
       // passe » est juste en dessous. Un refus sans porte de sortie est ce qui
       // fait abandonner l’inscription.
-      if (_refusMdp && _authMode === "signup") {
+      // ⚠️ `!_panne` : un 5xx dont le texte cite « password » n'est pas un refus
+      // de mot de passe — en proposer un autre ne répare pas un service en panne.
+      if (_refusMdp && !_panne && _authMode === "signup") {
         majAideMotDePasse(msg + " Le plus simple : touche « Proposer un mot de passe » juste en dessous.");
         try { document.getElementById("authPwdHint").scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {}
       }
@@ -7015,7 +7901,14 @@ async function onbDoAuth() {
     }
     onbNext();
   } catch(e) {
-    _showAuthMsg(AUTH_HORS_LIGNE, "error");
+    // (2026-11-21) Ce `catch` n'émettait rien et répondait « Pas de connexion
+    // internet » à TOUTE exception : une connexion qui plantait sur un défaut de
+    // code envoyait la personne vérifier son Wi-Fi, et le pilotage ne voyait rien.
+    // `_mode`, pas `_authMode` : la porte POUSSÉE, figée en tête de fonction. Le
+    // libellé du bouton, lui, suit l'onglet AFFICHÉ (`_authMode`) : après une
+    // bascule, « Créer mon compte » sous l'onglet « Se connecter » serait faux.
+    const _rcEx = signalerExceptionAuth(_mode, e);
+    _showPanneAuth(messageExceptionAuth(_rcEx));
     if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
   }
 }
@@ -7607,7 +8500,7 @@ function passionTileHTML(o) {
     ? ' onerror="if(this.dataset.repli){this.onerror=null;this.style.visibility=\'hidden\';}else{this.dataset.repli=\'1\';this.src=\'' + escapeJsArg(o.fallbackUrl) + '\';}"'
     : ' onerror="this.onerror=null;this.style.visibility=\'hidden\';"';
   var avatarContent = o.photoUrl
-    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
+    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" ' + passioMediaProteges.attributImage(passioThumb(o.photoUrl, 192)) + '="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
       + surErreur
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
@@ -8425,10 +9318,20 @@ function setFeedIntents(liste) {
 // étiquette posée par l'auteur. Son prédicat reprend donc exactement les deux
 // signaux que `rankFeedPostsForIntent` utilise déjà pour le bonus « discover » :
 // auteur que je ne suis pas, ou passion que je n'ai pas cochée.
+//
+// ⚠️ MA PROPRE PUBLICATION N'EST JAMAIS UNE DÉCOUVERTE (2026-11-14). Je ne me
+// « suis » pas moi-même : l'auteur tombait donc toujours « hors suivis », et
+// tout ce que je publiais remontait sous « Explorer ». Vu sur la capture de
+// Benjamin : sa propre activité « Rénovation marquise » en tête d'Explorer.
+// On juge l'AUTEUR, jamais le tableau où la publication est rangée :
+// `state.userPosts` sert aussi de réserve à des cartes d'autrui (suites de tests,
+// copies optimistes), et `_estMonPost` les aurait toutes exclues.
 function feedPostMatchesIntent(p, intent) {
   if (!p) return false;
   if (intent === "discover") {
     try {
+      var moi = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
+      if (p.authorId && (p.authorId === "me" || (moi && p.authorId === moi))) return false;
       var suivis = (state.user && state.user.following) || [];
       var horsSuivis = !!p.authorId && suivis.indexOf(p.authorId) === -1;
       var horsPassions = !!p.passion && !_activeFeedPassions.has(p.passion);
@@ -9007,7 +9910,7 @@ function carteCiteeHTML(p) {
     + ' onclick="event.stopPropagation();' + (bobine ? "openReelById" : ((typeof feedIntentsEnabled === "function" && feedIntentsEnabled()) ? "openFeedPost" : "openPost")) + '(\'' + escapeJsArg(p.sharedReel) + '\')">'
     + '<div class="post-citee-tete">A partagé ' + (bobine ? "une bobine" : "une publication") + '</div>'
     + '<div class="post-citee-corps">'
-    + (vignette ? '<img class="post-citee-media" src="' + safeUrlAttr(vignette) + '" alt="" loading="lazy" onerror="this.remove()">' : "")
+    + (vignette ? '<img class="post-citee-media" ' + passioMediaProteges.attributImage(vignette) + '="' + safeUrlAttr(vignette) + '" alt="" loading="lazy" onerror="this.remove()">' : "")
     + '<div class="post-citee-texte">'
     + '<div class="post-citee-auteur">' + escapeHtml(emoji) + " " + escapeHtml(auteur) + (pa ? ' · <span class="post-citee-passion">' + escapeHtml(pa.emoji || "") + " " + escapeHtml(pa.label || "") + "</span>" : "") + '</div>'
     + (extrait ? '<div class="post-citee-extrait">' + escapeHtml(extrait) + '</div>' : "")
@@ -10671,7 +11574,7 @@ function renderPostCover(p, passion) {
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
         linear-gradient(135deg, ${pc}33 0%, #2a2450 60%, #1c1938 100%);
     ">
-      <img class="post-cover-img" src="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="var p=this.parentNode;if(p&&this.src.indexOf('/demo/u/')>-1)p.classList.add('cover-ok');" onerror="${onerr}" />
+      <img class="post-cover-img" ${passioMediaProteges.attributImage(primary)}="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="var p=this.parentNode;if(p&&this.src.indexOf('/demo/u/')>-1)p.classList.add('cover-ok');" onerror="${onerr}" />
       <div class="post-cover-overlay"></div>
       <div class="post-cover-caption">${passionEmoji} ${escapeHtml(passionLabel)}</div>
     </div>`;
@@ -10822,7 +11725,74 @@ function postAimeParMoi(p) {
   } catch (e) { return false; }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LA CARTE D'UNE ACTIVITÉ PARTAGÉE (2026-11-14, demande de Benjamin)
+// « Quand on partage une activité sur le feed, il faut mieux la mettre en
+// avant : la photo de l'activité + le rectangle orange date / heure / lieu » —
+// et, le même soir, « sur le profil tu l'affiches en violet, ce n'est pas bon ».
+// UNE seule fabrique, donc : le fil et le profil peignent la même carte, celle
+// du bloc « Le rendez-vous » de la fiche (tuile corail, date, heure, lieu).
+// ⚠️ La photo et l'heure viennent de l'activité VIVANTE quand elle est chargée,
+// du bloc `sharedReelData` sinon (une activité pas encore lue ne doit pas
+// vider la carte). Tout est échappé : le titre et la ville sont d'autrui.
+// ⚠️ La classe `.post-vlog-card` RESTE sur le nœud (suites e2e, kill switch).
+// ═══════════════════════════════════════════════════════════════════════════
+function carteActiviteFilHTML(p) {
+  const se = (p && p.sharedReelData) || {};
+  let ev = null;
+  try {
+    if (typeof _findCanonicalEvent === "function") ev = _findCanonicalEvent(se.id);
+    if (!ev && typeof allEvents === "function") ev = allEvents().find(function (e) { return e && e.id === se.id; }) || null;
+  } catch (e) { ev = null; }
+  const titre = (ev && ev.title) || se.title || "Activité";
+  const ville = (ev && ev.city) || se.city || "";
+  const date = (ev && ev.date) || se.date || null;
+  // 2026-11-15 (Benjamin) : « fais apparaître le titre et la description au-dessus
+  // du rectangle orange ». La description vient de l'activité vivante, du bloc
+  // partagé sinon ; elle est d'autrui → échappée, et bornée à 3 lignes en CSS.
+  const desc = String((ev && ev.desc) || se.desc || "").replace(/\s+/g, " ").trim();
+  let photo = (ev && ev.coverUrl) || se.coverUrl || "";
+  if (/^data:/.test(String(photo))) photo = (ev && ev.coverUrl) ? photo : "";
+  let jour = "📍", mois = "", quand = "";
+  const d = date ? new Date(date) : null;
+  if (d && !isNaN(d.getTime())) {
+    jour = String(d.getDate());
+    mois = d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
+    quand = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    let heure = "";
+    try { if (ev && typeof _eventTimeLabel === "function") heure = _eventTimeLabel(ev); } catch (e) { heure = ""; }
+    if (!heure) heure = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    quand += " · " + heure;
+  }
+  const img = photo
+    ? `<img class="post-activite-photo" ${passioMediaProteges.attributImage(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
+    : "";
+  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
+      <div class="post-activite-titre">${escapeHtml(titre)}</div>
+      ${desc ? `<div class="post-activite-desc">${escapeHtml(desc)}</div>` : ""}
+      <div class="post-activite-rdv">
+        <div class="post-activite-tuile" aria-hidden="true"><span class="post-activite-jour">${escapeHtml(jour)}</span><span class="post-activite-mois">${escapeHtml(mois)}</span></div>
+        <div class="post-activite-corps">
+          ${quand ? `<div class="post-activite-quand">${escapeHtml(quand)}</div>` : ""}
+          ${ville ? `<div class="post-activite-ou">${escapeHtml(ville)}</div>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Le texte stocké d'un partage d'activité répète le titre, la passion, la ville
+// et la date (il reste lisible par un client qui n'a pas la carte). La carte
+// les porte déjà : seule la première ligne est peinte.
+function texteActivitePartagee(p) {
+  const t = String((p && p.text) || "");
+  if (p && p.sharedReelData && p.sharedReelData.kind === "event" && /^📍 A partagé une activité/.test(t)) {
+    return t.split("\n")[0];
+  }
+  return t;
+}
+
 function renderPostHTML(p) {
+  p = passioMediaProteges.contextualiser(p,{type:"posts",id:p.id});
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
 
@@ -10869,23 +11839,7 @@ function renderPostHTML(p) {
   // Événement IRL partagé dans le feed (shareEventInFeed, app-07) → carte
   // compacte cliquable vers la fiche. Porté par sharedReelData.kind==="event".
   if (p.sharedReelData && p.sharedReelData.kind === "event") {
-    const se = p.sharedReelData;
-    const sd = (typeof fmtEventDate === "function" && se.date) ? fmtEventDate(se.date) : null;
-    const sp = passionById(se.passion) || { label: "", emoji: "📍" };
-    media = `<div class="post-vlog-card" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')" style="cursor:pointer;">
-      <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;">
-        <div class="event-date-block" style="flex-shrink:0;">
-          <div class="event-date-day">${sd ? escapeHtml(sd.day) : "📍"}</div>
-          <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ACTIVITÉ IRL</span>
-          <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Activité")}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
-        </div>
-        <span class="btn small primary" style="flex-shrink:0;pointer-events:none;">Voir</span>
-      </div>
-    </div>`;
+    media = carteActiviteFilHTML(p);
   }
   const shouldCover = p.type === "photo" || (p.cover && p.type !== "vlog");
   if (shouldCover) {
@@ -10894,7 +11848,7 @@ function renderPostHTML(p) {
       // ✅ Ajouter fallback si l'image échoue à charger
       media = `<div class="post-media">
         <img
-          src="${safeUrlAttr(passioThumb(p.image, 700))}"
+          ${passioMediaProteges.attributImage(passioThumb(p.image, 700))}="${safeUrlAttr(passioThumb(p.image, 700))}"
           alt="Image de la publication"
           loading="lazy" decoding="async"
           onerror="imageFilIndisponible(this)"
@@ -10911,8 +11865,8 @@ function renderPostHTML(p) {
       media = `<div class="post-audio">
         🎙 <audio
           controls
-          src="${safeUrlAttr(p.audio)}"
-          onerror="console.error('Audio failed:', this.src);"
+          ${passioMediaProteges.local(p.audio)?"data-video-public-src":"src"}="${safeUrlAttr(p.audio)}"
+          onerror="this.setAttribute('aria-label','Audio indisponible')"
           style="width:100%;"
         ></audio>
       </div>`;
@@ -10984,7 +11938,7 @@ function renderPostHTML(p) {
   // repeint : la citation le remplace.
   const _citee = carteCiteeHTML(p);
   // Tronquer le texte long avec un "Lire la suite"
-  const fullText = _citee ? "" : (p.text || "");
+  const fullText = _citee ? "" : texteActivitePartagee(p);
   const truncated = fullText.length > 220;
   const displayText = truncated ? fullText.slice(0, 220) + "…" : fullText;
   // Le HTML historique reste littéralement identique quand le flag est OFF.
@@ -11070,10 +12024,17 @@ function renderPostHTML(p) {
   </article>`;
 }
 
+var _postDetailProjectionSequence=0;
 async function openPost(id) {
-  const post = state.seed.posts.find(p => p.id === id)
-            || state.userPosts.find(p => p.id === id)
-            || (state.supabasePosts || []).find(p => p.id === id);
+  const projectionSequence=++_postDetailProjectionSequence;
+  const projectionUid=typeof MY_UID==="string"?MY_UID:null;
+  await passioMediaProteges.projeterHeritageCartes(allPostCopies(id));
+  if(projectionSequence!==_postDetailProjectionSequence||projectionUid!==(typeof MY_UID==="string"?MY_UID:null))return;
+  // Une lecture concurrente peut avoir remplacé une copie durant le RPC.
+  // Fermer tout candidat resté brut avant la recherche et le rendu synchrones.
+  allPostCopies(id).forEach(function(copie){if(projectionHeritageLecture().candidat(copie.image))copie.image=null;});
+  const trouve = findPostAnywhere(id);
+  const post = trouve && passioMediaProteges.contextualiser(trouve,{type:"posts",id:trouve.id});
   if (!post) return;
   const page = document.getElementById("postDetailPage");
   const content = document.getElementById("postDetailContent");
@@ -11100,12 +12061,12 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(post.image, 700))}" alt="Image de la publication" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(passioThumb(post.image, 700))}="${safeUrlAttr(passioThumb(post.image, 700))}" alt="Image de la publication" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {
     media = post.audio
-      ? `<div class="post-audio">🎙 <audio controls src="${safeUrlAttr(post.audio)}" style="flex:1;"></audio></div>`
+      ? `<div class="post-audio">🎙 <audio controls ${passioMediaProteges.local(post.audio)?"data-video-public-src":"src"}="${safeUrlAttr(post.audio)}" style="flex:1;"></audio></div>`
       : `<div class="post-audio" style="padding:14px;background:var(--bg-card);border-radius:13px;border:1px solid var(--border);gap:10px;">🎙 <div style="flex:1;font-size:13px;color:var(--text-dim);">Podcast de ${escapeHtml(author.name || "un créateur")} · Mode démo</div></div>`;
   }
   if (post.type === "video" && post.video) {

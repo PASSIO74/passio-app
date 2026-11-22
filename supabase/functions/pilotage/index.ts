@@ -31,13 +31,14 @@ import { REVISION } from "../_shared/revision.js";
 import { aalDuJeton, egaliteConstante, fusionAutorisee } from "../_shared/pilotage.js";
 import {
   autorise, RELANCES, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote, estReparationDuPilote, reparationConfiee, issueSuivie,
-  erreursFrequentes, detailsErreurs, jauges, resumerIssue, verdict, decideAlerte,
+  detailsErreurs, jauges, resumerIssue, verdict, decideAlerte, memoireAlerte, resumeEchelle,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, COMMENTAIRE_CONFIER, dejaConfiee, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
   EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
+  EVT_CANARI, CANARI_LECTURE_MS, CANARI_MARQUES_MAX, marqueCanari, bilanCanari, MIGRATION_TELEMETRIE_CLASSES, remplissage, remplissageAveugle, jaugeRemplissage,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -45,7 +46,7 @@ import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
 import {
-  RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  RETOUR, REVEIL, CADENCE, EVT, enquetesEnCours, doitReveillerSentinelle, doitCadencerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau, rendreCreneau,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
@@ -98,12 +99,12 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   if (action === "veille") {
-    // Le secret, une fois posé (PILOTAGE_VEILLE_SECRET), ferme le déclencheur anonyme.
-    // Sans lui, rien ne change pour pg_cron (audit 2026-11-06).
+    // Secret obligatoire, partagé avec Vault/pg_cron et le workflow de secours.
+    // Absent ou différent : aucun créneau, lecture ou geste de veille.
     const secret = Deno.env.get("PILOTAGE_VEILLE_SECRET") || "";
     const presente = req.headers.get("x-passio-veille") || "";
     const reconnu = !!secret && egaliteConstante(presente, secret);
-    if (secret && !reconnu) return json({ error: "Non authentifié" }, 401);
+    if (!reconnu) return json({ error: "Non authentifié" }, 401);
     return veille(admin);
   }
 
@@ -167,9 +168,8 @@ Deno.serve(async (req) => {
 });
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
-// Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
-// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Réservée aux ordonnanceurs qui présentent le secret de veille.
+// La clé anon seule ne donne aucun accès.
 // Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
 // « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
 // deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)
@@ -186,7 +186,7 @@ async function veille(admin: Admin) {
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
-  const [sante, signalements, github, dispo, rap, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300), lireParcoursVeille(admin)]);
+  const [sante, signalements, github, dispo, rap, rempl, can, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), lireRemplissage(admin), lireCanari(admin), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -198,7 +198,10 @@ async function veille(admin: Admin) {
   // Les parcours critiques (2026-11-06) entrent dans le voyant : un parcours
   // CRITIQUE en panne (comptes serveur distincts, _shared/parcours.js) sonne.
   const parcoursVeille = val(parc);
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille };
+  // La table de télémétrie (2026-11-21, T2) : son remplissage et la mémoire du canari entrent dans le voyant —
+  // pleine, elle refuse les signaux de panne eux-mêmes, et tout ce qui est compté ci-dessus se tait.
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille,
+    remplissage: val(rempl), canari: val(can) };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -221,20 +224,34 @@ async function veille(admin: Admin) {
   // rouge ne sonnait plus (contre-revue du 12/11).
   const runsNonLusVoyant = (((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || []).filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));
   const partielGh = partielGithub({ runsNonLus: runsNonLusVoyant }) as string[];
-  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
+  // Le remplissage et la mémoire du canari non plus (2026-11-21) : illisibles, un rouge « table pleine »
+  // se lirait « résolu » à la première lecture manquée.
+  const incomplet = [sante, signalements, github, parc, rempl, can].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
     const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
-    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: partielGh.length ? ("en partie : " + partielGh.join(" ; ")).slice(0, 160) : raison(github), parcours: raison(parc) }));
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: partielGh.length ? ("en partie : " + partielGh.join(" ; ")).slice(0, 160) : raison(github), parcours: raison(parc), remplissage: raison(rempl), canari: raison(can) }));
   }
   if (memoire.illisible) console.warn("veille : état mémorisé illisible " + JSON.stringify({ code: memoire.code || "?" }));
   const vt = tenirVerdict(prec, v, incomplet);
-  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
+  // Les codes des raisons rouges (2026-11-21, T3) viennent du verdict MESURÉ (`v`), jamais du voyant tenu :
+  // une raison neuve venue d'une source lue sonne même pendant une lecture incomplète.
+  const mesuree = { codes: v.couleur === "rouge" ? v.codes : [], rouges: v.couleur === "rouge" ? v.rouges : [] };
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, ...mesuree, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
+  // La mémoire des raisons APRÈS la décision, et gardée : elle ne doit jamais empêcher de sonner.
+  let memo: { codes: string[]; annonces: Record<string, string> };
+  try { memo = memoireAlerte(prec, actuel, d); }
+  catch { memo = { codes: (Array.isArray(actuel.codes) ? actuel.codes : []).filter((c: unknown) => typeof c === "string").slice(0, 24), annonces: {} }; }
+  // L'ensemble des raisons rouges a changé sous un rouge qui dure : l'état se réécrit (sinon une raison
+  // réparée puis revenue ne re-sonnerait pas). Un état d'avant ce lot, sans `codes`, n'est pas réécrit pour ça.
+  const codesPrec = prec && Array.isArray(prec.codes) ? prec.codes : null;
+  const codesChange = !!codesPrec && actuel.couleur === "rouge" && (codesPrec.length !== memo.codes.length || memo.codes.some((c) => !codesPrec.includes(c)));
   // Mémoire illisible : seul ce qui SONNE (un rouge, un site injoignable) s'écrit — l'alerte
   // d'abord, quitte à sonner deux fois. Tout autre voyant attend la lecture suivante.
-  const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner);
+  const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner || codesChange);
+  const seulCodes = !!prec && prec.couleur === actuel.couleur && prec.dispo === actuel.dispo && !d.sonner && codesChange;
   // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
   // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
   // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
@@ -252,6 +269,10 @@ async function veille(admin: Admin) {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
+      codes: memo.codes, annonces: memo.annonces,
+      // Réécrite pour ses seuls codes (même couleur, même dispo, rien n'a sonné) : marquée, et l'historique
+      // de l'écran l'écarte — un code qui clignote aurait rempli les lignes lues (contre-revue de B1).
+      ...(seulCodes ? { motif: "codes" } : {}),
     } });
     dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
@@ -267,10 +288,16 @@ async function veille(admin: Admin) {
   };
   // Chaque geste passe d'abord par la politique (_shared/politique-autonomie.js) :
   // invalide, en observation ou en pause → aucun geste, l'observation continue.
-  const delestage = await etape(() => delestageAuto(admin, signaux));
+  const delestage = await etape(() => delestageAuto(admin, signaux, e.remplissage));
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
+  // La cadence APRÈS le réveil (2026-11-21) : un passage que le réveil vient de lancer suffit.
+  const cadence = await etape(() => cadencerSentinelle(admin, e.github as GhEtat | null, reveil));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // La MÉMOIRE du canari (2026-11-21, T2) : un refus laisse une marque, le succès qui clôt une suite aussi.
+  // APRÈS l'alerte (rien ne la retarde) et après l'émission : le voyant de CE passage a jugé les marques
+  // d'avant, celui du passage suivant jugera celle-ci. Sa propre panne ne casse rien (étape isolée).
+  await etape(() => noterCanari(admin, canari, e.canari));
   // L'essai des alertes (2026-11-07) : sans note d'envoi depuis 7 jours, rien ne
   // prouve que le téléphone sonnerait ; un essai part, de jour, et s'accuse.
   const essai = await etape(() => essayerAlertes(admin));
@@ -280,8 +307,10 @@ async function veille(admin: Admin) {
   const battement = await etape(() => battre(admin, contenuBattement({
     // GitHub lu en partie et mémoire illisible sont des lectures manquées : le battement les dit « ko ».
     lectures: { sante, signalements, github: partielGh.length ? { status: "rejected" } : github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud,
-      memoire: { status: memoire.illisible ? "rejected" : "fulfilled" } },
-    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+      memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, cadence, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    // La mesure d'échelle (2026-11-21, T3) : des NOMBRES, de quoi calibrer les taux (TAUX_VOYANT_PM).
+    echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
@@ -292,7 +321,7 @@ async function veille(admin: Admin) {
   // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
   // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
   // battement (analytics_events) et dans les journaux de la fonction.
-  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), cadence: !!(cadence && cadence.lance), battement: !!(battement && battement.ecrit) }));
   return json({ ok: true });
 }
 
@@ -303,8 +332,55 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
   if (!canariDu(new Date().getUTCMinutes())) return { emis: false };
   const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await anon.from("telemetry_events").insert(ligneCanari("can_srv_" + crypto.randomUUID()));
-  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120) };
+  // Le CODE part avec le motif (PT429 : borne ou débit ; 42501 : RLS ; 57014 : délai) : `noterCanari` les range.
+  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120), code: String((error as { code?: string }).code || "").slice(0, 10) };
   return { emis: true };
+}
+
+// ─── La table de télémétrie se ferme, et personne ne le voit (2026-11-21, T2) ─
+// Logique et textes : _shared/pilotage.js (bilanCanari, remplissage). Ici, les lectures et l'écriture.
+// La MÉMOIRE du canari : les marques `pilotage_canari` des deux dernières heures, sous l'auteur système
+// (écrites par la clé de service : un navigateur ne les forge pas, RLS analytics_insert_own). Une
+// lecture en échec LÈVE : « non lu », jamais « aucun refus ».
+async function lireCanari(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("created_at,properties").eq("event", EVT_CANARI).eq("user_id", "systeme:pilotage")
+    .gte("created_at", ilYa(CANARI_LECTURE_MS)).order("created_at", { ascending: false }).limit(CANARI_MARQUES_MAX);
+  if (error) throw error;
+  return bilanCanari(data || []);
+}
+// La marque de CE passage (marqueCanari) : chaque refus, et le succès qui clôt une suite — rien en temps
+// normal. Aux journaux, le CODE d'un refus d'écriture, jamais le motif (un texte du serveur).
+async function noterCanari(admin: Admin, resultat: Record<string, unknown>, bilan: { enCours?: boolean } | null) {
+  const m = marqueCanari(resultat, bilan);
+  if (!m) return { note: false };
+  const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_CANARI, properties: m });
+  if (error) { console.warn("veille : marque du canari refusée " + JSON.stringify({ code: String((error as { code?: string }).code || "?") })); return { note: false }; }
+  return { note: true };
+}
+// Le REMPLISSAGE de `telemetry_events`. Après la migration des classes : `telemetrie_remplissage()`, en temps
+// constant (statistiques du serveur, seuils relus des deux déclencheurs). AVANT (fonction absente, PGRST202) :
+// UN compte exact sous la clé de service — « un compte du pilotage se compte en base » —, borné à 4 s ; au-delà,
+// « non mesuré » (null), JAMAIS 0. Mesuré le 21/11 : 6 ms pour 14 000 lignes, linéaire (≈ 0,35 s à 800 000).
+// Une erreur de la fonction qui n'est PAS une absence (délai, panne) LÈVE, et un remplissage NON MESURÉ aussi
+// (compte abandonné, réponse sans nombre) : une lecture non lue n'est pas une table vide — l'écran ne passe pas
+// au vert, la veille tient son voyant (sinon un rouge « télémétrie pleine » sonnait « résolu » sur un compte lent).
+// ⚠️ « Absente » = PGRST202 SEUL (PostgREST ne trouve pas la fonction), pas `estObjetAbsent` (contre-revue du 21/11) : un
+// 42883 levé DEPUIS la fonction (un objet qu'elle appelle a disparu) ouvrait le repli, et une table qui stationne à 91 %
+// — orange, le régime normal après migration — était jugée sur les seuils d'AVANT : rouge, sonnerie, et une ligne qui
+// demandait d'appliquer une migration déjà en base. Reste PGRST202 quand PostgREST perd son cache de schéma : fiche, limite 18.
+const REMPLISSAGE_DELAI_MS = 4000;
+const fonctionSqlAbsente = (e: unknown) => String((e as { code?: string } | null)?.code || "") === "PGRST202";
+async function lireRemplissage(admin: Admin) {
+  const { data, error } = await admin.rpc("telemetrie_remplissage");
+  let r: ReturnType<typeof remplissage>;
+  if (!error && data && typeof data === "object") r = remplissage(data as Record<string, unknown>);
+  else {
+    if (error && !fonctionSqlAbsente(error)) throw error;
+    const n = await avecDelai(compter(admin.from("telemetry_events").select("id", { count: "exact", head: true })), REMPLISSAGE_DELAI_MS, null);
+    r = remplissage({ vivantes: n }, { migration: MIGRATION_TELEMETRIE_CLASSES });
+  }
+  if (r.vivantes === null) throw new Error("remplissage de la télémétrie non mesuré (compte abandonné après " + REMPLISSAGE_DELAI_MS / 1000 + " s, ou réponse sans nombre)");
+  return r;
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
@@ -449,7 +525,7 @@ async function lireReception(admin: Admin) {
 
 // Le dernier voyant noté par la veille. `illisible` (2026-11-12) : la lecture a échoué — ce
 // n'est PAS « aucun état », et l'appelant ne doit ni noter un premier état ni conclure à un retour.
-type EtatMemorise = { couleur?: string; dispo?: boolean; raisons?: string[]; alerteLe?: string | null; dispoDepuis?: string | null; le: string };
+type EtatMemorise = { couleur?: string; dispo?: boolean; raisons?: string[]; alerteLe?: string | null; dispoDepuis?: string | null; codes?: unknown; annonces?: unknown; le: string };
 async function lireEtatMemorise(admin: Admin): Promise<{ etat: EtatMemorise | null; illisible: boolean; code?: string }> {
   try {
     const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
@@ -597,6 +673,7 @@ async function etat(admin: Admin, frais = false) {
     historique: lireHistorique(admin), croissance: lireCroissance(admin), seuils: lireSeuils(admin),
     parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
     relances: lireRelances(admin), fusionsArmees: lireFusionsArmees(admin),
+    remplissage: lireRemplissage(admin), canari: lireCanari(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -634,10 +711,15 @@ async function etat(admin: Admin, frais = false) {
     const j24 = (out.utilisateurs as { aujourdhui?: Audience | null } | null)?.aujourdhui || null;
     const bp = j24 ? bandePassanteEstimee(j24.appareils) : null;
     if (bp != null) cap.jauges.push(...jauges({ bandePassante: bp }).filter((j) => j.cle === "bandePassante"));
+    // La table de télémétrie (2026-11-21, T2) : sa jauge parmi les autres ; sa ligne « À faire » est à part (aFaire).
+    const rp = out.remplissage as ReturnType<typeof remplissage> | null;
+    if (rp) cap.jauges.push(jaugeRemplissage(rp));
     cap.cout = coutMensuel(cap.jauges);
   }
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
   catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
+  // Les seuils du voyant, dits au pilote (2026-11-21, T3) : nombres absolus, et où serait le seuil proportionnel.
+  out.echelle = resumeEchelle(connectes5(maintenant));
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
@@ -659,6 +741,13 @@ async function compter(q: PromiseLike<{ count: number | null; error: unknown }>)
   return count ?? 0;
 }
 
+// Les comptes connectés (2026-11-21, T3) : `comptes_connectes` de l'appel à 300 s DÉJÀ fait (la veille
+// pour ses signaux, l'écran pour `utilisateurs.maintenant`), et seulement s'il est EXACT (fonction SQL,
+// identité serveur) — jamais le repli par lignes, qui compte des device_id qu'écrit le navigateur. Un
+// second appel à 900 s refaisait tout le calcul lourd et retardait le verdict sans délai propre
+// (contre-revue de B1). Une mesure sur 5 min, jamais une décision : inconnue, elle vaut null.
+const connectes5 = (a: Audience | null | undefined): number | null => (a && a.exact ? a.connexions ?? null : null);
+
 async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
@@ -673,14 +762,9 @@ async function lireSante(admin: Admin) {
     compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
   const depuis24 = ilYa(24 * 3600e3);
-  const [{ data, error }, erreurs24h] = await Promise.all([
-    admin.from("client_errors").select("message,uid,created_at").gte("created_at", depuis24).order("created_at", { ascending: false }).limit(300),
-    // Le NOMBRE se compte en base : la liste ci-dessus est bornée (300, et
-    // PostgREST ne rend jamais plus de 1 000 lignes) — sa longueur plafonnait
-    // l'affichage à 300 erreurs par jour, quelle que soit la réalité.
-    compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
-  ]);
-  if (error) throw error;
+  // Le NOMBRE se compte en base. Le classement des 300 dernières lignes qui l'accompagnait n'avait
+  // plus aucun lecteur (2026-11-21, T3) : le pilote lit celui de `erreurs.details` (lireErreurs7j).
+  const erreurs24h = await compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24));
   // Les COMPTES serveur derrière ces lignes (2026-11-07) : une erreur et une
   // panne 5xx se remontent avec la clé anon, publique — dix lignes forgées
   // faisaient sonner rouge. Seule l'identité posée par le serveur (`auth_uid`)
@@ -698,7 +782,7 @@ async function lireSante(admin: Admin) {
   // coupure réseau, un repli) ; seuls et d'un seul compte, ils ne colorent plus l'écran (verdict).
   const [lErreurs, l5xx, avertJs15] = await Promise.all([lignes("error", false), lignes("api", true), compter(prod().eq("type", "error").eq("severity", "warn"))]);
   const comptesErreurs15 = distincts(lErreurs), comptes5xx15 = distincts(l5xx), comptesAvert15 = distincts(lErreurs, (x) => x.severity === "warn");
-  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
+  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h };
 }
 
 async function lireErreurs7j(admin: Admin) {
@@ -736,15 +820,23 @@ async function lireMiseEnLigne(admin: Admin, etatGh: { runs?: { deploy?: RunResu
 // Ce qui s'est passé (2026-10-23) : les derniers CHANGEMENTS du voyant notés par
 // la veille (7 jours). Des raisons écrites par cette fonction, jamais un texte
 // de tiers ; bornées quand même.
+// Depuis le 2026-11-21 (T3), la veille réécrit aussi son état quand l'ensemble des raisons ROUGES change
+// sous un rouge qui dure. Ces réécritures portent `motif: "codes"` et sont écartées EN BASE (un code qui
+// clignote en écrirait douze par heure). Restent des lignes « rouge » de suite quand une sonnerie réécrit
+// l'état (« Nouveau problème », rappel) : on garde la plus ancienne lue de chaque suite de même couleur ET
+// même disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
+const HISTORIQUE_LU = 40;
 async function lireHistorique(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
-    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(12);
+    .eq("user_id", "systeme:pilotage").or("properties->>motif.is.null,properties->>motif.neq.codes")
+    .gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(HISTORIQUE_LU);
   if (error) throw error;
-  return (data || []).map((r) => {
+  const lignes = (data || []).map((r) => {
     const p = (r.properties || {}) as { couleur?: unknown; dispo?: unknown; raisons?: unknown };
     const couleur = ["vert", "orange", "rouge", "gris"].includes(String(p.couleur)) ? String(p.couleur) : "gris";
     return { le: r.created_at, couleur, dispo: p.dispo !== false, raisons: (Array.isArray(p.raisons) ? p.raisons : []).slice(0, 3).map((x) => String(x).slice(0, 160)) };
   });
+  return lignes.filter((l, i) => { const avant = lignes[i + 1]; return !avant || avant.couleur !== l.couleur || avant.dispo !== l.dispo; }).slice(0, 12);
 }
 
 async function lireUtilisateurs(admin: Admin) {
@@ -832,7 +924,7 @@ async function lireReglages(admin: Admin) {
   return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
 }
 
-async function delestageAuto(admin: Admin, a: Audience | null) {
+async function delestageAuto(admin: Admin, a: Audience | null, rp: { comptes?: string | null } | null = null) {
   const pol = autoriser(POLITIQUE, "delestage_auto");
   if (!pol.ok) return { raison: "politique:" + pol.raison };
   const lignes = await lireLignesReglages(admin);
@@ -849,6 +941,9 @@ async function delestageAuto(admin: Admin, a: Audience | null) {
     comptes5xx15 = a.comptes5xx15;
     aveugle = estAveugle(a);
   }
+  // La table au palier 2 des comptes (ou fermée pour eux) n'écrit plus leurs battements : les connexions
+  // comptées BAISSENT sans que la charge baisse. Même sens que l'aveuglement : on peut monter, pas descendre.
+  if (remplissageAveugle(rp)) aveugle = true;
   const d = decideDelestage(actuel, { pctConnexions, comptes5xx15, aveugle });
   if (!d.changer) return { niveau: d.niveau };
   const { error } = await admin.from("reglages_distants").upsert({
@@ -888,8 +983,8 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 }
 
 // ─── Réveil de la Sentinelle (_shared/autonomie.js) ─────────────────────────
-// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 4 à 8
-// fois par jour. Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
+// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 3 à 4
+// fois par jour (d'où aussi la cadence, plus bas). Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
 // (comptés EN BASE : `comptes_echecs_30min` de pilotage_audience), aucune
 // enquête en cours, pas de pause, pas de run récent → workflow_dispatch.
 // Plafonné à 2 réveils par heure et 12 par jour EN BASE.
@@ -926,6 +1021,32 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   cacheGh = null;
   const parcoursEnPanne = comptesParcours >= REVEIL.comptesMin ? enPanne.map((p) => p.id).slice(0, 5) : [];
   try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison, parcours: parcoursEnPanne } }); } catch { /* */ }
+  return { lance: true };
+}
+
+// ─── La cadence de la Sentinelle (2026-11-21, _shared/autonomie.js ③) ────────
+// Son cron horaire est servi 3,7 fois par jour (écart médian 6,5 h) : la veille, tenue à la
+// minute par pg_cron, relance le MÊME passage dès que le dernier est terminé depuis
+// une heure. Rien d'autre ne change : le passage lit, classe, et n'ouvre une
+// enquête que sous ses propres règles. Ce qui sort vers GitHub : `ref: main`, rien d'autre.
+async function cadencerSentinelle(admin: Admin, etatGh: GhEtat | null, reveil: Record<string, unknown> | null) {
+  if (!JETON_GH) return { inactif: true };
+  // Un réveil INTERROMPU (délai de 10 s, exception) a peut-être été accepté par GitHub : on
+  // n'empile pas un second passage, la veille suivante (5 min) tranchera (contre-revue de #1007).
+  if (reveil && (reveil.lance || reveil.erreur)) return { raison: "reveil" };
+  if (!etatGh || !etatGh.runs) return { illisible: true };
+  const pol = autoriser(POLITIQUE, "cadence_sentinelle", { pause: !!etatGh.pause });
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
+  const d = doitCadencerSentinelle({ pause: !!etatGh.pause, dernierRun: etatGh.runs.sentinelle || null });
+  if (!d.relancer) return { raison: d.raison };
+  // Plafond EN BASE, atomique (plafond_consommer) : deux veilles qui se chevauchent,
+  // ou une lecture de GitHub encore en cache, ne relancent pas deux fois dans l'heure.
+  const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-cadence", "sentinelle-cadence", { parMinute: 1, parHeure: CADENCE.parHeure });
+  if (!plafond.ok) return { raison: "plafond" };
+  const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
+  if (r.status !== 204) return { raison: "refus_github_" + r.status };
+  cacheGh = null;
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.cadence, properties: { raison: d.raison } }); } catch { /* */ }
   return { lance: true };
 }
 
@@ -1456,15 +1577,15 @@ async function lireCapacite(admin: Admin) {
   // sinon le total reçu sur 60 s contre 3 000, comme avant.
   const mur = aud.exact ? mesureAveugle(aud) : null;
   const telemetrie = mur ? mur.mesure : await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
-  // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
-  const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
+  // Le nombre de profils ne mesure pas les envois SMTP : Google, renvois et
+  // récupérations suivent d'autres chemins. Le quota reste à vérifier sur Brevo.
   let base: number | null = null, stockage: number | null = null;
   const { data: m, error } = await admin.rpc("pilotage_mesures");
   if (!error && m) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
+  return { jauges: jauges({ connexions, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {
@@ -1528,11 +1649,11 @@ async function lireGithub() {
   // jamais celle d'une PR d'un fork dont la branche s'appelle `main`). Une lecture refusée ou
   // muette se NOTE (`runsNonLus`) : un null se lisait comme « rien à dire ».
   const runsNonLus: string[] = [];
-  const run = async (cle: "deploy" | "sentinelle" | "veille" | "securite", f: string) => {
+  const run = async (cle: "deploy" | "sentinelle" | "veille" | "securite" | "fonctions", f: string) => {
     const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
     // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
     // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
-    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis 8 h » disparaissait.
+    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis plus de 8 h » (3 h depuis le 21/11) disparaissait.
     const lectures = await Promise.all((EVENEMENTS_RUNS[cle] as string[]).map(async (ev) => {
       const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true&event=${ev}&per_page=10`).catch(() => null);
       const lu = r && r.ok ? await r.json().catch(() => null) : null;
@@ -1589,7 +1710,9 @@ async function lireGithub() {
       : PR_PAGES_MAX * 100 + " PR lues, la suite n'a pas pu l'être (" + (r ? "GitHub HTTP " + r.status : "GitHub muet") + ")" };
   };
   // Le scan de sécurité du lundi (`securite`) : lu pour être DIT, à trier par Benjamin — jamais réparé (RUNS_REPARABLES).
-  const [sentinelle, veille, deploy, securite, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), lirePulls()]);
+  // Le déploiement des fonctions serveur (`fonctions`, 2026-11-21) : de même — son run rouge (une fonction retenue,
+  // une fumée cassée) ne se voyait nulle part, du 20 au 21/11.
+  const [sentinelle, veille, deploy, securite, fonctions, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), run("fonctions", "edge-functions.yml"), lirePulls()]);
   const listePr = pulls.lignes;
   // CENT issues ouvertes ou plus : le dépôt est PUBLIC, n'importe qui en ouvre. Lire « les N plus
   // récentes » laissait un sujet `humain` se cacher derrière du bruit (D-18) — et dire « lecture
@@ -1619,7 +1742,7 @@ async function lireGithub() {
   const infosPr = new Map(listePr.map((p) => [p.number, resumerPr(p, DEPOT)]));
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite, fonctions }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
   // `runsNonLus` : ceux que le voyant lit (RUNS_DU_VOYANT) tiennent la VEILLE (on ne sait pas si la mise en
   // ligne a réussi) ; `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
   val.runsNonLus = runsNonLus;

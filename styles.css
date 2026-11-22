@@ -4931,7 +4931,7 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
-    .reel-action-btn.liked .reel-action-icon { background: rgba(236, 72, 153, 0.85); border-color: #ec4899; }
+    .reel-action-btn.liked .reel-action-icon { background: rgba(239, 68, 68, 0.9); border-color: #ef4444; }
     .reel-action-btn.liked .reel-action-icon svg { fill: #fff; stroke: #fff; }
     .reel-action-btn.tipped .reel-action-icon { background: rgba(167, 139, 250, 0.95); border-color: #a78bfa; }
     .reel-action-label {
@@ -5237,10 +5237,10 @@
       transition: color 200ms;
     }
     .reel-comment-like:hover {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-like.liked {
-      color: #ec4899;
+      color: #ef4444;
     }
     .reel-comment-reply {
       cursor: pointer;
@@ -6768,37 +6768,10 @@
 
     .irl-tile-mine { font-size: 9px; vertical-align: super; color: var(--accent); }
 
-    /* Barre de passions : mes profils en principal + panneau « Autres » à cocher */
+    /* Barre de passions : mes profils en principal */
     /* Aligné à gauche (et non space-around comme la messagerie) : un compte n'a
        souvent qu'un ou deux profils passion, l'écartement les faisait flotter. */
     .irl-passion-zone .msg-filter-tiles { justify-content: flex-start; gap: 10px; }
-    .irl-tile-more .msg-tile-icon { font-weight: 700; color: var(--muted); }
-    .irl-tile-more.active .msg-tile-icon { color: var(--accent); }
-    .irl-extra-panel {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 14px; padding: 12px; margin: 8px 0 4px;
-    }
-    .irl-extra-title {
-      font-size: 11px; font-weight: 800; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
-    }
-    .irl-extra-list { display: flex; flex-wrap: wrap; gap: 6px; }
-    .irl-extra-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid var(--border); background: transparent; color: var(--text);
-      font-size: 12px; font-weight: 600; border-radius: 999px;
-      padding: 7px 12px; min-height: 34px; cursor: pointer;
-    }
-    .irl-extra-chip.on { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.07); }
-    .irl-extra-chip b { font-size: 10px; color: var(--muted); font-weight: 700; }
-    .irl-extra-chip.on b { color: var(--accent); }
-    .irl-extra-box {
-      width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--border);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 10px; line-height: 1; flex-shrink: 0;
-    }
-    .irl-extra-chip.on .irl-extra-box { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .irl-extra-empty { font-size: 12px; color: var(--muted); }
 
     .event-card-banner {
       font-size: 11px; font-weight: 800; border-radius: 10px;
@@ -8389,8 +8362,87 @@ body.ctx-locked #appMain { overflow: hidden; }
    son propre « Voir » et la Passio répétée. UI-3B la masque seulement sur les
    cartes réellement décorées et identifiées comme `shared`. Le DOM reste en
    place et réapparaît dès que la classe racine est retirée par un kill switch. */
-:root.passio-ui-3 .post[data-v3-decore][data-v3-activity-source="shared"] .post-vlog-card {
-  display: none;
+/* 2026-11-14 (Benjamin) : la sous-carte n'est PLUS masquée — elle est devenue
+   la mise en avant de l'activité (photo + bloc date corail), identique dans le
+   fil et sur le profil. Seul son doublon de porte a disparu (plus de « Voir »). */
+.post-activite.post-vlog-card {
+  margin: 10px 0 0;
+  border: 1px solid rgba(109, 50, 244, 0.16);
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg-card, #fff);
+}
+.post-activite-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--accent-tile, #f5f3ff);
+}
+.post-activite-titre {
+  padding: 12px 14px 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.post-activite-desc {
+  padding: 6px 14px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-dim, #4a4663);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.post-activite-rdv {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1ebfe, #ffeeeb);
+  min-width: 0;
+}
+.post-activite-tuile {
+  flex-shrink: 0;
+  width: 56px;
+  padding: 8px 0;
+  border-radius: 14px;
+  background: #c13d28;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.post-activite-jour { font-size: 23px; font-weight: 900; }
+.post-activite-mois {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+.post-activite-corps { min-width: 0; flex: 1; }
+.post-activite-quand {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #1f1147;
+}
+.post-activite-quand::first-letter { text-transform: uppercase; }
+.post-activite-ou {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a3f6b;
+  margin-top: 3px;
 }
 
 :root.passio-ui-3 #eventDetailCta .v3-rsvp {
@@ -8890,8 +8942,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v4a2-coral: var(--v3-coral-texte, #c13d28);
 }
 
-/* La carte décorée devient une colonne ordonnée. Trois enfants seulement
-   restent visibles : le bandeau d'état (annulé / en cours), le bloc du lot, et
+/* La carte décorée devient une colonne ordonnée. Quatre enfants seulement
+   restent visibles (le quatrième, la barre sociale, depuis le 2026-11-14) : le bandeau d'état (annulé / en cours), le bloc du lot, et
    la preuve sociale historique — la seule surface où des personnes sont
    nommées, et elle est déjà bornée par le moteur aux comptes suivis. */
 :root.passio-ui-4a2 .event-card[data-v4a2] {
@@ -8911,6 +8963,28 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner { display: block !important; order: 0; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .v4a2 { display: flex !important; order: 1; }
 :root.passio-ui-4a2 .event-card[data-v4a2] > .event-social-proof { display: flex !important; order: 2; }
+/* 2026-11-14 (demande de Benjamin) : aimer, commenter et partager DIRECTEMENT sur
+   la carte. La barre sociale historique n'est plus recouverte : ce sont les mêmes
+   nœuds, donc les mêmes moteurs (`toggleEventLike`, `openCommentSheet`,
+   `shareEvent`) et les mêmes ancres `data-evlike` / `data-evc` que les
+   chargements asynchrones repeignent — aucun second bouton à tenir synchronisé.
+   La réaction emoji et sa pastille restent dans la fiche. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions {
+  display: flex !important;
+  order: 3;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 4px;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  box-sizing: border-box;
+}
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="showEmojiPickerForEvent"],
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .event-react-chip-holder { display: none !important; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .post-actions > .post-action[onclick*="shareEvent"] { margin-left: auto; }
 
 /* Le barré historique de l'activité annulée vit sur `.event-title`, que le lot
    ne montre plus : il est reporté sur le titre du bloc. */
@@ -12032,7 +12106,6 @@ button, a, label, select, summary,
   border: 0;
   box-shadow: none;
 }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile {
   min-width: 0;
   width: 100%;
@@ -12076,9 +12149,8 @@ button, a, label, select, summary,
 /* La tuile « Chercher » de la rangée fait DOUBLE EMPLOI avec la case
    « Chercher » de la ligne du dessus, qui appelle exactement la même fonction
    (`ouvrirRecherchePassionIRL`). Masquée ici, rendue par la coupure.
-   ⚠️ « Autres » (`#irlExtraToggle`), lui, RESTE : il ne cherche pas, il ajoute
-   durablement une passion à la rangée (`state.user.irlExtraPassions`), et
-   aucune autre porte ne fait ça. */
+   ⚠️ « Autres » (`#irlExtraToggle`) est RETIRÉ (2026-11-14) : « Chercher »
+   couvre le besoin. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.psel-tile-chercher { display: none; }
 
 /* Coché = violet plein, comme toutes les cases de la page. */
@@ -12092,32 +12164,6 @@ button, a, label, select, summary,
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-/* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
-   même langue : des pastilles au lavis violet, écriture violet foncé, et la
-   case à cocher qui se remplit de violet une fois cochée. */
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
-  border-color: var(--accent-tile-line);
-  background: var(--accent-tile);
-  color: var(--accent-2);
-  min-height: 38px;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
-  border-color: var(--accent);
-  background: var(--accent-tile-on);
-  color: var(--accent-2);
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: var(--accent); }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
-  border-color: var(--accent);
-  color: #fff;
-}
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
 /* ── ⑤ Les raccourcis personnels : UNE ligne, visuellement secondaire ──────
@@ -12712,10 +12758,11 @@ button, a, label, select, summary,
 .passio-hint.passio-hint-sous::before { top: -5px; }
 .passio-hint.passio-hint-sur::after { bottom: -5px; }
 /* ENT-C15 : passions gardées sur l'appareil — la porte du compte, une fois. */
-.fr-note-locale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 6px 12px 2px; padding: 6px 4px 6px 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); font-size: 12.5px; color: var(--text); }
+/* Parcours du nouvel inscrit (2026-11-20) : à 390 px, texte, bouton et × passaient chacun sur leur ligne, le × seul en bas à gauche (124 px de haut). Le × sort du flux, à droite, centré : deux lignes au plus. */
+.fr-note-locale { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 6px 12px 2px; padding: 4px 48px 4px 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); font-size: 12.5px; color: var(--text); }
 .fr-note-locale-texte { color: var(--muted); }
 .fr-note-locale-cta { flex: 1 1 auto; min-height: 44px; border: none; background: transparent; color: #5b21b6; font: inherit; font-weight: 700; text-align: left; cursor: pointer; padding: 0 4px; }
-.fr-note-locale-fermer { width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
+.fr-note-locale-fermer { position: absolute; top: 50%; right: 2px; transform: translateY(-50%); width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
 /* ENT-C12 : liens d'évitement, visibles au focus seulement. */
 .liens-evitement { position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); z-index: 100010; }
 .lien-evitement { position: absolute; left: -9999px; top: 8px; min-height: 44px; padding: 0 16px; border: none; border-radius: 12px; background: #4c1d95; color: #fff; font: inherit; font-weight: 700; white-space: nowrap; }
@@ -13129,23 +13176,6 @@ button, a, label, select, summary,
 .archives-pastille { color: var(--accent); font-weight: 800; }
 
 /* LOT-25 (audit UX/UI du 2026-11-10) — Rencontrer (suite) */
-/* IRL-C03 : la porte vers une référence, au-dessus de la liste. */
-.irl-ville-invite {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  margin: 0 0 12px;
-  padding: 10px 14px;
-  border: 1px dashed var(--accent);
-  border-radius: 12px;
-  background: var(--accent-tile, #f5efff);
-  color: var(--accent);
-  font: inherit;
-  font-weight: 700;
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-}
 /* IRL-C05 : un pied sans résultat dit pourquoi et porte la sortie. */
 .v4a5-pied-vide {
   display: flex;
@@ -13726,3 +13756,175 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   :root.passio-ui-7 #screen-profiles #v7ProfileTabs { top: -28px; }
 }
 /* ═══ ORDINATEUR-PLEINE-PAGE:FIN ═══ */
+
+
+/* ═══ STORY FAÇON INSTAGRAM (2026-11-14) — barre d'actions, réactions, gestes ═══
+   Une barre en bas de la visionneuse : « Répondre… » (compte réel), ❤️, partager.
+   Champ en main : la rangée de réactions rapides apparaît au-dessus. Maintenir
+   la story efface l'interface ; balayer vers le bas la ferme. */
+#storyCard { touch-action: none; transition: transform 160ms ease, opacity 160ms ease; will-change: auto;
+  /* Maintenir ne doit ni sélectionner le texte (un 2e balayage le TIRAIT : pointercancel)
+     ni ouvrir le menu « copier » d'iOS. */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#storyCard img { -webkit-user-drag: none; }
+.story-actions-bar {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 6; display: flex; gap: 6px; align-items: center;
+  transition: opacity 180ms ease;
+}
+.story-actions-bar .story-reply-bar { position: static; flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; }
+.story-actions-bar .story-reply-send { display: none; }
+.story-actions-bar .story-reply-bar.a-du-texte .story-reply-send { display: inline-flex; align-items: center; }
+.story-actions-espace { flex: 1; }
+.story-action-btn {
+  flex-shrink: 0; width: 44px; height: 44px; border-radius: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; color: #fff; cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+.story-action-btn:active { transform: scale(0.88); }
+.story-like-btn svg path { fill: none; stroke: #fff; stroke-width: 1.9; }
+.story-like-btn.aimee svg path { fill: #ff3040; stroke: #ff3040; }
+.story-like-btn.aimee svg { animation: storyCoeurPop 320ms cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes storyCoeurPop { 0% { transform: scale(.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.story-nouvelle-btn {
+  flex: 1; min-height: 44px; border-radius: 22px; padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.35);
+  color: #fff; font-weight: 700; font-size: 14px; text-align: left;
+}
+.story-reactions {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  z-index: 7; display: none; justify-content: space-around;
+  padding: 10px 6px; border-radius: 22px;
+  background: rgba(10, 8, 24, 0.72);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.story-viewer.story-ecrit .story-reactions { display: flex; animation: fadeIn 160ms ease; }
+.story-reaction-btn { width: 48px; height: 48px; font-size: 30px; line-height: 1; background: none; border: none; cursor: pointer; }
+.story-reaction-btn:active { transform: scale(1.3); }
+.story-eclosion {
+  position: absolute; left: 50%; top: 45%; z-index: 8; pointer-events: none;
+  font-size: 96px; line-height: 1; color: #ff3040;
+  transform: translate(-50%, -50%) scale(.2); opacity: 0;
+  animation: storyEclosion 850ms cubic-bezier(.2, 1.4, .4, 1) forwards;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.35));
+}
+.story-eclosion svg { width: 110px; height: 110px; display: block; }
+@keyframes storyEclosion {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.2); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  55% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
+}
+/* Maintenir : l'interface s'efface, la story reste seule. */
+.story-viewer.story-maintenu .story-viewer-header,
+.story-viewer.story-maintenu .story-progress-row,
+.story-viewer.story-maintenu .story-actions-bar,
+.story-viewer.story-maintenu .story-sound-btn { opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
+.story-viewer-header, .story-progress-row { transition: opacity 180ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .story-eclosion, .story-like-btn.aimee svg { animation-duration: 1ms; }
+  #storyCard { transition: none; }
+}
+
+
+/* ═══ STORY : COMMENTAIRES PUBLICS, ACTIVITÉ, COMPTEURS (2026-11-14) ═══ */
+.story-comment-btn { position: relative; }
+.story-action-badge {
+  position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: #ff3040; color: #fff; font-size: 11px; font-weight: 800;
+  line-height: 18px; text-align: center; filter: none;
+}
+.story-activite-btn {
+  flex: 1; min-height: 44px; border-radius: 22px; padding: 0 16px; text-align: left;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.35);
+  color: #fff; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.story-nouvelle-btn.compacte { flex: 0 0 auto; width: 44px; padding: 0; text-align: center; font-size: 20px; }
+.story-com-list { max-height: 52vh; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 12px; margin: 6px 0 12px; }
+.story-com-vide { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 8px; }
+.story-com-row { display: flex; gap: 10px; align-items: flex-start; }
+.story-feuille-avatar { flex-shrink: 0; width: 36px; height: 36px; font-size: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background-size: cover; background-position: center; }
+.story-com-corps { flex: 1; min-width: 0; }
+.story-com-tete { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.story-com-heure { color: var(--muted); font-size: 12px; }
+.story-com-texte { font-size: 15px; line-height: 1.35; white-space: pre-line; word-break: break-word; }
+.story-com-suppr { flex-shrink: 0; width: 44px; height: 44px; border: none; background: none; font-size: 16px; opacity: .7; cursor: pointer; }
+.story-com-form { display: flex; gap: 8px; align-items: center; }
+.story-com-input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1.5px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 16px; }
+.story-com-publier { min-height: 44px; border-radius: 22px; padding: 0 16px; }
+.story-act-resume { font-weight: 800; font-size: 15px; margin: 4px 0 8px; }
+.story-feuille-ligne { display: flex; align-items: center; gap: 10px; }
+.story-feuille-nom { flex: 1; min-width: 0; min-height: 44px; text-align: left; background: none; border: none; color: var(--text); font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.story-act-coeur { font-size: 18px; }
+
+/* Studio : aucune passion sur le profil -> sortie vers « Gérer mes passions » (2026-11-14) */
+.psel-vide-profil { padding: 8px 0; }
+.psel-vide-profil .btn { margin-top: 12px; }
+/* « Affichage » (2026-11-14) : les couleurs et la police reviennent à côté de la
+   taille du texte. Des boutons de 44 px au moins, l'état choisi au contour. */
+.config-rubrique { font-weight: 700; font-size: 13px; color: var(--text); margin: 14px 0 8px; }
+.config-couleurs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.config-couleur {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 10px 4px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.config-couleur.actif, .config-taille.actif { border-color: var(--accent); background: var(--bg-deep, #f5efff); }
+.config-couleur-pastille { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; }
+.config-police {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.config-police-nom { flex: 1; font-size: 16px; font-weight: 800; }
+.config-police-liste {
+  margin-top: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.config-police-choix {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.config-police-choix:last-child { border-bottom: 0; }
+.config-police-choix.actif { background: var(--bg-deep, #f5efff); }
+.config-police-choix-texte { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.config-police-choix-nom { font-size: 20px; font-weight: 800; }
+.config-police-choix-desc { font-size: 12px; color: var(--text-dim, #4b4563); }
+.config-police-choix-coche { font-size: 18px; color: var(--accent); }

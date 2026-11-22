@@ -456,7 +456,8 @@
       suite.hidden = true; tout.hidden = true; $("enCoursZone").hidden = true; $("pourInfoRepli").hidden = true;
       return { problemes: 0, enCours: 0, indisponible: true };
     }
-    const toutes = d.aFaire.filter(Boolean);
+    // Une ancienne fonction pouvait déduire une urgence SMTP des profils créés.
+    const toutes = d.aFaire.filter((x) => x && x.id !== "capacite:emails");
     const problemes = toutes.filter((x) => x.prio <= 1 && !x.enCours);
     const enCoursListe = toutes.filter((x) => x.enCours);
     const pourInfo = toutes.filter((x) => x.prio >= 2 && !x.enCours);
@@ -939,6 +940,12 @@
       if (g.length) c.append(el("p", "discret", "Décisions : " + g.map(([k, v]) => k + " → " + v).join(" · ")));
       z.append(c);
     }
+    // Les seuils du voyant (2026-11-21, T3) : des phrases que la fonction compose (resumeEchelle), en TEXTE.
+    // Champ absent (fonction pas encore à jour) : rien n'est affiché ni inventé.
+    if (d.echelle && Array.isArray(d.echelle.phrases)) {
+      const ze = $("veilleBattement");
+      d.echelle.phrases.slice(0, 4).forEach((t) => ze.append(el("p", "discret", String(t))));
+    }
     const zp = vider("politique");
     const p = d.politique;
     if (!p) return;
@@ -957,6 +964,14 @@
     const ja = vider("jauges");
     if (!d.capacite) { nonLu("jauges", "Capacité", "capacite"); return; }
     (d.capacite.jauges || []).forEach((j) => {
+      // Aucun payload « emails » actuel ou ancien ne prouve un solde SMTP.
+      if (j.cle === "emails") {
+        const c = carte("E-mails SMTP", "Non mesuré", "Le quota et le solde SMTP ne sont pas lus automatiquement.", "gris");
+        const a = lienReglage({ libelle: "Vérifier sur Brevo", ouvrir: "https://app.brevo.com/" }, "btn");
+        if (a) actions(c).append(a);
+        ja.append(c);
+        return;
+      }
       const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
       const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
       const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
@@ -965,15 +980,24 @@
       ja.append(c);
     });
     const co = vider("cout"), cout = d.capacite.cout;
-    if (cout && Array.isArray(cout.lignes)) {
-      const c = carte("Par mois aujourd'hui", "~" + cout.actuel + " €", cout.aPrevoir ? "À prévoir si tu fais les gestes des jauges orange : ~" + cout.aPrevoir + " € de plus par mois." : "Aucune jauge à l'orange : rien à prévoir.", cout.aPrevoir ? "orange" : "vert");
+    // Une ancienne facture incluait le geste payant de sa fausse jauge SMTP.
+    // Seuls nos deux libellés SMTP connus : un libellé reçu ne désigne pas une autre dépense.
+    const smtp = new Set(["E-mails d'inscription (24 h)", "E-mails SMTP"]);
+    const lignes = cout && Array.isArray(cout.lignes) ? cout.lignes.filter((l) => !l || !l.aPrevoir || !smtp.has(l.libelle)) : null;
+    if (cout && typeof cout.actuel === "number" && Number.isFinite(cout.actuel) && cout.actuel >= 0 && lignes
+      && lignes.every((l) => l && typeof l.libelle === "string" && typeof l.prix === "number" && Number.isFinite(l.prix) && l.prix >= 0)) {
+      const aPrevoir = lignes.filter((l) => l.aPrevoir).reduce((total, l) => total + l.prix, 0);
+      const c = carte("Par mois aujourd'hui", "~" + cout.actuel + " €", (aPrevoir ? "À prévoir si tu fais les gestes des jauges orange : ~" + aPrevoir + " € de plus par mois." : "Aucun supplément chiffré pour les jauges mesurées.") + " Le quota SMTP reste à vérifier sur Brevo.", aPrevoir ? "orange" : "vert");
       const ul = el("ul", "liste-cout");
-      cout.lignes.forEach((l) => ul.append(el("li", l.aPrevoir ? "a-prevoir" : null, l.libelle + " : " + (l.prix ? "~" + l.prix + " €" : "gratuit") + (l.aPrevoir ? " (à prévoir)" : ""))));
+      lignes.forEach((l) => ul.append(el("li", l.aPrevoir ? "a-prevoir" : null, l.libelle + " : " + (l.prix ? "~" + l.prix + " €" : "gratuit") + (l.aPrevoir ? " (à prévoir)" : ""))));
       c.append(ul, el("p", "discret", "Estimation : relis les tarifs sur la page Pricing de chaque service le jour du geste."));
       co.append(c);
-    } else co.append(carte("Coût", "Non lu", "La fonction « pilotage » n'a pas rendu la facture : elle n'est sans doute pas encore à jour.", "gris"));
+    } else co.append(carte("Coût", "Non lu", "La facture est absente ou illisible : aucun supplément fiable ne peut être affiché.", "gris"));
     if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
     if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
+    // La table de télémétrie (2026-11-21) : tant que la migration des classes n'est pas en base, la jauge est un
+    // compte exact et RIEN ne déleste la table — l'écran nomme le fichier, au lieu de laisser croire à une protection.
+    if (d.remplissage && d.remplissage.migration) ja.append(el("p", "discret", "Table de télémétrie : compte exact ; la protection par classe et la purge courte attendent la migration « " + d.remplissage.migration + " » (npm run migration:appliquer)."));
     ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
   }
 
@@ -1084,8 +1108,8 @@
     const au = d.autonomie;
     if (au) {
       prot.append(au.reveilSentinelle
-        ? carte("Réveil de la Sentinelle", "Actif", "Dès que 2 comptes de plus de 24 h ont un échec en 30 min (erreur ou appel refusé) et qu'aucune enquête n'est en cours, la veille lance la Sentinelle sans attendre son horaire (2 fois par heure et 12 fois par jour au plus).", "vert")
-        : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même à son horaire.", "gris"));
+        ? carte("Réveil de la Sentinelle", "Actif", "La veille fait passer la Sentinelle chaque heure, même quand GitHub ne sert pas son horaire. Et dès que 2 comptes de plus de 24 h ont un échec en 30 min (erreur ou appel refusé), elle la lance sans attendre (2 fois par heure et 12 fois par jour au plus).", "vert")
+        : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». En attendant, la Sentinelle ne passe que quand GitHub sert son horaire : 3 à 4 fois par jour en pratique.", "gris"));
       const ra = au.retour || {};
       const cr = ra.mode === "proposer"
         ? carte("Retour arrière", "Proposé", "Si une mise en ligne provoque un échec nouveau chez 5 comptes de plus de 7 jours, tu es prévenu sur l'accueil et sur le téléphone. Un toucher sur « Régler », et la version d'avant revient. Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité.", "vert")
@@ -1160,6 +1184,12 @@
       bouton(cc, "Couper chez tout le monde", () => ({ action: "reglages", cle: "coupures", valeur: { cles: coupees.concat([sel.value]) } }));
     }
     zone.append(cc);
+
+    const mp = rg.medias_proteges || { actif: false, disponible: false };
+    const cm = carte("Médias protégés", mp.disponible ? (mp.actif === true ? "Activés" : "Suspendus") : "Indisponibles",
+      mp.disponible ? "Suspendre ferme les nouveaux envois et les prochaines lectures. Les fichiers déjà téléchargés ne peuvent pas être rappelés." : "La migration et la recette des médias protégés doivent être livrées avant activation.", mp.actif === true ? "vert" : "orange");
+    if (mp.disponible === true) bouton(cm, mp.actif === true ? "Suspendre les médias protégés" : "Activer les médias protégés", { action: "reglages", cle: "medias_proteges", valeur: { actif: mp.actif !== true } });
+    zone.append(cm);
 
     const b = rg.bandeau;
     const cb = carte("Message à tous", b ? (b.niveau === "alerte" ? "Alerte" : "Info") : "Aucun", b ? "« " + b.texte + " »" : "Aucun message affiché.", b ? (b.niveau === "alerte" ? "rouge" : "orange") : "vert");

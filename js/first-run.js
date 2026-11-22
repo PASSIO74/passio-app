@@ -638,6 +638,13 @@
     if (pd && pd.style && pd.style.display !== "none" && pd.style.display !== "") return true;
     // Feuille basse / panneau plein écran ouverts par un autre lot.
     if (document.querySelector(".ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
+    // Les Paramètres (2026-11-20, contre-revue du parcours du nouvel inscrit) :
+    // une bulle posée pendant qu'ils sont ouverts tombait SOUS leur fond
+    // (z-index 9000 contre 49999) et prenait le focus clavier sur un bouton
+    // invisible. La fenêtre s'est allongée quand la bulle a appris à attendre la
+    // fin d'un toast (3,3 s au lieu de 0,7).
+    var dp = document.getElementById("devPanel");
+    if (dp && dp.classList.contains("active")) return true;
     var l = document.getElementById("landing");
     if (l && l.classList.contains("active")) return true;
     var o = document.getElementById("onboarding");
@@ -905,10 +912,28 @@
     assurerReferentiel();   // les libellés des spécialités viennent du référentiel plat
     chargerPopulairesVivantes();
     try { openModal(panneauHTML()); } catch (e) { journal("ouverture du panneau", e); return; }
+    // ⚠️ LE FOCUS SEULEMENT AVEC UNE SOURIS (parcours du nouvel inscrit,
+    // 2026-11-20). Sur un téléphone, poser le focus dans le champ ouvre le
+    // clavier — Chrome Android comme Safari iOS le font encore 60 ms après le
+    // toucher — et le clavier recouvre la grille et « Voir mon fil » : la
+    // personne venait choisir des tuiles, elle doit d'abord fermer un clavier
+    // qu'elle n'a pas demandé. La recherche reste à un toucher.
+    if (!pointeurFin()) return;
     setTimeout(function () {
       var champ = document.getElementById("frSearch");
       if (champ) { try { champ.focus(); } catch (e) {} }
     }, 60);
+  }
+
+  // Pointeur fin = souris ou pavé : poser le focus n'y ouvre aucun clavier
+  // virtuel. Même règle que le champ de commentaire : `_pointeurFin` (app-04)
+  // fait autorité ; le repli local ne sert que si ce script manquait. Sans
+  // `matchMedia`, on s'abstient — le choix qui ne peut pas ouvrir un clavier.
+  function pointeurFin() {
+    try {
+      if (typeof window._pointeurFin === "function") return !!window._pointeurFin();
+      return !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+    } catch (e) { return false; }
   }
 
   function passionsDuFil() {
@@ -1285,9 +1310,42 @@
     rendreFil();
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
     tel("guest_passions_saved", { n: p.passions.length, s: p.specialites.length, from: _panneauOrigine });
-    try { toast("Ton fil est à toi ✨"); } catch (e) {}
-    try { poserNoteLocale(); } catch (e) { journal("note locale", e); }
-    planifierTour();
+    // ⚠️ UN MESSAGE À LA FOIS (parcours du nouvel inscrit, 2026-11-20). Mesuré à
+    // 390 × 664 : le toast « Ton fil est à toi », la note « Gardées sur cet
+    // appareil » et la bulle « Un Fil construit autour de tes passions »
+    // arrivaient ensemble, le toast (3 s) posé SUR la rangée « Ne plus afficher
+    // / Compris » de la bulle (700 ms). La note dit déjà que le choix est pris,
+    // et porte la porte du compte : quand elle se pose À L'ÉCRAN, le toast se
+    // tait. Sinon (note déjà vue, ou posée au-dessus du pli d'un fil défilé —
+    // contre-revue du lot), le toast parle et la bulle attend sa fin.
+    // Une bulle restée à l'écran AVANT le panneau (posée au démarrage, jamais
+    // touchée : la fenêtre la recouvrait sans la retirer) reparaissait SOUS le
+    // toast — mesuré par ② ter. Elle est caduque : on la retire, comme
+    // `surNavigation` à chaque changement d'écran (son étape est déjà marquée
+    // vue), et le planificateur pose la suivante en temps voulu.
+    try { fermerBulle(); } catch (e) { journal("bulle avant validation", e); }
+    var notePosee = false;
+    try { notePosee = poserNoteLocale(); } catch (e) { journal("note locale", e); }
+    var noteVue = notePosee && aLEcran(document.getElementById("frNoteLocale"));
+    var MESSAGE_FIL = "Ton fil est à toi ✨";
+    if (!noteVue) { try { toast(MESSAGE_FIL); } catch (e) {} }
+    planifierTour(noteVue ? undefined : dureeDuToast(MESSAGE_FIL) + 300);
+  }
+
+  // Un élément est-il dans la fenêtre, au moins en partie ?
+  function aLEcran(el) {
+    if (!el) return false;
+    try {
+      var r = el.getBoundingClientRect();
+      return r.height > 0 && r.bottom > 0 && r.top < (window.innerHeight || 0);
+    } catch (e) { return false; }
+  }
+
+  // Durée réelle d'un toast (`dureeToast`, app-02) : la bulle qui le suit ne
+  // doit pas se poser dessous. Repli : 3 s, la durée plancher d'un toast.
+  function dureeDuToast(msg) {
+    try { if (typeof window.dureeToast === "function") return Number(window.dureeToast(msg, false)) || 3000; } catch (e) {}
+    return 3000;
   }
 
   // ENT-C15 (audit UX/UI du 2026-11-10) : au moment où le visiteur vient
@@ -2057,20 +2115,34 @@
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
 
-  function planifierTour() {
+  var _tourEcheance = 0;   // instant où la bulle planifiée partira (0 : aucune)
+
+  // `delaiMs` (facultatif) : 700 ms par défaut ; plus long quand un toast vient
+  // de partir, pour que la bulle ne se pose pas sous lui (`validerPersonnalisation`).
+  function planifierTour(delaiMs) {
     if (!reperesAutorises() || tourAbandonne()) return;
+    var delai = (typeof delaiMs === "number" && delaiMs > 0) ? delaiMs : 700;
+    var echeance = Date.now() + delai;
+    // ⚠️ UNE ÉCHÉANCE POSÉE N'EST JAMAIS AVANCÉE (audit du lot, 2026-11-20). Après
+    // « Voir mon fil », la bulle attend la fin du toast (3,3 s) ; mais le retour
+    // au fil rappelle aussitôt `planifierTour()` (par `planifierAccueil`), et le
+    // `clearTimeout` ramenait la bulle à 700 ms — SOUS le toast, mesuré par
+    // `parcours-nouvel-inscrit` ② ter. Une demande plus tardive l'emporte.
+    if (_tourPlanifie && _tourEcheance > echeance) return;
     if (_tourPlanifie) clearTimeout(_tourPlanifie);
+    _tourEcheance = echeance;
     // ⚠️ `setTimeout`, JAMAIS `requestAnimationFrame` : sur une page qui ne
     // compose pas de frames (onglet en arrière-plan, headless, machine
     // saturée), rAF ne part pas — l'indication ne serait jamais posée, en
     // silence. Piège payé au lot UI-3A.
     _tourPlanifie = setTimeout(function () {
       _tourPlanifie = null;
+      _tourEcheance = 0;
       if (ecranActif() !== "feed") return;
       if (document.getElementById("frWelcome")) return; // la carte parle déjà
       if (!etapeVue("decouvrir")) { montrerEtape("decouvrir"); return; }
       if (!etapeVue("creer")) montrerEtape("creer");
-    }, 700);
+    }, delai);
   }
 
   function abandonnerTour() { fermerBulle("abandon"); }
