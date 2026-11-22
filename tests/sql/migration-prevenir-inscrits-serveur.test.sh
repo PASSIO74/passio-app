@@ -15,7 +15,7 @@
 # relu en production : le socle EST la production pour ses gardes.
 # On MESURE D'ABORD les défauts (la 61ᵉ ligne d'une même minute est refusée ;
 # la suppression d'une grande activité n'en prévient AUCUN ; un client occupe
-# un identifiant `n_sup_`), on éprouve quatre MUTATIONS et une garde (chacune
+# un identifiant `n_sup_`), on éprouve six MUTATIONS et une garde (chacune
 # refusée, rien appliqué), on applique, on rejoue, puis on mesure de
 # l'extérieur, sous le rôle `authenticated` : bornes par activité, par compte
 # et en lignes par jour (relecture red team du 22/11, P1), message trop long
@@ -285,6 +285,23 @@ verifier "avant : un client peut occuper un identifiant n_sup_ (le défaut du 12
 REMISE
 
 echo "── ② MUTATIONS : chacune doit être refusée par la migration, RIEN appliqué ─"
+# Relecture v3, P2-a : AVANT la migration, X (deux comptes, une conversation entre eux) occupe d'avance
+# les identifiants calculables de l'avis d'annulation et de l'avis de suppression d'un inscrit d'ev_sq,
+# en s'écrivant à lui-même. Plus une ligne client ordinaire, qui doit survivre.
+Q "insert into public.events (id, organizer_id, author_id, title, status, date_at) values ('ev_sq', '$ORGA', '$ORGA', 'Squat', 'active', now() + interval '1 day');
+   insert into public.event_attendees (event_id, user_id) values ('ev_sq', '$ORGA'), ('ev_sq', '$(uidn 1)');" >/dev/null
+AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values
+   ('n_pi_' || left(md5('ev_sq|event_cancelled|$(uidn 1)'), 20), '$X', 'message', '$X', 'c1', 'occupe'),
+   ('n_sup_' || left(md5('ev_sq' || '$(uidn 1)'), 20), '$X', 'message', '$X', 'c1', 'occupe'),
+   ('zz_garde', '$X', 'message', '$X', 'c1', 'garde');" >/dev/null
+verifier "avant : un client occupe d'avance n_pi_ et n_sup_ d'un inscrit (3 lignes client posées)" "3" \
+  "$(Q "select count(*) from public.notifications where from_id = '$X' and origine = 'client';")"
+# (g) sans l'effacement des identifiants occupés d'avance (relecture v3, P2-a)
+LIBERER="and origine is distinct from 'serveur';"
+[ "$(grep -cF "$LIBERER" "$MIGRATION")" = "1" ] || { echo "❌ ancre de la mutation (g) introuvable ou ambiguë"; exit 1; }
+node -e 'const fs=require("fs");const [s,d,g]=process.argv.slice(1);fs.writeFileSync(d,fs.readFileSync(s,"utf8").split(g).join("and false;"));' "$MIGRATION" "$TMPM/m6.sql" "$LIBERER"
+grep -qF "$LIBERER" "$TMPM/m6.sql" && { echo "❌ mutation (g) non posée"; exit 1; }
+contient "mutation (g) — identifiants occupés d'avance laissés en place : refusée" "RIEN n'est appliqué" "$(APPLIQUER "$TMPM/m6.sql" || true)"
 TRG() { Q "select p.proname from pg_trigger t join pg_proc p on p.oid = t.tgfoid where t.tgrelid = 'public.notifications'::regclass and t.tgname = 'trg_rate_limit';"; }
 # (a) sans l'exemption du plafond pour une diffusion serveur
 awk 'BEGIN{n=0} /pg_catalog.current_setting\(.passio.diffusion_inscrits., true\) = .1. then$/ && n==0 {print "  if false then"; n=1; next} {print}' "$MIGRATION" > "$TMPM/m1.sql"
@@ -347,6 +364,11 @@ echo "── ③ APPLICATION, PUIS REJEU ─────────────
 rc=0; sortie="$(APPLIQUER "$MIGRATION")" || rc=$?
 verifier "la migration s'applique, verdict sans ÉCHEC" "0|0" "$rc|$(printf '%s' "$sortie" | grep -c ECHEC || true)"
 [ "$rc" -eq 0 ] || printf '%s\n' "$sortie"
+verifier "les identifiants occupés d'avance sont libérés, la ligne client ordinaire reste" "0|1" \
+  "$(Q "select count(*) from public.notifications where id like 'n\_pi\_%' or id like 'n\_sup\_%';")|$(Q "select count(*) from public.notifications where id = 'zz_garde';")"
+Q "update public.events set status = 'cancelled' where id = 'ev_sq';" >/dev/null
+verifier "l'inscrit visé apprend l'annulation, puis la suppression (avis serveur à SES identifiants)" "1/1|1" \
+  "$(PREV "$ORGA" ev_sq event_cancelled clesquat01)|$(Q "delete from public.events where id = 'ev_sq'; select count(*) from public.notifications where user_id = '$(uidn 1)' and origine = 'serveur' and id like 'n\_sup\_%';" | tail -1)"
 rc=0; sortie="$(APPLIQUER "$MIGRATION")" || rc=$?
 verifier "la migration se rejoue (ses propres corps sont acceptés par les gardes)" "0" "$rc"
 [ "$rc" -eq 0 ] || printf '%s\n' "$sortie"
@@ -404,7 +426,18 @@ peupler ev_sans_date "$ORGA" "null"
 verifier "une activité sans date ne reçoit pas de mise à jour" "activite_sans_date" "$(PREV "$ORGA" ev_sans_date event_update clevillage16)"
 peupler ev_ancienne
 Q "update public.events set created_at = now() - interval '2 years' where id = 'ev_ancienne';" >/dev/null
-verifier "une activité créée il y a plus d'un an (date repoussée) ne reçoit plus de mise à jour" "activite_trop_ancienne" "$(PREV "$ORGA" ev_ancienne event_update clevillage17)"
+verifier "une activité créée il y a 2 ans (date repoussée) ne reçoit plus de mise à jour" "activite_trop_ancienne" "$(PREV "$ORGA" ev_ancienne event_update clevillage17)"
+Q "update public.events set created_at = now() - interval '19 months' where id = 'ev_ancienne';" >/dev/null
+verifier "ni une activité créée il y a 19 mois" "activite_trop_ancienne" "$(PREV "$ORGA" ev_ancienne event_update clevillage18)"
+# Relecture v3, P2-b : une série « chaque mois » de 12 dates créée le 10/01, première date le 01/03 —
+# la dernière tombe le 01/02 de l'année suivante ; modifiée le 15/01, elle prévient encore.
+peupler ev_serie "$ORGA" "now() + interval '17 days'"
+Q "update public.events set created_at = now() - interval '12 months 5 days' where id = 'ev_serie';" >/dev/null
+verifier "la dernière date d'une série mensuelle (créée il y a 12 mois et 5 jours) prévient encore" "100/100" "$(PREV "$ORGA" ev_serie event_update clevillage19)"
+# Un festival annoncé 14 mois à l'avance, modifié la veille.
+peupler ev_festival "$ORGA" "now() + interval '1 day'"
+Q "update public.events set created_at = now() - interval '14 months' where id = 'ev_festival';" >/dev/null
+verifier "un festival annoncé 14 mois à l'avance, modifié la veille, prévient encore" "100/100" "$(PREV "$ORGA" ev_festival event_update clevillage20)"
 # Red team C : une co-organisatrice qui annule après réactivation prévient tout le monde, en son nom.
 CO=ffffffff-ffff-4fff-8fff-ffffffffffff
 Q "insert into public.profiles (id, username) values ('$CO', 'Coline');" >/dev/null

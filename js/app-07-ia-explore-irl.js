@@ -7325,15 +7325,7 @@ async function _sendEventBroadcast(id) {
   // même si la liste locale est vide (appareil pas encore synchronisé).
   const v = await _prevenirInscrits(ev, "event_update", txt.slice(0, 200));
   const ok = v.prevenues, total = v.total;
-  const POURQUOI = {
-    message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
-    debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — réessaie plus tard",
-    activite_terminee: "⚠️ Activité terminée depuis plus de 2 jours : les inscrits ne reçoivent plus de message",
-    activite_trop_ancienne: "⚠️ Activité créée il y a plus d'un an : les inscrits ne reçoivent plus de message",
-    activite_sans_date: "⚠️ Donne une date à l'activité avant d'écrire aux inscrits",
-    debit: "⚠️ Trop d'envois aux inscrits pour l'instant — réessaie plus tard",
-  };
-  if (v.motif && POURQUOI[v.motif]) toast(POURQUOI[v.motif], "warning");
+  if (v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
   else if (!total) toast("Personne à prévenir pour l'instant");
   else if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
   else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
@@ -7538,7 +7530,9 @@ async function submitEvent(editId) {
     // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
     if (ok && editId) {
       _prevenirInscrits(ev, "event_update").then(function (v) {
-        if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
+        // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
+        if (v && v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
+        else if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
       });
     }
     // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
@@ -7689,7 +7683,16 @@ function _cleGeste() {
   return s;
 }
 // `motif` accompagne un refus de la base (`message_trop_long`, `debit_activite`,
-// `activite_terminee`…) pour que l'écran dise POURQUOI personne n'a été prévenu.
+// `activite_terminee`…) pour que l'écran dise POURQUOI personne n'a été prévenu —
+// au message groupé COMME à la modification d'une activité.
+const _POURQUOI_PREVENIR = {
+  message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
+  debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — ils n'ont pas été prévenus, réessaie plus tard",
+  activite_terminee: "⚠️ Activité terminée depuis plus de 2 jours : les inscrits ne sont plus prévenus",
+  activite_trop_ancienne: "⚠️ Activité créée il y a plus de 18 mois : les inscrits ne sont plus prévenus",
+  activite_sans_date: "⚠️ Donne une date à l'activité pour pouvoir prévenir les inscrits",
+  debit: "⚠️ Trop d'envois aux inscrits pour l'instant — ils n'ont pas été prévenus, réessaie plus tard",
+};
 async function _prevenirInscrits(ev, genre, message) {
   if (!ev) return { total: 0, prevenues: 0 };
   const cibles = _destinatairesActivite(ev);

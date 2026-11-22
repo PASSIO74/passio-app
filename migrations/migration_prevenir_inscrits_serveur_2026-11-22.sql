@@ -26,8 +26,10 @@
 --     COMPTE : `destinataires`, `prevenues`. Réservée à l'organisation (`organise_activite`), refusée
 --     à un compte en suppression ; `event_cancelled` exige l'activité ANNULÉE en base ;
 --     `event_update` exige l'admission (`adult_access_allowed`, comme la modification d'une activité),
---     une date, une fin passée de moins de 2 jours ET une création de moins d'un an (`created_at`,
---     posé par le serveur et figé : la date de l'activité, elle, se réécrit — red team, D).
+--     une date, une fin passée de moins de 2 jours ET une création de moins de 18 mois (`created_at`,
+--     posé par le serveur et figé : la date de l'activité, elle, se réécrit — red team, D). Dix-huit
+--     mois, pas un an : une série mensuelle de 12 dates commencée deux mois après sa création, ou un
+--     festival annoncé 14 mois à l'avance, se modifient encore à leur dernière date (relecture v3, P2-b).
 --     IDENTIFIANTS `n_pi_` (réservés au serveur, ⑤) : une annulation = md5(activité|genre|destinataire),
 --     UNE par personne et par activité : une nouvelle annulation ne remet la ligne en « non lue » (au
 --     nom de qui annule, co-organisation comprise — red team, C) QUE si l'activité a été RÉACTIVÉE
@@ -59,6 +61,14 @@
 --     de suppression d'un autre (défaut du 12/11, relevé par la relecture red team).
 --   ⑦ `events.reactivee_le` : posée par un déclencheur quand une activité annulée est réactivée,
 --     réécrite à chaque INSERT/UPDATE (un client ne la pose jamais), illisible par les clients.
+--   ⑧ Les lignes d'origine CLIENT déjà posées sous un identifiant `n_pi_` ou `n_sup_` sont EFFACÉES
+--     (relecture v3, P2-a) : jusqu'ici réservés à personne, ces identifiants sont calculables ; une
+--     ligne posée d'avance (vers un second compte de l'attaquant) aurait fait perdre l'avis de
+--     l'inscrit visé, la garde ON CONFLICT ne reprenant jamais la ligne d'autrui. Mesuré le 22/11 :
+--     0 en production comme au staging. Sous verrou, juste avant le verdict : aucune écriture ne
+--     se glisse entre l'effacement et le COMMIT, qui rend la réserve ⑤ effective. Le verdict 22
+--     exige 0 après coup. (Ces lignes ne reviennent pas au retour arrière : elles n'avaient pas
+--     d'auteur légitime — aucun client n'écrit `n_pi_` ni `n_sup_`.)
 --   Gardes : les corps remplacés doivent être ceux relus (md5 normalisé, production ou v1 du
 --   staging), et `trg_rate_limit` lié à `rate_limit_insert('from_id','60')` ou à
 --   `notifications_limiter_debit()` — sinon RIEN n'est appliqué.
@@ -116,7 +126,7 @@ do $g$
 declare
   f record;
   h text;
-  marque constant text := 'PASSIO prevenir-inscrits v3';
+  marque constant text := 'PASSIO prevenir-inscrits v4';
 begin
   if not exists (select 1 from pg_trigger where tgrelid = 'public.notifications'::regclass and tgname = 'trg_notifications_origine' and not tgisinternal) then
     raise exception 'notifications : le déclencheur d''origine manque — RIEN n''est appliqué' using errcode = 'object_not_in_prerequisite_state';
@@ -137,7 +147,8 @@ begin
   if not ('trg_notifications_origine' < 'trg_rate_limit') then
     raise exception 'ordre des déclencheurs inattendu' using errcode = 'object_not_in_prerequisite_state';
   end if;
-  -- Corps remplacés : production relue le 22/11, ou v1 de cette migration (staging), ou v2 (rejeu).
+  -- Corps remplacés : production relue le 22/11, ou v1 de cette migration (staging), ou un corps
+  -- portant la marque de CETTE version (rejeu). Une v2 ou une v3 n'a été appliquée nulle part.
   for f in select * from (values
       ('public.events_prevenir_suppression()', 'b9767e8210b46598ff8a68437acafd3b', '1e13f963d33270fc2219ed2f66b6931a'),
       ('public.identifiant_reserve_au_serveur(text)', '5214adbb9c88ffd7800c75547e498258', '5214adbb9c88ffd7800c75547e498258')
@@ -177,7 +188,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v3
+-- PASSIO prevenir-inscrits v4
 begin
   -- L'horodatage serveur fait foi (le client n'antidate pas pour échapper au compte).
   new.created_at := pg_catalog.now();
@@ -210,7 +221,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v3
+-- PASSIO prevenir-inscrits v4
 begin
   if tg_op = 'INSERT' then
     new.reactivee_le := null;
@@ -237,7 +248,7 @@ language sql
 immutable
 set search_path = ''
 as $fn$
-  -- PASSIO prevenir-inscrits v3
+  -- PASSIO prevenir-inscrits v4
   select p_id like 'n\_m\_%'
       or p_id like 'n\_pa\_%'
       or p_id like 'n\_fw\_%'
@@ -254,7 +265,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v3
+-- PASSIO prevenir-inscrits v4
 declare
   moi       text := (auth.uid())::text;
   ev        record;
@@ -298,12 +309,13 @@ begin
     end if;
     -- Les inscrits d'une activité ne deviennent pas une liste de diffusion permanente (red team, D) :
     -- une date est exigée ; la fin (date que l'organisation réécrit) ne doit pas dater de plus de
-    -- 2 jours ; et la CRÉATION (posée par le serveur, figée ensuite) de plus d'un an.
+    -- 2 jours ; et la CRÉATION (posée par le serveur, figée ensuite) de plus de 18 mois — une série
+    -- mensuelle de 12 dates ou un festival annoncé longtemps à l'avance se modifient encore.
     if ev.date_at is null then return jsonb_build_object('ok', false, 'motif', 'activite_sans_date'); end if;
     if coalesce(ev.end_at, ev.date_at + interval '3 hours') < pg_catalog.now() - interval '2 days' then
       return jsonb_build_object('ok', false, 'motif', 'activite_terminee');
     end if;
-    if ev.created_at is null or ev.created_at < pg_catalog.now() - interval '1 year' then
+    if ev.created_at is null or ev.created_at < pg_catalog.now() - interval '18 months' then
       return jsonb_build_object('ok', false, 'motif', 'activite_trop_ancienne');
     end if;
   end if;
@@ -399,7 +411,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
--- PASSIO prevenir-inscrits v3
+-- PASSIO prevenir-inscrits v4
 declare
   orga     text := coalesce(old.organizer_id, old.author_id);
   nom      text;
@@ -455,6 +467,7 @@ declare
   evc   constant text := 'zz_pi_cnf_' || sfx;
   evn   constant text := 'zz_pi_nul_' || sfx;
   evq   constant text := 'zz_pi_anc_' || sfx;
+  evm   constant text := 'zz_pi_ser_' || sfx;
   q1    constant text := '00000000-0000-4000-8000-0000000d0a05';
   q2    constant text := '00000000-0000-4000-8000-0000000d0a06';
   mes   jsonb := '{}'::jsonb;
@@ -489,10 +502,13 @@ begin
     insert into public.events (id, organizer_id, author_id, title, status, date_at) values
       (evc, a, a, 'Conflits', 'active', now() + interval '2 days'),
       (evn, a, a, 'Sans date', 'active', null),
-      (evq, a, a, 'Ancienne', 'active', now() + interval '2 days');
+      (evq, a, a, 'Ancienne', 'active', now() + interval '2 days'),
+      (evm, a, a, 'Série mensuelle', 'active', now() + interval '17 days');
     update public.events set created_at = now() - interval '2 years' where id = evq;
+    -- La dernière date d'une série mensuelle de 12, créée il y a un peu plus d'un an.
+    update public.events set created_at = now() - interval '12 months 5 days' where id = evm;
     insert into public.event_attendees (event_id, user_id, rsvp) values (evc, a, 'going'), (evc, q1, 'going'), (evc, q2, 'going'),
-      (evn, q1, 'going'), (evq, q1, 'going');
+      (evn, q1, 'going'), (evq, q1, 'going'), (evm, q1, 'going');
     insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen) values
       ('n_pi_' || left(md5(evc || '|event_cancelled|' || q1), 20), q2, 'event_cancelled', x, evc, 'zz intact', true),
       ('n_pi_' || left(md5(evc || '|event_cancelled|' || q2), 20), q2, 'event_cancelled', x, evc, 'zz intact', true);
@@ -546,9 +562,11 @@ begin
     mes := mes || jsonb_build_object('etrangeres_intactes', (select count(*) from public.notifications n
                                        where n.ref_id = evc and n.content = 'zz intact' and n.from_id = x and n.origine = 'client'));
     execute 'set local role authenticated';
-    -- Une date absente, une création de plus d'un an : pas de mise à jour.
+    -- Une date absente, une création de plus de 18 mois : pas de mise à jour. Une série créée il y a
+    -- un peu plus d'un an, à sa dernière date : la mise à jour part.
     mes := mes || jsonb_build_object('sans_date', public.prevenir_inscrits_activite(evn, 'event_update', 'zzcleN' || sfx));
     mes := mes || jsonb_build_object('ancienne', public.prevenir_inscrits_activite(evq, 'event_update', 'zzcleQ' || sfx));
+    mes := mes || jsonb_build_object('serie', public.prevenir_inscrits_activite(evm, 'event_update', 'zzcleM' || sfx));
     -- Le message de l'organisation, échappé.
     mes := mes || jsonb_build_object('message', public.prevenir_inscrits_activite(evt, 'event_update', 'zzcle2' || sfx, '  <b>RDV</b> à l''entrée nord  '));
     -- 200 guillemets : 1 200 caractères une fois échappés — refusé AVANT toute écriture.
@@ -606,6 +624,22 @@ begin
   perform set_config('passio.verdict_pi', mes::text, true);
 end $epreuve$;
 
+-- ── ⑧ LES IDENTIFIANTS RÉSERVÉS SONT LIBÉRÉS DE CE QUI LES OCCUPAIT D'AVANCE ───────────────────────
+-- Jusqu'ici, un client pouvait poser une ligne sous un identifiant `n_pi_`/`n_sup_` (calculable par
+-- tous) ; la garde ON CONFLICT ne reprend jamais la ligne d'autrui : l'avis de l'inscrit visé serait
+-- perdu (relecture v3, P2-a). Le verrou (pris ICI, pas avant l'épreuve, pour ne pas suspendre les
+-- notifications plus que nécessaire) empêche toute écriture entre l'effacement et le COMMIT, qui rend
+-- la réserve ⑤ effective. Aucun déclencheur DELETE sur `notifications` (relu le 22/11).
+lock table public.notifications in share row exclusive mode;
+do $liberer$
+declare n integer;
+begin
+  delete from public.notifications
+   where (id like 'n\_pi\_%' or id like 'n\_sup\_%') and origine is distinct from 'serveur';
+  get diagnostics n = row_count;
+  raise notice 'identifiants réservés libérés : % ligne(s) d''origine client effacée(s)', n;
+end $liberer$;
+
 -- ── ⑥ VERDICT ────────────────────────────────────────────────────────────────────────────────────
 create temp table passio_pi_verdict (n int, bloquant boolean, controle text, valeur text) on commit drop;
 with v as (select current_setting('passio.verdict_pi', true)::jsonb j)
@@ -631,14 +665,19 @@ union all select 5, true, 'ré-annuler SANS réactivation ne touche rien (69 com
 union all select 19, true, 'garde ON CONFLICT : la ligne d''une autre personne et une ligne d''origine client ne sont jamais reprises (0 sur 2 prévenues)',
   case when (j #>> '{etrangeres,destinataires}') = '2' and (j #>> '{etrangeres,prevenues}') = '0' and (j ->> 'etrangeres_intactes') = '2'
        then 'OK' else 'ECHEC — ' || coalesce((j -> 'etrangeres')::text, '-') || ' / intactes ' || coalesce(j ->> 'etrangeres_intactes', '-') end from v
-union all select 20, true, 'une activité sans date, ou créée il y a plus d''un an, ne reçoit plus de mise à jour',
+union all select 20, true, 'une activité sans date, ou créée il y a plus de 18 mois, ne reçoit plus de mise à jour ; la dernière date d''une série mensuelle, si',
   case when j #>> '{sans_date,motif}' = 'activite_sans_date' and j #>> '{ancienne,motif}' = 'activite_trop_ancienne'
-       then 'OK' else 'ECHEC — ' || coalesce((j -> 'sans_date')::text, '-') || ' / ' || coalesce((j -> 'ancienne')::text, '-') end from v
+        and j #>> '{serie,prevenues}' = '1' and j #>> '{serie,destinataires}' = '1'
+       then 'OK' else 'ECHEC — ' || coalesce((j -> 'sans_date')::text, '-') || ' / ' || coalesce((j -> 'ancienne')::text, '-')
+                       || ' / ' || coalesce((j -> 'serie')::text, '-') end from v
 union all select 21, true, 'la date de réactivation est tenue par le serveur (déclencheur en place, illisible par les clients)',
   (select case when exists (select 1 from pg_trigger where tgrelid = 'public.events'::regclass and tgname = 'trg_events_reactivee_le' and not tgisinternal)
                 and not has_column_privilege('anon', 'public.events', 'reactivee_le', 'SELECT')
                 and not has_column_privilege('authenticated', 'public.events', 'reactivee_le', 'SELECT')
                then 'OK' else 'ECHEC' end)
+union all select 22, true, 'aucune ligne d''origine client n''occupe un identifiant n_pi_ ou n_sup_',
+  (select case when count(*) = 0 then 'OK' else 'ECHEC — ' || count(*) end from public.notifications
+    where (id like 'n\_pi\_%' or id like 'n\_sup\_%') and origine is distinct from 'serveur')
 union all select 6, true, 'un réglage posé avant l''appel lui survit (rendu, jamais vidé)',
   case when j ->> 'reglage_rendu' = 'temoin' then 'OK' else 'ECHEC — ' || coalesce(j ->> 'reglage_rendu', '-') end from v
 union all select 7, true, 'le texte est dérivé : le nom ÉCHAPPÉ du profil, la phrase fixe',
