@@ -503,3 +503,28 @@ test("aperçu 390 × 844 : libellés entiers, cibles tactiles suffisantes", asyn
     expect(i.h, `hauteur du choix « ${i.t} »`).toBeGreaterThanOrEqual(44);
   }
 });
+
+// ── 2026-11-15 : « Créer » restait ENCADRÉ après un retour de « Activité » ──
+// La feuille rendait le focus au « + » avant d'ouvrir le formulaire ; la fenêtre
+// commune le mémorisait (`_modalFocusAvant`) et le re-focalisait à la fermeture.
+// Après une saisie au clavier, cette focalisation programmée hérite de
+// `:focus-visible` : l'anneau violet restait peint sur « Créer » (capture
+// Android de Benjamin). Un choix part VERS un éditeur : le focus ne revient pas.
+test("aperçu : revenir de « Activité » ne laisse pas « Créer » focalisé", async ({ page }) => {
+  await boot(page, { preview: true });
+  const cta = page.locator('#appNavV2 [data-v2-action="create"]');
+  await cta.click();
+  await page.locator('#v2CreateSheet [data-v2-create="irl"]').click();
+  await page.waitForFunction(() => !!document.getElementById("evTitle"), null, { timeout: 8000 });
+  // Une saisie au clavier : c'est elle qui fait hériter `:focus-visible`.
+  await page.locator("#evTitle").focus();
+  await page.keyboard.type("Sortie");
+  await page.evaluate(() => closeModal());
+  await expect(page.locator("#modalBackdrop")).not.toHaveClass(/active/);
+  const etat = await cta.evaluate((el) => ({
+    focalise: document.activeElement === el,
+    anneau: el.matches(":focus-visible"),
+  }));
+  expect(etat.focalise, "le « + » ne reprend pas le focus").toBe(false);
+  expect(etat.anneau, "aucun anneau de focus sur « Créer »").toBe(false);
+});

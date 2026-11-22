@@ -1,8 +1,10 @@
 # CI — Reproductibilité du Netlify CLI (issue #172)
 
 **Date** : 2026-08-27 · **SHA de base** : `5a2382999a4ecc1eaa8dee43c1eabb011d9041b2`
-· **Risque** : critique (`.github/*`) · **État** : correctif appliqué dans cette branche
-par épinglage explicite de `netlify-cli@27.1.2` dans les jobs preview et production.
+· **Risque** : critique (`.github/*`) · **État** : remplacé le 2026-11-14. L'option A du §3 est appliquée,
+dans un lockfile dédié (`.github/netlify-cli/`, installé par `npm ci --ignore-scripts`), et Deno est figé avec
+lui : voir `.github/netlify-cli/README.md`. L'épinglage seul (option B, appliqué ici le 27/08) laissait flotter
+l'arbre ; le 14/11, une dépendance publiée une minute plus tôt a fait échouer le déploiement de production.
 
 > Claude Code a établi le diagnostic et les options ci-dessous mais son canal ne
 > pouvait pas écrire dans `.github/*`. Codex a appliqué l'option B sur la même

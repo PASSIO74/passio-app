@@ -1,0 +1,92 @@
+name: Compatibilité des dépendances Netlify CLI
+
+on:
+  pull_request:
+    paths:
+      - '.github/netlify-cli/**'
+      - '.github/workflows/netlify-compat.yml'
+      - 'tests/integration/outils-netlify-compat.test.mjs'
+      - 'tests/integration/outils-netlify-edge.test.mjs'
+      - 'tests/unit/outils-ci-figes.test.mjs'
+      - 'netlify/edge-functions/**'
+      - 'netlify/lib/**'
+      - 'netlify/**'
+      - 'netlify.toml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/netlify-cli/**'
+      - '.github/workflows/netlify-compat.yml'
+      - 'tests/integration/outils-netlify-compat.test.mjs'
+      - 'tests/integration/outils-netlify-edge.test.mjs'
+      - 'tests/unit/outils-ci-figes.test.mjs'
+      - 'netlify/edge-functions/**'
+      - 'netlify/lib/**'
+      - 'netlify/**'
+      - 'netlify.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  compatibilite:
+    name: Compatibilité Netlify CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Lire la branche, sans conserver le jeton Git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Installer Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Installer uniquement le lockfile de la CLI, sans scripts
+        run: npm ci --prefix .github/netlify-cli --ignore-scripts --no-audit --no-fund
+      - name: Audit du registre, JSON valide et aucun avis
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --prefix .github/netlify-cli --json > "$RUNNER_TEMP/netlify-audit.json"
+          node -e 'const fs=require("node:fs"),path=require("node:path"),assert=require("node:assert/strict");const j=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,"netlify-audit.json"),"utf8"));assert.equal(j.error,undefined);assert.ok(j.metadata&&j.metadata.vulnerabilities);assert.equal(j.metadata.vulnerabilities.total,0);assert.deepEqual(Object.keys(j.vulnerabilities||{}),[]);console.log("AUDIT_NETLIFY_SANS_AVIS");'
+      - name: Callers réels et fixtures synthétiques, réseau interdit
+        run: node --test tests/integration/outils-netlify-compat.test.mjs
+
+  edge:
+    name: Bundling Edge natif (Deno 2.9.8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Lire la branche, sans conserver le jeton Git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Installer Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Installer uniquement le lockfile de la CLI, sans scripts
+        run: npm ci --prefix .github/netlify-cli --ignore-scripts --no-audit --no-fund
+      - name: Installer le Deno figé, empreinte officielle requise
+        shell: bash
+        run: |
+          set -euo pipefail
+          DENO_VERSION="2.9.8"
+          DENO_ZIP_SHA256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
+          DENO_BIN_DIR="$RUNNER_TEMP/netlify-compat-deno"
+          mkdir -p "$DENO_BIN_DIR"
+          curl --fail --silent --show-error --location --max-time 120 --retry 3 --retry-all-errors --retry-max-time 300 --output "$DENO_BIN_DIR/deno.zip" "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          printf '%s  %s\n' "$DENO_ZIP_SHA256" "$DENO_BIN_DIR/deno.zip" | sha256sum --check --status
+          test "$(unzip -Z1 "$DENO_BIN_DIR/deno.zip")" = "deno"
+          unzip -q "$DENO_BIN_DIR/deno.zip" -d "$DENO_BIN_DIR"
+          chmod +x "$DENO_BIN_DIR/deno"
+          printf 'PASSIO_TEST_DENO_BIN=%s/deno\n' "$DENO_BIN_DIR" >> "$GITHUB_ENV"
+      - name: Regrouper les Edge canonicales et vérifier manifeste/sources ESZIP
+        run: node --test tests/integration/outils-netlify-edge.test.mjs

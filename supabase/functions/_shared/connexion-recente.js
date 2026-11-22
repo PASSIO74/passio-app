@@ -7,23 +7,25 @@
 // authentification réelle, et un renouvellement de session ne la rajeunit pas.
 //
 // ⚠️ À appeler APRÈS `auth.getUser()`, qui a validé le jeton : cette fonction ne vérifie rien
-// d'autre que l'âge. Un `amr` absent ou illisible ne bloque pas : la suppression est un droit
-// de la personne, et un changement de format côté fournisseur ne doit pas le lui retirer.
+// d'autre que l'âge et la méthode. Un second facteur ajouté avec une session
+// existante ne prouve pas une nouvelle connexion. Format absent/inconnu : refus.
 // ═════════════════════════════════════════════════
 
-/** La dernière authentification porte-t-elle moins de `maxSecondes` ? */
+const METHODES_CONNEXION = new Set(["password", "oauth", "otp", "sso/saml", "magiclink"]);
+
+/** La dernière authentification primaire porte-t-elle moins de maxSecondes ? */
 export function connexionRecente(enTeteAuthorization, maxSecondes, maintenantS = Math.floor(Date.now() / 1000)) {
   try {
     const charge = String(enTeteAuthorization || "").split(".")[1] || "";
     const claims = JSON.parse(atob(charge.replace(/-/g, "+").replace(/_/g, "/")));
-    // Une session anonyme n'a aucun moyen de se reconnecter : l'exiger rendrait le compte insupprimable.
+    // Exception du droit de suppression des sessions anonymes, après auth.getUser.
     if (claims.is_anonymous === true) return true;
-    if (!Array.isArray(claims.amr) || !claims.amr.length) return true;
-    const derniere = Math.max(...claims.amr.map((a) => Number(a && a.timestamp) || 0));
-    if (!derniere) return true;
-    return maintenantS - derniere <= maxSecondes;
+    if (!Number.isFinite(maxSecondes) || maxSecondes <= 0 || !Number.isFinite(maintenantS) || !Array.isArray(claims.amr)) return false;
+    return claims.amr.some((a) => a && METHODES_CONNEXION.has(a.method)
+      && Number.isSafeInteger(a.timestamp) && a.timestamp > 0
+      && a.timestamp <= maintenantS && maintenantS - a.timestamp <= maxSecondes);
   } catch (_e) {
-    return true;
+    return false;
   }
 }
 

@@ -1,0 +1,24 @@
+{
+  "format": "passio-code-copie-public/1",
+  "fichiers": {
+    "action.mjs": "ba90cf73bc36f645c5e6d1237621b81c327bafd3535a3fcc593530bb5e7002d8",
+    "action.yml": "3ae866e052415d985a602cd23293b53a1a082aafdede34b1c250eef3e1866b60",
+    "serveur.mjs": "828a90cd843c5fa6cfbf3126589a31acd777ed26945e69198604fddb6a13c483",
+    "contexte.mjs": "8fc039dc4018662b87fcfb2673e5965abce6b07079e72caaf45911e590e6cf79",
+    "autorisation.mjs": "9f13dfc7d0ab85ff0bea214cc22b7524d32575892a7c3063226eaf4edc25dea4",
+    "campagne.mjs": "e2f89afe467d10cef12dbb3494f6b28cb1c2890271b2fc6102fe51b55904c32f",
+    "transport-copie.mjs": "ecdf14e915a7682fdb48950c4bd06fd0bd40a05e7bc9f92d1f5c1da7a4f0a5c7",
+    "prevol.mjs": "4cbc18bf1ebf57b0572e771cb4b068771f78d92f77fb9f9e27f13b223425b736",
+    "core/noyau.mjs": "89a438ddbb7718515d90d10e677ef54939b3b47be11e44b07f4604ce48fb3aee",
+    "core/cadre.mjs": "38132ebc2bd0269a4a407a51748c2f288490c6ec4fa6ebf509716ec2cc6d00bc",
+    "core/requetes.mjs": "ef91dc72bd2a536d21dda74622a3a098889dcdcd210f12fa75905609508c4908",
+    "core/classificateur.mjs": "0d4ca56420b0bc5cbb0419e30a412d5d65846e851166058eaa233fd6979ad6e1",
+    "core/cohorte.mjs": "e92a82416a5b58d0543b12feb0e96a01d2678475ee71bf4c3bcf7f1444996f5a",
+    "lecture/verifier.mjs": "fd47e6607156e86bf4c0442b4b087623896c20ca1f66be0436d407c9d732298e",
+    "lecture/metadata.sql": "669bcfe6c7e6b781e7af6a41e885c489f6481422eb79b10b6df86a1adab9e843",
+    "lecture/fence.sql": "8c1397878d061d5f66b80f2d9de06eb643eb546398a55e2e40d34c6eb205b4d9",
+    "journal/contrat.mjs": "965f698575509e289b184c2ef62a840bc7248340544c1bf2083dd60af4c5be6f",
+    "journal/journal.mjs": "43336331d2ed5c01ed83d66f9097297e265ee9be19a117a29664a01ab6aece27",
+    "extraire-preuve.mjs": "3d28744fff6cc306005878c54df37d2b48ec99ec55073b3ad80992e87c217d1b"
+  }
+}

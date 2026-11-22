@@ -8,10 +8,10 @@
 // créée par un CO-ORGANISATEUR, que `can_join_event_conversation` n'admettait
 // pas (corrigé par `migration_discussion_coorganisateur_2026-09-14.sql`,
 // éprouvée par son banc SQL). Ce que cette suite exige côté client :
-//   ① refus serveur → pas de miroir local, « Impossible de rejoindre », on
+//   ① refus serveur → pas de miroir local, validation requise, on
 //     reste sur la fiche (RÉINJECTION : rouge sur le code d'avant) ;
 //   ② acceptation → miroir créé, Messages ouvert sur la discussion ;
-//   ③ déjà membre localement → aucune nouvelle demande, ouverture directe ;
+//   ③ déjà membre localement → revalidation serveur avant toute ouverture ;
 //   ④ la création par un gestionnaire lit aussi le verdict de son entrée.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -48,7 +48,7 @@ test.describe("IRL-10 — la discussion d'une activité n'apparaît que si l'on 
     expect(r.appels).toBe(1);
     expect(await miroir(page)).toBe(false);
     expect(r.ouverte).toBeNull();
-    expect(r.toasts.some((t) => /Impossible de rejoindre/.test(t))).toBe(true);
+    expect(r.toasts).toContain("La discussion nécessite la validation de l’organisation.");
   });
 
   test("② acceptation : miroir créé, Messages ouvert sur la discussion", async ({ page }) => {
@@ -59,16 +59,17 @@ test.describe("IRL-10 — la discussion d'une activité n'apparaît que si l'on 
     expect(r.ouverte).toBe("evgrp_ev1");
   });
 
-  test("③ déjà membre localement : aucune nouvelle demande, ouverture directe", async ({ page }) => {
+  test("③ une appartenance locale ne contourne pas un refus serveur actuel", async ({ page }) => {
     await banc(page);
     const r = await page.evaluate(async () => {
       _ensureLocalEventConv(_findCanonicalEvent("ev1"));
-      window.__join = false; // un refus n'aurait aucune occasion de se produire
+      window.__join = false;
       await openEventChat("ev1"); await new Promise((res) => setTimeout(res, 300));
-      return { ouverte: window.__ouverte || null, appels: window.__joinAppels };
+      return { ouverte: window.__ouverte || null, appels: window.__joinAppels, toasts: window.__toasts.slice() };
     });
-    expect(r.appels).toBe(0);
-    expect(r.ouverte).toBe("evgrp_ev1");
+    expect(r.appels, "le cache local impose une nouvelle vérification serveur").toBe(1);
+    expect(r.ouverte).toBeNull();
+    expect(r.toasts).toContain("La discussion nécessite la validation de l’organisation.");
   });
 
   test("④ le gestionnaire qui crée la discussion : entrée lue ; créateur non membre = pas de discussion", async ({ page }) => {
@@ -76,9 +77,19 @@ test.describe("IRL-10 — la discussion d'une activité n'apparaît que si l'on 
     const r = await page.evaluate(async () => {
       const ev = _findCanonicalEvent("ev1"); ev.convId = null; ev.organizerId = MY_UID;
       window.__creerMembre = { error: { code: "42501", message: "rls" } };
-      Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: (table) => ({
-        insert: () => Promise.resolve(table === "conv_members" ? window.__creerMembre : { error: null }),
-      }) });
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: (table) => {
+        const chaine = {
+          eq: () => chaine,
+          select: () => chaine,
+          single: async () => ({ error: null, data: table === "conversations"
+            ? { id: "evgrp_ev1", created_by: MY_UID, is_group: true }
+            : table === "events" ? { id: "ev1", conv_id: "evgrp_ev1" }
+            : { conv_id: "evgrp_ev1", user_id: MY_UID } }),
+          update: () => chaine,
+          insert: () => Promise.resolve(table === "conv_members" ? window.__creerMembre : { error: null }),
+        };
+        return chaine;
+      } });
       window.supaEnsureProfileExists = async () => true;
       const conv1 = await supaCreateEventConversation(ev);
       window.__creerMembre = { error: null };

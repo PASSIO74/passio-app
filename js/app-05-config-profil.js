@@ -501,14 +501,14 @@ const CALL_ICE_SERVERS = [
 ];
 
 // ── Relais TURN Cloudflare, fabriqué par le serveur (2026-11-09) ────────────
-// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 6 h
+// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 1 h, liés à un live/appel autorisé
 // (secrets `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN` de la fonction : jamais dans ce
 // fichier, le dépôt est public). Ils s'AJOUTENT au tableau ci-dessus, que lisent
 // les cinq `new RTCPeerConnection` des appels et des lives : rien d'autre à
 // changer. Secrets absents, réseau coupé, réponse hors forme : le tableau reste en
 // STUN seul, comme avant — jamais un appel ou un live retardé de plus de 2,5 s.
-//   · renouvelés quand il leur reste moins de 3 h : un live ou un appel part
-//     toujours avec au moins 3 h de validité (une connexion relayée ne survit pas
+//   · renouvelés quand il leur reste moins de 30 min : un live ou un appel part
+//     toujours avec au moins 30 min de validité (une connexion relayée ne survit pas
 //     à l'expiration de ses identifiants) ;
 //   · relais coupé (`configure: false`) : les identifiants déjà posés sont RETIRÉS,
 //     et la fonction n'est pas redemandée avant une heure ;
@@ -516,7 +516,7 @@ const CALL_ICE_SERVERS = [
 //     avant 5 min — sinon chaque entrée dans un live attendrait 2,5 s de plus ;
 //   · expirés : retirés, même quand le renouvellement échoue.
 const ICE_ATTENTE_MAX_MS = 2500;
-const ICE_MARGE_MS = 3 * 3600 * 1000;
+const ICE_MARGE_MS = 30 * 60 * 1000;
 const ICE_PAUSE_ECHEC_MS = 5 * 60 * 1000;
 const ICE_PAUSE_COUPE_MS = 3600 * 1000;
 const _iceRelais = { serveurs: [], jusqua: 0, expire: 0, enCours: null };
@@ -535,9 +535,15 @@ function _iceServeursSurs(liste) {
     return !relais || (typeof s.username === "string" && !!s.username && typeof s.credential === "string" && !!s.credential);
   });
 }
-function assurerServeursIce() {
+function assurerServeursIce(contexte) {
   try {
+    // Les renouvellements synchrones retrouvent le contexte actif. Sans contexte,
+    // aucune demande ne part (ancien client : le serveur refuse également).
+    contexte = contexte || (window._vliveHost ? { liveId: window._vliveHost.id }
+      : window._vliveView ? { liveId: window._vliveView.id }
+      : window._call ? { callId: window._call.id } : null);
     if (_iceRelais.serveurs.length && Date.now() >= _iceRelais.expire) _iceRetirerRelais();
+    if (!contexte || (!contexte.liveId && !contexte.callId)) return Promise.resolve(0);
     if (Date.now() < _iceRelais.jusqua) return Promise.resolve(_iceRelais.serveurs.length);
     if (_iceRelais.enCours) return _iceRelais.enCours;
     var compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
@@ -546,7 +552,7 @@ function assurerServeursIce() {
       try { if (typeof diagLog === "function") diagLog("ice relais " + raison); } catch (_e) {}
       return -1;
     };
-    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: { type: "ice" } }))
+    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: Object.assign({ type: "ice" }, contexte) }))
       .then(function (r) {
         // Un refus du serveur (429 du plafond…) ne LÈVE pas : il arrive dans `error`.
         if (r && r.error) return echec("refusé : " + (r.error.message || r.error));
@@ -563,7 +569,7 @@ function assurerServeursIce() {
         _iceRetirerRelais();
         surs.forEach(function (s) { CALL_ICE_SERVERS.push(s); });
         _iceRelais.serveurs = surs;
-        var ttlMs = ((d && Number(d.ttl) > 0) ? Number(d.ttl) : 6 * 3600) * 1000;
+        var ttlMs = ((d && Number(d.ttl) > 0) ? Math.min(Number(d.ttl), 3600) : 3600) * 1000;
         _iceRelais.expire = Date.now() + ttlMs;
         _iceRelais.jusqua = Date.now() + Math.max(10 * 60 * 1000, ttlMs - ICE_MARGE_MS);
         return surs.length;
@@ -690,7 +696,7 @@ async function startCall(convId, kind) {
   // (2,5 s au plus) avant de créer la connexion : `new RTCPeerConnection` copie la
   // liste des serveurs à sa création — sans relais à ce moment, l'appel entre deux
   // réseaux à NAT strict échoue (audit du 2026-11-09).
-  const _relais = assurerServeursIce();
+  // Le relais sera demandé après le dépôt de l’invitation.
   const depart = {};
   window._callDepart = depart;
 
@@ -702,7 +708,6 @@ async function startCall(convId, kind) {
     if (window._callDepart === depart) window._callDepart = null;
     toast("Caméra/micro indisponible ou refusé"); return;
   }
-  try { await _relais; } catch (e) {}
   // Pendant l'attente, un autre appel a pu commencer (un appel entrant accepté) :
   // ce départ s'efface, et la caméra et le micro qu'il a obtenus sont coupés.
   const departValide = window._callDepart === depart && !window._call;
@@ -721,7 +726,6 @@ async function startCall(convId, kind) {
   };
 
   _callRenderActiveUI();
-  _callSetupPeerConnection();
   console.log("[call] startCall →", peer.id, "callId", callId, "kind", kind);
 
   // Invitation déposée sur le canal personnel du pair (`ring:<peerId>`).
@@ -779,6 +783,10 @@ async function startCall(convId, kind) {
     endCall();
     return;
   }
+
+  await assurerServeursIce({ callId: callId });
+  if (!window._call || window._call.id !== callId) return;
+  _callSetupPeerConnection();
 
   // S'abonne au canal d'appel (réponse SDP / ICE).
   const chan = _callChannel("call:" + callId);
@@ -1269,7 +1277,7 @@ async function acceptIncomingCall() {
   _appelEnPreparation();
   // Le relais TURN se demande pendant la permission caméra/micro, et on l'attend
   // (2,5 s au plus) avant de créer la connexion — même raison que `startCall`.
-  const _relais = assurerServeursIce();
+  const _relais = assurerServeursIce({ callId: inv.callId });
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) {
     if (window._callAcceptation === inv) window._callAcceptation = null;
@@ -1531,7 +1539,7 @@ function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callAvatarHtml(idn, couleur) {
   var photo = (idn && idn.photo) || "";
   // safeUrlAttr rend "#" pour une URL refusée : ce n'est PAS une photo.
-  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img src="' + safeUrlAttr(photo) + '" alt=""></div>';
+  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img ' + passioMediaProteges.attributImage(photo) + '="' + safeUrlAttr(photo) + '" alt=""></div>';
   return '<div class="call-avatar" style="background:' + _cssColor(couleur || "var(--accent)") + ';">' + _emojiSur(idn && idn.emoji) + '</div>';
 }
 // Le calque d'appel est un dialogue nommé, et le focus y entre.
@@ -3268,6 +3276,7 @@ function authorOfReel(post) {
 }
 
 function reelMediaHTML(post) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   // ⚠️ Une bobine peut venir de N'IMPORTE QUEL compte : `video`, `poster` et
   // `fallback` sont des champs libres côté serveur. Trois contextes distincts,
   // trois helpers — se tromper ici, c'est exécuter le code d'un inconnu :
@@ -3276,7 +3285,7 @@ function reelMediaHTML(post) {
   //                l'intérieur d'un attribut onerror ; le HTML décode avant que JS
   //                ne parse, donc escapeHtml seul ne protège pas.
   if (post.type === "video" && post.video) {
-    const poster = post.poster ? ` poster="${safeUrlAttr(post.poster)}"` : "";
+    const poster = post.poster ? ` ${passioMediaProteges.attributPoster(post.poster)}="${safeUrlAttr(post.poster)}"` : "";
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
@@ -3291,7 +3300,7 @@ function reelMediaHTML(post) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
   const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
-  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
+  return `<img class="reel-media" ${passioMediaProteges.attributImage(vignette)}="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
 }
 
 function resolveCoverUrl(cover) {
@@ -3320,6 +3329,7 @@ function bobineExemple(post) {
 }
 
 function renderReelHTML(post, idx) {
+  post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = moodShortLabel(post.mood);
@@ -3342,7 +3352,7 @@ function renderReelHTML(post, idx) {
           <div class="reel-avatar" style="background:${avatarBg(author)};">${avatarInner(author)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
+            <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
@@ -3829,7 +3839,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
-              <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" ${passioMediaProteges.attributImage(r.text || "")}="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
@@ -4333,8 +4343,12 @@ function _vliveFiletTour() {
     // source, il ne recule pas. BORNÉ au fil à l'écran (les bulles « 🔴 LIVE »
     // vivent dans sa barre de stories) : `filetEstLeSeulChemin` (app-02), MÊME
     // autorité que le filet du fil.
+    // ⚠️ LOT 4 DU 2026-11-15 (capacité) : le seul chemin n'épingle plus 60 s, il
+    // BORNE le recul à 3 min (`filetBorneSeulChemin`, app-02), comme le filet du fil.
+    // Un live connu garde la cadence vive : ce cas-là ne change pas.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
-    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    _vliveFiletPas = filetBorneSeulChemin(_vliveFiletPas, seulChemin);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
@@ -4374,7 +4388,7 @@ function _vliveChipsHtml() {
   const mine = (typeof MY_UID !== "undefined" && MY_UID) || "";
   return (window._videoLives || []).filter(r => r.author_id !== mine).map(r => {
     const inner = r.author_photo
-      ? '<img loading="lazy" decoding="async" src="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(r.author_photo) + '="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
       : escapeHtml(r.author_emoji || "🔴");
     const tip = r.title ? (r.author_name || "Live") + " — " + r.title : "Rejoindre le live";
     return '' +
@@ -4427,6 +4441,12 @@ function _vlivePromptTitle() {
   });
 }
 
+// Lot 4 du 2026-11-15 : les colonnes d'adresse de média n'acceptent plus que https.
+var LIVE_PHOTO_HTTPS = "video_lives:photo-https";
+function _livePhotoHttps(v) {
+  return (typeof v === "string" && /^https:\/\//i.test(v) && v.length <= 2048) ? v : null;
+}
+
 async function startVideoLive() {
   if (window._call) { toast("Termine ton appel d'abord"); return; }
   if (window._vliveHost) return;
@@ -4454,7 +4474,6 @@ async function startVideoLive() {
   // rester SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide doublon et
   // capacité sur cette table ; une attente là faisait répondre « complet » à des
   // spectateurs groupés alors que des relais étaient libres, relecture du 2026-11-09).
-  const _relais = assurerServeursIce();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4465,14 +4484,16 @@ async function startVideoLive() {
       video: Object.assign({ facingMode: "user" }, VLIVE_VIDEO_QUALITY),
     });
   } catch (e) { toast("Caméra/micro indisponible ou refusé"); return; }
-  try { await _relais; } catch (e) {}
 
   const id = "vl_" + String(MY_UID).slice(0, 8) + "_" + Date.now().toString(36);
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
   const row = {
     id: id, author_id: MY_UID, author_name: _callMyName(),
     author_emoji: me.emoji || "🔴",
-    author_photo: (state.user && state.user.general && state.user.general.avatarPhoto) || null,
+    // Une adresse https seulement : une photo encore locale (data:) serait refusée par la base
+    // (`video_lives_author_photo_forme`) et ferait échouer tout le direct. `LIVE_PHOTO_HTTPS`
+    // est la chaîne que la migration exige dans le client servi (`-- PREREQUIS-CLIENT:`).
+    author_photo: _livePhotoHttps(state.user && state.user.general && state.user.general.avatarPhoto),
     title: title || null,
     status: "live",
     started_at: new Date().toISOString(), last_seen: new Date().toISOString(),
@@ -4481,6 +4502,8 @@ async function startVideoLive() {
     const { error } = await supa.from("video_lives").insert(row);
     if (error) { console.warn("[vlive] insert:", error.message); toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
   } catch (e) { toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
+
+  await assurerServeursIce({ liveId: id });
 
   window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null, title: title || "", chatLog: [], peak: 0, tree: {}, paused: false };
   _vliveRenderUI("host", row);
@@ -4592,7 +4615,7 @@ async function _vliveHostAddViewer(vid) {
   if (Object.keys(H.pcs).length >= VLIVE_MAX_VIEWERS) { _vliveSend("full", { to: vid }); return; }
   // SANS attente (voir `startVideoLive`, qui attend le relais avant d'ouvrir le live) :
   // l'appel retire tout de suite des identifiants expirés et relance le renouvellement
-  // en arrière-plan ; ceux qui restent ont au moins 3 h par construction.
+  // en arrière-plan ; ceux qui restent ont au moins 30 min par construction.
   assurerServeursIce();
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
   const entry = { pc: pc, pendingIce: [] };
@@ -4755,7 +4778,7 @@ async function joinVideoLive(liveId) {
     _appelEnPreparation();
     // Le relais TURN se demande EN MÊME TEMPS que l'état du live, et on l'attend
     // (2,5 s au plus) avant d'entrer : l'offre de l'hôte peut arriver tout de suite.
-    const _relais = assurerServeursIce();
+    const _relais = assurerServeursIce({ liveId: liveId });
     // Vérifie que le live est encore vivant (statut + heartbeat récent).
     let row = (window._videoLives || []).find(r => r.id === liveId) || null;
     try {

@@ -39,16 +39,30 @@ test.describe("Profil visité — options dans le menu ⋯", () => {
     await ouvrirProfilVisite(page);
     const dots = page.locator(".modal.modal-fullscreen .profile-dots-btn.on-cover");
     await expect(dots).toBeVisible();
-    const b = await dots.boundingBox();
-    const cover = await page.locator(".modal.modal-fullscreen .main-profile-cover").boundingBox();
+    // La modale entre par slideUp : lire les rectangles à des instants
+    // différents mélangeait deux positions de la même animation. Attendre
+    // sa fin, puis mesurer couverture, ⋯ et croix dans le même tour DOM.
+    const mesures = await page.locator(".modal.modal-fullscreen").evaluate(async (modale) => {
+      await Promise.all(modale.getAnimations().map((animation) => animation.finished));
+      const rectangle = (el) => {
+        if (!el || !el.getClientRects().length) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      };
+      return {
+        b: rectangle(modale.querySelector(".profile-dots-btn.on-cover")),
+        cover: rectangle(modale.querySelector(".main-profile-cover")),
+        croix: Array.from(modale.querySelectorAll(".modal-close")).map(rectangle),
+      };
+    });
+    const { b, cover, croix } = mesures;
     expect(b).not.toBeNull();
+    expect(cover).not.toBeNull();
     // ⚠️ IL Y A DEUX × : `openModal` en injecte un, et le balisage de la modale
     // porte déjà le sien. On les mesure donc TOUS — viser le premier venu
     // laisserait passer un recouvrement avec l'autre.
-    const croix = await page.locator(".modal.modal-fullscreen .modal-close").all();
     expect(croix.length).toBeGreaterThan(0);
-    for (const c of croix) {
-      const r = await c.boundingBox();
+    for (const r of croix) {
       if (!r) continue;
       // Aucun recouvrement horizontal : le ⋯ est franchement à gauche du ×.
       expect(b.x + b.width).toBeLessThanOrEqual(r.x);

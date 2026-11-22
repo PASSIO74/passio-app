@@ -16,7 +16,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { POLITIQUE, validerPolitique, autoriser, resumerPolitique, CIRCUITS } from "../../supabase/functions/_shared/politique-autonomie.js";
-import { REVEIL, RETOUR, modeRetour } from "../../supabase/functions/_shared/autonomie.js";
+import { REVEIL, RETOUR, CADENCE, modeRetour } from "../../supabase/functions/_shared/autonomie.js";
+import { SENTINELLE_MUETTE_MS } from "../../supabase/functions/_shared/pilotage.js";
 import { SEUILS_DELESTAGE } from "../../supabase/functions/_shared/reglages.js";
 
 const R = POLITIQUE.runbooks;
@@ -114,4 +115,27 @@ test("⑨ essai des alertes : intervalle et fenêtre de jour déclarés = ceux q
   assert.equal(r.limites.heureFin, FENETRE_ESSAI.fin);
   assert.match(r.appliquePar, /essayerAlertes/);
   assert.equal(autoriser(POLITIQUE, "essai_alertes").ok, true);
+});
+
+// La cadence de la Sentinelle (2026-11-21) : ses bornes déclarées SONT celles du code.
+// Mutation éprouvée : `parHeure: CADENCE.parHeure` → `parHeure: 2` dans la fonction → ⑩ rougit.
+test("⑩ cadence de la Sentinelle : intervalle et plafond déclarés = ceux que le code applique ; suspendue par la pause ; l'alarme « muette » laisse passer deux cadences ratées", () => {
+  const r = POLITIQUE.runbooks.cadence_sentinelle;
+  assert.ok(r, "au catalogue");
+  assert.equal(r.circuit, "A");
+  assert.equal(r.autonome, true);
+  assert.equal(r.suspenduParPause, true);
+  assert.equal(r.limites.intervalleMin * 60e3, CADENCE.intervalleMs);
+  assert.equal(r.limites.parHeure, CADENCE.parHeure);
+  assert.equal(r.limites.apresEchecMin * 60e3, CADENCE.apresEchecMs);
+  // Espacée après un échec, elle reste SOUS le seuil « muette » : l'échec garde sa seule ligne.
+  assert.ok(CADENCE.apresEchecMs + 30 * 60e3 <= SENTINELLE_MUETTE_MS, "après un échec, la relance précède l'alarme « muette »");
+  assert.match(r.appliquePar, /doitCadencerSentinelle/);
+  assert.equal(autoriser(POLITIQUE, "cadence_sentinelle").ok, true);
+  assert.equal(autoriser(POLITIQUE, "cadence_sentinelle", { pause: true }).raison, "pause");
+  const idx = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(idx, /"sentinelle-cadence", \{ parMinute: 1, parHeure: CADENCE\.parHeure \}/, "plafond horaire de la cadence");
+  // L'escalade déclarée est celle que l'écran applique : au-delà, la Sentinelle est dite muette.
+  assert.match(r.escalade, new RegExp("plus de " + SENTINELLE_MUETTE_MS / 3600e3 + " h"));
+  assert.ok(SENTINELLE_MUETTE_MS >= 2 * CADENCE.intervalleMs + 30 * 60e3, "une cadence manquée (GitHub lent) ne rend pas le voyant orange");
 });

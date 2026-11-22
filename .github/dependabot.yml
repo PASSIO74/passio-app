@@ -14,7 +14,8 @@ updates:
     directory: /dashboard
     schedule:
       interval: weekly
-    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    # Délai de 7 jours : il ne vaut que pour les mises à jour de VERSION, coupées ici (open-pull-requests-limit: 0).
+    # Une PR de sécurité arrive sans délai : relire à la main la date des versions qu'elle apporte.
     cooldown:
       default-days: 7
     open-pull-requests-limit: 0
@@ -22,7 +23,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    # Délai de 7 jours : il ne vaut que pour les mises à jour de VERSION, coupées ici (open-pull-requests-limit: 0).
+    # Une PR de sécurité arrive sans délai : relire à la main la date des versions qu'elle apporte.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0
+  # La CLI qui envoie dist/ en production (deploy.yml, `npm ci` sur ce lockfile depuis le 2026-11-14) : même règle.
+  - package-ecosystem: npm
+    directory: /.github/netlify-cli
+    schedule:
+      interval: weekly
+    # Délai de 7 jours : il ne vaut que pour les mises à jour de VERSION, coupées ici (open-pull-requests-limit: 0).
+    # Une PR de sécurité arrive sans délai : relire à la main la date des versions qu'elle apporte.
     cooldown:
       default-days: 7
     open-pull-requests-limit: 0

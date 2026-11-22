@@ -1143,3 +1143,31 @@ Demande de Benjamin (capture du sélecteur, 12 passions dont 7 marquées « ✦ 
 - Édition : la passion d'origine reste réinjectée ; « (non publiable) » n'est plus écrit que si elle l'est vraiment (une passion retirée du profil depuis reste publiable).
 - Préremplissages (pont Fil → IRL, « Proposer un IRL » d'une conversation) : la passion visée n'est posée que si elle est au profil ; `ui-v6c` construit le titre suggéré sur la passion RETENUE par le formulaire, jamais sur celle visée.
 Verrous : `tests/e2e/passions-organiser-et-groupe.spec.js` (③, ⑤, ⑤ bis, ⑤ ter), `tests/e2e/ui-v6c-proposer-irl.spec.js`.
+
+## Carte d'activité après relecture — restauration du snapshot (2026-11-19)
+
+Benjamin constate la disparition de la photo et du rectangle corail. La PR #969
+avait conditionné l'écriture ET la relecture de `shared_data` à une publication
+source (`sharedReel` / `shared_from_post_id`). Or une carte d'activité possède
+un snapshot `kind: "event"`, sans publication source. Les cartes anciennes
+revenaient donc comme du texte et les nouvelles perdaient leur snapshot à l'envoi.
+
+Correction ciblée dans app-08 : conserver les snapshots d'activité à l'envoi,
+les relire sans exiger de post source (objet non nul, kind event, identifiant
+texte non vide). Les métadonnées `passio_media` seules ne deviennent jamais une
+republication ; les republications ordinaires gardent leur lien source.
+Le rendu commun fil/profil et les contrôles de médias privés restent en place.
+
+Critères : photo chargée, titre, description et bloc corail après lecture réseau,
+y compris sans activité en cache ; le vrai envoi suivi de la relecture conserve
+le snapshot intact. `feed-activite-relue.spec.js` couvre les formes texte/objet,
+le profil, les données invalides et une republication ordinaire. Les trois cas
+lecture/envoi échouent sur le code précédent puis passent avec le correctif.
+
+Risque normal ; implémentation Codex, contre-revue indépendante Codex sans défaut
+bloquant. Aucune migration ni modification d'autorisation. Centre de pilotage /
+Sentinelle : les signaux `publish_post` et `saved` existants sont conservés ; pas
+de nouvelle collecte. Prévention par tests et CI, retour arrière par revert de
+la PR. Limite : une publication écrite pendant la régression sans `shared_data`
+ne peut pas retrouver un snapshot que le serveur n'a jamais reçu ; aucune
+reconstruction approximative ni réécriture de données de production.

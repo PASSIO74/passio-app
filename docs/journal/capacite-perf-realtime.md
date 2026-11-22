@@ -38,6 +38,7 @@
 - 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
+- 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 
 ---
 
@@ -3101,3 +3102,156 @@ complet 13 / 13 sous chacun des deux moteurs.
   la barre v2 fait deux `goTo`, deux entrées d'historique, et le premier « retour » ne fait rien de visible. En
   développement (app-08 avant ui-v2) le défaut n'existe pas — le commentaire d'ui-v2-shell.js suppose cet ordre-là.
   Remède proposé : `#appNav .nav-item` ou `.nav-item:not(.nav-v2-item)`. Proposé en lot séparé.
+
+## Lot abus et capacité — reprise locale (2026-11-16)
+
+Travail interrompu repris sur la branche existante, sans opération distante. Les corps et prédicats
+ont été comparés aux photographies de production fournies par le lead ; ces photographies restent
+hors du dépôt. Aucun changement de messagerie, de configuration AAL2 ou TURN.
+
+Les trois migrations du 15/11 ajoutent des budgets atomiques par jour UTC, optimisent fil_compteurs
+en conservant les prédicats de visibilité, indexent les recherches, conservent le contrôle du quota
+Storage et séparent la capacité anonyme de télémétrie. Les statistiques de lignes sont approximatives.
+La purge est bornée par lots et par journées UTC complètes pour ne pas réagréger une journée amputée.
+Les nouvelles tables internes sont sous RLS sans droits clients ; les helpers internes ne sont pas RPC.
+
+Client : recherche de personnes à trois caractères, heartbeat 60 s (jusqu'à 240 s délesté),
+présence dashboard 270 s, recul exponentiel avec jitter en panne, recharge de version étalée.
+Le fil demande explicitement la propagation des erreurs : la lecture retournait [] même sous panne,
+rendant le catch du nouveau backoff inaccessible. Un échec partiel de lecture des cartes recule aussi.
+Le prévol sans CDC prouve une publication par lecture JWT destinataire ; il ne prétend pas mesurer
+une livraison Realtime de publication. Aucune campagne réseau exécutée.
+
+Ordre de livraison : client d'abord (marqueur video_lives:photo-https), puis migrations plafonds,
+lectures, telemetrie, après les lots de novembre précédents. Chaque migration est transactionnelle
+et rejouable ; revue critique et test SQL sur PostgreSQL jetable restent requis avant application.
+Les retours arrière sont décrits dans chaque fichier. Aucun déploiement ni application SQL effectué ici.
+
+Limites explicites : les HEAD count=exact des cartes et les comptages d'abonnés restent sous RLS
+par ligne ; D14-01 n'est donc que partiellement corrigé. Le cache Storage a été retiré après relecture : contrôle existant conservé, scans coûteux encore présents.
+Aucun DDL sur le schéma storage géré par Supabase.
+Les bornes de télémétrie fondées sur pg_stat sont approximatives, pas des quotas stricts.
+Le banc garde des lectures legacy et des HEAD : il ne certifie pas la capacité du client complet.
+Pas de preuve de tenue à 100 000 utilisateurs.
+
+Reprise finale Codex (16/11) : risque critical, finalisation du lot existant uniquement ;
+agent de correction/relecture locale : Codex, seconde revue indépendante encore requise.
+Critères : budgets journaliers atomiques, visibilité conservée, aucun cache Storage permissif,
+prévol sans CDC vérifié par lecture JWT destinataire ; aucun DDL sur storage.
+Socle local HEAD a270749b ; référence main locale d4c885af ancêtre du HEAD. Conformité avec
+le dernier état distant non revérifiée (consigne sans distant). Catalogue fourni LEAD relu.
+Le banc SQL vérifie maintenant aussi l'identité intégrale de quota_stockage_ok avant/après
+et la présence effective des verdicts. Aucun serveur PostgreSQL disponible sur le PATH :
+syntaxe Bash contrôlée, exécution SQL non réalisée, à faire sur une instance jetable avant
+revue/application. La purge conserve une borne UTC complète ; pg_stat reste approximatif.
+Le test unitaire exécute le vrai chemin livraison sans CDC et vérifie les deux JWT,
+l'absence de sonde CDC et l'échec si la publication reste invisible.
+Intégration pilotage pertinente : battement délesté et fenêtre de présence alignés ; aucune
+remédiation automatique ajoutée. Retour arrière : migrations documentées, client réversible.
+
+Validation finale : tests unitaires ciblés passants (59 initiaux, puis 43 après ajout de deux cas),
+Bash -n et diff --check passants. npm run verif s'arrête sur quatre échecs de bornes-ci.test.mjs
+(délais mesurés trop longs / processus expiré sous Windows), hors fichiers du lot : vérification
+complète NON verte, à reprendre dans le runner adapté avant fusion. Aucun contournement ajouté.
+Point de revue restant : fil_compteurs passe en SECURITY DEFINER avec les prédicats clients.
+Les lectures service_role privées peuvent différer du comportement antérieur sans RLS ; la
+correction proposée pour préserver cette compatibilité a été refusée par la revue automatique
+faute d'autorisation explicite du changement sensible. Aucun contournement ni correction appliquée.
+Les migrations ne sont donc pas annoncées prêtes à appliquer : trancher ce point, exécuter le
+banc SQL jetable avant/après/rejeu et obtenir la contre-revue critique avant toute application.
+
+Résultat navigateur final : 67/67 tests locaux passants avec Chrome via PASSIO_CHROMIUM
+(11,4 min pour les cinq fichiers, dont 9,6 min pour la suite PWA). Unitaires finaux : 61/61.
+La durée demandée a été dépassée par ces vérifications ; aucun échec navigateur.
+
+Suivi D10-01 demandé : reste OUVERT, aucune extension messagerie dans ce lot.
+D'après le catalogue LEAD : conv_members INSERT et conv_messages INSERT appellent déjà
+le compteur commun à 60/min ; le lot ajoute donc 900/jour avant 7 jours, 3 600/jour ensuite.
+Les budgets persistent côté PostgreSQL (debit_ecritures, debit_jour), UPSERT atomiques,
+clé par table/opération/source et fenêtre serveur ; ils survivent à un rechargement navigateur.
+Ils ne sont pas un budget global multi-comptes et les opérations de service échappent au jour.
+conv_reads : aucun trigger de débit dans le catalogue, seulement diffusion de lecture,
+rid et barrière de suppression. Ses INSERT/UPDATE last_read_at ne sont donc pas couverts.
+conv_members UPDATE n'est pas couvert par son trigger INSERT. Le lot ne pose pas de quota
+général UPDATE : il étend seulement les compteurs existants, notamment profils/lives/passions.
+Receipts par message/compte, broadcasts, destinataires du fanout et octets/événements Realtime
+n'ont pas de budget propre : limiter une insertion ne compte pas chaque émission qu'elle produit.
+Télémétrie : réserve anon/comptes sur statistiques de lignes approximatives et purge par lots,
+pas de plafond strict de tout le volume d'événements. Les reculs/heartbeats côté navigateur
+réduisent la charge normale, mais ne remplacent pas une protection serveur contre l'abus direct.
+Ordre restant : revue critique du point fil_compteurs service_role, banc PostgreSQL jetable
+avant/après/rejeu, CI verte, puis client servi portant video_lives:photo-https, migrations
+plafonds → lectures → telemetrie, contrôle sur cible et observation pilotage. Aucun de ces
+gestes distants, aucune charge ni application de migration n'a été exécuté ici.
+
+
+## Diagnostic du banc de charge — 17 novembre 2026
+
+Le timer HTTP reste 12 s, mais les échecs indiquent désormais le stade atteint
+(préparation, attente des en-têtes, lecture du corps, validation), la première
+origine locale d'interruption (échéance ou arrêt de campagne) et l'état du signal.
+Ces nouveaux champs sont fermés, sans propriété d'exception, URL ou identité ;
+les motifs historiques uppercase de motifSur restent inchangés et gardent leur limite.
+
+L'état adaptatif est conservé entre paliers. Une photographie agrégée après
+échauffement, avant mesure, compte les acteurs froids/partiels/chauds ; aucune Map
+n'est vidée, aucune clé/valeur n'est exportée. Auth, cibles, budgets, cadence,
+verdicts et nettoyage sont conservés. Le banc privé a validé la parité avec
+l'ancien chemin ; les 11 tests intégrés exercent les vrais requete/stop/palier
+en VM avec fetch et horloges injectés, sans lancer l'opérateur ou un réseau.
+
+Ce lot ne corrige pas causalement le pic historique et ne donne aucun GO. Le
+palier 100 n'a pas été relancé. Implémentation Codex, contre-revue Root favorable
+et relecture séparée de l'adaptation de la fixture VM existante : ses assertions
+sont conservées. Les 55 tests concernés et `npm run verif` passent sous Node22.
+Les chemins scripts/tests restent critiques pour la gouvernance. Pilotage :
+catégories et compteurs de rapport seulement, aucune connexion/remédiation active.
+
+## 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+
+Revérification du 20/11 (groupe C) : la correction serveur de `fil_compteurs` tenait, mais trois
+chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation.
+
+- **Repli du fil.** Toute erreur de `fil_compteurs` (délai à 8 s, 503) basculait la page sur les
+  trois lectures d'avant (`post_likes` sans limite, commentaires, réactions — contrôle RLS par
+  ligne), et trois échecs passaient la session entière en legacy ; ce repli « réussissait », donc le
+  filet ne reculait pas. **Règle :** le chemin d'avant ne sert que pour une fonction ABSENTE
+  (PGRST202/42883, `_erreurFonctionAbsente`). Sur une erreur de charge, `_chargerComplementsFil`
+  rend `source: "echec"` : la copie précédente de chaque publication fait foi
+  (`_complementConserve`), aucune autre lecture ne part, la fonction est retentée après
+  `reculSurErreur(15 s, n)` ; le filet du fil lit `window._filComplementsDegradesSeq` et compte le
+  tour comme un échec.
+- **Compteur des cartes.** Trois `HEAD count=exact` par tour (règle de lecture de `post_likes`
+  évaluée par « j'aime ») → UN appel groupé `fil_compteurs` (`_postLikeLireGroupe`) ; le HEAD ne
+  reste que si la fonction est mémorisée absente. Le recul n'est plus remis à zéro par
+  `_postLikeRefreshReprise` (retour au premier plan, `online`) ni rapproché par un réveil : seule
+  une lecture réussie le lève. La cadence de base (15 → 60 s) est INCHANGÉE : le banc de charge en
+  porte une copie verrouillée (`tests/unit/charge-realiste.test.mjs`), et il modélise encore trois
+  HEAD par tour — il surestime donc ce poste (à réaligner avec D15-01).
+- **Diffusions de messages tronquées** (préparation de D10-01, client prêt AVANT la migration) :
+  `tronque: true` + `id` dans la charge → relecture de `conv_messages` par identifiant
+  (`_relireMessageTronque`), au plus 30/min, jamais deux fois le même, ligne d'une autre
+  conversation jetée, un seul nouvel essai ; jamais le contenu tronqué peint comme entier.
+- **B06-N1** : `supaLoadMyConversations` filtre ses lignes (`_lignesConv`) et construit chaque
+  conversation sous son propre `try` — une ligne invalide ne vide plus la liste.
+
+**Contre-revue du même jour** — quatre corrections :
+- **Erreur durable ≠ charge** (`_filCompteursErreurPassagere`) : seuls réseau, délai, 5xx/401/408/429
+  sans code, 57014, classes 53/08/40, PGRST000-003 et PGRST3xx (jeton) reculent en gardant les
+  compteurs. Un 4xx ou un code durable (42501 après un droit retiré, PGRST203…) prend le chemin
+  d'avant, mémorisé pour l'heure comme une absence — sinon le fil restait à 0 j'aime pour toute
+  publication neuve, indéfiniment. L'ATTENTE du recul n'est plus comptée comme un échec du filet
+  (seul un appel parti et en échec l'est) : le filet est le seul chemin des nouvelles publications.
+- **Un seul recul pour la fonction** : fil et cartes lisent et écrivent `_filCompteursEchecs` /
+  `_filCompteursProchainEssai` (`_filCompteursEnRecul`, `_filCompteursNoterSucces`) ; un succès de
+  l'un lève le recul de l'autre, et un échec arrivé pendant une fenêtre de recul (rafale concurrente
+  au démarrage) ne compte pas.
+- **Sous-lecture en échec** (messages, membres, accusés) : `supaLoadMyConversations` rend `[]`
+  (= garder le local) au lieu de fabriquer des entrées sans aperçu qui remplaçaient la copie locale.
+- **Drapeau `tronque` honoré sur `user:<moi>` seulement** : sur `conv:<id>`, où tout membre émet,
+  la charge est jetée (sinon : rejeu d'un ancien contrôle d'autrui rendu authentique, et une lecture
+  par abonné pour chaque charge forgée). Budget de relecture : 60/min, dont 20 par conversation ;
+  hors budget ou relecture en échec, la conversation reçoit sa pastille non lue, sans contenu.
+
+Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
+et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).

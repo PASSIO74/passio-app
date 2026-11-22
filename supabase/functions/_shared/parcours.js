@@ -74,7 +74,9 @@ const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 // Trafic hors public (meta.trafic, telemetry.js) : les robots et les émulations
 // ne pèsent pas dans un parcours (comptés à part) ; l'équipe, si — ce sont de
 // vraies actions, et un échec de l'équipe est un échec.
-const TRAFIC_ECARTE = new Set(["robot", "emulation"]);
+// Exporté (2026-11-21) : la famille « bouton » de la Sentinelle applique la MÊME
+// règle (scripts/sentinelle-detecter.mjs) — une définition, jamais une copie.
+export const TRAFIC_ECARTE = new Set(["robot", "emulation"]);
 
 /**
  * Regroupe les lignes par corrélation. Rend { flux: Map(cid → flux), doublons }.
@@ -369,6 +371,13 @@ export function melanger(liste, aleatoire = null) {
 const nomParcours = (p) => "« " + p.libelle + " »";
 
 /**
+ * Le parcours sonne-t-il ? Panne CONFIRMÉE d'un parcours critique (confirmerPannes). UNE définition :
+ * raisonsVerdict en fait une raison rouge, et le voyant (_shared/pilotage.js, verdict) en tire le code
+ * `parcours:<id>` de la même raison — deux prédicats finiraient par ne plus compter les mêmes (T3, 2026-11-21).
+ */
+export const estPanneRouge = (p) => !!p && p.etat === "panne" && p.panneConfirmee === true && p.criticite === "critique";
+
+/**
  * Ce que le bilan apporte au VOYANT : { rouge: [...], orange: [...] }.
  * Une panne d'un parcours critique est rouge ; d'un parcours important, orange ;
  * un parcours dégradé est orange. « Insuffisant » et « non observé » ne colorent
@@ -381,7 +390,7 @@ export function raisonsVerdict(bilan) {
   for (const p of bilan.parcours) {
     // Rouge = panne CONFIRMÉE d'un parcours critique (confirmerPannes). Une panne
     // que personne n'a confirmée ne sonne jamais : orange, et elle le dit.
-    if (p.etat === "panne" && p.panneConfirmee === true && p.criticite === "critique") rouge.push(`parcours ${nomParcours(p)} en panne : ${p.raisons[0]}`);
+    if (estPanneRouge(p)) rouge.push(`parcours ${nomParcours(p)} en panne : ${p.raisons[0]}`);
     else if (p.etat === "panne") orange.push(`parcours ${nomParcours(p)} en panne${p.panneConfirmee === true ? "" : " (à confirmer)"} : ${p.raisons[0]}`);
     else if (p.etat === "degrade") orange.push(`parcours ${nomParcours(p)} dégradé : ${p.raisons[0]}`);
   }

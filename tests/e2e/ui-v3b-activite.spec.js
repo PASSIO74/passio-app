@@ -222,8 +222,19 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   await boot(page, { errors });
   await seedFeed(page, POSTS, EVENTS);
 
-  // ③ Les deux références portent le même lien, unique.
-  for (const id of ["p_direct", "p_share"]) {
+  // ③ Les deux références mènent à la même activité, par une porte unique.
+  // 2026-11-15 (Benjamin) : le partage n'a plus de lien en bas — sa carte
+  // (rectangle orange) EST la porte, et porte les attributs du lien.
+  {
+    const carte = page.locator('article.post[data-postid="p_share"]');
+    await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
+    await expect(carte.locator(".post-activite")).toHaveAttribute("data-v3-activity", "ev_jam");
+    await expect(carte.locator("[data-v3-bridge]")).toHaveCount(0);
+    expect(await carte.innerText()).not.toContain("Voir l'activité");
+    await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
+    await expect(carte.locator("[data-v3-rsvp-go]")).toHaveCount(0);
+  }
+  for (const id of ["p_direct"]) {
     const carte = page.locator(`article.post[data-postid="${id}"]`);
     await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
     await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");

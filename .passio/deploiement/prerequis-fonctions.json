@@ -1,5 +1,5 @@
 {
-  "_commentaire": "ASTRA-64 (2026-09-16) — ce que chaque Edge Function EXIGE de la base pour être déployée. Lu par scripts/verifier-prerequis-fonctions.mjs, exécuté par .github/workflows/edge-functions.yml AVANT `supabase functions deploy` : un prérequis `obligatoire` absent sur la cible RETIENT le déploiement (job rouge, rien n'est déployé). Chaque objet est vérifié dans le catalogue de la cible, en lecture seule. Formes : function:<schema>.<nom>(<types>) · column:<schema>.<table>.<colonne> · table:<schema>.<table> · source:<schema>.<fonction>~<texte attendu dans prosrc>.",
+  "_commentaire": "La CI consulte ces prérequis en lecture seule avant de déployer une Edge Function. Un prérequis obligatoire absent retient LA FONCTION qui l'exige, plus les autres (verifier-prerequis-fonctions.mjs --partiel, 2026-11-21) : elles sont déployées, puis le run rougit. function, column et table vérifient le catalogue, source cherche un marqueur dans prosrc, empreinte vérifie la définition de la signature complète. reglage:<cle>.<champ>:booleen exige que le réglage serveur existe et porte un booléen JSON ; sa VALEUR n'est pas une condition : elle est lue, et la fumée exige que la fonction déployée serve cet état. « reglage:medias_proteges.actif=false » était le contrôle de la PRÉPARATION du serveur de médias (ADR-014, étape 1 de l'ordre de livraison) : il est retiré depuis l'ouverture du 2026-11-19, où il retenait tout déploiement.",
   "fonctions": {
     "delete-account": {
       "migration": "migrations/migration_barriere_suppression_2026-09-15.sql",
@@ -17,11 +17,31 @@
       ]
     },
     "export-account": {
-      "migration": "migrations/migration_export_instantane_2026-09-15.sql",
-      "obligatoire": false,
-      "sans": "repli par pages, jamais `complet` (ASTRA-44) — dégradé mais honnête, déploiement autorisé, l'absence est dite dans le résumé",
+      "migration": "migrations/migration_export_medias_proteges_go_2026-11-16.sql",
+      "obligatoire": true,
+      "sans": "export des registres non attesté : retenir le nouveau bundle jusqu'à la primaire médias et son wrapper export complémentaire",
       "objets": [
-        "function:public.export_compte_instantane(text,integer,bigint)"
+        "function:public.export_compte_instantane(text,integer,bigint)",
+        "empreinte:public.export_compte_instantane(text,integer,bigint)~1ca6dbf6269c9441b83d8461fa8a1914",
+        "table:public.media_reservations",
+        "table:public.media_assets",
+        "table:public.media_objects"
+      ]
+    },
+    "private-media": {
+      "migration": "migrations/migration_medias_proteges_go_2026-11-16.sql",
+      "obligatoire": true,
+      "sans": "registres, fonctions SQL ou interrupteur des médias protégés absents de la cible : le courtier ne saurait ni résoudre un média ni lire sa coupure — retenir private-media jusqu'à la primaire médias",
+      "objets": [
+        "reglage:medias_proteges.actif:booleen",
+        "table:public.media_reservations",
+        "table:public.media_assets",
+        "table:public.media_objects",
+        "function:public.media_proteges_actifs()",
+        "function:public.media_session_active()",
+        "function:public.media_resoudre(text,text,uuid,text)",
+        "function:public.media_reserver(text,text,jsonb,uuid)",
+        "function:public.media_upload_autorise(text,uuid,text,jsonb)"
       ]
     },
     "notify-call": {
@@ -42,7 +62,7 @@
     },
     "pilotage": {
       "obligatoire": false,
-      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils — dont le NOM des derniers comptes créés depuis le 2026-10-23 —, signalements ; activités, participants et abonnements push pour les rappels d'activité ; et depuis le 2026-10-06 les gestes de l'activation — GESTES_ACTIVATION de supabase/functions/_shared/pilotage.js) et plafonne par analytics_events. Depuis le 2026-10-11, FACULTATIFS : `reglages_distants`, `pilotage_audience(integer)` et `pilotage_familles_erreurs(text, timestamptz)` (migrations/migration_reglages_distants_2026-10-11.sql) — sans eux, la veille ne délestage pas, ne réveille pas la Sentinelle et ne propose aucun retour arrière, le geste « réglages » répond 503 en nommant la migration, et l'audience retombe sur une lecture de lignes qui se dit tronquée",
+      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils — dont le NOM des derniers comptes créés depuis le 2026-10-23 —, signalements ; activités, participants et abonnements push pour les rappels d'activité ; et depuis le 2026-10-06 les gestes de l'activation — GESTES_ACTIVATION de supabase/functions/_shared/pilotage.js) et plafonne par analytics_events. Depuis le 2026-10-11, FACULTATIFS : `reglages_distants`, `pilotage_audience(integer)` et `pilotage_familles_erreurs(text, timestamptz)` (migrations/migration_reglages_distants_2026-10-11.sql) — sans eux, la veille ne délestage pas, ne réveille pas la Sentinelle et ne propose aucun retour arrière, le geste « réglages » répond 503 en nommant la migration, et l'audience retombe sur une lecture de lignes qui se dit tronquée. Depuis le 2026-11-21, FACULTATIVE : `telemetrie_remplissage()` (migrations/migration_telemetrie_classes_2026-11-21.sql) — sans elle, le remplissage de la table de télémétrie est COMPTÉ (un compte exact, borné à 4 s), l'écran dit que la protection par classe et la purge courte ne sont pas en base, et nomme la migration ; le canari refusé, sa ligne « À faire » et la sonnerie n'en dépendent pas",
       "objets": [
         "table:public.analytics_events",
         "table:public.telemetry_events",
@@ -70,7 +90,8 @@
         "column:public.profiles.username",
         "table:public.reglages_distants",
         "function:public.pilotage_audience(integer)",
-        "function:public.pilotage_familles_erreurs(text,timestamp with time zone)"
+        "function:public.pilotage_familles_erreurs(text,timestamp with time zone)",
+        "function:public.telemetrie_remplissage()"
       ]
     }
   }

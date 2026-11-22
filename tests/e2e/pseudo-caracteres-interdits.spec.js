@@ -33,7 +33,7 @@ test("② l'inscription refuse le nom en français, sans rien envoyer", async ({
   await bootOnboarded(page);
   const r = await page.evaluate(async () => {
     const champ = (id, v) => { let e = document.getElementById(id); if (!e) { e = document.createElement("input"); e.id = id; document.body.appendChild(e); } e.value = v; };
-    champ("authName", 'Léa "Lili"'); champ("authEmail", "lea@example.test"); champ("authPassword", "motdepasse1"); champ("authPasswordConfirm", "motdepasse1");
+    champ("authName", 'Léa "Lili"'); champ("authEmail", "lea@example.test"); champ("authPassword", "motdepasse1");
     window.__msgs = [];
     const vrai = window._showAuthMsg;
     window._showAuthMsg = function (m, k) { window.__msgs.push(String(m)); try { return vrai.apply(this, arguments); } catch (e) {} };

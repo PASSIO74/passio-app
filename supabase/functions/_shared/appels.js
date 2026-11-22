@@ -91,11 +91,68 @@ export const APPELS_ACTIFS = false;
 // côté serveur avec un jeton secret (`TURN_CF_KEY_ID`, `TURN_CF_API_TOKEN`,
 // secrets de la fonction) — d'où ce geste `{ type: "ice" }` de `notify-call`.
 // Secrets absents : la fonction rend une liste vide et l'app reste en STUN seul,
-// comme avant. Durée des identifiants : 6 h. Assez pour un live ou un appel (le
-// client les renouvelle quand il en reste moins de 3 h, au départ de chacun), assez
-// court pour qu'un identifiant sorti d'un navigateur ne serve pas de relais gratuit
-// une journée entière : la facture Cloudflare n'a pas de plafond au-delà de 1 000 Go.
-export const TTL_ICE_S = 6 * 3600;
+// comme avant.
+// ⚠️ DURÉE RAMENÉE À 1 H, ET DÉLIVRANCE LIÉE À UN DIRECT OUVERT (audit du
+// 2026-11-15). Six heures d'identifiants pour tout compte qui le demandait, sans
+// direct ni appel, faisaient du relais un service gratuit aux frais de l'éditeur.
+// Désormais : un CONTEXTE (`contexteIce`) que le serveur VÉRIFIE (`iceAutorise`) —
+// un direct en cours que l'appelant peut voir (ou dont il est l'auteur), ou un
+// appel dont il est partie quand les appels sont allumés — et rien sinon. Le
+// client redemande les identifiants aux points de creation de connexion quand
+// il reste moins de 30 min ; aucune reconnexion automatique garantie.
+export const TTL_ICE_S = 3600;
+/** Un direct est « ouvert » si son battement (25 s chez l'hôte) a moins de 2 minutes. */
+export const LIVE_VIVANT_MS = 2 * 60 * 1000;
+/** Plafond PROPRE aux identifiants, en plus de celui de la fonction : une demande par direct suffit. */
+export const PLAFOND_ICE = Object.freeze({ parMinute: 6, parHeure: 30 });
+const RE_ID_CONTEXTE = /^[A-Za-z0-9_-]{1,80}$/;
+
+/**
+ * Le contexte d'une demande `{ type: "ice" }` : un direct (`liveId`) ou un appel
+ * (`callId`), d'une forme sûre — `null` sinon (rien n'est délivré sans contexte).
+ * @param {unknown} corps
+ * @returns {{ genre: "live" | "appel", id: string } | null}
+ */
+export function contexteIce(corps) {
+  const c = corps && typeof corps === "object" ? corps : {};
+  if (typeof c.liveId === "string" && RE_ID_CONTEXTE.test(c.liveId)) return { genre: "live", id: c.liveId };
+  if (typeof c.callId === "string" && RE_ID_CONTEXTE.test(c.callId)) return { genre: "appel", id: c.callId };
+  return null;
+}
+
+/**
+ * Le serveur VÉRIFIE le contexte, sous l'identité de l'appelant (`userClient`, son
+ * jeton) pour les prédicats des policies, et sous service_role (`admin`) pour l'état
+ * du direct. Toute erreur refuse : on préfère un direct en STUN seul à un relais ouvert.
+ *   · direct : `peut_voir_live` (auteur, ou spectateur admis : public ou abonné
+ *     accepté, sans blocage) ET statut `live` ET battement de moins de LIVE_VIVANT_MS ;
+ *   · appel  : appels allumés ET `call_partie_prenante` (la ligne `call_invites`).
+ * @param {{ userClient: { rpc: Function }, admin: { from: Function },
+ *           contexte: { genre: string, id: string } | null, appelsActifs?: boolean, maintenant?: number }} e
+ * @returns {Promise<boolean>}
+ */
+export async function iceAutorise({ userClient, admin, contexte, appelsActifs = APPELS_ACTIFS, maintenant = Date.now() }) {
+  if (!Number.isFinite(maintenant) || !contexte || typeof contexte.id !== "string" || !RE_ID_CONTEXTE.test(contexte.id)) return false;
+  try {
+    if (contexte.genre === "appel") {
+      if (appelsActifs !== true) return false;
+      const { data, error } = await userClient.rpc("call_partie_prenante", { _id: contexte.id });
+      if (error || data !== true) return false;
+      const { data: lignes, error: lecture } = await admin.from("call_invites").select("created_at").eq("id", contexte.id).limit(1);
+      const cree = Array.isArray(lignes) && lignes.length === 1 ? Date.parse(lignes[0].created_at) : NaN;
+      return !lecture && Number.isFinite(cree) && cree <= maintenant && maintenant - cree <= TTL_ICE_S * 1000;
+    }
+    if (contexte.genre !== "live") return false;
+    const { data: voit, error: e1 } = await userClient.rpc("peut_voir_live", { _id: contexte.id });
+    if (e1 || voit !== true) return false;
+    const { data: lignes, error: e2 } = await admin.from("video_lives").select("status, last_seen").eq("id", contexte.id).limit(1);
+    if (e2 || !Array.isArray(lignes) || !lignes.length) return false;
+    const vu = Date.parse(lignes[0].last_seen);
+    return lignes[0].status === "live" && Number.isFinite(vu) && vu <= maintenant && maintenant - vu <= LIVE_VIVANT_MS;
+  } catch (_e) {
+    return false;
+  }
+}
 export const ICE_MAX_SERVEURS = 4;
 export const ICE_MAX_URLS = 8;
 // Une adresse ICE admise : stun/turn/turns, un hôte, un port facultatif, un

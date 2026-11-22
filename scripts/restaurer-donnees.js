@@ -55,8 +55,11 @@ const fs = require("fs");
 const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
 const JE = require("./lib/json-exact.js");
+const PR = require("./lib/reprise-schemas-prives.js");
+const DECLENCHEURS = require("./lib/reprise-declencheurs.js");
 const os = require("os");
 const crypto = require("crypto");
+const MP = require("./lib/reprise-medias-proteges.js");
 
 const PROD_REF = "njkiyoklssvefstljemx";
 const API = "https://api.supabase.com/v1/projects";
@@ -81,6 +84,17 @@ const TABLES_VOULUES = (() => { const v = arg("--tables"); return v ? new Set(v.
 const tablesRetenues = (noms) => TABLES_VOULUES ? noms.filter((t) => TABLES_VOULUES.has(t)) : noms;
 const sansComptes = () => drapeau("--sans-comptes") || !!TABLES_VOULUES;
 const sansMedias = () => drapeau("--sans-medias") || !!TABLES_VOULUES;
+const portePrive = (man) => !!(man?.schemas_prives?.schemas?.rencontres_prive?.present || man?.schemas_prives?.schemas?.passio_realtime_budget?.present);
+function exigerPortee(ctx) {
+  if (TABLES_VOULUES && portePrive(ctx.man)) throw new Error("Mode --tables refusé pour une archive portant des schémas privés : aucune autorisation privée ni compteur ne sera importé ; préparer une archive de référentiels dédiée");
+}
+function verifierDdlPrive(ctx, fichier) {
+  if (!portePrive(ctx.man)) return;
+  const attendu = ctx.man.schema_sha256;
+  if (!/^[0-9a-f]{64}$/.test(attendu || "")) throw new Error("Empreinte DDL requise pour une archive portant des schémas privés");
+  const ddl = fs.readFileSync(fichier, "utf8").replace(/\r\n/g, "\n");
+  if (crypto.createHash("sha256").update(ddl).digest("hex") !== attendu) throw new Error("Empreinte DDL différente du manifeste privé : restauration refusée avant mutation");
+}
 
 function lireJeton() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN.trim();
@@ -98,11 +112,11 @@ async function gestion(jeton, ref, chemin, options = {}) {
 }
 
 /** SQL sous le rôle `postgres`, même endpoint que le bouton « Run » du tableau de bord. */
-async function sql(ctx, query) {
+async function sql(ctx, query, parameters) {
   // L'API de gestion plafonne les appels (429 « ThrottlerException », mesuré
   // à la première restauration) : on attend la fenêtre suivante, une fois.
   for (let essai = 0; ; essai++) {
-    try { return await gestion(ctx.jeton, ctx.ref, "/database/query", { method: "POST", body: JSON.stringify({ query }) }); }
+    try { return await gestion(ctx.jeton, ctx.ref, "/database/query", { method: "POST", body: JSON.stringify({ query, ...(parameters === undefined ? {} : { parameters }) }) }); }
     catch (e) {
       if (essai < 2 && /HTTP 429/.test(e.message)) { process.stdout.write("   (429 : pause 61 s)\n"); await new Promise((r) => setTimeout(r, 61000)); continue; }
       throw e;
@@ -172,6 +186,18 @@ function lireInventaire(ctx) {
   ctx._inventaire = RV.lireInventaireProprietaires(texte, att, texte === null ? null : crypto.createHash("sha256").update(texte, "utf8").digest("hex"));
   return ctx._inventaire;
 }
+function planMediasProteges(ctx) {
+  const tables = ctx.man.tables || {};
+  const avecRegistres = MP.TABLES.some(t => Object.hasOwn(tables, t));
+  if (!avecRegistres && (sansMedias() || !ctx.man.medias)) return null;
+  const index = ctx.man.medias ? lireIndex(ctx) : null;
+  if (!avecRegistres && !Object.keys(index?.objets || {}).some(cle => cle.startsWith(MP.BUCKET + "/"))) return null;
+  return MP.preparer({
+    tables, manifesteMedias: ctx.man.medias, sansMedias: sansMedias(), index,
+    inventaire: ctx.man.medias ? lireInventaire(ctx) : null,
+    lire: t => lireNdjson(path.join(ctx.archive, t + ".ndjson")),
+  });
+}
 function fichiersMediasDisque(ctx) {
   const base = path.join(ctx.archive, "_storage");
   const out = [];
@@ -229,6 +255,14 @@ function validerArchive(ctx) {
   const bloquants = [], nonVerifiables = [];
   const b = bilan(ctx);
   if (!ctx.man || typeof ctx.man !== "object") return { ok: false, bloquants: ["manifeste absent ou illisible"], indetermine: false };
+  try { exigerPortee(ctx); verifierDdlPrive(ctx, path.join(ctx.archive, "schema.sql")); }
+  catch (e) { bloquants.push(e.message); }
+  const prive = PR.valider(ctx.archive, ctx.man.schemas_prives);
+  try { planMediasProteges(ctx); }
+  catch (e) { bloquants.push(motifMediaProtege(e)); }
+  bloquants.push(...prive.erreurs);
+  b.notes.push(...prive.notes);
+  if (ctx.man.schemas_prives && ctx.man.projet !== `https://${ctx.man.schemas_prives.projet}.supabase.co`) bloquants.push("Projets public et privé du manifeste différents");
   // ① tables
   for (const [t, info] of Object.entries(ctx.man.tables || {})) {
     const f = path.join(ctx.archive, t + ".ndjson");
@@ -268,11 +302,23 @@ async function tablesCible(ctx) {
 }
 
 async function schema(ctx) {
+  exigerPortee(ctx);
   const attendues = Object.keys(ctx.man.tables);
   let presentes = await tablesCible(ctx);
   let manquantes = attendues.filter((t) => !presentes.has(t));
+  const prive = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+  if (!ctx.man.schemas_prives && (prive.rencontres || prive.budget)) throw new Error("Archive historique : la cible porte un état privé non couvert ; restauration refusée avant mutation");
+  const schemas = ctx.man.schemas_prives?.schemas;
+  if (schemas && ((!schemas.rencontres_prive.present && prive.rencontres)
+    || (!schemas.passio_realtime_budget.present && prive.budget))) throw new Error("La cible porte un état privé absent de l'archive ; restauration refusée avant mutation");
+  const priveesManquantes = () => [
+    ...(schemas?.rencontres_prive.present && !prive.rencontres ? ["rencontres_prive"] : []),
+    ...(schemas?.passio_realtime_budget.present && !prive.budget ? ["passio_realtime_budget"] : []),
+  ];
+  manquantes.push(...priveesManquantes());
   const fichier = arg("--schema");
   if (manquantes.length && fichier) {
+    verifierDdlPrive(ctx, fichier);
     const ddl = fs.readFileSync(fichier, "utf8");
     const corps = ddl.replace(/--[^\n]*/g, "").trim().toLowerCase();
     if (!corps.startsWith("begin;") || !corps.endsWith("commit;")) echec("--schema doit être UNE transaction (`begin; … commit;`).");
@@ -280,6 +326,9 @@ async function schema(ctx) {
     await sql(ctx, ddl);
     presentes = await tablesCible(ctx);
     manquantes = attendues.filter((t) => !presentes.has(t));
+    const relu = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+    if (schemas?.rencontres_prive.present && !relu.rencontres) manquantes.push("rencontres_prive");
+    if (schemas?.passio_realtime_budget.present && !relu.budget) manquantes.push("passio_realtime_budget");
   }
   if (manquantes.length) echec(`① schéma : ${manquantes.length} table(s) du manifeste absentes de la cible : ${manquantes.join(", ")}\n   → passer --schema <fichier.sql> (DDL exécutable, une transaction).`);
   console.log(`① schéma : ${attendues.length} tables du manifeste présentes sur ${ctx.ref} (${presentes.size} tables publiques).`);
@@ -462,16 +511,16 @@ function ordreInsert(t, cols, json, cle = []) {
   // bilan mais absentes de la cible. Sans identité, la clause est inerte.
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
-alter table public."${t}" disable trigger user;
+${DECLENCHEURS.suspendre(t)}
 insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) ${clauseConflit(cle)};
-alter table public."${t}" enable trigger user;
+${DECLENCHEURS.retablir(t)}
 commit;`;
 }
 
 function ordreLigneALigne(t, cols, json, cle = []) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
-alter table public."${t}" disable trigger user;
+${DECLENCHEURS.suspendre(t)}
 create temp table _refus (motif text) on commit drop;
 do $$ declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
@@ -480,7 +529,7 @@ do $$ declare e json; begin
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
 end $$;
-alter table public."${t}" enable trigger user;
+${DECLENCHEURS.retablir(t)}
 select motif, count(*)::int n from _refus group by 1 order by 2 desc;
 commit;`;
 }
@@ -591,9 +640,16 @@ function fichiersSous(d, base = d) {
 }
 
 async function medias(ctx) {
+  const proteges = planMediasProteges(ctx);
   const base = path.join(ctx.archive, "_storage");
   if (sansMedias() || !fs.existsSync(base)) { console.log("④ médias : ignorés."); return true; }
-  const existants = new Set((await (await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) })).json()).map((b) => b.name));
+  const repSeaux = await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) });
+  if (!repSeaux.ok) throw new Error("Inventaire des seaux indisponible");
+  const seaux = await repSeaux.json();
+  const existants = new Set(seaux.map(b => b.name));
+  if (proteges?.size && seaux.some(b => (b.id === MP.BUCKET || b.name === MP.BUCKET) && b.public !== false)) {
+    throw new Error("reprise_medias_proteges_seau_non_prive");
+  }
   let envoyes = 0, refus = [];
   // ⚠️ LA LIMITE DE TAILLE D'UN SEAU N'EST PAS CELLE DE SON CONTENU (mesuré
   // le 2026-09-14) : `content` plafonne à 26 Mo en production et porte une
@@ -643,8 +699,10 @@ async function medias(ctx) {
         continue;
       }
       const ext = path.extname(rel).slice(1).toLowerCase();
+      const mime = seau === MP.BUCKET ? proteges?.get(seau + "/" + rel)?.mime_type : MIME[ext] || "application/octet-stream";
+      if (!mime) { refus.push("reprise_medias_proteges_mime_inconnu"); continue; }
       const r = await fetch(`${ctx.url}/storage/v1/object/${seau}/${rel.split("/").map(encodeURIComponent).join("/")}`, {
-        method: "POST", headers: entetes(ctx.cle, { "Content-Type": MIME[ext] || "application/octet-stream", "x-upsert": "true" }), body: buf,
+        method: "POST", headers: entetes(ctx.cle, { "Content-Type": mime, "x-upsert": "true" }), body: buf,
       });
       if (r.ok) envoyes++; else refus.push(`${seau}/${rel} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
     }
@@ -795,6 +853,41 @@ async function lignesCible(ctx, t, tri) {
     if (l.length < 1000) return out;
   }
 }
+function motifMediaProtege(e) {
+  return /^reprise_medias_proteges_[a-z_]+$/.test(e?.message || "") ? e.message : "reprise_medias_proteges_preuve_indisponible";
+}
+
+async function catalogueMedias(ctx, selection) {
+  const hacher = drapeau("--hash-medias") && /^[0-9a-f]{64}$/.test(ctx.man.medias?.index_sha256 || "");
+  const colonnes = hacher ? `, s.id::text as identite, ${MP.VERSION_SQL} as version,
+    (to_jsonb(s)->>'archived_at' is null and coalesce(to_jsonb(s)->>'is_delete_marker','false')='false') as vivant` : "";
+  const filtre = selection ? " and bucket_id='content-protected'" : "";
+  const lire = () => sql(ctx, `select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag${colonnes}
+    from storage.objects s where metadata is not null${filtre}`);
+  if (!hacher) return { objets: await lire(), physiques: new Map() };
+  return MP.empreintesPhysiques(ctx, lireIndex(ctx).objets || {}, lire, PROD_REF, selection);
+}
+
+async function rapprocherMediasProteges(ctx, ecrire, preuves) {
+  try {
+    const plan = planMediasProteges(ctx);
+    if (!plan) return null;
+    if (!preuves && ecrire && plan.size && drapeau("--hash-medias")) {
+      preuves = (await catalogueMedias(ctx, plan)).physiques;
+    }
+    const requeter = ecrire ? (q, p) => sql(ctx, q, p) : async (q, p) => {
+      const lire = PR.lecteur(ctx);
+      const ligne = await lire(`select current_setting('transaction_read_only')::boolean as lecture_seule,
+        coalesce(jsonb_agg(r),'[]'::jsonb) as objets from (${q}) r`, p);
+      return ligne.objets;
+    };
+    const ids = await MP.rapprocher(plan, requeter, ecrire, preuves);
+    const remappes = [...ids].filter(([ancien, courant]) => ancien !== courant).length;
+    return { ids, preuve: { ok: true, objets: ids.size, identites_physiques_differentes: remappes } };
+  } catch (e) {
+    return { ids: new Map(), preuve: { ok: false, motif: motifMediaProtege(e) } };
+  }
+}
 async function verdict(ctx) {
   // --preuve <fichier> : le verdict détaillé, écrit en JSON — la preuve DURABLE
   // que la contre-revue réclamait (commande, cible, résultats par table).
@@ -804,6 +897,18 @@ async function verdict(ctx) {
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
   let ecarts = 0, nonVerifies = 0;
+  const catalogue = ctx.man.medias && !sansMedias() ? await catalogueMedias(ctx) : null;
+  const proteges = await rapprocherMediasProteges(ctx, false, catalogue?.physiques);
+  if (proteges) {
+    preuve.medias_proteges = proteges.preuve;
+    if (!proteges.preuve.ok) ecarts++;
+    console.log("   " + (proteges.preuve.ok ? "OK" : "ECART") + " rapprochement des médias protégés");
+  }
+  preuve.schemas_prives = await PR.verifier({ dossier: ctx.archive, man: ctx.man.schemas_prives,
+    lire: PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }), comparer: comparerLignes });
+  if (!preuve.schemas_prives.ok) ecarts++;
+  for (const note of preuve.schemas_prives.notes || []) console.log("   ℹ " + note);
+  for (const erreur of preuve.schemas_prives.erreurs || []) console.log("   ECART " + erreur);
   console.log("\n⑤ VERDICT — table | manifeste | cible");
   for (const t of noms) {
     const att = ctx.man.tables[t].exporte, obt = comptes.has(t) ? comptes.get(t) : "ABSENTE";
@@ -811,7 +916,11 @@ async function verdict(ctx) {
     if (ok && obt > 0) {
       // Même nombre : on compare les DONNÉES (ASTRA-16).
       const tri = ctx.man.tables[t].tri || "id";
-      const d = comparerLignes(lireNdjson(path.join(ctx.archive, t + ".ndjson")), await lignesCible(ctx, t, tri), tri);
+      let archive = lireNdjson(path.join(ctx.archive, t + ".ndjson"));
+      if (t === "media_objects" && proteges?.preuve.ok) {
+        archive = archive.map(l => ({ ...l, storage_object_id: proteges.ids.get(l.storage_object_id) }));
+      }
+      const d = comparerLignes(archive, await lignesCible(ctx, t, tri), tri);
       if (d.manquantes.length || d.divergentes.length || d.enTrop.length) {
         ok = false;
         detail = ` — ${d.manquantes.length} manquante(s), ${d.divergentes.length} divergente(s), ${d.enTrop.length} en trop` + (d.divergentes.length ? ` (ex. ${d.divergentes[0]})` : "");
@@ -846,9 +955,10 @@ async function verdict(ctx) {
     // ⚠️ ASTRA-55 : l'ensemble ATTENDU est l'INDEX de l'archive, jamais les
     // fichiers encore présents sur disque ; l'intégrité du disque est
     // confrontée à l'index ; et `en_trop` entre dans `ok`.
-    const objets = (await sql(ctx, "select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag from storage.objects where metadata is not null"));
+    const objets = catalogue.objets.map(o => MP.ETAG_MD5.test(o.etag || "") || /-\d+"?$/.test(o.etag || "") ? o : { ...o, etag: null });
     const idx = lireIndex(ctx);
-    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, attenduManifeste: ctx.man.medias.fichiers });
+    const hashes = Object.fromEntries([...catalogue.physiques].map(([cle, p]) => [cle, p.md5]));
+    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, hashes, attenduManifeste: ctx.man.medias.fichiers });
     if (v.indetermine) {
       ecarts++;
       preuve.medias = { ok: false, indetermine: true, motif: (idx.erreur ? "index : " + idx.erreur + " — " : "") + v.motif, obtenu: objets.length };
@@ -923,7 +1033,9 @@ async function verdict(ctx) {
   preuve.ecarts = ecarts; preuve.non_verifies = nonVerifies; preuve.bloquants = g.bloquants; preuve.prouvee = g.prouvee;
   const fichierPreuve = arg("--preuve");
   if (fichierPreuve) { fs.writeFileSync(fichierPreuve, JSON.stringify(preuve, null, 2) + "\n"); console.log(`   preuve écrite : ${fichierPreuve}`); }
-  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
+  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : ` +
+    (proteges ? `lignes, comptes et médias vérifiés ; ${proteges.preuve.identites_physiques_differentes} identifiant(s) physique(s) Storage rapproché(s).`
+      : "lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible."));
   else { console.log(`\n❌ la restauration n'est PAS prouvée :`); for (const b of g.bloquants) console.log("   · " + b); }
   return g.prouvee;
 }
@@ -935,6 +1047,8 @@ async function verdict(ctx) {
 // objets — et tout reste est un échec (code 1). Une copie de données
 // personnelles qui reste sur le staging n'est pas une purge.
 async function purger(ctx) {
+  const prive = await PR.inventaire(PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }));
+  if (prive.rencontres || prive.budget) throw new Error("Purge automatique refusée : schémas privés présents ; un plan de purge dédié doit couvrir cet état avant toute mutation");
   const refus = [];
   const presentes = [...await tablesCible(ctx)];
   if (presentes.length) await sql(ctx, `truncate ${presentes.map((t) => `public."${t}"`).join(", ")} cascade;`);
@@ -973,7 +1087,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires } };
+  _phases: { comptes, tables, medias, verdict, rapprocherMediasProteges, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires, schema, purger } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
@@ -981,6 +1095,7 @@ if (require.main === module) (async () => {
   // en Node 20 (contre-revue finale, 2026-11-04).
   if (typeof JSON.rawJSON !== "function") echec(`Node ${process.versions.node} : la reprise exige Node 21 ou plus récent (JSON.rawJSON, lecture exacte des nombres). Rien n'a été lu ni écrit.`);
   const ctx = await contexte();
+  exigerPortee(ctx);
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }
   // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et
@@ -1000,7 +1115,15 @@ if (require.main === module) (async () => {
   await schema(ctx);
   await comptes(ctx);
   const t = await tables(ctx);
+  const prive = await PR.restaurer({ dossier: ctx.archive, man: ctx.man.schemas_prives,
+    lire: PR.lecteur({ url: ctx.url, ref: ctx.ref, jeton: ctx.jeton }),
+    ecrire: async (q, p) => { try { return await sql(ctx, q, p); } catch { throw new Error("Restauration privée : écriture refusée (détail serveur non journalisé)"); } } });
+  bilan(ctx).phases.schemas_prives = { ok: prive.ok };
   const m = await medias(ctx);
+  if (t && m && prive.ok && val.ok && Object.values(bilan(ctx).phases).every(p => p.ok)) {
+    const proteges = await rapprocherMediasProteges(ctx, true);
+    if (proteges) bilan(ctx).phases.medias_proteges = proteges.preuve;
+  }
   const v = await verdict(ctx);
   // ⚠️ ASTRA-46 : UN SEUL RÉSULTAT. Le verdict lit le bilan de toutes les phases ;
   // si une phase disait faux alors que le verdict dit prouvé, c'est une

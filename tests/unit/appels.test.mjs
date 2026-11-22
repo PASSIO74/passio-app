@@ -192,7 +192,7 @@ test("⑥ le tirage vient du SERVEUR (aléa cryptographique, dans [0, 1)) : un a
 test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse par adresseAccuse, les refus d'avant intacts et AVANT l'envoi ; la réponse ne porte ni pid ni « mesuré »", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   assert.match(src, /import \{ adresseAccuse, TTL_NOTIFS_MS \} from "\.\.\/_shared\/reception\.js";/);
-  assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S \} from "\.\.\/_shared\/appels\.js";/);
+  assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S, contexteIce, iceAutorise, PLAFOND_ICE \} from "\.\.\/_shared\/appels\.js";/);
   assert.match(src, /const ACCUSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\)\.accuse;/);
   const envoi = src.indexOf("await pousserAppareils({");
   assert.ok(envoi > 0, "l'envoi passe par le module éprouvé");
@@ -360,7 +360,7 @@ const REPONSE_CF = {
 
 test("⑪ la réponse Cloudflare devient une liste d'ICE servers SÛRE : port 53 écarté, identifiants gardés, rien d'autre", () => {
   const s = serveursIceDepuisCloudflare(REPONSE_CF);
-  assert.equal(TTL_ICE_S, 6 * 3600, "6 h : assez pour un live, assez court pour qu'un identifiant sorti ne serve pas une journée");
+  assert.equal(TTL_ICE_S, 3600, "une heure au plus pour un contexte autorisé");
   assert.deepEqual(s, [
     { urls: ["stun:stun.cloudflare.com:3478"] },
     {
@@ -393,9 +393,9 @@ test("⑪ la réponse Cloudflare devient une liste d'ICE servers SÛRE : port 53
 
 test("⑫ câblage du geste `ice` : APRÈS l'authentification et le plafond, AVANT l'interrupteur des appels ; jamais en cache ; secrets absents = liste vide", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
-  const geste = src.indexOf('if (body.type === "ice") return await identifiantsIce(userData.user);');
+  const geste = src.indexOf('if (body?.type === "ice") {');
   assert.ok(geste > 0, "le geste existe");
-  assert.equal(src.split('if (body.type === "ice")').length - 1, 1, "une seule entrée");
+  assert.equal(src.split('if (body?.type === "ice")').length - 1, 1, "une seule entrée");
   assert.ok(src.indexOf('if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);') < geste, "compte réel exigé avant");
   assert.ok(src.indexOf("if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);") < geste, "plafond avant");
   assert.ok(geste < src.indexOf('if (type === "call" && !APPELS_ACTIFS)'), "avant l'interrupteur des appels : le live en a besoin");

@@ -173,6 +173,6 @@ test("⑤ MUTATIONS rejouées sur le texte réel : chacune rougit, en nommant le
   };
   assert.match(deploiement(`  group: ${GROUPE_DU_RUN}`, "  group: passio-ci").join(), /groupe du run modifié/);
   assert.match(deploiement(`  group: ${GROUPE_DU_RUN}\n  cancel-in-progress: false\n`, `  group: ${GROUPE_DU_RUN}\n  cancel-in-progress: false\n  queue: max\n`).join(), /`queue: max` au niveau du run/);
-  assert.match(deploiement("needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit]", "needs: [governance, audits, test-local, gates-artefact, test-webkit]").join(), /deploy n'attend plus test-prod/);
-  assert.match(deploiement("needs: [audits, test-prod, test-local, gates-artefact, test-webkit]", "needs: [audits, test-local, gates-artefact, test-webkit]").join(), /smoke n'attend plus test-prod/);
+  assert.match(deploiement("needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit, rls-prod]", "needs: [governance, audits, test-local, gates-artefact, test-webkit, rls-prod]").join(), /deploy n'attend plus test-prod/);
+  assert.match(deploiement("needs: [audits, test-prod, test-local, gates-artefact, test-webkit, rls-prod]", "needs: [audits, test-local, gates-artefact, test-webkit, rls-prod]").join(), /smoke n'attend plus test-prod/);
 });
