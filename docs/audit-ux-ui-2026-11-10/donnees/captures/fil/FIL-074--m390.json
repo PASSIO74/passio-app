@@ -1,0 +1,110 @@
+{
+ "id": "FIL-074",
+ "domaine": "fil",
+ "scenario": "etats-du-fil",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "État vide — rien de sélectionné (« Choisis tes passions »)",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:57.235Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-074--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52494,
+  "zooms": [
+   {
+    "nom": "vide",
+    "titre": "Message et action",
+    "fichier": "captures/fil/FIL-074--m390--avant-zoom-vide.webp",
+    "largeur": 740,
+    "hauteur": 652,
+    "octets": 17038
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Toutes les bulles sont décochées : elles perdent leur lavis, sans autre indice",
+   "x": 0.5,
+   "y": 0.135,
+   "w": 0.918,
+   "h": 0.081,
+   "sel": "#profileStrip",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 23,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

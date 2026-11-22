@@ -1,0 +1,135 @@
+{
+ "id": "FIL-034",
+ "domaine": "fil",
+ "scenario": "discussion",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Options d'un commentaire d'autrui",
+ "note": "",
+ "prisLe": "2026-11-10T17:48:13.473Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Discussion (38)",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-034--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 25196,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Icônes fonctionnelles en emojis (💬 😊 🎬 📋 🔕 🚫 ⚠️), là où le menu d'une publication emploie un pictogramme SVG",
+   "x": 0.5,
+   "y": 0.448,
+   "w": 0.956,
+   "h": 0.081,
+   "sel": "#cmtSheet .cmt-sheet-row:nth-of-type(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Bloquer ce compte » agit sans confirmation, collé à « Masquer » et « Signaler »",
+   "x": 0.5,
+   "y": 0.773,
+   "w": 0.956,
+   "h": 0.081,
+   "sel": "#cmtSheet .cmt-sheet-row.danger",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#cmtSheet > div.cmt-sheet > button.cmt-sheet-row.danger",
+     "texte": "Bloquer ce compte",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 15
+    },
+    {
+     "el": "div#cmtSheet > div.cmt-sheet > button.cmt-sheet-row.danger",
+     "texte": "Signaler",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 15
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-034--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 25634,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une seule entrée « Réagir » (le panneau porte déjà les deux onglets)",
+   "x": 0.5,
+   "y": 0.531,
+   "w": 0.956,
+   "h": 0.081,
+   "sel": "#cmtSheet .cmt-sheet-row:nth-of-type(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les actions de modération sont séparées ; « Bloquer » nomme la personne et annonce une confirmation (…)",
+   "x": 0.5,
+   "y": 0.698,
+   "w": 0.956,
+   "h": 0.07,
+   "sel": "#cmtSheet .cmt-sheet-row:nth-of-type(5)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

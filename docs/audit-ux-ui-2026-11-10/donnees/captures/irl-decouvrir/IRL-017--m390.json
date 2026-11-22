@@ -1,0 +1,136 @@
+{
+ "id": "IRL-017",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-liste",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Carte sans coordonnées ni couverture (Annecy, dans 20 jours)",
+ "note": "",
+ "prisLe": "2026-11-10T18:11:51.862Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-017--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 72042,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte sans coordonnées",
+    "fichier": "captures/irl-decouvrir/IRL-017--m390--avant-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 462,
+    "octets": 19168
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Pastille 📍 générique",
+   "x": 0.174,
+   "y": 0.598,
+   "w": 0.2,
+   "h": 0.092,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_10\"] .v4a2-visuel",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 18,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 19,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-017--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 72416,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte sans coordonnées",
+    "fichier": "captures/irl-decouvrir/IRL-017--m390--apres-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 462,
+    "octets": 19684
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Emoji de la passion (Art)",
+   "x": 0.174,
+   "y": 0.598,
+   "w": 0.2,
+   "h": 0.092,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_10\"] .v4a2-visuel",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

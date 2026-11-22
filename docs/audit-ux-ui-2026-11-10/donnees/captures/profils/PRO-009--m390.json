@@ -1,0 +1,100 @@
+{
+ "id": "PRO-009",
+ "domaine": "profils",
+ "scenario": "abonnes-compte-prive",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Compte privé — la demande de Nora (en attente) est comptée et listée comme abonnée",
+ "note": "",
+ "prisLe": "2026-11-10T18:18:24.784Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Abonnés",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-009--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31848,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Nora Petit : demande NON acceptée",
+   "x": 0.5,
+   "y": 0.953,
+   "w": 0.908,
+   "h": 0.069,
+   "sel": "#peopleListBody > div:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-009--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 40240,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les demandes à part, non comptées",
+   "x": 0.5,
+   "y": 0.374,
+   "w": 0.908,
+   "h": 0.096,
+   "sel": "#mqDemandes",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:62723/index.html#",
+   "Audio failed: http://127.0.0.1:62723/index.html#",
+   "Audio failed: http://127.0.0.1:62723/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

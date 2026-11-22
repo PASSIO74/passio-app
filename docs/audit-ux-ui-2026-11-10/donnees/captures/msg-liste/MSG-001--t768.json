@@ -1,0 +1,296 @@
+{
+ "id": "MSG-001",
+ "domaine": "msg-liste",
+ "scenario": "liste",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — liste, contenu normal (12 conversations, 1 épinglée, 1 en sourdine)",
+ "note": "Compte connecté, faux serveur. Épingle et sourdine posées par données injectées (simulé).",
+ "prisLe": "2026-11-10T17:37:54.654Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-001--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 62428,
+  "zooms": [
+   {
+    "nom": "ligne-non-lue",
+    "titre": "Ligne non lue",
+    "fichier": "captures/msg-liste/MSG-001--t768--avant-zoom-ligne-non-lue.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 6084
+   },
+   {
+    "nom": "ligne-epinglee",
+    "titre": "Ligne épinglée",
+    "fichier": "captures/msg-liste/MSG-001--t768--avant-zoom-ligne-epinglee.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 3768
+   },
+   {
+    "nom": "ligne-sourdine",
+    "titre": "Ligne en sourdine",
+    "fichier": "captures/msg-liste/MSG-001--t768--avant-zoom-ligne-sourdine.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 5078
+   },
+   {
+    "nom": "tete",
+    "titre": "Tête de l'écran",
+    "fichier": "captures/msg-liste/MSG-001--t768--avant-zoom-tete.webp",
+    "largeur": 786,
+    "hauteur": 194,
+    "octets": 5404
+   },
+   {
+    "nom": "onglet",
+    "titre": "Onglet Messages",
+    "fichier": "captures/msg-liste/MSG-001--t768--avant-zoom-onglet.webp",
+    "largeur": 186,
+    "hauteur": 110,
+    "octets": 1712
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Non-lu : un point de 12 × 9 px, sans nombre (l'onglet, lui, affiche 8)",
+   "x": 0.803,
+   "y": 0.328,
+   "w": 0.016,
+   "h": 0.009,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Léa Fontaine\")) .msg-badge",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Épingle = emoji 📌 collé au nom",
+   "x": 0.327,
+   "y": 0.24,
+   "w": 0.124,
+   "h": 0.019,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Tom Girard\")) .msg-name",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Sourdine : aucun repère dans la liste",
+   "x": 0.316,
+   "y": 0.4,
+   "w": 0.104,
+   "h": 0.019,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Malik Benali\")) .msg-name",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "34 px vides entre la recherche et la première ligne",
+   "x": 0.5,
+   "y": 0.698,
+   "w": 0.661,
+   "h": 0.973,
+   "sel": "#messageList",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 23,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 29,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Bonjour Camille, je vous confirme la répétition ouverte de samedi : no",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   },
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-001--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 64100,
+  "zooms": [
+   {
+    "nom": "ligne-non-lue",
+    "titre": "Ligne non lue",
+    "fichier": "captures/msg-liste/MSG-001--t768--apres-zoom-ligne-non-lue.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 6362
+   },
+   {
+    "nom": "ligne-epinglee",
+    "titre": "Ligne épinglée",
+    "fichier": "captures/msg-liste/MSG-001--t768--apres-zoom-ligne-epinglee.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 3640
+   },
+   {
+    "nom": "ligne-sourdine",
+    "titre": "Ligne en sourdine",
+    "fichier": "captures/msg-liste/MSG-001--t768--apres-zoom-ligne-sourdine.webp",
+    "largeur": 780,
+    "hauteur": 129,
+    "octets": 5198
+   },
+   {
+    "nom": "tete",
+    "titre": "Tête de l'écran",
+    "fichier": "captures/msg-liste/MSG-001--t768--apres-zoom-tete.webp",
+    "largeur": 786,
+    "hauteur": 197,
+    "octets": 5412
+   },
+   {
+    "nom": "onglet",
+    "titre": "Onglet Messages",
+    "fichier": "captures/msg-liste/MSG-001--t768--apres-zoom-onglet.webp",
+    "largeur": 186,
+    "hauteur": 110,
+    "octets": 1712
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le nombre de non-lus est lisible sur la ligne",
+   "x": 0.798,
+   "y": 0.32,
+   "w": 0.026,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Léa Fontaine\")) .msg-badge",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Épingle en icône fonctionnelle (SVG)",
+   "x": 0.324,
+   "y": 0.232,
+   "w": 0.119,
+   "h": 0.019,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Tom Girard\")) .msg-name",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Cloche barrée : la sourdine se voit",
+   "x": 0.329,
+   "y": 0.392,
+   "w": 0.129,
+   "h": 0.019,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Malik Benali\")) .msg-name",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Nom long sur une ligne, coupé proprement",
+   "x": 0.486,
+   "y": 0.552,
+   "w": 0.443,
+   "h": 0.019,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Marie-Charlotte\")) .msg-name",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

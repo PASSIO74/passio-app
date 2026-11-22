@@ -1,0 +1,148 @@
+{
+ "id": "ENT-039",
+ "domaine": "entree",
+ "scenario": "retours-et-rechargement",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paysage 844 × 390 (téléphone tourné) — Fil",
+ "note": "Émulation Chromium : fenêtre 844 × 390 sur le gabarit m390.",
+ "prisLe": "2026-11-10T19:36:25.406Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#feed"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-039--m390--avant.webp",
+  "largeur": 1688,
+  "hauteur": 780,
+  "octets": 52866,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Barres haute et basse gardées : il reste peu de hauteur au contenu.",
+   "x": 0.5,
+   "y": 0.915,
+   "w": 0.64,
+   "h": 0.169,
+   "sel": "#appNavV2",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 844,
+   "h": 390
+  },
+  "cibles": {
+   "total": 29,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 241,
+     "h": 32,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > button.post-menu-btn",
+     "texte": "Signaler ou bloquer",
+     "w": 44,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 9
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 844,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

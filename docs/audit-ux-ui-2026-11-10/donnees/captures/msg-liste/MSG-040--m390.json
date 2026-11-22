@@ -1,0 +1,103 @@
+{
+ "id": "MSG-040",
+ "domaine": "msg-liste",
+ "scenario": "blocage",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Comptes bloqués (Options ··· › Personnalisation › Comptes bloqués)",
+ "note": "Fenêtre ouverte par appel de fonction (openBlockedList) : le chemin réel passe par le panneau Options.",
+ "prisLe": "2026-11-10T17:44:32.978Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "Comptes bloqués",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(7) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-040--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 20570,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Ligne et bouton",
+    "fichier": "captures/msg-liste/MSG-040--m390--avant-zoom-ligne.webp",
+    "largeur": 732,
+    "hauteur": 126,
+    "octets": 3646
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Débloquer » : 81 × 29 px, texte de 11 px",
+   "x": 0.851,
+   "y": 0.877,
+   "w": 0.207,
+   "h": 0.034,
+   "sel": "#blockedListBox button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#blockedListBox > div > button.btn.ghost",
+     "texte": "Débloquer",
+     "w": 80.6,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "OK",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

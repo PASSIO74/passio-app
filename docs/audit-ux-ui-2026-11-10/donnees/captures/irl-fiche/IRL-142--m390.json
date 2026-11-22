@@ -1,0 +1,94 @@
+{
+ "id": "IRL-142",
+ "domaine": "irl-fiche",
+ "scenario": "modales",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Inviter des amis (abonnements)",
+ "note": "Recherche + liste d'abonnements avec bouton « Inviter ». La fonction « inviter tous mes abonnements » (`inviteAllFollowingToEvent`, app-07:7477) n'a aucune porte. L'invitation est une notification : envoyée sans lire le verdict (« Invitation envoyée » immédiat, app-07:7473).",
+ "prisLe": "2026-11-10T18:04:13.661Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Inviter des amis",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-142--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27260,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [
+    {
+     "el": "div#eventInviteList > div.event-invite-row > button.btn.small",
+     "texte": "Inviter",
+     "w": 55.8,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventInviteList > div.event-invite-row > button.btn.small",
+     "texte": "Inviter",
+     "w": 55.8,
+     "h": 29,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#eventInviteList > div.event-invite-row > div",
+    "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventInviteSearch",
+    "placeholder": "Rechercher parmi tes abonnements…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

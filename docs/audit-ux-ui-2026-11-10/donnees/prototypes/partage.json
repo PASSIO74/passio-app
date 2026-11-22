@@ -1,0 +1,25 @@
+{
+ "ordre": 3,
+ "fichier": "prototypes/partage.html",
+ "titre": "Partager, recevoir un lien, s'inscrire",
+ "description": "Une feuille de partage unique (publication, bobine, activité) avec aperçu, destinataire et confirmation visible ; l'arrivée d'un visiteur sur le contenu partagé, l'inscription qui ne se cache plus derrière le contenu, le retour sur le contenu visé, et l'état d'arrivée d'un lien supprimé ou privé. Dix étapes guidées. L'envoi d'une publication à une personne de PASSIO n'existe pas dans l'application et n'est pas ajouté.",
+ "constats": [
+  "PAR-C01",
+  "PAR-C02",
+  "PAR-C03",
+  "PAR-C04",
+  "PAR-C05",
+  "PAR-C06",
+  "PAR-C07",
+  "PAR-C08",
+  "PAR-C09",
+  "PAR-C10",
+  "PAR-C11",
+  "PAR-C12",
+  "PAR-C13",
+  "PAR-C15",
+  "PAR-C18",
+  "PAR-C19",
+  "PAR-C20"
+ ]
+}

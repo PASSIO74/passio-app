@@ -1,0 +1,280 @@
+{
+ "id": "BOB-022",
+ "domaine": "bobines",
+ "scenario": "commentaires",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau « Commentaires » — « Bonjour à tous » tapé au clavier : les espaces disparaissent et la bobine change",
+ "note": "Frappe réelle (clavier physique). Chaque Espace est pris par le raccourci « bobine suivante » du lecteur (app-06:1016) : le champ reçoit « Bonjouràtous », la bobine derrière passe à 2 / 27 (Malik), le panneau montre toujours les commentaires de Léa.",
+ "prisLe": "2026-11-10T19:21:24.035Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-022--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 50210,
+  "zooms": [
+   {
+    "nom": "saisie",
+    "titre": "Le champ après la frappe",
+    "fichier": "captures/bobines/BOB-022--m390--avant-zoom-saisie.webp",
+    "largeur": 748,
+    "hauteur": 114,
+    "octets": 2844
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Bonjouràtous » : espaces avalés",
+   "x": 0.441,
+   "y": 0.957,
+   "w": 0.8,
+   "h": 0.049,
+   "sel": "#reelCommentInput",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "2 / 27 : la bobine a changé sous le panneau",
+   "x": 0.775,
+   "y": 0.039,
+   "w": 0.132,
+   "h": 0.03,
+   "sel": "#reelsCounter",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 21,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > button.reel-sound-btn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsPanel > div.reel-comments-header > div.reel-comments-close",
+     "texte": "−",
+     "w": 28,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 241,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-like",
+     "texte": "🤍 0",
+     "w": 26,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-reply",
+     "texte": "💬",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-action",
+     "texte": "😊",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Inès Moreau",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Inès Moreau",
+     "w": 74.9,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-like",
+     "texte": "🤍 0",
+     "w": 26,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-reply",
+     "texte": "💬",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-action",
+     "texte": "😊",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsList > div.reel-comment-item > div.reel-comment-avatar",
+     "texte": "Malik Benali",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-header > span.reel-comment-name",
+     "texte": "Malik Benali",
+     "w": 74.3,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-like",
+     "texte": "🤍 0",
+     "w": 26,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-reply",
+     "texte": "💬",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.reel-comment-item > div.reel-comment-body > div.reel-comment-footer > span.reel-comment-action",
+     "texte": "😊",
+     "w": 16.4,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#reelCommentInput",
+     "texte": "Lancez la conversation...",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelCommentsPanel > div.reel-comments-input-section > div.reel-comments-input-wrapper > button.reel-comments-send",
+     "texte": "↑",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsPrevBtn",
+     "texte": "Bobine précédente",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 20
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#reelCommentInput",
+    "placeholder": "Lancez la conversation..."
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/bobines/BOB-022--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 49796,
+  "zooms": [
+   {
+    "nom": "saisie",
+    "titre": "Le champ après la frappe",
+    "fichier": "captures/bobines/BOB-022--m390--apres-zoom-saisie.webp",
+    "largeur": 748,
+    "hauteur": 114,
+    "octets": 2886
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le texte tapé, espaces compris",
+   "x": 0.441,
+   "y": 0.957,
+   "w": 0.8,
+   "h": 0.049,
+   "sel": "#reelCommentInput",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La bobine reste celle qu'on commente (1 / 27)",
+   "x": 0.775,
+   "y": 0.039,
+   "w": 0.132,
+   "h": 0.03,
+   "sel": "#reelsCounter",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

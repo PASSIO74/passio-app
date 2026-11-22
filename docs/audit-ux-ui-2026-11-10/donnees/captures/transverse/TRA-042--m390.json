@@ -1,0 +1,140 @@
+{
+ "id": "TRA-042",
+ "domaine": "transverse",
+ "scenario": "toasts",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Conversation ouverte : un toast d'échec est émis, rien ne paraît",
+ "note": "Toast émis par appel direct de toast() (simulé), figé par le banc.",
+ "prisLe": "2026-11-10T20:00:00.946Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-042--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30958,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "🎸",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Moreau Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-042--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33062,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Au-dessus de la conversation, en haut : le champ de saisie et le clavier restent libres",
+   "x": 0.5,
+   "y": 0.038,
+   "w": 0.644,
+   "h": 0.047,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

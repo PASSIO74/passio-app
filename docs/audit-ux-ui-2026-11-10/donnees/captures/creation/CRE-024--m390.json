@@ -1,0 +1,139 @@
+{
+ "id": "CRE-024",
+ "domaine": "creation",
+ "scenario": "story",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story — fond coloré, outils et Publier",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:08.190Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-024--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 14488,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ni durée (24 h), ni public, ni passion annoncés",
+   "x": 0.5,
+   "y": 0.959,
+   "w": 0.928,
+   "h": 0.05,
+   "sel": "#mePublishBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "button#meBackBtn",
+     "texte": "Fermer",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "Aa",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "😀",
+     "w": 42,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "GIF",
+     "w": 45.9,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mediaEditor > div.me-toolbar > div.me-tool-group > button.me-tool",
+     "texte": "🖼️",
+     "w": 42,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "button#mePublishBtn",
+     "texte": "Publier ma story",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-024--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 20102,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Durée, public et passion dits au moment de publier",
+   "x": 0.5,
+   "y": 0.937,
+   "w": 1,
+   "h": 0.127,
+   "sel": "#mediaEditor .me-bottom",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,146 @@
+{
+ "id": "MSG-154",
+ "domaine": "msg-conversation",
+ "scenario": "pieces-jointes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Sélecteur de GIF flottant (bouton pellicule)",
+ "note": "SIMULÉ : images locales. Second sélecteur de GIF, différent de l'onglet du panneau emoji.",
+ "prisLe": "2026-11-10T19:00:36.690Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-154--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 46262,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Carte flottante posée sur le dernier message ; un toucher envoie.",
+   "x": 0.554,
+   "y": 0.648,
+   "w": 0.79,
+   "h": 0.421,
+   "sel": "#gif-panel-msg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#gif-panel-msg > input",
+     "texte": "Rechercher un GIF",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

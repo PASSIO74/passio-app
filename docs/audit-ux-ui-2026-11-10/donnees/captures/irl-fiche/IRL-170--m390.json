@@ -1,0 +1,150 @@
+{
+ "id": "IRL-170",
+ "domaine": "irl-fiche",
+ "scenario": "exemple",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Activité d'exemple — fiche",
+ "note": "Socle de démonstration (« Exemple PASSIO »), aucun compte. Activité : e1.",
+ "prisLe": "2026-11-10T18:07:51.378Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#event-e1"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-170--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 75384,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Jam session",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Jam session guitaristes débutants",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.live",
+     "texte": "C'est maintenant — bon moment !",
+     "ratio": 4.38,
+     "seuil": 4.5,
+     "couleur": "#6d32f4",
+     "fond": "#dfd4fc",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 9
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

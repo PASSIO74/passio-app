@@ -1,0 +1,72 @@
+/* Kit des prototypes de l'audit UX/UI PASSIO.
+   Le prototype charge AVANT cette feuille un instantané de la feuille de style de
+   l'application (kit/passio-styles.css = styles.css de main@4e1d8ed1) : les écrans
+   maquettés portent donc les vraies classes et les vraies variables du produit.
+   Cette feuille ne fait que : poser le cadre (téléphone + panneau de notes),
+   neutraliser ce que la feuille de l'application impose à la page entière, et
+   fournir les repères du parcours guidé. */
+html.proto-page, html.proto-page body { height: auto !important; min-height: 100% !important; overflow: auto !important; position: static !important; }
+html.proto-page body {
+  margin: 0 !important; padding: 0 !important; background: #f6f4ef !important; color: #17152b !important;
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  display: grid !important; grid-template-columns: minmax(300px, 420px) auto; gap: 34px; justify-content: center; align-items: start;
+  padding: 26px 24px 60px !important; overscroll-behavior: auto !important; touch-action: auto !important; user-select: auto !important;
+}
+
+/* ── Panneau de notes ── */
+.proto-notes { position: sticky; top: 20px; background: #fff; border: 1px solid #e3dfd6; border-radius: 14px; padding: 20px 22px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.proto-notes .proto-surtitre { font: 700 11px/1 system-ui, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: #6d32f4; }
+.proto-notes h1 { font: 800 22px/1.2 "Manrope", "Segoe UI", system-ui, sans-serif; margin: 8px 0 8px; letter-spacing: -.01em; color: #17152b; }
+.proto-notes p { margin: 8px 0; color: #47435f; font-size: 14.5px; }
+.proto-notes .proto-avis { background: #fff8ec; border-left: 4px solid #b54708; padding: 8px 12px; border-radius: 0 8px 8px 0; color: #5b3a05; font-size: 13.5px; }
+.proto-etapes { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 6px; counter-reset: etape; }
+.proto-etapes li { counter-increment: etape; }
+.proto-etapes button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 28px 1fr; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 10px; border: 1px solid transparent; color: #17152b; font-size: 14px; line-height: 1.4; }
+.proto-etapes button::before { content: counter(etape); width: 26px; height: 26px; border-radius: 50%; background: #efe9fd; color: #4a1cb8; font: 800 13px/26px "Manrope", system-ui, sans-serif; text-align: center; }
+.proto-etapes button:hover { background: #faf7ff; }
+.proto-etapes button:focus-visible { outline: 3px solid #6d32f4; outline-offset: 2px; }
+.proto-etapes li[aria-current="step"] button { background: #f3eeff; border-color: #d2c2fb; }
+.proto-etapes li[aria-current="step"] button::before { background: #6d32f4; color: #fff; }
+.proto-etapes strong { display: block; font-weight: 700; }
+.proto-etapes span { color: #47435f; font-size: 13.5px; }
+.proto-etapes .proto-refs { display: block; margin-top: 3px; font: 600 11.5px/1.4 ui-monospace, Consolas, monospace; color: #6b6780; }
+.proto-commandes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.proto-commandes button { font: 600 13.5px/1 system-ui, sans-serif; padding: 10px 14px; border-radius: 9px; border: 1px solid #cfc9bd; background: #fff; color: #17152b; cursor: pointer; min-height: 40px; }
+.proto-commandes button.principal { background: #17152b; border-color: #17152b; color: #fff; }
+.proto-commandes button:disabled { opacity: .45; cursor: default; }
+.proto-commandes button:focus-visible { outline: 3px solid #6d32f4; outline-offset: 2px; }
+.proto-legende { margin-top: 14px; font-size: 12.5px; color: #6b6780; }
+.proto-retour { display: inline-block; margin-top: 14px; font-size: 13.5px; color: #6d32f4; }
+
+/* ── Téléphone ── */
+.proto-scene { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.proto-etiquette { font: 700 11px/1 system-ui, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: #6d32f4; }
+.proto-telephone {
+  position: relative; width: 390px; height: 844px; max-height: none; border-radius: 34px; overflow: hidden;
+  background: var(--bg-deep, #f7f5fc); border: 1px solid #cfc9bd; box-shadow: 0 0 0 8px #17152b, 0 24px 60px rgba(23, 21, 43, .28);
+  transform: translateZ(0);            /* devient le bloc conteneur des éléments `position: fixed` de l'application */
+  --app-vh: 844px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text, #17152b);
+  text-align: left;
+}
+.proto-telephone [data-ecran] { position: absolute; inset: 0; display: none; overflow: hidden; background: var(--bg-deep, #f7f5fc); }
+.proto-telephone [data-ecran].proto-actif { display: flex; flex-direction: column; }
+.proto-defile { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.proto-telephone [data-couche] { display: none; }
+.proto-telephone [data-couche].proto-ouverte { display: block; }
+
+/* Repères du parcours guidé */
+.proto-cible { position: relative; }
+.proto-telephone .proto-cible-active { outline: 3px solid #ff6b57 !important; outline-offset: 3px; border-radius: 10px; animation: proto-pouls 1.4s ease-in-out infinite; }
+@keyframes proto-pouls { 50% { outline-offset: 7px; } }
+.proto-montrer-zones [data-aller], .proto-montrer-zones [data-ouvrir], .proto-montrer-zones [data-fermer], .proto-montrer-zones [data-action] { box-shadow: 0 0 0 2px rgba(255, 107, 87, .75) !important; }
+.proto-nouveau { position: relative; }
+.proto-bulle { position: absolute; z-index: 5; left: 12px; right: 12px; bottom: 96px; background: #17152b; color: #fff; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.4; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); pointer-events: none; }
+.proto-bulle b { color: #c8b2ff; }
+
+@media (max-width: 900px) {
+  html.proto-page body { grid-template-columns: 1fr; justify-items: center; padding: 14px 10px 40px !important; }
+  .proto-notes { position: static; max-height: none; width: 100%; max-width: 420px; order: 2; }
+  .proto-telephone { width: min(390px, 100vw - 24px); height: min(844px, 100vh - 40px); }
+}
+@media (prefers-reduced-motion: reduce) { .proto-telephone .proto-cible-active { animation: none; } }

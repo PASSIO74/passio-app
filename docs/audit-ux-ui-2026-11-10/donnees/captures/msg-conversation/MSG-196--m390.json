@@ -1,0 +1,68 @@
+{
+ "id": "MSG-196",
+ "domaine": "msg-conversation",
+ "scenario": "irl",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« + » → Proposer un IRL : le formulaire d'activité s'ouvre, la conversation est fermée",
+ "note": "Rien n'est envoyé à l'interlocutrice ; le bouton d'en-tête ouvre le même formulaire sans préremplissage.",
+ "prisLe": "2026-11-10T18:14:32.017Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "Créer une activité",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-196--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41958,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 7,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

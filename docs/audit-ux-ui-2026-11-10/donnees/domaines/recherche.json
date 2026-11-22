@@ -1,0 +1,1216 @@
+{
+  "domaine": "recherche",
+  "groupe": "Recherche et découverte",
+  "titre": "Recherche et découverte — écran Rechercher, résultats, fiche d'une passion",
+  "resume": "La recherche elle-même est solide : référentiel de 5 001 passions, accents, pluriels et casse repliés, anti-rebond et annulation des réponses périmées, compteur honnête, repli hors ligne qui se tait. Ce qui gêne est autour : la page propose comme « créateurs à suivre » des personnes déjà suivies, un compte bloqué et des personnages d'exemple qu'on peut « suivre » pour de vrai ; ouverte tôt, elle affiche « Suivre » sur des abonnements existants et l'appui désabonne. La fiche d'une passion compte les exemples (42 contre 4), parle de « créer un profil » pour ajouter une passion et ne mène jamais à Rencontrer, alors que la boucle Découvrir → Rencontrer passe précisément par elle. Le panneau de résultats cache les personnes sous le pli et ne se ferme qu'en vidant le champ ; « Aucun résultat » et le hors-ligne ne proposent rien. L'assistant IA n'a plus de porte : c'est du code mort.",
+  "aConserver": [
+    "Recherche tolérante aux accents, à la casse et au pluriel (« theatre » → Théâtre, « guitares » → Guitare).",
+    "Anti-rebond de 160 ms et jeton d'annulation : une réponse lente ne réécrit jamais l'écran.",
+    "Compteur « Un aperçu parmi 5 001 passions » tiré du référentiel, muet tant qu'il ne sait pas (hors ligne compris).",
+    "Champ en 16 px, sans zoom iOS ; aucun débordement à 320 px.",
+    "« Signaler cette passion » en bas de fiche, discret.",
+    "« Suivre » en visiteur : demande de compte qui explique l'action.",
+    "Un seul moteur de suivi (toggleFollowUser) et un seul moteur d'ajout de passion (ajouterPassionAuCompte) derrière toutes les portes."
+  ],
+  "registre": [
+    {
+      "id": "REC-001",
+      "surface": "Rechercher",
+      "composant": "Haut d'écran : accroche, champ, « OK », « Passions tendance »",
+      "etat": "repos, référentiel chargé",
+      "role": "connecté · compte public",
+      "geste": "Barre du haut → loupe",
+      "observation": "observe",
+      "preuve": "capture REC-001 (d1440, m360, m390, t768) ; index.html:965-1016 ; js/app-06-reels-partage.js:5574 (renderExplorer)",
+      "problemes": [
+        "REC-C13",
+        "REC-C14"
+      ],
+      "proposition": "Accroche sans jargon, « OK » à 44 px avec nom accessible, croix d'effacement ; « tendance » réservée aux passions qui ont des publications.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le champ est clair et en 16 px, mais sa cible « OK » est petite, sans étiquette, et la section « Hot » est en partie remplie par ordre alphabétique."
+    },
+    {
+      "id": "REC-002",
+      "surface": "Rechercher",
+      "composant": "« Toutes les passions » : aperçu de 24 tuiles et compteur",
+      "etat": "référentiel chargé",
+      "role": "connecté · compte public",
+      "geste": "Rechercher → défiler",
+      "observation": "observe",
+      "preuve": "capture REC-002 (m360, m390, t768) ; js/app-06-reels-partage.js:5624-5696",
+      "problemes": [],
+      "proposition": "Aucun changement.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le compteur vient du référentiel (5 001) et se tait quand il ne sait pas ; l'aperçu alterne précis et larges, sans arborescence."
+    },
+    {
+      "id": "REC-003",
+      "surface": "Rechercher",
+      "composant": "« Créateurs à suivre » (#suggestedCreators)",
+      "etat": "suivis chargés (écran repeint)",
+      "role": "connecté · compte public",
+      "geste": "Rechercher → défiler en bas",
+      "observation": "observe",
+      "preuve": "capture REC-003 (d1440, m360, m390) ; js/app-06-reels-partage.js:5725-5781 (12 premiers profils, puis 4 personnages d'exemple)",
+      "problemes": [
+        "REC-C02",
+        "REC-C03",
+        "REC-C05"
+      ],
+      "proposition": "Retirer suivis, demandes en attente et comptes bloqués ; marquer et rendre insuivables les exemples ; boutons 44 px.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "La liste mêle des personnes déjà suivies, un compte bloqué et des personnages fictifs qu'on peut « suivre »."
+    },
+    {
+      "id": "REC-004",
+      "surface": "Rechercher",
+      "composant": "Champ focalisé, clavier ouvert",
+      "etat": "rien de tapé",
+      "role": "connecté · compte public",
+      "geste": "Toucher le champ",
+      "observation": "simule",
+      "preuve": "capture REC-004 (m360, m390) ; clavier simulé par réduction de fenêtre (banc.simulerClavier)",
+      "problemes": [
+        "REC-C13"
+      ],
+      "proposition": "Croix d'effacement et nom accessible (voir REC-001).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Rien n'est proposé au focus et le champ n'a ni type=search ni enterkeyhint."
+    },
+    {
+      "id": "REC-005",
+      "surface": "Rechercher",
+      "composant": "Panneau « Recherche… »",
+      "etat": "attente (anti-rebond 160 ms)",
+      "role": "connecté · compte public",
+      "geste": "Taper « gui »",
+      "observation": "observe",
+      "preuve": "capture REC-005 (m390) ; js/app-07-ia-explore-irl.js:164-182",
+      "problemes": [],
+      "proposition": "Aucun changement.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Un retour immédiat et bref ; l'annulation par jeton empêche une réponse périmée d'écraser la bonne (vérifié en enchaînant les frappes)."
+    },
+    {
+      "id": "REC-006",
+      "surface": "Rechercher",
+      "composant": "Panneau de résultats : passions puis « Utilisateurs »",
+      "etat": "« gui » : 6 passions + 2 personnes",
+      "role": "connecté · compte public",
+      "geste": "Taper « gui »",
+      "observation": "observe",
+      "preuve": "capture REC-006 (m360, m390) ; js/app-07-ia-explore-irl.js:219-311",
+      "problemes": [
+        "REC-C06",
+        "REC-C02"
+      ],
+      "proposition": "Trois passions puis « Voir plus », en-tête « Personnes », panneau étendu jusqu'au bas de l'écran.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Les personnes sont sous le pli d'un panneau de 360 px qui défile à part ; les personnes affichées sont des personnages d'exemple sans marque."
+    },
+    {
+      "id": "REC-007",
+      "surface": "Rechercher",
+      "composant": "Résultats « tom »",
+      "etat": "personne bloquée + correspondance de bio",
+      "role": "connecté · compte public",
+      "geste": "Taper « tom »",
+      "observation": "observe",
+      "preuve": "capture REC-007 (m360, m390) ; js/app-08-ui-modals-tour.js:6472 (supaSearchUsers : username OU bio ilike %q%, aucun filtre de blocage)",
+      "problemes": [
+        "REC-C03",
+        "REC-C16"
+      ],
+      "proposition": "Retirer les comptes bloqués ; ne compter la bio qu'en début de mot.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Tom, bloqué, est proposé ; Victor Aubry sort parce que « automobile » contient « tom »."
+    },
+    {
+      "id": "REC-008",
+      "surface": "Rechercher",
+      "composant": "« Aucun résultat pour « … » »",
+      "etat": "aucun résultat",
+      "role": "connecté · compte public",
+      "geste": "Taper « zzqxw »",
+      "observation": "observe",
+      "preuve": "capture REC-008 (m360, m390) ; js/app-07-ia-explore-irl.js:264-267",
+      "problemes": [
+        "REC-C08"
+      ],
+      "proposition": "Conseil (orthographe, mot plus court) et trois passions qui ont des publications à toucher.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Un cul-de-sac : aucune piste, aucun geste."
+    },
+    {
+      "id": "REC-009",
+      "surface": "Rechercher",
+      "composant": "Requête longue, en phrase",
+      "etat": "aucun résultat",
+      "role": "connecté · compte public",
+      "geste": "Taper une phrase de 90 caractères",
+      "observation": "observe",
+      "preuve": "capture REC-009 (m390) ; requête bornée à 60 caractères côté personnes (supaSearchUsers)",
+      "problemes": [
+        "REC-C08"
+      ],
+      "proposition": "Même réponse que REC-008 (conseil d'essayer un mot plus court).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Une phrase naturelle qui contient « guitare électrique » ne trouve rien et ne le dit pas."
+    },
+    {
+      "id": "REC-010",
+      "surface": "Rechercher",
+      "composant": "Faute de frappe « escalde »",
+      "etat": "aucun résultat (local)",
+      "role": "connecté · compte public",
+      "geste": "Taper « escalde »",
+      "observation": "observe",
+      "preuve": "capture REC-010 (m390) ; le repli serveur flou (RPC rechercher_passions, js/passions-flat.js:540) n'existe pas sur le faux serveur",
+      "problemes": [
+        "REC-C08"
+      ],
+      "proposition": "À vérifier en production : le repli serveur rattrape-t-il « escalde » ?",
+      "visuel": "avant",
+      "verdict": "a-verifier",
+      "justification": "Le moteur local ne tolère pas les fautes ; le flou serveur n'a pas pu être exercé sur le banc."
+    },
+    {
+      "id": "REC-011",
+      "surface": "Rechercher",
+      "composant": "Sans accent, pluriel, majuscules",
+      "etat": "« theatre », « guitares », « ÉCHECS »",
+      "role": "connecté · compte public",
+      "geste": "Taper",
+      "observation": "observe",
+      "preuve": "capture REC-011 (m390) ; sonde recherche-03 (étapes 08, 09, 11)",
+      "problemes": [],
+      "proposition": "Aucun changement.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Accents et casse repliés, pluriel ramené au singulier : « theatre » trouve « Théâtre », « guitares » trouve « Guitare »."
+    },
+    {
+      "id": "REC-012",
+      "surface": "Rechercher",
+      "composant": "Panneau de résultats resté ouvert",
+      "etat": "retour sur l'écran après le fil",
+      "role": "connecté · compte public",
+      "geste": "Chercher, aller au fil, revenir par la loupe",
+      "observation": "observe",
+      "preuve": "capture REC-012 (m390) ; Échap et toucher à côté ne ferment rien (sonde recherche-03) ; seul vider le champ ferme",
+      "problemes": [
+        "REC-C07"
+      ],
+      "proposition": "Croix d'effacement de 44 px ; Échap et toucher hors du panneau ferment.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le panneau couvre l'écran tant que le champ n'est pas vidé à la main."
+    },
+    {
+      "id": "REC-013",
+      "surface": "Fiche d'une passion",
+      "composant": "Haut : en-tête, « Ta passion », Créateurs",
+      "etat": "passion à moi (« Musique »)",
+      "role": "connecté · compte public",
+      "geste": "Rechercher → tuile « Musique »",
+      "observation": "observe",
+      "preuve": "capture REC-013 (m360, m390) ; js/app-07-ia-explore-irl.js:330-444",
+      "problemes": [
+        "REC-C04",
+        "REC-C09",
+        "REC-C02",
+        "REC-C18"
+      ],
+      "proposition": "Compte de publications identique à la tuile, exemples marqués, et un bouton corail « Voir les activités Musique » (moteur existant voirActivites).",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "« 42 posts » contre « 4 posts » sur la tuile ; exemples sans marque ; aucune porte vers Rencontrer malgré une activité Musique à venir."
+    },
+    {
+      "id": "REC-014",
+      "surface": "Fiche d'une passion",
+      "composant": "Bas : publications, « Signaler cette passion »",
+      "etat": "défilée en bas",
+      "role": "connecté · compte public",
+      "geste": "Défiler la fiche",
+      "observation": "observe",
+      "preuve": "capture REC-014 (m390) ; js/app-07-ia-explore-irl.js:387 (posts.slice(0,6)), 433-438",
+      "problemes": [
+        "REC-C09"
+      ],
+      "proposition": "Indiquer « 6 sur N » et un lien vers la suite (fil filtré sur la passion).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Signaler est discret et en bas, à conserver ; la liste s'arrête à 6 publications sans suite."
+    },
+    {
+      "id": "REC-015",
+      "surface": "Fiche d'une passion",
+      "composant": "« + Créer profil », Passions proches",
+      "etat": "passion pas encore à moi (« Escalade »)",
+      "role": "connecté · compte public",
+      "geste": "Chercher « escalade » → résultat",
+      "observation": "observe",
+      "preuve": "capture REC-015 (m360, m390) ; js/app-07-ia-explore-irl.js:394-398, 508-534",
+      "problemes": [
+        "REC-C10",
+        "REC-C11",
+        "REC-C18"
+      ],
+      "proposition": "« ＋ Ajouter à mes passions » à 44 px, pastilles à 44 px ; la fiche s'ouvre en haut.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le mot « profil » contredit le profil unique (ADR-011) ; capturée ouverte au milieu de ses publications."
+    },
+    {
+      "id": "REC-016",
+      "surface": "Profil",
+      "composant": "Après « + Créer profil » : bascule vers Profil, toast",
+      "etat": "passion ajoutée",
+      "role": "connecté · compte public",
+      "geste": "Fiche Escalade → « + Créer profil »",
+      "observation": "observe",
+      "preuve": "capture REC-016 (m390) ; js/app-07-ia-explore-irl.js:549-571 (quickCreateProfile → ajouterPassionAuCompte)",
+      "problemes": [
+        "REC-C10"
+      ],
+      "proposition": "Rester sur la fiche et changer le bouton en « Ta passion » ; le toast suffit.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "On est arraché à la découverte pour l'écran Profil ; le toast « ✨ Escalade ajoutée à tes passions » est juste."
+    },
+    {
+      "id": "REC-017",
+      "surface": "Fiche d'une passion",
+      "composant": "Fiche sans aucun contenu",
+      "etat": "« Céramique » : 0 créateur, 0 publication",
+      "role": "connecté · compte public",
+      "geste": "openPassionExplorer (porte : résultat de recherche)",
+      "observation": "simule",
+      "preuve": "capture REC-017 (m360, m390) ; fiche ouverte par appel de fonction, même rendu qu'un résultat",
+      "problemes": [
+        "REC-C17",
+        "REC-C10"
+      ],
+      "proposition": "L'état vide propose « Publier sur Céramique ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Deux états vides qui ne proposent aucun geste."
+    },
+    {
+      "id": "REC-018",
+      "surface": "Rechercher",
+      "composant": "« Suivre » un personnage d'exemple",
+      "etat": "après l'appui",
+      "role": "connecté · compte public",
+      "geste": "Créateurs à suivre → « Suivre » sur Karim Belkacem",
+      "observation": "observe",
+      "preuve": "capture REC-018 (m390) ; ligne follows écrite sur le faux serveur vers « u_karim » (fiche REC-018--m390, note) ; toast « Tu suis Karim Belkacem ! »",
+      "problemes": [
+        "REC-C02"
+      ],
+      "proposition": "Un exemple ne se suit pas (voir REC-003).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le produit affirme un abonnement à une personne qui n'existe pas et l'écrit en base."
+    },
+    {
+      "id": "REC-019",
+      "surface": "Rechercher",
+      "composant": "Tuile « ✨ Passion · 1 post »",
+      "etat": "publication sur un identifiant inconnu",
+      "role": "connecté · compte public",
+      "geste": "Rechercher",
+      "observation": "simule",
+      "preuve": "capture REC-019 (m390) ; publication semée sur « perso_tirage_cyanotype » ; passionById → générique (js/app-02-state-utils.js:2432-2465)",
+      "problemes": [
+        "REC-C15"
+      ],
+      "proposition": "Une passion qu'on ne sait pas nommer n'entre pas dans le classement.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Explique la tuile de SOC-003 (jeu de données de l'époque : « photographie », absent du socle et du référentiel)."
+    },
+    {
+      "id": "REC-020",
+      "surface": "Fiche d'une passion",
+      "composant": "Fiche « ✨ Passion »",
+      "etat": "identifiant inconnu",
+      "role": "connecté · compte public",
+      "geste": "Toucher la tuile « Passion »",
+      "observation": "simule",
+      "preuve": "capture REC-020 (m390) ; même donnée que REC-019",
+      "problemes": [
+        "REC-C15"
+      ],
+      "proposition": "Couvert par REC-019 (la tuile disparaît).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Une fiche « Passion » avec « + Créer profil » et « Signaler cette passion » : rien ne dit de quoi elle parle."
+    },
+    {
+      "id": "REC-021",
+      "surface": "Rechercher",
+      "composant": "Écran en visite sans compte",
+      "etat": "visiteur, aucune publication réelle",
+      "role": "visiteur",
+      "geste": "Première visite → loupe",
+      "observation": "observe",
+      "preuve": "capture REC-021 (m390) ; mode visiteur du banc",
+      "problemes": [
+        "REC-C14",
+        "REC-C02",
+        "REC-C13"
+      ],
+      "proposition": "« Pour commencer » au lieu de « Passions tendance · Hot » ; champ comme REC-001.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "La section « tendance » liste les six premières passions du socle par ordre alphabétique."
+    },
+    {
+      "id": "REC-022",
+      "surface": "Fiche d'une passion",
+      "composant": "« Suivre » en visiteur → demande de compte",
+      "etat": "visiteur",
+      "role": "visiteur",
+      "geste": "Fiche « Guitare électrique » → « Suivre »",
+      "observation": "observe",
+      "preuve": "capture REC-022 (m390) ; toggleFollowUser → requireAuthentication (js/app-04-comments-shop.js:4996)",
+      "problemes": [],
+      "proposition": "Aucun changement.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "La demande de compte explique l'action ; elle remplace la fiche (openModal n'empile pas), limite connue et assumée."
+    },
+    {
+      "id": "REC-023",
+      "surface": "Rechercher",
+      "composant": "Écran hors ligne (référentiel jamais chargé)",
+      "etat": "hors ligne",
+      "role": "connecté · compte public",
+      "geste": "Couper le réseau puis ouvrir la loupe",
+      "observation": "simule",
+      "preuve": "capture REC-023 (m360, m390) ; context.setOffline(true) ; bandeau « Mode hors-ligne » ; grille réduite au socle de 19, compteur muet",
+      "problemes": [
+        "REC-C12"
+      ],
+      "proposition": "Aucun changement de l'écran au repos ; voir REC-024 pour la recherche.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Se taire sur le compteur et montrer le socle est juste (fiche lots-ui 20, invariant du repli hors ligne)."
+    },
+    {
+      "id": "REC-024",
+      "surface": "Rechercher",
+      "composant": "Recherche hors ligne",
+      "etat": "« escalade », hors ligne",
+      "role": "connecté · compte public",
+      "geste": "Taper hors ligne",
+      "observation": "simule",
+      "preuve": "capture REC-024 (m360, m390) ; js/app-07-ia-explore-irl.js:312-320 (catch générique)",
+      "problemes": [
+        "REC-C12"
+      ],
+      "proposition": "« Tu es hors ligne : la recherche reprendra dès que le réseau revient. »",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "« La recherche n'a pas abouti. Réessaie. » pousse à réessayer en vain ; même les passions du socle et les exemples deviennent introuvables."
+    },
+    {
+      "id": "REC-025",
+      "surface": "Fil",
+      "composant": "Feuille « Trouver une expérience »",
+      "etat": "porte vers la page de la passion",
+      "role": "connecté · compte public",
+      "geste": "Fil → « Trouver une activité » sur une carte",
+      "observation": "observe",
+      "preuve": "capture REC-025 (m390) ; js/ui-v3-passerelle.js:500-546 ; déjà jugée FIL-064 et IRL-061 (IRL-C13)",
+      "problemes": [],
+      "proposition": "Aucun changement dans ce domaine (vocabulaire : IRL-C13).",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Seule porte vers la fiche d'une passion depuis le fil ; ses trois choix sont nets."
+    },
+    {
+      "id": "REC-026",
+      "surface": "Fiche d'une passion",
+      "composant": "Fiche ouverte depuis la feuille du fil",
+      "etat": "« Musique »",
+      "role": "connecté · compte public",
+      "geste": "Feuille → « Voir la page de la passion »",
+      "observation": "observe",
+      "preuve": "capture REC-026 (m390) ; openPassionExplorer(passion) — même fiche que REC-013",
+      "problemes": [
+        "REC-C04"
+      ],
+      "proposition": "Voir REC-013 : la fiche porte la porte vers les activités.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "On arrive d'une feuille qui parle d'activités ; la fiche, elle, n'en montre aucune."
+    },
+    {
+      "id": "REC-027",
+      "surface": "Rechercher",
+      "composant": "« Créateurs à suivre » ouvert dès le démarrage",
+      "etat": "suivis pas encore chargés au rendu",
+      "role": "connecté · compte public",
+      "geste": "Ouvrir l'app → loupe aussitôt",
+      "observation": "observe",
+      "preuve": "capture REC-027 (m390) ; renderExplorer peint libelleBoutonSuivi() une seule fois ; rien ne repeint à l'arrivée des suivis (fiche REC-027--m390 : 3 suivis et 1 demande connus 4 s après, boutons inchangés)",
+      "problemes": [
+        "REC-C01"
+      ],
+      "proposition": "Repeindre les boutons à l'arrivée de l'état de suivi (moteur existant libelleBoutonSuivi).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Tous les boutons disent « Suivre », y compris pour des personnes suivies ou en attente."
+    },
+    {
+      "id": "REC-028",
+      "surface": "Rechercher",
+      "composant": "Appui sur un « Suivre » périmé",
+      "etat": "désabonnement",
+      "role": "connecté · compte public",
+      "geste": "REC-027 → « Suivre » sur Léa (suivie)",
+      "observation": "observe",
+      "preuve": "capture REC-028 (m390) ; ligne follows MOI → Léa : 1 avant, 0 après ; toast « Tu ne suis plus Léa Fontaine »",
+      "problemes": [
+        "REC-C01"
+      ],
+      "proposition": "Libellés repeints : l'appui fait ce que dit le bouton.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le geste « Suivre » supprime un abonnement existant."
+    },
+    {
+      "id": "REC-029",
+      "surface": "Rechercher",
+      "composant": "Assistant IA (onglet, sendAIQuery, ask-ai)",
+      "etat": "retiré de l'écran",
+      "role": "—",
+      "geste": "aucune porte",
+      "observation": "code",
+      "preuve": "index.html:967-969 (onglet et #exPanel_ai retirés le 2026-11-02) ; js/app-07-ia-explore-irl.js:1-134, js/app-06-reels-partage.js:5799-6140 et renderAiHistory (app-08:9949) restent, sans nœud où peindre",
+      "problemes": [
+        "REC-C19"
+      ],
+      "proposition": "Retirer le code ou le garder sous drapeau documenté ; ne pas le présenter comme une fonction.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Code mort : aucune porte visible, aucune requête ask-ai possible depuis l'interface."
+    },
+    {
+      "id": "REC-030",
+      "surface": "Rechercher",
+      "composant": "« Recherches récentes » (#aiHistoryBox)",
+      "etat": "conteneur absent",
+      "role": "—",
+      "geste": "aucune porte",
+      "observation": "code",
+      "preuve": "goTo('explore') appelle renderAiHistory (app-02:3748), qui sort faute de #aiHistoryBox",
+      "problemes": [
+        "REC-C19"
+      ],
+      "proposition": "Même décision que REC-029.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Appel inutile à chaque ouverture ; rien n'est affiché."
+    },
+    {
+      "id": "REC-031",
+      "surface": "Rechercher",
+      "composant": "Tuile « Créer une passion » (openCreateCustomPassionFromExplorer)",
+      "etat": "masquée",
+      "role": "—",
+      "geste": "aucune porte",
+      "observation": "code",
+      "preuve": "passionsPersoSuspendues() rend true (app-02:6855) : tuile non rendue (app-06:5665) ; la fenêtre dirait « momentanément indisponible »",
+      "problemes": [],
+      "proposition": "Aucun changement : suspension arbitrée le 2026-08-31.",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Pas de porte vers une fonction indisponible : juste."
+    },
+    {
+      "id": "REC-032",
+      "surface": "Fiche d'une passion",
+      "composant": "Lien « ← Retour au profil »",
+      "etat": "aucun appelant",
+      "role": "—",
+      "geste": "aucune porte",
+      "observation": "code",
+      "preuve": "openPassionExplorer(pid, retourUserId) : aucun appelant ne passe retourUserId (app-02:3072) ; le profil visité n'ouvre plus la fiche d'une passion (sonde recherche-05)",
+      "problemes": [],
+      "proposition": "Aucun changement (chemin gardé volontairement).",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Réserve documentée pour une future porte depuis un profil."
+    },
+    {
+      "id": "REC-033",
+      "surface": "Sélecteur de passions partagé",
+      "composant": "PassionSearchSelector (4 montages)",
+      "etat": "occurrences",
+      "role": "—",
+      "geste": "Ajout de passions, Studio, filtre Rencontrer, onboarding",
+      "observation": "code",
+      "preuve": "js/passions-flat-ui.js:95 (ouvrirAjoutPassions), 158 (ouvrirChoixStudio), 277 (ouvrirFiltreIRL), 312 (monterOnboarding) ; l'écran Rechercher ne l'utilise PAS (moteur propre, 6 résultats, autre invite)",
+      "problemes": [
+        "REC-C06"
+      ],
+      "proposition": "Aligner l'écran Rechercher sur le même rendu de ligne de passion (même invite, même ordre) ; l'intérieur du sélecteur relève des domaines profils / création / entrée.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Un même référentiel, deux interfaces de recherche de passion aux invites et limites différentes (20 contre 6)."
+    },
+    {
+      "id": "REC-034",
+      "surface": "Fiche d'une passion",
+      "composant": "Créateurs réels d'une passion",
+      "etat": "requête sur passion_id",
+      "role": "connecté",
+      "geste": "Ouvrir une fiche",
+      "observation": "code",
+      "preuve": "_pexChargerCreateurs : .eq('passion_id', pid) limit 8 (app-07:449-502) — compromis d'index documenté (fiche lots-ui 20)",
+      "problemes": [],
+      "proposition": "Aucun changement d'interface ; à revoir si un index GIN arrive.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Les personnes qui portent la passion en seconde position n'apparaissent pas : la fiche peut dire « Pas encore de créateurs » à tort."
+    },
+    {
+      "id": "REC-035",
+      "surface": "Rechercher",
+      "composant": "Visiteur : « + Créer profil » depuis une fiche",
+      "etat": "visiteur",
+      "role": "visiteur",
+      "geste": "Fiche → « + Créer profil »",
+      "observation": "observe",
+      "preuve": "avant non capturé ; sonde recherche-06 : passion ajoutée à l'état local, bascule vers l'écran Profil, aucune demande de compte",
+      "problemes": [
+        "REC-C10"
+      ],
+      "proposition": "Même libellé que REC-015.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Cohérent avec la première visite locale ; à confirmer avec le domaine « entrée »."
+    },
+    {
+      "id": "REC-036",
+      "surface": "Rechercher",
+      "composant": "Résultat personne → profil → retour arrière",
+      "etat": "retour",
+      "role": "connecté · compte public",
+      "geste": "Résultat « Malik » → profil → retour Android",
+      "observation": "observe",
+      "preuve": "avant non capturé ; sonde recherche-03 : le champ garde « malik », le panneau est fermé (masqué au toucher d'un résultat)",
+      "problemes": [
+        "REC-C07"
+      ],
+      "proposition": "Rouvrir les résultats quand le champ est encore rempli.",
+      "visuel": "aucun",
+      "verdict": "a-ameliorer",
+      "justification": "Le champ affiche une recherche dont les résultats ont disparu."
+    }
+  ],
+  "constats": [
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "REC-C01",
+      "titre": "« Créateurs à suivre » ouvert tôt : « Suivre » affiché sur des personnes déjà suivies, et l'appui désabonne",
+      "emplacement": "Rechercher › Créateurs à suivre — renderExplorer (js/app-06-reels-partage.js:5725-5781) ; même rendu unique dans la fiche (#pexCreators, app-07:367-382)",
+      "surfaces": [
+        "REC-027",
+        "REC-028"
+      ],
+      "nature": "fonctionnel",
+      "preuve": "Écran ouvert aussitôt après le démarrage : 4 s plus tard l'état connaît 3 suivis et 1 demande, les six boutons disent toujours « Suivre » (fiche REC-027--m390). Appui sur celui de Léa (suivie) : ligne follows 1 → 0, toast « Tu ne suis plus Léa Fontaine » (REC-028--m390).",
+      "probleme": "Le bouton annonce « Suivre » alors que l'appui fait l'inverse : il supprime l'abonnement (ou annule la demande envoyée à un compte privé).",
+      "declencheur": "Ouvrir Rechercher dans les premières secondes après le lancement, avant l'arrivée des suivis ; plus long sur réseau lent.",
+      "consequence": "Désabonnement involontaire d'une personne qu'on suit ; demande à un compte privé annulée sans le vouloir.",
+      "proposition": "Repeindre les boutons de suivi de l'écran (et de la fiche ouverte) quand l'état de suivi arrive, avec le moteur unique libelleBoutonSuivi / _peindreBoutonsSuivi ; tant qu'il n'est pas connu, bouton neutre désactivé.",
+      "visuels": [
+        "REC-028"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Repeinture des boutons pendant un appui ; verrou suivi-trois-etats.",
+      "critereAcceptation": "Écran ouvert à t+0, suivis chargés à t+2 s : à t+3 s chaque bouton dit l'état réel ; un appui sur une personne suivie n'est jamais présenté comme « Suivre ».",
+      "fichiers": [
+        "js/app-06-reels-partage.js",
+        "js/app-07-ia-explore-irl.js",
+        "js/app-04-comments-shop.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "REC-C02",
+      "titre": "Des personnages d'exemple sont proposés comme vraies personnes à suivre, et le suivi s'écrit en base",
+      "emplacement": "Créateurs à suivre (createursSeed, app-06:5739), résultats « Utilisateurs » (seedUsers, app-07:254-262), Créateurs de la fiche (app-07:361)",
+      "surfaces": [
+        "REC-003",
+        "REC-006",
+        "REC-013",
+        "REC-018",
+        "REC-021"
+      ],
+      "nature": "clarte",
+      "preuve": "« Léa Moreau », « Karim Belkacem », « Dylan Rocher »… s'affichent sans marque à un compte connecté. « Suivre » Karim : toast « Tu suis Karim Belkacem ! » et ligne follows vers « u_karim » sur le faux serveur (REC-018). D'après le schéma de référence, follows.following_id est un text sans clé étrangère listée : l'écriture passerait aussi en production (hypothèse).",
+      "probleme": "On croit suivre une personne réelle ; elle n'existe pas, ne publiera jamais et ne répondra jamais.",
+      "declencheur": "Toute visite de Rechercher, toute recherche qui touche un exemple, toute fiche de passion.",
+      "consequence": "Confiance entamée au premier contact, abonnements fantômes comptés, impression d'un réseau qui ne répond pas.",
+      "proposition": "Marquer « Exemple » (comme les publications : « Exemple PASSIO ») et retirer le bouton « Suivre » des exemples ; refuser côté client un suivi vers un identifiant d'exemple. Même constat que MSG-C03 côté messagerie.",
+      "visuels": [
+        "REC-003",
+        "REC-013"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Socle de démonstration en visite ; verrous exemples-premiere-visite.",
+      "critereAcceptation": "Aucun bouton « Suivre » sur une ligne dont l'identifiant est un exemple ; chaque exemple porte la mention « Exemple ».",
+      "fichiers": [
+        "js/app-06-reels-partage.js",
+        "js/app-07-ia-explore-irl.js",
+        "js/app-04-comments-shop.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "REC-C03",
+      "titre": "Un compte bloqué est proposé dans la recherche et dans « Créateurs à suivre »",
+      "emplacement": "supaSearchUsers (js/app-08-ui-modals-tour.js:6472) ; renderExplorer (app-06:5754-5779)",
+      "surfaces": [
+        "REC-007",
+        "REC-003"
+      ],
+      "nature": "fonctionnel",
+      "preuve": "Tom Girard, bloqué par le compte (ligne blocks et state.user.blocked), sort sur « tom » (REC-007) et figure dans « Créateurs à suivre » avec un bouton « Suivre » (REC-003). Aucun filtre isBlocked() dans ces deux chemins.",
+      "probleme": "La personne qu'on a choisi de ne plus voir revient sous les yeux, présentée comme une suggestion.",
+      "declencheur": "Avoir bloqué quelqu'un puis ouvrir Rechercher.",
+      "consequence": "Sentiment d'insécurité ; le blocage paraît inefficace.",
+      "proposition": "Filtrer isBlocked(id) (dans les deux sens si l'information est connue) dans les résultats de personnes, Créateurs à suivre et Créateurs de la fiche. Les garde-fous serveur restent inchangés.",
+      "visuels": [
+        "REC-007",
+        "REC-003"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucun ; verrous blocage.",
+      "critereAcceptation": "Avec Tom bloqué, « tom » ne le rend pas et « Créateurs à suivre » ne le montre pas.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js",
+        "js/app-06-reels-partage.js"
+      ]
+    },
+    {
+      "type": "jugement",
+      "dependances": "Moteur voirActivites de js/ui-v3-passerelle.js (à exposer).",
+      "sensible": false,
+      "id": "REC-C04",
+      "titre": "La fiche d'une passion ne mène pas à Rencontrer",
+      "emplacement": "Fiche d'une passion (openPassionExplorer, js/app-07-ia-explore-irl.js:410-438)",
+      "surfaces": [
+        "REC-013",
+        "REC-026"
+      ],
+      "nature": "friction",
+      "preuve": "Une activité « Jam guitare au parc » (Musique, dans 3 jours) existe ; la fiche « Musique » montre Créateurs, Passions proches, Posts — aucune activité ni lien vers Rencontrer. Arrivée depuis la feuille « Trouver une expérience », la fiche ne reparle plus d'activités.",
+      "probleme": "Découvrir une passion n'ouvre pas le passage au réel, cœur de la promesse (Fil → interaction → IRL).",
+      "declencheur": "Toute ouverture d'une fiche de passion.",
+      "consequence": "La personne doit repartir vers Rencontrer et refiltrer elle-même ; le parcours Découvrir → Rencontrer se casse ici.",
+      "proposition": "Un bouton corail « Voir les activités <passion> · N à venir » sous l'en-tête, qui réutilise le moteur existant voirActivites (filtre Rencontrer sur la passion, sans demande de position). Pas de nouvelle fonction.",
+      "visuels": [
+        "REC-013"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Marqueur _passioIrlSkipGeoOnce ; verrous passerelle UI-3.",
+      "critereAcceptation": "Depuis la fiche « Musique », un appui ouvre Rencontrer filtré sur Musique et la jam y figure, sans demande de position.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js",
+        "js/ui-v3-passerelle.js"
+      ]
+    },
+    {
+      "type": "jugement",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C05",
+      "titre": "« Créateurs à suivre » montre des personnes déjà suivies et ne suggère rien de lié à mes passions",
+      "emplacement": "renderExplorer — requête profiles sans critère, limit 12 (app-06:5755-5758)",
+      "surfaces": [
+        "REC-003"
+      ],
+      "nature": "clarte",
+      "preuve": "Sur 10 lignes : 3 « ✓ Suivi », 1 « Demande envoyée », 1 compte bloqué, 4 exemples ; l'ordre est celui de la table.",
+      "probleme": "La section se nomme « à suivre » mais liste surtout ce qui est déjà suivi.",
+      "declencheur": "Toute visite.",
+      "consequence": "Section ignorée ; aucune vraie découverte de personnes.",
+      "proposition": "Exclure suivis, demandes et blocages ; privilégier les personnes qui partagent une de mes passions (colonne passion_id déjà lue).",
+      "visuels": [
+        "REC-003"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Section vide pour un petit réseau : prévoir un repli.",
+      "critereAcceptation": "Aucune ligne de la section n'est déjà suivie, en attente ou bloquée.",
+      "fichiers": [
+        "js/app-06-reels-partage.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C06",
+      "titre": "Les personnes sont sous le pli du panneau de résultats, nommées « Utilisateurs »",
+      "emplacement": "#exploreSearchResults (index.html:990, max-height 360 px ; app-07:271-309)",
+      "surfaces": [
+        "REC-006",
+        "REC-033"
+      ],
+      "nature": "friction",
+      "preuve": "« gui » : 6 lignes de passion (59 px) avant l'en-tête « UTILISATEURS » ; panneau de 360 px qui défile à part. Ailleurs : « personnes » (MSG-C27), « membres ».",
+      "probleme": "Qui cherche un pseudo voit six passions et doit faire défiler un petit panneau dans la page.",
+      "declencheur": "Une frappe qui touche passions et personnes.",
+      "consequence": "Personnes manquées ; deux zones de défilement imbriquées sous le pouce.",
+      "proposition": "Trois passions puis « Voir N autres passions », en-tête « Personnes », panneau étendu jusqu'au bas de l'écran.",
+      "visuels": [
+        "REC-006"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Verrou recherche-referentiel (⑦).",
+      "critereAcceptation": "À 390 × 844, « gui » montre au moins une personne sans défilement.",
+      "fichiers": [
+        "index.html",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C07",
+      "titre": "Le panneau de résultats ne se ferme qu'en vidant le champ à la main",
+      "emplacement": "#explorerSearch / #exploreSearchResults (index.html:979-990)",
+      "surfaces": [
+        "REC-012",
+        "REC-036"
+      ],
+      "nature": "friction",
+      "preuve": "Échap, un toucher hors du panneau et un aller-retour vers le fil le laissent ouvert (sonde recherche-03) ; aucune croix d'effacement. Après un profil ouvert depuis un résultat, le champ garde « malik » mais le panneau est fermé.",
+      "probleme": "Le panneau couvre l'écran ; pour le fermer il faut effacer lettre à lettre.",
+      "declencheur": "Toute recherche.",
+      "consequence": "Contenu de l'écran inaccessible ; état incohérent au retour.",
+      "proposition": "Croix d'effacement 44 px ; Échap et toucher hors du panneau ferment ; au retour, champ rempli = résultats rouverts.",
+      "visuels": [
+        "REC-012"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Un toucher hors du panneau le ferme ; la croix vide le champ et ferme.",
+      "fichiers": [
+        "index.html",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "jugement",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C08",
+      "titre": "« Aucun résultat » est un cul-de-sac",
+      "emplacement": "_exSearchLancer (app-07:264-267)",
+      "surfaces": [
+        "REC-008",
+        "REC-009",
+        "REC-010"
+      ],
+      "nature": "friction",
+      "preuve": "« zzqxw », « escalde » et une phrase contenant « guitare électrique » rendent la même ligne grise, sans conseil ni geste.",
+      "probleme": "Rien n'aide à reformuler.",
+      "declencheur": "Faute, phrase, mot inconnu.",
+      "consequence": "Abandon de la recherche.",
+      "proposition": "Conseil court (orthographe, mot plus court) et trois passions qui ont des publications à toucher.",
+      "visuels": [
+        "REC-008"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Sur « zzqxw », l'écran propose au moins un geste.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C09",
+      "titre": "La fiche annonce « 42 posts » quand la tuile dit « 4 posts », et n'en montre que 6",
+      "emplacement": "openPassionExplorer : allFeedPosts() (exemples compris) et posts.slice(0,6) (app-07:351, 387, 417-419) ; tuile : publications réelles seules (app-06:5591-5600)",
+      "surfaces": [
+        "REC-013",
+        "REC-014"
+      ],
+      "nature": "clarte",
+      "preuve": "Tuile « Musique · 4 posts » → fiche « Musique · 42 posts » ; la liste s'arrête à 6, sans suite. « posts » ici, « publications » ailleurs.",
+      "probleme": "Deux chiffres pour la même chose ; promesse de 42 publications introuvables.",
+      "declencheur": "Toute fiche de passion portée par des exemples.",
+      "consequence": "Doute sur les chiffres ; frustration.",
+      "proposition": "Un seul compte (le même que la tuile), « 6 sur N » et un lien vers le fil filtré ; le mot « publications ».",
+      "visuels": [
+        "REC-013"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Tuile et fiche affichent le même nombre.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "REC-C10",
+      "titre": "« + Créer profil » pour ajouter une passion, puis bascule vers Profil",
+      "emplacement": "Fiche d'une passion (app-07:394-398) ; quickCreateProfile (app-07:549-571)",
+      "surfaces": [
+        "REC-015",
+        "REC-016",
+        "REC-017",
+        "REC-020",
+        "REC-035"
+      ],
+      "nature": "clarte",
+      "preuve": "Bouton « + Créer profil » (90 × 29 px) ; l'appui ajoute la passion et ouvre l'écran Profil (toast « ✨ Escalade ajoutée à tes passions »).",
+      "probleme": "Le mot « profil » dit l'inverse d'ADR-011 (un profil, plusieurs passions) ; le geste fait quitter la découverte.",
+      "declencheur": "Fiche d'une passion qu'on n'a pas.",
+      "consequence": "Hésitation (« vais-je créer un deuxième profil ? ») ; perte du fil de la découverte.",
+      "proposition": "« ＋ Ajouter à mes passions » (44 px), rester sur la fiche et montrer « Ta passion ». Le moteur ajouterPassionAuCompte et ses garde-fous restent.",
+      "visuels": [
+        "REC-015"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Verrous passions-plates (plafond, restauration d'archive).",
+      "critereAcceptation": "Le bouton dit « Ajouter à mes passions » et, après appui, la fiche reste ouverte avec « Ta passion ».",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C11",
+      "titre": "Une fiche ouverte depuis un résultat peut s'ouvrir au milieu de ses publications",
+      "emplacement": "#modalContent (openModal) après une fiche défilée puis fermée",
+      "surfaces": [
+        "REC-015"
+      ],
+      "nature": "fonctionnel",
+      "preuve": "Fiche « Musique » défilée en bas, fermée, puis « Escalade » ouverte depuis la recherche : #modalContent.scrollTop = 1 226 puis 1 085 sur deux essais (sonde recherche-09) ; depuis une tuile : 0. Cause non établie.",
+      "probleme": "L'en-tête, le bouton d'ajout et les créateurs sont hors de vue.",
+      "declencheur": "Avoir défilé une fiche, puis en ouvrir une autre par la recherche.",
+      "consequence": "On croit être sur une autre page ; il faut remonter.",
+      "proposition": "Remettre #modalContent en haut à chaque openPassionExplorer.",
+      "visuels": [
+        "REC-015"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Toute fiche s'ouvre avec scrollTop = 0.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C12",
+      "titre": "Hors ligne, la recherche dit « n'a pas abouti. Réessaie. » sans nommer la cause",
+      "emplacement": "_exSearchLancer catch (app-07:312-320) ; renderExplorer après reconnexion",
+      "surfaces": [
+        "REC-024",
+        "REC-023"
+      ],
+      "nature": "clarte",
+      "preuve": "Hors ligne : « escalade » et « malik » rendent ce message ; même le socle et les exemples deviennent introuvables. Après reconnexion, la grille reste au socle et le compteur muet jusqu'à une nouvelle ouverture de l'écran (sonde recherche-07).",
+      "probleme": "Le message invite à réessayer une action vouée à l'échec.",
+      "declencheur": "Réseau absent.",
+      "consequence": "Essais répétés, sentiment de panne.",
+      "proposition": "« Tu es hors ligne : la recherche reprendra dès que le réseau revient » ; chercher dans le socle local en attendant ; repeindre la grille au retour du réseau.",
+      "visuels": [
+        "REC-024"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Invariant « repli hors ligne n'est pas un référentiel » (fiche lots-ui 20).",
+      "critereAcceptation": "Hors ligne, le message mentionne le réseau.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js",
+        "js/app-06-reels-partage.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C13",
+      "titre": "Le champ de recherche : « OK » de 28 px, sans étiquette ni croix, invite tronquée",
+      "emplacement": "index.html:979-986 (#explorerSearch, bouton « OK »)",
+      "surfaces": [
+        "REC-001",
+        "REC-004",
+        "REC-021"
+      ],
+      "nature": "accessibilite",
+      "preuve": "type=text, ni enterkeyhint ni aria-label ni <label> ; « OK » 40,9 × 28 px (SOC-C01) ; l'invite « …, un pseudo… » est coupée à 390 px : l'idée qu'on peut chercher une personne ne se voit pas ; accroche « tout le référentiel des passions ».",
+      "probleme": "Cible petite, champ sans nom pour un lecteur d'écran, pas de moyen d'effacer, personnes non suggérées.",
+      "declencheur": "Toute recherche.",
+      "consequence": "Appuis manqués ; recherche de personnes ignorée.",
+      "proposition": "type=search, enterkeyhint=search, aria-label « Chercher une passion ou une personne », « OK » à 44 px, croix d'effacement, accroche « Cherche une passion ou une personne. ».",
+      "visuels": [
+        "REC-001"
+      ],
+      "priorite": "P3",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Débordement à 320 px (défaut ⑧ de la fiche lots-ui 20).",
+      "critereAcceptation": "À 320 px, « OK » ≥ 44 px de haut et visible ; le champ a un nom accessible.",
+      "fichiers": [
+        "index.html"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C14",
+      "titre": "« Passions tendance · Hot » complétée par ordre alphabétique",
+      "emplacement": "peindreTendances (app-06:5591-5621)",
+      "surfaces": [
+        "REC-001",
+        "REC-021"
+      ],
+      "nature": "clarte",
+      "preuve": "Compte : « Actualité » sans publication ferme la grille ; visiteur : Actualité, Animaux, Art, Artisanat, Cinéma, Cuisine — l'alphabet.",
+      "probleme": "« Hot » affirme une mesure qui n'existe pas.",
+      "declencheur": "Peu de publications réelles (tout réseau jeune, tout visiteur).",
+      "consequence": "Promesse de vitalité démentie au premier toucher.",
+      "proposition": "Ne montrer que les passions qui ont des publications ; sinon titrer « Pour commencer », sans « Hot ».",
+      "visuels": [
+        "REC-001",
+        "REC-021"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Aucune tuile sans publication sous un titre « tendance ».",
+      "fichiers": [
+        "js/app-06-reels-partage.js",
+        "index.html"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C15",
+      "titre": "Une passion inconnue s'affiche « ✨ Passion » dans les tendances et ouvre une fiche anonyme",
+      "emplacement": "peindreTendances → passionById (app-02:2432-2465)",
+      "surfaces": [
+        "REC-019",
+        "REC-020"
+      ],
+      "nature": "polish",
+      "preuve": "Simulé : une publication sur « perso_tirage_cyanotype » donne la tuile « ✨ Passion · 1 post » et une fiche « Passion ». Explique SOC-003 : le jeu de données de l'époque portait « photographie », absent du socle et du référentiel (corrigé depuis en « photo »).",
+      "probleme": "Une tuile qui ne dit pas de quoi elle parle.",
+      "declencheur": "Publication sur une passion perso d'autrui ou plus récente que l'instantané du référentiel (hypothèse sur la fréquence en production).",
+      "consequence": "Confusion ; fiche inutile.",
+      "proposition": "Écarter du classement toute passion résolue en générique (ou résoudre son libellé par le serveur).",
+      "visuels": [
+        "REC-019"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Aucune tuile « Passion » générique dans la section.",
+      "fichiers": [
+        "js/app-06-reels-partage.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C16",
+      "titre": "La recherche de personnes prend toute sous-chaîne de la bio",
+      "emplacement": "supaSearchUsers : bio.ilike.%q% (app-08:6492)",
+      "surfaces": [
+        "REC-007"
+      ],
+      "nature": "polish",
+      "preuve": "« tom » rend Victor Aubry (bio « … automobile … »).",
+      "probleme": "Résultats parasites sur les requêtes courtes.",
+      "declencheur": "Requête de 2 à 4 lettres.",
+      "consequence": "Bruit dans les huit places disponibles.",
+      "proposition": "Bio comptée en début de mot seulement (ou à partir de 4 lettres), pseudo prioritaire.",
+      "visuels": [
+        "REC-007"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Requête PostgREST : garder l'échappement des métacaractères.",
+      "critereAcceptation": "« tom » ne rend pas une personne dont seul « automobile » contient « tom ».",
+      "fichiers": [
+        "js/app-08-ui-modals-tour.js"
+      ]
+    },
+    {
+      "type": "jugement",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C17",
+      "titre": "Fiche d'une passion vide : aucun geste proposé",
+      "emplacement": "openPassionExplorer états vides (app-07:384-387)",
+      "surfaces": [
+        "REC-017"
+      ],
+      "nature": "friction",
+      "preuve": "« Céramique » : « Pas encore de créateurs », « Aucun post pour l'instant », rien d'autre.",
+      "probleme": "La première personne passionnée de céramique ne se voit pas proposer d'être celle qui commence.",
+      "declencheur": "Passion sans contenu (la majorité des 5 001).",
+      "consequence": "Sortie de la fiche.",
+      "proposition": "« Publier sur <passion> » (Studio avec la passion pré-choisie) dans l'état vide.",
+      "visuels": [
+        "REC-017"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "estPassionCanonique reste juge de ce qui est publiable.",
+      "critereAcceptation": "Une fiche vide propose un geste qui la remplit.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C18",
+      "titre": "Boutons et pastilles de la fiche à 29 px",
+      "emplacement": "Fiche : « Suivre » 55 × 29, « + Créer profil » 90 × 29, Passions proches 29 px de haut ; Créateurs à suivre idem",
+      "surfaces": [
+        "REC-013",
+        "REC-015",
+        "REC-003"
+      ],
+      "nature": "accessibilite",
+      "preuve": "Mesures sonde recherche-04 (cmds) et fiches REC-013/REC-015.",
+      "probleme": "Cibles sous l'acquis 44 px.",
+      "declencheur": "Usage au pouce.",
+      "consequence": "Appuis manqués, surtout entre deux lignes rapprochées.",
+      "proposition": "min-height 44 px pour .btn.small de ces listes et pour les pastilles.",
+      "visuels": [
+        "REC-015"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Hauteur des lignes de liste.",
+      "critereAcceptation": "Chaque bouton et pastille de la fiche mesure ≥ 44 px de haut.",
+      "fichiers": [
+        "styles.css"
+      ]
+    },
+    {
+      "type": "observation",
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "REC-C19",
+      "titre": "L'assistant IA et les « Recherches récentes » survivent en code mort",
+      "emplacement": "js/app-07-ia-explore-irl.js:1-134 ; js/app-06-reels-partage.js:5799 (switchExploreTab) et base AI_KNOWLEDGE ; app-08:9949 (renderAiHistory)",
+      "surfaces": [
+        "REC-029",
+        "REC-030"
+      ],
+      "nature": "polish",
+      "preuve": "index.html:967 : onglet et panneau retirés le 2026-11-02 ; aucun #aiInput, #aiHistoryBox, #exTab_ai dans le document ; goTo('explore') appelle encore renderAiHistory.",
+      "probleme": "Aucun pour l'utilisateur ; dette et risque de remise en service partielle.",
+      "declencheur": "—",
+      "consequence": "Code chargé à chaque visite, appel inutile à l'ouverture de l'écran.",
+      "proposition": "Décider : retirer le code (git le garde) ou le placer derrière un drapeau documenté.",
+      "visuels": [],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Références croisées app-06/07/08 (audit:handlers).",
+      "critereAcceptation": "Aucun appel à renderAiHistory sans conteneur.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js",
+        "js/app-06-reels-partage.js",
+        "js/app-08-ui-modals-tour.js"
+      ]
+    }
+  ]
+}

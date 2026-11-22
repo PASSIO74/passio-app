@@ -1,0 +1,83 @@
+{
+ "id": "PAR-047",
+ "domaine": "partage",
+ "scenario": "visiteur-bobine",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — arrivée par le lien d'une bobine",
+ "note": "Faux serveur (②). Un lien de bobine ne porte pas `?inv=` : aucun accueil nominatif. Vidéo remplacée par le banc.",
+ "prisLe": "2026-11-10T17:43:19.836Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-047--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30738,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > div.reel-info > div.reel-author",
+     "texte": "🎸 Léa Fontaine 🎸 Musique",
+     "w": 241,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsNextBtn",
+     "texte": "Bobine suivante",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

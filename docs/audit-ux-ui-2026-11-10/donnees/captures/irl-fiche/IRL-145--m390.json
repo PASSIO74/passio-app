@@ -1,0 +1,76 @@
+{
+ "id": "IRL-145",
+ "domaine": "irl-fiche",
+ "scenario": "modales",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Prévenir les inscrits (message groupé)",
+ "note": "« 4 personne(s) recevront une notification. » ; « Envoyer » affiche « Message envoyé aux inscrits » sans lire le verdict des écritures (app-07:4924-4930).",
+ "prisLe": "2026-11-10T18:04:26.699Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Prévenir les inscrits",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-145--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 22590,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

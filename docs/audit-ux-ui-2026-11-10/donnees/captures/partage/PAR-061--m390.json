@@ -1,0 +1,39 @@
+{
+ "id": "PAR-061",
+ "domaine": "partage",
+ "scenario": "apercu",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Aperçus de lien — titres et descriptions produits pour trois cas (rendu générique simulé)",
+ "note": "Simulé : les textes sont ceux des balises og: produites par la vraie fonction ; la carte est un rendu générique, pas celui d'une messagerie. Les images ne sont pas chargées (banc isolé).",
+ "prisLe": "2026-11-10T17:50:47.459Z",
+ "ecran": {
+  "ecran": null,
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-061--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 60146,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": null,
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

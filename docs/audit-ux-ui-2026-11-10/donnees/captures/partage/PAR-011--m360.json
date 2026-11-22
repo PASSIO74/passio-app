@@ -1,0 +1,231 @@
+{
+ "id": "PAR-011",
+ "domaine": "partage",
+ "scenario": "bobine",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille « Partager cette bobine » — huit options",
+ "note": "",
+ "prisLe": "2026-11-10T17:46:10.304Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Partager cette bobine",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-011--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 21750,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille",
+    "fichier": "captures/partage/PAR-011--m360--avant-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 670,
+    "octets": 19722
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Aucun aperçu de la bobine",
+   "x": 0.5,
+   "y": 0.551,
+   "w": 0.9,
+   "h": 0.035,
+   "sel": ".modal .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Six réseaux en dur, pas la feuille du téléphone ; 42 px",
+   "x": 0.731,
+   "y": 0.611,
+   "w": 0.439,
+   "h": 0.066,
+   "sel": ".modal button:nth-of-type(2)",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« dans le Feed » (ailleurs « dans mon feed »)",
+   "x": 0.5,
+   "y": 0.852,
+   "w": 0.9,
+   "h": 0.066,
+   "sel": ".modal .btn.primary",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "WhatsApp",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "Telegram",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "𝕏 Twitter",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "Facebook",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "Email",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.secondary",
+     "texte": "SMS",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Partager dans le Feed",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.secondary",
+     "texte": "Copier le lien",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-011--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 43092,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille unifiée",
+    "fichier": "captures/partage/PAR-011--m360--apres-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 876,
+    "octets": 41190
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Aperçu de CE qui part : auteur, passion, extrait, vignette",
+   "x": 0.5,
+   "y": 0.476,
+   "w": 0.9,
+   "h": 0.122,
+   "sel": "[data-mq='apercu']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ce que verra la personne, et que le lien porte ton nom",
+   "x": 0.5,
+   "y": 0.575,
+   "w": 0.889,
+   "h": 0.057,
+   "sel": "[data-mq='qui']",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Action principale unique ; mêmes mots et même ordre sur toutes les portes",
+   "x": 0.5,
+   "y": 0.676,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='dehors']",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Copier le lien » toujours présent, lien lisible",
+   "x": 0.5,
+   "y": 0.791,
+   "w": 0.9,
+   "h": 0.091,
+   "sel": "[data-mq='copier']",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "« Republier dans mon fil » : un seul mot (fil), plus « feed »",
+   "x": 0.5,
+   "y": 0.905,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='fil']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,188 @@
+{
+ "id": "ENT-031",
+ "domaine": "entree",
+ "scenario": "compte-navigation",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Compte connecté — Fil (Découvrir) : barres supérieure et inférieure",
+ "note": "",
+ "prisLe": "2026-11-10T19:33:07.535Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-031--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 56472,
+  "zooms": [
+   {
+    "nom": "barre-basse",
+    "titre": "Barre de navigation",
+    "fichier": "captures/entree/ENT-031--m360--avant-zoom-barre-basse.webp",
+    "largeur": 720,
+    "hauteur": 132,
+    "octets": 6824
+   },
+   {
+    "nom": "envies",
+    "titre": "Envies du Fil",
+    "fichier": "captures/entree/ENT-031--m360--avant-zoom-envies.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 3252
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Onglet « Découvrir » ; l'écran n'a pas de titre et l'ancienne barre l'appelait « Fil ».",
+   "x": 0.1,
+   "y": 0.949,
+   "w": 0.2,
+   "h": 0.102,
+   "sel": "#appNavV2 [data-v2-key=\"discover\"]",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Envie « Explorer » = le nom de la loupe.",
+   "x": 0.155,
+   "y": 0.272,
+   "w": 0.22,
+   "h": 0.069,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=discover]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Envie « Rencontrer » = le nom de l'onglet voisin.",
+   "x": 0.827,
+   "y": 0.272,
+   "w": 0.257,
+   "h": 0.069,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=meet]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 153.8,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-031--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 57208,
+  "zooms": [
+   {
+    "nom": "envies",
+    "titre": "Envies du Fil",
+    "fichier": "captures/entree/ENT-031--m360--apres-zoom-envies.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 3890
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 2,
+   "texte": "« Nouveau pour toi » dit ce que l'envie calcule (auteurs et passions hors de tes choix).",
+   "x": 0.198,
+   "y": 0.272,
+   "w": 0.308,
+   "h": 0.069,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=discover]",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Rendez-vous » : l'envie ne double plus l'onglet « Rencontrer ».",
+   "x": 0.833,
+   "y": 0.272,
+   "w": 0.244,
+   "h": 0.069,
+   "sel": "#feedIntentSelector .feed-intent-btn[data-intent=meet]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

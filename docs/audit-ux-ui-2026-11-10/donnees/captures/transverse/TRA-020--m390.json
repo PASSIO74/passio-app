@@ -1,0 +1,87 @@
+{
+ "id": "TRA-020",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feedback & aide — « Ton retour sur la beta »",
+ "note": "",
+ "prisLe": "2026-11-10T19:53:40.989Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Ton retour sur la beta",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-020--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 23148,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Part par e-mail (application de messagerie du téléphone) : aucune aide, aucune question fréquente",
+   "x": 0.5,
+   "y": 0.41,
+   "w": 0.908,
+   "h": 0.019,
+   "sel": "#modalContent .modal-subtitle",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 3,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

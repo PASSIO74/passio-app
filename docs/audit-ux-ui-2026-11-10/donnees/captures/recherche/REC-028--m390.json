@@ -1,0 +1,181 @@
+{
+ "id": "REC-028",
+ "domaine": "recherche",
+ "scenario": "suivi-perime",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Appui sur ce « Suivre » : désabonnement",
+ "note": "Ligne follows MOI → Léa : 1 avant, 0 après l'appui. Toasts : [\"Tu ne suis plus Léa Fontaine\"]",
+ "prisLe": "2026-11-10T19:32:00.348Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-028--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 79652,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le geste « Suivre » a supprimé l'abonnement existant.",
+   "x": 0.86,
+   "y": 0.189,
+   "w": 0.142,
+   "h": 0.034,
+   "sel": "#suggestedCreators .list-row:nth-child(1) button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000c003",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000d004",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000e005",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000f006",
+     "texte": "Demande envoyée — appuie pour l'annuler",
+     "w": 118.2,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-000000001007",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_lea",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_karim",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_nina",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 25,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 12
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 26,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-028--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 79652,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Repeints quand les suivis arrivent (même moteur libelleBoutonSuivi) : le libellé dit ce que fera l'appui.",
+   "x": 0.86,
+   "y": 0.189,
+   "w": 0.142,
+   "h": 0.034,
+   "sel": "#suggestedCreators .list-row:nth-child(1) button",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

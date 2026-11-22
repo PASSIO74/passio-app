@@ -1,0 +1,227 @@
+{
+ "id": "MSG-015",
+ "domaine": "msg-liste",
+ "scenario": "groupes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Discussion d'activité — fenêtre « membres » vue par une simple participante",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:09.997Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "👥 📍 Répétition ouverte du samedi",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-015--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 44260,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Je ne suis pas la créatrice : affichée « Admin »",
+   "x": 0.5,
+   "y": 0.612,
+   "w": 0.908,
+   "h": 0.072,
+   "sel": "#grpPanel_members > div > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Retirer » proposé sur l'organisatrice elle-même (le serveur refusera)",
+   "x": 0.883,
+   "y": 0.689,
+   "w": 0.141,
+   "h": 0.031,
+   "sel": "#grpPanel_members button",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Membres (8) » : 7 en base, 6 lignes affichées",
+   "x": 0.273,
+   "y": 0.539,
+   "w": 0.454,
+   "h": 0.041,
+   "sel": "#grpTab_members",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#modalContent > div",
+     "texte": "Ajouter une description…",
+     "w": 241,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_members",
+     "texte": "Membres (8)",
+     "w": 177,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_add",
+     "texte": "Ajouter",
+     "w": 177,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 54.9,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 55,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "w": 55,
+     "h": 26,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "← Retour",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Quitter",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 10
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 25,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#grpPanel_members > div > div > button.btn.ghost",
+     "texte": "Retirer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 10
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Quitter",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 6
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [
+   "pageerror: renderConvList is not defined"
+  ],
+  "console": []
+ },
+ "reseauRefuse": []
+}

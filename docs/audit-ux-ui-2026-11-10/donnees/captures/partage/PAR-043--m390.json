@@ -1,0 +1,113 @@
+{
+ "id": "PAR-043",
+ "domaine": "partage",
+ "scenario": "visiteur-publication",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — formulaire de création avec l'annonce « tu suivras automatiquement Camille »",
+ "note": "Atteint ici par le retour arrière (seule façon de découvrir le formulaire).",
+ "prisLe": "2026-11-10T17:42:25.473Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-043--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 56930,
+  "zooms": [
+   {
+    "nom": "annonce",
+    "titre": "L'annonce d'invitation",
+    "fichier": "captures/partage/PAR-043--m390--avant-zoom-annonce.webp",
+    "largeur": 644,
+    "hauteur": 238,
+    "octets": 11550
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "input#authConsent",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "span#authCguLink",
+     "texte": "conditions générales",
+     "w": 115,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

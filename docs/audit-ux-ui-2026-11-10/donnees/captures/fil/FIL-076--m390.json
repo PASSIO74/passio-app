@@ -1,0 +1,104 @@
+{
+ "id": "FIL-076",
+ "domaine": "fil",
+ "scenario": "etats-du-fil",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil hors ligne (bandeau)",
+ "note": "État SIMULÉ : contexte Playwright hors ligne + événement « offline ».",
+ "prisLe": "2026-11-10T17:43:03.862Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-076--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 89104,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 30,
+   "sous44": [
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Moreau",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Moreau 🎸 Musique · 22:07",
+     "w": 217.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Oussama Farid",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#offlineBanner > button",
+     "texte": "×",
+     "w": 23.1,
+     "h": 23,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

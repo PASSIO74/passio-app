@@ -1,0 +1,127 @@
+{
+ "id": "BOB-012",
+ "domaine": "bobines",
+ "scenario": "lecteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Lecteur — bobine reliée à une activité : « Voir l'activité » en corail",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:42.385Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 40564,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "La sortie vers l'activité",
+    "fichier": "captures/bobines/BOB-012--m390--avant-zoom-bas.webp",
+    "largeur": 600,
+    "hauteur": 312,
+    "octets": 14616
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Une seule sortie, en corail (IRL) : clair",
+   "x": 0.183,
+   "y": 0.882,
+   "w": 0.304,
+   "h": 0.052,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_malik\"] .v5-chip-fort",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« SPORT · RENCONTRER » passe sous la flèche ↑",
+   "x": 0.252,
+   "y": 0.092,
+   "w": 0.433,
+   "h": 0.032,
+   "sel": "#reelsList .reel-item[data-post-id=\"pb_bob_malik\"] .reel-tag-mood",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > button.reel-sound-btn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#reelsList > div.reel-item > div.reel-info > div.reel-author",
+     "texte": "🧗 Malik Benali 🏋️ Sport",
+     "w": 241,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsPrevBtn",
+     "texte": "Bobine précédente",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#reelsNextBtn",
+     "texte": "Bobine suivante",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

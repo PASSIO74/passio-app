@@ -1,0 +1,187 @@
+{
+ "id": "IRL-135",
+ "domaine": "irl-fiche",
+ "scenario": "etats",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Ma propre activité (organisatrice) — haut de fiche",
+ "note": "Le pied montre « ✓ Je participe » et « Retirer ma participation » à l'organisatrice ; « Gérer » est rangé en bas, dans « Autres actions ».",
+ "prisLe": "2026-11-10T18:02:40.909Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_if_passee"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-135--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 41404,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "L'organisatrice peut « retirer sa participation » de sa propre activité ; ses vrais outils (gérer, écrire aux inscrits, QR) sont plus bas.",
+   "x": 0.5,
+   "y": 0.924,
+   "w": 1,
+   "h": 0.153,
+   "sel": "#eventDetailCta",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Rencontre",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Scène ouverte guitare-voix",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.normal",
+     "texte": "Dans 5 jours",
+     "ratio": 1.76,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#d5e5eb",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailCta > div.v4b-rsvp > button.v4b-rsvp-retirer",
+     "texte": "Retirer ma participation",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-135--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47694,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Pour l'organisatrice : ses deux gestes (discussion du groupe, gestion) à la place de « Je participe ».",
+   "x": 0.265,
+   "y": 0.912,
+   "w": 0.449,
+   "h": 0.071,
+   "sel": "#eventDetailCta .btn.primary",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

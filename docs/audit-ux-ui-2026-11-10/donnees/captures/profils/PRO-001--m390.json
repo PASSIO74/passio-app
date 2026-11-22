@@ -1,0 +1,246 @@
+{
+ "id": "PRO-001",
+ "domaine": "profils",
+ "scenario": "mon-profil",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Mon profil — en-tête, compteurs et rail des passions",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:41.445Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-001--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 58250,
+  "zooms": [
+   {
+    "nom": "compteurs",
+    "titre": "Compteurs (40 px de haut — SOC-C01)",
+    "fichier": "captures/profils/PRO-001--m390--avant-zoom-compteurs.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 3662
+   },
+   {
+    "nom": "rail",
+    "titre": "Rail des passions",
+    "fichier": "captures/profils/PRO-001--m390--avant-zoom-rail.webp",
+    "largeur": 732,
+    "hauteur": 146,
+    "octets": 6394
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Crayon : ouvre un menu de six entrées",
+   "x": 0.892,
+   "y": 0.126,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#v6bModifier",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Compteurs de 40 px (SOC-C01)",
+   "x": 0.5,
+   "y": 0.57,
+   "w": 0.831,
+   "h": 0.047,
+   "sel": "#mainProfileCard .main-profile-stats",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Nombre de publications rogné",
+   "x": 0.323,
+   "y": 0.663,
+   "w": 0.041,
+   "h": 0.019,
+   "sel": "#v9ProfilePassions .profile-tile-count",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "📸 instagram",
+     "w": 91.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "▶️ youtube",
+     "w": 82.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "22 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 PASSIONS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNEMENTS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab.active",
+     "texte": "Tout",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Photos",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Vidéos",
+     "w": 68,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Bobines",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#v7Pan-publications > div.profile-tabs.v7-subfilters > button.profile-tab",
+     "texte": "Audio / podcast",
+     "w": 68,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-001--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 58238,
+  "zooms": [
+   {
+    "nom": "compteurs",
+    "titre": "Compteurs (40 px de haut — SOC-C01)",
+    "fichier": "captures/profils/PRO-001--m390--apres-zoom-compteurs.webp",
+    "largeur": 672,
+    "hauteur": 104,
+    "octets": 3662
+   },
+   {
+    "nom": "rail",
+    "titre": "Rail des passions",
+    "fichier": "captures/profils/PRO-001--m390--apres-zoom-rail.webp",
+    "largeur": 732,
+    "hauteur": 146,
+    "octets": 6404
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 3,
+   "texte": "Pastille entière, dans la vignette",
+   "x": 0.308,
+   "y": 0.67,
+   "w": 0.041,
+   "h": 0.019,
+   "sel": "#v9ProfilePassions .profile-tile-count",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:51776/index.html#",
+   "Audio failed: http://127.0.0.1:51776/index.html#",
+   "Audio failed: http://127.0.0.1:51776/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

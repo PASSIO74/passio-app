@@ -1,0 +1,145 @@
+{
+ "id": "ENT-001",
+ "domaine": "entree",
+ "scenario": "premiere-visite",
+ "vue": "m320",
+ "gabarit": "Mobile très petit 320×568",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Première visite — entrée directe dans Découvrir, carte de bienvenue",
+ "note": "Appareil vierge, aucune session. Les publications sont les exemples du socle (« Exemple PASSIO »).",
+ "prisLe": "2026-11-10T19:27:11.297Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-001--m320--avant.webp",
+  "largeur": 640,
+  "hauteur": 1136,
+  "octets": 46118,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte de bienvenue",
+    "fichier": "captures/entree/ENT-001--m320--avant-zoom-carte.webp",
+    "largeur": 576,
+    "hauteur": 530,
+    "octets": 18206
+   },
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure d'un visiteur",
+    "fichier": "captures/entree/ENT-001--m320--avant-zoom-barre.webp",
+    "largeur": 640,
+    "hauteur": 128,
+    "octets": 4984
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Une action principale (« Choisir mes passions »), deux liens secondaires : la carte est claire.",
+   "x": 0.5,
+   "y": 0.711,
+   "w": 0.85,
+   "h": 0.44,
+   "sel": "#frWelcome",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le logo s'annonce « Mon profil » à quelqu'un qui n'a pas de compte.",
+   "x": 0.309,
+   "y": 0.055,
+   "w": 0.531,
+   "h": 0.063,
+   "sel": ".app-topbar .topbar-left",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Envies : « Explorer » et « Rencontrer » sont aussi les noms de la loupe et d'un onglet.",
+   "x": 0.5,
+   "y": 0.307,
+   "w": 0.9,
+   "h": 0.077,
+   "sel": "#feedIntentSelector",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 320,
+   "h": 568
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 170,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "section#frWelcome > div.fr-welcome-liens > button.fr-welcome-lien.fr-welcome-signin",
+     "texte": "J'ai déjà un compte",
+     "w": 126.8,
+     "h": 31,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 320,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit UX/UI PASSIO — galerie avant/après</title>
+<link rel="stylesheet" href="galerie.css">
+</head>
+<body>
+<a class="evitement" href="#contenu">Aller au contenu</a>
+<header class="bandeau">
+  <a class="marque" href="#/">
+    <span class="marque-pastille" aria-hidden="true">P</span>
+    <span class="marque-texte"><strong>Audit UX/UI PASSIO</strong><span id="versionAuditee"></span></span>
+  </a>
+  <nav class="onglets" aria-label="Sections du dossier" id="onglets"></nav>
+  <label class="recherche"><span class="sr">Rechercher une surface ou un constat</span>
+    <input id="recherche" type="search" placeholder="Rechercher : identifiant, écran, mot…" autocomplete="off">
+  </label>
+</header>
+<div class="cadre">
+  <aside class="rail" id="rail" aria-label="Domaines et filtres"></aside>
+  <main id="contenu" tabindex="-1"></main>
+</div>
+<div class="visionneuse" id="visionneuse" hidden role="dialog" aria-modal="true" aria-label="Agrandissement de la capture">
+  <div class="visionneuse-barre">
+    <div class="visionneuse-titre" id="visTitre"></div>
+    <div class="visionneuse-actions">
+      <button type="button" id="visBascule" hidden>Voir l'après</button>
+      <button type="button" id="visMoins" aria-label="Réduire">−</button>
+      <span id="visZoom">100 %</span>
+      <button type="button" id="visPlus" aria-label="Agrandir">+</button>
+      <button type="button" id="visFermer" aria-label="Fermer l'agrandissement">Fermer ✕</button>
+    </div>
+  </div>
+  <div class="visionneuse-scene" id="visScene"><img id="visImg" alt=""></div>
+</div>
+<noscript><p style="padding:24px">Cette galerie a besoin de JavaScript. Les mêmes informations existent en Markdown dans le dossier parent (02-REGISTRE-DE-COUVERTURE.md, 04-BACKLOG.md, rapports/).</p></noscript>
+<script src="donnees.js"></script>
+<script src="galerie.js"></script>
+</body>
+</html>

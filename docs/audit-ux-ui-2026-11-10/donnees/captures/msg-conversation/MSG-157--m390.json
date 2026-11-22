@@ -1,0 +1,210 @@
+{
+ "id": "MSG-157",
+ "domaine": "msg-conversation",
+ "scenario": "pieces-jointes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Position envoyée en un toucher",
+ "note": "Géolocalisation fictive accordée au contexte (45,7485 ; 4,8467). Aucune étape entre le toucher sur « Localisation » et l'envoi.",
+ "prisLe": "2026-11-10T19:00:50.554Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-157--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 39438,
+  "zooms": [
+   {
+    "nom": "bulle",
+    "titre": "Bulle de position (copie locale)",
+    "fichier": "captures/msg-conversation/MSG-157--m390--avant-zoom-bulle.webp",
+    "largeur": 668,
+    "hauteur": 252,
+    "octets": 10688
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Coordonnées exactes déjà envoyées ; adresse brute ; aucun statut d'envoi.",
+   "x": 0.558,
+   "y": 0.827,
+   "w": 0.781,
+   "h": 0.101,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > a",
+     "texte": "📍 Ma position : https://maps.google.com/?q=45.74850,4.84670",
+     "w": 177,
+     "h": 20,
+     "enLigne": true
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 2,
+   "sousSeuil": [
+    {
+     "el": "div.conv-bubble.me > div > div > div",
+     "texte": "Feuille-de-route-developpement-argentique.pdf",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "div.conv-bubble.me > div > div > div",
+     "texte": "PDF · 48 KB",
+     "ratio": 1.05,
+     "seuil": 4.5,
+     "couleur": "#fcfbfe",
+     "fond": "#f7f5fc",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"data:image/webp;base64,UklGRjApAABXRUJQVlA4WAoAAAAgAAAArwQAHwMASUNDU"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div.conv-bubble.me > div > div > div",
+    "texte": "Feuille-de-route-developpement-argentique.pdf",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-157--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 32092,
+  "zooms": [
+   {
+    "nom": "bulle",
+    "titre": "Bulle de position (copie locale)",
+    "fichier": "captures/msg-conversation/MSG-157--m390--apres-zoom-bulle.webp",
+    "largeur": 140,
+    "hauteur": 126,
+    "octets": 452
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Rien ne part avant « Envoyer ma position » ; la feuille nomme la destinataire et dit la précision.",
+   "x": 0.5,
+   "y": 0.882,
+   "w": 0.908,
+   "h": 0.057,
+   "sel": "#modalContent .btn.primary",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

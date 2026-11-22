@@ -2128,6 +2128,17 @@ Le manifeste `.passio/deploiement/prerequis-fonctions.json` exigeait pour `priva
 
 Le récit complet (la sélection par l'état servi, la retenue partielle, la ligne du pilotage, les verrous) : fiche du 21/11 de `docs/journal/telemetrie-pilotage-sentinelle.md`. Banc PostgreSQL : `tests/sql/medias-proteges-runner.mjs` (réglage ouvert : autorisé ; quatre formes non booléennes : retenu).
 
+## 🪣 LE SEAU PUBLIC NE REÇOIT PLUS QUE DES IMAGES DE 8 MIO AU PLUS (D10-04 — 2026-11-22)
+
+Le seau `content` reste public : les avatars, couvertures, photos de passion et couvertures d'activité s'y lisent sans compte, et c'est voulu. Depuis l'arrivée du seau protégé (2026-11-16), le client n'y dépose plus que ces images, redimensionnées à 2 048 px (`supaUploadMedia`, app-08). Le seau, lui, acceptait toujours tout ce qu'il acceptait avant : sons, vidéos, fichiers de 26 Mio.
+
+- `migration_securite_p1_seau_public_2026-11-22.sql` : neuf types d'image (HEIC compris), 8 Mio par fichier. Les fichiers déjà en place ne changent pas (Storage applique ces bornes au dépôt et au remplacement).
+- Mesuré au canal ① avant d'écrire : 17 dépôts en 120 jours, tous JPEG ou WebP, 1,28 Mo au plus.
+- La garde de la migration s'arrête si un dépôt des 30 derniers jours sort de la nouvelle borne : serrer un seau sur un usage réel le casse sans bruit, puisque `supaUploadMedia` garde alors l'image sur l'appareil.
+- Banc : `tests/sql/migration-securite-p1-seau-public-2026-11-22.test.sh`. La preuve de bout en bout (dépôt refusé par l'API Storage, image ordinaire acceptée) se fait avec de vrais comptes au staging, après application.
+
+⚠️ **UN SEAU SE RÈGLE SUR CE QUE LE CLIENT Y MET AUJOURD'HUI, PAS SUR CE QU'IL Y METTAIT.** Quand un usage quitte un seau (ici, les publications vers `content-protected`), ses bornes doivent suivre dans le même mouvement : un seau public qui accepte encore l'ancien usage laisse la place à un usage que personne n'a voulu.
+
 ## 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 
 `migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **appliquée au STAGING puis en PRODUCTION le 2026-11-22**, sur ordre de Benjamin (« si le village est vert, applique en prod »). Auto-revue de mainteneur unique n°6013447731 sur #1017. Verdict 10/10 sur chaque cible, journalisée.

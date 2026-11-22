@@ -1,0 +1,376 @@
+{
+ "id": "FIL-052",
+ "domaine": "fil",
+ "scenario": "detail-et-options",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau de réaction à une publication (emoji | GIF)",
+ "note": "",
+ "prisLe": "2026-11-10T17:45:46.729Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#post"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-052--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 52042,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau de réaction",
+    "fichier": "captures/fil/FIL-052--m360--avant-zoom-panneau.webp",
+    "largeur": 600,
+    "hauteur": 556,
+    "octets": 25588
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le panneau sort par le haut de l'écran (premières rangées coupées) ; emojis de 18 px dans des cases de 28 px ; un toucher ne réagit pas : il faut ensuite « Envoyer ✓ »",
+   "x": 0.452,
+   "y": 0.063,
+   "w": 0.8,
+   "h": 0.416,
+   "sel": "#emoji-react-panel",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 31,
+   "sous44": [
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "🤍 5",
+     "w": 45.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "💬 34",
+     "w": 52.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "Partager",
+     "w": 44,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip",
+     "texte": "🔥 3",
+     "w": 30.5,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment-body > div.comment-actions > span.cmt-chip-holder > span.cmt-react-chip",
+     "texte": "👍 1",
+     "w": 29.1,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-reply-count",
+     "texte": "⌵ Voir 2 réponses",
+     "w": 95.7,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Camille Audit",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 1",
+     "w": 38,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-reply-count",
+     "texte": "⌵ Voir 1 réponse",
+     "w": 88.8,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Tom Girard",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 25
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#postDetailContent > div > div",
+     "texte": "Commentaires (34)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#postDetailComments > div.cmt-sortbar > button.cmt-sort",
+     "texte": "Pertinents",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "10 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "30 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "45 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 1",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 8
+  },
+  "sansNom": [
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-052--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 50888,
+  "zooms": [
+   {
+    "nom": "panneau",
+    "titre": "Panneau de réaction",
+    "fichier": "captures/fil/FIL-052--m360--apres-zoom-panneau.webp",
+    "largeur": 712,
+    "hauteur": 576,
+    "octets": 29178
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Panneau ramené dans l'écran, cases de 40 px ; recommandation associée : un toucher sur un emoji réagit tout de suite (re-toucher le retire)",
+   "x": 0.5,
+   "y": 0.334,
+   "w": 0.956,
+   "h": 0.431,
+   "sel": "#emoji-react-panel",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

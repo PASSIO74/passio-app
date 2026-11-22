@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="fr" class="proto-page passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototype — Écrire dans une conversation (audit UX/UI PASSIO)</title>
+  <link rel="stylesheet" href="kit/passio-styles.css">
+  <link rel="stylesheet" href="kit/kit.css">
+  <style>
+    /* LA PROPOSITION : uniquement ce qui change par rapport à l'application.
+       Base : balisage réel de la conversation (#conv-fullpage, .conv-fp-head, .conv-fp-thread,
+       .conv-bubble-wrap, .conv-toolbar, #convAttachMenu) extrait dans le banc
+       (outils/sondes/msg-conversation-11-extraire.js), nettoyé de ses gestionnaires. */
+
+    .proto-telephone button:focus-visible, .proto-telephone [tabindex]:focus-visible, .proto-telephone textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .proto-telephone #conv-fullpage { transition: none; }
+    .proto-telephone [hidden] { display: none !important; }
+    .mc-cache { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+    /* ── Liste (domaine msg-liste) : aperçu en mots (MSG-C12), non-lus comptés (MSG-C13) ── */
+    .mc-tete { display: flex; align-items: center; min-height: 56px; padding: 6px 16px; background: #fff; border-bottom: 1px solid var(--border); font: 800 22px/1.2 var(--v2-titre, Manrope, sans-serif); color: var(--text); flex-shrink: 0; }
+    .mc-liste { padding: 12px 14px 40px; display: grid; gap: 10px; }
+    .mc-carte { all: unset; box-sizing: border-box; display: flex; gap: 12px; align-items: center; width: 100%; min-height: 72px; padding: 12px 14px; background: var(--bg-card, #fff); border: 1px solid var(--border); border-radius: 18px; cursor: pointer; }
+    .mc-carte:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .mc-av { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; background: center/cover no-repeat, #7c3aed; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; }
+    .mc-carte-c { flex: 1; min-width: 0; }
+    .mc-carte-l1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 15px; color: var(--text); }
+    .mc-carte-l1 time { font-weight: 600; font-size: 12px; color: var(--muted); }
+    .mc-carte-sous { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+    .mc-carte-l2 { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; font-size: 13.5px; color: var(--text); }
+    .mc-carte-l2 span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mc-nonlu { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--accent); color: #fff; font: 800 12px/22px system-ui, sans-serif; text-align: center; flex-shrink: 0; }
+    .mc-exemple { display: inline-block; margin-top: 2px; font-size: 11.5px; font-weight: 700; color: #5b3a05; background: #fff4dc; border-radius: 6px; padding: 1px 6px; }
+
+    /* ── En-tête : contexte de l'échange (MSG-C68), cibles 44 px nommées (MSG-C75) ── */
+    .proto-telephone .conv-fp-head { gap: 8px; padding: 8px 10px; }
+    .proto-telephone .conv-fp-back, .proto-telephone .conv-action-btn { width: 44px; height: 44px; border-radius: 12px; }
+    .proto-telephone .conv-fp-head-info { all: unset; flex: 1; min-width: 0; cursor: pointer; border-radius: 10px; }
+    .proto-telephone .conv-fp-passion { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+    .proto-telephone .conv-fp-head-avatar { background: center/cover no-repeat, #a855f7; }
+    /* MSG-C69 : un seul « Proposer un moment IRL », en corail (réservé au passage au réel) */
+    .proto-telephone .conv-action-btn.irl-proposal-action, .mc-irl .attach-icon { color: #b8361f; background: #ffe9e5; }
+    .proto-telephone .conv-action-btn.irl-proposal-action:hover { background: #b8361f; color: #fff; }
+
+    /* MSG-C63 : l'état hors ligne SOUS l'en-tête */
+    .mc-horsligne { display: none; margin: 0; padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--text); background: var(--accent-tile, #f3eeff); border-bottom: 1px solid var(--accent-tile-line, #d2c2fb); flex-shrink: 0; }
+    body[data-reseau="hors"] .mc-horsligne { display: block; }
+
+    /* ── Fil ── */
+    .proto-telephone .conv-fp-thread { position: relative; scroll-behavior: auto; }
+    .mc-sep { display: flex; align-items: center; gap: 10px; margin: 6px 4px 12px; font-size: 12px; font-weight: 700; color: var(--muted); }
+    .mc-sep::before, .mc-sep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    /* MSG-C77 : heure en fin de suite seulement */
+    .proto-telephone .conv-bubble-wrap.mc-suite { margin-bottom: 3px; }
+    /* MSG-C76 : chaque bulle est atteignable au clavier */
+    .proto-telephone .conv-bubble[tabindex] { cursor: default; }
+    /* MSG-C50 / C75 / C83 : vocal et document gardent leur bulle ; cibles de 44 px ; nom sur deux lignes */
+    .proto-telephone .conv-bubble:has(.mc-vocal, .mc-doc, img) { white-space: normal; padding: 8px 12px; }
+    .proto-telephone .conv-bubble:has(> img) { padding: 4px; }
+    .mc-vocal { display: flex; align-items: center; gap: 10px; min-width: 232px; }
+    .mc-lire { width: 44px; height: 44px; border-radius: 50%; border: none; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--accent-wash); color: var(--accent); }
+    .conv-bubble.me .mc-lire { background: rgba(255,255,255,.22); color: #fff; }
+    .mc-lire svg { width: 18px; height: 18px; }
+    .mc-onde { flex: 1; height: 26px; border-radius: 8px; background: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px); opacity: .35; -webkit-mask: linear-gradient(180deg, transparent 20%, #000 20% 80%, transparent 80%); mask: linear-gradient(180deg, transparent 20%, #000 20% 80%, transparent 80%); }
+    .mc-duree { font-size: 13px; font-variant-numeric: tabular-nums; opacity: .9; }
+    .mc-vitesse { min-width: 44px; min-height: 44px; border-radius: 12px; border: none; font: 800 12px system-ui, sans-serif; cursor: pointer; background: var(--accent-wash); color: var(--accent); }
+    .conv-bubble.me .mc-vitesse { background: rgba(255,255,255,.22); color: #fff; }
+    .mc-doc { display: flex; align-items: center; gap: 10px; min-height: 44px; text-decoration: none; color: inherit; border-radius: 10px; }
+    .mc-doc-ico { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--accent-wash); color: var(--accent); }
+    .conv-bubble.me .mc-doc-ico { background: rgba(255,255,255,.18); color: #fff; }
+    .mc-doc-ico svg { width: 20px; height: 20px; }
+    .mc-doc b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 200px; font-size: 14px; line-height: 1.25; }
+    .mc-doc small { display: block; font-size: 12px; opacity: .85; margin-top: 2px; }
+    .mc-photo { display: block; width: 220px; border-radius: 16px; aspect-ratio: 4 / 3; object-fit: cover; background: #ddd6f3; }
+    .mc-pastilles { display: flex; gap: 4px; margin: -2px 2px 2px; }
+    .conv-bubble-wrap.me .mc-pastilles { justify-content: flex-end; }
+    .mc-pastille { min-width: 44px; min-height: 32px; padding: 0 8px; border-radius: 16px; border: 1px solid var(--border); background: #fff; font-size: 15px; cursor: default; display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+    button.mc-pastille { cursor: pointer; border-color: var(--accent-tile-line, #d2c2fb); background: var(--accent-tile, #f3eeff); }
+    .mc-lu { color: var(--accent); font-weight: 700; }
+
+    /* MSG-C62 : un seul état d'envoi, en toutes lettres */
+    .mc-etat { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .mc-echec { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #f1b8b8; background: #fff5f5; color: #b42318; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+
+    /* MSG-C55 : retour aux derniers messages */
+    .mc-bas { position: absolute; right: 14px; bottom: 84px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); background: #fff; color: var(--accent); box-shadow: 0 4px 14px rgba(24,18,48,.16); display: none; align-items: center; justify-content: center; z-index: 5; cursor: pointer; }
+    .mc-bas svg { width: 22px; height: 22px; }
+    .mc-nouveau { position: absolute; left: 50%; transform: translateX(-50%); bottom: 84px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: none; background: var(--accent); color: #fff; font: 700 13.5px system-ui, sans-serif; display: none; align-items: center; gap: 8px; box-shadow: 0 6px 18px rgba(109,50,244,.30); z-index: 5; cursor: pointer; white-space: nowrap; }
+    body[data-lecture="haut"] .mc-bas { display: flex; }
+    body[data-lecture="nouveau"] .mc-nouveau { display: flex; }
+
+    /* ── Barre de saisie à trois zones (MSG-C60, C59, C71) ── */
+    .proto-telephone .conv-toolbar { gap: 8px; align-items: flex-end; position: relative; }
+    .proto-telephone .conv-tool-btn { width: 44px; height: 44px; }
+    .proto-telephone .conv-input-wrap { position: relative; }
+    .proto-telephone .conv-input-wrap textarea { min-height: 44px; padding: 10px 48px 10px 16px; }
+    .mc-emoji { position: absolute; right: 0; bottom: 0; width: 44px; height: 44px; border-radius: 50%; border: none; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .mc-emoji svg, .mc-principal svg { width: 21px; height: 21px; }
+    .mc-principal { width: 44px; height: 44px; border-radius: 50%; border: none; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--accent-wash); color: var(--accent); touch-action: none; }
+    .mc-principal .mc-i-envoyer { display: none; }
+    body[data-champ="plein"] .mc-principal, body[data-pj="apercu"] .mc-principal { background: var(--grad-hero); color: #fff; box-shadow: 0 3px 12px rgba(124,58,237,.30); }
+    body[data-champ="plein"] .mc-principal .mc-i-micro, body[data-pj="apercu"] .mc-principal .mc-i-micro { display: none; }
+    body[data-champ="plein"] .mc-principal .mc-i-envoyer, body[data-pj="apercu"] .mc-principal .mc-i-envoyer { display: block; }
+
+    /* MSG-C54 / C53 : la barre de saisie devient la barre d'enregistrement */
+    .mc-rec { display: none; flex: 1; min-width: 0; align-items: center; gap: 10px; min-height: 44px; }
+    body[data-vocal="enreg"] .mc-rec { display: flex; }
+    body[data-vocal="enreg"] .conv-toolbar > :not(.mc-rec):not(.mc-principal) { display: none; }
+    body[data-vocal="enreg"] .mc-principal { background: #fde8e8; color: #c81e1e; animation: pulse-rec 1s infinite; }
+    .mc-rec-x { min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--border); background: #fff; color: var(--text); font: 700 13.5px system-ui, sans-serif; flex-shrink: 0; cursor: pointer; }
+    .mc-rec-pt { width: 10px; height: 10px; border-radius: 50%; background: #dc2626; flex-shrink: 0; }
+    .mc-rec-t { font-weight: 800; color: #c81e1e; font-size: 15px; min-width: 34px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .mc-rec-c { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--muted); }
+    .mc-rec-c b { display: block; color: var(--text); }
+    body[data-glisse="oui"] .mc-rec-c b { color: #c81e1e; }
+
+    /* MSG-C72 : la photo attend dans une bande d'aperçu */
+    .mc-pj { display: none; align-items: center; gap: 12px; margin: 0 10px 6px; padding: 8px; border-radius: 16px; background: #fff; border: 1px solid var(--border); flex-shrink: 0; }
+    body[data-pj="apercu"] .mc-pj { display: flex; }
+    .mc-pj img { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; flex-shrink: 0; }
+    .mc-pj-t { flex: 1; min-width: 0; font-size: 13.5px; color: var(--text); }
+    .mc-pj-t span { display: block; font-size: 12.5px; color: var(--muted); }
+    .mc-pj button { width: 44px; height: 44px; border: none; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 12px; }
+    .mc-pj button svg { width: 20px; height: 20px; }
+
+    /* MSG-C85 : les messages de l'application s'affichent AU-DESSUS de la conversation, sous l'en-tête */
+    .mc-toast { position: absolute; left: 14px; right: 14px; top: 72px; z-index: 50; padding: 11px 16px; border-radius: 16px; background: #2a2440; color: #fff; font: 700 13.5px/1.4 system-ui, sans-serif; text-align: center; box-shadow: 0 10px 28px rgba(24,18,48,.28); pointer-events: none; }
+    body[data-reseau="hors"] .mc-toast { top: 108px; }
+
+    /* ── Couches : menu « + », feuilles ── */
+    .mc-voile { position: absolute; inset: 0; z-index: 30; background: rgba(23,21,43,.38); }
+    .mc-feuille { position: absolute; left: 0; right: 0; bottom: 0; z-index: 31; background: #fff; border-radius: 24px 24px 0 0; padding: 10px 16px 22px; box-shadow: 0 -10px 30px rgba(23,21,43,.18); }
+    .mc-poignee { width: 44px; height: 5px; border-radius: 3px; background: #ddd8ea; margin: 2px auto 12px; }
+    .mc-feuille h2 { margin: 0 0 10px; font: 800 18px/1.3 var(--v2-titre, Manrope, sans-serif); color: var(--text); }
+    .mc-feuille p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--muted); }
+    .mc-rappel { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-soft); border-left: 3px solid var(--accent); }
+    .mc-rappel b { display: block; font-size: 12px; color: var(--accent); }
+    .mc-rappel span { display: block; font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mc-reac { display: flex; justify-content: space-between; margin: 0 0 8px; }
+    .mc-reac button { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--bg-soft); font-size: 22px; cursor: pointer; }
+    .mc-act { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 6px; font-size: 15.5px; color: var(--text); cursor: pointer; border-radius: 12px; }
+    .mc-act:focus-visible { outline: 3px solid var(--accent); }
+    .mc-act[hidden] { display: none; }
+    .mc-act svg { width: 22px; height: 22px; color: var(--muted); flex-shrink: 0; }
+    .mc-act.mc-danger { color: #b42318; margin-top: 8px; border-top: 8px solid var(--bg-soft); border-radius: 0; padding-top: 8px; min-height: 60px; }
+    .mc-act.mc-danger svg { color: #b42318; }
+    .mc-choix { all: unset; box-sizing: border-box; display: block; width: 100%; min-height: 58px; margin-top: 8px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--border); background: #fff; color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer; }
+    .mc-choix small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+    .mc-choix.mc-danger { color: #b42318; border-color: #f1b8b8; }
+    .mc-choix:focus-visible { outline: 3px solid var(--accent); }
+    .mc-ok { display: block; width: 100%; min-height: 48px; border: none; border-radius: 14px; background: var(--grad-hero); color: #fff; font: 700 15px system-ui, sans-serif; cursor: pointer; }
+    .mc-annuler { display: block; width: 100%; min-height: 44px; margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: var(--text); font: 600 14.5px system-ui, sans-serif; cursor: pointer; }
+    .mc-carte-pos { height: 96px; border-radius: 14px; margin: 0 0 12px; background: linear-gradient(135deg, #e6efe6 0 50%, #dfe8f3 50%); position: relative; overflow: hidden; }
+    .mc-carte-pos::before { content: ""; position: absolute; left: -10%; right: -10%; top: 46%; height: 10px; background: #fff; transform: rotate(-8deg); }
+    .mc-carte-pos span { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(109,50,244,.22); }
+    .proto-telephone #convAttachMenu { position: absolute; left: 10px; bottom: 74px; z-index: 31; display: block; width: 230px; padding: 8px; background: #fff; border-radius: 18px; box-shadow: 0 12px 30px rgba(23,21,43,.2); }
+    .proto-telephone #convAttachMenu .attach-item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 6px 10px; border-radius: 12px; cursor: pointer; font-size: 15px; color: var(--text); }
+    .proto-telephone #convAttachMenu .attach-item:focus-visible { outline: 3px solid var(--accent); }
+    .proto-telephone #convAttachMenu .attach-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--accent-wash); color: var(--accent); flex-shrink: 0; }
+    .proto-telephone #convAttachMenu .attach-icon svg { width: 20px; height: 20px; }
+
+    /* MSG-C87 : conversation d'exemple, dite comme telle */
+    .mc-exemple-barre { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 13.5px; line-height: 1.4; color: var(--text); flex: 1; }
+    .mc-exemple-barre span { flex: 1; }
+    .mc-exemple-barre button { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font: 700 13.5px system-ui, sans-serif; cursor: pointer; flex-shrink: 0; }
+  </style>
+</head>
+<body data-champ="vide" data-vocal="repos" data-pj="non" data-reseau="en" data-lecture="bas" data-envoi="aucun">
+  <aside class="proto-notes">
+    <span class="proto-surtitre">Prototype · proposition</span>
+    <h1>Écrire dans une conversation</h1>
+    <p>Une conversation 1:1 de bout en bout : arriver sur le dernier message en voyant ce qui relie les deux personnes, écrire dans un champ large, savoir à tout moment si un message est parti, enregistrer un vocal sans le déclencher par erreur, joindre une photo ou sa position en gardant la main, agir sur un message sans geste irréversible.</p>
+    <p>Tout ce qui est montré existe déjà dans l'application (vocal, pièces jointes, position, réactions, suppression, file hors ligne, proposition IRL) : la proposition réorganise et clarifie, elle n'ajoute pas de fonction.</p>
+    <p class="proto-avis">Maquette interactive : rien n'est envoyé, rien n'est enregistré. Données fictives.</p>
+    <ol class="proto-etapes"></ol>
+    <div class="proto-commandes">
+      <button type="button" data-proto="precedent">Étape précédente</button>
+      <button type="button" class="principal" data-proto="suivant">Commencer le parcours</button>
+      <button type="button" data-proto="zones" aria-pressed="false">Montrer les zones cliquables</button>
+      <button type="button" data-proto="recommencer">Recommencer</button>
+    </div>
+    <p class="proto-legende">Flèches ← → : étape précédente / suivante. Le cadre corail désigne l'élément dont parle l'étape. On peut aussi agir librement dans le téléphone : écrire puis envoyer, maintenir le micro (relâcher envoie, glisser à gauche annule), appui long ou clic droit sur une bulle.</p>
+    <a class="proto-retour" href="../galerie/index.html#/prototypes">← Retour à la galerie</a>
+  </aside>
+
+  <div class="proto-scene">
+    <span class="proto-etiquette">Après · maquette interactive</span>
+    <div class="proto-telephone">
+
+      <!-- ═══ LISTE des conversations (entrée) ═══ -->
+      <section data-ecran="liste">
+        <div class="mc-tete">Messages</div>
+        <div class="proto-defile"><div class="mc-liste">
+          <button type="button" class="mc-carte" id="mcCarteLea" data-aller="conv">
+            <span class="mc-av" aria-hidden="true" style="background-image:url('medias/avatar-1.jpg')"></span>
+            <span class="mc-carte-c">
+              <span class="mc-carte-l1"><span>Léa Fontaine</span><time>18:42</time></span>
+              <span class="mc-carte-sous">🎸 Musique · 🍳 Cuisine</span>
+              <span class="mc-carte-l2"><span>Toi : Ça marche, à samedi !</span></span>
+            </span>
+          </button>
+          <button type="button" class="mc-carte" data-action="info" data-info="Dans ce prototype, seule la conversation avec Léa est ouverte.">
+            <span class="mc-av" aria-hidden="true" style="background-image:url('medias/avatar-3.jpg')"></span>
+            <span class="mc-carte-c">
+              <span class="mc-carte-l1"><span>Inès Moreau</span><time>09:24</time></span>
+              <span class="mc-carte-sous">📷 Photographie</span>
+              <span class="mc-carte-l2"><span>Message vocal · 0:12</span><span class="mc-nonlu" aria-label="2 messages non lus">2</span></span>
+            </span>
+          </button>
+          <button type="button" class="mc-carte" data-action="info" data-info="Dans ce prototype, seule la conversation avec Léa est ouverte.">
+            <span class="mc-av" aria-hidden="true" style="background-image:url('medias/avatar-2.jpg')"></span>
+            <span class="mc-carte-c">
+              <span class="mc-carte-l1"><span>Malik Benali</span><time>hier</time></span>
+              <span class="mc-carte-sous">🧗 Escalade</span>
+              <span class="mc-carte-l2"><span>Document · topo-salle-vertige.pdf</span></span>
+            </span>
+          </button>
+          <button type="button" class="mc-carte" id="mcCarteExemple" data-aller="exemple">
+            <span class="mc-av" aria-hidden="true" style="background:#7c3aed">🎸</span>
+            <span class="mc-carte-c">
+              <span class="mc-carte-l1"><span>Léa Moreau</span><time>30 min</time></span>
+              <span class="mc-exemple">Exemple PASSIO · réponse désactivée</span>
+              <span class="mc-carte-l2"><span>J'ai un local sympa au sud de Lyon.</span></span>
+            </span>
+          </button>
+        </div></div>
+        <div class="proto-bulle" id="mcBulleListe" hidden></div>
+      </section>
+
+      <!-- ═══ CONVERSATION avec Léa ═══ -->
+      <section data-ecran="conv">
+        <div id="conv-fullpage" class="active">
+          <div class="conv-fp-head" id="convFpHead">
+            <button type="button" class="conv-fp-back" aria-label="Retour aux conversations" data-aller="liste"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <div class="conv-fp-head-avatar" aria-hidden="true" style="background-image:url('medias/avatar-1.jpg')"></div>
+            <button type="button" class="conv-fp-head-info" id="mcEntete" aria-label="Voir le profil de Léa Fontaine — Musique, Cuisine" data-action="info" data-info="Ouvre le profil de Léa (fonction existante).">
+              <div class="conv-fp-name">Léa Fontaine</div>
+              <div class="conv-fp-passion">🎸 Musique · 🍳 Cuisine</div>
+            </button>
+            <div class="conv-actions">
+              <button type="button" class="conv-action-btn irl-proposal-action" id="mcIrl" aria-label="Proposer un moment IRL" data-action="irl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><path d="M12 7.5v5M9.5 10h5"/></svg></button>
+              <button type="button" class="conv-action-btn" aria-label="Paramètres de la conversation" data-action="info" data-info="Ouvre les paramètres de la conversation (traités par le domaine « liste »)."><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg></button>
+            </div>
+          </div>
+          <p class="mc-horsligne" id="mcHorsLigne" role="status">Hors ligne — tes messages partiront au retour du réseau.</p>
+
+          <div class="conv-fp-thread" id="convFpThread">
+            <div class="mc-sep">Hier</div>
+            <div class="conv-bubble-wrap them">
+              <div class="conv-bubble them" tabindex="0" data-msg="Message vocal · 0:14" data-de="Léa Fontaine" aria-label="Message vocal de Léa, hier 20 h 01, 14 secondes">
+                <div class="mc-vocal"><button type="button" class="mc-lire" aria-label="Écouter le message vocal de Léa (0:14)" data-action="lire"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button><span class="mc-onde" aria-hidden="true"></span><span class="mc-duree">0:14</span><button type="button" class="mc-vitesse" aria-label="Vitesse de lecture : 1×" data-action="vitesse">1×</button></div>
+              </div>
+              <div class="conv-bubble-time">20:01</div>
+            </div>
+            <div class="conv-bubble-wrap me" id="mcMonVocalAncien">
+              <div class="conv-bubble me" tabindex="0" data-msg="Message vocal · 0:07" data-de="Toi" aria-label="Ton message vocal, hier 20 h 07, 7 secondes">
+                <div class="mc-vocal"><button type="button" class="mc-lire" aria-label="Écouter ton message vocal (0:07)" data-action="lire"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button><span class="mc-onde" aria-hidden="true"></span><span class="mc-duree">0:07</span><button type="button" class="mc-vitesse" aria-label="Vitesse de lecture : 1×" data-action="vitesse">1×</button></div>
+              </div>
+              <div class="conv-bubble-time">20:07</div>
+            </div>
+            <div class="conv-bubble-wrap them">
+              <div class="conv-bubble them" tabindex="0" data-msg="Document · Programme-stage-lutherie-novembre-2026.pdf" data-de="Léa Fontaine">
+                <a class="mc-doc" href="#" data-action="info" data-info="Télécharge le document (fonction existante)."><span class="mc-doc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span><span><b>Programme-stage-lutherie-novembre-2026.pdf</b><small>PDF · 230 Ko · Télécharger</small></span></a>
+              </div>
+              <div class="conv-bubble-time">20:11</div>
+            </div>
+            <div class="conv-bubble-wrap me" id="mcMonDoc">
+              <div class="conv-bubble me" tabindex="0" data-msg="Document · tablature-pont-re-mineur.pdf" data-de="Toi">
+                <a class="mc-doc" href="#" data-action="info" data-info="Télécharge le document (fonction existante)."><span class="mc-doc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span><span><b>tablature-pont-re-mineur.pdf</b><small>PDF · 84 Ko · Télécharger</small></span></a>
+              </div>
+              <div class="conv-bubble-time">20:15</div>
+            </div>
+
+            <div class="mc-sep">Aujourd'hui</div>
+            <div class="conv-bubble-wrap them mc-suite">
+              <div class="conv-bubble them" tabindex="0" style="padding:4px;" data-msg="Photo" data-de="Léa Fontaine"><img class="mc-photo" src="medias/photo-atelier.jpg" alt="Photo de Léa : coucher de soleil" width="220" height="165"></div>
+            </div>
+            <div class="conv-bubble-wrap them" id="mcMsgLea">
+              <div class="conv-bubble them" id="mcBulleLea" tabindex="0" data-msg="Super. Prends ta guitare, on regardera le chevalet ensemble." data-de="Léa Fontaine" data-recu="oui">Super. Prends ta guitare, on regardera le chevalet ensemble.</div>
+              <div class="mc-pastilles" id="mcPastillesLea"><span class="mc-pastille" aria-label="Réaction de Léa : pouce">👍</span></div>
+              <div class="conv-bubble-time">18:37</div>
+            </div>
+            <div class="conv-bubble-wrap me" id="mcMsgSamedi">
+              <div class="conv-bubble me" id="mcBulleSamedi" tabindex="0" data-msg="Ça marche, à samedi !" data-de="Toi">Ça marche, à samedi !</div>
+              <div class="mc-pastilles"><span class="mc-pastille" aria-label="Réaction de Léa : cœur">❤️</span></div>
+              <div class="conv-bubble-time">18:42 <span class="mc-lu" aria-label="Lu">✓✓</span></div>
+            </div>
+
+            <!-- États d'envoi montrés par le parcours (MSG-C62, C63) -->
+            <div class="conv-bubble-wrap me" id="mcMsgEchec" hidden>
+              <div class="conv-bubble me" tabindex="0" data-msg="Tu peux me prêter ta cuve ?" data-de="Toi">Tu peux me prêter ta cuve ?</div>
+              <div class="conv-bubble-time">18:46 <span class="mc-etat-zone"><button type="button" class="mc-echec" id="mcReessayer" data-action="reessayer" aria-label="Message non envoyé — réessayer l'envoi">Non envoyé · Réessayer</button></span></div>
+            </div>
+            <div id="mcNouveaux"></div>
+          </div>
+
+          <button type="button" class="mc-bas" id="mcBas" aria-label="Revenir aux derniers messages" data-action="enBas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <button type="button" class="mc-nouveau" id="mcNouveau" data-action="enBas">1 nouveau message <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+
+          <!-- MSG-C72 : aperçu avant envoi -->
+          <div class="mc-pj" id="mcApercu">
+            <img src="medias/photo-paysage.jpg" alt="Photo à envoyer : coucher de soleil sur les collines">
+            <div class="mc-pj-t"><b>1 photo prête</b><span>Elle part quand tu touches Envoyer.</span></div>
+            <button type="button" aria-label="Retirer la photo" data-action="retirerPhoto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+
+          <div class="conv-toolbar" id="mcBarre">
+            <button type="button" class="conv-tool-btn" id="btnAttach" aria-label="Joindre une photo, un document, sa position…" aria-haspopup="menu" data-ouvrir="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+            <div class="conv-input-wrap">
+              <label for="convFpInput" class="mc-cache">Message à Léa Fontaine</label>
+              <textarea id="convFpInput" rows="1" placeholder="Écrire à Léa…" enterkeyhint="enter"></textarea>
+              <button type="button" class="mc-emoji" aria-label="Emoji et GIF" data-action="info" data-info="Ouvre le panneau Emoji / GIF : un seul sélecteur de GIF (MSG-C71)."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><circle cx="9" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/></svg></button>
+            </div>
+            <div class="mc-rec" id="mcRec" role="status">
+              <button type="button" class="mc-rec-x" id="mcAnnulerVocal" data-action="annulerVocal">Annuler</button>
+              <span class="mc-rec-pt" aria-hidden="true"></span>
+              <span class="mc-rec-t" id="mcRecT">0:02</span>
+              <span class="mc-rec-c"><b id="mcRecB">Relâche pour envoyer</b><span id="mcRecS">‹ glisse à gauche pour annuler</span></span>
+            </div>
+            <button type="button" class="mc-principal" id="mcPrincipal" aria-label="Maintenir pour enregistrer un message vocal">
+              <svg class="mc-i-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+              <svg class="mc-i-envoyer" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg>
+            </button>
+          </div>
+
+          <div class="mc-toast" id="mcToast" role="status" aria-live="polite" hidden></div>
+          <div class="proto-bulle" id="mcBulle" hidden></div>
+
+          <!-- Menu « + » (MSG-C69 : même libellé et même teinte que l'en-tête) -->
+          <div data-couche="plus">
+            <div class="mc-voile" data-fermer="plus"></div>
+            <div id="convAttachMenu" role="menu" aria-label="Joindre">
+              <button type="button" class="attach-item mc-irl" role="menuitem" data-action="irl"><span class="attach-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><path d="M12 7.5v5M9.5 10h5"/></svg></span>Proposer un moment IRL</button>
+              <button type="button" class="attach-item" role="menuitem" id="mcPlusPhoto" data-action="choisirPhoto"><span class="attach-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>Photo / Vidéo</button>
+              <button type="button" class="attach-item" role="menuitem" data-action="info" data-info="Ouvre le sélecteur de documents (fonction existante)."><span class="attach-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>Document</button>
+              <button type="button" class="attach-item" role="menuitem" id="mcPlusPosition" data-action="position"><span class="attach-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>Ma position</button>
+              <button type="button" class="attach-item" role="menuitem" data-action="info" data-info="Ouvre la galerie des pièces jointes de la conversation (fonction existante)."><span class="attach-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>Tout ce qui a été partagé</button>
+            </div>
+          </div>
+
+          <!-- Feuille d'actions d'un message (MSG-C58, C64, C66, C75, C76, C82) -->
+          <div data-couche="feuille">
+            <div class="mc-voile" data-fermer="feuille"></div>
+            <div class="mc-feuille" role="dialog" aria-modal="true" aria-labelledby="mcFeuilleTitre">
+              <div class="mc-poignee" aria-hidden="true"></div>
+              <div class="mc-rappel" id="mcRappel"><b id="mcFeuilleTitre">Léa Fontaine</b><span id="mcRappelTexte">Super. Prends ta guitare, on regardera le chevalet ensemble.</span></div>
+              <div class="mc-reac" id="mcReac" aria-label="Réagir">
+                <button type="button" aria-label="Réagir : cœur" data-action="reagir" data-emoji="❤️">❤️</button>
+                <button type="button" aria-label="Réagir : rire" data-action="reagir" data-emoji="😂">😂</button>
+                <button type="button" aria-label="Réagir : pouce" data-action="reagir" data-emoji="👍">👍</button>
+                <button type="button" aria-label="Réagir : surprise" data-action="reagir" data-emoji="😮">😮</button>
+                <button type="button" aria-label="Réagir : triste" data-action="reagir" data-emoji="😢">😢</button>
+                <button type="button" aria-label="Réagir : feu" data-action="reagir" data-emoji="🔥">🔥</button>
+              </div>
+              <button type="button" class="mc-act" data-action="repondre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>Répondre</button>
+              <button type="button" class="mc-act" id="mcCopier" data-action="info" data-info="Texte copié."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>Copier le texte</button>
+              <button type="button" class="mc-act" data-action="info" data-info="Ouvre « Transférer à… » sans la conversation d'origine, puis confirme (MSG-C84)."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0-6 6v3"/></svg>Transférer</button>
+              <button type="button" class="mc-act" id="mcSignaler" data-action="info" data-info="Ouvre « Signaler ce message » (feuille existante, à conserver)."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>Signaler ce message</button>
+              <button type="button" class="mc-act mc-danger" id="mcSupprimer" data-action="supprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></svg>Supprimer…</button>
+            </div>
+          </div>
+
+          <!-- Confirmation de suppression à deux portées (MSG-C58) -->
+          <div data-couche="supprimer">
+            <div class="mc-voile" data-fermer="supprimer"></div>
+            <div class="mc-feuille" role="dialog" aria-modal="true" aria-labelledby="mcSuppTitre">
+              <div class="mc-poignee" aria-hidden="true"></div>
+              <h2 id="mcSuppTitre">Supprimer ce message ?</h2>
+              <div class="mc-rappel"><b>Toi</b><span>Ça marche, à samedi !</span></div>
+              <button type="button" class="mc-choix" data-action="supprimerPourMoi">Supprimer pour moi<small>Il reste visible chez Léa.</small></button>
+              <button type="button" class="mc-choix mc-danger" id="mcSuppTous" data-action="supprimerPourTous">Supprimer pour tout le monde<small>Il disparaît aussi chez Léa. Action définitive.</small></button>
+              <button type="button" class="mc-annuler" data-fermer="supprimer">Annuler</button>
+            </div>
+          </div>
+
+          <!-- Confirmation avant de partager sa position (MSG-C56) -->
+          <div data-couche="position">
+            <div class="mc-voile" data-fermer="position"></div>
+            <div class="mc-feuille" role="dialog" aria-modal="true" aria-labelledby="mcPosTitre">
+              <div class="mc-poignee" aria-hidden="true"></div>
+              <h2 id="mcPosTitre">Envoyer ta position à Léa ?</h2>
+              <p>Ta position actuelle, précise à quelques mètres, sera visible dans cette conversation. Rien n'est envoyé tant que tu n'as pas confirmé.</p>
+              <div class="mc-carte-pos" aria-hidden="true"><span></span></div>
+              <button type="button" class="mc-ok" id="mcPosOk" data-action="envoyerPosition">Envoyer ma position</button>
+              <button type="button" class="mc-annuler" data-fermer="position">Annuler</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ CONVERSATION D'EXEMPLE (MSG-C87, MSG-C85) ═══ -->
+      <section data-ecran="exemple">
+        <div id="mcExemple" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg-deep);">
+          <div class="conv-fp-head">
+            <button type="button" class="conv-fp-back" aria-label="Retour aux conversations" data-aller="liste"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <div class="conv-fp-head-avatar" aria-hidden="true" style="background:#7c3aed">🎸</div>
+            <div class="conv-fp-head-info" style="cursor:default">
+              <div class="conv-fp-name">Léa Moreau</div>
+              <div class="conv-fp-passion" id="mcExempleSous">Exemple PASSIO · réponse désactivée</div>
+            </div>
+          </div>
+          <div class="conv-fp-thread">
+            <div class="mc-sep">Aujourd'hui</div>
+            <div class="conv-bubble-wrap them"><div class="conv-bubble them">Salut ! J'ai vu que tu jouais aussi. Tu pratiques quel style ?</div><div class="conv-bubble-time">17:46</div></div>
+            <div class="conv-bubble-wrap me"><div class="conv-bubble me">Plutôt indé acoustique. Toi ?</div><div class="conv-bubble-time">17:56</div></div>
+            <div class="conv-bubble-wrap them mc-suite"><div class="conv-bubble them">Pareil ! On se fait une jam ce week-end ?</div></div>
+            <div class="conv-bubble-wrap them"><div class="conv-bubble them">J'ai un local sympa au sud de Lyon.</div><div class="conv-bubble-time">18:46</div></div>
+          </div>
+          <div class="conv-toolbar">
+            <div class="mc-exemple-barre" id="mcExempleBarre"><span>Conversation d'exemple — pour écrire à quelqu'un, ouvre son profil.</span><button type="button" data-action="info" data-info="Ouvre « Découvrir » (fonction existante).">Découvrir</button></div>
+          </div>
+          <div class="proto-bulle" id="mcBulleExemple" hidden></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script type="application/json" id="proto-parcours">[
+    { "titre": "La liste : de quoi parle chaque conversation", "note": "Sur chaque carte, les passions de la personne et le dernier message en mots (« Message vocal · 0:12 », « Document · … ») au lieu de « [AUDIO] … ». Les non-lus sont comptés. Touche la carte de Léa.", "ecran": "liste", "cible": "#mcCarteLea", "etat": { "champ": "vide", "vocal": "repos", "pj": "non", "reseau": "en", "lecture": "bas", "envoi": "aucun" }, "refs": "MSG-C12 · MSG-C13" },
+    { "titre": "On arrive sur le dernier message, avec le contexte", "note": "La conversation s'ouvre calée sur le dernier message, même quand le fil finit par des photos (leur place est réservée). Sous le nom : ce qui relie les deux personnes — les passions de Léa — et non « Voir le profil ». Toute la zone ouvre toujours le profil.", "ecran": "conv", "cible": "#mcEntete", "etat": { "lecture": "bas" }, "refs": "MSG-C52 · MSG-C68" },
+    { "titre": "Mes vocaux et mes documents restent lisibles", "note": "Un vocal ou un document que j'envoie garde sa bulle violette : lecture, durée, vitesse et nom du fichier se lisent (aujourd'hui : blanc sur lavande, 1,08:1). Bouton de lecture et vitesse à 44 px, nommés ; le nom du fichier tient sur deux lignes.", "ecran": "conv", "cible": "#mcMonDoc", "etat": { "lecture": "milieu" }, "refs": "MSG-C50 · MSG-C75 · MSG-C83" },
+    { "titre": "Une barre de saisie à trois zones", "note": "« + », un champ large (≈ 270 px au lieu de 156) qui nomme la destinataire, l'emoji et les GIF à l'intérieur, et UN bouton : micro quand le champ est vide, flèche d'envoi dès qu'il y a du texte. Sur téléphone, Entrée va à la ligne ; seul le bouton envoie. Écris quelque chose.", "ecran": "conv", "cible": "#convFpInput", "etat": { "champ": "vide", "lecture": "bas" }, "refs": "MSG-C60 · MSG-C59 · MSG-C71" },
+    { "titre": "« Envoi… » puis ✓ : l'état en toutes lettres", "note": "Le message affiche « Envoi… » tant que le serveur n'a pas répondu ; la coche n'apparaît qu'à la confirmation (aujourd'hui la coche est là d'emblée, à côté d'un 🕓 pâle). Touche le bouton d'envoi.", "ecran": "conv", "cible": "#mcPrincipal", "etat": { "champ": "plein", "envoi": "aucun" }, "refs": "MSG-C62" },
+    { "titre": "Non envoyé : une vraie relance", "note": "Si le serveur refuse, le message le dit — « Non envoyé · Réessayer » — dans un bouton de 44 px, sans coche trompeuse (aujourd'hui : « ✓ réessayer », 47 × 15 px). Touche-le : le message repart.", "ecran": "conv", "cible": "#mcReessayer", "etat": { "envoi": "echec", "champ": "vide" }, "refs": "MSG-C62 · MSG-C57" },
+    { "titre": "Hors ligne : on voit toujours à qui l'on écrit", "note": "L'état hors ligne s'affiche SOUS l'en-tête (le bandeau global recouvrait Retour, nom et menu). Un message écrit maintenant dit « En attente du réseau » et partira seul au retour — la file existante, à conserver.", "ecran": "conv", "cible": "#mcHorsLigne", "etat": { "reseau": "hors", "envoi": "attente" }, "refs": "MSG-C63 · MSG-C62" },
+    { "titre": "Le vocal : maintenir, relâcher, ou glisser pour annuler", "note": "Pendant l'appui, la barre de saisie devient la barre d'enregistrement et annonce les deux issues. « Annuler » fait 44 px (aujourd'hui un ✕ de 18 × 30 px à toucher d'un second doigt) ; glisser de 80 px vers la gauche puis relâcher annule. Dans le téléphone : maintiens le micro, ou touche le micro rouge pour envoyer.", "ecran": "conv", "cible": "#mcRec", "etat": { "reseau": "en", "envoi": "aucun", "vocal": "enreg", "champ": "vide" }, "refs": "MSG-C54" },
+    { "titre": "Un simple toucher n'enregistre plus rien — et le dit", "note": "Aujourd'hui, un toucher bref lance un enregistrement qui continue sans doigt posé, et le toucher suivant l'envoie. Proposé : doigt levé trop tôt = rien n'est capté, et la consigne s'affiche. Ce message — comme tous ceux de l'application — passe désormais AU-DESSUS de la conversation : aujourd'hui aucun toast n'y est visible.", "ecran": "conv", "cible": "#mcToast", "etat": { "vocal": "repos", "toast": "Maintiens le micro pour enregistrer un vocal" }, "refs": "MSG-C53 · MSG-C85 · MSG-C81" },
+    { "titre": "Une photo attend qu'on l'envoie", "note": "« + » → Photo / Vidéo : la photo choisie se pose dans une bande d'aperçu, avec « Retirer » ; c'est le bouton d'envoi qui la fait partir (aujourd'hui elle part dès le choix du fichier).", "ecran": "conv", "cible": "#mcApercu", "etat": { "pj": "apercu", "toast": "" }, "refs": "MSG-C72" },
+    { "titre": "Sa position : rien ne part sans confirmation", "note": "« + » → Ma position ouvre une confirmation qui nomme la destinataire et dit la précision (aujourd'hui les coordonnées exactes partent en un toucher). Une fois envoyée, la position a le même statut d'envoi que les autres messages.", "ecran": "conv", "couches": ["position"], "cible": "#mcPosOk", "etat": { "pj": "non" }, "refs": "MSG-C56 · MSG-C57" },
+    { "titre": "Le menu d'un message rappelle le message visé", "note": "Appui long (ou clic droit, ou touche Menu sur une bulle) : la feuille s'ouvre au relâchement, rappelle le message, propose des réactions de 44 px et des actions en pictogrammes. Une seule entrée « Supprimer… », à l'écart. Touche une réaction : la pastille devient touchable pour la retirer.", "ecran": "conv", "couches": ["feuille"], "cible": "#mcRappel", "etat": {}, "refs": "MSG-C64 · MSG-C75 · MSG-C76 · MSG-C82" },
+    { "titre": "Supprimer : deux portées, expliquées avant d'agir", "note": "« Supprimer… » ouvre une confirmation : « pour moi » (reste visible chez Léa) ou « pour tout le monde » (action définitive). « Annuler », le fond et Retour ne suppriment rien. Aujourd'hui les deux suppressions partent au premier toucher.", "ecran": "conv", "couches": ["supprimer"], "cible": "#mcSuppTous", "etat": {}, "refs": "MSG-C58" },
+    { "titre": "Relire l'historique sans être ramené en bas", "note": "Remonté dans le fil, un message qui arrive ne fait plus sauter l'écran : une pastille « 1 nouveau message » l'annonce et y mène d'un toucher. Dès qu'on a remonté d'un écran, un bouton « ↓ » ramène aux derniers messages.", "ecran": "conv", "cible": "#mcNouveau", "etat": { "lecture": "nouveau" }, "refs": "MSG-C55" },
+    { "titre": "« Proposer un moment IRL » : un seul, en corail", "note": "Le même libellé, le même pictogramme et le même chemin dans l'en-tête et dans le menu « + », soumis au même verdict serveur ; la teinte corail, réservée au passage au réel, le distingue. Le formulaire d'activité s'ouvre prérempli par la passion commune (fonction existante).", "ecran": "conv", "cible": "#mcIrl", "etat": { "lecture": "bas" }, "refs": "MSG-C69" },
+    { "titre": "Une conversation d'exemple qui le dit", "note": "L'en-tête reprend l'étiquette de la liste et la barre de saisie laisse place à l'explication et à la sortie. Aujourd'hui on peut écrire, puis l'envoi semble ne rien faire : le refus existe mais il est caché derrière la conversation.", "ecran": "exemple", "cible": "#mcExempleBarre", "etat": {}, "refs": "MSG-C87 · MSG-C85" }
+  ]</script>
+  <script src="kit/kit.js"></script>
+  <script>
+    (function () {
+      var P = window.PROTO;
+      var $ = function (id) { return document.getElementById(id); };
+      var fil = $("convFpThread"), champ = $("convFpInput"), principal = $("mcPrincipal");
+      var nouveaux = $("mcNouveaux");
+      var minutBulle = null, minutToast = null;
+
+      function bulleDe(el) { var s = el && el.closest("[data-ecran]"); return s ? s.querySelector(".proto-bulle") : null; }
+      function dire(texte, el) {
+        var b = bulleDe(el) || $("mcBulle"); if (!b) return;
+        b.textContent = texte; b.hidden = false;
+        clearTimeout(minutBulle); minutBulle = setTimeout(function () { b.hidden = true; }, 2600);
+      }
+      // MSG-C85 : le message de l'application est visible au-dessus de la conversation.
+      function toast(texte, duree) {
+        var t = $("mcToast"); t.textContent = texte; t.hidden = !texte;
+        clearTimeout(minutToast); if (texte && duree !== 0) minutToast = setTimeout(function () { t.hidden = true; }, duree || 2800);
+      }
+      function heure() { var d = new Date(); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+      function enBas() { fil.scrollTop = fil.scrollHeight; }
+      function majChamp() {
+        var plein = champ.value.trim().length > 0;
+        document.body.dataset.champ = plein ? "plein" : "vide";
+        principal.setAttribute("aria-label", plein || document.body.dataset.pj === "apercu" ? "Envoyer" : "Maintenir pour enregistrer un message vocal");
+        champ.style.height = "auto"; champ.style.height = Math.min(champ.scrollHeight, 178) + "px";
+      }
+      function ajouterMoi(html, etat, id) {
+        var w = document.createElement("div"); w.className = "conv-bubble-wrap me"; if (id) w.id = id;
+        w.innerHTML = '<div class="conv-bubble me" tabindex="0"></div><div class="conv-bubble-time"><span class="mc-h"></span> <span class="mc-etat-zone"></span></div>';
+        if (typeof html === "string") w.firstChild.textContent = html; else w.firstChild.appendChild(html);
+        w.firstChild.setAttribute("data-msg", typeof html === "string" ? html : "Message vocal"); w.firstChild.setAttribute("data-de", "Toi");
+        w.querySelector(".mc-h").textContent = heure();
+        nouveaux.appendChild(w); poserEtat(w, etat); enBas(); return w;
+      }
+      function poserEtat(w, etat) {
+        var z = w.querySelector(".mc-etat-zone"); if (!z) return;
+        if (etat === "envoi") z.innerHTML = '<span class="mc-etat">Envoi…</span>';
+        else if (etat === "attente") z.innerHTML = '<span class="mc-etat">En attente du réseau</span>';
+        else if (etat === "echec") z.innerHTML = '<button type="button" class="mc-echec" aria-label="Message non envoyé — réessayer l\'envoi">Non envoyé · Réessayer</button>';
+        else z.innerHTML = '<span aria-label="Envoyé">✓</span>';
+      }
+      function envoyer(w) { poserEtat(w, "envoi"); setTimeout(function () { if (document.body.dataset.reseau !== "hors") poserEtat(w, "ok"); }, 1300); }
+
+      // ── Saisie
+      champ.addEventListener("input", majChamp);
+      champ.addEventListener("keydown", function (e) {
+        // MSG-C59 : sur tactile, Entrée = saut de ligne ; sur ordinateur, Entrée envoie et Maj+Entrée va à la ligne.
+        if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(pointer: fine)").matches) { e.preventDefault(); envoyerChamp(); }
+      });
+      function envoyerChamp() {
+        if (document.body.dataset.pj === "apercu") {
+          var img = document.createElement("img"); img.className = "mc-photo"; img.src = "medias/photo-paysage.jpg"; img.alt = "Ta photo : coucher de soleil sur les collines";
+          var w = ajouterMoi(img, "envoi"); w.firstChild.style.padding = "4px"; w.firstChild.setAttribute("data-msg", "Photo");
+          document.body.dataset.pj = "non"; majChamp(); envoyer(w); P.viser && P.viser("#" + (w.id = "mcPhotoEnvoyee")); return;
+        }
+        var t = champ.value.trim(); if (!t) return;
+        if (t.length > 5000) { toast("Message trop long : 5 000 caractères au plus (il en fait " + t.length + ")"); return; }
+        champ.value = ""; majChamp();
+        var w2 = ajouterMoi(t, document.body.dataset.reseau === "hors" ? "attente" : "envoi", "mcMonMessage");
+        if (document.body.dataset.reseau !== "hors") envoyer(w2);
+      }
+
+      // ── Bouton principal : micro (appui maintenu) ou envoi
+      var appui = null;
+      function chrono() {
+        var s = 0; $("mcRecT").textContent = "0:00";
+        return setInterval(function () { s++; $("mcRecT").textContent = "0:" + ("0" + s).slice(-2); }, 1000);
+      }
+      function finVocal(envoyerIt) {
+        if (appui && appui.chrono) clearInterval(appui.chrono);
+        var duree = $("mcRecT").textContent;
+        document.body.dataset.vocal = "repos"; document.body.dataset.glisse = "non";
+        if (envoyerIt) {
+          var v = document.createElement("div"); v.className = "mc-vocal";
+          v.innerHTML = '<button type="button" class="mc-lire" aria-label="Écouter ton message vocal"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button><span class="mc-onde" aria-hidden="true"></span><span class="mc-duree"></span><button type="button" class="mc-vitesse" aria-label="Vitesse de lecture : 1×">1×</button>';
+          v.querySelector(".mc-duree").textContent = duree === "0:00" ? "0:02" : duree;
+          var w = ajouterMoi(v, "envoi", "mcVocalEnvoye"); w.firstChild.setAttribute("data-msg", "Message vocal · " + v.querySelector(".mc-duree").textContent); envoyer(w);
+        } else toast("Message vocal annulé");
+        appui = null;
+      }
+      principal.addEventListener("pointerdown", function (e) {
+        if (document.body.dataset.champ === "plein" || document.body.dataset.pj === "apercu") return;
+        if (document.body.dataset.vocal === "enreg") return;      // état posé par le parcours : un toucher envoie (voir click)
+        principal.setPointerCapture && principal.setPointerCapture(e.pointerId);
+        // MSG-C53 : l'enregistrement ne démarre qu'avec le doigt encore posé.
+        appui = { x: e.clientX, t: Date.now(), arme: setTimeout(function () { if (!appui) return; appui.actif = true; document.body.dataset.vocal = "enreg"; appui.chrono = chrono(); }, 300) };
+      });
+      principal.addEventListener("pointermove", function (e) {
+        if (!appui || !appui.actif) return;
+        var glisse = appui.x - e.clientX > 80;
+        document.body.dataset.glisse = glisse ? "oui" : "non";
+        $("mcRecB").textContent = glisse ? "Relâche pour annuler" : "Relâche pour envoyer";
+      });
+      principal.addEventListener("pointerup", function () {
+        if (!appui) return;
+        clearTimeout(appui.arme);
+        if (!appui.actif) { appui = null; toast("Maintiens le micro pour enregistrer un vocal"); return; }
+        appui.ignorerClic = true; var annule = document.body.dataset.glisse === "oui"; $("mcRecB").textContent = "Relâche pour envoyer";
+        var a = appui; finVocal(!annule); setTimeout(function () { a.ignorerClic = false; }, 0);
+      });
+      principal.addEventListener("pointercancel", function () { if (appui) { clearTimeout(appui.arme); if (appui.actif) finVocal(false); appui = null; } });
+      principal.addEventListener("click", function () {
+        if (document.body.dataset.champ === "plein" || document.body.dataset.pj === "apercu") { envoyerChamp(); return; }
+        if (document.body.dataset.vocal === "enreg" && !appui) { finVocal(true); }     // micro rouge touché (souris / parcours)
+      });
+      principal.addEventListener("keydown", function (e) {
+        // Clavier : Espace / Entrée sur le micro démarre puis arrête l'enregistrement (mode explicite).
+        if ((e.key === " " || e.key === "Enter") && document.body.dataset.champ !== "plein" && document.body.dataset.pj !== "apercu" && document.body.dataset.vocal !== "enreg") {
+          e.preventDefault(); document.body.dataset.vocal = "enreg"; appui = { chrono: chrono() }; appui = null;
+        }
+      });
+
+      // ── Appui long / clic droit / touche Menu sur une bulle (MSG-C64, C76)
+      var cibleMsg = null, minutLong = null, ouvertParLong = false;
+      function ouvrirFeuille(bulle) {
+        cibleMsg = bulle;
+        $("mcFeuilleTitre").textContent = bulle.getAttribute("data-de") || "Toi";
+        $("mcRappelTexte").textContent = bulle.getAttribute("data-msg") || bulle.textContent.trim();
+        var texte = !/^(Photo|Message vocal|Document)/.test(bulle.getAttribute("data-msg") || "");
+        $("mcCopier").hidden = !texte;                                   // MSG-C66
+        $("mcSignaler").hidden = !bulle.getAttribute("data-recu");       // signaler : messages reçus seulement
+        P.couche("feuille", true);
+      }
+      fil.addEventListener("pointerdown", function (e) {
+        var b = e.target.closest(".conv-bubble"); if (!b || e.target.closest("button,a")) return;
+        ouvertParLong = false;
+        minutLong = setTimeout(function () { ouvertParLong = b; b.style.filter = "brightness(.94)"; }, 450);
+      });
+      ["pointerup", "pointercancel", "pointerleave"].forEach(function (n) {
+        fil.addEventListener(n, function () {
+          clearTimeout(minutLong);
+          if (ouvertParLong && n === "pointerup") { var b = ouvertParLong; b.style.filter = ""; setTimeout(function () { ouvrirFeuille(b); }, 0); }  // ouverture AU RELÂCHEMENT
+          else if (ouvertParLong) ouvertParLong.style.filter = "";
+          if (n !== "pointerup") ouvertParLong = false;
+        });
+      });
+      fil.addEventListener("contextmenu", function (e) { var b = e.target.closest(".conv-bubble"); if (b) { e.preventDefault(); ouvrirFeuille(b); } });
+      fil.addEventListener("keydown", function (e) { var b = e.target.closest(".conv-bubble"); if (b && (e.key === "ContextMenu" || (e.key === "Enter" && e.target === b))) { e.preventDefault(); ouvrirFeuille(b); } });
+      fil.addEventListener("scroll", function () {
+        var loin = fil.scrollHeight - fil.scrollTop - fil.clientHeight;
+        if (document.body.dataset.lecture !== "nouveau") document.body.dataset.lecture = loin > fil.clientHeight * 0.6 ? "haut" : "bas";
+      });
+
+      // ── Actions du kit
+      P.actions.info = function (el) { dire(el.getAttribute("data-info") || "", el); };
+      P.actions.lire = function (el) { dire("Lecture du vocal (un seul vocal joue à la fois ; il s'arrête en quittant la conversation — MSG-C80).", el); };
+      P.actions.vitesse = function (el) { var v = el.textContent === "1×" ? "1,5×" : el.textContent === "1,5×" ? "2×" : "1×"; el.textContent = v; el.setAttribute("aria-label", "Vitesse de lecture : " + v); };
+      P.actions.reessayer = function (el) { var w = el.closest(".conv-bubble-wrap"); envoyer(w); };
+      P.actions.enBas = function () { document.body.dataset.lecture = "bas"; enBas(); };
+      P.actions.annulerVocal = function () { finVocal(false); };
+      P.actions.choisirPhoto = function () { P.fermerCouches(); document.body.dataset.pj = "apercu"; majChamp(); P.viser("#mcApercu"); };
+      P.actions.retirerPhoto = function () { document.body.dataset.pj = "non"; majChamp(); };
+      P.actions.position = function () { P.fermerCouches(); P.couche("position", true); };
+      P.actions.envoyerPosition = function () {
+        P.fermerCouches();
+        var d = document.createElement("a"); d.className = "mc-doc"; d.href = "#";
+        d.innerHTML = '<span class="mc-doc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span><span><b>Ma position</b><small>Lyon 7e · ouvrir la carte</small></span>';
+        var w = ajouterMoi(d, "envoi", "mcPositionEnvoyee"); w.firstChild.setAttribute("data-msg", "Position"); envoyer(w);
+      };
+      P.actions.reagir = function (el) {
+        var e = el.getAttribute("data-emoji"); P.fermerCouches(); if (!cibleMsg) return;
+        var w = cibleMsg.closest(".conv-bubble-wrap"), p = w.querySelector(".mc-pastilles");
+        if (!p) { p = document.createElement("div"); p.className = "mc-pastilles"; w.insertBefore(p, w.querySelector(".conv-bubble-time")); }
+        var mien = p.querySelector("button.mc-pastille"); if (mien) mien.remove();
+        var b = document.createElement("button"); b.type = "button"; b.className = "mc-pastille"; b.textContent = e; b.id = "mcMaReaction";
+        b.setAttribute("aria-label", "Ta réaction " + e + " — toucher pour la retirer");
+        b.addEventListener("click", function () { b.remove(); toast("Réaction retirée"); });
+        p.appendChild(b); P.viser("#mcMaReaction");
+      };
+      P.actions.repondre = function () { P.fermerCouches(); champ.focus(); toast("Réponse à " + ($("mcFeuilleTitre").textContent || "Léa")); };
+      P.actions.supprimer = function () { P.fermerCouches(); P.couche("supprimer", true); };
+      P.actions.supprimerPourMoi = function () { P.fermerCouches(); var w = $("mcMsgSamedi"); if (w) w.hidden = true; toast("Message supprimé pour toi"); };
+      P.actions.supprimerPourTous = function () { P.fermerCouches(); var w = $("mcMsgSamedi"); if (w) w.hidden = true; toast("Message supprimé pour tout le monde"); };
+      P.actions.irl = function (el) { P.fermerCouches(); dire("Ouvre « Créer une activité », prérempli : passion « Musique », invitée Léa (formulaire existant). Même chemin depuis l'en-tête et depuis « + ».", el); };
+
+      // ── Étapes : état du téléphone
+      P.surEtape = function (etape) {
+        var e = (etape && etape.etat) || {};
+        var t = $("mcToast"); t.hidden = true;
+        if ((etape.couches || []).indexOf("feuille") >= 0) { P.fermerCouches(); ouvrirFeuille($("mcBulleLea")); }
+        if (e.toast) toast(e.toast, 0);
+        $("mcMsgEchec").hidden = e.envoi !== "echec";
+        $("mcMsgSamedi").hidden = false;
+        if (e.envoi === "attente") {
+          if (!$("mcAttente")) { var w = ajouterMoi("Envoyé dans le métro", "attente", "mcAttente"); }
+          $("mcAttente").hidden = false;
+        } else if ($("mcAttente")) $("mcAttente").hidden = true;
+        if (e.champ === "plein" && !champ.value) champ.value = "Je passe demain vers 18 h, ça te va ?";
+        if (e.champ === "vide") champ.value = "";
+        majChamp();
+        if (e.vocal === "enreg") $("mcRecT").textContent = "0:04";
+        if (e.lecture === "milieu") { setTimeout(function () { var d = $("mcMonVocalAncien"); fil.scrollTop += d.getBoundingClientRect().top - fil.getBoundingClientRect().top - 12; }, 30); }
+        else if (e.lecture === "nouveau") {
+          if (!$("mcRecu")) {
+            var r = document.createElement("div"); r.className = "conv-bubble-wrap them"; r.id = "mcRecu";
+            r.innerHTML = '<div class="conv-bubble them" tabindex="0" data-de="Léa Fontaine" data-recu="oui" data-msg="Je prends aussi le capodastre, tu en as un ?">Je prends aussi le capodastre, tu en as un ?</div><div class="conv-bubble-time"></div>';
+            r.querySelector(".conv-bubble-time").textContent = heure(); nouveaux.appendChild(r);
+          }
+          setTimeout(function () { fil.scrollTop = 0; document.body.dataset.lecture = "nouveau"; }, 30);
+        }
+        else if (etape && etape.ecran === "conv") setTimeout(enBas, 30);
+        if (e.lecture === "milieu") document.body.dataset.lecture = "haut";
+      };
+      P.surEcran = function (nom) {
+        document.querySelectorAll(".proto-bulle").forEach(function (b) { b.hidden = true; });
+        if (nom === "conv") setTimeout(function () { if (document.body.dataset.lecture === "bas") enBas(); }, 0);
+      };
+      majChamp();
+    })();
+  </script>
+</body>
+</html>

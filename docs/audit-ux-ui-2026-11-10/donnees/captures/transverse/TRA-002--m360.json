@@ -1,0 +1,163 @@
+{
+ "id": "TRA-002",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paramètres — section « Compte » dépliée",
+ "note": "",
+ "prisLe": "2026-11-10T19:55:58.336Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-002--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 44516,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Voir l'onboarding » : un outil de démonstration parmi les réglages du compte",
+   "x": 0.628,
+   "y": 0.545,
+   "w": 0.606,
+   "h": 0.052,
+   "sel": "#devPanel [onclick*='resetOnboarding']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Boutons de 33 px, texte de 12 px",
+   "x": 0.628,
+   "y": 0.405,
+   "w": 0.606,
+   "h": 0.052,
+   "sel": "#settingsChangePassword",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 22,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Mon profil",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Modifier le profil",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsChangePassword",
+     "texte": "Changer mon mot de passe",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Voir l'onboarding",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 15,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-002--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 45330,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 2,
+   "texte": "44 px, 14 px ; « Voir l'onboarding » rejoint « Revoir les repères » (Support)",
+   "x": 0.628,
+   "y": 0.448,
+   "w": 0.606,
+   "h": 0.069,
+   "sel": "#settingsChangePassword",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

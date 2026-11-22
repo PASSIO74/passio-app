@@ -1,0 +1,181 @@
+{
+ "id": "PAR-033",
+ "domaine": "partage",
+ "scenario": "profil-invitation",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paramètres → Support → « Inviter des amis »",
+ "note": "",
+ "prisLe": "2026-11-10T17:51:35.055Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-033--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 63724,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "7e de 7, après les textes légaux ; 33 px de haut",
+   "x": 0.656,
+   "y": 0.659,
+   "w": 0.559,
+   "h": 0.039,
+   "sel": "#devPanel [onclick*='shareBeta()']",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 29,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Feedback & aide",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Limites de cette version pilote",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Politique de confidentialité",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Conditions générales d'utilisation",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Mentions légales",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "À propos de PASSIO",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#devPanel > div.settings-section.open > div.settings-section-body > button.btn.ghost",
+     "texte": "Inviter des amis",
+     "w": 218,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsLogout",
+     "texte": "Se déconnecter",
+     "w": 230,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNÉS",
+     "w": 87,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#myPosts > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Camille Audit",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 17,
+   "indetermines": 17,
+   "sousSeuil": [
+    {
+     "el": "div.post-header > div.post-author > div.post-author-meta > span",
+     "texte": "En ligne",
+     "ratio": 2.28,
+     "seuil": 4.5,
+     "couleur": "#22c55e",
+     "fond": "#ffffff",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

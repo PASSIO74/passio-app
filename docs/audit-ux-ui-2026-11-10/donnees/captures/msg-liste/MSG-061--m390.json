@@ -1,0 +1,132 @@
+{
+ "id": "MSG-061",
+ "domaine": "msg-liste",
+ "scenario": "compte-neuf",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — après avoir ouvert un fil sans écrire : ligne « Démarrer la conversation… » en tête, exemples mêlés",
+ "note": "",
+ "prisLe": "2026-11-10T17:39:45.605Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-061--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 77078,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Fil créé (aussi côté serveur) sans qu'aucun message soit parti",
+   "x": 0.5,
+   "y": 0.301,
+   "w": 0.918,
+   "h": 0.088,
+   "sel": "#messageList .msg-card",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les exemples restent mêlés à la vraie conversation",
+   "x": 0.5,
+   "y": 0.404,
+   "w": 0.918,
+   "h": 0.1,
+   "sel": "#messageList .msg-card:nth-child(2)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 28,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse \ud83c",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Photo · Mardi 19h, atelier rue Vauban. Apporte un négatif que tu aimes",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Littérature · Justement je viens de finir. Book club mensuel chez moi ",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

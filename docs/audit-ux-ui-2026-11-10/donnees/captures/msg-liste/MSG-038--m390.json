@@ -1,0 +1,112 @@
+{
+ "id": "MSG-038",
+ "domaine": "msg-liste",
+ "scenario": "reseau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — hors ligne (simulé) : bandeau global, liste en cache",
+ "note": "Hors ligne simulé : context.setOffline + refus de toute requête Supabase.",
+ "prisLe": "2026-11-10T17:44:39.843Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-038--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 66906,
+  "zooms": [
+   {
+    "nom": "bandeau",
+    "titre": "Bandeau hors ligne",
+    "fichier": "captures/msg-liste/MSG-038--m390--avant-zoom-bandeau.webp",
+    "largeur": 780,
+    "hauteur": 86,
+    "octets": 3676
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le bandeau recouvre la barre du haut ; × de 23 px sans nom",
+   "x": 0.5,
+   "y": 0.025,
+   "w": 1,
+   "h": 0.051,
+   "sel": "#offlineBanner",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 15,
+   "sous44": [
+    {
+     "el": "div#offlineBanner > button",
+     "texte": "×",
+     "w": 23.1,
+     "h": 23,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 23,
+   "indetermines": 6,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Tu viens samedi à l'atelier ? J'apporte les cordes.",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Bonjour Camille, je vous confirme la répétition ouverte de samedi : no",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

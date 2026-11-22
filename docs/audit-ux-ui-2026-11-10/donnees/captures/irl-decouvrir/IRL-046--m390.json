@@ -1,0 +1,360 @@
+{
+ "id": "IRL-046",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-selecteurs",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Vue Filtre — « Choisir une date » : calendrier déplié",
+ "note": "",
+ "prisLe": "2026-11-10T18:16:21.203Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-046--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48836,
+  "zooms": [
+   {
+    "nom": "mois",
+    "titre": "En-tête du mois",
+    "fichier": "captures/irl-decouvrir/IRL-046--m390--avant-zoom-mois.webp",
+    "largeur": 176,
+    "hauteur": 176,
+    "octets": 572
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "‹ › : 28 × 28 px",
+   "x": 0.1,
+   "y": 0.507,
+   "w": 0.072,
+   "h": 0.033,
+   "sel": "#irlCalPrev",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 50,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlCalPrev",
+     "texte": "Mois précédent",
+     "w": 28,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlPaneDate > div.irl-cal > div.irl-cal-head > button.irl-cal-nav",
+     "texte": "Mois suivant",
+     "w": 28,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "1",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "2",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "3",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "4",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "5",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "6",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "7",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "8",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.past",
+     "texte": "9",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.today",
+     "texte": "10",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "11",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "12",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "13",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "14",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "15",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "16",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "17",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "18",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "19",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "20",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "21",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "22",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "23",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day",
+     "texte": "24",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "25",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day",
+     "texte": "26",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day",
+     "texte": "27",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day",
+     "texte": "28",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day",
+     "texte": "29",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlCalGrid > button.irl-cal-day.has-ev",
+     "texte": "30",
+     "w": 46,
+     "h": 34,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 35
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 30,
+   "indetermines": 9,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-046--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48680,
+  "zooms": [
+   {
+    "nom": "mois",
+    "titre": "En-tête du mois",
+    "fichier": "captures/irl-decouvrir/IRL-046--m390--apres-zoom-mois.webp",
+    "largeur": 208,
+    "hauteur": 208,
+    "octets": 812
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "44 × 44 px",
+   "x": 0.121,
+   "y": 0.517,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#irlCalPrev",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

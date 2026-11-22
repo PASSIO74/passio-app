@@ -1,0 +1,436 @@
+{
+ "id": "FIL-054",
+ "domaine": "fil",
+ "scenario": "detail-et-options",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Liste « Réactions » d'une publication",
+ "note": "",
+ "prisLe": "2026-11-10T17:44:55.890Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#post"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-054--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 51778,
+  "zooms": [
+   {
+    "nom": "liste",
+    "titre": "Qui a réagi",
+    "fichier": "captures/fil/FIL-054--m390--avant-zoom-liste.webp",
+    "largeur": 484,
+    "hauteur": 420,
+    "octets": 12496
+   }
+  ]
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 42,
+   "sous44": [
+    {
+     "el": "div#postDetailPage > div > button",
+     "texte": "Fermer la publication",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 31,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-actions > span.post-action",
+     "texte": "Partager",
+     "w": 44,
+     "h": 31,
+     "enLigne": false
+    },
+    {
+     "el": "div.post > div.post-actions > span.post-react-chip-holder > span.cmt-react-chip.mine",
+     "texte": "🔥 4",
+     "w": 30.8,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Inès Moreau",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Malik Benali",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment-body > div.comment-actions > span.cmt-chip-holder > span.cmt-react-chip",
+     "texte": "👍 1",
+     "w": 29.1,
+     "h": 18.8,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-reply-count",
+     "texte": "⌵ Voir 2 réponses",
+     "w": 95.7,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Camille Audit",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 1",
+     "w": 38,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 37,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-reply-count",
+     "texte": "⌵ Voir 1 réponse",
+     "w": 88.8,
+     "h": 17,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Tom Girard",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "w": 38,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "💬",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "😊",
+     "w": 28.4,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > button.comment-menu-btn",
+     "texte": "Options",
+     "w": 24,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-author",
+     "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+     "w": 300,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-react-detail > div > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-react-detail > div > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-react-detail > div > div.avatar.sm",
+     "texte": "",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#cmt-react-detail > div > div.avatar.sm",
+     "texte": "🎵",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 34
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 29,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#postDetailContent > div > div",
+     "texte": "Commentaires (34)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#postDetailComments > div.cmt-sortbar > button.cmt-sort",
+     "texte": "Pertinents",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "10 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 2",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "30 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "45 min",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 1",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#postDetailComments > div.comment > div.comment-body > div.comment-meta",
+     "texte": "17:44",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 10
+    },
+    {
+     "el": "div.comment > div.comment-body > div.comment-actions > span.comment-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#postDetailComments > div.comment > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#cmt-react-detail > div > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#cmt-react-detail > div > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   },
+   {
+    "el": "div#cmt-react-detail > div > div.avatar.sm",
+    "html": "<div class=\"avatar sm\" style=\"background:url('http://127.0.0.1:61015/docs/audit-ux-ui-2026-11-10/outils/medias"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

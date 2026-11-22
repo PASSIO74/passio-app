@@ -1,0 +1,90 @@
+{
+ "id": "PAR-051",
+ "domaine": "partage",
+ "scenario": "visiteur-profil-prive",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — lien vers le profil d'un compte privé",
+ "note": "Faux serveur (②).",
+ "prisLe": "2026-11-10T17:43:53.839Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-051--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31500,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.profile-dots-btn.on-cover",
+     "texte": "Options du profil",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#visitedProfileActions > button.btn.primary",
+     "texte": "Message",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000f006",
+     "texte": "Suivre ce compte",
+     "w": 173,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

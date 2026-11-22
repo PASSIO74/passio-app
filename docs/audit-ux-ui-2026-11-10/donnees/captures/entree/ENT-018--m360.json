@@ -1,0 +1,104 @@
+{
+ "id": "ENT-018",
+ "domaine": "entree",
+ "scenario": "porte-compte",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Onglet « Se connecter » — refus de connexion",
+ "note": "Le refus vient du banc (projet vide) ; le texte affiché est la traduction du code (« Invalid login » → « E-mail ou mot de passe incorrect. »).",
+ "prisLe": "2026-11-10T19:30:51.046Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-018--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 35550,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Message clair, en français.",
+   "x": 0.5,
+   "y": 0.556,
+   "w": 0.767,
+   "h": 0.053,
+   "sel": "#authMsg",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Mot de passe oublié ? » est un texte cliquable : ni bouton, ni lien, inatteignable au clavier.",
+   "x": 0.5,
+   "y": 1.119,
+   "w": 0.767,
+   "h": 0.069,
+   "sel": "#authForgotLink",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

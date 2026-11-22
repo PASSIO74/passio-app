@@ -1,0 +1,229 @@
+{
+ "id": "REC-003",
+ "domaine": "recherche",
+ "scenario": "ecran",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rechercher — « Créateurs à suivre »",
+ "note": "",
+ "prisLe": "2026-11-10T19:29:10.594Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-003--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 72404,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne et son bouton",
+    "fichier": "captures/recherche/REC-003--m390--avant-zoom-ligne.webp",
+    "largeur": 732,
+    "hauteur": 158,
+    "octets": 7436
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Des personnes déjà suivies (« ✓ Suivi ») occupent la liste des suggestions.",
+   "x": 0.86,
+   "y": 0.189,
+   "w": 0.142,
+   "h": 0.034,
+   "sel": "#suggestedCreators .list-row:nth-child(1) button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Tom Girard, que ce compte a BLOQUÉ, est proposé.",
+   "x": 0.5,
+   "y": 0.464,
+   "w": 0.918,
+   "h": 0.073,
+   "sel": "#suggestedCreators .list-row:nth-child(4)",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Personnages d'exemple, sans marque, avec un « Suivre » qui écrit un vrai suivi.",
+   "x": 0.5,
+   "y": 0.744,
+   "w": 0.918,
+   "h": 0.073,
+   "sel": "#suggestedCreators .list-row:nth-child(7)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000b002",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000c003",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000d004",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000e005",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-00000000f006",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_a0d17000-0000-4000-8000-000000001007",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_lea",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_karim",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#followBtn_u_nina",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 25,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 12
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 26,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-003--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 59100,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne d'exemple",
+    "fichier": "captures/recherche/REC-003--m390--apres-zoom-ligne.webp",
+    "largeur": 732,
+    "hauteur": 158,
+    "octets": 7342
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Ni personnes déjà suivies, ni demandes en attente, ni comptes bloqués : seulement des suggestions.",
+   "x": 0.5,
+   "y": 0.399,
+   "w": 0.918,
+   "h": 0.084,
+   "sel": "#suggestedCreators .list-row:not([style*='none'])",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Un exemple se dit « Exemple » et ne se suit pas ; boutons à 44 px.",
+   "x": 0.459,
+   "y": 0.474,
+   "w": 0.141,
+   "h": 0.02,
+   "sel": "#suggestedCreators .maq-ex",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

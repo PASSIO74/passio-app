@@ -1,0 +1,79 @@
+{
+ "id": "FIL-062",
+ "domaine": "fil",
+ "scenario": "detail-et-options",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Options de ma publication (« ⋯ »)",
+ "note": "",
+ "prisLe": "2026-11-10T17:45:03.272Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-062--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 14536,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Une seule action : « Supprimer le post » (une coquille dans le texte ne se corrige pas)",
+   "x": 0.5,
+   "y": 0.873,
+   "w": 0.908,
+   "h": 0.059,
+   "sel": ".post-options-sheet .post-option.danger",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

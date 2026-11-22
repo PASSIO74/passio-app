@@ -1,0 +1,115 @@
+{
+ "id": "ENT-022",
+ "domaine": "entree",
+ "scenario": "etats-auth",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Inscription refusée par le quota d'e-mails (texte du code, simulé)",
+ "note": "Simulé : texte recopié de `onbDoAuth` (app-02, branche « rate limit »).",
+ "prisLe": "2026-11-10T19:31:21.499Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-022--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 60802,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Un refus qui rassure (« ton adresse n'est pas perdue »).",
+   "x": 0.5,
+   "y": 0.35,
+   "w": 0.785,
+   "h": 0.078,
+   "sel": "#authMsg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "input#authConsent",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "span#authCguLink",
+     "texte": "conditions générales",
+     "w": 115,
+     "h": 16,
+     "enLigne": true
+    },
+    {
+     "el": "span#authPrivacyLink",
+     "texte": "politique de confidentialité",
+     "w": 151.2,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 4,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 16,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,273 @@
+{
+ "id": "MSG-100",
+ "domaine": "msg-conversation",
+ "scenario": "fil-1a1",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Conversation 1:1 — bas du fil (état normal)",
+ "note": "Fil remis sur son dernier message par le scénario. Bulle « Position » de Camille : blanc sur fond lavande (1,08:1).",
+ "prisLe": "2026-11-10T18:02:00.413Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-100--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28240,
+  "zooms": [
+   {
+    "nom": "position-envoyee",
+    "titre": "Ma position, rechargée depuis le serveur",
+    "fichier": "captures/msg-conversation/MSG-100--m390--avant-zoom-position-envoyee.webp",
+    "largeur": 278,
+    "hauteur": 180,
+    "octets": 1086
+   },
+   {
+    "nom": "dernier-message",
+    "titre": "Dernier message : réactions, heure, accusé ✓✓",
+    "fichier": "captures/msg-conversation/MSG-100--m390--avant-zoom-dernier-message.webp",
+    "largeur": 410,
+    "hauteur": 216,
+    "octets": 5654
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Voir le profil » : aucun rappel de ce qui nous relie (la liste affichait les passions).",
+   "x": 0.564,
+   "y": 0.047,
+   "w": 0.574,
+   "h": 0.018,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ma position envoyée : texte blanc sur fond clair, 1,08:1.",
+   "x": 0.808,
+   "y": 0.536,
+   "w": 0.281,
+   "h": 0.059,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_20\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Champ de 156 px sur 390 (126 px utiles, ≈ 17 caractères par ligne).",
+   "x": 0.441,
+   "y": 0.963,
+   "w": 0.4,
+   "h": 0.05,
+   "sel": "#convFpInput",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Seconde entrée GIF (l'onglet GIF du panneau emoji existe déjà) ; micro et envoi toujours affichés.",
+   "x": 0.703,
+   "y": 0.967,
+   "w": 0.092,
+   "h": 0.043,
+   "sel": ".conv-toolbar button[aria-label=\"Ajouter un GIF\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Fontaine Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "a > div > div > div",
+     "texte": "Position",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "45.7485, 4.8467",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfcfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-100--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29804,
+  "zooms": [
+   {
+    "nom": "position-envoyee",
+    "titre": "Ma position, rechargée depuis le serveur",
+    "fichier": "captures/msg-conversation/MSG-100--m390--apres-zoom-position-envoyee.webp",
+    "largeur": 340,
+    "hauteur": 212,
+    "octets": 4496
+   },
+   {
+    "nom": "dernier-message",
+    "titre": "Dernier message : réactions, heure, accusé ✓✓",
+    "fichier": "captures/msg-conversation/MSG-100--m390--apres-zoom-dernier-message.webp",
+    "largeur": 410,
+    "hauteur": 216,
+    "octets": 5496
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Sous le nom : les passions de l'interlocutrice (même formule que la liste). La zone ouvre toujours le profil.",
+   "x": 0.559,
+   "y": 0.049,
+   "w": 0.564,
+   "h": 0.019,
+   "sel": "#convFpHead .conv-fp-passion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Position, vocal et document gardent une vraie bulle : lisibles.",
+   "x": 0.769,
+   "y": 0.524,
+   "w": 0.36,
+   "h": 0.077,
+   "sel": ".conv-bubble-wrap[data-mid=\"m_lea_20\"] .conv-bubble",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Champ élargi (≈ 270 px), destinataire nommé, emoji/GIF à l'intérieur.",
+   "x": 0.5,
+   "y": 0.962,
+   "w": 0.682,
+   "h": 0.052,
+   "sel": "#convFpInput",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Un seul bouton de 44 px : micro quand le champ est vide, envoi dès qu'il y a du texte.",
+   "x": 0.918,
+   "y": 0.962,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#btnVoice",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
