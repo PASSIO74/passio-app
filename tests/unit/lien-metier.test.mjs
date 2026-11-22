@@ -258,7 +258,7 @@ test("⑭ la mention EN GROUPE reste gouvernée par l'appartenance, et c'est un 
 // le texte poussé restait celui de l'émetteur, et « @Lea » désignait un nom,
 // pas un compte. La décision entière vit dans `autoriserPushNotif`.
 // ═══════════════════════════════════════════════════════════════════════════
-import { autoriserPushNotif, textePush } from "../../supabase/functions/_shared/lien-metier.js";
+import { autoriserPushNotif, textePush, GENRES_PUSH } from "../../supabase/functions/_shared/lien-metier.js";
 
 test("ASTRA-24 ① REPRODUCTION : commentaire « Bonjour @Lea » + ligne 'mention' à texte libre → avant : ok, texte libre poussé ; après : refusé (origine client)", async () => {
   const tables = {
@@ -406,4 +406,68 @@ test("audit 2026-11-06 : une panne n'envoie rien ; seule l'absence de la colonne
   assert.equal(await reserverPush(adminPush(), null, "u"), false, "sans ligne, rien à réserver");
   assert.equal(await reserverPush(adminPush({ erreurCompte: { code: "42703" } }), "n1", "u"), true);
   assert.equal(await reserverPush(adminPush({ erreurMaj: { code: "PGRST204" } }), "n1", "u"), true);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Village à 100 (A3, 2026-11-22) — `event_cancelled` a désormais un gabarit :
+// l'annulation d'une activité réveille aussi les inscrits app fermée. Le lien
+// métier : l'appelant ORGANISE `ref_id`, l'activité est ANNULÉE en base, et le
+// destinataire y est inscrit (`going`, `maybe`, `waitlist` — ceux que
+// `prevenir_inscrits_activite` prévient). Sans gabarit, `notify-call` refusait
+// toute push d'annulation (« genre sans gabarit »).
+// ═══════════════════════════════════════════════════════════════════════════
+const ANNUL = {
+  ...BASE,
+  profiles: [{ id: A, username: "Alex", emoji: "🎸" }, { id: B, username: "Léa" }, { id: C, username: "Chris" }],
+  events: [
+    { id: "ev_annulee", author_id: A, organizer_id: A, co_organizers: [], status: "cancelled" },
+    { id: "ev_vivante", author_id: A, organizer_id: A, co_organizers: [], status: "upcoming" },
+    { id: "ev_co", author_id: C, organizer_id: C, co_organizers: [A], status: "cancelled" },
+  ],
+  event_attendees: [
+    { event_id: "ev_annulee", user_id: B, rsvp: "going", created_at: t(9000) },
+    { event_id: "ev_annulee", user_id: C, rsvp: "no", created_at: t(9000) },
+    { event_id: "ev_vivante", user_id: B, rsvp: "going", created_at: t(9000) },
+    { event_id: "ev_co", user_id: B, rsvp: "waitlist", created_at: t(9000) },
+  ],
+};
+
+test("A3 ① textePush : event_cancelled a son gabarit, et la liste fermée le porte", () => {
+  assert.equal(textePush("event_cancelled", "Alex"), "Alex a annulé une activité où tu es inscrit·e");
+  assert.equal(textePush("event_cancelled", ""), "Quelqu'un a annulé une activité où tu es inscrit·e");
+  assert.ok(GENRES_PUSH.includes("event_cancelled"), "la note d'envoi mesurée garde son genre (genreNoteNotif)");
+});
+
+test("A3 ② lien : organisateur → inscrit d'une activité ANNULÉE en base, et rien d'autre", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "ev_annulee", T0)).ok, true, "B est inscrit (going)");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "ev_co", T0)).ok, true, "co-organisateur ; liste d'attente prévenue");
+  const vivante = await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "ev_vivante", T0);
+  assert.equal(vivante.ok, false, "une activité vivante ne se dit pas annulée");
+  assert.match(vivante.raison, /pas annulée/);
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", B, A, "ev_annulee", T0)).ok, false, "B n'organise pas");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, C, "ev_annulee", T0)).ok, false, "C a décliné (rsvp no) : la base ne le prévient pas");
+  assert.equal((await lienEvenement(fauxAdmin({ ...ANNUL, event_attendees: [] }), "event_cancelled", A, B, "ev_annulee", T0)).ok, false, "pas inscrit");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "", T0)).ok, false, "ref_id absent");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "ev_supprimee", T0)).ok, false, "activité supprimée : plus rien à lier");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL, ["events"]), "event_cancelled", A, B, "ev_annulee", T0)).ok, false, "lecture events en panne : refus");
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL, ["event_attendees"]), "event_cancelled", A, B, "ev_annulee", T0)).ok, false, "lecture event_attendees en panne : refus");
+  // Colonne `rsvp` absente : la ligne d'inscription suffit, comme pour event_update.
+  const sansRsvp = { ...ANNUL, event_attendees: [{ event_id: "ev_annulee", user_id: B }] };
+  assert.equal((await lienEvenement(fauxAdmin(sansRsvp), "event_cancelled", A, B, "ev_annulee", T0)).ok, true);
+});
+
+test("A3 ③ autoriserPushNotif : la ligne écrite par la base (`n_pi_`, origine serveur) pousse le GABARIT, jamais son contenu", async () => {
+  const tables = {
+    ...ANNUL,
+    notifications: [{ id: "n_pi_x", from_id: A, user_id: B, kind: "event_cancelled", ref_id: "ev_annulee", origine: "serveur",
+      content: "Alex a annulé un événement auquel tu participais <b>", created_at: new Date(T0 - 5_000).toISOString() }],
+  };
+  const d = await autoriserPushNotif(fauxAdmin(tables), A, B, T0);
+  assert.equal(d.ok, true, d.raison);
+  assert.equal(d.texte, "Alex a annulé une activité où tu es inscrit·e");
+  assert.equal(d.kind, "event_cancelled");
+  assert.equal(d.id, "n_pi_x");
+  // RÉINJECTION : la même ligne vers une activité réactivée (plus annulée) ne pousse rien.
+  tables.events = tables.events.map((e) => (e.id === "ev_annulee" ? { ...e, status: "upcoming" } : e));
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, false);
 });
