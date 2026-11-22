@@ -131,12 +131,21 @@
 --     identifiant sans le retirer : Z le recréait et héritait des cartes qui le
 --     citent). Pas par un `revoke update (id)` : le client met à jour une
 --     activité en envoyant sa ligne ENTIÈRE, identifiant compris
---     (`supaUpdateEvent`, app-08) — inchangé, il passe ;
---   · la DIFFUSION temps réel d'une interaction (`diffuser_interaction`, sur
---     `fil:<id>`) et les réactions agrégées par `fil_compteurs` (SECURITY
---     DEFINER) ne regardent pas le blocage entre lecteur et AUTEUR de la
---     réaction (seulement la visibilité du fil) : un emoji ou un GIF d'un
---     compte bloqué peut encore s'y montrer — autre lot ;
+--     (`supaUpdateEvent`, app-08) — inchangé, il passe. Le gel vaut aussi pour
+--     `service_role` et la maintenance : renommer une activité exige de suspendre
+--     le déclencheur, délibérément ;
+--   · la DIFFUSION temps réel : `diffuser_interaction` (SECURITY DEFINER) pousse
+--     la ligne ENTIÈRE sur `fil:<id>` — `user_id`, `kind` et le TEXTE en clair
+--     d'une RÉPONSE (`left(payload, 2000)`) — et `passio_rt_recevoir_fil` ne
+--     regarde que la visibilité du fil. Les RÉPONSES (texte) et réactions d'un
+--     compte en blocage avec moi me sont donc POUSSÉES EN DIRECT tant que la
+--     discussion est ouverte : Kevin, organisateur bloqué par Léa, lit en direct
+--     toute nouvelle réponse de Léa sur son activité. Cette bis ne ferme que la
+--     RELECTURE. Lot suivant : ne plus mettre le texte dans la charge, et laisser
+--     le client relire par `interactions_cibles` ;
+--   · `fil_compteurs` (SECURITY DEFINER) montre les emoji et GIF d'un compte en
+--     blocage avec le lecteur ; `_ciVerifierReactionsPost` les retire ensuite
+--     (ils apparaissent puis disparaissent) ;
 --   · les COMMENTAIRES DE PREMIER NIVEAU et les « j'aime » d'une publication
 --     (`post_comments`, `post_likes`) écrits par un compte en blocage avec moi,
 --     sur le fil d'un TIERS, restent lisibles (leurs policies ne regardent que
@@ -160,8 +169,10 @@
 --     passagère) ; « Publie-la à nouveau » n'a pas de bouton et le média ne
 --     survit pas au rechargement ; la file des commentaires réessaie un PT409
 --     toutes les 15 s ;
---   · coût : `is_blocked_with` par ligne (piste : la liste des comptes en
---     blocage calculée une fois par requête, sans l'exposer) ;
+--   · coût : `is_blocked_with` par ligne, y compris dans `interactions_cibles`
+--     (par ligne LUE, avant son `order by` / `limit 1000`, sur le chemin chaud
+--     de D14-01). Piste : une CTE `materialized` des comptes en blocage avec
+--     l'appelant, puis `not in`, après un EXPLAIN ANALYZE au staging ;
 --   · une activité RETIRÉE répond 23514 en production (`aa_rencontres_activite`
 --     passe avant `zz_identifiant_sans_homonyme`), PT409 ailleurs ;
 --   · 215 réponses et 10 fils orphelins restent en base (aucune lecture ne les
@@ -177,8 +188,9 @@
 --| do $retour$
 --| begin
 --|   if to_regprocedure('public.publication_masquee_pour_moi(text)') is null
---|      or (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.post_is_visible(text)'::regprocedure) <> '3e3d52b23aac8d5e931d63f4a61288ee' then
---|     raise exception 'retour arrière refusé : l''état en place n''est pas celui qu''écrit la bis (post_is_visible ou publication_masquee_pour_moi)';
+--|      or (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.post_is_visible(text)'::regprocedure) <> '3e3d52b23aac8d5e931d63f4a61288ee'
+--|      or (select md5(replace(prosrc, chr(13), '')) from pg_proc where oid = 'public.interactions_cibles(text[],text[],integer)'::regprocedure) <> 'b85e5b725a7fbc1e8c4b424b9eb67178' then
+--|     raise exception 'retour arrière refusé : l''état en place n''est pas celui qu''écrit la bis (post_is_visible, interactions_cibles ou publication_masquee_pour_moi)';
 --|   end if;
 --| end
 --| $retour$;

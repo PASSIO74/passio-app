@@ -273,7 +273,7 @@ verifier "(cid) : un commentaire d'activité homonyme d'un commentaire privé es
 verifier "(cid) : …et un commentaire de publication homonyme d'un commentaire d'activité aussi" "PT409" "$(ECRIT "$Z" "insert into public.post_comments (id, post_id, author_id, content) values ('ec_i', 'post_hugo_libre', '$Z', 'homonyme')")"
 verifier "(cid) : Z ne lit pas qui a aimé le commentaire privé" "0" "$(EN "$Z" "select count(*) from public.comment_likes where comment_id = 'pc_p';")"
 verifier "posts.id n'est pas modifiable par un client (#888 : update (content) seulement)" "42501" "$(ECRIT "$HUGO" "update public.posts set id = 'post_hugo_libre_2' where id = 'post_hugo_libre'")"
-verifier "un changement d'identifiant d'ACTIVITÉ vers un homonyme est REFUSÉ" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'post_lea' where id = 'evt_lea'")"
+verifier "un changement d'identifiant d'ACTIVITÉ vers un homonyme est REFUSÉ (par le gel)" "PT409 identifiant d'activité figé" "$(MSG "$LEA" "update public.events set id = 'post_lea' where id = 'evt_lea'")"
 verifier "events.id est FIGÉ : un renommage ordinaire est refusé (l'ancien identifiant ne se libère pas)" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'evt_lea_2' where id = 'evt_lea'")"
 verifier "…mais une mise à jour qui renvoie le MÊME identifiant passe (supaUpdateEvent)" "ok" "$(ECRIT "$LEA" "update public.events set id = 'evt_lea', title = 'Pique-nique (modifié)' where id = 'evt_lea'")"
 verifier "« j'aime » d'une publication qui n'existe pas encore : refusé par la RLS (pas de faux PT409 possible)" "42501" "$(ECRIT "$INES" "insert into public.post_likes (post_id, user_id) values ('bobine_pas_encore', '$INES')")"
@@ -324,7 +324,9 @@ verifier "commentaires ORPHELINS : un post à l'identifiant de leur fil (ancien 
 verifier "« j'aime » ORPHELINS : idem" "PT409" "$(ECRIT "$Z" "insert into public.posts (id, author_id, content) values ('p_like_orphelin', '$Z', 'x')")"
 verifier "réaction ORPHELINE d'un autre : un commentaire à son identifiant de cible est REFUSÉ" "PT409" "$(ECRIT "$Z" "insert into public.post_comments (id, post_id, author_id, content) values ('c_orph', 'post_hugo_libre', '$Z', 'x')")"
 verifier "réaction de l'AUTEUR arrivée avant son commentaire : le commentaire passe" "ok" "$(ECRIT "$INES" "insert into public.post_comments (id, post_id, author_id, content) values ('c_orph', 'post_hugo_libre', '$INES', 'x')")"
-verifier "une activité ne prend pas, par UPDATE, un identifiant RETIRÉ" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'evt_retire' where id = 'evt_lea'")"
+verifier "une activité ne prend pas, par UPDATE, un identifiant RETIRÉ (par le gel)" "PT409 identifiant d'activité figé" "$(MSG "$LEA" "update public.events set id = 'evt_retire' where id = 'evt_lea'")"
+verifier "…et à l'INSERTION, l'identifiant retiré est refusé pour lui-même" "PT409 identifiant retiré (activité supprimée)" "$(MSG "$Z" "insert into public.events (id, author_id, title) values ('evt_retire', '$Z', 'x')")"
+verifier "un VISITEUR appelle interactions_cibles après la bis : aucune erreur, le public lisible" "1" "$(ANON "select count(*) from public.interactions_cibles(array['ec_i'], null, 1000) where id = 'ci_h';")"
 
 echo "   réponses et « j'aime » d'un compte en blocage"
 Q "insert into public.event_comments values ('ec_kev_own', 'evt_kev', '$KEVIN', 'mon atelier');
@@ -416,8 +418,8 @@ APPLIQUER "$BIS" >/dev/null 2>&1 || true   # la garde refuse ce post_is_visible 
 APPLIQUER "$BIS" >/dev/null
 printf '%s\n' "$retour" | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 \
   && verifier "le retour arrière s'applique sur l'état de la bis" "ok" "ok" || verifier "le retour arrière s'applique sur l'état de la bis" "ok" "échec"
-verifier "…rend les empreintes de la première migration" "0d830765c94045194263714b9b7f2bf9|3cf606d2b4bf8605e403643342c11f5d|08d910fbe202c6aaa5e73dce487b6364" \
-  "$(Q "select md5(prosrc) from pg_proc where oid = 'public.comment_target_visible(text)'::regprocedure;")|$(Q "select md5(prosrc) from pg_proc where oid = 'public.comment_target_visible(text,text)'::regprocedure;")|$(Q "select md5(prosrc) from pg_proc where oid = 'public.post_is_visible(text)'::regprocedure;")"
+verifier "…rend les empreintes de la première migration (et interactions_cibles de #1023)" "0d830765c94045194263714b9b7f2bf9|3cf606d2b4bf8605e403643342c11f5d|08d910fbe202c6aaa5e73dce487b6364|25e050030451ee802007b063ae088f41" \
+  "$(Q "select md5(prosrc) from pg_proc where oid = 'public.comment_target_visible(text)'::regprocedure;")|$(Q "select md5(prosrc) from pg_proc where oid = 'public.comment_target_visible(text,text)'::regprocedure;")|$(Q "select md5(prosrc) from pg_proc where oid = 'public.post_is_visible(text)'::regprocedure;")|$(Q "select md5(prosrc) from pg_proc where oid = 'public.interactions_cibles(text[],text[],integer)'::regprocedure;")"
 verifier "…et les qual des policies de la première migration, à l'identique" "$QUAL_M1" \
   "$(Q "select string_agg(tablename || ':' || qual, ' | ' order by tablename) from pg_policies where policyname like '%_lecture_hors_blocage';")"
 verifier "…sans aide neuve ni déclencheur" "0|0" \
@@ -433,6 +435,10 @@ Q "delete from public.events where id = 'post_lea'; alter table public.events en
 Q "create or replace function public.post_is_visible(pid text) returns boolean language sql stable security definer set search_path to 'public' as \$fn\$ select true \$fn\$;" >/dev/null
 if sortie6="$(APPLIQUER "$BIS")"; then verifier "un post_is_visible inconnu arrête la bis" "refus" "acceptée"
 else verifier "un post_is_visible inconnu arrête la bis" "refus" "$(printf '%s' "$sortie6" | grep -q 'a changé depuis la mesure' && echo refus || echo "autre erreur")"; fi
+{ echo "set check_function_bodies = off;"; cat "$FONCTIONS_BIS"; } | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null
+Q "create or replace function public.interactions_cibles(_comment_ids text[], _kinds text[] default null, _limite integer default 1000) returns table(id text, comment_id text, post_id text, user_id text, kind text, payload text, created_at timestamptz) language sql stable security definer set search_path = '' as \$fn\$ select i.id, i.comment_id, i.post_id, i.user_id, i.kind, i.payload, i.created_at from public.comment_interactions i \$fn\$;" >/dev/null
+if sortie8="$(APPLIQUER "$BIS")"; then verifier "une interactions_cibles inconnue arrête la bis" "refus" "acceptée"
+else verifier "une interactions_cibles inconnue arrête la bis" "refus" "$(printf '%s' "$sortie8" | grep -q 'interactions_cibles.*a changé depuis la mesure' && echo refus || echo "autre erreur")"; fi
 Q "drop policy posts_lecture_hors_blocage on public.posts;" >/dev/null
 if sortie7="$(APPLIQUER "$BIS")"; then verifier "sans la première migration, la bis refuse de partir" "refus" "acceptée"
 else verifier "sans la première migration, la bis refuse de partir" "refus" "$(printf '%s' "$sortie7" | grep -q 'prérequis absent' && echo refus || echo "autre erreur")"; fi
