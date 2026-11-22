@@ -16,7 +16,7 @@
 #      production ; (cid) commentaire homonyme), repost
 #      à deux niveaux, fils sous la carte de Léa, organisatrice privée du
 #      commentaire du bloqué
-#   ① la bis s'applique (17 OK), se rejoue
+#   ① la bis s'applique (18 OK), se rejoue
 #   ② APRÈS : tout homonyme est REFUSÉ (PT409) dans les quatre tables, à
 #      l'insertion comme au changement d'identifiant, fils orphelins et
 #      identifiants retirés compris, y compris entre DEUX SESSIONS concurrentes
@@ -191,6 +191,8 @@ Q "create policy \"Lecture selon visibilite du post\" on public.post_comments fo
    create policy \"Lecture selon visibilite de la cible\" on public.comment_interactions for select using ((user_id = (select auth.uid())::text) or comment_target_visible(comment_id, post_id));
    create policy ci_insert on public.comment_interactions for insert to authenticated with check (user_id = (select auth.uid())::text);
    create policy ci_visibilite_insert on public.comment_interactions as restrictive for insert to authenticated with check (comment_target_visible(comment_id, post_id));
+   create policy post_likes_ecriture on public.post_likes for insert to authenticated with check (user_id = (select auth.uid())::text);
+   create policy post_likes_visibilite_insert on public.post_likes as restrictive for insert to authenticated with check (post_is_visible(post_id));
    create policy comment_likes_select on public.comment_likes for select to anon, authenticated using ((user_id = (select auth.uid())::text) or comment_target_visible(comment_id));
    create policy comment_likes_insert_own on public.comment_likes for insert with check (user_id = (select auth.uid())::text);
    create policy comment_likes_visibilite_insert on public.comment_likes as restrictive for insert to authenticated with check (comment_target_visible(comment_id));
@@ -254,10 +256,10 @@ verifier "organisatrice : Léa ne lit pas le vieux commentaire de Kevin sur SON 
 
 echo "── ① APPLICATION, VERDICT, REJEU ─────────────────────────────────────"
 sortie="$(APPLIQUER "$BIS")" || { echo "  ❌ la bis a échoué :"; echo "$sortie" | tail -5; exit 1; }
-verifier "la bis rend 17 OK et 0 ECHEC" "17/0" \
+verifier "la bis rend 18 OK et 0 ECHEC" "18/0" \
   "$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)/$(printf '%s\n' "$sortie" | grep -cE '\|\s*ECHEC\s*$' || true)"
 sortie2="$(APPLIQUER "$BIS")" || { echo "  ❌ la bis REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
-verifier "rejeu : toujours 17 OK" "17" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
+verifier "rejeu : toujours 18 OK" "18" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
 
 echo "── ② APRÈS : plus d'homonyme, trous fermés ───────────────────────────"
 verifier "A : l'activité homonyme d'une publication privée est REFUSÉE" "PT409" "$(ECRIT "$Z" "insert into public.events (id, author_id, title) values ('post_paul_prive', '$Z', 'homonyme')")"
@@ -272,7 +274,9 @@ verifier "(cid) : …et un commentaire de publication homonyme d'un commentaire 
 verifier "(cid) : Z ne lit pas qui a aimé le commentaire privé" "0" "$(EN "$Z" "select count(*) from public.comment_likes where comment_id = 'pc_p';")"
 verifier "posts.id n'est pas modifiable par un client (#888 : update (content) seulement)" "42501" "$(ECRIT "$HUGO" "update public.posts set id = 'post_hugo_libre_2' where id = 'post_hugo_libre'")"
 verifier "un changement d'identifiant d'ACTIVITÉ vers un homonyme est REFUSÉ" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'post_lea' where id = 'evt_lea'")"
-verifier "un changement d'identifiant d'activité ordinaire passe" "ok" "$(ECRIT "$LEA" "update public.events set id = 'evt_lea_2' where id = 'evt_lea'")"
+verifier "events.id est FIGÉ : un renommage ordinaire est refusé (l'ancien identifiant ne se libère pas)" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'evt_lea_2' where id = 'evt_lea'")"
+verifier "…mais une mise à jour qui renvoie le MÊME identifiant passe (supaUpdateEvent)" "ok" "$(ECRIT "$LEA" "update public.events set id = 'evt_lea', title = 'Pique-nique (modifié)' where id = 'evt_lea'")"
+verifier "« j'aime » d'une publication qui n'existe pas encore : refusé par la RLS (pas de faux PT409 possible)" "42501" "$(ECRIT "$INES" "insert into public.post_likes (post_id, user_id) values ('bobine_pas_encore', '$INES')")"
 verifier "rejeu dans la MÊME table : la clé primaire répond (posts_pkey), pas le déclencheur" "23505 posts_pkey" \
   "$(MSG "$HUGO" "insert into public.posts (id, author_id, content) values ('post_hugo_libre', '$HUGO', 'rejeu')" | grep -oE '^23505|posts_pkey' | tr '\n' ' ' | sed 's/ $//')"
 verifier "un VISITEUR n'apprend rien : 42501 de la RLS, pas PT409 (identifiant privé existant)" "42501" "$(ECRIT_ANON "insert into public.posts (id, author_id, content) values ('post_paul_prive', null, 'sonde')")"
@@ -358,13 +362,16 @@ Q "alter policy passio_rt_recevoir_fil on realtime.messages using (((realtime.to
 if sortie3="$(APPLIQUER "$BIS")"; then verifier "policy temps réel sans comment_target_visible → la bis LÈVE" "levée" "validée"
 else verifier "policy temps réel sans comment_target_visible → la bis LÈVE" "levée" "$(printf '%s' "$sortie3" | grep -q 'VERDICT EN ECHEC' && echo levée || echo "autre erreur")"; fi
 Q "alter policy passio_rt_recevoir_fil on realtime.messages using (((realtime.topic() ~~ 'fil:%'::text) and fil_temps_reel_visible(substr(realtime.topic(), 5)) and comment_target_visible(null::text, substr(realtime.topic(), 5)) and (not post_auteur_bloque(substr(realtime.topic(), 5)))));" >/dev/null
-verifier "verdict seul, état sain : 17 OK" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+verifier "verdict seul, état sain : 18 OK" "18" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+Q "drop policy post_likes_visibilite_insert on public.post_likes;" >/dev/null
+verifier "restrictive d'INSERT de post_likes retirée → le verdict ⑱ dit ECHEC" "18:ECHEC" "$(VERDICT_SEUL | tr ' ' '\n' | grep '^18:')"
+Q "create policy post_likes_visibilite_insert on public.post_likes as restrictive for insert to authenticated with check (post_is_visible(post_id));" >/dev/null
 Q "create or replace function public.publication_masquee_pour_moi(p_post_id text) returns boolean language sql stable security definer set search_path = '' as \$fn\$ select p_post_id is not null and exists (select 1 from public.posts p where p.id = p_post_id and public.is_blocked_with(p.author_id)) \$fn\$;" >/dev/null
 verifier "garde « sans compte » retirée de l'aide → le verdict ① dit ECHEC" "1:ECHEC" "$(VERDICT_SEUL | tr ' ' '\n' | grep '^1:')"
 Q "create or replace function public.identifiant_sans_homonyme() returns trigger language plpgsql security definer set search_path = '' as \$fn\$ begin if exists (select 1 from public.posts where id = new.id) then raise exception using errcode = 'PT409'; end if; return new; end \$fn\$;" >/dev/null
 verifier "déclencheur sans la garde du visiteur ni les orphelins → le verdict ⑮ dit ECHEC" "15:ECHEC" "$(VERDICT_SEUL | tr ' ' '\n' | grep '^15:')"
 APPLIQUER "$BIS" >/dev/null
-verifier "…la bis rejouée remet les deux" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+verifier "…la bis rejouée remet les deux" "18" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
 # Le déclencheur de la bis, SANS la garde du visiteur : la sonde probante rend PT409.
 sed -n '/^create or replace function public.identifiant_sans_homonyme()$/,/^\$\$;$/p' "$BIS" \
   | sed "/current_setting('role', true) = 'anon' then/,/end if;/d" \
@@ -380,7 +387,7 @@ Q "alter table public.events disable trigger zz_identifiant_sans_homonyme; inser
 verifier "MUTATION sans FOR KEY SHARE : la réinsertion pendant la suppression PASSE" "ok|attendu" "$(course_suppression)"
 Q "delete from public.events where id = 'evt_del';" >/dev/null
 APPLIQUER "$BIS" >/dev/null
-verifier "…la bis rejouée remet le déclencheur complet (17 OK)" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+verifier "…la bis rejouée remet le déclencheur complet (18 OK)" "18" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
 Q "drop trigger zz_identifiant_sans_homonyme on public.event_comments;" >/dev/null
 verifier "déclencheur retiré : un homonyme repasse (prémisse)" "ok" "$(ECRIT "$Z" "insert into public.event_comments (id, event_id, author_id, text) values ('pc_p', 'evt_lea', '$Z', 'homonyme')")"
 APPLIQUER "$BIS" >/dev/null 2>&1 || true
@@ -406,7 +413,7 @@ verifier "…et les qual des policies de la première migration, à l'identique"
 verifier "…sans aide neuve ni déclencheur" "0|0" \
   "$(Q "select count(*) from pg_proc where proname in ('publication_masquee_pour_moi', 'identifiant_sans_homonyme');")|$(Q "select count(*) from pg_trigger where tgname = 'zz_identifiant_sans_homonyme';")"
 sortie4="$(APPLIQUER "$BIS")" || true
-verifier "la bis se réapplique après le retour arrière : 17 OK" "17" "$(printf '%s\n' "$sortie4" | grep -cE '\|\s*OK\s*$' || true)"
+verifier "la bis se réapplique après le retour arrière : 18 OK" "18" "$(printf '%s\n' "$sortie4" | grep -cE '\|\s*OK\s*$' || true)"
 
 echo "── ⑤ GARDES ─────────────────────────────────────────────────────────"
 Q "alter table public.events disable trigger zz_identifiant_sans_homonyme; insert into public.events (id, author_id, title) values ('post_lea', '$Z', 'homonyme posé à la main');" >/dev/null

@@ -4,7 +4,7 @@
 -- appliquée au staging et en production le même jour)
 --
 -- `npm run migration:appliquer -- migrations/migration_blocage_lecture_activites_bis_2026-11-22.sql --projet <ref>`
--- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (17 lignes) LÈVE
+-- (canal ③ d'ADR-012). UNE transaction, REJOUABLE. Le verdict (18 lignes) LÈVE
 -- si une seule ligne est en ECHEC : rien n'est alors validé. Aucun prérequis
 -- client. PRÉREQUIS SERVEUR : la première migration (garde ci-dessous).
 --
@@ -74,6 +74,10 @@
 --    (`comment_interactions`) et les « j'aime » de commentaires
 --    (`comment_likes`) d'un compte en blocage avec moi : je ne les lis plus,
 --    sauf sur MON fil (activité ou publication) quand c'est moi qui ai bloqué.
+--    PORTÉE : commentaires d'ACTIVITÉ, réactions d'activité, réponses et
+--    « j'aime » de commentaires. PAS les commentaires de premier niveau ni
+--    les « j'aime » d'une PUBLICATION (`post_comments`, `post_likes`) sur le
+--    fil d'un TIERS — voir « reste hors lot ».
 --
 -- UNE DÉFINITION : `publication_masquee_pour_moi(id)` — l'auteur est en
 -- blocage avec moi, OU l'activité portée (album, carte) est masquée pour moi,
@@ -115,18 +119,41 @@
 --     `migration_publications_supprimees_2026-11-04.sql` échoue : elles
 --     insèrent des homonymes exprès, que le déclencheur refuse (PT409). Ces
 --     migrations sont appliquées ; ne pas les rejouer telles quelles ;
---   · `events.id` n'est pas retiré de l'UPDATE : le client met à jour une
+--   · `events.id` est FIGÉ par le déclencheur (un renommage libérait l'ancien
+--     identifiant sans le retirer : Z le recréait et héritait des cartes qui le
+--     citent). Pas par un `revoke update (id)` : le client met à jour une
 --     activité en envoyant sa ligne ENTIÈRE, identifiant compris
---     (`supaUpdateEvent`, app-08) — un `revoke update (id)` casserait toute
---     modification d'activité ;
+--     (`supaUpdateEvent`, app-08) — inchangé, il passe ;
 --   · la DIFFUSION temps réel d'une interaction (`diffuser_interaction`, sur
 --     `fil:<id>`) et les réactions agrégées par `fil_compteurs` (SECURITY
 --     DEFINER) ne regardent pas le blocage entre lecteur et AUTEUR de la
 --     réaction (seulement la visibilité du fil) : un emoji ou un GIF d'un
 --     compte bloqué peut encore s'y montrer — autre lot ;
+--   · les COMMENTAIRES DE PREMIER NIVEAU et les « j'aime » d'une publication
+--     (`post_comments`, `post_likes`) écrits par un compte en blocage avec moi,
+--     sur le fil d'un TIERS, restent lisibles (leurs policies ne regardent que
+--     `post_is_visible`), et `diffuser_commentaire_publication` les pousse sur
+--     `fil:`. Ex. : Léa bloque Kevin ; sous la carte d'activité de Hugo, Léa
+--     écrit « j'arrive à 18h au parking » ; Kevin le lit. Lot suivant : une
+--     restrictive sur `post_comments` calquée sur `event_comments`, MAIS avec
+--     la branche du propriétaire du fil valable DANS LES DEUX SENS (sinon,
+--     quand Kevin bloque Léa, elle ne voit plus son insulte et ne peut plus la
+--     supprimer : `post_comments_delete_auteur_publication` exige la lecture) ;
 --   · l'identifiant DÉTERMINISTE d'une carte d'activité (`post_ev_<id>`) peut
---     être occupé d'avance dans `post_comments` ou `event_comments` : la carte
---     est alors refusée (PT409). Déni limité à la carte automatique ;
+--     être occupé d'avance dans `post_comments`, `event_comments`, ou comme
+--     `comment_interactions.comment_id` sous un fil visible
+--     (`ci_visibilite_insert` juge par le fil), pendant les 7 jours de
+--     `rattraperActivitesAuFil` : la carte est alors refusée (PT409). Déni
+--     limité à la carte automatique ;
+--   · PT409 contre 23503 (`passion_id` invalide) dit, sans rien écrire, si un
+--     identifiant existe quelque part — à un compte, jamais à un visiteur ;
+--   · client : `_passioEchecPublication` est partagé entre publications (un
+--     rejeu en PT409 peut classer « refusée » une publication neuve en panne
+--     passagère) ; « Publie-la à nouveau » n'a pas de bouton et le média ne
+--     survit pas au rechargement ; la file des commentaires réessaie un PT409
+--     toutes les 15 s ;
+--   · coût : `is_blocked_with` par ligne (piste : la liste des comptes en
+--     blocage calculée une fois par requête, sans l'exposer) ;
 --   · une activité RETIRÉE répond 23514 en production (`aa_rencontres_activite`
 --     passe avant `zz_identifiant_sans_homonyme`), PT409 ailleurs ;
 --   · 215 réponses et 10 fils orphelins restent en base (aucune lecture ne les
@@ -278,6 +305,14 @@ begin
     raise exception using errcode = '42501',
       message = format('new row violates row-level security policy for table "%s"', tg_table_name);
   end if;
+  -- L'identifiant d'une ACTIVITÉ est figé : un renommage libérerait l'ancien sans le retirer
+  -- (`identifiants_retires`), et quiconque le recréerait hériterait des cartes qui le citent.
+  -- Le client renvoie le même identifiant (sorti plus haut) : rien ne casse.
+  if tg_op = 'UPDATE' and tg_table_name = 'events' then
+    raise exception using errcode = 'PT409',
+      message = 'identifiant d''activité figé',
+      hint = 'BLOC-ACT bis : renommer une activité libérerait son identifiant sans le retirer.';
+  end if;
   perform pg_advisory_xact_lock(hashtextextended('passio:identifiant:' || new.id, 0));
   -- Déjà dans SA table : un rejeu (ou un conflit de mise à jour). La clé primaire répond
   -- (`<table>_pkey`), que le client sait reconnaître comme « déjà en base ». FOR KEY SHARE :
@@ -317,7 +352,7 @@ begin
 end
 $$;
 comment on function public.identifiant_sans_homonyme() is
-  'Refuse (PT409) un identifiant déjà présent dans posts, events, post_comments ou event_comments, porté par un fil orphelin ou retiré (RV-45 : comment_target_visible et fil_temps_reel_visible devinent le type d''une cible d''après sa table). Ne juge pas un visiteur (la RLS le refuse ensuite). BLOC-ACT bis, 2026-11-22.';
+  'Refuse (PT409) un identifiant déjà présent dans posts, events, post_comments ou event_comments, porté par un fil orphelin ou retiré (RV-45 : comment_target_visible et fil_temps_reel_visible devinent le type d''une cible d''après sa table). Refuse un visiteur AVANT tout contrôle (42501, comme la RLS). Fige events.id. BLOC-ACT bis, 2026-11-22.';
 revoke execute on function public.identifiant_sans_homonyme() from public, anon, authenticated;
 
 drop trigger if exists aa_identifiant_sans_homonyme on public.posts;
@@ -508,6 +543,7 @@ select 15, '⑮ le déclencheur : SQLSTATE dédié, toutes les sources d''orphel
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%identifiants_retires%'
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%current_setting(''role'', true) = ''anon''%errcode = ''42501''%'
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%for key share%'
+             and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%tg_op = ''UPDATE'' and tg_table_name = ''events''%'
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%comment_interactions where comment_id = new.id and user_id is distinct from new.author_id%'
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%post_comments where post_id = new.id%'
              and (select prosrc from pg_proc where oid = 'public.identifiant_sans_homonyme()'::regprocedure) like '%post_likes where post_id = new.id%'
@@ -520,6 +556,12 @@ select 16, '⑯ comment_interactions / comment_likes : restrictives de lecture h
                           and qual like '%b.blocker_id = (( SELECT auth.uid() AS uid))::text%')
              and exists (select 1 from pg_policies where schemaname='public' and tablename='comment_likes' and policyname='comment_likes_lecture_hors_blocage'
                           and permissive='RESTRICTIVE' and cmd='SELECT' and roles = '{authenticated}' and qual like '%is_blocked_with(user_id)%') then 'OK' else 'ECHEC' end
+union all
+select 18, '⑱ les restrictives d''INSERT par visibilité sont là (une interaction, un commentaire ou un « j''aime » ne précède pas sa cible : pas de faux PT409)',
+       case when (select count(*) from pg_policies where schemaname = 'public' and permissive = 'RESTRICTIVE' and cmd = 'INSERT'
+                   and (tablename, policyname) in (('comment_interactions', 'ci_visibilite_insert'), ('comment_likes', 'comment_likes_visibilite_insert'),
+                                                   ('post_comments', 'post_comments_visibilite_insert'), ('post_likes', 'post_likes_visibilite_insert'))) = 4
+             then 'OK' else 'ECHEC' end
 union all
 select 17, '⑰ ce que lisent le déclencheur et les policies existe : identifiants retirés, blocks lisible par authenticated',
        case when to_regclass('rencontres_prive.identifiants_retires') is not null
