@@ -16,12 +16,17 @@
 #      production ; (cid) commentaire homonyme), repost
 #      à deux niveaux, fils sous la carte de Léa, organisatrice privée du
 #      commentaire du bloqué
-#   ① la bis s'applique (14 OK), se rejoue
+#   ① la bis s'applique (17 OK), se rejoue
 #   ② APRÈS : tout homonyme est REFUSÉ (PT409) dans les quatre tables, à
 #      l'insertion comme au changement d'identifiant, fils orphelins et
 #      identifiants retirés compris, y compris entre DEUX SESSIONS concurrentes
 #      (verrou consultatif) ; un rejeu dans la même table rend `<table>_pkey` ;
-#      un VISITEUR n'apprend rien (42501 de la RLS, pas PT409) ; un organisateur
+#      un VISITEUR n'apprend rien (42501 avant tout contrôle, y compris sur un
+#      identifiant qui existe AILLEURS — sans la garde, PT409) ; une suppression
+#      CONCURRENTE n'ouvre pas la réinsertion (FOR KEY SHARE, sans lui la ligne
+#      passe) ; commentaires et « j'aime » orphelins comptent ; une réaction de
+#      l'auteur précédant son commentaire ne le refuse pas ; réponses et
+#      « j'aime » d'un compte en blocage ne se lisent plus ; un organisateur
 #      bloqué ne relit pas ce que son bloqueur a laissé ; les trous sont fermés ;
 #      le compte privé et la modération tiennent ; Inès et un visiteur lisent
 #      comme avant ; la carte CITÉE SUPPRIMÉE est le reste déclaré
@@ -249,10 +254,10 @@ verifier "organisatrice : Léa ne lit pas le vieux commentaire de Kevin sur SON 
 
 echo "── ① APPLICATION, VERDICT, REJEU ─────────────────────────────────────"
 sortie="$(APPLIQUER "$BIS")" || { echo "  ❌ la bis a échoué :"; echo "$sortie" | tail -5; exit 1; }
-verifier "la bis rend 15 OK et 0 ECHEC" "15/0" \
+verifier "la bis rend 17 OK et 0 ECHEC" "17/0" \
   "$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)/$(printf '%s\n' "$sortie" | grep -cE '\|\s*ECHEC\s*$' || true)"
 sortie2="$(APPLIQUER "$BIS")" || { echo "  ❌ la bis REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
-verifier "rejeu : toujours 15 OK" "15" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
+verifier "rejeu : toujours 17 OK" "17" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
 
 echo "── ② APRÈS : plus d'homonyme, trous fermés ───────────────────────────"
 verifier "A : l'activité homonyme d'une publication privée est REFUSÉE" "PT409" "$(ECRIT "$Z" "insert into public.events (id, author_id, title) values ('post_paul_prive', '$Z', 'homonyme')")"
@@ -272,6 +277,7 @@ verifier "rejeu dans la MÊME table : la clé primaire répond (posts_pkey), pas
   "$(MSG "$HUGO" "insert into public.posts (id, author_id, content) values ('post_hugo_libre', '$HUGO', 'rejeu')" | grep -oE '^23505|posts_pkey' | tr '\n' ' ' | sed 's/ $//')"
 verifier "un VISITEUR n'apprend rien : 42501 de la RLS, pas PT409 (identifiant privé existant)" "42501" "$(ECRIT_ANON "insert into public.posts (id, author_id, content) values ('post_paul_prive', null, 'sonde')")"
 verifier "…ni sur un identifiant libre (même réponse)" "42501" "$(ECRIT_ANON "insert into public.posts (id, author_id, content) values ('libre_xyz', null, 'sonde')")"
+verifier "…ni sur un identifiant qui existe dans une AUTRE table (cas probant : sans la garde, PT409)" "42501" "$(ECRIT_ANON "insert into public.posts (id, author_id, content) values ('evt_lea', null, 'sonde')")"
 verifier "fil ORPHELIN : un post à l'identifiant d'un fil dont la ligne a disparu est REFUSÉ" "PT409" "$(ECRIT "$Z" "insert into public.posts (id, author_id, content) values ('fil_orphelin', '$Z', 'résurrection')")"
 verifier "…et un visiteur ne lit pas ses réponses" "0" "$(ANON "select count(*) from public.comment_interactions where post_id = 'fil_orphelin';")"
 verifier "cible ORPHELINE : un commentaire à l'identifiant d'une cible aimée puis disparue est REFUSÉ" "PT409" "$(ECRIT "$Z" "insert into public.post_comments (id, post_id, author_id, content) values ('cible_orpheline', 'post_hugo_libre', '$Z', 'x')")"
@@ -307,18 +313,74 @@ echo "   reste DÉCLARÉ : la carte citée supprimée"
 Q "delete from public.posts where id = 'post_ines_carte';" >/dev/null
 verifier "carte d'Inès supprimée : le repost de Hugo redevient lisible par Kevin (reste hors lot, déclaré)" "1" "$(EN "$KEVIN" "select count(*) from public.posts where id = 'post_hugo_repost';")"
 
+echo "   orphelins : toutes les sources"
+Q "insert into public.post_comments values ('pc_orph', 'p_vlog_berlin', '$INES', 'sous un ancien exemple');
+   insert into public.post_likes values ('p_like_orphelin', '$INES');" >/dev/null
+verifier "commentaires ORPHELINS : un post à l'identifiant de leur fil (ancien exemple) est REFUSÉ" "PT409" "$(ECRIT "$Z" "insert into public.posts (id, author_id, content) values ('p_vlog_berlin', '$Z', 'x')")"
+verifier "« j'aime » ORPHELINS : idem" "PT409" "$(ECRIT "$Z" "insert into public.posts (id, author_id, content) values ('p_like_orphelin', '$Z', 'x')")"
+verifier "réaction ORPHELINE d'un autre : un commentaire à son identifiant de cible est REFUSÉ" "PT409" "$(ECRIT "$Z" "insert into public.post_comments (id, post_id, author_id, content) values ('c_orph', 'post_hugo_libre', '$Z', 'x')")"
+verifier "réaction de l'AUTEUR arrivée avant son commentaire : le commentaire passe" "ok" "$(ECRIT "$INES" "insert into public.post_comments (id, post_id, author_id, content) values ('c_orph', 'post_hugo_libre', '$INES', 'x')")"
+verifier "une activité ne prend pas, par UPDATE, un identifiant RETIRÉ" "PT409" "$(ECRIT "$LEA" "update public.events set id = 'evt_retire' where id = 'evt_lea'")"
+
+echo "   réponses et « j'aime » d'un compte en blocage"
+Q "insert into public.event_comments values ('ec_kev_own', 'evt_kev', '$KEVIN', 'mon atelier');
+   insert into public.comment_interactions values
+     ('ci_lea_sur_kev', 'ec_lea_sur_kev', 'evt_kev', '$LEA', 'reply', 'réponse de Léa chez Kevin'),
+     ('ci_kev_sur_lea', 'ec_k', 'evt_lea', '$KEVIN', 'reply', 'réponse de Kevin chez Léa');
+   insert into public.comment_likes values ('ec_kev_own', '$LEA');" >/dev/null
+verifier "Kevin, organisateur BLOQUÉ, ne lit ni la réponse ni le « j'aime » de Léa sur SON activité" "0|0" \
+  "$(EN "$KEVIN" "select count(*) from public.comment_interactions where id = 'ci_lea_sur_kev';")|$(EN "$KEVIN" "select count(*) from public.comment_likes where comment_id = 'ec_kev_own' and user_id = '$LEA';")"
+verifier "Léa, organisatrice qui A bloqué, lit la réponse de Kevin sur SON activité" "1" "$(EN "$LEA" "select count(*) from public.comment_interactions where id = 'ci_kev_sur_lea';")"
+verifier "Inès (sans blocage) lit les deux réponses et le « j'aime »" "2|1" \
+  "$(EN "$INES" "select count(*) from public.comment_interactions where id in ('ci_lea_sur_kev', 'ci_kev_sur_lea');")|$(EN "$INES" "select count(*) from public.comment_likes where comment_id = 'ec_kev_own';")"
+Q "insert into public.blocks values ('$KEVIN', '$LEA');" >/dev/null
+verifier "blocage RÉCIPROQUE : chaque organisateur relit ce que l'autre a laissé chez lui" "1|1|1" \
+  "$(EN "$KEVIN" "select count(*) from public.event_comments where id = 'ec_lea_sur_kev';")|$(EN "$KEVIN" "select count(*) from public.comment_interactions where id = 'ci_lea_sur_kev';")|$(EN "$LEA" "select count(*) from public.event_comments where id = 'ec_k';")"
+Q "delete from public.blocks where blocker_id = '$KEVIN';" >/dev/null
+
+echo "   course : une suppression en cours et une réinsertion"
+Q "insert into public.events (id, author_id, title) values ('evt_del', '$LEA', 'à supprimer');
+   insert into public.comment_interactions values ('ci_del', 'c_del', 'evt_del', '$INES', 'reply', 'reste après la suppression');" >/dev/null
+course_suppression() {
+  psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "begin; delete from public.events where id = 'evt_del'; select pg_sleep(5); commit;" >/dev/null 2>&1 &
+  local pid=$!
+  sleep 1
+  local t0=$(date +%s)
+  local r; r="$(ECRIT "$Z" "insert into public.events (id, author_id, title) values ('evt_del', '$Z', 'réinsertion')")"
+  local d=$(( $(date +%s) - t0 ))
+  wait "$pid" || true
+  echo "$r|$([ "$d" -ge 3 ] && echo attendu || echo "aussitôt ($d s)")"
+}
+verifier "suppression EN COURS : la réinsertion ATTEND, puis est refusée (fil orphelin)" "PT409|attendu" "$(course_suppression)"
+
 echo "── ③ MUTATIONS : le verdict LÈVE, rien n'est validé ──────────────────"
 Q "alter policy passio_rt_recevoir_fil on realtime.messages using (((realtime.topic() ~~ 'fil:%'::text) and fil_temps_reel_visible(substr(realtime.topic(), 5))));" >/dev/null
 if sortie3="$(APPLIQUER "$BIS")"; then verifier "policy temps réel sans comment_target_visible → la bis LÈVE" "levée" "validée"
 else verifier "policy temps réel sans comment_target_visible → la bis LÈVE" "levée" "$(printf '%s' "$sortie3" | grep -q 'VERDICT EN ECHEC' && echo levée || echo "autre erreur")"; fi
 Q "alter policy passio_rt_recevoir_fil on realtime.messages using (((realtime.topic() ~~ 'fil:%'::text) and fil_temps_reel_visible(substr(realtime.topic(), 5)) and comment_target_visible(null::text, substr(realtime.topic(), 5)) and (not post_auteur_bloque(substr(realtime.topic(), 5)))));" >/dev/null
-verifier "verdict seul, état sain : 15 OK" "15" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+verifier "verdict seul, état sain : 17 OK" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
 Q "create or replace function public.publication_masquee_pour_moi(p_post_id text) returns boolean language sql stable security definer set search_path = '' as \$fn\$ select p_post_id is not null and exists (select 1 from public.posts p where p.id = p_post_id and public.is_blocked_with(p.author_id)) \$fn\$;" >/dev/null
 verifier "garde « sans compte » retirée de l'aide → le verdict ① dit ECHEC" "1:ECHEC" "$(VERDICT_SEUL | tr ' ' '\n' | grep '^1:')"
 Q "create or replace function public.identifiant_sans_homonyme() returns trigger language plpgsql security definer set search_path = '' as \$fn\$ begin if exists (select 1 from public.posts where id = new.id) then raise exception using errcode = 'PT409'; end if; return new; end \$fn\$;" >/dev/null
 verifier "déclencheur sans la garde du visiteur ni les orphelins → le verdict ⑮ dit ECHEC" "15:ECHEC" "$(VERDICT_SEUL | tr ' ' '\n' | grep '^15:')"
 APPLIQUER "$BIS" >/dev/null
-verifier "…la bis rejouée remet les deux" "15" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+verifier "…la bis rejouée remet les deux" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
+# Le déclencheur de la bis, SANS la garde du visiteur : la sonde probante rend PT409.
+sed -n '/^create or replace function public.identifiant_sans_homonyme()$/,/^\$\$;$/p' "$BIS" \
+  | sed "/current_setting('role', true) = 'anon' then/,/end if;/d" \
+  | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null
+verifier "MUTATION garde du visiteur retirée : la sonde anonyme apprend l'existence (PT409)" "PT409" "$(ECRIT_ANON "insert into public.posts (id, author_id, content) values ('evt_lea', null, 'sonde')")"
+# Le déclencheur de la bis, SANS FOR KEY SHARE : la réinsertion pendant la suppression passe.
+sed -n '/^create or replace function public.identifiant_sans_homonyme()$/,/^\$\$;$/p' "$BIS" \
+  | sed 's/ for key share//' \
+  | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null
+# evt_del a été supprimée par la course précédente et son fil est orphelin : le déclencheur
+# refuserait de la recréer (c'est son rôle). On la recrée donc déclencheur suspendu.
+Q "alter table public.events disable trigger zz_identifiant_sans_homonyme; insert into public.events (id, author_id, title) values ('evt_del', '$LEA', 'à supprimer'); alter table public.events enable trigger zz_identifiant_sans_homonyme;" >/dev/null
+verifier "MUTATION sans FOR KEY SHARE : la réinsertion pendant la suppression PASSE" "ok|attendu" "$(course_suppression)"
+Q "delete from public.events where id = 'evt_del';" >/dev/null
+APPLIQUER "$BIS" >/dev/null
+verifier "…la bis rejouée remet le déclencheur complet (17 OK)" "17" "$(VERDICT_SEUL | tr ' ' '\n' | grep -c ':OK$')"
 Q "drop trigger zz_identifiant_sans_homonyme on public.event_comments;" >/dev/null
 verifier "déclencheur retiré : un homonyme repasse (prémisse)" "ok" "$(ECRIT "$Z" "insert into public.event_comments (id, event_id, author_id, text) values ('pc_p', 'evt_lea', '$Z', 'homonyme')")"
 APPLIQUER "$BIS" >/dev/null 2>&1 || true
@@ -344,7 +406,7 @@ verifier "…et les qual des policies de la première migration, à l'identique"
 verifier "…sans aide neuve ni déclencheur" "0|0" \
   "$(Q "select count(*) from pg_proc where proname in ('publication_masquee_pour_moi', 'identifiant_sans_homonyme');")|$(Q "select count(*) from pg_trigger where tgname = 'zz_identifiant_sans_homonyme';")"
 sortie4="$(APPLIQUER "$BIS")" || true
-verifier "la bis se réapplique après le retour arrière : 15 OK" "15" "$(printf '%s\n' "$sortie4" | grep -cE '\|\s*OK\s*$' || true)"
+verifier "la bis se réapplique après le retour arrière : 17 OK" "17" "$(printf '%s\n' "$sortie4" | grep -cE '\|\s*OK\s*$' || true)"
 
 echo "── ⑤ GARDES ─────────────────────────────────────────────────────────"
 Q "alter table public.events disable trigger zz_identifiant_sans_homonyme; insert into public.events (id, author_id, title) values ('post_lea', '$Z', 'homonyme posé à la main');" >/dev/null

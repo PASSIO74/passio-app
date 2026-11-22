@@ -2176,7 +2176,7 @@ Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa 
 
 ### Bis — `migration_blocage_lecture_activites_bis_2026-11-22.sql` (**appliquée nulle part** : relecture puis contre-revue de la session mère attendues)
 
-Une relecture indépendante faite APRÈS la mise en production a trouvé quatre trous. Une deuxième relecture a refusé le premier correctif ; une troisième a trouvé une régression et trois points que la base mesurée rendait réels. Tout a été vérifié au staging, dans des transactions annulées, et les deux bancs exécutés sur un PostgreSQL 17 jetable.
+Une relecture indépendante faite APRÈS la mise en production a trouvé quatre trous. Une deuxième relecture a refusé le premier correctif ; une troisième a trouvé une régression et trois points que la base mesurée rendait réels ; une quatrième, des sources d'orphelins oubliées, une course avec une suppression, et un banc qui pouvait passer sur une version fausse. Tout a été vérifié au staging, dans des transactions annulées, et les deux bancs exécutés sur un PostgreSQL 17 jetable.
 
 **Ce n'est PAS une régression du 22/11.** Avant #1017, un compte bloqué lisait déjà TOUT. La première migration a fermé l'essentiel ; ces trous sont ce qu'elle laissait OUVERT. L'homonymie préexistait (RV-45) et ne s'est pas aggravée en production. Ne pas lire « faille introduite le 22/11 ».
 
@@ -2184,22 +2184,24 @@ Une relecture indépendante faite APRÈS la mise en production a trouvé quatre 
   - **Premier correctif, REFUSÉ** : faire primer l'activité. Le trou se retournait : une activité forgée à l'identifiant d'une publication privée l'ouvrait à un visiteur. #951 avait choisi l'ordre inverse exprès.
   - **Correctif retenu** : il n'y a plus d'homonyme. Le déclencheur `zz_identifiant_sans_homonyme`, posé sur les quatre tables, refuse à l'insertion comme au changement d'identifiant un identifiant :
     - déjà présent dans une autre des quatre tables ;
-    - porté par un fil ou une cible ORPHELINS (215 réponses sur 39 fils en production, restées après la suppression de leur activité) ;
+    - porté par un fil ou une cible ORPHELINS : réponses et réactions (`comment_interactions.post_id` / `.comment_id`), commentaires et « j'aime » (`post_comments.post_id`, `post_likes.post_id`, `comment_likes.comment_id`). En production : 215 réponses sur 39 fils, 10 fils de commentaires ou « j'aime », dont d'anciens identifiants d'EXEMPLE devinables ;
     - ou retiré (`rencontres_prive.identifiants_retires`).
   - **Comment il le fait** :
     - il est SECURITY DEFINER (l'homonyme peut être invisible à l'appelant) et pris sous un verrou consultatif par identifiant (éprouvé à DEUX sessions : sans verrou, la seconde passe) ;
     - il lève le SQLSTATE dédié `PT409` (HTTP 409), car le client prend un 23505 pour « déjà en base » (`supaPublishEvent`) ;
-    - un rejeu dans la même table laisse répondre `<table>_pkey` ;
-    - un visiteur sans compte n'est pas jugé (la RLS le refuse ensuite), sinon il saurait qu'un identifiant privé existe ;
+    - un rejeu dans la même table laisse répondre `<table>_pkey`, et ce « déjà dans SA table » se lit sous `FOR KEY SHARE` : une SUPPRESSION en cours est attendue, puis les contrôles s'appliquent à l'état validé (sans lui, la réinsertion d'une activité qu'on supprime passait, fil orphelin compris) ;
+    - un visiteur sans compte est refusé AVANT tout contrôle, en 42501 comme la RLS (sinon il saurait qu'un identifiant privé existe ; refuser par défaut tient même si une policy d'écriture anonyme apparaît) ;
+    - une réaction de l'AUTEUR précédant son propre commentaire ne le refuse pas (l'écriture d'une interaction est jugée par son fil) ;
+    - côté client, un PT409 marque la publication « refusée » avec un message, au lieu d'un rejeu toutes les 45 s ;
     - `comment_target_visible` n'est pas réécrite.
 - **② Repartage à deux niveaux.** Le repost de la carte d'Inès recopie le texte de la carte. `publication_masquee_pour_moi(id)` applique la règle entière à la publication CITÉE (un niveau). Elle rend FAUX d'emblée sans compte.
 - **③ Fils.** `post_is_visible` applique la même règle : commentaires, j'aime, interactions, `comment_likes`, `fil_compteurs`, canal `fil:`.
-- **④ L'organisatrice** relit ce qu'un compte qu'ELLE a bloqué a laissé sur SON activité, jamais l'inverse (la v2 rendait à un organisateur bloqué le commentaire de son bloqueur : régression trouvée en troisième relecture). Le test passe par `events` et `blocks` lues sous sa propre RLS.
+- **④ L'organisatrice** relit ce qu'un compte qu'ELLE a bloqué a laissé sur SON activité, jamais l'inverse (la v2 rendait à un organisateur bloqué le commentaire de son bloqueur : régression trouvée en troisième relecture). Le test passe par `events` et `blocks` lues sous sa propre RLS. Même règle pour les réponses et réactions (`comment_interactions`, sur MON fil d'activité ou de publication) et les « j'aime » de commentaires (`comment_likes`) d'un compte en blocage avec moi.
 - **Garde-fous** :
   - `lock_timeout` 3 s et `statement_timeout` 30 s ;
   - garde md5 sur `post_is_visible` et sur les deux `comment_target_visible` (non réécrites) ;
   - garde « zéro homonyme » avant de poser le déclencheur ;
-  - un verdict de 14 lignes qui LÈVE sur un seul ECHEC ;
+  - un verdict de 17 lignes qui LÈVE sur un seul ECHEC ;
   - un retour arrière GARDÉ (il refuse un état qui n'est pas celui de la bis).
 - **Mesures au staging** (Léa bloque Kevin ; Paul est privé) :
   - les quatre homonymes forgés (A, B, miroir, `(cid)`), un changement d'identifiant vers un homonyme et la reprise d'un fil orphelin sont refusés en PT409 ; un rejeu dans la même table rend `posts_pkey` ; un visiteur reçoit 42501 sur un identifiant privé existant comme sur un identifiant libre ;
@@ -2207,9 +2209,10 @@ Une relecture indépendante faite APRÈS la mise en production a trouvé quatre 
   - Léa garde son fil et voit le vieux commentaire de Kevin ;
   - Paul reste privé pour tous ;
   - rien ne change pour Inès ni pour un visiteur ;
-  - coût : un visiteur 4 µs par ligne, un connecté avec un blocage 75 µs par publication.
+  - coût : un visiteur 4 µs par ligne, un connecté avec un blocage 32 à 54 µs par publication selon les mesures.
+  - Kevin, organisateur bloqué par Léa, ne lit plus la RÉPONSE de Léa sur son activité.
   - Retour arrière : il rend les empreintes de la première migration, 0 déclencheur, puis la bis se réapplique.
-- **Bancs** : `tests/sql/migration-blocage-lecture-activites-bis.test.sh` (63 verts) et celui de la première migration (31 verts), exécutés sur ce poste avant la CI. Le banc de la bis utilise les vraies `post_masque`, `abonne_accepte_non_bloque` et `post_is_visible`, les policies et les privilèges de production (dont `comment_likes`, `update (content)` sur `posts`, l'INSERT d'anon), et la policy temps réel évaluée par topic. Il couvre A, B, le miroir, `(cid)`, la course à deux sessions, le rejeu, le visiteur, les orphelins, l'identifiant retiré, l'organisateur bloqué, le compte privé, la modération, la carte supprimée, les mutations du verdict, le retour arrière (empreintes ET `qual`) et les gardes.
+- **Bancs** : `tests/sql/migration-blocage-lecture-activites-bis.test.sh` (77 verts) et celui de la première migration (31 verts), exécutés sur ce poste avant la CI. Le banc de la bis utilise les vraies `post_masque`, `abonne_accepte_non_bloque` et `post_is_visible`, les policies et les privilèges de production (dont `comment_likes`, `update (content)` sur `posts`, l'INSERT d'anon), et la policy temps réel évaluée par topic. Il couvre A, B, le miroir, `(cid)`, la course à deux sessions, la course avec une suppression, le rejeu, le visiteur (sur un identifiant qui existe AILLEURS, le seul cas qui distingue la garde), toutes les sources d'orphelins, la réaction de l'auteur qui précède son commentaire, l'identifiant retiré (insertion et UPDATE), l'organisateur bloqué et le blocage réciproque, les réponses et « j'aime » d'un bloqué, les mutations du déclencheur (garde du visiteur, `FOR KEY SHARE` : chacune rougit le banc), le compte privé, la modération, la carte supprimée, les mutations du verdict, le retour arrière (empreintes ET `qual`) et les gardes.
 
 ⚠️ **UN BANC SQL QUI N'A JAMAIS TOURNÉ N'EST PAS UN BANC.** Les deux bancs de ce lot ont d'abord été écrits sans PostgreSQL sur le poste. La CI les a trouvés rouges tous les deux (fonctions chargées dans un ordre où elles s'appellent avant d'exister ; `check_function_bodies = off`, comme `pg_dump`). L'exécution locale a ensuite trouvé un défaut du BANC lui-même : une policy ouverte à la place de celle de production, qui le faisait passer pour de mauvaises raisons. Sous Windows, sans psql : les binaires PostgreSQL du paquet npm `@embedded-postgres/windows-x64` et un psql de substitution sur le pilote `pg` suffisent.
 
@@ -2219,5 +2222,8 @@ Une relecture indépendante faite APRÈS la mise en production a trouvé quatre 
 - **Carte citée supprimée.** `shared_from_post_id` n'a pas de clé étrangère, et le repost garde le texte recopié : il redevient lisible par le bloqué. Fermer ce cas, c'est neutraliser le texte des repartages à la suppression de l'original — changement de produit, voir village A24.
 - **Lecture anonyme** des activités publiques.
 - **`events.id` reste modifiable** par l'organisateur (`posts.id` ne l'est plus depuis #888, `post_comments.id` est figé, `event_comments` n'a pas de policy UPDATE), mais jamais vers un homonyme.
+- **Diffusion et agrégats** : `diffuser_interaction` (canal `fil:`) et `fil_compteurs` ne regardent pas le blocage entre le lecteur et l'AUTEUR d'une réaction (seulement la visibilité du fil) : un emoji ou un GIF d'un compte bloqué peut encore s'y montrer.
+- **Carte d'activité occupée d'avance** : son identifiant déterministe `post_ev_<id>` peut être pris dans `post_comments` ou `event_comments`, et la carte est alors refusée (PT409). Le déni se limite à la carte automatique.
+- **Activité retirée** : la production répond 23514 (`aa_rencontres_activite` passe avant `zz_`), PT409 ailleurs.
 - **Épreuves embarquées non rejouables** : celles de `migration_epingle_commentaire_2026-11-05.sql` et `migration_publications_supprimees_2026-11-04.sql` insèrent des homonymes exprès ; après la bis, elles prennent PT409. Ne pas rejouer ces migrations telles quelles.
-- **215 réponses orphelines restent en base**, inatteignables sans un identifiant neuf égal, désormais refusé. Les purger est une écriture de données (canal ②), décision de Benjamin.
+- **215 réponses et 10 fils orphelins restent en base**, inatteignables sans un identifiant neuf égal, désormais refusé. Les purger est une écriture de données (canal ②), décision de Benjamin.
