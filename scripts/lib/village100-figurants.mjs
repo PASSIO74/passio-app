@@ -9,7 +9,12 @@
 //   · se désister : DELETE, puis `promouvoir_attente(p_user_id: null)`
 //     (`_promoteNextWaitlisted`, app-07) ;
 //   · aimer, commenter : l'écriture, PUIS la notification à l'auteur, seulement
-//     si l'écriture est acceptée (`notifierApresEcriture`, SRV-02) ;
+//     si l'écriture est acceptée (`notifierApresEcriture`, SRV-02), PUIS
+//     l'appel à `notify-call` (`_pousserPushNotif`, app-08) — le client le
+//     fait à chaque notification acceptée, et c'est un mur à part (429) ;
+//   · « je viens » accepté : la discussion de l'activité (`conv_members`,
+//     `_joinEventConversation`, app-07) et le push `event_join` à
+//     l'organisatrice (app-07) ; le désistement quitte la discussion ;
 //   · le direct : UN socket par compte, le topic privé `user:<uid>` seul
 //     (profil `sans-cdc` du banc charge-realiste : le client ne rejoint plus
 //     `realtime:db` depuis le 2026-11-09).
@@ -21,17 +26,57 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { randomUUID } from "node:crypto";
 import { Budget } from "./charge-realiste.mjs";
-import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, emailFigurant } from "./village100.mjs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, emailFigurant, campagneValide,
+  emailDeLaCampagne, tableAbsente, comptesAPurger } from "./village100.mjs";
 
 const pause = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const enc = encodeURIComponent;
 const court = (t) => String(t || "").replace(/\s+/g, " ").slice(0, 140);
-// Motif fermé du refus d'inscription (`_motifRefusRsvp`, app-08).
+// Motif fermé du refus d'inscription : EXACTEMENT ceux de `_motifRefusRsvp`
+// (app-08). Un autre refus à l'UPDATE ne l'arrête pas : le client tente alors
+// l'INSERT, le figurant aussi.
 export function motifRefusRsvp(texte) {
   const m = /activite_(complete|annulee|passee|introuvable)/.exec(String(texte || ""));
-  if (m) return m[1];
+  return m ? m[1] : null;
+}
+// Pour le RAPPORT seulement (le client ne les nomme pas) : les autres refus
+// serveur des inscriptions (migration des rencontres du 2026-11-16).
+export function motifServeurRsvp(texte) {
   const n = /inscriptions_jour_limite|organisateur_bloque|rencontre_concurrente_reessayer/.exec(String(texte || ""));
   return n ? n[0] : null;
+}
+
+// ── Le manifeste de la séance ─────────────────────────────────────────────────
+// Écrit AVANT chaque création de compte, avec l'adresse exacte : un compte dont
+// la réponse de création se perd reste retrouvable par son adresse. Hors de
+// `test-results/`, que Playwright vide au lancement suivant. Une écriture qui
+// échoue LÈVE : un manifeste muet est un compte orphelin pour toujours.
+export class Manifeste {
+  constructor(chemin, campagne) {
+    if (!campagneValide(campagne)) throw new Error("CAMPAGNE_INVALIDE");
+    this.chemin = chemin;
+    this.etat = { campagne, cible: STAGING_REF, comptes: [], purge: false, debut: new Date().toISOString() };
+    this.ecrire();
+  }
+  static lire(chemin) {
+    if (!existsSync(chemin)) return null;
+    const m = JSON.parse(readFileSync(chemin, "utf8"));
+    if (!m || !campagneValide(m.campagne) || m.cible !== STAGING_REF || !Array.isArray(m.comptes)) throw new Error("MANIFESTE_INVALIDE");
+    return m;
+  }
+  ecrire() { mkdirSync(dirname(this.chemin), { recursive: true }); writeFileSync(this.chemin, JSON.stringify(this.etat, null, 2)); }
+  avantCreation(email) {
+    if (!emailDeLaCampagne(email, this.etat.campagne)) throw new Error("ADRESSE_HORS_CAMPAGNE");
+    this.etat.comptes.push({ email, id: null }); this.ecrire();
+  }
+  apresCreation(email, id) {
+    const c = this.etat.comptes.find((x) => x.email === email);
+    if (!c) throw new Error("ADRESSE_NON_ANNONCEE");
+    c.id = id; this.ecrire();
+  }
+  purgee() { this.etat.purge = true; this.ecrire(); }
 }
 
 export function gardesCible(url) {
@@ -40,16 +85,18 @@ export function gardesCible(url) {
 }
 
 export class Foule {
-  constructor({ url, anon, service, campagne, log = () => {}, surComptes = () => {} }) {
+  constructor({ url, anon, service, campagne, log = () => {}, manifeste }) {
     gardesCible(url);
     if (!anon || !service) throw new Error("CLES_STAGING_MANQUANTES");
+    if (!manifeste) throw new Error("MANIFESTE_REQUIS");
     this.url = url; this.anon = anon; this.service = service; this.campagne = campagne;
-    this.log = log; this.surComptes = surComptes;
+    this.log = log; this.manifeste = manifeste; this.convIds = new Map();
     this.figurants = []; this.mesures = []; this.joins = [];
     this.budget = new Budget(LIMITES_VILLAGE100);
     this.sockets = new Set(); this.picSockets = 0; this.fermeture = false;
     this.frames = { total: 0, instants: [], broadcasts: 0, notifications: 0, refus: [] };
     this.surNotif = null;
+    this.premiersRefus = {}; // « famille statut » → premier corps d'erreur, tronqué (staging, comptes jetables)
   }
 
   // ── HTTP mesuré ────────────────────────────────────────────────────────────
@@ -72,6 +119,7 @@ export class Foule {
     }
     const ms = Math.round(performance.now() - t0);
     this.mesures.push({ famille, status, ms, t });
+    if (status != null && status >= 400 && !this.premiersRefus[`${famille} ${status}`]) this.premiersRefus[`${famille} ${status}`] = court(texte);
     let data = null;
     try { data = texte ? JSON.parse(texte) : null; } catch (e) { data = null; }
     return { status, ok: status >= 200 && status < 300, data, texte, ms, t };
@@ -84,12 +132,13 @@ export class Foule {
     for (let i = 0; i < n; i++) {
       if (i) await pause(DELAI_CONNEXION_MS);
       const email = emailFigurant(this.campagne, i), password = randomUUID() + "aA!7";
+      this.manifeste.avantCreation(email); // AVANT : une réponse perdue reste retrouvable
       const u = await this.http("auth_creation", "/auth/v1/admin/users", { methode: "POST", service: true,
         corps: { email, password, email_confirm: true } });
       if (!u.ok || !u.data || !u.data.id) throw new Error(`CREATION_FIGURANT_${i}_HTTP_${u.status}`);
+      this.manifeste.apresCreation(email, u.data.id);
       const f = { index: i, id: u.data.id, nom: `Figurant ${i + 1}`, notifsRecues: [], broadcasts: 0 };
       this.figurants.push(f);
-      this.surComptes(this.figurants.map((x) => x.id));
       const s = await this.http("auth_connexion", "/auth/v1/token?grant_type=password", { methode: "POST", corps: { email, password } });
       if (!s.ok || !s.data || !s.data.access_token) throw new Error(`CONNEXION_FIGURANT_${i}_HTTP_${s.status}`);
       f.jwt = s.data.access_token;
@@ -175,22 +224,52 @@ export class Foule {
     return r.ok && Array.isArray(r.data) && r.data[0] ? r.data[0] : null;
   }
   // `supaSetEventRsvp` (app-08) : UPDATE d'abord, puis INSERT.
-  async rsvp(f, evt, voulu) {
+  async rsvp(f, evt, voulu, orga) {
     const filtre = `event_id=eq.${enc(evt)}&user_id=eq.${f.id}`;
     const upd = await this.http("rsvp_update", `/rest/v1/event_attendees?${filtre}&select=event_id`, {
       methode: "PATCH", jwt: f.jwt, prefer: "return=representation", corps: { rsvp: voulu } });
-    if (upd.ok && Array.isArray(upd.data) && upd.data.length) return { issue: voulu, ms: upd.ms, t: upd.t };
-    if (!upd.ok && motifRefusRsvp(upd.texte)) return { issue: motifRefusRsvp(upd.texte), ms: upd.ms, t: upd.t };
-    const ins = await this.http("rsvp_insert", "/rest/v1/event_attendees", { methode: "POST", jwt: f.jwt, prefer: "return=minimal",
-      corps: { event_id: evt, user_id: f.id, rsvp: voulu, created_at: new Date().toISOString() } });
-    if (ins.ok) return { issue: voulu, ms: ins.ms, t: ins.t, status: ins.status };
-    return { issue: motifRefusRsvp(ins.texte) || `HTTP_${ins.status}`, detail: court(ins.texte), ms: ins.ms, t: ins.t, status: ins.status };
+    let r;
+    if (upd.ok && Array.isArray(upd.data) && upd.data.length) r = { issue: voulu, ms: upd.ms, t: upd.t };
+    else if (!upd.ok && motifRefusRsvp(upd.texte)) return { issue: motifRefusRsvp(upd.texte), ms: upd.ms, t: upd.t };
+    else {
+      const ins = await this.http("rsvp_insert", "/rest/v1/event_attendees", { methode: "POST", jwt: f.jwt, prefer: "return=minimal",
+        corps: { event_id: evt, user_id: f.id, rsvp: voulu, created_at: new Date().toISOString() } });
+      if (!ins.ok) return { issue: motifRefusRsvp(ins.texte) || motifServeurRsvp(ins.texte) || `HTTP_${ins.status}`, detail: court(ins.texte), ms: ins.ms, t: ins.t, status: ins.status };
+      r = { issue: voulu, ms: ins.ms, t: ins.t, status: ins.status };
+    }
+    // Ce que `setEventRsvp` (app-07) fait APRÈS un « je viens » accepté.
+    if (voulu === "going") {
+      if (orga && orga !== f.id) await this.pousser(f, orga, "event_join", "");
+      await this.rejoindreDiscussion(f, evt);
+    }
+    return r;
+  }
+  // `_joinEventConversation` → `supaJoinEventConversation` (app-08) : la
+  // discussion de groupe de l'activité, si l'organisation l'a créée.
+  async convId(f, evt) {
+    if (this.convIds.has(evt)) return this.convIds.get(evt);
+    const r = await this.http("rsvp_lire_discussion", `/rest/v1/events?id=eq.${enc(evt)}&select=conv_id`, { jwt: f.jwt });
+    const c = r.ok && Array.isArray(r.data) && r.data[0] ? r.data[0].conv_id : null;
+    if (c) this.convIds.set(evt, c);
+    return c;
+  }
+  async rejoindreDiscussion(f, evt) {
+    const c = await this.convId(f, evt);
+    if (!c) return null;
+    const r = await this.http("discussion_rejoindre", "/rest/v1/conv_members", { methode: "POST", jwt: f.jwt, prefer: "return=minimal", corps: { conv_id: c, user_id: f.id } });
+    return r.ok || /23505/.test(r.texte);
+  }
+  // `_pousserPushNotif` (app-08) : `supa.functions.invoke("notify-call")`.
+  async pousser(f, a, kind, texte) {
+    const emoji = { like: "❤️", comment: "💬", event_join: "🤝" }[kind] || "✨";
+    return this.http("push_notify_call", "/functions/v1/notify-call", { methode: "POST", jwt: f.jwt,
+      corps: { toUserId: a, type: "notif", kind, text: texte, emoji } });
   }
   // `toggleJoinEvent` (app-07) : complet → liste d'attente, sinon « je viens ».
-  async rejoindre(f, evt, places) {
+  async rejoindre(f, evt, places, orga) {
     const c = await this.compteParticipants(f, evt);
     const complet = c ? Number(c.going) >= places : false;
-    return { complet, ...(await this.rsvp(f, evt, complet ? "waitlist" : "going")) };
+    return { complet, ...(await this.rsvp(f, evt, complet ? "waitlist" : "going", orga)) };
   }
   // `setEventRsvp(id, null)` puis `_promoteNextWaitlisted` (app-07).
   async desister(f, evt) {
@@ -198,16 +277,23 @@ export class Foule {
       methode: "DELETE", jwt: f.jwt, prefer: "return=representation" });
     const parti = del.ok && Array.isArray(del.data) && del.data.length === 1;
     if (!parti) return { parti, promotion: null, detail: `HTTP_${del.status} ${court(del.texte)}` };
+    // `_leaveEventConversation` (app-07) : on sort de la discussion du groupe.
+    const conv = this.convIds.get(evt);
+    if (conv) await this.http("discussion_quitter", `/rest/v1/conv_members?conv_id=eq.${enc(conv)}&user_id=eq.${f.id}`, { methode: "DELETE", jwt: f.jwt });
     const rpc = await this.http("rsvp_promotion", "/rest/v1/rpc/promouvoir_attente", { methode: "POST", jwt: f.jwt,
       corps: { p_event_id: evt, p_user_id: null } });
     return { parti, promotion: rpc.ok ? rpc.data : { ok: false, motif: `HTTP_${rpc.status}`, detail: court(rpc.texte) }, ms: rpc.ms };
   }
 
   // ── Le post populaire ───────────────────────────────────────────────────────
+  // `supaInsertNotif` (app-08) : la ligne, puis le push si elle est acceptée.
   async notifier(f, a, kind, ref, texte) {
-    return this.http(`notif_${kind}`, "/rest/v1/notifications", { methode: "POST", jwt: f.jwt, prefer: "return=minimal",
+    const contenu = `${f.nom} ${texte}`;
+    const r = await this.http(`notif_${kind}`, "/rest/v1/notifications", { methode: "POST", jwt: f.jwt, prefer: "return=minimal",
       corps: { id: "n_" + randomUUID().replace(/-/g, "").slice(0, 16), user_id: a, kind, from_id: f.id, ref_id: ref,
-        content: `${f.nom} ${texte}`, seen: false, created_at: new Date().toISOString() } });
+        content: contenu, seen: false, created_at: new Date().toISOString() } });
+    if (r.ok) r.push = await this.pousser(f, a, kind, contenu);
+    return r;
   }
   // `supaSetPostLike` (app-03) puis `supaInsertNotif(auteur, "like", …)`.
   async aimer(f, post, auteur) {
@@ -225,18 +311,20 @@ export class Foule {
   }
 }
 
-// ── Purge PAR IDENTIFIANT (jamais par motif) ─────────────────────────────────
-// Ordre des enfants vers les parents (scripts/purge-e2e-rest.js), plus les
-// tables que ce scénario écrit et que la purge générale laisse au CASCADE.
+// ── Purge de la séance : par ADRESSE EXACTE, prouvée par relecture ────────────
+// Ordre des enfants vers les parents : celui du village durci (3d0be866, qui
+// suit scripts/purge-e2e-rest.js, `cdv_*` exceptées), plus `conversations`
+// (la discussion d'activité créée par l'organisatrice). ⚠️ La liste du village
+// vit dans sa spec, non importable : toute table ajoutée là doit l'être ici.
 export const TABLES_PURGE = Object.freeze([
   ["conv_messages", ["from_id"]], ["conv_reads", ["user_id"]], ["conv_members", ["user_id"]],
   ["conversations", ["created_by"]],
   ["notifications", ["user_id", "from_id"]], ["comment_interactions", ["user_id"]],
   ["post_comments", ["author_id"]], ["post_likes", ["user_id"]], ["follows", ["follower_id", "following_id"]],
-  ["reports", ["reporter_id"]], ["event_comments", ["author_id"]], ["event_attendees", ["user_id"]],
-  ["event_reactions", ["user_id"]], ["events", ["author_id"]], ["posts", ["author_id"]], ["stories", ["author_id"]],
-  ["blocks", ["blocker_id", "blocked_id"]], ["push_subscriptions", ["user_id"]], ["user_state", ["user_id"]],
-  ["profiles", ["id"]],
+  ["reports", ["reporter_id"]], ["posts", ["author_id"]], ["stories", ["author_id"]],
+  ["event_comments", ["author_id"]], ["event_attendees", ["user_id"]], ["event_reactions", ["user_id"]],
+  ["events", ["author_id"]], ["blocks", ["blocker_id", "blocked_id"]], ["push_subscriptions", ["user_id"]],
+  ["user_state", ["user_id"]], ["user_passions", ["user_id"]], ["profiles", ["id"]],
 ]);
 export function lotsPurge(ids, taille = 40) {
   const propres = [...new Set(ids.filter((x) => /^[0-9a-f-]{36}$/i.test(String(x))))];
@@ -244,31 +332,69 @@ export function lotsPurge(ids, taille = 40) {
   for (let i = 0; i < propres.length; i += taille) lots.push(propres.slice(i, i + taille));
   return lots;
 }
-export async function purgerParIdentifiants({ url, service, ids, log = () => {} }) {
+
+// `manifeste` : { campagne, comptes: [{ email, id|null }] }. Rend
+// { lignes, comptes, restants, erreurs, refus }. Rien n'est supprimé si UNE
+// adresse ou UN identifiant n'appartient pas à la séance (manifeste édité,
+// copié, ou d'une autre campagne).
+export async function purgerSeance({ url, service, manifeste, log = () => {} }) {
   gardesCible(url);
   const h = { apikey: service, Authorization: `Bearer ${service}` };
-  const purge = { lignes: 0, comptes: 0, erreurs: [] };
-  for (const lot of lotsPurge(ids)) {
+  const out = { lignes: 0, comptes: 0, restants: [], erreurs: [], refus: [] };
+  const campagne = manifeste && manifeste.campagne;
+  if (!campagneValide(campagne)) { out.refus.push("CAMPAGNE_INVALIDE"); return out; }
+  const emails = manifeste.comptes.map((c) => c.email);
+  const idsNotes = manifeste.comptes.map((c) => c.id).filter(Boolean);
+  // ① Le listing des comptes : retrouve aussi ceux dont l'uid n'a jamais été rendu.
+  const listing = [];
+  for (let p = 1; p <= 100; p++) {
+    const r = await fetch(`${url}/auth/v1/admin/users?page=${p}&per_page=200`, { headers: h, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) { out.erreurs.push(`listing des comptes HTTP ${r.status}`); return out; }
+    const d = await r.json();
+    const lot = (d && d.users) || [];
+    for (const u of lot) listing.push({ id: u.id, email: u.email });
+    if (lot.length < 200) break;
+  }
+  const choix = comptesAPurger({ listing, emails, idsNotes, campagne });
+  // ② Un identifiant noté absent du listing : relu un par un (404 = déjà parti).
+  for (const id of choix.aRelire) {
+    const r = await fetch(`${url}/auth/v1/admin/users/${id}`, { headers: h, signal: AbortSignal.timeout(20000) });
+    if (r.status === 404) continue;
+    if (!r.ok) { out.erreurs.push(`compte ${id.slice(0, 8)} illisible HTTP ${r.status}`); continue; }
+    const u = await r.json();
+    if (emails.includes(u.email) && emailDeLaCampagne(u.email, campagne)) choix.ids.push(id);
+    else choix.refus.push(`${id} → ${u.email}`);
+  }
+  if (choix.refus.length) { out.refus = choix.refus; return out; }
+  // ③ Les lignes, puis les comptes. Seule une TABLE absente est tolérée.
+  for (const lot of lotsPurge(choix.ids)) {
     const liste = `(${lot.join(",")})`;
     for (const [table, cols] of TABLES_PURGE) {
       const q = cols.length === 1 ? `${cols[0]}=in.${liste}` : `or=(${cols.map((c) => `${c}.in.${liste}`).join(",")})`;
       try {
         const r = await fetch(`${url}/rest/v1/${table}?${q}`, { method: "DELETE", headers: { ...h, Prefer: "return=representation" }, signal: AbortSignal.timeout(30000) });
         const t = await r.text();
-        if (!r.ok) {
-          if (r.status === 404 || /does not exist|schema cache|column .* does not exist/i.test(t)) continue;
-          purge.erreurs.push(`${table} HTTP ${r.status} ${court(t)}`); continue;
-        }
-        const l = JSON.parse(t || "[]"); purge.lignes += Array.isArray(l) ? l.length : 0;
-      } catch (e) { purge.erreurs.push(`${table} ${court(e && e.message)}`); }
+        if (!r.ok) { if (!tableAbsente(t)) out.erreurs.push(`${table} HTTP ${r.status} ${court(t)}`); continue; }
+        const l = JSON.parse(t || "[]"); out.lignes += Array.isArray(l) ? l.length : 0;
+      } catch (e) { out.erreurs.push(`${table} ${court(e && e.message)}`); }
     }
     for (const id of lot) {
       try {
         const r = await fetch(`${url}/auth/v1/admin/users/${id}`, { method: "DELETE", headers: h, signal: AbortSignal.timeout(20000) });
-        if (r.ok || r.status === 404) purge.comptes++; else purge.erreurs.push(`compte ${id.slice(0, 8)} HTTP ${r.status}`);
-      } catch (e) { purge.erreurs.push(`compte ${id.slice(0, 8)} ${court(e && e.message)}`); }
+        if (!r.ok && r.status !== 404) out.erreurs.push(`compte ${id.slice(0, 8)} HTTP ${r.status}`);
+      } catch (e) { out.erreurs.push(`compte ${id.slice(0, 8)} ${court(e && e.message)}`); }
     }
   }
-  log(`purge : ${purge.lignes} lignes, ${purge.comptes} comptes${purge.erreurs.length ? ", " + purge.erreurs.length + " erreur(s)" : ""}`);
-  return purge;
+  // ④ La preuve : chaque compte RELU doit répondre 404 (un 404 au DELETE ne suffit pas).
+  for (const id of choix.ids) {
+    try {
+      const r = await fetch(`${url}/auth/v1/admin/users/${id}`, { headers: h, signal: AbortSignal.timeout(20000) });
+      if (r.status === 404) out.comptes++;
+      else out.restants.push(`${id.slice(0, 8)} (HTTP ${r.status})`);
+    } catch (e) { out.restants.push(`${id.slice(0, 8)} (${court(e && e.message)})`); }
+  }
+  out.attendus = choix.ids.length;
+  log(`purge : ${out.lignes} lignes, ${out.comptes}/${choix.ids.length} comptes relus absents${out.restants.length ? `, ${out.restants.length} RESTANT(S)` : ""}${out.erreurs.length ? `, ${out.erreurs.length} erreur(s)` : ""}`);
+  return out;
 }
+export const purgeComplete = (p) => !!p && !p.erreurs.length && !p.restants.length && !p.refus.length;

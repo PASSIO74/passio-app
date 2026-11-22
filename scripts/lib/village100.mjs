@@ -231,7 +231,9 @@ export function rapportMarkdown(r) {
   md += `- Date : ${r.date} · cible : ${r.cible} · durée : ${r.dureeS} s · campagne : \`${r.campagne}\`\n`;
   md += `- Population : ${r.population.yeux} personnages en navigateur + ${r.population.figurants} figurants API = ${r.population.yeux + r.population.figurants}\n`;
   md += `- Contrôles : **${n("OK")} OK · ${n("ÉCHEC")} échec(s) exigé(s) · ${n("À REGARDER")} observation(s)**\n`;
-  md += `- Purge : ${r.purge ? `${r.purge.lignes} lignes, ${r.purge.comptes} comptes${r.purge.erreurs.length ? " — ⚠️ " + r.purge.erreurs.join(" ; ") : ""}` : "non faite"}\n`;
+  const p = r.purge;
+  md += `- Purge : ${p ? `${p.lignes} lignes, ${p.comptes}${p.attendus != null ? "/" + p.attendus : ""} comptes relus absents${(p.restants || []).length ? " — ⚠️ RESTANTS : " + p.restants.join(", ") : ""}${(p.refus || []).length ? " — ⛔ REFUS : " + p.refus.join(", ") : ""}${p.erreurs.length ? " — ⚠️ " + p.erreurs.join(" ; ") : ""}` : "non faite"}\n`;
+  if (r.verdict) md += `- Verdict contre les rouges connus (${ROUGES_CONNUS.join(", ")}) : **${r.verdict.ok ? "conforme" : "NON CONFORME"}**${r.verdict.nouveaux.length ? " — nouveaux rouges : " + r.verdict.nouveaux.join(", ") : ""}${r.verdict.gueris.length ? " — repassés verts (à retirer de ROUGES_CONNUS) : " + r.verdict.gueris.join(", ") : ""}${r.verdict.absents.length ? " — contrôles connus non joués : " + r.verdict.absents.join(", ") : ""}\n`;
   if (r.arret) md += `- ⚠️ **Séance interrompue** : ${cell(r.arret)}\n`;
   md += `\n## Les personnages en navigateur (les « yeux »)\n\n| # | Personnage | Rôle | Inscrit |\n|--|--|--|--|\n`;
   r.personas.forEach((p, i) => { md += `| ${i + 1} | ${p.nom} | ${p.role} | ${p.inscrit ? "oui" : "**non**"} |\n`; });
@@ -267,4 +269,70 @@ export function rapportMarkdown(r) {
   if (r.captures && r.captures.length) md += `\n## Captures\n\n${r.captures.map((f) => `- captures/${f}`).join("\n")}\n`;
   md += `\n## Portée\n\n${(r.portee || []).map((x) => `- ${x}`).join("\n")}\n`;
   return md;
+}
+
+// ═══ Les gardes de la séance (relecture indépendante de #1018) ══════════════
+// Une adresse appartient à la séance si et seulement si elle est EXACTEMENT
+// `capacite_<campagne>_<n>@passio-capacite.test`, n < 100. Personne d'autre
+// ne purge ce domaine (docs/BANC_CAPACITE_REALISTE_2026-09-20.md) : un compte
+// non suivi resterait pour toujours, un compte d'autrui ne doit jamais partir.
+export const RE_CAMPAGNE = /^capacite_\d{13}_[a-f0-9]{8}$/;
+export function campagneValide(c) { return typeof c === "string" && RE_CAMPAGNE.test(c); }
+export function emailDeLaCampagne(email, campagne) {
+  if (!campagneValide(campagne) || typeof email !== "string") return false;
+  const m = /^(capacite_\d{13}_[a-f0-9]{8})_(\d{1,2})@passio-capacite\.test$/.exec(email);
+  return !!m && m[1] === campagne && Number(m[2]) < NB_FIGURANTS + YEUX.length;
+}
+
+// Seule une TABLE absente est tolérée par la purge (le schéma du staging
+// dérive) ; une COLONNE absente est une liste de purge fausse qui laisserait
+// ses lignes en silence. Même règle que le village durci (3d0be866).
+export function tableAbsente(texte) {
+  return /Could not find the table|relation "[^"]+" does not exist/i.test(String(texte || ""));
+}
+
+// Les comptes à purger : ceux du listing dont l'adresse est dans le manifeste
+// (même si leur identifiant n'a jamais été rendu), plus les identifiants notés
+// qui n'apparaissent plus au listing (à relire un par un). Un identifiant noté
+// dont l'adresse n'est PAS de la séance est un REFUS : on ne supprime rien.
+export function comptesAPurger({ listing, emails, idsNotes, campagne }) {
+  const attendues = new Set(emails);
+  const refus = emails.filter((e) => !emailDeLaCampagne(e, campagne));
+  const parId = new Map(listing.map((u) => [u.id, u.email]));
+  const ids = listing.filter((u) => attendues.has(u.email) && emailDeLaCampagne(u.email, campagne)).map((u) => u.id);
+  const aRelire = [];
+  for (const id of new Set(idsNotes)) {
+    if (!parId.has(id)) aRelire.push(id);
+    else if (!attendues.has(parId.get(id)) || !emailDeLaCampagne(parId.get(id), campagne)) refus.push(`${id} → ${parId.get(id)}`);
+  }
+  return { ids: [...new Set(ids)], aRelire, refus };
+}
+
+// Un seul village à 100 à la fois sur ce poste : le second purgerait les
+// comptes EN VOL du premier en croyant ramasser un reliquat.
+export function verrouLibre(verrou, estVivant) {
+  if (!verrou || !Number.isInteger(verrou.pid)) return true;
+  return !estVivant(verrou.pid);
+}
+
+// Le projet que désigne une clé de service : la charge du JWT (`ref`). Une
+// clé illisible est un refus, jamais un « sans doute ».
+export function refDeLaCle(cle) {
+  try { return JSON.parse(Buffer.from(String(cle).split(".")[1], "base64url").toString("utf8")).ref || null; }
+  catch (e) { return null; }
+}
+
+// La clé anon voyage dans l'URL des WebSockets : publique, mais rien à faire
+// dans un rapport.
+export const masquerCle = (t) => String(t || "").replace(/apikey=[^&\s"']+/gi, "apikey=…");
+
+// Les rouges ASSUMÉS, nommés : une seconde régression, ou un rouge connu qui
+// repasse vert, change le verdict au lieu de se cacher derrière lui.
+export const ROUGES_CONNUS = Object.freeze(["A3"]);
+export function verdictFinal(controles, connus = ROUGES_CONNUS) {
+  const echecs = controles.filter((c) => c.statut === "ÉCHEC").map((c) => c.code);
+  const nouveaux = echecs.filter((c) => !connus.includes(c));
+  const gueris = connus.filter((c) => controles.some((x) => x.code === c) && !echecs.includes(c));
+  const absents = connus.filter((c) => !controles.some((x) => x.code === c));
+  return { ok: !nouveaux.length && !gueris.length && !absents.length, nouveaux, gueris, absents, echecs };
 }

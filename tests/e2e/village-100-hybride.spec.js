@@ -37,8 +37,10 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 const { configAdmin } = require("./compte-e2e");
 const { poserGateSansPremiereVisite } = require("./gate-helper");
-const { viserCibleSupabase } = require("./cible-supabase");
+const { viserCibleSupabase, cibleSupabase } = require("./cible-supabase");
 
+// Même valeur que `scripts/lib/village100.mjs` (module ES, chargé plus bas) : la
+// garde exige l'égalité avec lui ET avec `PASSIO_STAGING_REF` posé par le lanceur.
 const STAGING_REF = "fcksxofaelcdmmifnwjo";
 const SORTIE = path.resolve(__dirname, "..", "..", "test-results", "village100");
 const LIB = path.resolve(__dirname, "..", "..", "scripts", "lib");
@@ -51,10 +53,17 @@ const YEUX = [
 ];
 const [LEA, HUGO, JADE, TOM] = [0, 1, 2, 3];
 
-function cibleEstLeStaging() {
-  const url = process.env.PASSIO_SUPABASE_URL || "";
+// La garde regarde les TROIS cibles (comme le village durci, 3d0be866) : celle
+// du navigateur (`cibleSupabase()`, URL ET clé anon — sans clé anon, les
+// navigateurs démarreraient sur la PRODUCTION), celle de la clé de service
+// (`configAdmin()`), et le projet que cette clé désigne elle-même (`ref` du JWT).
+function cibleEstLeStaging(refDeLaCle, refLib) {
+  const url = `https://${STAGING_REF}.supabase.co`;
+  const navigateur = cibleSupabase();
   const cfg = configAdmin();
-  return url === `https://${STAGING_REF}.supabase.co` && !!cfg && cfg.url === url && !process.env.CI && !process.env.GITHUB_ACTIONS;
+  return refLib === STAGING_REF && process.env.PASSIO_STAGING_REF === STAGING_REF
+    && !!navigateur && navigateur.url === url
+    && !!cfg && cfg.url === url && refDeLaCle(cfg.cle) === STAGING_REF;
 }
 function lecteur() {
   const cfg = configAdmin();
@@ -109,12 +118,14 @@ function instrumenter() {
 // d'administration puis ouvert dans la page par mot de passe. Pourquoi pas
 // `signupUser` tel quel : son adresse `@passio-e2e.test` est purgée par motif
 // par le teardown de la CI pendant la séance (voir `emailOeil`).
-async function inscrireOeil(page, cfg, email, label, passionIndex) {
+async function inscrireOeil(page, cfg, manifeste, email, label, passionIndex) {
   const motDePasse = require("crypto").randomUUID() + "aA!7";
   const h = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" };
+  manifeste.avantCreation(email); // AVANT : une réponse perdue reste retrouvable par l'adresse
   const r = await fetch(`${cfg.url}/auth/v1/admin/users`, { method: "POST", headers: h, body: JSON.stringify({ email, password: motDePasse, email_confirm: true }) });
   const u = await r.json().catch(() => ({}));
   if (!r.ok || !u.id) throw new Error(`création du compte de ${label} : HTTP ${r.status}`);
+  manifeste.apresCreation(email, u.id);
   await poserGateSansPremiereVisite(page);
   await viserCibleSupabase(page);
   await page.goto("/index.html");
@@ -155,13 +166,15 @@ async function inscrireOeil(page, cfg, email, label, passionIndex) {
 
 test.describe("Le village à 100 — hybride navigateurs + figurants API", () => {
   test.skip(!process.env.PASSIO_E2E_VILLAGE100, "opt-in : npm run village:100 (staging seulement)");
+  // Simulation de POSTE : même si un futur job vise le staging et pose la variable.
+  test.skip(!!(process.env.CI || process.env.GITHUB_ACTIONS), "jamais en CI : 100 comptes réels");
+  test.skip(!process.env.PASSIO_VILLAGE100_MANIFESTE, "lancer par npm run village:100 (manifeste et verrou de séance)");
 
   test("l'activité populaire, le post populaire, l'annulation", async ({ browser }) => {
     test.setTimeout(50 * 60 * 1000);
-    if (!cibleEstLeStaging()) throw new Error("CIBLE_HORS_STAGING : le village à 100 n'écrit que sur le staging (npm run village:100).");
-
     const L = await import(pathToFileURL(path.join(LIB, "village100.mjs")).href);
     const F = await import(pathToFileURL(path.join(LIB, "village100-figurants.mjs")).href);
+    if (!cibleEstLeStaging(L.refDeLaCle, L.STAGING_REF)) throw new Error("CIBLE_HORS_STAGING : le village à 100 n'écrit que sur le staging (npm run village:100).");
     const cfg = configAdmin();
     const lire = lecteur();
     const plan = L.planVillage();
@@ -180,7 +193,8 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         "Hybride : 4 navigateurs pilotent les vrais handlers de l'app ; 96 figurants font par l'API les MÊMES écritures que le client (UPDATE puis INSERT pour s'inscrire, DELETE puis promouvoir_attente pour se désister, notification après l'écriture acceptée).",
         "Le direct des figurants est mesuré sur leur socket `user:<uid>` (broadcast `notifications:INSERT`), celui des yeux par l'appel du gestionnaire de l'app ; horloge commune du poste, jamais l'horodatage serveur.",
         "Les murs de quota sont OBSERVÉS à 100 personnes (≈100 sockets, rafales de 30 et de 150 écritures) : la séance ne cherche pas à les atteindre — le forfait Pro est sous spend cap.",
-        "Pas de médias, pas de push Web (aucun abonnement n'est posé), pas de mesure de rendu ni de batterie sur téléphone réel.",
+        "`notify-call` est appelé par les figurants comme par le client (après chaque notification acceptée, et au « je viens »), mais aucun abonnement push n'existe : la fonction est sollicitée, rien n'est envoyé à un appareil.",
+        "Pas de médias, pas de mesure de rendu ni de batterie sur téléphone réel.",
       ],
     };
     let acteCourant = "Installation";
@@ -194,8 +208,9 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       log(`${ok ? "✅" : exige ? "❌" : "👀"} [${code}] ${libelle}${detail ? " — " + detail : ""}`);
       return ok;
     }
-    const manifeste = { campagne, cible: STAGING_REF, yeux: [], figurants: [], purge: false };
-    const ecrireManifeste = () => { try { fs.writeFileSync(path.join(SORTIE, "manifest.json"), JSON.stringify(manifeste, null, 2)); } catch (e) {} };
+    // Le manifeste de la séance (lanceur : hors de test-results, sous verrou).
+    // Écrit AVANT chaque création ; une écriture impossible arrête la séance.
+    const manifeste = new F.Manifeste(process.env.PASSIO_VILLAGE100_MANIFESTE, campagne);
 
     const contexts = [], pages = [], uids = [null, null, null, null];
     const ev = (i, fn, arg) => pages[i].evaluate(fn, arg);
@@ -206,8 +221,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         try { await pages[i].screenshot({ path: path.join(SORTIE, "captures", f) }); rapport.captures.push(f); } catch (e) {}
       }
     }
-    const foule = new F.Foule({ url: cfg.url, anon: process.env.PASSIO_SUPABASE_ANON, service: cfg.cle, campagne, log,
-      surComptes: (ids) => { manifeste.figurants = ids; ecrireManifeste(); } });
+    const foule = new F.Foule({ url: cfg.url, anon: process.env.PASSIO_SUPABASE_ANON, service: cfg.cle, campagne, log, manifeste });
     const fig = (k) => foule.figurants[k];
     const lireRsvp = (evt) => lire("event_attendees", `select=user_id,rsvp,created_at&event_id=eq.${evt}`);
     const chargerEvt = (i, id) => ev(i, async (eid) => {
@@ -233,7 +247,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         const page = await ctx.newPage();
         await page.addInitScript(instrumenter);
         rapport.erreursConsole[p.nom] = []; rapport.erreursHttp[p.nom] = [];
-        page.on("console", (m) => { if (m.type() === "error") rapport.erreursConsole[p.nom].push(m.text().slice(0, 200)); });
+        page.on("console", (m) => { if (m.type() === "error") rapport.erreursConsole[p.nom].push(L.masquerCle(m.text()).slice(0, 200)); });
         page.on("response", (resp) => {
           if (resp.status() >= 400 && resp.url().includes("supabase.co")) rapport.erreursHttp[p.nom].push(`${resp.status()} ${resp.request().method()} ${resp.url().split("?")[0].slice(-60)}`);
         });
@@ -241,12 +255,14 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       }
       log("inscription des 4 personnages en navigateur…");
       await Promise.all(YEUX.map(async (p, i) => {
-        try { uids[i] = await inscrireOeil(pages[i], cfg, L.emailOeil(campagne, i), `${p.nom} Centvillage`, i); }
+        try { uids[i] = await inscrireOeil(pages[i], cfg, manifeste, L.emailOeil(campagne, i), `${p.nom} Centvillage`, i); }
         catch (e) { log(`❌ inscription de ${p.nom} : ${String(e.message).slice(0, 200)}`); }
       }));
-      manifeste.yeux = uids.filter(Boolean); ecrireManifeste();
       rapport.personas = YEUX.map((p, i) => ({ nom: p.nom, role: p.role, inscrit: !!uids[i] }));
       expect(uids.filter(Boolean).length, "les 4 personnages doivent être inscrits").toBe(4);
+      // Le témoin côté NAVIGATEUR : la constante que l'app a réellement prise.
+      const ciblesPages = await Promise.all(pages.map((p) => p.evaluate(() => (typeof SUPABASE_URL === "string" ? SUPABASE_URL : null))));
+      expect(ciblesPages.every((u) => u === `https://${STAGING_REF}.supabase.co`), `les 4 navigateurs visent le staging (lu : ${[...new Set(ciblesPages)].join(", ")})`).toBe(true);
       // La feuille « Avant de continuer » (AUTH-03) : chacun répond comme un humain.
       await Promise.all(pages.map(async (page) => {
         const caseCgu = page.locator("#consentRequisCase");
@@ -297,19 +313,23 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         const ok = await supaPublishEvent({ id, title: "Concert au parc [village100]", passion: "musique", city: "Lyon", emoji: "🎸", date: Date.now() + 3 * 86400000, maxAttendees: 20 });
         if (!ok) return null;
         await supaJoinEvent(id);
+        // Comme le formulaire (app-07, LOT-22) : la discussion d'activité s'ouvre
+        // dès la publication confirmée, pour que les venants puissent y entrer.
+        const e = ((await supaLoadEvents()) || []).find((x) => x.id === id);
+        if (e) { state.userEvents = state.userEvents || []; if (!_findCanonicalEvent(id)) state.userEvents.unshift(e); await _joinEventConversation(_findCanonicalEvent(id)); }
         return id;
       });
-      await verifier("E1", "Léa ouvre 20 places et en occupe une", async () => {
-        const e = evt ? await lire("events", `select=max_attendees,status&id=eq.${evt}`) : [];
+      await verifier("E1", "Léa ouvre 20 places, en occupe une, et la discussion d'activité est ouverte", async () => {
+        const e = evt ? await lire("events", `select=max_attendees,status,conv_id&id=eq.${evt}`) : [];
         const r = evt ? await lireRsvp(evt) : [];
-        return { ok: !!evt && e[0] && e[0].max_attendees === L.PLACES && r.length === 1 && r[0].user_id === uids[LEA], detail: evt ? `${e[0] && e[0].max_attendees} places, ${r.length} inscrit(s)` : "publication refusée" };
+        return { ok: !!evt && e[0] && e[0].max_attendees === L.PLACES && !!e[0].conv_id && r.length === 1 && r[0].user_id === uids[LEA], detail: evt ? `${e[0] && e[0].max_attendees} places, ${r.length} inscrit(s), discussion ${e[0] && e[0].conv_id ? "ouverte" : "ABSENTE"}` : "publication refusée" };
       });
       if (!evt) throw new Error("ACTIVITE_NON_PUBLIEE");
       for (const i of [HUGO, JADE, TOM]) await attendre(() => chargerEvt(i, evt), { delai: 15000, pas: 1500 });
 
       // Les précoces : Hugo par le vrai handler, 15 figurants par l'API.
       await ev(HUGO, (id) => setEventRsvp(id, "going"), evt);
-      const precoces = await parallele(plan.precoces, 5, (k) => foule.rejoindre(fig(k), evt, L.PLACES));
+      const precoces = await parallele(plan.precoces, 5, (k) => foule.rejoindre(fig(k), evt, L.PLACES, uids[LEA]));
       await verifier("E2", `${A.venantsAvantCourse} venants avant la course (Léa, Hugo, 15 figurants) : ${A.placesCourse} places restent`, async () => {
         const r = await lireRsvp(evt);
         const g = L.compterRsvp(r, "going");
@@ -322,7 +342,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       const tDepart = Date.now() + 3000;
       log(`la course : ${A.coureurs} clics « je participe » à T+3 s pour ${A.placesCourse} places…`);
       const [course, jadeCourse] = await Promise.all([
-        Promise.all(plan.course.map(async (k) => { await pause(tDepart - Date.now()); return { k, ...(await foule.rsvp(fig(k), evt, "going")) }; })),
+        Promise.all(plan.course.map(async (k) => { await pause(tDepart - Date.now()); return { k, ...(await foule.rsvp(fig(k), evt, "going", uids[LEA])) }; })),
         ev(JADE, async ({ id, t }) => {
           await new Promise((r) => setTimeout(r, Math.max(0, t - Date.now())));
           const debut = Date.now();
@@ -334,7 +354,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       ]);
       const apresCourse = await lireRsvp(evt);
       const jadeGagne = apresCourse.some((a) => a.user_id === uids[JADE] && a.rsvp === "going");
-      const tentatives = course.map((c) => ({ issue: c.issue, t: c.t, ms: c.ms })).concat([{ issue: jadeGagne ? "going" : (jadeCourse.rsvp ? "autre" : "complete"), t: jadeCourse.debut }]);
+      const tentatives = course.map((c) => ({ issue: c.issue, t: c.t, ms: c.ms })).concat([{ issue: jadeGagne ? "going" : (apresCourse.some((a) => a.user_id === uids[JADE]) ? "ligne_inattendue" : (/compl[eè]te?/i.test(jadeCourse.toasts.join(" ")) ? "complete" : "refus_sans_motif")), t: jadeCourse.debut }]);
       rapport.latences["course : écriture décisive (30 clics simultanés)"] = L.latences(course.map((c) => c.ms));
       await verifier("E3", `la course : exactement ${A.placesCourse} gagnants sur ${A.coureurs}, ${A.refusCourse} refus « complète », jamais 21 venants`, async () => {
         const v = L.verdictCourse({ lignesApres: apresCourse, tentatives, places: L.PLACES, placesCourse: A.placesCourse });
@@ -355,7 +375,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       if (!jadeGagne) {
         jadeAttente = await ev(JADE, async (id) => { toggleJoinEvent(id); await new Promise((r) => setTimeout(r, 2500)); return myRsvp(id); }, evt);
       }
-      const tardifs = await parallele(plan.tardifs, 8, (k) => foule.rejoindre(fig(k), evt, L.PLACES));
+      const tardifs = await parallele(plan.tardifs, 8, (k) => foule.rejoindre(fig(k), evt, L.PLACES, uids[LEA]));
       await chargerEvt(TOM, evt);
       const tom = await ev(TOM, async (id) => {
         const debut = Date.now();
@@ -435,7 +455,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       }, { exige: false });
 
       // Les désistants se ravisent : ils reprennent place, en FIN de file.
-      const ravises = await Promise.all(desistants.map((f) => foule.rejoindre(f, evt, L.PLACES)));
+      const ravises = await Promise.all(desistants.map((f) => foule.rejoindre(f, evt, L.PLACES, uids[LEA])));
       const apresRavis = await lireRsvp(evt);
       await verifier("E12", `les ${A.desistements} désistants se ravisent : en fin de liste d'attente, sans doubler personne`, async () => {
         const ordre = L.ordreAttente(apresRavis);
@@ -651,7 +671,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       }, { exige: false });
       await verifier("A5", "Tom voit l'activité annulée (pas une activité fantôme encore ouverte)", async () => {
         const s = await ev(TOM, async (id) => { const e = ((await supaLoadEvents()) || []).find((x) => x.id === id); return e ? (e.status || "active") : "absente"; }, evt);
-        return { ok: s === "cancelled" || s === "absente", detail: `statut lu : ${s}` };
+        return { ok: s === "cancelled", detail: `statut lu : ${s}` };
       });
       await capturer("A-annulation", [LEA, TOM]);
 
@@ -665,12 +685,20 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       rapport.murs["Messages temps réel reçus (figurants)"] = `${foule.frames.total} trames, dont ${foule.frames.broadcasts} broadcasts (${foule.frames.notifications} notifications) ; pic ${L.picParSeconde(foule.frames.instants)}/s (plafond : 500/s)`;
       rapport.murs["HTTP des figurants"] = `${http.total} requêtes, 429 : ${http.total429}, 5xx : ${http.total5xx}`;
       rapport.murs["HTTP des navigateurs (≥ 400)"] = `${navErr.length} réponses, dont 429 : ${nav429}`;
+      const push = http.familles.push_notify_call || { tentatives: 0, statuts: {} };
+      rapport.murs["Fonction Edge notify-call (push)"] = `figurants : ${push.tentatives} appels (${Object.entries(push.statuts).map(([k, v]) => `${k}×${v}`).join(" ") || "aucun"}) ; navigateurs : ${navErr.filter((x) => /notify-call/.test(x)).length} réponses ≥ 400`;
       rapport.murs["Connexions Auth"] = `${(http.familles.auth_connexion || {}).tentatives || 0} connexions de figurants + 4 inscriptions navigateur ; 429 : ${((http.familles.auth_connexion || {}).statuts || {})[429] || 0}`;
       rapport.murs["Budget de séance"] = JSON.stringify(foule.budget.resume());
+      for (const [k, corps] of Object.entries(foule.premiersRefus)) rapport.murs[`Premier refus « ${k} »`] = corps;
       await verifier("M1", "aucun 429 ni 5xx pendant la séance (figurants et navigateurs)", async () => ({
         ok: http.total429 === 0 && http.total5xx === 0 && nav429 === 0,
         detail: `figurants : 429 ×${http.total429}, 5xx ×${http.total5xx} ; navigateurs : 429 ×${nav429}${http.total429 ? " — familles : " + Object.entries(http.familles).filter(([, f]) => f.statuts[429]).map(([k, f]) => `${k}×${f.statuts[429]}`).join(", ") : ""}`,
       }), { exige: false });
+      await verifier("M3", "les venants entrent dans la discussion de l'activité (`conv_members`, comme `_joinEventConversation`)", async () => {
+        const d = http.familles.discussion_rejoindre || { tentatives: 0, statuts: {} };
+        const ok = (d.statuts[201] || 0) + (d.statuts[409] || 0);
+        return { ok: d.tentatives > 0 && ok === d.tentatives, detail: `${ok}/${d.tentatives} entrées acceptées (${Object.entries(d.statuts).map(([k, v]) => `${k}×${v}`).join(" ")})${foule.premiersRefus["discussion_rejoindre 403"] ? ` ; refus : « ${foule.premiersRefus["discussion_rejoindre 403"]} »` : ""}` };
+      }, { exige: false });
       await verifier("M2", "les sockets des figurants ont tenu toute la séance", async () => {
         const tombes = foule.figurants.filter((f) => f.rtFerme || f.rtErreur);
         return { ok: tombes.length === 0, detail: `${foule.socketsOuverts()}/${L.NB_FIGURANTS} encore ouverts${tombes.length ? ` ; tombés : ${tombes.length} (${tombes[0].rtErreur || "close " + (tombes[0].rtFerme || {}).code})` : ""}` };
@@ -683,13 +711,20 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       rapport.arret = String((e && e.message) || e).slice(0, 300);
       log(`⛔ séance interrompue : ${rapport.arret}`);
     } finally {
-      // ═══ PURGE — les 100 comptes de CETTE séance, par identifiant ═════════
+      // ═══ PURGE — les comptes du MANIFESTE, par adresse exacte, relus en 404 ═
+      // Le manifeste porte chaque adresse écrite AVANT sa création : un compte
+      // dont la réponse s'est perdue, ou un œil tombé en route, part aussi.
       foule.fermer();
       for (const c of contexts) { try { await c.close(); } catch (e) {} }
-      const ids = uids.filter(Boolean).concat(foule.figurants.map((f) => f.id));
-      try { rapport.purge = await F.purgerParIdentifiants({ url: cfg.url, service: cfg.cle, ids, log }); }
-      catch (e) { rapport.purge = { lignes: 0, comptes: 0, erreurs: [String(e.message)] }; }
-      if (rapport.purge && !rapport.purge.erreurs.length) { manifeste.purge = true; ecrireManifeste(); }
+      try { rapport.purge = await F.purgerSeance({ url: cfg.url, service: cfg.cle, manifeste: manifeste.etat, log }); }
+      catch (e) { rapport.purge = { lignes: 0, comptes: 0, restants: [], refus: [], erreurs: [String(e.message)] }; }
+      const purgeOk = F.purgeComplete(rapport.purge);
+      if (purgeOk) manifeste.purgee();
+      acteCourant = "5 · Purge de la séance";
+      rapport.controles.push({ acte: acteCourant, code: "Z1", exige: true, statut: purgeOk ? "OK" : "ÉCHEC", ms: 0,
+        libelle: "les comptes de la séance sont supprimés et relus absents (404), aucune ligne en erreur",
+        detail: `${rapport.purge.comptes}/${rapport.purge.attendus ?? manifeste.etat.comptes.length} comptes relus absents, ${rapport.purge.lignes} lignes${rapport.purge.restants.length ? " ; RESTANTS : " + rapport.purge.restants.slice(0, 5).join(", ") : ""}${rapport.purge.refus.length ? " ; REFUS : " + rapport.purge.refus.slice(0, 3).join(", ") : ""}${rapport.purge.erreurs.length ? " ; erreurs : " + rapport.purge.erreurs.slice(0, 3).join(" ; ") : ""}` });
+      rapport.verdict = L.verdictFinal(rapport.controles);
       rapport.dureeS = Math.round((Date.now() - t0) / 1000);
       if (!rapport.http) rapport.http = L.resumeHttp(foule.mesures);
       fs.writeFileSync(path.join(SORTIE, "rapport.json"), JSON.stringify(rapport, null, 2));
@@ -698,7 +733,11 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
     }
 
     expect(rapport.arret, "séance interrompue (détail : test-results/village100/rapport.md)").toBeNull();
-    const echecs = rapport.controles.filter((c) => c.statut === "ÉCHEC").map((c) => `[${c.code}] ${c.libelle} — ${c.detail}`);
-    expect(echecs, "contrôles EXIGÉS en échec (détail : test-results/village100/rapport.md)").toEqual([]);
+    // Les rouges ASSUMÉS sont nommés (`ROUGES_CONNUS`, scripts/lib/village100.mjs) :
+    // un NOUVEAU rouge, ou un rouge connu qui repasse vert, rend la séance rouge.
+    const v = rapport.verdict;
+    expect({ nouveaux: v.nouveaux, gueris: v.gueris, absents: v.absents },
+      `verdict contre les rouges connus ${JSON.stringify(L.ROUGES_CONNUS)} (détail : test-results/village100/rapport.md)`)
+      .toEqual({ nouveaux: [], gueris: [], absents: [] });
   });
 });

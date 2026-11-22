@@ -13,7 +13,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import * as L from "../../scripts/lib/village100.mjs";
-import { gardesCible, lotsPurge, motifRefusRsvp, TABLES_PURGE } from "../../scripts/lib/village100-figurants.mjs";
+import { gardesCible, lotsPurge, motifRefusRsvp, motifServeurRsvp, TABLES_PURGE, Manifeste, purgerSeance, purgeComplete } from "../../scripts/lib/village100-figurants.mjs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const racine = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -182,10 +184,161 @@ test("gardes : staging seul, jamais en CI, purge par identifiant seulement", () 
   assert.equal(TABLES_PURGE[TABLES_PURGE.length - 1][0], "profiles", "les profils partent en dernier");
 });
 
-test("motifRefusRsvp : le motif fermé du serveur, comme `_motifRefusRsvp` (app-08)", () => {
+test("motifRefusRsvp : EXACTEMENT les motifs de `_motifRefusRsvp` (app-08) ; les autres refus ne servent qu'au rapport", () => {
   assert.equal(motifRefusRsvp('{"message":"activite_complete"}'), "complete");
-  assert.equal(motifRefusRsvp('{"message":"inscriptions_jour_limite"}'), "inscriptions_jour_limite");
+  assert.equal(motifRefusRsvp('{"message":"activite_annulee"}'), "annulee");
+  // Le client ne connaît pas ces refus : il tente l'INSERT, le figurant aussi.
+  assert.equal(motifRefusRsvp('{"message":"inscriptions_jour_limite"}'), null);
+  assert.equal(motifServeurRsvp('{"message":"inscriptions_jour_limite"}'), "inscriptions_jour_limite");
   assert.equal(motifRefusRsvp("autre"), null);
+  // Verrou de cohérence : la liste du client, lue dans le code de l'app.
+  const app08 = readFileSync(resolve(racine, "js", "app-08-ui-modals-tour.js"), "utf8");
+  assert.match(app08, /activite_\(complete\|annulee\|passee\|introuvable\)/, "si le client change ses motifs, le figurant doit suivre");
+});
+
+const CAMP = "capacite_1795368939927_ea35bdaa";
+const AUTRE = "capacite_1795368939927_00000000";
+
+test("adresses de la séance : exactement `capacite_<campagne>_<n>@passio-capacite.test`, n < 100", () => {
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_0@passio-capacite.test`, CAMP), true);
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_99@passio-capacite.test`, CAMP), true);
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_100@passio-capacite.test`, CAMP), false);
+  assert.equal(L.emailDeLaCampagne(`${AUTRE}_3@passio-capacite.test`, CAMP), false, "une autre campagne n'est pas la séance");
+  assert.equal(L.emailDeLaCampagne(`e2e_qa_1_abc@passio-e2e.test`, CAMP), false);
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_3@passio-capacite.test.evil`, CAMP), false);
+  assert.equal(L.emailDeLaCampagne(`${CAMP}_3@passio-capacite.test`, "capacite_%"), false, "campagne invalide : rien n'est de la séance");
+});
+
+test("tableAbsente : seule une TABLE absente est tolérée, jamais une colonne", () => {
+  assert.equal(L.tableAbsente('{"message":"Could not find the table \'public.user_passions\' in the schema cache"}'), true);
+  assert.equal(L.tableAbsente('relation "public.x" does not exist'), true);
+  assert.equal(L.tableAbsente('{"message":"column conversations.created_by does not exist"}'), false);
+  assert.equal(L.tableAbsente("HTTP 404"), false);
+});
+
+test("comptesAPurger : par adresse exacte, un identifiant étranger est un REFUS", () => {
+  const listing = [
+    { id: "a", email: `${CAMP}_0@passio-capacite.test` },
+    { id: "b", email: `${CAMP}_1@passio-capacite.test` },   // uid jamais rendu : retrouvé par l'adresse
+    { id: "x", email: "e2e_qa_1_abc@passio-e2e.test" },     // un compte d'une suite CI
+  ];
+  const emails = [`${CAMP}_0@passio-capacite.test`, `${CAMP}_1@passio-capacite.test`];
+  const ok = L.comptesAPurger({ listing, emails, idsNotes: ["a", "z"], campagne: CAMP });
+  assert.deepEqual(ok.ids.sort(), ["a", "b"]);
+  assert.deepEqual(ok.aRelire, ["z"]);
+  assert.deepEqual(ok.refus, []);
+  // Manifeste édité : un uid qui désigne un compte de la CI.
+  assert.equal(L.comptesAPurger({ listing, emails, idsNotes: ["x"], campagne: CAMP }).refus.length, 1);
+  // Manifeste copié d'une autre campagne : adresses refusées.
+  assert.equal(L.comptesAPurger({ listing, emails: [`${AUTRE}_0@passio-capacite.test`], idsNotes: [], campagne: CAMP }).refus.length, 1);
+});
+
+test("verrou de séance, ref de la clé, masque de la clé anon, rouges connus", () => {
+  assert.equal(L.verrouLibre(null, () => true), true);
+  assert.equal(L.verrouLibre({ pid: 42 }, () => true), false, "pid vivant : une séance tourne");
+  assert.equal(L.verrouLibre({ pid: 42 }, () => false), true, "pid mort : reliquat");
+  const jwt = (o) => "e." + Buffer.from(JSON.stringify(o)).toString("base64url") + ".s";
+  assert.equal(L.refDeLaCle(jwt({ ref: L.STAGING_REF, role: "service_role" })), L.STAGING_REF);
+  assert.equal(L.refDeLaCle(jwt({ ref: "njkiyoklssvefstljemx" })), "njkiyoklssvefstljemx");
+  assert.equal(L.refDeLaCle("illisible"), null);
+  assert.equal(L.masquerCle("wss://x/realtime/v1/websocket?apikey=eyJabc.def&vsn=1.0.0 failed"), "wss://x/realtime/v1/websocket?apikey=…&vsn=1.0.0 failed");
+  const c = (code, statut) => ({ code, statut });
+  assert.equal(L.verdictFinal([c("A3", "ÉCHEC"), c("E3", "OK")]).ok, true);
+  const nouveau = L.verdictFinal([c("A3", "ÉCHEC"), c("E3", "ÉCHEC")]);
+  assert.equal(nouveau.ok, false); assert.deepEqual(nouveau.nouveaux, ["E3"]);
+  const gueri = L.verdictFinal([c("A3", "OK")]);
+  assert.equal(gueri.ok, false); assert.deepEqual(gueri.gueris, ["A3"]);
+  assert.equal(L.verdictFinal([c("E3", "OK")]).ok, false, "un rouge connu non joué n'est pas un vert");
+});
+
+test("Manifeste : écrit AVANT la création, refuse une adresse hors campagne, lève si le disque refuse", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "village100-"));
+  try {
+    const chemin = resolve(dir, "sous", "manifest.json");
+    const m = new Manifeste(chemin, CAMP);
+    m.avantCreation(`${CAMP}_7@passio-capacite.test`);
+    let lu = JSON.parse(readFileSync(chemin, "utf8"));
+    assert.deepEqual(lu.comptes, [{ email: `${CAMP}_7@passio-capacite.test`, id: null }], "sur disque avant même la requête");
+    m.apresCreation(`${CAMP}_7@passio-capacite.test`, "uid-7");
+    lu = Manifeste.lire(chemin);
+    assert.equal(lu.comptes[0].id, "uid-7"); assert.equal(lu.purge, false);
+    assert.throws(() => m.avantCreation("e2e_qa_1@passio-e2e.test"), /ADRESSE_HORS_CAMPAGNE/);
+    assert.throws(() => m.apresCreation(`${CAMP}_8@passio-capacite.test`, "x"), /ADRESSE_NON_ANNONCEE/);
+    assert.throws(() => new Manifeste(chemin, "capacite_%"), /CAMPAGNE_INVALIDE/);
+    m.purgee(); assert.equal(Manifeste.lire(chemin).purge, true);
+    writeFileSync(chemin, JSON.stringify({ campagne: CAMP, cible: "njkiyoklssvefstljemx", comptes: [] }));
+    assert.throws(() => Manifeste.lire(chemin), /MANIFESTE_INVALIDE/, "un manifeste d'une autre cible n'est pas lu");
+    // Le disque refuse : l'écriture LÈVE (un dossier à la place du fichier).
+    const bloque = resolve(dir, "bloque.json"); mkdirSync(bloque);
+    assert.throws(() => new Manifeste(bloque, CAMP));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Un faux Supabase en mémoire pour `purgerSeance` : aucun réseau.
+function fauxSupabase({ comptes, tables = {}, renaitre = [] }) {
+  const appels = [];
+  const vivants = new Map(comptes.map((c) => [c.id, c.email]));
+  const reponse = (status, corps) => ({ ok: status >= 200 && status < 300, status, json: async () => corps, text: async () => (typeof corps === "string" ? corps : JSON.stringify(corps)) });
+  const fetch = async (u, o = {}) => {
+    const url = new URL(u), m = o.method || "GET";
+    appels.push(`${m} ${url.pathname}`);
+    if (url.pathname === "/auth/v1/admin/users" && m === "GET") return reponse(200, { users: [...vivants].map(([id, email]) => ({ id, email })) });
+    const mu = /^\/auth\/v1\/admin\/users\/(.+)$/.exec(url.pathname);
+    if (mu && m === "DELETE") { const ok = vivants.delete(mu[1]); return reponse(ok || !renaitre.includes(mu[1]) ? 200 : 404, {}); }
+    if (mu && m === "GET") return renaitre.includes(mu[1]) ? reponse(200, { id: mu[1], email: "x" }) : (vivants.has(mu[1]) ? reponse(200, { id: mu[1], email: vivants.get(mu[1]) }) : reponse(404, {}));
+    const mt = /^\/rest\/v1\/(.+)$/.exec(url.pathname);
+    if (mt && m === "DELETE") { const t = tables[mt[1]]; return t ? reponse(t.status, t.corps) : reponse(200, [{}]); }
+    return reponse(500, "inattendu");
+  };
+  return { fetch, appels, vivants };
+}
+async function avecFetch(faux, fn) {
+  const avant = globalThis.fetch, ci = process.env.CI, ga = process.env.GITHUB_ACTIONS;
+  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
+  globalThis.fetch = faux.fetch;
+  try { return await fn(); } finally {
+    globalThis.fetch = avant;
+    if (ci !== undefined) process.env.CI = ci;
+    if (ga !== undefined) process.env.GITHUB_ACTIONS = ga;
+  }
+}
+const URL_STAGING = `https://${L.STAGING_REF}.supabase.co`;
+const e = (n) => `${CAMP}_${n}@passio-capacite.test`;
+
+test("purgerSeance : retrouve un compte sans uid par son adresse, supprime, et PROUVE par une relecture en 404", async () => {
+  const faux = fauxSupabase({ comptes: [{ id: "00000000-0000-4000-8000-000000000000", email: e(0) }, { id: "00000000-0000-4000-8000-000000000001", email: e(1) }, { id: "00000000-0000-4000-8000-0000000000c1", email: "e2e_qa_1@passio-e2e.test" }] });
+  const p = await avecFetch(faux, () => purgerSeance({ url: URL_STAGING, service: "k", manifeste: { campagne: CAMP, comptes: [{ email: e(0), id: "00000000-0000-4000-8000-000000000000" }, { email: e(1), id: null }] } }));
+  assert.equal(purgeComplete(p), true, JSON.stringify(p));
+  assert.equal(p.comptes, 2); assert.equal(p.attendus, 2);
+  assert.ok(faux.vivants.has("00000000-0000-4000-8000-0000000000c1"), "le compte de la CI n'est jamais touché");
+  assert.ok(faux.appels.includes("GET /auth/v1/admin/users/00000000-0000-4000-8000-000000000001"), "chaque compte est relu");
+});
+
+test("purgerSeance : un uid du manifeste qui désigne un compte étranger → REFUS, rien n'est supprimé", async () => {
+  const faux = fauxSupabase({ comptes: [{ id: "00000000-0000-4000-8000-000000000000", email: e(0) }, { id: "00000000-0000-4000-8000-0000000000c1", email: "e2e_qa_1@passio-e2e.test" }] });
+  const p = await avecFetch(faux, () => purgerSeance({ url: URL_STAGING, service: "k", manifeste: { campagne: CAMP, comptes: [{ email: e(0), id: "00000000-0000-4000-8000-0000000000c1" }] } }));
+  assert.equal(purgeComplete(p), false);
+  assert.equal(p.refus.length, 1);
+  assert.ok(!faux.appels.some((a) => a.startsWith("DELETE")), "aucune suppression");
+  const p2 = await avecFetch(fauxSupabase({ comptes: [] }), () => purgerSeance({ url: URL_STAGING, service: "k", manifeste: { campagne: "capacite_%", comptes: [] } }));
+  assert.deepEqual(p2.refus, ["CAMPAGNE_INVALIDE"]);
+  await assert.rejects(() => avecFetch(fauxSupabase({ comptes: [] }), () => purgerSeance({ url: "https://njkiyoklssvefstljemx.supabase.co", service: "k", manifeste: { campagne: CAMP, comptes: [] } })), /CIBLE_HORS_STAGING/);
+});
+
+test("purgerSeance : une colonne absente est une ERREUR, une table absente est tolérée ; un compte qui reste est un RESTANT", async () => {
+  const tables = {
+    user_passions: { status: 404, corps: { message: "Could not find the table 'public.user_passions' in the schema cache" } },
+    conversations: { status: 400, corps: { message: "column conversations.created_by does not exist" } },
+  };
+  const faux = fauxSupabase({ comptes: [{ id: "00000000-0000-4000-8000-000000000000", email: e(0) }], tables });
+  const p = await avecFetch(faux, () => purgerSeance({ url: URL_STAGING, service: "k", manifeste: { campagne: CAMP, comptes: [{ email: e(0), id: "00000000-0000-4000-8000-000000000000" }] } }));
+  assert.equal(p.erreurs.length, 1); assert.match(p.erreurs[0], /conversations/);
+  assert.equal(purgeComplete(p), false);
+  // Le DELETE répond, mais la relecture trouve encore le compte.
+  const faux2 = fauxSupabase({ comptes: [{ id: "00000000-0000-4000-8000-000000000000", email: e(0) }], renaitre: ["00000000-0000-4000-8000-000000000000"] });
+  const p2 = await avecFetch(faux2, () => purgerSeance({ url: URL_STAGING, service: "k", manifeste: { campagne: CAMP, comptes: [{ email: e(0), id: "00000000-0000-4000-8000-000000000000" }] } }));
+  assert.equal(p2.restants.length, 1); assert.equal(purgeComplete(p2), false);
+  assert.ok(TABLES_PURGE.some(([t]) => t === "user_passions"), "l'onboarding des yeux écrit user_passions");
 });
 
 test("le lanceur refuse la CI avant tout jeton ou réseau", () => {
@@ -195,4 +348,18 @@ test("le lanceur refuse la CI avant tout jeton ou réseau", () => {
     assert.equal(r.status, 2);
     assert.match(r.stderr, /refusé en CI/);
   }
+});
+
+test("le lanceur refuse une seconde séance (verrou d'un pid vivant), avant tout jeton ou réseau", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "village100-verrou-"));
+  try {
+    mkdirSync(resolve(dir, ".passio", "tmp", "village100"), { recursive: true });
+    const verrou = resolve(dir, ".passio", "tmp", "village100", "verrou.json");
+    writeFileSync(verrou, JSON.stringify({ pid: process.pid, debut: "maintenant" }));
+    const sansJeton = { PATH: process.env.PATH, HOME: "/nonexistent-village100", USERPROFILE: "/nonexistent-village100" };
+    const r = spawnSync(process.execPath, [resolve(racine, "scripts", "village100.mjs")], { cwd: dir, env: sansJeton, encoding: "utf8", timeout: 20000 });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /une séance tourne déjà/);
+    assert.ok(existsSync(verrou), "le verrou de l'autre séance n'est pas retiré");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

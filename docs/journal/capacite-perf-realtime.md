@@ -3325,11 +3325,14 @@ réel. Cent navigateurs ne tiennent pas sur un poste (~30 Go) : **hybride**, `np
 (Léa organise, Hugo s'inscrit tôt, Jade sur téléphone dans la course, Tom arrive en dernier) pilotent les
 vrais handlers ; **96 figurants** (`scripts/lib/village100-figurants.mjs`) font par l'API les MÊMES
 écritures que le client pour le même geste (UPDATE puis INSERT pour `supaSetEventRsvp`, DELETE puis
-`promouvoir_attente(p_user_id: null)` pour se désister, notification APRÈS l'écriture acceptée) et
-tiennent chacun un socket sur `user:<uid>`. Verdicts purs et éprouvés par réinjection :
-`scripts/lib/village100.mjs`, `tests/unit/village100.test.mjs` (dans `npm run verif`).
+`promouvoir_attente(p_user_id: null)` pour se désister, notification APRÈS l'écriture acceptée PUIS
+`notify-call`, entrée dans la discussion d'activité au « je viens ») et tiennent chacun un socket sur
+`user:<uid>`. Verdicts purs et éprouvés par réinjection : `scripts/lib/village100.mjs`,
+`tests/unit/village100.test.mjs` (dans `npm run verif`). Gardes reprises du village durci (3d0be866) :
+trois cibles vérifiées (navigateur, clé de service, `ref` du JWT, puis `SUPABASE_URL` lue dans les pages),
+environnement de l'enfant filtré, port libre, seule une TABLE absente tolérée à la purge.
 
-**Mesuré deux fois sur le staging (séances 3 et 4, 555–588 s, purge complète : 100 comptes) :**
+**Mesuré sur le staging (séances 3 à 5, 555–593 s ; séance 5 avec les gestes complets du client) :**
 - **La capacité tient exactement.** 30 « je participe » à la même seconde pour 3 places : 3 gagnants,
   27 refus `activite_complete`, jamais 21 venants ; l'écran du perdant (Jade) dit « Activité complète… »
   sans place fantôme. 80 en liste d'attente sans un refus.
@@ -3340,9 +3343,14 @@ tiennent chacun un socket sur `user:<uid>`. Verdicts purs et éprouvés par réi
   dit 100/50, Léa reçoit 99 + 50 notifications sans doublon, 50/50 commentaires et 149/149
   notifications en direct ; la carte des témoins affiche 100/50 **8 à 37 s** après la rafale sans
   recharger (cadence des compteurs visibles).
-- **Les murs ne sont pas en vue à 100** : ~100 sockets (plafond 500), pic de trames reçues 28–38/s
-  (plafond 500/s), pic d'écriture 42–43/s, aucun 429 ni 5xx côté figurants ; 96 connexions Auth
-  cadencées à 2,4 s (≤ 129 / 5 min yeux compris), aucun 429.
+- **Les murs de la BASE et du TEMPS RÉEL ne sont pas en vue à 100** : ~100 sockets (plafond 500), pic
+  de trames reçues 28–53/s (plafond 500/s), pic d'écriture 42–43/s, aucun 429 côté figurants ; 96
+  connexions Auth cadencées à 2,4 s (≤ 129 / 5 min yeux compris), aucun 429.
+  ⚠️ **Le mur du PUSH n'est PAS mesuré, et le premier rapport le laissait croire** : les séances 3–4 ne
+  faisaient pas appeler `notify-call` par les figurants (le client l'appelle à chaque notification
+  acceptée). Ajouté en séance 5 : **162/162 appels en 500 `VAPID non configuré`** — le staging n'a pas les
+  clés du push, la fonction répond avant tout envoi. Seuls les **40 × 429** de l'organisatrice (dizaines
+  d'appels à la suite) touchent son plafond. Le push à 100 se mesure sur un projet qui a ses clés VAPID.
 
 ⚠️ **LE DÉFAUT QUE 10 NE MONTRAIT PAS : L'ANNULATION D'UNE ACTIVITÉ DE PLUS DE 60 PERSONNES N'EN PRÉVIENT
 QUE 60.** `toggleCancelEvent` → `_notifyEventAttendees` (app-07) fait écrire les 99 notifications PAR LE
@@ -3365,8 +3373,21 @@ transaction, antérieure à l'attente du verrou de l'activité — dix promotion
 ⚠️ **UN TÉMOIN QUI NE SUIT PAS L'AUTEUR NE VOIT PAS LE POST** : fil filtré sur sa passion et ses
 abonnements ; les témoins s'abonnent à Léa par le vrai bouton avant la rafale.
 
+⚠️ **LA PURGE D'UN DOMAINE QUE PERSONNE NE PURGE SE PROUVE** (relecture indépendante de la 1re version).
+`@passio-capacite.test` n'est purgé par aucune autre suite : un compte non suivi y reste pour toujours.
+Le manifeste (`.passio/tmp/village100/`, PAS `test-results/` que Playwright vide) porte l'adresse exacte
+écrite AVANT chaque création ; la purge retrouve les comptes par adresse (une réponse de création perdue
+n'est pas un orphelin), refuse tout identifiant dont l'adresse n'est pas de la campagne (manifeste édité
+ou copié), relit chaque compte en 404 et rend la séance rouge sur un reste (Z1). Un verrou (pid) empêche
+un second lancement de purger les comptes EN VOL du premier. Les rouges assumés sont NOMMÉS
+(`ROUGES_CONNUS = ["A3"]`) : un nouveau rouge, ou A3 qui repasse vert, change le verdict.
+
 Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
-participer »** (29 en ~1 min, aucun regroupement) ; 40 × 429 et des 500 sur `functions/v1/notify-call`
-(push Web, aucun abonnement posé) pendant les rafales ; latences variables sous la CI concurrente
-(une promotion à 12,5 s en séance 3, 218 ms en séance 4 ; p95 d'un j'aime de 110 ms à 3,1 s).
-Hors portée : médias, push réels, rendu et batterie d'un vrai téléphone.
+participer »** (29 en ~1 min, aucun regroupement) ; **chaque « je viens » tente d'entrer dans la
+discussion d'activité et se fait refuser en 403** (`acces_activite_non_valide` : l'accès suit la
+validation par l'organisation, migration des rencontres du 16/11) — le client fait donc une écriture
+vouée au refus par inscription (M3) ; latences variables sous la CI concurrente (une promotion à
+12,5 s en séance 3, 130–218 ms ensuite ; p95 d'un j'aime de 110 ms à 3,1 s).
+Hors portée : médias, push réels (staging sans VAPID), rendu et batterie d'un vrai téléphone.
+Limite du verrou : il ne couvre que `village:100` — `village` et `charge:realiste` lancés en même temps
+depuis ce poste partagent la cadence de connexion par adresse IP.
