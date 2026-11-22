@@ -726,7 +726,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         const vu = partageEvt && await attendre(() => chargerPost(HUGO, partageEvt.id), { delai: 12000, pas: 1500 });
         return { ok: !!vu };
       });
-      await verifier("B19c", "Kevin, bloqué par Léa, ne lit pas la carte de son activité, même par l'API", async () => {
+      await verifier("B19c", "Kevin, bloqué par Léa, ne lit pas la carte de son activité, même en interrogeant l'API avec sa session (la clé anon seule lit tout : hors lot)", async () => {
         if (!partageEvt) return { ok: false, detail: "pas de carte à éprouver" };
         const n = await lirePost(KEVIN, partageEvt.id);
         return { ok: n === 0, detail: `${n} ligne(s) lisible(s)` };
