@@ -26,12 +26,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { randomUUID } from "node:crypto";
 import { Budget } from "./charge-realiste.mjs";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { hostname } from "node:os";
 import { TABLES_COMPTE } from "../../supabase/functions/_shared/purge-compte.js";
 import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, emailFigurant, campagneValide,
-  emailDeLaCampagne, tableAbsente, comptesAPurger, RE_UUID } from "./village100.mjs";
+  emailDeLaCampagne, tableAbsente, comptesAPurger, verrouLibre, RE_UUID } from "./village100.mjs";
 
 const pause = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const enc = encodeURIComponent;
@@ -88,6 +88,48 @@ export class Manifeste {
     c.id = id; this.ecrire();
   }
   purgee() { this.etat.purge = true; this.ecrire(); }
+}
+
+// ── Le verrou de séance ───────────────────────────────────────────────────────
+// Créé de façon atomique (`wx`). Un verrou PÉRIMÉ (aucun de ses deux pid ne
+// vit) se reprend par RENOMMAGE, jamais par suppression : deux lancements qui
+// voient le même verrou mort feraient chacun `rm` puis `wx`, et le second
+// effacerait le verrou NEUF du premier — deux séances dans le même dossier.
+// Renommé, le verrou ne part qu'une fois : le perdant reçoit ENOENT et refuse.
+// S'il a renommé le verrou neuf d'un concurrent (repris entre notre lecture et
+// notre renommage), le contenu diffère de ce qu'on a lu : on le lui rend.
+// `fs` est injectable pour éprouver ces courses (tests/unit/village100.test.mjs).
+export function prendreVerrou(chemin, { pid = process.pid, estVivant, maintenant = () => new Date().toISOString(),
+  fs = { readFileSync, writeFileSync, renameSync, rmSync } } = {}) {
+  const poser = () => {
+    try { fs.writeFileSync(chemin, JSON.stringify({ pid, debut: maintenant() }), { flag: "wx" }); return true; }
+    catch (e) { if (e.code !== "EEXIST") throw e; return false; }
+  };
+  if (poser()) return { ok: true };
+  const refus = (raison) => ({ ok: false, raison });
+  let brut = null, v = null;
+  try { brut = fs.readFileSync(chemin, "utf8"); v = JSON.parse(brut); }
+  catch (e) { if (e.code === "ENOENT") return refus("verrou repris à l'instant par un autre lancement : refusé."); v = null; }
+  if (!v || typeof v !== "object" || Array.isArray(v)) {
+    return refus(`verrou illisible (${chemin}) : refusé. Si aucune séance ne tourne sur ce poste, le supprimer à la main.`);
+  }
+  if (!verrouLibre(v, estVivant)) {
+    return refus(`une séance tourne déjà sur ce poste (pid ${v.pid}${v.pidSeance ? ` / séance ${v.pidSeance}` : ""}, depuis ${v.debut}) : refusé. `
+      + "Si c'est faux (pid réutilisé par un autre programme), supprimer le verrou à la main.");
+  }
+  const ecarte = `${chemin}.${pid}`;
+  try { fs.renameSync(chemin, ecarte); }
+  catch (e) { if (e.code === "ENOENT") return refus("verrou repris à l'instant par un autre lancement : refusé."); throw e; }
+  let pris = null;
+  try { pris = fs.readFileSync(ecarte, "utf8"); } catch (e) { pris = null; }
+  if (pris !== brut) {
+    try { fs.writeFileSync(chemin, pris, { flag: "wx" }); fs.rmSync(ecarte, { force: true }); }
+    catch (e) { return refus(`verrous en conflit : celui d'un autre lancement est resté dans ${ecarte}. Refusé ; à examiner à la main.`); }
+    return refus("verrou repris à l'instant par un autre lancement : refusé.");
+  }
+  fs.rmSync(ecarte, { force: true });
+  if (!poser()) return refus("verrou repris à l'instant par un autre lancement : refusé.");
+  return { ok: true };
 }
 
 export function gardesCible(url) {

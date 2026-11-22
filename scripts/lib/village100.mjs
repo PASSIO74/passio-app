@@ -329,6 +329,23 @@ export function verrouLibre(verrou, estVivant) {
   return !pids.some((p) => estVivant(p));
 }
 
+// Un reliquat (manifeste NON purgé) n'est purgé — au démarrage comme par le
+// filet d'après séance — QUE s'il vient de CE poste et que la séance qui l'a
+// écrit ne vit plus. C'est la garde que `comptesAPurger` ne tient pas : un
+// manifeste copié AVEC sa propre campagne désigne de vrais comptes de banc.
+// Un manifeste sans poste ou sans pid (antérieur à ces gardes) n'est jamais
+// purgé d'office : il se nettoie une fois, à la main. Le pid égal au nôtre
+// est un pid réutilisé (nous sommes ce processus) : la séance est morte.
+export function reliquatPurgeable(m, { poste, pid, estVivant }) {
+  if (!m || m.purge || !Array.isArray(m.comptes) || !m.comptes.length) return { purger: false, refus: null };
+  const refus = (r) => ({ purger: false, refus: `manifeste ${m.campagne} ${r} : rien n'est purgé, à examiner à la main` });
+  if (typeof m.poste !== "string" || !m.poste) return refus("sans poste noté (antérieur aux gardes)");
+  if (m.poste !== poste) return refus(`venu d'un autre poste (${m.poste})`);
+  if (!Number.isInteger(m.pid)) return refus("sans pid de séance noté (antérieur aux gardes)");
+  if (m.pid !== pid && estVivant(m.pid)) return refus(`tenu par une séance vivante (pid ${m.pid})`);
+  return { purger: true, refus: null };
+}
+
 // Le projet que désigne une clé de service : la charge du JWT (`ref`). Une
 // clé illisible est un refus, jamais un « sans doute ».
 export function refDeLaCle(cle) {

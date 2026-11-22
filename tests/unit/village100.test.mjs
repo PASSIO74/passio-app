@@ -13,10 +13,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import * as L from "../../scripts/lib/village100.mjs";
-import { gardesCible, lotsPurge, motifRefusRsvp, motifServeurRsvp, TABLES_PURGE, Manifeste, purgerSeance, purgeComplete, PAGES_MAX } from "../../scripts/lib/village100-figurants.mjs";
+import { gardesCible, lotsPurge, motifRefusRsvp, motifServeurRsvp, TABLES_PURGE, Manifeste, purgerSeance, purgeComplete, PAGES_MAX, prendreVerrou } from "../../scripts/lib/village100-figurants.mjs";
 import { TABLES_COMPTE } from "../../supabase/functions/_shared/purge-compte.js";
-import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { tmpdir, hostname } from "node:os";
 
 const racine = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -250,6 +250,82 @@ test("verrou à DEUX pid, ref de la clé, masque de la clé anon", () => {
   assert.equal(L.masquerCle("wss://x/realtime/v1/websocket?apikey=eyJabc.def&vsn=1.0.0 failed"), "wss://x/realtime/v1/websocket?apikey=…&vsn=1.0.0 failed");
 });
 
+test("reliquatPurgeable : seulement un manifeste de CE poste, dont la séance est morte", () => {
+  const m = (o = {}) => ({ campagne: "capacite_1700000000000_abcdef01", poste: "POSTE-A", pid: 4242, purge: false, comptes: [{ email: "x", id: null }], ...o });
+  const mort = () => false, vivant = () => true;
+  const ctx = (o = {}) => ({ poste: "POSTE-A", pid: 1, estVivant: mort, ...o });
+  assert.deepEqual(L.reliquatPurgeable(m(), ctx()), { purger: true, refus: null }, "même poste, séance morte : purgé");
+  // Rien à faire : pas de manifeste, déjà purgé, aucun compte.
+  for (const x of [null, m({ purge: true }), m({ comptes: [] })]) assert.deepEqual(L.reliquatPurgeable(x, ctx({ estVivant: vivant })), { purger: false, refus: null });
+  // Un autre poste : refus, même séance morte.
+  const autre = L.reliquatPurgeable(m({ poste: "POSTE-B" }), ctx());
+  assert.equal(autre.purger, false); assert.match(autre.refus, /autre poste \(POSTE-B\)/);
+  // Une séance vivante : refus.
+  const vit = L.reliquatPurgeable(m(), ctx({ estVivant: (p) => p === 4242 }));
+  assert.equal(vit.purger, false); assert.match(vit.refus, /séance vivante \(pid 4242\)/);
+  // Le pid égal au nôtre est un pid réutilisé : nous sommes ce processus, la séance est morte.
+  assert.equal(L.reliquatPurgeable(m({ pid: 1 }), ctx({ estVivant: vivant })).purger, true);
+  // Un manifeste sans poste ou sans pid (antérieur aux gardes) : jamais d'office.
+  for (const x of [m({ poste: undefined }), m({ poste: "" }), m({ pid: undefined }), m({ pid: "4242" })]) {
+    const d = L.reliquatPurgeable(x, ctx());
+    assert.equal(d.purger, false); assert.match(d.refus, /antérieur aux gardes/);
+  }
+});
+
+// Un fs réel (dossier temporaire) dont la PREMIÈRE lecture du verrou laisse
+// un concurrent agir : c'est l'instant où deux lancements voient le même
+// verrou mort.
+function fsAvecConcurrent(chemin, concurrent) {
+  let fait = false;
+  return {
+    readFileSync: (p, e) => { const r = readFileSync(p, e); if (!fait && p === chemin) { fait = true; concurrent(); } return r; },
+    writeFileSync, renameSync, rmSync,
+  };
+}
+test("prendreVerrou : verrou libre, vivant, illisible ou `null`, périmé", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "village100-prise-"));
+  try {
+    const v = resolve(dir, "verrou.json");
+    assert.deepEqual(prendreVerrou(v, { pid: 7, estVivant: () => false }), { ok: true });
+    assert.equal(JSON.parse(readFileSync(v, "utf8")).pid, 7);
+    const vivant = prendreVerrou(v, { pid: 8, estVivant: (p) => p === 7 });
+    assert.equal(vivant.ok, false); assert.match(vivant.raison, /une séance tourne déjà/);
+    for (const contenu of ["null", "{", "[]", "42"]) {
+      writeFileSync(v, contenu);
+      const r = prendreVerrou(v, { pid: 8, estVivant: () => false });
+      assert.equal(r.ok, false, contenu); assert.match(r.raison, /illisible/);
+      assert.equal(readFileSync(v, "utf8"), contenu, "un verrou illisible n'est pas touché");
+    }
+    writeFileSync(v, JSON.stringify({ pid: 7, pidSeance: 9, debut: "avant" }));
+    assert.deepEqual(prendreVerrou(v, { pid: 8, estVivant: () => false }), { ok: true }, "périmé : repris");
+    assert.equal(JSON.parse(readFileSync(v, "utf8")).pid, 8);
+    assert.ok(!existsSync(v + ".8"), "le verrou écarté ne traîne pas");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("prendreVerrou : deux reprises concurrentes d'un même verrou périmé — une seule séance", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "village100-course-"));
+  try {
+    const v = resolve(dir, "verrou.json");
+    const perime = JSON.stringify({ pid: 7, debut: "avant" });
+    const neufA = JSON.stringify({ pid: 100, debut: "A" });
+    // ① A reprend TOUT (renomme, pose le sien) entre notre lecture et notre
+    // renommage : nous écartons le verrou NEUF de A — il doit lui être rendu.
+    writeFileSync(v, perime);
+    const r1 = prendreVerrou(v, { pid: 200, estVivant: (p) => p === 100,
+      fs: fsAvecConcurrent(v, () => { renameSync(v, v + ".100"); rmSync(v + ".100"); writeFileSync(v, neufA, { flag: "wx" }); }) });
+    assert.equal(r1.ok, false, "B ne prend pas le verrou de A");
+    assert.equal(readFileSync(v, "utf8"), neufA, "le verrou de A est intact");
+    assert.ok(!existsSync(v + ".200"));
+    // ② A n'a fait que renommer : notre renommage reçoit ENOENT, refus.
+    writeFileSync(v, perime);
+    const r2 = prendreVerrou(v, { pid: 200, estVivant: () => false,
+      fs: fsAvecConcurrent(v, () => { renameSync(v, v + ".100"); }) });
+    assert.equal(r2.ok, false); assert.match(r2.raison, /repris à l'instant/);
+    assert.ok(!existsSync(v), "B n'a rien posé");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("rouges connus : code ET signature figés — un autre rouge, le même AUTREMENT, ou un vert changent le verdict", () => {
   const c = (code, statut, detail = "") => ({ code, statut, detail });
   assert.equal(L.verdictFinal([c("A3", "ÉCHEC", "60/99 prévenus ; écritures refusées chez Léa : {\"400\":39}"), c("A3b", "OK")]).ok, true);
@@ -339,6 +415,9 @@ const CI_UID = "00000000-0000-4000-8000-0000000000c1";
 test("purgerSeance : les tables de la suppression de compte du produit (TABLES_COMPTE), importées", () => {
   for (const [t, c] of TABLES_COMPTE) assert.ok(TABLES_PURGE.some(([x, y]) => x === t && y === c), `${t}.${c} manque à la purge`);
   assert.ok(TABLES_PURGE.some(([t]) => t === "user_safety"), "declare_birth_year et l'onboarding écrivent user_safety");
+  // Hors TABLES_COMPTE : ce que le banc écrit en plus (discussion d'activité, signalements).
+  assert.ok(TABLES_PURGE.some(([t, c]) => t === "conversations" && c === "created_by"), "conversations.created_by");
+  assert.ok(TABLES_PURGE.some(([t, c]) => t === "reports" && c === "reporter_id"), "reports.reporter_id");
   assert.deepEqual(TABLES_PURGE[TABLES_PURGE.length - 1], ["profiles", "id"], "les profils partent en dernier");
 });
 
@@ -411,6 +490,36 @@ test("le lanceur refuse une seconde séance (verrou d'un pid vivant), avant tout
     assert.equal(r.status, 2);
     assert.match(r.stderr, /une séance tourne déjà/);
     assert.ok(existsSync(verrou), "le verrou de l'autre séance n'est pas retiré");
+    // Un verrou qui contient `null` : refus propre, pas un plantage.
+    writeFileSync(verrou, "null");
+    const r2 = spawnSync(process.execPath, [resolve(racine, "scripts", "village100.mjs")], { cwd: dir, env: sansJeton, encoding: "utf8", timeout: 20000 });
+    assert.equal(r2.status, 2);
+    assert.match(r2.stderr, /verrou illisible/);
+    assert.doesNotMatch(r2.stderr, /TypeError/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("le lanceur refuse un reliquat d'un autre poste ou d'une séance vivante, avant tout jeton ou réseau, sans le toucher", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "village100-reliquat-"));
+  try {
+    const d = resolve(dir, ".passio", "tmp", "village100");
+    mkdirSync(d, { recursive: true });
+    const man = resolve(d, "manifest.json");
+    const base = { campagne: "capacite_1700000000000_abcdef01", cible: L.STAGING_REF, purge: false, comptes: [{ email: "capacite_1700000000000_abcdef01_0@passio-capacite.test", id: null }] };
+    const sansJeton = { PATH: process.env.PATH, HOME: "/nonexistent-village100", USERPROFILE: "/nonexistent-village100" };
+    for (const [m, motif] of [
+      [{ ...base, poste: "UN-AUTRE-POSTE", pid: 2147483646 }, /autre poste/],
+      [{ ...base, poste: hostname(), pid: process.pid }, /séance vivante/],
+      [{ ...base, pid: 2147483646 }, /antérieur aux gardes/],
+    ]) {
+      writeFileSync(man, JSON.stringify(m));
+      const r = spawnSync(process.execPath, [resolve(racine, "scripts", "village100.mjs")], { cwd: dir, env: sansJeton, encoding: "utf8", timeout: 20000 });
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, motif);
+      assert.doesNotMatch(r.stderr, /jeton personnel/, "refusé AVANT de chercher le jeton");
+      assert.equal(readFileSync(man, "utf8"), JSON.stringify(m), "le manifeste n'est pas touché");
+      assert.ok(!existsSync(resolve(d, "verrou.json")), "le verrou est libéré");
+    }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

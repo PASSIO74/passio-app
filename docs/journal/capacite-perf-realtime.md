@@ -3401,6 +3401,24 @@ est créé atomiquement (`wx`) et porte deux pid (lanceur ET séance : un lanceu
 survit ne libère rien) ; un manifeste non purgé n'est jamais écrasé, `--retries`/`--repeat-each`
 sont refusés. Le rouge connu a une SIGNATURE figée (`{ A3: "60/99 prévenus" }`) et A3 ne porte plus
 que le décompte : « une seule fois, jamais l'organisatrice » est A3b, exigé hors liste.
+⚠️ **Troisième relecture : deux gardes sans test, et une course.** Les gardes du reliquat (autre poste,
+séance vivante) étaient écrites en ligne dans le lanceur : les retirer laissait les 26 tests verts. Elles
+sont dans `reliquatPurgeable` (lib), jugées AVANT tout jeton ou réseau, et éprouvées en fonction ET par
+le lanceur. Un verrou périmé se reprend désormais par RENOMMAGE (`prendreVerrou`), jamais par `rm` : deux
+lancements qui voyaient le même verrou mort faisaient chacun `rm` puis `wx`, et le second effaçait le
+verrou NEUF du premier. Un verrou `null` ou illisible est un refus propre.
+**Limites déclarées, non corrigées :** ① `conversations.created_by` se purge par lots de 40 avant que
+`conv_members`/`conv_messages` (FK sans cascade) soient tous partis : selon l'ordre du listing, un 23503
+rend Z1 rouge, rattrapé au passage suivant (jamais un vert à tort) — un second passage `conversations`,
+`reports`, `profiles`, comptes Auth après tous les lots serait plus propre. ② `?filter=` : si le serveur
+plafonnait `per_page` sous 200, `lot.length < 200` arrêterait le listing à la page 1 sans rien dire —
+comparer à `X-Total-Count`. ③ La purge du produit fait des choses que le banc ne fait pas : marques de
+rappels (`analytics_events.user_id = "systeme:rappels:<uid>"`), `events.co_organizers` (jsonb), Storage —
+la preuve porte sur les comptes et les adresses, pas sur chaque ligne. ④ Le verrou vaut par DOSSIER :
+deux copies de travail peuvent tourner ensemble (données sûres, latences mélangées) ; un refus permanent
+(pid réutilisé) se lève en supprimant `verrou.json` à la main ; un ancien manifeste sans `poste` se
+nettoie une fois à la main. ⑤ « 60/99 prévenus » est un nombre MESURÉ : s'il varie, le banc rougit à
+tort, jamais vert à tort.
 
 Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
 participer »** (29 en ~1 min, aucun regroupement) ; **chaque « je viens » tente d'entrer dans la

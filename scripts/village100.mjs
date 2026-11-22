@@ -15,7 +15,11 @@
 //   ④ un VERROU de séance (`.passio/tmp/village100/verrou.json`), CRÉÉ de façon
 //      atomique (`wx`), qui porte DEUX pid : le lanceur, et la séance Playwright
 //      qui s'y inscrit. Tant que l'un des deux vit, aucun autre lancement ne
-//      démarre — ni ne purge des comptes EN VOL ;
+//      démarre — ni ne purge des comptes EN VOL. Un verrou périmé se reprend
+//      par RENOMMAGE (`prendreVerrou`), jamais par suppression : deux reprises
+//      concurrentes ne peuvent pas réussir toutes les deux. Le verrou vaut
+//      pour CE dossier, pas pour le poste : deux copies de travail peuvent
+//      tourner ensemble (données sûres, latences mélangées) ;
 //   ⑤ le MANIFESTE (`.passio/tmp/village100/manifest.json`, hors de
 //      `test-results/` que Playwright vide) porte l'adresse exacte de chaque
 //      compte, écrite AVANT sa création, le pid de la séance et son poste. Un
@@ -44,8 +48,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir, hostname } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
-import { STAGING_REF, verrouLibre, refDeLaCle } from "./lib/village100.mjs";
-import { Manifeste, purgerSeance, purgeComplete } from "./lib/village100-figurants.mjs";
+import { STAGING_REF, reliquatPurgeable, refDeLaCle } from "./lib/village100.mjs";
+import { Manifeste, purgerSeance, purgeComplete, prendreVerrou } from "./lib/village100-figurants.mjs";
 
 if (process.env.GITHUB_ACTIONS || process.env.CI) {
   console.error("[village100] refusé en CI : simulation de poste, 100 comptes réels sur le staging.");
@@ -63,26 +67,26 @@ const MANIFESTE = resolve(DOSSIER, "manifest.json");
 const estVivant = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
 
 // ④ Le verrou, AVANT tout réseau : création atomique ; un verrou existant
-// n'est repris que si AUCUN de ses deux pid ne vit.
+// n'est repris (par renommage) que si AUCUN de ses deux pid ne vit.
 mkdirSync(DOSSIER, { recursive: true });
-function poserVerrou() {
-  try { writeFileSync(VERROU, JSON.stringify({ pid: process.pid, debut: new Date().toISOString() }), { flag: "wx" }); return true; }
-  catch (e) { if (e.code !== "EEXIST") throw e; return false; }
-}
-if (!poserVerrou()) {
-  let v = null;
-  try { v = JSON.parse(readFileSync(VERROU, "utf8")); } catch (e) { v = { illisible: true }; }
-  if (v.illisible || !verrouLibre(v, estVivant)) {
-    console.error(`[village100] une séance tourne déjà sur ce poste (${v.illisible ? "verrou illisible" : `pid ${v.pid}${v.pidSeance ? ` / séance ${v.pidSeance}` : ""}, depuis ${v.debut}`}) : refusé.`);
-    process.exit(2);
-  }
-  rmSync(VERROU, { force: true });
-  if (!poserVerrou()) { console.error("[village100] verrou pris par un autre lancement à l'instant : refusé."); process.exit(2); }
-}
+const prise = prendreVerrou(VERROU, { pid: process.pid, estVivant });
+if (!prise.ok) { console.error(`[village100] ${prise.raison}`); process.exit(2); }
 const liberer = () => {
   try { const v = JSON.parse(readFileSync(VERROU, "utf8")); if (v.pid === process.pid) rmSync(VERROU, { force: true }); } catch (e) {}
 };
 const sortir = (code) => { liberer(); process.exit(code); };
+
+// Le reliquat se JUGE avant tout jeton ou réseau (`reliquatPurgeable`) : un
+// manifeste d'un autre poste, d'une séance vivante ou antérieur aux gardes
+// arrête le lancement ici. Seule la purge elle-même attend les clés.
+function examinerReliquat() {
+  let m;
+  try { m = Manifeste.lire(MANIFESTE); } catch (e) { console.error(`[village100] manifeste illisible (${e.message}) : rien n'est purgé, à examiner à la main.`); return null; }
+  const decision = reliquatPurgeable(m, { poste: hostname(), pid: process.pid, estVivant });
+  if (decision.refus) { console.error(`[village100] ${decision.refus}.`); return null; }
+  return { m, decision };
+}
+if (!examinerReliquat()) sortir(2);
 
 const patPath = resolve(homedir(), ".supabase", "access-token");
 const pat = (process.env.SUPABASE_ACCESS_TOKEN || (existsSync(patPath) ? readFileSync(patPath, "utf8") : "")).trim();
@@ -97,11 +101,10 @@ if (!anon || !service || refDeLaCle(service) !== STAGING_REF) { console.error("[
 const url = `https://${STAGING_REF}.supabase.co`;
 
 async function purgerReliquat(moment) {
-  let m;
-  try { m = Manifeste.lire(MANIFESTE); } catch (e) { console.error(`[village100] manifeste illisible (${e.message}) : rien n'est purgé, à examiner à la main.`); return false; }
-  if (!m || m.purge || !m.comptes.length) return true;
-  if (m.poste !== hostname()) { console.error(`[village100] manifeste ${m.campagne} venu d'un autre poste (${m.poste}) : rien n'est purgé, à examiner à la main.`); return false; }
-  if (Number.isInteger(m.pid) && m.pid !== process.pid && estVivant(m.pid)) { console.error(`[village100] la séance ${m.campagne} (pid ${m.pid}) vit encore : rien n'est purgé.`); return false; }
+  const examen = examinerReliquat();
+  if (!examen) return false;
+  const { m, decision } = examen;
+  if (!decision.purger) return true;
   console.log(`[village100] ${moment} : séance ${m.campagne} non purgée, ${m.comptes.length} adresse(s) à retirer…`);
   const p = await purgerSeance({ url, service, manifeste: m, log: (x) => console.log("[village100] " + x) });
   if (!purgeComplete(p)) {
