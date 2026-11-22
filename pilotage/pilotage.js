@@ -940,6 +940,12 @@
       if (g.length) c.append(el("p", "discret", "Décisions : " + g.map(([k, v]) => k + " → " + v).join(" · ")));
       z.append(c);
     }
+    // Les seuils du voyant (2026-11-21, T3) : des phrases que la fonction compose (resumeEchelle), en TEXTE.
+    // Champ absent (fonction pas encore à jour) : rien n'est affiché ni inventé.
+    if (d.echelle && Array.isArray(d.echelle.phrases)) {
+      const ze = $("veilleBattement");
+      d.echelle.phrases.slice(0, 4).forEach((t) => ze.append(el("p", "discret", String(t))));
+    }
     const zp = vider("politique");
     const p = d.politique;
     if (!p) return;

@@ -31,7 +31,7 @@ import { REVISION } from "../_shared/revision.js";
 import { aalDuJeton, egaliteConstante, fusionAutorisee } from "../_shared/pilotage.js";
 import {
   autorise, RELANCES, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote, estReparationDuPilote, reparationConfiee, issueSuivie,
-  erreursFrequentes, detailsErreurs, jauges, resumerIssue, verdict, decideAlerte,
+  detailsErreurs, jauges, resumerIssue, verdict, decideAlerte, memoireAlerte, resumeEchelle,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, COMMENTAIRE_CONFIER, dejaConfiee, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
@@ -235,11 +235,23 @@ async function veille(admin: Admin) {
   }
   if (memoire.illisible) console.warn("veille : état mémorisé illisible " + JSON.stringify({ code: memoire.code || "?" }));
   const vt = tenirVerdict(prec, v, incomplet);
-  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
+  // Les codes des raisons rouges (2026-11-21, T3) viennent du verdict MESURÉ (`v`), jamais du voyant tenu :
+  // une raison neuve venue d'une source lue sonne même pendant une lecture incomplète.
+  const mesuree = { codes: v.couleur === "rouge" ? v.codes : [], rouges: v.couleur === "rouge" ? v.rouges : [] };
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, ...mesuree, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
+  // La mémoire des raisons APRÈS la décision, et gardée : elle ne doit jamais empêcher de sonner.
+  let memo: { codes: string[]; annonces: Record<string, string> };
+  try { memo = memoireAlerte(prec, actuel, d); }
+  catch { memo = { codes: (Array.isArray(actuel.codes) ? actuel.codes : []).filter((c: unknown) => typeof c === "string").slice(0, 24), annonces: {} }; }
+  // L'ensemble des raisons rouges a changé sous un rouge qui dure : l'état se réécrit (sinon une raison
+  // réparée puis revenue ne re-sonnerait pas). Un état d'avant ce lot, sans `codes`, n'est pas réécrit pour ça.
+  const codesPrec = prec && Array.isArray(prec.codes) ? prec.codes : null;
+  const codesChange = !!codesPrec && actuel.couleur === "rouge" && (codesPrec.length !== memo.codes.length || memo.codes.some((c) => !codesPrec.includes(c)));
   // Mémoire illisible : seul ce qui SONNE (un rouge, un site injoignable) s'écrit — l'alerte
   // d'abord, quitte à sonner deux fois. Tout autre voyant attend la lecture suivante.
-  const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner);
+  const change = memoire.illisible ? d.sonner : (!prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner || codesChange);
+  const seulCodes = !!prec && prec.couleur === actuel.couleur && prec.dispo === actuel.dispo && !d.sonner && codesChange;
   // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
   // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
   // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
@@ -257,6 +269,10 @@ async function veille(admin: Admin) {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
+      codes: memo.codes, annonces: memo.annonces,
+      // Réécrite pour ses seuls codes (même couleur, même dispo, rien n'a sonné) : marquée, et l'historique
+      // de l'écran l'écarte — un code qui clignote aurait rempli les lignes lues (contre-revue de B1).
+      ...(seulCodes ? { motif: "codes" } : {}),
     } });
     dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
@@ -293,6 +309,8 @@ async function veille(admin: Admin) {
     lectures: { sante, signalements, github: partielGh.length ? { status: "rejected" } : github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud,
       memoire: { status: memoire.illisible ? "rejected" : "fulfilled" }, remplissage: rempl, canari: can },
     verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, cadence, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    // La mesure d'échelle (2026-11-21, T3) : des NOMBRES, de quoi calibrer les taux (TAUX_VOYANT_PM).
+    echelle: { ...(e.sante || {}), connectes5: connectes5(signaux) },
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
@@ -507,7 +525,7 @@ async function lireReception(admin: Admin) {
 
 // Le dernier voyant noté par la veille. `illisible` (2026-11-12) : la lecture a échoué — ce
 // n'est PAS « aucun état », et l'appelant ne doit ni noter un premier état ni conclure à un retour.
-type EtatMemorise = { couleur?: string; dispo?: boolean; raisons?: string[]; alerteLe?: string | null; dispoDepuis?: string | null; le: string };
+type EtatMemorise = { couleur?: string; dispo?: boolean; raisons?: string[]; alerteLe?: string | null; dispoDepuis?: string | null; codes?: unknown; annonces?: unknown; le: string };
 async function lireEtatMemorise(admin: Admin): Promise<{ etat: EtatMemorise | null; illisible: boolean; code?: string }> {
   try {
     const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
@@ -700,6 +718,8 @@ async function etat(admin: Admin, frais = false) {
   }
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
   catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
+  // Les seuils du voyant, dits au pilote (2026-11-21, T3) : nombres absolus, et où serait le seuil proportionnel.
+  out.echelle = resumeEchelle(connectes5(maintenant));
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
@@ -721,6 +741,13 @@ async function compter(q: PromiseLike<{ count: number | null; error: unknown }>)
   return count ?? 0;
 }
 
+// Les comptes connectés (2026-11-21, T3) : `comptes_connectes` de l'appel à 300 s DÉJÀ fait (la veille
+// pour ses signaux, l'écran pour `utilisateurs.maintenant`), et seulement s'il est EXACT (fonction SQL,
+// identité serveur) — jamais le repli par lignes, qui compte des device_id qu'écrit le navigateur. Un
+// second appel à 900 s refaisait tout le calcul lourd et retardait le verdict sans délai propre
+// (contre-revue de B1). Une mesure sur 5 min, jamais une décision : inconnue, elle vaut null.
+const connectes5 = (a: Audience | null | undefined): number | null => (a && a.exact ? a.connexions ?? null : null);
+
 async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
@@ -735,14 +762,9 @@ async function lireSante(admin: Admin) {
     compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
   const depuis24 = ilYa(24 * 3600e3);
-  const [{ data, error }, erreurs24h] = await Promise.all([
-    admin.from("client_errors").select("message,uid,created_at").gte("created_at", depuis24).order("created_at", { ascending: false }).limit(300),
-    // Le NOMBRE se compte en base : la liste ci-dessus est bornée (300, et
-    // PostgREST ne rend jamais plus de 1 000 lignes) — sa longueur plafonnait
-    // l'affichage à 300 erreurs par jour, quelle que soit la réalité.
-    compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
-  ]);
-  if (error) throw error;
+  // Le NOMBRE se compte en base. Le classement des 300 dernières lignes qui l'accompagnait n'avait
+  // plus aucun lecteur (2026-11-21, T3) : le pilote lit celui de `erreurs.details` (lireErreurs7j).
+  const erreurs24h = await compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24));
   // Les COMPTES serveur derrière ces lignes (2026-11-07) : une erreur et une
   // panne 5xx se remontent avec la clé anon, publique — dix lignes forgées
   // faisaient sonner rouge. Seule l'identité posée par le serveur (`auth_uid`)
@@ -760,7 +782,7 @@ async function lireSante(admin: Admin) {
   // coupure réseau, un repli) ; seuls et d'un seul compte, ils ne colorent plus l'écran (verdict).
   const [lErreurs, l5xx, avertJs15] = await Promise.all([lignes("error", false), lignes("api", true), compter(prod().eq("type", "error").eq("severity", "warn"))]);
   const comptesErreurs15 = distincts(lErreurs), comptes5xx15 = distincts(l5xx), comptesAvert15 = distincts(lErreurs, (x) => x.severity === "warn");
-  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
+  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h };
 }
 
 async function lireErreurs7j(admin: Admin) {
@@ -798,15 +820,23 @@ async function lireMiseEnLigne(admin: Admin, etatGh: { runs?: { deploy?: RunResu
 // Ce qui s'est passé (2026-10-23) : les derniers CHANGEMENTS du voyant notés par
 // la veille (7 jours). Des raisons écrites par cette fonction, jamais un texte
 // de tiers ; bornées quand même.
+// Depuis le 2026-11-21 (T3), la veille réécrit aussi son état quand l'ensemble des raisons ROUGES change
+// sous un rouge qui dure. Ces réécritures portent `motif: "codes"` et sont écartées EN BASE (un code qui
+// clignote en écrirait douze par heure). Restent des lignes « rouge » de suite quand une sonnerie réécrit
+// l'état (« Nouveau problème », rappel) : on garde la plus ancienne lue de chaque suite de même couleur ET
+// même disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
+const HISTORIQUE_LU = 40;
 async function lireHistorique(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
-    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(12);
+    .eq("user_id", "systeme:pilotage").or("properties->>motif.is.null,properties->>motif.neq.codes")
+    .gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(HISTORIQUE_LU);
   if (error) throw error;
-  return (data || []).map((r) => {
+  const lignes = (data || []).map((r) => {
     const p = (r.properties || {}) as { couleur?: unknown; dispo?: unknown; raisons?: unknown };
     const couleur = ["vert", "orange", "rouge", "gris"].includes(String(p.couleur)) ? String(p.couleur) : "gris";
     return { le: r.created_at, couleur, dispo: p.dispo !== false, raisons: (Array.isArray(p.raisons) ? p.raisons : []).slice(0, 3).map((x) => String(x).slice(0, 160)) };
   });
+  return lignes.filter((l, i) => { const avant = lignes[i + 1]; return !avant || avant.couleur !== l.couleur || avant.dispo !== l.dispo; }).slice(0, 12);
 }
 
 async function lireUtilisateurs(admin: Admin) {

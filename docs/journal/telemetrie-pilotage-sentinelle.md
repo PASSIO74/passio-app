@@ -61,6 +61,7 @@
 - 🔦 LA SENTINELLE LIT TOUT, OU DIT CE QU'ELLE N'A PAS LU — T4 DE L'AUDIT « 100 000 », PART SANS MIGRATION (2026-11-21)
 - 🪣 LA TABLE DE TÉLÉMÉTRIE PLEINE SE VOIT, PUIS FAIT DE LA PLACE SEULE — T2 DE L'AUDIT « 100 000 » (2026-11-21)
 - 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
+- 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
 - ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
@@ -2834,6 +2835,123 @@ adaptées au code actuel, plus :
 
 **Suites voisines.** Les vingt-six suites qui chargent l'application avec `?telemetry=1` ont été
 rejouées après ce lot (plus `couverture-image-detachee`) : 158 cas verts, 6 sautés par leurs propres conditions, aucun décompte de lot à corriger.
+
+## 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
+
+Trou T3 de `docs/AUDIT_SURVEILLANCE_100K_2026-11-20.md` : les seuils de la veille sont des NOMBRES
+(10 erreurs, 5 pannes serveur, 2 comptes) et le téléphone ne sonnait qu'au CHANGEMENT de couleur. À
+25 000 connectés, le bruit de fond normal tient le voyant rouge — et la vraie panne qui arrive ensuite
+ne sonne plus. Le lot est coupé en deux : **B1 (ici, sans migration)** et **B2 (migration
+`pilotage_echelle()`, voyant à double règle, écran)**.
+
+**Ce que B1 ferme : une vraie panne n'est plus muette quand le voyant est déjà rouge.** Ce qu'il ne
+ferme PAS : le voyant rouge permanent à grande échelle (B2 : il faut le nombre de comptes ANCIENS
+connectés, compté en base) ; le ralentissement automatique permanent (hors lot : la jauge des 500
+connexions le commande jusqu'à T13, et le réveil de la Sentinelle reste bruité jusqu'à T4).
+
+**Mesuré (canal ①, 21/11).** Au plus 2 comptes connectés par quart d'heure ; aucun bruit de fond
+mesurable : les taux de ce lot sont des valeurs de DÉPART, pas un calibrage. La requête neuve de la
+veille GitHub (`SQL.api`, jointe à `auth.users`) s'exécute en production et rend 0 partout sur
+l'heure écoulée. Non vérifié d'ici : que la connexion anonyme soit désactivée dans Supabase ›
+Authentication (le client sait encore appeler `signInAnonymously`, aucun compte anonyme en base) —
+c'est l'une des raisons pour lesquelles le voyant ne juge pas au taux « tous les connectés ».
+
+⚠️ **UNE RAISON ROUGE = UN CODE D'UNE LISTE FERMÉE** (`RAISONS_ROUGES` : `erreurs`, `serveur`,
+`deploiement`, `veille`, `telemetrie`, `humain`, et `parcours:<id>` au gabarit des identifiants de
+contrat — `estCodeRouge`). `verdict` rend `codes` et `rouges` ({ code, texte }) ; `coder()` code les
+raisons poussées depuis son appel précédent, si bien que les lignes qui poussent n'ont pas changé (R20
+garde son texte). Le prédicat d'un parcours rouge a UNE définition (`estPanneRouge`, `_shared/parcours.js`),
+lue par `raisonsVerdict` et par le code. `telemetrie` (table refusée ou pleine, T2) n'était pas dans le
+plan, écrit avant T2 : sans lui, une table pleine pendant un rouge ne sonnerait pas.
+
+⚠️ **« NOUVEAU PROBLÈME » : UN CODE MESURÉ À CE PASSAGE, ABSENT DE L'ÉTAT MÉMORISÉ, NON ANNONCÉ DEPUIS
+6 H** (`decideAlerte`, `memoireAlerte`). Les codes viennent du verdict MESURÉ (`v`), jamais du voyant
+tenu : pendant une lecture incomplète, une raison neuve venue d'une source lue sonne quand même, et
+`memoireAlerte` garde les codes d'avant (sinon ils re-sonneraient à la lecture suivante). Un état
+d'avant ce lot (sans `codes`) n'invente aucune nouveauté et n'est pas réécrit pour ça ; un code hors
+liste ne sonne jamais ; une raison qui clignote se tait jusqu'au rappel. La veille réécrit l'état quand
+l'ensemble des codes change sous un rouge qui dure (`codesChange`) ; quand c'est sa SEULE cause (même
+couleur, même disponibilité, rien n'a sonné), la ligne porte `motif: "codes"` et `lireHistorique` l'écarte
+en base. Des 40 lignes restantes, il garde la plus ancienne lue de chaque suite de même couleur ET même
+disponibilité — le passage au rouge, tant qu'il est parmi les lignes lues.
+
+⚠️ **L'ÉTAT MÉMORISÉ EST HOSTILE PAR HYPOTHÈSE.** Il est relu tel quel d'`analytics_events` : la règle
+neuve est sous `try`, `annonces` n'est lu que si c'est un objet simple, `codes` filtré par
+`estCodeRouge`. Une exception y aurait supprimé TOUTE sonnerie, résolu compris. La veille appelle
+`memoireAlerte` APRÈS `decideAlerte`, sous `try/catch` (repli : les codes mesurés, aucune annonce).
+
+⚠️ **AUCUNE COULEUR DU VOYANT NE CHANGE AVANT LA MIGRATION** (contradiction bloquante du plan). Le seul
+dénominateur lisible sans migration, `comptes_connectes` de `pilotage_audience`, compte TOUS les
+connectés, comptes neufs et anonymes compris : cent un comptes qui envoient une ligne chacun auraient
+relevé le seuil et fait taire l'alarme, et une vague de lancement diluerait une panne des seuls comptes
+anciens. Il sert donc à MESURER : le battement note `echelle` (connectés sur 5 min, comptes touchés et
+lignes sur 15 min ; des nombres, `CLES_ECHELLE`), l'écran dit « seuils en nombres absolus » et où serait le seuil
+proportionnel (`resumeEchelle`, Détails › Veille). `TAUX_VOYANT_PM` (20 ‰ erreurs, 10 ‰ serveur) n'y
+sert qu'à cette phrase. T3-c rejoue toute une grille aux trois échelles : même verdict avec ou sans
+mesure. La retenue au taux, à DOUBLE règle (tous les connectés ET les comptes anciens), est B2.
+
+⚠️ **LA RÈGLE « PLANCHER ET TAUX » EST UNE FONCTION FEUILLE** (`_shared/echelle.js`) :
+`max(plancher, ⌈D × ‰ / 1000⌉)`, D illisible → plancher. Des ENTIERS pour mille : aucun taux du lot n'est
+touché par l'arrondi (balayage de 1 à 100 000), c'est une précaution épinglée par
+`seuilEchelle(1, 70, 100) === 7` (0,07 × 100 = 7,000000000000001).
+
+⚠️ **VEILLE GITHUB (`signalApi`) : UNE ALERTE 5XX RETENUE DEVIENT UNE ATTENTION, JAMAIS « RIEN ».**
+Les planchers ne bougent pas (5 réponses ET 2 appareils). L'alerte n'est ramenée à `warn` (`retenue5xx`)
+que si TOUT est lu et que, à la fois : les comptes ANCIENS touchés (identité serveur : plus de 7 jours,
+confirmés, non anonymes, non supprimés) sont au moins 1 et sous le taux des comptes anciens actifs
+(`seuilEchelle(2, 10 ‰, anciensActifs)` : pivot 200, 230 à 23 000) ; ET les lignes qui ne viennent PAS
+de comptes anciens (`n5xxAutres`, `app5xxAutres` : visiteurs, comptes neufs, lignes sans compte)
+restent, seules, sous les planchers d'avant. Le dénominateur ne compte jamais de `device_id`. Les refus
+ne sont pas retenus (leur palier est déjà une attention). Le texte part dans une issue PUBLIQUE : il ne
+cite ni le dénominateur ni le seuil.
+
+**Retrait du classement mort.** `erreursFrequentes` et `sante.principales` (300 dernières lignes de
+`client_errors`) n'avaient plus aucun lecteur — ni la page, ni les scripts, ni le dashboard ; seule la
+fixture e2e les nommait. Le pilote lit `erreurs.details` (1 000 lignes, 7 jours). `erreurs24h` reste
+compté en base, et sa panne lève toujours.
+
+**Bancs.** `tests/unit/lib/echelles.mjs` (données seules : la suite veille-production, non listée par
+`edge-functions.yml`, l'importe aussi). Logique pure : `pilotage.test.mjs` T3-a à T3-h ; fonction
+exécutée : `pilotage-chemins.test.mjs` T3-i (humain, puis déploiement cassé = une alerte « Nouveau
+problème » ; réparé, l'état suit ; rechute dans les 6 h : silence ; tout réglé : résolu ; historique
+réduit au passage au rouge), T3-j (états hostiles), T3-k (25 000 connectés, 300 erreurs chez 120
+comptes : TOUJOURS rouge, mesure au battement et à l'écran), T3-o (mémoire qui lève, fonction SQL qui
+lève) ; `battement.test.mjs` T3-l ; `veille-production.test.mjs` T3-m ; e2e `pilotage-nuage.spec.js`
+T3-n ; contre-revue : T3-p (pur), T3-q (exécuté). **Réinjections R150 à R199** dans
+`scripts/reinjections-pilotage.mjs`, dont les quatre d'`echelle.js` et huit de la veille GitHub ; à la
+main, l'écran rendu par `insertAdjacentHTML` ou retiré rougit T3-n.
+
+**Ce que la contre-revue du lot a changé (B-1 à B-4).**
+- **B-1, veille GitHub.** La première version ne comparait que comptes anciens touchés / actifs :
+  5 000 réponses 5xx sur 3 000 appareils et UN compte ancien touché rendaient `ok` (sur main : alerte),
+  et une ligne 5xx se forge par tout compte (`telemetry_insert_own` ne contraint ni type ni statut).
+  Désormais les lignes hors comptes anciens doivent rester seules sous les planchers d'avant, et une
+  alerte retenue rend `warn`. La fiche disait « une panne des visiteurs ou des comptes neufs alerte
+  comme avant » : c'était faux pour une panne qui touche aussi un compte ancien.
+- **B-2, historique.** Chaque changement de l'ensemble des codes écrivait une ligne ; un code qui
+  clignote remplissait les 40 lignes lues en 3 h 20 et l'historique n'avait plus qu'une ligne. Marque
+  `motif: "codes"`, filtre en base ; le dédoublonnage distingue la disponibilité (survivant M11).
+- **B-3.** Une raison neuve arrivée en même temps que « PASSIO ne répond plus » se mémorisait sans
+  avoir été annoncée — jamais annoncée ensuite. Une sonnerie qui n'annonce aucun code ne mémorise que
+  les codes que l'état d'avant portait déjà.
+- **B-4.** La garde des annonces datées dans le futur n'était vue par aucun test (survivant M1).
+  `lireConnectes15` rappelait `pilotage_audience(900)`, qui refait tout le calcul lourd (aucune branche
+  courte à 900 s), AVANT le verdict et sans délai propre : retiré. Les connectés viennent de l'appel à
+  300 s déjà fait (veille : ses signaux ; écran : `utilisateurs.maintenant`), seulement s'il est exact.
+  Choisi plutôt qu'un `avecDelai` : aucun appel de plus, aucun retard du verdict ; le prix est une
+  fenêtre de 5 min au lieu de 15, dite partout (« sur 5 min »). B2 apportera la mesure sur 15 min.
+
+**Limites connues.**
+- La sonnerie est plus bavarde par construction : un « Nouveau problème » par code et par 6 h ; il remet
+  `alerteLe` à maintenant, donc le rappel « Toujours un problème » des raisons plus anciennes recule.
+- Un rouge en cours au moment du déploiement garde l'ancien comportement (état sans codes) jusqu'à son
+  prochain rappel ou changement de couleur.
+- Un rouge tenu sur une lecture incomplète écrit ses raisons d'AVANT dans l'état et l'historique, même
+  quand une raison neuve vient de sonner (le texte de la sonnerie, lui, la nomme).
+- Un code `parcours:<id>` dépend d'un tirage et d'un budget de relecture : il peut apparaître et
+  disparaître ; l'historique dédoublonné l'absorbe, la mémoire des annonces évite le re-son.
+- Les taux ne sont pas calibrés (2 comptes en production) : à relire dès le premier pivot atteint
+  (100 connectés). Le battement accumule de quoi le faire.
 
 ## ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 

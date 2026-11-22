@@ -9,7 +9,8 @@
 // tests/unit/pilotage.test.mjs, le même fichier que Deno déploie.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { raisonsVerdict as raisonsParcours, parcoursARegler } from "./parcours.js";
+import { raisonsVerdict as raisonsParcours, parcoursARegler, estPanneRouge } from "./parcours.js";
+import { seuilEchelle, pivotEchelle } from "./echelle.js";
 import { ligneReception } from "./reception.js";
 
 /** Le compte de l'éditeur (même adresse que PASSIO_EDITEUR.email, js/legal-textes.js). */
@@ -78,22 +79,6 @@ export const sentinellePartielle = (issues) => (Array.isArray(issues) ? issues :
 export const LABELS_SUIVIS = ["sentinelle", "veille", "humain", "moderation", "digest", "recidive", "reparation", LABEL_SENTINELLE_PARTIELLE];
 
 const borne = (s, n) => { const t = String(s == null ? "" : s).replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n) + "…" : t; };
-
-/** Regroupe les erreurs client par message (les 5 plus fréquentes, textes bornés). */
-export function erreursFrequentes(lignes, max = 5) {
-  const groupes = new Map();
-  for (const l of lignes || []) {
-    const cle = borne(l && l.message, 160) || "(sans message)";
-    const g = groupes.get(cle) || { message: cle, n: 0, comptes: new Set(), dernier: null };
-    g.n++;
-    if (l.uid) g.comptes.add(String(l.uid));
-    const t = Date.parse(l.created_at);
-    if (Number.isFinite(t) && (!g.dernier || t > g.dernier)) g.dernier = t;
-    groupes.set(cle, g);
-  }
-  return [...groupes.values()].sort((a, b) => b.n - a.n || (b.dernier || 0) - (a.dernier || 0)).slice(0, max)
-    .map((g) => ({ message: g.message, n: g.n, comptes: g.comptes.size, dernier: g.dernier ? new Date(g.dernier).toISOString() : null }));
-}
 
 /** Résume une issue GitHub : aucun corps, aucun auteur — titre borné, labels, lien. */
 export function resumerIssue(i) {
@@ -289,6 +274,17 @@ export const SENTINELLE_MUETTE_MS = 3 * 3600e3;
 export const TITRE_SENTINELLE_MUETTE = "La Sentinelle n'a pas tourné depuis plus de " + SENTINELLE_MUETTE_MS / 3600e3 + " h";
 /** Comptes serveur distincts qu'il faut derrière des erreurs ou des 5xx pour sonner rouge. */
 export const COMPTES_ROUGE_MIN = 2;
+// ─── Les seuils À L'ÉCHELLE du voyant (2026-11-21, audit « 100 000 », T3) ────
+// Taux de départ, en ENTIERS pour mille des comptes connectés (_shared/echelle.js ; sur 15 min en B2 —
+// l'écran de B1 les rapporte aux connectés sur 5 min, la seule mesure exacte sans migration) :
+// rouge des erreurs à 20 ‰ (elles comptent les avertissements réseau, plus bruyants), du serveur
+// à 10 ‰. ⚠️ PAS ENCORE EN SERVICE : le voyant juge toujours sur les nombres absolus ci-dessus.
+// Le seul dénominateur lisible sans migration compte TOUS les connectés, comptes neufs et
+// anonymes compris — cent un comptes qui envoient une ligne chacun relèveraient le seuil et
+// feraient taire l'alarme. La retenue au taux n'entrera qu'avec le dénominateur des comptes
+// ANCIENS (migration du lot B2, règle double). D'ici là, ces taux servent à DIRE au pilote où
+// serait le seuil (resumeEchelle) et au battement de noter de quoi les calibrer.
+export const TAUX_VOYANT_PM = Object.freeze({ erreursRouge: 20, serveurRouge: 10 });
 // ─── Ce que « Régler » a lancé (2026-11-07) ──────────────────────────────────
 // Mesuré le 07/11 : quatre « Régler » en 70 s, quatre analyses de la Sentinelle
 // réussies… et une ligne IDENTIQUE après chacun. GitHub ne liste un run que
@@ -330,6 +326,11 @@ export const heureMinute = (v) => { const t = dateUtc(v); return Number.isFinite
  */
 export function verdict(e) {
   const rouge = [], orange = [];
+  // Chaque raison ROUGE porte un code d'une liste FERMÉE (RAISONS_ROUGES, 2026-11-21) : la veille
+  // sonne « Nouveau problème » quand un code s'ajoute à un rouge qui dure (decideAlerte). `coder`
+  // code les raisons rouges poussées depuis son appel précédent — les lignes qui poussent ne changent pas.
+  const codes = [];
+  const coder = (c) => { while (codes.length < rouge.length) codes.push(c); };
   const s = (e && e.sante) || {};
   const gh = (e && e.github) || {};
   const issues = Array.isArray(gh.issues) ? gh.issues : [];
@@ -354,20 +355,28 @@ export function verdict(e) {
   else if (erreurs >= 10) orange.push(`${erreurs} erreurs dans l'app en 15 min, de moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (erreurs - avert > 0) orange.push(`${erreurs} erreur(s) dans l'app en 15 min`);
   else if (avert > 0 && assez(s.comptesAvert15)) orange.push(`${avert} avertissement(s) dans l'app en 15 min (coupures réseau, replis), chez plusieurs comptes`);
+  coder("erreurs");
   if (s.api5xx15 >= 5 && assez(s.comptes5xx15)) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
   else if (s.api5xx15 >= 5) orange.push(`${s.api5xx15} pannes serveur en 15 min, vues par moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
+  coder("serveur");
   // La dernière mise en ligne TERMINÉE (echecRun) : cassée, expirée ou jamais démarrée → rouge,
   // même si la suivante tourne déjà ; annulée sans rien pour la remplacer → à régler.
   const ed = echecRun(runs.deploy);
   if (ed && ed.nature === "echec") rouge.push("dernier déploiement en échec" + (SUFFIXES_ECHEC[ed.run.conclusion] || ""));
   else if (ed) orange.push("la dernière mise en ligne n'a pas abouti" + (ed.run.conclusion === "cancelled" ? " (annulée)" : "") + " : la version en ligne n'est pas la dernière");
+  coder("deploiement");
   // Les parcours critiques (2026-11-06, _shared/parcours.js) : jugés sur l'heure
   // écoulée (`recent` à l'écran, la lecture d'une heure dans la veille). Un
   // parcours CRITIQUE en panne — comptes serveur distincts — est rouge, donc
   // sonne ; « insuffisant » et « non observé » ne colorent rien.
-  const pv = raisonsParcours(parcoursDuVoyant(e && e.parcours));
+  const bilanV = parcoursDuVoyant(e && e.parcours);
+  const pv = raisonsParcours(bilanV);
   rouge.push(...pv.rouge); orange.push(...pv.orange);
+  // Un code PAR parcours (`parcours:<id>`, même prédicat que raisonsVerdict) : une seconde panne sonne
+  // pendant que la première dure. Un identifiant hors gabarit retombe sur « parcours », jamais copié tel quel.
+  const idsRouges = bilanV && Array.isArray(bilanV.parcours) ? bilanV.parcours.filter(estPanneRouge).map((p) => p.id) : [];
+  pv.rouge.forEach((_t, i) => codes.push(/^[a-z][a-z0-9_]{1,39}$/.test(String(idsRouges[i])) ? "parcours:" + idsRouges[i] : "parcours"));
   // Une lecture des parcours tronquée ne prouve pas le calme : elle se dit.
   if (e && e.parcours && e.parcours.tronque) orange.push("parcours : lecture partielle (trop d'étapes sur la fenêtre) — le calme n'est pas prouvé");
   // La veille elle-même (le battement) : si elle ne tourne plus, le téléphone
@@ -375,6 +384,7 @@ export function verdict(e) {
   const bt = e && e.battement;
   if (bt && bt.etat === "arrete") rouge.push(bt.raisons && bt.raisons[0] ? bt.raisons[0] : "la veille ne tourne plus");
   else if (bt && bt.etat === "jamais") orange.push("la veille n'a encore laissé aucun battement");
+  coder("veille");
   // Télémétrie au plafond (2026-10-11) : les compteurs ci-dessus SOUS-ESTIMENT,
   // un vert ne prouverait plus rien — on le dit au lieu de le taire. Le mur
   // est celui que mesure la veille (`e.aveugle`, mesureAveugle) : sous
@@ -394,8 +404,10 @@ export function verdict(e) {
   const pleineDite = !!(cn && cn.refuse && cn.classe === "table_pleine");
   if (rp && !pleineDite && rp.couleur === "rouge") rouge.push(minuscule(titreRemplissage(rp)));
   else if (rp && !pleineDite && rp.couleur === "orange") orange.push(minuscule(titreRemplissage(rp)));
+  coder("telemetrie");
   const humain = issues.filter((i) => !i.pr && i.labels.includes("humain")).length;
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
+  coder("humain");
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
   if (enquetes) orange.push(`${enquetes} enquête(s) Sentinelle en cours`);
   // La Sentinelle a dit ne pas avoir tout lu ou tout confié : orange, JAMAIS rouge (rien ne sonne),
@@ -409,7 +421,7 @@ export function verdict(e) {
   // Pas pendant la PAUSE du pilote (contre-revue de #1007) : `aFaire` taisait déjà la ligne, et le
   // filet recréait un « Régler » qui relançait un passage aussitôt arrêté par la pause.
   if (!gh.pause && runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push(TITRE_SENTINELLE_MUETTE.charAt(0).toLowerCase() + TITRE_SENTINELLE_MUETTE.slice(1));
-  if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange) };
+  if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange), codes: [...new Set(codes)], rouges: rouge.map((texte, i) => ({ code: codes[i], texte })) };
   if (orange.length) return { couleur: "orange", titre: "À surveiller", raisons: orange };
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };
   return { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
@@ -1480,23 +1492,126 @@ export function jauges(m) {
   return out;
 }
 
+// ─── Un NOUVEAU problème sonne, même sur un voyant déjà rouge (2026-11-21, T3) ───
+// Le téléphone ne sonnait qu'au CHANGEMENT de couleur : un rouge qui dure (un sujet humain
+// ouvert, du bruit de fond à grande échelle) rendait muette la vraie panne suivante. Chaque
+// raison rouge porte un code d'une liste FERMÉE (verdict) ; un code mesuré à ce passage qui
+// n'était pas dans l'état mémorisé sonne « Nouveau problème », au plus une fois par code et
+// par période de rappel (`annonces`, remises à zéro quand le voyant quitte le rouge).
+// « telemetrie » : la table de télémétrie refusée ou pleine (T2) — ajoutée à la liste du plan,
+// écrite avant ce lot : sans elle, une table pleine pendant un rouge ne sonnerait pas.
+export const RAISONS_ROUGES = Object.freeze(["erreurs", "serveur", "deploiement", "veille", "telemetrie", "humain"]);
+/** Un code de la liste fermée, ou `parcours:<id>` au gabarit des identifiants de contrat. Rien d'autre ne sonne. */
+export const estCodeRouge = (c) => typeof c === "string" && (RAISONS_ROUGES.includes(c) || /^parcours(:[a-z][a-z0-9_]{1,39})?$/.test(c));
+/** Au plus autant de codes et d'annonces mémorisés : l'état se relit à chaque veille. */
+export const CODES_MEMOIRE_MAX = 24;
+// L'état mémorisé est relu tel quel d'analytics_events : n'importe quelle forme y est possible
+// (un état d'avant ce lot, une écriture partielle). Rien de ce qui le lit ne doit lever — une
+// exception ici supprimerait TOUTE sonnerie, résolu compris (contradiction du lot, 2026-11-21).
+const objetSimple = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const codesValides = (x) => (x && Array.isArray(x.codes) ? x.codes.filter(estCodeRouge) : []);
+
 /**
  * Faut-il sonner le téléphone ? On ne sonne QUE sur un changement qui compte :
- * passage au rouge, site injoignable, retour à la normale — et un rappel toutes
- * les 6 h si le rouge dure. L'orange ne sonne jamais (il se lit à l'ouverture).
- * `prec` = dernier état mémorisé { couleur, dispo, alerteLe } ou null.
+ * passage au rouge, site injoignable, retour à la normale, un NOUVEAU problème
+ * sous un rouge qui dure — et un rappel toutes les 6 h si le rouge dure. L'orange
+ * ne sonne jamais (il se lit à l'ouverture).
+ * `prec` = dernier état mémorisé { couleur, dispo, alerteLe, codes?, annonces? } ou null.
+ * `actuel.codes` = les codes MESURÉS à ce passage (jamais ceux d'un voyant tenu).
+ * `annonce` (quand on sonne) = les codes que cette sonnerie a annoncés (memoireAlerte).
  */
 export function decideAlerte(prec, actuel, maintenant = Date.now(), rappelMs = 6 * 3600e3) {
   const p = prec || { couleur: "vert", dispo: true, alerteLe: null };
   const a = actuel || {};
   if (a.dispo === false && p.dispo !== false) return { sonner: true, titre: "🔴 PASSIO ne répond plus", texte: "Le site ne répond pas à la sonde. Ouvre le pilotage." };
   if (a.dispo !== false && p.dispo === false) return { sonner: true, titre: "✅ PASSIO répond de nouveau", texte: "Le site est revenu." };
-  if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage." };
+  if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage.", annonce: codesValides(a) };
+  // Une raison rouge NEUVE sous un rouge qui dure. Un état d'avant ce lot (sans `codes`) n'invente
+  // aucune nouveauté ; un code déjà annoncé dans la période ne re-sonne pas (une raison qui clignote).
+  // Elle ne regarde pas `a.tenu` : les codes passés sont ceux MESURÉS, une source lue suffit.
+  // Tout état hostile fait taire CETTE règle seule : les transitions ci-dessus et dessous jouent.
+  if (a.couleur === "rouge" && p.couleur === "rouge" && Array.isArray(p.codes)) {
+    let neufs = [];
+    try {
+      const deja = p.codes.filter((c) => typeof c === "string");
+      const ann = objetSimple(p.annonces) ? p.annonces : {};
+      const recente = (c) => {
+        const t = typeof ann[c] === "string" ? Date.parse(ann[c]) : NaN;
+        return Number.isFinite(t) && maintenant - t < rappelMs && t <= maintenant + 60e3;
+      };
+      neufs = [...new Set(codesValides(a))].filter((c) => !deja.includes(c) && !recente(c));
+    } catch (_e) { neufs = []; }
+    if (neufs.length) {
+      const textes = (Array.isArray(a.rouges) ? a.rouges : []).filter((r) => r && neufs.includes(r.code) && typeof r.texte === "string").map((r) => r.texte);
+      return { sonner: true, titre: "🔴 Nouveau problème sur PASSIO", texte: textes.slice(0, 2).join(" · ") || "Ouvre le pilotage.", annonce: neufs };
+    }
+  }
   // Tenu sur une lecture incomplète (tenirVerdict), le voyant ne dit rien de neuf : pas de rappel. Mesuré
   // le 2026-11-04 : « 🔴 Toujours un problème : 10 erreurs en 15 min » toutes les 6 h, quinze heures après la dernière erreur.
-  if (a.couleur === "rouge" && !a.tenu && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") };
+  if (a.couleur === "rouge" && !a.tenu && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · "), annonce: codesValides(a) };
   if (a.couleur !== "rouge" && p.couleur === "rouge") return { sonner: true, titre: "✅ Problème résolu", texte: a.couleur === "orange" ? "Plus d'urgence, quelques points à surveiller." : "Tout va bien de nouveau." };
   return { sonner: false };
+}
+
+/**
+ * Ce que la veille MÉMORISE des raisons rouges après sa décision : { codes, annonces }.
+ * Hors rouge → rien (la période de rappel repart à zéro). Voyant TENU (lecture incomplète) :
+ * les codes d'avant sont gardés avec ceux mesurés — sinon ils re-sonneraient à la lecture
+ * suivante. `annonces` : code → date de sa dernière sonnerie, encore dans la période.
+ * Ne lève jamais (l'appelant garde quand même un repli : la mémoire n'empêche pas de sonner).
+ */
+export function memoireAlerte(prec, actuel, decision, maintenant = Date.now(), rappelMs = 6 * 3600e3) {
+  try {
+    if (!actuel || actuel.couleur !== "rouge") return { codes: [], annonces: {} };
+    const p = objetSimple(prec) ? prec : {};
+    const precRouge = p.couleur === "rouge";
+    let codes = codesValides(actuel);
+    if (actuel.tenu && precRouge) codes = codes.concat(codesValides(p));
+    const annonces = {};
+    if (precRouge && objetSimple(p.annonces)) {
+      for (const [c, le] of Object.entries(p.annonces)) {
+        const t = typeof le === "string" ? Date.parse(le) : NaN;
+        if (estCodeRouge(c) && Number.isFinite(t) && maintenant - t < rappelMs) annonces[c] = le;
+      }
+    }
+    if (decision && decision.sonner && Array.isArray(decision.annonce)) {
+      for (const c of decision.annonce) if (estCodeRouge(c)) annonces[c] = new Date(maintenant).toISOString();
+    }
+    // Une sonnerie qui n'annonce AUCUN code (le site ne répond plus, ou de nouveau) a pris la place de
+    // « Nouveau problème » : un code arrivé avec elle ne se mémorise pas, sinon il ne serait jamais
+    // annoncé (contre-revue de B1). Seuls restent ceux que l'état d'avant portait déjà.
+    if (decision && decision.sonner && !Array.isArray(decision.annonce)) {
+      const avant = precRouge ? codesValides(p) : [];
+      codes = codes.filter((c) => avant.includes(c));
+    }
+    return { codes: [...new Set(codes)].slice(0, CODES_MEMOIRE_MAX), annonces: Object.fromEntries(Object.entries(annonces).slice(-CODES_MEMOIRE_MAX)) };
+  } catch (_e) { return { codes: [], annonces: {} }; }
+}
+
+/**
+ * Ce que l'écran dit des seuils du voyant (2026-11-21, T3) : des phrases FIXES et des nombres,
+ * jamais un texte lu. `connectes5` = comptes connectés sur 5 min (pilotage_audience EXACTE,
+ * identité serveur), ou null. Le voyant juge toujours en nombres absolus : la phrase le dit,
+ * et dit où serait le seuil proportionnel quand le taux le relèverait — sans l'appliquer.
+ */
+export function resumeEchelle(connectes5) {
+  const n = connectes5;
+  const d = typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  const phrases = [`Seuils du voyant en nombres absolus : rouge à partir de 10 erreurs ou 5 pannes serveur en 15 min, chez au moins ${COMPTES_ROUGE_MIN} comptes.`];
+  if (d === null) {
+    phrases.push("Comptes connectés sur 5 min : non lus à ce passage.");
+    return { connectes5: null, actif: false, phrases };
+  }
+  phrases.push(`Comptes connectés sur 5 min : ${d}.`);
+  const sE = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge, d);
+  const sS = seuilEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge, d);
+  if (sE > COMPTES_ROUGE_MIN || sS > COMPTES_ROUGE_MIN) {
+    phrases.push(`À cette taille, des seuils proportionnels placeraient le rouge à ${sE} comptes en erreur et ${sS} comptes en panne serveur : ils ne sont pas encore en service (il leur faut le nombre de comptes anciens connectés, compté en base).`);
+  } else {
+    const pivot = Math.min(pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.erreursRouge), pivotEchelle(COMPTES_ROUGE_MIN, TAUX_VOYANT_PM.serveurRouge));
+    phrases.push(`Jusqu'à ${pivot} comptes connectés, les nombres absolus restent la bonne règle.`);
+  }
+  return { connectes5: d, actif: false, phrases };
 }
 
 /** Statuts qu'un signalement peut prendre depuis le téléphone. */

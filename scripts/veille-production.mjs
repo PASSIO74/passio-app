@@ -39,6 +39,7 @@
 import { lireJetonsCI } from "./sonder-jeton-ci.mjs";
 import { sqlActivation, activationDepuisLignes } from "../supabase/functions/_shared/pilotage.js";
 import { resumerBattement, BATTEMENT, AUTEUR_BATTEMENT } from "../supabase/functions/_shared/battement.js";
+import { seuilEchelle } from "../supabase/functions/_shared/echelle.js";
 
 // ── Constantes de calibrage (mesures de la carte mesures-prod, 2026-09-18) ──
 // Heures actives réelles du trafic humain : 09h–21h Paris (F10). Rien n'est
@@ -337,9 +338,35 @@ export function signalErreurs(m) {
   return { etat, texte: lignes.join(" ; ") };
 }
 
+// ── À l'échelle (2026-11-21, audit « 100 000 », T3) ──────────────────────────
+// Les planchers (5 réponses ET 2 appareils) ne bougent pas. À grande échelle, des 5xx chez une
+// poignée de comptes sur 25 000 sont du bruit de fond : l'ALERTE est ramenée à une ATTENTION
+// (jamais à « rien ») quand, à la fois :
+//   · les comptes ANCIENS touchés (identité serveur : plus de 7 jours, e-mail confirmé, non
+//     anonymes, non supprimés) sont au moins 1 et sous le taux des comptes anciens actifs ;
+//   · les lignes qui ne viennent PAS de comptes anciens (visiteurs, comptes neufs, lignes sans
+//     compte) restent, SEULES, sous les planchers d'avant (5 réponses ET 2 appareils) — sinon
+//     5 000 réponses 5xx sur 3 000 appareils et un seul compte ancien touché se taisaient
+//     (contre-revue de B1). Une ligne 5xx se forge par tout compte (telemetry_insert_own) : le
+//     taux ne juge que la part qu'un compte ancien porte, le reste juge comme avant.
+// Le dénominateur ne compte JAMAIS des device_id (écrits par le navigateur). Toute mesure absente,
+// NaN ou chaîne = pas de retenue. Les REFUS ne sont pas retenus : leur palier est déjà une attention.
+// ⚠️ Le texte part dans une issue PUBLIQUE : il ne dit ni le dénominateur ni le seuil.
+export const TAUX_API_PM = Object.freeze({ cinqCents: 10 });
+const compteLu = (x) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null);
+/** L'alerte 5xx est-elle du bruit de fond à cette échelle ? Seulement si TOUT est lu. */
+export function retenue5xx(m) {
+  const t = compteLu(m && m.anciens5xx), a = compteLu(m && m.anciensActifs);
+  const n = compteLu(m && m.n5xxAutres), d = compteLu(m && m.app5xxAutres);
+  if (t === null || a === null || n === null || d === null || a <= 0) return false;
+  const autresSousPlanchers = !(n >= 5 && d >= 2);
+  const seuil = seuilEchelle(2, TAUX_API_PM.cinqCents, a);
+  return autresSousPlanchers && seuil > 2 && t >= 1 && t < seuil;
+}
+
 /**
  * API vue par les clients : 5xx et refus 401/403 hors auth, dernière heure.
- * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number}} m
+ * @param {{n5xx:number,app5xx:number,nRefus:number,appRefus:number,anciensActifs?:number,anciens5xx?:number,n5xxAutres?:number,app5xxAutres?:number}} m
  */
 export function signalApi(m) {
   const ko = inconnu(m, "api");
@@ -347,7 +374,10 @@ export function signalApi(m) {
   const n = (k) => Number(m[k]) || 0;
   let etat = "ok";
   const lignes = [`dernière heure : ${n("n5xx")} réponse(s) ≥ 500 sur ${n("app5xx")} appareil(s), ${n("nRefus")} refus 401/403 hors auth sur ${n("appRefus")} appareil(s)`];
-  if (n("n5xx") >= 5 && n("app5xx") >= 2) {
+  if (n("n5xx") >= 5 && n("app5xx") >= 2 && retenue5xx(m)) {
+    etat = "warn";
+    lignes.push("réponses ≥ 500 chez une faible part des comptes anciens actifs, et presque aucune ailleurs : à surveiller");
+  } else if (n("n5xx") >= 5 && n("app5xx") >= 2) {
     etat = "alert";
     lignes.push("Supabase répond en erreur serveur à plusieurs appareils");
   } else if (n("nRefus") >= 20 && n("appRefus") >= 3) {
@@ -709,6 +739,11 @@ export function filtrePublic() {
   return `coalesce(meta->>'trafic', '') not in (${TRAFICS_HORS_PUBLIC.map((t) => `'${t}'`).join(", ")}) and not (coalesce(platform, '') = 'ios' and coalesce(connection, '') <> '')`;
 }
 
+/** Un compte ANCIEN et réel (T3) : même prédicat que le délestage (migration_reglages_distants_2026-10-11.sql). */
+export function filtreCompteAncien(u = "u") {
+  return `${u}.deleted_at is null and ${u}.email_confirmed_at is not null and not coalesce(${u}.is_anonymous, false) and ${u}.created_at < now() - interval '7 days'`;
+}
+
 export const SQL = {
   // ⚠️ ON COMPTE LE POIDS, PAS LES LIGNES — sinon ce signal MESURE
   // L'ÉCHANTILLONNAGE au lieu de l'usage. Depuis le 2026-09-19, `telemetry.js`
@@ -750,8 +785,14 @@ export const SQL = {
       count(*) filter (where http_status >= 500)::int as "n5xx",
       count(distinct device_id) filter (where http_status >= 500)::int as "app5xx",
       count(*) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "nRefus",
-      count(distinct device_id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "appRefus"
-    from telemetry_events where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
+      count(distinct device_id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "appRefus",
+      (select count(distinct t.auth_uid) from telemetry_events t join auth.users u on u.id = t.auth_uid
+        where t.env = 'production' and t.received_at > now() - interval '1 hour' and ${filtreCompteAncien()})::int as "anciensActifs",
+      count(distinct x.id) filter (where http_status >= 500)::int as "anciens5xx",
+      count(*) filter (where http_status >= 500 and x.id is null)::int as "n5xxAutres",
+      count(distinct device_id) filter (where http_status >= 500 and x.id is null)::int as "app5xxAutres"
+    from telemetry_events left join auth.users x on x.id = telemetry_events.auth_uid and ${filtreCompteAncien("x")}
+    where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
   tailleBase: `select pg_database_size(current_database())::bigint as octets`,
   // ⚠️ La purge de la télémétrie BRUTE a deux orthographes dans cron.job : `purge_telemetry_7j`
   // (ouverture publique, 11/09) puis `purge_telemetrie_paliers` (croissance, 01/11, qui
