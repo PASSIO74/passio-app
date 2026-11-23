@@ -721,8 +721,33 @@ test.describe("avec le vrai worker : ce qui part sur le réseau", () => {
     await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()).catch(() => {})).catch(() => {});
     await expect.poll(() => lireBuild(page), { timeout: 30000, intervals: [100] }).toBe(artefacts.B.release.buildId);
     expect(await page.evaluate(() => window.__versionServie)).toBe("B");
-    expect(await page.evaluate(() => caches.keys()), "prémisse : le cache de A a été vidé")
-      .toEqual(["passio-v" + artefacts.B.release.buildId]);
+    // ⚠️ « VIDÉ », PAS « ABSENT DE `caches.keys()` » (2026-11-22). Le run `main`
+    // 45050821716 a rougi trois fois de suite sur `["passio-v<B>", "passio-v<A>"]` :
+    // A listé APRÈS B, donc RECRÉÉ après la suppression, pas « pas encore supprimé »
+    // (`caches.keys()` rend l'ordre de création). Le recréateur est la page A
+    // elle-même : `purgerCaches` (app-02, médias protégés) tourne à l'annonce de
+    // l'installation de B et à `controllerchange`, lit `caches.keys()` puis fait
+    // `caches.open(nom)` — et `open` CRÉE un cache absent. Mesuré en local : une de
+    // ces purges ouvre A 2 à 6 ms avant `controllerchange`, à chaque passe ; il suffit
+    // que la suppression de B passe entre les deux (machine CI chargée). Le cache
+    // revenu est VIDE : rien de A n'y reste, et l'activation suivante le supprime.
+    // Un `expect.poll` sur `caches.keys()` n'y changerait rien : personne ne le
+    // re-supprime. On exige donc ce que la prémisse veut dire — plus aucun fichier de
+    // A en dehors du cache de B — et on montre le contenu en cas d'échec.
+    // Mutation : sans la suppression des anciens caches (`activate`, sw.js) → rouge
+    // (A garde ses 16 entrées).
+    const cacheB = "passio-v" + artefacts.B.release.buildId;
+    expect(await page.evaluate(() => caches.keys()), "prémisse : le cache de B est en place").toContain(cacheB);
+    const horsB = () => page.evaluate(async (garde) => {
+      const restes = {};
+      for (const nom of await caches.keys()) {
+        if (nom === garde) continue;
+        const entrees = await (await caches.open(nom)).keys();
+        if (entrees.length) restes[nom] = entrees.map((r) => r.url.replace(/^https?:\/\/[^/]+\//, ""));
+      }
+      return restes;
+    }, cacheB);
+    await expect.poll(horsB, { message: "prémisse : le cache de A a été vidé — aucune entrée hors du cache de B", timeout: 5000, intervals: [100] }).toEqual({});
 
     expect(artefacts.B.css, "prémisse : B garde la même feuille de style").toBe(artefacts.A.css);
     expect(requetesVersionnees(avantB).map((r) => r.rel + r.query), "seul le script modifié repart sur le réseau — ni les 8 autres, ni la feuille de style")

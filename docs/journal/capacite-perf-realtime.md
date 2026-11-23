@@ -39,6 +39,7 @@
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+- 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
 
 ---
 
@@ -3283,3 +3284,33 @@ Après `fil_compteurs` (15/11) et le recul du client (20/11), trois lectures pay
   - `tests/e2e/lectures-groupees-2026-11-22.spec.js` (6 cas) : 5 rougissent quand la fonction n'est jamais appelée, et 2 quand une erreur passagère rouvre la lecture d'avant.
 
 ⚠️ **UNE RÈGLE DE LECTURE QUI APPELLE UNE FONCTION SE PAIE PAR LIGNE, PAS PAR CIBLE.** PostgreSQL ne retient pas le résultat d'une fonction SECURITY DEFINER d'une ligne à l'autre, même quand l'argument ne change pas. Une lecture qui ramène beaucoup de lignes d'une même cible passe par une fonction qui décide la cible une fois (`materialized`), et cette fonction recopie la RÈGLE, pas la visibilité.
+
+## 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
+
+**Le symptôme.** `app-scripts-par-fichier.spec.js` ④ a rougi trois fois d'affilée sur le run `main` 45050821716
+(commit `515e7f42`), est passé au second essai, et a fait sauter une fois « Déploiement production ». Message :
+« prémisse : le cache de A a été vidé », `caches.keys()` = `["passio-v<B>", "passio-v<A>"]`.
+
+**La cause n'était pas une suppression en retard.** `caches.keys()` rend l'ordre de CRÉATION : A listé après B
+a été RECRÉÉ après la suppression. Un `expect.poll` aurait attendu en vain : personne ne le supprime une seconde
+fois. Le recréateur est la page A : `purgerCaches` (app-02, médias protégés) tourne sur `updatefound`, sur
+`PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE` et sur `controllerchange`, lit `caches.keys()` puis fait `caches.open(nom)`
+— et **`open` crée un cache absent**. Mesuré en local (journal des appels de la page) : une purge ouvre A
+**2 à 6 ms avant `controllerchange`**, à chaque passe ; que la suppression de B passe entre `keys()` et `open()`
+suffit, ce que fait une machine CI chargée (trois fois de suite sur la même). Un `caches.open(A)` après la
+bascule reproduit le rouge à l'octet. Côté worker A, aucun rangement n'était en vol : ses seules requêtes après
+le rechargement (la page, le SDK) se rangent avant `load`.
+
+**Effet produit : nul à l'œil.** Le cache revenu est VIDE, rien de A n'y est servi, et l'activation suivante le
+supprime (`activate` efface tout nom ≠ `CACHE`). Fermer la course dans la page demanderait de sérialiser purge et
+activation (Web Locks, partagés par la page et le worker), donc de faire attendre l'activation de tous les
+appareils derrière une purge : un coût hors de proportion avec un cache vide.
+
+**Le correctif (test seul).** La prémisse exige ce qu'elle dit : le cache de B présent, plus AUCUNE entrée hors
+de lui (contenu montré en cas d'échec), en `expect.poll` borné à 5 s. Mutation : sans la suppression des anciens
+caches (`activate`, sw.js) → rouge sous Chromium ET WebKit (A garde ses 16 entrées). Sur la forme exacte du
+rouge de la CI (A recréé vide) → vert. Suite complète : 15/15.
+
+**À retenir.** Un nom dans `caches.keys()` ne prouve pas que la version existe encore, et `keys()` puis
+`open(nom)` côté page ressuscite ce que le worker vient de supprimer. Sur des caches, asserter le CONTENU,
+jamais la liste des noms.
