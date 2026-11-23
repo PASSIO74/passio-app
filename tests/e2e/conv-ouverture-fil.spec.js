@@ -135,6 +135,87 @@ test.describe("Ouverture d'une conversation", () => {
     expect(bas, "le fil ne s'ouvre pas sur le message le plus récent").toBeLessThan(20);
   });
 
+  // Défaut vécu le 2026-11-22 sur Android : « quand j'ouvre une conversation,
+  // le dernier message est coupé ». Le fil grandit APRÈS l'ouverture sans
+  // aucun événement (police ou emoji chargés tard, réaction, bandeau) : rien ne
+  // ré-épinglait le bas. Éprouvé par mutation : sans l'observateur de taille
+  // de `_wireConvScroll`, les deux premiers cas rougissent.
+  async function ouvrirFilLong(page) {
+    await bootOnboarded(page);
+    await page.evaluate(() => {
+      const convs = getConversations();
+      convs.length = 0;
+      const msgs = [];
+      for (let i = 0; i < 40; i++) {
+        msgs.push({ id: "g" + i, from: i % 2 ? "me" : "u_a", text: "Message numéro " + i, at: Date.now() - (40 - i) * 60000 });
+      }
+      convs.push({ id: "c_grandit", userId: "u_a", userName: "Alice", userEmoji: "🎨", userColor: "#7c3aed", unread: 0, messages: msgs });
+      saveConversationsNow();
+      goTo("messages");
+      renderMessages();
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => openConversation("c_grandit"));
+    await page.waitForTimeout(600);
+  }
+  const ecartAuBas = (page) => page.evaluate(() => {
+    const t = document.getElementById("convFpThread");
+    return t.scrollHeight - (t.scrollTop + t.clientHeight);
+  });
+
+  test("une bulle qui grandit sans événement après l'ouverture ne coupe pas le dernier message", async ({ page }) => {
+    await ouvrirFilLong(page);
+    await page.evaluate(() => {
+      const b = document.querySelectorAll("#convFpThread .conv-bubble");
+      b[b.length - 1].style.paddingBottom = "180px"; // police / emoji arrivés tard
+    });
+    await page.waitForTimeout(150);
+    expect(await ecartAuBas(page), "le dernier message reste sous la saisie").toBeLessThan(20);
+  });
+
+  test("à l'ouverture, un `_auBas` retombé à faux sans geste ne laisse pas le fil au-dessus du bas", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => {
+      const convs = getConversations();
+      convs.length = 0;
+      const msgs = [];
+      for (let i = 0; i < 40; i++) msgs.push({ id: "h" + i, from: i % 2 ? "me" : "u_a", text: "Message " + i, at: Date.now() - (40 - i) * 60000 });
+      convs.push({ id: "c_h", userId: "u_a", userName: "Alice", userEmoji: "🎨", userColor: "#7c3aed", unread: 0, messages: msgs });
+      saveConversationsNow();
+      goTo("messages");
+      renderMessages();
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      openConversation("c_h");
+      // Après le ré-épinglage différé (320 ms), toujours dans la fenêtre d'ouverture.
+      setTimeout(() => {
+        const t = document.getElementById("convFpThread");
+        t._auBas = false; // défilement intermédiaire pendant l'entrée du panneau
+        const b = t.querySelectorAll(".conv-bubble");
+        b[b.length - 1].style.paddingBottom = "200px";
+      }, 500);
+    });
+    await page.waitForTimeout(900);
+    expect(await ecartAuBas(page)).toBeLessThan(20);
+  });
+
+  test("quelqu'un qui a remonté l'historique n'est pas ramené en bas", async ({ page }) => {
+    await ouvrirFilLong(page);
+    await page.waitForTimeout(1500); // fin de la fenêtre d'ouverture
+    const haut = await page.evaluate(async () => {
+      const t = document.getElementById("convFpThread");
+      t.dispatchEvent(new Event("touchstart"));
+      t.scrollTop = 300;
+      await new Promise((r) => setTimeout(r, 100));
+      const b = t.querySelectorAll(".conv-bubble");
+      b[b.length - 1].style.paddingBottom = "180px";
+      await new Promise((r) => setTimeout(r, 150));
+      return t.scrollTop;
+    });
+    expect(haut).toBe(300);
+  });
+
   test("le panneau ne garde pas de couche composée permanente (will-change)", async ({ page }) => {
     await bootOnboarded(page);
     const wc = await page.evaluate(() =>
