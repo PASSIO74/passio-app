@@ -34,6 +34,7 @@
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
 - 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
 - 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
+- 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 
 ---
 
@@ -2137,3 +2138,100 @@ Le seau `content` reste public : les avatars, couvertures, photos de passion et 
 - Banc : `tests/sql/migration-securite-p1-seau-public-2026-11-22.test.sh`. La preuve de bout en bout (dépôt refusé par l'API Storage, image ordinaire acceptée) se fait avec de vrais comptes au staging, après application.
 
 ⚠️ **UN SEAU SE RÈGLE SUR CE QUE LE CLIENT Y MET AUJOURD'HUI, PAS SUR CE QU'IL Y METTAIT.** Quand un usage quitte un seau (ici, les publications vers `content-protected`), ses bornes doivent suivre dans le même mouvement : un seau public qui accepte encore l'ancien usage laisse la place à un usage que personne n'a voulu.
+
+## 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
+
+`migrations/migration_blocage_lecture_activites_2026-11-22.sql` — **appliquée au STAGING puis en PRODUCTION le 2026-11-22**, sur ordre de Benjamin (« si le village est vert, applique en prod »). Auto-revue de mainteneur unique n°6013447731 sur #1017. Verdict 10/10 sur chaque cible, journalisée.
+- **Mesuré ensuite au staging et au canal ① en production** :
+  - les 5 policies RESTRICTIVE `{authenticated}` ;
+  - les deux aides, avec EXECUTE sans `anon` ;
+  - les empreintes neuves de `comment_target_visible` (`0d830765…`, `3cf606d2…`) ;
+  - aucune table publiée.
+- **Visiteur en production** (API, clé anon) : 200 partout, les 11 activités lisibles, aucun 42501.
+- **Village entre les deux** (`npm run village`, staging, migration appliquée) : **53 OK, 0 échec exigé**. B3 et B19c sont exigés et verts. Les 2 observations (A12, A22) sont antérieures à la migration et sans rapport.
+- ⚠️ `SCHEMA_PROD_REFERENCE.sql` n'est PAS régénéré : `scripts/schema-baseline.js` passe par `supabase db query --linked`, retiré par ADR-012. Le fichier date du 2026-08-17.
+
+Constaté par le village à 10 comptes (`npm run village`, contrôle B3) : Léa bloque Kevin, Kevin appelle `supaLoadEvents()` et lit l'activité de Léa — titre, ville, heure. Bloquer ne fermait que des ÉCRITURES (six policies INSERT, fiche « BLOQUER N'AVAIT D'EFFET QUE SUR `conv_members` ») et, côté client, le profil (PRO-C20). Les LECTURES restaient ouvertes : `events`, `event_comments`, `event_reactions` en `true`, les publications d'un compte public, et la carte « A partagé une activité » qu'un TIERS republie (ville et date dans `content` ET dans `shared_data`).
+
+- **Une policy RESTRICTIVE de lecture par table, `TO authenticated`** : `events` (auteur ou organisateur en blocage), `event_attendees` (l'activité), `event_comments` et `event_reactions` (l'activité ou l'auteur), `posts` (l'auteur, l'album `event_id`, la publication citée `shared_from_post_id`, la carte `shared_data` kind = event). Ses propres lignes restent toujours lisibles ; l'organisatrice voit tous ses inscrits. « L'activité » = UNE définition, `activite_masquee_pour_moi(id)` (auteur ou organisateur en blocage, l'appelant n'étant ni l'un ni l'autre), lue par toutes les tables filles, `posts` et `comment_target_visible`.
+- **`comment_target_visible`** : la branche « activité » rendait VRAI sans condition. Elle suit le blocage. Les commentaires d'activité de `comment_interactions` et le canal `fil:<activité>` (`passio_rt_recevoir_fil`) se ferment avec elle.
+- **Aucun nouvel oracle** : `activite_masquee_pour_moi` ne dit rien que `is_blocked_with(auteur)` ne dise déjà (EXECUTE à authenticated, jamais anon). `activite_de_partage(text)` est pure, sans table.
+- **L'organisateur** : la contrainte `events_organisateur_est_auteur` (validée en production) le rend égal à l'auteur ou nul. La branche organisateur est une défense en profondeur — la relecture adverse l'avait signalée comme un trou, la base dit que le cas ne peut pas exister aujourd'hui.
+- **Pas d'index à ajouter** : `is_blocked_with` sonde la clé primaire `(blocker_id, blocked_id)` dans les deux sens. Coût mesuré au staging : 5 000 appels en 203 ms, soit ~40 µs par ligne lue.
+- **Temps réel** : aucune de ces tables n'est publiée (`supabase_realtime` vide en production et au staging le 22/11). R25/R37 ne s'appliquent pas.
+- **Essai au staging dans une transaction ANNULÉE** (exception finale, rien n'est resté) : 10 OK au verdict, rejeu 10 OK ; le retour arrière `--|` rend les empreintes md5 mesurées et la migration se réapplique ensuite (10 OK). Kevin ne lit plus ni l'activité, ni les inscrits, ni les commentaires et réactions, ni les publications de Léa, ni la carte / le repartage / l'album d'Inès qui la citent, ni le canal `fil:`. Léa ne lit plus Kevin (blocage dans les deux sens). Inès et un visiteur lisent comme avant, sans erreur. Un `shared_data` mal formé ne fait pas échouer la lecture.
+- Banc PostgreSQL : `tests/sql/migration-blocage-lecture-activites.test.sh` (avant, application, rejeu, après, mutation, retour arrière, garde).
+
+⚠️ **UNE POLICY RESTRICTIVE QUI APPELLE `is_blocked_with` SE DÉCLARE `TO authenticated`, JAMAIS `to public`.** `anon` n'a pas EXECUTE sur les aides de blocage : une policy `to public` fait échouer en 42501 toute lecture d'un visiteur. Un visiteur n'a pas d'identité, donc pas de blocage.
+
+⚠️ **UN RETOUR ARRIÈRE SE COPIE DE LA DÉFINITION MESURÉE, JAMAIS DE MÉMOIRE.** La première version des lignes `--|` reprenait les corps de `comment_target_visible` sans leurs commentaires : empreintes différentes, et la garde refusait ensuite de réappliquer la migration. Les lignes `--|` sont désormais générées depuis la fixture (`pg_get_functiondef`) et le banc les rejoue.
+
+⚠️ **`shared_data` EST UN TEXTE, PAS UN JSON.** Le caster en `jsonb` dans une policy fait échouer TOUTE la lecture du fil dès qu'une seule ligne est mal formée. On l'extrait par expression régulière (`activite_de_partage`), qui ne lève jamais.
+
+**Ce que la migration ne ferme pas (déclaré dans son en-tête)** :
+- Un visiteur lit toujours les activités publiques : il suffit de se déconnecter.
+- `participants_compte` répond par des nombres sur un identifiant d'activité.
+- ~~Un repartage de repartage ne remonte pas à l'original.~~ **FAUX** : le repost d'une carte recopie son TEXTE (titre, ville, heure). Corrigé par la bis.
+- ~~`post_comments`/`post_likes` … restent lisibles~~ : corrigé par la bis.
+
+### Bis — `migration_blocage_lecture_activites_bis_2026-11-22.sql` (**appliquée nulle part** : relecture puis contre-revue de la session mère attendues)
+
+Une relecture indépendante faite APRÈS la mise en production a trouvé quatre trous. Une deuxième relecture a refusé le premier correctif ; une troisième a trouvé une régression et trois points que la base mesurée rendait réels ; une quatrième, des sources d'orphelins oubliées, une course avec une suppression, et un banc qui pouvait passer sur une version fausse ; une cinquième, une portée à déclarer, un verdict à compléter et un renommage d'activité qui libérait son identifiant. Tout a été vérifié au staging, dans des transactions annulées, et les deux bancs exécutés sur un PostgreSQL 17 jetable.
+
+**Ce n'est PAS une régression du 22/11.** Avant #1017, un compte bloqué lisait déjà TOUT. La première migration a fermé l'essentiel ; ces trous sont ce qu'elle laissait OUVERT. L'homonymie préexistait (RV-45) et ne s'est pas aggravée en production. Ne pas lire « faille introduite le 22/11 ».
+
+- **① Homonymie (RV-45).** Les identifiants de `posts`, `events`, `post_comments` et `event_comments` sont choisis par le client. `comment_target_visible` et `fil_temps_reel_visible` devinent le TYPE d'une cible d'après la table où son identifiant existe. En production, Kevin publie un post à l'identifiant de l'activité de Léa, puis lit ses réponses et reçoit son canal ; `diffuser_interaction` les lui pousse en plus sur `user:<Kevin>`.
+  - **Premier correctif, REFUSÉ** : faire primer l'activité. Le trou se retournait : une activité forgée à l'identifiant d'une publication privée l'ouvrait à un visiteur. #951 avait choisi l'ordre inverse exprès.
+  - **Correctif retenu** : il n'y a plus d'homonyme. Le déclencheur `zz_identifiant_sans_homonyme`, posé sur les quatre tables, refuse à l'insertion comme au changement d'identifiant un identifiant :
+    - déjà présent dans une autre des quatre tables ;
+    - porté par un fil ou une cible ORPHELINS : réponses et réactions (`comment_interactions.post_id` / `.comment_id`), commentaires et « j'aime » (`post_comments.post_id`, `post_likes.post_id`, `comment_likes.comment_id`). En production : 215 réponses sur 39 fils, 10 fils de commentaires ou « j'aime », dont d'anciens identifiants d'EXEMPLE devinables ;
+    - ou retiré (`rencontres_prive.identifiants_retires`).
+  - **Comment il le fait** :
+    - il est SECURITY DEFINER (l'homonyme peut être invisible à l'appelant) et pris sous un verrou consultatif par identifiant (éprouvé à DEUX sessions : sans verrou, la seconde passe) ;
+    - il lève le SQLSTATE dédié `PT409` (HTTP 409), car le client prend un 23505 pour « déjà en base » (`supaPublishEvent`) ;
+    - un rejeu dans la même table laisse répondre `<table>_pkey`, et ce « déjà dans SA table » se lit sous `FOR KEY SHARE` : une SUPPRESSION en cours est attendue, puis les contrôles s'appliquent à l'état validé (sans lui, la réinsertion d'une activité qu'on supprime passait, fil orphelin compris) ;
+    - un visiteur sans compte est refusé AVANT tout contrôle, en 42501 comme la RLS (sinon il saurait qu'un identifiant privé existe ; refuser par défaut tient même si une policy d'écriture anonyme apparaît) ;
+    - une réaction de l'AUTEUR précédant son propre commentaire ne le refuse pas (l'écriture d'une interaction est jugée par son fil) ;
+    - côté client, un PT409 marque la publication « refusée » avec un message, au lieu d'un rejeu toutes les 45 s ;
+    - `comment_target_visible` n'est pas réécrite.
+- **② Repartage à deux niveaux.** Le repost de la carte d'Inès recopie le texte de la carte. `publication_masquee_pour_moi(id)` applique la règle entière à la publication CITÉE (un niveau). Elle rend FAUX d'emblée sans compte.
+- **③ Fils.** `post_is_visible` applique la même règle : commentaires, j'aime, interactions, `comment_likes`, `fil_compteurs`, canal `fil:`.
+- **④ L'organisatrice** relit ce qu'un compte qu'ELLE a bloqué a laissé sur SON activité, jamais l'inverse (la v2 rendait à un organisateur bloqué le commentaire de son bloqueur : régression trouvée en troisième relecture). Le test passe par `events` et `blocks` lues sous sa propre RLS. Même règle pour les réponses et réactions (`comment_interactions`, sur MON fil d'activité ou de publication) et les « j'aime » de commentaires (`comment_likes`) d'un compte en blocage avec moi.
+- **Garde-fous** :
+  - `lock_timeout` 3 s et `statement_timeout` 30 s ;
+  - garde md5 sur `post_is_visible` et sur les deux `comment_target_visible` (non réécrites) ;
+  - garde « zéro homonyme » avant de poser le déclencheur ;
+  - un verdict de 19 lignes qui LÈVE sur un seul ECHEC (dont ⑱ : les quatre restrictives d'INSERT par visibilité, qui empêchent une interaction, un commentaire ou un « j'aime » de précéder sa cible — sans elles, faux PT409) ;
+  - `events.id` FIGÉ par le déclencheur (un renommage libérait l'ancien identifiant sans le retirer) ; une mise à jour qui renvoie le même identifiant passe ;
+  - un retour arrière GARDÉ (il refuse un état qui n'est pas celui de la bis).
+- **Mesures au staging** (Léa bloque Kevin ; Paul est privé) :
+  - les quatre homonymes forgés (A, B, miroir, `(cid)`), un changement d'identifiant vers un homonyme et la reprise d'un fil orphelin sont refusés en PT409 ; un rejeu dans la même table rend `posts_pkey` ; un visiteur reçoit 42501 sur un identifiant privé existant comme sur un identifiant libre ;
+  - Kevin ne lit plus rien de Léa, `fil_compteurs` à 0/0/0 ;
+  - Léa garde son fil et voit le vieux commentaire de Kevin ;
+  - Paul reste privé pour tous ;
+  - rien ne change pour Inès ni pour un visiteur ;
+  - coût : un visiteur 4 µs par ligne, un connecté avec un blocage 32 à 54 µs par publication selon les mesures.
+  - Kevin, organisateur bloqué par Léa, ne lit plus la RÉPONSE de Léa sur son activité.
+  - Retour arrière : il rend les empreintes de la première migration, 0 déclencheur, puis la bis se réapplique.
+- **Bancs** : `tests/sql/migration-blocage-lecture-activites-bis.test.sh` (87 verts) et celui de la première migration (31 verts), exécutés sur ce poste avant la CI. Le banc de la bis utilise les vraies `post_masque`, `abonne_accepte_non_bloque` et `post_is_visible`, les policies et les privilèges de production (dont `comment_likes`, `update (content)` sur `posts`, l'INSERT d'anon), et la policy temps réel évaluée par topic. Il couvre A, B, le miroir, `(cid)`, la course à deux sessions, la course avec une suppression, le rejeu, le visiteur (sur un identifiant qui existe AILLEURS, le seul cas qui distingue la garde), toutes les sources d'orphelins, la réaction de l'auteur qui précède son commentaire, l'identifiant retiré (insertion et UPDATE), l'organisateur bloqué et le blocage réciproque, les réponses et « j'aime » d'un bloqué, les mutations du déclencheur (garde du visiteur, `FOR KEY SHARE` : chacune rougit le banc), le compte privé, la modération, la carte supprimée, les mutations du verdict, le retour arrière (empreintes ET `qual`) et les gardes.
+
+⚠️ **UN BANC SQL QUI N'A JAMAIS TOURNÉ N'EST PAS UN BANC.** Les deux bancs de ce lot ont d'abord été écrits sans PostgreSQL sur le poste. La CI les a trouvés rouges tous les deux (fonctions chargées dans un ordre où elles s'appellent avant d'exister ; `check_function_bodies = off`, comme `pg_dump`). L'exécution locale a ensuite trouvé un défaut du BANC lui-même : une policy ouverte à la place de celle de production, qui le faisait passer pour de mauvaises raisons. Sous Windows, sans psql : les binaires PostgreSQL du paquet npm `@embedded-postgres/windows-x64` et un psql de substitution sur le pilote `pg` suffisent.
+
+⚠️ **UN IDENTIFIANT CHOISI PAR LE CLIENT EST UN IDENTIFIANT FORGEABLE.** Une fonction qui devine le type d'une cible d'après la table où son identifiant existe donne la main à quiconque peut écrire dans l'une de ces tables. Changer l'ORDRE des branches ne ferme rien : ça retourne le trou. Il faut rendre l'identifiant unique entre les tables, puis éprouver les deux sens au banc.
+
+⚠️ **Restes déclarés** :
+- **Carte citée supprimée.** `shared_from_post_id` n'a pas de clé étrangère, et le repost garde le texte recopié : il redevient lisible par le bloqué. Fermer ce cas, c'est neutraliser le texte des repartages à la suppression de l'original — changement de produit, voir village A24.
+- **Lecture anonyme** des activités publiques.
+- **`events.id` reste modifiable** par l'organisateur (`posts.id` ne l'est plus depuis #888, `post_comments.id` est figé, `event_comments` n'a pas de policy UPDATE), mais jamais vers un homonyme.
+⚠️ **UNE POLICY NE FERME QUE CE QUI PASSE PAR ELLE.** La restrictive de `comment_interactions` (v4) ne changeait rien pour l'application : le client lit les réactions et réponses par `interactions_cibles` (#1023, SECURITY DEFINER, entrée en production le même jour), qui contourne la RLS. Repéré en fusionnant `main` dans la branche, pas par une relecture. La bis réécrit donc `interactions_cibles` avec la même règle (verdict ⑲, mutation au banc, staging : Kevin 0 par lecture directe ET par la lecture groupée). Avant de fermer une lecture, chercher les fonctions SECURITY DEFINER qui lisent la même table : `grep -n "from public.<table>" migrations/`.
+
+- **Commentaires de premier niveau et « j'aime » d'une PUBLICATION** (`post_comments`, `post_likes`) écrits par un compte en blocage avec moi, sur le fil d'un TIERS : encore lisibles, et poussés sur `fil:` par `diffuser_commentaire_publication`. Lot suivant : une restrictive calquée sur `event_comments`, avec la branche du propriétaire du fil valable DANS LES DEUX SENS (sinon le propriétaire ne peut plus lire ni supprimer l'insulte d'un compte qui l'a bloqué).
+- **Mineurs déclarés** : PT409 contre 23503 dit à un compte qu'un identifiant existe ; côté client, `_passioEchecPublication` est partagé entre publications, « Publie-la à nouveau » n'a pas de bouton, la file des commentaires réessaie un PT409 toutes les 15 s ; `is_blocked_with` est payé par ligne.
+- **Diffusion EN DIRECT des réponses** : `diffuser_interaction` (SECURITY DEFINER) pousse la ligne ENTIÈRE sur `fil:<id>`, TEXTE en clair d'une réponse compris (`left(payload, 2000)`), et `passio_rt_recevoir_fil` ne regarde que la visibilité du fil. Kevin, organisateur bloqué par Léa, lit donc EN DIRECT toute nouvelle réponse de Léa sur son activité tant que la discussion est ouverte : la bis ne ferme que la RELECTURE. Lot suivant : retirer le texte de la charge et faire relire le client par `interactions_cibles`.
+- **Agrégats** : `fil_compteurs` montre les emoji et GIF d'un compte en blocage avec le lecteur, puis `_ciVerifierReactionsPost` les retire (ils apparaissent puis disparaissent).
+- **Gel de `events.id`** : il vaut aussi pour `service_role` et la maintenance (renommer exige de suspendre le déclencheur).
+- **Coût** : `is_blocked_with` par ligne lue, y compris dans `interactions_cibles`, avant son `limit 1000` (chemin chaud de D14-01). Piste : CTE `materialized` des comptes en blocage, après EXPLAIN ANALYZE.
+- **Carte d'activité occupée d'avance** : son identifiant déterministe `post_ev_<id>` peut être pris dans `post_comments`, `event_comments` ou comme `comment_id` d'une interaction sous un fil visible, pendant les 7 jours de `rattraperActivitesAuFil`, et la carte est alors refusée (PT409). Le déni se limite à la carte automatique.
+- **Activité retirée** : la production répond 23514 (`aa_rencontres_activite` passe avant `zz_`), PT409 ailleurs.
+- **Épreuves embarquées non rejouables** : celles de `migration_epingle_commentaire_2026-11-05.sql` et `migration_publications_supprimees_2026-11-04.sql` insèrent des homonymes exprès ; après la bis, elles prennent PT409. Ne pas rejouer ces migrations telles quelles.
+- **215 réponses et 10 fils orphelins restent en base**, inatteignables sans un identifiant neuf égal, désormais refusé. Les purger est une écriture de données (canal ②), décision de Benjamin.

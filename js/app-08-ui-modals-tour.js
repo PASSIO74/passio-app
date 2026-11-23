@@ -5552,6 +5552,14 @@ async function _publierAvecEssais(post, maxRetries) {
         console.warn("publication refusée par la clé étrangère :", e.message || e);
         return _pubDone(false);
       }
+      // PT409 = identifiant déjà porté par une autre publication, activité, commentaire ou
+      // fil (déclencheur zz_identifiant_sans_homonyme, 2026-11-22). Définitif aussi : le
+      // rejouer toutes les 45 s ne changerait rien. La publication est marquée « refusée ».
+      if (e && String(e.code) === "PT409") {
+        window._passioEchecPublication = "identifiant_pris";
+        console.warn("publication refusée : identifiant déjà utilisé :", e.message || e);
+        return _pubDone(false);
+      }
       if (attempt === maxRetries) return _pubDone(false);
 
       // Attendre avant retry

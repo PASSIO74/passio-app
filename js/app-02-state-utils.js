@@ -3705,6 +3705,7 @@ function messageEchecPassion() {
   var c = window._passioEchecPublication;
   if (c === "passion_absente") return "Choisis une passion avant de publier.";
   if (c === "passion_inconnue") return "Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
+  if (c === "identifiant_pris") return "Cette publication n'a pas pu être enregistrée (identifiant déjà utilisé). Publie-la à nouveau.";
   return null;
 }
 

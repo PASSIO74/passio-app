@@ -566,10 +566,14 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
       const voientEvt = [];
       for (const i of [MARC, INES, HUGO, CHLOE, TOM, SARAH, NINA, JADE]) if (await attendre(() => chargerEvt(i), { delai: 10000, pas: 1500 })) voientEvt.push(nom(i));
       await verifier("B2", "les 8 autres (hors Kevin) trouvent l'activité", async () => ({ ok: voientEvt.length === 8, detail: `${voientEvt.length}/8` }));
+      // EXIGÉ depuis migration_blocage_lecture_activites_2026-11-22.sql : la
+      // lecture de `events` exclut, côté serveur, une activité dont l'auteur est
+      // en blocage avec l'appelant (avant : observation, Kevin lisait la ville
+      // et l'heure du rendez-vous de Léa).
       await verifier("B3", "Kevin, bloqué par Léa, ne voit pas son activité", async () => {
         const vu = await chargerEvt(KEVIN);
         return { ok: !vu, detail: vu ? "Kevin voit l'activité de Léa" : "" };
-      }, { exige: false });
+      });
       await verifier("B4", "à l'écran : Jade (téléphone) voit l'activité dans l'onglet Rencontres", async () => {
         await ev(JADE, () => { goTo("irl"); try { renderIRL(); } catch (e) {} });
         const vu = await attendre(() => ev(JADE, () => (document.querySelector("#screen-irl") || {}).innerText?.includes("Pique-nique au parc")), { delai: 10000 });
@@ -721,6 +725,11 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
       await verifier("B19b", "Hugo retrouve la carte de l'activité partagée en rechargeant son fil (lecture serveur)", async () => {
         const vu = partageEvt && await attendre(() => chargerPost(HUGO, partageEvt.id), { delai: 12000, pas: 1500 });
         return { ok: !!vu };
+      });
+      await verifier("B19c", "Kevin, bloqué par Léa, ne lit pas la carte de son activité, même en interrogeant l'API avec sa session (la clé anon seule lit tout : hors lot)", async () => {
+        if (!partageEvt) return { ok: false, detail: "pas de carte à éprouver" };
+        const n = await lirePost(KEVIN, partageEvt.id);
+        return { ok: n === 0, detail: `${n} ligne(s) lisible(s)` };
       });
       await capturer("B-activite", [LEA, INES, JADE, TOM]);
 
