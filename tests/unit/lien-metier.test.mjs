@@ -416,6 +416,7 @@ test("audit 2026-11-06 : une panne n'envoie rien ; seule l'absence de la colonne
 // `prevenir_inscrits_activite` prévient). Sans gabarit, `notify-call` refusait
 // toute push d'annulation (« genre sans gabarit »).
 // ═══════════════════════════════════════════════════════════════════════════
+const D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const ANNUL = {
   ...BASE,
   profiles: [{ id: A, username: "Alex", emoji: "🎸" }, { id: B, username: "Léa" }, { id: C, username: "Chris" }],
@@ -427,6 +428,7 @@ const ANNUL = {
   event_attendees: [
     { event_id: "ev_annulee", user_id: B, rsvp: "going", created_at: t(9000) },
     { event_id: "ev_annulee", user_id: C, rsvp: "no", created_at: t(9000) },
+    { event_id: "ev_annulee", user_id: D, rsvp: "going", created_at: t(9000) },
     { event_id: "ev_vivante", user_id: B, rsvp: "going", created_at: t(9000) },
     { event_id: "ev_co", user_id: B, rsvp: "waitlist", created_at: t(9000) },
   ],
@@ -445,6 +447,12 @@ test("A3 ② lien : organisateur → inscrit d'une activité ANNULÉE en base, e
   assert.equal(vivante.ok, false, "une activité vivante ne se dit pas annulée");
   assert.match(vivante.raison, /pas annulée/);
   assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", B, A, "ev_annulee", T0)).ok, false, "B n'organise pas");
+  // L'organisation SEULE refuse : D est inscrit (going) à une activité annulée, B n'en est
+  // qu'un inscrit — sans ce cas, retirer `estOrganisateur` laissait le banc vert (red team du 23/11).
+  const bVersD = await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", B, D, "ev_annulee", T0);
+  assert.equal(bVersD.ok, false, "B n'organise pas, D est bien inscrit");
+  assert.match(bVersD.raison, /n'organise pas/);
+  assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, D, "ev_annulee", T0)).ok, true, "témoin : l'organisatrice vers D passe");
   assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, C, "ev_annulee", T0)).ok, false, "C a décliné (rsvp no) : la base ne le prévient pas");
   assert.equal((await lienEvenement(fauxAdmin({ ...ANNUL, event_attendees: [] }), "event_cancelled", A, B, "ev_annulee", T0)).ok, false, "pas inscrit");
   assert.equal((await lienEvenement(fauxAdmin(ANNUL), "event_cancelled", A, B, "", T0)).ok, false, "ref_id absent");
@@ -470,4 +478,17 @@ test("A3 ③ autoriserPushNotif : la ligne écrite par la base (`n_pi_`, origine
   // RÉINJECTION : la même ligne vers une activité réactivée (plus annulée) ne pousse rien.
   tables.events = tables.events.map((e) => (e.id === "ev_annulee" ? { ...e, status: "upcoming" } : e));
   assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, false);
+});
+
+test("A3 ④ autoriserPushNotif : une ligne `event_cancelled` écrite par le CLIENT ne pousse jamais (liste de diffusion fermée)", async () => {
+  const ligne = { id: "n_cli", from_id: A, user_id: B, kind: "event_cancelled", ref_id: "ev_annulee",
+    content: "Alex a annulé un événement auquel tu participais", created_at: new Date(T0 - 5_000).toISOString() };
+  // Tout le lien métier tient (organisatrice, activité annulée, B inscrit) : seule l'origine refuse.
+  const client = await autoriserPushNotif(fauxAdmin({ ...ANNUL, notifications: [{ ...ligne, origine: "client" }] }), A, B, T0);
+  assert.equal(client.ok, false);
+  assert.match(client.raison, /origine client/);
+  // Colonne `origine` absente (migration non appliquée) : la ligne vaut « client », refusée.
+  assert.equal((await autoriserPushNotif(fauxAdmin({ ...ANNUL, notifications: [ligne] }), A, B, T0)).ok, false);
+  // Témoin : la même ligne d'origine serveur passe.
+  assert.equal((await autoriserPushNotif(fauxAdmin({ ...ANNUL, notifications: [{ ...ligne, origine: "serveur" }] }), A, B, T0)).ok, true);
 });
