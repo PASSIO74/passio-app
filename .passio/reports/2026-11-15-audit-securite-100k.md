@@ -32,6 +32,16 @@
 > | Atténué, reste à faire | 3 | abus (1), capacité (1), agents (1) |
 > | Ouvert | 7 | abus (3), coûts (2), mise en production (1), capacité (1) |
 >
+> **Mise à jour du 23/11/2026.** Les correctifs des 22 et 23/11 sont appliqués en production et relus (journal des migrations, contenu servi, rejeu des attaques).
+>
+> | Statut | Nombre | Familles |
+> |---|---:|---|
+> | Fermé | 6 | messagerie, abus (2), capacité (1), coûts (2) |
+> | Fermé dans la base et le code, reste un geste hors code | 3 | abus (2) : limite de débit par adresse IP ; agents (1) : poste local et connecteur de lecture |
+> | Ouvert | 2 | mise en production (1) : pas de second relecteur humain ; capacité (1) : rien n'est démontré au-delà de 200 utilisateurs simultanés |
+>
+> Les cinq points restants demandent une dépense ou une seconde personne. Aucun ne se ferme par du code.
+>
 > Des gestes de fermeture immédiate ont aussi été faits en production le 16/11. Le tableau ci-dessous décrit les constats tels qu'ils ont été établis le 15/11.
 
 ## 2. Les onze constats P1, par famille
