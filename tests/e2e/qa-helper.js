@@ -23,7 +23,7 @@ const RT_MODE = process.env.PASSIO_E2E_RT || "";
 // suite qui passe un préfixe propre à SA séance (le village) retrouve ses comptes
 // même quand l'inscription casse APRÈS leur création, donc avant que l'uid lui
 // soit rendu — et les purge sans toucher ceux des autres.
-async function signupUser(page, label, passionIndex = 0, prefixe = "qa") {
+async function signupUser(page, label, passionIndex = 0, prefixe = "qa", options = {}) {
   const step = (m) => console.log(`[signup ${label}] ${m}`);
   // TCI-01 (2026-09-15) : ce parcours passe par la LANDING HISTORIQUE et son
   // onboarding (« Créer un compte », année, prénom, passions). Depuis la
@@ -41,10 +41,9 @@ async function signupUser(page, label, passionIndex = 0, prefixe = "qa") {
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 25000 });
   // Compte réel PRÉ-CONFIRMÉ (compte-e2e.js) : depuis l'activation de « Confirm
   // email », signUp ne rend plus de session et l'attente de MY_UID expirait.
-  // D16-01 : le préfixe par défaut prend un compte du JEU PERSISTANT (staging) ;
-  // un préfixe PROPRE à une séance (le village) garde un compte jetable, que
-  // cette séance retrouve et purge par son préfixe — jamais un compte du jeu.
-  await creerCompteE2E(page, prefixe, { jetable: prefixe !== "qa" });
+  // D16-01 : un compte du JEU PERSISTANT (staging). `options` le nomme pour un
+  // banc à séance longue (le village : couloir, rang du personnage, durée du bail).
+  await creerCompteE2E(page, prefixe, options);
   await page.evaluate(() => { if (typeof onbNext === "function") onbNext(); });
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 25000 });
   await page.locator("#birthYear").fill("1995");

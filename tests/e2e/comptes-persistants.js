@@ -26,7 +26,7 @@
 // purge existante ne peut supprimer un compte du jeu. Les comptes ne sont
 // JAMAIS supprimés ; seuls leurs CONTENUS le sont (`purgerContenusCompte`).
 //
-// UN COMPTE REPRIS DOIT PARAÎTRE NEUF. À chaque acquisition : ses lignes de 36
+// UN COMPTE REPRIS DOIT PARAÎTRE NEUF. À chaque acquisition : ses lignes de 38
 // tables sont effacées (liste mesurée sur la structure réelle le 2026-11-23,
 // clés étrangères comprises), son `user_metadata` est vidé (nom, année, CGU,
 // invitation : l'app les relit à chaque session) — sinon le test suivant
@@ -76,7 +76,11 @@ const META_SYSTEME = new Set(["email", "email_verified", "phone_verified", "sub"
 // `comptes_en_suppression` n'est pas listée : service_role n'y a pas DELETE, et
 // un compte du jeu n'y entre jamais (`suppression-compte` prend un jetable).
 // Les journaux (`analytics_events`, `telemetry_events`, `client_errors`,
-// `activite_jour`) ne sont pas un état que relit l'app : ils restent.
+// `activite_jour`) ne sont pas un état que relit l'app : ils restent ;
+// `passion_quotas` est un réglage d'administration, pas un contenu. Toute
+// AUTRE table de `TABLES_COMPTE` (la suppression de compte du produit,
+// `supabase/functions/_shared/purge-compte.js`) doit être ici : le verrou
+// unitaire compare les deux listes.
 const TABLES_CONTENU = [
   { table: "call_invites",         colonnes: ["from_id", "to_id"] },
   { table: "notifications",        colonnes: ["user_id", "from_id"] },
@@ -101,7 +105,9 @@ const TABLES_CONTENU = [
   { table: "cdv_live_reactions",   colonnes: ["user_id"] },
   { table: "cdv_live_followers",   colonnes: ["user_id"] },
   { table: "cdv_live_collaborators", colonnes: ["user_id", "added_by"] },
+  { table: "cdv_live_steps",       colonnes: ["author_id"] },
   { table: "cdv_lives",            colonnes: ["author_id"] },
+  { table: "video_lives",          colonnes: ["author_id"] },
   { table: "blocks",               colonnes: ["blocker_id", "blocked_id"] },
   { table: "reports",              colonnes: ["reporter_id"] },
   { table: "push_subscriptions",   colonnes: ["user_id"] },
@@ -204,12 +210,6 @@ async function majCompte(cfg, id, corps, f) {
   return r.json().catch(() => null);
 }
 
-/** Filtre PostgREST : `eq` sur une colonne, `or=(…)` sur plusieurs. */
-function filtreCompte(colonnes, id) {
-  if (colonnes.length === 1) return `${colonnes[0]}=eq.${id}`;
-  return "or=(" + colonnes.map((c) => `${c}.eq.${id}`).join(",") + ")";
-}
-
 async function supprimerLignes(cfg, table, filtre, f) {
   const r = await f(`${cfg.url}/rest/v1/${table}?${filtre}`, { method: "DELETE", headers: entetes(cfg, { Prefer: "return=minimal" }) });
   if (r.ok) return;
@@ -218,22 +218,55 @@ async function supprimerLignes(cfg, table, filtre, f) {
   throw new Error(`jeu persistant : purge ${table} HTTP ${r.status} ${t.slice(0, 160)}`);
 }
 
+// Une URL trop longue est refusée avant PostgREST : on purge par paquets.
+const PAQUET_PURGE = 40;
+const RE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Filtre PostgREST sur un paquet de comptes : `in.(…)` sur une colonne, `or=(…)` sur plusieurs. */
+function filtrePaquet(colonnes, ids) {
+  const liste = "(" + ids.join(",") + ")";
+  if (colonnes.length === 1) return `${colonnes[0]}=in.${liste}`;
+  return "or=(" + colonnes.map((c) => `${c}.in.${liste}`).join(",") + ")";
+}
+
 /**
- * Efface tout ce que le compte a laissé — jamais le compte. Les conversations
- * qu'il a CRÉÉES partent avec leurs messages et leurs membres (NO ACTION vers
- * `conversations`), y compris ceux d'un autre compte.
+ * Efface tout ce que ces comptes ont laissé — jamais les comptes. Les
+ * conversations qu'ils ont CRÉÉES partent avec leurs messages et leurs membres
+ * (NO ACTION vers `conversations`), y compris ceux d'un autre compte. Par
+ * paquets de 40 : le village à 100 purge ses 100 comptes en ~3 × 36 requêtes.
  */
-async function purgerContenusCompte(cfg, id, f = fetch) {
-  if (!/^[0-9a-f-]{36}$/i.test(String(id))) throw new Error("jeu persistant : identifiant de compte invalide");
-  const r = await f(`${cfg.url}/rest/v1/conversations?select=id&created_by=eq.${id}`, { headers: entetes(cfg) });
-  if (!r.ok) throw new Error(`jeu persistant : conversations HTTP ${r.status}`);
-  const convs = ((await r.json()) || []).map((c) => c.id).filter((x) => typeof x === "string");
-  const parConv = convs.length ? `conv_id.in.(${convs.map((c) => `"${c.replace(/"/g, "")}"`).join(",")}),` : "";
-  await supprimerLignes(cfg, "conv_messages", `or=(${parConv}from_id.eq.${id})`, f);
-  await supprimerLignes(cfg, "conv_reads", `or=(${parConv}user_id.eq.${id})`, f);
-  await supprimerLignes(cfg, "conv_members", `or=(${parConv}user_id.eq.${id})`, f);
-  await supprimerLignes(cfg, "conversations", `created_by=eq.${id}`, f);
-  for (const { table, colonnes } of TABLES_CONTENU) await supprimerLignes(cfg, table, filtreCompte(colonnes, id), f);
+async function purgerContenusComptes(cfg, ids, f = fetch) {
+  const propres = [...new Set(ids || [])];
+  if (propres.some((id) => !RE_ID.test(String(id)))) throw new Error("jeu persistant : identifiant de compte invalide");
+  for (let i = 0; i < propres.length; i += PAQUET_PURGE) {
+    const lot = propres.slice(i, i + PAQUET_PURGE);
+    const r = await f(`${cfg.url}/rest/v1/conversations?select=id&${filtrePaquet(["created_by"], lot)}`, { headers: entetes(cfg) });
+    if (!r.ok) throw new Error(`jeu persistant : conversations HTTP ${r.status}`);
+    const convs = ((await r.json()) || []).map((c) => c.id).filter((x) => typeof x === "string");
+    for (let j = 0; j < Math.max(convs.length, 1); j += PAQUET_PURGE) {
+      const cs = convs.slice(j, j + PAQUET_PURGE);
+      const parConv = cs.length ? `conv_id.in.(${cs.map((c) => `"${c.replace(/"/g, "")}"`).join(",")}),` : "";
+      const liste = "(" + lot.join(",") + ")";
+      await supprimerLignes(cfg, "conv_messages", `or=(${parConv}from_id.in.${liste})`, f);
+      await supprimerLignes(cfg, "conv_reads", `or=(${parConv}user_id.in.${liste})`, f);
+      await supprimerLignes(cfg, "conv_members", `or=(${parConv}user_id.in.${liste})`, f);
+    }
+    await supprimerLignes(cfg, "conversations", filtrePaquet(["created_by"], lot), f);
+    for (const { table, colonnes } of TABLES_CONTENU) await supprimerLignes(cfg, table, filtrePaquet(colonnes, lot), f);
+  }
+}
+const purgerContenusCompte = (cfg, id, f = fetch) => purgerContenusComptes(cfg, [id], f);
+
+/** La preuve d'une purge : plus aucune ligne `profiles` pour ces comptes. Rend les identifiants qui en ont encore une. */
+async function profilsRestants(cfg, ids, f = fetch) {
+  const restants = [];
+  for (let i = 0; i < ids.length; i += PAQUET_PURGE) {
+    const lot = ids.slice(i, i + PAQUET_PURGE);
+    const r = await f(`${cfg.url}/rest/v1/profiles?select=id&${filtrePaquet(["id"], lot)}`, { headers: entetes(cfg) });
+    if (!r.ok) throw new Error(`jeu persistant : relecture des profils HTTP ${r.status}`);
+    for (const p of (await r.json()) || []) restants.push(p.id);
+  }
+  return restants;
 }
 
 /** `user_metadata` vidé (sauf ce que pose GoTrue) : nom, année, CGU, invitation. */
@@ -246,23 +279,29 @@ async function reinitialiserMetadonnees(cfg, u, f = fetch) {
 
 function _bail(u) { return (u && u.app_metadata && u.app_metadata.e2e_bail) || null; }
 
+/** Un bail vivant d'un autre passage : repris (CI, ou passage local mort) ou refus nommé. */
+function _jugerBail(actuel, deps) {
+  const { env, maintenant, journal } = deps;
+  if (!actuel || actuel.passage === passage(env) || !(Number(actuel.jusqua) > maintenant())) return;
+  if (deps.couloir !== "ci" && !passageMort(actuel)) {
+    throw new Error(`jeu persistant : compte tenu par le passage « ${actuel.passage} » jusqu'à ${new Date(Number(actuel.jusqua)).toISOString()} — un autre banc vise le même projet ; attendre, ou PASSIO_E2E_COMPTES_JETABLES=1`);
+  }
+  journal(`bail repris au passage « ${actuel.passage} », mort (en CI, le groupe passio-e2e-prod le garantit)`);
+}
+const _nouveauBail = (deps) => ({ passage: passage(deps.env), jeton: crypto.randomBytes(8).toString("hex"), hote: empreintePoste(),
+  jusqua: deps.maintenant() + (deps.dureeBail || DUREE_BAIL_MS) });
+
 /** Pose le bail du passage, ou échoue en nommant celui qui le tient. */
 async function poserBail(cfg, id, deps) {
-  const { f, env, maintenant, attendre, journal } = deps;
-  const moi = passage(env);
-  const actuel = _bail(await lireCompte(cfg, id, f));
-  if (actuel && actuel.passage !== moi && Number(actuel.jusqua) > maintenant()) {
-    if (couloir(env) !== "ci" && !passageMort(actuel)) {
-      throw new Error(`jeu persistant : compte tenu par le passage « ${actuel.passage} » jusqu'à ${new Date(Number(actuel.jusqua)).toISOString()} — un autre banc vise le même projet ; attendre, ou PASSIO_E2E_COMPTES_JETABLES=1`);
-    }
-    journal(`bail repris au passage « ${actuel.passage} », mort (en CI, le groupe passio-e2e-prod le garantit)`);
-  }
-  const jeton = crypto.randomBytes(8).toString("hex");
-  await majCompte(cfg, id, { app_metadata: { e2e_bail: { passage: moi, jeton, hote: empreintePoste(), jusqua: maintenant() + DUREE_BAIL_MS } } }, f);
+  const { f, attendre } = deps;
+  deps = { couloir: couloir(deps.env), ...deps };
+  _jugerBail(_bail(await lireCompte(cfg, id, f)), deps);
+  const bail = _nouveauBail(deps);
+  await majCompte(cfg, id, { app_metadata: { e2e_bail: bail } }, f);
   await attendre(RELECTURE_BAIL_MS);
   const relu = await lireCompte(cfg, id, f);
   const b = _bail(relu);
-  if (!b || b.jeton !== jeton) throw new Error(`jeu persistant : bail disputé par le passage « ${(b && b.passage) || "?"} »`);
+  if (!b || b.jeton !== bail.jeton) throw new Error(`jeu persistant : bail disputé par le passage « ${(b && b.passage) || "?"} »`);
   return relu;
 }
 
@@ -285,21 +324,32 @@ async function _creer(cfg, email, f) {
   throw new Error(`jeu persistant : amorçage du compte HTTP ${r.status}`);
 }
 
-/**
- * Acquiert le compte (couloir, parallèle, rang) : trouvé ou amorcé, bail posé,
- * contenus purgés, métadonnées vidées. Rend { id, email, cree }.
- */
-async function acquerirComptePersistant(cfg, opts = {}) {
+function _deps(opts) {
   const env = opts.env || process.env;
-  const deps = {
+  const c = opts.couloir || couloir(env);
+  if (!/^[a-z0-9]{2,16}$/.test(c)) throw new Error("jeu persistant : couloir invalide");
+  return {
     f: opts.fetch || fetch,
     env,
+    couloir: c,
+    dureeBail: opts.dureeBail,
     maintenant: opts.maintenant || Date.now,
     attendre: opts.attendre || ((ms) => new Promise((r) => setTimeout(r, ms))),
     journal: opts.journal || ((m) => console.log(`[comptes-e2e] ${m}`)),
   };
+}
+
+/**
+ * Acquiert le compte (couloir, parallèle, rang) : trouvé ou amorcé, bail posé,
+ * contenus purgés, métadonnées vidées. Rend { id, email, cree }.
+ * `couloir` : un couloir PROPRE à un banc (les villages) ; `dureeBail` : la
+ * durée de sa séance — un bail plus court qu'elle laisserait un autre passage
+ * reprendre le compte en plein vol.
+ */
+async function acquerirComptePersistant(cfg, opts = {}) {
+  const deps = _deps(opts);
   const rang = Number.isInteger(opts.rang) ? opts.rang : rangSuivant(opts.cleTest !== undefined ? opts.cleTest : cleDuTestCourant());
-  const email = emailPersistant(couloir(env), Number.isInteger(opts.parallele) ? opts.parallele : parallele(env), rang);
+  const email = emailPersistant(deps.couloir, Number.isInteger(opts.parallele) ? opts.parallele : parallele(deps.env), rang);
   let id = await _trouver(cfg, email, deps.f);
   let cree = false;
   // Un compte du cache supprimé entre-temps (à la main, au tableau de bord) :
@@ -313,6 +363,39 @@ async function acquerirComptePersistant(cfg, opts = {}) {
   await purgerContenusCompte(cfg, id, deps.f);
   await reinitialiserMetadonnees(cfg, u, deps.f);
   return { id, email, cree };
+}
+
+/**
+ * Acquiert d'un coup les rangs `rangs` d'un couloir (les 96 figurants du
+ * village à 100) : amorce ceux qui manquent, pose tous les baux, relit UNE
+ * fois la liste pour prouver qu'aucun n'a été disputé, purge les contenus par
+ * paquets et vide les métadonnées. Rend [{ id, email, cree, rang }] dans
+ * l'ordre de `rangs`.
+ */
+async function acquerirLot(cfg, opts = {}) {
+  const deps = _deps(opts);
+  const p = Number.isInteger(opts.parallele) ? opts.parallele : 0;
+  const rangs = opts.rangs || [];
+  const voulus = rangs.map((rang) => ({ rang, email: emailPersistant(deps.couloir, p, rang) }));
+  const parEmail = new Map((await comptesDuJeu(cfg, deps.f)).map((u) => [String(u.email).toLowerCase(), u]));
+  for (const v of voulus) {
+    v.cree = !parEmail.has(v.email);
+    v.id = v.cree ? await _creer(cfg, v.email, deps.f) : parEmail.get(v.email).id;
+    _jugerBail(v.cree ? null : _bail(parEmail.get(v.email)), deps);
+  }
+  for (const v of voulus) {
+    v.bail = _nouveauBail(deps);
+    await majCompte(cfg, v.id, { app_metadata: { e2e_bail: v.bail } }, deps.f);
+  }
+  await deps.attendre(RELECTURE_BAIL_MS);
+  const relus = new Map((await comptesDuJeu(cfg, deps.f)).map((u) => [u.id, u]));
+  for (const v of voulus) {
+    const b = _bail(relus.get(v.id));
+    if (!b || b.jeton !== v.bail.jeton) throw new Error(`jeu persistant : bail disputé par le passage « ${(b && b.passage) || "?"} » (${v.email})`);
+  }
+  await purgerContenusComptes(cfg, voulus.map((v) => v.id), deps.f);
+  for (const v of voulus) await reinitialiserMetadonnees(cfg, relus.get(v.id), deps.f);
+  return voulus.map(({ id, email, cree, rang }) => ({ id, email, cree, rang }));
 }
 
 /** Libère les baux du passage (teardown). Les autres ne sont pas touchés. */
@@ -365,9 +448,9 @@ function bilanPassage(moi = passage()) {
 }
 
 module.exports = {
-  DOMAINE_PERSISTANT, TABLES_CONTENU, DUREE_BAIL_MS, JOURNAL,
+  DOMAINE_PERSISTANT, MDP_PERSISTANT, TABLES_CONTENU, DUREE_BAIL_MS, JOURNAL,
   jeuActif, couloir, passage, passageMort, parallele, emailPersistant, estPersistant, rangSuivant,
-  comptesDuJeu, purgerContenusCompte, reinitialiserMetadonnees, poserBail,
-  acquerirComptePersistant, libererBaux, supprimerComptesJetables, noterCompte, bilanPassage,
+  comptesDuJeu, purgerContenusCompte, purgerContenusComptes, profilsRestants, reinitialiserMetadonnees, poserBail,
+  acquerirComptePersistant, acquerirLot, libererBaux, supprimerComptesJetables, noterCompte, bilanPassage,
   _cache,
 };

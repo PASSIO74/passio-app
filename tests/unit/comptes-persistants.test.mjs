@@ -34,9 +34,10 @@ const ENV_CI = (run, extra = {}) => ({ CI: "1", GITHUB_RUN_ID: String(run), GITH
   PASSIO_SUPABASE_URL: STAGING, PASSIO_SUPABASE_ANON: "anon-synthetique", ...extra });
 
 /** Faux Supabase : GoTrue d'administration et PostgREST, en mémoire. */
-function fauxSupabase() {
+function fauxSupabase(BASE = STAGING) {
   jeu._cache.clear();   // un faux projet neuf = un processus neuf
   const users = new Map();
+  const profils = new Set();
   const journal = { creations: 0, suppressionsCompte: [], deletes: [], puts: 0 };
   let seq = 0;
   const json = (status, corps) => ({ ok: status < 300, status, json: async () => corps, text: async () => JSON.stringify(corps) });
@@ -44,7 +45,7 @@ function fauxSupabase() {
   async function f(url, opts = {}) {
     const u = new URL(url);
     const m = (opts.method || "GET").toUpperCase();
-    assert.ok(url.startsWith(STAGING), "aucun appel hors de la cible : " + url);
+    assert.ok(url.startsWith(BASE), "aucun appel hors de la cible : " + url);
     if (u.pathname === "/auth/v1/admin/users" && m === "GET") {
       const page = Number(u.searchParams.get("page") || 1), per = Number(u.searchParams.get("per_page") || 50);
       return json(200, { users: [...users.values()].slice((page - 1) * per, page * per).map((x) => structuredClone(x)) });
@@ -71,12 +72,18 @@ function fauxSupabase() {
     }
     if (u.pathname.startsWith("/rest/v1/")) {
       const table = u.pathname.slice("/rest/v1/".length);
-      if (m === "GET") return json(200, []);
-      if (m === "DELETE") { journal.deletes.push(`${table}?${u.search.slice(1)}`); return json(204, null); }
+      // `profiles` : les lignes posées par le banc, relues et effacées par identifiant.
+      const vises = [...profils].filter((id) => u.search.includes(id));
+      if (m === "GET") return json(200, table === "profiles" ? vises.map((id) => ({ id })) : []);
+      if (m === "DELETE") {
+        journal.deletes.push(`${table}?${u.search.slice(1)}`);
+        if (table === "profiles" && !journal.profilsCollants) for (const id of vises) profils.delete(id);
+        return json(204, null);
+      }
     }
     throw new Error(`appel inattendu : ${m} ${url}`);
   }
-  return { f, users, journal };
+  return { f, users, journal, profils };
 }
 
 /** Un test Playwright : n comptes acquis à la suite, comme les suites le font. */
@@ -233,15 +240,15 @@ test("⑥ jamais en production, jamais sans cible explicite, opt-out respecté",
 // une ligne ici, c'est ajouter des MAU à chaque passage : il faut la justifier.
 const JETABLES_INSCRITS = {
   "tests/e2e/suppression-compte.spec.js": "détruit son compte par la vraie Edge Function : un compte du jeu n'y survivrait pas (1 par passage)",
-  "tests/e2e/qa-helper.js": "préfixe propre à une séance (village, opt-in PASSIO_E2E_VILLAGE) : purgé par ce préfixe ; le préfixe par défaut prend le jeu",
 };
-// Les suites qui créent ou suppriment des comptes PAR ELLES-MÊMES (opt-in, hors
-// passage CI), et pourquoi elles restent hors du jeu.
-const CHEMINS_PROPRES_INSCRITS = {
-  "village-10-comptes.spec.js": "opt-in PASSIO_E2E_VILLAGE (jamais en CI) ; comptes jetables à préfixe de séance — le passer au jeu est la suite de la décision 4",
-  "village-100-hybride.spec.js": "opt-in PASSIO_E2E_VILLAGE100 (jamais en CI, #1018) ; ses 4 yeux sont créés par l'API d'administration et purgés par campagne — même suite de la décision 4",
-};
-const CREATION_DIRECTE = [/auth\/v1\/admin\/users[`'"]\s*,\s*\{\s*method:\s*["']POST/, /\bauth\s*\.\s*signUp\s*\(/, /auth\/v1\/signup/];
+// Les suites qui créeraient ou supprimeraient des comptes PAR ELLES-MÊMES, et
+// pourquoi. VIDE depuis le passage des deux villages au jeu (2026-11-23) : une
+// ligne ici, c'est une séance qui recrée ses comptes — à justifier.
+const CHEMINS_PROPRES_INSCRITS = {};
+// Les modules de banc hors `tests/e2e` qui fournissent des comptes à une suite :
+// ils ne créent rien non plus (les 96 figurants du village à 100).
+const MODULES_DE_BANC = ["scripts/lib/village100-figurants.mjs"];
+const CREATION_DIRECTE = [/auth\/v1\/admin\/users[`'"]\s*,\s*\{\s*(method|methode):\s*["']POST/, /\bauth\s*\.\s*signUp\s*\(/, /auth\/v1\/signup/];
 const SUPPRESSION_DIRECTE = /auth\/v1\/admin\/users\/["'`]?\s*\+|admin\/users\/\$\{[^}]+\}`\s*,\s*\{\s*method:\s*["']DELETE/;
 
 function fichiersJs(dir) {
@@ -290,6 +297,11 @@ function auditerChemins(fichiers, suites) {
     if (CREATION_DIRECTE.some((r) => r.test(src))) defauts.push(`${f} : crée un compte sans passer par creerCompteE2E (le jeu persistant)`);
     if (SUPPRESSION_DIRECTE.test(src)) defauts.push(`${f} : supprime un compte en direct — passer par supprimerComptesJetables, qui épargne le jeu`);
   }
+  for (const f of MODULES_DE_BANC) {
+    const src = fichiers[f] && sansCommentaires(fichiers[f]);
+    if (!src) { defauts.push(`${f} : module de banc introuvable`); continue; }
+    if (CREATION_DIRECTE.some((r) => r.test(src))) defauts.push(`${f} : crée un compte sans passer par le jeu persistant`);
+  }
   return defauts;
 }
 
@@ -302,7 +314,7 @@ test("⑦ les seuls jetables d'un passage sont inscrits ; aucune suite `prod` ne
   for (const s of Object.keys(CHEMINS_PROPRES_INSCRITS)) assert.ok(suites.includes(s), `${s} existe toujours dans SUITES_PROD`);
   // Le seul point d'entrée : creerCompteE2E prend le jeu quand il est actif.
   const helper = fichiers["tests/e2e/compte-e2e.js"];
-  assert.match(helper, /if \(jeu\.jeuActif\(cfg\)\) \{\s*const c = await jeu\.acquerirComptePersistant\(cfg\);/);
+  assert.match(helper, /if \(jeu\.jeuActif\(cfg\)\) \{[\s\S]{0,300}?const c = await jeu\.acquerirComptePersistant\(cfg/);
 });
 
 test("⑧ MUTATIONS : chacune rouvre la fuite, et le banc rougit", () => {
@@ -323,4 +335,102 @@ test("⑧ MUTATIONS : chacune rouvre la fuite, et le banc rougit", () => {
   const m3 = muter("tests/e2e/blocage-acces.spec.js", `creerCompteE2E(page, "bloc_b")`, `page.evaluate(() => supa.auth.signUp({ email: "x", password: "y" }))`);
   assert.match(auditerChemins(m3, suites).join(), /blocage-acces\.spec\.js : crée un compte sans passer par creerCompteE2E/);
 
+});
+
+// ── LES VILLAGES (2026-11-23) ─────────────────────────────────────────────
+// Le village à 10 et le village à 100 prenaient leurs comptes hors du jeu :
+// 10 et 100 MAU par séance. Ils prennent désormais leurs couloirs du jeu.
+const VILLAGE = "https://fcksxofaelcdmmifnwjo.supabase.co";   // gardesCible n'accepte que le staging
+const CFG_V = { url: VILLAGE, cle: "service-synthetique" };
+const sansAttente = { attendre: async () => {}, journal: () => {} };
+
+test("⑨ la purge du jeu couvre la suppression de compte du produit (TABLES_COMPTE), journaux exceptés", async () => {
+  const { TABLES_COMPTE } = await import("../../supabase/functions/_shared/purge-compte.js");
+  const miennes = new Map(jeu.TABLES_CONTENU.map((t) => [t.table, new Set(t.colonnes)]));
+  // Ce qui reste DÉLIBÉRÉMENT : des journaux que l'app ne relit pas, et un réglage d'administration.
+  const HORS = new Set(["client_errors", "analytics_events", "telemetry_events", "passion_quotas"]);
+  // Purgées à part, avant les autres (clés NO ACTION vers `conversations`).
+  const CONV = new Set(["conv_messages", "conv_members", "conv_reads"]);
+  const manque = TABLES_COMPTE.filter(([t, c]) => !HORS.has(t) && !CONV.has(t) && !(miennes.get(t) && miennes.get(t).has(c))).map(([t, c]) => `${t}.${c}`);
+  assert.deepEqual(manque, [], "une table ajoutée à la suppression de compte doit l'être au jeu");
+});
+
+test("⑩ village à 100 : 96 figurants pris d'un coup — amorcés une fois, repris ensuite, baux relus, purge par paquets", async () => {
+  const sb = fauxSupabase(VILLAGE);
+  const env = { PASSIO_E2E_PASSAGE: `poste-${process.pid}` };
+  const prendre = () => jeu.acquerirLot(CFG_V, { fetch: sb.f, env, couloir: "village100", parallele: 1, rangs: [...Array(96).keys()], dureeBail: 70 * 60 * 1000, ...sansAttente });
+  const a = await prendre();
+  assert.equal(sb.journal.creations, 96, "première séance : le couloir s'amorce");
+  assert.ok(a.every((c, i) => c.email === `e2e_village100_1_${i}@fixe.passio-e2e.test` && c.rang === i));
+  const avant = sb.journal.creations;
+  sb.journal.deletes.length = 0;
+  const b = await prendre();
+  assert.equal(sb.journal.creations - avant, 0, "séance suivante : AUCUN compte créé");
+  assert.deepEqual(b.map((c) => c.id), a.map((c) => c.id));
+  assert.ok(b.every((c) => !c.cree));
+  const profils = sb.journal.deletes.filter((d) => d.startsWith("profiles?"));
+  assert.equal(profils.length, 3, "96 comptes en paquets de 40 : 3 requêtes par table, pas 96");
+  for (const c of b) assert.ok(profils.some((d) => d.includes(c.id)), "chaque figurant purgé");
+  assert.ok(b.every((c) => sb.users.get(c.id).app_metadata.e2e_bail.jusqua > Date.now() + 60 * 60 * 1000), "le bail couvre la séance (70 min)");
+  // Une seconde séance pendant la première : refusée, en nommant la première.
+  await assert.rejects(jeu.acquerirLot(CFG_V, { fetch: sb.f, env: { PASSIO_E2E_PASSAGE: "poste-autre" }, couloir: "village100", parallele: 1, rangs: [0], ...sansAttente }),
+    new RegExp(`compte tenu par le passage « poste-${process.pid} »`));
+  assert.deepEqual(sb.journal.suppressionsCompte, []);
+});
+
+test("⑪ purge de séance du village à 100 : contenus du jeu purgés et relus, comptes GARDÉS ; un identifiant étranger est un refus", async () => {
+  const F = await import("../../scripts/lib/village100-figurants.mjs");
+  const sb = fauxSupabase(VILLAGE);
+  const comptes = await jeu.acquerirLot(CFG_V, { fetch: sb.f, env: { PASSIO_E2E_PASSAGE: `poste-${process.pid}` }, couloir: "village100", parallele: 0, rangs: [0, 1, 2, 3], ...sansAttente });
+  for (const c of comptes) sb.profils.add(c.id);
+  const manifeste = { campagne: "capacite_1763900000000_abcd1234", comptes: comptes.map((c) => ({ email: c.email, id: c.id })) };
+  const vrai = globalThis.fetch;
+  globalThis.fetch = sb.f;
+  try {
+    const p = await F.purgerSeance({ url: VILLAGE, service: "k", manifeste });
+    assert.ok(F.purgeComplete(p), JSON.stringify(p));
+    assert.equal(p.attendus, 4); assert.equal(p.comptes, 4); assert.equal(p.annonces, 4);
+    assert.equal(sb.profils.size, 0, "plus aucun profil");
+    assert.deepEqual(sb.journal.suppressionsCompte, [], "aucun compte du jeu supprimé");
+    assert.equal(sb.users.size, 4);
+    // Un profil qui résiste : RESTANT, jamais un vert.
+    sb.profils.add(comptes[0].id); sb.journal.profilsCollants = true;
+    const q = await F.purgerSeance({ url: VILLAGE, service: "k", manifeste });
+    assert.equal(F.purgeComplete(q), false);
+    assert.match(q.restants.join(), /profil encore présent/);
+    sb.journal.profilsCollants = false;
+    // Un identifiant noté qui n'est pas celui de l'adresse : REFUS, rien n'est purgé.
+    sb.journal.deletes.length = 0;
+    const r = await F.purgerSeance({ url: VILLAGE, service: "k", manifeste: { ...manifeste, comptes: [{ email: comptes[0].email, id: comptes[1].id }] } });
+    assert.equal(r.refus.length, 1);
+    assert.deepEqual(sb.journal.deletes, []);
+  } finally { globalThis.fetch = vrai; }
+  assert.ok(F.estCompteDuVillage(comptes[0].email));
+  assert.equal(F.estCompteDuVillage("e2e_ci_0_0@fixe.passio-e2e.test"), false, "un compte du couloir CI n'est pas du village");
+});
+
+test("⑫ le teardown d'un passage ne purge QUE son couloir : un village en séance n'est jamais vidé par la CI", () => {
+  const src = fs.readFileSync(path.join(RACINE, "scripts/purge-e2e-rest.js"), "utf8");
+  assert.match(src, /const prefixe = `e2e_\$\{jeu\.couloir\(\)\}_`;/);
+  assert.match(src, /\.filter\(\(u\) => String\(u\.email\)\.toLowerCase\(\)\.startsWith\(prefixe\)\)/);
+  assert.equal(jeu.couloir({ CI: "true" }), "ci");
+  assert.equal("e2e_village100_1_3@fixe.passio-e2e.test".startsWith("e2e_ci_"), false);
+});
+
+test("⑬ MUTATIONS des villages : recréer un compte ou supprimer en direct rougit", () => {
+  const fichiers = lireDepot();
+  const suites = suitesProd();
+  const muter = (f, avant, apres) => {
+    assert.ok(fichiers[f].includes(avant), `mutation applicable à ${f}`);
+    return { ...fichiers, [f]: fichiers[f].replace(avant, () => apres) };
+  };
+  const m1 = muter("scripts/lib/village100-figurants.mjs", "const email = comptes[i].email, password = MDP_VILLAGE;",
+    `const email = comptes[i].email, password = MDP_VILLAGE; await this.http("auth_creation", "/auth/v1/admin/users", { methode: "POST", service: true, corps: {} });`);
+  assert.match(auditerChemins(m1, suites).join(), /village100-figurants\.mjs : crée un compte sans passer par le jeu/);
+  const m2 = muter("tests/e2e/village-100-hybride.spec.js", "  const { email } = compte;",
+    "  const { email } = compte;\n  await fetch(`${cfg.url}/auth/v1/admin/users`, { method: \"POST\", headers: h, body: \"{}\" });");
+  assert.match(auditerChemins(m2, suites).join(), /village-100-hybride\.spec\.js : crée un compte sans passer par creerCompteE2E/);
+  const m3 = muter("tests/e2e/village-10-comptes.spec.js", "        await jeu.purgerContenusComptes(cfgP, ids);",
+    "        for (const id of ids) await fetch(`${cfgP.url}/auth/v1/admin/users/${id}`, { method: \"DELETE\", headers: h });");
+  assert.match(auditerChemins(m3, suites).join(), /village-10-comptes\.spec\.js : supprime un compte en direct/);
 });

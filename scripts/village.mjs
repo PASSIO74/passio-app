@@ -86,7 +86,7 @@ const env = {
   PASSIO_STAGING_REF: STAGING_REF,
   PASSIO_PORT: port,
 };
-console.log(`[village] cible : staging ${STAGING_REF} — 10 comptes jetables, purgés en fin de séance.`);
+console.log(`[village] cible : staging ${STAGING_REF} — 10 comptes du jeu persistant (couloir « village »), contenus purgés en fin de séance.`);
 
 const res = spawnSync(
   "npx",
@@ -96,9 +96,8 @@ const res = spawnSync(
 
 console.log("\n[village] rapport : test-results/village/rapport.md");
 if (res.status !== 0) {
-  console.log("[village] séance en échec ou interrompue. Des comptes restés sur le STAGING portent le préfixe\n" +
-    "          e2e_village… ; le rapport dit s'il en reste. Purge complète des comptes de test du staging\n" +
-    "          (seulement si aucune autre suite n'y tourne) : npm run purge:e2e:rest, avec SUPABASE_URL et\n" +
-    "          SUPABASE_SERVICE_ROLE_KEY du staging.");
+  console.log("[village] séance en échec ou interrompue. Les dix personnages sont des comptes du JEU PERSISTANT\n" +
+    "          (e2e_village_0_<i>@fixe.passio-e2e.test) : jamais supprimés ; leurs contenus restés en base\n" +
+    "          sont purgés par la séance suivante, qui les reprend. Leur bail expire 40 min après l'acquisition.");
 }
 process.exit(res.status === null ? 1 : res.status);

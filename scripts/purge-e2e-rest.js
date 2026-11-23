@@ -127,8 +127,11 @@ async function supprimerCompte(cfg, id) {
   if (!r.ok && r.status !== 404) throw new Error(`compte ${id.slice(0, 8)}… : ${r.status}`);
 }
 
+// Le couloir de CE passage seulement (`ci` en CI, `poste` ailleurs) : les
+// villages tiennent leurs comptes une séance entière, avec leur propre purge.
 async function purgerJeuPersistant(cfg) {
-  const comptes = await jeu.comptesDuJeu(cfg);
+  const prefixe = `e2e_${jeu.couloir()}_`;
+  const comptes = (await jeu.comptesDuJeu(cfg)).filter((u) => String(u.email).toLowerCase().startsWith(prefixe));
   if (!comptes.length) return;
   let purges = 0, tenus = 0;
   for (const u of comptes) {

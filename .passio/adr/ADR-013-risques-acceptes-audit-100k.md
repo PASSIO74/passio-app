@@ -78,7 +78,8 @@ deux passages mais jamais supprimé, pour l'e2e et le village.
 dans `docs/STAGING.md`). Mesuré avant : 48 comptes créés par passage `test-prod`,
 ~82 passages par semaine. Après : 0 par passage une fois le jeu amorcé (6 comptes au
 plus), sauf le compte jetable que `suppression-compte` détruit (1 par passage) ; 0
-pour le canari de la sentinelle. **Reste : le village** (à 10 et à 100), opt-in.
+pour le canari de la sentinelle. **Village fait aussi** (même jour) : 10 et 100 comptes amorcés une fois
+dans leurs couloirs, puis 0 par séance (au lieu de 10 et 100).
 
 ### 5. D15-01 — Capacité au-delà de 200 simultanés → d'abord le gratuit
 

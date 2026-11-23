@@ -152,7 +152,11 @@ async function creerCompteE2E(page, prefixe = "", options = {}) {
   if (cfg && !(options && options.jetable) && process.env.PASSIO_SUPABASE_URL && process.env.PASSIO_SUPABASE_ANON) {
     const jeu = require("./comptes-persistants");
     if (jeu.jeuActif(cfg)) {
-      const c = await jeu.acquerirComptePersistant(cfg);
+      // `couloir`, `rang`, `parallele`, `dureeBail` : un banc à séance longue (le village) nomme ses comptes.
+      const c = await jeu.acquerirComptePersistant(cfg, {
+        couloir: options && options.couloir, rang: options && options.rang,
+        parallele: options && options.parallele, dureeBail: options && options.dureeBail,
+      });
       const tokenHash = await _jetonLienMagique(cfg, c.email);
       const out = await _ouvrirSession(page, c.email, tokenHash, c.id);
       jeu.noterCompte(c.cree ? "cree" : "reutilise");
