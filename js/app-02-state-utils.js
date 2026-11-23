@@ -26,8 +26,16 @@ function libelleLikePost(liked, n) {
 }
 // Contenu ET attributs, posés par les gabarits (`attrsLikePost`) et par les repeints
 // (`peindreLikePost`). `data-n` porte le nombre, `aria-pressed` l'état.
+// 2026-11-23 (retour de Benjamin, capture d'une publication aimée par un AUTRE
+// compte : « ♡ 1 », cœur blanc) : dès qu'une publication a au moins un j'aime,
+// le cœur est ROUGE et plein, que ce j'aime soit le mien ou celui d'un autre.
+// « Aimé par moi » garde sa marque propre : la classe `liked` (nombre en rouge)
+// et `aria-pressed`. Le cœur reste vide et à l'encre à zéro j'aime.
 function contenuLikePost(liked, n) {
-  return _icoAction(_CHEMIN_COEUR, !!liked) + '<span class="pa-n">' + escapeHtml(String(Number(n) || 0)) + '</span>';
+  var rouge = !!liked || (Number(n) || 0) > 0;
+  var ico = _icoAction(_CHEMIN_COEUR, rouge);
+  if (rouge) ico = ico.replace('class="pa-ico"', 'class="pa-ico pa-coeur-rouge"');
+  return ico + '<span class="pa-n">' + escapeHtml(String(Number(n) || 0)) + '</span>';
 }
 function attrsLikePost(liked, n) {
   return ' role="button" tabindex="0" aria-pressed="' + (liked ? "true" : "false") + '" aria-label="' + escapeHtml(libelleLikePost(liked, n)) + '" data-n="' + escapeHtml(String(Number(n) || 0)) + '"';

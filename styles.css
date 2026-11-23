@@ -13976,3 +13976,7 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .ev-invite-ligne-nom { flex:1; min-width:0; font-size:14px; font-weight:600; color:var(--text); overflow-wrap:anywhere; }
 .ev-invite-ligne-btn { min-height:44px; flex-shrink:0; }
 .ev-invite-vide { font-size:13px; color:var(--muted); padding:8px 2px; line-height:1.4; }
+
+/* 2026-11-23 (retour de Benjamin) : une publication qui a des j'aime montre un
+   coeur ROUGE plein, meme quand le j'aime vient d'un autre compte. */
+.post-action .pa-ico.pa-coeur-rouge { color: #ef4444; }
