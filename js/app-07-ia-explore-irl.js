@@ -6688,6 +6688,280 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
   return true;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INVITER LA PERSONNE DE LA CONVERSATION (2026-11-23, demande de Benjamin :
+// « quand je clique sur le bouton, pouvoir proposer une activité à la personne
+// avec qui je discute — je crée une activité pour t'inviter »).
+//
+// ① Le bouton 📍 (ou « Proposer un moment IRL » du menu +) ouvre le formulaire
+//    sous le titre « Inviter <nom> », avec un bandeau retirable : tant qu'il est
+//    là, la publication INVITE cette personne. Retiré, c'est une création normale.
+// ② Publiée (et seulement si elle existe pour les autres : `ok && backend`),
+//    l'activité part dans la conversation comme un message TEXTE portant son
+//    lien — une ancienne version de l'app y voit un lien, jamais un « message
+//    invalide » — et la personne reçoit l'invitation (`event_invite`).
+// ③ Dans le fil, tout lien d'activité PASSIO devient une CARTE (`carteActiviteMessage`) :
+//    titre, date, lieu lus dans NOS activités (jamais dans le texte reçu),
+//    réponse « Je viens / Peut-être » d'un geste, et l'état de la réponse de
+//    l'autre personne côté organisateur.
+// ⚠️ Ce qui ne change pas (§10 du lot UI-6C) : aucune position, aucune adresse
+//    déduite, RIEN n'est envoyé tant que le formulaire n'est pas publié, et le
+//    titre suggéré ne nomme personne (un titre est public).
+// Coupures : `localStorage.passio_invite_conv_v1 = "0"` ou
+// `window.PASSIO_INVITE_CONV = false` (formulaire et cartes d'avant).
+// ═══════════════════════════════════════════════════════════════════════════
+var INVITE_CONV_FRAICHEUR_MS = 30 * 60000;
+function _inviteConvActive() {
+  try {
+    if (window.PASSIO_INVITE_CONV === false) return false;
+    if (localStorage.getItem("passio_invite_conv_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+function _convInvitable(convId) {
+  try {
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    if (!c || c.isGroup || !c.userId) return null;
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) return null;
+    return c;
+  } catch (e) { return null; }
+}
+
+function _nomInterlocuteur(c) {
+  var u = (typeof userById === "function" && c && userById(c.userId)) || {};
+  return String((c && c.userName) || u.name || "cette personne").slice(0, 60);
+}
+
+// Appelée juste APRÈS l'ouverture du formulaire (ui-v6c). Rend true si le
+// formulaire porte désormais l'invitation.
+function poserInvitationFormulaire(convId) {
+  if (!_inviteConvActive()) return false;
+  var c = _convInvitable(convId);
+  var racine = document.getElementById("modalContent");
+  if (!c || !racine || !document.getElementById("evTitle")) return false;
+  var nom = _nomInterlocuteur(c);
+  var ctx = { jeton: uid(), convId: c.id, userId: c.userId, nom: nom, at: Date.now() };
+  window._evInviteCtx = ctx;
+
+  var titre = racine.querySelector(".modal-title");
+  var sous = racine.querySelector(".modal-subtitle");
+  var avant = { titre: titre ? titre.textContent : "", sous: sous ? sous.textContent : "" };
+  if (titre) titre.textContent = "Inviter " + nom;
+  if (sous) sous.textContent = "Crée l'activité : l'invitation part dans votre conversation dès qu'elle est publiée.";
+
+  var u = (typeof userById === "function" && userById(c.userId)) || {};
+  var hu = { avatar: c.userColor || u.avatar, profileEmoji: c.userEmoji || u.profileEmoji, photoUrl: u.photoUrl || c.userPhoto || null };
+  var bandeau = document.createElement("div");
+  bandeau.id = "evInviteBandeau";
+  bandeau.className = "ev-invite-bandeau";
+  bandeau.setAttribute("data-jeton", ctx.jeton);
+  // Le nom vient d'un autre compte : il n'entre que par textContent.
+  bandeau.innerHTML = '<div class="avatar sm" aria-hidden="true" style="background:' + avatarBg(hu) + ';">' + avatarInner(hu) + '</div>'
+    + '<div class="ev-invite-bandeau-txt"><strong></strong><span></span></div>'
+    + '<button type="button" class="ev-invite-bandeau-x">Retirer</button>';
+  bandeau.querySelector("strong").textContent = "Invitation pour " + nom;
+  bandeau.querySelector("span").textContent = nom + " la recevra dans votre conversation.";
+  var ancre = sous || titre;
+  if (ancre && ancre.parentNode === racine) racine.insertBefore(bandeau, ancre.nextSibling);
+  else racine.insertBefore(bandeau, racine.firstChild);
+
+  var publier = racine.querySelector('button[onclick^="submitEvent"]');
+  var libelleAvant = publier ? publier.textContent : "";
+  if (publier) publier.textContent = "Créer et inviter " + nom;
+
+  bandeau.querySelector(".ev-invite-bandeau-x").addEventListener("click", function () {
+    window._evInviteCtx = null;
+    if (bandeau.parentNode) bandeau.parentNode.removeChild(bandeau);
+    if (titre && avant.titre) titre.textContent = avant.titre;
+    if (sous && avant.sous) sous.textContent = avant.sous;
+    if (publier && libelleAvant) publier.textContent = libelleAvant;
+    try { if (window.tel && tel.action) tel.action("invite_conv_retiree", { v: 1 }); } catch (e) {}
+  });
+  try { if (window.tel && tel.action) tel.action("invite_conv_posee", { v: 1 }); } catch (e) {}
+  return true;
+}
+
+// Lue par `submitEvent` AVANT closeModal. Le bandeau fait foi ; à défaut (la
+// porte d'admission a pu remplacer le formulaire puis relancer la publication),
+// un contexte frais, que seul un formulaire ouvert depuis une conversation pose
+// et que tout nouveau formulaire efface.
+function lireInvitationFormulaire() {
+  var ctx = window._evInviteCtx;
+  window._evInviteCtx = null;
+  if (!ctx || !_inviteConvActive()) return null;
+  var b = document.getElementById("evInviteBandeau");
+  if (b) return b.getAttribute("data-jeton") === ctx.jeton ? ctx : null;
+  return (Date.now() - (ctx.at || 0) < INVITE_CONV_FRAICHEUR_MS) ? ctx : null;
+}
+
+function _quandActivite(ev) {
+  try {
+    var dt = new Date(ev.date);
+    var jour = dt.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    return jour + " à " + _eventTimeLabel(ev);
+  } catch (e) { return ""; }
+}
+
+function envoyerInvitationActivite(ev, ctx, enLigne) {
+  if (!ev || !ctx) return false;
+  if (!enLigne) {
+    toast("Activité enregistrée, mais pas encore en ligne : l'invitation n'est pas partie", "warning");
+    return false;
+  }
+  if (!_convInvitable(ctx.convId)) return false;
+  var lien = (typeof lienPartageDe === "function")
+    ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
+  var quand = _quandActivite(ev);
+  var texte = "📅 Je crée une activité pour t'inviter !\n"
+    + (ev.title || "Activité") + (quand ? " · " + quand : "") + (ev.city ? " · " + ev.city : "")
+    + "\n" + lien;
+  var envoye = (typeof envoyerTexteConversation === "function") && envoyerTexteConversation(ctx.convId, texte);
+  if (!envoye) { toast("Activité publiée, mais l'invitation n'a pas pu partir — partage-la depuis sa fiche", "warning"); return false; }
+  // La notification « t'invite à … » : le chemin du bouton « Inviter » de la fiche.
+  // L'activité est en base (`enLigne`) : la preuve qu'exige `trg_notifications_preuve`.
+  try { inviteToEvent(ev.id, ctx.userId, null); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
+  try { if (window.tel && tel.action) tel.action("invite_conv_envoyee", { v: 1 }); } catch (e) {}
+  // Retour dans la conversation : on voit l'invitation partir.
+  setTimeout(function () {
+    try { if (typeof openConversation === "function") openConversation(ctx.convId); } catch (e) {}
+    try { toast("Invitation envoyée à " + ctx.nom, "success"); } catch (e) {}
+  }, 350);
+  return true;
+}
+
+// ── La carte d'activité dans un message ─────────────────────────────────────
+// Un lien d'activité PASSIO : notre origine (ou la production), `/e/<id>` ou
+// `#irl-event-<id>`. Rend { id, url } ou null. L'identifiant est borné par la
+// même règle que les liens courts : il ne contient ni quote ni chevron.
+function lienActiviteDuTexte(texte) {
+  var t = String(texte || "");
+  var re = /https?:\/\/[^\s<]+/g, m;
+  while ((m = re.exec(t))) {
+    var url = m[0].replace(/[.,;!?)]+$/, "");
+    var u;
+    try { u = new URL(url); } catch (e) { continue; }
+    var hote = u.host;
+    var notre = hote === location.host || hote === "passio-app.netlify.app" || /--passio-app\.netlify\.app$/.test(hote);
+    if (!notre) continue;
+    var id = null, c = u.pathname.match(/^\/e\/([A-Za-z0-9_-]{1,100})\/?$/);
+    if (c) id = c[1];
+    else {
+      var h = (u.hash || "").match(/^#irl-event-([A-Za-z0-9_-]{1,100})$/);
+      if (h) id = h[1];
+    }
+    if (id) return { id: id, url: url };
+  }
+  return null;
+}
+
+// HTML de la carte, ou "" (le message reste un texte). `c` est la conversation,
+// `isMe` dit qui a envoyé le message. Tout ce qui s'affiche vient de NOS
+// activités ou passe par escapeHtml ; l'identifiant, validé ci-dessus, entre
+// dans les onclick par escapeJsArg.
+function carteActiviteMessage(texte, c, isMe) {
+  if (!_inviteConvActive()) return "";
+  var l = lienActiviteDuTexte(texte);
+  if (!l) return "";
+  var id = l.id;
+  var ev = null;
+  try { ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e && e.id === id; }); } catch (e) { ev = null; }
+  var reste = String(texte || "").split(l.url).join("").trim();
+  // Le texte d'en-tête : sa première ligne seulement (la seconde répète l'activité).
+  var entete = reste.split("\n")[0].trim();
+
+  var corps;
+  if (ev) {
+    var d = fmtEventDate(ev.date);
+    var annulee = _eventIsCancelled(ev), finie = !annulee && _eventIsOver(ev);
+    var quand = _quandActivite(ev);
+    corps = '<div class="mca-date" aria-hidden="true"><span>' + escapeHtml(String(d.day)) + '</span><span>' + escapeHtml(d.month) + '</span></div>'
+      + '<div class="mca-infos"><div class="mca-titre">' + escapeHtml(ev.title || "Activité") + '</div>'
+      + '<div class="mca-quand">' + escapeHtml(quand + (ev.city ? " · " + ev.city : "")) + '</div>'
+      + (annulee ? '<div class="mca-etat mca-annulee">Annulée</div>' : finie ? '<div class="mca-etat">Terminée</div>' : '')
+      + '</div>';
+  } else {
+    corps = '<div class="mca-date" aria-hidden="true"><span>📅</span></div>'
+      + '<div class="mca-infos"><div class="mca-titre">Activité PASSIO</div><div class="mca-quand">Touche pour la voir</div></div>';
+  }
+
+  var statut = "", actions = "";
+  var ouverte = ev && !_eventIsCancelled(ev) && !_eventIsOver(ev);
+  if (ev && c && !c.isGroup && isMe) {
+    var autre = c.userId, nom = _nomInterlocuteur(c);
+    var dans = function (l2) { return (l2 || []).indexOf(autre) > -1; };
+    if (dans(ev.attendees)) statut = "✓ " + nom + " participe";
+    else if (dans(ev.waitlist)) statut = nom + " est sur liste d'attente";
+    else if (dans(ev.maybes)) statut = "🤔 " + nom + " hésite";
+    else if (dans(ev.declined)) statut = nom + " ne pourra pas venir";
+    else if (ouverte) statut = "En attente de réponse";
+  } else if (ev && !isMe) {
+    var r = myRsvp(id);
+    if (r === "going") statut = "✓ Tu participes";
+    else if (r === "waitlist") statut = "Tu es sur liste d'attente";
+    else if (r === "maybe") statut = "🤔 Tu hésites";
+    if (ouverte && r !== "going" && r !== "waitlist") {
+      actions += '<button type="button" class="mca-btn mca-oui" onclick="event.stopPropagation();repondreCarteActivite(\'' + escapeJsArg(id) + '\',\'going\')">Je viens</button>';
+      if (r !== "maybe") actions += '<button type="button" class="mca-btn" onclick="event.stopPropagation();repondreCarteActivite(\'' + escapeJsArg(id) + '\',\'maybe\')">Peut-être</button>';
+    }
+  }
+  actions += '<button type="button" class="mca-btn" onclick="event.stopPropagation();voirCarteActivite(\'' + escapeJsArg(id) + '\')">Voir</button>';
+
+  return '<div class="msg-carte-activite ' + (isMe ? "me" : "them") + '" data-ev="' + escapeHtml(id) + '">'
+    + (entete ? '<div class="mca-entete">' + escapeHtml(entete) + '</div>' : '')
+    + '<div class="mca-carte" role="button" tabindex="0" aria-label="Voir l\'activité" onclick="event.stopPropagation();voirCarteActivite(\'' + escapeJsArg(id) + '\')">' + corps + '</div>'
+    + (statut ? '<div class="mca-statut">' + escapeHtml(statut) + '</div>' : '')
+    + '<div class="mca-actions">' + actions + '</div>'
+    + '</div>';
+}
+
+function voirCarteActivite(id) {
+  id = String(id || "");
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return;
+  var connue = false;
+  try { connue = allEvents().some(function (e) { return e && e.id === id; }); } catch (e) {}
+  if (connue) openEventDetails(id);
+  else _ouvrirActiviteDepuisNotification(id);
+}
+
+// Réponse depuis la carte : le RSVP passe par `setEventRsvp` (seule porte,
+// gardes d'authentification et d'admission comprises), puis une courte réponse
+// part dans la conversation — la personne qui invite la voit tout de suite.
+var _carteReponseEnCours = {};
+async function repondreCarteActivite(id, rsvp) {
+  id = String(id || "");
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id) || (rsvp !== "going" && rsvp !== "maybe")) return;
+  if (_carteReponseEnCours[id]) return;
+  var convId = window._openedConvId;
+  var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e && e.id === id; });
+  if (!ev) { voirCarteActivite(id); return; }
+  if (rsvp === "going" && _eventIsFull(ev)) rsvp = "waitlist";
+  var avant = myRsvp(id);
+  if (avant === rsvp) return;
+  _carteReponseEnCours[id] = true;
+  try {
+    await setEventRsvp(id, rsvp);
+  } finally { delete _carteReponseEnCours[id]; }
+  var apres = myRsvp(id);
+  if (apres !== rsvp) return; // refus (compte, admission, réseau) : rien n'est dit à sa place
+  var titre = "« " + String(ev.title || "l'activité").slice(0, 80) + " »";
+  var msg = apres === "going" ? "✓ Je viens à " + titre + " !"
+    : apres === "waitlist" ? "Je suis sur liste d'attente pour " + titre
+    : "🤔 Peut-être pour " + titre;
+  if (convId && typeof envoyerTexteConversation === "function") envoyerTexteConversation(convId, msg);
+  try { if (window.tel && tel.action) tel.action("invite_conv_reponse", { v: 1, rsvp: apres }); } catch (e) {}
+  _rafraichirFilOuvert();
+}
+
+function _rafraichirFilOuvert() {
+  try {
+    var convId = window._openedConvId;
+    if (!convId || typeof renderConvFpThread !== "function") return;
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    if (c) renderConvFpThread(c, c.userName || c.groupName || "");
+  } catch (e) { try { diagLog("carte activite rendu " + (e && e.message)); } catch (_) {} }
+}
+
 // ── Localisation : l'invariant est tenu par des TESTS, pas par une mutation ──
 //
 // Constat du 2026-08-23 : `events` est en LECTURE PUBLIQUE INTÉGRALE
@@ -6834,6 +7108,10 @@ function openCreateEvent(editId) {
   // abandonné ne doit pas être attribué à CETTE création. Le pont repose le
   // sien juste après (feedIrlBridgeOpen → openCreateEvent → prefill).
   feedIrlBridgeConsumeOrigin();
+  // Une invitation de conversation n'appartient qu'au formulaire qui l'a posée :
+  // un nouveau formulaire repart sans destinataire (`poserInvitationFormulaire`
+  // la repose juste après, quand on vient d'une conversation).
+  window._evInviteCtx = null;
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Activité introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
@@ -7461,6 +7739,9 @@ async function submitEvent(editId) {
   // Origine « pont Fil → IRL » : lue AVANT closeModal (le marqueur vit sur le
   // modal) et consommée, pour qu'une création ultérieure n'en hérite pas.
   const fromFeed = feedIrlBridgeConsumeOrigin();
+  // Invitation d'une conversation : lue elle aussi AVANT closeModal (le bandeau
+  // vit dans le formulaire), et jamais à l'édition.
+  const inviteConv = editId ? null : lireInvitationFormulaire();
 
   closeModal();
   toast(editId ? "Enregistrement…" : "Publication en cours…");
@@ -7535,7 +7816,10 @@ async function submitEvent(editId) {
     ok ? "success" : "warning");
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
-  if (ok && backend && !editId) proposerInvitationActivite(ev);
+  // Créée depuis une conversation : l'invitation part DANS la conversation
+  // (carte d'activité) à la place de la fenêtre « Inviter mes amis ».
+  if (inviteConv) envoyerInvitationActivite(ev, inviteConv, ok && backend);
+  else if (ok && backend && !editId) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   if (ok && backend && !editId) publierActiviteAuFil(ev);
   // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation

@@ -16,6 +16,11 @@
 //   • aucun message envoyé automatiquement dans le fil ;
 //   • aucun ajout de l'interlocuteur aux participants, aucun RSVP posé pour
 //     lui — il n'est même pas informé tant que rien n'est partagé.
+// 🔁 2026-11-23 (demande de Benjamin) : le formulaire porte désormais un bandeau
+// « Invitation pour <nom> », retirable. C'est la PUBLICATION, geste explicite
+// (« Créer et inviter <nom> »), qui envoie la carte d'activité dans la
+// conversation — jamais l'ouverture du formulaire (`poserInvitationFormulaire`,
+// app-07). Le reste ci-dessus tient toujours.
 //
 // ⚠️ LE TITRE SUGGÉRÉ NE NOMME PERSONNE. « Sortie avec Nina » serait le
 // réflexe, et c'est précisément ce qu'il ne faut pas : un titre est PUBLIC
@@ -137,6 +142,10 @@
         try { var selP = document.getElementById("evPassion"); if (selP && selP.value) retenue = selP.value; }
         catch (e) { fail("passion retenue", e); }
         suggererTitre(retenue);
+        // 2026-11-23 : le formulaire INVITE la personne de la conversation
+        // (bandeau retirable ; rien ne part avant « Créer et inviter »).
+        try { if (typeof poserInvitationFormulaire === "function") poserInvitationFormulaire(c.id); }
+        catch (e) { fail("invitation", e); }
         track("ui_v6c_proposer", { v: VERSION, has_psn: !!passion });
       } catch (e) { fail("proposition", e); }
     }, 80);

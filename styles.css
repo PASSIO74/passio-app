@@ -13928,3 +13928,26 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .config-police-choix-nom { font-size: 20px; font-weight: 800; }
 .config-police-choix-desc { font-size: 12px; color: var(--text-dim, #4b4563); }
 .config-police-choix-coche { font-size: 18px; color: var(--accent); }
+
+/* ── Invitation depuis une conversation + carte d'activité dans un message (2026-11-23) ── */
+.ev-invite-bandeau { display:flex; align-items:center; gap:10px; background:rgba(124,58,237,0.08); border:1px solid rgba(124,58,237,0.25); border-radius:14px; padding:10px 12px; margin:12px 0 4px; }
+.ev-invite-bandeau .avatar { flex-shrink:0; }
+.ev-invite-bandeau-txt { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; font-size:13px; line-height:1.35; color:var(--text-dim, var(--muted)); }
+.ev-invite-bandeau-txt strong { color:var(--accent); font-size:14px; overflow-wrap:anywhere; }
+.ev-invite-bandeau-x { flex-shrink:0; min-height:44px; padding:0 12px; border:none; border-radius:12px; background:transparent; color:var(--muted); font-weight:700; font-size:13px; cursor:pointer; }
+.msg-carte-activite { width:250px; max-width:72vw; background:var(--bg-card, #fff); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:0 2px 10px rgba(76,29,149,0.08); color:var(--text); text-align:left; }
+.msg-carte-activite.me { border-color:rgba(124,58,237,0.35); }
+.mca-entete { font-size:14px; font-weight:700; margin:2px 4px 8px; line-height:1.35; overflow-wrap:anywhere; }
+.mca-carte { display:flex; gap:10px; align-items:center; background:var(--bg-soft); border-radius:14px; padding:10px; cursor:pointer; }
+.mca-date { width:46px; height:50px; flex-shrink:0; border-radius:12px; background:var(--accent, #7c3aed); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.05; }
+.mca-date span:first-child { font-size:19px; font-weight:800; }
+.mca-date span + span { font-size:11px; font-weight:700; text-transform:uppercase; }
+.mca-infos { min-width:0; flex:1; }
+.mca-titre { font-weight:800; font-size:14px; overflow-wrap:anywhere; }
+.mca-quand { font-size:12px; color:var(--muted); margin-top:2px; overflow-wrap:anywhere; }
+.mca-etat { display:inline-block; font-size:11px; font-weight:700; margin-top:4px; color:var(--muted); }
+.mca-etat.mca-annulee { color:#dc2626; }
+.mca-statut { font-size:12px; font-weight:700; color:var(--accent); margin:8px 4px 0; }
+.mca-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.mca-btn { flex:1; min-height:44px; min-width:0; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text); font-weight:700; font-size:13px; cursor:pointer; padding:0 10px; }
+.mca-btn.mca-oui { background:var(--accent, #7c3aed); border-color:transparent; color:#fff; }
