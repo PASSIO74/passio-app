@@ -738,6 +738,32 @@
     return box;
   }
 
+  // 2026-11-23 (Benjamin) : l'organisation voyait DEUX « Écrire aux
+  // participants » (le pied + « Discussion des participants » du corps) et DEUX
+  // « Gérer » (le pied + celui de « Autres actions »). Le pied gagne : un bouton
+  // du corps dont le pied porte le même geste est MASQUÉ, jamais retiré — il
+  // revient dès que le pied ne le porte plus (activité terminée, retrait de la
+  // participation, coupure du lot). Reconnu par son handler, pas son libellé.
+  var DOUBLONS_DU_PIED = [
+    { pied: "[data-v4b-rsvp-chat]", corps: /^\s*openEventChat\(/ },
+    { pied: "[data-v4b-rsvp-gerer]", corps: /^\s*openEventManage\(/ },
+  ];
+  function masquerDoublonsDuPied() {
+    var content = document.getElementById("eventDetailContent");
+    if (!content) return;
+    var cta = document.getElementById("eventDetailCta");
+    var boutons = content.querySelectorAll("button[onclick]");
+    DOUBLONS_DU_PIED.forEach(function (d) {
+      var auPied = !!(cta && cta.querySelector(d.pied));
+      for (var i = 0; i < boutons.length; i++) {
+        var b = boutons[i];
+        if (!d.corps.test(b.getAttribute("onclick") || "")) continue;
+        if (auPied) { b.style.display = "none"; b.setAttribute("data-v4b-doublon", "1"); }
+        else if (b.getAttribute("data-v4b-doublon")) { b.style.display = ""; b.removeAttribute("data-v4b-doublon"); }
+      }
+    });
+  }
+
   function construireRetrait() {
     var rm = document.createElement("button");
     rm.type = "button";
@@ -839,6 +865,7 @@
     try {
       reorganiser();
       appliquerCta();
+      masquerDoublonsDuPied();
     } catch (e) {
       // Une fiche à moitié réorganisée doit rester LISIBLE : on rend la main au
       // moteur historique plutôt que de laisser un écran cassé.
