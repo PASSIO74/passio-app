@@ -47,8 +47,17 @@ test('contrat SQL : transaction, fermeture des droits et compteur indépendant d
 test('la gestion distingue approuvé et attente, sans reproposer de valider un approuvé',async()=>{
  let html='';const t=contexte({MY_UID:'orga',userById:u=>({name:u}),escapeHtml:x=>x,escapeJsArg:x=>x,openModal:x=>html=x,supa:{rpc:async()=>({data:[{user_id:'attente',rsvp:'going',valide:false},{user_id:'confirme',rsvp:'going',valide:true}]})}});
  vm.runInContext(fn('openEventParticipantValidation'),t.c);await t.c.openEventParticipantValidation('e');
- assert.match(html,/attente<\/span> <span>En attente/);assert.match(html,/confirme<\/span> <span>Validé/);
- assert.equal((html.match(/>Valider<\/button>/g)||[]).length,1);assert.equal((html.match(/>Retirer<\/button>/g)||[]).length,2);
+ // Une carte par personne (2026-11-23) : le nom, puis le statut ; la demande en attente se valide ou se refuse,
+ // la personne validée ne se revalide pas et se retire.
+ const carte=u=>html.split('data-uid="'+u+'"')[1].split('class="ev-valid-row"')[0];
+ assert.match(carte('attente'),/>attente<\/div><div[^>]*>Demande en attente</);assert.match(carte('confirme'),/>confirme<\/div><div[^>]*>Validé/);
+ assert.equal((html.match(/>Valider<\/button>/g)||[]).length,1);assert.match(carte('attente'),/>Valider<\/button>/);
+ assert.match(carte('attente'),/>Refuser<\/button>/);assert.match(carte('confirme'),/>Retirer<\/button>/);assert.doesNotMatch(carte('confirme'),/>Valider</);
+});
+test('la personne touchée dans une notification passe en tête de la liste',async()=>{
+ let html='';const t=contexte({MY_UID:'orga',userById:u=>({name:u}),escapeHtml:x=>x,escapeJsArg:x=>x,openModal:x=>html=x,supa:{rpc:async()=>({data:[{user_id:'a',rsvp:'going',valide:false},{user_id:'b',rsvp:'going',valide:true},{user_id:'c',rsvp:'going',valide:false}]})}});
+ vm.runInContext(fn('openEventParticipantValidation'),t.c);await t.c.openEventParticipantValidation('e','b');
+ assert.deepEqual([...html.matchAll(/data-uid="([^"]+)"/g)].map(m=>m[1]),['b','a','c']);
 });
 test('is_conv_member préserve la garde de production sur autrui et le cas sans session',()=>{
  const corps=sql.split('function public.is_conv_member')[1].split('$f$;')[0];
