@@ -118,6 +118,21 @@ const TABLES_CONTENU = [
   { table: "profiles",             colonnes: ["id"] },
 ];
 
+// ⚠️ LES COMPTEURS DE DÉBIT DU COMPTE (2026-11-23, PR #1057). Un compte jetable
+// naissait avec des compteurs vierges ; un compte RÉUTILISÉ cumule, sur la
+// journée UTC, les écritures de TOUS les passages : `trg_debit_maj` (profiles,
+// 20/min, ×15 par jour la première semaine) levait « rate limit: plafond
+// journalier atteint sur profiles:maj » dès le soir du premier jour — trois
+// suites à comptes réels rouges, `main` compris. Ces tables ne portent que des
+// compteurs (`source` = l'identifiant du compte), accordés à service_role : les
+// vider à l'acquisition rend au compte repris l'état d'un compte neuf, et rien
+// d'autre. Hors `TABLES_CONTENU` : ce n'est pas un contenu, et le verrou ⑨ compare
+// cette liste à la suppression de compte du produit.
+const TABLES_DEBIT = [
+  { table: "debit_jour",      colonnes: ["source"] },
+  { table: "debit_ecritures", colonnes: ["source"] },
+];
+
 const entetes = (cfg, extra) => Object.assign({ apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" }, extra || {});
 
 /** L'URL de PRODUCTION, lue dans l'app elle-même (jamais recopiée ici). */
@@ -253,6 +268,7 @@ async function purgerContenusComptes(cfg, ids, f = fetch) {
     }
     await supprimerLignes(cfg, "conversations", filtrePaquet(["created_by"], lot), f);
     for (const { table, colonnes } of TABLES_CONTENU) await supprimerLignes(cfg, table, filtrePaquet(colonnes, lot), f);
+    for (const { table, colonnes } of TABLES_DEBIT) await supprimerLignes(cfg, table, filtrePaquet(colonnes, lot), f);
   }
 }
 const purgerContenusCompte = (cfg, id, f = fetch) => purgerContenusComptes(cfg, [id], f);
@@ -448,7 +464,7 @@ function bilanPassage(moi = passage()) {
 }
 
 module.exports = {
-  DOMAINE_PERSISTANT, MDP_PERSISTANT, TABLES_CONTENU, DUREE_BAIL_MS, JOURNAL,
+  DOMAINE_PERSISTANT, MDP_PERSISTANT, TABLES_CONTENU, TABLES_DEBIT, DUREE_BAIL_MS, JOURNAL,
   jeuActif, couloir, passage, passageMort, parallele, emailPersistant, estPersistant, rangSuivant,
   comptesDuJeu, purgerContenusCompte, purgerContenusComptes, profilsRestants, reinitialiserMetadonnees, poserBail,
   acquerirComptePersistant, acquerirLot, libererBaux, supprimerComptesJetables, noterCompte, bilanPassage,

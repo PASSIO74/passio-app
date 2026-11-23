@@ -157,6 +157,11 @@ test("③ un compte repris paraît neuf : contenus purgés, user_metadata vidé"
   assert.deepEqual(sb.users.get(c.id).user_metadata, { email_verified: true }, "nom, année, CGU, invitation retirés ; ce que pose GoTrue reste");
   const tables = new Set(sb.journal.deletes.map((d) => d.split("?")[0]));
   for (const { table } of jeu.TABLES_CONTENU) assert.ok(tables.has(table), `${table} purgée à l'acquisition`);
+  // Les compteurs de débit repartent à zéro : sans eux, un compte repris atteignait le
+  // plafond journalier `profiles:maj` dès le soir (2026-11-23).
+  for (const t of ["debit_jour", "debit_ecritures"]) {
+    assert.ok(sb.journal.deletes.some((d) => d.startsWith(t + "?source=in.(") && d.includes(c.id)), `${t} du compte remis à zéro`);
+  }
   for (const t of ["conv_messages", "conv_reads", "conv_members", "conversations"]) assert.ok(tables.has(t), `${t} purgée`);
   assert.ok(sb.journal.deletes.every((d) => d.includes(c.id)), "chaque purge vise CE compte");
   const ordre = sb.journal.deletes.map((d) => d.split("?")[0]);
