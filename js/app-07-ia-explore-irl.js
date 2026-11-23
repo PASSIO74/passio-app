@@ -6746,18 +6746,245 @@ function _inviteConvActive() {
   return true;
 }
 
+// 🔁 2026-11-23 (2) — PLUSIEURS INVITÉS (demande de Benjamin : « pouvoir
+// rajouter d'autres membres ») :
+//   · le bandeau porte, sous la personne de la conversation, une rangée de
+//     pastilles et « + Ajouter » : conversations récentes et abonnements,
+//     recherche par nom, plafond `INVITE_CONV_MAX` ;
+//   · chaque invité ajouté passe le MÊME verdict serveur que la personne de la
+//     conversation (`irlProposalServerVerdict` : âge déclaré, blocage) — refusé,
+//     il ne reçoit rien ;
+//   · à la publication, chacun reçoit l'invitation DANS SA conversation avec
+//     moi quand elle existe, et toujours la notification `event_invite` ; aucune
+//     conversation n'est créée d'office, et aucun invité ne voit la liste des
+//     autres (une liste fermée ne se recopie pas chez ses membres, cf. C-04) ;
+//   · depuis un GROUPE (hors discussion d'activité `evgrp_`) : la carte part une
+//     fois dans le groupe, chaque membre retenu reçoit la notification.
+var INVITE_CONV_MAX = 10;          // invités choisis à la main, par formulaire
+var INVITE_CONV_MAX_GROUPE = 30;   // membres d'un groupe, pré-cochés
+
 function _convInvitable(convId) {
   try {
     var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
-    if (!c || c.isGroup || !c.userId) return null;
+    if (!c) return null;
     if (typeof _estConvDemo === "function" && _estConvDemo(c)) return null;
-    return c;
+    if (c.isGroup) {
+      if (/^evgrp_/.test(String(c.id || ""))) return null;
+      if (typeof membresAutresGroupe !== "function" || !membresAutresGroupe(c).length) return null;
+      return c;
+    }
+    return c.userId ? c : null;
   } catch (e) { return null; }
 }
 
 function _nomInterlocuteur(c) {
+  if (c && c.isGroup) return String(c.groupName || "le groupe").slice(0, 60);
   var u = (typeof userById === "function" && c && userById(c.userId)) || {};
   return String((c && c.userName) || u.name || "cette personne").slice(0, 60);
+}
+
+function _nomInvite(id, repli) {
+  var u = (typeof userById === "function" && userById(id)) || {};
+  return String(u.name || repli || "Passionné").slice(0, 60);
+}
+
+// La conversation 1:1 RÉELLE que j'ai avec ce compte, ou null.
+function _conv1a1Avec(userId) {
+  try {
+    return (getConversations() || []).find(function (c) {
+      return c && !c.isGroup && c.userId === userId && !(typeof _estConvDemo === "function" && _estConvDemo(c));
+    }) || null;
+  } catch (e) { return null; }
+}
+
+// Le verdict serveur d'une proposition IRL, une seule fois par personne et par
+// formulaire. Une panne vaut un refus : on n'invite pas à l'aveugle.
+function _verdictInvite(ctx, id) {
+  ctx.verdicts = ctx.verdicts || {};
+  if (!ctx.verdicts[id]) {
+    ctx.verdicts[id] = (typeof irlProposalServerVerdict === "function"
+      ? Promise.resolve().then(function () { return irlProposalServerVerdict(id); })
+      : Promise.resolve({ ok: false, reason: "indisponible" }))
+      .catch(function () { return { ok: false, reason: "erreur" }; });
+  }
+  return ctx.verdicts[id];
+}
+
+// Qui proposer : mes conversations 1:1 récentes d'abord, puis mes abonnements.
+function _inviteCandidats(ctx) {
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var pris = {};
+  pris[me] = 1; pris.me = 1;
+  if (ctx.userId) pris[ctx.userId] = 1;
+  (ctx.extras || []).forEach(function (p) { pris[p.id] = 1; });
+  var out = [], vus = {};
+  function pousser(id, nom) {
+    if (!id || pris[id] || vus[id]) return;
+    if (typeof isBlocked === "function" && isBlocked(id)) return;
+    vus[id] = 1;
+    out.push({ id: id, nom: _nomInvite(id, nom) });
+  }
+  try {
+    (getConversations() || []).filter(function (c) {
+      return c && !c.isGroup && c.userId && !c.archived && !(typeof _estConvDemo === "function" && _estConvDemo(c));
+    }).sort(function (a, b) { return (b.lastAt || 0) - (a.lastAt || 0); })
+      .forEach(function (c) { pousser(c.userId, c.userName); });
+  } catch (e) { try { diagLog("invite candidats conv " + (e && e.message)); } catch (_) {} }
+  ((state.user && state.user.following) || []).forEach(function (id) { pousser(id); });
+  return out;
+}
+
+function _inviteMax(ctx) {
+  return ctx.groupe ? Math.max(INVITE_CONV_MAX, ctx.nbMembres || 0) : INVITE_CONV_MAX;
+}
+
+// Total des destinataires : la personne de la conversation + les pastilles.
+function _inviteTotal(ctx) { return (ctx.groupe ? 0 : 1) + (ctx.extras || []).length; }
+
+function _inviteAvatar(u) {
+  var a = document.createElement("div");
+  a.className = "avatar sm";
+  a.setAttribute("aria-hidden", "true");
+  a.style.background = avatarBg(u || {});
+  a.innerHTML = avatarInner(u || {});
+  return a;
+}
+
+// Repeint textes, pastilles et bouton de publication. Tout nom d'un autre
+// compte entre par textContent.
+function _inviteRepeindre(ctx) {
+  var b = document.getElementById("evInviteBandeau");
+  if (!b || b.getAttribute("data-jeton") !== ctx.jeton) return;
+  var n = (ctx.extras || []).length;
+  var strong = b.querySelector(".ev-invite-bandeau-txt strong");
+  var span = b.querySelector(".ev-invite-bandeau-txt span");
+  if (ctx.groupe) {
+    if (strong) strong.textContent = "Invitation pour " + ctx.nom;
+    if (span) span.textContent = "Elle part dans la discussion du groupe"
+      + (n ? ", et " + n + " personne" + (n > 1 ? "s" : "") + " reçoi" + (n > 1 ? "vent" : "t") + " une notification." : ".");
+  } else if (!n) {
+    if (strong) strong.textContent = "Invitation pour " + ctx.nom;
+    if (span) span.textContent = ctx.nom + " la recevra dans votre conversation.";
+  } else {
+    if (strong) strong.textContent = "Invitation pour " + ctx.nom + " et " + n + " autre" + (n > 1 ? "s" : "");
+    if (span) span.textContent = "Chacun la reçoit dans sa conversation avec toi, sinon en notification. Personne ne voit la liste des invités.";
+  }
+  var chips = b.querySelector(".ev-invite-chips");
+  if (chips) {
+    chips.textContent = "";
+    (ctx.extras || []).forEach(function (p) {
+      var chip = document.createElement("span");
+      chip.className = "ev-invite-chip";
+      chip.setAttribute("data-invite", p.id);
+      chip.appendChild(_inviteAvatar((typeof userById === "function" && userById(p.id)) || {}));
+      var nom = document.createElement("span");
+      nom.className = "ev-invite-chip-nom";
+      nom.textContent = p.nom;
+      chip.appendChild(nom);
+      var x = document.createElement("button");
+      x.type = "button";
+      x.className = "ev-invite-chip-x";
+      x.setAttribute("aria-label", "Ne pas inviter " + p.nom);
+      x.textContent = "×";
+      x.addEventListener("click", function () {
+        ctx.extras = (ctx.extras || []).filter(function (q) { return q.id !== p.id; });
+        _inviteRepeindre(ctx);
+        _inviteRendreListe(ctx);
+      });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+    var plein = _inviteTotal(ctx) >= _inviteMax(ctx);
+    var ajout = document.createElement("button");
+    ajout.type = "button";
+    ajout.className = "ev-invite-ajouter";
+    ajout.textContent = plein ? "Maximum atteint" : "+ Ajouter des personnes";
+    ajout.disabled = plein;
+    ajout.addEventListener("click", function () {
+      var p = b.querySelector(".ev-invite-picker");
+      if (!p) return;
+      p.hidden = !p.hidden;
+      if (!p.hidden) {
+        _inviteRendreListe(ctx);
+        var champ = p.querySelector("input");
+        if (champ) try { champ.focus({ preventScroll: true }); } catch (e) {}
+        try { if (window.tel && tel.action) tel.action("invite_conv_ajout_ouvert", { v: 1 }); } catch (e) {}
+      }
+    });
+    chips.appendChild(ajout);
+  }
+  var publier = document.querySelector('#modalContent button[onclick^="submitEvent"]');
+  if (publier) {
+    var total = _inviteTotal(ctx);
+    publier.textContent = ctx.groupe ? "Créer et inviter le groupe"
+      : total > 1 ? "Créer et inviter " + total + " personnes" : "Créer et inviter " + ctx.nom;
+  }
+}
+
+function _inviteRendreListe(ctx) {
+  var b = document.getElementById("evInviteBandeau");
+  if (!b || b.getAttribute("data-jeton") !== ctx.jeton) return;
+  var p = b.querySelector(".ev-invite-picker");
+  if (!p || p.hidden) return;
+  var liste = p.querySelector(".ev-invite-liste");
+  var champ = p.querySelector("input");
+  if (!liste) return;
+  var q = (typeof plierRecherche === "function")
+    ? plierRecherche(((champ && champ.value) || "").trim()) : ((champ && champ.value) || "").trim().toLowerCase();
+  var plie = function (s) { return typeof plierRecherche === "function" ? plierRecherche(s) : String(s).toLowerCase(); };
+  var cands = _inviteCandidats(ctx).filter(function (c) { return !q || plie(c.nom).indexOf(q) > -1; });
+  var plein = _inviteTotal(ctx) >= _inviteMax(ctx);
+  liste.textContent = "";
+  if (!cands.length) {
+    var vide = document.createElement("div");
+    vide.className = "ev-invite-vide";
+    vide.textContent = q ? "Personne de ce nom parmi tes conversations et abonnements."
+      : "Personne d'autre à proposer : écris d'abord à quelqu'un, ou abonne-toi à des passionnés.";
+    liste.appendChild(vide);
+    return;
+  }
+  cands.slice(0, 30).forEach(function (c) {
+    var ligne = document.createElement("div");
+    ligne.className = "ev-invite-ligne";
+    ligne.appendChild(_inviteAvatar((typeof userById === "function" && userById(c.id)) || {}));
+    var nom = document.createElement("span");
+    nom.className = "ev-invite-ligne-nom";
+    nom.textContent = c.nom;
+    ligne.appendChild(nom);
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn small primary ev-invite-ligne-btn";
+    btn.setAttribute("data-invite", c.id);
+    btn.textContent = "Ajouter";
+    btn.disabled = plein;
+    btn.addEventListener("click", function () { _inviteAjouter(ctx, c.id, c.nom); });
+    ligne.appendChild(btn);
+    liste.appendChild(ligne);
+  });
+}
+
+// Ajoute une pastille, puis demande le verdict serveur : refusé, la personne
+// repart de la liste avec un toast — elle n'aurait rien reçu de toute façon.
+function _inviteAjouter(ctx, id, nom, silencieux) {
+  if (!id || _inviteTotal(ctx) >= _inviteMax(ctx)) return false;
+  if (id === ctx.userId || (ctx.extras || []).some(function (p) { return p.id === id; })) return false;
+  ctx.extras = (ctx.extras || []).concat([{ id: id, nom: _nomInvite(id, nom) }]);
+  _inviteRepeindre(ctx);
+  _inviteRendreListe(ctx);
+  // Membres d'un groupe pré-cochés : leur verdict attend la publication (une
+  // rafale de 30 RPC à l'ouverture du formulaire, pour rien si on annule).
+  if (silencieux) return true;
+  _verdictInvite(ctx, id).then(function (v) {
+    if (v && v.ok) return;
+    var avant = (ctx.extras || []).length;
+    ctx.extras = (ctx.extras || []).filter(function (p) { return p.id !== id; });
+    if (ctx.extras.length === avant) return;
+    _inviteRepeindre(ctx);
+    _inviteRendreListe(ctx);
+    if (!silencieux) { try { toast("Invitation indisponible avec " + _nomInvite(id, nom)); } catch (e) {} }
+  });
+  if (!silencieux) { try { if (window.tel && tel.action) tel.action("invite_conv_ajout", { v: 1 }); } catch (e) {} }
+  return true;
 }
 
 // Appelée juste APRÈS l'ouverture du formulaire (ui-v6c). Rend true si le
@@ -6767,18 +6994,24 @@ function poserInvitationFormulaire(convId) {
   var c = _convInvitable(convId);
   var racine = document.getElementById("modalContent");
   if (!c || !racine || !document.getElementById("evTitle")) return false;
+  var groupe = !!c.isGroup;
   var nom = _nomInterlocuteur(c);
-  var ctx = { jeton: uid(), convId: c.id, userId: c.userId, nom: nom, at: Date.now() };
+  var ctx = { jeton: uid(), convId: c.id, userId: groupe ? null : c.userId, nom: nom, at: Date.now(),
+    groupe: groupe, extras: [], verdicts: {} };
   window._evInviteCtx = ctx;
 
   var titre = racine.querySelector(".modal-title");
   var sous = racine.querySelector(".modal-subtitle");
   var avant = { titre: titre ? titre.textContent : "", sous: sous ? sous.textContent : "" };
   if (titre) titre.textContent = "Inviter " + nom;
-  if (sous) sous.textContent = "Crée l'activité : l'invitation part dans votre conversation dès qu'elle est publiée.";
+  if (sous) sous.textContent = groupe
+    ? "Crée l'activité : l'invitation part dans le groupe dès qu'elle est publiée."
+    : "Crée l'activité : l'invitation part dans votre conversation dès qu'elle est publiée.";
 
-  var u = (typeof userById === "function" && userById(c.userId)) || {};
-  var hu = { avatar: c.userColor || u.avatar, profileEmoji: c.userEmoji || u.profileEmoji, photoUrl: u.photoUrl || c.userPhoto || null };
+  var u = groupe ? {} : ((typeof userById === "function" && userById(c.userId)) || {});
+  var hu = groupe
+    ? { avatar: "#7c3aed", profileEmoji: "👥" }
+    : { avatar: c.userColor || u.avatar, profileEmoji: c.userEmoji || u.profileEmoji, photoUrl: u.photoUrl || c.userPhoto || null };
   var bandeau = document.createElement("div");
   bandeau.id = "evInviteBandeau";
   bandeau.className = "ev-invite-bandeau";
@@ -6786,12 +7019,16 @@ function poserInvitationFormulaire(convId) {
   // Le nom vient d'un autre compte : il n'entre que par textContent.
   bandeau.innerHTML = '<div class="avatar sm" aria-hidden="true" style="background:' + avatarBg(hu) + ';">' + avatarInner(hu) + '</div>'
     + '<div class="ev-invite-bandeau-txt"><strong></strong><span></span></div>'
-    + '<button type="button" class="ev-invite-bandeau-x">Retirer</button>';
-  bandeau.querySelector("strong").textContent = "Invitation pour " + nom;
-  bandeau.querySelector("span").textContent = nom + " la recevra dans votre conversation.";
+    + '<button type="button" class="ev-invite-bandeau-x">Retirer</button>'
+    + '<div class="ev-invite-chips"></div>'
+    + '<div class="ev-invite-picker" hidden>'
+    + '<input type="search" class="input ev-invite-recherche" aria-label="Chercher une personne à inviter" placeholder="Chercher parmi tes conversations et abonnements…" autocomplete="off"/>'
+    + '<div class="ev-invite-liste"></div></div>';
   var ancre = sous || titre;
   if (ancre && ancre.parentNode === racine) racine.insertBefore(bandeau, ancre.nextSibling);
   else racine.insertBefore(bandeau, racine.firstChild);
+  var recherche = bandeau.querySelector(".ev-invite-recherche");
+  if (recherche) recherche.addEventListener("input", function () { _inviteRendreListe(ctx); });
 
   var publier = racine.querySelector('button[onclick^="submitEvent"]');
   var libelleAvant = publier ? publier.textContent : "";
@@ -6799,7 +7036,16 @@ function poserInvitationFormulaire(convId) {
   // défaut (2026-11-23) ; la personne peut la cocher.
   var caseFil = document.getElementById("evAuFil");
   if (caseFil) caseFil.checked = false;
-  if (publier) publier.textContent = "Créer et inviter " + nom;
+
+  // Groupe : ses membres sont pré-cochés (chacun retirable), chacun sous verdict.
+  if (groupe) {
+    var membres = membresAutresGroupe(c).filter(function (id) {
+      return !(typeof isBlocked === "function" && isBlocked(id));
+    }).slice(0, INVITE_CONV_MAX_GROUPE);
+    ctx.nbMembres = membres.length;
+    membres.forEach(function (id) { _inviteAjouter(ctx, id, null, true); });
+  }
+  _inviteRepeindre(ctx);
 
   bandeau.querySelector(".ev-invite-bandeau-x").addEventListener("click", function () {
     window._evInviteCtx = null;
@@ -6810,7 +7056,7 @@ function poserInvitationFormulaire(convId) {
     if (caseFil) caseFil.checked = true;
     try { if (window.tel && tel.action) tel.action("invite_conv_retiree", { v: 1 }); } catch (e) {}
   });
-  try { if (window.tel && tel.action) tel.action("invite_conv_posee", { v: 1 }); } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("invite_conv_posee", { v: 2, grp: groupe }); } catch (e) {}
   return true;
 }
 
@@ -6845,19 +7091,51 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   var lien = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
   var quand = _quandActivite(ev);
-  var texte = "📅 Je crée une activité pour t'inviter !\n"
+  var texte = "📅 Je crée une activité pour " + (ctx.groupe ? "vous " : "t'") + "inviter !\n"
     + (ev.title || "Activité") + (quand ? " · " + quand : "") + (ev.city ? " · " + ev.city : "")
     + "\n" + lien;
+  // En groupe, la carte est un message du groupe comme un autre : tous ses
+  // membres la voient. Le verdict serveur (âge, blocage) gouverne ce qui leur
+  // est ADRESSÉ — la notification — et la RLS `irl_adult_only` refuse de toute
+  // façon le « Je viens » d'un compte non admis.
   var envoye = (typeof envoyerTexteConversation === "function") && envoyerTexteConversation(ctx.convId, texte);
   if (!envoye) { toast("Activité publiée, mais l'invitation n'a pas pu partir — partage-la depuis sa fiche", "warning"); return false; }
   // La notification « t'invite à … » : le chemin du bouton « Inviter » de la fiche.
   // L'activité est en base (`enLigne`) : la preuve qu'exige `trg_notifications_preuve`.
-  try { inviteToEvent(ev.id, ctx.userId, null); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
-  try { if (window.tel && tel.action) tel.action("invite_conv_envoyee", { v: 1 }); } catch (e) {}
+  if (!ctx.groupe && ctx.userId) {
+    try { _notifierInviteEvent(ev, ctx.userId); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
+  }
+  // Les autres invités : chacun après SON verdict. Sa conversation 1:1 avec moi
+  // reçoit la même carte (jamais créée d'office) ; la notification part toujours.
+  var membres = {};
+  if (ctx.groupe) {
+    try {
+      var cg = _convInvitable(ctx.convId);
+      membresAutresGroupe(cg).forEach(function (id) { membres[id] = 1; });
+    } catch (e) {}
+  }
+  var autres = (ctx.extras || []).slice();
+  // Un verdict après l'autre : jamais 30 RPC d'un coup.
+  autres.reduce(function (file, p) {
+    return file.then(function () { return _verdictInvite(ctx, p.id); }).then(function (v) {
+      if (!v || !v.ok) return;
+      if (!membres[p.id]) {
+        var c1 = _conv1a1Avec(p.id);
+        if (c1 && c1.id !== ctx.convId) {
+          try { envoyerTexteConversation(c1.id, texte); } catch (e) { try { diagLog("invite conv extra " + (e && e.message)); } catch (_) {} }
+        }
+      }
+      try { _notifierInviteEvent(ev, p.id); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
+    });
+  }, Promise.resolve());
+  try { if (window.tel && tel.action) tel.action("invite_conv_envoyee", { v: 2, n: autres.length + (ctx.groupe ? 0 : 1), grp: !!ctx.groupe }); } catch (e) {}
   // Retour dans la conversation : on voit l'invitation partir.
+  var msg = ctx.groupe ? "Invitation envoyée au groupe"
+    : autres.length ? "Invitation envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
+    : "Invitation envoyée à " + ctx.nom;
   setTimeout(function () {
     try { if (typeof openConversation === "function") openConversation(ctx.convId); } catch (e) {}
-    try { toast("Invitation envoyée à " + ctx.nom, "success"); } catch (e) {}
+    try { toast(msg, "success"); } catch (e) {}
   }, 350);
   return true;
 }
@@ -6919,7 +7197,11 @@ function carteActiviteMessage(texte, c, isMe) {
 
   var statut = "", actions = "";
   var ouverte = ev && !_eventIsCancelled(ev) && !_eventIsOver(ev);
-  if (ev && c && !c.isGroup && isMe) {
+  // Plusieurs invités (ou un groupe) : le décompte des réponses, côté organisateur.
+  var invites = (ev && isMe) ? _invitesDeLaCarte(ev, c) : [];
+  if (ev && c && isMe && invites.length && (c.isGroup || invites.length > 1)) {
+    statut = _decompteInvites(ev, invites);
+  } else if (ev && c && !c.isGroup && isMe) {
     var autre = c.userId, nom = _nomInterlocuteur(c);
     var dans = function (l2) { return (l2 || []).indexOf(autre) > -1; };
     if (dans(ev.attendees)) statut = "✓ " + nom + " participe";
@@ -6927,6 +7209,9 @@ function carteActiviteMessage(texte, c, isMe) {
     else if (dans(ev.maybes)) statut = "🤔 " + nom + " hésite";
     else if (dans(ev.declined)) statut = nom + " ne pourra pas venir";
     else if (ouverte) statut = "En attente de réponse";
+  }
+  if (ev && c && isMe && ouverte && _isMyEvent(ev)) {
+    actions += '<button type="button" class="mca-btn mca-inviter" onclick="event.stopPropagation();inviterAutresActivite(\'' + escapeJsArg(id) + '\')">Inviter d\'autres</button>';
   } else if (ev && !isMe) {
     var r = myRsvp(id);
     if (r === "going") statut = "✓ Tu participes";
@@ -6945,6 +7230,46 @@ function carteActiviteMessage(texte, c, isMe) {
     + (statut ? '<div class="mca-statut">' + escapeHtml(statut) + '</div>' : '')
     + '<div class="mca-actions">' + actions + '</div>'
     + '</div>';
+}
+
+// Qui a été invité, vu de l'organisateur : ma mémoire d'envoi (cet appareil),
+// plus l'interlocuteur d'un 1:1. En groupe, la mémoire SEULE : un membre retiré,
+// bloqué ou refusé par le verdict n'a rien reçu, il ne doit pas rester « en
+// attente » pour toujours (audit du 2026-11-23).
+function _invitesDeLaCarte(ev, c) {
+  var vus = {}, out = [];
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  function p(id) { if (id && id !== me && id !== "me" && !vus[id]) { vus[id] = 1; out.push(id); } }
+  try { _eventInvitesSent(ev.id).forEach(p); } catch (e) {}
+  if (c && !c.isGroup && c.userId) p(c.userId);
+  return out;
+}
+
+function _decompteInvites(ev, ids) {
+  var n = ids.length;
+  if (!n) return "";
+  var dans = function (l, id) { return (l || []).indexOf(id) > -1; };
+  var vient = 0, hesite = 0, non = 0, attente = 0;
+  ids.forEach(function (id) {
+    if (dans(ev.attendees, id) || dans(ev.waitlist, id)) vient++;
+    else if (dans(ev.maybes, id)) hesite++;
+    else if (dans(ev.declined, id)) non++;
+    else attente++;
+  });
+  var parts = [n + " invité" + (n > 1 ? "s" : "")];
+  if (vient) parts.push(vient + " vien" + (vient > 1 ? "nent" : "t"));
+  if (hesite) parts.push(hesite + " hésite" + (hesite > 1 ? "nt" : ""));
+  if (non) parts.push(non + " ne vien" + (non > 1 ? "nent" : "t") + " pas");
+  if (attente) parts.push(attente + " en attente");
+  return parts.join(" · ");
+}
+
+// « Inviter d'autres » depuis la carte : la fenêtre d'invitation de la fiche.
+function inviterAutresActivite(id) {
+  id = String(id || "");
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return;
+  try { if (window.tel && tel.action) tel.action("invite_conv_autres", { v: 1 }); } catch (e) {}
+  openEventInvite(id);
 }
 
 function voirCarteActivite(id) {
@@ -8286,6 +8611,18 @@ function _renderEventInviteList() {
   box.innerHTML = html;
 }
 
+// L'invitation EST la notification (kind "event_invite" → openEventDetails),
+// mémorisée localement contre le double envoi. Sans toast : l'appelant parle.
+// ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
+function _notifierInviteEvent(ev, userId) {
+  if (!ev || !ev.id || !userId) return;
+  _rememberEventInvite(ev.id, userId);
+  if (typeof supaInsertNotif === "function") {
+    supaInsertNotif(userId, "event_invite", ev.id,
+      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+  }
+}
+
 // `btn` présent = un geste à l'écran : 5 s pour annuler avant que la notification
 // parte. Sans bouton (« inviter tout le monde »), l'envoi est immédiat, comme avant.
 function inviteToEvent(eventId, userId, btn) {
@@ -8293,13 +8630,7 @@ function inviteToEvent(eventId, userId, btn) {
   if (!ev) return;
   var envoyer = function () {
     if (window._invitesEnAttente[eventId]) delete window._invitesEnAttente[eventId][userId];
-    _rememberEventInvite(eventId, userId);
-    // L'invitation EST la notification (kind "event_invite" → openEventDetails).
-    // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-    if (typeof supaInsertNotif === "function") {
-      supaInsertNotif(userId, "event_invite", eventId,
-        "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
-    }
+    _notifierInviteEvent(ev, userId);
     try { _renderEventInviteList(); } catch (e) {}
   };
   if (!btn) { envoyer(); toast("Invitation envoyée"); return; }
