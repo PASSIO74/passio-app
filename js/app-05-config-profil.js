@@ -4315,6 +4315,14 @@ let _vliveFiletMinuteur = null;
 // un second tour — sa fin réarmerait une seconde chaîne de minuteurs.
 let _vliveFiletEnVol = false;
 let _vliveFiletSuspendu = false; // tu par `filetsEnRepos` (app-02), en attente du premier geste
+// Au repos, `_vliveFiletTour` ne lit rien et ne se réarme pas ; le minuteur échu
+// reste dans `_vliveFiletMinuteur` (non nul), et la reprise relance un tour immédiat.
+// (Commentaire hors du tour : ⑪ de capacite-amplification lit ses 2 000 premiers caractères.)
+function _vliveFiletAuRepos() {
+  if (!(typeof filetsEnRepos === "function" && filetsEnRepos())) return false;
+  _vliveFiletSuspendu = true;
+  return true;
+}
 function _vliveFiletReprendre() {
   if (!_vliveFiletSuspendu) return;
   _vliveFiletSuspendu = false;
@@ -4362,10 +4370,7 @@ function _vliveFiletTour() {
   };
   try {
     if (document.hidden || !window._supaReal) { suite(); return; }
-    // Visible sans geste depuis 15 min (`filetsEnRepos`, app-02, 2026-11-23) :
-    // ni lecture ni réarmement (le minuteur échu reste dans `_vliveFiletMinuteur`,
-    // non nul) ; le premier geste relance un tour immédiat (`_vliveFiletReprendre`).
-    if (typeof filetsEnRepos === "function" && filetsEnRepos()) { _vliveFiletSuspendu = true; return; }
+    if (_vliveFiletAuRepos()) return;
     _vliveFiletEnVol = true;
     const p = supaRefreshVideoLives();
     if (p && typeof p.then === "function") {
