@@ -44,6 +44,8 @@ test("organisation : « Écrire aux participants » et « Gérer l'activité » 
   await expect.poll(() => visibles(page)).toEqual({ corpsChat: 0, corpsGerer: 0, piedChat: 1, piedGerer: 1, calendrier: 1, inviter: 1 });
   // Masqués, pas retirés : le geste existe toujours dans le DOM.
   expect(await page.locator('#eventDetailContent [data-v4b-doublon="1"]').count()).toBe(2);
+  // La section « discussion » n'a plus rien de visible : elle ne laisse pas de blanc.
+  await expect(page.locator('#eventDetailContent [data-v4b-sec="discussion"]')).toBeHidden();
 });
 
 test("non inscrit : la discussion reste dans le corps ; inscrit : une seule fois, en bas", async ({ page }) => {

@@ -762,6 +762,18 @@
         else if (b.getAttribute("data-v4b-doublon")) { b.style.display = ""; b.removeAttribute("data-v4b-doublon"); }
       }
     });
+    // Une section dont il ne reste que des doublons masqués (« discussion » n'a
+    // que ce bouton) se masque avec eux : vide, elle gardait sa marge (44 px de
+    // blanc au lieu de 22 entre « Participants » et la suite).
+    var secs = content.querySelectorAll(".v4b-sec");
+    for (var j = 0; j < secs.length; j++) {
+      var s = secs[j];
+      var vide = s.children.length > 0 && Array.prototype.every.call(s.children, function (c) {
+        return c.hasAttribute("data-v4b-doublon");
+      });
+      if (vide) { s.style.display = "none"; s.setAttribute("data-v4b-sec-vide", "1"); }
+      else if (s.getAttribute("data-v4b-sec-vide")) { s.style.display = ""; s.removeAttribute("data-v4b-sec-vide"); }
+    }
   }
 
   function construireRetrait() {
