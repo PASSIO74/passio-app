@@ -398,15 +398,47 @@ async function deployerB(page) {
   await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()).catch(() => {})).catch(() => {});
 }
 
-// Prémisse de tous les cas occupés : le worker B a pris la main et l'a annoncé. Sinon
-// l'absence de rechargement ne prouverait rien.
+// Les caches de version, tels que la page les voit — null si l'évaluation tombe pile
+// sur un rechargement (comme la sonde : on relit, sans conclure).
+async function cachesDeVersion(page) {
+  try {
+    const cles = await page.evaluate(() => caches.keys());
+    return cles.filter((c) => c.startsWith("passio-v"));
+  } catch (e) { return null; }
+}
+
+// Prémisse de tous les cas occupés : le worker B a pris la main. Sinon l'absence de
+// rechargement ne prouverait rien.
+//
+// ⚠️ `SW_UPDATED` SE PERD SI LA PAGE PART, ET IL NE REVIENT JAMAIS. Le worker le poste
+// aux clients juste après `clients.claim()` : une page qui recharge à cet instant —
+// c'est-à-dire exactement une page que plus rien ne retient — n'est plus là pour le
+// recevoir, et rien ne le repostera. N'attendre que ce message fait donc accuser le
+// worker (« B n'a pas pris la main ») là où le défaut est l'inverse : la page n'a pas
+// été retenue. ⑨ est tombé comme ça le 2026-11-23 (déploiement de `aef3555a`), et son
+// journal ne permet pas de dire laquelle des deux.
+// La trace DURABLE de la prise de contrôle est côté worker : `activate` vide TOUS les
+// autres caches AVANT `clients.claim()`, il ne reste donc que `passio-v<buildB>` — et
+// ça survit à un rechargement. Le message reste lu, et suffit à lui seul ; sinon cette
+// trace tranche. Dire si la page est RESTÉE revient au cas lui-même
+// (`restePourLinstant`, dont la marge couvre déjà `controllerchange`) : ce qui était un
+// échec de prémisse muet devient l'échec qui nomme le vrai défaut.
 async function workerBAuxCommandes(page) {
+  const cacheB = "passio-v" + artefacts.relB.buildId;
   await expect.poll(async () => {
     const s = await lireApresNavigation(page);
-    return s ? s.msgs.filter((m) => m === "SW_UPDATED").length : 0;
-  }, { timeout: 20000, intervals: [100] }).toBeGreaterThanOrEqual(1);
+    if (s && s.msgs.includes("SW_UPDATED")) return "B aux commandes";
+    const cles = await cachesDeVersion(page);
+    if (!cles) return "page en vol";
+    if (cles.length === 1 && cles[0] === cacheB) return "B aux commandes";
+    return "caches : " + (cles.join(" ") || "aucun");
+  }, {
+    message: "ni l'annonce SW_UPDATED, ni le cache de B seul : le worker B n'a pas pris la main",
+    timeout: 20000,
+    intervals: [100],
+  }).toBe("B aux commandes");
   const cles = await page.evaluate(() => caches.keys());
-  expect(cles).toContain("passio-v" + artefacts.relB.buildId);
+  expect(cles).toContain(cacheB);
 }
 
 async function restePourLinstant(page, docsAttendus) {
