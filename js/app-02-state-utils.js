@@ -1264,6 +1264,110 @@ function socketTempsReelAuRepos(etat) {
 }
 window.socketTempsReelAuRepos = socketTempsReelAuRepos;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ONGLET VISIBLE SANS GESTE : LES FILETS SE TAISENT (2026-11-23, ADR-013
+// décision 5, audit 100K D15-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Le trafic de fond d'un onglet VISIBLE ne s'arrêtait jamais : un fil laissé
+// ouvert sur un bureau relisait publications, compteurs et lives, et battait la
+// télémétrie, jusqu'à ce qu'on ferme l'onglet — 6 à 9 requêtes/min pour un
+// visiteur sur le fil, autant à 3 h du matin qu'à midi. Mille onglets oubliés
+// dépassaient à eux seuls le dernier débit mesuré sans erreur (56 req/s).
+//
+// UN SEUL DÉTECTEUR pour toute l'app (le socket au repos s'y branche aussi,
+// app-08) : `pointerdown`, `keydown`, `touchstart`, `wheel`, `scroll`, le
+// `focus` de la fenêtre, et le retour au premier plan (`visibilitychange`
+// visible, `pageshow`). Rien d'autre n'est un geste : un minuteur, une réponse
+// réseau, une mutation du DOM ne le sont pas.
+//
+// LE CONTRAT DES FILETS, ET IL N'Y EN A QU'UN :
+//   ① à chaque tour, AVANT toute requête, le filet demande `filetsEnRepos()` ;
+//      vrai → il ne lit rien ET NE SE RÉARME PAS (aucun minuteur ne reste) ;
+//   ② il se relance sur l'événement `passio:activite-reprise` (window), émis au
+//      premier geste qui suit, par un tour IMMÉDIAT : on relit ce qu'on a manqué
+//      plutôt que d'attendre un pas reculé.
+// Un événement de fenêtre et non un abonnement : la télémétrie, les réglages
+// distants, la garde de version et le service worker se chargent AVANT ce
+// fichier (dans <head>) ; ils lisent `filetsEnRepos` au moment du tour.
+//
+// ⚠️ LE REPOS EST COLLANT, ET C'EST VOULU : posé par le premier filet qui le
+// constate, il ne tombe qu'au geste suivant. Sans ça, un filet suspendu par
+// l'un et non relancé par l'autre (délestage changé entre-temps, seuil franchi
+// dans un sens et pas dans l'autre) resterait muet pour toujours.
+// ⚠️ JAMAIS pendant un appel (même sonnant) ou un live : on y regarde sans
+// toucher, et la présence télémétrique de la personne doit tenir.
+// ⚠️ UN ONGLET MASQUÉ N'EST PAS « AU REPOS » ici : chaque filet a déjà sa règle
+// « masqué : rien », et le retour au premier plan est lui-même un geste.
+// Sous délestage (×2, ×4, js/reglages-distants.js), le silence vient 2 ou 4 fois
+// plus tôt — on ÉTIRE la durée écoulée, comme le socket au repos (`_rtReposEtat`).
+// Ce qui ne s'arrête PAS : les files d'écritures en attente (messages,
+// commentaires, suppressions — l'intention de la personne), le temps réel tant
+// que sa propre politique le tient, les minuteurs purement locaux.
+const FILETS_REPOS_INACTIF_MS = 15 * 60 * 1000;
+// PURE : `etat` = { visible, inactifDepuisMs, appelEnCours, liveEnCours }.
+function filetsAuRepos(etat) {
+  if (!etat || typeof etat !== "object") return false;
+  if (!etat.visible || etat.appelEnCours || etat.liveEnCours) return false;
+  var inactif = Number(etat.inactifDepuisMs);
+  return isFinite(inactif) && inactif >= FILETS_REPOS_INACTIF_MS;
+}
+window.filetsAuRepos = filetsAuRepos;
+
+window._activiteOnglet = { dernierGeste: Date.now(), enRepos: false, reposDepuis: 0, mises: 0, reprises: 0 };
+const _gesteOngletAbonnes = [];
+// Pour qui doit voir CHAQUE geste (le socket au repos, app-08), pas seulement
+// la reprise : sa propre politique dort parfois sans que les filets dorment.
+function surGesteOnglet(fn) { if (typeof fn === "function") _gesteOngletAbonnes.push(fn); }
+window.surGesteOnglet = surGesteOnglet;
+
+function _activiteEtat() {
+  const a = window._activiteOnglet;
+  const f = typeof delestageFacteur === "function" ? delestageFacteur() : 1;
+  return {
+    visible: !document.hidden,
+    inactifDepuisMs: (Date.now() - a.dernierGeste) * ((f === 2 || f === 4) ? f : 1),
+    appelEnCours: !!(window._call || window._callIncoming),
+    liveEnCours: !!(window._vliveHost || window._vliveView),
+  };
+}
+// LA question que pose chaque filet avant de lire. Pose le repos (collant).
+function filetsEnRepos() {
+  try {
+    const a = window._activiteOnglet;
+    const etat = _activiteEtat();
+    if (etat.appelEnCours || etat.liveEnCours) return false;
+    if (a.enRepos) return true;
+    if (!filetsAuRepos(etat)) return false;
+    a.enRepos = true; a.reposDepuis = Date.now(); a.mises++;
+    try { diagLog("filets_repos : onglet visible sans geste, filets suspendus"); } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+window.filetsEnRepos = filetsEnRepos;
+
+function _activiteGeste(raison) {
+  const a = window._activiteOnglet;
+  a.dernierGeste = Date.now();
+  for (let i = 0; i < _gesteOngletAbonnes.length; i++) {
+    try { _gesteOngletAbonnes[i](raison); } catch (e) {}
+  }
+  if (!a.enRepos || document.hidden) return;
+  const reposMs = a.reposDepuis ? Date.now() - a.reposDepuis : 0;
+  a.enRepos = false; a.reposDepuis = 0; a.reprises++;
+  try { diagLog("filets_reprise : " + raison + " après " + Math.round(reposMs / 1000) + " s de repos"); } catch (e) {}
+  try { window.dispatchEvent(new CustomEvent("passio:activite-reprise", { detail: { raison: raison, repos_ms: reposMs } })); } catch (e) {}
+}
+window._activiteGeste = _activiteGeste;
+(function _activiteEcouter() {
+  const o = { capture: true, passive: true };
+  ["pointerdown", "keydown", "touchstart", "wheel", "scroll"].forEach(function (ev) {
+    document.addEventListener(ev, function () { _activiteGeste("geste"); }, o);
+  });
+  window.addEventListener("focus", function () { _activiteGeste("focus"); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) _activiteGeste("retour"); });
+  window.addEventListener("pageshow", function () { if (!document.hidden) _activiteGeste("pageshow"); });
+})();
+
 function estEchecReseau(e) {
   try {
     if (!e) return false;

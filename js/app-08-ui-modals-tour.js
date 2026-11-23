@@ -9697,14 +9697,17 @@ function _rtReposArmer() {
   r.arme = true;
   r.dernierGeste = Date.now();
   r.masqueeDepuis = document.hidden ? Date.now() : 0;
-  const geste = function () {
+  // ⚠️ LE GESTE VIENT DU DÉTECTEUR UNIQUE (`surGesteOnglet`, app-02, 2026-11-23),
+  // le même qui tait les filets : deux listes d'événements finiraient par
+  // diverger. Seul un geste PHYSIQUE réveille ici ; le retour au premier plan
+  // garde son propre gestionnaire ci-dessous (raison « retour », qui ne relance
+  // pas le fil et les lives — leurs gestionnaires `visibilitychange` le font).
+  const geste = function (raison) {
     r.dernierGeste = Date.now();
+    if (raison !== "geste") return;
     if (r.endormi && !document.hidden) _rtReveiller("geste");
   };
-  ["pointerdown", "keydown", "touchstart", "wheel"].forEach(function (ev) {
-    document.addEventListener(ev, geste, { capture: true, passive: true });
-  });
-  document.addEventListener("scroll", geste, { capture: true, passive: true });
+  if (typeof surGesteOnglet === "function") surGesteOnglet(geste);
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { r.masqueeDepuis = Date.now(); return; }
     r.masqueeDepuis = 0; r.dernierGeste = Date.now();
@@ -10210,6 +10213,10 @@ function _filRelectureArmer(fil) {
     };
     // Masquée : rien à peindre — on attend au même pas (aucun recul).
     if (document.hidden) { rel.minuteur = setTimeout(tour, delaiDeleste(rel.pas)); return; }
+    // Visible sans geste depuis 15 min (`filetsEnRepos`, app-02, 2026-11-23) :
+    // ni lecture ni réarmement ; le premier geste relit tout de suite
+    // (`_filsRelecturesReprendre`).
+    if (typeof filetsEnRepos === "function" && filetsEnRepos()) { rel.minuteur = null; rel.suspendue = true; return; }
     window._filRtStats.relectures++;
     Promise.resolve(_filRelire(fil)).then(function () {
       var sig = _filSignature(fil);
@@ -10222,9 +10229,25 @@ function _filRelectureArmer(fil) {
       rearmer(true);
     });
   };
+  rel.tour = tour;
   rel.minuteur = setTimeout(tour, delaiDeleste(rel.pas));
 }
-window._filRtStats = { rejoints: 0, suivis: 0, refus: 0, pannes: 0, lacher: 0, relectures: 0, rattrapages: 0 };
+// Reprise au premier geste : chaque relecture TUE par le repos repart tout de
+// suite, à la cadence vive (elle a pu manquer des commentaires).
+function _filsRelecturesReprendre() {
+  try {
+    window._filsRt.forEach(function (e) {
+      var rel = e && e.relecture;
+      if (!rel || !rel.suspendue || typeof rel.tour !== "function") return;
+      rel.suspendue = false;
+      rel.pas = discussionRelectureProchainPas(0, true);
+      clearTimeout(rel.minuteur);
+      rel.minuteur = setTimeout(rel.tour, 0);
+    });
+  } catch (err) { try { diagLog("fil_rt_reprise : " + (err && err.message)); } catch (_e) {} }
+}
+window.addEventListener("passio:activite-reprise", _filsRelecturesReprendre);
+window._filRtStats ={ rejoints: 0, suivis: 0, refus: 0, pannes: 0, lacher: 0, relectures: 0, rattrapages: 0 };
 function _filLacher(fil) {
   var e = window._filsRt.get(fil);
   if (!e) return;
@@ -11393,6 +11416,19 @@ function _feedPostsSig(posts) {
 // finissent toujours par diverger sur celle qu'on oublie.
 let _feedFiletPas = 60000;
 let _feedFiletEchecs = 0;   // tours en échec d'affilée (lot 4 du 2026-11-15, `reculSurErreur`)
+let _feedFiletSuspendu = false; // tu par `filetsEnRepos` (app-02), en attente du premier geste
+
+// Reprise au premier geste après le repos : un tour IMMÉDIAT, à la cadence vive.
+// Seulement si CE filet s'était tu — sinon il tourne déjà, rien à rattraper.
+function _feedFiletReprendre() {
+  if (!_feedFiletSuspendu) return;
+  _feedFiletSuspendu = false;
+  if (!_feedRefreshTour || _feedRefreshInterval === null) return; // boucle arrêtée entre-temps
+  _feedFiletPas = filetProchainPas(0, true, false);
+  clearTimeout(_feedRefreshInterval);
+  _feedRefreshInterval = setTimeout(_feedRefreshTour, 0);
+}
+window.addEventListener("passio:activite-reprise", _feedFiletReprendre);
 
 // Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
 // l'écran et par les gestionnaires temps réel : il vient de se passer quelque
@@ -11417,6 +11453,15 @@ function startFeedRefreshLoop() {
     // Son achèvement réveillera le NOUVEAU cycle, au lieu de perdre le seul
     // rendez-vous de celui-ci en sortant sur la garde « en vol ».
     if (_feedRefreshInFlight) { _feedRefreshRelance = true; return; }
+    // ONGLET VISIBLE SANS GESTE DEPUIS 15 MIN (2026-11-23, `filetsEnRepos`,
+    // app-02) : aucune lecture, et AUCUN réarmement — le minuteur échu reste dans
+    // `_feedRefreshInterval` (non nul : la boucle est « en marche », un
+    // `startFeedRefreshLoop` n'en crée pas une seconde). La reprise au premier
+    // geste relance un tour immédiat (`_feedFiletReprendre`).
+    if (!document.hidden && typeof filetsEnRepos === "function" && filetsEnRepos()) {
+      _feedFiletSuspendu = true;
+      return;
+    }
     _feedRefreshInFlight = true;
     let vivant = false, echec = false;
     try {
@@ -11498,6 +11543,7 @@ function stopFeedRefreshLoop() {
   _feedRefreshTour = null;
   _feedRefreshGeneration++;
   _feedRefreshRelance = false;
+  _feedFiletSuspendu = false;
 }
 
 // Le retour de l'onglet à l'écran rend sa cadence vive au filet : quelqu'un

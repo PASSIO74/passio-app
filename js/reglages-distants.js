@@ -255,10 +255,23 @@
     // ±30 s : cent mille appareils ne doivent pas relire à la même seconde.
     minuterie = setTimeout(function () {
       minuterie = null;
+      // Onglet visible sans geste depuis 15 min (`filetsEnRepos`, app-02,
+      // 2026-11-23) : ni lecture ni réarmement ; la reprise relance ci-dessous.
+      if (!document.hidden && typeof window.filetsEnRepos === "function" && window.filetsEnRepos()) {
+        enRepos = true;
+        return;
+      }
       if (!document.hidden) rafraichir(false);
       planifier();
     }, PERIODE_MS + Math.round((Math.random() - 0.5) * 60000));
   }
+  var enRepos = false;
+  window.addEventListener("passio:activite-reprise", function () {
+    if (!enRepos) return;
+    enRepos = false;
+    if (Date.now() - dernierEssai > PERIODE_MS) rafraichir(false);
+    planifier();
+  });
 
   // ── Démarrage ─────────────────────────────────────────────────────────────
   if (!actif()) {

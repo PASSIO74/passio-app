@@ -404,6 +404,15 @@ function _postLikeAppliquerCompte(id, entry, version, count, identity, epoch) {
 async function _postLikeRefreshTour() {
   _postLikeRefreshTimer = null;
   if (!_postLikeRefreshRunning || _postLikeRefreshBusy || document.hidden) return;
+  // Visible sans geste depuis 15 min (`filetsEnRepos`, app-02, 2026-11-23) :
+  // aucune lecture, aucun réarmement. Une mutation du DOM peut encore réveiller
+  // ce tour — il ressort ici, sans requête. Le premier geste rattrape
+  // (`_postLikeRefreshReprendre`).
+  if (typeof filetsEnRepos === "function" && filetsEnRepos()) {
+    _postLikeRefreshSuspendu = true;
+    window._postLikeRefreshStats.repos = (window._postLikeRefreshStats.repos || 0) + 1;
+    return;
+  }
   _postLikeRefreshInitialPhase();
   if (Date.now() < _postLikeRefreshNextAt) { _postLikeRefreshWake(); return; }
   _postLikeRefreshBusy = true;
@@ -547,7 +556,24 @@ function startPostLikeRefresh() {
   }
   _postLikeRefreshWake();
 }
+// Reprise au premier geste après le repos : un tour tout de suite, cadence vive
+// — sauf sous recul d'erreur (D14-01) : une base en panne n'est pas relancée.
+let _postLikeRefreshSuspendu = false;
+function _postLikeRefreshReprendre() {
+  if (!_postLikeRefreshSuspendu) return;
+  _postLikeRefreshSuspendu = false;
+  if (!_postLikeRefreshRunning) return;
+  _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
+  window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
+  if (!_postLikeRefreshEchecs) _postLikeRefreshNextAt = Date.now();
+  clearTimeout(_postLikeRefreshTimer);
+  _postLikeRefreshTimer = null;
+  _postLikeRefreshWake();
+}
+window.addEventListener("passio:activite-reprise", _postLikeRefreshReprendre);
+
 function stopPostLikeRefresh() {
+  _postLikeRefreshSuspendu = false;
   _postLikeRefreshRunning = false;
   _postLikeRefreshEpoch++;
   clearTimeout(_postLikeRefreshTimer);
