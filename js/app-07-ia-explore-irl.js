@@ -7985,10 +7985,13 @@ async function _prevenirInscrits(ev, genre, message) {
     // synchronisé ne connaît pas les inscrits, la base si (relecture red team du 22/11).
     const v = await supaPrevenirInscrits(ev.id, genre, _cleGeste(), message || null);
     if (v && v.ok) {
-      // La push : `event_cancelled` n'a pas de gabarit (notify-call la refuse), et
-      // `notify-call` sert 20 pushes par minute à un compte — les venants d'abord.
-      if (genre === "event_update" && typeof _pousserPushNotif === "function") {
-        cibles.slice(0, 20).forEach(function (uidTo) { _pousserPushNotif(uidTo, "event_update", ""); });
+      // La push, pour les deux genres (`event_cancelled` a son gabarit depuis le
+      // 22/11 : l'annulation réveille aussi les inscrits app fermée). `notify-call`
+      // sert 20 pushes par minute à un compte — les venants d'abord ; il relit la
+      // ligne écrite par la base et tranche (origine serveur, organisation,
+      // annulée, inscrit) : une ligne client `event_cancelled` ne pousse jamais.
+      if (typeof _pousserPushNotif === "function") {
+        cibles.slice(0, 20).forEach(function (uidTo) { _pousserPushNotif(uidTo, genre, ""); });
       }
       return { total: v.destinataires, prevenues: v.prevenues };
     }
