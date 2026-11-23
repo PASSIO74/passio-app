@@ -7029,9 +7029,14 @@ function renderConvFpThread(c, displayName) {
         // (il n'accepte que http(s), data:image|audio|video et blob:).
         content = '<a href="' + safeUrlAttr(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
       } else {
+        // 2026-11-23 : un lien d'activité PASSIO devient une CARTE (titre, date,
+        // réponse d'un geste) — `carteActiviteMessage` (app-07) ne lit que nos
+        // activités et échappe tout le reste ; "" = le texte reste un texte.
+        var _carteEv = (typeof carteActiviteMessage === "function") ? carteActiviteMessage(m.text, c, isMe) : "";
+        if (_carteEv) { content = _carteEv; isMedia = true; isVisuel = true; }
         // LOT-20 (MSG-C67) : les liens http(s) d'un message s'ouvrent — échappement
         // D'ABORD, puis liens seulement (ni mentions ni mots-dièse ici).
-        content = _liensMessage(escapeHtml(m.text));
+        else content = _liensMessage(escapeHtml(m.text));
       }
     }
 
@@ -7469,6 +7474,11 @@ function _msgPreviewText(m) {
   if (m.location) return "Position";
   var t = String(m.text || "");
   if (/^📍 Ma position : https?:\/\//.test(t)) return "Position";
+  // Une carte d'activité : sa première ligne, sans le lien (2026-11-23).
+  if (typeof lienActiviteDuTexte === "function") {
+    var _lev = lienActiviteDuTexte(t);
+    if (_lev) { var _l1 = t.split(_lev.url).join("").trim().split("\n")[0].trim(); return "📅 " + (_l1 || "Activité"); }
+  }
   var e = t.match(_ETIQUETTE_PJ_RE);
   if (e) {
     var k = e[1].toUpperCase(), nom = e[2] || "";
@@ -8524,6 +8534,35 @@ function sendMessageFp(convId, displayName) {
   var _content = _withSenderMeta(_localMsg._msgRawContent); // texte littéral, puis profil actif
   if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
   _sendTextToSupa(convId, msgId, _content);
+}
+
+// Envoi d'un texte PRÉPARÉ par un parcours (invitation à une activité, réponse
+// à une carte d'activité) : le chemin de `sendMessageFp` — bulle locale « sending »,
+// propriétaire de file (AUTH-06), statut et file hors-ligne par `_sendTextToSupa` —
+// sans toucher au champ de saisie, au brouillon ni à la réponse en cours. Rend
+// true si le message est parti dans le pipeline.
+function envoyerTexteConversation(convId, txt) {
+  if (window.requireAuthentication && !requireAuthentication("message")) return false;
+  txt = String(txt == null ? "" : txt).trim();
+  if (!txt || txt.length > MSG_TEXTE_MAX) return false;
+  var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+  if (!c || _estConvDemo(c)) return false;
+  if (!c.messages) c.messages = [];
+  var msgId = "msg_" + uid();
+  var local = { id: msgId, from: "me", text: txt, _msgRawContent: JSON.stringify({ type: "text", text: txt }), at: Date.now(), status: "sending", de: _fileProprietaire() };
+  c.messages.push(local);
+  c.lastAt = Date.now();
+  saveConversations();
+  if (window._openedConvId === convId) {
+    try {
+      renderConvFpThread(c, c.userName || c.groupName || "");
+      var th = document.getElementById("convFpThread");
+      if (th) th.scrollTop = th.scrollHeight;
+    } catch (e) {}
+  }
+  try { renderMessages(); } catch (e) {}
+  _sendTextToSupa(convId, msgId, _withSenderMeta(local._msgRawContent));
+  return true;
 }
 
 // ───────── Statut d'envoi + file d'attente hors-ligne ─────────

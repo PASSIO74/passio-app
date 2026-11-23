@@ -366,9 +366,12 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     });
     await openIrlDirectConversation(page);
     await page.locator("[data-irl-proposal-action]").click();
-    // UI-6A0 (#174) range ce même formulaire sous le titre « Créer une activité » ;
-    // coupé (`passio_ui_6a0="0"`), le titre d'avant revient. Le moteur est le même.
-    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Créer une activité");
+    // Le formulaire EXISTANT (même moteur, `#evTitle`), titré depuis le 2026-11-23
+    // « Inviter <nom> » : il invite la personne de la conversation
+    // (invitation-conversation.spec.js). Coupé (`passio_invite_conv_v1="0"`),
+    // le titre d'UI-6A0, « Créer une activité », revient.
+    await expect(page.locator("#modalBackdrop.active #evTitle")).toHaveCount(1);
+    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Inviter ");
     const events = await page.evaluate(() => window.__irlTelemetry);
     expect(events.some(e => e.name === "irl_proposal_cta_clicked")).toBe(true);
     expect(JSON.stringify(events)).not.toContain("u_target_secret");

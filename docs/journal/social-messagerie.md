@@ -28,6 +28,7 @@
 - ↪️ TRANSFÉRER UN VOCAL ENVOYAIT UN MESSAGE VIDE — il part en vocal, son objet copié ou déposé dans la cible (2026-11-07)
 - 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
+- 📅 INVITER LA PERSONNE DE LA CONVERSATION À UNE ACTIVITÉ — carte d'activité dans le fil (2026-11-23)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
 - 📸 LA STORY FAÇON INSTAGRAM — ❤️, réactions, réponse et partage sans quitter la story ; gestes (2026-11-14)
 - 🔔 PAS DE NOTIFICATION SANS ÉVÉNEMENT MÉTIER — elle part au verdict de son écriture (2026-11-13)
@@ -1130,3 +1131,33 @@ script 300 ms après l'ouverture — la première version (geste seul) les ramen
 
 **Verrou** : `tests/e2e/conv-ouverture-fil.spec.js` (3 cas de plus, deux rougissent sans
 l'observateur ; le troisième garde la relecture de l'historique).
+
+## 📅 INVITER LA PERSONNE DE LA CONVERSATION À UNE ACTIVITÉ — carte d'activité dans le fil (2026-11-23)
+
+**Demande de Benjamin** (captures du 23/11) : le bouton 📍 de l'en-tête d'une conversation 1:1 ouvrait
+le formulaire de création, prérempli d'une passion, mais sans aucun lien avec la personne ; après la
+publication, la fenêtre générique « Inviter mes amis ». Il voulait « je crée une activité pour t'inviter ».
+
+**Ce qui est livré** (lots 1 et 2 ensemble, `app-07` « INVITER LA PERSONNE DE LA CONVERSATION ») :
+- `poserInvitationFormulaire(convId)` (appelée par ui-v6c après l'ouverture du formulaire) : titre
+  « Inviter <nom> », bandeau `#evInviteBandeau` retirable, bouton « Créer et inviter <nom> ».
+- `submitEvent` lit `lireInvitationFormulaire()` AVANT `closeModal` (le bandeau fait foi ; à défaut,
+  un contexte frais de 30 min que tout nouveau formulaire efface). Publiée (`ok && backend`) :
+  `envoyerInvitationActivite` envoie un message TEXTE (« 📅 Je crée une activité pour t'inviter ! »,
+  titre, date, ville, lien `lienPartageDe("event")`) par `envoyerTexteConversation` (app-04, le chemin
+  de `sendMessageFp` sans toucher au champ de saisie), pose `inviteToEvent(…, null)` (notification
+  `event_invite`, seul site autorisé par `notifications-apres-ecriture.test.mjs`), puis rouvre la conversation.
+- Dans le fil, `carteActiviteMessage` peint tout lien d'activité PASSIO (`/e/<id>` ou `#irl-event-<id>`,
+  NOTRE hôte seulement) en carte : données lues dans NOS activités, jamais dans le texte reçu.
+  Invité : « Je viens » / « Peut-être » → `setEventRsvp` (seule porte), puis une réponse courte
+  part dans la conversation SEULEMENT si le RSVP a réellement changé. Organisateur : « ✓ <nom> participe ».
+
+**Pièges** :
+- Un message de type nouveau (`type: "event"`) aurait été « [Message invalide] » sur toute version
+  déjà installée (`_messageContentData` est une liste fermée) : la carte est un TEXTE avec un lien.
+- L'interlocuteur d'un banc ne doit pas être un utilisateur du socle de démonstration
+  (`_estConvDemo` : rien ne part, et c'est voulu) — `u_nina` l'est.
+- Le titre suggéré ne nomme toujours personne (§10 d'UI-6C) : un titre est public.
+
+Coupures : `localStorage.passio_invite_conv_v1="0"` · `window.PASSIO_INVITE_CONV=false`.
+Verrou : `tests/e2e/invitation-conversation.spec.js` (9).
