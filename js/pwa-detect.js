@@ -159,7 +159,12 @@
           };
           // Vérifie les mises à jour immédiatement puis toutes les 60s
           majSilencieuse(reg);
-          setInterval(() => { if (!document.hidden) majSilencieuse(reg); }, 60000);
+          // Onglet visible sans geste depuis 15 min (`filetsEnRepos`, app-02,
+          // 2026-11-23) : l'intervalle bat à vide, sans requête ; le premier
+          // geste vérifie tout de suite.
+          const auRepos = () => typeof window.filetsEnRepos === 'function' && window.filetsEnRepos();
+          setInterval(() => { if (!document.hidden && !auRepos()) majSilencieuse(reg); }, 60000);
+          window.addEventListener('passio:activite-reprise', () => majSilencieuse(reg));
           // Garde anti-boucle : controllerchange ET SW_UPDATED peuvent arriver
           // quasi simultanément → on ne recharge qu'UNE fois, jamais en boucle.
           let _reloaded = false;

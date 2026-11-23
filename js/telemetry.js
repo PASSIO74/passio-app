@@ -1873,14 +1873,36 @@
     return BATTEMENT_MS * ((f === 2 || f === 4) ? f : 1);
   }
   window.passioBattementDelai = battementDelai;
-  (function battre() {
+  // ⚠️ ONGLET VISIBLE SANS GESTE DEPUIS 15 MIN (2026-11-23, ADR-013 décision 5,
+  // D15-01) : le battement se TAIT, comme les filets (`filetsEnRepos`, app-02,
+  // chargé après ce fichier — lu au moment du tour). Il part une DERNIÈRE fois
+  // avec `meta.repos: true` : l'appareil sort des « en ligne » du pilotage
+  // 270 s plus tard (ONLINE_MS), et ce marqueur dit pourquoi — personne ne
+  // regarde, ce n'est pas une panne. Au premier geste (`passio:activite-reprise`),
+  // un battement part TOUT DE SUITE et la chaîne reprend.
+  var battementSuspendu = false;
+  function battre() {
     setTimeout(function () {
       try {
-        if (!document.hidden) track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
+        if (!document.hidden) {
+          if (typeof window.filetsEnRepos === "function" && window.filetsEnRepos()) {
+            track("lifecycle", "heartbeat", { meta: { online: navigator.onLine, repos: true } });
+            battementSuspendu = true;
+            return;                      // aucun réarmement : la reprise relance
+          }
+          track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } });
+        }
       } catch (e) {}
       battre();
     }, battementDelai());
-  })();
+  }
+  battre();
+  window.addEventListener("passio:activite-reprise", function () {
+    if (!battementSuspendu) return;
+    battementSuspendu = false;
+    try { if (!document.hidden) track("lifecycle", "heartbeat", { meta: { online: navigator.onLine } }); } catch (e) {}
+    battre();
+  });
 
   // 3) Erreurs JS (complète platform.js, table distincte, usage distinct)
   // Le bug des contrôles vidéo de Safari (voir js/platform.js) laisse UNE trace

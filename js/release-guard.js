@@ -114,7 +114,12 @@
   });
   window.addEventListener("online", function () { check(); });
   setTimeout(check, 4000);
+  // Onglet visible sans geste depuis 15 min (`filetsEnRepos`, app-02,
+  // 2026-11-23) : l'intervalle bat à vide (aucune requête) ; la reprise au
+  // premier geste vérifie tout de suite — une version a pu sortir entre-temps.
+  var auRepos = function () { return typeof window.filetsEnRepos === "function" && window.filetsEnRepos(); };
   setInterval(function () {
-    if (document.visibilityState === "visible") check();
+    if (document.visibilityState === "visible" && !auRepos()) check();
   }, 5 * 60 * 1000);
+  window.addEventListener("passio:activite-reprise", function () { check(); });
 })();

@@ -41,6 +41,7 @@
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 - 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
 - 🏘️ LE VILLAGE À 100, EN HYBRIDE : LA CAPACITÉ TIENT, L'ANNULATION NE PRÉVIENT QUE 60 PERSONNES (2026-11-22)
+- 💤 UN ONGLET VISIBLE QUE PERSONNE NE TOUCHE SE TAIT APRÈS 15 MIN — ET REPREND AU PREMIER GESTE (2026-11-23)
 
 ---
 
@@ -3434,3 +3435,68 @@ vouée au refus par inscription (M3) ; latences variables sous la CI concurrente
 Hors portée : médias, push réels (staging sans VAPID), rendu et batterie d'un vrai téléphone.
 Limite du verrou : il ne couvre que `village:100` — `village` et `charge:realiste` lancés en même temps
 depuis ce poste partagent la cadence de connexion par adresse IP.
+
+## 💤 UN ONGLET VISIBLE QUE PERSONNE NE TOUCHE SE TAIT APRÈS 15 MIN — ET REPREND AU PREMIER GESTE (2026-11-23)
+
+**Pourquoi.** ADR-013, décision 5 (audit 100K, D15-01) : faire d'abord le gratuit avant toute campagne
+payante 400/800. Le trafic de fond d'un onglet VISIBLE ne s'arrêtait jamais : un fil laissé ouvert sur un
+bureau relisait publications, lives et compteurs, et battait la télémétrie, jusqu'à la fermeture de
+l'onglet. L'audit comptait 6 à 9 requêtes/min pour un visiteur sur le fil, 9 à 21 pour un compte, ~3,4
+hors du fil ; mille onglets oubliés dépassaient à eux seuls le dernier débit mesuré sans erreur (56 req/s).
+
+**Recensement (code du 23/11) — ce qui tourne sur un onglet visible au repos.**
+
+| Minuteur | Fichier | Cadence au repos (avant) | Réseau |
+|---|---|---|---|
+| Filet du fil (`startFeedRefreshLoop`) | app-08 | 4 requêtes par tour, 60 s → 180 s si fil à l'écran ; rien hors du fil | Supabase |
+| Filet des lives (`_vliveFiletTour`) | app-05 | 1 requête, 60 s → 180 s (fil) / 300 s (ailleurs) | Supabase |
+| Compteurs des cartes (`_postLikeRefreshTour`) | app-03 | 1 appel groupé, 15 s → 60 s ; comptes seulement | Supabase |
+| Relecture d'une discussion EN PANNE | app-08 | 5 s → 30 s, seulement si le sujet `fil:` est en panne | Supabase |
+| Battement (`battre`) | telemetry.js | 1 événement/min (× délestage), 1 envoi | Supabase |
+| Réglages distants (`planifier`) | reglages-distants.js | 1 lecture / 5 min ±30 s (inerte en local) | Supabase |
+| Garde de version | release-guard.js | `/release.json` / 5 min | Netlify |
+| Mise à jour du service worker | pwa-detect.js | `reg.update()` / 60 s | Netlify |
+| Socket au repos (`_rtReposTick`) | app-08 | 30 s, local | — |
+| Contexte de passion | passion-context.js | 750 ms, local | — |
+| Photos perf-ios | perf-ios.js | 3, 6, 12, 24 puis 30 min (≤ 2/h) | télémétrie |
+| Files d'écriture hors-ligne | app-04 / app-08 | 15 s, seulement si une écriture attend | Supabase |
+
+**Ce qui est fait.** UN détecteur (`filetsEnRepos`, `_activiteGeste`, app-02) : `pointerdown`, `keydown`,
+`touchstart`, `wheel`, `scroll`, `focus` de la fenêtre, retour au premier plan. Après 15 min sans geste
+(÷2 ou ÷4 sous délestage, comme le socket au repos), onglet visible, hors appel et hors live : le premier
+filet qui le constate pose le repos (collant jusqu'au geste suivant). Chaque filet le demande AVANT toute
+requête ; vrai → ni lecture, ni réarmement. Au premier geste, l'événement `passio:activite-reprise`
+relance un tour immédiat de chaque filet tu (rattrapage), et un battement. Les huit lignes « réseau »
+du tableau sont branchées, sauf perf-ios (≤ 2/h) et les files d'écriture (l'intention de la personne).
+Le socket au repos (2026-09-21) prend désormais ses gestes au même détecteur (`surGesteOnglet`) : une
+seule liste d'événements.
+
+**Effet attendu par onglet visible au repos (régime établi, après 15 min + au plus un pas).**
+Visiteur sur le fil : ≈ 2,9 req/min Supabase + 1,2 Netlify → 0. Compte sur le fil : ≈ 3,9 + 1,2 → 0
+(son socket fermait déjà à 15 min). Hors du fil : ≈ 1,4 + 1,2 → 0. Restent : un battement marqué
+`repos: true` par période, le rafraîchissement du jeton d'auth (SDK, ~1/h, compte), perf-ios (≤ 2/h).
+Coût de la reprise : une rafale unique de ≈ 8 à 10 requêtes au premier geste.
+⚠️ Ces chiffres sont lus dans le code, pas mesurés en production. Ils sont plus bas que ceux de l'audit
+(qui comptait un battement à 20 s — passé à 60 s au lot 4 du 15/11 — et des filets à 60 s fixes).
+
+**Effet sur le pilotage — à connaître, ce n'est pas une panne.**
+- Un onglet au repos sort des « en ligne » du centre de pilotage 270 s après son dernier battement
+  (`ONLINE_MS`) ; ce battement porte `meta.repos: true`. Les jauges d'audience baissent : elles comptaient
+  des onglets oubliés.
+- `comptes_connectes` (`pilotage_audience`, 5 min) baisse de même. C'est l'entrée `pctConnexions` du
+  délestage automatique (`decideDelestage`) : il descend plus tôt. C'est plus fidèle au mur réel, les
+  sockets de ces comptes étant déjà fermés par le socket au repos au même seuil.
+- La veille (`signalFlux`) : des onglets oubliés ne remplissent plus une heure active. Un vrai silence
+  (4 h / 8 h sans ligne humaine) sonne désormais là où ces onglets le masquaient.
+- La Sentinelle juge sur des erreurs : rien ne change. Le battement de la veille (`_shared/battement.js`)
+  est celui du SERVEUR, sans rapport.
+
+**Verrou.** `tests/e2e/capacite-filets-onglet-inactif.spec.js` (3) : horloge installée AVANT le démarrage
+(le battement compris), lectures simulées et comptées, battements interceptés. Éprouvé par six mutations,
+toutes rouges : repos jamais posé, fil sans reprise, battement qui continue, compteurs sans repos, lives
+sans reprise, discussion sans repos.
+
+**Non fait, délibérément.** Une vidéo qui joue n'est pas un geste : on peut regarder un long live ou une
+bobine sans toucher, et le fil se tait (le live, lui, est exempté). La remesure 100/200 attend l'ordre du
+responsable ; le banc `charge-realiste` simule des acteurs ACTIFS en continu, il ne voit donc pas ce gain
+(protocole dans la PR).

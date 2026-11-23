@@ -4314,6 +4314,23 @@ let _vliveFiletMinuteur = null;
 // Un tour EN VOL (la lecture n'a pas répondu) : un réveil immédiat ne lance pas
 // un second tour — sa fin réarmerait une seconde chaîne de minuteurs.
 let _vliveFiletEnVol = false;
+let _vliveFiletSuspendu = false; // tu par `filetsEnRepos` (app-02), en attente du premier geste
+// Au repos, `_vliveFiletTour` ne lit rien et ne se réarme pas ; le minuteur échu
+// reste dans `_vliveFiletMinuteur` (non nul), et la reprise relance un tour immédiat.
+// (Commentaire hors du tour : ⑪ de capacite-amplification lit ses 2 000 premiers caractères.)
+function _vliveFiletAuRepos() {
+  if (!(typeof filetsEnRepos === "function" && filetsEnRepos())) return false;
+  _vliveFiletSuspendu = true;
+  return true;
+}
+function _vliveFiletReprendre() {
+  if (!_vliveFiletSuspendu) return;
+  _vliveFiletSuspendu = false;
+  _vliveFiletPas = filetProchainPas(0, true, false);
+  clearTimeout(_vliveFiletMinuteur);
+  _vliveFiletMinuteur = setTimeout(_vliveFiletTour, 0);
+}
+window.addEventListener("passio:activite-reprise", _vliveFiletReprendre);
 
 // `immediat` (retour au fil, retour au premier plan) : le tour part tout de
 // suite au lieu d'attendre un rendez-vous pris au pas reculé — sans temps réel,
@@ -4353,6 +4370,7 @@ function _vliveFiletTour() {
   };
   try {
     if (document.hidden || !window._supaReal) { suite(); return; }
+    if (_vliveFiletAuRepos()) return;
     _vliveFiletEnVol = true;
     const p = supaRefreshVideoLives();
     if (p && typeof p.then === "function") {
