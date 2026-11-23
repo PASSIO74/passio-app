@@ -14,7 +14,11 @@
 //      conversation, la carte dit « Tu participes » ;
 //   ⑥ côté organisateur : la carte dit « <nom> participe » quand c'est le cas ;
 //   ⑦ un lien d'un AUTRE site, ou un titre hostile, reste du texte ;
-//   ⑧ la coupure rend le formulaire et le lien d'avant.
+//   ⑧ la coupure rend le formulaire et le lien d'avant ;
+//   ⑨ une invitation ne part PAS dans le fil Découvrir par défaut (case décochée),
+//      et l'activité est notée hors fil — le rattrapage ne la publiera pas ;
+//   ⑩ une création ordinaire garde la carte du fil ; cocher la case pendant une
+//      invitation la publie aussi.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -32,7 +36,9 @@ async function banc(page, opts = {}) {
     window.passioGeocode = async () => null;
     window._geocodeAddress = async () => null;
     window._supaReal = verdict !== null;
-    window.publierActiviteAuFil = () => {};
+    window.__publierAuFilOrig = publierActiviteAuFil;
+    window.__auFil = [];
+    window.publierActiviteAuFil = (ev) => { window.__auFil.push(ev.id); };
     window._joinEventConversation = async () => true;
     window.supaLoadPosts = async () => [];
     window.supaSaveUserState = async () => {};
@@ -241,6 +247,57 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await proposer(page);
     await expect(page.locator("#evInviteBandeau")).toHaveCount(0);
     await expect(page.locator("#modalContent .modal-title")).not.toContainText("Inviter");
+  });
+
+  test("⑨ invitation : pas de carte dans le fil par défaut, activité notée hors fil", async ({ page }) => {
+    await banc(page);
+    await ouvrirConv(page);
+    await proposer(page);
+    expect(await page.evaluate(() => document.getElementById("evAuFil").checked)).toBe(false);
+    await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+    const r = await page.evaluate(() => ({
+      id: state.userEvents[0].id, auFil: window.__auFil, horsFil: state.user.activitesHorsFil || [],
+    }));
+    expect(r.auFil, "aucune carte dans le fil").toEqual([]);
+    expect(r.horsFil).toContain(r.id);
+
+    // La VRAIE publication au fil refuse une activité hors fil (création comme
+    // rattrapage passent par elle) — contrôle : la même activité, pas hors fil, part.
+    const verdict = await page.evaluate(async (id) => {
+      window._uidEstUnCompte = () => true;
+      window.estPassionCanonique = () => true;
+      const parti = [];
+      window.supaPublishPostWithRetry = async (p) => { parti.push(p.id); return true; };
+      const ev = Object.assign({}, state.userEvents[0]);
+      const hors = await window.__publierAuFilOrig(ev);
+      state.user.activitesHorsFil = [];
+      state.userPosts = (state.userPosts || []).filter((p) => p.id !== "post_ev_" + id);
+      const controle = await window.__publierAuFilOrig(ev);
+      return { hors, controle, parti };
+    }, r.id);
+    expect(verdict.hors).toBe(false);
+    expect(verdict.controle).toBe(true);
+    expect(verdict.parti).toEqual(["post_ev_" + r.id]);
+  });
+
+  test("⑩ création ordinaire : la carte part au fil ; cochée pendant une invitation aussi", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => { openCreateEvent(); });
+    expect(await page.evaluate(() => document.getElementById("evAuFil").checked)).toBe(true);
+    await page.evaluate(() => { document.getElementById("evTitle").value = "Rando au lac"; document.getElementById("evCity").value = "Annecy"; });
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__auFil.length)).toBe(1);
+    expect(await page.evaluate(() => (state.user.activitesHorsFil || []).length)).toBe(0);
+
+    await ouvrirConv(page);
+    await proposer(page);
+    await page.locator("#evAuFil").check();
+    await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__auFil.length)).toBe(2);
+    expect(await page.evaluate(() => window.__envois.length), "l'invitation part quand même").toBe(1);
   });
 });
 

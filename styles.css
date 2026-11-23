@@ -13951,3 +13951,9 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .mca-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
 .mca-btn { flex:1; min-height:44px; min-width:0; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text); font-weight:700; font-size:13px; cursor:pointer; padding:0 10px; }
 .mca-btn.mca-oui { background:var(--accent, #7c3aed); border-color:transparent; color:#fff; }
+
+/* Choix « Publier aussi dans le fil Découvrir » du formulaire d'activité (2026-11-23) */
+.ev-au-fil { display:flex; align-items:flex-start; gap:12px; padding:12px 14px; margin:12px 0 4px; border:1px solid var(--border); border-radius:14px; background:var(--bg-soft); cursor:pointer; min-height:44px; }
+.ev-au-fil input { width:22px; height:22px; margin:1px 0 0; flex-shrink:0; accent-color:var(--accent, #7c3aed); }
+.ev-au-fil span { display:flex; flex-direction:column; gap:2px; font-size:14px; line-height:1.35; }
+.ev-au-fil small { font-size:12px; color:var(--muted); }
