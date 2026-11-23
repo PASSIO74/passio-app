@@ -63,6 +63,7 @@
 - 🖼️ UNE PHOTO QUI NE S'AFFICHE PAS LAISSE ENFIN UNE TRACE — UN BILAN PAR PÉRIODE ET PAR FAMILLE EN ÉCHEC (2026-11-21)
 - 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
 - ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
+- 📥 « INGESTION : LECTURES EN ÉCHEC » PARLAIT D'AUTRE CHOSE — UN `catch` QUI COUVRAIT AUSSI L'INGESTION (2026-11-23)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -3057,3 +3058,44 @@ du réveil était épuisé.
 **Règle : un cron GitHub n'est jamais la cadence d'une machine qui doit tourner « constamment » —
 pg_cron décide, GitHub exécute ; et le seuil qui dit « elle ne tourne plus » se déduit de la cadence
 réelle, jamais de celle qu'on a écrite dans le YAML.**
+
+## 📥 « INGESTION : LECTURES EN ÉCHEC » PARLAIT D'AUTRE CHOSE — un `catch` qui couvrait aussi l'ingestion (2026-11-23)
+
+Alerte `obs:polling` (high, « Ingestion : lectures en échec ») relayée par la sentinelle du poste,
+verdict « défaut réel ». Elle part à **6 échecs de LECTURE de suite** (`observation-alerts.js`,
+`POLL_FAIL_STREAK`), soit 30 s à `POLL_MS` = 5 s. Or `pollIncrement` (`dashboard/server/ingest.js`)
+mettait la lecture **et** l'ingestion des lignes lues sous **le même `catch`** : `forEach(ingestOne)`
+était à l'intérieur. Une seule ligne qui lève — forme inattendue dans `normalize`, `store.add`,
+`broadcast`, ou l'écriture d'`observation.json` par le canari **sur un disque plein**, la panne la
+plus fréquente de ce poste — produisait alors trois effets, aucun vrai :
+
+- `failStreak++` alors que la lecture avait RÉUSSI → `obs:polling` partait au bout de 30 s et
+  envoyait chercher une panne réseau ou Supabase **qui n'existait pas** ;
+- `poll.lastOkAt` venait d'être posé juste avant, donc `pollingOk` restait VRAI : l'écran affichait
+  « polling vivant » pendant que l'alerte criait, et `obs:ingest` (critical, « ingestion sourde »)
+  **se taisait**. ⚠️ `polling.ok = true` avec `failStreak ≥ 6` est **impossible** par une vraie panne
+  de lecture (6 échecs = 30 s, soit plus que la fenêtre de 30 s de `pollingOk`) : **c'est la
+  signature de ce défaut**, et le premier endroit où regarder si l'alerte revient ;
+- le `forEach` **s'arrêtait** sur la ligne fautive : tout le reste du lot était jeté, et le tour
+  suivant relisant à partir de la même marque, la même ligne relevait — **l'ingestion figée derrière
+  une ligne**, sans que rien ne le dise. C'est le « catch large » des invariants du dépôt, appliqué
+  au chemin d'ingestion devenu NOMINAL depuis le retrait du canal temps réel (2026-09-20).
+
+Correctif : la lecture a son `try` et **elle seule** nourrit `failStreak`/`lastError` ; chaque ligne
+a le sien ; un échec d'ingestion est compté (`polling.ingestFails`, `polling.lastIngestError`) et
+journalisé. **Une ligne qu'on ne sait pas ingérer est perdue, et c'est délibéré** : elle passe sous
+la marque dès qu'une ligne plus récente l'avance — perdre une ligne vaut mieux que figer le chemin
+nominal derrière elle. Verrou : `dashboard/test/ingest.test.js`, « une ligne qui lève à l'ingestion
+n'est pas une lecture en échec » (mutation qui le rougit : remettre `forEach(ingestOne)` sous le
+`catch` de la lecture).
+
+⚠️ **Ce que ce lot NE prouve PAS** : le signal relayé ne porte, par construction, ni message
+d'erreur ni compteur détaillé (AGENTS.md : « counts, fixed categories and opaque fingerprints »), et
+le poste n'est pas reproductible depuis la CI. La cause racine est établie **par lecture du code**
+— le compteur de l'alerte peut monter sans aucune panne de lecture — pas par reproduction de
+l'incident `inc_mub132i7_lyk00`. Si l'alerte revient avec `polling.ok = false`, c'est une autre
+cause : là, la lecture échoue vraiment (réseau du poste, clé, Supabase), et rien dans le code ne la
+produit.
+
+**Règle : un compteur qui porte le nom d'une étape ne compte que cette étape — sinon l'alerte envoie
+chercher la panne ailleurs qu'où elle est, et la vraie panne reste invisible.**
