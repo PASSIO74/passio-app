@@ -145,6 +145,15 @@ export async function autoriserPushNotif(admin, fromUid, toUserId, maintenantMs)
     // migration non appliquée) ne pousse RIEN — c'est le canal qu'on ferme.
     if (lien.origine !== "serveur") return { ok: false, raison: "mention d'origine client : refusée (ASTRA-24)" };
   } else {
+    // Village à 100 (A3, relecture red team du 2026-11-23) : une annulation ne pousse que
+    // depuis la ligne que la BASE écrit (`prevenir_inscrits_activite`, origine serveur) —
+    // une par activité et par inscrit, `push_le` faisant foi. Une ligne CLIENT
+    // `event_cancelled` (que `trg_notifications_preuve` laisse écrire une fois par 24 h)
+    // aurait fait d'une activité annulée, même ancienne, une liste de diffusion
+    // permanente vers ses anciens inscrits. Sans colonne `origine` : client, refusée.
+    if (lien.kind === "event_cancelled" && lien.origine !== "serveur") {
+      return { ok: false, raison: "event_cancelled d'origine client : refusée" };
+    }
     const evenement = await lienEvenement(admin, lien.kind, fromUid, toUserId, lien.refId, maintenantMs);
     if (!evenement.ok) return { ok: false, raison: evenement.raison };
   }
@@ -221,6 +230,7 @@ export async function reserverPush(admin, idNotification, toUserId, maxParHeure 
 //   · event_cancelled → l'appelant ORGANISE `ref_id`, l'activité est ANNULÉE en
 //                base (`status = 'cancelled'`), et le destinataire y est inscrit
 //                (`going`, `maybe` ou `waitlist` : ceux que la base prévient) ;
+//                et, en amont (`autoriserPushNotif`), la ligne est d'origine SERVEUR ;
 //   · live_video → un `video_lives` de l'appelant démarré récemment, et le
 //                destinataire le SUIT ;
 //   · follow / follow_request / follow_accept → une ligne `follows` entre eux.
