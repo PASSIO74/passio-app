@@ -14,3 +14,12 @@
 # Cette empreinte couvre uniquement son introduction historique dans le relais ;
 # aucune exception de règle JWT, de dossier ou de future ligne.
 ec6933391c66738a00592e4293ea7392ec2191a6:netlify/lib/cibles-medias.js:jwt:3
+
+# 2026-11-23 — Supabase PROD : clé anon PUBLIQUE (role=anon, ref njkiyoklssvefstljemx),
+# servie à chaque visiteur par app-08. Le commit 8ebf89e (PR #957) est le second
+# commit d'introduction du relais (l'autre, ec69333, est déjà couvert plus haut).
+8ebf89e0993e0fcbd42dac84c77c31a2bc6b9a34:netlify/lib/cibles-medias.js:jwt:3
+
+# 2026-11-23 — jeton FACTICE d'un test (`eyJhbGciOiJIUzI1NiJ9.e30.abc` : charge `{}`,
+# signature « abc ») dans une URL signée simulée, PR #1008. Aucune valeur réelle.
+d4618ecdb84fdee6d3414e19bd54625e7ed75a5a:tests/e2e/telemetrie-medias.spec.js:generic-api-key:282
