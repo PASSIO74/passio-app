@@ -265,3 +265,36 @@ test("l'état expose le polling mesuré et un verdict « source vivante »", () 
   assert.ok(s.polling && "ok" in s.polling && "failStreak" in s.polling && "lastError" in s.polling);
   assert.equal(typeof s.ingestAlive, "boolean");
 });
+
+// ── « Ingestion : lectures en échec » ne doit parler QUE des lectures ────────
+// Alerte `obs:polling` (high, observation-alerts.js) : elle part à 6 échecs de
+// LECTURE de suite. Le `catch` de `pollIncrement` enveloppait aussi l'ingestion
+// des lignes lues : une seule ligne qui levait (forme inattendue, store, ou
+// l'écriture de l'observation du canari sur un disque plein) comptait comme une
+// lecture en échec, faisait taire `obs:ingest` (`pollingOk` restait vrai, posé
+// juste avant), et emportait tout le reste du lot — relu, relevé, indéfiniment.
+// Mutation qui rougit ce cas : remettre `forEach(ingestOne)` sous le `catch` de
+// la lecture.
+test("une ligne qui lève à l'ingestion n'est pas une « lecture en échec », et n'emporte pas le reste du lot", async () => {
+  const { _setAdminForTests, _pollForTests } = await import("../server/ingest.js");
+  // Un getter qui lève tient lieu de n'importe quel défaut d'ingestion : ce qui
+  // est verrouillé, c'est le contrat (lecture ≠ ingestion), pas l'endroit exact
+  // où ça casse en aval.
+  const fautive = ligne();
+  Object.defineProperty(fautive, "meta", { enumerable: true, get() { throw new Error("ligne impossible à ingérer"); } });
+  const suivante = ligne({ action: "publish_post" });
+  const req = { select: () => req, gt: () => req, order: () => req, limit: async () => ({ data: [fautive, suivante], error: null }) };
+  const avant = store.events.length;
+  _setAdminForTests({ from: () => req });
+  try { await _pollForTests(); } finally { _setAdminForTests(null); }
+
+  const p = ingestState().polling;
+  assert.equal(p.failStreak, 0,
+    "la lecture a RÉUSSI : la compter en échec fait partir obs:polling (high) sur une panne réseau qui n'existe pas");
+  assert.equal(p.lastError, null);
+  assert.ok(p.ingestFails > 0 && p.lastIngestError,
+    "…mais l'échec d'ingestion doit se compter quelque part : un chemin critique ne s'enveloppe pas sans trace");
+  assert.equal(store.events.length, avant + 1,
+    "la ligne SUIVANTE du lot doit passer : sinon une seule ligne fautive fige l'ingestion derrière elle");
+  assert.equal(store.events.at(-1).event_id, suivante.event_id);
+});

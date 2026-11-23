@@ -309,7 +309,12 @@ async function loadTestUids() {
 // avalées et l'écran affichait « Secours » et « EN DIRECT » même quand plus rien
 // n'était ingéré. supabase-js rend les pannes réseau dans `{ error }` — le
 // `catch` n'est qu'une ceinture.
-const poll = { lastAt: null, lastOkAt: null, lastError: null, failStreak: 0, lastRows: 0 };
+// ⚠️ DEUX COMPTEURS, PARCE QU'IL Y A DEUX PANNES (2026-11-23, alerte `obs:polling`).
+// `failStreak`/`lastError` ne comptent QUE la lecture — c'est ce que dit l'alerte
+// « Ingestion : lectures en échec ». `ingestFails`/`lastIngestError` comptent les
+// lignes qu'on n'a pas su ingérer APRÈS une lecture réussie. Le même `catch` les
+// confondait : voir pollIncrement.
+const poll = { lastAt: null, lastOkAt: null, lastError: null, failStreak: 0, lastRows: 0, ingestFails: 0, lastIngestError: null };
 // ⚠️ RECOUVREMENT : `received_at` a `DEFAULT now()`, pris au DÉBUT de la
 // transaction, alors que la ligne n'est VISIBLE qu'à sa validation. Une ligne
 // dont la validation arrive après la marque n'est jamais rattrapée par
@@ -330,10 +335,33 @@ const RECOUVREMENT_MS = 15000;
 // le pilotage prend du retard sans jamais le rattraper, et rien ne le dit.
 // C'est la vraie borne de mise à l'échelle du chemin devenu nominal.
 const LOT_MAX = 2000;
+// ⚠️ LE `catch` NE COUVRE QUE LA LECTURE, ET C'EST TOUT LE SUJET (2026-11-23).
+// Il enveloppait AUSSI `forEach(ingestOne)`. Une seule ligne qui lève pendant son
+// ingestion — `normalize` sur une forme inattendue, `store.add`, `broadcast`, ou
+// l'écriture d'`observation.json` par le canari sur un disque plein, la panne la
+// plus fréquente de ce poste — produisait alors TROIS effets, aucun vrai :
+//   ① `failStreak++` alors que la LECTURE avait réussi → `obs:polling` (high,
+//      « Ingestion : lectures en échec ») part au bout de 6 tours, soit 30 s, et
+//      envoie chercher une panne réseau ou Supabase qui n'existe pas ;
+//   ② `poll.lastOkAt` venait d'être posé, donc `pollingOk` reste VRAI : l'écran
+//      affiche « polling vivant » pendant que l'alerte crie — et `obs:ingest`
+//      (critical, « ingestion sourde ») se tait. `ok: true` avec `failStreak ≥ 6`
+//      est d'ailleurs impossible par une vraie panne de lecture (6 échecs = 30 s,
+//      soit plus que la fenêtre de `pollingOk`) : c'est la signature du défaut ;
+//   ③ le `forEach` s'arrêtait sur la ligne fautive : tout le RESTE du lot était
+//      jeté, et comme le tour suivant relit à partir de la même marque, la même
+//      ligne relevait, indéfiniment — l'ingestion figée derrière une ligne, sans
+//      que rien ne le dise. C'est le « catch large » des invariants du dépôt.
+// Désormais : la lecture a son try (et elle seule nourrit `failStreak`), chaque
+// ligne a le sien (la suivante passe), et un échec d'ingestion est COMPTÉ et
+// JOURNALISÉ. Une ligne qu'on ne sait pas ingérer est perdue — c'est délibéré :
+// elle passe sous la marque dès qu'une ligne plus récente avance, et perdre une
+// ligne vaut mieux que figer le chemin d'ingestion nominal derrière elle.
 async function pollIncrement() {
   if (!admin) return;
   const now = Date.now();
   poll.lastAt = now;
+  let lignes;
   try {
     const borne = canonIso(new Date(Math.max(0, Date.parse(lastSeenIso) - RECOUVREMENT_MS)).toISOString());
     const { data, error } = await admin
@@ -343,9 +371,19 @@ async function pollIncrement() {
       .order("received_at", { ascending: true })
       .limit(LOT_MAX);
     if (error) { poll.failStreak++; poll.lastError = error.message || String(error); return; }
-    poll.failStreak = 0; poll.lastError = null; poll.lastOkAt = Date.now(); poll.lastRows = (data || []).length;
-    (data || []).forEach(ingestOne);
-    // Rattrapé seulement si le lot n'est pas plein : sinon il reste du retard.
-    if (store.coverage && (data || []).length < LOT_MAX) store.coverage.caughtUpAt = poll.lastOkAt;
-  } catch (e) { poll.failStreak++; poll.lastError = e && e.message ? e.message : String(e); }
+    lignes = data || [];
+  } catch (e) { poll.failStreak++; poll.lastError = e && e.message ? e.message : String(e); return; }
+  // À partir d'ici la LECTURE a réussi : rien de ce qui suit ne la rend fausse.
+  poll.failStreak = 0; poll.lastError = null; poll.lastOkAt = Date.now(); poll.lastRows = lignes.length;
+  let leves = 0;
+  for (const row of lignes) {
+    try { ingestOne(row); }
+    catch (e) { leves++; poll.ingestFails++; poll.lastIngestError = e && e.message ? e.message : String(e); }
+  }
+  if (leves) console.error(`[ingest] ${leves} ligne(s) du lot non ingérée(s) : ${poll.lastIngestError}`);
+  // Rattrapé seulement si le lot n'est pas plein : sinon il reste du retard.
+  if (store.coverage && lignes.length < LOT_MAX) store.coverage.caughtUpAt = poll.lastOkAt;
 }
+
+/** RÉSERVÉ AUX TESTS : un tour de polling, sans minuteur (cf. `_setAdminForTests`). */
+export function _pollForTests() { return pollIncrement(); }
