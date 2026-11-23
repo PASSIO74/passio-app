@@ -345,12 +345,15 @@ const CFG_V = { url: VILLAGE, cle: "service-synthetique" };
 const sansAttente = { attendre: async () => {}, journal: () => {} };
 
 test("⑨ la purge du jeu couvre la suppression de compte du produit (TABLES_COMPTE), journaux exceptés", async () => {
-  const { TABLES_COMPTE } = await import("../../supabase/functions/_shared/purge-compte.js");
+  // `TABLES_COMPTE` lue à travers le village à 100, qui l'importe (`TABLES_PURGE` = TABLES_COMPTE +
+  // `conversations` + `reports`) : une suite qui importerait le module partagé d'Edge Function
+  // directement devrait tourner avant « Déployer » (gate edge-functions-verrous).
+  const { TABLES_PURGE: TABLES_COMPTE } = await import("../../scripts/lib/village100-figurants.mjs");
   const miennes = new Map(jeu.TABLES_CONTENU.map((t) => [t.table, new Set(t.colonnes)]));
   // Ce qui reste DÉLIBÉRÉMENT : des journaux que l'app ne relit pas, et un réglage d'administration.
   const HORS = new Set(["client_errors", "analytics_events", "telemetry_events", "passion_quotas"]);
   // Purgées à part, avant les autres (clés NO ACTION vers `conversations`).
-  const CONV = new Set(["conv_messages", "conv_members", "conv_reads"]);
+  const CONV = new Set(["conv_messages", "conv_members", "conv_reads", "conversations"]);
   const manque = TABLES_COMPTE.filter(([t, c]) => !HORS.has(t) && !CONV.has(t) && !(miennes.get(t) && miennes.get(t).has(c))).map(([t, c]) => `${t}.${c}`);
   assert.deepEqual(manque, [], "une table ajoutée à la suppression de compte doit l'être au jeu");
 });
