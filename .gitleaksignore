@@ -15,9 +15,9 @@
 # aucune exception de règle JWT, de dossier ou de future ligne.
 ec6933391c66738a00592e4293ea7392ec2191a6:netlify/lib/cibles-medias.js:jwt:3
 
-# 2026-11-23 — Supabase PROD : clé anon PUBLIQUE (role=anon, ref njkiyoklssvefstljemx),
-# servie à chaque visiteur par app-08. Le commit 8ebf89e (PR #957) est le second
-# commit d'introduction du relais (l'autre, ec69333, est déjà couvert plus haut).
+# 2026-11-23 — Supabase STAGING : la MÊME clé anon publique que l'entrée ec69333
+# ci-dessus (role=anon, ref fcksxofaelcdmmifnwjo, ligne 3 = constante STAGING).
+# Le commit 8ebf89e (PR #957) est son second commit d'introduction dans le relais.
 8ebf89e0993e0fcbd42dac84c77c31a2bc6b9a34:netlify/lib/cibles-medias.js:jwt:3
 
 # 2026-11-23 — jeton FACTICE d'un test (`eyJhbGciOiJIUzI1NiJ9.e30.abc` : charge `{}`,
