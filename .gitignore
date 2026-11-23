@@ -94,3 +94,7 @@ work/
 # clonait le dépôt. Ils vivent désormais hors du dépôt (copie privée sur le poste) ; cette ligne
 # empêche qu'un `git add` les y ramène. Les PDF restent dans l'HISTORIQUE (voir le journal).
 livrables_investisseurs/
+
+# Village à 100 (scripts/village100.mjs) : manifeste et verrou de séance — adresses
+# des comptes jetables du staging, à garder HORS de test-results/ (vidé par Playwright).
+.passio/tmp/village100/

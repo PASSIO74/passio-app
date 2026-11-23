@@ -40,6 +40,7 @@
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
 - 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
+- 🏘️ LE VILLAGE À 100, EN HYBRIDE : LA CAPACITÉ TIENT, L'ANNULATION NE PRÉVIENT QUE 60 PERSONNES (2026-11-22)
 
 ---
 
@@ -3314,3 +3315,117 @@ rouge de la CI (A recréé vide) → vert. Suite complète : 15/15.
 **À retenir.** Un nom dans `caches.keys()` ne prouve pas que la version existe encore, et `keys()` puis
 `open(nom)` côté page ressuscite ce que le worker vient de supprimer. Sur des caches, asserter le CONTENU,
 jamais la liste des noms.
+
+## 🏘️ LE VILLAGE À 100, EN HYBRIDE : LA CAPACITÉ TIENT, L'ANNULATION NE PRÉVIENT QUE 60 PERSONNES (2026-11-22)
+
+Demande : passer la simulation « village » (10 vrais navigateurs, `npm run village`) à **100 personnes**,
+pour voir ce que 10 ne montre pas — file longue, course à 30, avalanche de notifications, quotas temps
+réel. Cent navigateurs ne tiennent pas sur un poste (~30 Go) : **hybride**, `npm run village:100`
+(`scripts/village100.mjs`, `tests/e2e/village-100-hybride.spec.js`). **4 yeux** dans de vrais navigateurs
+(Léa organise, Hugo s'inscrit tôt, Jade sur téléphone dans la course, Tom arrive en dernier) pilotent les
+vrais handlers ; **96 figurants** (`scripts/lib/village100-figurants.mjs`) font par l'API les MÊMES
+écritures que le client pour le même geste (UPDATE puis INSERT pour `supaSetEventRsvp`, DELETE puis
+`promouvoir_attente(p_user_id: null)` pour se désister, notification APRÈS l'écriture acceptée PUIS
+`notify-call`, entrée dans la discussion d'activité au « je viens ») et tiennent chacun un socket sur
+`user:<uid>`. Verdicts purs et éprouvés par réinjection : `scripts/lib/village100.mjs`,
+`tests/unit/village100.test.mjs` (dans `npm run verif`). Gardes reprises du village durci (3d0be866) :
+trois cibles vérifiées (navigateur, clé de service, `ref` du JWT, puis `SUPABASE_URL` lue dans les pages),
+environnement de l'enfant filtré, port libre, seule une TABLE absente tolérée à la purge.
+
+**Mesuré sur le staging (séances 3 à 7, 553–593 s ; à partir de la 5, avec les gestes complets du client ; même verdict à chaque fois) :**
+- **La capacité tient exactement.** 30 « je participe » à la même seconde pour 3 places : 3 gagnants,
+  27 refus `activite_complete`, jamais 21 venants ; l'écran du perdant (Jade) dit « Activité complète… »
+  sans place fantôme. 80 en liste d'attente sans un refus.
+- **La cascade est juste.** 5 désistements successifs : chacun promeut EXACTEMENT la tête de file du
+  moment ; puis 5 simultanés : l'ensemble promu est la tête de file ; 20 venants à chaque instant ;
+  chaque promu reçoit UNE notification (`n_pa_…`), en direct sur son socket (p95 343 ms).
+- **Le post populaire tient.** 100 j'aime et 50 commentaires en 10 s : 100 et 50 lignes, `fil_compteurs`
+  dit 100/50, Léa reçoit 99 + 50 notifications sans doublon, 50/50 commentaires et 149/149
+  notifications en direct ; la carte des témoins affiche 100/50 **8 à 37 s** après la rafale sans
+  recharger (cadence des compteurs visibles).
+- **Les murs de la BASE et du TEMPS RÉEL ne sont pas en vue à 100** : ~100 sockets (plafond 500), pic
+  de trames reçues 28–53/s (plafond 500/s), pic d'écriture 42–43/s, aucun 429 côté figurants ; 96
+  connexions Auth cadencées à 2,4 s (≤ 129 / 5 min yeux compris), aucun 429.
+  ⚠️ **Le mur du PUSH n'est PAS mesuré, et le premier rapport le laissait croire** : les séances 3–4 ne
+  faisaient pas appeler `notify-call` par les figurants (le client l'appelle à chaque notification
+  acceptée). Ajouté en séance 5 : **162/162 appels en 500 `VAPID non configuré`** — le staging n'a pas les
+  clés du push, la fonction répond avant tout envoi. Seuls les **40 × 429** de l'organisatrice (dizaines
+  d'appels à la suite) touchent son plafond. Le push à 100 se mesure sur un projet qui a ses clés VAPID.
+  ⚠️ **ET MÊME SANS RIEN ENVOYER, LA FONCTION NE SUIT PAS TOUJOURS LA RAFALE** : en séance 6, pendant les
+  150 écritures en 10 s du post populaire, **118 des 158 appels des figurants à `notify-call` n'ont reçu
+  AUCUNE réponse en 15 s** (p50 15 004 ms) ; en séance 7, même scénario, **0 sur 162** (toutes en 500 en
+  quelques centaines de ms). Vu une fois sur deux : un démarrage à froid ou une saturation passagère de la
+  fonction Edge, pas un plafond reproductible — à confirmer sur plusieurs séances, avec VAPID.
+  Côté client, `_pousserPushNotif` n'attend pas ce verdict (`.catch(() => {})`) : l'écran n'en souffre pas,
+  mais à 100 personnes actives ensemble, une partie des push serait perdue en silence. À mesurer avec VAPID.
+  Le rapport compte désormais les requêtes SANS réponse (`totalReseau`, M1) : un 429 n'est pas le seul mur.
+
+⚠️ **LE DÉFAUT QUE 10 NE MONTRAIT PAS : L'ANNULATION D'UNE ACTIVITÉ DE PLUS DE 60 PERSONNES N'EN PRÉVIENT
+QUE 60.** `toggleCancelEvent` → `_notifyEventAttendees` (app-07) fait écrire les 99 notifications PAR LE
+NAVIGATEUR DE L'ORGANISATRICE, en parallèle, sans réessai — et `trg_rate_limit` plafonne `notifications`
+à **60 insertions par minute et par émetteur** (`migration_ouverture_publique_2026-09-11.sql`). Mesuré
+deux fois à l'identique : **60/99 prévenus, 39 refus 400**, et l'organisatrice lit « inscrits prévenus ».
+Même chemin pour la modification (`event_update`) et la suppression (`_prevenirSuppressionActivite`).
+Contrôle A3, EXIGÉ, laissé ROUGE : c'est le constat. Remède à concevoir à part (écriture serveur comme
+`promouvoir_attente`, qui pose `passio.notification_serveur`), pas dans le banc.
+
+⚠️ **LA CI EFFACE LES COMPTES `@passio-e2e.test` DU STAGING EN PLEINE SÉANCE.** Le teardown du job
+`test-prod` (`PASSIO_E2E_PROD=1`) purge PAR MOTIF ; deux séances ont perdu leurs quatre yeux vers la
+6ᵉ minute, avec deux symptômes trompeurs : `posts_author_id_fkey` (profil disparu) et une notification
+« demande à participer » manquante — `inscription_tracee` saute en silence une personne sans profil,
+alors que l'inscription elle-même passe. Les yeux prennent donc l'adresse du domaine du banc
+(`emailOeil`, `@passio-capacite.test`, index 96–99), comme les figurants et `charge-realiste`.
+⚠️ **L'ORDRE NE SE LIT PAS SUR `created_at` D'UNE NOTIFICATION SERVEUR** : `now()` est l'heure de DÉBUT de
+transaction, antérieure à l'attente du verrou de l'activité — dix promotions simultanées donnaient
+« 3 inversions » sur une cascade juste. L'ordre se prouve en séquence (E10), l'ensemble en concurrence (E8).
+⚠️ **UN TÉMOIN QUI NE SUIT PAS L'AUTEUR NE VOIT PAS LE POST** : fil filtré sur sa passion et ses
+abonnements ; les témoins s'abonnent à Léa par le vrai bouton avant la rafale.
+
+⚠️ **LA PURGE D'UN DOMAINE QUE PERSONNE NE PURGE SE PROUVE** (relecture indépendante de la 1re version).
+`@passio-capacite.test` n'est purgé par aucune autre suite : un compte non suivi y reste pour toujours.
+Le manifeste (`.passio/tmp/village100/`, PAS `test-results/` que Playwright vide) porte l'adresse exacte
+écrite AVANT chaque création ; la purge retrouve les comptes par adresse (une réponse de création perdue
+n'est pas un orphelin), refuse tout identifiant dont l'adresse n'est pas de la campagne (manifeste édité
+ou copié), relit chaque compte en 404 et rend la séance rouge sur un reste (Z1). Un verrou (pid) empêche
+un second lancement de purger les comptes EN VOL du premier. Les rouges assumés sont NOMMÉS
+(`ROUGES_CONNUS = ["A3"]`) : un nouveau rouge, ou A3 qui repasse vert, change le verdict.
+⚠️ **ET LA PREMIÈRE PURGE « PROUVÉE » LAISSAIT 100 LIGNES À CHAQUE SÉANCE** (seconde relecture) : sa
+liste de tables était RECOPIÉE et ignorait `user_safety` (écrite par `declare_birth_year` et
+l'onboarding, TEXT sans FK), la télémétrie, `story_views`, `comment_likes` — Z1 restait vert parce
+qu'il ne regardait que les comptes. La purge IMPORTE désormais `TABLES_COMPTE` de la suppression de
+compte du produit (`supabase/functions/_shared/purge-compte.js`). La preuve est aussi par ADRESSE :
+le listing passe par le filtre d'adresse de l'API d'administration (`filter=<campagne>`, une page, que
+la purge concurrente des comptes de la CI ne décale pas ; un filtre ignoré ou un débordement est une
+erreur), relu APRÈS la purge ; Z1 exige autant de comptes purgés que d'adresses annoncées. Le verrou
+est créé atomiquement (`wx`) et porte deux pid (lanceur ET séance : un lanceur tué dont l'enfant
+survit ne libère rien) ; un manifeste non purgé n'est jamais écrasé, `--retries`/`--repeat-each`
+sont refusés. Le rouge connu a une SIGNATURE figée (`{ A3: "60/99 prévenus" }`) et A3 ne porte plus
+que le décompte : « une seule fois, jamais l'organisatrice » est A3b, exigé hors liste.
+⚠️ **Troisième relecture : deux gardes sans test, et une course.** Les gardes du reliquat (autre poste,
+séance vivante) étaient écrites en ligne dans le lanceur : les retirer laissait les 26 tests verts. Elles
+sont dans `reliquatPurgeable` (lib), jugées AVANT tout jeton ou réseau, et éprouvées en fonction ET par
+le lanceur. Un verrou périmé se reprend désormais par RENOMMAGE (`prendreVerrou`), jamais par `rm` : deux
+lancements qui voyaient le même verrou mort faisaient chacun `rm` puis `wx`, et le second effaçait le
+verrou NEUF du premier. Un verrou `null` ou illisible est un refus propre.
+**Limites déclarées, non corrigées :** ① `conversations.created_by` se purge par lots de 40 avant que
+`conv_members`/`conv_messages` (FK sans cascade) soient tous partis : selon l'ordre du listing, un 23503
+rend Z1 rouge, rattrapé au passage suivant (jamais un vert à tort) — un second passage `conversations`,
+`reports`, `profiles`, comptes Auth après tous les lots serait plus propre. ② `?filter=` : si le serveur
+plafonnait `per_page` sous 200, `lot.length < 200` arrêterait le listing à la page 1 sans rien dire —
+comparer à `X-Total-Count`. ③ La purge du produit fait des choses que le banc ne fait pas : marques de
+rappels (`analytics_events.user_id = "systeme:rappels:<uid>"`), `events.co_organizers` (jsonb), Storage —
+la preuve porte sur les comptes et les adresses, pas sur chaque ligne. ④ Le verrou vaut par DOSSIER :
+deux copies de travail peuvent tourner ensemble (données sûres, latences mélangées) ; un refus permanent
+(pid réutilisé) se lève en supprimant `verrou.json` à la main ; un ancien manifeste sans `poste` se
+nettoie une fois à la main. ⑤ « 60/99 prévenus » est un nombre MESURÉ : s'il varie, le banc rougit à
+tort, jamais vert à tort.
+
+Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
+participer »** (29 en ~1 min, aucun regroupement) ; **chaque « je viens » tente d'entrer dans la
+discussion d'activité et se fait refuser en 403** (`acces_activite_non_valide` : l'accès suit la
+validation par l'organisation, migration des rencontres du 16/11) — le client fait donc une écriture
+vouée au refus par inscription (M3) ; latences variables sous la CI concurrente (une promotion à
+12,5 s en séance 3, 130–218 ms ensuite ; p95 d'un j'aime de 110 ms à 3,1 s).
+Hors portée : médias, push réels (staging sans VAPID), rendu et batterie d'un vrai téléphone.
+Limite du verrou : il ne couvre que `village:100` — `village` et `charge:realiste` lancés en même temps
+depuis ce poste partagent la cadence de connexion par adresse IP.

@@ -47,6 +47,7 @@ const SUITES_PROD = [
   "retrait-interactions-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : le retrait en direct (R37)
   "epingle-commentaire-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : l'épingle partagée (RV-38)
   "village-10-comptes.spec.js",  // sous PASSIO_E2E_VILLAGE, staging seulement : 10 personnages (npm run village)
+  "village-100-hybride.spec.js", // sous PASSIO_E2E_VILLAGE100, staging seulement : 4 navigateurs + 96 figurants (npm run village:100)
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 

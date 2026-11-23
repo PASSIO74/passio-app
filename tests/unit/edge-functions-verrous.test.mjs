@@ -119,6 +119,8 @@ const ECARTS = Object.freeze({
     "éprouve deploy.yml, sentinelle-autonome.yml, scripts/sentinelle-detecter.mjs et js/app-04 contre la politique, et l'existence de chaque « appliquePar » ; la fonction ne décide que par autoriser() (circuit, autonome, mode, pause : politique-autonomie.test.mjs ③, avant « Déployer ») et n'affiche aucune borne (resumerPolitique) — une borne qui diverge de son exécutant ne change rien à ce qui part, la CI de main la rougit",
   "tests/unit/sentinelle-detecter.test.mjs":
     "éprouve scripts/sentinelle-detecter.mjs, que la Sentinelle exécute chez GitHub ; REVEIL n'y est qu'une référence croisée (MAX_ENQUETES) — autonomie.js est éprouvé avant « Déployer » par autonomie et autonomie-seuils-sql",
+  "tests/unit/village100.test.mjs":
+    "éprouve le banc de poste npm run village:100 (scripts/lib/village100*.mjs : verdicts, manifeste, purge de séance sur le staging) ; il n'importe TABLES_COMPTE que pour vérifier que la purge du banc couvre au moins ces tables — la purge et l'export du produit sont éprouvés avant « Déployer » par purge-compte, suppression-compte, suppression-entrelacement et export-compte",
   "tests/unit/trafic-hors-public.test.mjs":
     "éprouve l'accord de trois lecteurs (dashboard/server/trafic.js, scripts/veille-production.mjs, js/telemetry.js) avec pilotage.js, et la syntaxe du client pour un vieux Safari ; ce que la fonction compte (les trois valeurs de TRAFICS_HORS_PUBLIC, traficHorsPublic, compterAudience) est éprouvé avant « Déployer » par pilotage.test.mjs (⑯)",
 });
