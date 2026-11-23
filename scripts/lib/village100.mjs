@@ -235,7 +235,7 @@ export function rapportMarkdown(r) {
   md += `- Contrôles : **${n("OK")} OK · ${n("ÉCHEC")} échec(s) exigé(s) · ${n("À REGARDER")} observation(s)**\n`;
   const p = r.purge;
   md += `- Purge : ${p ? `${p.lignes} lignes, ${p.comptes}${p.attendus != null ? "/" + p.attendus : ""} comptes relus absents${(p.restants || []).length ? " — ⚠️ RESTANTS : " + p.restants.join(", ") : ""}${(p.refus || []).length ? " — ⛔ REFUS : " + p.refus.join(", ") : ""}${p.erreurs.length ? " — ⚠️ " + p.erreurs.join(" ; ") : ""}` : "non faite"}\n`;
-  if (r.verdict) md += `- Verdict contre les rouges connus (${Object.entries(ROUGES_CONNUS).map(([k, v]) => `${k} « ${v}… »`).join(", ")}) : **${r.verdict.ok ? "conforme" : "NON CONFORME"}**${(r.verdict.autrement || []).length ? " — rouges connus AUTREMENT : " + r.verdict.autrement.join(", ") : ""}${r.verdict.nouveaux.length ? " — nouveaux rouges : " + r.verdict.nouveaux.join(", ") : ""}${r.verdict.gueris.length ? " — repassés verts (à retirer de ROUGES_CONNUS) : " + r.verdict.gueris.join(", ") : ""}${r.verdict.absents.length ? " — contrôles connus non joués : " + r.verdict.absents.join(", ") : ""}\n`;
+  if (r.verdict) md += `- Verdict contre les rouges connus (${Object.entries(ROUGES_CONNUS).map(([k, v]) => `${k} « ${v}… »`).join(", ") || "aucun"}) : **${r.verdict.ok ? "conforme" : "NON CONFORME"}**${(r.verdict.autrement || []).length ? " — rouges connus AUTREMENT : " + r.verdict.autrement.join(", ") : ""}${r.verdict.nouveaux.length ? " — nouveaux rouges : " + r.verdict.nouveaux.join(", ") : ""}${r.verdict.gueris.length ? " — repassés verts (à retirer de ROUGES_CONNUS) : " + r.verdict.gueris.join(", ") : ""}${r.verdict.absents.length ? " — contrôles connus non joués : " + r.verdict.absents.join(", ") : ""}\n`;
   if (r.arret) md += `- ⚠️ **Séance interrompue** : ${cell(r.arret)}\n`;
   md += `\n## Les personnages en navigateur (les « yeux »)\n\n| # | Personnage | Rôle | Inscrit |\n|--|--|--|--|\n`;
   r.personas.forEach((p, i) => { md += `| ${i + 1} | ${p.nom} | ${p.role} | ${p.inscrit ? "oui" : "**non**"} |\n`; });
@@ -360,9 +360,11 @@ export const masquerCle = (t) => String(t || "").replace(/apikey=[^&\s"']+/gi, "
 // Les rouges ASSUMÉS, nommés ET FIGÉS : le code, et la SIGNATURE du détail
 // (son début). Une seconde régression, un rouge connu qui repasse vert, ou le
 // même contrôle rouge AUTREMENT (0/99 au lieu de 60/99) change le verdict au
-// lieu de se cacher derrière lui. A3 ne porte que le DÉCOMPTE ; « une seule
-// fois, jamais l'organisatrice » est A3b, exigé, hors de cette liste.
-export const ROUGES_CONNUS = Object.freeze({ A3: "60/99 prévenus" });
+// lieu de se cacher derrière lui. La liste est VIDE depuis la correction de
+// l'annulation (#1021, mesurée par `village:100` : 99/99 prévenus) : A3 était
+// le seul rouge assumé (« 60/99 prévenus », plafond de `trg_rate_limit` sur
+// `notifications`) — il est désormais EXIGÉ comme les autres.
+export const ROUGES_CONNUS = Object.freeze({});
 export function verdictFinal(controles, connus = ROUGES_CONNUS) {
   const codes = Object.keys(connus);
   const echecs = controles.filter((c) => c.statut === "ÉCHEC");

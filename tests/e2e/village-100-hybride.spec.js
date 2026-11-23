@@ -659,8 +659,8 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         const r = await lire("events", `select=status&id=eq.${evt}`);
         return { ok: r[0] && r[0].status === "cancelled", detail: `statut ${r[0] && r[0].status}` };
       });
-      // A3 ne porte que le DÉCOMPTE (rouge connu, signature figée : « 60/99
-      // prévenus ») ; A3b, exigé et HORS de la liste des rouges connus, tient le
+      // A3 porte le DÉCOMPTE (exigé depuis #1021 ; rouge connu « 60/99
+      // prévenus » jusque-là) ; A3b tient le
       // reste : une seule fois, jamais l'organisatrice, et au moins une personne
       // prévenue (sans quoi « aucun doublon » ne prouverait rien).
       const destAnnul = new Set(annul.map((n) => n.user_id));

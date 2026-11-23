@@ -326,18 +326,27 @@ test("prendreVerrou : deux reprises concurrentes d'un même verrou périmé — 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("rouges connus : code ET signature figés — un autre rouge, le même AUTREMENT, ou un vert changent le verdict", () => {
+test("rouges connus : la liste est VIDE — A3 (annulation) est exigé depuis #1021", () => {
   const c = (code, statut, detail = "") => ({ code, statut, detail });
-  assert.equal(L.verdictFinal([c("A3", "ÉCHEC", "60/99 prévenus ; écritures refusées chez Léa : {\"400\":39}"), c("A3b", "OK")]).ok, true);
-  const nouveau = L.verdictFinal([c("A3", "ÉCHEC", "60/99 prévenus"), c("E3", "ÉCHEC")]);
+  assert.deepEqual(L.ROUGES_CONNUS, {});
+  assert.equal(L.verdictFinal([c("A3", "OK"), c("A3b", "OK")]).ok, true, "A3 vert : verdict conforme");
+  const a3 = L.verdictFinal([c("A3", "ÉCHEC", "60/99 prévenus"), c("A3b", "OK")]);
+  assert.equal(a3.ok, false, "l'ancien rouge est désormais un NOUVEAU rouge"); assert.deepEqual(a3.nouveaux, ["A3"]);
+});
+
+test("rouges connus : le MÉCANISME — code ET signature figés, un autre rouge, le même AUTREMENT, ou un vert changent le verdict", () => {
+  const c = (code, statut, detail = "") => ({ code, statut, detail });
+  const connus = { A3: "60/99 prévenus" };
+  const v = (x) => L.verdictFinal(x, connus);
+  assert.equal(v([c("A3", "ÉCHEC", "60/99 prévenus ; écritures refusées chez Léa : {\"400\":39}"), c("A3b", "OK")]).ok, true);
+  const nouveau = v([c("A3", "ÉCHEC", "60/99 prévenus"), c("E3", "ÉCHEC")]);
   assert.equal(nouveau.ok, false); assert.deepEqual(nouveau.nouveaux, ["E3"]);
-  const autrement = L.verdictFinal([c("A3", "ÉCHEC", "0/99 prévenus")]);
+  const autrement = v([c("A3", "ÉCHEC", "0/99 prévenus")]);
   assert.equal(autrement.ok, false, "A3 rouge AUTREMENT (0/99) n'est plus le rouge connu"); assert.deepEqual(autrement.autrement, ["A3"]);
-  // « une seule fois, jamais l'organisatrice » est A3b, hors liste : son échec est un NOUVEAU rouge.
-  assert.deepEqual(L.verdictFinal([c("A3", "ÉCHEC", "60/99 prévenus"), c("A3b", "ÉCHEC", "doublons 4")]).nouveaux, ["A3b"]);
-  const gueri = L.verdictFinal([c("A3", "OK")]);
+  assert.deepEqual(v([c("A3", "ÉCHEC", "60/99 prévenus"), c("A3b", "ÉCHEC", "doublons 4")]).nouveaux, ["A3b"]);
+  const gueri = v([c("A3", "OK")]);
   assert.equal(gueri.ok, false); assert.deepEqual(gueri.gueris, ["A3"]);
-  assert.equal(L.verdictFinal([c("E3", "OK")]).ok, false, "un rouge connu non joué n'est pas un vert");
+  assert.equal(v([c("E3", "OK")]).ok, false, "un rouge connu non joué n'est pas un vert");
 });
 
 test("Manifeste : écrit AVANT la création, pid et poste, n'écrase JAMAIS une séance non purgée, identifiants vérifiés", () => {

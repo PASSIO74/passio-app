@@ -3419,6 +3419,11 @@ deux copies de travail peuvent tourner ensemble (données sûres, latences méla
 (pid réutilisé) se lève en supprimant `verrou.json` à la main ; un ancien manifeste sans `poste` se
 nettoie une fois à la main. ⑤ « 60/99 prévenus » est un nombre MESURÉ : s'il varie, le banc rougit à
 tort, jamais vert à tort.
+✅ **A3 GUÉRI (2026-11-23) : `ROUGES_CONNUS` est VIDE.** La correction (#1021 : la base prévient les inscrits,
+`prevenir_inscrits_activite`) est appliquée au staging puis en production (13:59 UTC, verdict 22/22).
+Séance de contrôle au staging, poste au repos : **A3 99/99**, A4 p50 522 ms, p95 530 ms (le palier de 6 s
+d'une séance précédente venait d'un poste saturé). A3 est désormais EXIGÉ comme les autres contrôles ; le
+mécanisme des rouges connus reste éprouvé au banc unitaire avec une liste explicite.
 
 Observations (non bloquantes) : la cloche de l'organisatrice affiche **une ligne par « demande à
 participer »** (29 en ~1 min, aucun regroupement) ; **chaque « je viens » tente d'entrer dans la
