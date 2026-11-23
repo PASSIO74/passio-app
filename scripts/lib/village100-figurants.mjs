@@ -30,8 +30,30 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname } from "node:path";
 import { hostname } from "node:os";
 import { TABLES_COMPTE } from "../../supabase/functions/_shared/purge-compte.js";
-import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, emailFigurant, campagneValide,
+import { createRequire } from "node:module";
+import { STAGING_REF, LIMITES_VILLAGE100, DELAI_CONNEXION_MS, campagneValide,
   emailDeLaCampagne, tableAbsente, comptesAPurger, verrouLibre, RE_UUID } from "./village100.mjs";
+
+// D16-01 (ADR-013 d4, 2026-11-23) : les 100 comptes de la séance sont des comptes du JEU
+// PERSISTANT (`tests/e2e/comptes-persistants.js`), couloir `village100` — créés UNE fois,
+// repris à chaque séance, jamais supprimés. Une séance qui créait 100 comptes coûtait
+// 100 MAU à l'organisation (partagée avec la production).
+const jeu = createRequire(import.meta.url)("../../tests/e2e/comptes-persistants.js");
+export const COULOIR_VILLAGE100 = "village100";
+// Le bail couvre la séance entière (`test.setTimeout` : 50 min) : plus court, un autre
+// passage pourrait reprendre un figurant en plein vol.
+export const BAIL_SEANCE_MS = 70 * 60 * 1000;
+/** Un compte du jeu, du couloir du village à 100. */
+export const estCompteDuVillage = (email) => jeu.estPersistant(email) && String(email).toLowerCase().startsWith(`e2e_${COULOIR_VILLAGE100}_`);
+/** Les comptes de la séance : les 4 yeux (parallèle 0) puis les figurants (parallèle 1), du jeu persistant. */
+export async function acquerirComptesVillage({ url, service, parallele, nombre }) {
+  gardesCible(url);
+  const comptes = await jeu.acquerirLot({ url, cle: service }, { couloir: COULOIR_VILLAGE100, parallele, rangs: [...Array(nombre).keys()], dureeBail: BAIL_SEANCE_MS });
+  // Le bilan du passage (teardown) : créés / réutilisés, comme pour l'e2e.
+  for (const c of comptes) jeu.noterCompte(c.cree ? "cree" : "reutilise");
+  return comptes;
+}
+export const MDP_VILLAGE = jeu.MDP_PERSISTANT;
 
 const pause = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const enc = encodeURIComponent;
@@ -78,7 +100,7 @@ export class Manifeste {
   }
   ecrire() { mkdirSync(dirname(this.chemin), { recursive: true }); writeFileSync(this.chemin, JSON.stringify(this.etat, null, 2)); }
   avantCreation(email) {
-    if (!emailDeLaCampagne(email, this.etat.campagne)) throw new Error("ADRESSE_HORS_CAMPAGNE");
+    if (!emailDeLaCampagne(email, this.etat.campagne) && !estCompteDuVillage(email)) throw new Error("ADRESSE_HORS_CAMPAGNE");
     this.etat.comptes.push({ email, id: null }); this.ecrire();
   }
   apresCreation(email, id) {
@@ -180,17 +202,18 @@ export class Foule {
 
   // ── Création des figurants : compte confirmé, connexion cadencée, profil,
   //    année de naissance (l'IRL exige la majorité déclarée), socket. ─────────
+  // D16-01 : les figurants sont les rangs 0..n-1 du couloir `village100`, parallèle 1, pris
+  // d'un coup (amorcés s'ils manquent, bail posé, contenus purgés, métadonnées vidées), puis
+  // inscrits au manifeste — la purge de fin de séance vide leurs contenus, jamais les comptes.
   async creer(n, { passion }) {
     const connexions = [];
+    const comptes = await acquerirComptesVillage({ url: this.url, service: this.service, parallele: 1, nombre: n });
+    this.amorces = comptes.filter((c) => c.cree).length;
+    for (const c of comptes) { this.manifeste.avantCreation(c.email); this.manifeste.apresCreation(c.email, c.id); }
     for (let i = 0; i < n; i++) {
       if (i) await pause(DELAI_CONNEXION_MS);
-      const email = emailFigurant(this.campagne, i), password = randomUUID() + "aA!7";
-      this.manifeste.avantCreation(email); // AVANT : une réponse perdue reste retrouvable
-      const u = await this.http("auth_creation", "/auth/v1/admin/users", { methode: "POST", service: true,
-        corps: { email, password, email_confirm: true } });
-      if (!u.ok || !u.data || !u.data.id) throw new Error(`CREATION_FIGURANT_${i}_HTTP_${u.status}`);
-      this.manifeste.apresCreation(email, u.data.id);
-      const f = { index: i, id: u.data.id, nom: `Figurant ${i + 1}`, notifsRecues: [], broadcasts: 0 };
+      const email = comptes[i].email, password = MDP_VILLAGE;
+      const f = { index: i, id: comptes[i].id, nom: `Figurant ${i + 1}`, notifsRecues: [], broadcasts: 0 };
       this.figurants.push(f);
       const s = await this.http("auth_connexion", "/auth/v1/token?grant_type=password", { methode: "POST", corps: { email, password } });
       if (!s.ok || !s.data || !s.data.access_token) throw new Error(`CONNEXION_FIGURANT_${i}_HTTP_${s.status}`);
@@ -414,9 +437,40 @@ export async function purgerSeance({ url, service, manifeste, log = () => {} }) 
   const out = { lignes: 0, comptes: 0, attendus: 0, annonces: 0, restants: [], erreurs: [], refus: [] };
   const campagne = manifeste && manifeste.campagne;
   if (!campagneValide(campagne)) { out.refus.push("CAMPAGNE_INVALIDE"); return out; }
-  const emails = manifeste.comptes.map((c) => c.email);
-  const idsNotes = manifeste.comptes.map((c) => c.id).filter(Boolean);
-  out.annonces = emails.length;
+  out.annonces = manifeste.comptes.length;
+  // ① Les comptes du JEU PERSISTANT (D16-01) : jamais supprimés. Chaque adresse est
+  // retrouvée dans le jeu (l'identifiant noté doit être le sien, sinon REFUS), ses
+  // contenus sont purgés, et la preuve est relue : plus aucune ligne `profiles`.
+  const duJeu = manifeste.comptes.filter((c) => estCompteDuVillage(c.email));
+  if (duJeu.length) {
+    const cfgJeu = { url, cle: service };
+    let parEmail;
+    try { parEmail = new Map((await jeu.comptesDuJeu(cfgJeu)).map((u) => [String(u.email).toLowerCase(), u.id])); }
+    catch (e) { out.erreurs.push(court(e && e.message)); return out; }
+    const ids = [];
+    for (const c of duJeu) {
+      const id = parEmail.get(String(c.email).toLowerCase());
+      if (!id) { out.restants.push(`${c.email.split("@")[0]} (compte du jeu introuvable)`); continue; }
+      if (c.id && c.id !== id) { out.refus.push(`${c.id} → ${c.email}`); continue; }
+      ids.push(id);
+    }
+    if (out.refus.length) return out;
+    out.attendus += ids.length;
+    try {
+      await jeu.purgerContenusComptes(cfgJeu, ids);
+      const restants = new Set(await jeu.profilsRestants(cfgJeu, ids));
+      out.comptes += ids.length - restants.size;
+      for (const id of restants) out.restants.push(`${id.slice(0, 8)} (profil encore présent)`);
+    } catch (e) { out.erreurs.push(court(e && e.message)); }
+  }
+  // ② Les comptes d'une CAMPAGNE (séances d'avant le jeu, reliquat) : supprimés, comme avant.
+  const deCampagne = manifeste.comptes.filter((c) => !estCompteDuVillage(c.email));
+  if (!deCampagne.length) {
+    log(`purge : contenus de ${out.comptes}/${out.attendus} comptes du jeu purgés (comptes gardés)${out.restants.length ? `, ${out.restants.length} RESTANT(S)` : ""}${out.erreurs.length ? `, ${out.erreurs.length} erreur(s)` : ""}`);
+    return out;
+  }
+  const emails = deCampagne.map((c) => c.email);
+  const idsNotes = deCampagne.map((c) => c.id).filter(Boolean);
   let listing;
   try { listing = await listerCampagne({ url, h, campagne }); }
   catch (e) { out.erreurs.push(court(e && e.message)); return out; }
@@ -431,7 +485,7 @@ export async function purgerSeance({ url, service, manifeste, log = () => {} }) 
     else choix.refus.push(`${id} → ${u.email}`);
   }
   if (choix.refus.length) { out.refus = choix.refus; return out; }
-  out.attendus = choix.ids.length;
+  out.attendus += choix.ids.length;
   // Les lignes, puis les comptes. Seule une TABLE absente est tolérée.
   for (const lot of lotsPurge(choix.ids)) {
     const liste = `(${lot.join(",")})`;

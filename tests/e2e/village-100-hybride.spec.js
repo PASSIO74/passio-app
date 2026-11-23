@@ -27,8 +27,12 @@
 // contrôle qui échoue n'arrête pas la séance ; tout est jugé à la fin.
 //
 // ⚠️ STAGING SEULEMENT, OPT-IN, JAMAIS EN CI : `npm run village:100`
-// (scripts/village100.mjs pose la cible et les clés, purge un reliquat). Les
-// 100 comptes de la séance — eux seuls, par identifiant — sont purgés à la fin.
+// (scripts/village100.mjs pose la cible et les clés, purge un reliquat).
+// ⚠️ LES 100 COMPTES SONT DU JEU PERSISTANT (ADR-013 d4, D16-01, 2026-11-23) :
+// couloir `village100` — les 4 yeux en parallèle 0, les 96 figurants en
+// parallèle 1 — créés UNE fois, repris neufs à chaque séance, jamais supprimés
+// (une séance qui en créait 100 coûtait 100 MAU à l'organisation). En fin de
+// séance, leurs CONTENUS sont purgés, et la purge se prouve par relecture.
 // Rapport : test-results/village100/rapport.md (+ rapport.json, captures/).
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -113,18 +117,15 @@ function instrumenter() {
 }
 
 // L'inscription d'un œil : le VRAI parcours d'interface de `signupUser`
-// (qa-helper.js) — landing, « Créer un compte », année, prénom, passion — mais
-// un compte du domaine du banc (`emailOeil`), créé confirmé par l'API
-// d'administration puis ouvert dans la page par mot de passe. Pourquoi pas
-// `signupUser` tel quel : son adresse `@passio-e2e.test` est purgée par motif
-// par le teardown de la CI pendant la séance (voir `emailOeil`).
-async function inscrireOeil(page, cfg, manifeste, email, label, passionIndex) {
-  const motDePasse = require("crypto").randomUUID() + "aA!7";
-  const h = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" };
-  manifeste.avantCreation(email); // AVANT : une réponse perdue reste retrouvable par l'adresse
-  const r = await fetch(`${cfg.url}/auth/v1/admin/users`, { method: "POST", headers: h, body: JSON.stringify({ email, password: motDePasse, email_confirm: true }) });
-  const u = await r.json().catch(() => ({}));
-  if (!r.ok || !u.id) throw new Error(`création du compte de ${label} : HTTP ${r.status}`);
+// (qa-helper.js) — landing, « Créer un compte », année, prénom, passion — sur un
+// compte du JEU PERSISTANT, couloir `village100` (`compte` : pris d'avance par
+// `acquerirComptesVillage`, contenus purgés, métadonnées vidées), ouvert dans la
+// page par mot de passe. Pourquoi pas `signupUser` tel quel : il prend son compte
+// dans le couloir du passage (`poste`), dont le bail ne couvre pas une séance de 50 min.
+async function inscrireOeil(page, manifeste, compte, motDePasse, label, passionIndex) {
+  const { email } = compte;
+  const u = { id: compte.id };
+  manifeste.avantCreation(email);
   manifeste.apresCreation(email, u.id);
   await poserGateSansPremiereVisite(page);
   await viserCibleSupabase(page);
@@ -260,9 +261,10 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
         });
         contexts.push(ctx); pages.push(page);
       }
-      log("inscription des 4 personnages en navigateur…");
+      log("inscription des 4 personnages en navigateur (comptes du jeu persistant)…");
+      const comptesYeux = await F.acquerirComptesVillage({ url: cfg.url, service: cfg.cle, parallele: 0, nombre: YEUX.length });
       await Promise.all(YEUX.map(async (p, i) => {
-        try { uids[i] = await inscrireOeil(pages[i], cfg, manifeste, L.emailOeil(campagne, i), `${p.nom} Centvillage`, i); }
+        try { uids[i] = await inscrireOeil(pages[i], manifeste, comptesYeux[i], F.MDP_VILLAGE, `${p.nom} Centvillage`, i); }
         catch (e) { log(`❌ inscription de ${p.nom} : ${String(e.message).slice(0, 200)}`); }
       }));
       rapport.personas = YEUX.map((p, i) => ({ nom: p.nom, role: p.role, inscrit: !!uids[i] }));
@@ -298,7 +300,7 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       log(`création de ${L.NB_FIGURANTS} figurants (connexions cadencées à ${L.DELAI_CONNEXION_MS} ms : ≤ ${L.connexionsParFenetre(L.DELAI_CONNEXION_MS)} / 5 min)…`);
       const tCreation = Date.now();
       await foule.creer(L.NB_FIGURANTS, { passion: passions[0].id });
-      rapport.murs["Création des figurants"] = `${foule.figurants.length} comptes en ${Math.round((Date.now() - tCreation) / 1000)} s (connexion toutes les ${L.DELAI_CONNEXION_MS} ms)`;
+      rapport.murs["Création des figurants"] = `${foule.figurants.length} comptes du jeu (dont ${foule.amorces || 0} amorcés à cette séance) en ${Math.round((Date.now() - tCreation) / 1000)} s (connexion toutes les ${L.DELAI_CONNEXION_MS} ms)`;
       await verifier("I1", `${L.NB_FIGURANTS} figurants : compte confirmé, profil public, majorité déclarée`, async () => {
         const f = foule.figurants;
         const prof = f.filter((x) => x.profil === "ok").length, maj = f.filter((x) => x.majorite === "ok").length;
@@ -729,9 +731,10 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       rapport.arret = String((e && e.message) || e).slice(0, 300);
       log(`⛔ séance interrompue : ${rapport.arret}`);
     } finally {
-      // ═══ PURGE — les comptes du MANIFESTE, par adresse exacte, relus en 404 ═
-      // Le manifeste porte chaque adresse écrite AVANT sa création : un compte
-      // dont la réponse s'est perdue, ou un œil tombé en route, part aussi.
+      // ═══ PURGE — les CONTENUS des comptes du MANIFESTE (jeu persistant) ═══
+      // Le manifeste porte chaque compte de la séance, inscrit dès sa prise :
+      // un œil tombé en route est purgé aussi. Les comptes restent (D16-01) ;
+      // la preuve est relue : plus aucune ligne `profiles` pour eux.
       foule.fermer();
       for (const c of contexts) { try { await c.close(); } catch (e) {} }
       try { rapport.purge = await F.purgerSeance({ url: cfg.url, service: cfg.cle, manifeste: manifeste.etat, log }); }
@@ -742,8 +745,8 @@ test.describe("Le village à 100 — hybride navigateurs + figurants API", () =>
       if (F.purgeComplete(rapport.purge)) manifeste.purgee();
       acteCourant = "5 · Purge de la séance";
       rapport.controles.push({ acte: acteCourant, code: "Z1", exige: true, statut: purgeOk ? "OK" : "ÉCHEC", ms: 0,
-        libelle: "chaque adresse annoncée avait son compte ; tous supprimés, relus absents (404) et absents du listing de la campagne ; aucune ligne en erreur",
-        detail: `${rapport.purge.comptes}/${rapport.purge.attendus} comptes relus absents pour ${manifeste.etat.comptes.length} adresses annoncées, ${rapport.purge.lignes} lignes${rapport.purge.restants.length ? " ; RESTANTS : " + rapport.purge.restants.slice(0, 5).join(", ") : ""}${rapport.purge.refus.length ? " ; REFUS : " + rapport.purge.refus.slice(0, 3).join(", ") : ""}${rapport.purge.erreurs.length ? " ; erreurs : " + rapport.purge.erreurs.slice(0, 3).join(" ; ") : ""}` });
+        libelle: "chaque adresse annoncée avait son compte du jeu ; tous leurs contenus purgés, aucun profil relu ; aucune ligne en erreur",
+        detail: `contenus de ${rapport.purge.comptes}/${rapport.purge.attendus} comptes purgés (comptes du jeu gardés) pour ${manifeste.etat.comptes.length} adresses annoncées${rapport.purge.restants.length ? " ; RESTANTS : " + rapport.purge.restants.slice(0, 5).join(", ") : ""}${rapport.purge.refus.length ? " ; REFUS : " + rapport.purge.refus.slice(0, 3).join(", ") : ""}${rapport.purge.erreurs.length ? " ; erreurs : " + rapport.purge.erreurs.slice(0, 3).join(" ; ") : ""}` });
       rapport.verdict = L.verdictFinal(rapport.controles);
       rapport.dureeS = Math.round((Date.now() - t0) / 1000);
       if (!rapport.http) rapport.http = L.resumeHttp(foule.mesures);

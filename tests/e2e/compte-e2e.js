@@ -129,43 +129,47 @@ async function _jetonLienMagique(cfg, email) {
 }
 
 /**
- * Crée un compte réel et ouvre sa session DANS LA PAGE.
+ * Fournit un compte réel et ouvre sa session DANS LA PAGE.
+ *
+ * ⚠️ D16-01 (2026-11-23) : AU STAGING, LE COMPTE EST REPRIS DU JEU PERSISTANT
+ * (`comptes-persistants.js`), purgé de ses contenus — il n'est plus créé. Un
+ * compte créé puis connecté est un MAU de l'organisation, partagé avec la
+ * production. `{ jetable: true }` rend l'ancien compte neuf et supprimable :
+ * À RÉSERVER à une suite qui DÉTRUIT son compte (`suppression-compte`) ou qui
+ * purge par son propre préfixe — chaque appel est inscrit, avec sa raison, dans
+ * `tests/unit/comptes-persistants.test.mjs`.
  *
  * ⚠️ Comme `signUp` auparavant, l'appel BASCULE la session de la page sur le
- * nouveau compte : l'ordre des créations reste significatif pour les suites qui
- * font ensuite agir la page au nom d'un compte précis (voir blocage-acces).
+ * compte : l'ordre des appels reste significatif pour les suites qui font
+ * ensuite agir la page au nom d'un compte précis (voir blocage-acces).
  *
  * @returns {Promise<{uid: string, token: string, email: string}>}
  */
-async function creerCompteE2E(page, prefixe = "") {
-  const email = emailE2E(prefixe);
+async function creerCompteE2E(page, prefixe = "", options = {}) {
   const cfg = configAdmin();
 
+  // Cible explicite d'abord (SUP-04) : sans elle, le module du jeu n'est même pas chargé.
+  if (cfg && !(options && options.jetable) && process.env.PASSIO_SUPABASE_URL && process.env.PASSIO_SUPABASE_ANON) {
+    const jeu = require("./comptes-persistants");
+    if (jeu.jeuActif(cfg)) {
+      // `couloir`, `rang`, `parallele`, `dureeBail` : un banc à séance longue (le village) nomme ses comptes.
+      const c = await jeu.acquerirComptePersistant(cfg, {
+        couloir: options && options.couloir, rang: options && options.rang,
+        parallele: options && options.parallele, dureeBail: options && options.dureeBail,
+      });
+      const tokenHash = await _jetonLienMagique(cfg, c.email);
+      const out = await _ouvrirSession(page, c.email, tokenHash, c.id);
+      jeu.noterCompte(c.cree ? "cree" : "reutilise");
+      return { uid: out.uid, token: out.token, email: c.email };
+    }
+  }
+
+  const email = emailE2E(prefixe);
   if (cfg) {
     const uidAttendu = await _creerViaAdmin(cfg, email);
     const tokenHash = await _jetonLienMagique(cfg, email);
-    let out;
-    for (let essai = 0; ; essai++) {
-      out = await page.evaluate(async ([em, mdp, th]) => {
-        try {
-          // Lien magique d'abord ; mot de passe en repli seulement si absent.
-          const r = th
-            ? await supa.auth.verifyOtp({ token_hash: th, type: "magiclink" })
-            : await supa.auth.signInWithPassword({ email: em, password: mdp });
-          const { data, error } = r;
-          if (error) return { erreur: error.message, statut: error.status };
-          if (!data || !data.session || !data.session.user) return { erreur: "connexion sans session" };
-          return { uid: data.session.user.id, token: data.session.access_token };
-        } catch (e) { return { erreur: (e && e.message) || String(e), statut: e && e.status }; }
-      }, [email, MDP_E2E, tokenHash]);
-      // Reprendre seulement les429 explicites, en conservant compte et jeton.
-      // Erreurs réseau ambiguës et autres refus restent rouges, sans reprise.
-      if (!out.erreur || out.statut !== 429 || essai >= ATTENTES_AUTH_429.length) break;
-      await new Promise((resolve) => setTimeout(resolve, ATTENTES_AUTH_429[essai]));
-    }
-    if (out.erreur) throw new Error(`connexion du compte e2e : ${out.erreur}`);
-    if (out.uid !== uidAttendu || typeof out.token !== "string" || !out.token) throw new Error("connexion du compte e2e : identité ou session incohérente");
-    await _memoriserUid(page, out.uid);
+    const out = await _ouvrirSession(page, email, tokenHash, uidAttendu);
+    _noterJetable();
     return { uid: out.uid, token: out.token, email };
   }
 
@@ -181,6 +185,40 @@ async function creerCompteE2E(page, prefixe = "") {
   if (out.erreur) throw new Error(`inscription du compte e2e : ${out.erreur}`);
   await _memoriserUid(page, out.uid);
   return { uid: out.uid, token: out.token, email };
+}
+
+// La mesure « comptes créés par passage » compte aussi les jetables. Le module
+// du jeu n'est chargé que s'il existe une cible : la fixture unitaire de ce
+// fichier n'expose que node:fs et node:path.
+function _noterJetable() {
+  try { require("./comptes-persistants").noterCompte("jetable"); } catch (e) { /* mesure seulement */ }
+}
+
+/** Échange le jeton (ou le mot de passe en repli) contre une session dans la page. */
+async function _ouvrirSession(page, email, tokenHash, uidAttendu) {
+  let out;
+  for (let essai = 0; ; essai++) {
+    out = await page.evaluate(async ([em, mdp, th]) => {
+      try {
+        // Lien magique d'abord ; mot de passe en repli seulement si absent.
+        const r = th
+          ? await supa.auth.verifyOtp({ token_hash: th, type: "magiclink" })
+          : await supa.auth.signInWithPassword({ email: em, password: mdp });
+        const { data, error } = r;
+        if (error) return { erreur: error.message, statut: error.status };
+        if (!data || !data.session || !data.session.user) return { erreur: "connexion sans session" };
+        return { uid: data.session.user.id, token: data.session.access_token };
+      } catch (e) { return { erreur: (e && e.message) || String(e), statut: e && e.status }; }
+    }, [email, MDP_E2E, tokenHash]);
+    // Reprendre seulement les429 explicites, en conservant compte et jeton.
+    // Erreurs réseau ambiguës et autres refus restent rouges, sans reprise.
+    if (!out.erreur || out.statut !== 429 || essai >= ATTENTES_AUTH_429.length) break;
+    await new Promise((resolve) => setTimeout(resolve, ATTENTES_AUTH_429[essai]));
+  }
+  if (out.erreur) throw new Error(`connexion du compte e2e : ${out.erreur}`);
+  if (out.uid !== uidAttendu || typeof out.token !== "string" || !out.token) throw new Error("connexion du compte e2e : identité ou session incohérente");
+  await _memoriserUid(page, out.uid);
+  return out;
 }
 
 /** Prouver l'adhésion ; si elle manque, INSERT simple puis preuve sous le même JWT. */
@@ -217,4 +255,9 @@ function _memoriserUid(page, uid) {
   }, uid);
 }
 
-module.exports = { creerCompteE2E, assurerMembreE2E, emailE2E, configAdmin, MDP_E2E, DOMAINE_E2E };
+/** Supprime les comptes listés, jamais ceux du jeu persistant (voir comptes-persistants.js). */
+function supprimerComptesJetables(cfg, ids) {
+  return require("./comptes-persistants").supprimerComptesJetables(cfg, ids);
+}
+
+module.exports = { creerCompteE2E, assurerMembreE2E, supprimerComptesJetables, emailE2E, configAdmin, MDP_E2E, DOMAINE_E2E };

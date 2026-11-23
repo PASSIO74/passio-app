@@ -10,8 +10,12 @@
 //   ② port LIBRE demandé au système, TOUJOURS (`PASSIO_PORT` est ignoré :
 //      `reuseExistingServer` prendrait le serveur d'un autre dossier) ;
 //   ③ refusé en CI.
-// Et ce qui est propre aux 100 comptes `@passio-capacite.test` — domaine que
-// PERSONNE d'autre ne purge (docs/BANC_CAPACITE_REALISTE_2026-09-20.md) :
+// Et ce qui est propre aux 100 comptes de la séance. Depuis D16-01 (ADR-013 d4,
+// 2026-11-23), ce sont des comptes du JEU PERSISTANT, couloir `village100`
+// (`tests/e2e/comptes-persistants.js`) : créés une fois, repris à chaque séance,
+// jamais supprimés — seuls leurs CONTENUS sont purgés. Un manifeste d'avant le
+// jeu porte des adresses `@passio-capacite.test` (domaine que PERSONNE d'autre ne
+// purge, docs/BANC_CAPACITE_REALISTE_2026-09-20.md) : celles-là sont supprimées.
 //   ④ un VERROU de séance (`.passio/tmp/village100/verrou.json`), CRÉÉ de façon
 //      atomique (`wx`), qui porte DEUX pid : le lanceur, et la séance Playwright
 //      qui s'y inscrit. Tant que l'un des deux vit, aucun autre lancement ne
@@ -138,7 +142,7 @@ const env = {
   PASSIO_VILLAGE100_VERROU: VERROU,
   PASSIO_PORT: port,
 };
-console.log(`[village100] cible : staging ${STAGING_REF} — 4 navigateurs + 96 figurants API, purgés en fin de séance.`);
+console.log(`[village100] cible : staging ${STAGING_REF} — 4 navigateurs + 96 figurants API, comptes du jeu persistant (couloir « village100 »), contenus purgés en fin de séance.`);
 const res = spawnSync(
   "npx",
   ["playwright", "test", "tests/e2e/village-100-hybride.spec.js", "--project=prod", "--workers=1", "--retries=0", ...args],

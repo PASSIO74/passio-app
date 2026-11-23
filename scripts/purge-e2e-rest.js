@@ -32,6 +32,7 @@
  */
 "use strict";
 const { configAdmin, DOMAINE_E2E } = require("../tests/e2e/compte-e2e.js");
+const jeu = require("../tests/e2e/comptes-persistants.js");
 
 const SIMULER = process.argv.indexOf("--simuler") >= 0;
 
@@ -126,6 +127,22 @@ async function supprimerCompte(cfg, id) {
   if (!r.ok && r.status !== 404) throw new Error(`compte ${id.slice(0, 8)}… : ${r.status}`);
 }
 
+// Le couloir de CE passage seulement (`ci` en CI, `poste` ailleurs) : les
+// villages tiennent leurs comptes une séance entière, avec leur propre purge.
+async function purgerJeuPersistant(cfg) {
+  const prefixe = `e2e_${jeu.couloir()}_`;
+  const comptes = (await jeu.comptesDuJeu(cfg)).filter((u) => String(u.email).toLowerCase().startsWith(prefixe));
+  if (!comptes.length) return;
+  let purges = 0, tenus = 0;
+  for (const u of comptes) {
+    const bail = u.app_metadata && u.app_metadata.e2e_bail;
+    if (bail && Number(bail.jusqua) > Date.now()) { tenus++; continue; }
+    if (!SIMULER) await jeu.purgerContenusCompte(cfg, u.id);
+    purges++;
+  }
+  console.log(`[purge:rest] jeu persistant : ${comptes.length} compte(s) gardé(s), contenus ${SIMULER ? "à purger" : "purgés"} pour ${purges}${tenus ? `, ${tenus} sous bail vivant laissé(s)` : ""}`);
+}
+
 (async function () {
   let cfg;
   try { cfg = configAdmin(); } catch (e) {
@@ -135,6 +152,17 @@ async function supprimerCompte(cfg, id) {
     console.warn(`[purge:rest] impossible : ${e && e.message}`);
     process.exitCode = 1;
     return;
+  }
+
+  // D16-01 : les comptes du JEU PERSISTANT (`@fixe.passio-e2e.test`) ne sont
+  // pas dans `ids` — le suffixe exact les exclut — et ne sont JAMAIS supprimés.
+  // Leurs CONTENUS le sont, sauf sous un bail vivant (un passage en cours : le
+  // teardown libère les siens AVANT d'appeler ce script).
+  // Un échec ici ne doit pas priver les comptes JETABLES de leur purge : il
+  // est dit, il rend le script rouge, et la suite continue.
+  try { await purgerJeuPersistant(cfg); } catch (e) {
+    console.warn(`[purge:rest] jeu persistant : purge des contenus en échec — ${e && e.message}`);
+    process.exitCode = 1;
   }
 
   const ids = await comptesE2E(cfg);

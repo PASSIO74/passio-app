@@ -54,7 +54,9 @@ async function comptesExistants(cfg) {
     const r = await fetch(`${cfg.url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: entetes(cfg.cle) });
     if (!r.ok) throw new Error(`comptes : HTTP ${r.status}`);
     const lot = (await r.json()).users || [];
-    for (const u of lot) vus.add(u.id);
+    // D16-01 : un compte du jeu persistant vit, mais ses fichiers sont des
+    // restes de test — on les rend éligibles (même seuil de taille, même garde).
+    for (const u of lot) if (!(typeof u.email === "string" && u.email.toLowerCase().endsWith("@fixe.passio-e2e.test"))) vus.add(u.id);
     if (lot.length < 200) break;
   }
   return vus;

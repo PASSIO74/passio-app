@@ -25,9 +25,16 @@
 // note et on continue. Tout est jugé à la fin, dans le rapport.
 //
 // ⚠️ STAGING SEULEMENT, ET OPT-IN. Lancer par `npm run village`
-// (scripts/village.mjs pose la cible et les clés). Les dix comptes de la
-// séance — et eux seuls, par identifiant, jamais par motif — sont purgés à la
-// fin : une autre suite qui tourne en parallèle ne perd rien.
+// (scripts/village.mjs pose la cible et les clés).
+//
+// ⚠️ LES DIX PERSONNAGES SONT DES COMPTES DU JEU PERSISTANT (ADR-013 d4,
+// D16-01, 2026-11-23) : `e2e_village_0_<i>@fixe.passio-e2e.test`, un par
+// personnage, créés UNE fois puis repris à chaque séance (un compte créé et
+// connecté est un MAU de l'organisation, partagé avec la production). Repris
+// neufs : contenus purgés, métadonnées vidées (`tests/e2e/comptes-persistants.js`).
+// En fin de séance, leurs CONTENUS sont purgés — jamais les comptes — et la
+// purge se prouve par relecture : plus aucun profil. Le bail du couloir
+// `village` (40 min) empêche une seconde séance de les prendre en plein vol.
 //
 // Rapport : test-results/village/rapport.md (+ rapport.json, captures/).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +43,7 @@ const fs = require("fs");
 const path = require("path");
 const { signupUser } = require("./qa-helper");
 const { configAdmin } = require("./compte-e2e");
+const jeu = require("./comptes-persistants");
 const { cibleSupabase } = require("./cible-supabase");
 
 // Même valeur que `scripts/lib/charge-realiste.mjs` (module ES, non chargeable
@@ -58,33 +66,12 @@ const PERSONAS = [
 ];
 const [LEA, MARC, INES, HUGO, CHLOE, TOM, SARAH, NINA, KEVIN, JADE] = PERSONAS.map((_, i) => i);
 
-// Ordre de purge : celui de scripts/purge-e2e-rest.js (des enfants vers les
-// parents, `cdv_*` exceptées : ADR-011, plus écrites), plus les tables que ce
-// scénario écrit et que la purge générale laisse au CASCADE (`event_comments`,
-// `reports`) ou à l'onboarding (`user_passions`). ⚠️ `purge-e2e-rest.js` n'est
-// pas importable : il PURGE dès qu'on le charge.
-const TABLES_PURGE = [
-  ["conv_messages", ["from_id"]],
-  ["conv_reads", ["user_id"]],
-  ["conv_members", ["user_id"]],
-  ["notifications", ["user_id", "from_id"]],
-  ["comment_interactions", ["user_id"]],
-  ["post_comments", ["author_id"]],
-  ["post_likes", ["user_id"]],
-  ["follows", ["follower_id", "following_id"]],
-  ["reports", ["reporter_id"]],
-  ["posts", ["author_id"]],
-  ["stories", ["author_id"]],
-  ["event_comments", ["author_id"]],
-  ["event_attendees", ["user_id"]],
-  ["event_reactions", ["user_id"]],
-  ["events", ["author_id"]],
-  ["blocks", ["blocker_id", "blocked_id"]],
-  ["push_subscriptions", ["user_id"]],
-  ["user_state", ["user_id"]],
-  ["user_passions", ["user_id"]],
-  ["profiles", ["id"]],
-];
+// Le couloir des dix personnages, et la durée de leur bail : la séance dure
+// au plus 25 min (`test.setTimeout`) — un bail plus court laisserait une autre
+// séance les reprendre en plein vol.
+const COULOIR = "village";
+const BAIL_SEANCE_MS = 40 * 60 * 1000;
+const emailPersonnage = (i) => jeu.emailPersistant(COULOIR, 0, i);
 
 // La garde regarde les TROIS cibles, pas une : celle du navigateur
 // (`cibleSupabase()`, qui exige URL ET clé anon — sans clé anon, les dix
@@ -114,43 +101,6 @@ function admin() {
       if (!r.ok) throw new Error(`${table} : HTTP ${r.status} ${(await r.text()).slice(0, 160)}`);
       return r.json();
     },
-    async supprimer(table, query) {
-      const r = await fetch(`${cfg.url}/rest/v1/${table}?${query}`, { method: "DELETE", headers: Object.assign({ Prefer: "return=representation" }, h) });
-      if (!r.ok) {
-        const t = await r.text();
-        // Seule une TABLE absente est tolérée (le schéma du staging dérive) ;
-        // une COLONNE absente (« column … does not exist ») est une liste de
-        // purge fausse : elle laisserait ses lignes en silence.
-        if (/Could not find the table|relation "[^"]+" does not exist/i.test(t)) return 0;
-        throw new Error(`${table} : HTTP ${r.status} ${t.slice(0, 160)}`);
-      }
-      const l = await r.json();
-      return Array.isArray(l) ? l.length : 0;
-    },
-    async supprimerCompte(id) {
-      const r = await fetch(`${cfg.url}/auth/v1/admin/users/${id}`, { method: "DELETE", headers: h });
-      if (!r.ok && r.status !== 404) throw new Error(`compte ${id.slice(0, 8)}… : HTTP ${r.status}`);
-    },
-    async compteExiste(id) {
-      const r = await fetch(`${cfg.url}/auth/v1/admin/users/${id}`, { headers: h });
-      if (r.status === 404) return false;
-      if (!r.ok) throw new Error(`compte ${id.slice(0, 8)}… illisible : HTTP ${r.status}`);
-      return true;
-    },
-    // Les comptes de CETTE séance, par le préfixe de leur adresse — y compris
-    // ceux dont l'inscription a cassé après la création (uid jamais rendu).
-    async comptesDeLaSeance(prefixe) {
-      const ids = [];
-      for (let p = 1; p <= 50; p++) {
-        const r = await fetch(`${cfg.url}/auth/v1/admin/users?page=${p}&per_page=200`, { headers: h });
-        if (!r.ok) throw new Error(`liste des comptes : HTTP ${r.status}`);
-        const d = await r.json();
-        const lot = d.users || [];
-        for (const u of lot) if (typeof u.email === "string" && u.email.startsWith(`e2e_${prefixe}_`) && u.email.endsWith("@passio-e2e.test")) ids.push(u.id);
-        if (lot.length < 200) break;
-      }
-      return ids;
-    },
   };
 }
 
@@ -176,9 +126,6 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
     if (!cibleEstLeStaging()) throw new Error("CIBLE_HORS_STAGING : le village n'écrit que sur le staging (npm run village pose la cible).");
 
     const db = admin();
-    // Préfixe d'adresse propre à CETTE séance (`e2e_village<6>_…`) : la purge le
-    // retrouve même sans uid, et n'atteint jamais les comptes d'une autre suite.
-    const PREFIXE = "village" + Math.random().toString(36).slice(2, 8);
     const t0 = Date.now();
     const log = (m) => console.log(`[village ${String(((Date.now() - t0) / 1000) | 0).padStart(4)}s] ${m}`);
     fs.mkdirSync(path.join(SORTIE, "captures"), { recursive: true });
@@ -235,7 +182,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
       log("inscription des 10 personnages (par lots de 5)…");
       for (const lot of [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]) {
         await Promise.all(lot.map(async (i) => {
-          try { uids[i] = await signupUser(pages[i], `${nom(i)} Village`, i, PREFIXE); }
+          try { uids[i] = await signupUser(pages[i], `${nom(i)} Village`, i, "village", { couloir: COULOIR, parallele: 0, rang: i, dureeBail: BAIL_SEANCE_MS }); }
           catch (e) { log(`❌ inscription de ${nom(i)} : ${String(e.message).slice(0, 200)}`); }
         }));
       }
@@ -794,27 +741,22 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
         return { ok: avec.length === 0, detail: avec.map(([n, l]) => `${n} ×${l.length}`).join(", ") };
       }, { exige: false });
     } finally {
-      // ═══ PURGE — les comptes de CETTE séance, par identifiant ══════════════
-      // Les uid rendus PLUS ceux que le préfixe de séance retrouve : un compte
-      // créé dont l'inscription a cassé ensuite n'a jamais rendu son uid.
-      const purge = { lignes: 0, comptes: 0, erreurs: [], restants: [] };
-      let retrouves = [];
-      try { retrouves = await db.comptesDeLaSeance(PREFIXE); } catch (e) { purge.erreurs.push(e.message); }
-      const ids = [...new Set([...uids.filter(Boolean), ...retrouves])];
-      if (ids.length) {
-        const liste = `(${ids.join(",")})`;
-        for (const [table, cols] of TABLES_PURGE) {
-          const q = cols.length === 1 ? `${cols[0]}=in.${liste}` : `or=(${cols.map((c) => `${c}.in.${liste}`).join(",")})`;
-          try { purge.lignes += await db.supprimer(table, q); } catch (e) { purge.erreurs.push(e.message); }
-        }
-        for (const id of ids) { try { await db.supprimerCompte(id); purge.comptes++; } catch (e) { purge.erreurs.push(e.message); } }
-        // La preuve, pas le code de retour : chaque compte doit répondre 404.
-        for (const id of ids) {
-          try { if (await db.compteExiste(id)) purge.restants.push(id); } catch (e) { purge.erreurs.push(e.message); purge.restants.push(id); }
-        }
-      }
+      // ═══ PURGE — les CONTENUS des dix personnages, jamais les comptes ═════
+      // Par ADRESSE du couloir, pas seulement par les uid rendus : un personnage
+      // dont l'inscription a cassé après l'acquisition n'a jamais rendu son uid.
+      // La preuve est relue : plus aucune ligne `profiles` pour ces comptes.
+      const purge = { comptes: 0, erreurs: [], restants: [] };
+      let ids = [];
+      try {
+        const cfgP = configAdmin();
+        const attendus = new Set(PERSONAS.map((_, i) => emailPersonnage(i)));
+        ids = (await jeu.comptesDuJeu(cfgP)).filter((u) => attendus.has(String(u.email).toLowerCase())).map((u) => u.id);
+        await jeu.purgerContenusComptes(cfgP, ids);
+        purge.restants = await jeu.profilsRestants(cfgP, ids);
+        purge.comptes = ids.length - purge.restants.length;
+      } catch (e) { purge.erreurs.push(String((e && e.message) || e)); }
       rapport.purge = purge;
-      log(`purge : ${purge.lignes} lignes, ${purge.comptes}/${ids.length} comptes supprimés, ${purge.restants.length} restant(s)${purge.erreurs.length ? " — erreurs : " + purge.erreurs.join(" ; ") : ""}`);
+      log(`purge : contenus de ${purge.comptes}/${ids.length} personnages purgés (comptes gardés), ${purge.restants.length} profil(s) restant(s)${purge.erreurs.length ? " — erreurs : " + purge.erreurs.join(" ; ") : ""}`);
       for (const c of contexts) { try { await c.close(); } catch (e) {} }
       rapport.dureeS = Math.round((Date.now() - t0) / 1000);
       ecrireRapport(rapport);
@@ -823,7 +765,7 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
 
     const echecs = rapport.controles.filter((c) => c.statut === "ÉCHEC").map((c) => `[${c.code}] ${c.libelle} — ${c.detail}`);
     expect(echecs, "contrôles EXIGÉS en échec (détail : test-results/village/rapport.md)").toEqual([]);
-    // Une purge incomplète laisse des comptes sur le staging : c'est un échec, pas un détail.
+    // Une purge incomplète laisse des contenus sur le staging : c'est un échec, pas un détail.
     expect({ erreurs: rapport.purge.erreurs, restants: rapport.purge.restants.length }, "purge de la séance complète").toEqual({ erreurs: [], restants: 0 });
   });
 });
@@ -836,7 +778,7 @@ function ecrireRapport(r) {
   let md = `# Le village — rapport de simulation\n\n`;
   md += `- Date : ${r.date} · cible : ${r.cible} · durée : ${r.dureeS} s\n`;
   md += `- Contrôles : **${n("OK")} OK · ${n("ÉCHEC")} échec(s) exigé(s) · ${n("À REGARDER")} observation(s)**\n`;
-  md += `- Purge : ${r.purge ? `${r.purge.lignes} lignes, ${r.purge.comptes} comptes supprimés, **${r.purge.restants.length} restant(s)**${r.purge.erreurs.length ? " — ⚠️ " + r.purge.erreurs.join(" ; ") : ""}` : "non faite"}\n\n`;
+  md += `- Purge : ${r.purge ? `contenus de ${r.purge.comptes} personnages purgés (comptes du jeu gardés), **${r.purge.restants.length} profil(s) restant(s)**${r.purge.erreurs.length ? " — ⚠️ " + r.purge.erreurs.join(" ; ") : ""}` : "non faite"}\n\n`;
   md += `## Les personnages\n\n| # | Personnage | Rôle | Inscrit |\n|--|--|--|--|\n`;
   r.personas.forEach((p, i) => { md += `| ${i + 1} | ${p.nom} | ${p.role} | ${p.inscrit ? "oui" : "**non**"} |\n`; });
   let acte = null;

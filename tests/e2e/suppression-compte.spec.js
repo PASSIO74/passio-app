@@ -41,7 +41,9 @@ test.describe("Suppression de compte", () => {
     // `creerCompteE2E` ouvre dans la page ; le reste (état, média, Edge
     // Function, relecture, reconnexion) reste le VRAI chemin réseau de l'app.
     await page.waitForFunction(() => typeof supa !== "undefined" && !!supa, null, { timeout: 30000 });
-    const compte = await creerCompteE2E(page, "suppr");
+    // D16-01 : JETABLE, et c'est la seule suite du passage CI qui en prend un.
+    // Elle DÉTRUIT son compte : un compte du jeu persistant n'y survivrait pas.
+    const compte = await creerCompteE2E(page, "suppr", { jetable: true });
     // La page vient d'ouvrir une session : `supaInit` crée profil, état et
     // abonnements EN DIFFÉRÉ. Supprimer pendant qu'elle écrit encore laisse un
     // « reste » que la purge relit (409 relançable, mesuré une fois sur deux
