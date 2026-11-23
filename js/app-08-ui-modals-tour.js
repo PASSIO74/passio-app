@@ -3248,8 +3248,8 @@ function _notifListHtml(notifs) {
     <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
-        <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteHtml(n)}</div>
-        ${_notifDemandeAbonnementHtml(n)}
+        <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteAfficheHtml(n)}</div>
+        ${_notifDemandeAbonnementHtml(n)}${_notifDemandeParticipationHtml(n)}
         <div class="notif-meta">${escapeHtml(fmtNotifHeure(n.createdAt))}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
@@ -3296,6 +3296,88 @@ function _notifDemandeAbonnementHtml(n) {
     + '<button class="btn small ghost" onclick="event.stopPropagation();refuserDemandeAbonnement(\'' + escapeJsArg(n.fromId) + '\',\'' + escapeJsArg(n.id) + '\')">Refuser</button>'
     + '</div>';
 }
+
+// DEMANDE DE PARTICIPATION (`event_join`, 2026-11-23, retour de Benjamin).
+// Le serveur (`rencontres_prive.inscription_tracee`) écrit un texte SANS nom :
+// « demande à participer à ton activité » — l'organisation ne savait pas QUI.
+// Le nom (et le titre de l'activité) se recomposent ici, à partir de `fromId`
+// et `refId` : jamais du `content`, que tout compte authentifié peut écrire.
+function _notifEvenement(n) {
+  try {
+    if (!n || !n.refId) return null;
+    return (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(n.refId))
+      || (typeof allEvents === "function" && allEvents().find(function (e) { return e && e.id === n.refId; })) || null;
+  } catch (e) { return null; }
+}
+function _notifNomEmetteur(n) {
+  var u = (n && n.fromId && typeof userById === "function") ? userById(n.fromId) : null;
+  return (u && u.name) || "";
+}
+function _notifTexteAfficheHtml(n) {
+  if (n && n.kind === "event_join" && n.fromId) {
+    var nom = _notifNomEmetteur(n) || "Quelqu'un";
+    var ev = _notifEvenement(n);
+    return "<b>" + escapeHtml(nom) + "</b> demande à participer à "
+      + (ev && ev.title ? "<b>" + escapeHtml(ev.title) + "</b>" : "ton activité");
+  }
+  return _notifTexteHtml(n);
+}
+window._notifTexteAfficheHtml = _notifTexteAfficheHtml;
+
+// Les émetteurs inconnus ici (profil jamais croisé) : un seul aller-retour
+// `profiles`, puis la liste ouverte est repeinte avec les noms.
+function _notifResoudreNoms(ns) {
+  try {
+    if (!window._supaReal || typeof _resolveProfilesByIds !== "function") return Promise.resolve();
+    var ids = (ns || []).filter(function (n) { return n && n.kind === "event_join" && n.fromId && !_notifNomEmetteur(n); })
+      .map(function (n) { return n.fromId; });
+    if (!ids.length) return Promise.resolve();
+    return _resolveProfilesByIds(ids).then(function () {
+      var list = document.querySelector(".notif-list");
+      if (list) list.innerHTML = _notifListHtml(state.notifications);
+    }).catch(function (e) { try { diagLog("notifs : noms — " + (e && e.message)); } catch (_) {} });
+  } catch (e) { return Promise.resolve(); }
+}
+
+// Valider / Refuser DEPUIS la notification, comme une demande d'abonnement.
+// Seule l'organisation de l'activité voit les boutons (le serveur refuse de
+// toute façon : `valider_participant` exige `organise_activite`).
+function _notifDemandeParticipationHtml(n) {
+  if (!n || n.kind !== "event_join" || !n.fromId || !n.refId || !n.fromSupabase) return "";
+  var verdict = _verdictDemandeAbonnement(n);
+  if (verdict) return '<div class="notif-demande-verdict" style="font-size:12px;color:var(--muted);margin-top:4px;">Participation ' + escapeHtml(verdict) + '</div>';
+  var ev = _notifEvenement(n);
+  if (ev && typeof _canManageEvent === "function" && !_canManageEvent(ev)) return "";
+  return '<div class="notif-demande-actions" style="display:flex;gap:8px;margin-top:8px;">'
+    + '<button class="btn small primary" onclick="event.stopPropagation();repondreDemandeParticipation(\'' + escapeJsArg(n.refId) + '\',\'' + escapeJsArg(n.fromId) + '\',\'' + escapeJsArg(n.id) + '\',true)">Valider</button>'
+    + '<button class="btn small ghost" onclick="event.stopPropagation();repondreDemandeParticipation(\'' + escapeJsArg(n.refId) + '\',\'' + escapeJsArg(n.fromId) + '\',\'' + escapeJsArg(n.id) + '\',false)">Refuser</button>'
+    + '</div>';
+}
+async function repondreDemandeParticipation(eventId, uid, notifId, accepter) {
+  if (!window._supaReal || typeof supa === "undefined" || !supa) { toast("Connexion requise"); return false; }
+  try {
+    var r = await supa.rpc("valider_participant", { p_event_id: eventId, p_user_id: uid, p_accepter: !!accepter });
+    if (r && r.error) {
+      try { diagLog("notifs : valider_participant — " + (r.error.code || "") + " " + r.error.message); } catch (_) {}
+      toast("Modification non confirmée — réessaie");
+      return false;
+    }
+    // `false` : la demande n'existe plus (annulée entre-temps, activité close).
+    if (!r || r.data !== true) {
+      _demandeAbonnementTraitee(notifId, "déjà traitée");
+      toast("Cette demande n'est plus en attente");
+      return false;
+    }
+    _demandeAbonnementTraitee(notifId, accepter ? "validée" : "refusée");
+    toast(accepter ? "Participation validée" : "Demande refusée");
+    return true;
+  } catch (e) {
+    try { diagLog("notifs : valider_participant — " + (e && e.message)); } catch (_) {}
+    toast("Modification non confirmée — réessaie");
+    return false;
+  }
+}
+window.repondreDemandeParticipation = repondreDemandeParticipation;
 
 // Fusionne des notifications Supabase dans l'état local (priorité Supabase,
 // dédup par id, tri par date), met à jour le badge cloche et rafraîchit le
@@ -3384,6 +3466,7 @@ function mergeSupaNotifs(ns) {
   try { renderBell(); } catch(e) {}
   const list = document.querySelector(".notif-list");
   if (list) list.innerHTML = _notifListHtml(state.notifications);
+  _notifResoudreNoms(state.notifications);
 }
 
 // LOT-21 (TRA-C28) : après un refus, aucun endroit ne disait si le téléphone
@@ -3509,7 +3592,16 @@ function openNotifTarget(n) {
     case "follow_request":
       if ((from || ref) && typeof openUserProfile === "function") openUserProfile(from || ref);
       break;
+    // Une demande de participation ouvre la fiche ET, pour l'organisation, la
+    // liste de validation par-dessus (avant : la fiche seule, sans rien à faire).
     case "event_join":
+      if (ref && typeof openEventDetails === "function") openEventDetails(ref);
+      try {
+        const evj = _notifEvenement(n);
+        if (ref && evj && typeof _canManageEvent === "function" && _canManageEvent(evj)
+            && typeof openEventParticipantValidation === "function") openEventParticipantValidation(ref, from);
+      } catch (e) { try { diagLog("notifs : validation — " + (e && e.message)); } catch (_) {} }
+      break;
     case "event_comment":
     case "event_update":
     case "event_cancelled":
@@ -9526,12 +9618,21 @@ function _rtNotificationRecue(r) {
   // suivante (défaut préexistant, relevé par la relecture adversariale du
   // 2026-11-03). On lui rend donc la nouvelle PLUS celles qu'on tient déjà.
   const _dejaLa = (state.notifications || []).filter(n => n && n.fromSupabase && n.id !== notif.id);
-  const _texteToast = _texteBrutNotif(r.content);
+  let _texteToast = _texteBrutNotif(r.content);
   mergeSupaNotifs([notif].concat(_dejaLa));
   if (_seen) return;
   // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
   // émetteur bloqué, et le toast partait quand même (défaut préexistant).
   if (!(state.notifications || []).some(n => n.id === notif.id)) return;
+  // Demande de participation : le texte serveur ne nomme personne — le toast
+  // attend le nom (une lecture `profiles` au plus).
+  if (notif.kind === "event_join") {
+    _notifResoudreNoms([notif]).then(function () {
+      const t = _texteBrutNotif(_notifTexteAfficheHtml(notif)) || "Nouvelle demande de participation";
+      try { toast(t, "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
+    });
+    return;
+  }
   // Toast cliquable → emmène vers le contenu de la notif. `toast()` écrit en
   // `textContent` : on lui donne du texte brut, pas le texte neutralisé pour
   // le HTML de la cloche (il affichait « &lt;b&gt; » et « L&#39;équipe »).

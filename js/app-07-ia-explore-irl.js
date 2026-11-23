@@ -9450,28 +9450,57 @@ window.addEventListener("passio:app-ready", function () {
 
 // rencontres:validation-organisation-v1
 var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
-async function openEventParticipantValidation(id) {
+// `focusUid` (optionnel) : la personne dont la demande a été touchée dans les
+// notifications — elle passe en tête et ressort visuellement (2026-11-23).
+async function openEventParticipantValidation(id, focusUid) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
   let r;
   try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
   catch (e) { toast("Liste indisponible — réessaie"); return; }
   if (r.error) { toast("Liste indisponible — réessaie"); return; }
-  const lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
-  openModal('<div class="modal-title">Participants</div><div class="modal-subtitle">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
-    + lignes.map(a => '<div style="padding:12px 0"><span>' + escapeHtml((userById(a.user_id) || {}).name || "Participant")
-      + '</span> <span>' + (a.valide ? 'Validé' : 'En attente') + '</span> '
-      + (a.rsvp === 'going' && !a.valide ? '<button class="btn small" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id)
-      + '\',true)">Valider</button> ' : '') + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\''
-      + escapeJsArg(a.user_id) + '\',false)">Retirer</button></div>').join("")
-    + (lignes.length ? '' : '<p>Aucune demande en cours.</p>'));
+  let lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
+  // Les noms : un participant jamais croisé ici s'affichait « Participant ».
+  try {
+    const inconnus = lignes.map(a => a.user_id).filter(u => !(userById(u) || {}).name);
+    if (inconnus.length && typeof _resolveProfilesByIds === "function") await _resolveProfilesByIds(inconnus);
+  } catch (e) { try { diagLog("validation : noms — " + (e && e.message)); } catch (_) {} }
+  const rang = a => (a.user_id === focusUid ? 0 : (a.rsvp === "going" && !a.valide ? 1 : 2));
+  lignes = lignes.slice().sort((x, y) => rang(x) - rang(y));
+  const nbAttente = lignes.filter(a => a.rsvp === "going" && !a.valide).length;
+  const ligneHtml = a => {
+    const u = userById(a.user_id) || {};
+    const enAttente = a.rsvp === "going" && !a.valide;
+    const statut = a.valide ? "Validé·e" : (enAttente ? "Demande en attente" : (a.rsvp === "waitlist" ? "Liste d’attente" : "Intéressé·e"));
+    return '<div class="ev-valid-row" data-uid="' + escapeHtml(a.user_id) + '" style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:14px;margin-top:8px;'
+      + (a.user_id === focusUid ? 'background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.35);' : 'border:1px solid var(--border);') + '">'
+      + '<div style="flex:1;min-width:0;cursor:pointer" onclick="closeModal();openUserProfile(' + "'" + escapeJsArg(a.user_id) + "'" + ')">'
+      + '<div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(u.name || "Participant") + '</div>'
+      + '<div style="font-size:12px;color:' + (enAttente ? 'var(--accent,#7c3aed)' : 'var(--muted)') + '">' + statut + '</div></div>'
+      + (enAttente ? '<button class="btn small primary" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',true)">Valider</button>' : '')
+      + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',false)">' + (enAttente ? 'Refuser' : 'Retirer') + '</button>'
+      + '</div>';
+  };
+  openModal('<div class="modal-handle"></div><div class="modal-title">Participants</div>'
+    + '<div class="modal-subtitle">' + escapeHtml(ev.title || "") + (nbAttente ? ' · ' + nbAttente + ' demande' + (nbAttente > 1 ? 's' : '') + ' en attente' : '') + '</div>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:4px">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
+    + lignes.map(ligneHtml).join("")
+    + (lignes.length ? '' : '<p style="color:var(--muted);margin-top:12px">Aucune demande en cours.</p>')
+    + '<button class="btn secondary block" style="margin-top:14px" onclick="closeModal()">Fermer</button>');
 }
 async function validerEventParticipant(id, uid, accepter) {
   try {
     const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
     if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
     toast(accepter ? "Participation validée" : "Participant retiré");
-    await openEventParticipantValidation(id);
+    // La notification correspondante ne repropose plus ses boutons.
+    try {
+      (state.notifications || []).forEach(function (n) {
+        if (n && n.kind === "event_join" && n.refId === id && n.fromId === uid && typeof _demandeAbonnementTraitee === "function")
+          _demandeAbonnementTraitee(n.id, accepter ? "validée" : "refusée");
+      });
+    } catch (e) {}
+    await openEventParticipantValidation(id, uid);
     return true;
   } catch (e) { toast("Modification non confirmée — réessaie"); return false; }
 }
