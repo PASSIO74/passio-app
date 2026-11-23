@@ -109,6 +109,8 @@ const GABARITS_PUSH = {
   event_feedback: "{nom} a laissé un avis sur ton activité",
   event_comment: "{nom} a commenté ton activité",
   event_update: "{nom} a mis à jour une activité où tu es inscrit·e",
+  // Village à 100 (A3, 2026-11-22) : l'annulation réveille aussi les inscrits app fermée.
+  event_cancelled: "{nom} a annulé une activité où tu es inscrit·e",
   event_invite: "{nom} t'invite à une activité",
   live_video: "{nom} est en direct",
 };
@@ -216,6 +218,9 @@ export async function reserverPush(admin, idNotification, toUserId, maxParHeure 
 //   · event_update / event_invite → l'appelant ORGANISE `ref_id`, et le
 //                destinataire y est inscrit (invite : ou, à défaut, partage une
 //                conversation 1:1 avec lui — on n'invite que qui l'on peut joindre) ;
+//   · event_cancelled → l'appelant ORGANISE `ref_id`, l'activité est ANNULÉE en
+//                base (`status = 'cancelled'`), et le destinataire y est inscrit
+//                (`going`, `maybe` ou `waitlist` : ceux que la base prévient) ;
 //   · live_video → un `video_lives` de l'appelant démarré récemment, et le
 //                destinataire le SUIT ;
 //   · follow / follow_request / follow_accept → une ligne `follows` entre eux.
@@ -252,8 +257,12 @@ function recent(ligne, col, maintenant, fenetre) {
 async function organisateurDe(admin, eventId) {
   const r = await unSeul(admin, "events", [["id", eventId]]);
   if (r.erreur || !r.ligne) return null;
-  return { author: r.ligne.author_id || null, organizer: r.ligne.organizer_id || null, co: Array.isArray(r.ligne.co_organizers) ? r.ligne.co_organizers : [] };
+  return { author: r.ligne.author_id || null, organizer: r.ligne.organizer_id || null, co: Array.isArray(r.ligne.co_organizers) ? r.ligne.co_organizers : [],
+    status: r.ligne.status == null ? "" : String(r.ligne.status) };
 }
+// Les inscrits qu'une annulation prévient (`prevenir_inscrits_activite`) : une ligne
+// sans `rsvp` (colonne absente) reste une inscription, comme pour `event_update`.
+const RSVP_PREVENUS = ["going", "maybe", "waitlist"];
 const estOrganisateur = (o, uid) => !!o && (o.author === uid || o.organizer === uid || o.co.includes(uid));
 
 // ⚠️ ASTRA-24 — UNE MENTION SANS DESTINATAIRE N'EST PAS UNE MENTION.
@@ -369,6 +378,21 @@ export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maint
       if (inscrit.ligne) return { ok: true, raison: "" };
       if (k === "event_invite") return lienAppel(admin, fromUid, toUserId);
       return { ok: false, raison: "le destinataire n'est pas inscrit" };
+    }
+    if (k === "event_cancelled") {
+      if (!ref) return { ok: false, raison: "ref_id absent" };
+      const org = await organisateurDe(admin, ref);
+      if (!estOrganisateur(org, fromUid)) return { ok: false, raison: "l'appelant n'organise pas cette activité" };
+      // « Annulée » ne se pousse que d'une activité annulée EN BASE : une ligne
+      // `event_cancelled` écrite sur une activité vivante ne réveille personne.
+      if (org.status !== "cancelled") return { ok: false, raison: "l'activité n'est pas annulée" };
+      const inscrit = await unSeul(admin, "event_attendees", [["event_id", ref], ["user_id", toUserId]]);
+      if (inscrit.erreur) return { ok: false, raison: "lecture event_attendees" };
+      if (!inscrit.ligne) return { ok: false, raison: "le destinataire n'est pas inscrit" };
+      if ("rsvp" in inscrit.ligne && inscrit.ligne.rsvp != null && !RSVP_PREVENUS.includes(inscrit.ligne.rsvp)) {
+        return { ok: false, raison: "le destinataire n'est pas inscrit" };
+      }
+      return { ok: true, raison: "" };
     }
     if (k === "live_video") {
       const live = await unSeul(admin, "video_lives", [["author_id", fromUid]]);

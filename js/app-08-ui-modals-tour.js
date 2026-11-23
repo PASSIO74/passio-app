@@ -1246,26 +1246,51 @@ function _meUpdateProgress(p) {
   if (bar) bar.style.width = v + "%";
   if (pct) pct.textContent = v + " %";
 }
+// iOS : la lecture sonore exige un toucher. Un bouton DANS l'overlay de
+// progression ; `relancer` est appelé dans le gestionnaire de clic (le geste).
+function _meDemanderToucher(relancer) {
+  var d = document.getElementById("meProgressOv");
+  if (!d) return false;
+  var b = document.getElementById("meProgressToucher");
+  if (b) b.remove();
+  b = document.createElement("button");
+  b.type = "button"; b.id = "meProgressToucher"; b.className = "btn primary";
+  b.textContent = "Toucher pour préparer la vidéo";
+  b.style.cssText = "min-height:48px;min-width:220px;font-weight:800;";
+  b.addEventListener("click", function () { b.remove(); relancer(); });
+  var annuler = document.getElementById("meProgressAnnuler");
+  if (annuler) d.insertBefore(b, annuler); else d.appendChild(b);
+  return true;
+}
 function _meHideProgress() { var d = document.getElementById("meProgressOv"); if (d) d.remove(); }
 
 // Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder), avec
 // dimensions réduites et débit cible : l'encodeur ne garantit pas ce débit.
 // Rejette si le navigateur ne supporte pas ; le routage WebAudio préserve le son.
-function passioCompressVideo(file, opts, onProgress) {
-  opts = opts || {};
+// `ctl` (4ᵉ argument, facultatif) : pilotage de l'appelant — dureeMax, surCoupe,
+// surDemarrage, demanderGeste, abandon. Séparé de `opts` (profil d'encodage).
+function passioCompressVideo(file, opts, onProgress, ctl) {
+  opts = opts || {}; ctl = ctl || {};
   var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;
   return new Promise(function(resolve, reject) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
     var url = URL.createObjectURL(file);
     var actx = null; // AudioContext du routage audio (fermé au cleanup)
-    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} try { if (actx) actx.close(); } catch (e) {} }
+    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} try { if (actx) { var a = actx; actx = null; var pc = a.close(); if (pc && pc.catch) pc.catch(function () {}); } } catch (e) {} }
     var video = document.createElement("video");
     video.playsInline = true; video.preload = "auto"; video.src = url; video.volume = 0;
     video.onerror = function() { cleanup(); reject(new Error("video load failed")); };
     video.onloadedmetadata = function() {
       var dur = video.duration;
       if (!isFinite(dur) || dur <= 0) { cleanup(); reject(new Error("bad duration")); return; }
-      if (dur > 65) { cleanup(); reject(new Error("too long")); return; }
+      // ⚠️ UNE VIDÉO LONGUE SE COUPE, ELLE NE SE REFUSE PLUS (2026-11-22). La
+      // garde `dur > 65 → reject("too long")` faisait de TOUTE vidéo de
+      // galerie de plus d'une minute un refus — mesuré : une testeuse iPhone,
+      // vidéo de 34 Mo, refusée deux fois de suite. On encode les
+      // VIDEO_DUREE_MAX premières secondes (comme une story ailleurs).
+      var durMax = ctl.dureeMax || 60;
+      var coupee = dur > durMax + 0.5;
+      var durEff = coupee ? durMax : dur;
       var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
       // H.264 attend des dimensions paires : 1920×1080 ramené à 720 donnerait
       // sinon 720×405, refusé par certains encodeurs matériels.
@@ -1316,18 +1341,46 @@ function passioCompressVideo(file, opts, onProgress) {
         // Type sans paramètres codecs (virgule interdite dans une data URL — cf. _meOnRecordingStop).
         var blob = new Blob(chunks, { type: ((chunks[0] && chunks[0].type) || "video/webm").split(";")[0] });
         var r = new FileReader();
-        r.onload = function() { cleanup(); resolve(r.result); };
+        r.onload = function() { cleanup(); if (coupee && ctl.surCoupe) { try { ctl.surCoupe(durMax); } catch (_) {} } resolve(r.result); };
         r.onerror = function() { cleanup(); reject(r.error); };
         r.readAsDataURL(blob);
       };
       function draw() {
         try { ctx.drawImage(video, 0, 0, w, h); } catch (e) {}
-        if (onProgress) onProgress(Math.min(1, video.currentTime / dur));
+        if (onProgress) onProgress(Math.min(1, video.currentTime / durEff));
+        if (coupee && video.currentTime >= durEff) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} return; }
         if (!video.ended) raf = requestAnimationFrame(draw);
       }
       video.onended = function() { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} };
-      try { rec.start(); } catch (e) { cleanup(); reject(e); return; }
-      video.play().then(function() { draw(); }).catch(function(e) { try { rec.stop(); } catch (_) {} cleanup(); reject(e); });
+      // ⚠️ iOS REFUSE `play()` D'UN ÉLÉMENT SONORE HORS D'UN TOUCHER
+      // (NotAllowedError, mesuré le 2026-11-22 : 4 refus de suite sur une vidéo
+      // de 41 Mo, trop lourde pour le repli brut). Le `change` du sélecteur de
+      // fichier, suivi d'`await`, n'est plus un geste. Au lieu de rejeter, on
+      // demande UN toucher (`ctl.demanderGeste`) et on relance DANS ce geste —
+      // muter la vidéo aurait publié une vidéo sans son.
+      function lancer() {
+        try { if (actx && actx.state === "suspended") actx.resume(); } catch (_) {}
+        var p = video.play();
+        if (!p || !p.then) { demarrer(); return Promise.resolve(); }
+        return p.then(demarrer);
+      }
+      var demarre = false;
+      function demarrer() {
+        if (demarre) return; demarre = true;
+        try { rec.start(); } catch (e) { try { video.pause(); } catch (_) {} cleanup(); reject(e); return; }
+        if (ctl.surDemarrage) { try { ctl.surDemarrage(durEff); } catch (_) {} }
+        draw();
+      }
+      function echec(e) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} cleanup(); reject(e); }
+      // L'appelant qui renonce (annulation, expiration) LIBÈRE tout : sinon
+      // l'AudioContext survit, et iOS en plafonne le nombre — la vidéo suivante
+      // partirait sans son.
+      if (ctl.abandon) ctl.abandon(function () { cancelAnimationFrame(raf); echec(new Error("abandon")); });
+      lancer().catch(function(e) {
+        if (e && e.name === "NotAllowedError" && typeof ctl.demanderGeste === "function") {
+          ctl.demanderGeste(function () { lancer().catch(echec); });
+        } else echec(e);
+      });
     };
   });
 }
@@ -1354,6 +1407,7 @@ var VIDEO_COMPRESSER_AU_DELA = 2 * 1024 * 1024;   // au-delà : profil mobile 72
 var VIDEO_BRUT_MAX = 25 * 1024 * 1024;            // repli brut si la compression échoue
 var VIDEO_PLAFOND_DUR = 150 * 1024 * 1024;        // garde-fou mémoire absolu
 var VIDEO_COMPRESSION_DELAI_MAX = 90000;          // au-delà : la compression n'a pas de verdict
+var VIDEO_DUREE_MAX = 60;                         // secondes encodées ; au-delà la vidéo est COUPÉE
 
 function _erreurVideo(motif) {
   var e = new Error("video-refusee");
@@ -1386,7 +1440,7 @@ async function passioVideoPourEnvoi(file) {
   var transcodageRequis = _isWebm && _canMp4;
   if (file.size <= VIDEO_COMPRESSER_AU_DELA && !transcodageRequis) return retourVideoPreparee(file, await _meReadFile(file), "original");
   if (file.size > VIDEO_PLAFOND_DUR) {
-    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo de moins d'une minute.");
+    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo plus légère.");
   }
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
@@ -1407,11 +1461,26 @@ async function passioVideoPourEnvoi(file) {
     // appliquer le patron `Promise.race` que le même lot cite ailleurs
     // (`_referentielEnCours`, passions-flat.js). L'expiration retombe dans le
     // `catch` ci-dessous : repli brut sous 25 Mo, sinon refus NOMMÉ.
-    var _minuteur;
+    var _minuteur, _expirer, _abandonner = null, _coupeA = 0;
+    // Le minuteur ne compte que le TRAVAIL : il se suspend pendant qu'on attend
+    // le toucher (iOS) et se ré-arme au démarrage réel, à la durée encodée
+    // + marge — un délai fixe de 90 s coupait une vidéo de 60 s sur un
+    // téléphone lent.
+    function _armer(ms) { clearTimeout(_minuteur); _minuteur = setTimeout(_expirer, ms); }
     var dataUrl = await Promise.race([
-      passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress),
+      passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress, {
+        dureeMax: VIDEO_DUREE_MAX,
+        surCoupe: function (s) { _coupeA = s; },
+        surDemarrage: function (d) { _armer(Math.max(VIDEO_COMPRESSION_DELAI_MAX, Math.round(d * 1000) + 45000)); },
+        abandon: function (f) { _abandonner = f; },
+        demanderGeste: function (relancer) {
+          if (_meDemanderToucher(function () { _armer(VIDEO_COMPRESSION_DELAI_MAX); relancer(); })) clearTimeout(_minuteur);
+          else _expirer();
+        }
+      }),
       new Promise(function (_r, rej) {
-        _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
+        _expirer = function () { rej(new Error("compression-sans-verdict")); };
+        _armer(VIDEO_COMPRESSION_DELAI_MAX);
       }),
       _annulation
     ]);
@@ -1419,7 +1488,8 @@ async function passioVideoPourEnvoi(file) {
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
     // Réencoder une source déjà efficace peut la grossir. Garder l'original,
     // sauf conversion WebM→MP4 nécessaire à la compatibilité iPhone.
-    if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
+    if (_coupeA) { try { toast("Vidéo coupée aux " + _coupeA + " premières secondes"); } catch (_) {} }
+    else if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
       return retourVideoPreparee(file, await _meReadFile(file), "original_plus_petit");
     }
     return retourVideoPreparee(file, dataUrl, transcodageRequis ? "transcodage" : "compression");
@@ -1438,12 +1508,14 @@ async function passioVideoPourEnvoi(file) {
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
-    // ⚠️ Le motif le plus fréquent n'est PAS la taille : `passioCompressVideo`
-    // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
-    // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
-    throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
+    // Une vidéo longue n'est plus un motif de refus (coupée à VIDEO_DUREE_MAX,
+    // 2026-11-22) : ici, c'est l'appareil qui n'a pas su l'encoder.
+    throw _erreurVideo("Vidéo impossible à optimiser sur cet appareil (" + mo + " Mo). Réessaie avec une vidéo de moins d'une minute, ou filme directement dans l'app.");
   } finally {
     clearTimeout(_minuteur);
+    // Annulée ou expirée : le compresseur encore en vol libère son AudioContext
+    // (sans effet s'il a déjà conclu : `echec` sur une promesse réglée).
+    if (_abandonner && !dataUrl) { try { _abandonner(); } catch (_) {} }
     // ⚠️ UN SEUL POINT DE RETRAIT. Il était appelé sur les deux branches, ce qui
     // laissait une troisième sortie découverte : un `return`/`throw` ajouté plus
     // tard dans le `try`. Un overlay plein écran qui survit à sa cause n'est pas
@@ -5480,6 +5552,14 @@ async function _publierAvecEssais(post, maxRetries) {
         console.warn("publication refusée par la clé étrangère :", e.message || e);
         return _pubDone(false);
       }
+      // PT409 = identifiant déjà porté par une autre publication, activité, commentaire ou
+      // fil (déclencheur zz_identifiant_sans_homonyme, 2026-11-22). Définitif aussi : le
+      // rejouer toutes les 45 s ne changerait rien. La publication est marquée « refusée ».
+      if (e && String(e.code) === "PT409") {
+        window._passioEchecPublication = "identifiant_pris";
+        console.warn("publication refusée : identifiant déjà utilisé :", e.message || e);
+        return _pubDone(false);
+      }
       if (attempt === maxRetries) return _pubDone(false);
 
       // Attendre avant retry
@@ -6343,6 +6423,31 @@ function _filCompteursErreurPassagere(err, status) {
   if (Number.isFinite(st) && st >= 400 && st < 500 && st !== 401 && st !== 408 && st !== 429) return false;
   return true;
 }
+// ── D14-01, SUITE (2026-11-22) : LES LECTURES GROUPÉES ───────────────────────
+// Réactions (`interactions_cibles`) et stories (`story_activite`,
+// `story_commentaires_lire`, `story_nb_commentaires`) : des fonctions qui
+// appliquent la MÊME règle de lecture que la table, mais décident la visibilité
+// une fois par cible au lieu d'une fois par ligne.
+// Rend la réponse de la fonction, ou `null` quand il faut reprendre la lecture
+// d'avant : fonction absente (base pas encore migrée) ou refusée DURABLEMENT,
+// mémorisé pour la session. ⚠️ Une erreur PASSAGÈRE (charge, réseau) est rendue
+// telle quelle : elle ne rouvre JAMAIS la lecture d'avant, plus coûteuse — c'est
+// la leçon du repli du fil (contre-vérification du 2026-11-20).
+var _lecturesGroupeesIndispo = {};
+// La borne de cibles de `interactions_cibles` (migration du 2026-11-22).
+const INTERACTIONS_CIBLES_MAX = 300;
+async function _lectureGroupee(nom, params) {
+  if (_lecturesGroupeesIndispo[nom]) return null;
+  var r = null;
+  try { r = await supa.rpc(nom, params); } catch (e) { return { data: null, error: { message: String((e && e.message) || e) } }; }
+  if (!r) return { data: null, error: { message: "réponse vide" } };
+  if (r.error && !_filCompteursErreurPassagere(r.error, r.status)) {
+    _lecturesGroupeesIndispo[nom] = true;
+    try { diagLog("lecture_groupee_indisponible " + nom + " " + String(r.error.code || r.status || "")); } catch (_e) {}
+    return null;
+  }
+  return r;
+}
 // ⚠️ UN SEUL RECUL POUR LA FONCTION, QUEL QUE SOIT L'APPELANT (contre-revue du
 // 2026-11-20). Le fil (`_chargerComplementsFil`) et les cartes (app-03,
 // `_postLikeLireGroupe`) appellent la même fonction : chacun tapait la fonction
@@ -6677,7 +6782,14 @@ async function supaLoadCommentInteractions(commentIds) {
     // l'identifiant de la ligne ; c'est cette lecture qui permet de savoir ce
     // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
     // compte ne se voit avant la réouverture de la discussion.
-    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    // D14-01 (2026-11-22) : la fonction groupée d'abord (visibilité une fois par
+    // couple commentaire/fil), la lecture d'avant si elle est indisponible. ⚠️ La
+    // fonction ne lit que 300 cibles : au-delà, celles qui manqueraient paraîtraient
+    // sans interaction — la lecture d'avant prend alors toute la liste.
+    var res = uniq.length <= INTERACTIONS_CIBLES_MAX
+      ? await _lectureGroupee("interactions_cibles", { _comment_ids: uniq, _kinds: null, _limite: 1000 })
+      : null;
+    if (!res) res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
     if (!res || res.error) {
       try { diagLog("ci_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
       return null;
@@ -10596,6 +10708,15 @@ async function supaStoryMesJaime(ids) {
 async function supaStoryActivite(storyId) {
   try {
     var id = String(storyId);
+    // D14-01 (2026-11-22) : un appel, la propriété de la story décidée une fois.
+    var g = await _lectureGroupee("story_activite", { _story_id: id });
+    if (g) {
+      if (g.error || !g.data || typeof g.data !== "object") return { erreur: true };
+      return {
+        vues: (Array.isArray(g.data.vues) ? g.data.vues : []).filter(function (v) { return v && v.user_id !== MY_UID; }).map(function (v) { return { userId: v.user_id, at: supaTs(v.seen_at) }; }),
+        jaime: (Array.isArray(g.data.jaime) ? g.data.jaime : []).filter(function (u) { return typeof u === "string"; }),
+      };
+    }
     var rv = await supa.from("story_views").select("user_id, seen_at").eq("story_id", id).order("seen_at", { ascending: false }).limit(500);
     var rl = await supa.from("story_likes").select("user_id").eq("story_id", id).limit(1000);
     if (!_storyIxNoter(rl)) return { absente: true };
@@ -10608,14 +10729,19 @@ async function supaStoryActivite(storyId) {
 }
 async function supaStoryCommentaires(storyId) {
   try {
-    var r = await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
-    if (!_storyIxNoter(r)) return { absente: true };
+    // D14-01 (2026-11-22) : propriété et visibilité de la story décidées une fois.
+    var g = await _lectureGroupee("story_commentaires_lire", { _story_id: String(storyId), _limite: 300 });
+    var r = g || await supa.from("story_comments").select("id, author_id, content, created_at").eq("story_id", String(storyId)).order("created_at", { ascending: true }).limit(300);
+    if (!g && !_storyIxNoter(r)) return { absente: true };
     if (r.error) return { erreur: true };
     return { liste: (r.data || []).map(function (c) { return { id: c.id, authorId: c.author_id, text: c.content || "", at: supaTs(c.created_at) }; }) };
   } catch (e) { return { erreur: true }; }
 }
 async function supaStoryNbCommentaires(storyId) {
   try {
+    // D14-01 (2026-11-22) : un compte en un appel, sans contrôle de visibilité par ligne comptée.
+    var g = await _lectureGroupee("story_nb_commentaires", { _story_id: String(storyId) });
+    if (g) return (!g.error && typeof g.data === "number") ? g.data : null;
     var r = await supa.from("story_comments").select("id", { count: "exact", head: true }).eq("story_id", String(storyId));
     if (!_storyIxNoter(r) || r.error) return null;
     return typeof r.count === "number" ? r.count : null;

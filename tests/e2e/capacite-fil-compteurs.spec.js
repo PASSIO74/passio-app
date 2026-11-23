@@ -79,6 +79,12 @@ async function preparer(page, opts = {}) {
       });
     }
     supa.rpc = (fn, args, options) => {
+      // `interactions_cibles` (D14-01, 2026-11-22) : servie par le même modèle que la
+      // lecture d’avant, avec les mêmes filtres — la doublure ne change pas de modèle.
+      if (fn === "interactions_cibles") {
+        let q = supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", args._comment_ids || []);
+        return args._kinds ? q.in("kind", args._kinds).limit(args._limite) : q.order("created_at", { ascending: true });
+      }
       if (options && (options.get || options.head)) throw new Error("fil_compteurs doit partir en POST : un identifiant peut porter une virgule ou une accolade");
       __rpc.push({ fn, args });
       if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });

@@ -39,6 +39,7 @@
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 - 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 - 🧯 D14-01 — SOUS SATURATION, LE CLIENT RECULE AU LIEU DE PRENDRE LE CHEMIN COÛTEUX (2026-11-20)
+- 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
 
 ---
 
@@ -3255,3 +3256,61 @@ chemins du CLIENT ramenaient le coût par ligne au moment même de la saturation
 
 Verrou : `tests/e2e/securite-p1-client-2026-11-20.spec.js` (13 cas ; 6 rouges sur le client d'avant,
 et chacune des huit corrections de la contre-revue réinjectée fait rougir son cas).
+
+## 🧮 D14-01, SUITE — RÉACTIONS ET STORIES EN UN APPEL GROUPÉ, ET LA MESURE « 5 000 J'AIME » (2026-11-22)
+
+Après `fil_compteurs` (15/11) et le recul du client (20/11), trois lectures payaient encore une fonction de visibilité SECURITY DEFINER **par ligne**, même quand toutes les lignes visaient la même cible :
+- `comment_interactions` (`supaLoadCommentInteractions`, la vérification `_ciVerifierReactionsPost`) : `comment_target_visible` → `post_is_visible`, cinq à six lectures d'index par ligne ;
+- `story_likes` et `story_views` (`supaStoryActivite`) : `story_est_a_moi` par ligne ;
+- `story_comments` (`supaStoryCommentaires`, `supaStoryNbCommentaires`) : `story_est_a_moi` et `story_visible` par ligne.
+
+**Mesuré au staging le 22/11, avec de vrais jetons** (une publication à 5 000 « j'aime », un commentaire à 500 réactions ; temps serveur relevé dans `pg_stat_statements`) :
+
+| Lecture | Serveur | Client |
+|---|---|---|
+| `HEAD post_likes count=exact` (le compteur de carte d'avant le 20/11) | 667 ms par appel | 833 ms |
+| `fil_compteurs` (le chemin corrigé), 5 000 comptés exactement | 3,3 ms par appel | 75 ms |
+| `GET comment_interactions`, 500 lignes | 177 ms par appel | 286 ms |
+
+- `migration_capacite_lectures_groupees_2026-11-22.sql` ajoute quatre fonctions, construites comme `fil_compteurs` :
+  - `interactions_cibles` décide la visibilité une fois par couple (commentaire, fil), avec au plus 300 cibles et 1 000 lignes ;
+  - `story_activite`, `story_commentaires_lire` et `story_nb_commentaires` décident la propriété et la visibilité de la story une fois.
+  Le contrôle de blocage reste par ligne : il porte sur l'auteur de chaque ligne.
+  Elles appellent les fonctions de visibilité EXISTANTES et n'en recopient aucune.
+- Leur garde compare les cinq règles de lecture des quatre tables, au caractère près, à celles relues le 22/11. Une règle ajoutée ou modifiée rendrait les fonctions non équivalentes, et la migration refuse alors de s'appliquer.
+- Client (`_lectureGroupee`, app-08) : la fonction d'abord. On reprend la lecture d'avant seulement si la fonction est absente ou refusée durablement (PGRST202, 42501), et ce choix est mémorisé pour la session. ⚠️ Une erreur PASSAGÈRE (5xx, réseau) n'y retourne JAMAIS : la lecture est rendue échouée, et c'est la règle du 20/11. Au-delà de 300 cibles, on garde la lecture d'avant, pour ne perdre aucune cible.
+- Bancs :
+  - `tests/sql/migration-capacite-lectures-groupees-2026-11-22.test.sh` compte les appels de visibilité avant et après, et compare ligne à ligne le résultat de chaque fonction à la lecture sous règle, pour quatre identités ;
+  - `tests/e2e/lectures-groupees-2026-11-22.spec.js` (6 cas) : 5 rougissent quand la fonction n'est jamais appelée, et 2 quand une erreur passagère rouvre la lecture d'avant.
+
+⚠️ **UNE RÈGLE DE LECTURE QUI APPELLE UNE FONCTION SE PAIE PAR LIGNE, PAS PAR CIBLE.** PostgreSQL ne retient pas le résultat d'une fonction SECURITY DEFINER d'une ligne à l'autre, même quand l'argument ne change pas. Une lecture qui ramène beaucoup de lignes d'une même cible passe par une fonction qui décide la cible une fois (`materialized`), et cette fonction recopie la RÈGLE, pas la visibilité.
+
+## 🪦 UN CACHE SUPPRIMÉ REVIENT PAR `caches.open` : ④ ROUGISSAIT SUR UN CACHE DE A RECRÉÉ VIDE (2026-11-22)
+
+**Le symptôme.** `app-scripts-par-fichier.spec.js` ④ a rougi trois fois d'affilée sur le run `main` 45050821716
+(commit `515e7f42`), est passé au second essai, et a fait sauter une fois « Déploiement production ». Message :
+« prémisse : le cache de A a été vidé », `caches.keys()` = `["passio-v<B>", "passio-v<A>"]`.
+
+**La cause n'était pas une suppression en retard.** `caches.keys()` rend l'ordre de CRÉATION : A listé après B
+a été RECRÉÉ après la suppression. Un `expect.poll` aurait attendu en vain : personne ne le supprime une seconde
+fois. Le recréateur est la page A : `purgerCaches` (app-02, médias protégés) tourne sur `updatefound`, sur
+`PASSIO_PRIVATE_MEDIA_PREPARE_UPDATE` et sur `controllerchange`, lit `caches.keys()` puis fait `caches.open(nom)`
+— et **`open` crée un cache absent**. Mesuré en local (journal des appels de la page) : une purge ouvre A
+**2 à 6 ms avant `controllerchange`**, à chaque passe ; que la suppression de B passe entre `keys()` et `open()`
+suffit, ce que fait une machine CI chargée (trois fois de suite sur la même). Un `caches.open(A)` après la
+bascule reproduit le rouge à l'octet. Côté worker A, aucun rangement n'était en vol : ses seules requêtes après
+le rechargement (la page, le SDK) se rangent avant `load`.
+
+**Effet produit : nul à l'œil.** Le cache revenu est VIDE, rien de A n'y est servi, et l'activation suivante le
+supprime (`activate` efface tout nom ≠ `CACHE`). Fermer la course dans la page demanderait de sérialiser purge et
+activation (Web Locks, partagés par la page et le worker), donc de faire attendre l'activation de tous les
+appareils derrière une purge : un coût hors de proportion avec un cache vide.
+
+**Le correctif (test seul).** La prémisse exige ce qu'elle dit : le cache de B présent, plus AUCUNE entrée hors
+de lui (contenu montré en cas d'échec), en `expect.poll` borné à 5 s. Mutation : sans la suppression des anciens
+caches (`activate`, sw.js) → rouge sous Chromium ET WebKit (A garde ses 16 entrées). Sur la forme exacte du
+rouge de la CI (A recréé vide) → vert. Suite complète : 15/15.
+
+**À retenir.** Un nom dans `caches.keys()` ne prouve pas que la version existe encore, et `keys()` puis
+`open(nom)` côté page ressuscite ce que le worker vient de supprimer. Sur des caches, asserter le CONTENU,
+jamais la liste des noms.
