@@ -728,8 +728,8 @@ test.describe("Le village — 10 comptes, partage de contenu et activités", () 
       });
       await verifier("B19c", "Kevin, bloqué par Léa, ne lit pas la carte de son activité, même en interrogeant l'API avec sa session (la clé anon seule lit tout : hors lot)", async () => {
         if (!partageEvt) return { ok: false, detail: "pas de carte à éprouver" };
-        const n = await lirePost(KEVIN, partageEvt.id);
-        return { ok: n === 0, detail: `${n} ligne(s) lisible(s)` };
+        const r = await lirePost(KEVIN, partageEvt.id);
+        return { ok: !r.erreur && r.n === 0, detail: r.erreur ? `lecture en erreur : ${r.erreur}` : `${r.n} ligne(s) lisible(s)` };
       });
       await capturer("B-activite", [LEA, INES, JADE, TOM]);
 
