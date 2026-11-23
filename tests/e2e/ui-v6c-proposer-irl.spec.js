@@ -86,7 +86,20 @@ test.describe("UI-6C — Proposer un IRL depuis une conversation", () => {
     expect(errors.js, "exceptions JS").toEqual([]);
   });
 
-  test("groupe : aucune entrée — proposer un IRL n'y a pas le même sens", async ({ page }) => {
+  // 2026-11-23 (2) : un groupe ordinaire a l'entrée (invitation du groupe,
+  // membres pré-cochés — `invitation-plusieurs.spec.js` ⑥). Sous la coupure de
+  // l'invitation, le comportement d'avant revient : aucune entrée en groupe.
+  test("groupe : l'entrée existe (invitation du groupe)", async ({ page }) => {
+    await boot(page);
+    await ouvrirConv(page, "v6c_groupe");
+    expect(await page.evaluate(() => {
+      const n = document.getElementById("v6cProposerIrl");
+      return !!n && !n.hidden;
+    })).toBe(true);
+  });
+
+  test("groupe sous la coupure de l'invitation : aucune entrée", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("passio_invite_conv_v1", "0"));
     await boot(page);
     await ouvrirConv(page, "v6c_groupe");
     expect(await page.evaluate(() => {
