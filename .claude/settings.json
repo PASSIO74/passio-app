@@ -67,21 +67,21 @@
         "source": "github",
         "repo": "upstash/context7"
       },
-      "autoUpdate": true
+      "autoUpdate": false
     },
     "chrome-devtools-plugins": {
       "source": {
         "source": "github",
         "repo": "ChromeDevTools/chrome-devtools-mcp"
       },
-      "autoUpdate": true
+      "autoUpdate": false
     },
     "supabase-agent-skills": {
       "source": {
         "source": "github",
         "repo": "supabase/agent-skills"
       },
-      "autoUpdate": true
+      "autoUpdate": false
     }
   },
   "enabledPlugins": {
