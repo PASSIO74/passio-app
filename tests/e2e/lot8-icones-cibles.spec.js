@@ -5,6 +5,7 @@
 //        garde ces trois choses.
 //   ② SOC-C02 : le panneau de conversation fermé n'est ni tabulable ni exposé.
 //   ③ SOC-C01 : les commandes relevées par l'audit font 44 px de haut.
+//   ④ un j'aime reçu d'un autre compte peint le cœur rouge (2026-11-23).
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -85,4 +86,40 @@ test("③ SOC-C01 : les commandes relevées font 44 px de haut", async ({ page }
     return out;
   });
   for (const [k, v] of Object.entries(hauteurs)) expect(v, k).toBeGreaterThanOrEqual(44);
+});
+
+test("④ un j'aime d'un AUTRE compte peint le cœur rouge plein ; zéro j'aime le laisse vide", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const lire = (liked, n) => {
+      const d = document.createElement("span");
+      d.className = "post-action" + (liked ? " liked" : "");
+      d.innerHTML = contenuLikePost(liked, n);
+      document.body.appendChild(d);
+      const svg = d.querySelector("svg.pa-ico");
+      const out = { fill: svg.getAttribute("fill"), color: getComputedStyle(svg).color };
+      d.remove();
+      return out;
+    };
+    // Le REPEINT réel : je retire mon j'aime d'une publication qu'un autre aime
+    // encore (2 → 1) → cœur toujours rouge, nombre plus rouge ; dernier retrait
+    // (1 → 0) → cœur vide.
+    const d = document.createElement("span");
+    d.className = "post-action";
+    document.body.appendChild(d);
+    const etat = () => { const svg = d.querySelector("svg.pa-ico"); return { fill: svg.getAttribute("fill"), color: getComputedStyle(svg).color, liked: d.classList.contains("liked") }; };
+    peindreLikePost(d, true, 2); const aime = etat();
+    peindreLikePost(d, false, 1); const retire = etat();
+    peindreLikePost(d, false, 0); const vide = etat();
+    d.remove();
+    return { autre: lire(false, 1), moi: lire(true, 1), zero: lire(false, 0), aime, retire, vide };
+  });
+  expect(r.aime).toEqual({ fill: "currentColor", color: "rgb(239, 68, 68)", liked: true });
+  expect(r.retire).toEqual({ fill: "currentColor", color: "rgb(239, 68, 68)", liked: false });
+  expect(r.vide.fill).toBe("none");
+  expect(r.vide.liked).toBe(false);
+  expect(r.autre).toEqual({ fill: "currentColor", color: "rgb(239, 68, 68)" });
+  expect(r.moi).toEqual({ fill: "currentColor", color: "rgb(239, 68, 68)" });
+  expect(r.zero.fill).toBe("none");
+  expect(r.zero.color).not.toBe("rgb(239, 68, 68)");
 });
