@@ -238,7 +238,8 @@ const JETABLES_INSCRITS = {
 // Les suites qui créent ou suppriment des comptes PAR ELLES-MÊMES (opt-in, hors
 // passage CI), et pourquoi elles restent hors du jeu.
 const CHEMINS_PROPRES_INSCRITS = {
-  "village-10-comptes.spec.js": "opt-in PASSIO_E2E_VILLAGE (jamais en CI) ; comptes jetables à préfixe de séance — retouché par la PR #1018, laissé tel quel",
+  "village-10-comptes.spec.js": "opt-in PASSIO_E2E_VILLAGE (jamais en CI) ; comptes jetables à préfixe de séance — le passer au jeu est la suite de la décision 4",
+  "village-100-hybride.spec.js": "opt-in PASSIO_E2E_VILLAGE100 (jamais en CI, #1018) ; ses 4 yeux sont créés par l'API d'administration et purgés par campagne — même suite de la décision 4",
 };
 const CREATION_DIRECTE = [/auth\/v1\/admin\/users[`'"]\s*,\s*\{\s*method:\s*["']POST/, /\bauth\s*\.\s*signUp\s*\(/, /auth\/v1\/signup/];
 const SUPPRESSION_DIRECTE = /auth\/v1\/admin\/users\/["'`]?\s*\+|admin\/users\/\$\{[^}]+\}`\s*,\s*\{\s*method:\s*["']DELETE/;

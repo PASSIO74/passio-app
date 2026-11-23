@@ -74,6 +74,12 @@ ne descend pas sous 10 %.
 À faire (code) : un jeu nommé de comptes de staging, purgé de ses contenus entre
 deux passages mais jamais supprimé, pour l'e2e et le village.
 
+État au 23/11 : **e2e fait** (`tests/e2e/comptes-persistants.js`, détail et mesures
+dans `docs/STAGING.md`). Mesuré avant : 48 comptes créés par passage `test-prod`,
+~82 passages par semaine. Après : 0 par passage une fois le jeu amorcé (6 comptes au
+plus), sauf le compte jetable que `suppression-compte` détruit (1 par passage) ; 0
+pour le canari de la sentinelle. **Reste : le village** (à 10 et à 100), opt-in.
+
 ### 5. D15-01 — Capacité au-delà de 200 simultanés → d'abord le gratuit
 
 Décision : **pas d'environnement payant maintenant.** D'abord ce que l'audit
