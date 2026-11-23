@@ -5573,8 +5573,34 @@ function _activiteDejaAuFil(evId) {
     || (p.authorId === MY_UID && p.sharedReelData && p.sharedReelData.kind === "event" && p.sharedReelData.id === evId))));
 }
 
+// ── « Publier aussi dans le fil » : un CHOIX, plus un automatisme (2026-11-23) ──
+// Demande de Benjamin : une invitation envoyée depuis une conversation partait
+// aussi en carte dans le fil Découvrir. Le formulaire porte une case (`#evAuFil`),
+// cochée pour une création ordinaire (comportement d'avant), DÉCOCHÉE quand on
+// invite depuis une conversation. Une activité refusée au fil est mémorisée dans
+// `state.user.activitesHorsFil` (synchronisé avec l'état du compte, donc vu par
+// ses autres appareils) : ni la création ni le rattrapage ne la publient.
+// Sans la case (ancien formulaire, coupure), le défaut reste « au fil ».
+var ACTIVITES_HORS_FIL_MAX = 200;
+function _lireChoixAuFil() {
+  const c = document.getElementById("evAuFil");
+  return c ? !!c.checked : true;
+}
+function marquerActiviteHorsFil(evId) {
+  if (!evId || !state.user) return;
+  const l = Array.isArray(state.user.activitesHorsFil) ? state.user.activitesHorsFil : [];
+  if (l.indexOf(evId) === -1) l.push(evId);
+  state.user.activitesHorsFil = l.slice(-ACTIVITES_HORS_FIL_MAX);
+  saveState();
+}
+function _activiteHorsFil(evId) {
+  const l = state.user && state.user.activitesHorsFil;
+  return Array.isArray(l) && l.indexOf(evId) > -1;
+}
+
 async function publierActiviteAuFil(ev) {
   if (!ev || !ev.id || !_activiteAuFilActive()) return false;
+  if (_activiteHorsFil(ev.id)) return false;
   if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return false;
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return false;
   const postId = _postIdActiviteAuFil(ev.id);
@@ -5614,6 +5640,7 @@ async function rattraperActivitesAuFil(events) {
   const vus = new Set();
   const candidates = events.filter(ev => {
     if (!ev || !ev.id || ev.fromSupabase !== true) return false;
+    if (_activiteHorsFil(ev.id)) return false;
     if ((ev.organizerId || ev.authorId) !== MY_UID || ev.authorId !== MY_UID) return false;
     if ((ev.status || "active") !== "active") return false;
     if (!(Number(ev.date) > maintenant)) return false;
@@ -6768,6 +6795,10 @@ function poserInvitationFormulaire(convId) {
 
   var publier = racine.querySelector('button[onclick^="submitEvent"]');
   var libelleAvant = publier ? publier.textContent : "";
+  // Une invitation n'est PAS une annonce : la carte du fil est décochée par
+  // défaut (2026-11-23) ; la personne peut la cocher.
+  var caseFil = document.getElementById("evAuFil");
+  if (caseFil) caseFil.checked = false;
   if (publier) publier.textContent = "Créer et inviter " + nom;
 
   bandeau.querySelector(".ev-invite-bandeau-x").addEventListener("click", function () {
@@ -6776,6 +6807,7 @@ function poserInvitationFormulaire(convId) {
     if (titre && avant.titre) titre.textContent = avant.titre;
     if (sous && avant.sous) sous.textContent = avant.sous;
     if (publier && libelleAvant) publier.textContent = libelleAvant;
+    if (caseFil) caseFil.checked = true;
     try { if (window.tel && tel.action) tel.action("invite_conv_retiree", { v: 1 }); } catch (e) {}
   });
   try { if (window.tel && tel.action) tel.action("invite_conv_posee", { v: 1 }); } catch (e) {}
@@ -7280,6 +7312,10 @@ function openCreateEvent(editId) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
+    ${editId ? "" : `<label class="ev-au-fil" for="evAuFil">
+      <input type="checkbox" id="evAuFil" checked/>
+      <span><strong>Publier aussi dans le fil Découvrir</strong><small>Une carte de l'activité apparaît dans le fil de tes abonnés.</small></span>
+    </label>`}
     <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "Enregistrer les modifications" : "Publier"}</button>
   `);
 
@@ -7755,6 +7791,8 @@ async function submitEvent(editId) {
   // Invitation d'une conversation : lue elle aussi AVANT closeModal (le bandeau
   // vit dans le formulaire), et jamais à l'édition.
   const inviteConv = editId ? null : lireInvitationFormulaire();
+  // Le choix « Publier aussi dans le fil » (2026-11-23) : lu au même moment.
+  const auFil = editId ? false : _lireChoixAuFil();
 
   closeModal();
   toast(editId ? "Enregistrement…" : "Publication en cours…");
@@ -7842,7 +7880,10 @@ async function submitEvent(editId) {
   if (inviteConv) envoyerInvitationActivite(ev, inviteConv, ok && backend);
   else if (ok && backend && !editId) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
-  if (ok && backend && !editId) publierActiviteAuFil(ev);
+  // …seulement si la personne l'a choisi (« Publier aussi dans le fil »). Refusée,
+  // l'activité est notée HORS FIL : le rattrapage ne la publiera jamais non plus.
+  if (!editId && !auFil) [ev].concat(extraOccurrences).forEach(o => marquerActiviteHorsFil(o.id));
+  if (ok && backend && !editId && auFil) publierActiviteAuFil(ev);
   // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation
   // n'avait pas ouvert la discussion elle-même, aucun participant ne pouvait y
   // entrer (« La discussion n'est pas encore ouverte… »). Elle est créée ICI,

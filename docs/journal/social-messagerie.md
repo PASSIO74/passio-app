@@ -1161,3 +1161,13 @@ publication, la fenêtre générique « Inviter mes amis ». Il voulait « je cr
 
 Coupures : `localStorage.passio_invite_conv_v1="0"` · `window.PASSIO_INVITE_CONV=false`.
 Verrou : `tests/e2e/invitation-conversation.spec.js` (9).
+
+**Suite du jour — « Publier aussi dans le fil » devient un CHOIX.** Benjamin : « quand j'ai fait
+l'invitation, elle s'est publiée dans le feed ; il faut demander si je veux qu'elle soit publiée ».
+Le formulaire porte la case `#evAuFil` : cochée pour une création ordinaire (comportement d'avant),
+DÉCOCHÉE quand on invite depuis une conversation. Refusée, l'activité entre dans
+`state.user.activitesHorsFil` (synchronisé avec l'état du compte) : `publierActiviteAuFil` la refuse,
+donc ni la création ni `rattraperActivitesAuFil` (7 jours) ne la publient. ⚠️ Le piège était le
+RATTRAPAGE : ne pas publier à la création ne suffisait pas, il aurait reposté la carte à la
+prochaine ouverture. L'activité reste dans « Rencontrer » : `events` est en lecture publique, une
+activité vraiment privée demanderait une migration RLS. Verrous ⑨ et ⑩ de `invitation-conversation.spec.js`.
