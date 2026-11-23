@@ -3057,3 +3057,53 @@ du réveil était épuisé.
 **Règle : un cron GitHub n'est jamais la cadence d'une machine qui doit tourner « constamment » —
 pg_cron décide, GitHub exécute ; et le seuil qui dit « elle ne tourne plus » se déduit de la cadence
 réelle, jamais de celle qu'on a écrite dans le YAML.**
+
+## 🔑 2026-11-23 — LE JETON DE LA SENTINELLE EST VIVANT MAIS N'ÉCRIT PLUS : DEUXIÈME PASSAGE ROUGE, AUCUN CODE À CORRIGER
+
+Réparation demandée depuis le pilotage sur le passage [45162691430](https://github.com/PASSIO74/passio-app/actions/runs/45162691430)
+(`sentinelle-autonome.yml`, `main`, commit `32cff927`, 2026-11-23T11:10:08Z, une seule tentative).
+**Aucun code n'a été changé, délibérément** : la cause est un réglage GitHub, et le seul verrou qui
+l'aurait attrapée vit dans `.github/` — hors de ce qu'un run de réparation a le droit d'écrire.
+
+- **Symptôme** (DONNÉE, journal du job « Détecter un défaut de production », étape « Veilleur
+  d'enquête ») : `failed to update https://github.com/PASSIO74/passio-app/issues/1031: GraphQL:
+  Resource not accessible by personal access token (addLabelsToLabelable)`, puis `failed to update
+  1 issue`, puis `Process completed with exit code 1`.
+- **Cause, lue dans le code du workflow** : dans le veilleur, une SEULE écriture part au jeton
+  personnel — `GH_TOKEN="${JETON_SENTINELLE}" gh issue edit … --add-label claude` (branche A2 de
+  relance, > 20 min sans run ni PR). Le `github.token` du job a `issues: write` (bloc `permissions`)
+  et GitHub nomme ses refus « by integration », jamais « by personal access token » : l'échec ne peut
+  venir que du PAT fin `SENTINELLE_TOKEN`, qui n'a plus la permission **Issues: Read and write** sur
+  `PASSIO74/passio-app` (accès au dépôt retiré, ou jeton renouvelé sans elle). Même famille que le
+  `PILOTAGE_GITHUB_TOKEN` des 24 et 25/10, autre jeton, même permission manquante.
+- **Pourquoi le contrôle d'amont ne l'a pas vue** : l'étape « Le jeton est-il vivant ? » ne mesure que
+  l'IDENTITÉ (`gh api user`), à laquelle un PAT fin dépourvu de toute permission de dépôt répond
+  **200**. Le run passe le contrôle au vert et meurt à la première écriture.
+- **Les deux dégâts, lus dans le code** : ① le veilleur retire le label `claude` (`github.token`,
+  `|| true`) AVANT de le reposer au PAT — l'enquête #1031 a donc PERDU son label sans le retrouver,
+  et `sentinelle-relancee` (ligne suivante) n'est jamais posé, si bien que le même chemin est rejoué
+  à chaque passage jusqu'aux 6 h de l'escalade ; ② `set -euo pipefail` et des `if:` sans `always()`
+  font sauter **« Lire la production »** : le passage ne lit RIEN, et le rouge n'est pas « un label
+  en moins », c'est la surveillance arrêtée.
+- **Deuxième occurrence** : le run [45143863909](https://github.com/PASSIO74/passio-app/actions/runs/45143863909)
+  avait déjà échoué sur la même ligne et la même issue, et son run de réparation a inscrit le n° 14
+  de `docs/SENTINELLE_AUTONOME.md`. Le défaut revient donc à chaque passage : **le geste humain
+  n'a pas encore été fait**, et aucun correctif de code ne peut le remplacer.
+- **Geste (humain, 2 min)** : github.com/settings/tokens → le PAT `SENTINELLE_TOKEN` → *Repository
+  access* : `PASSIO74/passio-app`, *Permissions* : **Issues: Read and write** ; si le jeton est
+  régénéré, le recoller dans Settings > Secrets and variables > Actions. Le passage suivant repart
+  seul ; l'issue `[SENTINELLE MUETTE]` se referme au premier run où « Lire la production » rend
+  vraiment un verdict.
+- **Verrou à poser quand `.github/` sera ouvert à un écrivain** (écrit ici pour ne pas le réinventer) :
+  faire PROUVER au jeton qu'il écrit à l'étape « Le jeton est-il vivant ? » — pose puis retrait d'un
+  label sur une issue témoin, run rouge NOMMANT la permission manquante — et empêcher qu'une écriture
+  du veilleur emporte la lecture de la production (`continue-on-error` sur le veilleur, ou `if:
+  always()` sur « Lire la production »). Tant que le contrôle ne mesure que l'identité, « jeton
+  valide » ne veut pas dire « jeton autorisé ».
+- **Pas touché, et pourquoi** : la règle durable tiendrait en une ligne de CLAUDE.md (section
+  « Journal par domaine »), mais le fichier fait **39 981 caractères pour un plafond de 40 000**
+  (`scripts/audit-claude-md.js`) : y ajouter une ligne rendrait `npm run verif` rouge. À faire au
+  prochain dégraissage de CLAUDE.md.
+
+**Règle : `gh api user` mesure QUI est le jeton, jamais CE QU'IL A LE DROIT D'ÉCRIRE. Un contrôle de
+jeton qui n'essaie pas l'écriture qu'il protège est un contrôle qui rend vert un canal mort.**
