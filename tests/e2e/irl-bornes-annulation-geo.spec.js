@@ -28,6 +28,10 @@ async function banc(page) {
     window.confirmerAction = async () => true;
     window.confirm = () => true;
     window.supaInsertNotif = async (to, kind, ref, txt) => { window.__notifs.push(kind + ":" + to); };
+    // Fonction serveur ABSENTE (migration du 22/11 pas encore appliquée) : on éprouve
+    // ici le chemin de REPLI, celui qui écrit une ligne par personne. Le chemin serveur
+    // a sa suite : prevenir-inscrits-serveur.spec.js.
+    window.supaPrevenirInscrits = async () => ({ ok: false, absente: true });
     window.__cancel = true; window.supaCancelEvent = async () => window.__cancel;
     window.supaPublishEvent = async () => true; window.supaUpdateEvent = async () => true; window.supaJoinEvent = async () => true;
     window.requireAdmission = async () => true;

@@ -273,7 +273,11 @@ test.describe("IRL — cycle de vie d'un événement", () => {
         organizerId: MY_UID, status: "active",
       }];
       window._notified = [];
+      // Depuis le village à 100 (2026-11-22), c'est la BASE qui écrit l'avis à chaque
+      // inscrit (`prevenir_inscrits_activite`) : le client fait UN appel, plus une
+      // écriture par personne. Le chemin serveur : prevenir-inscrits-serveur.spec.js.
       window.supaInsertNotif = (to, kind) => { window._notified.push(to + ":" + kind); };
+      window.supaPrevenirInscrits = async (id, genre) => { window._notified.push(id + ":" + genre); return { ok: true, destinataires: 1, prevenues: 1 }; };
       goTo("irl"); renderIRL();
       // Chemin de notification : il n'est emprunté QUE si l'écriture serveur a
       // réussi (on ne prévient pas d'une modification qui n'a pas été persistée).
@@ -286,7 +290,33 @@ test.describe("IRL — cycle de vie d'un événement", () => {
     await expect.poll(() => page.evaluate(() => _findCanonicalEvent("mine1").title)).toBe("Titre corrigé");
     // Un seul événement : l'édition ne doit PAS créer de doublon.
     expect(await page.evaluate(() => state.userEvents.filter((e) => e.id === "mine1").length)).toBe(1);
-    expect(await page.evaluate(() => window._notified)).toContain("autre:event_update");
+    await expect.poll(() => page.evaluate(() => window._notified)).toEqual(["mine1:event_update"]);
+  });
+
+  test("modification refusée par la base : l'écran dit POURQUOI les inscrits ne sont pas prévenus", async ({ page }) => {
+    await bootIrl(page);
+    await page.evaluate(() => {
+      state.seed.events = [];
+      state.userEvents = [{
+        id: "mine1", title: "Titre initial", passion: "musique", emoji: "🎸",
+        city: "Paris", lat: 48.85, lng: 2.35, date: Date.now() + 5 * 86400000,
+        time: "18:00", desc: "", attendees: [MY_UID, "autre"], maybes: [], waitlist: [],
+        organizerId: MY_UID, status: "active",
+      }];
+      window._toasts = [];
+      const vraiToast = window.toast;
+      window.toast = (m, t) => { window._toasts.push(String(m)); return vraiToast(m, t); };
+      // La base refuse (création de plus de 18 mois, red team du 22/11, P2-b) : avant, l'écran se taisait.
+      window.supaPrevenirInscrits = async () => ({ ok: false, motif: "activite_trop_ancienne" });
+      goTo("irl"); renderIRL();
+      window._supaReal = true;
+      window.supaUpdateEvent = async () => true;
+      openCreateEvent("mine1");
+      document.getElementById("evTitle").value = "Titre corrigé";
+    });
+    await page.evaluate(() => submitEvent("mine1"));
+    await expect.poll(() => page.evaluate(() => window._toasts.filter((m) => /18 mois/.test(m))))
+      .toEqual(["⚠️ Activité créée il y a plus de 18 mois : les inscrits ne sont plus prévenus"]);
   });
 
   test("le lien partagé #irl-event-<id> ouvre bien la fiche", async ({ page }) => {

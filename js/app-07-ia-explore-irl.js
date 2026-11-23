@@ -7185,7 +7185,7 @@ async function cancelEventSeries(id) {
   // annoncé même quand TOUS les appels serveur échouaient — chaque refus
   // faisait `continue` en silence et le toast final ne comptait rien. On
   // compte, et l'écran dit ce qui s'est passé : tout, une partie, ou rien.
-  let annulees = 0, refusees = 0;
+  let annulees = 0, refusees = 0, aPrevenir = 0, prevenues = 0;
   for (const e of all) {
     const canon = _findCanonicalEvent(e.id);
     if (!canon || _eventIsCancelled(canon)) continue;
@@ -7195,12 +7195,15 @@ async function cancelEventSeries(id) {
     }
     canon.status = "cancelled";
     annulees++;
-    _notifyEventAttendees(canon, "a annulé un événement auquel tu participais", "event_cancelled");
+    // Village à 100 (A3) : chaque date dit combien de ses inscrits ont VRAIMENT été prévenus.
+    const v = await _prevenirInscrits(canon, "event_cancelled");
+    aPrevenir += v.total; prevenues += v.prevenues;
   }
   saveState();
   window._irlMapSig = null;
   renderIRL();
-  if (refusees === 0) toast("Série annulée — inscrits prévenus");
+  if (refusees === 0 && prevenues < aPrevenir) toast("⚠️ Série annulée, mais " + (aPrevenir - prevenues) + " notification(s) d'inscrit·e n'ont pas pu partir", "warning");
+  else if (refusees === 0) toast(aPrevenir ? "Série annulée — inscrits prévenus" : "Série annulée");
   else if (annulees === 0) toast("⚠️ Annulation non enregistrée : aucune des " + refusees + " dates n'a pu être annulée. Réessaie.");
   else toast("⚠️ Série annulée en partie : " + annulees + " date(s) annulée(s), " + refusees + " refusée(s) — réessaie pour le reste.");
 }
@@ -7226,9 +7229,16 @@ async function toggleCancelEvent(id) {
   saveState();
   closeModal();
   renderIRL();
-  if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais", "event_cancelled");
-  toast(cancel ? "Activité annulée — inscrits prévenus" : "Activité réactivée");
+  if (!cancel) { toast("Activité réactivée"); return; }
+  // Village à 100 (A3) : l'écran dit combien de personnes ont VRAIMENT été prévenues
+  // (il disait « inscrits prévenus » à 60 sur 99).
+  const v = await _prevenirInscrits(ev, "event_cancelled");
+  if (!v.total) toast("Activité annulée");
+  else if (v.prevenues === v.total) toast("Activité annulée — " + _nbPersonnes(v.total) + (v.total > 1 ? " prévenues" : " prévenue"));
+  else if (v.prevenues === 0) toast("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus", "warning");
+  else toast("⚠️ Activité annulée, mais seulement " + v.prevenues + " personne" + (v.prevenues > 1 ? "s" : "") + " sur " + v.total + " prévenue" + (v.prevenues > 1 ? "s" : ""), "warning");
 }
+function _nbPersonnes(n) { return n + " personne" + (n > 1 ? "s" : ""); }
 
 async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
@@ -7268,11 +7278,14 @@ async function deleteEventConfirm(id) {
   toast(serveur ? "Activité supprimée" : "Activité supprimée sur cet appareil");
 }
 
-// Prévient tout le monde qu'une activité vient d'être supprimée : inscrits,
-// « peut-être » et liste d'attente, chacun une fois, jamais soi-même (IRL-06).
+// Une activité supprimée : c'est la BASE qui prévient ses inscrits, AVANT l'effacement
+// (`events_prevenir_suppression`, 12/11 ; tous, au-delà de 60, depuis le 22/11). Le
+// client écrivait ensuite ses propres lignes — APRÈS l'effacement, donc sans lien
+// métier : chacune était refusée (42501), pur bruit. Rend le nombre de personnes
+// concernées, sans rien écrire.
 function _prevenirSuppressionActivite(ev) {
   if (!ev) return 0;
-  return _notifyEventAttendees(ev, "a supprimé l'activité « " + String(ev.title || "").slice(0, 60) + " »", "event_cancelled"); /* TRA-C16 */
+  return _destinatairesActivite(ev).length;
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
@@ -7303,21 +7316,21 @@ async function _sendEventBroadcast(id) {
   if (!ev || !txt) { toast("Écris un message"); return; }
   const cibles = _destinatairesActivite(ev);
   closeModal();
-  if (!cibles.length) { toast("Personne à prévenir pour l'instant"); return; }
-  if (!window._supaReal || typeof supaInsertNotif !== "function") {
-    _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
-    toast("Message enregistré sur cet appareil");
+  if (!window._supaReal) {
+    toast(cibles.length ? "Message enregistré sur cet appareil" : "Personne à prévenir pour l'instant");
     return;
   }
-  const verdicts = await Promise.all(cibles.map(function (uidTo) {
-    try { return Promise.resolve(supaInsertNotif(uidTo, "event_update", ev.id, escapeHtml(txt.slice(0, 200)))).catch(function () { return false; }); }
-    catch (e) { return Promise.resolve(false); }
-  }));
-  const ok = verdicts.filter(function (v) { return v === true; }).length;
-  const total = cibles.length;
-  if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
+  // Village à 100 (A3) : la base écrit le message à chacun (au-delà de 60) et rend le
+  // compte. Le texte part BRUT : la base l'échappe et le borne à 200. Elle est appelée
+  // même si la liste locale est vide (appareil pas encore synchronisé).
+  const v = await _prevenirInscrits(ev, "event_update", txt.slice(0, 200));
+  const ok = v.prevenues, total = v.total;
+  if (v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
+  else if (!total) toast("Personne à prévenir pour l'instant");
+  else if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
   else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
-  else toast("⚠️ Message envoyé à " + ok + " personne" + (ok > 1 ? "s" : "") + " sur " + total + " — réessaie pour les autres", "warning");
+  // Pas de « réessaie » ici : un second envoi repartirait vers TOUS, déjà prévenus compris.
+  else toast("⚠️ Message envoyé à " + ok + " personne" + (ok > 1 ? "s" : "") + " sur " + total + " — les autres ne l'ont pas reçu", "warning");
 }
 
 // Signalement d'un événement (parité avec posts / profils).
@@ -7513,7 +7526,15 @@ async function submitEvent(editId) {
     // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
     // événement affichait « 0 inscrit » chez tous les autres comptes.
     if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
-    if (ok && editId) _notifyEventAttendees(ev, "a modifié un événement auquel tu participes");
+    // Village à 100 (A3) : la base prévient chaque inscrit ; une notification qui n'a
+    // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
+    if (ok && editId) {
+      _prevenirInscrits(ev, "event_update").then(function (v) {
+        // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
+        if (v && v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
+        else if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
+      });
+    }
     // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
     for (const o of extraOccurrences) {
       const okOcc = await supaPublishEvent(o);
@@ -7641,13 +7662,70 @@ function _destinatairesActivite(ev) {
   });
   return out;
 }
-function _notifyEventAttendees(ev, text, kind) {
-  if (!ev || typeof supaInsertNotif !== "function") return 0;
+// ⚠️ PRÉVENIR LES INSCRITS, C'EST LA BASE QUI L'ÉCRIT (village à 100, 2026-11-22, A3).
+// Le navigateur de l'organisatrice écrivait une notification par personne, en
+// parallèle, sans réessai — et `trg_rate_limit` (60/min par émetteur) refusait tout
+// au-delà de 60 : 60 prévenus sur 99, et l'écran disait « inscrits prévenus ».
+// `supaPrevenirInscrits` (app-08) demande à la base d'écrire TOUTES les lignes
+// (`prevenir_inscrits_activite`), au nom de l'appelant, texte dérivé, et rend un
+// COMPTE. Rend toujours `{ total, prevenues }` : ce que l'écran doit dire.
+// Repli : fonction absente (migration pas encore appliquée, PGRST202) → l'ancien
+// chemin, une écriture par personne, COMPTÉE elle aussi. Un refus ou une panne n'y
+// retombe PAS : il rendrait 60 sur 99 en se croyant utile — on dit « 0 sur N ».
+// `genre` : "event_cancelled" (l'activité doit être annulée EN BASE) ou
+// "event_update" (modification ; `message` = le message groupé de l'organisation).
+function _cleGeste() {
+  const abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const n = new Uint8Array(24);
+  try { crypto.getRandomValues(n); } catch (e) { for (let i = 0; i < n.length; i++) n[i] = Math.floor(Math.random() * 256); }
+  let s = "";
+  for (let i = 0; i < n.length; i++) s += abc[n[i] % abc.length];
+  return s;
+}
+// `motif` accompagne un refus de la base (`message_trop_long`, `debit_activite`,
+// `activite_terminee`…) pour que l'écran dise POURQUOI personne n'a été prévenu —
+// au message groupé COMME à la modification d'une activité.
+const _POURQUOI_PREVENIR = {
+  message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
+  debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — ils n'ont pas été prévenus, réessaie plus tard",
+  activite_terminee: "⚠️ Activité terminée depuis plus de 2 jours : les inscrits ne sont plus prévenus",
+  activite_trop_ancienne: "⚠️ Activité créée il y a plus de 18 mois : les inscrits ne sont plus prévenus",
+  activite_sans_date: "⚠️ Donne une date à l'activité pour pouvoir prévenir les inscrits",
+  debit: "⚠️ Trop d'envois aux inscrits pour l'instant — ils n'ont pas été prévenus, réessaie plus tard",
+};
+async function _prevenirInscrits(ev, genre, message) {
+  if (!ev) return { total: 0, prevenues: 0 };
   const cibles = _destinatairesActivite(ev);
-  cibles.forEach(function(uidTo) {
-    try { supaInsertNotif(uidTo, kind || "event_update", ev.id, text); } catch (e) {}
-  });
-  return cibles.length;
+  if (window._supaReal && typeof supaPrevenirInscrits === "function") {
+    // La base est appelée MÊME si la liste locale est vide : un appareil pas encore
+    // synchronisé ne connaît pas les inscrits, la base si (relecture red team du 22/11).
+    const v = await supaPrevenirInscrits(ev.id, genre, _cleGeste(), message || null);
+    if (v && v.ok) {
+      // La push : `event_cancelled` n'a pas de gabarit (notify-call la refuse), et
+      // `notify-call` sert 20 pushes par minute à un compte — les venants d'abord.
+      if (genre === "event_update" && typeof _pousserPushNotif === "function") {
+        cibles.slice(0, 20).forEach(function (uidTo) { _pousserPushNotif(uidTo, "event_update", ""); });
+      }
+      return { total: v.destinataires, prevenues: v.prevenues };
+    }
+    if (!v || !v.absente) {
+      const total = (v && typeof v.destinataires === "number") ? v.destinataires : cibles.length;
+      return { total: total, prevenues: 0, motif: (v && v.motif) || "inconnu" };
+    }
+  }
+  if (!cibles.length) return { total: 0, prevenues: 0 };
+  if (typeof supaInsertNotif !== "function") return { total: cibles.length, prevenues: 0 };
+  const texte = genre === "event_cancelled" ? "a annulé un événement auquel tu participais"
+    : (message ? escapeHtml(String(message).slice(0, 200)) : "a modifié un événement auquel tu participes");
+  const verdicts = await Promise.all(cibles.map(function (uidTo) {
+    try { return Promise.resolve(supaInsertNotif(uidTo, genre, ev.id, texte)).catch(function () { return false; }); }
+    catch (e) { return Promise.resolve(false); }
+  }));
+  return { total: cibles.length, prevenues: verdicts.filter(function (x) { return x === true; }).length };
+}
+// Nom historique, gardé pour les appelants : le texte est désormais DÉRIVÉ par la base.
+function _notifyEventAttendees(ev, text, kind) {
+  return _prevenirInscrits(ev, kind || "event_update");
 }
 
 // Géocode une adresse libre → { lat, lng } ou null. Passe par la couche

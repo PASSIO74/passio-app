@@ -8951,6 +8951,43 @@ function _pousserPushNotif(toUserId, kind, texte) {
     }).catch(() => {});
   } catch (e) {}
 }
+// ⚠️ LES INSCRITS D'UNE ACTIVITÉ SONT PRÉVENUS PAR LA BASE (village à 100, 2026-11-22,
+// contrôle A3). Le navigateur de l'organisatrice écrivait UNE ligne par personne, en
+// parallèle et sans réessai : `trg_rate_limit` (60/min par émetteur) en refusait tout
+// ce qui dépassait 60 — mesuré deux fois sur le staging, 60 prévenus sur 99, 39 refus
+// 400, et l'écran disait « inscrits prévenus ». `prevenir_inscrits_activite`
+// (migration_prevenir_inscrits_serveur_2026-11-22.sql) écrit toutes les lignes,
+// d'origine serveur, et rend un COMPTE. `cle` est tirée UNE fois par geste et
+// réutilisée au réessai : la base en dérive les identifiants, un rejeu ne double rien.
+// Rend `{ ok, destinataires, prevenues }`, `{ ok:false, absente:true }` (fonction pas
+// encore en base, PGRST202 : l'appelant retombe sur l'ancien chemin) ou
+// `{ ok:false, motif }`. Un seul réessai, sur une panne de RÉSEAU prouvée.
+async function supaPrevenirInscrits(eventId, genre, cle, message) {
+  if (typeof supa === "undefined" || !supa || !eventId || !cle) return { ok: false, motif: "sans_backend" };
+  const params = { p_event_id: eventId, p_genre: genre, p_cle: cle, p_message: message || null };
+  const reseau = (e) => typeof estEchecReseau === "function" && estEchecReseau(e);
+  for (let essai = 0; essai < 2; essai++) {
+    try {
+      const res = await supa.rpc("prevenir_inscrits_activite", params);
+      if (res && res.error) {
+        const code = String(res.error.code || "");
+        // ABSENTE seulement : PGRST202 est le verdict de PostgREST sur une fonction qu'il ne
+        // connaît pas. (42883 peut venir de l'intérieur du corps : ce serait un refus.)
+        if (code === "PGRST202") return { ok: false, absente: true };
+        if (essai === 0 && reseau(res.error)) continue;
+        try { if (typeof diagLog === "function") diagLog("prevenir_inscrits refus " + code + " " + String(res.error.message || "").slice(0, 80)); } catch (e) {}
+        return { ok: false, motif: "refus_" + code };
+      }
+      const d = res && res.data;
+      if (d && d.ok === true) return { ok: true, destinataires: Number(d.destinataires) || 0, prevenues: Number(d.prevenues) || 0 };
+      return { ok: false, motif: String((d && d.motif) || "reponse_vide"), destinataires: d && d.destinataires != null ? Number(d.destinataires) || 0 : null };
+    } catch (e) {
+      if (essai === 0 && reseau(e)) continue;
+      return { ok: false, motif: "exception" };
+    }
+  }
+  return { ok: false, motif: "reseau" };
+}
 function _texteNotifDeMoi(content) {
   const prof = currentProfile();
   const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
