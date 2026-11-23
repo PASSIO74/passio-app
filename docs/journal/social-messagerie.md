@@ -28,7 +28,7 @@
 - ↪️ TRANSFÉRER UN VOCAL ENVOYAIT UN MESSAGE VIDE — il part en vocal, son objet copié ou déposé dans la cible (2026-11-07)
 - 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
-- 📅 INVITER LA PERSONNE DE LA CONVERSATION À UNE ACTIVITÉ — carte d'activité dans le fil (2026-11-23)
+- 📅 INVITER LA PERSONNE DE LA CONVERSATION À UNE ACTIVITÉ — carte d'activité dans le fil ; plusieurs invités, groupes (2026-11-23)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
 - 📸 LA STORY FAÇON INSTAGRAM — ❤️, réactions, réponse et partage sans quitter la story ; gestes (2026-11-14)
 - 🔔 PAS DE NOTIFICATION SANS ÉVÉNEMENT MÉTIER — elle part au verdict de son écriture (2026-11-13)
@@ -1171,3 +1171,22 @@ donc ni la création ni `rattraperActivitesAuFil` (7 jours) ne la publient. ⚠�
 RATTRAPAGE : ne pas publier à la création ne suffisait pas, il aurait reposté la carte à la
 prochaine ouverture. L'activité reste dans « Rencontrer » : `events` est en lecture publique, une
 activité vraiment privée demanderait une migration RLS. Verrous ⑨ et ⑩ de `invitation-conversation.spec.js`.
+
+**Suite — PLUSIEURS INVITÉS, et les GROUPES (2026-11-23).** Benjamin : « pouvoir rajouter d'autres
+membres ». Le bandeau porte des pastilles (`.ev-invite-chip`) et « + Ajouter des personnes » : panneau
+dans le formulaire (jamais une modale : `openModal` n'empile pas), mes conversations 1:1 récentes puis
+mes abonnements, recherche, plafond `INVITE_CONV_MAX` = 10 (30 membres pré-cochés pour un groupe).
+- Chaque invité ajouté passe `irlProposalServerVerdict` (le verdict du 1:1) ; refusé, sa pastille
+  repart avec un toast. À la publication, `envoyerInvitationActivite` RÉATTEND chaque verdict, l'un
+  après l'autre (jamais 30 RPC d'un coup) : un invité publié avant son verdict ne reçoit rien s'il est refusé.
+- Chacun reçoit la carte dans SA conversation 1:1 existante avec moi, et toujours la notification
+  (`_notifierInviteEvent`, porte unique de `event_invite`, mémoire `_rememberEventInvite`). Aucune
+  conversation n'est créée d'office, et personne ne voit la liste des autres invités.
+- Groupe ordinaire (jamais `evgrp_`) : la carte part UNE fois dans le groupe (« pour vous inviter »),
+  les membres pré-cochés n'ont que la notification, et leur verdict attend la publication.
+- Organisateur : la carte décompte « 3 invités · 1 vient · 1 hésite · 1 en attente » sur la mémoire
+  d'envoi (en groupe, la mémoire SEULE : un membre refusé ou retiré ne reste pas « en attente » à vie),
+  et porte « Inviter d'autres » (`inviterAutresActivite` → `openEventInvite`).
+- Non fait, délibérément : l'activité « sur invitation seulement » (cachée du fil et de Rencontrer) —
+  `events` est en lecture publique, il faudrait une migration RLS et sa contre-revue.
+Verrous : `tests/e2e/invitation-plusieurs.spec.js` (8) ; `ui-v6c-proposer-irl.spec.js` (entrée en groupe).
