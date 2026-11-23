@@ -387,8 +387,16 @@ test("⑪ purge de séance du village à 100 : contenus du jeu purgés et relus,
   const comptes = await jeu.acquerirLot(CFG_V, { fetch: sb.f, env: { PASSIO_E2E_PASSAGE: `poste-${process.pid}` }, couloir: "village100", parallele: 0, rangs: [0, 1, 2, 3], ...sansAttente });
   for (const c of comptes) sb.profils.add(c.id);
   const manifeste = { campagne: "capacite_1763900000000_abcd1234", comptes: comptes.map((c) => ({ email: c.email, id: c.id })) };
-  const vrai = globalThis.fetch;
+  // La garde « jamais en CI » de la purge (`gardesCible`) reste ENTIÈRE : elle refuse sur le
+  // runner, prouvé ici. Pour éprouver la purge elle-même, on retire `CI`/`GITHUB_ACTIONS` le
+  // temps de l'appel, puis on les rend — la convention de `village100.test.mjs`.
+  const vrai = globalThis.fetch, ci = process.env.CI, ga = process.env.GITHUB_ACTIONS;
   globalThis.fetch = sb.f;
+  process.env.CI = "true";
+  const avantRefus = sb.journal.deletes.length;
+  await assert.rejects(F.purgerSeance({ url: VILLAGE, service: "k", manifeste }), /EXECUTION_CI_INTERDITE/, "en CI, la purge refuse");
+  assert.equal(sb.journal.deletes.length, avantRefus, "et ne touche à rien");
+  delete process.env.CI; delete process.env.GITHUB_ACTIONS;
   try {
     const p = await F.purgerSeance({ url: VILLAGE, service: "k", manifeste });
     assert.ok(F.purgeComplete(p), JSON.stringify(p));
@@ -407,7 +415,11 @@ test("⑪ purge de séance du village à 100 : contenus du jeu purgés et relus,
     const r = await F.purgerSeance({ url: VILLAGE, service: "k", manifeste: { ...manifeste, comptes: [{ email: comptes[0].email, id: comptes[1].id }] } });
     assert.equal(r.refus.length, 1);
     assert.deepEqual(sb.journal.deletes, []);
-  } finally { globalThis.fetch = vrai; }
+  } finally {
+    globalThis.fetch = vrai;
+    if (ci === undefined) delete process.env.CI; else process.env.CI = ci;
+    if (ga !== undefined) process.env.GITHUB_ACTIONS = ga;
+  }
   assert.ok(F.estCompteDuVillage(comptes[0].email));
   assert.equal(F.estCompteDuVillage("e2e_ci_0_0@fixe.passio-e2e.test"), false, "un compte du couloir CI n'est pas du village");
 });
