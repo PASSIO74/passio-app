@@ -48,7 +48,10 @@ export const estCompteDuVillage = (email) => jeu.estPersistant(email) && String(
 /** Les comptes de la séance : les 4 yeux (parallèle 0) puis les figurants (parallèle 1), du jeu persistant. */
 export async function acquerirComptesVillage({ url, service, parallele, nombre }) {
   gardesCible(url);
-  return jeu.acquerirLot({ url, cle: service }, { couloir: COULOIR_VILLAGE100, parallele, rangs: [...Array(nombre).keys()], dureeBail: BAIL_SEANCE_MS });
+  const comptes = await jeu.acquerirLot({ url, cle: service }, { couloir: COULOIR_VILLAGE100, parallele, rangs: [...Array(nombre).keys()], dureeBail: BAIL_SEANCE_MS });
+  // Le bilan du passage (teardown) : créés / réutilisés, comme pour l'e2e.
+  for (const c of comptes) jeu.noterCompte(c.cree ? "cree" : "reutilise");
+  return comptes;
 }
 export const MDP_VILLAGE = jeu.MDP_PERSISTANT;
 
