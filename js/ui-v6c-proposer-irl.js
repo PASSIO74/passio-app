@@ -29,8 +29,11 @@
 // personne. Le champ reste librement modifiable, et n'est jamais écrasé s'il
 // contient déjà quelque chose.
 //
-// ⚠️ RÉSERVÉ AU 1:1. Dans un groupe, « proposer un IRL » n'a pas le même sens
-// et la Passio de référence n'existe pas — l'entrée est simplement absente.
+// ⚠️ RÉSERVÉ AU 1:1 jusqu'au 2026-11-23 (2). Depuis, un GROUPE ordinaire
+// l'a aussi (l'invitation part dans le groupe, ses membres sont pré-cochés,
+// chacun sous verdict serveur) — sans Passio préremplie, qui n'existe pas pour
+// un groupe. Une discussion d'activité (`evgrp_`) ne l'a jamais, et la coupure
+// `passio_invite_conv_v1="0"` rend le comportement réservé au 1:1.
 //
 // Coupures, prioritaires sur tout :
 //   window.PASSIO_UI_6C === false   ·   localStorage.passio_ui_6c === "0"
@@ -89,6 +92,20 @@
     } catch (e) { return ""; }
   }
 
+  // 2026-11-23 (2) : un groupe ordinaire peut recevoir une invitation (la carte
+  // part dans le groupe, chaque membre retenu reçoit la notification). Jamais une
+  // discussion d'activité (`evgrp_`), et seulement quand l'invitation est active.
+  function groupeInvitable(c) {
+    try {
+      // Les gardes du PROPOSEUR valent en groupe comme en 1:1 (contre-revue du
+      // 2026-11-23) : coupure `passio_irl_proposal_v1`, proposeur mineur.
+      return !!(c && c.isGroup && typeof _convInvitable === "function" && _convInvitable(c.id)
+        && typeof _inviteConvActive === "function" && _inviteConvActive()
+        && typeof irlProposalEnabled === "function" && irlProposalEnabled()
+        && typeof irlProposerEstMineur === "function" && !irlProposerEstMineur());
+    } catch (e) { return false; }
+  }
+
   function libelleDe(passion) {
     try {
       if (!passion || typeof passionById !== "function") return "";
@@ -105,8 +122,11 @@
   // prérempli par la passion).
   async function proposer(verdictDejaLu) {
     var c = convOuverte();
-    if (!c || c.isGroup) return;
-    if (!verdictDejaLu && typeof irlProposalServerVerdict === "function") {
+    if (!c) return;
+    if (c.isGroup && !groupeInvitable(c)) return;
+    // Un groupe n'a pas d'interlocuteur unique : le verdict serveur se prend
+    // membre par membre, dans le formulaire (`poserInvitationFormulaire`).
+    if (!c.isGroup && !verdictDejaLu && typeof irlProposalServerVerdict === "function") {
       var v = null;
       try { v = await irlProposalServerVerdict(c.userId); } catch (e) { v = null; }
       if (!v || !v.ok) { try { toast("Proposition IRL indisponible avec cette personne"); } catch (e) {} return; }
@@ -216,7 +236,7 @@
     var item = document.getElementById(ITEM_ID);
     if (!item) return;
     var c = convOuverte();
-    var visible = !!(c && !c.isGroup);
+    var visible = !!(c && (!c.isGroup || groupeInvitable(c)));
     if (item.hidden === !visible) return;   // rien n'a changé : on n'écrit pas
     item.hidden = !visible;
   }

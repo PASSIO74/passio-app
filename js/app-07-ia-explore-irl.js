@@ -6861,7 +6861,9 @@ function _inviteRepeindre(ctx) {
   if (ctx.groupe) {
     if (strong) strong.textContent = "Invitation pour " + ctx.nom;
     if (span) span.textContent = "Elle part dans la discussion du groupe"
-      + (n ? ", et " + n + " personne" + (n > 1 ? "s" : "") + " reçoi" + (n > 1 ? "vent" : "t") + " une notification." : ".");
+      + (n ? ", et " + n + " personne" + (n > 1 ? "s" : "") + " reçoi" + (n > 1 ? "vent" : "t") + " une notification." : ".")
+      + ((ctx.nbMembresTotal || 0) > INVITE_CONV_MAX_GROUPE
+        ? " Au-delà de " + INVITE_CONV_MAX_GROUPE + " membres, les autres voient la carte sans notification." : "");
   } else if (!n) {
     if (strong) strong.textContent = "Invitation pour " + ctx.nom;
     if (span) span.textContent = ctx.nom + " la recevra dans votre conversation.";
@@ -6968,7 +6970,7 @@ function _inviteRendreListe(ctx) {
 function _inviteAjouter(ctx, id, nom, silencieux) {
   if (!id || _inviteTotal(ctx) >= _inviteMax(ctx)) return false;
   if (id === ctx.userId || (ctx.extras || []).some(function (p) { return p.id === id; })) return false;
-  ctx.extras = (ctx.extras || []).concat([{ id: id, nom: _nomInvite(id, nom) }]);
+  ctx.extras = (ctx.extras || []).concat([{ id: id, nom: _nomInvite(id, nom), manuel: !silencieux }]);
   _inviteRepeindre(ctx);
   _inviteRendreListe(ctx);
   // Membres d'un groupe pré-cochés : leur verdict attend la publication (une
@@ -7039,9 +7041,11 @@ function poserInvitationFormulaire(convId) {
 
   // Groupe : ses membres sont pré-cochés (chacun retirable), chacun sous verdict.
   if (groupe) {
-    var membres = membresAutresGroupe(c).filter(function (id) {
+    var tous = membresAutresGroupe(c).filter(function (id) {
       return !(typeof isBlocked === "function" && isBlocked(id));
-    }).slice(0, INVITE_CONV_MAX_GROUPE);
+    });
+    ctx.nbMembresTotal = tous.length;
+    var membres = tous.slice(0, INVITE_CONV_MAX_GROUPE);
     ctx.nbMembres = membres.length;
     membres.forEach(function (id) { _inviteAjouter(ctx, id, null, true); });
   }
@@ -7094,49 +7098,73 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   var texte = "📅 Je crée une activité pour " + (ctx.groupe ? "vous " : "t'") + "inviter !\n"
     + (ev.title || "Activité") + (quand ? " · " + quand : "") + (ev.city ? " · " + ev.city : "")
     + "\n" + lien;
-  // En groupe, la carte est un message du groupe comme un autre : tous ses
-  // membres la voient. Le verdict serveur (âge, blocage) gouverne ce qui leur
-  // est ADRESSÉ — la notification — et la RLS `irl_adult_only` refuse de toute
-  // façon le « Je viens » d'un compte non admis.
-  var envoye = (typeof envoyerTexteConversation === "function") && envoyerTexteConversation(ctx.convId, texte);
-  if (!envoye) { toast("Activité publiée, mais l'invitation n'a pas pu partir — partage-la depuis sa fiche", "warning"); return false; }
-  // La notification « t'invite à … » : le chemin du bouton « Inviter » de la fiche.
-  // L'activité est en base (`enLigne`) : la preuve qu'exige `trg_notifications_preuve`.
-  if (!ctx.groupe && ctx.userId) {
-    try { _notifierInviteEvent(ev, ctx.userId); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
-  }
-  // Les autres invités : chacun après SON verdict. Sa conversation 1:1 avec moi
-  // reçoit la même carte (jamais créée d'office) ; la notification part toujours.
+  // Membres ACTUELS du groupe (recalculés à l'envoi : un membre parti depuis
+  // l'ouverture du formulaire n'apprend rien) ; les personnes ajoutées à la main
+  // restent. En 1:1, tous les ajouts sont « à la main ».
   var membres = {};
   if (ctx.groupe) {
-    try {
-      var cg = _convInvitable(ctx.convId);
-      membresAutresGroupe(cg).forEach(function (id) { membres[id] = 1; });
-    } catch (e) {}
+    try { membresAutresGroupe(_convInvitable(ctx.convId)).forEach(function (id) { membres[id] = 1; }); } catch (e) {}
   }
-  var autres = (ctx.extras || []).slice();
-  // Un verdict après l'autre : jamais 30 RPC d'un coup.
-  autres.reduce(function (file, p) {
-    return file.then(function () { return _verdictInvite(ctx, p.id); }).then(function (v) {
-      if (!v || !v.ok) return;
-      if (!membres[p.id]) {
-        var c1 = _conv1a1Avec(p.id);
-        if (c1 && c1.id !== ctx.convId) {
-          try { envoyerTexteConversation(c1.id, texte); } catch (e) { try { diagLog("invite conv extra " + (e && e.message)); } catch (_) {} }
-        }
-      }
-      try { _notifierInviteEvent(ev, p.id); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
-    });
-  }, Promise.resolve());
+  var autres = (ctx.extras || []).filter(function (p) { return p.manuel || membres[p.id]; });
+  var notifier = function (id) {
+    try { _notifierInviteEvent(ev, id); } catch (e) { try { diagLog("invite conv notif " + (e && e.message)); } catch (_) {} }
+  };
+  var retour = function (msg) {
+    setTimeout(function () {
+      try { if (typeof openConversation === "function") openConversation(ctx.convId); } catch (e) {}
+      try { toast(msg, "success"); } catch (e) {}
+    }, 350);
+  };
+  var envoyerCarte = function () {
+    var ok = (typeof envoyerTexteConversation === "function") && envoyerTexteConversation(ctx.convId, texte);
+    if (!ok) toast("Activité publiée, mais l'invitation n'a pas pu partir — partage-la depuis sa fiche", "warning");
+    return ok;
+  };
+  // Un invité hors du groupe d'origine : la carte dans SON 1:1 avec moi, s'il existe.
+  var carteDansSon1a1 = function (id) {
+    if (membres[id]) return;
+    var c1 = _conv1a1Avec(id);
+    if (c1 && c1.id !== ctx.convId) {
+      try { envoyerTexteConversation(c1.id, texte); } catch (e) { try { diagLog("invite conv extra " + (e && e.message)); } catch (_) {} }
+    }
+  };
+  // Les verdicts, un après l'autre : jamais 30 RPC d'un coup. Rend les admis.
+  var trier = function () {
+    var admis = [];
+    return autres.reduce(function (file, p) {
+      return file.then(function () { return _verdictInvite(ctx, p.id); })
+        .then(function (v) { if (v && v.ok) admis.push(p.id); });
+    }, Promise.resolve()).then(function () { return admis; });
+  };
   try { if (window.tel && tel.action) tel.action("invite_conv_envoyee", { v: 2, n: autres.length + (ctx.groupe ? 0 : 1), grp: !!ctx.groupe }); } catch (e) {}
-  // Retour dans la conversation : on voit l'invitation partir.
-  var msg = ctx.groupe ? "Invitation envoyée au groupe"
-    : autres.length ? "Invitation envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
-    : "Invitation envoyée à " + ctx.nom;
-  setTimeout(function () {
-    try { if (typeof openConversation === "function") openConversation(ctx.convId); } catch (e) {}
-    try { toast(msg, "success"); } catch (e) {}
-  }, 350);
+
+  if (ctx.groupe) {
+    // Groupe : la carte ne part que si AU MOINS UN membre passe le verdict
+    // serveur (âge, blocage) — sinon un groupe à deux contournerait la garde du
+    // 1:1 (contre-revue du 2026-11-23). Partie, c'est un message du groupe :
+    // tous ses membres la voient ; la notification ne va qu'aux admis, et la
+    // RLS `irl_adult_only` refuse de toute façon le « Je viens » d'un non-admis.
+    trier().then(function (admis) {
+      var membresAdmis = admis.filter(function (id) { return membres[id]; });
+      if (!membresAdmis.length) {
+        toast("Activité publiée, mais personne dans ce groupe ne peut recevoir l'invitation", "warning");
+        return;
+      }
+      if (!envoyerCarte()) return;
+      admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); });
+      retour("Invitation envoyée au groupe");
+    });
+    return true;
+  }
+
+  // 1:1 : la personne de la conversation a déjà passé le verdict à l'ouverture.
+  if (!envoyerCarte()) return false;
+  // La notification « t'invite à … » : l'activité est en base (`enLigne`), la
+  // preuve qu'exige `trg_notifications_preuve`.
+  if (ctx.userId) notifier(ctx.userId);
+  trier().then(function (admis) { admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); }); });
+  retour(autres.length ? "Invitation envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
+    : "Invitation envoyée à " + ctx.nom);
   return true;
 }
 
