@@ -41,7 +41,10 @@ async function signupUser(page, label, passionIndex = 0, prefixe = "qa") {
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 25000 });
   // Compte réel PRÉ-CONFIRMÉ (compte-e2e.js) : depuis l'activation de « Confirm
   // email », signUp ne rend plus de session et l'attente de MY_UID expirait.
-  await creerCompteE2E(page, prefixe);
+  // D16-01 : le préfixe par défaut prend un compte du JEU PERSISTANT (staging) ;
+  // un préfixe PROPRE à une séance (le village) garde un compte jetable, que
+  // cette séance retrouve et purge par son préfixe — jamais un compte du jeu.
+  await creerCompteE2E(page, prefixe, { jetable: prefixe !== "qa" });
   await page.evaluate(() => { if (typeof onbNext === "function") onbNext(); });
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 25000 });
   await page.locator("#birthYear").fill("1995");

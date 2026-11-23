@@ -29,7 +29,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { cibleSupabase } = require("./cible-supabase");
-const { configAdmin } = require("./compte-e2e");
+const { configAdmin, supprimerComptesJetables } = require("./compte-e2e");
 const { signupUser } = require("./qa-helper");
 
 const STAGING = "fcksxofaelcdmmifnwjo";
@@ -291,7 +291,9 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
       await supprimer(`notifications?user_id=in.(${liste})`);
       await supprimer(`notifications?from_id=in.(${liste})`);
       await supprimer(`profiles?id=in.(${liste})`);
-      for (const u of uids) await fetch(cfg.url + "/auth/v1/admin/users/" + u, { method: "DELETE", headers: entetes }).catch(() => null);
+      // D16-01 : les comptes viennent du jeu persistant (staging) — on les garde,
+      // leurs contenus seront purgés à la prochaine acquisition. Seul un jetable part.
+      await supprimerComptesJetables(cfg, uids);
     }
     for (const ctx of contextes) await ctx.close().catch(() => {});
   }

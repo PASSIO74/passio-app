@@ -26,7 +26,35 @@ function purge(commande, etiquette) {
   }
 }
 
+// D16-01 (2026-11-23) : le BILAN du passage (comptes créés / réutilisés /
+// jetables, la mesure de l'ADR-013) et la libération des BAUX du jeu
+// persistant. Ni l'un ni l'autre ne supprime quoi que ce soit : ils tournent
+// donc à chaque passage, sans le marqueur de la purge par motif. Un bail non
+// libéré n'est pas grave (il expire) ; il ne doit simplement pas être muet.
+async function cloreJeuPersistant() {
+  try {
+    const { configAdmin } = require("./compte-e2e");
+    const jeu = require("./comptes-persistants");
+    const b = jeu.bilanPassage();
+    if (b.crees + b.reutilises + b.jetables) {
+      const ligne = `passage ${jeu.passage()} : ${b.crees} compte(s) du jeu créé(s) (amorçage), ${b.jetables} jetable(s), ${b.reutilises} réutilisé(s)`;
+      console.log(`[comptes-e2e] ${ligne}`);
+      if (process.env.GITHUB_STEP_SUMMARY) {
+        require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, "\n**Comptes de test (D16-01)** — " + ligne + "\n");
+      }
+    }
+    const cfg = configAdmin();
+    if (cfg && jeu.jeuActif(cfg)) {
+      const n = await jeu.libererBaux(cfg);
+      if (n) console.log(`[comptes-e2e] ${n} bail(s) libéré(s)`);
+    }
+  } catch (e) {
+    console.warn("[teardown] clôture du jeu persistant non bloquante en échec :", e && e.message);
+  }
+}
+
 module.exports = async () => {
+  await cloreJeuPersistant();
   // ⚠️ `PASSIO_E2E_MULTI` NE SUFFISAIT PAS, ET C'ÉTAIT LA CAUSE RACINE.
   // Cette variable n'est définie NULLE PART dans le workflow de CI — le
   // nettoyage n'y a donc jamais tourné. Or la CI crée bel et bien de vrais

@@ -43,7 +43,7 @@
 // ═══════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { cibleSupabase } = require("./cible-supabase");
-const { configAdmin } = require("./compte-e2e");
+const { configAdmin, supprimerComptesJetables } = require("./compte-e2e");
 const { signupUser } = require("./qa-helper");
 
 const STAGING = "fcksxofaelcdmmifnwjo";
@@ -278,7 +278,9 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       await supprimer(`post_likes?user_id=in.(${liste})`);
       await supprimer(`posts?author_id=in.(${liste})`);
       await supprimer(`profiles?id=in.(${liste})`);
-      for (const u of uids) await fetch(cfg.url + "/auth/v1/admin/users/" + u, { method: "DELETE", headers: entetes }).catch(() => null);
+      // D16-01 : les comptes viennent du jeu persistant (staging) — on les garde,
+      // leurs contenus seront purgés à la prochaine acquisition. Seul un jetable part.
+      await supprimerComptesJetables(cfg, uids);
     }
     for (const ctx of contextes) await ctx.close().catch(() => {});
   }
