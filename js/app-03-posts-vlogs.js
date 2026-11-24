@@ -342,6 +342,7 @@ function _postLikeGroupeDisponible() {
 async function _postLikeLireGroupe(ids) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
+  let utiliseRpcFil = false;
   try {
     // POST, jamais GET : un identifiant peut porter une virgule (même règle que le fil).
     let reponse;
@@ -358,6 +359,8 @@ async function _postLikeLireGroupe(ids) {
     }
     if (!reponse) {
       if (_filCompteursMemoAbsence()) return { absente: true };
+      if (_filCompteursEnRecul()) return { reprendreA: _filCompteursProchainEssai };
+      utiliseRpcFil = true;
       const query = supa.rpc("fil_compteurs", { _post_ids: ids }).select("post_id,likes");
       reponse = await query.abortSignal(controller.signal);
       if (reponse.error && reponse.status !== 429 && !(reponse.status >= 500)
@@ -367,12 +370,11 @@ async function _postLikeLireGroupe(ids) {
       }
     }
     const { data, error } = reponse;
-    if (error) {
-      _postLikeNoterEchecPartage();
+    if (error || !Array.isArray(data)) {
+      if (utiliseRpcFil) _postLikeNoterEchecPartage();
       return { error: true };
     }
-    if (!Array.isArray(data)) { _postLikeNoterEchecPartage(); return { error: true }; }
-    if (typeof _filCompteursNoterSucces === "function") _filCompteursNoterSucces();
+    if (utiliseRpcFil) _filCompteursNoterSucces();
     const voulus = new Set(ids), counts = new Map();
     data.forEach(function (row) {
       if (!row || typeof row.post_id !== "string" || !voulus.has(row.post_id)) return;
@@ -380,7 +382,7 @@ async function _postLikeLireGroupe(ids) {
     });
     return { counts };
   } catch (e) {
-    _postLikeNoterEchecPartage();
+    if (utiliseRpcFil) _postLikeNoterEchecPartage();
     return { error: true };
   } finally {
     clearTimeout(timeout);
@@ -433,14 +435,6 @@ async function _postLikeRefreshTour() {
       .sort((a, b) => a.entry.checkedAt - b.entry.checkedAt)
       .slice(0, POST_LIKE_REFRESH_MAX_POSTS);
     if (!candidates.length) return;
-    // Recul PARTAGÉ avec le fil (contre-revue du 2026-11-20) : tant que la
-    // fonction recule, les cartes ne l'appellent pas non plus — rendez-vous à la
-    // fin du recul, sans compter d'échec (aucun appel n'est parti).
-    if (_postLikeGroupeDisponible() && typeof _filCompteursEnRecul === "function" && _filCompteursEnRecul()) {
-      _postLikeRefreshNextAt = Math.max(_postLikeRefreshNextAt, _filCompteursProchainEssai);
-      window._postLikeRefreshStats.reculPartage = (window._postLikeRefreshStats.reculPartage || 0) + 1;
-      return;
-    }
     queried = true;
     const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
     const debutTour = Date.now(), jitter = Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
@@ -455,10 +449,17 @@ async function _postLikeRefreshTour() {
     if (groupe) {
       const lot = candidates.filter(item => !item.entry.pending);
       const versions = new Map(lot.map(item => [item.id, item.entry.version]));
+      const res = lot.length ? await _postLikeLireGroupe(lot.map(item => item.id)) : { counts: new Map() };
+      // Seul l'ancien RPC est aussi utilisé par le fil. Respecter son échéance
+      // sans déplacer la rotation des cartes ni compter une lecture ou un échec.
+      if (res.reprendreA) {
+        _postLikeRefreshNextAt = res.reprendreA;
+        window._postLikeRefreshStats.reculPartage = (window._postLikeRefreshStats.reculPartage || 0) + 1;
+        return;
+      }
       lot.forEach(item => { item.entry.checkedAt = Date.now(); }); // rotation, même sur erreur
       window._postLikeRefreshStats.reads += lot.length;
       window._postLikeRefreshStats.groupes = (window._postLikeRefreshStats.groupes || 0) + 1;
-      const res = lot.length ? await _postLikeLireGroupe(lot.map(item => item.id)) : { counts: new Map() };
       if (res.absente) {
         groupe = false; // fonction absente : le chemin HEAD ci-dessous, pour ce tour
         lot.forEach(item => { item.entry.checkedAt = 0; });

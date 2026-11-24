@@ -156,9 +156,9 @@ async function cartes(page, n) {
     };
     supa.rpc = (fn, args) => {
       __rpc.push({ fn, ids: (args && args._post_ids || []).slice(), at: Date.now() });
-      const rendre = (res) => ({ abortSignal: () => Promise.resolve(res), then: (ok, ko) => Promise.resolve(res).then(ok, ko) });
-      if (fn !== "fil_likes_visibles") return rendre({ data: null, error: null });
-      if (__erreur) return rendre({ data: null, error: { code: "57014", message: "statement timeout" } });
+      const rendre = (res) => ({ select() { return this; }, abortSignal: () => Promise.resolve(res), then: (ok, ko) => Promise.resolve(res).then(ok, ko) });
+      if (fn !== "fil_likes_visibles" && fn !== "fil_compteurs") return rendre({ data: null, error: null });
+      if (__erreur) return rendre(__erreur === true ? { data: null, error: { code: "57014", message: "statement timeout" } } : __erreur);
       return rendre({ data: args._post_ids.map((id) => ({ post_id: id, likes: __counts[id] })), error: null });
     };
     startPostLikeRefresh();
@@ -320,9 +320,33 @@ test("fil : l'ATTENTE du recul fait reculer le filet sans prolonger le recul ; u
   expect(r.echecsApres).toBe(1);
 });
 
-test("recul partagé : un échec des cartes fait reculer le fil, un succès des cartes le lève", async ({ page }) => {
+test("recul dédié : un 403 des likes ralentit le compteur seul, son succès respecte une panne du fil", async ({ page }) => {
   await demarrer(page);
   await cartes(page, 1);
+  await page.evaluate(() => { __erreur = { data: null, error: { code: "42501" }, status: 403 }; });
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  const apresRefus = await page.evaluate(() => ({
+    echecsLikes: _postLikeRefreshEchecs, attenteLikes: _postLikeRefreshNextAt - Date.now(),
+    echecsFil: _filCompteursEchecs, essaiFil: _filCompteursProchainEssai, likes: state.supabasePosts[0].likes,
+  }));
+  expect(apresRefus).toMatchObject({ echecsLikes: 1, echecsFil: 0, essaiFil: 0, likes: 4 });
+  expect(apresRefus.attenteLikes).toBeGreaterThanOrEqual(29000);
+  const prochainEssaiFil = await page.evaluate(() => {
+    __erreur = false;
+    _filCompteursEchecs = 2;
+    return _filCompteursProchainEssai = Date.now() + 120000;
+  });
+  await passer(page, apresRefus.attenteLikes + 1);
+  expect(await page.evaluate(() => ({
+    appels: __rpc.map(x => x.fn), echecsLikes: _postLikeRefreshEchecs, likes: state.supabasePosts[0].likes,
+    echecsFil: _filCompteursEchecs, essaiFil: _filCompteursProchainEssai,
+  }))).toEqual({ appels: ["fil_likes_visibles", "fil_likes_visibles"], echecsLikes: 0, likes: 9, echecsFil: 2, essaiFil: prochainEssaiFil });
+});
+
+test("ancien serveur, recul partagé : un échec des cartes fait reculer le fil, un succès des cartes le lève", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 1);
+  await page.evaluate(() => _memoRpcAbsentePoser(POST_LIKE_RPC_ABSENTE));
   await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
   await page.evaluate(() => { __erreur = true; });
   await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
@@ -338,17 +362,20 @@ test("recul partagé : un échec des cartes fait reculer le fil, un succès des 
   expect(await page.evaluate(() => ({ echecs: _filCompteursEchecs, enRecul: _filCompteursEnRecul() }))).toEqual({ echecs: 0, enRecul: false });
 });
 
-test("recul partagé : pendant le recul du fil, les cartes n'appellent pas la fonction", async ({ page }) => {
+test("ancien serveur, recul partagé : pendant le recul du fil, les cartes n'appellent pas la fonction", async ({ page }) => {
   await demarrer(page);
   await cartes(page, 1);
-  await page.evaluate(() => { _filCompteursEchecs = 1; _filCompteursProchainEssai = Date.now() + 60000; });
+  await page.evaluate(() => {
+    _memoRpcAbsentePoser(POST_LIKE_RPC_ABSENTE);
+    _filCompteursEchecs = 1; _filCompteursProchainEssai = Date.now() + 60000;
+  });
   await passer(page, 20000);
   const r = await page.evaluate(() => ({ appels: __rpc.length, heads: __heads, dans: _postLikeRefreshNextAt - Date.now() }));
   expect(r.appels).toBe(0);
   expect(r.heads).toBe(0);
   expect(r.dans).toBeGreaterThan(30000); // rendez-vous à la fin du recul partagé
   await passer(page, r.dans + 1);
-  expect(await page.evaluate(() => __rpc.map(x => x.fn))).toEqual(["fil_likes_visibles"]);
+  expect(await page.evaluate(() => __rpc.map(x => x.fn))).toEqual(["fil_compteurs"]);
 });
 
 // ── D10-01 (préparation) : diffusion tronquée ───────────────────────────────
