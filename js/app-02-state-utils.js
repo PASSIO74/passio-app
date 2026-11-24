@@ -7327,6 +7327,7 @@ function planifierConsentementRequis() {
 }
 function ouvrirConsentementRequis() {
   if (!consentementRequis() || typeof openModal !== "function") return;
+  if (typeof suspendreQrPourConsentement === "function") suspendreQrPourConsentement();
   // ENT-C16 (audit UX/UI du 2026-11-10) : deux réponses seulement — la croix
   // générique promettait une sortie que la modale ne donne pas (elle se rouvre
   // tant qu'aucune réponse n'est donnée) ; case de 22 px dans une ligne de 44 px ;
@@ -7357,29 +7358,45 @@ function ouvrirConsentementRequis() {
 }
 async function accepterConsentementRequis() {
   var caseAccord = document.getElementById("consentRequisCase");
+  const compteAccord = MY_UID, etatAccord = state;
   var msg = document.getElementById("consentRequisMsg");
   if (!caseAccord || !caseAccord.checked) { if (msg) msg.textContent = "Coche la case pour accepter."; return false; }
+  if (caseAccord.disabled) return false;
+  caseAccord.disabled = true;
+  const actions = caseAccord.closest("#modalContent").querySelectorAll(".consent-requis-btn");
+  actions.forEach(action => { action.disabled = true; });
   var accord = { cgu_version: PASSIO_CGU_VERSION, cgu_accepted_at: new Date().toISOString(), confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION };
   try {
     // ⚠️ ON LIT `{ error }` : une trace qu'on croit posée et qui ne l'est pas est pire que pas de trace.
     var res = await supa.auth.updateUser({ data: accord });
+    if (compteAccord !== MY_UID || etatAccord !== state) return false;
     if (res && res.error) {
       if (msg) msg.textContent = "Enregistrement impossible — réessaie.";
       try { if (typeof diagLog === "function") diagLog("cgu_requis_refus " + res.error.message); } catch (e) {}
       return false;
     }
   } catch (e) { if (msg) msg.textContent = "Enregistrement impossible — réessaie."; return false; }
+  finally {
+    caseAccord.disabled = false;
+    actions.forEach(action => { action.disabled = false; });
+  }
   try {
     state.user = state.user || {};
     state.user.cgu = { version: accord.cgu_version, acceptedAt: accord.cgu_accepted_at, confidentialite: accord.confidentialite_version };
     saveState();
   } catch (e) {}
   try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
+  if (!caseAccord.closest("#modalBackdrop.active")) {
+    if (typeof oublierQrDeConsentement === "function") oublierQrDeConsentement();
+    return true;
+  }
+  if (typeof reprendreQrApresConsentement === "function" && reprendreQrApresConsentement(caseAccord)) return true;
   closeModal();
   toast("Merci — c’est enregistré");
   return true;
 }
 async function refuserConsentementRequis() {
+  if (typeof oublierQrDeConsentement === "function") oublierQrDeConsentement();
   try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
   closeModal();
   toast("Conditions refusées : tu es déconnecté");
