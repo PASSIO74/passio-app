@@ -42,6 +42,58 @@ async function banc(page) {
 const pointe = (page, id) => page.evaluate((id) => (state.user.checkedInEvents || []).includes(id), id);
 
 test.describe("IRL-12 — pointage tenu par le serveur", () => {
+  for (const accepter of [true, false]) {
+    test("QR interrompu par le consentement : " + (accepter ? "confirmation manuelle" : "refus"), async ({ page }) => {
+      await banc(page);
+      await page.evaluate(interrompreLecture => {
+        const ev = _findCanonicalEvent("ev_r");
+        let premiereLecture = true;
+        supaLoadEvents = async (auteur, id) => {
+          if (interrompreLecture && premiereLecture) {
+            premiereLecture = false;
+            await new Promise(resolve => { window.__libererLecture = resolve; });
+          }
+          return id === ev.id ? [ev] : [];
+        };
+        window.__accords = 0;
+        Object.defineProperty(supa, "auth", { configurable: true, value: { updateUser: () => {
+          window.__accords++;
+          return new Promise(resolve => { window.__finAccord = () => resolve({ error: null }); });
+        } } });
+        history.replaceState = () => { throw new DOMException("Quota", "SecurityError"); };
+        doLogout = async () => {};
+        if (interrompreLecture) state.seed.events = state.seed.events.filter(e => e.id !== ev.id);
+        else localStorage.setItem(CONSENTEMENT_REQUIS_KEY, "1");
+        location.hash = "#irl-checkin-ev_r-K7PQ2M";
+      }, accepter);
+      if (accepter) {
+        await page.waitForFunction(() => !!window.__libererLecture);
+        await page.evaluate(() => {
+          localStorage.setItem(CONSENTEMENT_REQUIS_KEY, "1");
+          ouvrirConsentementRequis();
+          window.__libererLecture();
+        });
+      }
+      await expect(page.locator("#consentRequisCase")).toBeVisible();
+      if (!accepter) {
+        await page.getByRole("button", { name: "Refuser et me déconnecter" }).click();
+        expect(await page.evaluate(() => _qrConsentement)).toBeNull();
+        expect(await page.evaluate(() => window.__rpc.length)).toBe(0);
+        return;
+      }
+      await page.locator("#consentRequisCase").check();
+      await page.getByRole("button", { name: "J’accepte et je continue" }).click();
+      expect(await page.evaluate(() => accepterConsentementRequis())).toBe(false);
+      expect(await page.evaluate(() => window.__accords)).toBe(1);
+      await page.evaluate(() => window.__finAccord());
+      const confirmer = page.getByRole("button", { name: "Confirmer mon arrivée", exact: true });
+      await expect(confirmer).toBeVisible();
+      expect(await page.evaluate(() => window.__rpc.length)).toBe(0);
+      await confirmer.click();
+      await expect.poll(() => pointe(page, "ev_r")).toBe(true);
+      expect(await page.evaluate(() => window.__rpc)).toEqual(["K7PQ2M"]);
+    });
+  }
   test("l’accueil ouvert montre la présence une seule fois et conserve le QR affiché", async ({ page }) => {
     await banc(page);
     await page.evaluate(() => {

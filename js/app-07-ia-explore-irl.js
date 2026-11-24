@@ -4525,6 +4525,7 @@ function _lienContactEvenement(contact) {
 })();
 
 function openEventDetails(id) {
+  if (window._openEventDetailId !== id) document.getElementById("confirmerArriveeApresAccord")?.remove();
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
@@ -5070,6 +5071,7 @@ function _suivrePresencesOuvertes(ev) {
 }
 
 function closeEventDetail() {
+  document.getElementById("confirmerArriveeApresAccord")?.remove();
   _arreterSuiviPresences();
   const page = document.getElementById("eventDetailPage");
   const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
@@ -9521,6 +9523,58 @@ var _irlCkLinkAttentes = 0;
 var _irlCkLinkTimer = null;
 var _irlCkLecture = null;
 var IRL_CHECKIN_HASH_RE = /^#irl-checkin-([\w-]{1,100})-([A-Z0-9]{6})$/;
+// Valable uniquement dans cet onglet pour le compte qui a scanné.
+var _qrConsentement = null;
+function oublierQrDeConsentement() { _qrConsentement = null; }
+
+function suspendreQrPourConsentement() {
+  const lien = IRL_CHECKIN_HASH_RE.exec(location.hash);
+  if (!lien || !state || !_uidEstUnCompte()) return false;
+  _qrConsentement = { id: lien[1], code: lien[2], uid: MY_UID, etat: state };
+  // Un retour depuis la modale ne doit jamais rejouer automatiquement le scan.
+  if (!replaceHistorySafe(history.state, "#irl")) location.replace("#irl");
+  _terminerLienPointage();
+  return true;
+}
+
+function reprendreQrApresConsentement(caseAccord) {
+  const scan = _qrConsentement;
+  oublierQrDeConsentement();
+  if (!scan || scan.uid !== MY_UID || scan.etat !== state || consentementRequis() ||
+      !caseAccord.isConnected || !caseAccord.closest("#modalBackdrop.active")) return false;
+  openModal('<div class="modal-title" id="repriseQrAttente">Ouverture de la sortie…</div>');
+  const attente = document.getElementById("repriseQrAttente");
+  const toujoursIci = () => scan.uid === MY_UID && scan.etat === state && !consentementRequis()
+    && attente.isConnected && !!attente.closest("#modalBackdrop.active");
+  (async function () {
+    let sorties;
+    try { sorties = await supaLoadEvents(null, scan.id); }
+    catch (e) { sorties = null; }
+    if (!toujoursIci()) return;
+    closeModal();
+    if (!sorties || sorties.length !== 1 || sorties[0].id !== scan.id) {
+      toast(sorties ? "Sortie indisponible." : "Impossible de charger la sortie. Scanne à nouveau le QR.");
+      return;
+    }
+    fusionnerEvenementsServeur(sorties);
+    openEventDetails(scan.id);
+    const contenu = document.getElementById("eventDetailContent");
+    const bouton = document.createElement("button");
+    bouton.type = "button"; bouton.className = "btn primary block"; bouton.textContent = "Confirmer mon arrivée";
+    contenu.before(bouton);
+    bouton.id = "confirmerArriveeApresAccord";
+    bouton.onclick = async function () {
+      const ev = _findCanonicalEvent(scan.id);
+      if (window._openEventDetailId !== scan.id || state !== scan.etat || MY_UID !== scan.uid ||
+          consentementRequis() || !ev || !_pointageServeur(ev)) { bouton.remove(); return; }
+      bouton.disabled = true;
+      const verdict = await _pointerParCodeServeur(ev, scan.code);
+      if (verdict === "erreur") bouton.disabled = false; else bouton.remove();
+    };
+    bouton.focus({ preventScroll: true });
+  })();
+  return true;
+}
 
 function _terminerLienPointage() {
   clearTimeout(_irlCkLinkTimer);
@@ -9562,6 +9616,11 @@ function _irlCkLinkReplanifier() {
 function _openIrlCheckinFromHash() {
   var m = IRL_CHECKIN_HASH_RE.exec(location.hash || "");
   if (!m) { _terminerLienPointage(); return false; }
+  if (typeof consentementRequis === "function" && consentementRequis()) {
+    if (!suspendreQrPourConsentement() && ++_irlCkLinkAttentes <= 600) _irlCkLinkReplanifier();
+    planifierConsentementRequis();
+    return false;
+  }
   if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
     _terminerLienPointage();
     _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
