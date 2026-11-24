@@ -9469,7 +9469,9 @@ function submitCheckinCode(eventId) {
 // Le verdict est dit tel quel ; « ok » marque le pointage local.
 async function _pointerParCodeServeur(ev, code) {
   if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return "deja_pointe"; }
+  const etatAuScan = state, compteAuScan = MY_UID;
   var verdict = await supaPointerParCode(ev.id, code);
+  if (state !== etatAuScan || MY_UID !== compteAuScan) return verdict;
   if (verdict === "ok" || verdict === "deja_pointe") {
     closeModal();
     _marquerPointeLocal(ev);
@@ -9517,6 +9519,37 @@ var _irlCkLinkCode = "";
 var _irlCkLinkEssais = 0;
 var _irlCkLinkAttentes = 0;
 var _irlCkLinkTimer = null;
+var _irlCkLecture = null;
+var IRL_CHECKIN_HASH_RE = /^#irl-checkin-([\w-]{1,100})-([A-Z0-9]{6})$/;
+
+function _terminerLienPointage() {
+  clearTimeout(_irlCkLinkTimer);
+  _irlCkLinkTimer = null;
+  _irlCkLecture = null;
+  _irlCkLinkId = ""; _irlCkLinkCode = ""; _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
+}
+
+async function _chargerSortieDuPointage(id) {
+  const lecture = { hash: location.hash, etat: state, uid: MY_UID };
+  _irlCkLecture = lecture;
+  let sorties;
+  try { sorties = await supaLoadEvents(null, id); }
+  catch (e) { sorties = null; }
+  if (_irlCkLecture !== lecture) return;
+  if (location.hash !== lecture.hash || state !== lecture.etat || MY_UID !== lecture.uid) {
+    _terminerLienPointage();
+    return;
+  }
+  _irlCkLecture = null;
+  if (!_irlLienAppPrete()) { _irlCkLinkReplanifier(); return; }
+  if (sorties && sorties.length === 1 && sorties[0].id === id) {
+    fusionnerEvenementsServeur(sorties);
+    _openIrlCheckinFromHash();
+    return;
+  }
+  _terminerLienPointage();
+  toast(sorties ? "Activité introuvable ou supprimée" : "Impossible de charger l’activité. Scanne à nouveau le QR.");
+}
 
 function _irlCkLinkReplanifier() {
   if (_irlCkLinkTimer) return;
@@ -9527,8 +9560,12 @@ function _irlCkLinkReplanifier() {
 }
 
 function _openIrlCheckinFromHash() {
-  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
-  if (m) { _irlCkLinkId = m[1]; _irlCkLinkCode = m[2]; }
+  var m = IRL_CHECKIN_HASH_RE.exec(location.hash || "");
+  if (!m) { _terminerLienPointage(); return false; }
+  if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
+    _terminerLienPointage();
+    _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
+  }
   var id = _irlCkLinkId, code = _irlCkLinkCode;
   if (!id || !code) return false;
 
@@ -9539,19 +9576,24 @@ function _openIrlCheckinFromHash() {
     }
     var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
     if (!ev) {
+      if (window._supaReal && typeof supaLoadEvents === "function") {
+        if (!_irlCkLecture) _chargerSortieDuPointage(id);
+        return false;
+      }
       if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
-      _irlCkLinkId = ""; _irlCkLinkCode = "";
+      _terminerLienPointage();
       toast("Activité introuvable ou supprimée");
       return false;
     }
     // Même règle qu'au-dessus, et elle compte davantage ici : un id mémorisé qui
     // survivrait au pointage ferait re-pointer à chaque `hashchange` suivant.
-    _irlCkLinkId = ""; _irlCkLinkCode = ""; _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
+    _terminerLienPointage();
     if (typeof goTo === "function") goTo("irl");
     openEventDetails(id);
     // Un code faux ouvre quand même la fiche — la personne est devant le bon
     // événement, elle peut pointer autrement — mais ne pointe PAS.
     if (_pointageServeur(ev)) { _pointerParCodeServeur(ev, code); return true; }
+    if (ev.fromSupabase) { toast("Connecte-toi pour pointer"); return true; }
     if (code !== _eventCheckinCode(ev)) { toast("Lien de pointage invalide"); return true; }
     _checkInViaCode(ev);
     return true;
@@ -9561,17 +9603,12 @@ function _openIrlCheckinFromHash() {
   }
 }
 window.addEventListener("hashchange", function () {
-  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
-  if (!m) return;
-  if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
-    _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
-    _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
-  }
+  if (!IRL_CHECKIN_HASH_RE.test(location.hash || "")) { _terminerLienPointage(); return; }
   _openIrlCheckinFromHash();
 });
 (function _irlCheckinDeepLinkBoot() {
   if (!/#irl-checkin-/.test(location.hash || "")) return;
-  setTimeout(_openIrlCheckinFromHash, 1200);
+  _irlCkLinkTimer = setTimeout(function () { _irlCkLinkTimer = null; _openIrlCheckinFromHash(); }, 1200);
 })();
 window.addEventListener("passio:app-ready", function () {
   if (!_irlCkLinkId && !/#irl-checkin-/.test(location.hash || "")) return;

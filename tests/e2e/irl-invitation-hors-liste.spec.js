@@ -42,6 +42,63 @@ test("une invitation ouvre la sortie même après la création de 60 autres acti
   expect(requetesCiblees).toEqual(["eq." + cible.id]);
 });
 
+for (const verdict of ["ok", "code_incorrect", "non_inscrit", "visiteur"]) {
+  test("QR hors des 60 dernières sorties : verdict serveur " + verdict, async ({ page }) => {
+    await bootOnboarded(page);
+    const lectures = await servirActivites(page);
+    await page.evaluate(async ({ id, verdict }) => {
+      fusionnerEvenementsServeur(await supaLoadEvents());
+      window.__pointagesQr = [];
+      _uidEstUnCompte = () => verdict !== "visiteur";
+      if (verdict === "visiteur") {
+        _checkInViaCode = () => { window.__pointagesQr.push("pointage local"); };
+        _eventCheckinCode = () => "TEST42";
+      }
+      supaPointerParCode = async (eventId, code) => {
+        window.__pointagesQr.push([eventId, code]);
+        return verdict;
+      };
+      location.hash = "#irl-checkin-" + id + "-TEST42";
+    }, { id: cible.id, verdict });
+    await expect(page.locator("#eventDetailPage")).toContainText(cible.title);
+    await expect.poll(() => page.evaluate(() => window.__pointagesQr)).toEqual(verdict === "visiteur" ? [] : [[cible.id, "TEST42"]]);
+    expect(lectures).toEqual(["eq." + cible.id]);
+    expect(await page.evaluate(id => (state.user.checkedInEvents || []).includes(id), cible.id)).toBe(verdict === "ok");
+  });
+}
+
+test("quitter un scan pendant le démarrage annule la recherche et le pointage", async ({ page }) => {
+  await bootOnboarded(page);
+  const lectures = await servirActivites(page);
+  await page.evaluate(id => {
+    const prete = _irlLienAppPrete;
+    _irlLienAppPrete = () => false;
+    history.replaceState(null, "", "#irl-checkin-" + id + "-TEST42");
+    _openIrlCheckinFromHash();
+    history.pushState(null, "", "#feed");
+    _irlLienAppPrete = prete;
+  }, cible.id);
+  await page.waitForFunction(() => _irlCkLinkTimer === null && !_irlCkLinkId);
+  expect(lectures).toEqual([]);
+  await expect(page.locator("#eventDetailPage")).toBeHidden();
+});
+
+test("une confirmation de présence tardive ne marque pas le compte suivant", async ({ page }) => {
+  await bootOnboarded(page);
+  const resultat = await page.evaluate(async () => {
+    const ev = allEvents().find(e => e.id === "e1");
+    let confirmer;
+    supaPointerParCode = () => new Promise(resolve => { confirmer = resolve; });
+    const enVol = _pointerParCodeServeur(ev, "TEST42");
+    MY_UID = "u_autre_compte";
+    state = { ...state, user: { ...state.user, checkedInEvents: [] } };
+    confirmer("ok");
+    await enVol;
+    return state.user.checkedInEvents;
+  });
+  expect(resultat).toEqual([]);
+});
+
 test("après inscription, une fiche hors du cache revient sans inscrire à la sortie", async ({ page }) => {
   await bootOnboarded(page);
   const requetesCiblees = await servirActivites(page);
