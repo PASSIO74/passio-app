@@ -4643,7 +4643,7 @@ function openEventDetails(id) {
       const firstName = (u.name || "?").split(" ")[0];
       const here = (ev.checkedIn || []).indexOf(aid) > -1;
       return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
-      <div class="avatar sm" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
+      <div class="avatar sm" data-presence-membre="${escapeHtml(aid)}" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
     }).join("") + (!sansReste && n > lim ? _pastilleReste(n - lim) : "");
@@ -4837,6 +4837,7 @@ function openEventDetails(id) {
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
   page.scrollTop = 0;
+  _suivrePresencesOuvertes(ev);
   // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
@@ -5010,7 +5011,66 @@ function toggleJoinEventDetail(id) {
   titles.forEach(t => { if (t.textContent.startsWith("Participants")) t.textContent = `Participants (${nbVenants}${maxStr})`; });
 }
 
+var _suiviPresences = null;
+function _arreterSuiviPresences() {
+  if (_suiviPresences) clearTimeout(_suiviPresences.timer);
+  _suiviPresences = null;
+}
+
+function _suivrePresencesOuvertes(ev) {
+  if (_suiviPresences && _suiviPresences.id === ev.id && _suiviPresences.uid === MY_UID && _suiviPresences.etat === state) return;
+  _arreterSuiviPresences();
+  if (!ev.fromSupabase || !_pointageServeur(ev) || !_canManageEvent(ev) || _eventIsCancelled(ev) || Date.now() > _eventEndAt(ev)) return;
+  const suivi = { id: ev.id, uid: MY_UID, etat: state };
+  _suiviPresences = suivi;
+  const courant = () => {
+    if (_suiviPresences !== suivi || state !== suivi.etat || MY_UID !== suivi.uid || window._openEventDetailId !== suivi.id) return null;
+    const cible = _findCanonicalEvent(suivi.id);
+    return cible && _pointageServeur(cible) && _canManageEvent(cible) && !_eventIsCancelled(cible) && Date.now() <= _eventEndAt(cible) ? cible : null;
+  };
+  function programmer(cible) {
+    const avantOuverture = cible.date - 3600000 - Date.now();
+    const delai = avantOuverture > 0 ? Math.min(avantOuverture, 2147483647)
+      : (typeof delaiDeleste === "function" ? delaiDeleste(12000) : 12000);
+    suivi.timer = setTimeout(relire, delai);
+  }
+  async function relire() {
+    try {
+      if (!_canCheckIn(courant()) || document.hidden) return;
+      const lu = await supaLireParticipants([suivi.id], "accueil participants");
+      const cible = courant();
+      if (!_canCheckIn(cible) || document.hidden) return;
+      if (lu.listesLues) {
+        cible.checkedIn = lu.checkedByEvent[suivi.id] || [];
+        const presents = new Set(cible.checkedIn);
+        document.querySelectorAll("#eventDetailPage [data-presence-membre]").forEach(avatar => {
+          const marque = avatar.querySelector(".ev-here-dot");
+          if (presents.has(avatar.dataset.presenceMembre)) {
+            if (!marque) {
+              const point = document.createElement("span");
+              point.className = "ev-here-dot"; point.title = "Sur place"; point.textContent = "✅";
+              avatar.appendChild(point);
+            }
+          } else if (marque) marque.remove();
+        });
+      }
+      if (lu.comptesLus) cible.counts = lu.countsByEvent[suivi.id] || null;
+      document.querySelectorAll("[data-presence-total]").forEach(el => {
+        if (el.dataset.presenceTotal === suivi.id) el.textContent = _nbInscrits(cible, "checked_in") + " sur place";
+      });
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("accueil participants : lecture interrompue");
+    } finally {
+      const cible = courant();
+      if (cible) programmer(cible);
+      else if (_suiviPresences === suivi) _arreterSuiviPresences();
+    }
+  }
+  programmer(ev);
+}
+
 function closeEventDetail() {
+  _arreterSuiviPresences();
   const page = document.getElementById("eventDetailPage");
   const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
   if (page) page.style.display = "none";
@@ -7828,7 +7888,7 @@ function openEventManage(id) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Gérer l'activité</div>
-    <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
+    <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""} · <span data-presence-total="${escapeHtml(id)}">${checked} sur place</span></div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
@@ -9351,6 +9411,7 @@ function _rendreCheckinQr(ev, code) {
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
     + '<div class="checkin-qr-frame">' + svg + '</div>'
+    + '<div style="text-align:center" data-presence-total="' + escapeHtml(eventId) + '">' + _nbInscrits(ev, "checked_in") + ' sur place</div>'
     + '<div style="text-align:center;margin-top:12px;">'
     + '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">ou code à saisir</div>'
     + '<div class="checkin-code">' + escapeHtml(code || "······") + '</div>'
