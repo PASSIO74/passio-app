@@ -278,7 +278,7 @@ export function statistiques(mesures) {
 // Noms fermés : aucune valeur libre de télémétrie n'entre dans le rapport.
 export function mixObserve(mesures) {
   const actions = new Set(["fil", "notifications", "evenements", "profil", "message", "publier", "historique", "aimer"]);
-  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "compteur_like_visible",
+  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "fil_likes_visibles",
     "post_publier", "post_visibilite", "message_envoyer", "message_lire", "notifications", "evenements", "profil", "historique", "aimer", "retirer_like"]);
   const realises = mesures.filter(m => m.phase === "mesure");
   function repartir(lignes, famille) {

@@ -77,9 +77,8 @@ async function preparer(page, count = 1) {
       };
       return q;
     };
-    // D14-01 (2026-11-20) : le compteur des cartes passe par UN appel groupé
-    // `fil_compteurs` ; ce banc éprouve le chemin HEAD, qui ne sert plus que
-    // quand la fonction est ABSENTE du projet (mémorisée comme pour le fil).
+    // Les deux fonctions groupées sont absentes sur cet ancien projet.
+    _memoRpcAbsentePoser(POST_LIKE_RPC_ABSENTE);
     // Le chemin groupé : tests/e2e/securite-p1-client-2026-11-20.spec.js.
     _filCompteursNoterAbsence();
     startPostLikeRefresh();

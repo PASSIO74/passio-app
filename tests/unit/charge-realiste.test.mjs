@@ -290,29 +290,37 @@ test("HEAD exige un total exact, y compris zéro ; succès vide ou total inconnu
   for (const status of [204, 400, 401, 403, 429, 500]) assert.throws(() => compteurHead(status, "*/1"), new RegExp(`HTTP_${status}`));
 });
 
-test("le vrai chemin HEAD porte le JWT lecteur, compte son appel et refuse un en-tête absent", async () => {
+test("le RPC groupé porte le JWT lecteur, compte les octets et refuse une réponse fausse ou trop large", async () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function requete("), fin = source.indexOf("async function cadencer(", debut);
-  let status = 200, range = "*/7"; const appels = [], mesures = [], budget = new Budget();
-  const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, compteurHead,
+  const ids = ["p1", "p2", "p3"];
+  const bonnes = ids.map((post_id, likes) => ({ post_id, likes }));
+  let lignes = bonnes, status = 200;
+  const appels = [], mesures = [], budget = new Budget();
+  const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, verdictReponse,
     phase: "mesure", stage: { taille: 25, page: 20 }, debut: Date.now(), arret: null,
     base: "https://staging.example.test", cleAnon: "anon-factice", cleService: "service-factice", controleurs: new Set(), originesInterruption: new WeakMap(), mesures,
-    octets: x => Buffer.byteLength(x), compter: q => budget.compter(q), attendreTableau: () => ({}),
-    motifSur: e => e.message, URLSearchParams,
-    fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(null, { status, headers: range ? { "content-range": range } : {} }); },
+    octets: x => Buffer.byteLength(x), compter: q => budget.compter(q),
+    attendreTableau: (min, champs) => ({ tableau: true, min, champs }), motifSur: e => e.message, URLSearchParams,
+    fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(JSON.stringify(lignes), { status }); },
   };
-  const lire = runInNewContext(source.slice(debut, fin) + "\ncompterLikes;", ctx);
-  assert.equal(await lire({ jwt: "lecteur-factice" }, "post-test"), 7);
-  assert.equal(appels[0].opt.method, "HEAD");
+  const lire = runInNewContext(source.slice(debut, fin) + "\nlireLikesVisibles;", ctx);
+  const compte = { jwt: "lecteur-factice" };
+  assert.deepEqual(Object.fromEntries(await lire(compte, ids)), { p1: 0, p2: 1, p3: 2 });
+  assert.equal(appels[0].opt.method, "POST");
   assert.equal(appels[0].opt.headers.Authorization, "Bearer lecteur-factice");
-  assert.equal(appels[0].opt.headers.Prefer, "count=exact");
-  const url = new URL(appels[0].url);
-  assert.equal(url.searchParams.get("post_id"), "eq.post-test"); assert.equal(url.searchParams.get("select"), "post_id");
-  assert.equal(budget.requetes, 1); assert.equal(mesures[0].ok, true); assert.equal(mesures[0].compteur, 7);
-  assert.equal(mesures[0].octets, 0, "corps vide ne signifie ni requête ni en-têtes gratuits");
-  range = null; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HEAD_COMPTE_INVALIDE/);
-  status = 403; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HTTP_403/);
-  assert.equal(budget.requetes, 3); assert.equal(mesures[1].ok, false); assert.equal(mesures[2].status, 403);
+  assert.equal(new URL(appels[0].url).pathname, "/rest/v1/rpc/fil_likes_visibles");
+  assert.deepEqual(JSON.parse(appels[0].opt.body), { _post_ids: ids });
+  assert.equal(mesures[0].octets, Buffer.byteLength(appels[0].opt.body + JSON.stringify(bonnes)));
+  for (lignes of [[], bonnes.slice(0, 2), [...bonnes, bonnes[0]], [bonnes[0], bonnes[0], bonnes[2]],
+    [{ post_id: "autre", likes: 2 }, ...bonnes.slice(1)], [{ ...bonnes[0], likes: -1 }, ...bonnes.slice(1)],
+    [{ ...bonnes[0], apercus: [] }, ...bonnes.slice(1)]]) {
+    await assert.rejects(lire(compte, ids), /CONTENU_INATTENDU|COMPTEUR_VISIBLE_INVALIDE/);
+    assert.equal(mesures.at(-1).ok, false);
+  }
+  status = 403; await assert.rejects(lire(compte, ids), /HTTP_403/);
+  assert.equal(budget.requetes, mesures.length);
+  assert.ok(appels.every(a => new URL(a.url).pathname.endsWith("/rpc/fil_likes_visibles")));
   assert.equal(ctx.controleurs.size, 0);
 });
 
@@ -323,13 +331,13 @@ test("le vrai prévol maintient un like jusqu'à lecture du destinataire puis re
   const journal = new Map(), etapes = []; let count = 1, invisible = false;
   const ctx = { comptes, postsFixture: [{ id: "fixture" }], postPourLike, mutationsLikes: journal,
     sauvegarder: () => {}, attendreTableau: () => ({}),
-    compterLikes: async (compte, post) => { assert.equal(compte, comptes[1]); assert.equal(post, "fixture"); etapes.push(`HEAD:${count}`); return invisible ? 1 : count; },
+    lireLikesVisibles: async (compte, ids) => { assert.equal(compte, comptes[1]); assert.deepEqual([...ids], ["fixture"]); etapes.push(`RPC:${count}`); return new Map([[ids[0], invisible ? 1 : count]]); },
     inserer: async (nom, table, cle, opt) => { assert.equal(opt.jwt, "jwt-auteur"); assert.equal(table, "post_likes"); assert.ok(journal.has("fixture:auteur")); count++; etapes.push("INSERT"); },
     rest: async (nom, table, params, opt) => { assert.equal(opt.methode, "DELETE"); assert.equal(opt.jwt, "jwt-auteur"); assert.equal(params.post_id, "eq.fixture"); assert.equal(params.user_id, "eq.auteur"); count--; etapes.push("DELETE"); return [{}]; },
   };
   const prevol = runInNewContext(source.slice(debut, fin) + "\nprevolCompteurLikes;", ctx);
   const result = await prevol();
-  assert.deepEqual(etapes, ["HEAD:1", "INSERT", "HEAD:2", "DELETE", "HEAD:1"]);
+  assert.deepEqual(etapes, ["RPC:1", "INSERT", "RPC:2", "DELETE", "RPC:1"]);
   assert.deepEqual([result.avant, result.ajoute, result.retire], [1, 2, 1]); assert.equal(journal.size, 0);
   invisible = true; await assert.rejects(prevol(), /COMPTEUR_AJOUT_NON_VISIBLE/);
   assert.equal(count, 1); assert.equal(journal.size, 0, "le finally retire aussi l'ajout si sa visibilité est refusée");
@@ -342,7 +350,7 @@ test("les frames distinguent table/opération, broadcast et protocole sans journ
   assert.equal(familleFrameRealtime({ event: "phx_reply" }), "protocole:phx_reply");
 });
 
-test("les HEAD rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
+test("les compteurs rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
   const bon = statistiques([{ ok: true, ms: 50 }]), lent = statistiques([{ ok: true, ms: 1001 }]), vide = statistiques([]);
   const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
     dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
@@ -401,7 +409,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
       decalageInitial: () => 0, pausePrevue: () => 5000, surveillerCompteurs: async () => {},
       action: async () => {
         for (const [type, famille, methode] of [['http', 'fil', 'GET'], ['parcours', 'fil', null],
-          ['http', 'compteur_like_visible', 'HEAD'], ['parcours', 'compteurs_visibles', null],
+          ['http', 'fil_likes_visibles', 'POST'], ['parcours', 'compteurs_visibles', null],
           ['realtime', 'message', null], ['realtime', 'post', null]]) {
           mesures.push({ phase: 'mesure', type, famille, methode, ok: true, ms: 20, octets: 0 });
         }
@@ -424,7 +432,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
   }
 });
 
-test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16,5 s entre débuts", async () => {
+test("le vrai minuteur lit trois compteurs en une requête groupée et garde 15–16,5 s entre débuts", async () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
   let now = 0, enVol = 0, maximumEnVol = 0; const appels = [], mesures = [];
@@ -432,24 +440,25 @@ test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16
     phase: "mesure", stage: { taille: 25, page: 20 }, mesures, performance: { now: () => now },
     sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
     stop: motif => { ctx.arret = motif; },
-    compterLikes: async (compte, id) => {
-      enVol++; maximumEnVol = Math.max(maximumEnVol, enVol); appels.push({ id, now });
-      await Promise.resolve(); now += 10; enVol--; return 1;
+    lireLikesVisibles: async (compte, ids) => {
+      enVol++; maximumEnVol = Math.max(maximumEnVol, enVol); appels.push({ ids: [...ids], now });
+      await Promise.resolve(); now += 10; enVol--; return new Map(ids.map(id => [id, 1]));
     },
   };
   const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
   const compte = { index: 0, postsVisibles: ["p1", "p2", "p3", "p4", "p5"] };
   await surveiller(compte, 0, 60000);
   assert.equal(appels[0].now, decalageInitialCompteurs(20260920, 0));
-  assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 9);
-  assert.equal(mesures.length * 3, appels.length);
-  assert.deepEqual([...new Set(appels.map(a => a.id))], ["p1", "p2", "p3"]);
-  for (let i = 3; i < appels.length; i += 3) {
-    const ecart = appels[i].now - appels[i - 3].now;
+  assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 3);
+  assert.equal(mesures.length, appels.length);
+  for (const appel of appels) assert.deepEqual(appel.ids, ["p1", "p2", "p3"]);
+  assert.ok(mesures.every(m => m.lectures === 3));
+  for (let i = 1; i < appels.length; i++) {
+    const ecart = appels[i].now - appels[i - 1].now;
     assert.ok(ecart >= 15000 && ecart <= 16500);
   }
   assert.ok(appels.every(a => a.now < 60000));
-  const avant = appels.length; ctx.compterLikes = async () => { throw new Error("HTTP_403"); };
+  const avant = appels.length; ctx.lireLikesVisibles = async () => { throw new Error("HTTP_403"); };
   now = 0; await surveiller(compte, 0, 60000);
   assert.equal(ctx.arret, "HTTP_403"); assert.equal(appels.length, avant);
   assert.equal(mesures.at(-1).ok, false); assert.equal(mesures.at(-1).lectures, 0);
@@ -491,7 +500,7 @@ function filSimule() {
     else if (table === "profiles") {
       assert.notEqual(params.id, "in.()", "une page sans commentaire ne doit pas interroger une liste d'auteurs vide");
       rows = [...new Set(etat.commentaires.map(c => c.author_id))].map(id => ({ id, username: "Auteur" }));
-    } else if (table === "comment_interactions") rows = [];
+    } else if (table === "rpc/interactions_cibles") rows = [];
     else assert.fail("ancien chemin de lecture du fil");
     if (!verdictReponse(200, JSON.stringify(rows), opt.attentes).ok) throw new Error("CONTENU_INATTENDU");
     return rows;
@@ -508,11 +517,14 @@ test("le vrai parcours fil utilise le RPC du client courant, sans anciennes list
   const rpc = etat.appels.find(a => a.nom === "fil_compteurs");
   assert.equal(rpc.table, "rpc/fil_compteurs"); assert.equal(rpc.opt.methode, "POST");
   const interactions = etat.appels.find(a => a.nom === "fil_interactions_apercus");
-  assert.equal(interactions.params.comment_id, `in.(${etat.commentaires.map(c => c.id).join(",")})`);
-  assert.equal(interactions.params.order, "created_at.asc");
+  assert.equal(interactions.table, "rpc/interactions_cibles");
+  assert.equal(interactions.opt.methode, "POST");
+  assert.deepEqual([...interactions.opt.corps._comment_ids], etat.commentaires.map(c => c.id));
+  assert.equal(interactions.opt.corps._kinds, null);
+  assert.equal(interactions.opt.corps._limite, 1000);
   const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
   assert.match(client, /supa\.rpc\("fil_compteurs", \{ _post_ids: ids \}\)/);
-  assert.match(client, /comment_interactions"\)\.select\("id,comment_id,post_id,user_id,kind,payload,created_at"\)/);
+  assert.match(client, /_lectureGroupee\("interactions_cibles", \{ _comment_ids: uniq, _kinds: null, _limite: 1000 \}\)/);
 });
 
 test("le tri du banc suit les appels du vrai chargeur UI, y compris le départage des horodatages égaux", async () => {
@@ -596,7 +608,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
     { phase: "mesure", type: "parcours", famille: "message", ok: false },
     { phase: "mesure", type: "parcours", famille: "compteurs_visibles", ok: true },
     { phase: "mesure", type: "http", famille: "fil_compteurs", methode: "POST", ok: true },
-    { phase: "mesure", type: "http", famille: "compteur_like_visible", methode: "HEAD", ok: false },
+    { phase: "mesure", type: "http", famille: "fil_likes_visibles", methode: "POST", ok: false },
     { phase: "mesure", type: "http", famille: "texte-distant-non-fiable", methode: "methode-libre", ok: false },
     { phase: "preparation", type: "parcours", famille: "publier", ok: true },
     { phase: "prevol", type: "http", famille: "post_publier", methode: "POST", ok: true },
@@ -607,7 +619,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
     { famille: "fil", tentatives: 1, succes: 1, erreurs: 0, pourcentage: 50 },
     { famille: "message", tentatives: 1, succes: 0, erreurs: 1, pourcentage: 50 },
   ]);
-  assert.equal(mix.appelsHttp.familles.find(f => f.famille === "HEAD:compteur_like_visible").erreurs, 1);
+  assert.equal(mix.appelsHttp.familles.find(f => f.famille === "POST:fil_likes_visibles").erreurs, 1);
   assert.equal(mix.appelsHttp.familles.every(f => f.pourcentage === 33.3333), true);
   assert.equal(JSON.stringify(mix).includes("texte-distant"), false);
   assert.deepEqual(mixObserve([]).actions, { total: 0, familles: [] });
@@ -761,7 +773,7 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
       o: { graine: 20260920, compteursCadence: cadence }, arret: null, phase: "mesure", stage: { taille: 25, page: 20 }, mesures,
       performance: { now: () => now }, sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
       stop: motif => { ctx.arret = motif; },
-      compterLikes: async (compte, id) => { appels.push({ id, now }); await Promise.resolve(); now += 10; return comptes(id, appels.length); },
+      lireLikesVisibles: async (compte, ids) => { appels.push({ now }); await Promise.resolve(); now += 10; return new Map(ids.map(id => [id, comptes(id, appels.length)])); },
     };
     const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
     return { surveiller, appels, mesures, ctx };
@@ -769,7 +781,7 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
   // Compteurs stables : les écarts entre débuts suivent 15 → 22,5 → 33,75 → 50,6 → 60 s (+ jitter < 1,5 s).
   let b = banc("adaptative", () => 7);
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 400000);
-  const debuts = b.appels.filter((_, i) => i % 3 === 0).map(a => a.now);
+  const debuts = b.appels.map(a => a.now);
   const ecarts = debuts.slice(1).map((t, i) => t - debuts[i]);
   const attendus = [15000, 22500, 33750, 50625, 60000, 60000, 60000];
   attendus.forEach((pas, i) => { assert.ok(ecarts[i] >= pas && ecarts[i] < pas + 1500, `écart ${i} = ${ecarts[i]} pour un pas de ${pas}`); });
@@ -783,12 +795,12 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
   assert.equal(f.mesures.length, 6); assert.equal(cyclesAdaptatifs, 4);
   assert.ok(f.mesures.every(m => m.pasMs === 15000));
   // Un compteur qui change au 4ᵉ cycle ramène le pas à 15 s.
-  b = banc("adaptative", (id, n) => (id === "p2" && n > 9 ? 8 : 7));
+  b = banc("adaptative", (id, n) => (id === "p2" && n > 3 ? 8 : 7));
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 200000);
   assert.deepEqual(b.mesures.slice(0, 6).map(m => m.vivant), [true, false, false, true, false, false]);
   assert.deepEqual(b.mesures.slice(0, 6).map(m => m.pasMs), [15000, 15000, 22500, 33750, 15000, 22500]);
   // Une erreur n'est pas un calme.
-  b = banc("adaptative", (id, n) => { if (n === 7) throw new Error("ERREUR_INTERNE_OU_RESEAU"); return 7; });
+  b = banc("adaptative", (id, n) => { if (n === 3) throw new Error("ERREUR_INTERNE_OU_RESEAU"); return 7; });
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 120000);
   assert.equal(b.mesures[2].ok, false); assert.equal(b.mesures[2].vivant, true); assert.equal(b.mesures[3].pasMs, 15000);
 });

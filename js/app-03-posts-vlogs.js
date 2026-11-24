@@ -128,9 +128,9 @@ async function sharePostInFeed(id) {
 const _likePending = new Set();
 
 // Les compteurs publics ne s'abonnent plus aux likes de TOUT le réseau.
-// Au plus trois cartes par créneau, lues en UN appel groupé `fil_compteurs`
-// (D14-01, 2026-11-20) ; trois HEAD exacts séquentiels seulement quand la
-// fonction est absente du projet. Aucune liste d'identifiants n'est téléchargée.
+// Au plus trois cartes par créneau : `fil_likes_visibles` ne calcule que leurs
+// likes. Pendant le déploiement, `fil_compteurs` peut fournir les deux mêmes
+// colonnes ; les trois HEAD exacts restent le dernier repli des anciens projets.
 // Un échec recule (`reculSurErreur`) et le retour au premier plan ne remet PAS
 // ce recul à zéro : seule une lecture réussie le fait.
 // ⚠️ LE CRÉNEAU RECULE QUAND RIEN NE BOUGE (2026-09-21) : 15 s tant qu'un
@@ -332,35 +332,42 @@ function _postLikeRefreshWake() {
   _postLikeRefreshDueAt = Date.now() + delay;
   _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
 }
-// La lecture groupée est-elle permise ? Oui, sauf fonction mémorisée absente
-// pour cette release (même autorité que le fil : `_filCompteursMemoAbsence`, app-08).
+const POST_LIKE_RPC_ABSENTE = "_filLikesVisiblesAbsente";
 function _postLikeGroupeDisponible() {
   return typeof supa !== "undefined" && !!supa && typeof supa.rpc === "function"
-    && !(typeof _filCompteursMemoAbsence === "function" && _filCompteursMemoAbsence());
+    && (!_memoRpcAbsenteActif(POST_LIKE_RPC_ABSENTE) || !_filCompteursMemoAbsence());
 }
-// UN appel `fil_compteurs` pour les cartes à l'écran. Rend :
-//   { counts: Map(id → nombre | null) } — null = valeur invalide (jamais un zéro) ;
-//   { absente: true } — PGRST202/42883, ou erreur DURABLE (4xx, 42501,
-//     PGRST203… : `_filCompteursErreurPassagere`, app-08), mémorisé comme pour le fil ;
-//   { error: true } — charge : délai (8 s), 5xx, 57014, réseau, réponse illisible.
-// Le recul est PARTAGÉ avec le fil (contre-revue du 2026-11-20) : un échec de
-// charge le pose (`_filCompteursNoterEchec`), un succès le lève pour les deux.
-// `aime` n'est pas lu : MON état reste local (intention, `supaSetPostLike`).
+// Un seul délai pour le tour, y compris la première détection d'un ancien
+// serveur. Le mémo d'absence du petit RPC est indépendant de celui du fil.
 async function _postLikeLireGroupe(ids) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     // POST, jamais GET : un identifiant peut porter une virgule (même règle que le fil).
-    let query = supa.rpc("fil_compteurs", { _post_ids: ids });
-    if (query && typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
-    const { data, error, status } = await query;
-    if (error) {
-      const absente = typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error);
-      const durable = !absente && typeof _filCompteursErreurPassagere === "function" && !_filCompteursErreurPassagere(error, status);
-      if (absente || durable) {
-        if (typeof _filCompteursNoterAbsence === "function") _filCompteursNoterAbsence();
+    let reponse;
+    if (!_memoRpcAbsenteActif(POST_LIKE_RPC_ABSENTE)) {
+      let query = supa.rpc("fil_likes_visibles", { _post_ids: ids });
+      if (typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
+      reponse = await query;
+      // Un refus, une panne ou un quota ne déclenchent pas de seconde lecture.
+      if (reponse.error && reponse.status !== 429 && !(reponse.status >= 500)
+          && _erreurFonctionAbsente(reponse.error)) {
+        _memoRpcAbsentePoser(POST_LIKE_RPC_ABSENTE);
+        reponse = null;
+      }
+    }
+    if (!reponse) {
+      if (_filCompteursMemoAbsence()) return { absente: true };
+      const query = supa.rpc("fil_compteurs", { _post_ids: ids }).select("post_id,likes");
+      reponse = await query.abortSignal(controller.signal);
+      if (reponse.error && reponse.status !== 429 && !(reponse.status >= 500)
+          && (_erreurFonctionAbsente(reponse.error) || !_filCompteursErreurPassagere(reponse.error, reponse.status))) {
+        _filCompteursNoterAbsence();
         return { absente: true };
       }
+    }
+    const { data, error } = reponse;
+    if (error) {
       _postLikeNoterEchecPartage();
       return { error: true };
     }
@@ -442,12 +449,8 @@ async function _postLikeRefreshTour() {
     // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
     let vivant = candidates.some(item => !item.entry.checkedAt);
     let lus = 0, echoues = 0;
-    // D14-01 (2026-11-20) : UN appel groupé `fil_compteurs` pour les cartes à
-    // l'écran, au lieu d'un `HEAD count=exact` par carte. Le HEAD passe la règle
-    // de lecture de `post_likes` LIGNE PAR LIGNE (`post_is_visible` par « j'aime ») :
-    // sur une publication populaire, son coût suivait le nombre de « j'aime ». La
-    // fonction ne contrôle la visibilité qu'une fois par publication. Le HEAD ne
-    // reste que quand la fonction n'existe pas sur le projet (`_filCompteursMemoAbsence`).
+    // Un appel groupé : visibilité contrôlée une fois par publication, même
+    // sur une carte populaire. Les HEAD servent aux anciens projets seulement.
     let groupe = _postLikeGroupeDisponible();
     if (groupe) {
       const lot = candidates.filter(item => !item.entry.pending);

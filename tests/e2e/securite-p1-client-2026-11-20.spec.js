@@ -10,7 +10,7 @@ const { bootOnboarded } = require("./app-helper");
 //     coûteux (post_likes sans limite + commentaires + réactions) ; le filet
 //     du fil compte ce tour comme un ÉCHEC et recule ;
 //   · D14-01, les cartes : les compteurs à l'écran partent en UN appel groupé
-//     `fil_compteurs` (plus de HEAD par carte) ; un échec recule, et le retour
+//     `fil_likes_visibles` (plus de HEAD par carte) ; un échec recule, et le retour
 //     au premier plan ne remet PAS ce recul à zéro ;
 //   · D10-01 (préparation) : une diffusion de message `tronque: true` est relue
 //     par identifiant, jamais peinte tronquée ; l'ancien format passe tel quel ;
@@ -157,9 +157,9 @@ async function cartes(page, n) {
     supa.rpc = (fn, args) => {
       __rpc.push({ fn, ids: (args && args._post_ids || []).slice(), at: Date.now() });
       const rendre = (res) => ({ abortSignal: () => Promise.resolve(res), then: (ok, ko) => Promise.resolve(res).then(ok, ko) });
-      if (fn !== "fil_compteurs") return rendre({ data: null, error: null });
+      if (fn !== "fil_likes_visibles") return rendre({ data: null, error: null });
       if (__erreur) return rendre({ data: null, error: { code: "57014", message: "statement timeout" } });
-      return rendre({ data: args._post_ids.map((id) => ({ post_id: id, likes: __counts[id], aime: true, commentaires: 0, apercus: [], reactions: [] })), error: null });
+      return rendre({ data: args._post_ids.map((id) => ({ post_id: id, likes: __counts[id] })), error: null });
     };
     startPostLikeRefresh();
   }, n);
@@ -167,21 +167,65 @@ async function cartes(page, n) {
 }
 async function passer(page, ms) { await page.clock.fastForward(ms); await page.evaluate(() => Promise.resolve()); }
 
-test("cartes : un appel groupé fil_compteurs pour trois cartes, aucun HEAD, et mon état aimé reste local", async ({ page }) => {
+test("cartes : un seul appel likes pour trois cartes, aucun HEAD, et mon état aimé reste local", async ({ page }) => {
   await demarrer(page);
   await cartes(page, 3);
   await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
   const r = await page.evaluate(() => ({
-    rpc: __rpc.filter((x) => x.fn === "fil_compteurs").map((x) => x.ids.slice().sort()),
+    rpc: __rpc.map((x) => ({ fn: x.fn, ids: x.ids.slice().sort() })),
     heads: __heads,
     likes: state.supabasePosts.map((p) => p.likes),
     aime: state.user.likedPosts.length,
   }));
   // Avant le correctif : 3 HEAD `count=exact` (contrôle par ligne de `post_likes`) et aucun appel groupé.
-  expect(r.rpc).toEqual([["carte_0", "carte_1", "carte_2"]]);
+  expect(r.rpc).toEqual([{ fn: "fil_likes_visibles", ids: ["carte_0", "carte_1", "carte_2"] }]);
   expect(r.heads).toBe(0);
   expect(r.likes).toEqual([9, 9, 9]);
-  expect(r.aime).toBe(0); // `aime` de la réponse n'est jamais recopié
+  expect(r.aime).toBe(0);
+});
+
+test("cartes : ancienne base, réponse du fil réduite aux likes, puis nouvelle lecture après expiration du mémo", async ({ page }) => {
+  await demarrer(page);
+  const r = await page.evaluate(async () => {
+    const appels = [];
+    let migree = false;
+    supa.rpc = (nom, args) => {
+      const appel = { nom, ids: args._post_ids };
+      appels.push(appel);
+      const lignes = [{ post_id: "a,b", likes: migree ? 8 : 0 }];
+      const resultat = nom === "fil_likes_visibles" && !migree
+        ? { data: null, error: { code: "PGRST202" }, status: 404 }
+        : { data: lignes, error: null, status: 200 };
+      return {
+        select(cols) { appel.cols = cols; return this; },
+        abortSignal() { return Promise.resolve(resultat); },
+      };
+    };
+    const lire = async () => (await _postLikeLireGroupe(["a,b"])).counts.get("a,b");
+    const compteurs = [await lire(), await lire()];
+    window[POST_LIKE_RPC_ABSENTE + "Le"] -= FIL_COMPTEURS_ABSENTE_TTL_MS + 1;
+    migree = true;
+    compteurs.push(await lire());
+    return { appels, compteurs, absenceFil: _filCompteursMemoAbsence() };
+  });
+  const nouveau = { nom: "fil_likes_visibles", ids: ["a,b"] };
+  const ancien = { nom: "fil_compteurs", ids: ["a,b"], cols: "post_id,likes" };
+  expect(r).toEqual({ appels: [nouveau, ancien, ancien, nouveau], compteurs: [0, 0, 8], absenceFil: false });
+});
+
+test("cartes : un quota, un refus ou une panne du RPC des likes ne relance ni le fil ni les HEAD", async ({ page }) => {
+  await demarrer(page);
+  const sorties = await page.evaluate(async () => {
+    const sorties = [];
+    for (const [status, code] of [[429, "PGRST202"], [503, "PGRST202"], [403, "42501"]]) {
+      const appels = [];
+      supa.rpc = (nom) => { appels.push(nom); return Promise.resolve({ error: { code }, status }); };
+      const lu = await _postLikeLireGroupe(["une"]);
+      sorties.push({ appels, erreur: lu.error, absenceLikes: _memoRpcAbsenteActif(POST_LIKE_RPC_ABSENTE), absenceFil: _filCompteursMemoAbsence() });
+    }
+    return sorties;
+  });
+  for (const r of sorties) expect(r).toEqual({ appels: ["fil_likes_visibles"], erreur: true, absenceLikes: false, absenceFil: false });
 });
 
 test("cartes : un échec recule, et le retour au premier plan ne remet PAS le recul à zéro", async ({ page }) => {
@@ -299,12 +343,12 @@ test("recul partagé : pendant le recul du fil, les cartes n'appellent pas la fo
   await cartes(page, 1);
   await page.evaluate(() => { _filCompteursEchecs = 1; _filCompteursProchainEssai = Date.now() + 60000; });
   await passer(page, 20000);
-  const r = await page.evaluate(() => ({ appels: __rpc.filter((x) => x.fn === "fil_compteurs").length, heads: __heads, dans: _postLikeRefreshNextAt - Date.now() }));
+  const r = await page.evaluate(() => ({ appels: __rpc.length, heads: __heads, dans: _postLikeRefreshNextAt - Date.now() }));
   expect(r.appels).toBe(0);
   expect(r.heads).toBe(0);
   expect(r.dans).toBeGreaterThan(30000); // rendez-vous à la fin du recul partagé
   await passer(page, r.dans + 1);
-  expect(await page.evaluate(() => __rpc.filter((x) => x.fn === "fil_compteurs").length)).toBe(1);
+  expect(await page.evaluate(() => __rpc.map(x => x.fn))).toEqual(["fil_likes_visibles"]);
 });
 
 // ── D10-01 (préparation) : diffusion tronquée ───────────────────────────────

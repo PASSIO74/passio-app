@@ -46,9 +46,10 @@ export async function executer(options) {
   const receptionsSonde = new Map();
   let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
-  const rapport = { version: 2, date: new Date().toISOString(), options: o, campagne: prefix,
+  const rapport = { version: 3, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
-    cheminFil: "rpc/fil_compteurs + auteurs et interactions des apercus ; aucun repli legacy",
+    cheminFil: "rpc/fil_compteurs + auteurs et rpc/interactions_cibles des apercus",
+    cheminCompteursVisibles: "rpc/fil_likes_visibles",
     comparaisonDemandee: o.pages.length === 2,
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
@@ -56,7 +57,7 @@ export async function executer(options) {
       "Le mix observe distingue actions, appels HTTP et cycles de compteurs ; ni commentaires ecrits, ni RSVP, reconnexion ou plusieurs sessions d'un compte.",
       "Sans CDC : publications confirmees par lecture JWT destinataire ; messages prives par Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
-      "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
+      "Les compteurs visibles utilisent un POST groupe par cycle, avec le JWT du lecteur, sans repli.",
       "L'etat adaptatif des compteurs est conserve entre paliers ; son etat initial est compte avant chaque mesure, sans reinitialisation.",
       "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
@@ -91,7 +92,7 @@ export async function executer(options) {
     try { (phase === "nettoyage" ? nettoyageBudget : budget).compter(q); }
     catch (e) { if (phase !== "nettoyage") stop(motifSur(e)); throw e; }
   }
-  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), extra = {}, management = false, phaseMesure = phase } = {}) {
+  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), valider, extra = {}, management = false, phaseMesure = phase } = {}) {
     const depart = performance.now(), controller = new AbortController();
     let etapeRequete = "PREPARATION";
     const current = { phase: phaseMesure, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: nom, type: "http", ok: false, motif: null, ms: 0, octets: 0, status: null,
@@ -133,8 +134,10 @@ export async function executer(options) {
       const verdict = verdictReponse(res.status, texte, attentes);
       // Le rapport contient un code stable, jamais un corps d'erreur distant.
       if (!verdict.ok) throw new Error(res.ok ? "CONTENU_INATTENDU" : `HTTP_${res.status}`);
+      const valeur = texte.trim() ? JSON.parse(texte) : null;
+      const resultat = valider ? valider(valeur) : valeur;
       current.ok = true;
-      return texte.trim() ? JSON.parse(texte) : null;
+      return resultat;
     } catch (e) {
       current.diagnosticTransport = { etape: etapeRequete,
         interruption: originesInterruption.get(controller) || "AUCUNE", signalInterrompu: controller.signal.aborted };
@@ -146,9 +149,23 @@ export async function executer(options) {
     }
   }
   const rest = (nom, table, params = {}, opt = {}) => requete(nom, `/rest/v1/${table}?${new URLSearchParams(params)}`, opt);
-  const compterLikes = (compte, postId, nom = "compteur_like_visible") => rest(nom, "post_likes",
-    { select: "post_id", post_id: `eq.${postId}` },
-    { jwt: compte.jwt, methode: "HEAD", extra: { Prefer: "count=exact" } });
+  function lireLikesVisibles(compte, ids, nom = "fil_likes_visibles") {
+    return rest(nom, "rpc/fil_likes_visibles", {}, {
+      jwt: compte.jwt, methode: "POST", corps: { _post_ids: ids },
+      attentes: attendreTableau(ids.length, ["post_id", "likes"]),
+      valider: lignes => {
+        const compteurs = new Map();
+        for (const ligne of lignes) {
+          if (!ids.includes(ligne.post_id) || compteurs.has(ligne.post_id)
+              || Object.keys(ligne).length !== 2 || !Number.isSafeInteger(ligne.likes) || ligne.likes < 0)
+            throw new Error("COMPTEUR_VISIBLE_INVALIDE");
+          compteurs.set(ligne.post_id, ligne.likes);
+        }
+        if (compteurs.size !== ids.length) throw new Error("COMPTEUR_VISIBLE_INVALIDE");
+        return compteurs;
+      }
+    });
+  }
   async function cadencer(table, methode) {
     const maintenant = performance.now(), depart = Math.max(maintenant, prochaineMutation);
     prochaineMutation = depart + delaiFixture(table, methode, connexionsMax);
@@ -371,9 +388,9 @@ export async function executer(options) {
     const lots = await Promise.allSettled([
       auteurs.length ? rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) },
         { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [],
-      idsApercus.length ? rest("fil_interactions_apercus", "comment_interactions",
-        { select: "id,comment_id,post_id,user_id,kind,payload,created_at", comment_id: liste(idsApercus), order: "created_at.asc" },
-        { jwt, attentes: attendreTableau(0, ["id", "comment_id", "user_id"]) }) : [],
+      idsApercus.length ? rest("fil_interactions_apercus", "rpc/interactions_cibles", {}, {
+        jwt, methode: "POST", corps: { _comment_ids: idsApercus, _kinds: null, _limite: 1000 },
+        attentes: attendreTableau(0, ["id", "comment_id", "user_id"]) }) : [],
     ]);
     const refus = lots.find(r => r.status === "rejected");
     if (refus) throw refus.reason;
@@ -384,7 +401,7 @@ export async function executer(options) {
       commentaires: compteurs.reduce((n, c) => n + c.commentaires, 0), apercus: commentaires.length,
       reactions: compteurs.reduce((n, c) => n + c.reactions.length, 0), profils: profils.length, interactionsApercus: interactions.length };
   }
-  async function cycleCompteursVisibles(compte, fin, pasMs) {
+  async function cycleCompteursVisibles(compte, pasMs) {
     const debutCycle = performance.now(), date = new Date().toISOString(); let ok = false, motif = null, lectures = 0;
     // « Vivant » comme dans le produit : un compteur qui change, une erreur, ou
     // une carte jamais relue par ce compte. Le premier cycle est donc vivant.
@@ -393,9 +410,9 @@ export async function executer(options) {
     try {
       const ids = [...new Set(compte.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
       if (ids.length !== LIKES_VISIBLES.maximum) throw new Error("POSTS_VISIBLES_INSUFFISANTS");
-      for (const id of ids) {
-        if (arret || performance.now() >= fin) break;
-        const n = await compterLikes(compte, id); lectures++;
+      const compteurs = await lireLikesVisibles(compte, ids);
+      lectures = compteurs.size;
+      for (const [id, n] of compteurs) {
         if (!compte.derniersComptes.has(id) || compte.derniersComptes.get(id) !== n) vivant = true;
         compte.derniersComptes.set(id, n);
       }
@@ -403,7 +420,7 @@ export async function executer(options) {
     } catch (e) { motif = motifSur(e); vivant = true; }
     mesures.push({ phase, palier: stage?.taille, page: stage?.page, type: "parcours", famille: "compteurs_visibles",
       date, compte: compte.index, ok, motif, lectures, vivant, pasMs: pasMs ?? LIKES_VISIBLES.fraicheurMs, ms: Math.round(performance.now() - debutCycle) });
-    if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HEAD_COMPTE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
+    if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HTTP_404", "CONTENU_INATTENDU", "COMPTEUR_VISIBLE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
     return vivant;
   }
   async function surveillerCompteurs(compte, start, fin) {
@@ -412,9 +429,9 @@ export async function executer(options) {
       await sleep(Math.max(0, Math.min(prochainDebut, fin) - performance.now()));
       if (arret || performance.now() >= fin) break;
       const debutCycle = performance.now();
-      const vivant = await cycleCompteursVisibles(compte, fin, pas);
+      const vivant = await cycleCompteursVisibles(compte, pas);
       // Cadence entre débuts ; un cycle lent ne provoque jamais un rattrapage
-      // de cycles manqués ni des HEAD parallèles pour le même compte. En
+      // de cycles manqués ni des lectures parallèles pour le même compte. En
       // cadence adaptative, le pas du prochain cycle se décide sur celui-ci,
       // comme dans le produit (`compteursProchainPas`, app-03).
       const pause = o.compteursCadence === "adaptative"
@@ -538,21 +555,22 @@ export async function executer(options) {
   async function prevolCompteurLikes() {
     const auteur = comptes[0], destinataire = comptes[1];
     const postId = postPourLike(postsFixture, auteur.index, 0, comptes.length);
-    const avant = await compterLikes(destinataire, postId, "prevol_compteur_avant");
+    const lire = async nom => (await lireLikesVisibles(destinataire, [postId], nom)).get(postId);
+    const avant = await lire("prevol_compteur_avant");
     if (avant !== 1) throw new Error("COMPTEUR_BASELINE_INATTENDU");
     const cle = { post_id: postId, user_id: auteur.id }, key = `${postId}:${auteur.id}`;
     mutationsLikes.set(key, cle); sauvegarder();
     let ajoute;
     try {
       await inserer("prevol_like_persistant", "post_likes", cle, { jwt: auteur.jwt });
-      ajoute = await compterLikes(destinataire, postId, "prevol_compteur_ajoute");
+      ajoute = await lire("prevol_compteur_ajoute");
       if (ajoute !== avant + 1) throw new Error("COMPTEUR_AJOUT_NON_VISIBLE");
     } finally {
       await rest("prevol_like_retrait", "post_likes", { post_id: `eq.${postId}`, user_id: `eq.${auteur.id}` },
         { jwt: auteur.jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) });
       mutationsLikes.delete(key); sauvegarder();
     }
-    const retire = await compterLikes(destinataire, postId, "prevol_compteur_retire");
+    const retire = await lire("prevol_compteur_retire");
     if (retire !== avant) throw new Error("COMPTEUR_RETRAIT_NON_VISIBLE");
     return { avant, ajoute, retire, lecture: "jwt_destinataire", persistantJusquaLecture: true };
   }
@@ -595,8 +613,8 @@ export async function executer(options) {
       const http = statistiques(subset.filter(m => m.type === "http")), parcours = statistiques(subset.filter(m => m.type === "parcours")), realtime = statistiques(subset.filter(m => m.type === "realtime"));
       const messages = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "message"));
       const publications = statistiques(subset.filter(m => (m.type === "lecture" || m.type === "realtime") && m.famille === "post"));
-      const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.methode === "HEAD"));
-      const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.methode !== "HEAD"));
+      const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.famille === "fil_likes_visibles"));
+      const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.famille !== "fil_likes_visibles"));
       const parcoursCompteurs = statistiques(subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles"));
       const parcoursPrincipaux = statistiques(subset.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles"));
       const verdict = verdictAvecCompteurs({ http: httpPrincipal, parcours: parcoursPrincipaux, realtime, messages, posts: publications, connectes,
@@ -612,7 +630,7 @@ export async function executer(options) {
           etatInitial: etatInitialCompteurs,
           cycles: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
           cyclesCalmes: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles" && m.vivant === false).length,
-          headParPersonne: taille ? Number((subset.filter(m => m.type === "http" && m.methode === "HEAD").length / taille).toFixed(2)) : 0,
+          appelsGroupesParPersonne: Number((httpCompteurs.tentatives / taille).toFixed(2)),
           portee: "3 premiers posts de la derniere page, visibles pendant toute la mesure ; GET fil ne certifie pas un compte exact" },
         livraisonRealtimeQualifiee: verdict.validiteMesure.ok && o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
