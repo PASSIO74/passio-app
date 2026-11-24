@@ -6401,7 +6401,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (cpl.reactionsLues === true && typeof _recopierReactionsAutrui === "function") {
         _recopierReactionsAutrui(r.id, loadedPost.reactions, reactionsAvant);
       }
-      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
+      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id), cpl.likesLusLe);
     });
   } catch(e) {
     if (options.propagerErreur) throw e;
@@ -6571,12 +6571,15 @@ async function _chargerComplementsFil(postIds) {
       // POST, jamais GET : un identifiant de publication est un texte choisi par
       // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
       // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
+      const debutLecture = Date.now();
       const { data, error, status } = await supa.rpc("fil_compteurs", { _post_ids: ids });
       if (!error && Array.isArray(data)) {
         data.forEach(function (row) {
           if (!row || !row.post_id) return;
+          const likesLus = Number.isSafeInteger(row.likes) && row.likes >= 0;
           parPost.set(row.post_id, {
-            likes: Number.isSafeInteger(row.likes) && row.likes >= 0 ? row.likes : 0,
+            likes: likesLus ? row.likes : 0,
+            likesLusLe: likesLus ? debutLecture : 0,
             aime: row.aime === true,
             commentaires: Number.isSafeInteger(row.commentaires) && row.commentaires >= 0 ? row.commentaires : undefined,
             apercus: Array.isArray(row.apercus) ? row.apercus.filter(function (c) { return c && c.id; }) : [],

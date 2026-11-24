@@ -167,6 +167,94 @@ async function cartes(page, n) {
 }
 async function passer(page, ms) { await page.clock.fastForward(ms); await page.evaluate(() => Promise.resolve()); }
 
+// Les mêmes cartes sont relues par le parcours complet, dont le RPC et les
+// filtres de génération restent ceux du produit. Seul le transport est simulé.
+async function brancherFilCartes(page) {
+  await page.evaluate(() => {
+    const posts = state.supabasePosts.map((p) => ({
+      id: p.id, author_id: p.authorId, content: p.text, passion_id: "musique",
+      created_at: "2026-11-24T10:00:00Z", profiles: { username: "Auteur" },
+    }));
+    const repondre = __repondre;
+    __repondre = (req) => req.table === "posts" ? { data: posts, error: null } : repondre(req);
+    const rpc = supa.rpc;
+    window.__modeFil = "ok";
+    supa.rpc = (nom, args) => {
+      if (nom !== "fil_compteurs") return rpc(nom, args);
+      window.__debutFil = Date.now();
+      const lignes = args._post_ids.map(id => ({ post_id: id, likes: 0, aime: false, commentaires: 0, apercus: [], reactions: [] }));
+      if (__modeFil === "partiel") { lignes[1].likes = null; lignes[2].likes = -1; lignes.pop(); }
+      if (__modeFil === "erreur") return Promise.resolve({ error: { code: "57014" }, status: 503 });
+      if (__modeFil === "absent") return Promise.resolve({ error: { code: "PGRST202" }, status: 404 });
+      if (__modeFil === "retenu") return new Promise(resolve => { window.__libererFil = () => resolve({ data: lignes, error: null }); });
+      return Promise.resolve({ data: lignes, error: null });
+    };
+    window.__relireFil = async () => { state.supabasePosts = await supaLoadPosts(); };
+  });
+}
+
+test("fraîcheur du fil : zéro valide, aucun appel avant 15 s, puis un appel à la première expiration", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 3);
+  await brancherFilCartes(page);
+  await page.evaluate(() => __relireFil());
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  expect(await page.evaluate(() => ({ appels: __rpc.length, likes: state.supabasePosts.map(p => p.likes), echeance: _postLikeRefreshNextAt - __debutFil })))
+    .toEqual({ appels: 0, likes: [0, 0, 0], echeance: 15000 });
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+  expect(await page.evaluate(() => __rpc.map(x => x.ids))).toEqual([["carte_0", "carte_1", "carte_2"]]);
+});
+
+for (const mode of ["partiel", "absent", "erreur"]) {
+  test("fraîcheur du fil (" + mode + ") : les cartes sans compteur exact restent à relire", async ({ page }) => {
+    await demarrer(page);
+    // Quatre cartes dont seule la première est fraîche : la quatrième doit
+    // prendre la place libérée dans le lot de trois.
+    await cartes(page, mode === "partiel" ? 4 : 3);
+    await brancherFilCartes(page);
+    await page.evaluate(async mode => { __modeFil = mode; await __relireFil(); }, mode);
+    await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() + 1));
+    expect(await page.evaluate(() => __rpc.map(x => x.ids))).toEqual([mode === "partiel" ? ["carte_1", "carte_2", "carte_3"] : ["carte_0", "carte_1", "carte_2"]]);
+  });
+}
+
+test("fraîcheur du fil : une réponse de plus de 15 s ne prolonge pas la lecture des cartes", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 1);
+  await brancherFilCartes(page);
+  await page.evaluate(() => { stopPostLikeRefresh(); __modeFil = "retenu"; window.__lectureEnCours = __relireFil(); });
+  await page.waitForFunction(() => typeof window.__libererFil === "function");
+  await passer(page, 16000);
+  await page.evaluate(async () => { __libererFil(); await __lectureEnCours; startPostLikeRefresh(); });
+  await passer(page, 300);
+  expect(await page.evaluate(() => __rpc.map(x => x.ids))).toEqual([["carte_0"]]);
+});
+
+test("fraîcheur du fil : copie divergente, geste et changement de compte invalident la preuve", async ({ page }) => {
+  await demarrer(page);
+  await cartes(page, 2);
+  await brancherFilCartes(page);
+  const r = await page.evaluate(async (autre) => {
+    await __relireFil();
+    const frais = id => !!_postLikeFilFraisJusqua(id, _postLikeEntry(id), Date.now());
+    const avant = frais("carte_0");
+    window._feedExtraPosts = [{ ...state.supabasePosts[1], likes: 31 }];
+    const copie = frais("carte_1");
+    const token = _postLikeMutationBegin("carte_0");
+    // Cette seconde lecture se termine pendant une écriture : elle ne peut
+    // renouveler la preuve, ni avant ni après la fin de l'intention locale.
+    await __relireFil();
+    const pendant = frais("carte_0");
+    _postLikeMutationEnd("carte_0", token);
+    const apres = frais("carte_0");
+    window._feedExtraPosts = [];
+    const avantCompte = frais("carte_1");
+    MY_UID = autre; window.MY_UID = autre;
+    return { avant, copie, pendant, apres, avantCompte, autreCompte: frais("carte_1") };
+  }, AUTRE);
+  expect(r).toEqual({ avant: true, copie: false, pendant: false, apres: false, avantCompte: true, autreCompte: false });
+});
+
 test("cartes : un seul appel likes pour trois cartes, aucun HEAD, et mon état aimé reste local", async ({ page }) => {
   await demarrer(page);
   await cartes(page, 3);

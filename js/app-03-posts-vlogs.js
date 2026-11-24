@@ -254,13 +254,28 @@ function _postLikeReadToken(id) {
   const entry = _postLikeEntry(id);
   return { entry, version: entry.version };
 }
-function _postLikeReconcileLoaded(post, token) {
+function _postLikeReconcileLoaded(post, token, likesLusLe) {
   const entry = _postLikeRefreshEntries.get(post.id);
   if (entry && token && (entry !== token.entry || entry.pending || entry.version !== token.version)) {
     const current = _postLikeCopies(post.id)[0];
     if (current) { post.likes = current.likes; post.liked = current.liked; }
+  } else if (entry && token && likesLusLe > 0 && (!entry.filLuLe || likesLusLe >= entry.filLuLe)) {
+    entry.filLuLe = likesLusLe;
+    entry.likesFil = post.likes;
+    entry.versionFil = entry.version;
   }
   return post;
+}
+
+// Le compteur du fil ne vaut que pour ce compte et cette version de la carte.
+// Une autre copie (profil, détail…) qui affiche encore un ancien total doit
+// pouvoir être corrigée par la lecture dédiée, même dans les 15 secondes.
+function _postLikeFilFraisJusqua(id, entry, maintenant) {
+  const age = maintenant - entry.filLuLe;
+  if (entry.versionFil !== entry.version || !(age >= 0 && age < POST_LIKE_REFRESH_MS)) return 0;
+  const copies = _postLikeCopies(id);
+  return copies.length && copies.every(post => post.likes === entry.likesFil)
+    ? entry.filLuLe + POST_LIKE_REFRESH_MS : 0;
 }
 
 // La géométrie seule compterait aussi le fil CACHÉ sous une fiche/modale.
@@ -427,14 +442,29 @@ async function _postLikeRefreshTour() {
   _postLikeRefreshBusy = true;
   _postLikeReveilDemande = false;
   let queried = false;
+  let attendreFraicheur = false;
   try {
     if (!window._supaReal || navigator.onLine === false || typeof supa === "undefined" || !supa) return;
     const ids = _postLikeVisibleIds();
+    const maintenant = Date.now();
+    let prochaineExpiration = Infinity;
     const candidates = ids.map(id => ({ id, entry: _postLikeEntry(id) }))
-      .filter(item => !item.entry.pending)
+      .filter(({ id, entry }) => {
+        if (entry.pending) return false;
+        const expiration = _postLikeFilFraisJusqua(id, entry, maintenant);
+        if (!expiration) return true;
+        prochaineExpiration = Math.min(prochaineExpiration, expiration);
+        return false;
+      })
       .sort((a, b) => a.entry.checkedAt - b.entry.checkedAt)
       .slice(0, POST_LIKE_REFRESH_MAX_POSTS);
-    if (!candidates.length) return;
+    if (!candidates.length) {
+      if (Number.isFinite(prochaineExpiration)) {
+        _postLikeRefreshNextAt = prochaineExpiration;
+        attendreFraicheur = true;
+      }
+      return;
+    }
     queried = true;
     const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
     const debutTour = Date.now(), jitter = Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
@@ -529,7 +559,7 @@ async function _postLikeRefreshTour() {
   } finally {
     _postLikeRefreshBusy = false;
     if (_postLikeRefreshRunning && !document.hidden) {
-      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried ? 0 : delaiDeleste(POST_LIKE_REFRESH_MS));
+      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried || attendreFraicheur ? 0 : delaiDeleste(POST_LIKE_REFRESH_MS));
       _postLikeRefreshDueAt = Date.now() + delay;
       _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
     }
