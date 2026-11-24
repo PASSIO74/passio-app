@@ -7631,13 +7631,16 @@ async function supaLireParticipants(evIds, origine) {
 // unique du démarrage — une activité publiée après n'apparaissait pas dans
 // l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
 // l'app (Jerem, 2026-10-23).
-async function supaLoadEvents(authorId) {
+// `eventId` cible une invitation même si l’activité est hors des 60 plus récentes.
+async function supaLoadEvents(authorId, eventId) {
+  if (eventId != null && !LIEN_COURT_ID_RE.test(eventId)) return [];
   // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
   if (authorId && !/^[A-Za-z0-9_-]+$/.test(String(authorId))) return [];
   try {
     const lire = (cols) => {
       let q = supa.from("events").select(cols);
+      if (eventId != null) return q.eq("id", eventId).limit(1);
       if (authorId) q = q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId);
       return q.order("created_at", { ascending: false }).limit(60);
     };
@@ -7660,7 +7663,11 @@ async function supaLoadEvents(authorId) {
       if (_refusDeDroit(error)) _eventColsPubliquesSeulement = true;
       ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
     }
-    if (error) { console.warn("supaLoadEvents:", error.message); return []; }
+    if (error) {
+      if (eventId != null) throw error;
+      console.warn("supaLoadEvents:", error.message);
+      return [];
+    }
     const rows = data || [];
     const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
@@ -7717,7 +7724,10 @@ async function supaLoadEvents(authorId) {
       counts: countsByEvent[r.id] || null,   // compteurs serveur (C-04) ; null = base pas migrée ou lecture en échec
       fromSupabase: true,
     }));
-  } catch(e) { return []; }
+  } catch(e) {
+    if (eventId != null) throw e; // distinguer une lecture impossible d’une activité absente
+    return [];
+  }
 }
 
 // ── Activités du serveur → cache local : UNE seule fusion ─────────────────
