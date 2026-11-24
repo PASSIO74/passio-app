@@ -9492,7 +9492,7 @@ async function _pointerParCodeServeur(ev, code) {
     non_connecte: "Connecte-toi pour pointer",
     introuvable: "Activité introuvable",
   };
-  toast(messages[verdict] || "⚠️ Pointage non enregistré — réessaie", "warning");
+  toast(messages[verdict] || "Impossible de confirmer ton arrivée. Scanne à nouveau le QR pour vérifier.", "warning");
   try { if (typeof diagLog === "function") diagLog("pointage " + verdict + " " + ev.id); } catch (e) {}
   return verdict;
 }
