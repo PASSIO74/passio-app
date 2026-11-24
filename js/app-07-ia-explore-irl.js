@@ -5237,24 +5237,75 @@ function _irlLienAppPrete() {
   return true;
 }
 
+var IRL_EVENT_HASH_RE = /^#irl-event-([\w-]{1,100})$/;
 var _irlEvLinkId = "";
 var _irlEvLinkEssais = 0;    // « l'événement n'est pas encore chargé »
 var _irlEvLinkAttentes = 0;  // « l'application n'est pas encore prête »
 var _irlEvLinkTimer = null;
+var _irlEvLinkLecture = null;
+var _irlEvLinkReprise = null; // ouverture depuis l’écran courant, sans entrée d’historique intermédiaire
+
+function _irlEvLinkTerminer() {
+  clearTimeout(_irlEvLinkTimer);
+  _irlEvLinkTimer = null;
+  _irlEvLinkLecture = null;
+  _irlEvLinkReprise = null;
+  _irlEvLinkId = ""; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
+}
+
+async function _irlEvLinkCharger(id) {
+  const lecture = { etat: state, uid: MY_UID, hash: location.hash };
+  _irlEvLinkLecture = lecture;
+  let activites;
+  try { activites = await supaLoadEvents(null, id); }
+  catch (e) {
+    if (typeof diagLog === "function") diagLog("irl_lien : lecture de l’activité interrompue");
+    activites = null;
+  }
+  // Une réponse tardive ne doit ni ouvrir une autre invitation ni alimenter le
+  // cache d’un autre compte. goTo() peut changer le hash sans hashchange.
+  if (_irlEvLinkLecture !== lecture || _irlEvLinkId !== id) return;
+  if (location.hash !== lecture.hash || state !== lecture.etat || MY_UID !== lecture.uid) {
+    _irlEvLinkTerminer();
+    return;
+  }
+  _irlEvLinkLecture = null;
+  if (!_irlLienAppPrete()) { _irlEvLinkReplanifier(); return; }
+  if (activites && activites.length === 1 && activites[0].id === id) {
+    fusionnerEvenementsServeur(activites);
+    _irlEvLinkAvancer();
+    return;
+  }
+  _irlEvLinkTerminer();
+  toast(activites ? "Activité introuvable ou supprimée" : "Impossible de charger l’activité. Réessaie dans un instant.");
+}
 
 function _irlEvLinkReplanifier() {
   if (_irlEvLinkTimer) return;
   _irlEvLinkTimer = setTimeout(function () {
     _irlEvLinkTimer = null;
-    _openIrlEventFromHash();
+    _irlEvLinkAvancer();
   }, 700);
 }
 
 function _openIrlEventFromHash() {
-  const m = /#irl-event-([\w-]+)/.exec(location.hash || "");
-  if (m) _irlEvLinkId = m[1];
+  const m = IRL_EVENT_HASH_RE.exec(location.hash || "");
+  if (!m) return false;
+  if (m[1] !== _irlEvLinkId || _irlEvLinkReprise) {
+    _irlEvLinkTerminer();
+    _irlEvLinkId = m[1];
+  }
+  return _irlEvLinkAvancer();
+}
+
+function _irlEvLinkAvancer() {
   const id = _irlEvLinkId;
   if (!id) return false;
+  const reprise = _irlEvLinkReprise;
+  if (reprise && (location.hash !== reprise.hash || state !== reprise.etat || MY_UID !== reprise.uid)) {
+    _irlEvLinkTerminer();
+    return false;
+  }
 
   try {
     // Bornée : aucun minuteur ne doit tourner seul indéfiniment. 600 × 700 ms
@@ -5267,14 +5318,22 @@ function _openIrlEventFromHash() {
       // ⚠️ L'id mémorisé est CONSOMMÉ ici. Sans ça, il survivrait à l'ouverture
       // et le moindre `hashchange` ultérieur (un retour arrière vers « #feed »,
       // par exemple) rouvrirait la fiche sans que personne ne l'ait demandé.
-      _irlEvLinkId = ""; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
-      if (typeof goTo === "function") goTo("irl");
+      _irlEvLinkTerminer();
+      if (!reprise && typeof goTo === "function") goTo("irl");
       openEventDetails(id);
+      if (reprise && typeof reprise.apresOuverture === "function" && window._openEventDetailId === id) {
+        const fiche = document.getElementById("eventDetailPage");
+        if (fiche && fiche.style.display !== "none") reprise.apresOuverture();
+      }
       return true;
     }
-    // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
+    if (window._supaReal && typeof supaLoadEvents === "function") {
+      if (!_irlEvLinkLecture) _irlEvLinkCharger(id);
+      return false;
+    }
+    // Le client n'est pas encore connecté : laisser le démarrage remplir le cache.
     if (++_irlEvLinkEssais <= 12) { _irlEvLinkReplanifier(); return false; }
-    _irlEvLinkId = "";
+    _irlEvLinkTerminer();
     toast("Activité introuvable ou supprimée");
     return false;
   } catch (e) {
@@ -5290,10 +5349,9 @@ function _openIrlEventFromHash() {
 // seulement si la CIBLE change, sinon une page qui réécrit son hash ré-armerait
 // le compteur sans fin.
 window.addEventListener("hashchange", function () {
-  const m = /#irl-event-([\w-]+)/.exec(location.hash || "");
-  if (!m) return;
-  if (m[1] !== _irlEvLinkId) {
-    _irlEvLinkId = m[1]; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
+  if (!IRL_EVENT_HASH_RE.test(location.hash || "")) {
+    if (_irlEvLinkLecture || _irlEvLinkReprise) _irlEvLinkTerminer();
+    return;
   }
   _openIrlEventFromHash();
 });
@@ -5377,12 +5435,21 @@ function reporterRappelsActivite() {
 // (sw.js, `OUVRIR_ACTIVITE`). On passe par le hash : c'est le routeur ci-dessus
 // qui attend l'application et retente le chargement — jamais un second chemin.
 function _ouvrirActiviteDepuisNotification(id) {
-  id = String(id || "");
-  if (!/^[\w-]{1,64}$/.test(id)) return false;
+  if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)) return false;
   var cible = "#irl-event-" + id;
-  if (location.hash !== cible) { location.hash = cible; return true; } // → hashchange
-  _irlEvLinkId = id; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
-  _openIrlEventFromHash();
+  if (location.hash !== cible) location.hash = cible;
+  else _openIrlEventFromHash();
+  return true;
+}
+
+// Depuis l’app, la fiche pose déjà sa propre entrée d’historique. Une seconde
+// entrée #irl-event-ID la rouvrirait au retour arrière après sa fermeture.
+function _ouvrirLienActivite(id, apresOuverture) {
+  if (typeof id !== "string" || !LIEN_COURT_ID_RE.test(id)) return false;
+  _irlEvLinkTerminer();
+  _irlEvLinkId = id;
+  _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture };
+  _irlEvLinkAvancer();
   return true;
 }
 if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
@@ -5392,17 +5459,20 @@ if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.ser
   });
 }
 (function _irlDeepLinkBoot() {
-  if (!/#irl-event-/.test(location.hash || "")) return;
+  if (!IRL_EVENT_HASH_RE.test(location.hash || "")) return;
   // Après le gate + le boot (les événements Supabase arrivent en différé).
-  setTimeout(_openIrlEventFromHash, 1200);
+  _irlEvLinkTimer = setTimeout(function () {
+    _irlEvLinkTimer = null;
+    _openIrlEventFromHash();
+  }, 1200);
 })();
 // En prod le bloc app est injecté APRÈS le code d'accès : le sondage ci-dessus
 // peut partir alors que `boot()` n'a pas encore tourné. On repart proprement au
 // signal, en remettant les compteurs à zéro (piège consigné dans CLAUDE.md).
 window.addEventListener("passio:app-ready", function () {
-  if (!_irlEvLinkId && !/#irl-event-/.test(location.hash || "")) return;
+  if (!_irlEvLinkId && !IRL_EVENT_HASH_RE.test(location.hash || "")) return;
   _irlEvLinkAttentes = 0; _irlEvLinkEssais = 0;
-  _openIrlEventFromHash();
+  if (_irlEvLinkId) _irlEvLinkAvancer(); else _openIrlEventFromHash();
 });
 
 // Partage d'un événement : Web Share API si dispo, sinon copie du lien.
@@ -7306,7 +7376,7 @@ function voirCarteActivite(id) {
   var connue = false;
   try { connue = allEvents().some(function (e) { return e && e.id === id; }); } catch (e) {}
   if (connue) openEventDetails(id);
-  else _ouvrirActiviteDepuisNotification(id);
+  else _ouvrirLienActivite(id);
 }
 
 // Réponse depuis la carte : le RSVP passe par `setEventRsvp` (seule porte,
@@ -9338,7 +9408,9 @@ function submitCheckinCode(eventId) {
 // Le verdict est dit tel quel ; « ok » marque le pointage local.
 async function _pointerParCodeServeur(ev, code) {
   if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return "deja_pointe"; }
+  const etatAuScan = state, compteAuScan = MY_UID;
   var verdict = await supaPointerParCode(ev.id, code);
+  if (state !== etatAuScan || MY_UID !== compteAuScan) return verdict;
   if (verdict === "ok" || verdict === "deja_pointe") {
     closeModal();
     _marquerPointeLocal(ev);
@@ -9386,6 +9458,37 @@ var _irlCkLinkCode = "";
 var _irlCkLinkEssais = 0;
 var _irlCkLinkAttentes = 0;
 var _irlCkLinkTimer = null;
+var _irlCkLecture = null;
+var IRL_CHECKIN_HASH_RE = /^#irl-checkin-([\w-]{1,100})-([A-Z0-9]{6})$/;
+
+function _terminerLienPointage() {
+  clearTimeout(_irlCkLinkTimer);
+  _irlCkLinkTimer = null;
+  _irlCkLecture = null;
+  _irlCkLinkId = ""; _irlCkLinkCode = ""; _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
+}
+
+async function _chargerSortieDuPointage(id) {
+  const lecture = { hash: location.hash, etat: state, uid: MY_UID };
+  _irlCkLecture = lecture;
+  let sorties;
+  try { sorties = await supaLoadEvents(null, id); }
+  catch (e) { sorties = null; }
+  if (_irlCkLecture !== lecture) return;
+  if (location.hash !== lecture.hash || state !== lecture.etat || MY_UID !== lecture.uid) {
+    _terminerLienPointage();
+    return;
+  }
+  _irlCkLecture = null;
+  if (!_irlLienAppPrete()) { _irlCkLinkReplanifier(); return; }
+  if (sorties && sorties.length === 1 && sorties[0].id === id) {
+    fusionnerEvenementsServeur(sorties);
+    _openIrlCheckinFromHash();
+    return;
+  }
+  _terminerLienPointage();
+  toast(sorties ? "Activité introuvable ou supprimée" : "Impossible de charger l’activité. Scanne à nouveau le QR.");
+}
 
 function _irlCkLinkReplanifier() {
   if (_irlCkLinkTimer) return;
@@ -9396,8 +9499,12 @@ function _irlCkLinkReplanifier() {
 }
 
 function _openIrlCheckinFromHash() {
-  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
-  if (m) { _irlCkLinkId = m[1]; _irlCkLinkCode = m[2]; }
+  var m = IRL_CHECKIN_HASH_RE.exec(location.hash || "");
+  if (!m) { _terminerLienPointage(); return false; }
+  if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
+    _terminerLienPointage();
+    _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
+  }
   var id = _irlCkLinkId, code = _irlCkLinkCode;
   if (!id || !code) return false;
 
@@ -9408,19 +9515,24 @@ function _openIrlCheckinFromHash() {
     }
     var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
     if (!ev) {
+      if (window._supaReal && typeof supaLoadEvents === "function") {
+        if (!_irlCkLecture) _chargerSortieDuPointage(id);
+        return false;
+      }
       if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
-      _irlCkLinkId = ""; _irlCkLinkCode = "";
+      _terminerLienPointage();
       toast("Activité introuvable ou supprimée");
       return false;
     }
     // Même règle qu'au-dessus, et elle compte davantage ici : un id mémorisé qui
     // survivrait au pointage ferait re-pointer à chaque `hashchange` suivant.
-    _irlCkLinkId = ""; _irlCkLinkCode = ""; _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
+    _terminerLienPointage();
     if (typeof goTo === "function") goTo("irl");
     openEventDetails(id);
     // Un code faux ouvre quand même la fiche — la personne est devant le bon
     // événement, elle peut pointer autrement — mais ne pointe PAS.
     if (_pointageServeur(ev)) { _pointerParCodeServeur(ev, code); return true; }
+    if (ev.fromSupabase) { toast("Connecte-toi pour pointer"); return true; }
     if (code !== _eventCheckinCode(ev)) { toast("Lien de pointage invalide"); return true; }
     _checkInViaCode(ev);
     return true;
@@ -9430,17 +9542,12 @@ function _openIrlCheckinFromHash() {
   }
 }
 window.addEventListener("hashchange", function () {
-  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
-  if (!m) return;
-  if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
-    _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
-    _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
-  }
+  if (!IRL_CHECKIN_HASH_RE.test(location.hash || "")) { _terminerLienPointage(); return; }
   _openIrlCheckinFromHash();
 });
 (function _irlCheckinDeepLinkBoot() {
   if (!/#irl-checkin-/.test(location.hash || "")) return;
-  setTimeout(_openIrlCheckinFromHash, 1200);
+  _irlCkLinkTimer = setTimeout(function () { _irlCkLinkTimer = null; _openIrlCheckinFromHash(); }, 1200);
 })();
 window.addEventListener("passio:app-ready", function () {
   if (!_irlCkLinkId && !/#irl-checkin-/.test(location.hash || "")) return;

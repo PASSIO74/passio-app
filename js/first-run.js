@@ -2569,12 +2569,19 @@
         // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
         // bobine que la personne regardait est rouverte par sa fonction
         // d'ouverture, et le rappel s'affiche dessus. Aucune action n'est rejouée.
-        if (r && r.cible && rouvrirCible(r.cible)) {
-          if (r.action && RAPPELS[r.action]) {
-            setTimeout(function () { try { if (typeof toast === "function") toast(RAPPELS[r.action]); } catch (e) {} }, 400);
+        function rappelerSurLaFiche() {
+          if (r.action && RAPPELS[r.action] && memeCible(cibleOuverte(), r.cible) && typeof toast === "function") {
+            toast(RAPPELS[r.action]);
           }
+        }
+        if (r && r.cible && rouvrirCible(r.cible)) {
+          setTimeout(rappelerSurLaFiche, 400);
           return;
         }
+        // Après la confirmation d'e-mail, la fiche peut manquer du nouveau
+        // cache. Son hash d'historique (#event-…) ne rouvre pas l'invitation.
+        if (r && r.cible && r.cible.genre === "activite"
+            && typeof _ouvrirLienActivite === "function" && _ouvrirLienActivite(r.cible.id, rappelerSurLaFiche)) return;
         if (r && r.hash) {
           // Destination de lien profond : on redonne la main aux routages
           // existants (`#reel=`, `#irl-event-`…) en reposant le hash.
