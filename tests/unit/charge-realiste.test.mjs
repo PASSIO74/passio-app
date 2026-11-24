@@ -8,7 +8,7 @@ import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Bud
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas,
   CADENCES_COMPTEURS, CADENCE_COMPTEURS, decalageInitialCompteurs, familleFrameRealtime,
-  verdictAvecCompteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
+  verdictAvecCompteurs, qualifierMinuteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 import { verdictReponse } from "../../scripts/charge-verdict.mjs";
 
@@ -91,11 +91,19 @@ test("200 personnes exigent 200 identités ; impossible de recycler un pool de 1
 });
 
 test("les partenaires de messagerie sont distincts et connectés même au palier impair 25", () => {
-  for (const taille of [2, 25, 50, 100, 200]) for (let i = 0; i < taille; i++) {
+  for (const taille of [2, 25, 50, 100, 125, 150, 175, 200]) for (let i = 0; i < taille; i++) {
     const autre = partenaire(i, taille);
     assert.notEqual(autre, i); assert.ok(autre >= 0 && autre < taille);
   }
-  assert.equal(partenaire(24, 25), 0);
+  for (const taille of [25, 125, 175]) {
+    assert.equal(partenaire(taille - 1, taille), 0);
+    const paires = new Set(Array.from({ length: taille }, (_, i) => [i, partenaire(i, taille)].sort((a, b) => a - b).join("_")));
+    assert.equal(paires.size, Math.ceil(taille / 2));
+  }
+  for (const taille of [125, 150, 175]) assert.equal(optionsBanc([...cible, "--paliers", String(taille)]).comptesDistincts, taille);
+  assert.equal(optionsBanc(cible).fraicheurLikes, "fil");
+  assert.equal(optionsBanc([...cible, "--fraicheur-likes", "independante"]).fraicheurLikes, "independante");
+  assert.throws(() => optionsBanc([...cible, "--fraicheur-likes", "autre"]), /FRAICHEUR_LIKES_INVALIDE/);
 });
 
 test("sans-cdc (défaut depuis la migration du 2026-11-09) : AUCUNE liaison ; transition5 : cinq ; R25 : jamais conv_members ni notifications", () => {
@@ -350,23 +358,81 @@ test("les frames distinguent table/opération, broadcast et protocole sans journ
   assert.equal(familleFrameRealtime({ event: "phx_reply" }), "protocole:phx_reply");
 });
 
-test("les compteurs rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
+// Exécuter le vrai minuteur sur une horloge virtuelle, y compris sa requête
+// groupée ou la réutilisation des compteurs. Aucun appel au serveur.
+async function minuteursTest(nombre, { cache = false, mutation = false } = {}) {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  let maintenant = 0; const mesures = [];
+  const ctx = { LIKES_VISIBLES, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs,
+    o: { graine: 1, compteursCadence: "adaptative" }, arret: null, phase: "mesure", stage: { taille: nombre, page: 20 }, mesures,
+    performance: { now: () => maintenant }, motifSur: e => e.message, stop: assert.fail,
+    lireLikesVisibles: async (c, ids) => {
+      mesures.push({ phase: "mesure", type: "http", famille: "fil_likes_visibles", methode: "POST", compte: c.index, ok: true, ms: 20 });
+      maintenant += 20; return new Map(ids.map(id => [id, 1]));
+    } };
+  const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
+  for (let index = 0; index < nombre; index++) {
+    maintenant = 0; let reveilEnvoye = false;
+    const compte = { index, postsVisibles: ["a", "b", "c"] };
+    await surveiller(compte, 0, 90000, async ms => {
+      if (mutation && !reveilEnvoye && ms > 20000) {
+        maintenant += 1; compte.reveillerCompteurs(); reveilEnvoye = true; return;
+      }
+      maintenant += ms;
+      if (cache) compte.likesDuFil = new Map(compte.postsVisibles.map(id => [id, maintenant + 15000]));
+    });
+  }
+  return mesures;
+}
+
+test("la qualification exige toutes les échéances de chaque acteur et le réveil consécutif au j’aime", async () => {
+  const appels = await minuteursTest(3, { mutation: true });
+  const qualifie = lignes => qualifierMinuteurs(lignes, 3, 90000, 1);
+  assert.equal(qualifie(appels).complets, 3);
+  for (const compte of [0, 1, 2]) {
+    const reveil = appels.find(m => m.type === "horloge" && m.compte === compte);
+    const suivant = appels.find(m => m.type === "parcours" && m.compte === compte && m.debutMs > reveil.instantMs);
+    assert.equal(suivant.debutMs, reveil.instantMs + 16500);
+  }
+  assert.equal(qualifie(appels.filter(m => m.compte === 1)).ok, false, "un seul acteur qui continue ne suffit pas");
+  assert.equal(qualifie(appels.filter(m => !(m.compte === 1 && m.type === "http"))).ok, false);
+  const caches = await minuteursTest(3, { cache: true });
+  assert.equal(qualifie(caches).ok, true); assert.equal(qualifie(caches).avecRpc, 0);
+  assert.equal(qualifie(caches.filter(m => m.debutMs < 15000)).ok, false, "un premier réveil puis 75 s de silence");
+  assert.equal(qualifie(caches.filter(m => !(m.compte === 2 && m.debutMs > 30000 && m.debutMs < 61000))).ok, false);
+  assert.equal(qualifie(caches.map(m => m.compte === 2 ? { ...m, suivantMs: 999999 } : m)).ok, false);
+  assert.equal(qualifie(caches.slice(0, 1).concat(appels.slice(0, 1))).ok, false, "un seul appel pour tout le palier");
+});
+
+test("les compteurs rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", async () => {
   const bon = statistiques([{ ok: true, ms: 50 }]), lent = statistiques([{ ok: true, ms: 1001 }]), vide = statistiques([]);
-  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
+  const base = { graine: 1, echantillonsCompteurs: await minuteursTest(25), http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
     dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
   assert.equal(verdictAvecCompteurs(base, bon, bon).ok, true);
   assert.ok(verdictAvecCompteurs({ ...base, http: lent }, bon, bon).motifs.includes("P95_HTTP_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, lent, bon).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, bon, lent).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, vide, vide).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
+  const preuveCache = { depuisFil: true, prevolValide: true, comptesAvecTroisCartesFraiches: 25 };
+  const toutEnCache = { ...base, echantillonsCompteurs: await minuteursTest(25, { cache: true }) };
+  assert.equal(verdictAvecCompteurs(toutEnCache, vide, vide, preuveCache).ok, true);
+  assert.equal(verdictAvecCompteurs(toutEnCache, vide, vide, preuveCache).rpcDedieSousCharge, "non_exerce");
+  const partiellementEnCache = { ...base, echantillonsCompteurs: [
+    ...base.echantillonsCompteurs.filter(m => m.compte === 0), ...toutEnCache.echantillonsCompteurs.filter(m => m.compte !== 0)] };
+  assert.equal(verdictAvecCompteurs(partiellementEnCache, bon, bon, preuveCache).rpcDedieSousCharge, "exerce_par_une_partie");
+  assert.ok(verdictAvecCompteurs(partiellementEnCache, bon, bon).motifs.includes("COMPTEURS_CACHE_NON_QUALIFIE"));
+  for (const partiel of [{ depuisFil: false }, { prevolValide: false }, { comptesAvecTroisCartesFraiches: 24 }])
+    assert.ok(verdictAvecCompteurs(toutEnCache, vide, vide, { ...preuveCache, ...partiel }).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
+  assert.ok(verdictAvecCompteurs(base, vide, bon, preuveCache).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: statistiques([{ ok: true, ms: 2001 }]) }, bon, bon).motifs.includes("P95_PUBLICATIONS_SUP_2000_MS"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: vide }, bon, bon).motifs.includes("PUBLICATIONS_SOUS_CHARGE_NON_VALIDEES"));
 });
 
-test("une durée anormale ou absente invalide la preuve même avec zéro erreur et des p95 parfaits", () => {
+test("une durée anormale ou absente invalide la preuve même avec zéro erreur et des p95 parfaits", async () => {
   const bon = statistiques([{ ok: true, ms: 20 }]);
   const base = { http: bon, parcours: bon, realtime: bon, messages: bon, posts: bon,
-    connectes: 200, attendus: 200, termine: true, dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
+    graine: 1, echantillonsCompteurs: await minuteursTest(200), connectes: 200, attendus: 200, termine: true, dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
   assert.equal(MARGE_FIN_MESURE_MS, 15000);
   for (const [mono, murale] of [[90000, 90000], [105000, 105000], [90000, 89999]]) {
     assert.equal(verdictAvecCompteurs({ ...base, dureeMs: mono, dureeMuraleMs: murale }, bon, bon).ok, true);
@@ -379,7 +445,7 @@ test("une durée anormale ou absente invalide la preuve même avec zéro erreur 
   ]) {
     const verdict = verdictAvecCompteurs({ ...base, ...changements }, bon, bon);
     assert.equal(verdict.ok, false);
-    assert.deepEqual(verdict.motifs, ["DUREE_MESURE_INVALIDE"]);
+    assert.ok(verdict.motifs.includes("DUREE_MESURE_INVALIDE"));
     assert.equal(verdict.validiteMesure.ok, false);
   }
   assert.deepEqual(verifierDureeMesure(base), { ok: true, motif: null, attendueMs: 90000,
@@ -390,6 +456,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function palier("), fin = source.indexOf("async function nettoyer()", debut);
   assert.ok(debut >= 0 && fin > debut);
+  const tracesCompteurs = await minuteursTest(25);
   for (const [monoFinale, muraleFinale, attendu] of [[90000, 90000, true], [105000, 105000, true],
     [105001, 105001, false], [698562, 698562, false], [90000, 698562, false]]) {
     let mono = 0, murale = 0, debutMono = 0, debutMural = 0, fermetures = 0, sauvegardes = 0;
@@ -408,8 +475,8 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
       changerPhase: phase => { ctx.phase = phase; if (phase === 'mesure') { debutMono = mono; debutMural = murale; } },
       decalageInitial: () => 0, pausePrevue: () => 5000, surveillerCompteurs: async () => {},
       action: async () => {
+        if (!mesures.length) mesures.push(...tracesCompteurs);
         for (const [type, famille, methode] of [['http', 'fil', 'GET'], ['parcours', 'fil', null],
-          ['http', 'fil_likes_visibles', 'POST'], ['parcours', 'compteurs_visibles', null],
           ['realtime', 'message', null], ['realtime', 'post', null]]) {
           mesures.push({ phase: 'mesure', type, famille, methode, ok: true, ms: 20, octets: 0 });
         }
@@ -464,6 +531,21 @@ test("le vrai minuteur lit trois compteurs en une requête groupée et garde 15�
   assert.equal(mesures.at(-1).ok, false); assert.equal(mesures.at(-1).lectures, 0);
 });
 
+test("le minuteur réutilise les cartes fraîches et réarme à la première expiration, sans reculer le pas", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  let now = 0; const mesures = [], appels = [];
+  const compte = { index: 0, postsVisibles: ["a", "b", "c"], likesDuFil: new Map([["a", 8000], ["b", 10000], ["c", 10000]]) };
+  const ctx = { LIKES_VISIBLES, o: { graine: 1 }, arret: null, phase: "mesure", stage: { taille: 100, page: 20 }, mesures,
+    performance: { now: () => now }, sleep: async ms => { now += ms; }, decalageInitialCompteurs: () => 0,
+    pauseCompteurs: () => 15000, motifSur: e => e.message, stop: assert.fail,
+    lireLikesVisibles: async (_, ids) => { appels.push({ now, ids: [...ids] }); return new Map(ids.map(id => [id, 7])); } };
+  await runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx)(compte, 0, 24000);
+  assert.deepEqual(appels, [{ now: 8000, ids: ["a"] }, { now: 23000, ids: ["a", "b", "c"] }]);
+  assert.deepEqual(mesures.filter(m => m.type === "cache").map(m => [m.cartes, m.appelEvite]), [[3, true], [2, false]]);
+  assert.equal(mesures.filter(m => m.type === "parcours").length, 2);
+});
+
 test("les compteurs s'étalent sur quinze secondes avec une graine indépendante des parcours", () => {
   const debuts = Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i));
   assert.ok(debuts.every(ms => ms >= 200 && ms < 15000));
@@ -472,16 +554,17 @@ test("les compteurs s'étalent sur quinze secondes avec une graine indépendante
   assert.deepEqual(debuts, Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i)));
 });
 
-function filSimule() {
+function filSimule(fraicheurLikes = "fil") {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function fil(compte, page)"), fin = source.indexOf("async function cycleCompteursVisibles(", debut);
   const prefix = "fixture-campagne", profilsFixture = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
   const postsFixture = Array.from({ length: 20 }, (_, i) => ({ id: `fixture_${i}` }));
   const ctx = { prefix, profilsFixture, postsFixture, phase: "mesure", LIKES_VISIBLES,
+    o: { fraicheurLikes }, performance: { now: () => etat.horloge },
     colonnesFil: "id,author_id,profiles", liste: ids => `in.(${ids.join(",")})`,
     attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
   };
-  const etat = { posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
+  const etat = { horloge: 0, posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
     commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length],
       content: "Commentaire synthetique.", created_at: "2026-11-16T00:00:00Z" })), appels: [], rpcTransformer: rows => rows };
   ctx.rest = async (nom, table, params, opt) => {
@@ -499,15 +582,39 @@ function filSimule() {
     }
     else if (table === "profiles") {
       assert.notEqual(params.id, "in.()", "une page sans commentaire ne doit pas interroger une liste d'auteurs vide");
-      rows = [...new Set(etat.commentaires.map(c => c.author_id))].map(id => ({ id, username: "Auteur" }));
+      rows = [...new Set(etat.commentaires.map(c => c.author_id))].filter(id => params.id.includes(id)).map(id => ({ id, username: "Auteur" }));
     } else if (table === "rpc/interactions_cibles") rows = [];
     else assert.fail("ancien chemin de lecture du fil");
     if (!verdictReponse(200, JSON.stringify(rows), opt.attentes).ok) throw new Error("CONTENU_INATTENDU");
     return rows;
   };
   const lire = runInNewContext(source.slice(debut, fin) + "\nfil;", ctx);
-  return { etat, lire: () => lire({ index: 0, jwt: "jwt-lecteur" }, 20) };
+  const compte = { index: 0, jwt: "jwt-lecteur" };
+  return { etat, compte, lire: (lecteur = compte) => lire(lecteur, 20) };
 }
+
+test("le fil garde deux minutes les auteurs du seul lecteur et date les likes du départ du RPC", async () => {
+  for (const mode of ["fil", "independante"]) {
+    const { etat, compte, lire } = filSimule(mode);
+    const delta = etat.rpcTransformer;
+    etat.rpcTransformer = rows => { etat.horloge += 100; return delta(rows); };
+    const premier = await lire();
+    assert.equal(premier.profils, 2);
+    assert.equal(compte.likesDuFil?.get("fixture_0"), mode === "fil" ? 15000 : undefined);
+    await lire();
+    const appelsProfils = () => etat.appels.filter(a => a.nom === "fil_profils_commentaires").length;
+    assert.equal(appelsProfils(), 1);
+    await lire({ index: 1, jwt: "jwt-lecteur" });
+    assert.equal(appelsProfils(), 2);
+    etat.horloge = 120000;
+    await lire();
+    assert.equal(appelsProfils(), 3, "expiration à 120100 ms, incluant la lecture du RPC");
+    const avantErreur = compte.likesDuFil?.get("fixture_0");
+    etat.rpcTransformer = () => [];
+    await assert.rejects(lire());
+    assert.equal(compte.likesDuFil?.get("fixture_0"), avantErreur);
+  }
+});
 
 test("le vrai parcours fil utilise le RPC du client courant, sans anciennes listes de compléments", async () => {
   const { etat, lire } = filSimule();
@@ -561,7 +668,7 @@ test("la vraie lecture exige chaque commentaire de fixture encore visible et son
   const tous = await lire(); assert.equal(tous.commentaires, 20); assert.equal(etat.appels.length, 4);
   etat.posts = etat.posts.map((p, i) => i ? { ...p, id: `nouveau_${i}` } : p);
   etat.commentaires = etat.commentaires.slice(0, 1); etat.appels.length = 0;
-  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 4);
+  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 3, "l’auteur est dans le cache du lecteur");
   const attendu = { ...etat.commentaires[0] };
   etat.commentaires = []; await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
   for (const cle of ["id", "author_id"]) {
@@ -627,7 +734,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
 
 test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre préparation et charge", () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
-  const debut = source.indexOf("function sauvegarder()"), fin = source.indexOf("function stop(", debut);
+  const debut = source.indexOf("function sauvegarder("), fin = source.indexOf("function stop(", debut);
   const fichiers = new Map();
   const ctx = {
     rapport: {}, budget: { resume: () => ({ requetes: 2 }) }, nettoyageBudget: null, debut: 0,
@@ -638,9 +745,14 @@ test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre pr�
     o: { projet: STAGING_REF }, prefix: "fixture", comptes: [], emailsAttendus: [], profilsFixture: [], postsFixture: [],
     mutationsPosts: new Set(), mutationsLikes: new Map(), convs: [], events: [],
     writeFileSync: (nom, contenu) => fichiers.set(nom, JSON.parse(contenu)),
+    renameSync: (temp, cible) => { fichiers.set(cible, fichiers.get(temp)); fichiers.delete(temp); },
   };
   runInNewContext(source.slice(debut, fin) + "\nsauvegarder();", ctx);
   const rapport = fichiers.get("rapport-simule.json");
+  ctx.mutationsPosts.add("synthetique");
+  runInNewContext(source.slice(debut, fin) + "\nsauvegarder(false);", ctx);
+  assert.equal(fichiers.get("rapport-simule.json"), rapport, "une mutation n’a pas réécrit le rapport complet");
+  assert.deepEqual(fichiers.get("rapport-simule.json.manifest.json").posts, ["synthetique"]);
   assert.equal(rapport.mixObserve.actions.total, 1); assert.equal(rapport.mixObserve.appelsHttp.total, 1);
   assert.equal(rapport.mixObserve.appelsHttp.familles[0].famille, "POST:fil_compteurs");
   assert.equal(rapport.mesures.length, 3, "les données brutes conservent aussi les phases hors mesure");
@@ -649,7 +761,7 @@ test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre pr�
 
 test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {
   const posts = Array.from({ length: 120 }, (_, i) => ({ id: `post_${i}` }));
-  for (const n of [25, 50, 100, 200]) {
+  for (const n of [25, 50, 100, 125, 150, 175, 200]) {
     const base = new Set(posts.map((p, i) => `${p.id}:compte_${(i + 1) % n}`));
     const avant = [...base].sort(), journal = new Map();
     for (let i = 0; i < n; i += 4) for (let tour = 0; tour < 24; tour++) {
@@ -727,7 +839,7 @@ test("la vraie suppression conserve le scope et utilise chaque clé composite ; 
 
 test("la cadence hors mesure prévoit le fanout de deux générations et ne réécrit pas les limites serveur", () => {
   assert.equal(delaiFixture("post_likes", "POST", 0), 50);
-  for (const n of [25, 50, 100, 200]) {
+  for (const n of [25, 50, 100, 125, 150, 175, 200]) {
     const intervalle = delaiFixture("post_likes", "DELETE", n);
     assert.ok(1000 / intervalle <= 20);
     assert.ok(2 * n * 1000 / intervalle <= 80);
