@@ -42,6 +42,35 @@ async function banc(page) {
 const pointe = (page, id) => page.evaluate((id) => (state.user.checkedInEvents || []).includes(id), id);
 
 test.describe("IRL-12 — pointage tenu par le serveur", () => {
+  test("l’accueil ouvert montre la présence une seule fois et conserve le QR affiché", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      const delai = delaiDeleste;
+      delaiDeleste = ms => ms === 12000 ? 150 : delai(ms);
+      const ev = _findCanonicalEvent("ev_r");
+      ev.date = Date.now() + 3600000 + 1500;
+      window.__premiereLectureAccueil = null;
+      supaLireParticipants = async () => {
+        window.__premiereLectureAccueil ??= Date.now() - (ev.date - 3600000);
+        return {
+          listesLues: true, comptesLus: true, checkedByEvent: window.__departAccueil ? {} : { ev_r: [MY_UID] },
+          countsByEvent: window.__departAccueil ? {} : { ev_r: { going: 1, maybe: 0, waitlist: 0, checked_in: 1 } },
+        };
+      };
+      openEventDetails("ev_r");
+      openEventCheckinQr("ev_r");
+    });
+    await expect(page.locator(".checkin-qr-frame svg")).toBeVisible();
+    await expect(page.locator("[data-presence-total='ev_r']")).toHaveText("1 sur place");
+    await expect(page.locator("#eventDetailPage .ev-here-dot")).toHaveCount(1);
+    expect(await page.evaluate(() => window.__premiereLectureAccueil)).toBeGreaterThanOrEqual(0);
+    await page.evaluate(() => { window.__departAccueil = true; });
+    await expect(page.locator("[data-presence-total='ev_r']")).toHaveText("0 sur place");
+    await expect(page.locator("#eventDetailPage .ev-here-dot")).toHaveCount(0);
+    await page.evaluate(() => { closeModal(); closeEventDetail(); });
+    expect(await page.evaluate(() => _suiviPresences)).toBeNull();
+  });
+
   test("① l'organisateur affiche le secret serveur, jamais le code dérivé", async ({ page }) => {
     await banc(page);
     const r = await page.evaluate(async () => {
