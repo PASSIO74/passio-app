@@ -172,8 +172,10 @@
   // semaines. `window._etatCompteCharge` (app-02) est posé à CHAQUE sortie de
   // l'hydratation, y compris les précoces. Sans verdict, on s'abstient — le
   // silence est le bon sens de l'échec ici.
+  var _rejeuDemande = false; // Une demande explicite vaut pour ce tour, sur cet appareil.
   function reperesAutorises() {
     if (!actif() || !appPrete()) return false;
+    if (_rejeuDemande) return true;
     if (!compteExistant()) return true;                    // visiteur : inchangé
     if (window._etatCompteCharge !== true) return false;   // le compte n'a pas parlé
     return comptePasEncoreGarni();
@@ -637,7 +639,7 @@
     var pd = document.getElementById("postDetailPage");
     if (pd && pd.style && pd.style.display !== "none" && pd.style.display !== "") return true;
     // Feuille basse / panneau plein écran ouverts par un autre lot.
-    if (document.querySelector(".ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
+    if (document.querySelector("#storyViewer.active, #v2CreateSheet:not([hidden]), .ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
     // Les Paramètres (2026-11-20, contre-revue du parcours du nouvel inscrit) :
     // une bulle posée pendant qu'ils sont ouverts tombait SOUS leur fond
     // (z-index 9000 contre 49999) et prenait le focus clavier sur un bouton
@@ -801,7 +803,7 @@
     var titre = dejaChoisi ? "Tes passions sont sur cet appareil" : "Bienvenue sur PASSIO";
     var texte = dejaChoisi
       ? "Crée ton compte pour les garder."
-      : "Tout ce que tu aimes, au même endroit.";
+      : "Découvre ce que les autres partagent et trouve des sorties autour de tes passions.";
     // ⚠️ UN SEUL BOUTON, ET C'EST CELUI QUE LE MESSAGE ANNONCE (2026-11-03). La
     // carte en alignait quatre à poids presque égal — « Personnaliser mon
     // expérience », « Explorer d'abord », « Créer mon compte », « J'ai déjà un
@@ -850,12 +852,12 @@
     if (bienvenueFermeeCetteSession()) return false;
     if (document.getElementById("frWelcome")) return true;
     if (ecranOccupe() || ecranActif() !== "feed") return false;
-    var liste = document.getElementById("feedList");
-    if (!liste || !liste.parentNode) return false;
+    var premierBloc = document.getElementById("feedPassionsBlock");
+    if (!premierBloc || !premierBloc.parentNode) return false;
     var hote = document.createElement("div");
     hote.innerHTML = carteBienvenueHTML();
     var carte = hote.firstChild;
-    liste.parentNode.insertBefore(carte, liste);
+    premierBloc.parentNode.insertBefore(carte, premierBloc);
     if (p.bienvenue !== "vue") { p.bienvenue = "vue"; sauverPrefs(); }
     // Les populaires vivantes, lues AVANT que le panneau ne s'ouvre : les tuiles
     // ne doivent pas se réordonner sous le doigt (2026-10-06). Différé, jamais
@@ -1828,9 +1830,7 @@
   // générique, pour tout `[role="button"]` non natif. Les boutons ci-dessous
   // sont des `<button>` natifs, que ce délégué exclut explicitement : Entrée et
   // Espace passent par le navigateur, une seule fois.
-  // Les quatre formulations courtes de la direction produit. Elles servent
-  // d'accroche à l'indication qui parle de la surface concernée — jamais de
-  // texte décoratif posé ailleurs.
+  // Les formulations courtes servent de titres aux repères.
   var FORMULES = {
     decouvrir: "Ce qui t'inspire",
     creer: "Ce que tu veux partager",
@@ -1847,29 +1847,23 @@
 
   var ETAPES = {
     decouvrir: {
-      accroche: FORMULES.decouvrir,
-      titre: "Un Fil construit autour de tes passions",
-      texte: "Mélange tes passions, tes envies et les personnes que tu suis.",
+      titre: FORMULES.decouvrir,
+      texte: "Parcours les publications. Pour trouver une sortie, ouvre l’onglet Rencontrer.",
       cible: function () {
-        return document.getElementById("feedPassionsBlock")
-            || document.getElementById("profileStrip")
-            || document.getElementById("feedList");
+        return document.querySelector('#appNavV2 [data-v2-key="meet"]')
+            || document.querySelector('#appNav [data-screen="irl"]');
       }
     },
     rencontrer: {
-      accroche: FORMULES.rencontrer,
-      titre: "Passe du numérique au réel",
-      texte: "Trouve des activités autour de toi, sans activer automatiquement ta position.",
+      titre: FORMULES.rencontrer,
+      texte: "Cherche une activité ou une ville. Tu peux explorer sans partager ta position.",
       cible: function () {
-        return document.querySelector("#screen-irl .irl-actionbar")
-            || document.getElementById("eventList")
-            || document.getElementById("screen-irl");
+        return document.getElementById("v4a0Search") || document.getElementById("irlCitySearch");
       }
     },
     creer: {
-      accroche: FORMULES.creer,
-      titre: "À toi de créer",
-      texte: "Publie une idée, une bobine ou propose une activité IRL.",
+      titre: FORMULES.creer,
+      texte: "Dans Créer, choisis Publication pour partager une idée ou Activité pour proposer une sortie.",
       // ⚠️ LE BOUTON « CRÉER » VISIBLE N'EST PAS `.app-nav .nav-cta`. Le lot UI-1
       // (`ui-v2-shell.js`, actif par défaut) construit une barre NEUVE
       // `nav#appNavV2.app-nav-v2` et met la barre historique en `display:none` :
@@ -1892,8 +1886,7 @@
     // `planifierTour()` : seule `surNavigation` les pose, à l'ouverture de leur
     // écran. C'est ce qui garantit que le premier tour reste à trois étapes.
     profil: {
-      accroche: FORMULES.profil,
-      titre: "Ton profil réunit tes passions",
+      titre: FORMULES.profil,
       texte: "Une seule identité publique, et autant de passions que tu veux.",
       cible: function () { return document.getElementById("mainProfileCover") || document.getElementById("screen-profiles"); }
     },
@@ -1903,8 +1896,7 @@
       cible: function () { return document.getElementById("screen-messages"); }
     },
     studio: {
-      accroche: FORMULES.creer,
-      titre: "Publie ce que tu veux",
+      titre: FORMULES.creer,
       texte: "Un texte, une photo, une vidéo — la passion se choisit juste en dessous.",
       cible: function () { return document.getElementById("screen-studio"); }
     },
@@ -1921,19 +1913,24 @@
     // GESTE sur la commande dont elle parle : on explique ce qu'on vient de
     // toucher, au moment où la question se pose, une seule fois, jamais avant.
     // La garde `bulleVisible()` interdit qu'il y en ait deux à l'écran.
+    suivis: {
+      titre: "Les personnes que tu suis",
+      texte: "Active Suivis pour inclure leurs publications dans ton fil.",
+      cible: function () { return document.querySelector('#profileStrip [data-passion-tile="__suivis__"]'); }
+    },
     passions: {
-      titre: "Tes passions filtrent le Fil",
-      texte: "Touche-en plusieurs : elles s'ADDITIONNENT, elles ne se remplacent pas.",
+      titre: "Tes passions dans le fil",
+      texte: "Sélectionne plusieurs passions pour voir leurs publications ensemble.",
       cible: function () { return document.getElementById("profileStrip"); }
     },
     envies: {
-      titre: "Ton envie du moment",
-      texte: "Explorer, Apprendre, Idées, Rencontrer — ça s'ajoute à tes passions, ça ne les remplace pas.",
+      titre: "Filtrer les publications",
+      texte: "Choisis une envie pour affiner ton fil. Retire toutes les envies pour retrouver le fil complet.",
       cible: function () { return document.getElementById("feedIntentSelector") || document.getElementById("moodSelector"); }
     },
     stories: {
-      titre: "Ce qui se passe maintenant",
-      texte: "Des moments courts, publiés dans la journée. Ils disparaissent au bout de 24 h.",
+      titre: "Les stories durent 24 h",
+      texte: "Touche un autre portrait pour voir ce que cette personne a partagé.",
       cible: function () { return document.getElementById("storiesRowFeed"); }
     },
     // ⚠️ PAS D'AIDE « BOBINES », ET C'EST DÉLIBÉRÉ. Elle a existé, elle a été
@@ -1958,10 +1955,10 @@
   // fait par ZONE (un conteneur stable), jamais par le nœud exact : les rangées
   // de passions, d'envies et de stories sont repeintes en entier à chaque rendu.
   var ZONES_GESTE = [
-    ["#profileStrip", "passions"],
+    ['#profileStrip [data-passion-tile="__suivis__"]', "suivis"],
+    ['#profileStrip [data-passion-tile]:not([data-passion-tile="__suivis__"])', "passions"],
     ["#feedIntentSelector", "envies"],
-    ["#moodSelector", "envies"],
-    ["#storiesRowFeed", "stories"]
+    ["#moodSelector", "envies"]
   ];
   // ⚠️ SEULES CES TROIS ÉTAPES forment le premier tour. Ajouter une entrée à
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
@@ -1986,6 +1983,7 @@
     var id = el.getAttribute("data-fr-tip") || "";
     if (el.parentNode) el.parentNode.removeChild(el);
     if (raison === "abandon") {
+      _rejeuDemande = false;
       var p = prefs();
       p.tour.abandonne = true;
       sauverPrefs();
@@ -1997,6 +1995,7 @@
     // partie et peuvent très bien n'être jamais vues.
     if (ORDRE_ETAPES.every(etapeVue) && !prefs().tour.termine) {
       var p2 = prefs();
+      _rejeuDemande = false;
       p2.tour.termine = true;
       sauverPrefs();
       tel("first_run_completed", { n: ORDRE_ETAPES.length });
@@ -2022,13 +2021,13 @@
     bulle.setAttribute("role", "dialog");
     bulle.setAttribute("aria-modal", "false");
     bulle.setAttribute("aria-labelledby", "frTipTitle");
+    bulle.setAttribute("aria-describedby", "frTipText");
     // Contenu strictement statique (constantes ci-dessus) — aucune donnée
     // utilisateur n'entre ici. Échappé quand même : la règle ne souffre pas
     // d'exception, et le jour où un libellé devient dynamique, c'est déjà bon.
     bulle.innerHTML = ''
-      + (e.accroche ? '<div class="fr-tip-eyebrow">' + escapeHtml(e.accroche) + '</div>' : '')
       + '<div class="fr-tip-title" id="frTipTitle">' + escapeHtml(e.titre) + '</div>'
-      + '<div class="fr-tip-text">' + escapeHtml(e.texte) + '</div>'
+      + '<div class="fr-tip-text" id="frTipText">' + escapeHtml(e.texte) + '</div>'
       + '<div class="fr-tip-actions">'
       +   '<button type="button" class="fr-tip-skip" onclick="PassioFirstRun.abandonnerTour()">Ne plus afficher</button>'
       +   '<button type="button" class="fr-tip-ok" onclick="PassioFirstRun.fermerBulle()">Compris</button>'
@@ -2042,12 +2041,12 @@
     // ce bas d'écran, la carte monte en haut.
     var largeur = Math.min(360, window.innerWidth - 24);
     bulle.classList.add("fr-tip-carte");
+    bulle.style.width = largeur + "px";
     document.body.appendChild(bulle);
     var h = bulle.offsetHeight || 120;
     var BAS = 84;
     var basCarte = window.innerHeight - BAS;
     var enHaut = r.bottom > basCarte - h - 8 && r.top < basCarte;
-    bulle.style.width = largeur + "px";
     bulle.style.left = Math.round((window.innerWidth - largeur) / 2) + "px";
     if (enHaut) bulle.style.top = "calc(12px + env(safe-area-inset-top, 0px))";
     else bulle.style.bottom = "calc(" + BAS + "px + env(safe-area-inset-bottom, 0px))";
@@ -2111,6 +2110,11 @@
     }, true);
   }
 
+  // Le lecteur occupe tout l’écran. Le repère attend le retour sur le fil.
+  function apresLectureStory() {
+    if (estVisiteur() && ecranActif() === "feed") montrerEtape("stories");
+  }
+
   // Déclencheur des étapes du Fil (1 et 3). L'étape « Rencontrer » a le sien,
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
@@ -2150,6 +2154,10 @@
   // « relançable depuis l'aide ou les options » : remet les trois indications à
   // zéro et repart de la première. Utilisable même quand le tour a été abandonné.
   function relancerTour() {
+    if (!actif() || !appPrete()) return;
+    fermerBulle();
+    if (typeof fermerHint === "function") fermerHint();
+    _rejeuDemande = true;
     var p = prefs();
     // Remet TOUT à zéro — les trois étapes du premier tour comme les aides au
     // geste. « Revoir les repères » doit rendre l'écran tel qu'un nouveau venu
@@ -2157,7 +2165,7 @@
     p.tour = {};
     sauverPrefs();
     try { closeModal(); } catch (e) {}
-    fermerBulle();
+    if (estVisiteur()) fermerBienvenue();
     try { if (typeof goTo === "function" && ecranActif() !== "feed") goTo("feed"); } catch (e) {}
     planifierTour();
   }
@@ -2797,6 +2805,7 @@
     // Bienvenue
     fermerBienvenue: fermerBienvenue,
     // Tour
+    apresLectureStory: apresLectureStory,
     relancerTour: relancerTour,
     abandonnerTour: abandonnerTour,
     fermerBulle: fermerBulle,
