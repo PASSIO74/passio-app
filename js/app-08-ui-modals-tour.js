@@ -2096,6 +2096,7 @@ function openStoryViewerAt(groupIdx, itemIdx) {
   pushOverlayHistory("story", "#story");
   storyGroupIdx = Math.max(0, Math.min(groupIdx, storyGroups.length - 1));
   storyItemIdx = itemIdx || 0;
+  if (window.PassioFirstRun) window.PassioFirstRun.fermerBulle();
   $("#storyViewer").classList.add("active");
   playCurrentStory();
 }
@@ -2153,10 +2154,10 @@ function playCurrentStory() {
   $("#storyAvatar").style.background = _photoStory ? avatarBg({ photoUrl: _photoStory, avatar: u.avatar }) : u.avatar;
   $("#storyAvatar").textContent = _photoStory ? "" : (u.profileEmoji || u.name[0] || "?");
   $("#storyAvatar").style.cursor = "pointer";
-  $("#storyAvatar").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
+  $("#storyAvatar").onclick = function(e) { e.stopPropagation(); closeStoryViewer({ versAutreEcran: true }); openUserProfile(s.authorId); };
   $("#storyAuthor").textContent = u.name;
   $("#storyAuthor").style.cursor = "pointer";
-  $("#storyAuthor").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
+  $("#storyAuthor").onclick = function(e) { e.stopPropagation(); closeStoryViewer({ versAutreEcran: true }); openUserProfile(s.authorId); };
   $("#storyTime").textContent = fmtTime(s.createdAt);
   // ⚠️ UNE STORY A ENFIN UNE PORTE DE SIGNALEMENT (chantier 5, 2026-09-14) :
   // MOD-02 avait ouvert celle des publications, les stories n'en avaient aucune.
@@ -2689,7 +2690,7 @@ function _storyLigneProfil(id, profs, droite) {
   nomEl.type = "button";
   nomEl.className = "story-feuille-nom";
   nomEl.textContent = pr.nom;
-  nomEl.addEventListener("click", function () { try { closeModal(); closeStoryViewer(); openUserProfile(id); } catch (e) {} });
+  nomEl.addEventListener("click", function () { try { closeModal(); closeStoryViewer({ versAutreEcran: true }); openUserProfile(id); } catch (e) {} });
   ligne.appendChild(nomEl);
   if (droite) ligne.appendChild(droite);
   return ligne;
@@ -2934,7 +2935,7 @@ function _barreReponseStory(s, nom, reel) {
       nouvelle.textContent = storyIxPossible(s) ? "＋" : "＋ Nouvelle story";
       nouvelle.setAttribute("aria-label", "Nouvelle story");
       if (storyIxPossible(s)) nouvelle.classList.add("compacte");
-      nouvelle.addEventListener("click", function () { closeStoryViewer(); try { openStudioAsStory(); } catch (_) {} });
+      nouvelle.addEventListener("click", function () { closeStoryViewer({ versAutreEcran: true }); try { openStudioAsStory(); } catch (_) {} });
       barre.appendChild(nouvelle);
     } else {
       var espace = document.createElement("div");
@@ -3040,7 +3041,7 @@ function storyGroupeVoisin(sens) {
   playCurrentStory();
 }
 
-function closeStoryViewer() {
+function closeStoryViewer(options) {
   clearInterval(storyTimer);
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
@@ -3052,7 +3053,10 @@ function closeStoryViewer() {
   renderStories();
   // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
   // sans cela, chaque story consultée mangeait un appui sur « retour ».
-  if (etaitOuvert) releaseOverlayHistory();
+  if (etaitOuvert) {
+    releaseOverlayHistory();
+    if (!(options && options.versAutreEcran) && window.PassioFirstRun) window.PassioFirstRun.apresLectureStory();
+  }
 }
 
 // ======== NOTIFICATIONS ========

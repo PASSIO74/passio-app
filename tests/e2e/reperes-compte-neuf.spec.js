@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 const { onboardedState, bootOnboarded } = require("./app-helper");
+const { bootVisiteur } = require("./first-run-helper");
 
 const SRC_FR = fs.readFileSync(path.join(__dirname, "..", "..", "js", "first-run.js"), "utf8");
 const SRC_APP02 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-02-state-utils.js"), "utf8");
@@ -135,6 +136,37 @@ test.describe("Les repères atteignent un compte neuf", () => {
     // du panneau est REPLIÉE au repos, donc `offsetParent` y est nul pour tous
     // ses boutons — une mesure qui serait restée fausse quoi qu'on fasse.
     expect(b.display).not.toBe("none");
+  });
+
+  test("un habitué peut rejouer les trois repères depuis les Paramètres", async ({ page }) => {
+    await bootOnboarded(page, null, 2, { state: compteGarni() });
+    await expect(page.locator(".passio-hint")).toBeVisible({ timeout: 15000 });
+    await page.locator("#topbarParametres").click();
+    await page.locator("#devPanel").getByText("Personnalisation", { exact: true }).click();
+    await page.locator("#frReperesBtn").click();
+
+    const bulle = page.locator(".fr-tip");
+    await expect(bulle).toHaveAttribute("data-fr-tip", "decouvrir");
+    await expect(page.locator(".passio-hint")).toHaveCount(0);
+    await bulle.getByRole("button", { name: "Compris" }).click();
+    await page.locator('#appNavV2 [data-v2-key="meet"]').click();
+    await expect(bulle).toHaveAttribute("data-fr-tip", "rencontrer");
+    await bulle.getByRole("button", { name: "Compris" }).click();
+    await page.locator('#appNavV2 [data-v2-key="discover"]').click();
+    await expect(bulle).toHaveAttribute("data-fr-tip", "creer");
+    await bulle.getByRole("button", { name: "Compris" }).click();
+    await expect(bulle).toHaveCount(0);
+    expect(await page.evaluate(() => PassioFirstRun.aidesHistoriquesEnPause())).toBe(false);
+  });
+
+  test("un visiteur peut lancer les repères depuis le choix des passions dès son arrivée", async ({ page }) => {
+    await bootVisiteur(page);
+    const carte = page.locator("#frWelcome");
+    await carte.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.locator("#modalBackdrop").getByRole("button", { name: "Revoir les repères" }).click();
+
+    await expect(page.locator('.fr-tip[data-fr-tip="decouvrir"]')).toBeVisible();
+    await expect(carte).toHaveCount(0);
   });
 
   test("⑥ lot coupé : le bouton disparaît au lieu de rendre un tap mort", async ({ page }) => {

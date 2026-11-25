@@ -363,6 +363,7 @@
   }
 
   function openCreateSheet() {
+    if (window.PassioFirstRun) window.PassioFirstRun.fermerBulle();
     fermerAideContextuelle();
     var wrap = ensureSheet();
     renderCreateSheet();
