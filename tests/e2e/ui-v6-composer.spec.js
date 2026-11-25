@@ -105,7 +105,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Options"))).toBe(false);
-    await expect(hote.locator("#fieldMood + label #postText")).toBeVisible();
+    await expect(hote.locator("#fieldMood + .field #postText")).toBeVisible();
     // Et il reste CLIQUABLE d'un seul geste, sans rien déplier.
     await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
     await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
@@ -249,7 +249,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
-    await expect(page.locator("#fieldMood + label #postText")).toBeVisible();
+    await expect(page.locator("#fieldMood + .field #postText")).toBeVisible();
     // ⚠️ Ce test exigeait le libellé « +10 pts » et des pastilles score/Passia
     // visibles : c'était ce que ce lot MASQUAIT. L'ADR-009 a depuis retiré la
     // mécanique elle-même, donc le kill switch n'a plus rien à rendre de ce

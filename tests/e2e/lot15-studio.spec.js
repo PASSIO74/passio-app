@@ -48,7 +48,8 @@ test("② CRE-C05 : le texte du Studio survit au rechargement et se propose", as
   await page.evaluate(() => { document.getElementById("postText").value = ""; goTo("feed"); goTo("studio"); });
   const bandeau = page.locator("#studioBrouillon");
   await expect(bandeau).toContainText("Mon brouillon de luthier");
-  await bandeau.locator("button", { hasText: "Reprendre" }).click();
+  await expect(page.getByRole("textbox", { name: "Ton message", exact: true })).toBeVisible();
+  await bandeau.getByRole("button", { name: "Reprendre", exact: true }).click();
   await expect(page.locator("#postText")).toHaveValue("Mon brouillon de luthier");
   await expect(bandeau).toHaveCount(0);
   await page.evaluate(() => { document.getElementById("postText").value = ""; proposerBrouillonStudio(); });
