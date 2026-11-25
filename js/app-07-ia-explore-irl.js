@@ -3200,6 +3200,17 @@ function _irlEmptyStateHtml() {
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">Effacer la recherche</button></div>';
   }
   if (filtered) {
+    const pid = irlPassionFilters.size === 1 && [...irlPassionFilters][0];
+    if (pid && (estPassionCanonique(pid) || _irlPassionPlateConnue(pid))) {
+      const passion = passionById(pid);
+      const nom = passion.id ? escapeHtml(passion.label) : "";
+      return `<div class="empty"><div class="empty-icon">🗓</div>
+        <div class="empty-title">Aucune sortie${nom ? " " + nom : ""} avec ces filtres</div>
+        <div class="irl-empty-actions">
+          <button type="button" class="btn primary" data-passion="${escapeHtml(pid)}" onclick="openCreateEvent(null,this.dataset.passion)">Proposer une sortie${nom ? " " + nom : ""}</button>
+          <button type="button" class="btn ghost" onclick="clearAllIrlFilters()">Tout afficher</button>
+        </div></div>`;
+    }
     return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
       + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'activités.</div>'
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
@@ -7769,7 +7780,7 @@ function _irlAssurerReferentielPassions(myPassionIds) {
   } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
 }
 
-function openCreateEvent(editId) {
+function openCreateEvent(editId, passionSouhaitee) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -7792,10 +7803,10 @@ function openCreateEvent(editId) {
   // le catalogue : tout ce qui est listé est à soi.
   // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
   // la seule définition de « mes passions » — une passion rangée n'est pas proposée.
-  const myPassionIds = ((typeof passionsVivantes === "function")
+  const profilsOrganisateur = (typeof passionsVivantes === "function")
     ? passionsVivantes()
-    : (state.user.profiles || []).filter(pr => !pr.archived))
-    .map(pr => pr && pr.passion).filter(Boolean);
+    : (state.user.profiles || []).filter(pr => !pr.archived);
+  const myPassionIds = profilsOrganisateur.map(pr => pr && pr.passion).filter(Boolean);
   // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
   // ⚠️ NE PAS RECLASSER EN SILENCE. Si l'activité éditée porte une passion
   // absente du catalogue publiable, aucune `<option>` ne serait marquée
@@ -7819,6 +7830,13 @@ function openCreateEvent(editId) {
   // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
   const _pubs = _irlPassionsOrganisables(myPassionIds);
   const _repli = !!_pubs.repli;
+  if (!editId && passionSouhaitee && !profilsOrganisateur.some(p => p && !p.archived && !p._parDefaut && p.passion === passionSouhaitee)) {
+    const nom = escapeHtml(passionById(passionSouhaitee).label);
+    openModal(`<div class="modal-title">Proposer une sortie</div>
+      <p class="modal-subtitle">Ajoute ${nom} à tes passions ou réactive-la sur ton profil pour organiser cette sortie.</p>
+      <button type="button" class="btn primary block" onclick="ouvrirGestionPassions()">Gérer mes passions</button>`);
+    return;
+  }
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
     // Une activité créée sous une passion retirée du profil depuis reste
@@ -7831,7 +7849,7 @@ function openCreateEvent(editId) {
   }
   const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
-  const selPassion = ed ? ed.passion : "";
+  const selPassion = ed ? ed.passion : passionSouhaitee || "";
   const passionOptions = sortedPassions
     .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
