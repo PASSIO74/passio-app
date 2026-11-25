@@ -71,7 +71,7 @@ test("③ CRE-C06 / C07 / C15 : envies 44 px dans l'ordre du Fil, plus de zone d
     PassioUIV2.closeCreateSheet();
     return out;
   });
-  expect(r.ordre).toEqual(["Apprendre", "Idées", "Rencontrer", "Tous"]);
+  expect(r.ordre).toEqual(["Apprendre", "Idées", "À plusieurs", "Tous"]);
   expect(r.hauteur).toBeGreaterThanOrEqual(44);
   expect(r.zone, "la zone d'envoi sombre est retirée sous UI-6").toBe("none");
   expect(r.sousTitre).toContain("Texte, photo ou vidéo");

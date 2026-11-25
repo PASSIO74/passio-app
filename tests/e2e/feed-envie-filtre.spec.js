@@ -55,9 +55,9 @@ async function poser(page, opts = {}) {
       // Dans MA passion, autre mood : c'est elle que l'envie doit retrancher.
       { id: "p_yoga_neutre", authorId: "u_autre", passion: "yoga", type: "text",
         text: "MOI_YOGA_NEUTRE", mood: "all", createdAt: t - 3000, likes: 0, comments: [] },
-      // ⚠️ HORS DE TOUTE SOURCE, et porteuse du mood « Rencontrer ». C'est elle
+      // ⚠️ HORS DE TOUTE SOURCE, et porteuse du mood « À plusieurs ». C'est elle
       // qui rend le cas ⑤ MORDANT : tant que l'envie était une source, cocher
-      // « Rencontrer » la faisait entrer. Elle ne doit jamais paraître.
+      // « À plusieurs » la faisait entrer. Elle ne doit jamais paraître.
       { id: "p_irl_ailleurs", authorId: "u_autre", passion: "photo", type: "text",
         text: "AILLEURS_IRL", mood: "irl", createdAt: t - 4000, likes: 0, comments: [] },
     ];
@@ -141,7 +141,7 @@ test("① bis — le prédicat d'envie est SATISFAIT, et pourtant la carte n'ent
   // (filtre, plus critère d'entrée). Sans cette distinction, un correctif qui
   // aurait durci le prédicat au lieu de déplacer son point d'application aurait
   // rendu ce fichier vert pour la mauvaise raison — et le défaut serait revenu
-  // au premier post « Idées » ou « Rencontrer ».
+  // au premier post « Idées » ou « À plusieurs ».
   await poser(page, { suivis: false, envies: ["learn"] });
 
   expect(await page.evaluate(() => {
@@ -220,14 +220,14 @@ test("④ aucune source, une envie cochée : fil vide et « Choisis tes passions
 // ══════════════════════════════════════════════════════════════════════════
 
 test("⑤ l'écran vide nomme l'envie, et ne peint aucune autre passion", async ({ page }) => {
-  // Mes sources ont du contenu, mais aucune publication « Rencontrer ».
+  // Mes sources ont du contenu, mais aucune publication « À plusieurs ».
   await poser(page, { suivis: false, envies: ["meet"] });
 
   expect(await titreVide(page), "la cause exacte, avec le libellé de l'envie")
-    .toBe("Rien en « Rencontrer »");
-  // ⚠️ ET SURTOUT : il EXISTE une publication « Rencontrer » sur PASSIO
+    .toBe("Aucune publication pour « À plusieurs »");
+  // ⚠️ ET SURTOUT : il EXISTE une publication « À plusieurs » sur PASSIO
   // (`AILLEURS_IRL`, passion « photo »). Tant que l'envie était une source,
-  // cocher « Rencontrer » la faisait entrer. Elle ne doit plus rien amener.
+  // cocher « À plusieurs » la faisait entrer. Elle ne doit plus rien amener.
   expect(await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_irl_ailleurs"]').length),
     "une envie n'ouvre aucune passion").toBe(0);
