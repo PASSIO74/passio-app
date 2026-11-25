@@ -12042,6 +12042,7 @@ async function supaInit() {
         supaLoadMyRsvps().then(async function(map) {
           if (!_fusionnerRsvpServeur(map, await _sessionEstMoi())) return;   // ETAT-08 : la base fait foi, voir la fonction
           saveState();
+          if (typeof actualiserProchaineSortie === "function") actualiserProchaineSortie();
           try {
             var s = document.getElementById("screen-irl");
             if (s && s.classList.contains("active") && typeof renderIRL === "function") renderIRL();

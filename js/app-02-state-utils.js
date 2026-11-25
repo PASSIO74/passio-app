@@ -11158,7 +11158,12 @@ function feedWindowStats() {
 window.feedWindowStats = feedWindowStats;
 
 function renderFeed() {
-  if (typeof actualiserProchaineSortie === "function") actualiserProchaineSortie();
+  // Un simple recalcul du fil ne relit pas l'agenda. Masquer toutefois la
+  // carte immédiatement si le compte a changé depuis le dernier affichage.
+  if (typeof _prochaineSortieAccueil !== "undefined" && _prochaineSortieAccueil &&
+      (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
+    actualiserProchaineSortie();
+  }
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
   if (skeleton) skeleton.style.display = "none";
