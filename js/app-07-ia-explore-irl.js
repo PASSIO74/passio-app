@@ -8086,7 +8086,7 @@ function openEventWaitlist(id) {
           <span style="font-size:12px;color:var(--muted);width:18px;">${i + 1}</span>
           <div class="avatar sm" style="background:${avatarBg(p)};">${avatarInner(p)}</div>
           <span style="flex:1;font-size:13px;">${escapeHtml(p.name || "Participant")}</span>
-          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}')">Inscrire</button>
+          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}')">Réserver la place</button>
         </div>`;
       }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en attente.</div>'}
     </div>
@@ -8125,7 +8125,7 @@ async function promoteWaitlisted(id, userId) {
   _appliquerPromotionLocale(ev, promu);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(promu, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
-  toast("Participant inscrit");
+  toast("Place réservée. Il te reste à confirmer la participation.");
   openEventWaitlist(id);
   return true;
 }
