@@ -1800,7 +1800,7 @@
     if (retour && retour.cible && retour.cible.genre === "discussion") {
       // Après envoi du mail, la confirmation doit encore retrouver cette cible
       // dans un nouvel onglet. Une simple annulation termine cette intention.
-      if (typeof _pendingConfirmEmail === "undefined" || !_pendingConfirmEmail) {
+      if (!retour.confirmationEnAttente) {
         p.retour = null;
         sauverPrefs();
       }
@@ -1823,6 +1823,13 @@
 
   function allerInscription(ctx, discussionId) { ouvrirAuth("signup", ctx, discussionId); }
   function allerConnexion(ctx) { ouvrirAuth("signin", ctx); }
+  function noterConfirmationDiscussion() {
+    var retour = prefs().retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion" && !retour.confirmationEnAttente) {
+      retour.confirmationEnAttente = true;
+      sauverPrefs();
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // 13. TOUR CONTEXTUEL — trois indications, pas un carrousel
@@ -2870,6 +2877,7 @@
     requireAuthentication: requireAuthentication,
     allerInscription: allerInscription,
     allerConnexion: allerConnexion,
+    noterConfirmationDiscussion: noterConfirmationDiscussion,
     // Exposée pour `openAuthScreen` (app-02) : quand l'écran de connexion est
     // ouvert depuis les Paramètres ou après une déconnexion, la porte
     // « ← Continuer à explorer » doit exister là aussi — sinon l'onboarding

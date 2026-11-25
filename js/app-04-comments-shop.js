@@ -1504,6 +1504,14 @@ function openPostReactors(postId, event) {
 // juste au-dessus, partagent le même moteur (`_reactionItemsChipHtml`) et sont
 // intactes.
 
+function _peutChargerDiscussion(post) {
+  if (typeof supa === "undefined" || !supa) return false;
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) {
+    return !!(window._supaReal && post && post.fromSupabase);
+  }
+  return typeof MY_UID !== "undefined" && !!MY_UID;
+}
+
 async function openComments(postId) {
   // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
   // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
@@ -1520,7 +1528,7 @@ async function openComments(postId) {
   // en rouvrant un fil vide déjà chargé < 20 s).
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
-  var _willLoad = !_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID;
+  var _willLoad = !_fresh && _peutChargerDiscussion(post);
   var _emptyStateHtml = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
   const saisie = window.PassioFirstRun && PassioFirstRun.estVisiteur()
     ? `<button type="button" class="btn primary block" onclick="PassioFirstRun.allerInscription('commenter','${escapeJsArg(postId)}')">Créer un compte pour répondre</button>`

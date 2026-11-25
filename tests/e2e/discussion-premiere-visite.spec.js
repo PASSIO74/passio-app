@@ -29,6 +29,39 @@ async function terminerAuthentification(page) {
   });
 }
 
+// Vrai SDK du dépôt, adressé au seul serveur local du test. Seules ses réponses
+// HTTP sont simulées ; le résolveur, les filtres, les pages et le rendu tournent.
+async function installerLectureLocale(page, tables) {
+  const lectures = [];
+  await page.route("**/__discussion/rest/v1/**", async route => {
+    const url = new URL(route.request().url());
+    const table = url.pathname.split("/").pop();
+    const params = url.searchParams;
+    let rows = tables[table] || [];
+    for (const [colonne, filtre] of params) {
+      if (filtre.startsWith("eq.")) rows = rows.filter(row => row[colonne] === filtre.slice(3));
+    }
+    const curseur = (params.get("or") || "").match(/created_at\.lt\."([^"]+)"/);
+    if (curseur) rows = rows.filter(row => row.created_at < curseur[1]);
+    const debut = Number(params.get("offset")) || 0;
+    const fin = params.has("limit") ? debut + Number(params.get("limit")) : undefined;
+    lectures.push({ table, id: params.get("id"), colonnes: params.get("select") });
+    const resultats = rows.slice(debut, fin);
+    const objet = (route.request().headers().accept || "").includes("vnd.pgrst.object");
+    await route.fulfill({ json: objet ? (resultats[0] || null) : resultats });
+  });
+  await page.route("**/js/vendor/supabase-js-*", route => route.continue());
+  await page.addScriptTag({ url: "/js/vendor/supabase-js-2.116.0.js" });
+  await page.evaluate(() => {
+    supa = window.supabase.createClient(location.origin + "/__discussion", "cle-test-locale", {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    window.supa = supa;
+    window._supaReal = true;
+  });
+  return lectures;
+}
+
 test("discussion en visiteur : lecture libre, compte avant la saisie, annulation et retour système", async ({ page }) => {
   const id = await ouvrirDiscussion(page);
   await expect(page.locator("#newComment")).toHaveCount(0);
@@ -65,6 +98,28 @@ test("après connexion, la même discussion reçoit un brouillon sans envoi auto
   expect(await page.evaluate(id => findPostAnywhere(id).comments.length, id)).toBe(1);
 });
 
+test("une publication publique se lit au-delà des deux aperçus, sans compte, jusqu’à la dernière page", async ({ page }) => {
+  await bootVisiteur(page, { sansBienvenue: true });
+  const id = "publication-publique-du-test";
+  const commentaires = Array.from({ length: 31 }, (_, i) => ({
+    id: "commentaire-" + i, post_id: id, author_id: "lectrice", content: "Témoignage numéro " + (i + 1) + ".",
+    created_at: new Date(Date.UTC(2026, 10, 20, 12, 0, 59 - i)).toISOString(),
+  }));
+  await installerLectureLocale(page, { post_comments: commentaires });
+  await page.evaluate(id => {
+    MY_UID = null;
+    state.supabasePosts = [{ id, fromSupabase: true, comments: [], commentsTotal: 31 }];
+    openComments(id);
+  }, id);
+  await expect(lire(page)).toContainText("Témoignage numéro 3.");
+  await expect(creerCompte(page)).toBeVisible();
+  const plus = lire(page).getByRole("button", { name: /Voir .*commentaires de plus/ });
+  while (await plus.count()) await plus.click();
+  await lire(page).getByRole("button", { name: /Charger les commentaires précédents/ }).click();
+  await expect(lire(page)).toContainText("Témoignage numéro 31.");
+  await expect(page.locator("#newComment")).toHaveCount(0);
+});
+
 for (const accessible of [true, false]) {
   test("confirmation avec un cache vide : discussion " + (accessible ? "retrouvée" : "indisponible"), async ({ page, context }) => {
     const id = await ouvrirDiscussion(page);
@@ -72,25 +127,26 @@ for (const accessible of [true, false]) {
     // Le compte attend la confirmation ; la personne continue sa lecture avant
     // d'ouvrir le lien du mail dans un nouvel onglet du même navigateur.
     await page.evaluate(() => _showResendConfirmation("lecture@example.test"));
+    await page.locator("#authTabSignin").click();
+    await page.locator("#authTabSignup").click();
     await page.locator("#frBackToExplore").click();
     await expect(lire(page)).toHaveAttribute("data-thread", id);
     const confirmation = await context.newPage();
     await bootVisiteur(confirmation, { sansBienvenue: true });
-    await confirmation.evaluate(({ id, accessible }) => {
-      const post = findPostAnywhere(id);
+    await confirmation.evaluate(id => {
       state.seed.posts = state.seed.posts.filter(p => p.id !== id);
-      // Seule la lecture réseau du lien partagé est simulée, après disparition
-      // de la publication du cache comme dans l'onglet de confirmation.
-      window._lienPartageChercherPost = async function (cible) {
-        window.__discussionCherchee = cible;
-        if (accessible && cible === id) state.supabasePosts = [post];
-      };
-    }, { id, accessible });
+    }, id);
+    // Plus ancienne que les 60 publications de la première page de cet auteur.
+    const posts = Array.from({ length: 61 }, (_, i) => ({
+      id: i === 60 ? id : "publication-plus-recente-" + i, author_id: "auteur-du-test", content: "Sortie",
+      passion_id: "nature", profiles: { username: "Ari" }, created_at: new Date(Date.UTC(2026, 10, 20, 12, 0, 59 - i)).toISOString(),
+    }));
+    const lectures = await installerLectureLocale(confirmation, { posts: accessible ? posts : posts.slice(0, 60) });
     await terminerAuthentification(confirmation);
-    await expect.poll(() => confirmation.evaluate(() => window.__discussionCherchee)).toBe(id);
     if (accessible) {
       await expect(lire(confirmation)).toHaveAttribute("data-thread", id);
       await expect(confirmation.locator("#newComment")).toHaveValue("");
+      expect(lectures.some(l => l.table === "posts" && l.id === "eq." + id && l.colonnes.includes("passion_id"))).toBe(true);
     } else {
       await expect(confirmation.getByText("Cette discussion n’est plus disponible.", { exact: true })).toBeVisible();
       await expect(lire(confirmation)).toHaveCount(0);

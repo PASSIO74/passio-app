@@ -242,7 +242,7 @@ function _lienPartageConclure(message) {
 }
 
 // ⑥ Une publication plus ancienne que la page chargée : on cherche son auteur,
-// puis on charge SES publications. Une seule fois par lien — un identifiant
+// puis on charge cette publication précise avec les filtres habituels. Une seule fois par lien — un identifiant
 // inconnu ne doit pas faire marteler la base.
 async function _lienPartageChercherPost(id) {
   if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supaLoadPosts !== "function") return;
@@ -251,7 +251,7 @@ async function _lienPartageChercherPost(id) {
     if (r.error) { diagLog("lien_partage_post", r.error.message); return; }
     var auteur = r.data && r.data.author_id;
     if (!auteur) return;
-    var lus = await supaLoadPosts(0, auteur);
+    var lus = await supaLoadPosts(0, auteur, { postId: id });
     state.supabasePosts = state.supabasePosts || [];
     (lus || []).forEach(function (p) {
       if (p && p.id && !state.supabasePosts.some(function (q) { return q.id === p.id; })) state.supabasePosts.push(p);

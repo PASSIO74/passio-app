@@ -7016,6 +7016,7 @@ async function onbForgotPassword() {
 // l'adresse saisie, et demande de la saisir si le champ est vide.
 function _showResendConfirmation(email, sansAdresse) {
   _pendingConfirmEmail = String(email || "").trim();
+  if (_pendingConfirmEmail && window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
   const actif = !!_pendingConfirmEmail || sansAdresse === true;
   const el = document.getElementById("authResendLink");
   if (el) el.style.display = actif ? "" : "none";
@@ -12294,7 +12295,7 @@ async function openPost(id) {
 }
 
 async function _loadPostDetailComments(id, post) {
-  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  if (!_peutChargerDiscussion(post)) return;
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
   try {
