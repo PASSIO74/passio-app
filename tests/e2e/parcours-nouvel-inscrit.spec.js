@@ -11,7 +11,7 @@
 //      qu'avec un pointeur fin (souris, pavé) — le poste de travail garde son
 //      raccourci, et c'est le témoin de ce cas.
 //   ② TROIS MESSAGES À LA FOIS. Le toast « Ton fil est à toi », la note
-//      « Gardées sur cet appareil » et la bulle « Un Fil construit autour de tes
+//      sur les passions enregistrées et la bulle « Un Fil construit autour de tes
 //      passions » arrivaient ensemble, le toast (3 s) posé SUR la rangée
 //      « Ne plus afficher / Compris » de la bulle (700 ms). Quand la note se
 //      pose À L'ÉCRAN, le toast se tait ; sinon la bulle attend la fin du
@@ -126,6 +126,11 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     expect(vu.length).toBeGreaterThan(40);
     expect(vu.filter((e) => e.toast).length).toBe(0);
     expect(vu.some((e) => e.bulle)).toBe(true);
+    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
+    const note = page.locator("#frNoteLocale");
+    await note.getByRole("button", { name: "Créer mon compte", exact: true }).click();
+    await expect(page.locator("#onboarding")).toBeVisible();
+    await expect(page.locator("#authTabSignup")).toHaveAttribute("aria-selected", "true");
   });
 
   test("② bis validation suivante (note déjà vue) : le toast, PUIS la bulle — jamais ensemble", async ({ page }) => {
@@ -136,12 +141,16 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
     await lireSonde(page);
 
+    const note = page.locator("#frNoteLocale");
+    await note.getByRole("button", { name: "Fermer", exact: true }).click();
+
     // Le panneau, rouvert pour modifier : la note a déjà été vue.
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await expect(page.locator("#frValider")).toBeVisible();
     await choisirEtValider(page, ["cuisine"]);
     await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 7000 });
     const vu = await lireSonde(page);
+    await expect(note).toHaveCount(0);
     // Le toast ET la bulle ont bien parlé (sinon « jamais ensemble » serait vrai à vide)…
     expect(vu.some((e) => e.toast)).toBe(true);
     expect(vu.some((e) => e.bulle)).toBe(true);
@@ -215,7 +224,7 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// ③ La note « Gardées sur cet appareil »
+// ③ La note sur les passions enregistrées
 // ─────────────────────────────────────────────────────────────────────────
 for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
   test.describe(`③ ${nom} (${vp.width} × ${vp.height})`, () => {
@@ -228,6 +237,8 @@ for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
       await lireSonde(page);
       const note = page.locator("#frNoteLocale");
       await expect(note).toBeVisible();
+      await expect(note.locator(".fr-note-locale-texte")).toHaveText("Tes passions sont enregistrées sur cet appareil.");
+      await expect(note.getByRole("button", { name: "Créer mon compte", exact: true })).toBeVisible();
       // La bulle du repère s'ancre ici : on la referme pour toucher la note.
       await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
       await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();

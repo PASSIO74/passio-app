@@ -1371,8 +1371,8 @@
     n.id = "frNoteLocale";
     n.className = "fr-note-locale";
     n.setAttribute("role", "status");
-    n.innerHTML = '<span class="fr-note-locale-texte">Gardées sur cet appareil.</span>'
-      + '<button type="button" class="fr-note-locale-cta">Créer mon compte pour les retrouver partout</button>'
+    n.innerHTML = '<span class="fr-note-locale-texte">Tes passions sont enregistrées sur cet appareil.</span>'
+      + '<button type="button" class="fr-note-locale-cta" aria-description="Retrouve tes passions sur tes autres appareils.">Créer mon compte</button>'
       + '<button type="button" class="fr-note-locale-fermer" aria-label="Fermer">×</button>';
     n.querySelector(".fr-note-locale-cta").addEventListener("click", function () {
       if (n.parentNode) n.parentNode.removeChild(n);
