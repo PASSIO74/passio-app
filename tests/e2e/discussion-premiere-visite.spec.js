@@ -120,13 +120,47 @@ test("une publication publique se lit au-delà des deux aperçus, sans compte, j
   await expect(page.locator("#newComment")).toHaveCount(0);
 });
 
+async function soumettreInscription(page, compteExistant = false) {
+  await page.evaluate(existant => {
+    supa.auth.signUp = async () => ({
+      data: { user: { id: "lectrice-locale", identities: existant ? [] : [{ id: "identite-locale" }] }, session: null },
+      error: null,
+    });
+  }, compteExistant);
+  await page.locator("#authName").fill("Camille");
+  await page.locator("#authBirthYear").fill("1995");
+  await page.locator("#authEmail").fill("lecture@example.test");
+  await page.locator("#authPassword").fill("lectureDuFil123");
+  await page.locator("#authConsent").click();
+  await page.locator("#authSubmitBtn").click();
+  await expect(page.locator("#authMsg")).toContainText(compteExistant ? "déjà utilisé" : "Compte créé");
+}
+
+for (const renvoyer of [false, true]) {
+  test("adresse existante : " + (renvoyer ? "renvoi demandé" : "annulation sans renvoi"), async ({ page }) => {
+    const id = await ouvrirDiscussion(page);
+    await creerCompte(page).click();
+    await soumettreInscription(page, true);
+    if (renvoyer) {
+      await page.evaluate(() => { supa.auth.resend = async () => ({ data: {}, error: null }); });
+      await page.locator("#authResendLink").click();
+      await expect(page.locator("#authMsg")).toContainText("renvoyé");
+    }
+    await page.locator("#frBackToExplore").click();
+    await expect(lire(page)).toHaveAttribute("data-thread", id);
+    const destination = await page.evaluate(() => PassioFirstRun.prefs().retour);
+    if (renvoyer) expect(destination.cible.id).toBe(id);
+    else expect(destination).toBeNull();
+  });
+}
+
 for (const accessible of [true, false]) {
   test("confirmation avec un cache vide : discussion " + (accessible ? "retrouvée" : "indisponible"), async ({ page, context }) => {
     const id = await ouvrirDiscussion(page);
     await creerCompte(page).click();
     // Le compte attend la confirmation ; la personne continue sa lecture avant
     // d'ouvrir le lien du mail dans un nouvel onglet du même navigateur.
-    await page.evaluate(() => _showResendConfirmation("lecture@example.test"));
+    await soumettreInscription(page);
     await page.locator("#authTabSignin").click();
     await page.locator("#authTabSignup").click();
     await page.locator("#frBackToExplore").click();

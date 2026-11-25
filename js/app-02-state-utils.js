@@ -7016,7 +7016,6 @@ async function onbForgotPassword() {
 // l'adresse saisie, et demande de la saisir si le champ est vide.
 function _showResendConfirmation(email, sansAdresse) {
   _pendingConfirmEmail = String(email || "").trim();
-  if (_pendingConfirmEmail && window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
   const actif = !!_pendingConfirmEmail || sansAdresse === true;
   const el = document.getElementById("authResendLink");
   if (el) el.style.display = actif ? "" : "none";
@@ -7091,6 +7090,7 @@ async function onbResendConfirmation() {
     }
     // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
+    if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
@@ -8015,6 +8015,7 @@ async function onbDoAuth() {
         // avec le délai à la première session vue sur cet appareil
         // (signalerInscriptionConfirmee, app-08).
         try { window.tel && tel.action("signup_pending_confirmation"); } catch (e) {}
+        if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
         try { localStorage.setItem("passio_signup_pending", String(Date.now())); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
