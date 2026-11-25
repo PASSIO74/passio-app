@@ -3192,9 +3192,27 @@ function renderMsgBadge() {
 // Ces indicateurs ne donnent aucun droit d'exécuter du HTML. Seul le gras sans
 // attribut, utilisé par les notifications locales, est rétabli après neutralisation.
 // Les entités restent intactes pour éviter le double échappement des pseudos.
+// La promotion réserve une place. Seule la validation de l'organisateur
+// confirme la participation. La cloche et le toast lisent aussi les anciennes notifications.
+function _texteNotifListeAttente(n) {
+  const texte = String(n.text || "");
+  if (n.kind !== "event_update") return texte;
+  const validation = "L’organisateur doit encore valider ta participation.";
+  if (String(n.id || "").startsWith("n_pa_")) {
+    return texte.replace(/ » : tu es inscrit·e !$/, " ». " + validation);
+  }
+  // Anciens clients, avant les notifications de promotion écrites par le serveur.
+  if (texte.endsWith(" t'a inscrit·e depuis la liste d'attente !") ||
+      texte.endsWith(" une place s'est libérée, tu es inscrit·e !")) {
+    return "Une place s’est libérée. " + validation;
+  }
+  const promotion = texte.match(/ a libéré une place : tu es inscrit·e à (« [\s\S]* ») !$/);
+  return promotion ? "Une place s’est libérée pour " + promotion[1] + ". " + validation : texte;
+}
+
 function _notifTexteHtml(n) {
   if (!n) return "";
-  var texte = _neutraliserBalisesNotif(n.text);
+  var texte = _neutraliserBalisesNotif(_texteNotifListeAttente(n));
   return n.html === true || n.kind === "local"
     ? texte.replace(/&lt;(\/?b)&gt;/g, "<$1>") : texte;
 }
@@ -9700,7 +9718,7 @@ function _rtNotificationRecue(r) {
   // suivante (défaut préexistant, relevé par la relecture adversariale du
   // 2026-11-03). On lui rend donc la nouvelle PLUS celles qu'on tient déjà.
   const _dejaLa = (state.notifications || []).filter(n => n && n.fromSupabase && n.id !== notif.id);
-  let _texteToast = _texteBrutNotif(r.content);
+  const _texteToast = _texteBrutNotif(_texteNotifListeAttente(notif));
   mergeSupaNotifs([notif].concat(_dejaLa));
   if (_seen) return;
   // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
