@@ -10162,7 +10162,8 @@ function poserSeparateurExemples(list, repere) {
   // Trois textes : après du réel, seul — ou PANNE (2026-11-09) : la lecture du
   // réel a échoué faute de réseau et rien de réel n'est en mémoire. Annoncer
   // alors « pas encore de publication » mentait sur la communauté.
-  var genre = repere.reels > 0 ? "apres-reel" : (filCommunauteInjoignable() ? "panne" : "seul");
+  var genre = repere.reels > 0 ? "apres-reel"
+    : filCommunauteInjoignable() && !document.getElementById("feedRecherchePassions") ? "panne" : "seul";
   // « Inviter quelqu'un » : pour un VRAI compte seulement (son lien porte
   // `?inv=`, c'est lui qui fait suivre l'invitant), jamais sur une panne.
   var invite = genre !== "panne" && _uidEstUnCompte();
@@ -10408,7 +10409,13 @@ function rankFeedPostsForIntent(posts, intent) {
 // aucune. false n'arrive que si le nœud de liste manque.
 var FEED_EXPLORATION_MAX = 6;
 
-function renderFeedExplorationFallback(list) {
+function titrePremierFilVide() {
+  if (_activeFeedPassions.size !== 1) return "Pas encore de publication pour tes passions";
+  const id = _activeFeedPassions.values().next().value;
+  return "Pas encore de publication pour « " + (passionById(id)?.label || id) + " »";
+}
+
+function renderFeedExplorationFallback(list, absenceConfirmee) {
   if (!list) return false;
 
   var mesInterets = Array.from(_activeFeedPassions);
@@ -10464,13 +10471,15 @@ function renderFeedExplorationFallback(list) {
   var quoi = etiquettes.length === 1
     ? "Rien encore dans " + escapeHtml(etiquettes[0])
     : "Rien encore dans tes passions";
+  if (absenceConfirmee) quoi = escapeHtml(titrePremierFilVide());
 
   var html = ''
     + '<div class="feed-repli-tete" style="padding:18px 16px 8px;text-align:center;">'
     +   '<div style="font-size:30px;line-height:1;">🌱</div>'
     +   '<div style="font-size:16px;font-weight:800;margin-top:8px;">' + quoi + '</div>'
     +   '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;">'
-    +     'Personne n\'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.'
+    +     (absenceConfirmee ? "Découvre ce qui se partage autour d’autres passions."
+            : "Personne n'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.")
     +   '</div>'
     + '</div>'
     + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
@@ -11165,6 +11174,35 @@ function feedWindowStats() {
 }
 window.feedWindowStats = feedWindowStats;
 
+function afficherRecherchePremierFil(list, phase) {
+  const ancien = document.getElementById("feedRecherchePassions");
+  const message = phase === "vide" ? titrePremierFilVide() : phase === "chargement" ? "Recherche des publications de tes passions…"
+    : phase === "panne" ? "Impossible de charger les publications de tes passions pour le moment."
+    : phase === "suite" ? "D’autres publications restent à vérifier pour tes passions." : "";
+  if (ancien && ancien.querySelector(".empty-text").textContent === message) return;
+  if (ancien) ancien.remove();
+  if (!message) return;
+
+  const note = document.createElement("div");
+  note.id = "feedRecherchePassions";
+  note.className = "empty";
+  note.dataset.phase = phase;
+  const texte = document.createElement("p");
+  texte.className = "empty-text";
+  texte.setAttribute("role", "status");
+  texte.textContent = message;
+  note.appendChild(texte);
+  if (phase !== "chargement") {
+    const bouton = document.createElement("button");
+    bouton.className = "btn ghost";
+    bouton.type = "button";
+    bouton.textContent = phase === "vide" ? "Explorer d’autres passions" : phase === "panne" ? "Réessayer" : "Continuer la recherche";
+    bouton.addEventListener("click", phase === "vide" ? () => goTo("explore") : PassioFirstRun.reprendrePremierFil);
+    note.appendChild(bouton);
+  }
+  list.before(note);
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -11379,6 +11417,18 @@ function renderFeed() {
   window.PassioFirstRun?.prioriserRetourFil?.(_envieAVide && !!window.PassioUIV2?.isEnabled?.());
 
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">Afficher la suite</button></div>`;
+  const premierFil = window.PassioFirstRun?.etatPremierFil?.(posts, intentsEnabled && !enviesChoisies.length);
+  afficherRecherchePremierFil(list, premierFil === "vide" && !posts.length ? "" : premierFil);
+  if (premierFil === "chargement" || ((premierFil === "panne" || premierFil === "suite") && !posts.length)) {
+    // Une recherche inachevée ne peint ni un faux vide ni d'autres passions.
+    window._feedRenderToken = (window._feedRenderToken || 0) + 1;
+    window._feedDomSig = null;
+    _feedWindowNoterVisibles(0);
+    list.replaceChildren();
+    list._fwSigs = null;
+    $("#feedEmpty").style.display = "none";
+    return;
+  }
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
     // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
@@ -11404,7 +11454,7 @@ function renderFeed() {
     // retranché, on le DIT, et on nomme la commande qui l'a fait.
     if (!_envieAVide && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
-        && renderFeedExplorationFallback(list)) {
+        && renderFeedExplorationFallback(list, premierFil === "vide")) {
       var emptyElRepli = $("#feedEmpty");
       if (emptyElRepli) emptyElRepli.style.display = "none";
       if (window._feedServerMayHaveMore && !nothingSelected) list.insertAdjacentHTML("beforeend", moreBtnHtml);
@@ -11504,7 +11554,7 @@ function renderFeed() {
   // publications RÉELLES plus anciennes : on va les chercher MAINTENANT. Sans
   // ça, elles n'arrivaient qu'au bas de la fenêtre (sentinelle) — c'est-à-dire
   // après une vingtaine d'exemples, et insérées AU-DESSUS de ce qu'on lit.
-  if (_repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
+  if (!premierFil && _repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
     try { completerFilAvecLeReel(); } catch (e) { try { diagLog("completerFilAvecLeReel", e && e.message); } catch (_) {} }
   }
 

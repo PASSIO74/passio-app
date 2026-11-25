@@ -253,6 +253,7 @@
   }
 
   function oublierPrefs() {
+    _premierFil = null;
     _prefsCache = null;
     try { localStorage.removeItem(CLE_PREFS); } catch (e) {}
   }
@@ -688,7 +689,8 @@
         supaLoadPosts().then(function (posts) {
           if (!Array.isArray(posts) || !posts.length) return;
           var s2 = etat(); if (!s2) return;
-          s2.supabasePosts = posts;
+          var ids = new Set(posts.map(function (post) { return post.id; }));
+          s2.supabasePosts = posts.concat((window._feedExtraPosts || []).filter(function (post) { return !ids.has(post.id); }));
           rendreFil();
         }).catch(function (e) { journal("posts publics", e); });
       }
@@ -706,6 +708,78 @@
 
   function rendreFil() {
     try { if (ecranActif() === "feed" && typeof renderFeed === "function") renderFeed(); } catch (e) { journal("renderFeed", e); }
+  }
+
+  // Armée uniquement au choix explicite du visiteur. Une réponse ne peut
+  // publier que dans le contexte qui l’a demandée.
+  var _premierFil = null;
+
+  function choixFilCourant(choix) {
+    return choix === _premierFil && estVisiteur() && choix.owner === MY_UID && choix.ids.length > 0
+      && choix.ids.length === _activeFeedPassions.size
+      && choix.ids.every(function (id) { return _activeFeedPassions.has(id); });
+  }
+
+  async function chercherPremierFil(choix) {
+    choix.phase = "chargement";
+    try {
+      // Au plus trois pages DE CES PASSIONS par geste. Le curseur progresse
+      // aussi lorsqu’une page entière contient des bobines ou des posts masqués.
+      for (var page = 0; page < 3; page++) {
+        if (!window._supaReal) { choix.phase = "panne"; break; }
+        // Borne aussi la longueur de l’URL pour une très grande sélection.
+        var lecture = { ids: choix.ids.slice(choix.debut, choix.debut + 24) };
+        var posts = await supaLoadPosts(0, null, { pagePassions: lecture, cursor: choix.cursor, propagerErreur: true });
+        if (!choixFilCourant(choix)) return;
+        if (lecture.suite === undefined) { choix.phase = "panne"; break; }
+        posts.forEach(feedAddRealtimePost);
+        choix.cursor = lecture.suite;
+        // Le rendu décide déjà quelles cartes sont montrables (blocages,
+        // suppressions, bobines, carnets). Le verdict emploie le même filtre.
+        if (allFeedPosts().some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+          choix.phase = !choix.cursor && choix.debut + lecture.ids.length >= choix.ids.length ? "complet" : "trouve";
+          break;
+        }
+        if (!choix.cursor) {
+          choix.debut += lecture.ids.length;
+          if (choix.debut >= choix.ids.length) { choix.phase = "vide"; break; }
+        }
+      }
+      if (choix.phase === "chargement") choix.phase = "suite";
+    } catch (e) {
+      if (!choixFilCourant(choix)) return;
+      choix.phase = "panne";
+      journal("lecture du premier fil", e);
+    }
+    // Différé même si le SDK est hors ligne : la lecture peut être lancée
+    // depuis renderFeed, qui doit pouvoir terminer son rendu avant le suivant.
+    if (choixFilCourant(choix)) queueMicrotask(rendreFil);
+  }
+
+  function etatPremierFil(posts, neutre) {
+    var choix = _premierFil;
+    if (!choix) return "";
+    if (!choixFilCourant(choix)) { _premierFil = null; return ""; }
+    if (!neutre) return "";
+    if (posts.some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+      // Un fil déjà alimenté garde sa complétion normale avant les exemples.
+      // Une lecture ciblée en cours ou exhaustive la rend redondante.
+      return choix.phase === "chargement" || choix.phase === "complet" ? "trouve" : "";
+    }
+    if (choix.phase === "trouve" || choix.phase === "complet") {
+      choix.phase = "initial";
+      choix.cursor = null;
+      choix.debut = 0;
+    }
+    if (choix.phase === "initial") chercherPremierFil(choix);
+    return choix.phase;
+  }
+
+  function reprendrePremierFil() {
+    if (!_premierFil || !choixFilCourant(_premierFil)
+        || (_premierFil.phase !== "panne" && _premierFil.phase !== "suite")) return;
+    _premierFil.phase = "initial";
+    rendreFil();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1314,6 +1388,11 @@
     marquerBienvenueFermee();
     var carte = document.getElementById("frWelcome");
     if (carte && carte.parentNode) carte.parentNode.removeChild(carte);
+    var interets = interetsDuVisiteur(p);
+    if (!_premierFil || _premierFil.phase !== "chargement" || _premierFil.owner !== MY_UID
+        || _premierFil.ids.length !== interets.length || !interets.every(function (id) { return _premierFil.ids.includes(id); })) {
+      _premierFil = { ids: interets, owner: MY_UID, phase: "initial", cursor: null, debut: 0 };
+    }
     appliquerPrefs();
     try { closeModal(); } catch (e) {}
     // « Dès validation, le Fil doit visuellement se personnaliser immédiatement.
@@ -2834,6 +2913,8 @@
   window.PassioFirstRun = {
     actif: actif,
     estVisiteur: estVisiteur,
+    etatPremierFil: etatPremierFil,
+    reprendrePremierFil: reprendrePremierFil,
     // Autorité UNIQUE des trois repères, et sa lecture par `montrerHint`
     // (app-02). Exposées pour que le verrou mesure la fonction RÉELLE.
     reperesAutorises: reperesAutorises,
