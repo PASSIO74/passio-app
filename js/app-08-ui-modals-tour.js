@@ -7634,13 +7634,17 @@ async function supaLireParticipants(evIds, origine) {
 async function supaProchaineSortie(compte) {
   const maintenant = new Date().toISOString();
   const taille = 32;
+  let demandesEnAttente = false;
   for (let debut = 0; compte === MY_UID; debut += taille) {
     const { data, error } = await supa.from("events")
-      .select("id,title,date_at,event_attendees!inner(user_id)")
+      .select("id,title,date_at,author_id,organizer_id,event_attendees!inner(user_id)")
       .eq("event_attendees.user_id", compte).eq("event_attendees.rsvp", "going")
       .eq("status", "active").gt("date_at", maintenant)
       .order("date_at").order("id").range(debut, debut + taille - 1);
     if (error) throw error;
+    // Une inscription automatique à sa propre activité ne requiert pas
+    // d'attendre une décision de l'organisation.
+    if (data.some(s => (s.organizer_id || s.author_id) !== compte)) demandesEnAttente = true;
     // Éliminer en une lecture les demandes en attente. Cette RPC inclut aussi
     // l'organisation : le verdict nominatif ci-dessous reste nécessaire.
     let candidates = data;
@@ -7651,14 +7655,14 @@ async function supaProchaineSortie(compte) {
       candidates = data.filter(s => ids.has(s.id));
     }
     for (const sortie of candidates) {
-      if (compte !== MY_UID) return null;
+      if (compte !== MY_UID) return { sortie: null, demandesEnAttente: false };
       const accord = await supa.rpc("vient_a_activite", { p_event_id: sortie.id });
       if (accord.error) throw accord.error;
-      if (accord.data === true && supaTs(sortie.date_at) > Date.now()) return sortie;
+      if (accord.data === true && supaTs(sortie.date_at) > Date.now()) return { sortie, demandesEnAttente: false };
     }
     if (data.length < taille) break;
   }
-  return null;
+  return { sortie: null, demandesEnAttente };
 }
 
 // `authorId` (facultatif) : les activités qu'UN compte organise, lues à
