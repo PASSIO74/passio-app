@@ -4655,6 +4655,7 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  if (screen !== "feed") document.getElementById("studioSuiteSortie")?.remove();
   // LOT-12 (PAR-C16) : quitter le Studio efface le rattachement d'un souvenir à
   // l'album d'une activité — il ne doit pas s'appliquer à une autre publication.
   if (screen !== "studio" && window._pendingEventPost) {

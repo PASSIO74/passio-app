@@ -5509,6 +5509,27 @@ function clearAudio() {
 // Verrou anti-double-clic : empêche deux soumissions simultanées du même post
 let _publishInProgress = false;
 
+function preparerSuiteSortieStudio(post) {
+  const pont = window.PassioUIV3;
+  if (post.mood !== "irl" || post.isReel || post.eventId || !pont || !pont.isEnabled()) return null;
+  const suite = document.createElement("section");
+  suite.id = "studioSuiteSortie";
+  suite.hidden = true;
+  suite.setAttribute("aria-label", "Après la publication");
+  suite.innerHTML = '<strong role="status">Ton message est en ligne.</strong>'
+    + '<button type="button" class="btn primary">Proposer une sortie</button>'
+    + '<button type="button" class="btn ghost">Plus tard</button>';
+  suite.querySelector(".ghost").onclick = () => suite.remove();
+  suite.querySelector(".primary").onclick = () => {
+    suite.remove();
+    if (!pont.isEnabled() || post.authorId !== (MY_UID || "me")
+      || !state.userPosts.some(p => p.id === post.id && !p.eventId)) return;
+    pont.proposeOuting(post.passion, post.id);
+  };
+  $("#screen-feed").prepend(suite);
+  return suite;
+}
+
 async function publishPost() {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
@@ -5676,6 +5697,19 @@ async function publishPost() {
   state.userPosts.unshift(post);
   saveState();
 
+  // Le post garde ses propres médias. Vider seulement la saisie qui vient
+  // de partir, avant que la personne puisse commencer un autre brouillon.
+  $("#postText").value = "";
+  try { effacerBrouillonStudio(); } catch (e) {}
+  photoDataUrl = null;
+  videoDataUrl = null;
+  audioDataUrl = null;
+  renderPhotoPreview();
+  renderVideoPreview();
+  $("#recPlayback").innerHTML = "";
+  $("#recTime").textContent = "00:00";
+  $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
+
   // Naviguer et afficher immédiatement. Une bobine → viewer Bobines (pas le feed).
   if (post.isReel) {
     try { renderFeed(); } catch(e) {}
@@ -5685,6 +5719,7 @@ async function publishPost() {
     setTimeout(() => renderFeed(), 50);
   }
 
+  const suiteSortie = preparerSuiteSortieStudio(post);
   // Synchroniser EN BACKGROUND avec timeout 5s
   let syncSuccess = false;
   try {
@@ -5699,14 +5734,24 @@ async function publishPost() {
     // sautait le repeint (`_feedDomSig` ne voit pas `syncStatus`). On invalide
     // la signature AU VERDICT, quel qu'il soit, et seulement à lui.
     const _repeindreVerdict = () => { try { saveState(); window._feedDomSig = null; renderFeed(); } catch (e) {} };
-    const syncPromise = supaPublishPostWithRetry(post).then((ok) => { _repeindreVerdict(); return ok; },
-      (e) => { _repeindreVerdict(); throw e; });
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
+      _repeindreVerdict();
+      if (suiteSortie && suiteSortie.isConnected) {
+        if (ok && post.authorId === (MY_UID || "me")) suiteSortie.hidden = false;
+        else suiteSortie.remove();
+      }
+      return ok;
+    }, (e) => {
+      _repeindreVerdict();
+      if (suiteSortie) suiteSortie.remove();
+      throw e;
+    });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
     // Le verdict remplace « Publication en cours… » : jamais les deux à l'écran.
     try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e) {}
 
     if (syncSuccess) {
-      toast("Publication en ligne", "success");
+      if (!suiteSortie || !suiteSortie.isConnected) toast("Publication en ligne", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
@@ -5725,23 +5770,6 @@ async function publishPost() {
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }
-
-  // Clear form
-  $("#postText").value = "";
-  try { effacerBrouillonStudio(); } catch (e) {}
-  photoDataUrl = null;
-  videoDataUrl = null;
-  audioDataUrl = null;
-  renderPhotoPreview();
-  renderVideoPreview();
-  $("#recPlayback").innerHTML = "";
-  $("#recTime").textContent = "00:00";
-  $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
-
-
-  // ✅ Le message de confirmation est déjà dans supaPublishPostWithRetry
-  // (toast "Publication en cours..." → "✅ Post publié!" ou "❌ Erreur")
-  // Pas de duplication ici
 
   // Navigation immédiate
   {
@@ -5772,7 +5800,9 @@ async function publishPost() {
       } catch(e) { /* erreur réseau non bloquante */ }
     }
 
-    goTo("feed");
+    // Le formulaire peut être ouvert pendant la relecture du fil.
+    if (!suiteSortie) goTo("feed");
+    else if ($("#screen-feed").classList.contains("active")) renderFeed();
     pushNotification(`Ta publication est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
 }
