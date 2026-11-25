@@ -11417,8 +11417,6 @@ function renderFeed() {
       // change pas le fait que « Suivis » est la seule SOURCE.
       var _seulSuivis = suivisOn && _activeFeedPassions.size === 0;
       if (_envieAVide) {
-        // La cause exacte, et la commande qui la lève — elle est juste au-dessus
-        // de la liste (`#feedIntentSelector`), donc « ci-dessus » est vrai ici.
         var _noms = enviesChoisies.map(feedIntentLabel).filter(function (x) { return !!x; });
         if (emptyTitle) {
           emptyTitle.textContent = _noms.length === 1
@@ -11426,9 +11424,9 @@ function renderFeed() {
             : "Aucune publication pour ces envies";
         }
         if (emptyText) {
-          emptyText.textContent = "Tes passions et les comptes que tu suis n'ont rien publié de ce genre. "
-            + (_noms.length > 1 ? "Retire les envies ci-dessus" : "Retire l'envie ci-dessus")
-            + " pour retrouver tout ton fil.";
+          emptyText.textContent = _noms.length === 1
+            ? "Retire ce filtre pour retrouver les publications de ton fil."
+            : "Retire ces filtres pour retrouver les publications de ton fil.";
         }
       } else if (_seulSuivis && !suitQuelquun) {
         // « Suivis » coché, aucun abonnement : le message dit quoi FAIRE, et où.
@@ -11468,7 +11466,7 @@ function renderFeed() {
       // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
       // et le retire de lui-même dès que la V2 est coupée.
       if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
-        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected,
+        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected, envieAVide: _envieAVide,
           // FIL-C17 : le bouton fait ce que le message conseille.
           aucunSuivi: !_envieAVide && _seulSuivis && !suitQuelquun });
       }

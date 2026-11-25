@@ -243,6 +243,14 @@ test("⑤ l'écran vide nomme l'envie, et ne peint aucune autre passion", async 
   expect(await page.evaluate(() =>
     document.querySelectorAll("#feedList .feed-repli-tete").length),
     "et pas de repli d'exploration").toBe(0);
+
+  await page.getByRole("button", { name: "Voir tout mon fil" }).click();
+  await expect(page.locator("#feedEmpty")).toBeHidden();
+  await expect(page.locator('#feedIntentSelector [data-intent="meet"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator('#feedList [data-postid="p_yoga_learn"]')).toHaveCount(1);
+  await expect(page.locator('#feedList [data-postid="p_irl_ailleurs"]')).toHaveCount(0);
+  expect(await page.evaluate(() => [feedIntentsSelected(), [..._activeFeedPassions], feedFollowingSelected()]))
+    .toEqual([[], ["yoga", "voyage"], false]);
 });
 
 test("⑤ bis — le repli d'exploration reste vivant quand c'est la PASSION qui est vide", async ({ page }) => {
@@ -276,6 +284,27 @@ test("⑥ un visiteur qui coche une envie garde un fil de découverte", async ({
     "l'envie ne ferme pas le fil de découverte").toBe(true);
   expect(await page.locator("#feedList .post").count(),
     "et il reste du contenu à l'écran").toBeGreaterThan(0);
+});
+
+test("un visiteur retrouve son fil de découverte après plusieurs envies sans résultat", async ({ page }) => {
+  await bootVisiteur(page, { sansBienvenue: true });
+  await page.evaluate(() => {
+    state.seed.posts = [{
+      id: "p_invite_musique", authorId: "u_autre", passion: "musique", type: "text",
+      text: "Accorder sa guitare", mood: "all", createdAt: Date.now(), likes: 0, comments: [],
+    }];
+    state.supabasePosts = []; state.userPosts = []; window._feedExtraPosts = [];
+    state.feedFollowingOn = false;
+    setFeedIntents(["meet", "create"]);
+    renderFeed();
+  });
+  const vide = page.locator("#feedEmpty");
+  await expect(vide).toContainText("Aucune publication pour ces envies");
+  await vide.getByRole("button", { name: "Voir tout mon fil" }).click();
+  await expect(vide).toBeHidden();
+  await expect(page.locator('#feedList [data-postid="p_invite_musique"]')).toHaveCount(1);
+  await expect(page.locator('#feedIntentSelector [aria-pressed="true"]')).toHaveCount(0);
+  expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
