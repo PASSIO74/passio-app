@@ -743,7 +743,7 @@ const RSVP_LABELS = {
   declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
   waitlist: {
     label: "Liste d'attente", short: "En attente",
-    detail: "Si une place se libère, tu recevras une notification. L’organisateur devra ensuite confirmer ta participation.",
+    detail: "Si une place se libère et que c’est ton tour, tu recevras une notification. L’organisateur devra ensuite confirmer ta participation.",
     detailOrganisation: "Si une place se libère, la première personne en attente reçoit une notification. Tu dois ensuite confirmer sa participation.",
   },
 };
