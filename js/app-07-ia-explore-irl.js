@@ -8319,7 +8319,14 @@ async function reportEvent(id) {
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
+const sortiesStudioEnCreation = new Set();
+
 async function submitEvent(editId) {
+  const formulaire = document.getElementById("evTitle");
+  const sourceStudio = !editId && formulaire?.dataset.publicationStudio;
+  const auteurStudio = sourceStudio && formulaire.dataset.auteurStudio;
+  const formulaireStudioActif = () => MY_UID === auteurStudio && formulaire === document.querySelector("#modalBackdrop.active #evTitle");
+  if (sourceStudio && !formulaireStudioActif()) return;
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -8328,6 +8335,7 @@ async function submitEvent(editId) {
   // demande AVANT d'écrire, pour ne pas laisser le refus RLS se manifester par
   // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
   if (!(await requireAdmission("activite", function () { return submitEvent(editId); }))) return;
+  if (sourceStudio && !formulaireStudioActif()) return;
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
@@ -8440,6 +8448,9 @@ async function submitEvent(editId) {
       if (geo) { ev.lat = geo.lat; ev.lng = geo.lng; }
     }
   }
+  // La première validation ferme la modale avant toute nouvelle attente.
+  // Un double appui ou une fermeture pendant le géocodage s'arrête ici.
+  if (sourceStudio && !formulaireStudioActif()) return;
   window._evPickedCoords = null;
 
   // Origine « pont Fil → IRL » : lue AVANT closeModal (le marqueur vit sur le
@@ -8468,6 +8479,7 @@ async function submitEvent(editId) {
 
   // Occurrences suivantes d'un événement récurrent : de VRAIS événements qui
   // partagent le seriesId (chacun a ses inscrits et sa discussion).
+  if (sourceStudio && MY_UID !== auteurStudio) return;
   const extraOccurrences = [];
   if (!editId && recurrence && recurrence !== "none") {
     _recurrenceDates(ts, recurrence, occurrences).forEach(t => {
@@ -8484,6 +8496,7 @@ async function submitEvent(editId) {
     extraOccurrences.forEach(o => state.userEvents.unshift(o));
     state.user.joinedEvents = state.user.joinedEvents || [];
     [ev].concat(extraOccurrences).forEach(o => {
+      if (!auFil) marquerActiviteHorsFil(o.id);
       if (!state.user.joinedEvents.includes(o.id)) state.user.joinedEvents.push(o.id);
       _setMyRsvpLocal(o.id, "going");
     });
@@ -8494,11 +8507,27 @@ async function submitEvent(editId) {
   // Sync Supabase — on ne ment plus sur le résultat (même leçon que les bobines
   // fantômes du 2026-07-19 : « publié ! » alors que rien n'était en base).
   let ok = true;
+  let lienStudio = null;
   const backend = !!window._supaReal;
   if (backend) {
-    ok = editId
-      ? await supaUpdateEvent(ev)
-      : await supaPublishEvent(ev);
+    const postStudio = sourceStudio && (state.userPosts || []).find(p => p.id === sourceStudio && p.authorId === meId);
+    if (postStudio) {
+      // Si l'app ferme entre les deux écritures, le menu du message peut reprendre le lien.
+      postStudio.sortieARelier = ev.id;
+      saveStateNow();
+      sortiesStudioEnCreation.add(ev.id);
+    }
+    try {
+      ok = editId ? await supaUpdateEvent(ev) : await supaPublishEvent(ev, auteurStudio);
+    } finally {
+      if (postStudio) sortiesStudioEnCreation.delete(ev.id);
+    }
+    if (sourceStudio) {
+      if (meId !== MY_UID) return;
+      // Un timeout peut suivre un INSERT réussi. Le menu vérifiera la même sortie.
+      if (ok) lienStudio = await relierSortieStudio(sourceStudio, ev.id);
+      if (meId !== MY_UID) return;
+    }
     // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
     // événement affichait « 0 inscrit » chez tous les autres comptes.
     if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
@@ -8513,7 +8542,8 @@ async function submitEvent(editId) {
     }
     // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
     for (const o of extraOccurrences) {
-      const okOcc = await supaPublishEvent(o);
+      if (sourceStudio && MY_UID !== auteurStudio) return;
+      const okOcc = await supaPublishEvent(o, auteurStudio);
       if (okOcc && typeof supaJoinEvent === "function") supaJoinEvent(o.id);
     }
   }
@@ -8525,7 +8555,15 @@ async function submitEvent(editId) {
   // « ⚠️ » de tête : sans un type distinct, il serait peint exactement comme la
   // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
   // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
-  toast(ok
+  if (sourceStudio && (!backend || !ok)) {
+    toast(backend
+      ? "Publication à confirmer. Tu peux réessayer le lien depuis le menu de ton message."
+      : "Sortie enregistrée uniquement sur cet appareil.", "warning");
+  } else if (sourceStudio && lienStudio !== "liee") {
+    toast(lienStudio === "attente"
+      ? "Sortie publiée. Pour réessayer le lien, ouvre le menu de ton message."
+      : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
+  } else toast(ok
     ? (editId ? "Activité mise à jour"
       : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
     : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
@@ -8539,7 +8577,6 @@ async function submitEvent(editId) {
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   // …seulement si la personne l'a choisi (« Publier aussi dans le fil »). Refusée,
   // l'activité est notée HORS FIL : le rattrapage ne la publiera jamais non plus.
-  if (!editId && !auFil) [ev].concat(extraOccurrences).forEach(o => marquerActiviteHorsFil(o.id));
   if (ok && backend && !editId && auFil) publierActiviteAuFil(ev);
   // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation
   // n'avait pas ouvert la discussion elle-même, aucun participant ne pouvait y
@@ -8552,6 +8589,33 @@ async function submitEvent(editId) {
       if (!entre) { try { diagLog("discussion d'activité : création à la publication refusée " + ev.id); } catch (e) {} }
     }, function (e) { try { diagLog("discussion d'activité : " + (e && e.message)); } catch (_) {} });
   }
+}
+
+// Les deux écritures ont des verdicts distincts. Une nouvelle tentative porte
+// sur les mêmes identifiants et ne crée jamais une deuxième sortie.
+async function relierSortieStudio(postId, eventId) {
+  const auteur = MY_UID;
+  const post = (state.userPosts || []).find(p => p.id === postId && p.authorId === auteur);
+  if (post && eventId && post.eventId === eventId && !post.sortieARelier) return "liee";
+  if (!post || !eventId || post.sortieARelier !== eventId) return "refusee";
+  if (sortiesStudioEnCreation.has(eventId)) return "attente";
+  let reponse;
+  try {
+    reponse = await supa.rpc("relier_publication_sortie", { p_post_id: postId, p_event_id: eventId });
+  } catch (_) { return "attente"; }
+  if (!reponse || reponse.error || typeof reponse.data !== "boolean") return "attente";
+  if (MY_UID !== auteur) return "refusee";
+  if (post.sortieARelier !== eventId) return post.eventId === eventId ? "liee" : "refusee";
+  delete post.sortieARelier;
+  const liee = reponse.data === true;
+  if (liee) {
+    const copies = allPostCopies(postId).concat((window._feedExtraPosts || []).filter(p => p.id === postId));
+    copies.forEach(p => { p.eventId = eventId; });
+    window._feedDomSig = null;
+  }
+  saveStateNow();
+  if (liee && document.getElementById("screen-feed")?.classList.contains("active")) renderFeed();
+  return liee ? "liee" : "refusee";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

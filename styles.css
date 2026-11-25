@@ -12874,6 +12874,22 @@ button, a, label, select, summary,
 .studio-brouillon { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); font-size: 13px; color: var(--text); }
 .studio-brouillon-texte { flex: 1 1 100%; min-width: 0; }
 .studio-brouillon .btn { min-height: 44px; }
+#studioSuiteSortie:not([hidden]) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+#studioSuiteSortie strong { flex-basis: 100%; font-size: 14px; }
+#studioSuiteSortie .btn { min-height: 44px; }
 /* CRE-C06 : les envies à 44 px / 13 px. */
 #postMoodRow .pill { min-height: 44px; font-size: 13px; padding-left: 14px; padding-right: 14px; }
 /* CRE-C07 : sous UI-6, les boutons du composer suffisent — plus de seconde zone d'envoi sombre. */
