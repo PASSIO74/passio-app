@@ -9424,7 +9424,7 @@ var PASSIO_FEED_INTENT_LABELS = {
   discover: "Explorer",
   learn: "Apprendre",
   create: "Idées",
-  meet: "À plusieurs",
+  meet: "À faire ensemble",
 };
 
 function feedIntentLabel(intent) {
@@ -9525,13 +9525,13 @@ function legacyMoodToFeedIntent(mood) {
 // là-bas.
 //
 // Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
-// Idées · À plusieurs) : ce qu'on choisit en publiant porte le même mot que ce
+// Idées · À faire ensemble) : ce qu'on choisit en publiant porte le même mot que ce
 // qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
 // écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
 //
 // ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
-// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 À plusieurs · ✨ Tous.
+// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 À faire ensemble · ✨ Tous.
 // « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
 // LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
 // l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
@@ -9545,7 +9545,7 @@ function legacyMoodToFeedIntent(mood) {
 var PASSIO_MOOD_LABELS = {
   creation: { label: "Idées" },
   learn:    { label: "Apprendre" },
-  irl:      { label: "À plusieurs" },
+  irl:      { label: "À faire ensemble" },
 };
 
 // ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
@@ -9559,7 +9559,7 @@ var PASSIO_MOOD_LABELS = {
 //      (`moodsAffichables`, plus bas dans ce fichier).
 //
 // Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
-// propose plus que Idées · Apprendre · À plusieurs · Tous — « chill » et « actu »
+// propose plus que Idées · Apprendre · À faire ensemble · Tous — « chill » et « actu »
 // ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
 // NOMMER. Mais la base de production porte des milliers de publications qui les
 // portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
@@ -10321,7 +10321,7 @@ function _feedIntentBonus(p, intent, lot) {
     return bonus;
   }
   if (legacyMoodToFeedIntent(p.mood) !== intent) return 0;
-  // « À plusieurs » ne remonte que des posts dont le parcours IRL existant est
+  // « À faire ensemble » ne remonte que des posts dont le parcours IRL existant est
   // réellement actionnable ; il n'active ni proposition ni géolocalisation.
   var sharedEventActionable = intent === "meet"
     && p.sharedReelData && p.sharedReelData.kind === "event"
@@ -10334,7 +10334,7 @@ function _feedIntentBonus(p, intent, lot) {
 }
 
 // Plusieurs envies cochées : le bonus retenu est le MEILLEUR des envies, jamais
-// leur somme — cumuler ferait passer un post « Apprendre + À plusieurs » devant
+// leur somme — cumuler ferait passer un post « Apprendre + À faire ensemble » devant
 // tout le reste pour une raison que l'écran n'explique pas. Zéro ou une envie
 // retombe EXACTEMENT sur `rankFeedPostsForIntent`, dont le comportement mesuré
 // ne bouge pas.
@@ -10421,7 +10421,7 @@ function renderFeedExplorationFallback(list) {
   // Deux raisons de ne plus le faire, et la seconde est un défaut mesuré :
   //  · sous UI-7 ce rail est MASQUÉ (`#feedIntentSelector` le remplace) — faire
   //    dépendre le classement du fil du DOM d'une surface cachée est fragile ;
-  //  · `irl` n'a JAMAIS eu de bouton dans ce rail. Une publication « À plusieurs »
+  //  · `irl` n'a JAMAIS eu de bouton dans ce rail. Une publication « À faire ensemble »
   //    venue d'une passion que l'on ne suit pas était donc exclue de
   //    l'exploration — invisible pour exactement les gens qu'elle cherche.
   //    Le mood `irl` est devenu publiable le 2026-08-29 (#194) ; le défaut
@@ -11202,7 +11202,7 @@ function renderFeed() {
   // est coché ; et une publication Moto d'un inconnu entre si « Moto » est
   // cochée, même si je ne suis personne.
   //
-  // Une troisième famille — les ENVIES (Explorer · Apprendre · Idées · À plusieurs)
+  // Une troisième famille — les ENVIES (Explorer · Apprendre · Idées · À faire ensemble)
   // — dit COMMENT je veux lire ce que ces sources m'apportent. Elle RESTREINT,
   // elle n'apporte RIEN.
   //

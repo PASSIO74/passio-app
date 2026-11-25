@@ -216,7 +216,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     // Les quatre libellés, dans l'ordre.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Explorer", "Apprendre", "Idées", "À plusieurs"]);
+      .toEqual(["Explorer", "Apprendre", "Idées", "À faire ensemble"]);
 
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());

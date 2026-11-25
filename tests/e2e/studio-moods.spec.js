@@ -1,5 +1,5 @@
 // Suite « Moods du Studio » — alignement du vocabulaire de publication sur le
-// rail d'intentions du Fil (Explorer · Apprendre · Idées · À plusieurs).
+// rail d'intentions du Fil (Explorer · Apprendre · Idées · À faire ensemble).
 //
 // Ce que la suite protège, dans l'ordre où ça s'est cassé pendant l'écriture :
 //
@@ -8,10 +8,10 @@
 //      un renommage de valeur ferait perdre son classement à toute publication
 //      existante. La suite vérifie donc le couple (libellé vu, valeur publiée).
 //
-//   ② « À plusieurs » (`irl`) n'était choisissable NULLE PART avant ce lot :
+//   ② « À faire ensemble » (`irl`) n'était choisissable NULLE PART avant ce lot :
 //      `legacyMoodToFeedIntent` savait le traduire en `meet` et `moodTagLabel`
 //      savait l'afficher, mais aucune pastille ne le produisait. Le bonus
-//      d'intention « À plusieurs » était donc structurellement inatteignable.
+//      d'intention « À faire ensemble » était donc structurellement inatteignable.
 //
 //   ③ Pas de pastille « Explorer ». Cette intention se calcule côté LECTEUR
 //      (auteur non suivi, passion inconnue) et ne regarde jamais le mood : une
@@ -24,11 +24,11 @@ const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
-// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Apprendre · Idées · À plusieurs.
+// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Apprendre · Idées · À faire ensemble.
 const PASTILLES = [
   { label: "Apprendre", value: "learn" },
   { label: "Idées", value: "creation" },
-  { label: "À plusieurs", value: "irl" },
+  { label: "À faire ensemble", value: "irl" },
   { label: "Tous", value: "all" },
 ];
 
@@ -83,7 +83,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await expect(page.locator("#postMoodRow .pill.active")).toHaveAttribute("data-postmood", "creation");
   });
 
-  test("« À plusieurs » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
+  test("« À faire ensemble » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
@@ -101,7 +101,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(publie.mood).toBe("irl");
     expect(publie.intent).toBe("meet");
-    expect(publie.tag).toBe("À plusieurs");
+    expect(publie.tag).toBe("À faire ensemble");
   });
 
   test("« Tous » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
@@ -155,12 +155,12 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
       { m: "learn", tag: "Apprendre", court: "Apprendre" },
       // Les bobines ignoraient « irl » (« Tout ») : le trou est fermé par la
       // même table qui sert au fil.
-      { m: "irl", tag: "À plusieurs", court: "À plusieurs" },
+      { m: "irl", tag: "À faire ensemble", court: "À faire ensemble" },
       // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, ET C'EST LE POINT DU LOT.
       // « chill » et « actu » n'étaient déjà plus publiables (test ② de ce
       // fichier) ; ils gardaient pourtant un libellé, donc une pastille sur la
       // carte. Le produit n'a plus que quatre intentions — Explorer · Apprendre
-      // · Idées · À plusieurs — et deux d'entre elles nommaient des mots que
+      // · Idées · À faire ensemble — et deux d'entre elles nommaient des mots que
       // l'utilisateur ne pouvait plus choisir nulle part. Ils rendent désormais
       // exactement ce que rend le neutre.
       { m: "chill", tag: "", court: "Tout" },

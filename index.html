@@ -649,7 +649,7 @@
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Explorer</button>
         <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
         <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Idées</button>
-        <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">À plusieurs</button>
+        <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">À faire ensemble</button>
       </div>
 
       <div class="stories-row" id="storiesRowFeed"></div>
@@ -953,7 +953,7 @@
         <span>Envie</span>
         <div class="pill-row" id="postMoodRow">
           <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
-               Apprendre · Idées · À plusieurs) : on publie avec le mot qu'on lit.
+               Apprendre · Idées · À faire ensemble) : on publie avec le mot qu'on lit.
                Les VALEURS, elles, ne bougent pas — « creation », « learn »,
                « irl » et « all » sont écrites en base et lues par
                `legacyMoodToFeedIntent` ; les renommer casserait les
@@ -961,10 +961,10 @@
                Pas de pastille « Explorer » : cette intention se calcule côté
                lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
                le mood — une pastille y serait purement décorative. -->
-          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · À plusieurs). -->
+          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · À faire ensemble). -->
           <button type="button" class="pill" data-postmood="learn">Apprendre</button>
           <button type="button" class="pill active" data-postmood="creation">Idées</button>
-          <button type="button" class="pill" data-postmood="irl">À plusieurs</button>
+          <button type="button" class="pill" data-postmood="irl">À faire ensemble</button>
           <button type="button" class="pill" data-postmood="all">Tous</button>
         </div>
       </label>
