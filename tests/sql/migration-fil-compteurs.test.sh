@@ -258,5 +258,8 @@ fi
 verifier "la garde explique le refus d’une règle modifiée" "1" "$(printf '%s\n' "$sortie" | grep -c 'règles de lecture de post_likes différentes' || true)"
 Q "drop policy autre_regle on public.post_likes;" >/dev/null
 
+psql -X -h "$BASE" -p "$PORT" -U postgres -d postgres -q -v ON_ERROR_STOP=1 -c "create database filcartes"
+psql -X -h "$BASE" -p "$PORT" -U postgres -d filcartes -q -v ON_ERROR_STOP=1 \
+  -f "$RACINE/tests/sql/fixtures/cas-fil-cartes-page.sql" >/dev/null
 echo "RÉSULTAT : $ok contrôle(s) vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ]
