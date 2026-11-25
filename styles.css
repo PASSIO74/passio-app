@@ -9252,7 +9252,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Une seule surface sur la vidéo. Les quatre gestes restent à portée du pouce. */
 :root.passio-ui-5 .v5-actions.v5-actions-grille {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(max-content, 1fr));
   max-width: 310px;
   gap: 0;
   margin-top: 6px;
@@ -9264,6 +9264,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-5 .v5-actions-grille .v5-chip {
   display: flex;
+  min-width: 44px;
   flex-direction: column;
   align-items: center;
   justify-content: center;

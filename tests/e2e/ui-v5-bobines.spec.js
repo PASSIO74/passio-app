@@ -369,17 +369,31 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
           pageDeborde: doc.scrollWidth > doc.clientWidth + 1,
           rangeeDansLeCadre: row.getBoundingClientRect().right <= doc.clientWidth + 1,
           hauteur: row.getBoundingClientRect().height,
-          boutonsAccessibles: rects.filter((r, i) => {
+          boutons: rects.map((r, i) => {
             const cible = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return r.top === rects[0].top && r.height >= 44 && r.width >= 44
-              && chips[i].scrollWidth <= chips[i].clientWidth && chips[i].contains(cible);
-          }).length,
+            return {
+              texte: chips[i].textContent,
+              aligne: r.top === rects[0].top,
+              largeur: r.width,
+              hauteur: r.height,
+              debordement: chips[i].scrollWidth - chips[i].clientWidth,
+              dansLaBarre: r.right <= row.getBoundingClientRect().right,
+              recoitLeToucher: chips[i].contains(cible),
+            };
+          }),
         };
       });
       expect(m.pageDeborde, "la page déborde horizontalement").toBe(false);
       expect(m.rangeeDansLeCadre, "la rangée sort du cadre").toBe(true);
       expect(m.hauteur, "encombrement de la barre sur la vidéo").toBeLessThanOrEqual(50);
-      expect(m.boutonsAccessibles, "quatre libellés entiers et cliquables sur une ligne").toBe(4);
+      expect(m.boutons).toHaveLength(4);
+      for (const bouton of m.boutons) {
+        expect(bouton.largeur, bouton.texte).toBeGreaterThanOrEqual(44);
+        expect(bouton.hauteur, bouton.texte).toBeGreaterThanOrEqual(44);
+        expect(bouton, bouton.texte).toMatchObject({
+          aligne: true, debordement: 0, dansLaBarre: true, recoitLeToucher: true,
+        });
+      }
     });
   }
 });
