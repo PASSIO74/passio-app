@@ -694,18 +694,7 @@
       }
     } catch (e) { journal("posts publics", e); }
     try {
-      if (typeof supaLoadEvents === "function") {
-        supaLoadEvents().then(function (evs) {
-          if (!Array.isArray(evs) || !evs.length) return;
-          var s2 = etat(); if (!s2) return;
-          // Même fusion que `supaLoadAll` : les activités serveur priment, les
-          // locales qu'elles ne recouvrent pas restent.
-          var ids = {}; evs.forEach(function (e) { ids[e.id] = 1; });
-          var locales = (s2.seed.events || []).filter(function (e) { return !ids[e.id]; });
-          s2.seed.events = evs.concat(locales);
-          if (ecranActif() === "irl") { try { renderIRL(); } catch (e) {} }
-        }).catch(function (e) { journal("activités publiques", e); });
-      }
+      if (typeof rafraichirEvenements === "function") rafraichirEvenements();
     } catch (e) { journal("activités publiques", e); }
   }
 

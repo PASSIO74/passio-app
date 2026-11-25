@@ -2518,6 +2518,9 @@
 
     /* Event card clickable */
     .event-card { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .irl-avis-exemples { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px; margin-bottom: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+    .irl-avis-exemples p { flex: 1 1 230px; margin: 0; font-size: 14px; line-height: 1.45; }
+    .irl-avis-exemples button { min-height: 44px; }
     .event-card:active { transform: scale(0.985); }
 
     .attendees {

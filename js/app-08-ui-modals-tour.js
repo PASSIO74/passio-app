@@ -7667,7 +7667,7 @@ async function supaProchaineSortie(compte) {
 // l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
 // l'app (Jerem, 2026-10-23).
 // `eventId` cible une invitation même si l’activité est hors des 60 plus récentes.
-async function supaLoadEvents(authorId, eventId) {
+async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
   if (eventId != null && !LIEN_COURT_ID_RE.test(eventId)) return [];
   // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
@@ -7699,7 +7699,7 @@ async function supaLoadEvents(authorId, eventId) {
       ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
     }
     if (error) {
-      if (eventId != null) throw error;
+      if (eventId != null || signalerErreur) throw error;
       console.warn("supaLoadEvents:", error.message);
       return [];
     }
@@ -7760,7 +7760,7 @@ async function supaLoadEvents(authorId, eventId) {
       fromSupabase: true,
     }));
   } catch(e) {
-    if (eventId != null) throw e; // distinguer une lecture impossible d’une activité absente
+    if (eventId != null || signalerErreur) throw e;
     return [];
   }
 }
@@ -7796,6 +7796,22 @@ function fusionnerEvenementsServeur(evs) {
 const EVENEMENTS_RAFRAICHIR_MS = 60000;
 let _evenementsLusA = 0;
 let _evenementsLectureEnVol = false;
+let _lectureListeSorties = null;
+
+function lectureListeSortiesConfirmee() {
+  return navigator.onLine !== false && _lectureListeSorties !== null &&
+    _lectureListeSorties.etat === state && _lectureListeSorties.compte === MY_UID;
+}
+
+function retirerAvisSortiesExemples() {
+  _lectureListeSorties = null;
+  document.getElementById("irlAvisExemples")?.remove();
+}
+window.addEventListener("offline", retirerAvisSortiesExemples);
+window.addEventListener("online", function () {
+  if (_irlEcranVisible()) rafraichirEvenements(true);
+});
+
 // `apresLecture(evs)` (facultatif) reçoit la liste lue, même inchangée.
 async function rafraichirEvenements(force, apresLecture) {
   if (!window._supaReal || typeof supa === "undefined" || !supa) return false;
@@ -7805,13 +7821,20 @@ async function rafraichirEvenements(force, apresLecture) {
   if (!force && Date.now() - _evenementsLusA < pas) return false;
   _evenementsLectureEnVol = true;
   _evenementsLusA = Date.now();
+  const lecture = { etat: state, compte: MY_UID };
+  retirerAvisSortiesExemples();
   try {
-    const evs = await supaLoadEvents();
+    const evs = await supaLoadEvents(null, null, true);
+    if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     const change = fusionnerEvenementsServeur(evs);
+    _lectureListeSorties = lecture;
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
+    const irl = document.getElementById("screen-irl");
+    if (irl && irl.classList.contains("active")) {
+      if (change) renderIRL();
+      else actualiserAvisSortiesExemples();
+    }
     if (change) {
-      const irl = document.getElementById("screen-irl");
-      if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
       // LOT-3 (audit UX/UI du 2026-11-10, PCS-C01 / FIL-C01) : une publication
       // reliée à une activité n'avait pas sa porte « Voir l'activité » tant que
       // l'activité n'était pas en mémoire, et rien ne la redécorait à son arrivée
