@@ -746,6 +746,83 @@ const RSVP_LABELS = {
 
 // Mon état pour un événement. `state.user.eventRsvp` est la mémoire locale ;
 // `joinedEvents` reste maintenu pour toute la compatibilité existante.
+var _prochaineSortieAccueil = null;
+
+async function actualiserProchaineSortie(force) {
+  const carte = document.getElementById("prochaineSortie");
+  if (!carte) return;
+  const compte = typeof MY_UID === "string" ? MY_UID : "";
+  const precedente = _prochaineSortieAccueil;
+  const eligible = window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel();
+  if (!eligible || precedente?.compte !== compte || precedente?.etat !== state) {
+    carte.hidden = true;
+    carte.onclick = null;
+    clearTimeout(precedente?.expiration);
+    _prochaineSortieAccueil = null;
+  }
+  if (!eligible || document.hidden || !document.querySelector("#screen-feed.active")) return;
+  if (_prochaineSortieAccueil && (precedente.enCours || (!force && Date.now() < precedente.relireApres))) return;
+  clearTimeout(precedente?.expiration);
+  const lecture = { compte, etat: state, enCours: true };
+  _prochaineSortieAccueil = lecture;
+  const actuelle = () => _prochaineSortieAccueil === lecture && MY_UID === compte && state === lecture.etat;
+  try {
+    const sortie = await supaProchaineSortie(compte);
+    if (!actuelle()) return;
+    carte.hidden = !sortie;
+    carte.onclick = null;
+    if (!sortie) { delete carte.dataset.sortie; return; }
+    carte.dataset.sortie = sortie.id;
+    const date = new Date(supaTs(sortie.date_at));
+    carte.querySelector("strong").textContent = sortie.title;
+    const heure = carte.querySelector("time");
+    heure.dateTime = date.toISOString();
+    heure.textContent = date.toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    carte.disabled = false;
+    carte.onclick = async function () {
+      const memeCarte = () => MY_UID === compte && state === lecture.etat && !carte.hidden && carte.dataset.sortie === sortie.id;
+      if (!memeCarte() || date.getTime() <= Date.now()) { actualiserProchaineSortie(true); return; }
+      const hash = location.hash;
+      carte.disabled = true;
+      try {
+        const [accord, sorties] = await Promise.all([
+          supa.rpc("vient_a_activite", { p_event_id: sortie.id }),
+          supaLoadEvents(null, sortie.id),
+        ]);
+        if (!memeCarte() || location.hash !== hash || !document.querySelector("#screen-feed.active")) return;
+        if (accord.error || !sorties) throw new Error("lecture");
+        if (accord.data !== true || !sorties.length || _eventIsCancelled(sorties[0]) || sorties[0].date <= Date.now()) {
+          carte.hidden = true;
+          actualiserProchaineSortie(true);
+          toast("Cette sortie est indisponible.");
+          return;
+        }
+        fusionnerEvenementsServeur(sorties);
+        openEventDetails(sortie.id);
+      } catch (e) {
+        if (memeCarte()) toast("Impossible de charger la sortie. Réessaie dans un instant.");
+      } finally {
+        if (memeCarte()) carte.disabled = false;
+      }
+    };
+    lecture.expiration = setTimeout(() => {
+      if (actuelle()) { carte.hidden = true; actualiserProchaineSortie(true); }
+    }, Math.min(Math.max(0, date.getTime() - Date.now()), 2147483647));
+  } catch (e) {
+    if (actuelle()) {
+      carte.hidden = true;
+      carte.onclick = null;
+      if (typeof diagLog === "function") diagLog("prochaine_sortie : lecture indisponible");
+    }
+  } finally {
+    lecture.enCours = false;
+    lecture.relireApres = Date.now() + 60000;
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) actualiserProchaineSortie(true);
+});
+
 function myRsvp(eventId) {
   const m = (state.user.eventRsvp || {})[eventId];
   if (m) return m;

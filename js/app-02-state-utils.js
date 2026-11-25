@@ -4802,7 +4802,11 @@ function goTo(screen) {
   try { if (window.PassioFirstRun) PassioFirstRun.surNavigation(screen); } catch(_) {}
 
   // Re-render dynamic screens on navigate
-  if (screen === "feed")     { renderFeed(); try { feedWindowRestoreScroll(); } catch (e) {} }
+  if (screen === "feed") {
+    if (_retourAuFil && typeof actualiserProchaineSortie === "function") actualiserProchaineSortie(true);
+    renderFeed();
+    try { feedWindowRestoreScroll(); } catch (e) {}
+  }
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
   // LOT-11 (REC-C19) : l'assistant IA a quitté l'écran le 2026-11-02 ; plus d'appel
@@ -11154,6 +11158,7 @@ function feedWindowStats() {
 window.feedWindowStats = feedWindowStats;
 
 function renderFeed() {
+  if (typeof actualiserProchaineSortie === "function") actualiserProchaineSortie();
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
   if (skeleton) skeleton.style.display = "none";

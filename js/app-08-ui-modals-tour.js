@@ -7626,6 +7626,37 @@ async function supaLireParticipants(evIds, origine) {
   return lu;
 }
 
+// La liste publique des 60 dernières activités n'est pas l'agenda du membre.
+async function supaProchaineSortie(compte) {
+  const maintenant = new Date().toISOString();
+  const taille = 32;
+  for (let debut = 0; compte === MY_UID; debut += taille) {
+    const { data, error } = await supa.from("events")
+      .select("id,title,date_at,event_attendees!inner(user_id)")
+      .eq("event_attendees.user_id", compte).eq("event_attendees.rsvp", "going")
+      .eq("status", "active").gt("date_at", maintenant)
+      .order("date_at").order("id").range(debut, debut + taille - 1);
+    if (error) throw error;
+    // Éliminer en une lecture les demandes en attente. Cette RPC inclut aussi
+    // l'organisation : le verdict nominatif ci-dessous reste nécessaire.
+    let candidates = data;
+    if (data.length > 1) {
+      const acces = await supa.rpc("adresses_activites", { p_event_ids: data.map(s => s.id) }).select("event_id");
+      if (acces.error) throw acces.error;
+      const ids = new Set(acces.data.map(s => s.event_id));
+      candidates = data.filter(s => ids.has(s.id));
+    }
+    for (const sortie of candidates) {
+      if (compte !== MY_UID) return null;
+      const accord = await supa.rpc("vient_a_activite", { p_event_id: sortie.id });
+      if (accord.error) throw accord.error;
+      if (accord.data === true && supaTs(sortie.date_at) > Date.now()) return sortie;
+    }
+    if (data.length < taille) break;
+  }
+  return null;
+}
+
 // `authorId` (facultatif) : les activités qu'UN compte organise, lues à
 // l'ouverture de son profil. Sans lui, la liste ne venait que du chargement
 // unique du démarrage — une activité publiée après n'apparaissait pas dans
