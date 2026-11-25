@@ -17,7 +17,7 @@ function extraireFonction(source,name){
  assert.fail('fonction complète introuvable : '+name);
 }
 function fn(name){return extraireFonction(client,name);}
-function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({toast:x=>messages.push(x),window:{_supaReal:true},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},...extra});return {c,messages,get ouvert(){return ouvert}};}
+function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({toast:x=>messages.push(x),window:{_supaReal:true},_pousserPushNotif:()=>{},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},...extra});return {c,messages,get ouvert(){return ouvert}};}
 test('un refus ou zéro ligne de la RPC ne devient jamais un succès local',async()=>{
  for(const reponse of [{data:false},{data:null},{error:{code:'42501'}}]){const t=contexte({supa:{rpc:async()=>reponse}});vm.runInContext(fn('validerEventParticipant'),t.c);assert.equal(await t.c.validerEventParticipant('e','u',true),false);assert.equal(t.ouvert,0);assert.match(t.messages[0],/non confirmée/);}
 });

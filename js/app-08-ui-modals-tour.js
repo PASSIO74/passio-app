@@ -3393,6 +3393,7 @@ async function repondreDemandeParticipation(eventId, uid, notifId, accepter) {
       return false;
     }
     _demandeAbonnementTraitee(notifId, accepter ? "validée" : "refusée");
+    if (accepter) _pousserPushNotif(uid, "event_accepted", "", eventId);
     toast(accepter ? "Participation validée" : "Demande refusée");
     return true;
   } catch (e) {
@@ -3625,6 +3626,9 @@ function openNotifTarget(n) {
         if (ref && evj && typeof _canManageEvent === "function" && _canManageEvent(evj)
             && typeof openEventParticipantValidation === "function") openEventParticipantValidation(ref, from);
       } catch (e) { try { diagLog("notifs : validation — " + (e && e.message)); } catch (_) {} }
+      break;
+    case "event_accepted":
+      _ouvrirLienActivite(ref);
       break;
     case "event_comment":
     case "event_update":
@@ -9137,11 +9141,11 @@ async function _mentionnerServeur(genre, refId, ids) {
 // écrite par le SERVEUR (abonnements, `follows_notifier` depuis le 2026-09-11) —
 // une ligne de plus côté client ferait un doublon, mais le push, lui, ne part
 // que d'ici. `texte` est déjà complet (« Camille a commencé à te suivre »).
-function _pousserPushNotif(toUserId, kind, texte) {
+function _pousserPushNotif(toUserId, kind, texte, eventId) {
   try {
     if (!toUserId || toUserId === MY_UID) return;
     supa.functions.invoke("notify-call", {
-      body: { toUserId: toUserId, type: "notif", kind: kind, text: texte, emoji: _notifEmoji(kind) }
+      body: { toUserId: toUserId, type: "notif", kind: kind, text: texte, emoji: _notifEmoji(kind), eventId }
     }).catch(() => {});
   } catch (e) {}
 }
@@ -9726,7 +9730,7 @@ function _rtNotificationRecue(r) {
   // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
   // émetteur bloqué, et le toast partait quand même (défaut préexistant).
   if (!(state.notifications || []).some(n => n.id === notif.id)) return;
-  if ((notif.kind === "event_update" || notif.kind === "event_cancelled") &&
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
       typeof signalerChangementSortie === "function") signalerChangementSortie();
   // Demande de participation : le texte serveur ne nomme personne — le toast
   // attend le nom (une lecture `profiles` au plus).

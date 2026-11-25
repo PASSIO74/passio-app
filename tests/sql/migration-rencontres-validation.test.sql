@@ -242,3 +242,4 @@ do $$ begin
 end $$;
 -- Restaurer seulement le profil synthétique pour les scénarios concurrents natifs.
 insert into public.profiles values('11111111-1111-4111-8111-111111111111');
+\ir confirmation-participation.test.sql

@@ -33,6 +33,7 @@ import * as M_PUSH from "../../supabase/functions/_shared/push-sur.js";
 import * as M_PLAFOND from "../../supabase/functions/_shared/plafond.js";
 import * as M_CROISSANCE from "../../supabase/functions/_shared/croissance.js";
 import * as M_RAPPELS from "../../supabase/functions/_shared/rappels.js";
+import * as M_CONFIRMATIONS from "../../supabase/functions/_shared/confirmations.js";
 import * as M_REGLAGES from "../../supabase/functions/_shared/reglages.js";
 import * as M_AUTONOMIE from "../../supabase/functions/_shared/autonomie.js";
 import * as M_PARCOURS from "../../supabase/functions/_shared/parcours.js";
@@ -92,6 +93,7 @@ const MODULES = {
   // La révision est écrite par l'étape « Révision » du déploiement : ici une doublure, comme dans les autres bancs.
   "../_shared/push-sur.js": M_PUSH, "../_shared/plafond.js": M_PLAFOND, "../_shared/revision.js": { REVISION: "revision-du-banc" },
   "../_shared/pilotage.js": M_PILOTAGE, "../_shared/croissance.js": M_CROISSANCE, "../_shared/rappels.js": M_RAPPELS,
+  "../_shared/confirmations.js": M_CONFIRMATIONS,
   "../_shared/reglages.js": M_REGLAGES, "../_shared/autonomie.js": M_AUTONOMIE, "../_shared/parcours.js": M_PARCOURS,
   "../_shared/politique-autonomie.js": M_POLITIQUE, "../_shared/battement.js": M_BATTEMENT, "../_shared/reception.js": M_RECEPTION,
   "../_shared/appels.js": M_APPELS,

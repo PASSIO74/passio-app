@@ -5641,7 +5641,7 @@ function reporterRappelsActivite() {
 // (sw.js, `OUVRIR_ACTIVITE`). On passe par le hash : c'est le routeur ci-dessus
 // qui attend l'application et retente le chargement — jamais un second chemin.
 function _ouvrirActiviteDepuisNotification(id) {
-  if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)) return false;
+  if (typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) return false;
   var cible = "#irl-event-" + id;
   if (location.hash !== cible) location.hash = cible;
   else _openIrlEventFromHash();
@@ -9863,6 +9863,7 @@ async function validerEventParticipant(id, uid, accepter) {
   try {
     const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
     if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    if (accepter) _pousserPushNotif(uid, "event_accepted", "", id);
     toast(accepter ? "Participation validée" : "Participant retiré");
     // La notification correspondante ne repropose plus ses boutons.
     try {
