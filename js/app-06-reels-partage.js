@@ -5214,7 +5214,10 @@ function choisirCategorieStudio(mood) {
 }
 
 $$("#postMoodRow .pill").forEach(p => {
-  p.addEventListener("click", () => choisirCategorieStudio(p.getAttribute("data-postmood")));
+  p.addEventListener("click", () => {
+    choisirCategorieStudio(p.getAttribute("data-postmood"));
+    if ($("#postText").value.trim()) enregistrerBrouillonStudio();
+  });
 });
 choisirCategorieStudio(studioMood);
 

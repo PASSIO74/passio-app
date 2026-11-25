@@ -45,12 +45,17 @@ test("② CRE-C05 : le texte du Studio survit au rechargement et se propose", as
   // Ce qui survit au rechargement, c'est le stockage local : on le lit, puis on
   // rouvre un Studio vide (le banc de démonstration ne rejoue pas un rechargement).
   expect(await page.evaluate(() => (lireBrouillonStudio() || {}).text)).toBe("Mon brouillon de luthier");
+  await page.locator('#postMoodRow [data-postmood="learn"]').click();
+  expect(await page.evaluate(() => lireBrouillonStudio().mood)).toBe("learn");
   await page.evaluate(() => { document.getElementById("postText").value = ""; goTo("feed"); goTo("studio"); });
   const bandeau = page.locator("#studioBrouillon");
   await expect(bandeau).toContainText("Mon brouillon de luthier");
   await expect(page.getByRole("textbox", { name: "Ton message", exact: true })).toBeVisible();
+  await page.locator('#postMoodRow [data-postmood="irl"]').click();
   await bandeau.getByRole("button", { name: "Reprendre", exact: true }).click();
   await expect(page.locator("#postText")).toHaveValue("Mon brouillon de luthier");
+  await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("Conseils");
+  await expect(page.locator("#postText")).toHaveAttribute("placeholder", /Mon astuce/);
   await expect(bandeau).toHaveCount(0);
   await page.evaluate(() => { document.getElementById("postText").value = ""; proposerBrouillonStudio(); });
   await page.locator("#studioBrouillon button", { hasText: "Effacer" }).click();

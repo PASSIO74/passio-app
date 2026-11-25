@@ -95,7 +95,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     const texte = "Mon message en cours\navec sa deuxième ligne.";
     await message.fill(texte);
     for (const [categorie, exemple] of [
-      ["Conseils", /Une astuce/], ["À faire ensemble", /Qui veut se retrouver/],
+      ["Conseils", /Mon astuce/], ["À faire ensemble", /Qui veut se retrouver/],
       ["Sans étiquette", ""], ["Expériences", /Le déclic/],
     ]) {
       await categories.getByRole("button", { name: categorie, exact: true }).click();
