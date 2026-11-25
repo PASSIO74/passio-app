@@ -1,5 +1,5 @@
 // Suite « Moods du Studio » — alignement du vocabulaire de publication sur le
-// rail d'intentions du Fil (Explorer · Apprendre · Idées · À faire ensemble).
+// rail d'intentions du Fil (Explorer · Expériences · Conseils · À faire ensemble).
 //
 // Ce que la suite protège, dans l'ordre où ça s'est cassé pendant l'écriture :
 //
@@ -17,19 +17,18 @@
 //      (auteur non suivi, passion inconnue) et ne regarde jamais le mood : une
 //      pastille y serait décorative, donc mensongère.
 //
-//   ④ Le mood « creation » reste le défaut, parce que `publishPost` n'appelle
-//      `bumpQuest("publish")` que sur cette valeur — changer le défaut arrêtait
-//      la quête quotidienne en silence.
+//   ④ Le premier choix garde sa valeur historique, y compris pour un auteur
+//      qui publie sans changer la sélection.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
-// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Apprendre · Idées · À faire ensemble.
+// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Expériences · Conseils · À faire ensemble.
 const PASTILLES = [
-  { label: "Apprendre", value: "learn" },
-  { label: "Idées", value: "creation" },
+  { label: "Expériences", value: "creation" },
+  { label: "Conseils", value: "learn" },
   { label: "À faire ensemble", value: "irl" },
-  { label: "Tous", value: "all" },
+  { label: "Sans étiquette", value: "all" },
 ];
 
 async function ouvrirStudio(page) {
@@ -48,7 +47,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
-    const pills = page.locator("#postMoodRow .pill");
+    const pills = page.getByRole("group", { name: "Que veux-tu partager ?" }).getByRole("button");
     await expect(pills).toHaveCount(PASTILLES.length);
     expect((await pills.allTextContents()).map((t) => t.trim()))
       .toEqual(PASTILLES.map((p) => p.label));
@@ -75,12 +74,13 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await expect(page.locator('.feed-intent-btn[data-intent="discover"]')).toHaveCount(1);
   });
 
-  test("le défaut reste « creation » — sinon bumpQuest(\"publish\") s'arrête", async ({ page }) => {
+  test("Expériences garde la valeur de publication par défaut", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
     await expect(page.locator("#postMoodRow .pill.active")).toHaveCount(1);
     await expect(page.locator("#postMoodRow .pill.active")).toHaveAttribute("data-postmood", "creation");
+    await expect(page.getByRole("button", { name: "Expériences", exact: true, pressed: true })).toBeVisible();
   });
 
   test("« À faire ensemble » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
@@ -89,6 +89,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
 
     await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
     await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
+    await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("À faire ensemble");
     await expect(page.locator("#postMoodRow .pill.active")).toHaveCount(1);
 
     await page.fill("#postText", "On se retrouve au studio de répétition");
@@ -104,7 +105,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(publie.tag).toBe("À faire ensemble");
   });
 
-  test("« Tous » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
+  test("« Sans étiquette » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
@@ -140,6 +141,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(etat.mood).toBe("all");
     expect(etat.actives).toEqual(["all"]);
+    await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("Sans étiquette");
   });
 
   test("la table de libellés est unique : fil et bobines disent le même mot", async ({ page }) => {
@@ -151,16 +153,16 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
       })));
 
     expect(dits).toEqual([
-      { m: "creation", tag: "Idées", court: "Idées" },
-      { m: "learn", tag: "Apprendre", court: "Apprendre" },
+      { m: "creation", tag: "Expériences", court: "Expériences" },
+      { m: "learn", tag: "Conseils", court: "Conseils" },
       // Les bobines ignoraient « irl » (« Tout ») : le trou est fermé par la
       // même table qui sert au fil.
       { m: "irl", tag: "À faire ensemble", court: "À faire ensemble" },
       // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, ET C'EST LE POINT DU LOT.
       // « chill » et « actu » n'étaient déjà plus publiables (test ② de ce
       // fichier) ; ils gardaient pourtant un libellé, donc une pastille sur la
-      // carte. Le produit n'a plus que quatre intentions — Explorer · Apprendre
-      // · Idées · À faire ensemble — et deux d'entre elles nommaient des mots que
+      // carte. Le produit n'a plus que quatre intentions — Explorer · Expériences
+      // · Conseils · À faire ensemble — et deux d'entre elles nommaient des mots que
       // l'utilisateur ne pouvait plus choisir nulle part. Ils rendent désormais
       // exactement ce que rend le neutre.
       { m: "chill", tag: "", court: "Tout" },

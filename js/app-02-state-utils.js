@@ -9417,13 +9417,13 @@ var FEED_INTENT_SOURCES = ["discover", "learn", "create", "meet"];
 
 // Les libellés des quatre envies, en UN SEUL endroit. Ils sont écrits en dur
 // dans `index.html` (les boutons `.feed-intent-btn`), et le fil a besoin de les
-// NOMMER quand une envie vide l'écran (« Aucune publication pour « Apprendre » ») : sans table,
+// NOMMER quand une envie vide l'écran (« Aucune publication pour « Conseils » ») : sans table,
 // on aurait recopié les mots, et deux copies finissent toujours par diverger.
 // Verrou : `feed-envie-filtre.spec.js` ⑦ compare cette table aux boutons rendus.
 var PASSIO_FEED_INTENT_LABELS = {
   discover: "Explorer",
-  learn: "Apprendre",
-  create: "Idées",
+  create: "Expériences",
+  learn: "Conseils",
   meet: "À faire ensemble",
 };
 
@@ -9470,7 +9470,7 @@ function setFeedIntents(liste) {
 //
 // ⚠️ CE N'EST PLUS UN CRITÈRE D'ENTRÉE (revirement du 2026-09-09, cf. l'amendement
 // d'ADR-011 §1). Tant que les envies étaient une TROISIÈME SOURCE en OU inclusif,
-// cocher « Apprendre » ouvrait le fil à TOUT PASSIO : n'importe quelle publication
+// cocher « Conseils » ouvrait le fil à TOUT PASSIO : n'importe quelle publication
 // du réseau portant ce mood entrait, quelle que soit sa passion et quel que soit
 // son auteur. Mesuré en production le 2026-09-09 sur le compte de Benjamin
 // (« Suivis » DÉCOCHÉ, passions = randonnée/sport-santé, `feedIntents = ["learn"]`) :
@@ -9524,14 +9524,14 @@ function legacyMoodToFeedIntent(mood) {
 // (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
 // là-bas.
 //
-// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
-// Idées · À faire ensemble) : ce qu'on choisit en publiant porte le même mot que ce
+// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Expériences ·
+// Conseils · À faire ensemble) : ce qu'on choisit en publiant porte le même mot que ce
 // qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
 // écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
 //
 // ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
-// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 À faire ensemble · ✨ Tous.
+// le Studio ne propose que Expériences · Conseils · À faire ensemble · Sans étiquette.
 // « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
 // LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
 // l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
@@ -9543,8 +9543,8 @@ function legacyMoodToFeedIntent(mood) {
 // Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
 // geste, ne rien afficher ensuite en est la conséquence voulue.
 var PASSIO_MOOD_LABELS = {
-  creation: { label: "Idées" },
-  learn:    { label: "Apprendre" },
+  creation: { label: "Expériences" },
+  learn:    { label: "Conseils" },
   irl:      { label: "À faire ensemble" },
 };
 
@@ -9559,7 +9559,7 @@ var PASSIO_MOOD_LABELS = {
 //      (`moodsAffichables`, plus bas dans ce fichier).
 //
 // Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
-// propose plus que Idées · Apprendre · À faire ensemble · Tous — « chill » et « actu »
+// propose plus que Expériences · Conseils · À faire ensemble · Sans étiquette — « chill » et « actu »
 // ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
 // NOMMER. Mais la base de production porte des milliers de publications qui les
 // portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
@@ -10334,7 +10334,7 @@ function _feedIntentBonus(p, intent, lot) {
 }
 
 // Plusieurs envies cochées : le bonus retenu est le MEILLEUR des envies, jamais
-// leur somme — cumuler ferait passer un post « Apprendre + À faire ensemble » devant
+// leur somme — cumuler ferait passer un post « Conseils + À faire ensemble » devant
 // tout le reste pour une raison que l'écran n'explique pas. Zéro ou une envie
 // retombe EXACTEMENT sur `rankFeedPostsForIntent`, dont le comportement mesuré
 // ne bouge pas.
@@ -11202,7 +11202,7 @@ function renderFeed() {
   // est coché ; et une publication Moto d'un inconnu entre si « Moto » est
   // cochée, même si je ne suis personne.
   //
-  // Une troisième famille — les ENVIES (Explorer · Apprendre · Idées · À faire ensemble)
+  // Une troisième famille — les ENVIES (Explorer · Expériences · Conseils · À faire ensemble)
   // — dit COMMENT je veux lire ce que ces sources m'apportent. Elle RESTREINT,
   // elle n'apporte RIEN.
   //

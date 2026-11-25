@@ -13,7 +13,7 @@
 //     `selectedFeedPassions = ["outdoor-randonnee","sante-sport-sante","test5"]`
 //     — donc PAS musculation — et `feedIntents = ["learn"]`.
 // Rien ne l'amenait dans son fil, qu'un mood partagé. ADR-011 §1 faisait des
-// envies une TROISIÈME SOURCE en OU inclusif : cocher « Apprendre » ouvrait le
+// envies une TROISIÈME SOURCE en OU inclusif : cocher « Conseils » ouvrait le
 // fil à TOUT PASSIO. Le fil ne disait donc plus d'où venait ce qu'il montrait.
 //
 // LA RÈGLE, DÉSORMAIS (amendement d'ADR-011 §1) :
@@ -116,7 +116,7 @@ const titreVide = (page) => page.evaluate(() => {
 // ① LE DÉFAUT RAPPORTÉ — l'état exact de la production
 // ══════════════════════════════════════════════════════════════════════════
 
-test("① l'envie « Apprendre » n'amène PAS une passion que je n'ai pas", async ({ page }) => {
+test("① l'envie « Conseils » n'amène PAS une passion que je n'ai pas", async ({ page }) => {
   await poser(page, { suivis: false, envies: ["learn"] });
 
   // Prémisse contrôlée : sans le rail d'intentions, les envies ne sont pas
@@ -141,13 +141,13 @@ test("① bis — le prédicat d'envie est SATISFAIT, et pourtant la carte n'ent
   // (filtre, plus critère d'entrée). Sans cette distinction, un correctif qui
   // aurait durci le prédicat au lieu de déplacer son point d'application aurait
   // rendu ce fichier vert pour la mauvaise raison — et le défaut serait revenu
-  // au premier post « Idées » ou « À faire ensemble ».
+  // au premier post « Expériences » ou « À faire ensemble ».
   await poser(page, { suivis: false, envies: ["learn"] });
 
   expect(await page.evaluate(() => {
     const p = allFeedPosts().find((x) => x.id === "p_muscu");
     return !!p && feedPostMatchesIntent(p, "learn");
-  }), "le prédicat reste vrai : le post EST du « Apprendre »").toBe(true);
+  }), "le prédicat reste vrai : le post EST du « Conseils »").toBe(true);
 
   expect(await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_muscu"]').length),
@@ -198,9 +198,9 @@ test("③ « Suivis » + une passion : les deux sources cohabitent (OU inclusif 
 test("③ bis — l'envie retranche de l'union, sans jamais l'élargir", async ({ page }) => {
   await poser(page, { suivis: true, suit: true, envies: ["learn"] });
   const t = await filTexte(page);
-  expect(t, "suivie ET « Apprendre » : elle reste").toContain("LEANE_MUSCU");
-  expect(t, "ma passion ET « Apprendre » : elle reste").toContain("MOI_YOGA_LEARN");
-  expect(t, "ma passion mais pas « Apprendre » : retranchée").not.toContain("MOI_YOGA_NEUTRE");
+  expect(t, "suivie ET « Conseils » : elle reste").toContain("LEANE_MUSCU");
+  expect(t, "ma passion ET « Conseils » : elle reste").toContain("MOI_YOGA_LEARN");
+  expect(t, "ma passion mais pas « Conseils » : retranchée").not.toContain("MOI_YOGA_NEUTRE");
 });
 
 // ══════════════════════════════════════════════════════════════════════════

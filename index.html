@@ -633,8 +633,8 @@
       </div>
 
       <div class="mood-selector" id="moodSelector">
-        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Création</button>
-        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Apprendre</button>
+        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Expériences</button>
+        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Conseils</button>
         <button class="mood-btn" data-mood="chill"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5 A8 8 0 1 1 10.5 4 A6.2 6.2 0 0 0 20 13.5 Z"/></svg></span>Chill</button>
         <button class="mood-btn" data-mood="actu"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 3 L6 13 H11 L10.5 21 L18 10.5 H12.5 Z"/></svg></span>Actu</button>
       </div>
@@ -647,8 +647,8 @@
              `normalizeFeedIntent`, `activeFeedIntent` et `setFeedIntent(null)`
              s'appuient dessus — il n'a simplement plus de bouton. -->
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Explorer</button>
-        <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
-        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Idées</button>
+        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Expériences</button>
+        <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Conseils</button>
         <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">À faire ensemble</button>
       </div>
 
@@ -949,11 +949,11 @@
         <div id="studioPassionNote" style="display:none;font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;"></div>
       </label>
 
-      <label class="field" id="fieldMood">
-        <span>Envie</span>
-        <div class="pill-row" id="postMoodRow">
-          <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
-               Apprendre · Idées · À faire ensemble) : on publie avec le mot qu'on lit.
+      <div class="field" id="fieldMood">
+        <span id="studioMoodQuestion">Que veux-tu partager ?</span>
+        <div class="pill-row" id="postMoodRow" role="group" aria-labelledby="studioMoodQuestion">
+          <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Explorer ·
+               Expériences · Conseils · À faire ensemble) : on publie avec le mot qu'on lit.
                Les VALEURS, elles, ne bougent pas — « creation », « learn »,
                « irl » et « all » sont écrites en base et lues par
                `legacyMoodToFeedIntent` ; les renommer casserait les
@@ -961,13 +961,13 @@
                Pas de pastille « Explorer » : cette intention se calcule côté
                lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
                le mood — une pastille y serait purement décorative. -->
-          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · À faire ensemble). -->
-          <button type="button" class="pill" data-postmood="learn">Apprendre</button>
-          <button type="button" class="pill active" data-postmood="creation">Idées</button>
-          <button type="button" class="pill" data-postmood="irl">À faire ensemble</button>
-          <button type="button" class="pill" data-postmood="all">Tous</button>
+          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Expériences · Conseils · À faire ensemble). -->
+          <button type="button" class="pill active" data-postmood="creation" aria-pressed="true">Expériences</button>
+          <button type="button" class="pill" data-postmood="learn" aria-pressed="false">Conseils</button>
+          <button type="button" class="pill" data-postmood="irl" aria-pressed="false">À faire ensemble</button>
+          <button type="button" class="pill" data-postmood="all" aria-pressed="false">Sans étiquette</button>
         </div>
-      </label>
+      </div>
 
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button class="btn primary" style="flex:1;" onclick="publishPost()">Publier</button>
