@@ -605,6 +605,66 @@ async function sondeGeo(page) {
   });
 }
 
+test("« À faire ensemble » ouvre les sorties photo en un geste puis revient au fil", async ({ page }) => {
+  await boot(page);
+  await sondeGeo(page);
+  await seedFeed(page, [
+    post("v3_photo", "Camille", { passion: "photo", mood: "irl" }),
+    post("v3_conseil", "Camille", { passion: "photo", mood: "learn" }),
+    post("v3_lie", "Camille", { passion: "photo", mood: "irl", event_id: "sortie-absente" }),
+  ], ["photo"]);
+  const carte = page.locator('#feedList article[data-postid="v3_photo"]');
+  const chercher = carte.getByRole("button", { name: "Chercher une sortie photo", exact: true });
+  await expect(chercher).toBeVisible();
+  expect(await chercher.getAttribute("aria-haspopup")).toBeNull();
+  await expect(page.locator('[data-postid="v3_conseil"] [data-v3-tempt]')).toHaveText("Trouver une activité");
+  await expect(page.locator('[data-postid="v3_lie"] [data-v3-sortie]')).toHaveCount(0);
+  await page.evaluate(() => irlPassionFilters.add("musique"));
+  await taperLien(page, 'article[data-postid="v3_photo"] [data-v3-sortie]');
+  await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+  await expect(page.locator("#v3PassioSheet")).toBeHidden();
+  expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual(["photo"]);
+  await expect(page.locator('#irlPassionRow [data-irlpassion="photo"]')).toHaveClass(/active/);
+  expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
+  expect(await page.evaluate(() => window.__v3Tel.map(e => e.name))).toContain("ui_v3_open_irl");
+  expect(await page.evaluate(() => window.__v3Tel.map(e => e.name))).not.toContain("ui_v3_tempt_open");
+  await page.goBack();
+  await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+  await expect(chercher).toBeInViewport();
+});
+
+test("une spécialité du catalogue garde son nom et son filtre précis", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, [post("v3_vtt", "Dominique", { passion: "cyclisme-vtt-xc", mood: "irl" })], ["cyclisme-vtt-xc"]);
+  const chercher = page.getByRole("button", { name: "Chercher une sortie VTT cross-country", exact: true });
+  await expect(chercher).toBeVisible();
+  await chercher.click();
+  await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+  expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual(["cyclisme-vtt-xc"]);
+});
+
+test("une passion publiée après la génération du catalogue obtient son bouton", async ({ page }) => {
+  await boot(page);
+  const id = "passion-sortie-astro-qa";
+  await page.evaluate(async id => {
+    await PassioPassions.charger();
+    const from = supa.from.bind(supa);
+    window._supaReal = true;
+    supa.from = table => table !== "passions" ? from(table) : {
+      select: () => ({
+        in: async (colonne, ids) => ({
+          data: colonne === "id" && ids.includes(id) ? [{ id, label: "Astrophoto", emoji: "🔭", color: "#7744aa" }] : [],
+          error: null,
+        }),
+      }),
+    };
+  }, id);
+  await seedFeed(page, [post("v3_astro", "Alix", { passion: id, mood: "irl" })], [id]);
+  await page.getByRole("button", { name: "Chercher une sortie astrophoto", exact: true }).click();
+  await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+  expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual([id]);
+});
+
 test("« Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé", async ({ page }) => {
   await boot(page);
   await sondeGeo(page);

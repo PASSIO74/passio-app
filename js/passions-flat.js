@@ -1233,17 +1233,17 @@
   // ne doit pas relancer une requête à chaque tour de chaîne).
   var _idsDemandes = Object.create(null);
 
-  function resoudreNomsManquants() {
+  function resoudreNomsManquants(ids) {
     if (!pret() || !serveurUtilisable()) return;
     var manquants = [];
-    idsAAfficher().forEach(function (id) {
-      if (typeof id !== "string" || !id || parId(id) || _idsDemandes[id]) return;
+    (ids || idsAAfficher()).forEach(function (id) {
+      if (manquants.length >= 50 || typeof id !== "string" || !id || parId(id) || _idsDemandes[id]) return;
       _idsDemandes[id] = 1;
       manquants.push(id);
     });
     if (!manquants.length) return;
     try {
-      supa.from("passions").select("id,label,emoji,color").in("id", manquants.slice(0, 50))
+      supa.from("passions").select("id,label,emoji,color").in("id", manquants)
         .then(function (r) {
           if (r && r.error) { journal("noms_serveur", r.error.message || r.error); return; }
           var lignes = (r && r.data) || [];
