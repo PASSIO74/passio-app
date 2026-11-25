@@ -272,6 +272,41 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
   });
 
+  for (const archivee of [false, true]) {
+    test("Sorties sans résultat : proposer une sortie Cuisine, passion " + (archivee ? "archivée" : "active"), async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 740 });
+      await boot(page);
+      await page.evaluate((archived) => {
+        state.user.profiles.push({ ...state.user.profiles[0], id: "profil_cuisine", passion: "cuisine", archived });
+        state.seed.events = [{
+          id: "concert_v5", passion: "musique", title: "Concert acoustique", date: Date.now() + 86400000,
+          city: "Lyon", organizerId: "u_lea", attendees: [], maybes: [], waitlist: [],
+        }];
+        state.userEvents = [];
+      }, archivee);
+      const bobine = { ...BOBINES[0], passion: "cuisine" };
+      await ouvrirBobine(page, bobine.id, [bobine]);
+      await item(page, bobine.id).getByRole("button", { name: "Sorties près de moi" }).click();
+      const liste = page.locator("#eventList");
+      const proposer = liste.getByRole("button", { name: "Proposer une sortie Cuisine", exact: true });
+      await expect(liste).toContainText("Aucune sortie Cuisine avec ces filtres");
+      await proposer.click();
+      if (archivee) {
+        await expect(page.locator("#modalContent")).toContainText("Ajoute Cuisine à tes passions ou réactive-la");
+        await expect(page.getByRole("button", { name: "Gérer mes passions", exact: true })).toBeVisible();
+        await expect(page.locator("#evPassion")).toHaveCount(0);
+        expect(await page.evaluate(() => state.user.profiles.find(p => p.id === "profil_cuisine").archived)).toBe(true);
+      } else {
+        await expect(page.locator("#evPassion")).toHaveValue("cuisine");
+        await expect(page.locator("#evTitle")).toHaveValue("");
+      }
+      await page.evaluate(() => closeModal());
+      await liste.getByRole("button", { name: "Tout afficher", exact: true }).click();
+      await expect(liste.locator('[data-evid="concert_v5"]')).toBeVisible();
+      await expect(proposer).toHaveCount(0);
+    });
+  }
+
   test("kill switch local au boot : viewer historique, rien du lot", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await boot(page, { killLocal: true, errors });
