@@ -73,6 +73,17 @@ test("seule une lecture réussie présente les exemples et la proposition passe 
   await avis.getByRole("button", { name: "Proposer une sortie" }).click();
   await expect(page.locator(".fr-gate-title")).toHaveText("Crée ton compte pour proposer une activité");
   await page.getByRole("button", { name: "Continuer à explorer" }).click();
+  await page.evaluate(() => {
+    window.reponseCatalogue = new Promise(res => { window.terminerCatalogue = res; });
+    window.lectureEnCours = rafraichirEvenements(true);
+  });
   await context.setOffline(true);
   await expect(avis).toHaveCount(0);
+  await context.setOffline(false);
+  await page.evaluate(() => {
+    window.reponseCatalogue = Promise.resolve({ data: [], error: null });
+    window.terminerCatalogue({ data: null, error: { message: "Connexion interrompue" } });
+    return window.lectureEnCours;
+  });
+  await expect(avis).toBeVisible();
 });

@@ -7796,6 +7796,7 @@ function fusionnerEvenementsServeur(evs) {
 const EVENEMENTS_RAFRAICHIR_MS = 60000;
 let _evenementsLusA = 0;
 let _evenementsLectureEnVol = false;
+let _relireSortiesApresReconnexion = false;
 let _lectureListeSorties = null;
 
 function lectureListeSortiesConfirmee() {
@@ -7807,9 +7808,14 @@ function retirerAvisSortiesExemples() {
   _lectureListeSorties = null;
   document.getElementById("irlAvisExemples")?.remove();
 }
-window.addEventListener("offline", retirerAvisSortiesExemples);
+window.addEventListener("offline", function () {
+  _evenementsLusA = 0;
+  retirerAvisSortiesExemples();
+});
 window.addEventListener("online", function () {
-  if (_irlEcranVisible()) rafraichirEvenements(true);
+  if (!_irlEcranVisible()) return;
+  if (_evenementsLectureEnVol) _relireSortiesApresReconnexion = true;
+  else rafraichirEvenements(true);
 });
 
 // `apresLecture(evs)` (facultatif) reçoit la liste lue, même inchangée.
@@ -7848,6 +7854,10 @@ async function rafraichirEvenements(force, apresLecture) {
     return false;
   } finally {
     _evenementsLectureEnVol = false;
+    if (_relireSortiesApresReconnexion) {
+      _relireSortiesApresReconnexion = false;
+      if (navigator.onLine && _irlEcranVisible() && !lectureListeSortiesConfirmee()) rafraichirEvenements(true);
+    }
   }
 }
 
