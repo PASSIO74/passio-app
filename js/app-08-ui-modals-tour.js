@@ -7644,7 +7644,7 @@ async function supaProchaineSortie(compte) {
     if (error) throw error;
     // Une inscription automatique à sa propre activité ne requiert pas
     // d'attendre une décision de l'organisation.
-    if (data.some(s => s.organizer_id !== compte && s.author_id !== compte)) demandesEnAttente = true;
+    if (data.some(s => (s.organizer_id || s.author_id) !== compte)) demandesEnAttente = true;
     // Éliminer en une lecture les demandes en attente. Cette RPC inclut aussi
     // l'organisation : le verdict nominatif ci-dessous reste nécessaire.
     let candidates = data;

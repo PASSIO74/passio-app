@@ -774,22 +774,26 @@ async function actualiserProchaineSortie(force) {
   if (!eligible || document.hidden || !document.querySelector("#screen-irl.active")) return;
   if (_prochaineSortieAccueil && (precedente.enCours || (!force && Date.now() < precedente.relireApres))) return;
   clearTimeout(precedente?.expiration);
-  const lecture = { compte, etat: state, enCours: true, suivie: _prochaineSortieAccueil?.suivie };
+  const historique = _prochaineSortieAccueil;
+  const lecture = { compte, etat: state, enCours: true };
   _prochaineSortieAccueil = lecture;
   const actuelle = () => _prochaineSortieAccueil === lecture && MY_UID === compte && state === lecture.etat;
   try {
     const { sortie, demandesEnAttente } = await supaProchaineSortie(compte);
     if (!actuelle()) return;
-    lecture.suivie = !!sortie || demandesEnAttente;
     carte.hidden = !sortie;
     carte.onclick = null;
     if (!sortie) {
       delete carte.dataset.sortie;
       // La première validation n'émet pas de notification. Suivre uniquement
       // les demandes à venir, en réutilisant le délai de délestage du client.
-      if (demandesEnAttente) lecture.expiration = setTimeout(() => {
-        if (actuelle()) actualiserProchaineSortie(true);
-      }, delaiDeleste(5000));
+      if (demandesEnAttente) {
+        lecture.attenteDepuis = historique?.attenteDepuis ?? Date.now();
+        const delai = Date.now() - lecture.attenteDepuis < 60000 ? 5000 : 30000;
+        lecture.expiration = setTimeout(() => {
+          if (actuelle()) actualiserProchaineSortie(true);
+        }, delaiDeleste(delai));
+      }
       return;
     }
     carte.dataset.sortie = sortie.id;
@@ -837,9 +841,11 @@ async function actualiserProchaineSortie(force) {
       carte.hidden = true;
       carte.onclick = null;
       if (typeof diagLog === "function") diagLog("prochaine_sortie : lecture indisponible");
-      if (lecture.suivie) lecture.expiration = setTimeout(() => {
+      lecture.attenteDepuis = historique?.attenteDepuis;
+      lecture.delaiReprise = Math.min((historique?.delaiReprise || 15000) * 2, 240000);
+      lecture.expiration = setTimeout(() => {
         if (actuelle()) actualiserProchaineSortie(true);
-      }, delaiDeleste(60000));
+      }, delaiDeleste(lecture.delaiReprise));
     }
   } finally {
     lecture.enCours = false;
