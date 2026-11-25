@@ -15,6 +15,7 @@ function openPostOptions(postId) {
   // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
   // Pas pour un repartage : son texte est la citation de l'original.
   var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  const aRelier = (state.userPosts || []).find(p => p.id === postId && p.authorId === MY_UID && p.sortieARelier);
   var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
     ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
@@ -25,6 +26,7 @@ function openPostOptions(postId) {
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
       ${_editBtn}
+      ${aRelier ? '<button type="button" class="post-option" id="reprendreLienSortie">Réessayer le lien avec ma sortie</button>' : ""}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
         Supprimer la publication
@@ -32,6 +34,19 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+  if (aRelier) {
+    const sortieId = aRelier.sortieARelier;
+    document.getElementById("reprendreLienSortie").onclick = async function () {
+      this.disabled = true;
+      const auteur = MY_UID;
+      const verdict = await relierSortieStudio(postId, sortieId);
+      if (MY_UID !== auteur) return;
+      if (this.isConnected) closeModal();
+      toast(verdict === "liee" ? "La sortie est reliée à ton message."
+        : verdict === "attente" ? "Le lien reste en attente. Réessaie quand tu as du réseau."
+        : "La sortie n’a pas pu être reliée à ton message.", verdict === "liee" ? "success" : "warning");
+    };
+  }
 }
 
 // ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────

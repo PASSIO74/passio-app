@@ -5525,6 +5525,16 @@ function preparerSuiteSortieStudio(post) {
     if (!pont.isEnabled() || post.authorId !== (MY_UID || "me")
       || !state.userPosts.some(p => p.id === post.id && !p.eventId)) return;
     pont.proposeOuting(post.passion, post.id);
+    const titre = document.getElementById("evTitle");
+    const caseFil = document.getElementById("evAuFil");
+    if (titre && caseFil && document.getElementById("modalContent").dataset.feedIrlSource === post.id) {
+      titre.dataset.publicationStudio = post.id;
+      titre.dataset.auteurStudio = post.authorId;
+      caseFil.checked = false;
+      const legende = caseFil.closest("label");
+      legende.querySelector("strong").textContent = "Publier aussi une carte de la sortie";
+      legende.querySelector("small").textContent = "La sortie sera reliée à ton message même si tu laisses cette case décochée.";
+    }
   };
   $("#screen-feed").prepend(suite);
   return suite;

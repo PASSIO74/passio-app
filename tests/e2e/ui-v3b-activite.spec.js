@@ -291,6 +291,56 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   expect(errors.js, "exceptions JS").toEqual([]);
 });
 
+test("deux messages directs ouvrent une sortie hors du catalogue après une seule lecture", async ({ page }) => {
+  await boot(page);
+  const lien = { eventId: "ev_ancienne", mood: "irl", fromSupabase: true };
+  await seedFeed(page, [post("p_un", "Alice", lien), post("p_deux", "Bruno", lien), post("p_libre", "Diane")], []);
+  const appels = await page.evaluate(() => {
+    window._supaReal = true;
+    const ids = [];
+    window.supaLoadEvents = (auteur, id) => {
+      ids.push([auteur, id]);
+      return new Promise(resolve => { window.__rendreSortie = resolve; });
+    };
+    PassioUIV3.decorateFeed();
+    PassioUIV3.decorateFeed();
+    return ids;
+  });
+  expect(appels).toEqual([[null, "ev_ancienne"]]);
+  await page.evaluate(ev => window.__rendreSortie([ev]), evenement("ev_ancienne", "Une balade ancienne"));
+  await expect(page.locator('#feedList [data-v3-activity="ev_ancienne"]')).toHaveCount(2);
+  await page.locator('article[data-postid="p_deux"] [data-v3-activity]').click();
+  await expect(page.locator("#eventDetailHeroTitle")).toContainText("Une balade ancienne");
+});
+
+test("une lecture tardive ou refusée ne révèle aucune sortie au compte suivant", async ({ page }) => {
+  await boot(page);
+  const lien = { eventId: "ev_privee", mood: "irl", fromSupabase: true };
+  await seedFeed(page, [post("p_prive", "Alice", lien), post("p_libre", "Diane")], []);
+  const resultat = await page.evaluate(async ev => {
+    window._supaReal = true;
+    let terminer;
+    const comptes = [];
+    window.supaLoadEvents = (auteur, id) => {
+      comptes.push([MY_UID, id]);
+      return new Promise(resolve => { terminer = resolve; });
+    };
+    const premier = MY_UID;
+    PassioUIV3.decorateFeed();
+    MY_UID = "autre_compte";
+    terminer([ev]);
+    await Promise.resolve();
+    PassioUIV3.decorateFeed();
+    terminer([]);
+    await Promise.resolve();
+    PassioUIV3.decorateFeed();
+    return { premier, comptes, enCache: !!_findCanonicalEvent(ev.id) };
+  }, evenement("ev_privee", "Sortie privée"));
+  expect(resultat.comptes).toEqual([[resultat.premier, "ev_privee"], ["autre_compte", "ev_privee"]]);
+  expect(resultat.enCache).toBe(false);
+  await expect(page.locator('article[data-postid="p_prive"] [data-v3-activity]')).toHaveCount(0);
+});
+
 // ── ⑤ + ⑥ Le tap ouvre la fiche, sans rien écrire ──────────────────────────
 test("« Voir l'activité » ouvre la fiche attendue, sans aucun RSVP", async ({ page }) => {
   await boot(page, { killV4b: true });

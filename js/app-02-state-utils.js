@@ -10690,7 +10690,8 @@ function feedWindowEnabled() {
 // Sert au repeint incrémental — jamais à décider d'un affichage.
 function _feedWindowCardSig(p) {
   return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p)
-       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0)
+       + (p.eventId ? ":event:" + p.eventId : "");
 }
 
 // Marge d'hydratation, réglable pour les tests et pour un éventuel ajustement
@@ -11528,9 +11529,7 @@ function renderFeed() {
     // `renderFeed()` de `blockUser` / `unblockUser` était sauté, et le compte
     // bloqué restait compté jusqu'à la tranche suivante de 5 minutes.
     "bl:" + ((state.user && state.user.blocked) || []).join(","),
-    visible.map(function(p) {
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
-    }).join("|"),
+    visible.map(_feedWindowCardSig).join("|"),
   ].join("§");
   if (_domSig === window._feedDomSig && list.children.length > 0) {
     // Le DOM est déjà le bon, mais l'observateur a pu être démonté en quittant

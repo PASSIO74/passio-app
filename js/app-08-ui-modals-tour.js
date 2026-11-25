@@ -6431,6 +6431,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (Number.isSafeInteger(loadedPost.commentsTotal) && state.userPosts) {
         state.userPosts.forEach(function (u) { if (u && u.id === r.id) u.commentsTotal = loadedPost.commentsTotal; });
       }
+      if (loadedPost.eventId && r.author_id === MY_UID) {
+        const copie = (state.userPosts || []).find(u => u.id === r.id && u.authorId === r.author_id);
+        if (copie && (copie.eventId !== loadedPost.eventId || copie.sortieARelier)) {
+          copie.eventId = loadedPost.eventId;
+          delete copie.sortieARelier;
+          saveState();
+        }
+      }
       // RV-39 : et les réactions d'AUTRUI, que la pastille y lit. Avant, elle
       // ne montrait sur l'appareil qui a publié que ce qui était arrivé en
       // direct. Seulement si cette lecture a vraiment LU les réactions : une
@@ -7286,14 +7294,16 @@ function _passionEvenementRefusee(event) {
   return true;
 }
 
-async function supaPublishEvent(event) {
+async function supaPublishEvent(event, auteurAttendu) {
   if (_passionEvenementRefusee(event)) return false;
   try {
     await supaEnsureProfileExists();
+    if (auteurAttendu && auteurAttendu !== MY_UID) return false;
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
     for (let attempt = 0; attempt < 4; attempt++) {
+      if (auteurAttendu && auteurAttendu !== MY_UID) return false;
       const { error } = await supa.from("events").insert(row);
       if (!error) return true;
       // Un insert qui a réussi malgré un timeout client repasse ici en doublon.

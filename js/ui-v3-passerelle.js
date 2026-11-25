@@ -990,6 +990,29 @@
     track("ui_v3b_ref_absente", { v: VERSION_3B });
   }
 
+  // Le catalogue général ne contient que les 60 dernières sorties. Deux cartes
+  // liées au même rendez-vous partagent leur lecture, même pendant un repeint.
+  var lecturesSortiesDuFil = null;
+  async function chargerSortieDuFil(postId, evId) {
+    if (!lecturesSortiesDuFil || lecturesSortiesDuFil.etat !== state || lecturesSortiesDuFil.compte !== MY_UID) {
+      lecturesSortiesDuFil = { etat: state, compte: MY_UID, relireApres: new Map() };
+    }
+    var lecture = lecturesSortiesDuFil;
+    if (lecture.relireApres.get(evId) > Date.now()) return;
+    lecture.relireApres.set(evId, Infinity);
+    try {
+      var sorties = await supaLoadEvents(null, evId);
+      if (lecturesSortiesDuFil !== lecture || lecture.etat !== state || lecture.compte !== MY_UID || !uiV3Enabled()) return;
+      if (!sorties || sorties.length !== 1 || sorties[0].id !== evId) {
+        signalerActiviteIntrouvable(postId);
+        return;
+      }
+      if (!trouverEvenement(evId)) fusionnerEvenementsServeur(sorties);
+      planifierScan();
+    } catch (e) { fail("event_lookup", "lecture ciblée indisponible"); }
+    finally { lecture.relireApres.set(evId, Date.now() + 60000); }
+  }
+
   // La ligne basse d'une carte reliée : le MÊME gabarit qu'UI-3A (lien discret,
   // aligné à droite, chevron), et rien d'autre. Pas de sous-carte, pas de titre
   // recopié, pas de date, pas de bouton de participation : le contrat visuel
@@ -1053,7 +1076,13 @@
 
   function decorerActivite(article, post, evId) {
     var ev = trouverEvenement(evId);
-    if (!ev) { signalerActiviteIntrouvable(post.id); return; }
+    if (!ev) {
+      if (sourceRef(post) === "direct" && post.mood === "irl" && (post.fromSupabase || post.syncStatus === "synced")
+          && window._supaReal && navigator.onLine !== false && typeof supaLoadEvents === "function") {
+        chargerSortieDuFil(post.id, evId);
+      } else { signalerActiviteIntrouvable(post.id); }
+      return;
+    }
     if (!(sourceRef(post) === "shared" && porterSurCarte(article, post, ev))) {
       article.appendChild(construireVoirActivite(post, ev));
     }
