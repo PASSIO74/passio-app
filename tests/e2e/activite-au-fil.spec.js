@@ -191,7 +191,7 @@ test("la relecture du fil rend le lien au lecteur et à l’auteur dont la copie
     renderFeed();
   }, { ev: sortie, auteur: UUID });
   const portes = page.locator('#feedList article[data-postid="post_local_sortie"], #feedList article[data-postid="post_lu_sortie"]');
-  await expect(portes.locator("[data-v3-tempt]")).toHaveCount(2);
+  await expect(portes.getByRole("button", { name: "Chercher une sortie musique" })).toHaveCount(2);
   await page.evaluate(async id => {
     const lignes = state.supabasePosts.map(p => ({
       id: p.id, author_id: p.authorId, passion_id: p.passion, mood: p.mood, content: p.text,
