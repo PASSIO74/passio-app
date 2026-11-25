@@ -9556,10 +9556,11 @@ body.ctx-locked #appMain { overflow: hidden; }
   text-transform: none;
   letter-spacing: normal;
 }
-/* Une colonne par choix, assez large pour son mot le plus long. */
+/* Les mots courts restent entiers. Les deux intitulés composés se partagent
+   la largeur restante, y compris avec une police système plus large. */
 :root.passio-ui-6 #postMoodRow {
   display: grid;
-  grid-template-columns: repeat(4, minmax(min-content, 1fr));
+  grid-template-columns: minmax(max-content, 1fr) minmax(max-content, .85fr) repeat(2, minmax(0, 1fr));
   gap: 2px;
   padding: 3px;
   margin: 0;
@@ -9569,14 +9570,16 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-6 #postMoodRow .pill {
   justify-content: center;
-  padding: 5px 3px;
+  padding: 5px 1px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
+  font-family: var(--v2-titre, inherit);
   font-size: 13px;
   line-height: 1.2;
   text-align: center;
   white-space: normal;
+  overflow-wrap: anywhere;
   text-wrap: balance;
 }
 :root.passio-ui-6 #postMoodRow .pill.active {
