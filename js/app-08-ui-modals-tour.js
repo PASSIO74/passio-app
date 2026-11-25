@@ -3197,7 +3197,7 @@ function renderMsgBadge() {
 function _texteNotifListeAttente(n) {
   const texte = String(n.text || "");
   if (n.kind !== "event_update") return texte;
-  const validation = "L’organisateur doit encore valider ta participation.";
+  const validation = "L’organisateur doit valider ta participation pour confirmer ton inscription.";
   if (String(n.id || "").startsWith("n_pa_")) {
     return texte.replace(/ » : tu es inscrit·e !$/, " ». " + validation);
   }
