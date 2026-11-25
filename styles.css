@@ -9546,28 +9546,45 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* Le choix de catégorie reste visible juste avant le message. */
 :root.passio-ui-6 #fieldMood {
-  display: block;
   margin: 0;
-  padding: 10px 12px 2px;
-  border-radius: 12px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
 }
 :root.passio-ui-6 #fieldMood > span {
-  display: block;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
 }
-/* Les pastilles remplissent la largeur : à 320 px les quatre tiennent sur deux
-   rangs sans qu'aucune ne déborde, et chacune garde sa cible tactile. */
-:root.passio-ui-6 #fieldMood .pill-row {
-  gap: 6px;
-  justify-content: flex-start;
-  margin-bottom: 8px;
+/* Une colonne par choix, assez large pour son mot le plus long. */
+:root.passio-ui-6 #postMoodRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(min-content, 1fr));
+  gap: 2px;
+  padding: 3px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
 }
-:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 40px; }
+:root.passio-ui-6 #postMoodRow .pill {
+  justify-content: center;
+  padding: 5px 3px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  text-wrap: balance;
+}
+:root.passio-ui-6 #postMoodRow .pill.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
 
 /* Le bouton de publication est le nœud HISTORIQUE, déplacé tel quel : il porte
    la hauteur de `.btn` (39 px), sous la cible tactile de 44 px du projet. On la
@@ -12857,7 +12874,6 @@ button, a, label, select, summary,
 .psel-item.psel-item-choisie { background: rgba(124, 58, 237, 0.08); }
 .psel-item.psel-item-choisie .psel-item-plus { color: var(--accent); font-weight: 800; }
 .psel-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: #5b21b6; font-weight: 600; }
-:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }
 
 /* LOT-16 (audit UX/UI du 2026-11-10) — le profil.
    PRO-C21 : la pastille du nombre de publications est RETIRÉE (2026-11-13,

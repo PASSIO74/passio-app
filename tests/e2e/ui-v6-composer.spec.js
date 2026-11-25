@@ -298,7 +298,7 @@ test.describe("UI-6 — composer de publication", () => {
       const m = await page.evaluate(() => {
         const doc = document.documentElement;
         const h = document.getElementById("v6Composer");
-        const cibles = Array.from(h.querySelectorAll(".v6-lien, .v6-media-btn, [data-v6-publier]"));
+        const cibles = Array.from(h.querySelectorAll(".v6-lien, .v6-media-btn, [data-v6-publier], #postMoodRow button"));
         return {
           deborde: doc.scrollWidth > doc.clientWidth + 1,
           dansLeCadre: h.getBoundingClientRect().right <= doc.clientWidth + 1,
@@ -308,6 +308,26 @@ test.describe("UI-6 — composer de publication", () => {
       expect(m.deborde, "la page déborde horizontalement").toBe(false);
       expect(m.dansLeCadre, "le composer sort du cadre").toBe(true);
       expect(m.minHauteur, "cible tactile").toBeGreaterThanOrEqual(44);
+
+      const categories = page.getByRole("group", { name: "Que veux-tu partager ?" }).getByRole("button");
+      await expect(categories).toHaveCount(4);
+      const positions = await categories.evaluateAll((boutons) => boutons.map((bouton) => {
+        const cadre = bouton.getBoundingClientRect();
+        const texte = document.createRange();
+        texte.selectNodeContents(bouton);
+        const libelle = texte.getBoundingClientRect();
+        return {
+          haut: cadre.top,
+          visible: cadre.left >= 0 && cadre.right <= document.documentElement.clientWidth,
+          lisible: libelle.left >= cadre.left && libelle.right <= cadre.right
+            && libelle.top >= cadre.top && libelle.bottom <= cadre.bottom,
+        };
+      }));
+      for (const position of positions) {
+        expect(position.haut, "les quatre catégories tiennent sur une rangée").toBe(positions[0].haut);
+        expect(position.visible, "le bouton tient à l’écran").toBe(true);
+        expect(position.lisible, "le libellé tient dans son bouton").toBe(true);
+      }
     });
   }
 });
