@@ -248,11 +248,20 @@
   // « Publication portant une Passio, mais SANS événement déjà lié ». Les deux
   // exclusions relèvent du lot UI-3B et sont donc traitées ici comme des
   // non-éligibilités, pas comme des cas à décorer autrement.
-  function eligible(post) {
+  function sansActivite(post) {
     if (!post || !post.id) return false;
     if (post.sharedReelData && post.sharedReelData.kind === "event") return false;
-    if (post.eventId || post.event_id) return false;
-    return !!passionDuPost(post);
+    return !post.eventId && !post.event_id;
+  }
+
+  function passionPourSortie(post, nomsManquants) {
+    if (typeof feedPostMatchesIntent !== "function" || !feedPostMatchesIntent(post, "meet")
+        || typeof passionById !== "function") return null;
+    if (!post.passion) return null;
+    var passion = passionById(post.passion);
+    if (passion && passion.id === post.passion && passion.label) return passion;
+    nomsManquants.add(post.passion);
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -337,7 +346,7 @@
   // corail — retiré le 2026-08-27 après essai réel de Benjamin sur la preview :
   // la Passio figure déjà dans l'en-tête du post, la répéter en bas alourdissait
   // la carte sans rien apprendre. Le lien reste discret et aligné à droite.
-  function construireBridge(post) {
+  function construireBridge(post, sortie) {
     var row = document.createElement("div");
     row.className = "v3-bridge";
     row.setAttribute("data-v3-bridge", String(post.id));
@@ -345,14 +354,18 @@
     var cta = document.createElement("button");
     cta.type = "button";
     cta.className = "v3-tempt";
-    cta.setAttribute("data-v3-tempt", String(post.id));
-    cta.setAttribute("aria-haspopup", "dialog");
-    cta.setAttribute("aria-expanded", "false");
-    // `textContent` : le libellé est une constante du lot, mais la règle vaut
-    // pour toute la ligne — aucune chaîne HTML n'est construite ici.
-    // Libellé COURT sur la carte (pastille discrète) ; le panneau ouvert par le
-    // tap porte, lui, la promesse entière (`LIBELLE_CTA`).
-    cta.textContent = LIBELLE_CTA_CARTE;
+    if (sortie) {
+      cta.setAttribute("data-v3-sortie", sortie.id);
+      // Photo devient « photo » ; les sigles (VTT, IA…) gardent leur casse.
+      var nom = sortie.label.replace(/^\p{Lu}(?=\p{Ll})/u, function (initiale) { return initiale.toLocaleLowerCase("fr"); });
+      cta.textContent = "Chercher une sortie " + nom;
+      cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
+    } else {
+      cta.setAttribute("data-v3-tempt", String(post.id));
+      cta.setAttribute("aria-haspopup", "dialog");
+      cta.setAttribute("aria-expanded", "false");
+      cta.textContent = LIBELLE_CTA_CARTE;
+    }
 
     row.appendChild(cta);
     return row;
@@ -368,7 +381,7 @@
   // carte se retrouvait sans aucune porte vers l'IRL jusqu'à la repeinte
   // suivante. Un masquage porté par la classe racine se défait tout seul quand
   // le kill switch la retire. (Défaut relevé en contre-revue, PR #163.)
-  function decorerArticle(article) {
+  function decorerArticle(article, nomsManquants) {
     var id = article.getAttribute("data-postid");
     if (!id) return;
     if (article.querySelector("[data-v3-bridge], [data-v3-activity]")) return; // déjà décorée
@@ -383,11 +396,10 @@
     var evId = refEvenement(post);
     if (evId) { decorerActivite(article, post, evId); return; }
 
-    if (!eligible(post)) return;
-    var passionId = passionDuPost(post);
-    if (!passionId) return;
-
-    article.appendChild(construireBridge(post));
+    if (!sansActivite(post)) return;
+    var sortie = passionPourSortie(post, nomsManquants);
+    if (!sortie && !passionDuPost(post)) return;
+    article.appendChild(construireBridge(post, sortie));
     // Marque la carte comme DÉCORÉE. C'est cet attribut, et lui seul, qui
     // autorise le CSS à masquer le CTA historique : les deux éligibilités ne se
     // recouvrent pas (le pont historique n'exige aucune passion, la passerelle
@@ -421,7 +433,16 @@
     if (!uiV3Enabled()) { nettoyer(list); return false; }
     try {
       var arts = list.querySelectorAll("article.post[data-postid]");
-      for (var i = 0; i < arts.length; i++) decorerArticle(arts[i]);
+      var nomsManquants = new Set();
+      for (var i = 0; i < arts.length; i++) decorerArticle(arts[i], nomsManquants);
+      var catalogue = window.PassioPassions;
+      if (nomsManquants.size && catalogue && catalogue.actif()) {
+        // Le miroir et les passions créées depuis sa génération repeignent le
+        // fil à réception. Une seule demande pour les cartes de cette vague.
+        var resoudre = function () { catalogue.resoudreNomsManquants(nomsManquants); };
+        if (catalogue.pret()) resoudre();
+        else catalogue.charger().then(resoudre);
+      }
       return true;
     } catch (e) {
       // Un fil décoré à moitié doit rester VISIBLE et l'échec rester audible.
@@ -721,7 +742,7 @@
   function openSheet(postId) {
     if (!uiV3Enabled()) return false;
     var post = trouverPost(postId);
-    if (!eligible(post)) return false;
+    if (!sansActivite(post) || !passionDuPost(post)) return false;
     fermerAideContextuelle();
 
     ctxPostId = String(post.id);
@@ -1305,6 +1326,16 @@
     if (go) { e.preventDefault(); e.stopPropagation(); participer(); return; }
     var rm = e.target.closest("[data-v3-rsvp-remove]");
     if (rm) { e.preventDefault(); e.stopPropagation(); retirerParticipation(); return; }
+
+    var sortie = e.target.closest("button[data-v3-sortie]");
+    if (sortie) {
+      e.preventDefault();
+      e.stopPropagation();
+      fermerAideContextuelle();
+      voirActivites(sortie.getAttribute("data-v3-sortie"));
+      if (window.PassioUIV4A3) PassioUIV4A3.setVue("liste");
+      return;
+    }
 
     // UI-3A — « Trouver une expérience ».
     var cta = e.target.closest("[data-v3-tempt]");
