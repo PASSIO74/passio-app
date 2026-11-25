@@ -339,13 +339,13 @@
       // Photo devient « photo » ; les sigles (VTT, IA…) gardent leur casse.
       var nom = sortie.label.replace(/^\p{Lu}(?=\p{Ll})/u, function (initiale) { return initiale.toLocaleLowerCase("fr"); });
       cta.textContent = "Chercher une sortie " + nom;
-      cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
     } else {
       cta.setAttribute("data-v3-tempt", String(post.id));
       cta.setAttribute("aria-haspopup", "dialog");
       cta.setAttribute("aria-expanded", "false");
       cta.textContent = LIBELLE_MENU;
     }
+    cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
 
     row.appendChild(cta);
     return row;
@@ -985,6 +985,7 @@
     cta.setAttribute("data-v3-activity", String(ev.id));
     cta.setAttribute("data-v3-post", String(post.id));
     cta.textContent = LIBELLE_VOIR;
+    cta.setAttribute("aria-label", LIBELLE_VOIR);
 
     row.appendChild(cta);
     return row;

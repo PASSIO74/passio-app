@@ -442,6 +442,7 @@ test("le lien n'apparaît que sur les publications éligibles, et SEUL", async (
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(1);
   const carte = page.locator('article.post[data-postid="v3_ok"]');
   await expect(carte.locator("[data-v3-tempt]")).toHaveText("Autour de cette passion");
+  await expect(carte.locator("[data-v3-tempt]")).toHaveAccessibleName("Autour de cette passion");
 
   // Contrat visuel arrêté le 2026-08-27 après essai réel sur la preview : la
   // ligne basse ne porte QUE le lien. Le nom de la Passio, son emoji et le trait

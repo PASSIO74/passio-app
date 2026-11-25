@@ -239,6 +239,7 @@ test("publication reliée : un seul CTA « Voir la sortie », et rien d'autre", 
     const carte = page.locator(`article.post[data-postid="${id}"]`);
     await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
     await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir la sortie");
+    await expect(carte.locator("[data-v3-activity]")).toHaveAccessibleName("Voir la sortie");
     await expect(carte.locator("[data-v3-activity]")).toHaveAttribute("data-v3-activity", "ev_jam");
 
     // ① La ligne basse ne porte QUE ce lien : un seul enfant, aucun autre texte.
