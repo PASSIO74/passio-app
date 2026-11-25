@@ -43,7 +43,7 @@ export function optionsBanc(args) {
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
     if (["--executer", "--plan", "--prevol"].includes(name)) values[name] = true;
-    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime", "--compteurs-cadence"].includes(name)) {
+    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime", "--compteurs-cadence", "--fraicheur-likes"].includes(name)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error("VALEUR_MANQUANTE");
       values[name] = args[++i];
     } else throw new Error("OPTION_INCONNUE");
@@ -51,7 +51,7 @@ export function optionsBanc(args) {
   if (values["--projet"] !== STAGING_REF) throw new Error("CIBLE_HORS_STAGING_AUTORISE");
   if (values["--plan"] && values["--executer"]) throw new Error("MODES_INCOMPATIBLES");
   const paliers = (values["--paliers"] || "25,50,100,200").split(",").map(Number);
-  if (!paliers.length || paliers.some((n, i) => ![25, 50, 100, 200].includes(n) || (i && n <= paliers[i - 1]))) throw new Error("PALIERS_INVALIDES");
+  if (!paliers.length || paliers.some((n, i) => ![25, 50, 100, 125, 150, 175, 200].includes(n) || (i && n <= paliers[i - 1]))) throw new Error("PALIERS_INVALIDES");
   const duree = Number(values["--duree"] || 90);
   // Vingt secondes restent disponibles pour terminer les parcours déjà
   // engagés avant la coupure absolue des requêtes à trois minutes.
@@ -67,10 +67,12 @@ export function optionsBanc(args) {
   if (values["--executer"] && profilRealtime === "legacy12") throw new Error("LEGACY12_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && profilRealtime === "transition5") throw new Error("TRANSITION5_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
+  const fraicheurLikes = values["--fraicheur-likes"] || "fil";
+  if (!["fil", "independante"].includes(fraicheurLikes)) throw new Error("FRAICHEUR_LIKES_INVALIDE");
   const compteursCadence = values["--compteurs-cadence"] || CADENCE_COMPTEURS;
   if (!CADENCES_COMPTEURS.includes(compteursCadence)) throw new Error("CADENCE_COMPTEURS_INVALIDE");
   return { projet: STAGING_REF, paliers, duree, graine, pages: pagesTexte.split(",").map(Number),
-    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime, compteursCadence,
+    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime, compteursCadence, fraicheurLikes,
     prevolSeulement: !!values["--prevol"],
     comptesDistincts: values["--prevol"] ? 2 : Math.max(...paliers), limites: LIMITES };
 }
@@ -278,7 +280,7 @@ export function statistiques(mesures) {
 // Noms fermés : aucune valeur libre de télémétrie n'entre dans le rapport.
 export function mixObserve(mesures) {
   const actions = new Set(["fil", "notifications", "evenements", "profil", "message", "publier", "historique", "aimer"]);
-  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "compteur_like_visible",
+  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "fil_likes_visibles",
     "post_publier", "post_visibilite", "message_envoyer", "message_lire", "notifications", "evenements", "profil", "historique", "aimer", "retirer_like"]);
   const realises = mesures.filter(m => m.phase === "mesure");
   function repartir(lignes, famille) {
@@ -336,11 +338,78 @@ export function verifierDureeMesure({ dureeAttendueMs, dureeMs, dureeMuraleMs })
     maximaleMs, monotoneMs: dureeMs, muraleMs: dureeMuraleMs, margeFinMs: MARGE_FIN_MESURE_MS };
 }
 
-export function verdictAvecCompteurs(principal, httpCompteurs, parcoursCompteurs) {
+// Chaque minuteur doit couvrir toute la fenêtre. La tolérance de réveil d'une
+// seconde est celle du seuil de latence des compteurs du banc. Les horodatages
+// sont monotones, relatifs au début du palier et arrondis à la milliseconde.
+export function qualifierMinuteurs(mesures, attendus, duree, graine) {
+  const toleranceMs = 1000;
+  const acteurs = Array.from({ length: attendus }, () => ({ tours: [], reveils: [], http: 0 }));
+  let attributionValide = true;
+  for (const m of mesures || []) {
+    const rpc = m.type === "http" && m.famille === "fil_likes_visibles";
+    const tour = m.type === "parcours" && m.famille === "compteurs_visibles";
+    const cache = m.type === "cache" && m.famille === "likes_du_fil" && m.appelEvite;
+    const reveil = m.type === "horloge" && m.famille === "reveil_like";
+    if (!rpc && !tour && !cache && !reveil) continue;
+    const acteur = acteurs[m.compte];
+    if (!Number.isInteger(m.compte) || !acteur) { attributionValide = false; continue; }
+    if (rpc) acteur.http++;
+    else if (reveil) acteur.reveils.push(m);
+    else acteur.tours.push(m);
+  }
+  let complets = 0, avecRpc = 0, avecCache = 0, retardMaxMs = 0;
+  for (const [index, acteur] of acteurs.entries()) {
+    let attendu = decalageInitialCompteurs(graine, index), position = 0, debutsRpc = 0, caches = 0;
+    let correct = acteur.tours.length > 0;
+    function appliquerReveils(jusqua) {
+      while (position < acteur.reveils.length && acteur.reveils[position].instantMs <= jusqua) {
+        const r = acteur.reveils[position++];
+        if (!r.pendantLecture) attendu = Math.min(attendu, r.instantMs + LIKES_VISIBLES.fraicheurMs + LIKES_VISIBLES.jitterMs);
+      }
+    }
+    for (const m of acteur.tours) {
+      const cache = m.type === "cache";
+      if (cache) caches++; else debutsRpc++;
+      appliquerReveils(m.debutMs);
+      const retard = m.debutMs - attendu;
+      if (Number.isFinite(retard)) retardMaxMs = Math.max(retardMaxMs, retard);
+      const delaiMax = cache ? LIKES_VISIBLES.fraicheurMs
+        : compteursProchainPas(m.pasMs, m.vivant) + LIKES_VISIBLES.jitterMs;
+      const limite = m.debutMs + Math.max(delaiMax, (m.ms || 0) + 200);
+      if (cache && m.cartes !== LIKES_VISIBLES.maximum) correct = false;
+      if (!cache && m.ok && !(m.lectures >= 1 && m.lectures <= LIKES_VISIBLES.maximum)) correct = false;
+      if (![m.prevuMs, m.debutMs, m.suivantMs].every(Number.isFinite) || Math.abs(attendu - m.prevuMs) > 2
+          || retard < -2 || retard > toleranceMs || m.debutMs >= duree || m.suivantMs <= m.debutMs || m.suivantMs > limite + 2)
+        correct = false;
+      attendu = m.suivantMs;
+    }
+    appliquerReveils(duree);
+    if (correct && acteur.http === debutsRpc && attendu >= duree - toleranceMs) complets++;
+    if (debutsRpc) avecRpc++;
+    if (caches) avecCache++;
+  }
+  return { ok: attributionValide && attendus > 0 && complets === attendus, attendus, complets,
+    avecRpc, avecCache, retardMaxMs, toleranceMs };
+}
+
+export function verdictAvecCompteurs(principal, httpCompteurs, parcoursCompteurs, preuveCache) {
   const verdict = verdictPalier(principal);
   verdict.validiteMesure = verifierDureeMesure(principal);
   if (!verdict.validiteMesure.ok) verdict.motifs.push(verdict.validiteMesure.motif);
-  if (!httpCompteurs.tentatives || !parcoursCompteurs.tentatives) verdict.motifs.push("COMPTEURS_VISIBLES_NON_EXERCES");
+  // Zéro appel dédié est un succès possible uniquement si le prévol a exercé
+  // ce RPC et si chaque acteur a réutilisé trois compteurs frais du vrai fil.
+  const couverture = qualifierMinuteurs(principal.echantillonsCompteurs, principal.attendus, principal.dureeAttendueMs, principal.graine);
+  verdict.couvertureMinuteurs = couverture;
+  if (!couverture.ok) verdict.motifs.push("COMPTEURS_ECHEANCES_NON_COUVERTES");
+  verdict.rpcDedieSousCharge = couverture.avecRpc === 0 ? "non_exerce"
+    : couverture.avecRpc === principal.attendus ? "exerce_par_tous" : "exerce_par_une_partie";
+  if (couverture.avecCache && couverture.avecRpc < principal.attendus && !(preuveCache?.depuisFil && preuveCache.prevolValide))
+    verdict.motifs.push("COMPTEURS_CACHE_NON_QUALIFIE");
+  const toutServiParFil = couverture.ok && couverture.avecRpc === 0 && couverture.avecCache === principal.attendus && httpCompteurs.tentatives === 0 && parcoursCompteurs.tentatives === 0
+    && preuveCache?.depuisFil && preuveCache.prevolValide && principal.attendus > 0
+    && preuveCache.comptesAvecTroisCartesFraiches === principal.attendus;
+  if ((!httpCompteurs.tentatives || !parcoursCompteurs.tentatives) && !toutServiParFil)
+    verdict.motifs.push("COMPTEURS_VISIBLES_NON_EXERCES");
   if (httpCompteurs.tauxErreur > .01 || parcoursCompteurs.tauxErreur > .01) verdict.motifs.push("ERREURS_COMPTEURS_SUP_1_PCT");
   if (httpCompteurs.p95Ms > 1000 || parcoursCompteurs.p95Ms > 1000) verdict.motifs.push("P95_COMPTEURS_SUP_1000_MS");
   verdict.ok = verdict.motifs.length === 0;

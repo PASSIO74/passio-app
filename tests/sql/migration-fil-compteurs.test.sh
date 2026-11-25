@@ -242,5 +242,21 @@ psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRA
 verifier "réappliquée : B ne compte de nouveau que sa ligne" "1" "$(EN "$B" "select likes from public.fil_compteurs(array['post_a']);")"
 
 echo
+echo "── Compteur des trois cartes visibles : migration additive et équivalence RLS ──"
+Q "create role service_role; alter default privileges grant execute on functions to anon, service_role;" >/dev/null
+migration_likes="$RACINE/migrations/migration_fil_likes_visibles_2026-11-24.sql"
+for passe in 1 2; do
+  verdicts="$(psql -X -h "$BASE" -p "$PORT" -U postgres -d "$DB" -qAt -v ON_ERROR_STOP=1 -f "$migration_likes")"
+  verifier "compteur dédié, passage $passe : les deux contrôles sont verts" "2" "$(printf '%s\n' "$verdicts" | grep -cF '|OK' || true)"
+done
+psql -X -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 \
+  -f "$RACINE/tests/sql/fixtures/cas-fil-likes-visibles.sql"
+Q "create policy autre_regle on public.post_likes as restrictive for select using (true);" >/dev/null
+if sortie="$(psql -X -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$migration_likes" 2>&1)"; then
+  echo "ECHEC : la migration a accepté le changement de règle de lecture"; exit 1
+fi
+verifier "la garde explique le refus d’une règle modifiée" "1" "$(printf '%s\n' "$sortie" | grep -c 'règles de lecture de post_likes différentes' || true)"
+Q "drop policy autre_regle on public.post_likes;" >/dev/null
+
 echo "RÉSULTAT : $ok contrôle(s) vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ]

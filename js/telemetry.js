@@ -2107,6 +2107,7 @@
             && ((/\/auth\/v1\/(token|signup)$/i.test(path)
                  && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 422))
               || (/\/rest\/v1\/rpc\/fil_compteurs$/i.test(path) && res.status === 404)
+              || (/\/rest\/v1\/rpc\/fil_likes_visibles$/i.test(path) && res.status === 404)
               // Même contrat (2026-10-11) : la table des réglages distants pas
               // encore en base — js/reglages-distants.js le mémorise une heure.
               || (/\/rest\/v1\/reglages_distants$/i.test(path) && res.status === 404)
