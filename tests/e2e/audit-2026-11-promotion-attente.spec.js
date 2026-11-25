@@ -5,7 +5,7 @@
 //
 //   ① manuelle : l'organisateur promeut quelqu'un depuis la liste d'attente
 //      (`promoteWaitlisted`) → RPC avec `p_user_id`, ligne `going` en base,
-//      notification d'origine serveur UNE fois, « Participant inscrit » à l'écran ;
+//      notification d'origine serveur UNE fois, place réservée à confirmer à l'écran ;
 //   ② un non-organisateur qui tente la même chose : `non_autorise`, rien ne bouge,
 //      et le client NE L'ANNONCE PAS ;
 //   ③ transition (migration pas encore appliquée, PGRST202) : le client retombe
@@ -79,7 +79,7 @@ test.describe("Audit 2026-11 — promotion depuis la liste d'attente (B-02 / E-0
       expect(verdict.attendees, "l'écran de l'organisateur compte C inscrit, une seule fois").toEqual(expect.arrayContaining([C]));
       expect(verdict.attendees.filter((x) => x === C).length).toBe(1);
       expect(verdict.waitlist).not.toContain(C);
-      expect(verdict.toasts.join(" | ")).toMatch(/Participant inscrit/);
+      expect(verdict.toasts).toContain("Place réservée. Il te reste à confirmer la participation.");
     } finally { await ctx.close(); }
   });
 

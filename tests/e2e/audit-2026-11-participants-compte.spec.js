@@ -920,7 +920,7 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
     expect(srv.t.event_attendees.find((a) => a.event_id === E8 && a.user_id === W1).rsvp, "en base : `going`").toBe("going");
     expect(r.attendees).toContain(W1);
     expect(r.waitlist).toEqual([]);
-    expect(r.toasts.join(" | ")).toMatch(/Participant inscrit/);
+    expect(r.toasts).toContain("Place réservée. Il te reste à confirmer la participation.");
   });
 
   test("h6 bis. base d'AVANT R24 : la même promotion par l'organisateur désigné est REFUSÉE — rien d'écrit, et le client le dit", async ({ browser }) => {
