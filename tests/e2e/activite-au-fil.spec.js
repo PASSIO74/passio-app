@@ -56,6 +56,7 @@ async function creer(page, titre) {
   await page.evaluate((t) => {
     openCreateEvent();
     document.getElementById("evTitle").value = t;
+    document.getElementById("evTime").value = "18:00";
     document.getElementById("evCity").value = "Sixt-Fer-à-Cheval";
   }, titre);
   await page.evaluate(() => submitEvent());
@@ -183,6 +184,7 @@ test.describe("Une activité créée apparaît dans le fil", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Via ferrata";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Sixt-Fer-à-Cheval";
       document.getElementById("evDesc").value = "Niveau débutant, baudrier prêté";
     });

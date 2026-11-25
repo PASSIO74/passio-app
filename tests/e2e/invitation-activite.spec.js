@@ -46,6 +46,7 @@ async function creer(page, titre) {
   await page.evaluate((t) => {
     openCreateEvent();
     document.getElementById("evTitle").value = t;
+    document.getElementById("evTime").value = "18:00";
     document.getElementById("evCity").value = "Annecy";
   }, titre);
   await page.evaluate(() => submitEvent());

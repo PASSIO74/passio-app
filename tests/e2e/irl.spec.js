@@ -422,6 +422,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Dans le passé";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
       document.getElementById("evDate").value = "2020-01-01";
     });
@@ -431,6 +432,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Bien créé";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
     });
     await page.evaluate(() => submitEvent());
@@ -447,6 +449,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Club hebdo";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
       document.getElementById("evRecurrence").value = "weekly";
       _evSyncRecurrenceUi();

@@ -362,6 +362,7 @@ test.describe("Admission 18+ — la porte côté client", () => {
     await page.evaluate(() => openCreateEvent());
     await page.locator("#evTitle").fill("Via ferrata du samedi");
     await page.evaluate(() => {
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Annecy";
       const sel = document.getElementById("evPassion");
       if (sel && !sel.value) { const o = [...sel.options].find(x => x.value); if (o) sel.value = o.value; }

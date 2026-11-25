@@ -102,6 +102,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await page.locator("#evInviteBandeau .ev-invite-bandeau-x").click();
     await expect(page.locator("#evInviteBandeau")).toHaveCount(0);
     await expect(page.locator('#modalContent button[onclick^="submitEvent"]')).not.toContainText("inviter");
+    await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => state.userEvents.length)).toBe(1);
@@ -113,6 +114,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await banc(page);
     await ouvrirConv(page);
     await proposer(page);
+    await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
@@ -149,6 +151,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
       await ouvrirConv(page);
       const avant = await messagesNina(page);
       await proposer(page);
+      await page.locator("#evTime").fill("18:00");
       await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
       await page.evaluate(() => submitEvent());
       await expect.poll(() => page.evaluate(() => state.userEvents.length)).toBe(1);
@@ -254,6 +257,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await ouvrirConv(page);
     await proposer(page);
     expect(await page.evaluate(() => document.getElementById("evAuFil").checked)).toBe(false);
+    await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
@@ -286,6 +290,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await banc(page);
     await page.evaluate(() => { openCreateEvent(); });
     expect(await page.evaluate(() => document.getElementById("evAuFil").checked)).toBe(true);
+    await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evTitle").value = "Rando au lac"; document.getElementById("evCity").value = "Annecy"; });
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => window.__auFil.length)).toBe(1);
@@ -294,6 +299,7 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
     await ouvrirConv(page);
     await proposer(page);
     await page.locator("#evAuFil").check();
+    await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => window.__auFil.length)).toBe(2);
