@@ -120,7 +120,7 @@ test("④ IRL-C53 / C55 / C66 / C57 : le pied dit qui je suis pour cette activit
     openEventDetails(ev.id);
   }, activite({ id: "ev_l19_attente", title: "Complet", maxAttendees: 1, attendees: ["u_x"] }));
   await expect(cta).toContainText("Tu es sur la liste d'attente");
-  await expect(cta).toContainText("tu es inscrit·e automatiquement");
+  await expect(cta.locator(".v4b-rsvp-detail")).toHaveText("Si une place se libère, tu recevras une notification. L’organisateur devra ensuite confirmer ta participation.");
   await expect(cta.getByRole("button", { name: "Quitter la liste d'attente" })).toBeVisible();
   // Annulée, j'étais inscrit·e
   const bandeau = await page.evaluate((ev) => {

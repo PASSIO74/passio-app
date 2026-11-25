@@ -692,11 +692,10 @@
       var ev = evenementCourant();
       var detail = document.createElement("div");
       detail.className = "v4b-rsvp-detail";
-      // IRL-C55 : la liste d'attente dit ce qui va se passer (inscription
-      // AUTOMATIQUE, prévenu·e) — pas de rang : la base ne le montre plus (C-04).
+      // IRL-C55 : annoncer la notification et la validation sans afficher de rang.
       detail.textContent = etat === "going"
         ? (ev ? texteDate(ev) + (texteHeure(ev) ? " · " + texteHeure(ev) : "") + " — l'organisation est prévenue." : "")
-        : "Si une place se libère, tu es inscrit·e automatiquement et prévenu·e.";
+        : RSVP_LABELS.waitlist.detail;
       if (detail.textContent) box.appendChild(detail);
       // Le pied est fixé en BAS et grandit vers le haut : l'élément du bas prend
       // la place de l'ancien bouton. Le retrait passe donc AU-DESSUS de la suite —

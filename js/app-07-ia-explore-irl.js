@@ -741,7 +741,11 @@ const RSVP_LABELS = {
   going:    { label: "Je participe",    short: "✓ Je participe" },  // LOT-3 (PCS-C06) : un seul mot pour le geste, partout
   maybe:    { label: "Peut-être",       short: "Peut-être" },
   declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
-  waitlist: { label: "Liste d'attente", short: "En attente" },
+  waitlist: {
+    label: "Liste d'attente", short: "En attente",
+    detail: "Si une place se libère, tu recevras une notification. L’organisateur devra ensuite confirmer ta participation.",
+    detailOrganisation: "Si une place se libère, la première personne en attente reçoit une notification. Tu dois ensuite confirmer sa participation.",
+  },
 };
 
 // Mon état pour un événement. `state.user.eventRsvp` est la mémoire locale ;
@@ -4436,7 +4440,7 @@ function openEventRsvpSheet(id) {
     <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — liste d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
     <div style="margin-top:14px;">
       ${full && cur !== "going"
-        ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
+        ? opt("waitlist", RSVP_LABELS.waitlist.detail)
         : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
       ${opt("maybe", "Tu suis l'activité sans bloquer de place")}
       ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
@@ -4934,7 +4938,7 @@ function openEventDetails(id, remplaceModale = false) {
     ${_nbInscrits(ev, "waitlist") ? `
       <div class="event-detail-section-title">Liste d'attente (${_nbInscrits(ev, "waitlist")})</div>
       <div class="event-detail-participants">${_facesEtReste(ev.waitlist, 8, _nbInscrits(ev, "waitlist"))}</div>
-      ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
+      ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${RSVP_LABELS.waitlist.detailOrganisation}</div>` : ""}` : ""}
 
     ${(ev.coOrganizers || []).length ? `
       <div class="event-detail-section-title">Co-organisateurs</div>
@@ -8074,7 +8078,7 @@ function openEventWaitlist(id) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Liste d'attente</div>
-    <div class="modal-subtitle">Dans l'ordre d'arrivée. Ils sont promus automatiquement dès qu'une place se libère.</div>
+    <div class="modal-subtitle">${RSVP_LABELS.waitlist.detailOrganisation}</div>
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${wl.map((u, i) => {
         const p = userById(u) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
