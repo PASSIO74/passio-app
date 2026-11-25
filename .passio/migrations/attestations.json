@@ -2455,5 +2455,26 @@
       "fournisseur": "github",
       "auto_revue_mainteneur_unique": true
     }
+  },
+  {
+    "fichier": "migrations/migration_fil_cartes_page_2026-11-25.sql",
+    "empreinte": "52e95fcec3fd6c6448b4e7f695aeb960a69b72b1da5e52e945bd3d94a6850d6c",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#1063",
+    "commit": "616b99d113000635b8705b9f4c9dd74bba69feed",
+    "revue_id": 6053587782,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-25",
+    "consigne_le": "2026-11-25",
+    "source": "https://github.com/PASSIO74/passio-app/pull/1063#pullrequestreview-6053587782",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-25T07:39:58Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
   }
 ]

@@ -6066,6 +6066,7 @@ let _feedPagination = null;
 let _feedTeteSeq = 0;
 let _feedTeteDerniereServie = 0;
 let _feedCartesBrutes = null;
+let _feedCartesRpcAbsentJusqua = 0;
 const _feedRevisionsAffichees = new WeakMap();
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
@@ -6101,9 +6102,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // `edited_at` (CRE-C16 / FIL-C24, migration du 2026-11-13) : la mention
     // « modifié ». Même repli qu'`event_id` sur une base pas encore migrée.
     var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, edited_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
-    async function _interroger(cols, ids) {
+    async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
-      if (ids) q = q.in("id", ids);
       if (authorId) q = q.eq("author_id", authorId);
       // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
       // cache. Une insertion/suppression récente ne décale plus la page suivante.
@@ -6115,15 +6115,20 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
-    const versionner = teteSeq && owner && typeof PassioCartesFil !== "undefined";
+    const versionner = teteSeq && owner && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co"
+      && Date.now() >= _feedCartesRpcAbsentJusqua && typeof PassioCartesFil !== "undefined";
     const precedentBrut = _feedCartesBrutes;
     function carteAdmissible(r) {
       return !r.profiles?.is_private && !(typeof postSupprime === "function" && postSupprime(r.id))
         && !projectionHeritageLecture().candidat(r.media_url);
     }
-    const resultat = versionner ? await PassioCartesFil.lire(COLONNES, _interroger,
+    let resultat = versionner ? await PassioCartesFil.lire(connues => supa.rpc("fil_cartes_page", { _versions: connues }),
       precedentBrut && precedentBrut.owner === owner && precedentBrut.generation === cacheGeneration
         ? precedentBrut.page : null, carteAdmissible) : await _interroger(COLONNES);
+    if (versionner && ["PGRST202", "42883", "42501", "PAGE_FIL_INVALIDE"].includes(resultat.error?.code)) {
+      if (["PGRST202", "42883"].includes(resultat.error.code)) _feedCartesRpcAbsentJusqua = Date.now() + 3600000;
+      resultat = await _interroger(COLONNES);
+    }
     let { data, error, status } = resultat;
     if (error && /edited_at/.test(error.message || "")) {
       COLONNES = COLONNES.replace(" edited_at,", "");

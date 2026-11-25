@@ -1,67 +1,41 @@
-// La tête du fil est toujours relue avec les droits du lecteur. xmin change à
-// chaque mise à jour de la ligne, y compris pour une modification du profil.
+// La base relit les vingt cartes avec les droits du lecteur, dans un seul
+// instantané. Une valeur absente de la Map ne peut jamais alimenter une carte.
 const PassioCartesFil = (() => {
-  const versions = "id,xmin,profiles!author_id(xmin)";
   const duree = 120000;
-
-  function versionConnue(ligne) {
-    return ligne && typeof ligne.id === "string" && /^\d+$/.test(ligne.xmin)
-      && ligne.profiles && /^\d+$/.test(ligne.profiles.xmin);
+  const champsCarte = ["id", "xmin", "author_id", "passion_id", "mood", "content", "media_url", "created_at",
+    "edited_at", "is_reel", "overlays", "vlog", "shared_from_post_id", "shared_data", "event_id", "profiles"];
+  const champsProfil = ["xmin", "username", "emoji", "color", "avatar_url", "is_private"];
+  function contient(objet, champs) {
+    return objet && typeof objet === "object" && champs.every(c => Object.prototype.hasOwnProperty.call(objet, c));
   }
-
-  function identiques(a, b) {
-    return versionConnue(a) && versionConnue(b)
-      && a.xmin === b.xmin && a.profiles.xmin === b.profiles.xmin;
+  function revision(r) {
+    return String(r.xmin) + "." + (r.profiles ? r.profiles.xmin : "-");
   }
-
-  function versionsIndisponibles(reponse) {
-    return reponse.error && (reponse.error.code === "42501" || /\bxmin\b/i.test(reponse.error.message || ""));
-  }
-
-  async function lire(colonnes, interroger, cache, admissible = () => true) {
-    const avecVersions = "xmin," + colonnes.replace("profiles!author_id(", "profiles!author_id(xmin,");
+  async function lire(appeler, cache, admissible = () => true) {
     const maintenant = Date.now();
-    async function complete() {
-      const reponse = await interroger(avecVersions);
-      if (versionsIndisponibles(reponse)) return interroger(colonnes);
-      return preparer(reponse, maintenant + duree);
-    }
-    function preparer(reponse, expiration) {
-      if (reponse.error || !Array.isArray(reponse.data) || !reponse.data.length
-          || !reponse.data.every(versionConnue)) return reponse;
-      // La projection des médias protégés modifie les lignes qui lui sont
-      // confiées. Garder les lignes HTTP brutes en mémoire, sans les partager.
-      const lignes = new Map();
-      const data = reponse.data.map(r => {
-        if (!admissible(r)) return r;
+    const precedent = cache && maintenant < cache.expiration ? cache : null;
+    const connues = precedent ? Object.fromEntries(Array.from(precedent.lignes, ([id, r]) => [id, revision(r)])) : {};
+    const reponse = await appeler(connues);
+    if (reponse.error) return reponse;
+    if (!Array.isArray(reponse.data) || reponse.data.length > 20) return { error: { code: "PAGE_FIL_INVALIDE" } };
+    const lignes = new Map(), data = [], vus = new Set();
+    for (const item of reponse.data) {
+      if (!item || typeof item.post_id !== "string" || vus.has(item.post_id)
+          || !/^\d{1,10}\.(?:\d{1,10}|-)$/.test(item.version)) return { error: { code: "PAGE_FIL_INVALIDE" } };
+      vus.add(item.post_id);
+      if (item.carte !== null && (!contient(item.carte, champsCarte) ||
+          (item.carte.profiles !== null && !contient(item.carte.profiles, champsProfil)))) return { error: { code: "PAGE_FIL_INVALIDE" } };
+      const r = item.carte === null ? precedent?.lignes.get(item.post_id) : item.carte;
+      if (!r || r.id !== item.post_id || revision(r) !== item.version) return { error: { code: "PAGE_FIL_INVALIDE" } };
+      if (admissible(r)) {
         lignes.set(r.id, r);
-        return typeof structuredClone === "function" ? structuredClone(r) : JSON.parse(JSON.stringify(r));
-      });
-      return { ...reponse, data, cache: lignes.size ? { expiration, lignes } : null };
+        // La projection des médias et le rendu peuvent modifier leur copie.
+        data.push(typeof structuredClone === "function" ? structuredClone(r) : JSON.parse(JSON.stringify(r)));
+      } else {
+        data.push(r);
+      }
     }
-    if (!cache || maintenant >= cache.expiration) return complete();
-
-    const tete = await interroger(versions);
-    if (tete.error) {
-      if (versionsIndisponibles(tete)) return interroger(colonnes);
-      return tete;
-    }
-    if (!Array.isArray(tete.data) || !tete.data.length) return tete;
-    if (!tete.data.every(versionConnue)) return complete();
-    const nouvelles = tete.data.filter(r => !identiques(r, cache.lignes.get(r.id)));
-    if (nouvelles.length === tete.data.length) return complete();
-    const lignes = new Map(cache.lignes);
-    if (nouvelles.length) {
-      const detail = await interroger(avecVersions, nouvelles.map(r => r.id));
-      if (versionsIndisponibles(detail)) return interroger(colonnes);
-      if (detail.error) return detail;
-      const parId = new Map((detail.data || []).map(r => [r.id, r]));
-      // Une suppression, une édition ou un changement de visibilité entre les
-      // deux lectures impose de reprendre la page et son curseur d'un seul coup.
-      if (nouvelles.some(r => !identiques(r, parId.get(r.id)))) return complete();
-      for (const r of nouvelles) lignes.set(r.id, parId.get(r.id));
-    }
-    return preparer({ ...tete, data: tete.data.map(r => lignes.get(r.id)) }, cache.expiration);
+    return { ...reponse, data, cache: lignes.size ? { expiration: precedent ? precedent.expiration : maintenant + duree, lignes } : null };
   }
   return { lire };
 })();

@@ -201,6 +201,7 @@ function heritageClient(raw,rows,tokens) {
   syntheticSession=function(id){return {data:{session:id?{user:{id},access_token:${JSON.stringify(tokens)}[id],expires_at:Date.now()/1000+3600}:null}};};
   var state={user:{name:'Synthese',following:[${JSON.stringify(A)}],general:{}},seed:{posts:[]},userPosts:[],supabasePosts:[]};
   var FEED_SERVER_PAGE_SIZE=20,_feedPagination=null,_feedRefreshGeneration=0,_profileCacheGeneration=0;
+  const SUPABASE_URL = location.origin;
   ${fs.readFileSync(path.join(ROOT,'js/fil-cartes.js'),'utf8')}
   ${block(source08,'let _feedTeteSeq = 0;', 'async function supaLoadPosts(')}
   var _activeFeedPassions=new Set(),_postDetailProjectionSequence=0;

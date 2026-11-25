@@ -555,27 +555,33 @@ test("les compteurs s'étalent sur quinze secondes avec une graine indépendante
   assert.deepEqual(debuts, Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i)));
 });
 
+function carteComplete(id, xmin = "1", revisionProfil = "1") {
+  return { id, xmin, author_id: "auteur", passion_id: null, mood: null, content: "Publication", media_url: null,
+    created_at: "2026-11-25", edited_at: null, is_reel: false, overlays: null, vlog: null, shared_from_post_id: null,
+    shared_data: null, event_id: null, profiles: { xmin: revisionProfil, username: "Auteur", emoji: null, color: null, avatar_url: null, is_private: false } };
+}
+
 function filSimule(fraicheurLikes = "fil", lectureCartes = "complete") {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function fil(compte, page)"), fin = source.indexOf("async function cycleCompteursVisibles(", debut);
   const prefix = "fixture-campagne", profilsFixture = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
   const postsFixture = Array.from({ length: 20 }, (_, i) => ({ id: `fixture_${i}` }));
   const ctx = { prefix, profilsFixture, postsFixture, phase: "mesure", LIKES_VISIBLES,
-    o: { fraicheurLikes, lectureCartes }, PassioCartesFil, performance: { now: () => etat.horloge },
+    o: { fraicheurLikes, lectureCartes }, PassioCartesFil, mesures: [], stage: { taille: 100 }, performance: { now: () => etat.horloge },
     colonnesFil: "id,author_id,media_url,profiles!author_id(username)", liste: ids => `in.(${ids.join(",")})`,
     attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
   };
-  const etat = { horloge: 0, posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
+  const etat = { horloge: 0, posts: postsFixture.map(p => ({ ...carteComplete(p.id), author_id: profilsFixture[0] })),
     commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length],
       content: "Commentaire synthetique.", created_at: "2026-11-16T00:00:00Z" })), appels: [], rpcTransformer: rows => rows };
   ctx.rest = async (nom, table, params, opt) => {
     assert.equal(opt.jwt, etat.jwtAttendu); etat.appels.push({ nom, table, params, opt });
     let rows;
-    if (table === "posts") {
-      rows = params.id ? etat.posts.filter(p => params.id.slice(4, -1).split(",").includes(p.id)) : etat.posts;
-      if (nom === "fil_versions") rows = rows.map(r => ({ id: r.id, xmin: r.xmin, profiles: { xmin: r.profiles.xmin } }));
-      rows = structuredClone(rows);
-    }
+    if (table === "posts") rows = structuredClone(etat.posts);
+    else if (table === "rpc/fil_cartes_page") rows = etat.posts.map(p => {
+      const version = p.xmin + "." + p.profiles.xmin;
+      return { post_id: p.id, version, carte: opt.corps._versions[p.id] === version ? null : structuredClone(p) };
+    });
     else if (table === "rpc/fil_compteurs") {
       assert.equal(opt.methode, "POST");
       assert.deepEqual(Array.from(opt.corps._post_ids), etat.posts.map(p => p.id));
@@ -602,58 +608,61 @@ function filSimule(fraicheurLikes = "fil", lectureCartes = "complete") {
 }
 
 test("le banc relit les mêmes versions que le navigateur et ne partage pas les cartes entre acteurs", async () => {
-  const { etat, lire } = filSimule("fil", "versions");
+  const { etat, lire } = filSimule("fil", "rpc");
   for (const p of etat.posts) { p.xmin = "12"; p.profiles.xmin = "13"; }
   await lire(); await lire();
   etat.posts[0].xmin = "14";
   await lire();
   await lire({ index: 1, jwt: "autre" });
-  const lectures = etat.appels.filter(a => a.table === "posts");
-  assert.deepEqual(lectures.map(a => a.nom), ["fil_posts", "fil_versions", "fil_versions", "fil_cartes_modifiees", "fil_posts"]);
-  assert.equal(lectures[3].params.id, "in.(fixture_0)");
+  const lectures = etat.appels.filter(a => a.table === "rpc/fil_cartes_page");
+  assert.deepEqual(lectures.map(a => Object.keys(a.opt.corps._versions).length), [0,20,20,0]);
+  assert.equal(lectures[2].opt.corps._versions.fixture_0, "12.13");
+  assert.ok(!etat.appels.some(a => a.table === "posts"));
   assert.equal(etat.appels.filter(a => a.nom === "fil_compteurs").length, 4);
 });
 
-test("une carte retirée pendant le détail impose une page complète fraîche", async () => {
-  const colonnes = "id,content,profiles!author_id(username)";
-  const a = { id: "a", xmin: "1", profiles: { xmin: "1" } };
-  const b = { id: "b", xmin: "1", profiles: { xmin: "1" } };
-  const initial = await PassioCartesFil.lire(colonnes, async () => ({ data: [a, b] }));
-  const appels = [];
-  const lire = async (select, ids) => {
-    appels.push(select);
-    if (ids) return { data: [] };
-    if (select.includes("content")) return { data: [b] };
-    return { data: [{ ...a, xmin: "2" }, b] };
-  };
-  const resultat = await PassioCartesFil.lire(colonnes, lire, initial.cache);
-  assert.deepEqual(resultat.data.map(r => r.id), ["b"]);
-  assert.equal(appels.length, 3);
+test("une tête vide retire les anciens identifiants et une référence inconnue échoue fermée", async () => {
+  const row = carteComplete("a");
+  const initial = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "a", version: "1.1", carte: row }] }));
+  const vide = await PassioCartesFil.lire(async () => ({ data: [] }), initial.cache);
+  assert.deepEqual(vide.data, []);
+  assert.equal(vide.cache, null);
+  const refuse = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "x", version: "1.1", carte: null }] }), initial.cache);
+  assert.equal(refuse.error.code, "PAGE_FIL_INVALIDE");
+  assert.equal(refuse.data, undefined);
 });
 
-test("un cache expiré relit les cartes et une colonne de version interdite reprend la sélection habituelle", async () => {
-  const colonnes = "id,content,profiles!author_id(username)";
-  const row = { id: "carte", xmin: "31", content: "Texte", profiles: { xmin: "13" } };
-  const initial = await PassioCartesFil.lire(colonnes, async () => ({ data: [row] }));
-  const appels = [];
-  const reponse = await PassioCartesFil.lire(colonnes, async selection => {
-    appels.push(selection);
-    return selection.includes("xmin") ? { error: { code: "42501" } } : { data: [{ id: "nouvelle_carte" }] };
-  }, { ...initial.cache, expiration: 0 });
-  assert.equal(appels.length, 2);
-  assert.ok(appels[0].includes("content") && appels[0].includes("xmin"));
-  assert.equal(appels[1], colonnes);
-  assert.deepEqual(reponse.data, [{ id: "nouvelle_carte" }]);
-  assert.equal(reponse.cache, undefined);
+test("une carte incomplète avec une révision plausible déclenche le repli", async () => {
+  for (const champ of ["author_id", "profiles", "is_private"]) {
+    const row = carteComplete("a");
+    if (champ === "is_private") delete row.profiles.is_private;
+    else delete row[champ];
+    const version = row.profiles ? "1.1" : "1.-";
+    const resultat = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "a", version, carte: row }] }));
+    assert.equal(resultat.error.code, "PAGE_FIL_INVALIDE");
+    assert.equal(resultat.cache, undefined);
+  }
+});
+
+test("un cache expiré ne présente aucune révision au RPC", async () => {
+  const row = carteComplete("a", "31", "42");
+  const expire = { expiration: 0, lignes: new Map([["a", row]]) };
+  let appels = 0;
+  const r = await PassioCartesFil.lire(async connues => {
+    appels++;
+    assert.deepEqual(connues, {});
+    return { data: [{ post_id: "a", version: "31.42", carte: row }] };
+  }, expire);
+  assert.equal(appels, 1);
+  assert.deepEqual(r.data, [row]);
+  assert.notEqual(r.data[0], row);
 });
 
 test("une panne de revalidation ne renvoie aucune carte mémorisée", async () => {
   const cache = { expiration: Date.now() + 60000, lignes: new Map() };
   const panne = { error: { code: "503", message: "Service unavailable" }, status: 503 };
-  let appels = 0;
-  const res = await PassioCartesFil.lire("id,profiles!author_id(username)", async () => { appels++; return panne; }, cache);
+  const res = await PassioCartesFil.lire(async () => panne, cache);
   assert.equal(res, panne);
-  assert.equal(appels, 1);
 });
 
 test("le fil garde deux minutes les auteurs du seul lecteur et date les likes du départ du RPC", async () => {

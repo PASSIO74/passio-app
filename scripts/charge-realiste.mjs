@@ -58,7 +58,7 @@ export async function executer(options) {
   const receptionsSonde = new Map();
   let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
-  const rapport = { version: 6, date: new Date().toISOString(), options: o, campagne: prefix,
+  const rapport = { version: 7, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
     cheminFil: "rpc/fil_compteurs + auteurs et rpc/interactions_cibles des apercus",
     cheminCompteursVisibles: "rpc/fil_likes_visibles",
@@ -375,17 +375,18 @@ export async function executer(options) {
   }
   async function fil(compte, page) {
     const jwt = compte.jwt;
-    async function interroger(select, cibles) {
-      const versions = select.startsWith("id,xmin,");
-      const famille = versions ? "fil_versions" : cibles ? "fil_cartes_modifiees" : "fil_posts";
-      const data = await rest(famille, "posts", { select, order: "created_at.desc,id.desc", limit: String(page),
-        ...(cibles ? { id: liste(cibles) } : {}) }, { jwt, acteur: compte.index,
-        attentes: { ...attendreTableau(cibles ? 0 : page, versions ? ["id", "xmin"] : ["id", "author_id"]), imbrique: "profiles" } });
+    async function appeler(versions) {
+      const data = await rest("fil_cartes_page", "rpc/fil_cartes_page", {}, { jwt, acteur: compte.index,
+        methode: "POST", corps: { _versions: versions }, attentes: attendreTableau(page, ["post_id", "version"]) });
+      mesures.push({ phase, palier: stage?.taille, page, type: "page_fil", famille: "versions",
+        cartes: data.length, reutilisees: data.filter(r => r.carte === null).length });
       return { data };
     }
-    const resultat = o.lectureCartes === "versions" && page === 20
-      ? await PassioCartesFil.lire(colonnesFil, interroger, compte.cacheCartes)
-      : await interroger(colonnesFil);
+    const resultat = o.lectureCartes === "rpc" && page === 20
+      ? await PassioCartesFil.lire(appeler, compte.cacheCartes)
+      : { data: await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) },
+          { jwt, acteur: compte.index, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } }) };
+    if (resultat.error) throw new Error(resultat.error.code);
     const posts = resultat.data;
     if (posts.length !== page || new Set(posts.map(p => p.id)).size !== page || posts.some(p => !p.author_id))
       throw new Error("PAGE_FIL_INCOMPLETE");
