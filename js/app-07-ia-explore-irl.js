@@ -760,7 +760,7 @@ async function actualiserProchaineSortie(force) {
     clearTimeout(precedente?.expiration);
     _prochaineSortieAccueil = null;
   }
-  if (!eligible || document.hidden || !document.querySelector("#screen-feed.active")) return;
+  if (!eligible || document.hidden || !document.querySelector("#screen-irl.active")) return;
   if (_prochaineSortieAccueil && (precedente.enCours || (!force && Date.now() < precedente.relireApres))) return;
   clearTimeout(precedente?.expiration);
   const lecture = { compte, etat: state, enCours: true };
@@ -789,7 +789,7 @@ async function actualiserProchaineSortie(force) {
           supa.rpc("vient_a_activite", { p_event_id: sortie.id }),
           supaLoadEvents(null, sortie.id),
         ]);
-        if (!memeCarte() || location.hash !== hash || !document.querySelector("#screen-feed.active")) return;
+        if (!memeCarte() || location.hash !== hash || !document.querySelector("#screen-irl.active")) return;
         if (accord.error || !sorties) throw new Error("lecture");
         if (accord.data !== true || !sorties.length || _eventIsCancelled(sorties[0]) || sorties[0].date <= Date.now()) {
           carte.hidden = true;
@@ -3199,6 +3199,9 @@ function _scheduleIrlMapUpdate() {
 // sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
 function renderIRL() {
+  if (_prochaineSortieAccueil && (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
+    actualiserProchaineSortie();
+  }
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
 

@@ -4719,6 +4719,7 @@ function goTo(screen) {
   // écran inactif n'a plus de rectangle mesurable. Et démonter l'observateur en
   // quittant, pour qu'aucun ne survive à la navigation.
   var _quitteFil = document.getElementById("screen-feed");
+  const entreeRencontrer = screen === "irl" && !document.querySelector("#screen-irl.active");
   var _retourAuFil = screen === "feed" && (!_quitteFil || !_quitteFil.classList.contains("active"));
   if (_quitteFil && _quitteFil.classList.contains("active") && screen !== "feed") {
     try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
@@ -4803,7 +4804,6 @@ function goTo(screen) {
 
   // Re-render dynamic screens on navigate
   if (screen === "feed") {
-    if (_retourAuFil && typeof actualiserProchaineSortie === "function") actualiserProchaineSortie(true);
     renderFeed();
     try { feedWindowRestoreScroll(); } catch (e) {}
   }
@@ -4812,7 +4812,11 @@ function goTo(screen) {
   // LOT-11 (REC-C19) : l'assistant IA a quitté l'écran le 2026-11-02 ; plus d'appel
   // à son historique, qui n'a plus de nœud où s'écrire.
   if (screen === "explore")  { renderExplorer(); }
-  if (screen === "irl")      { renderIRL(); if (typeof rafraichirEvenements === "function") rafraichirEvenements(); }
+  if (screen === "irl") {
+    if (entreeRencontrer && typeof actualiserProchaineSortie === "function") actualiserProchaineSortie(true);
+    renderIRL();
+    if (typeof rafraichirEvenements === "function") rafraichirEvenements();
+  }
   if (screen === "messages") renderMessages();
 
   // Analytics navigation (fire-and-forget, silencieux)
@@ -11158,12 +11162,6 @@ function feedWindowStats() {
 window.feedWindowStats = feedWindowStats;
 
 function renderFeed() {
-  // Un simple recalcul du fil ne relit pas l'agenda. Masquer toutefois la
-  // carte immédiatement si le compte a changé depuis le dernier affichage.
-  if (typeof _prochaineSortieAccueil !== "undefined" && _prochaineSortieAccueil &&
-      (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
-    actualiserProchaineSortie();
-  }
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
   if (skeleton) skeleton.style.display = "none";
