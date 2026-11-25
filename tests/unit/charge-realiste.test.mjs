@@ -73,6 +73,8 @@ test("page 20 seule reste une variante dans le plan exécutable, les autres séq
     const plan = await executer(optionsBanc([...cible, "--pages", "20", "--paliers", "200", "--duree", "90"]));
     assert.equal(plan.plan, true);
     assert.deepEqual(plan.pages, [20]);
+    assert.equal(plan.lectureCartes, "complete");
+    assert.equal(optionsBanc([...cible, "--pages", "20", "--lecture-cartes", "rpc"]).lectureCartes, "rpc");
     assert.deepEqual(plan.paliers, [200]);
     assert.deepEqual(plan.limites, LIMITES);
     assert.equal(plan.comptesDistincts, 200);

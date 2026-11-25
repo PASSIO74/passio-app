@@ -68,7 +68,7 @@ export function optionsBanc(args) {
   if (values["--executer"] && profilRealtime === "transition5") throw new Error("TRANSITION5_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
   const fraicheurLikes = values["--fraicheur-likes"] || "fil";
-  const lectureCartes = values["--lecture-cartes"] || (pagesTexte === "20" ? "rpc" : "complete");
+  const lectureCartes = values["--lecture-cartes"] || "complete";
   if (!["rpc", "complete"].includes(lectureCartes)
       || (pagesTexte !== "20" && lectureCartes === "rpc")) throw new Error("LECTURE_CARTES_INVALIDE");
   if (!["fil", "independante"].includes(fraicheurLikes)) throw new Error("FRAICHEUR_LIKES_INVALIDE");

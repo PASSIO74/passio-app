@@ -6115,7 +6115,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
+    // La variante a réduit les octets, mais a dépassé le seuil de latence du banc.
     const versionner = teteSeq && owner && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co"
+      && window.PASSIO_SUPABASE_CIBLE?.testerCartesFil === true
       && Date.now() >= _feedCartesRpcAbsentJusqua && typeof PassioCartesFil !== "undefined";
     const precedentBrut = _feedCartesBrutes;
     function carteAdmissible(r) {

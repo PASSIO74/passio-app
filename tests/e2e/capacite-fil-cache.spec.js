@@ -4,10 +4,10 @@ const { bootOnboarded } = require("./app-helper");
 // Le navigateur exécute les chargeurs et la pagination du produit. Ce serveur
 // miniature expose des pages brutes (dont des lignes cachées), des changements
 // concurrents et des refus ; aucun compte ni média distant n'est créé.
-async function preparer(page, n = 55, staging = false) {
-  if (staging) await page.addInitScript(() => {
-    window.PASSIO_SUPABASE_CIBLE = { url: "https://fcksxofaelcdmmifnwjo.supabase.co", anon: "cle-factice-test-local" };
-  });
+async function preparer(page, n = 55, staging = false, testerCartesFil = true) {
+  if (staging) await page.addInitScript((essai) => {
+    window.PASSIO_SUPABASE_CIBLE = { url: "https://fcksxofaelcdmmifnwjo.supabase.co", anon: "cle-factice-test-local", testerCartesFil: essai };
+  }, testerCartesFil);
   await bootOnboarded(page);
   await page.evaluate((total) => {
     stopFeedRefreshLoop();
@@ -170,12 +170,25 @@ test("le staging revient au GET si le RPC est retiré", async ({ page }) => {
   expect(r).toEqual({ appels: 1, tailles: [15,15], lecturesDirectes: 2 });
 });
 
+test("le staging utilise la lecture directe en dehors des essais explicitement activés", async ({ page }) => {
+  await preparer(page, 20, true, false);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_staging";
+    window.__rpcPresent = true;
+    const posts = await supaLoadPosts();
+    return { taille: posts.length, rpc: __lectures.some(l => l.table === "rpc/fil_cartes_page"),
+      direct: __lectures.filter(l => l.table === "posts").length };
+  });
+  expect(r).toEqual({ taille: 15, rpc: false, direct: 1 });
+});
+
 test("la cible de production garde la lecture directe même si le miroir de configuration change", async ({ page }) => {
   await preparer(page, 20);
   const r = await page.evaluate(async () => {
     MY_UID = "lecteur_prod";
     window.__rpcPresent = true;
     window.PASSIO_SUPABASE.url = "https://fcksxofaelcdmmifnwjo.supabase.co";
+    window.PASSIO_SUPABASE_CIBLE = { url: window.PASSIO_SUPABASE.url, testerCartesFil: true };
     const posts = await supaLoadPosts();
     return { taille: posts.length, rpc: __lectures.some(l => l.table === "rpc/fil_cartes_page"),
       direct: __lectures.filter(l => l.table === "posts").length };
