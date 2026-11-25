@@ -12450,12 +12450,17 @@ button, a, label, select, summary,
 @media (orientation: landscape) and (max-height: 500px) {
   /* Entre « Bobines » et le compteur, même quand la légende remonte. */
   :root.passio-ui-5 .reels-hint {
-    top: calc(18px + env(safe-area-inset-top));
+    top: calc(12px + env(safe-area-inset-top));
+    width: max-content;
     max-width: calc(100% - 224px);
     white-space: normal;
     text-align: center;
-    padding-block: 4px;
+    padding: 4px;
   }
+}
+@media (orientation: landscape) and (max-height: 340px) {
+  /* La légende peut atteindre l'en-tête. Les deux flèches restent visibles. */
+  :root.passio-ui-5 .reels-hint { display: none; }
 }
 
 /* LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) : retour aux derniers messages.
