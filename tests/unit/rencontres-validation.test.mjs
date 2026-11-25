@@ -26,17 +26,18 @@ test('la validation attend le verdict vrai avant de rafraîchir',async()=>{let a
 test('une ancienne discussion locale ne contourne pas le refus serveur',async()=>{let sorties=0,entrees=0;const t=contexte({allEvents:()=>[],myRsvp:()=> 'going',getConversations:()=>[{id:'evgrp_e'}],_joinEventConversation:async()=>{entrees++;return false},closeEventDetail:()=>sorties++,goTo:()=>sorties++,setTimeout:()=>sorties++});vm.runInContext(fn('openEventChat'),t.c);await t.c.openEventChat('e');assert.equal(entrees,1);assert.equal(sorties,0);});
 test('une demande confirmée réveille l’organisation sans doubler sa notification serveur',async()=>{
  for(const [reel,reponse] of [[true,true],[true,false],[false,null]]){
-  const pushes=[],insertions=[];
+  const pushes=[],insertions=[];let relectures=0;
   const ev={id:'e',title:'Sortie',organizerId:'orga',fromSupabase:true,attendees:[],maybes:[],waitlist:[]};
   const c=vm.createContext({window:{_supaReal:reel},MY_UID:'participant',requireAdmission:async()=>true,
    _findCanonicalEvent:()=>ev,_eventIsCancelled:()=>false,myRsvp:()=>null,_eventIsFull:()=>false,
    _ajusterCompteInscrits:()=>{},_setMyRsvpLocal:()=>{},saveState:()=>{},_patchEventCardJoin:()=>{},
    _refreshEventDetailIfOpen:()=>{},supaSetEventRsvp:async()=>reponse,irlFunnelTrackJoin:()=>{},
-   _majAdresseActivite:()=>{},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
+   _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
    toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
   vm.runInContext(fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
   assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
+  assert.equal(relectures,reel&&reponse===true?1:0,'Rencontrer relit la demande uniquement après enregistrement serveur');
   assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');
   if(pushes.length)assert.deepEqual(pushes[0],['orga','event_join','']);
  }
