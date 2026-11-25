@@ -2861,15 +2861,18 @@ function _eventMatchesCityIntent(e) {
 // Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
 // passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
+function _irlDansPeriode(e, now) {
+  return irlShowPast ? _eventIsOver(e) : _eventEndAt(e) > now;
+}
+
 function _filterIrlEvents(events) {
   var now = Date.now();
   // On garde les événements EN COURS (commencés mais pas finis) : c'est
   // précisément le moment où l'utilisateur a besoin de l'adresse et du fil de
   // discussion. Les événements terminés ne sortent que via l'onglet « Passés ».
   var filtered = events.filter(function(e) {
-    return irlShowPast ? true : _eventEndAt(e) > now;
+    return _irlDansPeriode(e, now);
   });
-  if (irlShowPast) filtered = filtered.filter(function(e) { return _eventIsOver(e); });
 
   // 1. Passion (multi-select) — vide = toutes
   if (irlPassionFilters && irlPassionFilters.size > 0) {
@@ -3232,6 +3235,29 @@ function _scheduleIrlMapUpdate() {
 // carte « Où ? » de la page Filtre (`irlLieuReference`), qui ouvre déjà le
 // sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
+function _irlAvisExemples(resultats, catalogue) {
+  const fr = window.PassioFirstRun;
+  if (!fr || !resultats.length || !lectureListeSortiesConfirmee() ||
+      !fr.masquerChiffresDemo(resultats[0]) || !resultats.every(fr.evenementDemo)) return "";
+
+  const now = Date.now();
+  const autres = catalogue.some(e => !fr.evenementDemo(e) && !_eventIsCancelled(e) && _irlDansPeriode(e, now));
+  const bouton = autres
+    ? '<button type="button" class="btn ghost" onclick="clearAllIrlFilters()">Voir les autres sorties</button>'
+    : '<button type="button" class="btn ghost" onclick="openCreateEvent()">Proposer une sortie</button>';
+  return '<div class="irl-avis-exemples" id="irlAvisExemples"><p>Les sorties affichées ici sont des exemples.</p>' + bouton + '</div>';
+}
+
+// Une lecture réussie peut confirmer des exemples déjà peints, même si elle
+// n'ajoute aucune activité. Garder les cartes en place préserve le focus.
+function actualiserAvisSortiesExemples() {
+  const liste = document.getElementById("eventList");
+  if (!liste || liste.querySelector("#irlAvisExemples") || !liste.querySelector(".event-card")) return;
+  const catalogue = allEvents();
+  const avis = _irlAvisExemples(_filterIrlEvents(catalogue), catalogue);
+  if (avis) liste.insertAdjacentHTML("afterbegin", avis);
+}
+
 function renderIRL() {
   if (_prochaineSortieAccueil && (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
     actualiserProchaineSortie();
@@ -3278,7 +3304,8 @@ function renderIRL() {
     requestUserLocation();
   }
 
-  var filtered = _filterIrlEvents(allEvents());
+  const catalogue = allEvents();
+  var filtered = _filterIrlEvents(catalogue);
   _resetIrlPagingIfFiltersChanged();
 
   // Bouton filtres : badge + bordure accentuée
@@ -3316,8 +3343,9 @@ function renderIRL() {
   const total = filtered.length;
   const shown = Math.min(total, window._irlRenderLimit || IRL_PAGE_SIZE);
   const rest = total - shown;
+  const avisExemples = _irlAvisExemples(filtered, catalogue);
   filtered = filtered.slice(0, shown);
-  list.innerHTML = filtered.map(e => {
+  list.innerHTML = avisExemples + filtered.map(e => {
     const passion = passionById(e.passion);
     const joined = (state.user.joinedEvents || []).includes(e.id);
     // Like ❤️ + réactions (cache window._eventLikes, hydraté par _loadEventReactions)

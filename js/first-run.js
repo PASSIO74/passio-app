@@ -694,18 +694,7 @@
       }
     } catch (e) { journal("posts publics", e); }
     try {
-      if (typeof supaLoadEvents === "function") {
-        supaLoadEvents().then(function (evs) {
-          if (!Array.isArray(evs) || !evs.length) return;
-          var s2 = etat(); if (!s2) return;
-          // Même fusion que `supaLoadAll` : les activités serveur priment, les
-          // locales qu'elles ne recouvrent pas restent.
-          var ids = {}; evs.forEach(function (e) { ids[e.id] = 1; });
-          var locales = (s2.seed.events || []).filter(function (e) { return !ids[e.id]; });
-          s2.seed.events = evs.concat(locales);
-          if (ecranActif() === "irl") { try { renderIRL(); } catch (e) {} }
-        }).catch(function (e) { journal("activités publiques", e); });
-      }
+      if (typeof rafraichirEvenements === "function") rafraichirEvenements();
     } catch (e) { journal("activités publiques", e); }
   }
 
@@ -947,10 +936,11 @@
   function nbSelection() { return Object.keys(_selPassions || {}).length; }
 
   function panneauHTML() {
+    var specialites = specialitesHTML();
     return ''
       + '<div class="modal-handle"></div>'
       + '<div class="modal-title">Qu\'est-ce qui te passionne ?</div>'
-      + '<div class="modal-subtitle">Choisis quelques sujets. Tu pourras tout modifier ensuite.</div>'
+      + '<div class="modal-subtitle">Une passion suffit pour découvrir ton fil. Tu pourras tout modifier ensuite.</div>'
       + '<div class="fr-search-wrap">'
       +   '<input type="search" id="frSearch" class="input fr-search" autocomplete="off"'
       +     ' placeholder="Chercher une passion, une spécialité…"'
@@ -958,10 +948,14 @@
       +     ' oninput="PassioFirstRun.chercherDansPanneau(this.value)"/>'
       + '</div>'
       + '<div id="frGrid" class="fr-grid">' + grilleHTML() + '</div>'
-      + '<div id="frSpecs" class="fr-specs">' + specialitesHTML() + '</div>'
+      + '<details id="frSpecs" class="fr-specs"' + (specialites ? "" : " hidden")
+      +   (Object.keys(_selSpecialites).length ? " open" : "") + '>'
+      +   '<summary>Préciser mes goûts</summary>'
+      +   '<div id="frSpecsContenu">' + specialites + '</div>'
+      + '</details>'
       + '<div class="fr-panel-footer">'
       +   '<button type="button" id="frValider" class="btn primary block fr-valider"'
-      +     ' onclick="PassioFirstRun.validerPersonnalisation()">' + libelleValidation() + '</button>'
+      +     (nbSelection() ? "" : " disabled") + ' onclick="PassioFirstRun.validerPersonnalisation()">' + libelleValidation() + '</button>'
       +   '<button type="button" class="btn ghost block fr-revoir" onclick="PassioFirstRun.relancerTour()">Revoir les repères</button>'
       + '</div>';
   }
@@ -1187,7 +1181,7 @@
   function specialitesHTML() {
     var ids = Object.keys(_selPassions || {});
     if (!ids.length) return "";
-    var blocs = ids.map(function (pid) {
+    return ids.map(function (pid) {
       var meta = metaPassion(pid);
       var specs = specialitesDe(pid);
       if (!meta || !specs.length) return "";
@@ -1203,16 +1197,30 @@
               + escapeHtml(s.label) + '</button>';
           }).join("")
         + '</div></div>';
-    }).filter(Boolean).join("");
-    if (!blocs) return "";
-    return '<div class="fr-spec-intro">Affine si tu veux — c\'est facultatif.</div>' + blocs;
+    }).join("");
   }
 
   function rafraichirPanneau() {
     var g = document.getElementById("frGrid");
-    if (g) g.innerHTML = grilleHTML();
+    if (!g) return;
+    var actif = document.activeElement;
+    var attribut = actif && actif.hasAttribute("data-fr-passion") ? "data-fr-passion" : "data-fr-spec";
+    var choixActif = actif && actif.getAttribute(attribut);
+    g.innerHTML = grilleHTML();
     var s = document.getElementById("frSpecs");
-    if (s) s.innerHTML = specialitesHTML();
+    var contenu = document.getElementById("frSpecsContenu");
+    if (s && contenu) {
+      var specialites = specialitesHTML();
+      contenu.innerHTML = specialites;
+      s.hidden = !specialites;
+      if (s.hidden) s.open = false;
+    }
+    // Le volet natif conserve son ouverture. Rendre aussi le focus au choix
+    // repeint pour que Tab poursuive le parcours au même endroit.
+    if (choixActif) {
+      var choix = document.querySelector("[" + attribut + '="' + CSS.escape(choixActif) + '"]');
+      if (choix) choix.focus({ preventScroll: true });
+    }
     var v = document.getElementById("frValider");
     if (v) { v.textContent = libelleValidation(); v.disabled = nbSelection() === 0; }
   }
