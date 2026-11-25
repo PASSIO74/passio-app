@@ -71,9 +71,7 @@ test.describe("UI-6 — composer de publication", () => {
     const hote = page.locator("#v6Composer");
     await expect(hote).toBeVisible();
 
-    // L'ordre du §9 : texte, média, Passion, Mood, Publier.
-    // ⚠️ « Options » (le `<details>` `.v6-affiner`) a été RETIRÉ le 2026-09-03 :
-    // le mood se lit et se choisit directement sous la passion.
+    // La catégorie précède le champ dont elle détermine l'exemple.
     // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). La ligne d'identité
     // « Publier en tant que … » ouvrait cette liste ; elle a été retirée sur
     // demande de Benjamin — le multi-profil n'existe plus, l'expéditeur n'est
@@ -95,7 +93,7 @@ test.describe("UI-6 — composer de publication", () => {
         return "?";
       });
     })).toEqual([
-      "texte", "media", "apercu", "apercu", "passio", "select", "mood", "audience", "publier",
+      "mood", "texte", "media", "apercu", "apercu", "passio", "select", "audience", "publier",
     ]);
 
     // Une seule zone média, deux portes.
@@ -107,13 +105,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Options"))).toBe(false);
-    // Il suit la passion, jamais l'inverse : le bloc de destination se lit d'un
-    // trait (où je publie, puis sous quelle envie).
-    expect(await page.evaluate(() => {
-      const ids = Array.from(document.getElementById("v6Composer").children);
-      return ids.indexOf(document.getElementById("fieldMood"))
-           > ids.indexOf(document.getElementById("fieldPassion"));
-    })).toBe(true);
+    await expect(hote.locator("#fieldMood + label #postText")).toBeVisible();
     // Et il reste CLIQUABLE d'un seul geste, sans rien déplier.
     await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
     await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
@@ -257,6 +249,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
+    await expect(page.locator("#fieldMood + label #postText")).toBeVisible();
     // ⚠️ Ce test exigeait le libellé « +10 pts » et des pastilles score/Passia
     // visibles : c'était ce que ce lot MASQUAIT. L'ADR-009 a depuis retiré la
     // mécanique elle-même, donc le kill switch n'a plus rien à rendre de ce
