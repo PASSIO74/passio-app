@@ -378,6 +378,10 @@ function likeComment(postId, commentId, event) {
 // (fil / IRL / CDV), GIF de réponse rendu en image, pastille de réactions incluse.
 function replyToComment(postId, commentId, authorName, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur() && findPostAnywhere(postId)) {
+    PassioFirstRun.allerInscription("commenter", postId);
+    return false;
+  }
   document.querySelectorAll(".comment-reply-input").forEach(function(n){ n.remove(); });
 
   var inputId = "reply-input-" + commentId;

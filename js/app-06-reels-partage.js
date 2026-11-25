@@ -245,7 +245,6 @@ function _lienPartageConclure(message) {
 // puis on charge SES publications. Une seule fois par lien — un identifiant
 // inconnu ne doit pas faire marteler la base.
 async function _lienPartageChercherPost(id) {
-  _lienPartageCible = true;
   if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supaLoadPosts !== "function") return;
   try {
     var r = await supa.from("posts").select("author_id").eq("id", id).maybeSingle();
@@ -308,6 +307,7 @@ function _ouvrirLienPartage() {
       // Une publication RÉELLE peut n'arriver qu'avec `supaLoadPosts` : on
       // retente, puis on la cherche de façon ciblée (⑥), puis on conclut.
       if (!_lienPartageCible && _lienPartageEssais >= 3 && window._supaReal) {
+        _lienPartageCible = true;
         _lienPartageChercherPost(cible.id).then(function () { _lienPartageReplanifier(50); });
         _lienPartageEssais++;
         return false;

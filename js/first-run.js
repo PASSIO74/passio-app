@@ -1611,6 +1611,8 @@
   // Publication, fiche d'activité ou bobine : ce que la personne regardait quand
   // elle a demandé un compte. Lu dans ce qui est AFFICHÉ, jamais dans l'adresse.
   function cibleOuverte() {
+    var discussion = document.querySelector("#modalBackdrop.active #commentsBox[data-thread]");
+    if (discussion) return { genre: "discussion", id: discussion.getAttribute("data-thread") };
     try {
       if (typeof reelsState !== "undefined" && reelsState && reelsState.open) {
         var it = reelsState.items && reelsState.items[reelsState.current];
@@ -1639,7 +1641,11 @@
     if (!c || !c.id) return false;
     if (memeCible(cibleOuverte(), c)) return true;
     try {
-      if (c.genre === "publication" && typeof openPost === "function"
+      if (c.genre === "discussion" && typeof openComments === "function") {
+        var post = findPostAnywhere(c.id);
+        if (!post || postSupprime(c.id) || isBlocked(post.authorId || post.userId)) return false;
+        openComments(c.id);
+      } else if (c.genre === "publication" && typeof openPost === "function"
           && typeof findPostAnywhere === "function" && findPostAnywhere(c.id)) openPost(c.id);
       else if (c.genre === "activite" && typeof openEventDetails === "function") openEventDetails(c.id);
       else if (c.genre === "bobine" && typeof openReelById === "function") openReelById(c.id);
@@ -1665,7 +1671,9 @@
   // ⚠️ ORDRE OBLIGATOIRE : `switchAuthTab` D'ABORD, message ensuite —
   // `switchAuthTab` remet `#authMsg` à zéro, donc tout ce qu'on veut voir
   // survivre à la bascule se pose APRÈS elle (piège ① du 2026-08-30).
-  function ouvrirAuth(mode, ctx) {
+  function ouvrirAuth(mode, ctx, discussionId) {
+    var discussion = ctx === "commenter" && discussionId && estVisiteur();
+    if (discussion) memoriserRetour(ctx);
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
@@ -1682,7 +1690,7 @@
       try {
         var _p = prefs();
         if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
-        _p.retour.cible = cibleOuverte();
+        _p.retour.cible = discussion ? { genre: "discussion", id: discussionId } : cibleOuverte();
         sauverPrefs();
       } catch (e) {}
     }
@@ -1787,6 +1795,18 @@
       try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
     }
     try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    var p = prefs();
+    var retour = p.retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion") {
+      // Après envoi du mail, la confirmation doit encore retrouver cette cible
+      // dans un nouvel onglet. Une simple annulation termine cette intention.
+      if (typeof _pendingConfirmEmail === "undefined" || !_pendingConfirmEmail) {
+        p.retour = null;
+        sauverPrefs();
+      }
+      if (rouvrirCible(retour.cible)) return;
+      if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+    }
     // LOT-2 (PAR-C01) : le contenu est resté ouvert SOUS le formulaire —
     // « continuer à explorer », c'est le retrouver tel quel, sans changer d'écran.
     if (cibleOuverte()) return;
@@ -1801,7 +1821,7 @@
     try { if (typeof goTo === "function") goTo("feed"); } catch (e) { journal("retour exploration", e); }
   }
 
-  function allerInscription(ctx) { ouvrirAuth("signup", ctx); }
+  function allerInscription(ctx, discussionId) { ouvrirAuth("signup", ctx, discussionId); }
   function allerConnexion(ctx) { ouvrirAuth("signin", ctx); }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2580,7 +2600,7 @@
     }
     sauverPrefs();
 
-    setTimeout(function () {
+    setTimeout(async function () {
       try {
         // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
         // bobine que la personne regardait est rouverte par sa fonction
@@ -2589,6 +2609,22 @@
           if (r.action && RAPPELS[r.action] && memeCible(cibleOuverte(), r.cible) && typeof toast === "function") {
             toast(RAPPELS[r.action]);
           }
+        }
+        if (r && r.cible && r.cible.genre === "discussion") {
+          // Une confirmation d'e-mail peut ouvrir un onglet dont le fil n'a
+          // pas encore chargé cette publication. Même lecture que le lien partagé.
+          if (!findPostAnywhere(r.cible.id) && !postSupprime(r.cible.id) && typeof _lienPartageChercherPost === "function") {
+            var ecranInitial = ecranActif();
+            var hashInitial = window.location.hash;
+            await _lienPartageChercherPost(r.cible.id);
+            if (ecranActif() !== ecranInitial || window.location.hash !== hashInitial || ecranOccupe()) return;
+          }
+          if (rouvrirCible(r.cible)) {
+            var champ = document.getElementById("newComment");
+            if (champ && pointeurFin()) champ.focus({ preventScroll: true });
+            setTimeout(rappelerSurLaFiche, 400);
+          } else if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+          return;
         }
         if (r && r.cible && rouvrirCible(r.cible)) {
           setTimeout(rappelerSurLaFiche, 400);

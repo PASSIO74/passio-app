@@ -1522,18 +1522,22 @@ async function openComments(postId) {
   var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
   var _willLoad = !_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID;
   var _emptyStateHtml = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Discussion</div>
-    <div id="commentsBox" class="cmt-fil-liste" aria-live="polite">
-      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
-    </div>
+  const saisie = window.PassioFirstRun && PassioFirstRun.estVisiteur()
+    ? `<button type="button" class="btn primary block" onclick="PassioFirstRun.allerInscription('commenter','${escapeJsArg(postId)}')">Créer un compte pour répondre</button>`
+    : `
     <textarea class="textarea" id="newComment" aria-label="Écrire un commentaire" placeholder="Ajoute un commentaire…" maxlength="400" rows="1" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this);majCompteurCommentaire(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div class="cmt-compteur" id="newCommentCompteur" aria-live="polite" hidden></div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
       <button class="btn primary cmt-publier" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
+    </div>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Discussion</div>
+    <div id="commentsBox" data-thread="${escapeHtml(postId)}" class="cmt-fil-liste" aria-live="polite">
+      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
+    ${saisie}
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
   var _nc = document.getElementById("newComment");
