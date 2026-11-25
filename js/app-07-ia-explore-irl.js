@@ -7877,8 +7877,8 @@ function openCreateEvent(editId) {
       <label class="field"><span>Date *</span>
         <input type="date" class="input" id="evDate" value="${escapeHtml(dateValue)}" min="${escapeHtml(ed ? "" : _localDay(Date.now()))}"/>
       </label>
-      <label class="field"><span>Heure</span>
-        <input type="time" class="input" id="evTime" value="${v("time", "18:00")}"/>
+      <label class="field"><span>Heure *</span>
+        <input type="time" class="input" id="evTime" required value="${ed ? _eventTimeLabel(ed) : ""}"/>
       </label>
       <label class="field"><span>Durée</span>
         <select class="input" id="evDuration">
@@ -8323,7 +8323,7 @@ async function submitEvent(editId) {
   const passion = g("evPassion")?.value || "";
   const city = (g("evCity")?.value || "").trim();
   const date = g("evDate")?.value || "";
-  const time = g("evTime")?.value || "18:00";
+  const time = g("evTime")?.value;
   const desc = (g("evDesc")?.value || "").trim();
   const venue = (g("evVenue")?.value || "").trim();
   const address = (g("evAddress")?.value || "").trim();
@@ -8350,6 +8350,11 @@ async function submitEvent(editId) {
   if (title.length < 3) { toast("Titre trop court (3 caractères min)", "error"); return; }
   if (!city) { toast("Indique une ville", "error"); return; }
   if (!date) { toast("Choisis une date", "error"); return; }
+  if (!time) {
+    toast("Choisis une heure de départ", "error");
+    g("evTime")?.focus();
+    return;
+  }
   if (!passion) { toast("Sélectionne une passion", "error"); return; }
   // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
   // passions publiables, donc ce garde ne se déclenche que sur un état bâti
