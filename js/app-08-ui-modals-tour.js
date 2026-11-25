@@ -3198,10 +3198,12 @@ function _texteNotifListeAttente(n) {
   const texte = String(n.text || "");
   if (n.kind !== "event_update") return texte;
   const validation = "L’organisateur doit valider ta participation pour confirmer ton inscription.";
-  if (String(n.id || "").startsWith("n_pa_")) {
+  const id = String(n.id || "");
+  if (id.startsWith("n_pa_")) {
     return texte.replace(/ » : tu es inscrit·e !$/, " ». " + validation);
   }
   // Anciens clients, avant les notifications de promotion écrites par le serveur.
+  if (!/^n_x[a-z0-9]+$/.test(id)) return texte;
   if (texte.endsWith(" t'a inscrit·e depuis la liste d'attente !") ||
       texte.endsWith(" une place s'est libérée, tu es inscrit·e !")) {
     return "Une place s’est libérée. " + validation;
