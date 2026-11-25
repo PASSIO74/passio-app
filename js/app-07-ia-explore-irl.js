@@ -2254,6 +2254,9 @@ document.addEventListener("keydown", (e) => {
 // affichée : `renderIrlPassionTiles` ajoute `[...irlPassionFilters]` aux tuiles
 // montrées, précisément pour qu'un filtre actif ne devienne jamais indécochable.
 function _irlMyPassions() {
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) {
+    return PassioFirstRun.passionsChoisies();
+  }
   const source = (typeof passionsUnifieesActives === "function" && passionsUnifieesActives()
                   && typeof passionsVivantes === "function")
     ? passionsVivantes()

@@ -23,6 +23,7 @@
 //      calendrier dans sa feuille, et le bouton rouvre le dialogue.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { bootVisiteur } = require("./first-run-helper");
 
 async function boot(page, opts = {}) {
   if (opts.killLocal) {
@@ -236,6 +237,29 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     await expect(page.locator("#irlCitySearchInput")).toBeVisible();
   });
 
+  test("un visiteur retrouve les passions et spécialités choisies à l’accueil", async ({ page }) => {
+    await bootVisiteur(page);
+    expect(await page.evaluate(() => _irlMyPassions())).toEqual([]);
+    await page.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.locator('#frGrid [data-fr-passion="photo"]').click();
+    await page.locator('#frGrid [data-fr-passion="sport"]').click();
+    await page.getByText("Préciser mes goûts", { exact: true }).click();
+    await page.locator('#frSpecs [data-fr-spec="cyclisme"]').click();
+    await page.locator("#frValider").click();
+
+    await page.locator('#appNavV2 [data-v2-key="meet"]').click();
+    await ouvrirFiltres(page);
+    const toutes = page.locator('[data-v4a5-passions="toutes"]');
+    const miennes = page.locator('[data-v4a5-passions="miennes"]');
+    await expect(toutes).toHaveAttribute("aria-pressed", "true");
+    await miennes.click();
+    await expect(miennes).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => [...irlPassionFilterSet()].sort())).toEqual(["cyclisme", "photo", "sport"]);
+    await toutes.click();
+    await expect(toutes).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => irlPassionFilterSet().size)).toBe(0);
+  });
+
   test("« Quelles passions ? » : Toutes / Mes passions, et les bulles restent le moteur", async ({ page }) => {
     await boot(page);
     await ouvrirIrl(page);
@@ -254,10 +278,10 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
 
     // « Mes passions » pose EXACTEMENT `_irlMyPassions()` — la même liste que
     // le Fil (passions vivantes, archives exclues).
+    await page.evaluate(() => { PassioFirstRun.prefs().passions = ["photo"]; });
     await page.locator('[data-v4a5-passions="miennes"]').click();
     await page.waitForTimeout(400);
-    expect(await page.evaluate(() => [...irlPassionFilterSet()].sort())).toEqual(
-      await page.evaluate(() => _irlMyPassions().slice().sort()));
+    expect(await page.evaluate(() => [...irlPassionFilterSet()])).toEqual(["musique"]);
     await expect(page.locator('[data-v4a5-passions="miennes"]')).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator('[data-v4a5-passions="toutes"]')).toHaveAttribute("aria-pressed", "false");
 

@@ -2798,6 +2798,7 @@
     aidesHistoriquesEnPause: aidesHistoriquesEnPause,
     entreeDirecte: entreeDirecte,
     prefs: prefs,
+    passionsChoisies: function () { return interetsDuVisiteur(prefs()); },
     oublierPrefs: oublierPrefs,
     // Panneau
     ouvrirPersonnalisation: ouvrirPersonnalisation,
