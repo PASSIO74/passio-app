@@ -35,8 +35,8 @@ async function ouvrirStudio(page) {
   await page.evaluate(() => goTo("studio"));
   await expect(page.locator("#screen-studio")).toHaveClass(/active/);
   // ⚠️ Ce helper DÉPLIAIT le repli « Options » d'UI-6, où le champ vivait.
-  // Le repli a été retiré le 2026-09-03 : le mood est à découvert sous la
-  // passion. On EXIGE désormais ce qu'on obtenait avant par un geste — sans
+  // Le repli a été retiré : la catégorie est à découvert avant le message.
+  // On EXIGE désormais ce qu'on obtenait avant par un geste — sans
   // cette assertion, un retour du repli rendrait la suite verte sur des
   // pastilles présentes dans le DOM mais invisibles.
   await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
@@ -81,6 +81,30 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await expect(page.locator("#postMoodRow .pill.active")).toHaveCount(1);
     await expect(page.locator("#postMoodRow .pill.active")).toHaveAttribute("data-postmood", "creation");
     await expect(page.getByRole("button", { name: "Expériences", exact: true, pressed: true })).toBeVisible();
+  });
+
+  test("l’exemple suit la catégorie sans modifier le texte en cours", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    await ouvrirStudio(page);
+
+    const message = page.getByRole("textbox", { name: "Ton message" });
+    const categories = page.getByRole("group", { name: "Que veux-tu partager ?" });
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
+    await expect(message).toHaveValue("");
+
+    const texte = "Mon message en cours\navec sa deuxième ligne.";
+    await message.fill(texte);
+    for (const [categorie, exemple] of [
+      ["Conseils", /Mon astuce/], ["À faire ensemble", /Qui veut se retrouver/],
+      ["Sans étiquette", ""], ["Expériences", /Le déclic/],
+    ]) {
+      await categories.getByRole("button", { name: categorie, exact: true }).click();
+      await expect(message).toHaveValue(texte);
+      await expect(message).toHaveAttribute("placeholder", exemple);
+    }
+    await message.fill("");
+    await expect(message).toBeEmpty();
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
   });
 
   test("« À faire ensemble » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
@@ -142,6 +166,8 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(etat.mood).toBe("all");
     expect(etat.actives).toEqual(["all"]);
     await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("Sans étiquette");
+    await expect(page.locator("#postText")).toHaveValue("Ancien brouillon");
+    await expect(page.locator("#postText")).toHaveAttribute("placeholder", "");
   });
 
   test("la table de libellés est unique : fil et bobines disent le même mot", async ({ page }) => {

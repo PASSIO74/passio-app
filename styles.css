@@ -1336,6 +1336,7 @@
     }
 
     .input::placeholder, .textarea::placeholder { color: var(--muted-2); }
+    #postText::placeholder { color: var(--muted); opacity: 1; }
     .input:focus, .textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
@@ -1348,12 +1349,14 @@
       line-height: 1.5;
     }
 
+    #fieldMessage,
     #fieldMood,
     label.field {
       display: block;
       margin-bottom: 12px;
     }
 
+    #fieldMessage > label,
     #fieldMood > span,
     label.field > span {
       display: block;
@@ -1365,6 +1368,7 @@
        toute `> span`, elles prenaient aussi les aides et les 164 caractères de la
        case de consentement de l'inscription. L'intitulé est toujours le premier
        enfant ; une case à cocher passe son `input` d'abord, donc son texte non. */
+    #fieldMessage > label,
     #fieldMood > span:first-child,
     label.field > span:first-child {
       text-transform: uppercase;
@@ -9540,12 +9544,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-6 #fieldPassion { display: none; }
 :root.passio-ui-6 #fieldPassion.v6-ouvert { display: block; }
 
-/* Le mood, À DÉCOUVERT sous le choix de passion (2026-09-03).
-   ⚠️ Le repli « Options » (`.v6-affiner`, un `<details>`) est RETIRÉ avec
-   tout ce qui l'habillait : une règle qui survit à la disparition de sa cible
-   est un piège maison connu. Le champ prend désormais la même peau calme que
-   la ligne « Passion : … » juste au-dessus, pour qu'ils se lisent comme UN
-   seul bloc de destination. */
+/* Le choix de catégorie reste visible juste avant le message. */
 :root.passio-ui-6 #fieldMood {
   display: block;
   margin: 0;

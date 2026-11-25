@@ -5204,16 +5204,22 @@ function normalizeStudioMood(mood) {
 
 function choisirCategorieStudio(mood) {
   studioMood = normalizeStudioMood(mood);
+  const message = $("#postText");
   $$("#postMoodRow .pill").forEach(el => {
     const choisie = el.getAttribute("data-postmood") === studioMood;
     el.classList.toggle("active", choisie);
     el.setAttribute("aria-pressed", String(choisie));
+    if (choisie) message.placeholder = el.dataset.exemple || "";
   });
 }
 
 $$("#postMoodRow .pill").forEach(p => {
-  p.addEventListener("click", () => choisirCategorieStudio(p.getAttribute("data-postmood")));
+  p.addEventListener("click", () => {
+    choisirCategorieStudio(p.getAttribute("data-postmood"));
+    if ($("#postText").value.trim()) enregistrerBrouillonStudio();
+  });
 });
+choisirCategorieStudio(studioMood);
 
 // Photo upload
 document.addEventListener("click", (e) => {
