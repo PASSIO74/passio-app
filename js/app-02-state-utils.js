@@ -11370,6 +11370,10 @@ function renderFeed() {
 
   renderStories();
 
+  const _envieAVide = posts.length === 0 && intentsEnabled && enviesChoisies.length > 0
+    && availablePostsForMood.length > 0;
+  window.PassioFirstRun?.prioriserRetourFil?.(_envieAVide && !!window.PassioUIV2?.isEnabled?.());
+
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">Afficher la suite</button></div>`;
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
@@ -11394,9 +11398,6 @@ function renderFeed() {
     // exactement le défaut qu'on vient de fermer, réintroduit par la porte de
     // l'état vide. Quand les sources ont du contenu et que seule l'envie l'a
     // retranché, on le DIT, et on nomme la commande qui l'a fait.
-    var _envieAVide = intentsEnabled && enviesChoisies.length > 0
-      && availablePostsForMood.length > 0;
-
     if (!_envieAVide && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
         && renderFeedExplorationFallback(list)) {

@@ -286,8 +286,7 @@ test("⑥ un visiteur qui coche une envie garde un fil de découverte", async ({
     "et il reste du contenu à l'écran").toBeGreaterThan(0);
 });
 
-test("un visiteur retrouve son fil de découverte après plusieurs envies sans résultat", async ({ page }) => {
-  await bootVisiteur(page, { sansBienvenue: true });
+async function preparerFilDecouverte(page) {
   await page.evaluate(() => {
     state.seed.posts = [{
       id: "p_invite_musique", authorId: "u_autre", passion: "musique", type: "text",
@@ -295,17 +294,47 @@ test("un visiteur retrouve son fil de découverte après plusieurs envies sans r
     }];
     state.supabasePosts = []; state.userPosts = []; window._feedExtraPosts = [];
     state.feedFollowingOn = false;
-    setFeedIntents(["meet", "create"]);
     renderFeed();
   });
-  const vide = page.locator("#feedEmpty");
-  await expect(vide).toContainText("Aucune publication pour ces envies");
-  await vide.getByRole("button", { name: "Voir tout mon fil" }).click();
-  await expect(vide).toBeHidden();
-  await expect(page.locator('#feedList [data-postid="p_invite_musique"]')).toHaveCount(1);
-  await expect(page.locator('#feedIntentSelector [aria-pressed="true"]')).toHaveCount(0);
-  expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
-});
+}
+
+for (const dejaOuvert of [true, false]) {
+  test(`à 320 px, le visiteur retrouve le fil avec un repère ${dejaOuvert ? "déjà affiché" : "encore programmé"}`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await bootVisiteur(page, { sansBienvenue: dejaOuvert });
+    await preparerFilDecouverte(page);
+    const repere = page.locator('.fr-tip[data-fr-tip="decouvrir"]');
+    if (dejaOuvert) {
+      await expect(repere).toBeVisible();
+    } else {
+      await expect(page.locator("#frWelcome")).toBeVisible();
+      await page.clock.install();
+      await page.locator(".fr-welcome-close").click();
+    }
+    await page.evaluate(() => {
+      setFeedIntents(["meet", "create"]);
+      renderFeed();
+    });
+    if (!dejaOuvert) await page.clock.runFor(1000); // échéance automatique du tour : 700 ms
+    const vide = page.locator("#feedEmpty");
+    await expect(vide).toContainText("Aucune publication pour ces envies");
+    await expect(repere).toBeHidden();
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.decouvrir)).toBe(dejaOuvert);
+
+    await vide.getByRole("button", { name: "Voir tout mon fil" }).click();
+    if (!dejaOuvert) await page.clock.runFor(1000);
+    await expect(vide).toBeHidden();
+    await expect(page.locator('#feedList [data-postid="p_invite_musique"]')).toHaveCount(1);
+    await expect(page.locator('#feedIntentSelector [aria-pressed="true"]')).toHaveCount(0);
+    await expect(repere).toBeVisible();
+    await expect(page.locator(".fr-tip")).toHaveCount(1);
+    expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
+    if (dejaOuvert) {
+      await page.evaluate(() => { setFeedIntent("meet"); goTo("irl"); });
+      await expect(page.locator('.fr-tip[data-fr-tip="rencontrer"]')).toBeVisible();
+    }
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // ⑦ LES LIBELLÉS D'ENVIE NE PEUVENT PAS DIVERGER DE L'ÉCRAN
