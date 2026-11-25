@@ -6109,8 +6109,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
     const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
     const paginationAvant = _feedPagination;
-    const pagePassions = options.pagePassions;
-    teteSeq = (!authorId && !pagePassions && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
+    teteSeq = (!authorId && !options.pagePassions && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
     const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
       && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
       && (options.generation === undefined || options.generation === _feedRefreshGeneration)
@@ -6125,7 +6124,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       }
     };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
-    const extraAvant = !authorId && !pagePassions && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
+    const extraAvant = !authorId && !options.pagePassions && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
     // par `supaPublishPostWithRetry` mais jamais RELU : une publication reliée
     // à une activité perdait son lien au premier rechargement, et le
@@ -6138,7 +6137,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
-      if (pagePassions) q = q.in("passion_id", pagePassions.ids);
+      if (options.pagePassions) q = q.in("passion_id", options.pagePassions.ids);
       if (options.postId) q = q.eq("id", options.postId);
       // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
       // cache. Une insertion/suppression récente ne décale plus la page suivante.
@@ -6186,10 +6185,10 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (authorId || !lectureValide()) return;
       const derniere = lignesBrutes[lignesBrutes.length - 1];
       const cursor = derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null;
-      if (pagePassions) {
+      if (options.pagePassions) {
         // La recherche du visiteur a sa propre frontière, y compris si toutes
         // les lignes brutes ont été exclues à l’hydratation.
-        pagePassions.suite = lignesBrutes.length === pageSize ? cursor : null;
+        options.pagePassions.suite = lignesBrutes.length === pageSize ? cursor : null;
         return;
       }
       const suite = {
