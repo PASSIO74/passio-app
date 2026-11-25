@@ -8083,6 +8083,24 @@ function _copiesSortieOrganisation(id) {
   return [...new Set([_findCanonicalEvent(id), (state.seed.events || []).find(e => e.id === id)].filter(Boolean))];
 }
 
+// La RPC classe la file par date d'arrivée. PostgREST peut plafonner chaque
+// réponse : ne jamais prendre la longueur de la première page pour le total.
+async function _lireFileOrganisation(id) {
+  const lire = () => supa.rpc("participants_validation", { p_event_id: id }, { count: "exact" });
+  const premiere = await lire();
+  if (premiere.error || !Array.isArray(premiere.data) || !Number.isInteger(premiere.count)) throw new Error("lecture file");
+  const lignes = premiere.data.slice();
+  const taille = lignes.length;
+  while (lignes.length < premiere.count) {
+    if (!taille) throw new Error("page vide");
+    const page = await lire().range(lignes.length, lignes.length + taille - 1);
+    if (page.error || !page.data?.length || page.count !== premiere.count) throw new Error("file modifiée");
+    lignes.push(...page.data);
+  }
+  if (lignes.length !== premiere.count || new Set(lignes.map(a => a.user_id)).size !== lignes.length) throw new Error("file incohérente");
+  return lignes;
+}
+
 function _lignesFileOrganisation(id, wl, reservations) {
   return `
     ${reservations.length ? `<div role="status" style="margin-top:12px">
@@ -8110,7 +8128,7 @@ async function openEventWaitlist(id) {
     <div class="modal-handle"></div>
     <div class="modal-title">Liste d'attente</div>
     <div class="modal-subtitle">${RSVP_LABELS.waitlist.detailOrganisation}</div>
-    <div data-file-sortie="${escapeHtml(id)}">${_lignesFileOrganisation(id, ev.waitlist || [], [])}</div>
+    <div data-file-sortie="${escapeHtml(id)}" aria-busy="${!!window._supaReal}">${_lignesFileOrganisation(id, ev.waitlist || [], [])}</div>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `);
   // Comme dans Participants, seuls les accords du serveur distinguent les
@@ -8119,11 +8137,10 @@ async function openEventWaitlist(id) {
   const panneau = document.querySelector("#modalBackdrop.active [data-file-sortie]");
   const compte = MY_UID, etat = state;
   try {
-    const r = await supa.rpc("participants_validation", { p_event_id: id });
-    if (r.error || !Array.isArray(r.data)) throw new Error("lecture file");
+    const participants = await _lireFileOrganisation(id);
     if (MY_UID !== compte || state !== etat || !panneau.isConnected) return;
-    const lignes = r.data.filter(a => a.user_id !== compte);
-    const file = r.data.filter(a => a.rsvp === "waitlist").map(a => a.user_id);
+    const lignes = participants.filter(a => a.user_id !== compte);
+    const file = participants.filter(a => a.rsvp === "waitlist").map(a => a.user_id);
     const demandes = lignes.filter(a => a.rsvp === "going" && !a.valide).map(a => a.user_id);
     const inconnus = [...file, ...demandes].filter(uid => !(userById(uid) || {}).name);
     if (inconnus.length && typeof _resolveProfilesByIds === "function") {
@@ -8132,8 +8149,10 @@ async function openEventWaitlist(id) {
     }
     if (MY_UID !== compte || state !== etat || panneau !== document.querySelector("#modalBackdrop.active [data-file-sortie]")) return;
     if (panneau.querySelector("button:disabled")) return;
-    const venants = r.data.filter(a => a.rsvp === "going").map(a => a.user_id);
-    for (const copie of _copiesSortieOrganisation(id)) {
+    const venants = participants.filter(a => a.rsvp === "going").map(a => a.user_id);
+    // Une réponse vide peut aussi indiquer une perte du droit de gestion.
+    // Dans ce cas le panneau est vide mais les compteurs publics sont conservés.
+    for (const copie of participants.length ? _copiesSortieOrganisation(id) : []) {
       copie.attendees = venants.slice();
       copie.waitlist = file.slice();
       if (copie.counts) copie.counts = { ...copie.counts, going: venants.length, waitlist: file.length };
@@ -8146,7 +8165,7 @@ async function openEventWaitlist(id) {
     if (MY_UID === compte && state === etat && panneau === document.querySelector("#modalBackdrop.active [data-file-sortie]")) {
       panneau.insertAdjacentHTML("beforeend", `<button class="btn ghost block" onclick="openEventWaitlist('${escapeJsArg(id)}')">Actualiser les statuts</button>`);
     }
-  }
+  } finally { panneau.setAttribute("aria-busy", "false"); }
 }
 
 async function promoteWaitlisted(id, userId, bouton) {
@@ -8172,6 +8191,7 @@ async function promoteWaitlisted(id, userId, bouton) {
     if (!ok) {
       try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
       toast("⚠️ Inscription non enregistrée : la personne n'est peut-être plus en liste d'attente, ou l'activité est complète.");
+      if (document.querySelector("#modalBackdrop.active [data-file-sortie]")?.dataset.fileSortie === id) await openEventWaitlist(id);
       return false;
     }
     notifieeParServeur = !!ok.notifieeParServeur;

@@ -90,12 +90,19 @@ test.describe("Audit 2026-11 — promotion depuis la liste d'attente (B-02 / E-0
       peupler(srv, id);
       const o = await ouvrirCompte(page.context(), srv, ORGA, { nom: "orga_attente" });
       const vue = o.page;
-      await vue.route("**/rest/v1/rpc/participants_validation", route => route.fulfill({
-        json: srv.t.event_attendees.filter(a => a.event_id === id).map(a => ({
+      await vue.route(/\/rest\/v1\/rpc\/participants_validation(?:\?|$)/, route => {
+        const lignes = srv.t.event_attendees.filter(a => a.event_id === id).map(a => ({
           user_id: a.user_id, rsvp: a.rsvp,
           valide: a.user_id === ORGA || (instantane === "déjà validé" && a.rsvp === "going"),
-        })),
-      }));
+        }));
+        // Une petite page force le même parcours que le plafond PostgREST.
+        const debut = Number(new URL(route.request().url()).searchParams.get("offset") || 0);
+        const pageLue = lignes.slice(debut, debut + 2);
+        return route.fulfill({ json: pageLue, headers: {
+          "Content-Range": debut + "-" + (debut + pageLue.length - 1) + "/" + lignes.length,
+          "Access-Control-Expose-Headers": "Content-Range",
+        } });
+      });
       await chargerActivite(vue, id);
       await vue.evaluate(async ({ id, cible, instantane }) => {
         const reserver = window.supaPromoteFromWaitlist;
@@ -124,6 +131,7 @@ test.describe("Audit 2026-11 — promotion depuis la liste d'attente (B-02 / E-0
       }
       await expect(panneau.locator('button[onclick*="' + B + '"]')).toHaveCount(0);
       await expect(panneau.locator('button[onclick*="' + C + '"]')).toBeVisible();
+      await expect(panneau).toHaveAttribute("aria-busy", "false");
       await expect.poll(() => vue.evaluate(id => {
         return [state.userEvents, state.seed.events].map(liste => {
           const ev = liste.find(e => e.id === id);
