@@ -748,6 +748,17 @@ const RSVP_LABELS = {
 // `joinedEvents` reste maintenu pour toute la compatibilité existante.
 var _prochaineSortieAccueil = null;
 
+function signalerChangementSortie() {
+  if (document.hidden || !document.querySelector("#screen-irl.active")) return;
+  const lecture = _prochaineSortieAccueil;
+  if (lecture?.enCours && lecture.compte === MY_UID && lecture.etat === state) {
+    // La réponse en vol peut précéder l'annulation ; relire une fois à sa fin.
+    lecture.changement = true;
+    return;
+  }
+  actualiserProchaineSortie(true);
+}
+
 async function actualiserProchaineSortie(force) {
   const carte = document.getElementById("prochaineSortie");
   if (!carte) return;
@@ -763,12 +774,13 @@ async function actualiserProchaineSortie(force) {
   if (!eligible || document.hidden || !document.querySelector("#screen-irl.active")) return;
   if (_prochaineSortieAccueil && (precedente.enCours || (!force && Date.now() < precedente.relireApres))) return;
   clearTimeout(precedente?.expiration);
-  const lecture = { compte, etat: state, enCours: true };
+  const lecture = { compte, etat: state, enCours: true, suivie: _prochaineSortieAccueil?.suivie };
   _prochaineSortieAccueil = lecture;
   const actuelle = () => _prochaineSortieAccueil === lecture && MY_UID === compte && state === lecture.etat;
   try {
     const sortie = await supaProchaineSortie(compte);
     if (!actuelle()) return;
+    lecture.suivie = !!sortie;
     carte.hidden = !sortie;
     carte.onclick = null;
     if (!sortie) { delete carte.dataset.sortie; return; }
@@ -805,18 +817,26 @@ async function actualiserProchaineSortie(force) {
         if (memeCarte()) carte.disabled = false;
       }
     };
+    // Filet si la notification est perdue. Seule une carte présente est suivie.
+    const delai = Math.min(delaiDeleste(45000), Math.max(0, date.getTime() - Date.now()));
     lecture.expiration = setTimeout(() => {
-      if (actuelle()) { carte.hidden = true; actualiserProchaineSortie(true); }
-    }, Math.min(Math.max(0, date.getTime() - Date.now()), 2147483647));
+      if (!actuelle()) return;
+      if (date.getTime() <= Date.now()) carte.hidden = true;
+      actualiserProchaineSortie(true);
+    }, delai);
   } catch (e) {
     if (actuelle()) {
       carte.hidden = true;
       carte.onclick = null;
       if (typeof diagLog === "function") diagLog("prochaine_sortie : lecture indisponible");
+      if (lecture.suivie) lecture.expiration = setTimeout(() => {
+        if (actuelle()) actualiserProchaineSortie(true);
+      }, delaiDeleste(60000));
     }
   } finally {
     lecture.enCours = false;
     lecture.relireApres = Date.now() + 60000;
+    if (lecture.changement && actuelle()) actualiserProchaineSortie(true);
   }
 }
 document.addEventListener("visibilitychange", () => {

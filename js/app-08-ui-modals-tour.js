@@ -9669,6 +9669,8 @@ function _rtNotificationRecue(r) {
   // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
   // émetteur bloqué, et le toast partait quand même (défaut préexistant).
   if (!(state.notifications || []).some(n => n.id === notif.id)) return;
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled") &&
+      typeof signalerChangementSortie === "function") signalerChangementSortie();
   // Demande de participation : le texte serveur ne nomme personne — le toast
   // attend le nom (une lecture `profiles` au plus).
   if (notif.kind === "event_join") {
