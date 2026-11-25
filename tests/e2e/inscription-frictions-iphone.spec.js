@@ -271,13 +271,16 @@ for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
       };
 
       verifier(await mesure(), "à l'ouverture");
-      // Un choix fait apparaître les spécialités AU-DESSUS du pied : c'est ce qui
-      // le poussait sous l'écran.
+      // Le pied reste accessible avant et après ouverture des spécialités.
       await page.locator('#frGrid [data-fr-passion="musique"]').click();
-      await expect(page.locator('#frSpecs [data-fr-spec="musique-guitare"]')).toHaveCount(1);
+      const guitare = page.locator('#frSpecs [data-fr-spec="musique-guitare"]');
+      await expect(guitare).toBeHidden();
       const apresUn = await mesure();
       expect(apresUn.texte, "prémisse : le choix est compté").toMatch(/Voir mon fil/);
       verifier(apresUn, "après un choix");
+      await page.getByText("Préciser mes goûts", { exact: true }).click();
+      await expect(guitare).toBeVisible();
+      verifier(await mesure(), "après ouverture des spécialités");
       // Le pied est COLLÉ au bord de la feuille et opaque : sans le `bottom`
       // négatif, une bande de 24 px (padding de `.modal`) laissait les tuiles
       // défiler, visibles, sous les boutons.

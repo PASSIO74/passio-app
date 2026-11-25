@@ -280,7 +280,7 @@ test.describe("Personnalisation", () => {
     await page.locator("#frWelcome .fr-welcome-cta").click();
 
     await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
-    await expect(page.locator("#modalContent")).toContainText("Choisis quelques sujets");
+    await expect(page.locator("#modalContent")).toContainText("Une passion suffit pour découvrir ton fil.");
 
     // 10 à 12 passions populaires (+ la tuile « Voir toutes »).
     const populaires = await page.locator("#frGrid .fr-tile:not(.fr-tile-more)").count();
@@ -304,8 +304,15 @@ test.describe("Personnalisation", () => {
     await bootVisiteur(page);
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await page.locator('#frGrid [data-fr-passion="musique"]').click();
-    // Les spécialités de la passion retenue apparaissent.
-    await expect(page.locator('#frSpecs [data-fr-spec="musique-guitare"]')).toHaveCount(1);
+    // La première passion suffit, les spécialités restent au choix.
+    await expect(page.locator("#frValider")).toBeEnabled();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (1)");
+    const preciser = page.getByText("Préciser mes goûts", { exact: true });
+    const guitare = page.locator('#frSpecs [data-fr-spec="musique-guitare"]');
+    await expect(guitare).toBeHidden();
+    await preciser.focus();
+    await page.keyboard.press("Enter");
+    await expect(guitare).toBeVisible();
 
     // On coche une spécialité d'une AUTRE passion, non encore choisie.
     await page.evaluate(() => PassioFirstRun.basculerSpecialite("photo-portrait"));
@@ -360,9 +367,16 @@ test.describe("Personnalisation", () => {
 
     // La puce proposée sous « Sport » porte l'identifiant RÉEL de la passion,
     // pas un identifiant inventé pour l'occasion.
+    const preciser = page.getByText("Préciser mes goûts", { exact: true });
+    await preciser.click();
     const puce = page.locator('#frSpecs [data-fr-spec="cyclisme"]');
-    await expect(puce).toHaveCount(1);
-    await puce.click();
+    await puce.focus();
+    await page.keyboard.press("Space");
+    await expect(puce).toBeFocused();
+    await expect(puce).toHaveAttribute("aria-pressed", "true");
+    await preciser.click();
+    await expect(puce).toBeHidden();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (2)");
     await page.locator("#frValider").click();
     await page.waitForTimeout(1200);
 
@@ -377,6 +391,13 @@ test.describe("Personnalisation", () => {
     const bulle = page.locator('#profileStrip [data-passion-tile="cyclisme"]');
     await expect(bulle).toHaveCount(1, { timeout: 15000 });
     await expect(bulle).toContainText("Vélo", { timeout: 15000 });
+
+    // La modification reprend les goûts enregistrés, visibles et cochés.
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("menu"));
+    await expect(puce).toBeVisible();
+    await expect(puce).toHaveAttribute("aria-pressed", "true");
+    await puce.click();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (1)");
   });
 
   // ⚠️ LE CORRECTIF NE DOIT PAS COÛTER LE DÉMARRAGE. Nommer une spécialité

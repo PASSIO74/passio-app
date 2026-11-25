@@ -10834,7 +10834,16 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ── Spécialités rattachées aux passions retenues ─────────────────────────── */
 .fr-specs { margin-top: 12px; }
-.fr-spec-intro { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.fr-specs > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 12px 4px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-specs > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fr-spec-bloc { margin-bottom: 10px; }
 .fr-spec-titre { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
 .fr-spec-row { display: flex; flex-wrap: wrap; gap: 6px; }
