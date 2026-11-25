@@ -132,7 +132,7 @@ test("Voir mon message ouvre la publication d’origine et sa sortie", async ({ 
   await expect(detail.locator("#postDetailComments")).toHaveAttribute("data-thread", postId);
   await detail.getByRole("button", { name: "Voir la sortie" }).click();
   await expect(page.locator("#eventDetailPage")).toBeVisible();
-  await expect(page.locator("#eventDetailHeroTitle")).toHaveText("Marche du samedi");
+  await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Marche du samedi");
 });
 
 test("la confirmation reprend le même lien et devient Voir mon message", async ({ page }) => {
