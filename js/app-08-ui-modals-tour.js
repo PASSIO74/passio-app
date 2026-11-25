@@ -3610,7 +3610,7 @@ function openNotifTarget(n) {
   if (n.kind === "event_update") {
     // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
     // Fermer plus tôt déclencherait un retour qui annule cette lecture.
-    _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, avantOuverture: closeModal });
+    _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true });
     return;
   }
   try { closeModal(); } catch (e) {}

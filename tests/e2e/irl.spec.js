@@ -304,6 +304,7 @@ test.describe("IRL — cycle de vie d'un événement", () => {
   test("la cloche relit une sortie modifiée même si la fiche en mémoire est ancienne", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ id: "sortie_modifiee", address: "Quai Napoléon III" }]);
+    const urlAvant = page.url();
     await page.evaluate(() => {
       const ev = _findCanonicalEvent("sortie_modifiee");
       window._supaReal = true;
@@ -321,6 +322,10 @@ test.describe("IRL — cycle de vie d'un événement", () => {
     await page.evaluate(() => window.finirLecture());
     await expect(page.locator("#eventDetailPage")).toContainText("Place de la Gare");
     await expect(page.locator("#eventDetailPage")).toContainText("19:00");
+    await expect(page).toHaveURL(/#event-sortie_modifiee$/);
+    await page.goBack();
+    await expect(page).toHaveURL(urlAvant);
+    await expect(page.locator("#eventDetailPage")).toBeHidden();
   });
 
   test("modification refusée par la base : l'écran dit POURQUOI les inscrits ne sont pas prévenus", async ({ page }) => {

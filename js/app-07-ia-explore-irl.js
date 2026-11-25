@@ -4671,7 +4671,7 @@ function _lienContactEvenement(contact) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
 
-function openEventDetails(id) {
+function openEventDetails(id, remplaceModale = false) {
   if (window._openEventDetailId !== id) document.getElementById("confirmerArriveeApresAccord")?.remove();
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
@@ -4703,6 +4703,8 @@ function openEventDetails(id) {
       // son entrée, comme un remplacement de modale : aucun retour mort.
       toggleIrlMapFullscreen();
       if (irlMap) irlMap.closePopup();
+      pushOverlayHistory("event", "#event-" + id);
+    } else if (remplaceModale) {
       pushOverlayHistory("event", "#event-" + id);
     } else {
       pushOverlayToHistory("event", id);
@@ -5530,8 +5532,9 @@ function _irlEvLinkAvancer() {
       // par exemple) rouvrirait la fiche sans que personne ne l'ait demandé.
       _irlEvLinkTerminer();
       if (!reprise && typeof goTo === "function") goTo("irl");
-      if (reprise && reprise.avantOuverture) reprise.avantOuverture();
-      openEventDetails(id);
+      const remplaceModale = !!(reprise && reprise.fermerModale);
+      if (remplaceModale) closeModal();
+      openEventDetails(id, remplaceModale);
       if (reprise && typeof reprise.apresOuverture === "function" && window._openEventDetailId === id) {
         const fiche = document.getElementById("eventDetailPage");
         if (fiche && fiche.style.display !== "none") reprise.apresOuverture();
@@ -5660,7 +5663,7 @@ function _ouvrirLienActivite(id, apresOuverture, options = {}) {
   _irlEvLinkTerminer();
   _irlEvLinkId = id;
   _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture,
-    relire: options.relire, avantOuverture: options.avantOuverture };
+    relire: options.relire, fermerModale: options.fermerModale };
   _irlEvLinkAvancer();
   return true;
 }
