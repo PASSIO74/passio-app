@@ -6065,6 +6065,8 @@ let _feedPagination = null;
 // pas concernés : ils ne remplacent pas la tête.
 let _feedTeteSeq = 0;
 let _feedTeteDerniereServie = 0;
+let _feedCartesBrutes = null;
+const _feedRevisionsAffichees = new WeakMap();
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   // Hors du `try` : le `catch` final rend lui aussi le verdict réseau de la tête.
@@ -6085,6 +6087,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         _feedTeteDerniereServie = teteSeq;
         noterLectureTeteFil(false);
+        if (options.teteServie) options.teteServie(teteSeq);
       }
     };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
@@ -6098,8 +6101,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // `edited_at` (CRE-C16 / FIL-C24, migration du 2026-11-13) : la mention
     // « modifié ». Même repli qu'`event_id` sur une base pas encore migrée.
     var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, edited_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
-    async function _interroger(cols) {
+    async function _interroger(cols, ids) {
       let q = supa.from("posts").select(cols);
+      if (ids) q = q.in("id", ids);
       if (authorId) q = q.eq("author_id", authorId);
       // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
       // cache. Une insertion/suppression récente ne décale plus la page suivante.
@@ -6111,7 +6115,16 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
-    let { data, error, status } = await _interroger(COLONNES);
+    const versionner = teteSeq && owner && typeof PassioCartesFil !== "undefined";
+    const precedentBrut = _feedCartesBrutes;
+    function carteAdmissible(r) {
+      return !r.profiles?.is_private && !(typeof postSupprime === "function" && postSupprime(r.id))
+        && !projectionHeritageLecture().candidat(r.media_url);
+    }
+    const resultat = versionner ? await PassioCartesFil.lire(COLONNES, _interroger,
+      precedentBrut && precedentBrut.owner === owner && precedentBrut.generation === cacheGeneration
+        ? precedentBrut.page : null, carteAdmissible) : await _interroger(COLONNES);
+    let { data, error, status } = resultat;
     if (error && /edited_at/.test(error.message || "")) {
       COLONNES = COLONNES.replace(" edited_at,", "");
       ({ data, error, status } = await _interroger(COLONNES));
@@ -6145,6 +6158,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
       if (authorId || !lectureValide()) return;
+      if (teteSeq) {
+        const page = resultat.cache;
+        if (page) {
+          const visibles = new Set(data.map(r => r.id));
+          for (const id of page.lignes.keys()) if (!visibles.has(id)) page.lignes.delete(id);
+        }
+        _feedCartesBrutes = page && page.lignes.size ? { owner, generation: cacheGeneration, page } : null;
+      }
       const derniere = lignesBrutes[lignesBrutes.length - 1];
       const suite = {
         owner, offset: offset + lignesBrutes.length,
@@ -6401,7 +6422,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (cpl.reactionsLues === true && typeof _recopierReactionsAutrui === "function") {
         _recopierReactionsAutrui(r.id, loadedPost.reactions, reactionsAvant);
       }
-      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id), cpl.likesLusLe);
+      const carte = _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id), cpl.likesLusLe);
+      _feedRevisionsAffichees.set(carte, [r.xmin, r.profiles?.xmin, _pmpRef && _pmpPresentation ? r.media_url : ""].join(":"));
+      return carte;
     });
   } catch(e) {
     if (options.propagerErreur) throw e;
@@ -11520,7 +11543,7 @@ function _feedPostsSig(posts) {
     return (posts || []).map(function(p) {
       // Signature = ce qui change l'affichage : le compte affiché (le total
       // serveur, pas la longueur des deux aperçus) et l'aperçu de tête.
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
+      return p.id + ":" + (_feedRevisionsAffichees.get(p) || "") + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
     }).join("|");
   } catch (e) { return "err" + Date.now(); }
 }
@@ -11622,20 +11645,22 @@ function startFeedRefreshLoop() {
       if (!feedEl || !feedEl.classList.contains("active")) return;
       const degradesAvant = window._filComplementsDegradesSeq || 0;
       const reculAvant = window._filComplementsReculSeq || 0;
-      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
+      let teteServie = 0;
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true, teteServie: seq => { teteServie = seq; } });
       // D14-01 : des compteurs en échec (ou en recul) sont un ÉCHEC du tour, pas
       // un calme ni un succès — le tour suivant recule (`reculSurErreur`).
       if ((window._filComplementsDegradesSeq || 0) !== degradesAvant) echec = true;
       if ((window._filComplementsReculSeq || 0) !== reculAvant) echec = true;
       if (generation !== _feedRefreshGeneration) return;
-      if (posts && posts.length > 0) {
+      if (posts && (posts.length > 0 || (teteServie && teteServie === _feedTeteDerniereServie))) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+        const avant = state.supabasePosts;
         state.supabasePosts = posts.concat(extra);
         // Re-render UNIQUEMENT si le contenu visible a changé : le rebuild
         // périodique du fil (innerHTML complet) faisait flasher images et
         // stories toutes les 60 s même sans aucune nouveauté.
         const sig = _feedPostsSig(state.supabasePosts);
-        const changed = sig !== window._feedRefreshSig;
+        const changed = sig !== window._feedRefreshSig || sig !== _feedPostsSig(avant);
         window._feedRefreshSig = sig;
         vivant = changed;
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();

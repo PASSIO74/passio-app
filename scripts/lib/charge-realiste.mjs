@@ -43,7 +43,7 @@ export function optionsBanc(args) {
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
     if (["--executer", "--plan", "--prevol"].includes(name)) values[name] = true;
-    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime", "--compteurs-cadence", "--fraicheur-likes"].includes(name)) {
+    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime", "--compteurs-cadence", "--fraicheur-likes", "--lecture-cartes"].includes(name)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error("VALEUR_MANQUANTE");
       values[name] = args[++i];
     } else throw new Error("OPTION_INCONNUE");
@@ -68,11 +68,14 @@ export function optionsBanc(args) {
   if (values["--executer"] && profilRealtime === "transition5") throw new Error("TRANSITION5_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
   const fraicheurLikes = values["--fraicheur-likes"] || "fil";
+  const lectureCartes = values["--lecture-cartes"] || (pagesTexte === "20" ? "versions" : "complete");
+  if (!["versions", "complete"].includes(lectureCartes)
+      || (pagesTexte !== "20" && lectureCartes === "versions")) throw new Error("LECTURE_CARTES_INVALIDE");
   if (!["fil", "independante"].includes(fraicheurLikes)) throw new Error("FRAICHEUR_LIKES_INVALIDE");
   const compteursCadence = values["--compteurs-cadence"] || CADENCE_COMPTEURS;
   if (!CADENCES_COMPTEURS.includes(compteursCadence)) throw new Error("CADENCE_COMPTEURS_INVALIDE");
   return { projet: STAGING_REF, paliers, duree, graine, pages: pagesTexte.split(",").map(Number),
-    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime, compteursCadence, fraicheurLikes,
+    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime, compteursCadence, fraicheurLikes, lectureCartes,
     prevolSeulement: !!values["--prevol"],
     comptesDistincts: values["--prevol"] ? 2 : Math.max(...paliers), limites: LIMITES };
 }
@@ -280,7 +283,7 @@ export function statistiques(mesures) {
 // Noms fermés : aucune valeur libre de télémétrie n'entre dans le rapport.
 export function mixObserve(mesures) {
   const actions = new Set(["fil", "notifications", "evenements", "profil", "message", "publier", "historique", "aimer"]);
-  const http = new Set(["fil_posts", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "fil_likes_visibles",
+  const http = new Set(["fil_posts", "fil_versions", "fil_cartes_modifiees", "fil_compteurs", "fil_interactions_apercus", "fil_profils_commentaires", "fil_likes_visibles",
     "post_publier", "post_visibilite", "message_envoyer", "message_lire", "notifications", "evenements", "profil", "historique", "aimer", "retirer_like"]);
   const realises = mesures.filter(m => m.phase === "mesure");
   function repartir(lignes, famille) {

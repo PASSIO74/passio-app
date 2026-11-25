@@ -7,6 +7,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { randomUUID, createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
+import PassioCartesFil from "../js/fil-cartes.js";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs, familleFrameRealtime,
@@ -23,7 +24,7 @@ function attendreCompteurs(ms, compte) {
 }
 const octets = value => Buffer.byteLength(value, "utf8");
 const liste = ids => `in.(${ids.join(",")})`;
-const colonnesFil = "id,author_id,passion_id,mood,content,media_url,created_at,is_reel,overlays,vlog,shared_from_post_id,shared_data,event_id,profiles!author_id(username,emoji,color,avatar_url,is_private)";
+const colonnesFil = "id,author_id,passion_id,mood,content,media_url,created_at,edited_at,is_reel,overlays,vlog,shared_from_post_id,shared_data,event_id,profiles!author_id(username,emoji,color,avatar_url,is_private)";
 const motifSur = e => /^[A-Z][A-Z0-9_: ]{0,100}$/.test(e?.message || "") ? e.message : "ERREUR_INTERNE_OU_RESEAU";
 const attendreTableau = (min = 1, champs = ["id"]) => ({ tableau: true, min, champs });
 export async function verifierPublicationLue(id, publier, lire) {
@@ -40,6 +41,7 @@ export async function executer(options) {
     "--duree", String(options.duree), "--graine", String(options.graine), "--scenario", options.scenario,
     "--pages", options.pages.join(","), "--profil-realtime", options.profilRealtime || PROFIL_REALTIME,
     ...(options.fraicheurLikes ? ["--fraicheur-likes", options.fraicheurLikes] : []),
+    ...(options.lectureCartes ? ["--lecture-cartes", options.lectureCartes] : []),
     ...(options.compteursCadence ? ["--compteurs-cadence", options.compteursCadence] : []),
     ...(options.prevolSeulement ? ["--prevol"] : []), ...(options.executer ? ["--executer", "--sortie", options.sortie] : [])]);
   if (!o.executer) return { plan: true, ...o };
@@ -56,7 +58,7 @@ export async function executer(options) {
   const receptionsSonde = new Map();
   let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
-  const rapport = { version: 5, date: new Date().toISOString(), options: o, campagne: prefix,
+  const rapport = { version: 6, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
     cheminFil: "rpc/fil_compteurs + auteurs et rpc/interactions_cibles des apercus",
     cheminCompteursVisibles: "rpc/fil_likes_visibles",
@@ -373,7 +375,20 @@ export async function executer(options) {
   }
   async function fil(compte, page) {
     const jwt = compte.jwt;
-    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
+    async function interroger(select, cibles) {
+      const versions = select.startsWith("id,xmin,");
+      const famille = versions ? "fil_versions" : cibles ? "fil_cartes_modifiees" : "fil_posts";
+      const data = await rest(famille, "posts", { select, order: "created_at.desc,id.desc", limit: String(page),
+        ...(cibles ? { id: liste(cibles) } : {}) }, { jwt, acteur: compte.index,
+        attentes: { ...attendreTableau(cibles ? 0 : page, versions ? ["id", "xmin"] : ["id", "author_id"]), imbrique: "profiles" } });
+      return { data };
+    }
+    const resultat = o.lectureCartes === "versions" && page === 20
+      ? await PassioCartesFil.lire(colonnesFil, interroger, compte.cacheCartes)
+      : await interroger(colonnesFil);
+    const posts = resultat.data;
+    if (posts.length !== page || new Set(posts.map(p => p.id)).size !== page || posts.some(p => !p.author_id))
+      throw new Error("PAGE_FIL_INCOMPLETE");
     const ids = posts.map(p => p.id);
     const debutCompteurs = performance.now();
     const compteurs = await rest("fil_compteurs", "rpc/fil_compteurs", {}, { jwt, methode: "POST", corps: { _post_ids: ids },
@@ -432,6 +447,7 @@ export async function executer(options) {
         compte.likesDuFil = new Map(compte.postsVisibles.map(id => [id, debutCompteurs + LIKES_VISIBLES.fraicheurMs]));
       }
     }
+    if (page === 20) compte.cacheCartes = resultat.cache;
     return { posts: ids, likes: compteurs.reduce((n, c) => n + c.likes, 0),
       commentaires: compteurs.reduce((n, c) => n + c.commentaires, 0), apercus: commentaires.length,
       reactions: compteurs.reduce((n, c) => n + c.reactions.length, 0), profils: auteurs.length, interactionsApercus: interactions.length };

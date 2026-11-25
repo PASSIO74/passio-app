@@ -11,6 +11,7 @@ import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Bud
   verdictAvecCompteurs, qualifierMinuteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 import { verdictReponse } from "../../scripts/charge-verdict.mjs";
+import PassioCartesFil from "../../js/fil-cartes.js";
 
 const cible = ["--projet", STAGING_REF];
 test("le sélecteur réel de purge E2E ignore les comptes du domaine capacité, même pendant la CI", async () => {
@@ -554,23 +555,27 @@ test("les compteurs s'étalent sur quinze secondes avec une graine indépendante
   assert.deepEqual(debuts, Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i)));
 });
 
-function filSimule(fraicheurLikes = "fil") {
+function filSimule(fraicheurLikes = "fil", lectureCartes = "complete") {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function fil(compte, page)"), fin = source.indexOf("async function cycleCompteursVisibles(", debut);
   const prefix = "fixture-campagne", profilsFixture = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
   const postsFixture = Array.from({ length: 20 }, (_, i) => ({ id: `fixture_${i}` }));
   const ctx = { prefix, profilsFixture, postsFixture, phase: "mesure", LIKES_VISIBLES,
-    o: { fraicheurLikes }, performance: { now: () => etat.horloge },
-    colonnesFil: "id,author_id,profiles", liste: ids => `in.(${ids.join(",")})`,
+    o: { fraicheurLikes, lectureCartes }, PassioCartesFil, performance: { now: () => etat.horloge },
+    colonnesFil: "id,author_id,media_url,profiles!author_id(username)", liste: ids => `in.(${ids.join(",")})`,
     attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
   };
   const etat = { horloge: 0, posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
     commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length],
       content: "Commentaire synthetique.", created_at: "2026-11-16T00:00:00Z" })), appels: [], rpcTransformer: rows => rows };
   ctx.rest = async (nom, table, params, opt) => {
-    assert.equal(opt.jwt, "jwt-lecteur"); etat.appels.push({ nom, table, params, opt });
+    assert.equal(opt.jwt, etat.jwtAttendu); etat.appels.push({ nom, table, params, opt });
     let rows;
-    if (table === "posts") rows = etat.posts;
+    if (table === "posts") {
+      rows = params.id ? etat.posts.filter(p => params.id.slice(4, -1).split(",").includes(p.id)) : etat.posts;
+      if (nom === "fil_versions") rows = rows.map(r => ({ id: r.id, xmin: r.xmin, profiles: { xmin: r.profiles.xmin } }));
+      rows = structuredClone(rows);
+    }
     else if (table === "rpc/fil_compteurs") {
       assert.equal(opt.methode, "POST");
       assert.deepEqual(Array.from(opt.corps._post_ids), etat.posts.map(p => p.id));
@@ -590,8 +595,66 @@ function filSimule(fraicheurLikes = "fil") {
   };
   const lire = runInNewContext(source.slice(debut, fin) + "\nfil;", ctx);
   const compte = { index: 0, jwt: "jwt-lecteur" };
-  return { etat, compte, lire: (lecteur = compte) => lire(lecteur, 20) };
+  return { etat, compte, lire: (lecteur = compte) => {
+    etat.jwtAttendu = lecteur.jwt;
+    return lire(lecteur, 20);
+  } };
 }
+
+test("le banc relit les mêmes versions que le navigateur et ne partage pas les cartes entre acteurs", async () => {
+  const { etat, lire } = filSimule("fil", "versions");
+  for (const p of etat.posts) { p.xmin = "12"; p.profiles.xmin = "13"; }
+  await lire(); await lire();
+  etat.posts[0].xmin = "14";
+  await lire();
+  await lire({ index: 1, jwt: "autre" });
+  const lectures = etat.appels.filter(a => a.table === "posts");
+  assert.deepEqual(lectures.map(a => a.nom), ["fil_posts", "fil_versions", "fil_versions", "fil_cartes_modifiees", "fil_posts"]);
+  assert.equal(lectures[3].params.id, "in.(fixture_0)");
+  assert.equal(etat.appels.filter(a => a.nom === "fil_compteurs").length, 4);
+});
+
+test("une carte retirée pendant le détail impose une page complète fraîche", async () => {
+  const colonnes = "id,content,profiles!author_id(username)";
+  const a = { id: "a", xmin: "1", profiles: { xmin: "1" } };
+  const b = { id: "b", xmin: "1", profiles: { xmin: "1" } };
+  const initial = await PassioCartesFil.lire(colonnes, async () => ({ data: [a, b] }));
+  const appels = [];
+  const lire = async (select, ids) => {
+    appels.push(select);
+    if (ids) return { data: [] };
+    if (select.includes("content")) return { data: [b] };
+    return { data: [{ ...a, xmin: "2" }, b] };
+  };
+  const resultat = await PassioCartesFil.lire(colonnes, lire, initial.cache);
+  assert.deepEqual(resultat.data.map(r => r.id), ["b"]);
+  assert.equal(appels.length, 3);
+});
+
+test("un cache expiré relit les cartes et une colonne de version interdite reprend la sélection habituelle", async () => {
+  const colonnes = "id,content,profiles!author_id(username)";
+  const row = { id: "carte", xmin: "31", content: "Texte", profiles: { xmin: "13" } };
+  const initial = await PassioCartesFil.lire(colonnes, async () => ({ data: [row] }));
+  const appels = [];
+  const reponse = await PassioCartesFil.lire(colonnes, async selection => {
+    appels.push(selection);
+    return selection.includes("xmin") ? { error: { code: "42501" } } : { data: [{ id: "nouvelle_carte" }] };
+  }, { ...initial.cache, expiration: 0 });
+  assert.equal(appels.length, 2);
+  assert.ok(appels[0].includes("content") && appels[0].includes("xmin"));
+  assert.equal(appels[1], colonnes);
+  assert.deepEqual(reponse.data, [{ id: "nouvelle_carte" }]);
+  assert.equal(reponse.cache, undefined);
+});
+
+test("une panne de revalidation ne renvoie aucune carte mémorisée", async () => {
+  const cache = { expiration: Date.now() + 60000, lignes: new Map() };
+  const panne = { error: { code: "503", message: "Service unavailable" }, status: 503 };
+  let appels = 0;
+  const res = await PassioCartesFil.lire("id,profiles!author_id(username)", async () => { appels++; return panne; }, cache);
+  assert.equal(res, panne);
+  assert.equal(appels, 1);
+});
 
 test("le fil garde deux minutes les auteurs du seul lecteur et date les likes du départ du RPC", async () => {
   for (const mode of ["fil", "independante"]) {
@@ -636,8 +699,8 @@ test("le vrai parcours fil utilise le RPC du client courant, sans anciennes list
 
 test("le tri du banc suit les appels du vrai chargeur UI, y compris le départage des horodatages égaux", async () => {
   const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
-  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(cols)", chargeur);
-  const fin = client.indexOf("let { data, error, status } = await _interroger", debut);
+  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(", chargeur);
+  const fin = client.indexOf("const versionner =", debut);
   assert.ok(chargeur >= 0 && debut > chargeur && fin > debut, "extraire la requête du chargeur produit, pas une copie de son ordre");
   const ordres = [];
   const requete = {
