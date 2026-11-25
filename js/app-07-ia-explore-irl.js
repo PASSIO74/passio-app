@@ -778,12 +778,20 @@ async function actualiserProchaineSortie(force) {
   _prochaineSortieAccueil = lecture;
   const actuelle = () => _prochaineSortieAccueil === lecture && MY_UID === compte && state === lecture.etat;
   try {
-    const sortie = await supaProchaineSortie(compte);
+    const { sortie, demandesEnAttente } = await supaProchaineSortie(compte);
     if (!actuelle()) return;
-    lecture.suivie = !!sortie;
+    lecture.suivie = !!sortie || demandesEnAttente;
     carte.hidden = !sortie;
     carte.onclick = null;
-    if (!sortie) { delete carte.dataset.sortie; return; }
+    if (!sortie) {
+      delete carte.dataset.sortie;
+      // La première validation n'émet pas de notification. Suivre uniquement
+      // les demandes à venir, en réutilisant le délai de délestage du client.
+      if (demandesEnAttente) lecture.expiration = setTimeout(() => {
+        if (actuelle()) actualiserProchaineSortie(true);
+      }, delaiDeleste(5000));
+      return;
+    }
     carte.dataset.sortie = sortie.id;
     const date = new Date(supaTs(sortie.date_at));
     carte.querySelector("strong").textContent = sortie.title;
@@ -3901,6 +3909,7 @@ async function setEventRsvp(id, rsvp) {
       if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
       _rsvpRegle(true);
       _majAdresseActivite(ev);
+      if (prev === "going") signalerChangementSortie();
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
@@ -3935,6 +3944,7 @@ async function setEventRsvp(id, rsvp) {
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
+  if (rsvpOk === true && (prev === "going" || rsvp === "going")) signalerChangementSortie();
   // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
   // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
   // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
