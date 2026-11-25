@@ -1,4 +1,4 @@
-// Lot UI-3A — passerelle « Trouver une expérience » du Feed vers l'IRL.
+// Lot UI-3A — passerelle « Autour de cette passion » du Feed vers l'IRL.
 // ACTIVE PAR DÉFAUT depuis la validation visuelle de Benjamin du 2026-08-27.
 //
 // Ce que cette suite prouve, et rien d'autre :
@@ -7,7 +7,7 @@
 //   ② les deux kill switches (localStorage et mémoire) coupent l'aperçu ;
 //   ③ une publication portant une Passio et SANS événement lié reçoit le lien,
 //      et RIEN d'autre ; une publication reliée à un événement, non (UI-3B) ;
-//   ④ le tap ouvre « Trouver une expérience » avec EXACTEMENT trois actions ;
+//   ④ le tap ouvre « Autour de cette passion » avec EXACTEMENT trois actions ;
 //   ⑤ chacune des trois ouvre le moteur EXISTANT, sans rien créer ;
 //   ⑥ la fermeture restitue la position exacte du Feed et l'identité active ;
 //   ⑦ l'ancien CTA « Organiser un IRL » n'apparaît jamais en doublon ;
@@ -268,7 +268,7 @@ async function seedFeed(page, posts, passionsActives) {
 }
 
 // Fait défiler le fil À UNE POSITION CHOISIE, puis renvoie l'identifiant du
-// « Trouver une expérience » le plus proche du centre de l'écran.
+// « Autour de cette passion » le plus proche du centre de l'écran.
 //
 // ⚠️ Pourquoi ne pas simplement faire `.nth(N).click()` : Playwright amène
 // d'abord la cible dans la vue, puis exige qu'elle soit STABLE deux frames de
@@ -363,7 +363,7 @@ test("URL normale : la passerelle est là, et rien n'est écrit pour autant", as
 
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(3);
   await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
-  await expect(page.locator("#feedList [data-v3-tempt]").first()).toHaveText("Trouver une activité");
+  await expect(page.locator("#feedList [data-v3-tempt]").first()).toHaveText("Autour de cette passion");
   expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-3"))).toBe(true);
   expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(true);
 
@@ -441,7 +441,7 @@ test("le lien n'apparaît que sur les publications éligibles, et SEUL", async (
 
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(1);
   const carte = page.locator('article.post[data-postid="v3_ok"]');
-  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Trouver une activité");
+  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Autour de cette passion");
 
   // Contrat visuel arrêté le 2026-08-27 après essai réel sur la preview : la
   // ligne basse ne porte QUE le lien. Le nom de la Passio, son emoji et le trait
@@ -455,7 +455,7 @@ test("le lien n'apparaît que sur les publications éligibles, et SEUL", async (
   expect(await ligne.evaluate((el) => el.children.length)).toBe(1);
   expect(await ligne.evaluate((el) => el.firstElementChild.className)).toContain("v3-tempt");
   // Le libellé de la Passio n'apparaît nulle part dans cette ligne.
-  expect(await ligne.innerText()).toBe("Trouver une activité");
+  expect(await ligne.innerText()).toBe("Autour de cette passion");
 
   await expect(page.locator('article.post[data-postid="v3_evt"] [data-v3-bridge]')).toHaveCount(0);
   await expect(page.locator('article.post[data-postid="v3_share"] [data-v3-bridge]')).toHaveCount(0);
@@ -488,14 +488,15 @@ test("la passerelle survit à un aller-retour entre écrans", async ({ page }) =
 });
 
 // ── ④ Le panneau et ses trois actions ──────────────────────────────────────
-test("le tap ouvre « Trouver une expérience » avec exactement trois actions", async ({ page }) => {
+test("le tap ouvre « Autour de cette passion » avec exactement trois actions", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
   await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   const sheet = page.locator("#v3PassioSheet");
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator("#v3SheetTitle")).toHaveText("Trouver une expérience");
+  await expect(sheet.locator("#v3SheetTitle")).toHaveText("Autour de cette passion");
+  await expect(sheet.getByRole("dialog", { name: "Autour de cette passion", exact: true })).toBeVisible();
   // ⚠️ « Voir la page de la passion » remplace « Découvrir des personnes » depuis
   // le 2026-09-02 (« rajoute un onglet : voir la page de la passion, ce qui
   // permet aux utilisateurs qui scrollent d'aller voir rapidement les pages en
@@ -617,7 +618,7 @@ test("« À faire ensemble » ouvre les sorties photo en un geste puis revient a
   const chercher = carte.getByRole("button", { name: "Chercher une sortie photo", exact: true });
   await expect(chercher).toBeVisible();
   expect(await chercher.getAttribute("aria-haspopup")).toBeNull();
-  await expect(page.locator('[data-postid="v3_conseil"] [data-v3-tempt]')).toHaveText("Trouver une activité");
+  await expect(page.locator('[data-postid="v3_conseil"] [data-v3-tempt]')).toHaveText("Autour de cette passion");
   await expect(page.locator('[data-postid="v3_lie"] [data-v3-sortie]')).toHaveCount(0);
   await page.evaluate(() => irlPassionFilters.add("musique"));
   await taperLien(page, 'article[data-postid="v3_photo"] [data-v3-sortie]');
@@ -923,7 +924,7 @@ test("une aide contextuelle VISIBLE n'empêche pas la passerelle", async ({ page
 // WCAG AA pour du texte normal, et même sous le 3:1 des grands caractères (le
 // lien fait 13 px). Ce test calcule le ratio RÉEL depuis les styles appliqués
 // par le navigateur : une régression de jeton, de fond ou de couleur sera vue.
-test("la pastille « Trouver une activité » respecte le contraste AA (4,5:1)", async ({ page }) => {
+test("la pastille « Autour de cette passion » respecte le contraste AA (4,5:1)", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 

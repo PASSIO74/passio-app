@@ -11933,7 +11933,7 @@ function carteActiviteFilHTML(p) {
   const img = photo
     ? `<img class="post-activite-photo" ${passioMediaProteges.attributImage(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
     : "";
-  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
+  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir la sortie ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
       <div class="post-activite-titre">${escapeHtml(titre)}</div>
       ${desc ? `<div class="post-activite-desc">${escapeHtml(desc)}</div>` : ""}
       <div class="post-activite-rdv">
