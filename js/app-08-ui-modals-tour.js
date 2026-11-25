@@ -3269,7 +3269,7 @@ function _notifListHtml(notifs) {
       <div class="empty-text">Tu es à jour, profite.</div>
     </div>`;
   return notifs.map(n => `
-    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
+    <div class="notif-row ${n.unread ? "unread" : ""}" ${n.kind === "event_update" && n.refId ? 'data-sortie-modifiee="' + escapeHtml(n.refId) + '" data-compte="' + escapeHtml(MY_UID || "") + '"' : ""} onclick="clickNotif('${escapeJsArg(n.id)}', this.dataset)">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteAfficheHtml(n)}</div>
@@ -3584,8 +3584,12 @@ function markNotifRead(id) {
 }
 
 // Clic sur une notif (panneau OU toast) : marque lu + emmène vers le contenu.
-function clickNotif(id) {
-  const n = (state.notifications || []).find(x => x.id === id);
+function clickNotif(id, ligne) {
+  // Au démarrage, la synchronisation du compte peut renouveler la liste entre
+  // son affichage et l'appui. La ligne garde la référence à relire en base.
+  if (ligne && ligne.sortieModifiee && ligne.compte !== (MY_UID || "")) return;
+  const n = (state.notifications || []).find(x => x.id === id)
+    || (ligne && ligne.sortieModifiee && { kind: "event_update", refId: ligne.sortieModifiee });
   markNotifRead(id);
   openNotifTarget(n);
 }
@@ -3603,6 +3607,12 @@ function openNotifTarget(n) {
   // une cible absente le dit, et le panneau reste ouvert.
   const manque = _cibleNotifAbsente(n);
   if (manque) { toast(manque); return; }
+  if (n.kind === "event_update") {
+    // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
+    // Fermer plus tôt déclencherait un retour qui annule cette lecture.
+    _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, avantOuverture: closeModal });
+    return;
+  }
   try { closeModal(); } catch (e) {}
   const ref = n.refId, from = n.fromId;
   switch (n.kind) {
@@ -3627,7 +3637,6 @@ function openNotifTarget(n) {
       } catch (e) { try { diagLog("notifs : validation — " + (e && e.message)); } catch (_) {} }
       break;
     case "event_comment":
-    case "event_update":
     case "event_cancelled":
     case "event_reminder":
     // Invitation directe reçue d'un abonnement (mécanique Partiful) : on ouvre la
@@ -3670,7 +3679,10 @@ function _cibleNotifAbsente(n) {
         // autre) : on le dit sans l'affirmer.
         if (typeof postSupprime === "function" && postSupprime(ref)) return "Cette publication n'existe plus";
         return (typeof findPostAnywhere === "function" && !findPostAnywhere(ref)) ? "Publication introuvable ici — elle a peut-être été supprimée" : "";
-      case "event_join": case "event_comment": case "event_update": case "event_cancelled":
+      case "event_update":
+        if (window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
+        // Hors connexion serveur, seule une sortie locale peut être ouverte.
+      case "event_join": case "event_comment": case "event_cancelled":
       case "event_reminder": case "event_invite": case "event_feedback": {
         if (!ref) return "";
         const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))

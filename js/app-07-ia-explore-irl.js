@@ -5482,6 +5482,7 @@ async function _irlEvLinkCharger(id) {
   if (!_irlLienAppPrete()) { _irlEvLinkReplanifier(); return; }
   if (activites && activites.length === 1 && activites[0].id === id) {
     fusionnerEvenementsServeur(activites);
+    if (_irlEvLinkReprise) _irlEvLinkReprise.relire = false;
     _irlEvLinkAvancer();
     return;
   }
@@ -5523,12 +5524,13 @@ function _irlEvLinkAvancer() {
       if (++_irlEvLinkAttentes <= 600) _irlEvLinkReplanifier();
       return false;
     }
-    if (allEvents().some(e => e.id === id)) {
+    if (!(reprise && reprise.relire) && allEvents().some(e => e.id === id)) {
       // ⚠️ L'id mémorisé est CONSOMMÉ ici. Sans ça, il survivrait à l'ouverture
       // et le moindre `hashchange` ultérieur (un retour arrière vers « #feed »,
       // par exemple) rouvrirait la fiche sans que personne ne l'ait demandé.
       _irlEvLinkTerminer();
       if (!reprise && typeof goTo === "function") goTo("irl");
+      if (reprise && reprise.avantOuverture) reprise.avantOuverture();
       openEventDetails(id);
       if (reprise && typeof reprise.apresOuverture === "function" && window._openEventDetailId === id) {
         const fiche = document.getElementById("eventDetailPage");
@@ -5653,11 +5655,12 @@ function _ouvrirActiviteDepuisNotification(id) {
 
 // Depuis l’app, la fiche pose déjà sa propre entrée d’historique. Une seconde
 // entrée #irl-event-ID la rouvrirait au retour arrière après sa fermeture.
-function _ouvrirLienActivite(id, apresOuverture) {
+function _ouvrirLienActivite(id, apresOuverture, options = {}) {
   if (typeof id !== "string" || !LIEN_COURT_ID_RE.test(id)) return false;
   _irlEvLinkTerminer();
   _irlEvLinkId = id;
-  _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture };
+  _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture,
+    relire: options.relire, avantOuverture: options.avantOuverture };
   _irlEvLinkAvancer();
   return true;
 }
@@ -8383,6 +8386,16 @@ async function submitEvent(editId) {
   const existing = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !existing) { toast("Activité introuvable"); return; }
 
+  let avisModification = null;
+  if (existing) {
+    const changements = [];
+    if (new Date(existing.date).toDateString() !== new Date(ts).toDateString()) changements.push("la date");
+    if (_eventTimeLabel(existing) !== time) changements.push("l’horaire");
+    if ([["venue", venue], ["address", address], ["postalCode", postalCode], ["city", city]]
+        .some(([champ, valeur]) => String(existing[champ] || "").trim() !== valeur)) changements.push("le lieu de rendez-vous");
+    if (changements.length) avisModification = "a modifié " + changements.join(", ").replace(/, ([^,]+)$/, " et $1") + " de ta sortie.";
+  }
+
   const p = passionById(passion) || { emoji: "✨" };
   const ev = Object.assign(existing || {}, {
     id: editId || uid(), title, passion,
@@ -8485,7 +8498,7 @@ async function submitEvent(editId) {
     // Village à 100 (A3) : la base prévient chaque inscrit ; une notification qui n'a
     // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
     if (ok && editId) {
-      _prevenirInscrits(ev, "event_update").then(function (v) {
+      _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
         if (v && v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
         else if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
