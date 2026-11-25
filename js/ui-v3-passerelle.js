@@ -1,24 +1,20 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO UI V3 — lot UI-3A : passerelle « Trouver une expérience » du Feed vers l'IRL.
+// PASSIO UI V3 — lot UI-3A : passerelle du Feed vers l'IRL.
 // Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §6 et §15.
 //
-// Périmètre EXACT de ce lot, et rien de plus :
-//   une publication du Feed qui porte une Passio et n'est PAS déjà reliée à un
-//   événement reçoit, en bas de carte, une pastille discrète « Trouver une
-//   activité » (« Vivre ça en vrai » jusqu'au 2026-08-31)
-//   — et rien d'autre depuis le 2026-08-27, voir `construireBridge`. Le tap ouvre
-//   une feuille basse du même nom, qui propose exactement trois suites, toutes
-//   servies par des moteurs QUI EXISTENT DÉJÀ :
+// Une publication avec une passion connue et sans sortie liée propose un menu.
+// Sur « À faire ensemble », le bouton ouvre directement les sorties de la passion.
+// Le menu « Autour de cette passion » propose ces trois actions :
 //     ① Voir les activités      → irlPassionFilters + goTo("irl")/renderIRL
 //     ② Voir la page de la passion → openPassionExplorer(passion)
 //     ③ Proposer une sortie     → openCreateEvent() + feedIrlBridgePrefill()
 //
 // Lot UI-3B (ajouté le 2026-08-27, même module) : les publications DÉJÀ reliées
 // à une activité EXISTANTE reçoivent, au même endroit et dans le même style, le
-// lien « Voir l'activité ». Le tap ouvre la fiche EXISTANTE (`openEventDetails`),
+// lien « Voir la sortie ». Le tap ouvre la fiche EXISTANTE (`openEventDetails`),
 // où l'action primaire devient un unique « Je participe » servi par le moteur
 // RSVP historique (`setEventRsvp`). Les deux lots sont EXCLUSIFS : une carte
-// reliée à une activité ne reçoit jamais « Trouver une expérience », et
+// reliée à une activité ne reçoit jamais « Autour de cette passion », et
 // inversement. Contrat visuel arrêté par Benjamin : pas de « À vivre en vrai »,
 // pas de trait, pas de Passio répétée, pas de bouton RSVP dans le Feed.
 //
@@ -51,28 +47,12 @@
   var ROOT_CLASS = "passio-ui-3";
   var VERSION = "ui3a";
 
-  // Vocabulaire validé par Benjamin le 2026-08-27, AMENDÉ le 2026-08-28 sur sa
-  // demande (« un petit onglet, plus discret »). Le libellé était unique, pour
-  // que la carte et le panneau ne puissent pas diverger ; il est désormais en
-  // DEUX temps, ce qui est le prix de la discrétion demandée :
-  //   • la carte porte une pastille courte — une invitation, pas une phrase ;
-  //   • le panneau, lui, garde la promesse entière et explicite.
-  // Les deux disent la même chose dans le même ordre d'idée (passer au réel) :
-  // aucune des deux ne promet ce que l'autre ne tient pas.
-  // ⚠️ 2026-08-31, sur essai réel de Benjamin : « je n'aime pas la phrase de
-  // l'onglet "Vivre ça en vrai", mets "Trouver une activité" ». La carte et le
-  // panneau se rejoignent donc presque — le panneau garde « Trouver une
-  // expérience » (`LIBELLE_CTA`), qui promet un peu plus large que la carte.
-  // Les deux constantes restent DISTINCTES : c'est ce qui permet de faire varier
-  // l'une sans que l'autre suive en silence.
-  var LIBELLE_CTA_CARTE = "Trouver une activité";
-  var LIBELLE_CTA = "Trouver une expérience";
+  // Le bouton et le titre accessible du menu annoncent les mêmes choix.
+  var LIBELLE_MENU = "Autour de cette passion";
 
-  // ── Vocabulaire UI-3B, validé par Benjamin le 2026-08-27 ─────────────────
-  // Trois constantes, et rien d'autre : la carte ne porte QUE « Voir l'activité »,
-  // la fiche QUE « Je participe », et le retrait reste une action secondaire.
+  // La fiche de la sortie porte l'action de participation.
   var VERSION_3B = "ui3b";
-  var LIBELLE_VOIR = "Voir l'activité";
+  var LIBELLE_VOIR = "Voir la sortie";
   var LIBELLE_RSVP = "Je participe";
   var LIBELLE_RSVP_FAIT = "✓ Je participe";
   var LIBELLE_RSVP_ATTENTE = "Sur liste d'attente";
@@ -359,13 +339,13 @@
       // Photo devient « photo » ; les sigles (VTT, IA…) gardent leur casse.
       var nom = sortie.label.replace(/^\p{Lu}(?=\p{Ll})/u, function (initiale) { return initiale.toLocaleLowerCase("fr"); });
       cta.textContent = "Chercher une sortie " + nom;
-      cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
     } else {
       cta.setAttribute("data-v3-tempt", String(post.id));
       cta.setAttribute("aria-haspopup", "dialog");
       cta.setAttribute("aria-expanded", "false");
-      cta.textContent = LIBELLE_CTA_CARTE;
+      cta.textContent = LIBELLE_MENU;
     }
+    cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
 
     row.appendChild(cta);
     return row;
@@ -485,7 +465,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // FEUILLE BASSE « TROUVER UNE EXPÉRIENCE »
+  // FEUILLE BASSE « AUTOUR DE CETTE PASSION »
   // ──────────────────────────────────────────────────────────────────────────
   // Même mécanique que la feuille « Créer » d'UI-1 (mêmes classes `.v2-sheet-*`,
   // mêmes jetons) : `openModal` empile mal — ouvrir une modale depuis une autre
@@ -643,7 +623,7 @@
     var titre = document.createElement("h2");
     titre.className = "v2-sheet-title";
     titre.id = "v3SheetTitle";
-    titre.textContent = LIBELLE_CTA;
+    titre.textContent = LIBELLE_MENU;
     var close = document.createElement("button");
     close.type = "button";
     close.className = "v2-sheet-close";
@@ -926,7 +906,7 @@
   // LOT UI-3B — publication DÉJÀ reliée à une activité
   // ──────────────────────────────────────────────────────────────────────────
   // Deux surfaces, aucun moteur nouveau :
-  //   ① la carte du Feed reçoit le seul lien « Voir l'activité » ;
+  //   ① la carte du Feed reçoit le seul lien « Voir la sortie » ;
   //   ② la fiche EXISTANTE (`openEventDetails`) voit son action primaire
   //      remplacée par un unique « Je participe », servi par `setEventRsvp`.
   // Rien n'est écrit tant que le testeur n'a pas tapé « Je participe ».
@@ -1028,6 +1008,7 @@
     cta.setAttribute("data-v3-activity", String(ev.id));
     cta.setAttribute("data-v3-post", String(post.id));
     cta.textContent = LIBELLE_VOIR;
+    cta.setAttribute("aria-label", LIBELLE_VOIR);
 
     row.appendChild(cta);
     return row;
@@ -1089,9 +1070,7 @@
     // Même marqueur qu'UI-3A : c'est lui qui autorise le CSS à masquer le CTA
     // historique, borné aux cartes réellement décorées.
     article.setAttribute("data-v3-decore", "1");
-    // Les partages d'événement portent déjà une sous-carte historique cliquable.
-    // Le CSS borné à cette source la masque pendant UI-3B afin de ne garder
-    // qu'une seule porte « Voir l'activité » ; le kill switch la restitue.
+    // Le CSS distingue la carte orange d'un partage du lien d'une référence directe.
     article.setAttribute("data-v3-activity-source", sourceRef(post));
   }
 
@@ -1343,7 +1322,7 @@
   function onDocumentClick(e) {
     if (!e.target || !e.target.closest) return;
 
-    // UI-3B — « Voir l'activité » (carte du Feed) puis la fiche.
+    // UI-3B — « Voir la sortie » (carte du Feed) puis la fiche.
     var voir = e.target.closest("[data-v3-activity]");
     if (voir) {
       e.preventDefault();
@@ -1366,7 +1345,7 @@
       return;
     }
 
-    // UI-3A — « Trouver une expérience ».
+    // UI-3A — Menu de la passion.
     var cta = e.target.closest("[data-v3-tempt]");
     if (!cta) return;
     e.preventDefault();

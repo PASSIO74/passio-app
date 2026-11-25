@@ -8330,7 +8330,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   overflow-wrap: anywhere;
 }
 
-/* ── Feuille « Trouver une expérience » ─────────────────────────────────────
+/* ── Feuille « Autour de cette passion » ─────────────────────────────────────
    Elle hérite de `.v2-sheet-backdrop` / `.v2-sheet` : mêmes rayons, même
    safe-area, même piège de focus. Seul le trait de tête est propre au lot. */
 #v3PassioSheet .v3-sheet-trace {
