@@ -12286,6 +12286,7 @@ async function openPost(id) {
   if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
+  window.PassioUIV3?.decorateOpenPost?.();
   // Le sujet privé de cette discussion (`fil:<id>`, app-08), avant la lecture.
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 

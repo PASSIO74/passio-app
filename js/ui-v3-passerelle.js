@@ -989,6 +989,7 @@
       }
       if (!trouverEvenement(evId)) fusionnerEvenementsServeur(sorties);
       planifierScan();
+      decorerSortieDuPostOuvert();
     } catch (e) { fail("event_lookup", "lecture ciblée indisponible"); }
     finally { lecture.relireApres.set(evId, Date.now() + 60000); }
   }
@@ -1020,13 +1021,14 @@
   function retirerDecoration(postId) {
     if (!postId) return;
     try {
-      var art = document.querySelector('#feedList article.post[data-postid="' + cssEscape(postId) + '"]');
-      if (!art) return;
-      var row = art.querySelector("[data-v3-bridge]");
-      if (row && row.parentNode) row.parentNode.removeChild(row);
-      retirerPorteCarte(art);
-      art.removeAttribute("data-v3-decore");
-      art.removeAttribute("data-v3-activity-source");
+      var carte = '.post[data-postid="' + cssEscape(postId) + '"]';
+      document.querySelectorAll("#feedList " + carte + ", #postDetailContent " + carte).forEach(function (art) {
+        var row = art.querySelector("[data-v3-bridge]");
+        if (row) row.remove();
+        retirerPorteCarte(art);
+        art.removeAttribute("data-v3-decore");
+        art.removeAttribute("data-v3-activity-source");
+      });
     } catch (e) { fail("decoration_retrait", e); }
   }
 
@@ -1072,6 +1074,20 @@
     article.setAttribute("data-v3-decore", "1");
     // Le CSS distingue la carte orange d'un partage du lien d'une référence directe.
     article.setAttribute("data-v3-activity-source", sourceRef(post));
+  }
+
+  // La publication ouverte reste accessible même hors de la fenêtre et des
+  // filtres du fil. Sa sortie directe emprunte la même porte que sur la carte.
+  function decorerSortieDuPostOuvert() {
+    if (!uiV3Enabled()) return;
+    var page = document.getElementById("postDetailPage");
+    if (!page || page.style.display !== "flex") return;
+    var carte = page.querySelector("#postDetailContent > .post[data-postid]");
+    if (!carte || carte.querySelector("[data-v3-activity]")) return;
+    var post = trouverPost(carte.getAttribute("data-postid"));
+    if (post && post.mood === "irl" && sourceRef(post) === "direct") {
+      decorerActivite(carte, post, refEvenement(post));
+    }
   }
 
   // ── La fiche ──────────────────────────────────────────────────────────────
@@ -1365,6 +1381,8 @@
     if (!on) {
       root.classList.remove(ROOT_CLASS);
       nettoyer(null);
+      var detailPost = document.getElementById("postDetailContent");
+      if (detailPost) nettoyer(detailPost);
       closeSheet({ restaurer: false });
       // La fiche ouverte par le lot redevient la fiche historique, barre
       // d'action comprise. On coupe le contexte AVANT de la repeindre, sinon
@@ -1389,6 +1407,7 @@
     observerLeFil();
     assurerDemoFeed();
     decorateFeed(null);
+    decorerSortieDuPostOuvert();
     return true;
   }
 
@@ -1409,6 +1428,7 @@
     isEnabled: uiV3Enabled,
     apply: apply,
     decorateFeed: decorateFeed,
+    decorateOpenPost: decorerSortieDuPostOuvert,
     openSheet: openSheet,
     closeSheet: closeSheet,
     dismissHint: fermerAideContextuelle,
