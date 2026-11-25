@@ -83,6 +83,59 @@ test.describe("Audit 2026-11 — promotion depuis la liste d'attente (B-02 / E-0
     } finally { await ctx.close(); }
   });
 
+  for (const instantane of ["ancien", "déjà compté", "compteurs anciens", "déjà validé"]) {
+    test("la file reste juste pendant une synchronisation : " + instantane, async ({ page }) => {
+      const srv = new FauxServeur();
+      const id = "evt_file_synchro";
+      peupler(srv, id);
+      const o = await ouvrirCompte(page.context(), srv, ORGA, { nom: "orga_attente" });
+      const vue = o.page;
+      await vue.route("**/rest/v1/rpc/participants_validation", route => route.fulfill({
+        json: srv.t.event_attendees.filter(a => a.event_id === id).map(a => ({
+          user_id: a.user_id, rsvp: a.rsvp,
+          valide: a.user_id === ORGA || (instantane === "déjà validé" && a.rsvp === "going"),
+        })),
+      }));
+      await chargerActivite(vue, id);
+      await vue.evaluate(async ({ id, cible, instantane }) => {
+        const reserver = window.supaPromoteFromWaitlist;
+        window.supaPromoteFromWaitlist = async (...args) => {
+          const copie = structuredClone(_findCanonicalEvent(id));
+          const ok = await reserver(...args);
+          const avant = structuredClone(copie);
+          if (instantane !== "ancien") {
+            copie.attendees.push(cible);
+            copie.waitlist = copie.waitlist.filter(uid => uid !== cible);
+          }
+          const compte = instantane === "compteurs anciens" ? avant : copie;
+          copie.counts = { going: compte.attendees.length, waitlist: compte.waitlist.length };
+          avant.counts = { going: avant.attendees.length, waitlist: avant.waitlist.length };
+          state.userEvents = [avant];
+          fusionnerEvenementsServeur([copie]);
+          return ok;
+        };
+        await openEventWaitlist(id);
+      }, { id, cible: B, instantane });
+      const panneau = vue.locator("[data-file-sortie]");
+      await panneau.locator('button[onclick*="' + B + '"]').click();
+      if (instantane !== "déjà validé") {
+        await expect(panneau.getByText("En attente de validation", { exact: true })).toBeVisible();
+        await expect(panneau.locator('[data-reservation="' + B + '"]')).toContainText("bob_attente");
+      }
+      await expect(panneau.locator('button[onclick*="' + B + '"]')).toHaveCount(0);
+      await expect(panneau.locator('button[onclick*="' + C + '"]')).toBeVisible();
+      await expect.poll(() => vue.evaluate(id => {
+        return [state.userEvents, state.seed.events].map(liste => {
+          const ev = liste.find(e => e.id === id);
+          return { file: ev.waitlist, going: ev.counts.going, waitlist: ev.counts.waitlist };
+        });
+      }, id)).toEqual(Array(2).fill({ file: [C], going: 2, waitlist: 1 }));
+      if (instantane === "déjà validé") {
+        await expect(panneau.locator("[data-reservation]")).toHaveCount(0);
+      }
+    });
+  }
+
   test("② un simple participant qui désigne quelqu'un : non_autorise, rien ne bouge, rien d'annoncé", async ({ browser }) => {
     const srv = new FauxServeur();
     const evId = "evt_promo_" + Date.now().toString(36) + "b";
