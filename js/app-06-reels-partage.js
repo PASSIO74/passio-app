@@ -5202,13 +5202,17 @@ function normalizeStudioMood(mood) {
   return connu ? mood : "all";
 }
 
-// Mood pill row
-$$("#postMoodRow .pill").forEach(p => {
-  p.addEventListener("click", () => {
-    $$("#postMoodRow .pill").forEach(x => x.classList.remove("active"));
-    p.classList.add("active");
-    studioMood = p.getAttribute("data-postmood");
+function choisirCategorieStudio(mood) {
+  studioMood = normalizeStudioMood(mood);
+  $$("#postMoodRow .pill").forEach(el => {
+    const choisie = el.getAttribute("data-postmood") === studioMood;
+    el.classList.toggle("active", choisie);
+    el.setAttribute("aria-pressed", String(choisie));
   });
+}
+
+$$("#postMoodRow .pill").forEach(p => {
+  p.addEventListener("click", () => choisirCategorieStudio(p.getAttribute("data-postmood")));
 });
 
 // Photo upload
@@ -5839,8 +5843,7 @@ function reprendreBrouillonStudio() {
   if (ta) ta.value = d.text;
   const sel = document.getElementById("postPassion");
   if (sel && d.passion && [].slice.call(sel.options).some(function (o) { return o.value === d.passion; })) sel.value = d.passion;
-  studioMood = normalizeStudioMood(d.mood);
-  $$("#postMoodRow .pill").forEach(el => el.classList.toggle("active", el.getAttribute("data-postmood") === studioMood));
+  choisirCategorieStudio(d.mood);
   const b = document.getElementById("studioBrouillon");
   if (b && b.parentNode) b.parentNode.removeChild(b);
   return true;

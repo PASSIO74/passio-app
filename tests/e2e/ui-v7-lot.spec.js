@@ -99,10 +99,10 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     // c'est tout son objet. Seul le neutre a quitté la barre ; il vit toujours
     // dans le moteur, sans bouton.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Explorer", "Apprendre", "Idées", "À plusieurs"]);
+      .toEqual(["Explorer", "Expériences", "Conseils", "À faire ensemble"]);
     expect(await page.locator(".feed-intent-btn").evaluateAll(
       (b) => b.map((x) => x.getAttribute("data-intent"))))
-      .toEqual(["discover", "learn", "create", "meet"]);
+      .toEqual(["discover", "create", "learn", "meet"]);
 
     // Studio : « Passion : … ». « Options » n'existe plus — le repli qui portait
     // ce mot a été retiré le 2026-09-03 avec le mood qu'il cachait ; UI-7 ne

@@ -1348,11 +1348,13 @@
       line-height: 1.5;
     }
 
+    #fieldMood,
     label.field {
       display: block;
       margin-bottom: 12px;
     }
 
+    #fieldMood > span,
     label.field > span {
       display: block;
       font-size: 11px;
@@ -1363,6 +1365,7 @@
        toute `> span`, elles prenaient aussi les aides et les 164 caractères de la
        case de consentement de l'inscription. L'intitulé est toujours le premier
        enfant ; une case à cocher passe son `input` d'abord, donc son texte non. */
+    #fieldMood > span:first-child,
     label.field > span:first-child {
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -12438,14 +12441,27 @@ button, a, label, select, summary,
   grid-template-columns: auto minmax(0, 1fr) auto auto;
 }
 
-/* ── Bobines : l'indice de défilement passe AU-DESSUS du bloc auteur (2026-11-10) ──
-   Posé à 88 px du bas avant le lot UI-5, il tombait depuis exactement sur la
-   rangée de capsules (« Ça m'intéresse », « À vivre près de moi »…) et sur le
-   « Co » de « Commentaire », cinq secondes à CHAQUE ouverture du lecteur.
-   260 px : au-dessus du bloc auteur même avec une légende de quatre lignes,
-   sous le premier bouton de la colonne d'actions. LOT-3 : 310 px, la rangée
-   de capsules tient désormais sur deux lignes (grille 2 × 2). */
-:root.passio-ui-5 .reels-hint { bottom: calc(310px + env(safe-area-inset-bottom)); }
+/* Sous les commandes du haut, l'indice laisse la place aux catégories et aux
+   légendes qui peuvent prendre plusieurs lignes en bas de la bobine. */
+:root.passio-ui-5 .reels-hint {
+  top: calc(132px + env(safe-area-inset-top));
+  bottom: auto;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Entre « Bobines » et le compteur, même quand la légende remonte. */
+  :root.passio-ui-5 .reels-hint {
+    top: calc(12px + env(safe-area-inset-top));
+    width: max-content;
+    max-width: calc(100% - 224px);
+    white-space: normal;
+    text-align: center;
+    padding: 4px;
+  }
+}
+@media (orientation: landscape) and (max-height: 340px) {
+  /* La légende peut atteindre l'en-tête. Les deux flèches restent visibles. */
+  :root.passio-ui-5 .reels-hint { display: none; }
+}
 
 /* LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) : retour aux derniers messages.
    Rond de 44 px au-dessus de la saisie ; avec un compte, il devient une pastille

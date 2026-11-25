@@ -27,7 +27,7 @@ const PREVIEW = "?passio_preview=passio-ui-v2";
 
 const POSTS = [
   { id: "intent_create", authorId: "author_a", authorName: "A", passion: "musique", mood: "creation", type: "text", text: "Créer", createdAt: 1000, likes: 0, comments: [] },
-  { id: "intent_learn", authorId: "author_b", authorName: "B", passion: "musique", mood: "learn", type: "text", text: "Apprendre", createdAt: 3000, likes: 0, comments: [] },
+  { id: "intent_learn", authorId: "author_b", authorName: "B", passion: "musique", mood: "learn", type: "text", text: "Conseils", createdAt: 3000, likes: 0, comments: [] },
   { id: "intent_generic", authorId: "author_c", authorName: "C", passion: "musique", mood: "chill", type: "text", text: "Générique", createdAt: 2000, likes: 0, comments: [] },
   { id: "intent_meet", authorId: "author_d", authorName: "D", passion: "musique", mood: "irl", type: "text", text: "Rencontrer", createdAt: 4000, likes: 0, comments: [] },
 ];
@@ -216,7 +216,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     // Les quatre libellés, dans l'ordre.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Explorer", "Apprendre", "Idées", "À plusieurs"]);
+      .toEqual(["Explorer", "Expériences", "Conseils", "À faire ensemble"]);
 
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
@@ -276,7 +276,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(await renderedIds(page), "aucun critère : aucune carte").toEqual([]);
 
     await page.evaluate(() => setFeedIntent("learn"));
-    expect(await renderedIds(page), "« Apprendre » seule n'ouvre aucune source")
+    expect(await renderedIds(page), "« Conseils » seule n'ouvre aucune source")
       .toEqual([]);
 
     await page.evaluate(() => setFeedIntent("create"));
@@ -364,7 +364,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
     // ⚠️ ON FERME L'AIDE CONTEXTUELLE AVANT DE CLIQUER, DEPUIS LE 2026-09-09, et
-    // pour une raison de MISE EN PAGE : « Idées » ne laisse plus qu'UNE carte à
+    // pour une raison de MISE EN PAGE : « Expériences » ne laisse plus qu'UNE carte à
     // l'écran (l'envie FILTRE l'union, elle ne l'élargit plus), et la bulle
     // « feed_auteur » se pose exactement dessus. On la ferme par le MÉCANISME
     // PRODUIT — le bouton « Compris » — comme le ferait l'utilisateur ; un
@@ -506,7 +506,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
   // horizontalement (`overflow-x: auto`, `flex-shrink: 0`) : c'était la réponse
   // d'UI-2 à « Rencontrer » tronqué à 360 px. Le §3 de l'ordre du 2026-08-28
   // demande l'inverse et le rend possible — les libellés raccourcis
-  // (Explorer, Idées) tiennent à cinq sans geste de défilement. L'exigence de
+  // (Explorer, Expériences) tiennent à cinq sans geste de défilement. L'exigence de
   // fond, elle, ne bouge pas : AUCUN libellé coupé. Elle est donc conservée,
   // et c'est le moyen qui change. Sous kill switch, la bande défilante d'UI-2
   // revient telle quelle — ce que la seconde moitié du test vérifie.

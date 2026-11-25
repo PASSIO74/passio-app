@@ -1371,8 +1371,8 @@
     n.id = "frNoteLocale";
     n.className = "fr-note-locale";
     n.setAttribute("role", "status");
-    n.innerHTML = '<span class="fr-note-locale-texte">Gardées sur cet appareil.</span>'
-      + '<button type="button" class="fr-note-locale-cta">Créer mon compte pour les retrouver partout</button>'
+    n.innerHTML = '<span class="fr-note-locale-texte">Tes passions sont enregistrées sur cet appareil.</span>'
+      + '<button type="button" class="fr-note-locale-cta" aria-description="Retrouve tes passions sur tes autres appareils.">Créer mon compte</button>'
       + '<button type="button" class="fr-note-locale-fermer" aria-label="Fermer">×</button>';
     n.querySelector(".fr-note-locale-cta").addEventListener("click", function () {
       if (n.parentNode) n.parentNode.removeChild(n);
@@ -1983,6 +1983,29 @@
 
   function bulleVisible() { return !!document.querySelector(".fr-tip"); }
 
+  var _retourFilPrioritaire = false;
+  var _tourAttendFil = false;
+
+  function prioriserRetourFil(prioritaire) {
+    if (prioritaire === _retourFilPrioritaire) return;
+    _retourFilPrioritaire = prioritaire;
+    if (ecranActif() !== "feed") {
+      _tourAttendFil = false;
+      return;
+    }
+    var bulle = document.querySelector(".fr-tip");
+    if (bulle) {
+      // Un repère déjà vu retrouve sa place après le geste, sans seconde vue.
+      bulle.hidden = prioritaire;
+      var cible = ETAPES[bulle.getAttribute("data-fr-tip")].cible();
+      if (cible) cible.classList.toggle("fr-tip-cible", !prioritaire);
+    }
+    if (!prioritaire && _tourAttendFil) {
+      _tourAttendFil = false;
+      planifierTour();
+    }
+  }
+
   function fermerBulle(raison) {
     // ENT-C05 : le contour de la cible part avec sa bulle.
     try { Array.prototype.forEach.call(document.querySelectorAll(".fr-tip-cible"), function (n) { n.classList.remove("fr-tip-cible"); }); } catch (_) {}
@@ -2015,6 +2038,10 @@
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
+    if (_retourFilPrioritaire && ecranActif() === "feed") {
+      if (id === "decouvrir" || id === "creer") _tourAttendFil = true;
+      return false;
+    }
     var cible = null;
     try { cible = e.cible(); } catch (_) { cible = null; }
     // `offsetParent` nul = élément dans un conteneur masqué : une bulle ancrée
@@ -2813,6 +2840,7 @@
     // Bienvenue
     fermerBienvenue: fermerBienvenue,
     // Tour
+    prioriserRetourFil: prioriserRetourFil,
     apresLectureStory: apresLectureStory,
     relancerTour: relancerTour,
     abandonnerTour: abandonnerTour,

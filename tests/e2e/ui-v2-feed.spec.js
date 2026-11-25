@@ -142,7 +142,7 @@ test("URL normale : barre du bas UI-1 et les intentions UI-2 simultanément", as
   // garantit — la barre du bas UI-1 et le rail d'envies UI-2 coexistent sur
   // l'URL normale — ne dépend pas du nombre de pastilles.
   expect(await page.locator(".feed-intent-btn").allTextContents())
-    .toEqual(["Explorer", "Apprendre", "Idées", "À plusieurs"]);
+    .toEqual(["Explorer", "Expériences", "Conseils", "À faire ensemble"]);
 
   expect(errors.js, "exceptions JS dans l'aperçu").toEqual([]);
   expect(errors.console.filter((m) => m.includes("[ui-v2]"))).toEqual([]);
