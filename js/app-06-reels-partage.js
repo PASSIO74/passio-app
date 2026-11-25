@@ -242,17 +242,16 @@ function _lienPartageConclure(message) {
 }
 
 // ⑥ Une publication plus ancienne que la page chargée : on cherche son auteur,
-// puis on charge SES publications. Une seule fois par lien — un identifiant
+// puis on charge cette publication précise avec les filtres habituels. Une seule fois par lien — un identifiant
 // inconnu ne doit pas faire marteler la base.
 async function _lienPartageChercherPost(id) {
-  _lienPartageCible = true;
   if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supaLoadPosts !== "function") return;
   try {
     var r = await supa.from("posts").select("author_id").eq("id", id).maybeSingle();
     if (r.error) { diagLog("lien_partage_post", r.error.message); return; }
     var auteur = r.data && r.data.author_id;
     if (!auteur) return;
-    var lus = await supaLoadPosts(0, auteur);
+    var lus = await supaLoadPosts(0, auteur, { postId: id });
     state.supabasePosts = state.supabasePosts || [];
     (lus || []).forEach(function (p) {
       if (p && p.id && !state.supabasePosts.some(function (q) { return q.id === p.id; })) state.supabasePosts.push(p);
@@ -308,6 +307,7 @@ function _ouvrirLienPartage() {
       // Une publication RÉELLE peut n'arriver qu'avec `supaLoadPosts` : on
       // retente, puis on la cherche de façon ciblée (⑥), puis on conclut.
       if (!_lienPartageCible && _lienPartageEssais >= 3 && window._supaReal) {
+        _lienPartageCible = true;
         _lienPartageChercherPost(cible.id).then(function () { _lienPartageReplanifier(50); });
         _lienPartageEssais++;
         return false;

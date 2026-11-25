@@ -1504,6 +1504,14 @@ function openPostReactors(postId, event) {
 // juste au-dessus, partagent le même moteur (`_reactionItemsChipHtml`) et sont
 // intactes.
 
+function _peutChargerDiscussion(post) {
+  if (typeof supa === "undefined" || !supa) return false;
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) {
+    return !!(window._supaReal && post && post.fromSupabase);
+  }
+  return typeof MY_UID !== "undefined" && !!MY_UID;
+}
+
 async function openComments(postId) {
   // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
   // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
@@ -1520,20 +1528,24 @@ async function openComments(postId) {
   // en rouvrant un fil vide déjà chargé < 20 s).
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
-  var _willLoad = !_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID;
+  var _willLoad = !_fresh && _peutChargerDiscussion(post);
   var _emptyStateHtml = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Discussion</div>
-    <div id="commentsBox" class="cmt-fil-liste" aria-live="polite">
-      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
-    </div>
+  const saisie = window.PassioFirstRun && PassioFirstRun.estVisiteur()
+    ? `<button type="button" class="btn primary block" onclick="PassioFirstRun.allerInscription('commenter','${escapeJsArg(postId)}')">Créer un compte pour répondre</button>`
+    : `
     <textarea class="textarea" id="newComment" aria-label="Écrire un commentaire" placeholder="Ajoute un commentaire…" maxlength="400" rows="1" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this);majCompteurCommentaire(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div class="cmt-compteur" id="newCommentCompteur" aria-live="polite" hidden></div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
       <button class="btn primary cmt-publier" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
+    </div>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Discussion</div>
+    <div id="commentsBox" data-thread="${escapeHtml(postId)}" class="cmt-fil-liste" aria-live="polite">
+      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
+    ${saisie}
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
   var _nc = document.getElementById("newComment");

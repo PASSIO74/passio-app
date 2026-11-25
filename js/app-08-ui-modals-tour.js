@@ -6125,6 +6125,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
+      if (options.postId) q = q.eq("id", options.postId);
       // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
       // cache. Une insertion/suppression récente ne décale plus la page suivante.
       if (!authorId && options.cursor) {

@@ -7090,6 +7090,7 @@ async function onbResendConfirmation() {
     }
     // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
+    if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
@@ -8014,6 +8015,7 @@ async function onbDoAuth() {
         // avec le délai à la première session vue sur cet appareil
         // (signalerInscriptionConfirmee, app-08).
         try { window.tel && tel.action("signup_pending_confirmation"); } catch (e) {}
+        if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
         try { localStorage.setItem("passio_signup_pending", String(Date.now())); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
@@ -12294,7 +12296,7 @@ async function openPost(id) {
 }
 
 async function _loadPostDetailComments(id, post) {
-  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  if (!_peutChargerDiscussion(post)) return;
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
   try {
