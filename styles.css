@@ -9249,24 +9249,49 @@ body.ctx-locked #appMain { overflow: hidden; }
   -ms-overflow-style: none;
 }
 :root.passio-ui-5 .v5-actions::-webkit-scrollbar { display: none; }
-/* LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : les quatre actions tiennent en
-   grille 2 × 2, sans défilement — les deux sorties vers le réel étaient hors de
-   l'écran à 390 px. Les sorties IRL portent un liseré corail (§5 : le corail
-   signale le passage au réel). Cibles de 44 px conservées. */
+/* Une seule surface sur la vidéo. Les quatre gestes restent à portée du pouce. */
 :root.passio-ui-5 .v5-actions.v5-actions-grille {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 310px;
+  gap: 0;
+  margin-top: 6px;
+  padding: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  background: rgba(23, 21, 43, 0.78);
   overflow: visible;
 }
 :root.passio-ui-5 .v5-actions-grille .v5-chip {
-  width: 100%;
-  padding: 11px 10px;
-  white-space: normal;
-  text-align: center;
-  line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-size: clamp(11px, 3vw, 13px);
+  font-weight: 600;
+  line-height: 1.2;
 }
-:root.passio-ui-5 .v5-actions-grille .v5-chip-irl {
-  border: 2px solid var(--v2-coral, #ff6b57);
+:root.passio-ui-5 .v5-actions-grille svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+:root.passio-ui-5 .v5-chip-irl svg {
+  color: #ffac9e;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Verre dépoli sur la vidéo : les chips doivent rester lisibles sur n'importe
@@ -9311,10 +9336,11 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* Le signal posé : violet plein, l'identité de la découverte (§5). */
-:root.passio-ui-5 .v5-chip-actif {
+:root.passio-ui-5 .v5-actions-grille .v5-chip[aria-pressed="true"] {
   background: var(--v2-violet, #6d32f4);
-  border-color: transparent;
-  color: #fff;
+}
+:root.passio-ui-5 .v5-chip[aria-pressed="true"] svg {
+  fill: currentColor;
 }
 
 @media (prefers-reduced-motion: reduce) {

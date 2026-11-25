@@ -17,8 +17,7 @@
 //   ① la bobine est reliée à une activité  → un seul lien « Voir l'activité »,
 //      conformément au §7 (« la fiche de l'activité correspondante est
 //      affichée directement ») ;
-//   ② sinon → « Ça m'intéresse », « Découvrir cette Passio »,
-//      « À vivre près de moi », « Proposer une sortie ». PASSIO ne fabrique
+//   ② sinon → « Intérêt », « Découvrir », « Sorties », « Proposer ». PASSIO ne fabrique
 //      jamais d'événement qui n'existe pas.
 //
 // ⚠️ POURQUOI ON FERME LE VIEWER AVANT TOUTE SORTIE. Le viewer est en
@@ -39,7 +38,7 @@
 // L'observateur voit tout, y compris ses propres écritures — d'où le marqueur
 // d'idempotence posé sur `.reel-item`.
 //
-// ⚠️ « Ça m'intéresse » N'EST PAS UN BOUTON DÉCORATIF. Le signal est posé sur la
+// ⚠️ « Intérêt » N'EST PAS UN BOUTON DÉCORATIF. Le signal est posé sur la
 // PASSION (pas sur la bobine seule : c'est la seule granularité que les
 // moteurs existants savent consommer) dans `state.user.passionSignals`, et il
 // pèse réellement dans `feedPostScore` (app-02, bloc affinité). 100 % local,
@@ -138,7 +137,7 @@
     return "";
   }
 
-  // ── Le signal « Ça m'intéresse » ──────────────────────────────────────────
+  // ── Le signal « Intérêt » ────────────────────────────────────────────────
   function signaux() {
     var st = etat();
     if (!st) return null;
@@ -238,6 +237,21 @@
     return b;
   }
 
+  function raccourci(texte, libelle, chemin, classe, onActivation) {
+    var b = chip(texte, classe, onActivation);
+    b.setAttribute("aria-label", libelle);
+    b.title = libelle;
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS(ns, "path");
+    path.setAttribute("d", chemin);
+    svg.appendChild(path);
+    b.prepend(svg);
+    return b;
+  }
+
   function construireRangee(reel, evId, passion) {
     var row = document.createElement("div");
     row.className = CLASSE_RANGEE;
@@ -256,41 +270,39 @@
     }
 
     row.setAttribute("aria-label", "Prolonger cette bobine dans le réel");
-    // LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : quatre actions en grille 2 × 2
-    // au lieu d'une rangée qui défile — mesuré à 390 px, « À vivre près de moi »
-    // et « Proposer une sortie », les deux sorties vers le réel, étaient HORS de
-    // l'écran, sans barre ni indice.
+    // Les quatre destinations restent visibles ensemble, même sur un petit écran.
     row.classList.add("v5-actions-grille");
 
-    // ① Signal d'intérêt — le seul qui n'ouvre rien. État exposé par
-    //    aria-pressed, et re-taper le retire (réversible, comme un like).
-    var b1 = chip("Ça m'intéresse", "v5-chip-signal", null);
-    b1.setAttribute("aria-pressed", intrigue(passion) ? "true" : "false");
-    b1.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
+    // Le signal reste réversible dans le lecteur.
+    var b1 = raccourci("Intérêt", "Intérêt pour cette passion",
+      "m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z",
+      "v5-chip-signal", function (bouton) {
       var pose = basculerSignal(passion);
-      b1.setAttribute("aria-pressed", pose ? "true" : "false");
-      b1.classList.toggle("v5-chip-actif", pose);
+      bouton.setAttribute("aria-pressed", String(pose));
       track("ui_v5_reel_signal", { v: VERSION, has_psn: !!passion, on: !!pose });
     });
-    b1.classList.toggle("v5-chip-actif", intrigue(passion));
+    b1.setAttribute("aria-pressed", String(intrigue(passion)));
     row.appendChild(b1);
 
     // ② Le contexte de la Passio (personnes et contenus), pas une rencontre.
     var nom = libellePassion(passion);
-    row.appendChild(chip(nom ? "Découvrir " + nom : "Découvrir cette Passio", "", function () {
+    row.appendChild(raccourci("Découvrir", nom ? "Découvrir " + nom : "Découvrir cette Passio",
+      "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-5-4-2.5 5.5L8 16l2.5-5.5Z", "", function () {
       decouvrirPassio(passion);
     }));
 
     // ③ Les activités de cette Passio — SANS demande de position : le moteur
     //    d'UI-3A pose le marqueur à usage unique que renderIRL consomme.
-    row.appendChild(chip("À vivre près de moi", "v5-chip-irl", function () {
+    row.appendChild(raccourci("Sorties", "Sorties près de moi",
+      "M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Zm-4.5 0a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z",
+      "v5-chip-irl", function () {
       voirActivites(passion);
     }));
 
     // ④ Le formulaire EXISTANT, prérempli. Aucun événement n'est créé ici.
-    row.appendChild(chip("Proposer une sortie", "v5-chip-irl", function () {
+    row.appendChild(raccourci("Proposer", "Proposer une sortie",
+      "M4 9h16M8 3v4m8-4v4M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 7v6m-3-3h6",
+      "v5-chip-irl", function () {
       proposerSortie(passion, reel.id);
     }));
 
@@ -305,7 +317,7 @@
     if (!id) return;
     var reel = bobineParId(id);
     if (!reel) return;                     // bobine inconnue : on ne touche à rien
-    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : pas de « Ça m'intéresse »
+    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : pas de « Intérêt »
     // ni de « Découvrir » sur MA propre bobine.
     try { if (typeof window._estMonPost === "function" && window._estMonPost(reel)) return; } catch (e) {}
 
