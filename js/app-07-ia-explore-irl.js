@@ -4112,12 +4112,20 @@ async function _promoteNextWaitlisted(ev) {
 // compteur — gardait « Liste d'attente (1) » et un « +1 autre » fantôme après
 // la promotion du seul inscrit en attente, jusqu'au prochain chargement. Puis
 // on repeint ce qui le montre : la carte, et la fiche si elle est ouverte.
-function _appliquerPromotionLocale(ev, uid) {
+function _appliquerPromotionLocale(ev, uid, organisation = false) {
   if (!ev || !uid) return;
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== uid);
-  if (!(ev.attendees || []).includes(uid)) ev.attendees = (ev.attendees || []).concat([uid]);
-  _ajusterCompteInscrits(ev, "waitlist", -1);
-  _ajusterCompteInscrits(ev, "going", +1);
+  // La fiche utilise la copie serveur lorsqu'une sortie créée sur cet appareil
+  // existe aussi dans userEvents. Les deux doivent refléter la même écriture.
+  const copies = organisation ? _copiesSortieOrganisation(ev.id) : [ev];
+  for (const sortie of copies) {
+    const enFile = (sortie.waitlist || []).includes(uid);
+    const inscrit = (sortie.attendees || []).includes(uid);
+    sortie.waitlist = (sortie.waitlist || []).filter(x => x !== uid);
+    if (!inscrit) sortie.attendees = (sortie.attendees || []).concat([uid]);
+    if (sortie.counts) sortie.counts = { ...sortie.counts };
+    if (!organisation || enFile) _ajusterCompteInscrits(sortie, "waitlist", -1);
+    if (!organisation || !inscrit) _ajusterCompteInscrits(sortie, "going", +1);
+  }
   saveState();
   _patchEventCardJoin(ev.id);
   _refreshEventDetailIfOpen(ev.id);
@@ -8089,14 +8097,35 @@ async function toggleEventCoOrganizer(id, userId) {
 }
 
 // ===== Liste d'attente (vue organisateur) =====
-function openEventWaitlist(id) {
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
-  if (!ev) return;
-  const wl = ev.waitlist || [];
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Liste d'attente</div>
-    <div class="modal-subtitle">${RSVP_LABELS.waitlist.detailOrganisation}</div>
+function _copiesSortieOrganisation(id) {
+  return [...new Set([_findCanonicalEvent(id), (state.seed.events || []).find(e => e.id === id)].filter(Boolean))];
+}
+
+// La RPC classe la file par date d'arrivée. PostgREST peut plafonner chaque
+// réponse : ne jamais prendre la longueur de la première page pour le total.
+async function _lireFileOrganisation(id) {
+  const lire = () => supa.rpc("participants_validation", { p_event_id: id }, { count: "exact" });
+  const premiere = await lire();
+  if (premiere.error || !Array.isArray(premiere.data) || !Number.isInteger(premiere.count)) throw new Error("lecture file");
+  const lignes = premiere.data.slice();
+  const taille = lignes.length;
+  while (lignes.length < premiere.count) {
+    if (!taille) throw new Error("page vide");
+    const page = await lire().range(lignes.length, lignes.length + taille - 1);
+    if (page.error || !page.data?.length || page.count !== premiere.count) throw new Error("file modifiée");
+    lignes.push(...page.data);
+  }
+  if (lignes.length !== premiere.count || new Set(lignes.map(a => a.user_id)).size !== lignes.length) throw new Error("file incohérente");
+  return lignes;
+}
+
+function _lignesFileOrganisation(id, wl, reservations) {
+  return `
+    ${reservations.length ? `<div role="status" style="margin-top:12px">
+      <strong>En attente de validation</strong>
+      ${reservations.map(uid => `<div data-reservation="${escapeHtml(uid)}">${escapeHtml((userById(uid) || {}).name || "Participant")}</div>`).join("")}
+      <button class="btn ghost block" onclick="openEventParticipantValidation('${escapeJsArg(id)}', null, this)">Valider les participants</button>
+    </div>` : ""}
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${wl.map((u, i) => {
         const p = userById(u) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
@@ -8104,17 +8133,63 @@ function openEventWaitlist(id) {
           <span style="font-size:12px;color:var(--muted);width:18px;">${i + 1}</span>
           <div class="avatar sm" style="background:${avatarBg(p)};">${avatarInner(p)}</div>
           <span style="flex:1;font-size:13px;">${escapeHtml(p.name || "Participant")}</span>
-          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}')">Réserver la place</button>
+          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}',this)">Réserver la place</button>
         </div>`;
-      }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en attente.</div>'}
-    </div>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
-  `);
+      }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en liste d’attente.</div>'}
+    </div>`;
 }
 
-async function promoteWaitlisted(id, userId) {
+async function openEventWaitlist(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev)) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Liste d'attente</div>
+    <div class="modal-subtitle">${RSVP_LABELS.waitlist.detailOrganisation}</div>
+    <div data-file-sortie="${escapeHtml(id)}" aria-busy="${!!window._supaReal}">${_lignesFileOrganisation(id, ev.waitlist || [], [])}</div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+  `);
+  // Comme dans Participants, seuls les accords du serveur distinguent les
+  // réservations encore à valider de celles qui sont déjà confirmées.
+  if (!window._supaReal) return;
+  const panneau = document.querySelector("#modalBackdrop.active [data-file-sortie]");
+  const compte = MY_UID, etat = state;
+  try {
+    const participants = await _lireFileOrganisation(id);
+    if (MY_UID !== compte || state !== etat || !panneau.isConnected) return;
+    const lignes = participants.filter(a => a.user_id !== compte);
+    const file = participants.filter(a => a.rsvp === "waitlist").map(a => a.user_id);
+    const demandes = lignes.filter(a => a.rsvp === "going" && !a.valide).map(a => a.user_id);
+    const inconnus = [...file, ...demandes].filter(uid => !(userById(uid) || {}).name);
+    if (inconnus.length && typeof _resolveProfilesByIds === "function") {
+      try { await _resolveProfilesByIds(inconnus); }
+      catch (e) { if (typeof diagLog === "function") diagLog("file : noms indisponibles"); }
+    }
+    if (MY_UID !== compte || state !== etat || panneau !== document.querySelector("#modalBackdrop.active [data-file-sortie]")) return;
+    if (panneau.querySelector("button:disabled")) return;
+    const venants = participants.filter(a => a.rsvp === "going").map(a => a.user_id);
+    // Une réponse vide peut aussi indiquer une perte du droit de gestion.
+    // Dans ce cas le panneau est vide mais les compteurs publics sont conservés.
+    for (const copie of participants.length ? _copiesSortieOrganisation(id) : []) {
+      copie.attendees = venants.slice();
+      copie.waitlist = file.slice();
+      if (copie.counts) copie.counts = { ...copie.counts, going: venants.length, waitlist: file.length };
+    }
+    saveState();
+    _patchEventCardJoin(id);
+    _refreshEventDetailIfOpen(id);
+    panneau.innerHTML = _lignesFileOrganisation(id, file, demandes);
+  } catch (e) {
+    if (MY_UID === compte && state === etat && panneau === document.querySelector("#modalBackdrop.active [data-file-sortie]")) {
+      panneau.insertAdjacentHTML("beforeend", `<button class="btn ghost block" onclick="openEventWaitlist('${escapeJsArg(id)}')">Actualiser les statuts</button>`);
+    }
+  } finally { panneau.setAttribute("aria-busy", "false"); }
+}
+
+async function promoteWaitlisted(id, userId, bouton) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev)) return;
+  const compte = MY_UID, etat = state;
   // ⚠️ IRL-04 (contre-revue Astra, 2026-09-15) : la promotion MANUELLE restait
   // optimiste — la personne passait dans `attendees`, était notifiée et
   // « Participant inscrit » s'affichait, même quand le serveur refusait (zéro
@@ -8125,11 +8200,16 @@ async function promoteWaitlisted(id, userId) {
   let promu = userId;
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
     // Promotion CHOISIE par l'organisation : la base vérifie ce droit (B-02).
-    const ok = await supaPromoteFromWaitlist(id, userId);
+    if (bouton && bouton.disabled) return false;
+    if (bouton) bouton.disabled = true;
+    let ok;
+    try { ok = await supaPromoteFromWaitlist(id, userId); }
+    finally { if (bouton) bouton.disabled = false; }
+    if (MY_UID !== compte || state !== etat) return false;
     if (!ok) {
       try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
       toast("⚠️ Inscription non enregistrée : la personne n'est peut-être plus en liste d'attente, ou l'activité est complète.");
-      openEventWaitlist(id);
+      if (document.querySelector("#modalBackdrop.active [data-file-sortie]")?.dataset.fileSortie === id) await openEventWaitlist(id);
       return false;
     }
     notifieeParServeur = !!ok.notifieeParServeur;
@@ -8140,11 +8220,17 @@ async function promoteWaitlisted(id, userId) {
   }
   // Listes, compteur serveur mémorisé (C-04), carte et fiche ouverte : même
   // chemin que la promotion automatique.
-  _appliquerPromotionLocale(ev, promu);
+  // La synchronisation peut remplacer la sortie pendant l'écriture. Repartir
+  // de la version affichée, qui peut aussi avoir déjà reçu la promotion.
+  const actuelle = _findCanonicalEvent(id);
+  if (actuelle && _canManageEvent(actuelle)) _appliquerPromotionLocale(actuelle, promu, true);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(promu, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
   toast("Place réservée. Il te reste à confirmer la participation.");
-  openEventWaitlist(id);
+  const panneau = document.querySelector("#modalBackdrop.active [data-file-sortie]");
+  if (actuelle && _canManageEvent(actuelle) && panneau && panneau.dataset.fileSortie === id) {
+    await openEventWaitlist(id);
+  }
   return true;
 }
 
@@ -9933,12 +10019,16 @@ window.addEventListener("passio:app-ready", function () {
 var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
 // `focusUid` (optionnel) : la personne dont la demande a été touchée dans les
 // notifications — elle passe en tête et ressort visuellement (2026-11-23).
-async function openEventParticipantValidation(id, focusUid) {
+async function openEventParticipantValidation(id, focusUid, origine) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
+  const compte = MY_UID, etat = state;
+  const toujoursVisible = () => MY_UID === compte && state === etat &&
+    (!origine || (origine.isConnected && origine.closest("#modalBackdrop.active")));
   let r;
   try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
-  catch (e) { toast("Liste indisponible — réessaie"); return; }
+  catch (e) { if (toujoursVisible()) toast("Liste indisponible — réessaie"); return; }
+  if (!toujoursVisible()) return;
   if (r.error) { toast("Liste indisponible — réessaie"); return; }
   let lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
   // Les noms : un participant jamais croisé ici s'affichait « Participant ».
@@ -9946,6 +10036,7 @@ async function openEventParticipantValidation(id, focusUid) {
     const inconnus = lignes.map(a => a.user_id).filter(u => !(userById(u) || {}).name);
     if (inconnus.length && typeof _resolveProfilesByIds === "function") await _resolveProfilesByIds(inconnus);
   } catch (e) { try { diagLog("validation : noms — " + (e && e.message)); } catch (_) {} }
+  if (!toujoursVisible()) return;
   const rang = a => (a.user_id === focusUid ? 0 : (a.rsvp === "going" && !a.valide ? 1 : 2));
   lignes = lignes.slice().sort((x, y) => rang(x) - rang(y));
   const nbAttente = lignes.filter(a => a.rsvp === "going" && !a.valide).length;
