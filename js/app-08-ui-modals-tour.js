@@ -5551,6 +5551,8 @@ async function boot() {
         // suivre (invitation de l'appareil seul). Après `supaLoadUserState` —
         // l'état du compte dit si l'invitation a déjà servi — et sans retenir
         // le démarrage.
+        // Un lien d'invitation PRIVÉE ouvert avant de se connecter (app-07).
+        try { if (typeof reprendreInvitationActivite === "function") setTimeout(reprendreInvitationActivite, 0); } catch (e) {}
         try {
           if (typeof appliquerInvitation === "function") {
             Promise.resolve(appliquerInvitation(session)).catch(function (e) {
@@ -8603,6 +8605,47 @@ async function supaInviterActivite(eventId, userIds) {
     if (error) { console.warn("supaInviterActivite:", error.code || error.message); return false; }
     return true;
   } catch (e) { console.warn("supaInviterActivite:", e && e.message); return false; }
+}
+
+// ── Activités privées, suite (2026-11-26, migration_activites_privees_suite) ──
+// Les invités d'une activité : l'organisation lit toute la liste (RLS
+// `event_invites_lecture`). Rend null si illisible (jamais [] sur un échec).
+async function supaLireInvitesActivite(eventId) {
+  if (!eventId || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.from("event_invites").select("user_id").eq("event_id", eventId).limit(500);
+    if (error) { console.warn("supaLireInvitesActivite:", error.code || error.message); return null; }
+    return (data || []).map(function (l) { return l.user_id; });
+  } catch (e) { return null; }
+}
+// Retirer un invité : invitation, inscription et place dans la discussion,
+// d'un geste côté base (`retirer_invite_activite`, réservée à l'organisation).
+async function supaRetirerInviteActivite(eventId, userId) {
+  if (!eventId || !userId || !window._supaReal || !_compteAuthReel()) return false;
+  try {
+    const { data, error } = await supa.rpc("retirer_invite_activite", { p_event_id: eventId, p_user_id: userId });
+    if (error) { console.warn("supaRetirerInviteActivite:", error.code || error.message); return false; }
+    return data === true;
+  } catch (e) { return false; }
+}
+// Le code du lien d'invitation (organisation seule) ; `renouveler` invalide l'ancien lien.
+async function supaCodeInvitationActivite(eventId, renouveler) {
+  if (!eventId || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.rpc("code_invitation_activite", { p_event_id: eventId, p_renouveler: !!renouveler });
+    if (error) { console.warn("supaCodeInvitationActivite:", error.code || error.message); return null; }
+    return (typeof data === "string" && /^[0-9a-f]{64}$/.test(data)) ? data : null;
+  } catch (e) { return null; }
+}
+// Entrer par un lien d'invitation. `null` = la base n'a pas pu répondre (réseau),
+// `false` = refusé (code faux, renouvelé, activité annulée…), `true` = invité.
+async function supaRejoindreParCode(eventId, code) {
+  if (!eventId || !code || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.rpc("rejoindre_par_code", { p_event_id: eventId, p_code: code });
+    if (error) { console.warn("supaRejoindreParCode:", error.code || error.message); return null; }
+    return data === true;
+  } catch (e) { return null; }
 }
 
 // Édition d'un événement par son organisateur OU un co-organisateur.
