@@ -243,6 +243,7 @@
         <button type="button" class="me-tool" onclick="meOuvrirDessin()" title="Dessiner" aria-label="Dessiner">✏️</button>
         <button type="button" class="me-tool" onclick="meOuvrirStickers()" title="Stickers" aria-label="Ajouter un sticker">🏷️</button>
         <button type="button" class="me-tool me-tool-filtres" onclick="meBasculerFiltres()" title="Filtres" aria-label="Filtres">✨</button>
+        <button type="button" class="me-tool me-tool-montage" id="meMontageBtn" onclick="meOuvrirMontage()" title="Couper la vidéo" aria-label="Couper la vidéo">✂️</button>
         <button type="button" class="me-tool" onclick="mePickMedia()" title="Changer de média" aria-label="Changer de média">🖼️</button>
       </div>
     </div>
@@ -281,6 +282,30 @@
         <button type="button" class="me-te-ok" id="meDessinOk" onclick="meFermerDessin()">OK</button>
       </div>
       <div class="me-te-couleurs" id="meDessinCouleurs" role="group" aria-label="Couleur du crayon"></div>
+    </div>
+
+    <!-- ✂️ Montage vidéo (2026-11-26) : choisir le passage gardé (poignées
+         début/fin, cadre glissable) et garder ou couper le son. Le passage est
+         réellement encodé à « OK » (passioVideoPourEnvoi). -->
+    <div class="me-montage-barre" id="meMontage" role="group" aria-label="Couper la vidéo" aria-hidden="true">
+      <div class="me-te-haut">
+        <button type="button" class="me-te-btn" id="meMtAnnuler" onclick="meFermerMontage(false)" aria-label="Annuler le montage">✕</button>
+        <div class="me-mt-titre">✂️ Couper la vidéo</div>
+        <button type="button" class="me-te-btn" id="meMtSon" onclick="meMontageBasculerSon()" aria-pressed="false" aria-label="Son gardé — toucher pour le couper">🔊</button>
+        <button type="button" class="me-te-ok" id="meMtOk" onclick="meFermerMontage(true)">OK</button>
+      </div>
+      <div class="me-mt-bas">
+      <div class="me-mt-piste" id="meMtPiste">
+        <div class="me-mt-vignettes" id="meMtVignettes" aria-hidden="true"></div>
+        <div class="me-mt-ombre me-mt-ombre-g" id="meMtOmbreG"></div>
+        <div class="me-mt-ombre me-mt-ombre-d" id="meMtOmbreD"></div>
+        <div class="me-mt-cadre" id="meMtCadre" aria-hidden="true"></div>
+        <div class="me-mt-tete" id="meMtTete" aria-hidden="true"></div>
+        <button type="button" class="me-mt-poignee me-mt-poignee-d" id="meMtDebut" role="slider" aria-label="Début du passage"></button>
+        <button type="button" class="me-mt-poignee me-mt-poignee-f" id="meMtFin" role="slider" aria-label="Fin du passage"></button>
+      </div>
+      <div class="me-mt-infos" id="meMtInfos" aria-live="polite">Lecture de la vidéo…</div>
+      </div>
     </div>
   </div>
 

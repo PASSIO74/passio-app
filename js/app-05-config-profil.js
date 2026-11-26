@@ -3429,7 +3429,7 @@ function renderReelHTML(post, idx) {
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
       <div class="reel-media-container${filtreBobine ? " " + filtreBobine : ""}"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
         ${reelMediaHTML(post)}
-        ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
+        ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays, { bobine: true })}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
       ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
