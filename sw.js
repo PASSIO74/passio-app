@@ -196,13 +196,15 @@ self.addEventListener("push", e => {
   // `notify-call`, porte un pid ; sans pid, rien ne part. Ni le texte, ni le genre,
   // ni l'emoji n'entrent dans l'accusé, et le tap n'en sait rien.
   if (data.type === "notif") {
+    const confirmation = data.kind === "event_accepted" && /^[\w-]{1,100}$/.test(data.eventId || "")
+      && /^n_pi_confirmation_[0-9a-f-]{36}$/.test(data.decisionId || "");
     const opts = {
       body: data.text || "Nouvelle notification",
-      tag: "passio-notif-" + (data.kind || "notif"),
-      renotify: true,
+      tag: confirmation ? "passio-confirmation-" + data.decisionId : "passio-notif-" + (data.kind || "notif"),
+      renotify: !confirmation,
       icon: "./icon-192.png",
       badge: "./icon-192.png",
-      data: { url: "./" },
+      data: { url: confirmation ? "./#irl-event-" + data.eventId : "./" },
     };
     e.waitUntil(self.registration.showNotification((data.emoji || "🔔") + " PASSIO", opts).then(() => accuser(data, "notif")));
     return;
@@ -266,7 +268,7 @@ self.addEventListener("notificationclick", e => {
   // formes sont admises (l'accueil, ou une activité) : rien d'autre n'est ouvert.
   const d = e.notification.data || {};
   if (typeof d.url === "string" && !d.callId) {
-    const m = /^\.\/#irl-event-([\w-]{1,64})$/.exec(d.url);
+    const m = /^\.\/#irl-event-([\w-]{1,100})$/.exec(d.url);
     const id = m ? m[1] : "";
     e.waitUntil(
       self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {

@@ -42,6 +42,7 @@ import {
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
+import { pousserConfirmations } from "../_shared/confirmations.js";
 import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
@@ -392,6 +393,10 @@ async function rappels(admin: Admin) {
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
+  if (Deno.env.get("PASSIO_CONFIRMATIONS_PUSH") === "1") {
+    await pousserConfirmations(admin, webpush.sendNotification.bind(webpush), ACCUSE)
+      .catch(() => console.warn("confirmations : rattrapage indisponible"));
+  }
   // deno-lint-ignore no-explicit-any
   return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES, ACCUSE);
 }
