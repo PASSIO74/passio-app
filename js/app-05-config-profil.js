@@ -1478,7 +1478,8 @@ function toggleCallVideo(btn) {
 // souple, puis par deviceId d'une AUTRE caméra ; ③ échec total : on rouvre la
 // caméra d'origine — jamais d'écran noir. Une piste n'est acceptée que si elle
 // vient d'un AUTRE appareil (deviceId) que l'ancienne.
-// Rend { track, facing, change } ou null (aucune piste vidéo du tout).
+// Rend { track, facing, change } — `track === oldTrack` si rien n'a bougé — ou
+// null : l'ancienne piste est alors ARRÊTÉE, l'appelant doit le dire.
 async function changerCameraPiste(oldTrack, actuel, quality) {
   const md = navigator.mediaDevices;
   if (!md || !md.getUserMedia) return null;
@@ -1494,6 +1495,13 @@ async function changerCameraPiste(oldTrack, actuel, quality) {
       return t;
     } catch (e) { return null; }
   };
+  const pause = (ms) => new Promise(r => setTimeout(r, ms));
+  // Une seule caméra sur l'appareil : on ne touche à RIEN (sinon l'étape ②
+  // coupait la webcam d'un ordinateur pour la rouvrir — figé visible chez le pair).
+  try {
+    const nb = (await md.enumerateDevices()).filter(d => d.kind === "videoinput").length;
+    if (nb === 1 && oldTrack && oldTrack.readyState === "live") return { track: oldTrack, facing: actuel, change: false };
+  } catch (e) {}
   const essais = () => [
     () => ouvrir(Object.assign({ facingMode: { exact: next } }, quality)),
     () => ouvrir(Object.assign({ facingMode: next }, quality)),
@@ -1514,34 +1522,51 @@ async function changerCameraPiste(oldTrack, actuel, quality) {
   if (t) return { track: t, facing: next, change: true };
   // ② on lâche l'ancienne caméra, puis tous les essais.
   try { if (oldTrack) oldTrack.stop(); } catch (e) {}
+  // Android libère la caméra de façon ASYNCHRONE : enchaîner tout de suite
+  // prenait NotReadableError sur tous les essais, réouverture comprise.
+  await pause(250);
   for (const essai of essais()) { t = await essai(); if (t) return { track: t, facing: next, change: true }; }
-  // ③ rien : on rouvre la caméra d'origine (l'ancienne piste est arrêtée).
-  try {
-    const flux = await md.getUserMedia({ audio: false, video: Object.assign({ facingMode: actuel }, quality) });
-    const r = flux.getVideoTracks()[0];
-    if (r) return { track: r, facing: actuel, change: false };
-  } catch (e) {}
+  // ③ rien : on rouvre la caméra d'origine (l'ancienne piste est arrêtée),
+  // deux fois, la seconde après une attente.
+  for (let i = 0; i < 2; i++) {
+    try {
+      const flux = await md.getUserMedia({ audio: false, video: Object.assign(ancienId ? { deviceId: { exact: ancienId } } : { facingMode: actuel }, quality) });
+      const r = flux.getVideoTracks()[0];
+      if (r) return { track: r, facing: actuel, change: false };
+    } catch (e) {}
+    await pause(500);
+  }
   return null;
 }
 window.changerCameraPiste = changerCameraPiste;
 
 async function flipCallCamera() {
   const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
+  if (cs._flipEnCours) return;          // double toucher : un seul échange à la fois
+  cs._flipEnCours = true;
+  try { await _callFlipCamera(cs); } finally { cs._flipEnCours = false; }
+}
+async function _callFlipCamera(cs) {
   // La caméra de départ est frontale ("user") → le 1ᵉʳ appui doit passer à
   // l'arrière. Bug précédent : `cs._facing` partait `undefined`, donc le 1ᵉʳ
   // appui re-sélectionnait "user" (aucun changement visible).
   const current = cs._facing || "user";
   const oldTrack = cs.localStream && cs.localStream.getVideoTracks()[0];
-  // Caméra coupée par l'utilisateur (toggleCallVideo) : la nouvelle le reste.
-  const camCoupee = !!(oldTrack && oldTrack.enabled === false);
   const res = await changerCameraPiste(oldTrack, current, CALL_VIDEO_QUALITY);
-  if (!res) { toast("Caméra indisponible"); return; }
+  // Appel raccroché PENDANT le changement : on éteint la nouvelle caméra.
+  if (window._call !== cs) { if (res && res.track !== oldTrack) { try { res.track.stop(); } catch (e) {} } return; }
+  if (!res) { toast("Caméra perdue — touche 🔄 pour réessayer"); return; }
   if (!res.change) toast("Impossible d'ouvrir l'autre caméra");
+  if (res.track === oldTrack) return;   // une seule caméra : rien n'a bougé
   const newTrack = res.track;
-  newTrack.enabled = !camCoupee;
+  // Caméra coupée par l'utilisateur (toggleCallVideo) : la nouvelle le reste.
+  // Lu APRÈS l'attente : couper pendant le changement doit compter. `enabled`
+  // reste lisible sur une piste arrêtée.
+  newTrack.enabled = !(oldTrack && oldTrack.enabled === false);
   cs._facing = res.facing;
   const sender = cs.pc.getSenders().find(s => s.track && s.track.kind === "video");
   if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
+  if (window._call !== cs) { try { newTrack.stop(); } catch (e) {} return; }
   // Remplace la piste dans le flux local + aperçu.
   const old = cs.localStream.getVideoTracks()[0];
   if (old && old !== newTrack) { cs.localStream.removeTrack(old); try { old.stop(); } catch (e) {} }
@@ -5343,8 +5368,12 @@ async function flipVliveCamera() {
 async function _vliveFlipCamera(H) {
   const oldTrack = H.stream && H.stream.getVideoTracks()[0];
   const res = await changerCameraPiste(oldTrack, H._facing || "user", VLIVE_VIDEO_QUALITY);
-  if (!res) { toast("Caméra indisponible"); return; }
+  // Live terminé PENDANT le changement : la nouvelle caméra ne doit pas rester
+  // allumée sur un flux orphelin (personne ne l'arrêterait).
+  if (window._vliveHost !== H) { if (res && res.track !== oldTrack) { try { res.track.stop(); } catch (e) {} } return; }
+  if (!res) { toast("Caméra perdue — touche 🔄 pour réessayer"); return; }
   if (!res.change) toast("Impossible d'ouvrir l'autre caméra");
+  if (res.track === oldTrack) return;   // une seule caméra : rien n'a bougé
   const newTrack = res.track;
   H._facing = res.facing;
   // La nouvelle caméra hérite de la pause : sinon retourner la caméra en pause
@@ -5354,6 +5383,7 @@ async function _vliveFlipCamera(H) {
     const sender = H.pcs[vid].pc.getSenders().find(s => s.track && s.track.kind === "video");
     if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
   }
+  if (window._vliveHost !== H) { try { newTrack.stop(); } catch (e) {} return; }
   const old = H.stream.getVideoTracks()[0];
   if (old && old !== newTrack) { H.stream.removeTrack(old); try { old.stop(); } catch (e) {} }
   H.stream.addTrack(newTrack);
