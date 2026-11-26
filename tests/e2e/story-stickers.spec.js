@@ -184,3 +184,69 @@ test("⑥ un bouton « Écris ta réponse » hors du lecteur de story n'envoie r
   expect(r).toBe(false);
   expect(await page.evaluate(() => window.__envois.length)).toBe(0);
 });
+
+test("⑦ 📊 Sondage : posé, un vote, les pourcentages ; serveur stub, double vote, table absente", async ({ page }) => {
+  await banc(page, "story");
+  await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
+  await page.locator('#meStickerPanel [data-sticker="Sondage"]').click();
+  await page.locator("#meSdQ").fill("Plage ou montagne ?");
+  await page.locator("#meSdA").fill("Plage");
+  await page.locator("#meSdB").fill("Montagne");
+  await page.locator("#meSdOk").click();
+  await expect(page.locator("#meOverlays .me-sticker-sondage")).toContainText("Plage ou montagne ?");
+  const d = await page.evaluate(() => _meOverlaysData().find((o) => o.type === "sondage"));
+  expect(d).toMatchObject({ q: "Plage ou montagne ?", a: "Plage", b: "Montagne" });
+
+  // Serveur simulé : on enregistre l'INTENTION envoyée, puis la base rend les comptes.
+  const r = await page.evaluate(({ d, lea }) => {
+    meClose();
+    window.__votes = []; window.__rpc = 0; window.__reponse = { error: null };
+    window._supaReal = true;
+    supa = {
+      from: (t) => ({ insert: async (row) => { window.__votes.push({ t, row }); return window.__reponse; } }),
+      rpc: async (nom, args) => { window.__rpc++; return { data: window.__votes.length ? { a_vote: true, mon_choix: 1, a: 3, b: 1 } : { a_vote: false }, error: null }; },
+    };
+    const st = { id: "s_sd", authorId: lea, authorName: "Léa Martin", text: "", overlays: [d], createdAt: Date.now() - 1000, fromSupabase: true };
+    storyGroups = [{ authorId: lea, stories: [st] }];
+    openStoryViewerAt(0, 0);
+    return document.querySelectorAll("#storyOverlays .st-sondage .st-sd-opt").length;
+  }, { d, lea: LEA });
+  expect(r).toBe(2);
+  await page.locator('#storyOverlays .st-sd-opt[data-choix="1"]').click();
+  await expect(page.locator("#storyOverlays .st-sondage")).toHaveClass(/st-sd-vote/);
+  const v = await page.evaluate(() => ({ votes: window.__votes, pct: Array.from(document.querySelectorAll("#storyOverlays .st-sd-pct")).map((e) => e.textContent), mien: document.querySelector("#storyOverlays .st-sd-mien").getAttribute("data-choix") }));
+  expect(v.votes).toEqual([{ t: "story_sondage_votes", row: { story_id: "s_sd", choix: 1 } }]);
+  expect(v.pct).toEqual(["75 %", "25 %"]);
+  expect(v.mien).toBe("1");
+  // Un second toucher ne revote pas.
+  await page.locator('#storyOverlays .st-sd-opt[data-choix="0"]').click();
+  expect(await page.evaluate(() => window.__votes.length)).toBe(1);
+
+  // Table absente (migration pas encore appliquée) : un message clair, rien d'affiché comme voté.
+  await page.evaluate(({ d, lea }) => {
+    closeStoryViewer();
+    window.__reponse = { error: { code: "PGRST205", message: "absente" } };
+    window.__toasts = []; const t0 = window.toast; window.toast = (m) => { window.__toasts.push(m); };
+    supa.rpc = async () => ({ data: { a_vote: false }, error: null });
+    const st = { id: "s_sd2", authorId: lea, authorName: "Léa", text: "", overlays: [d], createdAt: Date.now() - 1000, fromSupabase: true };
+    storyGroups = [{ authorId: lea, stories: [st] }];
+    openStoryViewerAt(0, 0);
+  }, { d, lea: LEA });
+  await page.locator('#storyOverlays .st-sd-opt[data-choix="0"]').click();
+  await expect.poll(() => page.evaluate(() => window.__toasts.join("|"))).toContain("bientôt");
+  await expect(page.locator("#storyOverlays .st-sondage")).not.toHaveClass(/st-sd-vote/);
+});
+
+test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const ov = [{ type: "sondage", q: '<img src=x onerror=alert(1)>', a: '"><svg onload=1>', b: "x" }];
+    const bobine = renderReelHTML({ id: "reel_sd", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: ov, text: "", likes: 0, comments: [] }, 0);
+    const d = document.createElement("div"); d.innerHTML = _storyOverlaysHtml(ov, { story: true });
+    const els = Array.from(d.querySelectorAll("*"));
+    return { bobine: bobine.includes("st-sondage"), actifs: els.filter((e) => /^(IMG|SVG|SCRIPT)$/i.test(e.tagName) || Array.from(e.attributes).some((a) => /^on/i.test(a.name))).length, opts: d.querySelectorAll(".st-sd-opt").length };
+  });
+  expect(r.bobine).toBe(false);
+  expect(r.actifs).toBe(0);
+  expect(r.opts).toBe(2);
+});

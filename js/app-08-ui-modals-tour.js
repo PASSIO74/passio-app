@@ -1898,6 +1898,10 @@ function _mePeindreSticker(content, ov) {
     if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
   } else if (ov.type === "mention") {
     content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "sondage") {
+    var titre = document.createElement("b"); titre.textContent = ov.q || "Sondage";
+    content.appendChild(titre);
+    [ov.a, ov.b].forEach(function (lib) { var o = document.createElement("span"); o.className = "me-sticker-opt"; o.textContent = lib; content.appendChild(o); });
   } else if (ov.type === "question") {
     var qq = document.createElement("b"); qq.textContent = ov.q || "Pose-moi une question";
     var r = document.createElement("span"); r.className = "me-sticker-rep"; r.textContent = "Écris ta réponse…";
@@ -1918,7 +1922,7 @@ function meOuvrirStickers() {
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
   var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention]];
-  if (meState.mode === "story") choix.push(["❓", "Question", _meStickerQuestion]);
+  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); choix.push(["📊", "Sondage", _meStickerSondage]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -1993,6 +1997,93 @@ async function _meStickerQuestion(panneau) {
   if (saisie == null) return; saisie = saisie.trim(); if (!saisie) return;
   meAddOverlay({ type: "question", q: saisie.slice(0, 120), x: 50, y: 60 });
 }
+// 📊 Sondage (story seulement) : une question, deux réponses. Les votes vivent
+// dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
+function _meStickerSondage(panneau) {
+  panneau.remove();
+  openModal('<div class="modal-handle"></div><div class="modal-title">📊 Sondage</div>'
+    + '<input class="input" id="meSdQ" maxlength="120" placeholder="Pose ta question" style="margin-top:8px;"/>'
+    + '<input class="input" id="meSdA" maxlength="30" value="Oui" aria-label="Première réponse" style="margin-top:8px;"/>'
+    + '<input class="input" id="meSdB" maxlength="30" value="Non" aria-label="Seconde réponse" style="margin-top:8px;"/>'
+    + '<button type="button" class="btn primary block" id="meSdOk" style="margin-top:12px;">Ajouter le sondage</button>');
+  var ok = document.getElementById("meSdOk");
+  var champQ = document.getElementById("meSdQ");
+  if (champQ) { try { champQ.focus(); } catch (e) {} }
+  if (ok) ok.addEventListener("click", function () {
+    var question = (document.getElementById("meSdQ").value || "").trim();
+    var a = (document.getElementById("meSdA").value || "").trim() || "Oui";
+    var b = (document.getElementById("meSdB").value || "").trim() || "Non";
+    if (!question) { toast("Écris la question du sondage"); return; }
+    closeModal();
+    meAddOverlay({ type: "sondage", q: question.slice(0, 120), a: a.slice(0, 30), b: b.slice(0, 30), x: 50, y: 62 });
+  });
+}
+// Lecteur de story : résultats d'un sondage (après mon vote, ou si c'est ma story).
+function _storySondageAppliquer(carte, r) {
+  if (!carte || !r || !r.a_vote) return;
+  var a = Number(r.a) || 0, b = Number(r.b) || 0, total = a + b;
+  carte.classList.add("st-sd-vote");
+  carte.querySelectorAll(".st-sd-opt").forEach(function (bt) {
+    var c = Number(bt.getAttribute("data-choix"));
+    var n = c === 0 ? a : b;
+    var pct = total ? Math.round(n * 100 / total) : 0;
+    bt.style.setProperty("--pct", pct + "%");
+    var el = bt.querySelector(".st-sd-pct"); if (el) el.textContent = pct + " %";
+    bt.classList.toggle("st-sd-mien", r.mon_choix === c);
+    bt.setAttribute("aria-pressed", r.mon_choix === c ? "true" : "false");
+  });
+  var tot = carte.querySelector(".st-sd-total");
+  if (tot) tot.textContent = total + (total > 1 ? " votes" : " vote");
+}
+function _storySondageServeurPossible(s) {
+  return !!(s && s.fromSupabase && window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+}
+function _storySondagePeindre(s) {
+  var carte = document.querySelector("#storyOverlays .st-sondage");
+  if (!carte || !s) return;
+  var local = (state.user && state.user.sondagesLocaux) || {};
+  if (!_storySondageServeurPossible(s)) {
+    if (local[s.id] != null) _storySondageAppliquer(carte, { a_vote: true, mon_choix: local[s.id], a: local[s.id] === 0 ? 1 : 0, b: local[s.id] === 1 ? 1 : 0 });
+    return;
+  }
+  var id = s.id;
+  Promise.resolve(supa.rpc("story_sondage_resultats", { _story_id: String(id) })).then(function (res) {
+    if (!res || res.error || !res.data) return;
+    var g = storyGroups[storyGroupIdx], cur = g && g.stories && g.stories[storyItemIdx];
+    if (!cur || cur.id !== id) return;
+    _storySondageAppliquer(document.querySelector("#storyOverlays .st-sondage"), res.data);
+  }).catch(function () {});
+}
+function storyVoterSondage(bouton) {
+  var sv = document.getElementById("storyViewer");
+  if (!sv || !sv.classList.contains("active") || !bouton.closest("#storyOverlays")) return;
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  var carte = bouton.closest(".st-sondage");
+  if (!s || !carte || carte.classList.contains("st-sd-vote") || carte._envoi) return;
+  if (s.authorId === MY_UID || s.authorId === "me") { toast("Les votes de ton sondage s'affichent ici"); return; }
+  var choix = Number(bouton.getAttribute("data-choix")) === 1 ? 1 : 0;
+  if (!_storySondageServeurPossible(s)) {
+    // Story d'exemple ou locale : le vote reste sur cet appareil, rien ne part.
+    state.user.sondagesLocaux = state.user.sondagesLocaux || {};
+    state.user.sondagesLocaux[s.id] = choix;
+    try { saveState(); } catch (e) {}
+    _storySondageAppliquer(carte, { a_vote: true, mon_choix: choix, a: choix === 0 ? 1 : 0, b: choix === 1 ? 1 : 0 });
+    return;
+  }
+  carte._envoi = true;
+  // L'INTENTION part (jamais une lecture préalable) ; le verdict de la base décide.
+  Promise.resolve(supa.from("story_sondage_votes").insert({ story_id: String(s.id), choix: choix })).then(function (res) {
+    carte._envoi = false;
+    var err = res && res.error;
+    if (err && err.code !== "23505") {
+      var absente = err.code === "42P01" || err.code === "PGRST205";
+      toast(absente ? "Les sondages arrivent bientôt" : "Vote non enregistré — réessaie", "warning");
+      return;
+    }
+    _storySondagePeindre(s);
+  }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
+}
 // Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
 // la publication, garantit un seul envoi des messages de mention.
 function _prevenirMentionsBobine(post) {
@@ -2046,7 +2137,7 @@ function storyRepondreQuestion(bouton) {
 }
 (function _storyStickersBrancher() {
   document.addEventListener("click", function (e) {
-    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep");
+    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt");
     if (!b || b.closest("#mediaEditor")) return;
     e.preventDefault(); e.stopPropagation();
     var evt = b.getAttribute("data-evt"), u = b.getAttribute("data-uid");
@@ -2058,7 +2149,8 @@ function storyRepondreQuestion(bouton) {
     } else if (u) {
       _storyQuitterLecteurs();
       openUserProfile(u);
-    } else storyRepondreQuestion(b);
+    } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    else storyRepondreQuestion(b);
   }, true);
 })();
 // ── DESSIN À MAIN LEVÉE (2026-11-26) ──────────────────────────────────────
@@ -2265,7 +2357,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
-  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question") { _mePeindreSticker(content, ov); }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -2397,6 +2489,7 @@ function _meOverlaysData() {
     if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
     if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
     if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
+    if (o.type === "sondage") { c.q = String(o.q || "").slice(0, 120); c.a = String(o.a || "Oui").slice(0, 30); c.b = String(o.b || "Non").slice(0, 30); }
     return c;
   });
 }
@@ -2774,6 +2867,11 @@ function _storyOverlaysHtml(overlays, opts) {
       var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
       return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
+    if (o.type === "sondage" && dansStory) {
+      var sq = String(o.q || "").slice(0, 120);
+      var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
+      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
+    }
     if (o.type === "question" && dansStory) {
       var qv = String(o.q || "").slice(0, 120);
       return '<div class="story-ov story-sticker st-question" style="' + pos + '" data-q="' + escapeHtml(qv) + '"><b>' + escapeHtml(qv) + '</b><button type="button" class="st-q-rep">Écris ta réponse…</button></div>';
@@ -2889,6 +2987,7 @@ function playCurrentStory() {
   const ovLayer = document.getElementById("storyOverlays");
   const overlays = Array.isArray(s.overlays) ? s.overlays : [];
   if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays, { story: true });
+  try { if (overlays.some(function (o) { return o && o.type === "sondage"; })) _storySondagePeindre(s); } catch (e) {}
 
   if (overlays.length) {
     $("#storyContent").innerHTML = "";
