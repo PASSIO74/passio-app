@@ -4145,7 +4145,7 @@ async function choisirGroupeUne(storyId) {
   var go = document.getElementById("uneCreerBtn");
   if (go) go.addEventListener("click", function () {
     var champ = document.getElementById("uneNouveauTitre");
-    var titre = String(champ && champ.value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 24);
+    var titre = String(champ && champ.value || "").replace(/[\u0000-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, "").trim().slice(0, 24);
     if (!titre) { toast("Donne un titre au groupe"); return; }
     epinglerStory(storyId, titre);
   });

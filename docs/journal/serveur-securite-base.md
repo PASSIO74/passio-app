@@ -2359,6 +2359,23 @@ en administrateur (sinon la purge « rend 0 » sans rien prouver).
 ⚠️ **Piège du banc, bis** : `select f() || (select count(*) …)` — la sous-requête non corrélée
 devient un InitPlan, évaluée AVANT `f()`. Un « supprimer puis compter » s'écrit en deux cas.
 
+**Red team (`passio-red-team`, 19 attaques en plus du banc) : aucun P0, aucun P1 de sécurité ; un P1
+de CORRECTION, corrigé avant toute application.** ⚠️ **Une policy de lecture qui relit la table par
+une fonction ne voit pas la ligne qu'un INSERT … RETURNING vient d'écrire** : le client publie par
+`insert(…).select(…)`, PostgREST demande `return=representation`, la policy SELECT est évaluée sur la
+ligne neuve, et `story_proches_autorise(id)` (STABLE, relit `stories`) ne la trouve pas → 42501 sur
+TOUTE story « proches ». Le banc était vert : son cas d'insertion n'avait pas de RETURNING (faux vert,
+comme le client ne l'est jamais). Remède : la branche auteur se lit SUR LA LIGNE
+(`author_id = auth.uid()`), et le banc publie désormais comme le client. Aussi corrigés : la RPC
+confirmait une story « proches » d'un compte PRIVÉ à un membre de la liste non abonné (clause
+de confidentialité recopiée dedans) ; une épingle posée pendant la purge était emportée (garde
+répétée dans le DELETE) ; titres de groupe à contrôle de direction ou largeur nulle refusés
+(base et client) ; empreinte de `story_visible` vérifiée avant remplacement. Banc : 103 cas.
+Résidus de la red team : `stories.id` choisi par le client sert d'oracle d'existence par 23505
+(préexistant, identifiant aléatoire hors d'atteinte) ; ajouter un ami révèle qu'il vous a bloqué
+(comme `follows`) ; une story à la une garde son média sans limite de durée, dans le budget de
+stockage du compte (`media_budget_occupe`).
+
 Résidus assumés : l'ami SAIT qu'il est dans la liste (anneau vert, comme Instagram) ; la policy
 permissive ne regarde toujours pas le blocage pour un compte public (préexistant ; `story_visible`,
 le média et la règle « proches » le regardent) ; liste et épingles hors export RGPD, comme

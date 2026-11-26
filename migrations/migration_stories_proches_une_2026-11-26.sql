@@ -103,6 +103,11 @@ begin
                                              or pg_get_expr(polqual, polrelid) like '%stories_une%')) then
     raise exception 'Policies prerequises differentes : media_assets_anon / media_assets_user';
   end if;
+  -- story_visible : corps lu en production le 2026-11-26 (md5 brut) ou celui de cette migration (rejeu).
+  if md5(pg_get_functiondef('public.story_visible(text)'::regprocedure)) <> '2faa83a444cf0c854806d319c5b85d61'
+     and pg_get_functiondef('public.story_visible(text)'::regprocedure) not like '%amis_proches%' then
+    raise exception 'Corps prerequis different : public.story_visible(text)';
+  end if;
   if exists (select 1 from pg_roles where rolname in ('anon', 'authenticated') and (rolsuper or rolbypassrls)) then
     raise exception 'Roles clients incompatibles';
   end if;
@@ -171,7 +176,8 @@ create trigger zz_barriere_suppression before insert or update on public.amis_pr
   for each row execute function public.refuser_ecriture_compte_en_suppression('owner_id');
 
 -- ── ③ Qui lit une story « proches » ──────────────────────────────────────────────────────────────
--- Vrai SEULEMENT pour une story « proches » que l'appelant a le droit de lire : pour toute autre
+-- Vrai SEULEMENT pour une story « proches » que l'appelant a le droit de lire (liste ET, pour un compte
+-- privé, abonnement accepté) : pour toute autre
 -- (inexistante, « tous », privée…) elle rend faux — pas d'oracle d'existence (leçon de
 -- story_a_un_sondage, red team du 2026-11-26).
 create or replace function public.story_proches_autorise(_story_id text) returns boolean
@@ -182,7 +188,11 @@ language sql stable security definer set search_path = '' as $fn$
        and (   s.author_id = (auth.uid())::text
             or (    exists (select 1 from public.amis_proches a
                              where a.owner_id = s.author_id and a.ami_id = (auth.uid())::text)
-                and not public.is_blocked_with(s.author_id)))
+                and not public.is_blocked_with(s.author_id)
+                -- Recopie de la policy permissive : un compte PRIVÉ n'est lu que par ses abonnés
+                -- acceptés (sinon la RPC confirmait une story que la table ne rend pas).
+                and (   not exists (select 1 from public.profiles pr where pr.id = s.author_id and pr.is_private = true)
+                     or public.abonne_accepte_non_bloque(s.author_id))))
   ) end
 $fn$;
 revoke all on function public.story_proches_autorise(text) from public, anon;
@@ -192,8 +202,11 @@ drop policy if exists stories_audience_anon on public.stories;
 create policy stories_audience_anon on public.stories as restrictive for select to anon
   using (audience = 'tous');
 drop policy if exists stories_audience_authenticated on public.stories;
+-- La branche AUTEUR se lit SUR LA LIGNE : le client publie par INSERT … RETURNING, et la policy de
+-- lecture est alors évaluée sur la ligne neuve, INVISIBLE à une fonction qui relit la table (red team
+-- du 2026-11-26 : toute story « proches » était refusée en 42501).
 create policy stories_audience_authenticated on public.stories as restrictive for select to authenticated
-  using (audience = 'tous' or public.story_proches_autorise(id));
+  using (audience = 'tous' or author_id = (select auth.uid())::text or public.story_proches_autorise(id));
 
 -- ── ④ story_visible : la même règle pour les j'aime, commentaires, vues et votes ─────────────────
 create or replace function public.story_visible(_story_id text) returns boolean
@@ -220,7 +233,9 @@ grant execute on function public.story_visible(text) to authenticated;
 create table if not exists public.stories_une (
   story_id   text not null references public.stories(id) on delete cascade,
   groupe     text not null constraint stories_une_groupe check (
-               char_length(groupe) between 1 and 24 and groupe = btrim(groupe) and groupe !~ '[[:cntrl:]]'),
+               char_length(groupe) between 1 and 24 and groupe = btrim(groupe) and groupe !~ '[[:cntrl:]]'
+               -- ni contrôle de direction ni caractère de largeur nulle (titre trompeur, red team)
+               and groupe !~ '[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]'),
   owner_id   text not null default (auth.uid())::text references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (story_id, groupe)
@@ -330,10 +345,13 @@ begin
   vues as (
     delete from public.story_views v using cibles where v.story_id = cibles.id returning 1)
   select count(*) into n_vues_stories from vues;
+  -- La garde est RÉPÉTÉE dans le DELETE : une épingle posée entre le choix des cibles et
+  -- l'effacement (verrou de clé étrangère) est revue après l'attente et épargne la story.
   with cibles as (
     select s.id from public.stories s where s.created_at < now() - interval '48 hours'
        and not exists (select 1 from public.stories_une u where u.story_id = s.id) limit 5000)
-  delete from public.stories s using cibles where s.id = cibles.id;
+  delete from public.stories s using cibles where s.id = cibles.id
+     and not exists (select 1 from public.stories_une u where u.story_id = s.id);
   get diagnostics n_stories = row_count;
 
   -- ③ directs abandonnés : clos, pas effacés

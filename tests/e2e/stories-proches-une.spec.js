@@ -204,7 +204,7 @@ test("⑤ à la une : rangée du profil visité, lecture, retour ; épingler ; t
   }, { moi: MOI });
   await page.locator("#storyOptionsBtn").click();
   await page.locator("#feuilleConfirmation button", { hasText: "Mettre à la une" }).click();
-  await page.locator("#uneNouveauTitre").fill("  Été  ");
+  await page.locator("#uneNouveauTitre").fill("  É\u202Eté\u200B  ");
   await page.locator("#uneCreerBtn").click();
   await expect.poll(async () => (await requetes(page, "stories_une")).filter((r) => r.op === "insert").map((r) => r.row)).toEqual([{ story_id: "s_moi", groupe: "Été" }]);
   await expect.poll(() => page.evaluate(() => window.__toasts.join("|"))).toContain("Ajoutée");

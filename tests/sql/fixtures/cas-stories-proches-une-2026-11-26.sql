@@ -135,6 +135,8 @@ select banc_sp.cas('l''audience ne change pas après publication (aucun UPDATE)'
   case when banc_sp.sous(2, $s$update public.stories set audience = 'tous' where id = 'sC'$s$) in ('ok:0', 'err:42501')
        then (select audience from public.stories where id = 'sC') else 'modifiée' end, 'proches');
 select banc_sp.cas('A publie une story proches', banc_sp.sous(2, format($s$insert into public.stories (id, author_id, content, audience) values ('sNew', %L, 'x', 'proches')$s$, banc_sp.uid(2))), 'ok:1');
+select banc_sp.cas('A publie une story proches AVEC RETURNING, comme le client (red team P1)', banc_sp.val(2, format($s$with i as (insert into public.stories (id, author_id, content, audience) values ('sRet', %L, 'x', 'proches') returning id) select id from i$s$, banc_sp.uid(2))), 'sRet');
+select banc_sp.cas('… et N ne la lit toujours pas', banc_sp.voit(4, 'sRet'), '0');
 select banc_sp.cas('une audience hors liste est refusée', banc_sp.sous(2, format($s$insert into public.stories (id, author_id, content, audience) values ('sBad', %L, 'x', 'amis')$s$, banc_sp.uid(2))), 'err:23514');
 select banc_sp.cas('sans audience, une story est pour tous (ancien client)', banc_sp.val(2, format($s$with i as (insert into public.stories (id, author_id, content) values ('sOldClient', %L, 'x') returning audience) select audience from i$s$, banc_sp.uid(2))), 'tous');
 
@@ -143,6 +145,8 @@ select banc_sp.cas('story_proches_autorise : F sur sC', banc_sp.val(3, $s$select
 select banc_sp.cas('story_proches_autorise : N sur sC', banc_sp.val(4, $s$select public.story_proches_autorise('sC')::text$s$), 'false');
 select banc_sp.cas('story_proches_autorise : faux sur une story « tous » (pas d''oracle)', banc_sp.val(4, $s$select public.story_proches_autorise('sT')::text$s$), 'false');
 select banc_sp.cas('story_proches_autorise : faux sur un identifiant inconnu', banc_sp.val(3, $s$select public.story_proches_autorise('nexistepas')::text$s$), 'false');
+select banc_sp.cas('story_proches_autorise : U (liste de P, pas abonné) n''apprend rien (red team P3)', banc_sp.val(6, $s$select public.story_proches_autorise('sPC')::text$s$), 'false');
+select banc_sp.cas('story_proches_autorise : F (liste de P ET abonné) — vrai', banc_sp.val(3, $s$select public.story_proches_autorise('sPC')::text$s$), 'true');
 select banc_sp.cas('story_proches_autorise : anon n''exécute pas', banc_sp.val(null, $s$select public.story_proches_autorise('sC')::text$s$), 'err:42501');
 
 -- ── ④ J'aime, vues, commentaires, sondage : story_visible applique la règle ──────────────────────
@@ -171,11 +175,14 @@ select banc_sp.cas('un visiteur n''épingle rien', banc_sp.sous(null, $s$insert 
 select banc_sp.cas('un titre de 25 caractères est refusé', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', repeat('x', 25))$s$), 'err:23514');
 select banc_sp.cas('un titre vide est refusé', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', '')$s$), 'err:23514');
 select banc_sp.cas('un titre à caractère de contrôle est refusé', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', E'a\nb')$s$), 'err:23514');
+select banc_sp.cas('un titre à contrôle de direction est refusé (red team P3)', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', E'abc\u202Efed')$s$), 'err:23514');
+select banc_sp.cas('un titre à caractère de largeur nulle est refusé', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', E'a\u200Bb')$s$), 'err:23514');
+select banc_sp.cas('un titre accentué passe', banc_sp.sous(2, $s$insert into public.stories_une (story_id, groupe) values ('sT', 'Été 2026 ✈️')$s$), 'ok:1');
 select banc_sp.cas('aucun UPDATE d''une épingle', banc_sp.sous(2, $s$update public.stories_une set groupe = 'Autre'$s$), 'err:42501');
-select banc_sp.cas('A lit ses 3 épingles', banc_sp.val(2, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '3');
-select banc_sp.cas('F (proche) lit les 3 épingles de A', banc_sp.val(3, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '3');
-select banc_sp.cas('N lit 2 épingles (pas celle de la story proches)', banc_sp.val(4, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '2');
-select banc_sp.cas('un visiteur lit 2 épingles', banc_sp.val(null, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '2');
+select banc_sp.cas('A lit ses 4 épingles', banc_sp.val(2, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '4');
+select banc_sp.cas('F (proche) lit les 4 épingles de A', banc_sp.val(3, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '4');
+select banc_sp.cas('N lit 3 épingles (pas celle de la story proches)', banc_sp.val(4, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '3');
+select banc_sp.cas('un visiteur lit 3 épingles', banc_sp.val(null, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '3');
 select banc_sp.cas('K (a bloqué A) ne lit aucune épingle de A', banc_sp.val(7, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(2))), '0');
 select banc_sp.cas('compte PRIVÉ : N (en attente) ne lit pas les épingles de P', banc_sp.val(4, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(1))), '0');
 select banc_sp.cas('compte PRIVÉ : F lit l''épingle de P', banc_sp.val(3, format('select count(*)::text from public.stories_une where owner_id = %L', banc_sp.uid(1))), '1');
