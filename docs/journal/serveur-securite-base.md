@@ -2312,3 +2312,18 @@ Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ 
 ⚠️ **UN PLAFOND PAR ÉMETTEUR NE BORNE PAS UNE DIFFUSION LÉGITIME, IL LA TRONQUE.** Prévenir N personnes est UN geste : il se compte une fois, côté serveur, et l'écran affiche le compte rendu par la base, jamais la longueur de la liste locale.
 
 Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (59). Il mesure d'abord les trois défauts, puis refuse six mutations et un corps inconnu (la sixième : identifiants occupés d'avance laissés en place), et éprouve deux appels CONCURRENTS (A, vérifié par réinjection : sans le verrou, le second passe). Il éprouve aussi la ré-annulation avec et sans réactivation, la co-organisation et la garde `ON CONFLICT`. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
+
+## 📊 SONDAGE DES STORIES — `migration_story_sondage_2026-11-26.sql` (**appliquée en prod** le 2026-11-26)
+
+`story_sondage_votes` (story_id, user_id, choix 0|1) : un vote par compte et par story, jamais modifié ni
+retiré. Écrit sur une story VISIBLE qui porte un sondage et n'est pas la sienne ; INSERT par colonne
+`(story_id, choix)` ; lu par le votant et l'auteur (hors bloqués). `story_sondage_resultats` ne rend les
+comptes qu'après le vote ou à l'auteur, hors comptes bloqués. Banc `tests/sql/migration-story-sondage.test.sh`
+(26 cas). Appliquée par Benjamin depuis son poste (`appliquer-migration.mjs`, journal n°89) ; l'application
+par la session cloud avait été refusée par ses permissions. Mesuré au canal ① après coup : RLS, 2 policies,
+2 fonctions, INSERT limité à `choix`/`story_id`, aucun UPDATE/DELETE, rien pour `anon`, hors temps réel.
+- Piège (red team) : une fonction SECURITY DEFINER appelée par une POLICY est exécutable en RPC par tout
+  compte (la policy exige EXECUTE) — `story_a_un_sondage` vérifie donc la visibilité DEDANS, sinon elle
+  disait qu'une story privée existait.
+- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit (`is_blocked_with`),
+  sinon un compte bloqué pèse encore sur le pourcentage.

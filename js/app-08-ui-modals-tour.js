@@ -2004,7 +2004,7 @@ async function _meStickerQuestion(panneau) {
 // un sondage déjà posé s'affiche, et dit « bientôt disponible » si la table manque.
 // Activer : `STORY_SONDAGE_ACTIF = true` une fois la migration appliquée (ou
 // `localStorage.passio_story_sondage = "1"` pour l'éprouver sur un appareil).
-var STORY_SONDAGE_ACTIF = false;
+var STORY_SONDAGE_ACTIF = true;
 function storySondageActif() {
   if (STORY_SONDAGE_ACTIF) return true;
   try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
