@@ -51,7 +51,7 @@ async function banc(page, { proches = true, une = true } = {}) {
         const b = {
           select() { return b; }, insert(r) { st.op = "insert"; st.row = r; return b; }, delete() { st.op = "delete"; return b; },
           eq(c, v) { st.f.push([c, v]); return b; }, in(c, v) { st.f.push([c, v]); return b; },
-          order() { return b; }, limit() { return b; }, gte() { return b; }, abortSignal() { return b; },
+          order() { return b; }, limit() { return b; }, gte() { return b; }, abortSignal() { return b; }, maybeSingle() { return b; },
           then(ok, ko) { return Promise.resolve(fin()).then(ok, ko); },
         };
         return b;
@@ -109,6 +109,7 @@ test("③ publier « proches » : audience dans l'INSERT, mentions bornées à l
   await banc(page);
   await page.evaluate(({ lea }) => {
     window.__tables.amis_proches = { rows: [{ ami_id: lea }] };
+    window.__tables.profiles = { rows: { is_private: false } };
     window.__mentions = []; window._prevenirMentionsStory = (ov, quoi, seulement) => { window.__mentions.push(seulement); };
     supaEnsureProfileExists = async () => {};
     passioMediaProteges.capture = () => ({ uid: MY_UID });

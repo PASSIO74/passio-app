@@ -2717,7 +2717,7 @@ async function mePublish() {
       // l'ouvrir. La liste est RELUE au serveur (jamais le cache : un retrait
       // fait dans un autre onglet) ; une lecture en échec ne prévient personne.
       if (story.audience === "proches") {
-        Promise.resolve(_lireAmisProchesPourMentions()).then(function (ids) {
+        Promise.resolve(_lireAmisProchesPourMentions(story.authorId)).then(function (ids) {
           if (ids && ids.length) _prevenirMentionsStory(story.overlays, "story", ids);
         }).catch(function () {});
         return;
@@ -4035,15 +4035,27 @@ function chargerAmisProches(forcer) {
   }).catch(function () { _amisProches.charge = null; return []; });
   return _amisProches.charge;
 }
-// Mentions d'une story « proches » : la liste relue au SERVEUR, ou `null` si la
-// lecture échoue (jamais la liste vide d'un échec prise pour « tout le monde »).
-async function _lireAmisProchesPourMentions() {
-  if (!_storyLotServeur()) return null;
+// Mentions d'une story « proches » : les comptes qui peuvent LIRE la story,
+// selon la règle du serveur (`story_proches_autorise`) — membres de la liste,
+// et, si mon compte est privé, abonnés ACCEPTÉS seulement (un membre ajouté sans
+// me suivre ne voit pas la story). Tout relu au SERVEUR ; `null` si une lecture
+// échoue (jamais un échec pris pour « tout le monde »), ou si l'auteur de la
+// story n'est plus le compte courant.
+async function _lireAmisProchesPourMentions(auteur) {
+  if (!_storyLotServeur() || !auteur || String(auteur) !== String(MY_UID)) return null;
   var moi = MY_UID;
   try {
     var res = await supa.from("amis_proches").select("ami_id").eq("owner_id", moi).limit(1000);
     if (moi !== MY_UID || !res || res.error) return null;
-    return (res.data || []).map(function (r) { return String(r.ami_id); });
+    var ids = (res.data || []).map(function (r) { return String(r.ami_id); });
+    if (!ids.length) return ids;
+    var prof = await supa.from("profiles").select("is_private").eq("id", moi).maybeSingle();
+    if (moi !== MY_UID || !prof || prof.error || !prof.data) return null;
+    if (prof.data.is_private !== true) return ids;
+    var ab = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", moi)).in("follower_id", ids);
+    if (moi !== MY_UID || !ab || ab.error) return null;
+    var acceptes = new Set((ab.data || []).map(function (r) { return String(r.follower_id); }));
+    return ids.filter(function (id) { return acceptes.has(id); });
   } catch (e) { return null; }
 }
 // Ajoute / retire : l'INTENTION part, `{ error }` est lu, l'écran suit le verdict.
