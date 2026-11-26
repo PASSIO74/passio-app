@@ -4454,9 +4454,14 @@ async function _relireSortieOrganisee(id) {
   try {
     const sorties = await supaLoadEvents(null, id);
     if (state !== etat || MY_UID !== compte || window._openEventDetailId !== id) return;
-    if (fusionnerEvenementsServeur(sorties)) _patchEventCardJoin(id);
+    if (fusionnerEvenementsServeur(sorties)) {
+      _patchEventCardJoin(id);
+      // Toute la fiche (file d'attente, « peut-être », visages), pas seulement
+      // le nombre : le re-rendu est un _isRerender, il ne relance pas de lecture.
+      _refreshEventDetailIfOpen(id);
+    }
   } catch (e) {
-    if (typeof diagLog === "function") diagLog("compteur sortie : relecture indisponible");
+    if (typeof diagLog === "function") diagLog("compteur sortie : relecture indisponible — " + (e && e.message));
   }
 }
 
@@ -5101,7 +5106,8 @@ function openEventDetails(id, remplaceModale = false) {
   page.style.display = "flex";
   page.scrollTop = 0;
   _suivrePresencesOuvertes(ev);
-  if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()) {
+  if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()
+      && (state.userEvents || []).some(e => e && e.id === id)) {
     _relireSortieOrganisee(id);
   }
   // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
