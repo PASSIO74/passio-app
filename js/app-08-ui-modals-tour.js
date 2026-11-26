@@ -3847,16 +3847,16 @@ function closeStoryViewer(options) {
 // tests/sql/migration-stories-proches-une.test.sh). Fiche :
 // docs/lots-ui/32-STORY-CREER-2026-11-26.md, lot E.
 //
-// ⚠️ DEUX DRAPEAUX ÉTEINTS tant que la migration n'est pas appliquée : sans la
-// colonne `stories.audience`, une story « proches » serait REFUSÉE (42703) — on
-// ne la publie JAMAIS pour tous à la place. Les passer à `true` après
-// l'application ; `localStorage.passio_story_proches = "1"` /
-// `passio_story_une = "1"` les éprouvent sur un appareil.
+// DEUX DRAPEAUX, ALLUMÉS le 2026-11-26 après l'application de la migration en
+// production (verdict 8/8, état mesuré en base). Les repasser à `false` retire
+// les portes de création (bouton, « Mettre à la une », rangée du profil) sans
+// toucher aux stories publiées. Une story « proches » refusée par un serveur
+// sans la colonne n'est JAMAIS republiée pour tous.
 // La confidentialité ne dépend PAS du client : la RLS ferme la lecture, le
 // média, les j'aime, vues, commentaires et votes hors de la liste.
 // ════════════════════════════════════════════════════════════════════════
-var STORY_PROCHES_ACTIF = false;
-var STORY_UNE_ACTIF = false;
+var STORY_PROCHES_ACTIF = true;
+var STORY_UNE_ACTIF = true;
 function storyProchesActif() {
   if (STORY_PROCHES_ACTIF) return true;
   try { return localStorage.getItem("passio_story_proches") === "1"; } catch (e) { return false; }
@@ -4032,9 +4032,9 @@ var _storiesUneCache = {};
 function _storyLigneVersStory(r, profs) {
   var p = (profs && profs[r.author_id]) || {};
   return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-    passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null,
-    mediaType: r.media_type || null, overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous",
-    createdAt: supaTs(r.created_at), fromSupabase: true };
+    passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨",
+    media: r.media_url || null, mediaType: r.media_type || null, createdAt: supaTs(r.created_at),
+    overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous", fromSupabase: true };
 }
 async function chargerStoriesUne(uid, forcer) {
   uid = String(uid || "");
@@ -4075,9 +4075,10 @@ async function peindreStoriesUne(hote, uid, estMoi) {
   var groupes = await chargerStoriesUne(uid);
   if (!hote.isConnected) return;
   hote.innerHTML = "";
-  if (!groupes.length && !estMoi) { hote.hidden = true; return; }
+  var plus = !!(estMoi && _storyLotServeur());
+  if (!groupes.length && !plus) { hote.hidden = true; return; }
   hote.hidden = false;
-  if (estMoi && _storyLotServeur()) {
+  if (plus) {
     var n = document.createElement("button"); n.type = "button"; n.className = "une-bulle une-nouveau";
     n.innerHTML = '<span class="une-cercle" aria-hidden="true">+</span><span class="une-titre">Nouveau</span>';
     n.setAttribute("aria-label", "Mettre une story à la une");
