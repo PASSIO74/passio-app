@@ -199,13 +199,15 @@ test("① ter le texte du consentement et les aides sont en casse normale — l'
 // ─────────────────────────────────────────────────────────────────────────
 // ② La bulle de repère ne survit pas à l'ouverture de l'inscription
 // ─────────────────────────────────────────────────────────────────────────
-test("② passion → « Voir mon fil » → bulle → J'aime → « Créer mon compte » : aucune bulle sur l'inscription", async ({ page }) => {
+test("② repère relancé → J'aime → « Créer mon compte » : aucune bulle sur l'inscription", async ({ page }) => {
   await page.setViewportSize(IPHONE_13);
   await bootVisiteur(page);
   await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
   await page.locator("#frWelcome .fr-welcome-cta").click();
   await page.locator('#frGrid [data-fr-passion="musique"]').click();
   await page.locator("#frValider").click();
+  await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+  await page.getByRole("button", { name: "Revoir les repères" }).click();
   // PRÉMISSE TENUE, jamais supposée : la bulle est bien là avant l'inscription —
   // sans elle, le cas resterait vert sur le défaut.
   await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 10000 });
@@ -271,13 +273,16 @@ for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
       };
 
       verifier(await mesure(), "à l'ouverture");
-      // Un choix fait apparaître les spécialités AU-DESSUS du pied : c'est ce qui
-      // le poussait sous l'écran.
+      // Le pied reste accessible avant et après ouverture des spécialités.
       await page.locator('#frGrid [data-fr-passion="musique"]').click();
-      await expect(page.locator('#frSpecs [data-fr-spec="musique-guitare"]')).toHaveCount(1);
+      const guitare = page.locator('#frSpecs [data-fr-spec="musique-guitare"]');
+      await expect(guitare).toBeHidden();
       const apresUn = await mesure();
       expect(apresUn.texte, "prémisse : le choix est compté").toMatch(/Voir mon fil/);
       verifier(apresUn, "après un choix");
+      await page.getByText("Préciser mes goûts", { exact: true }).click();
+      await expect(guitare).toBeVisible();
+      verifier(await mesure(), "après ouverture des spécialités");
       // Le pied est COLLÉ au bord de la feuille et opaque : sans le `bottom`
       // négatif, une bande de 24 px (padding de `.modal`) laissait les tuiles
       // défiler, visibles, sous les boutons.

@@ -209,6 +209,7 @@
       <div class="me-media" id="meMedia"></div>
       <div class="me-overlays" id="meOverlays"></div>
       <div class="me-rec-badge" id="meRecBadge"><span class="me-rec-dot"></span><span id="meRecTime">0:00</span></div>
+      <div class="me-creer-hint" id="meCreerHint" aria-hidden="true">Touche pour écrire</div>
       <div class="me-cam-loading" id="meCamLoading"><span class="me-cam-spinner"></span><span>Ouverture de la caméra…</span></div>
       <div class="me-placeholder hidden" id="mePlaceholder">
         <div class="me-ph-icon">🖼️</div>
@@ -224,13 +225,14 @@
       <div class="me-capture-bar">
         <button class="me-gallery-thumb" id="meGalleryThumb" onclick="mePickMedia()" aria-label="Choisir dans la galerie">🖼️</button>
         <button class="me-shutter" id="meShutter" aria-label="Capturer"><span class="me-shutter-progress"></span><span class="me-shutter-ring"></span><span class="me-shutter-inner"></span></button>
-        <button class="me-cap-side" id="meBgBtn" onclick="meCycleBg()" aria-label="Fond coloré" title="Fond coloré">🎨</button>
+        <button class="me-cap-side me-cap-creer" id="meBgBtn" onclick="meCycleBg()" aria-label="Créer : écrire sur un fond coloré" title="Créer">Aa</button>
       </div>
     </div>
 
     <!-- Outils d'édition (overlays) -->
     <div class="me-toolbar">
       <div class="me-tool-group">
+        <button type="button" class="me-tool me-tool-fond" id="meFondBtn" onclick="meChangerFond()" title="Changer le fond" aria-label="Changer la couleur du fond"></button>
         <button type="button" class="me-tool" onclick="meAddText()" title="Texte" aria-label="Ajouter un texte">Aa</button>
         <button type="button" class="me-tool" onclick="meAddEmoji()" title="Emoji" aria-label="Ajouter un emoji">😀</button>
         <button type="button" class="me-tool" onclick="meAddGif()" title="GIF" aria-label="Ajouter un GIF">GIF</button>
@@ -241,6 +243,22 @@
       <button class="btn primary block" id="mePublishBtn" onclick="mePublish()">Publier</button>
     </div>
     <input type="file" id="meMediaInput" accept="image/*,video/*" style="display:none;" onchange="meOnMedia(event)"/>
+
+    <!-- Éditeur de texte EN PLACE, façon Instagram (2026-11-26) : le clavier
+         s'ouvre directement sur la story, couleurs, fond du texte, alignement.
+         Un toucher hors du champ ou « OK » valide ; un texte vidé est retiré. -->
+    <div class="me-texte-editeur" id="meTexteEditeur" aria-hidden="true">
+      <div class="me-te-haut">
+        <button type="button" class="me-te-btn me-te-fond" id="meTeFond" onclick="meChangerFond()" aria-label="Changer la couleur du fond"></button>
+        <button type="button" class="me-te-btn" id="meTeStyle" onclick="meTeBasculerStyle()" aria-label="Fond derrière le texte" aria-pressed="false">A</button>
+        <button type="button" class="me-te-btn" id="meTeAlign" onclick="meTeBasculerAlign()" aria-label="Alignement du texte"></button>
+        <button type="button" class="me-te-ok" id="meTeOk" onclick="meFermerEditeurTexte(true)">OK</button>
+      </div>
+      <div class="me-te-couleurs" id="meTeCouleurs" role="group" aria-label="Couleur du texte"></div>
+      <div class="me-te-zone" id="meTeZone">
+        <textarea id="meTeChamp" class="me-te-champ" rows="1" maxlength="200" placeholder="Écris quelque chose…" aria-label="Texte de la story"></textarea>
+      </div>
+    </div>
   </div>
 
   <!-- ============ ONBOARDING ============ -->
@@ -633,8 +651,8 @@
       </div>
 
       <div class="mood-selector" id="moodSelector">
-        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Création</button>
-        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Apprendre</button>
+        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Expériences</button>
+        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Conseils</button>
         <button class="mood-btn" data-mood="chill"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5 A8 8 0 1 1 10.5 4 A6.2 6.2 0 0 0 20 13.5 Z"/></svg></span>Chill</button>
         <button class="mood-btn" data-mood="actu"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 3 L6 13 H11 L10.5 21 L18 10.5 H12.5 Z"/></svg></span>Actu</button>
       </div>
@@ -647,14 +665,14 @@
              `normalizeFeedIntent`, `activeFeedIntent` et `setFeedIntent(null)`
              s'appuient dessus — il n'a simplement plus de bouton. -->
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Explorer</button>
-        <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
-        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Idées</button>
-        <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">Rencontrer</button>
+        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Expériences</button>
+        <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Conseils</button>
+        <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">À faire ensemble</button>
       </div>
 
       <div class="stories-row" id="storiesRowFeed"></div>
 
-      <div id="feedList"><div id="feedSkeleton"><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:42%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:26%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:96%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:78%;"></div></div><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:38%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:24%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:90%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:64%;"></div></div></div></div>
+      <div id="feedList" role="region" aria-label="Publications" tabindex="-1"><div id="feedSkeleton"><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:42%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:26%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:96%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:78%;"></div></div><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:38%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:24%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:90%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:64%;"></div></div></div></div>
 
       <div id="feedEmpty" class="empty" style="display:none;">
         <div class="empty-icon">🪷</div>
@@ -889,11 +907,31 @@
         <div class="studio-type" data-type="audio"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></span>Podcast</div>
       </div>
 
+      <div class="field" id="fieldMood">
+        <span id="studioMoodQuestion">Que veux-tu partager ?</span>
+        <div class="pill-row" id="postMoodRow" role="group" aria-labelledby="studioMoodQuestion">
+          <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Explorer ·
+               Expériences · Conseils · À faire ensemble) : on publie avec le mot qu'on lit.
+               Les VALEURS, elles, ne bougent pas — « creation », « learn »,
+               « irl » et « all » sont écrites en base et lues par
+               `legacyMoodToFeedIntent` ; les renommer casserait les
+               publications existantes pour un simple mot.
+               Pas de pastille « Explorer » : cette intention se calcule côté
+               lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
+               le mood — une pastille y serait purement décorative. -->
+          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Expériences · Conseils · À faire ensemble). -->
+          <button type="button" class="pill active" data-postmood="creation" data-exemple="Ex. « Hier, j’ai réussi mon premier essai. Le déclic, ça a été… »" aria-pressed="true">Expériences</button>
+          <button type="button" class="pill" data-postmood="learn" data-exemple="Ex. « Mon astuce pour débuter ? Dix minutes de pratique par jour. »" aria-pressed="false">Conseils</button>
+          <button type="button" class="pill" data-postmood="irl" data-exemple="Ex. « Qui veut se retrouver samedi pour une séance entre débutants ? »" aria-pressed="false">À faire ensemble</button>
+          <button type="button" class="pill" data-postmood="all" aria-pressed="false">Sans étiquette</button>
+        </div>
+      </div>
+
       <!-- Text area always visible -->
-      <label class="field">
-        <span>Ton message</span>
-        <textarea class="textarea" id="postText" placeholder="Raconte ton processus, pas juste le résultat…" maxlength="1200"></textarea>
-      </label>
+      <div class="field" id="fieldMessage">
+        <label for="postText">Ton message</label>
+        <textarea class="textarea" id="postText" maxlength="1200"></textarea>
+      </div>
 
       <!-- Photo block -->
       <div id="studioPhoto" style="display:none;">
@@ -947,26 +985,6 @@
         <!-- Rempli par renderStudio, et SEULEMENT quand une passion a été écartée
              du choix (passion personnelle, non publiable — sortie A du 2026-08-30). -->
         <div id="studioPassionNote" style="display:none;font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;"></div>
-      </label>
-
-      <label class="field" id="fieldMood">
-        <span>Envie</span>
-        <div class="pill-row" id="postMoodRow">
-          <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
-               Apprendre · Idées · Rencontrer) : on publie avec le mot qu'on lit.
-               Les VALEURS, elles, ne bougent pas — « creation », « learn »,
-               « irl » et « all » sont écrites en base et lues par
-               `legacyMoodToFeedIntent` ; les renommer casserait les
-               publications existantes pour un simple mot.
-               Pas de pastille « Explorer » : cette intention se calcule côté
-               lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
-               le mood — une pastille y serait purement décorative. -->
-          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · Rencontrer). -->
-          <button type="button" class="pill" data-postmood="learn">Apprendre</button>
-          <button type="button" class="pill active" data-postmood="creation">Idées</button>
-          <button type="button" class="pill" data-postmood="irl">Rencontrer</button>
-          <button type="button" class="pill" data-postmood="all">Tous</button>
-        </div>
       </label>
 
       <div style="display:flex;gap:8px;margin-top:10px;">
@@ -1203,6 +1221,12 @@
   </div>
 </div>
 <div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucune activité trouvée pour cette recherche.</div>
+      <button type="button" id="prochaineSortie" hidden>
+        <span class="prochaine-sortie-libelle">Ma prochaine sortie</span>
+        <strong class="prochaine-sortie-titre"></strong>
+        <time></time>
+        <span class="prochaine-sortie-fleche" aria-hidden="true">›</span>
+      </button>
 <div id="eventList"></div>
     </section>
 

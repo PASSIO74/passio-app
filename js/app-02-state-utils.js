@@ -1996,8 +1996,19 @@ function _applyUserState(data) {
     state.supabasePosts = keepSupa;
     if (!Array.isArray(state.userPosts)) state.userPosts = [];
     if (postsLocauxAGarder.length) {
-      const idsServeur = new Set(state.userPosts.map(function (p) { return p && p.id; }));
-      const ajouts = postsLocauxAGarder.filter(function (p) { return !idsServeur.has(p.id); });
+      const parId = new Map(state.userPosts.filter(Boolean).map(p => [p.id, p]));
+      const ajouts = postsLocauxAGarder.filter(p => !parId.has(p.id));
+      // Un autre appareil peut avoir écrit son état juste avant le choix « Plus tard ».
+      for (const local of postsLocauxAGarder) {
+        const distant = parId.get(local.id);
+        if (!local.sortieDifferee || !distant || distant.authorId !== MY_UID) continue;
+        const repriseTerminee = (local.sortieDifferee === "publiee" && !local.sortieARelier)
+          || (distant.sortieDifferee === "publiee" && !distant.sortieARelier);
+        if (!distant.sortieDifferee || local.sortieDifferee === "publiee") distant.sortieDifferee = local.sortieDifferee;
+        if (!distant.eventId && local.eventId) distant.eventId = local.eventId;
+        if (distant.eventId || repriseTerminee) delete distant.sortieARelier;
+        else if (!distant.sortieARelier && local.sortieARelier) distant.sortieARelier = local.sortieARelier;
+      }
       if (ajouts.length) {
         state.userPosts = ajouts.concat(state.userPosts)
           .sort(function (a, b) { return (Number(b && b.createdAt) || 0) - (Number(a && a.createdAt) || 0); });
@@ -4655,6 +4666,7 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  if (screen !== "feed") document.getElementById("studioSuiteSortie")?.remove();
   // LOT-12 (PAR-C16) : quitter le Studio efface le rattachement d'un souvenir à
   // l'album d'une activité — il ne doit pas s'appliquer à une autre publication.
   if (screen !== "studio" && window._pendingEventPost) {
@@ -4719,6 +4731,7 @@ function goTo(screen) {
   // écran inactif n'a plus de rectangle mesurable. Et démonter l'observateur en
   // quittant, pour qu'aucun ne survive à la navigation.
   var _quitteFil = document.getElementById("screen-feed");
+  const entreeRencontrer = screen === "irl" && !document.querySelector("#screen-irl.active");
   var _retourAuFil = screen === "feed" && (!_quitteFil || !_quitteFil.classList.contains("active"));
   if (_quitteFil && _quitteFil.classList.contains("active") && screen !== "feed") {
     try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
@@ -4802,13 +4815,20 @@ function goTo(screen) {
   try { if (window.PassioFirstRun) PassioFirstRun.surNavigation(screen); } catch(_) {}
 
   // Re-render dynamic screens on navigate
-  if (screen === "feed")     { renderFeed(); try { feedWindowRestoreScroll(); } catch (e) {} }
+  if (screen === "feed") {
+    renderFeed();
+    try { feedWindowRestoreScroll(); } catch (e) {}
+  }
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
   // LOT-11 (REC-C19) : l'assistant IA a quitté l'écran le 2026-11-02 ; plus d'appel
   // à son historique, qui n'a plus de nœud où s'écrire.
   if (screen === "explore")  { renderExplorer(); }
-  if (screen === "irl")      { renderIRL(); if (typeof rafraichirEvenements === "function") rafraichirEvenements(); }
+  if (screen === "irl") {
+    if (entreeRencontrer && typeof actualiserProchaineSortie === "function") actualiserProchaineSortie(true);
+    renderIRL();
+    if (typeof rafraichirEvenements === "function") rafraichirEvenements();
+  }
   if (screen === "messages") renderMessages();
 
   // Analytics navigation (fire-and-forget, silencieux)
@@ -7082,6 +7102,7 @@ async function onbResendConfirmation() {
     }
     // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
+    if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
@@ -8006,6 +8027,7 @@ async function onbDoAuth() {
         // avec le délai à la première session vue sur cet appareil
         // (signalerInscriptionConfirmee, app-08).
         try { window.tel && tel.action("signup_pending_confirmation"); } catch (e) {}
+        if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
         try { localStorage.setItem("passio_signup_pending", String(Date.now())); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
@@ -9409,14 +9431,14 @@ var FEED_INTENT_SOURCES = ["discover", "learn", "create", "meet"];
 
 // Les libellés des quatre envies, en UN SEUL endroit. Ils sont écrits en dur
 // dans `index.html` (les boutons `.feed-intent-btn`), et le fil a besoin de les
-// NOMMER quand une envie vide l'écran (« Rien en « Apprendre » ») : sans table,
+// NOMMER quand une envie vide l'écran (« Aucune publication pour « Conseils » ») : sans table,
 // on aurait recopié les mots, et deux copies finissent toujours par diverger.
 // Verrou : `feed-envie-filtre.spec.js` ⑦ compare cette table aux boutons rendus.
 var PASSIO_FEED_INTENT_LABELS = {
   discover: "Explorer",
-  learn: "Apprendre",
-  create: "Idées",
-  meet: "Rencontrer",
+  create: "Expériences",
+  learn: "Conseils",
+  meet: "À faire ensemble",
 };
 
 function feedIntentLabel(intent) {
@@ -9462,7 +9484,7 @@ function setFeedIntents(liste) {
 //
 // ⚠️ CE N'EST PLUS UN CRITÈRE D'ENTRÉE (revirement du 2026-09-09, cf. l'amendement
 // d'ADR-011 §1). Tant que les envies étaient une TROISIÈME SOURCE en OU inclusif,
-// cocher « Apprendre » ouvrait le fil à TOUT PASSIO : n'importe quelle publication
+// cocher « Conseils » ouvrait le fil à TOUT PASSIO : n'importe quelle publication
 // du réseau portant ce mood entrait, quelle que soit sa passion et quel que soit
 // son auteur. Mesuré en production le 2026-09-09 sur le compte de Benjamin
 // (« Suivis » DÉCOCHÉ, passions = randonnée/sport-santé, `feedIntents = ["learn"]`) :
@@ -9516,14 +9538,14 @@ function legacyMoodToFeedIntent(mood) {
 // (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
 // là-bas.
 //
-// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
-// Idées · Rencontrer) : ce qu'on choisit en publiant porte le même mot que ce
+// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Expériences ·
+// Conseils · À faire ensemble) : ce qu'on choisit en publiant porte le même mot que ce
 // qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
 // écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
 //
 // ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
-// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · ✨ Tous.
+// le Studio ne propose que Expériences · Conseils · À faire ensemble · Sans étiquette.
 // « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
 // LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
 // l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
@@ -9535,9 +9557,9 @@ function legacyMoodToFeedIntent(mood) {
 // Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
 // geste, ne rien afficher ensuite en est la conséquence voulue.
 var PASSIO_MOOD_LABELS = {
-  creation: { label: "Idées" },
-  learn:    { label: "Apprendre" },
-  irl:      { label: "Rencontrer" },
+  creation: { label: "Expériences" },
+  learn:    { label: "Conseils" },
+  irl:      { label: "À faire ensemble" },
 };
 
 // ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
@@ -9551,7 +9573,7 @@ var PASSIO_MOOD_LABELS = {
 //      (`moodsAffichables`, plus bas dans ce fichier).
 //
 // Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
-// propose plus que Idées · Apprendre · Rencontrer · Tous — « chill » et « actu »
+// propose plus que Expériences · Conseils · À faire ensemble · Sans étiquette — « chill » et « actu »
 // ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
 // NOMMER. Mais la base de production porte des milliers de publications qui les
 // portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
@@ -10151,7 +10173,8 @@ function poserSeparateurExemples(list, repere) {
   // Trois textes : après du réel, seul — ou PANNE (2026-11-09) : la lecture du
   // réel a échoué faute de réseau et rien de réel n'est en mémoire. Annoncer
   // alors « pas encore de publication » mentait sur la communauté.
-  var genre = repere.reels > 0 ? "apres-reel" : (filCommunauteInjoignable() ? "panne" : "seul");
+  var genre = repere.reels > 0 ? "apres-reel"
+    : filCommunauteInjoignable() && !document.getElementById("feedRecherchePassions") ? "panne" : "seul";
   // « Inviter quelqu'un » : pour un VRAI compte seulement (son lien porte
   // `?inv=`, c'est lui qui fait suivre l'invitant), jamais sur une panne.
   var invite = genre !== "panne" && _uidEstUnCompte();
@@ -10313,7 +10336,7 @@ function _feedIntentBonus(p, intent, lot) {
     return bonus;
   }
   if (legacyMoodToFeedIntent(p.mood) !== intent) return 0;
-  // « Rencontrer » ne remonte que des posts dont le parcours IRL existant est
+  // « À faire ensemble » ne remonte que des posts dont le parcours IRL existant est
   // réellement actionnable ; il n'active ni proposition ni géolocalisation.
   var sharedEventActionable = intent === "meet"
     && p.sharedReelData && p.sharedReelData.kind === "event"
@@ -10326,7 +10349,7 @@ function _feedIntentBonus(p, intent, lot) {
 }
 
 // Plusieurs envies cochées : le bonus retenu est le MEILLEUR des envies, jamais
-// leur somme — cumuler ferait passer un post « Apprendre + Rencontrer » devant
+// leur somme — cumuler ferait passer un post « Conseils + À faire ensemble » devant
 // tout le reste pour une raison que l'écran n'explique pas. Zéro ou une envie
 // retombe EXACTEMENT sur `rankFeedPostsForIntent`, dont le comportement mesuré
 // ne bouge pas.
@@ -10397,7 +10420,13 @@ function rankFeedPostsForIntent(posts, intent) {
 // aucune. false n'arrive que si le nœud de liste manque.
 var FEED_EXPLORATION_MAX = 6;
 
-function renderFeedExplorationFallback(list) {
+function titrePremierFilVide() {
+  if (_activeFeedPassions.size !== 1) return "Pas encore de publication pour tes passions";
+  const id = _activeFeedPassions.values().next().value;
+  return "Pas encore de publication pour « " + (passionById(id)?.label || id) + " »";
+}
+
+function renderFeedExplorationFallback(list, absenceConfirmee) {
   if (!list) return false;
 
   var mesInterets = Array.from(_activeFeedPassions);
@@ -10413,10 +10442,10 @@ function renderFeedExplorationFallback(list) {
   // Deux raisons de ne plus le faire, et la seconde est un défaut mesuré :
   //  · sous UI-7 ce rail est MASQUÉ (`#feedIntentSelector` le remplace) — faire
   //    dépendre le classement du fil du DOM d'une surface cachée est fragile ;
-  //  · `irl` n'a JAMAIS eu de bouton dans ce rail. Une publication « Rencontrer »
+  //  · `irl` n'a JAMAIS eu de bouton dans ce rail. Une publication « À faire ensemble »
   //    venue d'une passion que l'on ne suit pas était donc exclue de
   //    l'exploration — invisible pour exactement les gens qu'elle cherche.
-  //    « Rencontrer » est devenu publiable le 2026-08-29 (#194) ; le défaut
+  //    Le mood `irl` est devenu publiable le 2026-08-29 (#194) ; le défaut
   //    n'existait pas avant, faute de moyen de produire un tel post.
   // La table canonique `PASSIO_MOODS_ADMIS` fait foi. Elle reste une liste
   // BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
@@ -10453,13 +10482,15 @@ function renderFeedExplorationFallback(list) {
   var quoi = etiquettes.length === 1
     ? "Rien encore dans " + escapeHtml(etiquettes[0])
     : "Rien encore dans tes passions";
+  if (absenceConfirmee) quoi = escapeHtml(titrePremierFilVide());
 
   var html = ''
     + '<div class="feed-repli-tete" style="padding:18px 16px 8px;text-align:center;">'
     +   '<div style="font-size:30px;line-height:1;">🌱</div>'
     +   '<div style="font-size:16px;font-weight:800;margin-top:8px;">' + quoi + '</div>'
     +   '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;">'
-    +     'Personne n\'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.'
+    +     (absenceConfirmee ? "Découvre ce qui se partage autour d’autres passions."
+            : "Personne n'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.")
     +   '</div>'
     + '</div>'
     + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
@@ -10679,7 +10710,8 @@ function feedWindowEnabled() {
 // Sert au repeint incrémental — jamais à décider d'un affichage.
 function _feedWindowCardSig(p) {
   return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p)
-       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0)
+       + (p.eventId ? ":event:" + p.eventId : "");
 }
 
 // Marge d'hydratation, réglable pour les tests et pour un éventuel ajustement
@@ -11153,6 +11185,35 @@ function feedWindowStats() {
 }
 window.feedWindowStats = feedWindowStats;
 
+function afficherRecherchePremierFil(list, phase) {
+  const ancien = document.getElementById("feedRecherchePassions");
+  const message = phase === "vide" ? titrePremierFilVide() : phase === "chargement" ? "Recherche des publications de tes passions…"
+    : phase === "panne" ? "Impossible de charger les publications de tes passions pour le moment."
+    : phase === "suite" ? "D’autres publications restent à vérifier pour tes passions." : "";
+  if (ancien && ancien.querySelector(".empty-text").textContent === message) return;
+  if (ancien) ancien.remove();
+  if (!message) return;
+
+  const note = document.createElement("div");
+  note.id = "feedRecherchePassions";
+  note.className = "empty";
+  note.dataset.phase = phase;
+  const texte = document.createElement("p");
+  texte.className = "empty-text";
+  texte.setAttribute("role", "status");
+  texte.textContent = message;
+  note.appendChild(texte);
+  if (phase !== "chargement") {
+    const bouton = document.createElement("button");
+    bouton.className = "btn ghost";
+    bouton.type = "button";
+    bouton.textContent = phase === "vide" ? "Explorer d’autres passions" : phase === "panne" ? "Réessayer" : "Continuer la recherche";
+    bouton.addEventListener("click", phase === "vide" ? () => goTo("explore") : PassioFirstRun.reprendrePremierFil);
+    note.appendChild(bouton);
+  }
+  list.before(note);
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -11194,7 +11255,7 @@ function renderFeed() {
   // est coché ; et une publication Moto d'un inconnu entre si « Moto » est
   // cochée, même si je ne suis personne.
   //
-  // Une troisième famille — les ENVIES (Explorer · Apprendre · Idées · Rencontrer)
+  // Une troisième famille — les ENVIES (Explorer · Expériences · Conseils · À faire ensemble)
   // — dit COMMENT je veux lire ce que ces sources m'apportent. Elle RESTREINT,
   // elle n'apporte RIEN.
   //
@@ -11362,7 +11423,23 @@ function renderFeed() {
 
   renderStories();
 
+  const _envieAVide = posts.length === 0 && intentsEnabled && enviesChoisies.length > 0
+    && availablePostsForMood.length > 0;
+  window.PassioFirstRun?.prioriserRetourFil?.(_envieAVide && !!window.PassioUIV2?.isEnabled?.());
+
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">Afficher la suite</button></div>`;
+  const premierFil = window.PassioFirstRun?.etatPremierFil?.(posts, intentsEnabled && !enviesChoisies.length);
+  afficherRecherchePremierFil(list, premierFil === "vide" && !posts.length ? "" : premierFil);
+  if (premierFil === "chargement" || ((premierFil === "panne" || premierFil === "suite") && !posts.length)) {
+    // Une recherche inachevée ne peint ni un faux vide ni d'autres passions.
+    window._feedRenderToken = (window._feedRenderToken || 0) + 1;
+    window._feedDomSig = null;
+    _feedWindowNoterVisibles(0);
+    list.replaceChildren();
+    list._fwSigs = null;
+    $("#feedEmpty").style.display = "none";
+    return;
+  }
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
     // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
@@ -11386,12 +11463,9 @@ function renderFeed() {
     // exactement le défaut qu'on vient de fermer, réintroduit par la porte de
     // l'état vide. Quand les sources ont du contenu et que seule l'envie l'a
     // retranché, on le DIT, et on nomme la commande qui l'a fait.
-    var _envieAVide = intentsEnabled && enviesChoisies.length > 0
-      && availablePostsForMood.length > 0;
-
     if (!_envieAVide && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
-        && renderFeedExplorationFallback(list)) {
+        && renderFeedExplorationFallback(list, premierFil === "vide")) {
       var emptyElRepli = $("#feedEmpty");
       if (emptyElRepli) emptyElRepli.style.display = "none";
       if (window._feedServerMayHaveMore && !nothingSelected) list.insertAdjacentHTML("beforeend", moreBtnHtml);
@@ -11409,18 +11483,16 @@ function renderFeed() {
       // change pas le fait que « Suivis » est la seule SOURCE.
       var _seulSuivis = suivisOn && _activeFeedPassions.size === 0;
       if (_envieAVide) {
-        // La cause exacte, et la commande qui la lève — elle est juste au-dessus
-        // de la liste (`#feedIntentSelector`), donc « ci-dessus » est vrai ici.
         var _noms = enviesChoisies.map(feedIntentLabel).filter(function (x) { return !!x; });
         if (emptyTitle) {
           emptyTitle.textContent = _noms.length === 1
-            ? "Rien en « " + _noms[0] + " »"
-            : "Rien avec ces envies";
+            ? "Aucune publication pour « " + _noms[0] + " »"
+            : "Aucune publication pour ces envies";
         }
         if (emptyText) {
-          emptyText.textContent = "Tes passions et les comptes que tu suis n'ont rien publié de ce genre. "
-            + (_noms.length > 1 ? "Retire les envies ci-dessus" : "Retire l'envie ci-dessus")
-            + " pour retrouver tout ton fil.";
+          emptyText.textContent = _noms.length === 1
+            ? "Retire ce filtre pour retrouver les publications de ton fil."
+            : "Retire ces filtres pour retrouver les publications de ton fil.";
         }
       } else if (_seulSuivis && !suitQuelquun) {
         // « Suivis » coché, aucun abonnement : le message dit quoi FAIRE, et où.
@@ -11460,7 +11532,7 @@ function renderFeed() {
       // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
       // et le retire de lui-même dès que la V2 est coupée.
       if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
-        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected,
+        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected, envieAVide: _envieAVide,
           // FIL-C17 : le bouton fait ce que le message conseille.
           aucunSuivi: !_envieAVide && _seulSuivis && !suitQuelquun });
       }
@@ -11493,7 +11565,7 @@ function renderFeed() {
   // publications RÉELLES plus anciennes : on va les chercher MAINTENANT. Sans
   // ça, elles n'arrivaient qu'au bas de la fenêtre (sentinelle) — c'est-à-dire
   // après une vingtaine d'exemples, et insérées AU-DESSUS de ce qu'on lit.
-  if (_repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
+  if (!premierFil && _repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
     try { completerFilAvecLeReel(); } catch (e) { try { diagLog("completerFilAvecLeReel", e && e.message); } catch (_) {} }
   }
 
@@ -11518,9 +11590,7 @@ function renderFeed() {
     // `renderFeed()` de `blockUser` / `unblockUser` était sauté, et le compte
     // bloqué restait compté jusqu'à la tranche suivante de 5 minutes.
     "bl:" + ((state.user && state.user.blocked) || []).join(","),
-    visible.map(function(p) {
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
-    }).join("|"),
+    visible.map(_feedWindowCardSig).join("|"),
   ].join("§");
   if (_domSig === window._feedDomSig && list.children.length > 0) {
     // Le DOM est déjà le bon, mais l'observateur a pu être démonté en quittant
@@ -11924,7 +11994,7 @@ function carteActiviteFilHTML(p) {
   const img = photo
     ? `<img class="post-activite-photo" ${passioMediaProteges.attributImage(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
     : "";
-  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
+  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir la sortie ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
       <div class="post-activite-titre">${escapeHtml(titre)}</div>
       ${desc ? `<div class="post-activite-desc">${escapeHtml(desc)}</div>` : ""}
       <div class="post-activite-rdv">
@@ -12277,6 +12347,7 @@ async function openPost(id) {
   if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
+  window.PassioUIV3?.decorateOpenPost?.();
   // Le sujet privé de cette discussion (`fil:<id>`, app-08), avant la lecture.
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
@@ -12287,7 +12358,7 @@ async function openPost(id) {
 }
 
 async function _loadPostDetailComments(id, post) {
-  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  if (!_peutChargerDiscussion(post)) return;
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
   try {

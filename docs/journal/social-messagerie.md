@@ -1190,3 +1190,23 @@ mes abonnements, recherche, plafond `INVITE_CONV_MAX` = 10 (30 membres pré-coch
 - Non fait, délibérément : l'activité « sur invitation seulement » (cachée du fil et de Rencontrer) —
   `events` est en lecture publique, il faudrait une migration RLS et sa contre-revue.
 Verrous : `tests/e2e/invitation-plusieurs.spec.js` (8) ; `ui-v6c-proposer-irl.spec.js` (entrée en groupe).
+
+## 2026-11-26 — Live vidéo : l'hôte ne pouvait plus reprendre après une pause
+
+**Signal** : capture Android de Benjamin, « quand je mets pause je n'arrive pas à reprendre ».
+**Cause** : `.vlive-paused` (plein écran, `z-index: 6`) recouvrait `.vlive-bottom` et `.vlive-topbar` (`z-index: 5`) — le bouton ▶️ ET la croix de fermeture étaient sous le voile flouté, intouchables.
+**Correctif** (app-05, styles.css) :
+- le voile passe en `z-index: 4`, SOUS les barres, et porte pour l'hôte un gros bouton « ▶ Reprendre le live » (`.vlive-resume-btn`) ;
+- `H.micOff` est la seule autorité de l'intention micro ; `_vliveAppliquerPistes()` pose les pistes depuis (pause, micro) — la reprise rouvrait d'office un micro coupé avant la pause, et basculer le micro en pause rallumait le son ;
+- retourner la caméra en pause envoie une piste DÉJÀ désactivée (`newTrack.enabled = !H.paused`) ;
+- `.vlive-chat-bar input` reçoit `min-width: 0` : sans lui, sous ~420 px, le champ refusait de rétrécir et poussait micro + caméra hors écran (trouvé par le banc, pas par la capture).
+**Contre-revue** (audit-passio, puis revue GitHub sur demande de Benjamin) : chat qui recouvrait « Reprendre » en paysage → `.vlive-en-pause .vlive-bottom { pointer-events: none }` ; pause posée pendant `replaceTrack` → `_vliveAppliquerPistes()` après `addTrack` ; libellé « Couper le micro » (cohérent avec `aria-pressed`).
+**Verrou** : `tests/e2e/live-pause-reprise.spec.js` (8) — touchabilité mesurée par `elementFromPoint` ; réinjection du `z-index: 6` → ① rouge.
+
+## 2026-11-26 — Live et appel vidéo : impossible de retourner la caméra sur Android
+
+**Signal** : capture Android de Benjamin, toast « Une seule caméra disponible » sur un téléphone à deux caméras.
+**Cause** : `flipVliveCamera` et `flipCallCamera` demandaient la caméra arrière AVANT de lâcher l'avant ; beaucoup d'Android n'ouvrent qu'une caméra à la fois (NotReadableError). Le repli souple `facingMode: next` y rendait en plus la MÊME caméra.
+**Correctif** : `changerCameraPiste(oldTrack, actuel, quality)` (app-05), seule autorité des deux surfaces : ① essai exact sans lâcher (iOS, ordinateur) ; ② ancienne piste ARRÊTÉE, puis exact, souple, puis par `deviceId` d'une autre caméra (`enumerateDevices`) ; ③ échec : la caméra d'origine est rouverte — jamais d'écran noir. Une piste n'est acceptée que d'un AUTRE `deviceId`. Live : double toucher ignoré (`H._flipEnCours`) ; appel : une caméra coupée le reste.
+**Contre-revue** (audit-passio) : la nouvelle caméra restait ALLUMÉE si le live finissait ou l'appel raccrochait pendant l'échange (flux orphelin) → `window._vliveHost !== H` / `window._call !== cs` relus après CHAQUE attente, piste arrêtée ; double toucher gardé aussi dans l'appel (`cs._flipEnCours`) ; Android libère la caméra en asynchrone → 250 ms avant les essais, réouverture de l'originale retentée, sinon « Caméra perdue — touche 🔄 » ; une seule caméra sur l'appareil → rien n'est touché ; caméra coupée pendant l'échange relue APRÈS l'attente.
+**Verrou** : `tests/e2e/live-camera-retourner.spec.js` (8) — faux Android à une caméra ouvrable à la fois, libérée 120 ms après `stop()` ; réinjection de l'ancien `flipVliveCamera` → ① ② rouges ; des gardes retirées → ⑥ ⑦ rouges.

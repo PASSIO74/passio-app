@@ -741,11 +741,126 @@ const RSVP_LABELS = {
   going:    { label: "Je participe",    short: "✓ Je participe" },  // LOT-3 (PCS-C06) : un seul mot pour le geste, partout
   maybe:    { label: "Peut-être",       short: "Peut-être" },
   declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
-  waitlist: { label: "Liste d'attente", short: "En attente" },
+  waitlist: {
+    label: "Liste d'attente", short: "En attente",
+    detail: "Si une place se libère et que c’est ton tour, tu recevras une notification. L’organisateur devra ensuite confirmer ta participation.",
+    detailOrganisation: "Si une place se libère, la première personne en attente reçoit une notification. Tu dois ensuite confirmer sa participation.",
+  },
 };
 
 // Mon état pour un événement. `state.user.eventRsvp` est la mémoire locale ;
 // `joinedEvents` reste maintenu pour toute la compatibilité existante.
+var _prochaineSortieAccueil = null;
+
+function signalerChangementSortie() {
+  if (document.hidden || !document.querySelector("#screen-irl.active")) return;
+  const lecture = _prochaineSortieAccueil;
+  if (lecture?.enCours && lecture.compte === MY_UID && lecture.etat === state) {
+    // La réponse en vol peut précéder l'annulation ; relire une fois à sa fin.
+    lecture.changement = true;
+    return;
+  }
+  actualiserProchaineSortie(true);
+}
+
+async function actualiserProchaineSortie(force) {
+  const carte = document.getElementById("prochaineSortie");
+  if (!carte) return;
+  const compte = typeof MY_UID === "string" ? MY_UID : "";
+  const precedente = _prochaineSortieAccueil;
+  const eligible = window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel();
+  if (!eligible || precedente?.compte !== compte || precedente?.etat !== state) {
+    carte.hidden = true;
+    carte.onclick = null;
+    clearTimeout(precedente?.expiration);
+    _prochaineSortieAccueil = null;
+  }
+  if (!eligible || document.hidden || !document.querySelector("#screen-irl.active")) return;
+  if (_prochaineSortieAccueil && (precedente.enCours || (!force && Date.now() < precedente.relireApres))) return;
+  clearTimeout(precedente?.expiration);
+  const historique = _prochaineSortieAccueil;
+  const lecture = { compte, etat: state, enCours: true };
+  _prochaineSortieAccueil = lecture;
+  const actuelle = () => _prochaineSortieAccueil === lecture && MY_UID === compte && state === lecture.etat;
+  try {
+    const { sortie, demandesEnAttente } = await supaProchaineSortie(compte);
+    if (!actuelle()) return;
+    carte.hidden = !sortie;
+    carte.onclick = null;
+    if (!sortie) {
+      delete carte.dataset.sortie;
+      // La première validation n'émet pas de notification. Suivre uniquement
+      // les demandes à venir, en réutilisant le délai de délestage du client.
+      if (demandesEnAttente) {
+        lecture.attenteDepuis = historique?.attenteDepuis ?? Date.now();
+        const delai = Date.now() - lecture.attenteDepuis < 60000 ? 5000 : 30000;
+        lecture.expiration = setTimeout(() => {
+          if (actuelle()) actualiserProchaineSortie(true);
+        }, delaiDeleste(delai));
+      }
+      return;
+    }
+    carte.dataset.sortie = sortie.id;
+    const date = new Date(supaTs(sortie.date_at));
+    carte.querySelector("strong").textContent = sortie.title;
+    const heure = carte.querySelector("time");
+    heure.dateTime = date.toISOString();
+    heure.textContent = date.toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    carte.disabled = false;
+    carte.onclick = async function () {
+      const memeCarte = () => MY_UID === compte && state === lecture.etat && !carte.hidden && carte.dataset.sortie === sortie.id;
+      if (!memeCarte() || date.getTime() <= Date.now()) { actualiserProchaineSortie(true); return; }
+      const hash = location.hash;
+      carte.disabled = true;
+      try {
+        const [accord, sorties] = await Promise.all([
+          supa.rpc("vient_a_activite", { p_event_id: sortie.id }),
+          supaLoadEvents(null, sortie.id),
+        ]);
+        if (!memeCarte() || location.hash !== hash || !document.querySelector("#screen-irl.active")) return;
+        if (accord.error || !sorties) throw new Error("lecture");
+        if (accord.data !== true || !sorties.length || _eventIsCancelled(sorties[0]) || sorties[0].date <= Date.now()) {
+          carte.hidden = true;
+          actualiserProchaineSortie(true);
+          toast("Cette sortie est indisponible.");
+          return;
+        }
+        fusionnerEvenementsServeur(sorties);
+        openEventDetails(sortie.id);
+      } catch (e) {
+        if (memeCarte()) toast("Impossible de charger la sortie. Réessaie dans un instant.");
+      } finally {
+        if (memeCarte()) carte.disabled = false;
+      }
+    };
+    // Filet si la notification est perdue. Seule une carte présente est suivie.
+    const delai = Math.min(delaiDeleste(45000), Math.max(0, date.getTime() - Date.now()));
+    lecture.expiration = setTimeout(() => {
+      if (!actuelle()) return;
+      if (date.getTime() <= Date.now()) carte.hidden = true;
+      actualiserProchaineSortie(true);
+    }, delai);
+  } catch (e) {
+    if (actuelle()) {
+      carte.hidden = true;
+      carte.onclick = null;
+      if (typeof diagLog === "function") diagLog("prochaine_sortie : lecture indisponible");
+      lecture.attenteDepuis = historique?.attenteDepuis;
+      lecture.delaiReprise = Math.min((historique?.delaiReprise || 15000) * 2, 240000);
+      lecture.expiration = setTimeout(() => {
+        if (actuelle()) actualiserProchaineSortie(true);
+      }, delaiDeleste(lecture.delaiReprise));
+    }
+  } finally {
+    lecture.enCours = false;
+    lecture.relireApres = Date.now() + 60000;
+    if (lecture.changement && actuelle()) actualiserProchaineSortie(true);
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) actualiserProchaineSortie(true);
+});
+
 function myRsvp(eventId) {
   const m = (state.user.eventRsvp || {})[eventId];
   if (m) return m;
@@ -775,6 +890,7 @@ function _setMyRsvpLocal(eventId, rsvp) {
 // et la liste fait foi, exactement comme avant.
 function _nbInscrits(ev, kind) {
   if (!ev) return 0;
+  ev = _sortiePourParticipation(ev);
   const k = kind || "going";
   const liste = k === "going" ? ev.attendees : k === "maybe" ? ev.maybes
     : k === "waitlist" ? ev.waitlist : k === "checked_in" ? ev.checkedIn : null;
@@ -901,6 +1017,14 @@ function _findCanonicalEvent(id) {
   return (state.userEvents || []).find(e => e.id === id)
       || (state.seed.events || []).find(e => e.id === id)
       || null;
+}
+
+// La copie de création conserve les champs d'édition sur cet appareil. Pour les
+// inscriptions, la carte, la fiche et les gestes RSVP partagent la sortie relue
+// du serveur, comme allEvents(). Les listes nominatives restent en mémoire.
+function _sortiePourParticipation(ev) {
+  if (!ev || !(state.userEvents || []).includes(ev)) return ev;
+  return (state.seed.events || []).find(e => e.id === ev.id && e.fromSupabase) || ev;
 }
 
 // ===== Carte interactive Leaflet =====
@@ -2143,6 +2267,9 @@ document.addEventListener("keydown", (e) => {
 // affichée : `renderIrlPassionTiles` ajoute `[...irlPassionFilters]` aux tuiles
 // montrées, précisément pour qu'un filtre actif ne devienne jamais indécochable.
 function _irlMyPassions() {
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) {
+    return PassioFirstRun.passionsChoisies();
+  }
   const source = (typeof passionsUnifieesActives === "function" && passionsUnifieesActives()
                   && typeof passionsVivantes === "function")
     ? passionsVivantes()
@@ -2750,15 +2877,18 @@ function _eventMatchesCityIntent(e) {
 // Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
 // passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
+function _irlDansPeriode(e, now) {
+  return irlShowPast ? _eventIsOver(e) : _eventEndAt(e) > now;
+}
+
 function _filterIrlEvents(events) {
   var now = Date.now();
   // On garde les événements EN COURS (commencés mais pas finis) : c'est
   // précisément le moment où l'utilisateur a besoin de l'adresse et du fil de
   // discussion. Les événements terminés ne sortent que via l'onglet « Passés ».
   var filtered = events.filter(function(e) {
-    return irlShowPast ? true : _eventEndAt(e) > now;
+    return _irlDansPeriode(e, now);
   });
-  if (irlShowPast) filtered = filtered.filter(function(e) { return _eventIsOver(e); });
 
   // 1. Passion (multi-select) — vide = toutes
   if (irlPassionFilters && irlPassionFilters.size > 0) {
@@ -3083,6 +3213,17 @@ function _irlEmptyStateHtml() {
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">Effacer la recherche</button></div>';
   }
   if (filtered) {
+    const pid = irlPassionFilters.size === 1 && [...irlPassionFilters][0];
+    if (pid && (estPassionCanonique(pid) || _irlPassionPlateConnue(pid))) {
+      const passion = passionById(pid);
+      const nom = passion.id ? escapeHtml(passion.label) : "";
+      return `<div class="empty"><div class="empty-icon">🗓</div>
+        <div class="empty-title">Aucune sortie${nom ? " " + nom : ""} avec ces filtres</div>
+        <div class="irl-empty-actions">
+          <button type="button" class="btn primary" data-passion="${escapeHtml(pid)}" onclick="openCreateEvent(null,this.dataset.passion)">Proposer une sortie${nom ? " " + nom : ""}</button>
+          <button type="button" class="btn ghost" onclick="clearAllIrlFilters()">Tout afficher</button>
+        </div></div>`;
+    }
     return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
       + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'activités.</div>'
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
@@ -3121,7 +3262,33 @@ function _scheduleIrlMapUpdate() {
 // carte « Où ? » de la page Filtre (`irlLieuReference`), qui ouvre déjà le
 // sélecteur de ville. Rien n'est plus inséré dans `#eventList`.
 
+function _irlAvisExemples(resultats, catalogue) {
+  const fr = window.PassioFirstRun;
+  if (!fr || !resultats.length || !lectureListeSortiesConfirmee() ||
+      !fr.masquerChiffresDemo(resultats[0]) || !resultats.every(fr.evenementDemo)) return "";
+
+  const now = Date.now();
+  const autres = catalogue.some(e => !fr.evenementDemo(e) && !_eventIsCancelled(e) && _irlDansPeriode(e, now));
+  const bouton = autres
+    ? '<button type="button" class="btn ghost" onclick="clearAllIrlFilters()">Voir les autres sorties</button>'
+    : '<button type="button" class="btn ghost" onclick="openCreateEvent()">Proposer une sortie</button>';
+  return '<div class="irl-avis-exemples" id="irlAvisExemples"><p>Les sorties affichées ici sont des exemples.</p>' + bouton + '</div>';
+}
+
+// Une lecture réussie peut confirmer des exemples déjà peints, même si elle
+// n'ajoute aucune activité. Garder les cartes en place préserve le focus.
+function actualiserAvisSortiesExemples() {
+  const liste = document.getElementById("eventList");
+  if (!liste || liste.querySelector("#irlAvisExemples") || !liste.querySelector(".event-card")) return;
+  const catalogue = allEvents();
+  const avis = _irlAvisExemples(_filterIrlEvents(catalogue), catalogue);
+  if (avis) liste.insertAdjacentHTML("afterbegin", avis);
+}
+
 function renderIRL() {
+  if (_prochaineSortieAccueil && (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
+    actualiserProchaineSortie();
+  }
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
 
@@ -3164,7 +3331,8 @@ function renderIRL() {
     requestUserLocation();
   }
 
-  var filtered = _filterIrlEvents(allEvents());
+  const catalogue = allEvents();
+  var filtered = _filterIrlEvents(catalogue);
   _resetIrlPagingIfFiltersChanged();
 
   // Bouton filtres : badge + bordure accentuée
@@ -3202,8 +3370,9 @@ function renderIRL() {
   const total = filtered.length;
   const shown = Math.min(total, window._irlRenderLimit || IRL_PAGE_SIZE);
   const rest = total - shown;
+  const avisExemples = _irlAvisExemples(filtered, catalogue);
   filtered = filtered.slice(0, shown);
-  list.innerHTML = filtered.map(e => {
+  list.innerHTML = avisExemples + filtered.map(e => {
     const passion = passionById(e.passion);
     const joined = (state.user.joinedEvents || []).includes(e.id);
     // Like ❤️ + réactions (cache window._eventLikes, hydraté par _loadEventReactions)
@@ -3714,7 +3883,8 @@ async function setEventRsvp(id, rsvp) {
   if (rsvp && rsvp !== "declined" && !(await requireAdmission("rejoindre", function () { return setEventRsvp(id, rsvp); }))) return;
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  const sortie = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  const ev = _sortiePourParticipation(sortie);
   if (!ev) return;
   // Première visite : « une activité fictive ne doit jamais sembler être une
   // véritable rencontre disponible ». Le contenu de démonstration refuse la
@@ -3724,7 +3894,7 @@ async function setEventRsvp(id, rsvp) {
   try {
     if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
   } catch (e) {}
-  if (_eventIsCancelled(ev) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
+  if (_eventIsCancelled(sortie) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
   if (prev === rsvp) return;
@@ -3733,7 +3903,7 @@ async function setEventRsvp(id, rsvp) {
   // LOT-48 (audit UX/UI du 2026-11-10, IRL-C64) : un seul message par geste —
   // « C'est complet… » était suivi de « Liste d'attente » pour le même tap.
   let _gesteDejaDit = false;
-  if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
+  if (rsvp === "going" && _eventIsFull(sortie) && prev !== "going") {
     rsvp = "waitlist";
     toast("C'est complet — tu es sur liste d'attente");
     _gesteDejaDit = true;
@@ -3746,10 +3916,12 @@ async function setEventRsvp(id, rsvp) {
   // mode local il n'y a rien à confirmer. Réglé par `settle` au verdict de
   // l'écriture (plus bas) ou dans `annuler` (refus).
   let _rsvpCid = null;
+  const suiviRefus = window._supaReal ? _suspendreLectureRefus(id, meId) : null;
   try {
     if (window._supaReal && window.tel && tel.flowStart) _rsvpCid = tel.flowStart(rsvp ? "event_join" : "event_leave", { eventId: id, rsvp: rsvp || "none" });
   } catch (e) {}
   const _rsvpRegle = (ok, motif) => {
+    if (suiviRefus) suiviRefus();
     try {
       if (!_rsvpCid || !window.tel || !tel.settle) return;
       tel.settle(_rsvpCid, "saved", ok, ok ? null : { message: motif, code: motif });
@@ -3801,6 +3973,7 @@ async function setEventRsvp(id, rsvp) {
       if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
       _rsvpRegle(true);
       _majAdresseActivite(ev);
+      if (prev === "going") signalerChangementSortie();
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
@@ -3835,6 +4008,7 @@ async function setEventRsvp(id, rsvp) {
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
+  if (rsvpOk === true && (prev === "going" || rsvp === "going")) signalerChangementSortie();
   // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
   // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
   // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
@@ -3934,7 +4108,7 @@ async function _promoteNextWaitlisted(ev) {
     notifieeParServeur = !!promu.notifieeParServeur;
     // Après deux allers-retours, l'objet canonique a pu être remplacé
     // (`fusionnerEvenementsServeur`) : on peint celui qui est à l'écran.
-    ev = _findCanonicalEvent(ev.id) || ev;
+    ev = _sortiePourParticipation(_findCanonicalEvent(ev.id)) || ev;
   }
   if (!next) return;   // promotion écrite mais personne nommée : rien à peindre
   _appliquerPromotionLocale(ev, next);
@@ -3950,12 +4124,20 @@ async function _promoteNextWaitlisted(ev) {
 // compteur — gardait « Liste d'attente (1) » et un « +1 autre » fantôme après
 // la promotion du seul inscrit en attente, jusqu'au prochain chargement. Puis
 // on repeint ce qui le montre : la carte, et la fiche si elle est ouverte.
-function _appliquerPromotionLocale(ev, uid) {
+function _appliquerPromotionLocale(ev, uid, organisation = false) {
   if (!ev || !uid) return;
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== uid);
-  if (!(ev.attendees || []).includes(uid)) ev.attendees = (ev.attendees || []).concat([uid]);
-  _ajusterCompteInscrits(ev, "waitlist", -1);
-  _ajusterCompteInscrits(ev, "going", +1);
+  // La fiche utilise la copie serveur lorsqu'une sortie créée sur cet appareil
+  // existe aussi dans userEvents. Les deux doivent refléter la même écriture.
+  const copies = organisation ? _copiesSortieOrganisation(ev.id) : [ev];
+  for (const sortie of copies) {
+    const enFile = (sortie.waitlist || []).includes(uid);
+    const inscrit = (sortie.attendees || []).includes(uid);
+    sortie.waitlist = (sortie.waitlist || []).filter(x => x !== uid);
+    if (!inscrit) sortie.attendees = (sortie.attendees || []).concat([uid]);
+    if (sortie.counts) sortie.counts = { ...sortie.counts };
+    if (!organisation || enFile) _ajusterCompteInscrits(sortie, "waitlist", -1);
+    if (!organisation || !inscrit) _ajusterCompteInscrits(sortie, "going", +1);
+  }
   saveState();
   _patchEventCardJoin(ev.id);
   _refreshEventDetailIfOpen(ev.id);
@@ -3984,7 +4166,7 @@ async function _appliquerPromotionAnonyme(ev) {
   if (!ev) return;
   const id = ev.id;
   const lu = await _lireActivitePromue(id);
-  const cible = _findCanonicalEvent(id) || ev;
+  const cible = _sortiePourParticipation(_findCanonicalEvent(id)) || ev;
   // ⚠️ PAS DE DELTA SUR UN OBJET REMPLACÉ PENDANT L'ATTENTE (contre-revue du
   // 2026-11-03). Un chargement arrivé entre-temps a peut-être DÉJÀ compté la
   // promotion : −1 en file / +1 venant la compterait deux fois, et un
@@ -4070,7 +4252,7 @@ function _relirePromotionPlusTard(id) {
     const rejouer = async function () {
       const lu = await _lireActivitePromue(id);
       if (!lu || !lu.listesLues) { noterLectureAReprendre(nom, rejouer); return; }
-      const ev = _findCanonicalEvent(id);
+      const ev = _sortiePourParticipation(_findCanonicalEvent(id));
       if (ev) {
         if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
         _poserListesRelues(ev, lu);
@@ -4265,6 +4447,24 @@ function _refreshEventDetailIfOpen(id) {
   }
 }
 
+// Une sortie créée sur cet appareil peut être ouverte avant la relecture de
+// Rencontrer, ou être sortie de ses 60 résultats. Relire uniquement cette fiche.
+async function _relireSortieOrganisee(id) {
+  const etat = state, compte = MY_UID;
+  try {
+    const sorties = await supaLoadEvents(null, id);
+    if (state !== etat || MY_UID !== compte || window._openEventDetailId !== id) return;
+    if (fusionnerEvenementsServeur(sorties)) {
+      _patchEventCardJoin(id);
+      // Toute la fiche (file d'attente, « peut-être », visages), pas seulement
+      // le nombre : le re-rendu est un _isRerender, il ne relance pas de lecture.
+      _refreshEventDetailIfOpen(id);
+    }
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("compteur sortie : relecture indisponible — " + (e && e.message));
+  }
+}
+
 // Feuille de choix du niveau de participation. Un « peut-être » assumé vaut mieux
 // qu'un faux « je viens » : l'organisateur sait à quoi s'attendre.
 function openEventRsvpSheet(id) {
@@ -4289,7 +4489,7 @@ function openEventRsvpSheet(id) {
     <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — liste d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
     <div style="margin-top:14px;">
       ${full && cur !== "going"
-        ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
+        ? opt("waitlist", RSVP_LABELS.waitlist.detail)
         : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
       ${opt("maybe", "Tu suis l'activité sans bloquer de place")}
       ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
@@ -4306,7 +4506,7 @@ function _patchEventCardJoin(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   const card = document.querySelector('#eventList .event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   if (!ev || !card) { renderIRL(); return; }
-  const atts = ev.attendees || [];
+  const atts = _sortiePourParticipation(ev).attendees || [];
   const nbVenants = _nbInscrits(ev, "going");
   const maybeCount = _nbInscrits(ev, "maybe");
   const myState = myRsvp(id);
@@ -4524,7 +4724,64 @@ function _lienContactEvenement(contact) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
 
-function openEventDetails(id) {
+// Une lecture appartient à une ouverture et à un compte. Un nouvel RSVP
+// invalide la lecture en vol, même si la personne ferme puis rouvre la fiche.
+let _vueRefusSortie = null;
+const _ecrituresRsvp = new Map();
+
+function _suspendreLectureRefus(id, uid) {
+  const cle = JSON.stringify([uid, id]);
+  _ecrituresRsvp.set(cle, (_ecrituresRsvp.get(cle) || 0) + 1);
+  if (_vueRefusSortie?.id === id && _vueRefusSortie.uid === uid) {
+    _vueRefusSortie.lecture++;
+    _vueRefusSortie.refuse = false;
+    _vueRefusSortie.participantsRelus = false;
+  }
+  return () => {
+    const reste = _ecrituresRsvp.get(cle) - 1;
+    if (reste) { _ecrituresRsvp.set(cle, reste); return; }
+    _ecrituresRsvp.delete(cle);
+    if (_vueRefusSortie?.uid === uid) _relireRefusFiche(id);
+  };
+}
+
+async function _relireRefusFiche(id) {
+  const vue = _vueRefusSortie;
+  if (!vue || vue.id !== id || !window._supaReal || !vue.uid || vue.uid !== MY_UID
+      || !_compteAuthReel() || _identiteDivergeDeLaSession(vue.uid)
+      || _ecrituresRsvp.has(JSON.stringify([vue.uid, id]))) return;
+  const lecture = ++vue.lecture;
+  const actuelle = () => vue === _vueRefusSortie && lecture === vue.lecture && vue.uid === MY_UID
+    && _compteAuthReel() && !_identiteDivergeDeLaSession(vue.uid) && window._openEventDetailId === id;
+  try {
+    const {data, error} = await supa.rpc("mon_refus_demande_sortie", {p_event_id: id});
+    if (error || typeof data !== "boolean" || !actuelle()) return;
+    const perime = data && !!myRsvp(id);
+    const changement = vue.refuse !== data || perime;
+    if (!changement && (!data || vue.participantsRelus)) return;
+    if (changement) vue.participantsRelus = false;
+    vue.refuse = data;
+    if (perime) {
+      _setMyRsvpLocal(id, null);
+      saveState();
+    }
+    if (changement) _refreshEventDetailIfOpen(id);
+    if (data) {
+      const lu = await supaLireParticipants([id], "refus_demande");
+      if (!actuelle()) return;
+      for (const ev of [state.seed.events.find(e => e.id === id), (state.userEvents || []).find(e => e.id === id)]) {
+        if (!ev) continue;
+        if (lu.listesLues) _poserListesRelues(ev, lu);
+        if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
+      }
+      vue.participantsRelus = lu.listesLues && lu.comptesLus;
+      _patchEventCardJoin(id);
+      _refreshEventDetailIfOpen(id);
+    }
+  } catch (e) { /* Hors ligne : conserver le dernier état connu. */ }
+}
+
+function openEventDetails(id, remplaceModale = false) {
   if (window._openEventDetailId !== id) document.getElementById("confirmerArriveeApresAccord")?.remove();
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
@@ -4557,12 +4814,21 @@ function openEventDetails(id) {
       toggleIrlMapFullscreen();
       if (irlMap) irlMap.closePopup();
       pushOverlayHistory("event", "#event-" + id);
+    } else if (remplaceModale) {
+      pushOverlayHistory("event", "#event-" + id);
     } else {
       pushOverlayToHistory("event", id);
     }
   }
 
   window._openEventDetailId = id; // pour le refresh realtime des commentaires
+  const uidFiche = typeof MY_UID !== "undefined" && MY_UID;
+  if (!_isRerender || !_vueRefusSortie || _vueRefusSortie.uid !== uidFiche || _vueRefusSortie.id !== id) {
+    _vueRefusSortie = {id, uid: uidFiche, lecture: 0, refuse: false};
+    _relireRefusFiche(id);
+  } else if (remplaceModale) {
+    _relireRefusFiche(id);
+  }
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
   const joined = (state.user.joinedEvents || []).includes(id);
@@ -4707,6 +4973,7 @@ function openEventDetails(id) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
+    ${_vueRefusSortie.refuse ? '<div class="event-detail-urgency" role="status" data-refus-demande>Ta demande n’a pas été acceptée.</div>' : ''}
     ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
         + (["going", "maybe", "waitlist"].indexOf(myRsvp(ev.id)) > -1 ? ' Ta participation est annulée, rien d\'autre à faire.' : '') + '</div>'
       : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
@@ -4785,7 +5052,7 @@ function openEventDetails(id) {
     ${_nbInscrits(ev, "waitlist") ? `
       <div class="event-detail-section-title">Liste d'attente (${_nbInscrits(ev, "waitlist")})</div>
       <div class="event-detail-participants">${_facesEtReste(ev.waitlist, 8, _nbInscrits(ev, "waitlist"))}</div>
-      ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
+      ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${RSVP_LABELS.waitlist.detailOrganisation}</div>` : ""}` : ""}
 
     ${(ev.coOrganizers || []).length ? `
       <div class="event-detail-section-title">Co-organisateurs</div>
@@ -4839,6 +5106,10 @@ function openEventDetails(id) {
   page.style.display = "flex";
   page.scrollTop = 0;
   _suivrePresencesOuvertes(ev);
+  if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()
+      && (state.userEvents || []).some(e => e && e.id === id)) {
+    _relireSortieOrganisee(id);
+  }
   // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
@@ -5026,7 +5297,7 @@ function _suivrePresencesOuvertes(ev) {
   _suiviPresences = suivi;
   const courant = () => {
     if (_suiviPresences !== suivi || state !== suivi.etat || MY_UID !== suivi.uid || window._openEventDetailId !== suivi.id) return null;
-    const cible = _findCanonicalEvent(suivi.id);
+    const cible = _sortiePourParticipation(_findCanonicalEvent(suivi.id));
     return cible && _pointageServeur(cible) && _canManageEvent(cible) && !_eventIsCancelled(cible) && Date.now() <= _eventEndAt(cible) ? cible : null;
   };
   function programmer(cible) {
@@ -5071,6 +5342,7 @@ function _suivrePresencesOuvertes(ev) {
 }
 
 function closeEventDetail() {
+  _vueRefusSortie = null;
   document.getElementById("confirmerArriveeApresAccord")?.remove();
   _arreterSuiviPresences();
   const page = document.getElementById("eventDetailPage");
@@ -5105,15 +5377,45 @@ function _quandRappel(ts, maintenant) {
   return "le " + d.getDate() + " " + d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
 }
 
+// Rang d'un palier : plus il est proche du départ, plus il est grand.
+function _rangPalierRappel(cle) {
+  for (var i = 0; i < EVENT_REMINDER_TIERS.length; i++) if (EVENT_REMINDER_TIERS[i].key === cle) return i;
+  return -1;
+}
+
+// UN rappel par activité dans la cloche (2026-11-26, « je trouve qu'il y a trop
+// de rappels ») : la même activité était rappelée SEPT fois en trois jours. Le
+// plus récent reste ; les plus anciens de la même activité partent.
+function _dedoublonnerRappelsCloche() {
+  var l = state.notifications;
+  if (!Array.isArray(l) || !l.length) return false;
+  var vus = new Set(), gardees = [];
+  // La cloche est triée du plus récent au plus ancien, mais on ne s'y fie pas.
+  var tri = l.map(function (n, i) { return { n: n, i: i }; }).sort(function (a, b) {
+    return ((b.n && b.n.createdAt) || 0) - ((a.n && a.n.createdAt) || 0) || a.i - b.i;
+  });
+  var retires = new Set();
+  tri.forEach(function (x) {
+    var n = x.n;
+    if (!n || n.kind !== "event_reminder" || !n.refId) return;
+    if (vus.has(n.refId)) retires.add(x.i); else vus.add(n.refId);
+  });
+  if (!retires.size) return false;
+  l.forEach(function (n, i) { if (!retires.has(i)) gardees.push(n); });
+  state.notifications = gardees;
+  return true;
+}
+
 function _checkEventReminders() {
   try {
     var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
+    if (!Array.isArray(reminded)) reminded = [];
     var now = Date.now();
+    var change = _dedoublonnerRappelsCloche();
     var joined = (state.user && state.user.joinedEvents) || [];
-    if (!joined.length) return;
     var events = allEvents();
 
-    events.forEach(function (e) {
+    if (joined.length) events.forEach(function (e) {
       if (joined.indexOf(e.id) === -1) return;
       if (_eventIsCancelled(e)) return;          // ne pas rappeler un événement annulé
       var diff = e.date - now;
@@ -5129,30 +5431,60 @@ function _checkEventReminders() {
 
       var mark = e.id + ":" + tier.key;
       if (reminded.indexOf(mark) > -1) return;
+      // Seconde ceinture : la cloche elle-même. Un rappel de ce palier (ou d'un
+      // palier plus proche) déjà présent pour cette activité vaut marque.
+      var rang = _rangPalierRappel(tier.key);
+      var dejaLa = (state.notifications || []).some(function (n) {
+        return n && n.kind === "event_reminder" && n.refId === e.id
+          && (n.palier
+            // Une activité REPORTÉE n'est pas la même échéance : l'ancien rappel ne la tait pas.
+            ? _rangPalierRappel(n.palier) >= rang && (n.dateActivite == null || n.dateActivite === e.date)
+            : String(n.id) === "rappel_" + mark);
+      });
+      if (dejaLa) { reminded.push(mark); return; }
 
       // LOT-7 (audit UX/UI du 2026-11-10, TRA-C15) : le palier dit QUAND rappeler,
       // jamais ce qu'on affiche. Une activité à 26 h tombait dans le palier d7 et
       // recevait « dans une semaine » ; on compose la date RÉELLE, en jours de
       // calendrier : « aujourd'hui », « demain », « samedi », « le 20 nov. ».
       var when = _quandRappel(e.date, now);
+      // Le rappel précédent de la même activité laisse la place au nouveau.
+      if (Array.isArray(state.notifications)) {
+        state.notifications = state.notifications.filter(function (n) {
+          return !(n && n.kind === "event_reminder" && n.refId === e.id);
+        });
+      }
       // `event_reminder` + `refId` : toucher le rappel dans la cloche ouvre
-      // l'activité (openNotifTarget), au lieu d'une ligne inerte.
+      // l'activité (openNotifTarget), au lieu d'une ligne inerte. L'identifiant
+      // est DÉTERMINISTE (`rappel_<activité>:<palier>`) : pushNotification ignore un doublon.
       if (typeof pushNotification === "function") {
         pushNotification("Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
           + " à " + _eventTimeLabel(e)
-          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id });
+          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id, id: "rappel_" + mark });
+        var posee = (state.notifications || [])[0];
+        if (posee && posee.id === "rappel_" + mark) { posee.palier = tier.key; posee.dateActivite = e.date; }
       }
+      change = true;
       reminded.push(mark);
     });
 
-    // Purge les marques dont l'événement est passé depuis plus de 7 jours (ou a
-    // disparu) pour ne pas faire gonfler le cache indéfiniment.
+    // LE DÉFAUT du 2026-11-26 : la purge retirait la marque d'une activité
+    // ABSENTE de `allEvents()` — or au démarrage, les activités du serveur ne
+    // sont pas encore relues (`rafraichirEvenements` est asynchrone). Marque
+    // effacée au démarrage suivant, rappel reposé au suivant : sept rappels de
+    // la même activité. Une marque ne part que si son activité est CONNUE et
+    // passée depuis plus de 7 jours ; la liste reste bornée.
     reminded = reminded.filter(function (mark) {
       var id = String(mark).split(":")[0];
       var ev = events.find(function (x) { return x.id === id; });
-      return ev && ev.date > now - 7 * 86400000;
+      return !ev || ev.date > now - 7 * 86400000;
     });
+    if (reminded.length > 300) reminded = reminded.slice(-300);
     localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
+    if (change) {
+      try { saveState(); } catch (_) {}
+      try { if (typeof renderBell === "function") renderBell(); } catch (_) {}
+    }
   } catch (e) { try { diagLog("rappels : " + (e && e.message)); } catch (_) {} }
 }
 // ⚠️ Ce rappel-ci ne vit que DANS LA PAGE : appli fermée, il ne part pas. Les
@@ -5335,6 +5667,7 @@ async function _irlEvLinkCharger(id) {
   if (!_irlLienAppPrete()) { _irlEvLinkReplanifier(); return; }
   if (activites && activites.length === 1 && activites[0].id === id) {
     fusionnerEvenementsServeur(activites);
+    if (_irlEvLinkReprise) _irlEvLinkReprise.relire = false;
     _irlEvLinkAvancer();
     return;
   }
@@ -5376,13 +5709,15 @@ function _irlEvLinkAvancer() {
       if (++_irlEvLinkAttentes <= 600) _irlEvLinkReplanifier();
       return false;
     }
-    if (allEvents().some(e => e.id === id)) {
+    if (!(reprise && reprise.relire) && allEvents().some(e => e.id === id)) {
       // ⚠️ L'id mémorisé est CONSOMMÉ ici. Sans ça, il survivrait à l'ouverture
       // et le moindre `hashchange` ultérieur (un retour arrière vers « #feed »,
       // par exemple) rouvrirait la fiche sans que personne ne l'ait demandé.
       _irlEvLinkTerminer();
       if (!reprise && typeof goTo === "function") goTo("irl");
-      openEventDetails(id);
+      const remplaceModale = !!(reprise && reprise.fermerModale);
+      if (remplaceModale) closeModal();
+      openEventDetails(id, remplaceModale);
       if (reprise && typeof reprise.apresOuverture === "function" && window._openEventDetailId === id) {
         const fiche = document.getElementById("eventDetailPage");
         if (fiche && fiche.style.display !== "none") reprise.apresOuverture();
@@ -5506,11 +5841,12 @@ function _ouvrirActiviteDepuisNotification(id) {
 
 // Depuis l’app, la fiche pose déjà sa propre entrée d’historique. Une seconde
 // entrée #irl-event-ID la rouvrirait au retour arrière après sa fermeture.
-function _ouvrirLienActivite(id, apresOuverture) {
+function _ouvrirLienActivite(id, apresOuverture, options = {}) {
   if (typeof id !== "string" || !LIEN_COURT_ID_RE.test(id)) return false;
   _irlEvLinkTerminer();
   _irlEvLinkId = id;
-  _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture };
+  _irlEvLinkReprise = { hash: location.hash, etat: state, uid: MY_UID, apresOuverture,
+    relire: options.relire, fermerModale: options.fermerModale };
   _irlEvLinkAvancer();
   return true;
 }
@@ -7616,7 +7952,7 @@ function _irlAssurerReferentielPassions(myPassionIds) {
   } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
 }
 
-function openCreateEvent(editId) {
+function openCreateEvent(editId, passionSouhaitee) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -7639,10 +7975,10 @@ function openCreateEvent(editId) {
   // le catalogue : tout ce qui est listé est à soi.
   // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
   // la seule définition de « mes passions » — une passion rangée n'est pas proposée.
-  const myPassionIds = ((typeof passionsVivantes === "function")
+  const profilsOrganisateur = (typeof passionsVivantes === "function")
     ? passionsVivantes()
-    : (state.user.profiles || []).filter(pr => !pr.archived))
-    .map(pr => pr && pr.passion).filter(Boolean);
+    : (state.user.profiles || []).filter(pr => !pr.archived);
+  const myPassionIds = profilsOrganisateur.map(pr => pr && pr.passion).filter(Boolean);
   // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
   // ⚠️ NE PAS RECLASSER EN SILENCE. Si l'activité éditée porte une passion
   // absente du catalogue publiable, aucune `<option>` ne serait marquée
@@ -7666,6 +8002,13 @@ function openCreateEvent(editId) {
   // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
   const _pubs = _irlPassionsOrganisables(myPassionIds);
   const _repli = !!_pubs.repli;
+  if (!editId && passionSouhaitee && !profilsOrganisateur.some(p => p && !p.archived && !p._parDefaut && p.passion === passionSouhaitee)) {
+    const nom = escapeHtml(passionById(passionSouhaitee).label);
+    openModal(`<div class="modal-title">Proposer une sortie</div>
+      <p class="modal-subtitle">Ajoute ${nom} à tes passions ou réactive-la sur ton profil pour organiser cette sortie.</p>
+      <button type="button" class="btn primary block" onclick="ouvrirGestionPassions()">Gérer mes passions</button>`);
+    return;
+  }
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
     // Une activité créée sous une passion retirée du profil depuis reste
@@ -7678,7 +8021,7 @@ function openCreateEvent(editId) {
   }
   const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
-  const selPassion = ed ? ed.passion : "";
+  const selPassion = ed ? ed.passion : passionSouhaitee || "";
   const passionOptions = sortedPassions
     .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
@@ -7730,8 +8073,8 @@ function openCreateEvent(editId) {
       <label class="field"><span>Date *</span>
         <input type="date" class="input" id="evDate" value="${escapeHtml(dateValue)}" min="${escapeHtml(ed ? "" : _localDay(Date.now()))}"/>
       </label>
-      <label class="field"><span>Heure</span>
-        <input type="time" class="input" id="evTime" value="${v("time", "18:00")}"/>
+      <label class="field"><span>Heure *</span>
+        <input type="time" class="input" id="evTime" required value="${ed ? _eventTimeLabel(ed) : ""}"/>
       </label>
       <label class="field"><span>Durée</span>
         <select class="input" id="evDuration">
@@ -7914,14 +8257,35 @@ async function toggleEventCoOrganizer(id, userId) {
 }
 
 // ===== Liste d'attente (vue organisateur) =====
-function openEventWaitlist(id) {
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
-  if (!ev) return;
-  const wl = ev.waitlist || [];
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Liste d'attente</div>
-    <div class="modal-subtitle">Dans l'ordre d'arrivée. Ils sont promus automatiquement dès qu'une place se libère.</div>
+function _copiesSortieOrganisation(id) {
+  return [...new Set([_findCanonicalEvent(id), (state.seed.events || []).find(e => e.id === id)].filter(Boolean))];
+}
+
+// La RPC classe la file par date d'arrivée. PostgREST peut plafonner chaque
+// réponse : ne jamais prendre la longueur de la première page pour le total.
+async function _lireFileOrganisation(id) {
+  const lire = () => supa.rpc("participants_validation", { p_event_id: id }, { count: "exact" });
+  const premiere = await lire();
+  if (premiere.error || !Array.isArray(premiere.data) || !Number.isInteger(premiere.count)) throw new Error("lecture file");
+  const lignes = premiere.data.slice();
+  const taille = lignes.length;
+  while (lignes.length < premiere.count) {
+    if (!taille) throw new Error("page vide");
+    const page = await lire().range(lignes.length, lignes.length + taille - 1);
+    if (page.error || !page.data?.length || page.count !== premiere.count) throw new Error("file modifiée");
+    lignes.push(...page.data);
+  }
+  if (lignes.length !== premiere.count || new Set(lignes.map(a => a.user_id)).size !== lignes.length) throw new Error("file incohérente");
+  return lignes;
+}
+
+function _lignesFileOrganisation(id, wl, reservations) {
+  return `
+    ${reservations.length ? `<div role="status" style="margin-top:12px">
+      <strong>En attente de validation</strong>
+      ${reservations.map(uid => `<div data-reservation="${escapeHtml(uid)}">${escapeHtml((userById(uid) || {}).name || "Participant")}</div>`).join("")}
+      <button class="btn ghost block" onclick="openEventParticipantValidation('${escapeJsArg(id)}', null, this)">Valider les participants</button>
+    </div>` : ""}
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${wl.map((u, i) => {
         const p = userById(u) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
@@ -7929,17 +8293,63 @@ function openEventWaitlist(id) {
           <span style="font-size:12px;color:var(--muted);width:18px;">${i + 1}</span>
           <div class="avatar sm" style="background:${avatarBg(p)};">${avatarInner(p)}</div>
           <span style="flex:1;font-size:13px;">${escapeHtml(p.name || "Participant")}</span>
-          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}')">Inscrire</button>
+          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}',this)">Réserver la place</button>
         </div>`;
-      }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en attente.</div>'}
-    </div>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
-  `);
+      }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en liste d’attente.</div>'}
+    </div>`;
 }
 
-async function promoteWaitlisted(id, userId) {
+async function openEventWaitlist(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev)) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Liste d'attente</div>
+    <div class="modal-subtitle">${RSVP_LABELS.waitlist.detailOrganisation}</div>
+    <div data-file-sortie="${escapeHtml(id)}" aria-busy="${!!window._supaReal}">${_lignesFileOrganisation(id, ev.waitlist || [], [])}</div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+  `);
+  // Comme dans Participants, seuls les accords du serveur distinguent les
+  // réservations encore à valider de celles qui sont déjà confirmées.
+  if (!window._supaReal) return;
+  const panneau = document.querySelector("#modalBackdrop.active [data-file-sortie]");
+  const compte = MY_UID, etat = state;
+  try {
+    const participants = await _lireFileOrganisation(id);
+    if (MY_UID !== compte || state !== etat || !panneau.isConnected) return;
+    const lignes = participants.filter(a => a.user_id !== compte);
+    const file = participants.filter(a => a.rsvp === "waitlist").map(a => a.user_id);
+    const demandes = lignes.filter(a => a.rsvp === "going" && !a.valide).map(a => a.user_id);
+    const inconnus = [...file, ...demandes].filter(uid => !(userById(uid) || {}).name);
+    if (inconnus.length && typeof _resolveProfilesByIds === "function") {
+      try { await _resolveProfilesByIds(inconnus); }
+      catch (e) { if (typeof diagLog === "function") diagLog("file : noms indisponibles"); }
+    }
+    if (MY_UID !== compte || state !== etat || panneau !== document.querySelector("#modalBackdrop.active [data-file-sortie]")) return;
+    if (panneau.querySelector("button:disabled")) return;
+    const venants = participants.filter(a => a.rsvp === "going").map(a => a.user_id);
+    // Une réponse vide peut aussi indiquer une perte du droit de gestion.
+    // Dans ce cas le panneau est vide mais les compteurs publics sont conservés.
+    for (const copie of participants.length ? _copiesSortieOrganisation(id) : []) {
+      copie.attendees = venants.slice();
+      copie.waitlist = file.slice();
+      if (copie.counts) copie.counts = { ...copie.counts, going: venants.length, waitlist: file.length };
+    }
+    saveState();
+    _patchEventCardJoin(id);
+    _refreshEventDetailIfOpen(id);
+    panneau.innerHTML = _lignesFileOrganisation(id, file, demandes);
+  } catch (e) {
+    if (MY_UID === compte && state === etat && panneau === document.querySelector("#modalBackdrop.active [data-file-sortie]")) {
+      panneau.insertAdjacentHTML("beforeend", `<button class="btn ghost block" onclick="openEventWaitlist('${escapeJsArg(id)}')">Actualiser les statuts</button>`);
+    }
+  } finally { panneau.setAttribute("aria-busy", "false"); }
+}
+
+async function promoteWaitlisted(id, userId, bouton) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev)) return;
+  const compte = MY_UID, etat = state;
   // ⚠️ IRL-04 (contre-revue Astra, 2026-09-15) : la promotion MANUELLE restait
   // optimiste — la personne passait dans `attendees`, était notifiée et
   // « Participant inscrit » s'affichait, même quand le serveur refusait (zéro
@@ -7950,11 +8360,16 @@ async function promoteWaitlisted(id, userId) {
   let promu = userId;
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
     // Promotion CHOISIE par l'organisation : la base vérifie ce droit (B-02).
-    const ok = await supaPromoteFromWaitlist(id, userId);
+    if (bouton && bouton.disabled) return false;
+    if (bouton) bouton.disabled = true;
+    let ok;
+    try { ok = await supaPromoteFromWaitlist(id, userId); }
+    finally { if (bouton) bouton.disabled = false; }
+    if (MY_UID !== compte || state !== etat) return false;
     if (!ok) {
       try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
       toast("⚠️ Inscription non enregistrée : la personne n'est peut-être plus en liste d'attente, ou l'activité est complète.");
-      openEventWaitlist(id);
+      if (document.querySelector("#modalBackdrop.active [data-file-sortie]")?.dataset.fileSortie === id) await openEventWaitlist(id);
       return false;
     }
     notifieeParServeur = !!ok.notifieeParServeur;
@@ -7965,11 +8380,17 @@ async function promoteWaitlisted(id, userId) {
   }
   // Listes, compteur serveur mémorisé (C-04), carte et fiche ouverte : même
   // chemin que la promotion automatique.
-  _appliquerPromotionLocale(ev, promu);
+  // La synchronisation peut remplacer la sortie pendant l'écriture. Repartir
+  // de la version affichée, qui peut aussi avoir déjà reçu la promotion.
+  const actuelle = _findCanonicalEvent(id);
+  if (actuelle && _canManageEvent(actuelle)) _appliquerPromotionLocale(actuelle, promu, true);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(promu, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
-  toast("Participant inscrit");
-  openEventWaitlist(id);
+  toast("Place réservée. Il te reste à confirmer la participation.");
+  const panneau = document.querySelector("#modalBackdrop.active [data-file-sortie]");
+  if (actuelle && _canManageEvent(actuelle) && panneau && panneau.dataset.fileSortie === id) {
+    await openEventWaitlist(id);
+  }
   return true;
 }
 
@@ -8162,7 +8583,14 @@ async function reportEvent(id) {
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
+const sortiesStudioEnCreation = new Set();
+
 async function submitEvent(editId) {
+  const formulaire = document.getElementById("evTitle");
+  const sourceStudio = !editId && formulaire?.dataset.publicationStudio;
+  const auteurStudio = sourceStudio && formulaire.dataset.auteurStudio;
+  const formulaireStudioActif = () => MY_UID === auteurStudio && formulaire === document.querySelector("#modalBackdrop.active #evTitle");
+  if (sourceStudio && !formulaireStudioActif()) return;
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -8171,12 +8599,13 @@ async function submitEvent(editId) {
   // demande AVANT d'écrire, pour ne pas laisser le refus RLS se manifester par
   // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
   if (!(await requireAdmission("activite", function () { return submitEvent(editId); }))) return;
+  if (sourceStudio && !formulaireStudioActif()) return;
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
   const city = (g("evCity")?.value || "").trim();
   const date = g("evDate")?.value || "";
-  const time = g("evTime")?.value || "18:00";
+  const time = g("evTime")?.value;
   const desc = (g("evDesc")?.value || "").trim();
   const venue = (g("evVenue")?.value || "").trim();
   const address = (g("evAddress")?.value || "").trim();
@@ -8203,6 +8632,11 @@ async function submitEvent(editId) {
   if (title.length < 3) { toast("Titre trop court (3 caractères min)", "error"); return; }
   if (!city) { toast("Indique une ville", "error"); return; }
   if (!date) { toast("Choisis une date", "error"); return; }
+  if (!time) {
+    toast("Choisis une heure de départ", "error");
+    g("evTime")?.focus();
+    return;
+  }
   if (!passion) { toast("Sélectionne une passion", "error"); return; }
   // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
   // passions publiables, donc ce garde ne se déclenche que sur un état bâti
@@ -8230,6 +8664,16 @@ async function submitEvent(editId) {
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const existing = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !existing) { toast("Activité introuvable"); return; }
+
+  let avisModification = null;
+  if (existing) {
+    const changements = [];
+    if (new Date(existing.date).toDateString() !== new Date(ts).toDateString()) changements.push("la date");
+    if (_eventTimeLabel(existing) !== time) changements.push("l’horaire");
+    if ([["venue", venue], ["address", address], ["postalCode", postalCode], ["city", city]]
+        .some(([champ, valeur]) => String(existing[champ] || "").trim() !== valeur)) changements.push("le lieu de rendez-vous");
+    if (changements.length) avisModification = "a modifié " + changements.join(", ").replace(/, ([^,]+)$/, " et $1") + " de ta sortie.";
+  }
 
   const p = passionById(passion) || { emoji: "✨" };
   const ev = Object.assign(existing || {}, {
@@ -8268,6 +8712,13 @@ async function submitEvent(editId) {
       if (geo) { ev.lat = geo.lat; ev.lng = geo.lng; }
     }
   }
+  // La première validation ferme la modale avant toute nouvelle attente.
+  // Un double appui ou une fermeture pendant le géocodage s'arrête ici.
+  if (sourceStudio && !formulaireStudioActif()) return;
+  if (sourceStudio && !window._supaReal && messageDisponiblePourSortie(sourceStudio)?.sortieDifferee === "aProposer") {
+    toast("Reconnecte-toi pour publier la sortie et la relier à ton message.", "warning");
+    return;
+  }
   window._evPickedCoords = null;
 
   // Origine « pont Fil → IRL » : lue AVANT closeModal (le marqueur vit sur le
@@ -8278,6 +8729,7 @@ async function submitEvent(editId) {
   const inviteConv = editId ? null : lireInvitationFormulaire();
   // Le choix « Publier aussi dans le fil » (2026-11-23) : lu au même moment.
   const auFil = editId ? false : _lireChoixAuFil();
+  const ecranStudio = sourceStudio && document.querySelector(".screen.active");
 
   closeModal();
   toast(editId ? "Enregistrement…" : "Publication en cours…");
@@ -8296,6 +8748,11 @@ async function submitEvent(editId) {
 
   // Occurrences suivantes d'un événement récurrent : de VRAIS événements qui
   // partagent le seriesId (chacun a ses inscrits et sa discussion).
+  if (sourceStudio && MY_UID !== auteurStudio) return;
+  if (sourceStudio && !messageDisponiblePourSortie(sourceStudio)) {
+    toast("La proposition de sortie a changé. Rouvre le menu de ton message.");
+    return;
+  }
   const extraOccurrences = [];
   if (!editId && recurrence && recurrence !== "none") {
     _recurrenceDates(ts, recurrence, occurrences).forEach(t => {
@@ -8312,6 +8769,7 @@ async function submitEvent(editId) {
     extraOccurrences.forEach(o => state.userEvents.unshift(o));
     state.user.joinedEvents = state.user.joinedEvents || [];
     [ev].concat(extraOccurrences).forEach(o => {
+      if (!auFil) marquerActiviteHorsFil(o.id);
       if (!state.user.joinedEvents.includes(o.id)) state.user.joinedEvents.push(o.id);
       _setMyRsvpLocal(o.id, "going");
     });
@@ -8322,18 +8780,41 @@ async function submitEvent(editId) {
   // Sync Supabase — on ne ment plus sur le résultat (même leçon que les bobines
   // fantômes du 2026-07-19 : « publié ! » alors que rien n'était en base).
   let ok = true;
+  let lienStudio = null;
   const backend = !!window._supaReal;
   if (backend) {
-    ok = editId
-      ? await supaUpdateEvent(ev)
-      : await supaPublishEvent(ev);
+    const postStudio = sourceStudio && (state.userPosts || []).find(p => p.id === sourceStudio && p.authorId === meId);
+    if (postStudio) {
+      // Si l'app ferme entre les deux écritures, le menu du message peut reprendre le lien.
+      postStudio.sortieARelier = ev.id;
+      saveStateNow();
+      sortiesStudioEnCreation.add(ev.id);
+    }
+    try {
+      ok = editId ? await supaUpdateEvent(ev) : await supaPublishEvent(ev, auteurStudio);
+    } finally {
+      if (postStudio) sortiesStudioEnCreation.delete(ev.id);
+    }
+    if (sourceStudio) {
+      if (meId !== MY_UID) return;
+      // Un timeout peut suivre un INSERT réussi. Le menu vérifiera la même sortie.
+      if (ok) {
+        const message = state.userPosts.find(p => p.id === sourceStudio && p.authorId === meId);
+        if (message?.sortieDifferee === "aProposer") {
+          message.sortieDifferee = "publiee";
+          saveStateNow();
+        }
+        lienStudio = await relierSortieStudio(sourceStudio, ev.id);
+      }
+      if (meId !== MY_UID) return;
+    }
     // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
     // événement affichait « 0 inscrit » chez tous les autres comptes.
     if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
     // Village à 100 (A3) : la base prévient chaque inscrit ; une notification qui n'a
     // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
     if (ok && editId) {
-      _prevenirInscrits(ev, "event_update").then(function (v) {
+      _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
         if (v && v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
         else if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
@@ -8341,7 +8822,8 @@ async function submitEvent(editId) {
     }
     // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
     for (const o of extraOccurrences) {
-      const okOcc = await supaPublishEvent(o);
+      if (sourceStudio && MY_UID !== auteurStudio) return;
+      const okOcc = await supaPublishEvent(o, auteurStudio);
       if (okOcc && typeof supaJoinEvent === "function") supaJoinEvent(o.id);
     }
   }
@@ -8349,25 +8831,39 @@ async function submitEvent(editId) {
   // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   renderIRL();
+  if (sourceStudio && MY_UID !== auteurStudio) return;
+  const studioQuitte = sourceStudio && (!ecranStudio?.classList.contains("active")
+    || document.getElementById("modalBackdrop")?.classList.contains("active"));
+  const confirmationStudio = sourceStudio && !studioQuitte && ok && backend && !inviteConv
+    && proposerInvitationActivite(ev, { postId: sourceStudio, auteur: auteurStudio, lien: lienStudio });
   // ⚠️ LE TYPE EST CONDITIONNEL, ET C'EST LE POINT. Le message d'échec a perdu son
   // « ⚠️ » de tête : sans un type distinct, il serait peint exactement comme la
   // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
   // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
-  toast(ok
-    ? (editId ? "Activité mise à jour"
-      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
-    : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
-    ok ? "success" : "warning");
+  if (!studioQuitte && !confirmationStudio) {
+    if (sourceStudio && (!backend || !ok)) {
+      toast(backend
+        ? "Publication à confirmer. Tu peux réessayer le lien depuis le menu de ton message."
+        : "Sortie enregistrée uniquement sur cet appareil.", "warning");
+    } else if (sourceStudio && lienStudio !== "liee") {
+      toast(lienStudio === "attente"
+        ? "Sortie publiée. Pour réessayer le lien, ouvre le menu de ton message."
+        : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
+    } else toast(ok
+      ? (editId ? "Activité mise à jour"
+        : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
+      : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+      ok ? "success" : "warning");
+  }
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
   // Créée depuis une conversation : l'invitation part DANS la conversation
   // (carte d'activité) à la place de la fenêtre « Inviter mes amis ».
   if (inviteConv) envoyerInvitationActivite(ev, inviteConv, ok && backend);
-  else if (ok && backend && !editId) proposerInvitationActivite(ev);
+  else if (ok && backend && !editId && !sourceStudio) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   // …seulement si la personne l'a choisi (« Publier aussi dans le fil »). Refusée,
   // l'activité est notée HORS FIL : le rattrapage ne la publiera jamais non plus.
-  if (!editId && !auFil) [ev].concat(extraOccurrences).forEach(o => marquerActiviteHorsFil(o.id));
   if (ok && backend && !editId && auFil) publierActiviteAuFil(ev);
   // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation
   // n'avait pas ouvert la discussion elle-même, aucun participant ne pouvait y
@@ -8380,6 +8876,36 @@ async function submitEvent(editId) {
       if (!entre) { try { diagLog("discussion d'activité : création à la publication refusée " + ev.id); } catch (e) {} }
     }, function (e) { try { diagLog("discussion d'activité : " + (e && e.message)); } catch (_) {} });
   }
+}
+
+// Les deux écritures ont des verdicts distincts. Une nouvelle tentative porte
+// sur les mêmes identifiants et ne crée jamais une deuxième sortie.
+async function relierSortieStudio(postId, eventId) {
+  const auteur = MY_UID;
+  const retrouverMessage = () => (state.userPosts || []).find(p => p.id === postId && p.authorId === auteur);
+  let post = retrouverMessage();
+  if (post && eventId && post.eventId === eventId && !post.sortieARelier) return "liee";
+  if (!post || !eventId || post.sortieARelier !== eventId) return "refusee";
+  if (sortiesStudioEnCreation.has(eventId)) return "attente";
+  let reponse;
+  try {
+    reponse = await supa.rpc("relier_publication_sortie", { p_post_id: postId, p_event_id: eventId });
+  } catch (_) { return "attente"; }
+  if (!reponse || reponse.error || typeof reponse.data !== "boolean") return "attente";
+  post = retrouverMessage();
+  if (MY_UID !== auteur || !post) return "refusee";
+  if (post.sortieARelier !== eventId) return post.eventId === eventId ? "liee" : "refusee";
+  delete post.sortieARelier;
+  const liee = reponse.data === true;
+  if (liee) {
+    const copies = allPostCopies(postId).concat((window._feedExtraPosts || []).filter(p => p.id === postId));
+    copies.forEach(p => { p.eventId = eventId; });
+    window._feedDomSig = null;
+  }
+  saveStateNow();
+  if (liee && document.getElementById("screen-feed")?.classList.contains("active")) renderFeed();
+  if (liee) window.PassioUIV3?.decorateOpenPost?.();
+  return liee ? "liee" : "refusee";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -8414,32 +8940,79 @@ function _inviteApresCreationActive() {
   return true;
 }
 
-function proposerInvitationActivite(ev) {
-  if (!ev || !ev.id || !_inviteApresCreationActive()) return;
+function proposerInvitationActivite(ev, studio) {
+  if (!ev || !ev.id || !_inviteApresCreationActive()) return false;
   const fond = document.getElementById("modalBackdrop");
-  if (fond && fond.classList.contains("active")) return;
+  if (!fond || fond.classList.contains("active")) return false;
   const d = fmtEventDate(ev.date);
   const quand = [d.day, d.month].filter(Boolean).join(" ") + (d.time ? ", " + d.time : "");
+  const titreLie = "Ta sortie est reliée à ton message";
+  const refus = "Le lien avec ton message a été refusé.";
+  const liee = studio?.lien === "liee";
+  const attente = studio?.lien === "attente";
+  const actionStudio = liee || attente;
+  const titre = studio ? (liee ? titreLie : "Ta sortie est créée") : "Ton activité est en ligne 🎉";
+  const precision = studio ? (attente ? "Il reste à la relier à ton message." : refus)
+    : "Une activité se remplit d'abord avec les gens que tu connais. Envoie-la à ton groupe ou à tes amis : le lien les amène directement dessus.";
   openModal(`
-    <div class="modal-title">Ton activité est en ligne 🎉</div>
-    <div class="modal-subtitle">Une activité se remplit d'abord avec les gens que tu connais. Envoie-la à ton groupe ou à tes amis : le lien les amène directement dessus.</div>
+    <div aria-live="polite" aria-atomic="true">
+      <div class="modal-title" ${studio ? 'style="margin-inline-end:36px;"' : ""}>${titre}</div>
+      <div class="modal-subtitle" ${liee ? "hidden" : ""}>${liee ? "" : precision}</div>
+    </div>
     <div id="_inviteEvApercu" style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin:14px 0 16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
       <strong style="color:var(--text);">${escapeHtml(ev.title || "Activité")}</strong><br>${escapeHtml(quand)}${ev.city ? " · " + escapeHtml(ev.city) : ""}
     </div>
-    <button class="btn primary block" id="_inviteEvBtn" style="margin-bottom:10px;">${shareIconSvg(16)} Inviter mes amis</button>
-    <button class="btn ghost block" id="_inviteEvPlusTard">Plus tard</button>
+    ${actionStudio ? `<button type="button" class="btn primary block" id="actionLienStudio" style="margin-bottom:10px;">${liee ? "Voir mon message" : "Réessayer le lien"}</button>` : ""}
+    <button type="button" class="btn ${actionStudio ? "ghost" : "primary"} block" id="_inviteEvBtn" style="margin-bottom:10px;">${shareIconSvg(16)} Inviter mes amis</button>
+    ${studio ? "" : '<button type="button" class="btn ghost block" id="_inviteEvPlusTard">Plus tard</button>'}
   `);
   try { if (window.tel && tel.action) tel.action("activite_invite_proposee", { v: 1 }); } catch (e) {}
   // Écouteurs posés en code : aucun texte d'autrui dans un onclick inline.
-  setTimeout(() => {
-    const go = document.getElementById("_inviteEvBtn");
-    if (go) go.addEventListener("click", function () { inviterActivite(ev, quand); });
-    const tard = document.getElementById("_inviteEvPlusTard");
-    if (tard) tard.addEventListener("click", function () {
-      try { if (window.tel && tel.action) tel.action("activite_invite_plus_tard", { v: 1 }); } catch (e) {}
-      closeModal();
-    });
-  }, 0);
+  const inviter = document.getElementById("_inviteEvBtn");
+  inviter.onclick = () => { if (!studio || MY_UID === studio.auteur) inviterActivite(ev, quand); };
+  const tard = document.getElementById("_inviteEvPlusTard");
+  if (tard) tard.onclick = () => {
+    try { if (window.tel && tel.action) tel.action("activite_invite_plus_tard", { v: 1 }); } catch (e) {}
+    closeModal();
+  };
+  const action = document.getElementById("actionLienStudio");
+  if (action) {
+    const fenetreActive = () => MY_UID === studio.auteur && action.isConnected && fond.classList.contains("active");
+    action.onclick = async () => {
+      if (!fenetreActive() || action.disabled) return;
+      if (studio.lien === "liee") {
+        closeModal();
+        await openPost(studio.postId);
+        const page = document.getElementById("postDetailPage");
+        if (MY_UID === studio.auteur && !fond.classList.contains("active") && page?.style.display === "flex"
+            && page.querySelector("#postDetailComments")?.dataset.thread === studio.postId) {
+          page.querySelector("button")?.focus({ preventScroll: true });
+        }
+        return;
+      }
+      action.disabled = true;
+      action.textContent = "Vérification…";
+      const verdict = await relierSortieStudio(studio.postId, ev.id);
+      if (!fenetreActive()) return;
+      studio.lien = verdict;
+      const sousTitre = fond.querySelector(".modal-subtitle");
+      sousTitre.hidden = verdict === "liee";
+      action.disabled = false;
+      if (verdict === "liee") {
+        fond.querySelector(".modal-title").textContent = titreLie;
+        action.textContent = "Voir mon message";
+      } else if (verdict === "attente") {
+        sousTitre.textContent = "Le lien reste en attente. Réessaie quand tu as du réseau.";
+        action.textContent = "Réessayer le lien";
+      } else {
+        sousTitre.textContent = refus;
+        action.remove();
+        inviter.classList.replace("ghost", "primary");
+        inviter.focus();
+      }
+    };
+  }
+  return true;
 }
 
 // Appelé DEPUIS le clic (geste utilisateur) : `partagerOuCopier` peut ouvrir la
@@ -9679,12 +10252,16 @@ window.addEventListener("passio:app-ready", function () {
 var RENCONTRES_VALIDATION_ORGANISATION = "rencontres:validation-organisation-v1";
 // `focusUid` (optionnel) : la personne dont la demande a été touchée dans les
 // notifications — elle passe en tête et ressort visuellement (2026-11-23).
-async function openEventParticipantValidation(id, focusUid) {
+async function openEventParticipantValidation(id, focusUid, origine) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev) || !window._supaReal) return;
+  const compte = MY_UID, etat = state;
+  const toujoursVisible = () => MY_UID === compte && state === etat &&
+    (!origine || (origine.isConnected && origine.closest("#modalBackdrop.active")));
   let r;
   try { r = await supa.rpc("participants_validation", { p_event_id: id }); }
-  catch (e) { toast("Liste indisponible — réessaie"); return; }
+  catch (e) { if (toujoursVisible()) toast("Liste indisponible — réessaie"); return; }
+  if (!toujoursVisible()) return;
   if (r.error) { toast("Liste indisponible — réessaie"); return; }
   let lignes = (r.data || []).filter(a => a.user_id !== MY_UID && a.rsvp !== "declined");
   // Les noms : un participant jamais croisé ici s'affichait « Participant ».
@@ -9692,6 +10269,7 @@ async function openEventParticipantValidation(id, focusUid) {
     const inconnus = lignes.map(a => a.user_id).filter(u => !(userById(u) || {}).name);
     if (inconnus.length && typeof _resolveProfilesByIds === "function") await _resolveProfilesByIds(inconnus);
   } catch (e) { try { diagLog("validation : noms — " + (e && e.message)); } catch (_) {} }
+  if (!toujoursVisible()) return;
   const rang = a => (a.user_id === focusUid ? 0 : (a.rsvp === "going" && !a.valide ? 1 : 2));
   lignes = lignes.slice().sort((x, y) => rang(x) - rang(y));
   const nbAttente = lignes.filter(a => a.rsvp === "going" && !a.valide).length;

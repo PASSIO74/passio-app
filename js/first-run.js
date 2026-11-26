@@ -172,8 +172,10 @@
   // semaines. `window._etatCompteCharge` (app-02) est posé à CHAQUE sortie de
   // l'hydratation, y compris les précoces. Sans verdict, on s'abstient — le
   // silence est le bon sens de l'échec ici.
+  var _rejeuDemande = false; // Une demande explicite vaut pour ce tour, sur cet appareil.
   function reperesAutorises() {
     if (!actif() || !appPrete()) return false;
+    if (_rejeuDemande) return true;
     if (!compteExistant()) return true;                    // visiteur : inchangé
     if (window._etatCompteCharge !== true) return false;   // le compte n'a pas parlé
     return comptePasEncoreGarni();
@@ -251,6 +253,7 @@
   }
 
   function oublierPrefs() {
+    _premierFil = null;
     _prefsCache = null;
     try { localStorage.removeItem(CLE_PREFS); } catch (e) {}
   }
@@ -637,7 +640,7 @@
     var pd = document.getElementById("postDetailPage");
     if (pd && pd.style && pd.style.display !== "none" && pd.style.display !== "") return true;
     // Feuille basse / panneau plein écran ouverts par un autre lot.
-    if (document.querySelector(".ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
+    if (document.querySelector("#storyViewer.active, #v2CreateSheet:not([hidden]), .ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
     // Les Paramètres (2026-11-20, contre-revue du parcours du nouvel inscrit) :
     // une bulle posée pendant qu'ils sont ouverts tombait SOUS leur fond
     // (z-index 9000 contre 49999) et prenait le focus clavier sur un bouton
@@ -686,24 +689,14 @@
         supaLoadPosts().then(function (posts) {
           if (!Array.isArray(posts) || !posts.length) return;
           var s2 = etat(); if (!s2) return;
-          s2.supabasePosts = posts;
+          var ids = new Set(posts.map(function (post) { return post.id; }));
+          s2.supabasePosts = posts.concat((window._feedExtraPosts || []).filter(function (post) { return !ids.has(post.id); }));
           rendreFil();
         }).catch(function (e) { journal("posts publics", e); });
       }
     } catch (e) { journal("posts publics", e); }
     try {
-      if (typeof supaLoadEvents === "function") {
-        supaLoadEvents().then(function (evs) {
-          if (!Array.isArray(evs) || !evs.length) return;
-          var s2 = etat(); if (!s2) return;
-          // Même fusion que `supaLoadAll` : les activités serveur priment, les
-          // locales qu'elles ne recouvrent pas restent.
-          var ids = {}; evs.forEach(function (e) { ids[e.id] = 1; });
-          var locales = (s2.seed.events || []).filter(function (e) { return !ids[e.id]; });
-          s2.seed.events = evs.concat(locales);
-          if (ecranActif() === "irl") { try { renderIRL(); } catch (e) {} }
-        }).catch(function (e) { journal("activités publiques", e); });
-      }
+      if (typeof rafraichirEvenements === "function") rafraichirEvenements();
     } catch (e) { journal("activités publiques", e); }
   }
 
@@ -715,6 +708,78 @@
 
   function rendreFil() {
     try { if (ecranActif() === "feed" && typeof renderFeed === "function") renderFeed(); } catch (e) { journal("renderFeed", e); }
+  }
+
+  // Armée uniquement au choix explicite du visiteur. Une réponse ne peut
+  // publier que dans le contexte qui l’a demandée.
+  var _premierFil = null;
+
+  function choixFilCourant(choix) {
+    return choix === _premierFil && estVisiteur() && choix.owner === MY_UID && choix.ids.length > 0
+      && choix.ids.length === _activeFeedPassions.size
+      && choix.ids.every(function (id) { return _activeFeedPassions.has(id); });
+  }
+
+  async function chercherPremierFil(choix) {
+    choix.phase = "chargement";
+    try {
+      // Au plus trois pages DE CES PASSIONS par geste. Le curseur progresse
+      // aussi lorsqu’une page entière contient des bobines ou des posts masqués.
+      for (var page = 0; page < 3; page++) {
+        if (!window._supaReal) { choix.phase = "panne"; break; }
+        // Borne aussi la longueur de l’URL pour une très grande sélection.
+        var lecture = { ids: choix.ids.slice(choix.debut, choix.debut + 24) };
+        var posts = await supaLoadPosts(0, null, { pagePassions: lecture, cursor: choix.cursor, propagerErreur: true });
+        if (!choixFilCourant(choix)) return;
+        if (lecture.suite === undefined) { choix.phase = "panne"; break; }
+        posts.forEach(feedAddRealtimePost);
+        choix.cursor = lecture.suite;
+        // Le rendu décide déjà quelles cartes sont montrables (blocages,
+        // suppressions, bobines, carnets). Le verdict emploie le même filtre.
+        if (allFeedPosts().some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+          choix.phase = !choix.cursor && choix.debut + lecture.ids.length >= choix.ids.length ? "complet" : "trouve";
+          break;
+        }
+        if (!choix.cursor) {
+          choix.debut += lecture.ids.length;
+          if (choix.debut >= choix.ids.length) { choix.phase = "vide"; break; }
+        }
+      }
+      if (choix.phase === "chargement") choix.phase = "suite";
+    } catch (e) {
+      if (!choixFilCourant(choix)) return;
+      choix.phase = "panne";
+      journal("lecture du premier fil", e);
+    }
+    // Différé même si le SDK est hors ligne : la lecture peut être lancée
+    // depuis renderFeed, qui doit pouvoir terminer son rendu avant le suivant.
+    if (choixFilCourant(choix)) queueMicrotask(rendreFil);
+  }
+
+  function etatPremierFil(posts, neutre) {
+    var choix = _premierFil;
+    if (!choix) return "";
+    if (!choixFilCourant(choix)) { _premierFil = null; return ""; }
+    if (!neutre) return "";
+    if (posts.some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+      // Un fil déjà alimenté garde sa complétion normale avant les exemples.
+      // Une lecture ciblée en cours ou exhaustive la rend redondante.
+      return choix.phase === "chargement" || choix.phase === "complet" ? "trouve" : "";
+    }
+    if (choix.phase === "trouve" || choix.phase === "complet") {
+      choix.phase = "initial";
+      choix.cursor = null;
+      choix.debut = 0;
+    }
+    if (choix.phase === "initial") chercherPremierFil(choix);
+    return choix.phase;
+  }
+
+  function reprendrePremierFil() {
+    if (!_premierFil || !choixFilCourant(_premierFil)
+        || (_premierFil.phase !== "panne" && _premierFil.phase !== "suite")) return;
+    _premierFil.phase = "initial";
+    rendreFil();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -784,12 +849,18 @@
   // devient faux et la carte ne se pose plus du tout.
   var CLE_BIENVENUE_SESSION = "passio_first_run_bienvenue_fermee";
 
-  function bienvenueFermeeCetteSession() {
-    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) === "1"; } catch (e) { return false; }
+  var _accueilSession = "";
+  function accueilCetteSession() {
+    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) || _accueilSession; } catch (e) { return _accueilSession; }
   }
 
-  function marquerBienvenueFermee() {
-    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, "1"); } catch (e) {}
+  function marquerBienvenueFermee(mode) {
+    _accueilSession = mode === "lecture" ? "lecture" : "1";
+    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, _accueilSession); } catch (e) {}
+  }
+
+  function lectureLibre() {
+    return estVisiteur() && accueilCetteSession() === "lecture";
   }
 
   function carteBienvenueHTML() {
@@ -801,7 +872,7 @@
     var titre = dejaChoisi ? "Tes passions sont sur cet appareil" : "Bienvenue sur PASSIO";
     var texte = dejaChoisi
       ? "Crée ton compte pour les garder."
-      : "Tout ce que tu aimes, au même endroit.";
+      : "Découvre ce que les autres partagent et trouve des sorties autour de tes passions.";
     // ⚠️ UN SEUL BOUTON, ET C'EST CELUI QUE LE MESSAGE ANNONCE (2026-11-03). La
     // carte en alignait quatre à poids presque égal — « Personnaliser mon
     // expérience », « Explorer d'abord », « Créer mon compte », « J'ai déjà un
@@ -823,7 +894,7 @@
     // reste à une seule action principale.
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
-      +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
+      +   (dejaChoisi ? '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>' : '')
       +   '<div class="fr-welcome-title" id="frWelcomeTitle">' + escapeHtml(titre) + '</div>'
       +   '<div class="fr-welcome-text">' + escapeHtml(texte) + '</div>'
       +   '<div class="fr-welcome-actions">'
@@ -832,6 +903,7 @@
             : '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Choisir mes passions</button>')
       +   '</div>'
       +   '<div class="fr-welcome-liens">'
+      +     (dejaChoisi ? '' : '<button type="button" class="fr-welcome-lien fr-welcome-parcourir" onclick="PassioFirstRun.fermerBienvenue(\'lecture\')">Parcourir le fil</button>')
       +     (dejaChoisi
             ? '<button type="button" class="fr-welcome-lien fr-welcome-passions" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Modifier mes passions</button>'
             : '<button type="button" class="fr-welcome-lien fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer un compte</button>')
@@ -847,15 +919,15 @@
     var p = prefs();
     // Fermée dans CETTE session : on n'insiste pas. Elle reviendra à la
     // prochaine visite, tant qu'aucun compte n'existe (cf. la note ci-dessus).
-    if (bienvenueFermeeCetteSession()) return false;
+    if (accueilCetteSession()) return false;
     if (document.getElementById("frWelcome")) return true;
     if (ecranOccupe() || ecranActif() !== "feed") return false;
-    var liste = document.getElementById("feedList");
-    if (!liste || !liste.parentNode) return false;
+    var premierBloc = document.getElementById("feedPassionsBlock");
+    if (!premierBloc || !premierBloc.parentNode) return false;
     var hote = document.createElement("div");
     hote.innerHTML = carteBienvenueHTML();
     var carte = hote.firstChild;
-    liste.parentNode.insertBefore(carte, liste);
+    premierBloc.parentNode.insertBefore(carte, premierBloc);
     if (p.bienvenue !== "vue") { p.bienvenue = "vue"; sauverPrefs(); }
     // Les populaires vivantes, lues AVANT que le panneau ne s'ouvre : les tuiles
     // ne doivent pas se réordonner sous le doigt (2026-10-06). Différé, jamais
@@ -864,10 +936,16 @@
     return true;
   }
 
-  function fermerBienvenue() {
+  function fermerBienvenue(mode) {
     var el = document.getElementById("frWelcome");
     if (el && el.parentNode) el.parentNode.removeChild(el);
-    marquerBienvenueFermee();
+    marquerBienvenueFermee(mode);
+    if (mode === "lecture") {
+      fermerBulle();
+      var fil = document.getElementById("feedList");
+      if (fil) fil.focus({ preventScroll: true });
+      return;
+    }
     // La carte partie, la première indication contextuelle peut prendre sa place.
     planifierTour();
   }
@@ -945,10 +1023,11 @@
   function nbSelection() { return Object.keys(_selPassions || {}).length; }
 
   function panneauHTML() {
+    var specialites = specialitesHTML();
     return ''
       + '<div class="modal-handle"></div>'
       + '<div class="modal-title">Qu\'est-ce qui te passionne ?</div>'
-      + '<div class="modal-subtitle">Choisis quelques sujets. Tu pourras tout modifier ensuite.</div>'
+      + '<div class="modal-subtitle">Une passion suffit pour découvrir ton fil. Tu pourras tout modifier ensuite.</div>'
       + '<div class="fr-search-wrap">'
       +   '<input type="search" id="frSearch" class="input fr-search" autocomplete="off"'
       +     ' placeholder="Chercher une passion, une spécialité…"'
@@ -956,10 +1035,14 @@
       +     ' oninput="PassioFirstRun.chercherDansPanneau(this.value)"/>'
       + '</div>'
       + '<div id="frGrid" class="fr-grid">' + grilleHTML() + '</div>'
-      + '<div id="frSpecs" class="fr-specs">' + specialitesHTML() + '</div>'
+      + '<details id="frSpecs" class="fr-specs"' + (specialites ? "" : " hidden")
+      +   (Object.keys(_selSpecialites).length ? " open" : "") + '>'
+      +   '<summary>Préciser mes goûts</summary>'
+      +   '<div id="frSpecsContenu">' + specialites + '</div>'
+      + '</details>'
       + '<div class="fr-panel-footer">'
       +   '<button type="button" id="frValider" class="btn primary block fr-valider"'
-      +     ' onclick="PassioFirstRun.validerPersonnalisation()">' + libelleValidation() + '</button>'
+      +     (nbSelection() ? "" : " disabled") + ' onclick="PassioFirstRun.validerPersonnalisation()">' + libelleValidation() + '</button>'
       +   '<button type="button" class="btn ghost block fr-revoir" onclick="PassioFirstRun.relancerTour()">Revoir les repères</button>'
       + '</div>';
   }
@@ -1185,7 +1268,7 @@
   function specialitesHTML() {
     var ids = Object.keys(_selPassions || {});
     if (!ids.length) return "";
-    var blocs = ids.map(function (pid) {
+    return ids.map(function (pid) {
       var meta = metaPassion(pid);
       var specs = specialitesDe(pid);
       if (!meta || !specs.length) return "";
@@ -1201,16 +1284,30 @@
               + escapeHtml(s.label) + '</button>';
           }).join("")
         + '</div></div>';
-    }).filter(Boolean).join("");
-    if (!blocs) return "";
-    return '<div class="fr-spec-intro">Affine si tu veux — c\'est facultatif.</div>' + blocs;
+    }).join("");
   }
 
   function rafraichirPanneau() {
     var g = document.getElementById("frGrid");
-    if (g) g.innerHTML = grilleHTML();
+    if (!g) return;
+    var actif = document.activeElement;
+    var attribut = actif && actif.hasAttribute("data-fr-passion") ? "data-fr-passion" : "data-fr-spec";
+    var choixActif = actif && actif.getAttribute(attribut);
+    g.innerHTML = grilleHTML();
     var s = document.getElementById("frSpecs");
-    if (s) s.innerHTML = specialitesHTML();
+    var contenu = document.getElementById("frSpecsContenu");
+    if (s && contenu) {
+      var specialites = specialitesHTML();
+      contenu.innerHTML = specialites;
+      s.hidden = !specialites;
+      if (s.hidden) s.open = false;
+    }
+    // Le volet natif conserve son ouverture. Rendre aussi le focus au choix
+    // repeint pour que Tab poursuive le parcours au même endroit.
+    if (choixActif) {
+      var choix = document.querySelector("[" + attribut + '="' + CSS.escape(choixActif) + '"]');
+      if (choix) choix.focus({ preventScroll: true });
+    }
     var v = document.getElementById("frValider");
     if (v) { v.textContent = libelleValidation(); v.disabled = nbSelection() === 0; }
   }
@@ -1287,6 +1384,8 @@
   function validerPersonnalisation() {
     var ids = Object.keys(_selPassions || {});
     if (!ids.length) { try { toast("Choisis au moins une passion"); } catch (e) {} return; }
+    _lectureApresValidation = true;
+    _rejeuDemande = false;
     var p = prefs();
     p.passions = ids.slice();
     p.specialites = Object.keys(_selSpecialites || {}).filter(specialiteValide);
@@ -1302,6 +1401,11 @@
     marquerBienvenueFermee();
     var carte = document.getElementById("frWelcome");
     if (carte && carte.parentNode) carte.parentNode.removeChild(carte);
+    var interets = interetsDuVisiteur(p);
+    if (!_premierFil || _premierFil.phase !== "chargement" || _premierFil.owner !== MY_UID
+        || _premierFil.ids.length !== interets.length || !interets.every(function (id) { return _premierFil.ids.includes(id); })) {
+      _premierFil = { ids: interets, owner: MY_UID, phase: "initial", cursor: null, debut: 0 };
+    }
     appliquerPrefs();
     try { closeModal(); } catch (e) {}
     // « Dès validation, le Fil doit visuellement se personnaliser immédiatement.
@@ -1310,26 +1414,12 @@
     rendreFil();
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
     tel("guest_passions_saved", { n: p.passions.length, s: p.specialites.length, from: _panneauOrigine });
-    // ⚠️ UN MESSAGE À LA FOIS (parcours du nouvel inscrit, 2026-11-20). Mesuré à
-    // 390 × 664 : le toast « Ton fil est à toi », la note « Gardées sur cet
-    // appareil » et la bulle « Un Fil construit autour de tes passions »
-    // arrivaient ensemble, le toast (3 s) posé SUR la rangée « Ne plus afficher
-    // / Compris » de la bulle (700 ms). La note dit déjà que le choix est pris,
-    // et porte la porte du compte : quand elle se pose À L'ÉCRAN, le toast se
-    // tait. Sinon (note déjà vue, ou posée au-dessus du pli d'un fil défilé —
-    // contre-revue du lot), le toast parle et la bulle attend sa fin.
-    // Une bulle restée à l'écran AVANT le panneau (posée au démarrage, jamais
-    // touchée : la fenêtre la recouvrait sans la retirer) reparaissait SOUS le
-    // toast — mesuré par ② ter. Elle est caduque : on la retire, comme
-    // `surNavigation` à chaque changement d'écran (son étape est déjà marquée
-    // vue), et le planificateur pose la suivante en temps voulu.
+    // Le fil reste lisible même si un repère était ouvert derrière le panneau.
     try { fermerBulle(); } catch (e) { journal("bulle avant validation", e); }
     var notePosee = false;
     try { notePosee = poserNoteLocale(); } catch (e) { journal("note locale", e); }
     var noteVue = notePosee && aLEcran(document.getElementById("frNoteLocale"));
-    var MESSAGE_FIL = "Ton fil est à toi ✨";
-    if (!noteVue) { try { toast(MESSAGE_FIL); } catch (e) {} }
-    planifierTour(noteVue ? undefined : dureeDuToast(MESSAGE_FIL) + 300);
+    if (!noteVue) { try { toast("Ton fil est à toi ✨"); } catch (e) {} }
   }
 
   // Un élément est-il dans la fenêtre, au moins en partie ?
@@ -1341,16 +1431,8 @@
     } catch (e) { return false; }
   }
 
-  // Durée réelle d'un toast (`dureeToast`, app-02) : la bulle qui le suit ne
-  // doit pas se poser dessous. Repli : 3 s, la durée plancher d'un toast.
-  function dureeDuToast(msg) {
-    try { if (typeof window.dureeToast === "function") return Number(window.dureeToast(msg, false)) || 3000; } catch (e) {}
-    return 3000;
-  }
-
-  // ENT-C15 (audit UX/UI du 2026-11-10) : au moment où le visiteur vient
-  // d'investir (ses passions), on dit qu'elles ne vivent que sur cet appareil,
-  // et la porte du compte qui les garderait. Une seule fois, refermable.
+  // Les passions du visiteur sont conservées sur cet appareil. La note propose
+  // le compte qui permet de les retrouver, une seule fois, et peut être fermée.
   function poserNoteLocale() {
     if (!estVisiteur()) return false;
     var p = prefs();
@@ -1361,8 +1443,8 @@
     n.id = "frNoteLocale";
     n.className = "fr-note-locale";
     n.setAttribute("role", "status");
-    n.innerHTML = '<span class="fr-note-locale-texte">Gardées sur cet appareil.</span>'
-      + '<button type="button" class="fr-note-locale-cta">Créer mon compte pour les retrouver partout</button>'
+    n.innerHTML = '<span class="fr-note-locale-texte">Tes passions sont enregistrées sur cet appareil.</span>'
+      + '<button type="button" class="fr-note-locale-cta" aria-description="Retrouve tes passions sur tes autres appareils.">Créer mon compte</button>'
       + '<button type="button" class="fr-note-locale-fermer" aria-label="Fermer">×</button>';
     n.querySelector(".fr-note-locale-cta").addEventListener("click", function () {
       if (n.parentNode) n.parentNode.removeChild(n);
@@ -1621,6 +1703,8 @@
   // Publication, fiche d'activité ou bobine : ce que la personne regardait quand
   // elle a demandé un compte. Lu dans ce qui est AFFICHÉ, jamais dans l'adresse.
   function cibleOuverte() {
+    var discussion = document.querySelector("#modalBackdrop.active #commentsBox[data-thread]");
+    if (discussion) return { genre: "discussion", id: discussion.getAttribute("data-thread") };
     try {
       if (typeof reelsState !== "undefined" && reelsState && reelsState.open) {
         var it = reelsState.items && reelsState.items[reelsState.current];
@@ -1649,7 +1733,11 @@
     if (!c || !c.id) return false;
     if (memeCible(cibleOuverte(), c)) return true;
     try {
-      if (c.genre === "publication" && typeof openPost === "function"
+      if (c.genre === "discussion" && typeof openComments === "function") {
+        var post = findPostAnywhere(c.id);
+        if (!post || postSupprime(c.id) || isBlocked(post.authorId || post.userId)) return false;
+        openComments(c.id);
+      } else if (c.genre === "publication" && typeof openPost === "function"
           && typeof findPostAnywhere === "function" && findPostAnywhere(c.id)) openPost(c.id);
       else if (c.genre === "activite" && typeof openEventDetails === "function") openEventDetails(c.id);
       else if (c.genre === "bobine" && typeof openReelById === "function") openReelById(c.id);
@@ -1675,7 +1763,9 @@
   // ⚠️ ORDRE OBLIGATOIRE : `switchAuthTab` D'ABORD, message ensuite —
   // `switchAuthTab` remet `#authMsg` à zéro, donc tout ce qu'on veut voir
   // survivre à la bascule se pose APRÈS elle (piège ① du 2026-08-30).
-  function ouvrirAuth(mode, ctx) {
+  function ouvrirAuth(mode, ctx, discussionId) {
+    var discussion = ctx === "commenter" && discussionId && estVisiteur();
+    if (discussion) memoriserRetour(ctx);
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
@@ -1692,7 +1782,7 @@
       try {
         var _p = prefs();
         if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
-        _p.retour.cible = cibleOuverte();
+        _p.retour.cible = discussion ? { genre: "discussion", id: discussionId } : cibleOuverte();
         sauverPrefs();
       } catch (e) {}
     }
@@ -1797,6 +1887,18 @@
       try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
     }
     try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    var p = prefs();
+    var retour = p.retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion") {
+      // Après envoi du mail, la confirmation doit encore retrouver cette cible
+      // dans un nouvel onglet. Une simple annulation termine cette intention.
+      if (!retour.confirmationEnAttente) {
+        p.retour = null;
+        sauverPrefs();
+      }
+      if (rouvrirCible(retour.cible)) return;
+      if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+    }
     // LOT-2 (PAR-C01) : le contenu est resté ouvert SOUS le formulaire —
     // « continuer à explorer », c'est le retrouver tel quel, sans changer d'écran.
     if (cibleOuverte()) return;
@@ -1811,8 +1913,15 @@
     try { if (typeof goTo === "function") goTo("feed"); } catch (e) { journal("retour exploration", e); }
   }
 
-  function allerInscription(ctx) { ouvrirAuth("signup", ctx); }
+  function allerInscription(ctx, discussionId) { ouvrirAuth("signup", ctx, discussionId); }
   function allerConnexion(ctx) { ouvrirAuth("signin", ctx); }
+  function noterConfirmationDiscussion() {
+    var retour = prefs().retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion" && !retour.confirmationEnAttente) {
+      retour.confirmationEnAttente = true;
+      sauverPrefs();
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // 13. TOUR CONTEXTUEL — trois indications, pas un carrousel
@@ -1828,9 +1937,7 @@
   // générique, pour tout `[role="button"]` non natif. Les boutons ci-dessous
   // sont des `<button>` natifs, que ce délégué exclut explicitement : Entrée et
   // Espace passent par le navigateur, une seule fois.
-  // Les quatre formulations courtes de la direction produit. Elles servent
-  // d'accroche à l'indication qui parle de la surface concernée — jamais de
-  // texte décoratif posé ailleurs.
+  // Les formulations courtes servent de titres aux repères.
   var FORMULES = {
     decouvrir: "Ce qui t'inspire",
     creer: "Ce que tu veux partager",
@@ -1847,29 +1954,23 @@
 
   var ETAPES = {
     decouvrir: {
-      accroche: FORMULES.decouvrir,
-      titre: "Un Fil construit autour de tes passions",
-      texte: "Mélange tes passions, tes envies et les personnes que tu suis.",
+      titre: FORMULES.decouvrir,
+      texte: "Parcours les publications. Pour trouver une sortie, ouvre l’onglet Rencontrer.",
       cible: function () {
-        return document.getElementById("feedPassionsBlock")
-            || document.getElementById("profileStrip")
-            || document.getElementById("feedList");
+        return document.querySelector('#appNavV2 [data-v2-key="meet"]')
+            || document.querySelector('#appNav [data-screen="irl"]');
       }
     },
     rencontrer: {
-      accroche: FORMULES.rencontrer,
-      titre: "Passe du numérique au réel",
-      texte: "Trouve des activités autour de toi, sans activer automatiquement ta position.",
+      titre: FORMULES.rencontrer,
+      texte: "Cherche une activité ou une ville. Tu peux explorer sans partager ta position.",
       cible: function () {
-        return document.querySelector("#screen-irl .irl-actionbar")
-            || document.getElementById("eventList")
-            || document.getElementById("screen-irl");
+        return document.getElementById("v4a0Search") || document.getElementById("irlCitySearch");
       }
     },
     creer: {
-      accroche: FORMULES.creer,
-      titre: "À toi de créer",
-      texte: "Publie une idée, une bobine ou propose une activité IRL.",
+      titre: FORMULES.creer,
+      texte: "Dans Créer, choisis Publication pour partager une idée ou Activité pour proposer une sortie.",
       // ⚠️ LE BOUTON « CRÉER » VISIBLE N'EST PAS `.app-nav .nav-cta`. Le lot UI-1
       // (`ui-v2-shell.js`, actif par défaut) construit une barre NEUVE
       // `nav#appNavV2.app-nav-v2` et met la barre historique en `display:none` :
@@ -1892,8 +1993,7 @@
     // `planifierTour()` : seule `surNavigation` les pose, à l'ouverture de leur
     // écran. C'est ce qui garantit que le premier tour reste à trois étapes.
     profil: {
-      accroche: FORMULES.profil,
-      titre: "Ton profil réunit tes passions",
+      titre: FORMULES.profil,
       texte: "Une seule identité publique, et autant de passions que tu veux.",
       cible: function () { return document.getElementById("mainProfileCover") || document.getElementById("screen-profiles"); }
     },
@@ -1903,8 +2003,7 @@
       cible: function () { return document.getElementById("screen-messages"); }
     },
     studio: {
-      accroche: FORMULES.creer,
-      titre: "Publie ce que tu veux",
+      titre: FORMULES.creer,
       texte: "Un texte, une photo, une vidéo — la passion se choisit juste en dessous.",
       cible: function () { return document.getElementById("screen-studio"); }
     },
@@ -1921,19 +2020,24 @@
     // GESTE sur la commande dont elle parle : on explique ce qu'on vient de
     // toucher, au moment où la question se pose, une seule fois, jamais avant.
     // La garde `bulleVisible()` interdit qu'il y en ait deux à l'écran.
+    suivis: {
+      titre: "Les personnes que tu suis",
+      texte: "Active Suivis pour inclure leurs publications dans ton fil.",
+      cible: function () { return document.querySelector('#profileStrip [data-passion-tile="__suivis__"]'); }
+    },
     passions: {
-      titre: "Tes passions filtrent le Fil",
-      texte: "Touche-en plusieurs : elles s'ADDITIONNENT, elles ne se remplacent pas.",
+      titre: "Tes passions dans le fil",
+      texte: "Sélectionne plusieurs passions pour voir leurs publications ensemble.",
       cible: function () { return document.getElementById("profileStrip"); }
     },
     envies: {
-      titre: "Ton envie du moment",
-      texte: "Explorer, Apprendre, Idées, Rencontrer — ça s'ajoute à tes passions, ça ne les remplace pas.",
+      titre: "Filtrer les publications",
+      texte: "Choisis une envie pour affiner ton fil. Retire toutes les envies pour retrouver le fil complet.",
       cible: function () { return document.getElementById("feedIntentSelector") || document.getElementById("moodSelector"); }
     },
     stories: {
-      titre: "Ce qui se passe maintenant",
-      texte: "Des moments courts, publiés dans la journée. Ils disparaissent au bout de 24 h.",
+      titre: "Les stories durent 24 h",
+      texte: "Touche un autre portrait pour voir ce que cette personne a partagé.",
       cible: function () { return document.getElementById("storiesRowFeed"); }
     },
     // ⚠️ PAS D'AIDE « BOBINES », ET C'EST DÉLIBÉRÉ. Elle a existé, elle a été
@@ -1958,10 +2062,10 @@
   // fait par ZONE (un conteneur stable), jamais par le nœud exact : les rangées
   // de passions, d'envies et de stories sont repeintes en entier à chaque rendu.
   var ZONES_GESTE = [
-    ["#profileStrip", "passions"],
+    ['#profileStrip [data-passion-tile="__suivis__"]', "suivis"],
+    ['#profileStrip [data-passion-tile]:not([data-passion-tile="__suivis__"])', "passions"],
     ["#feedIntentSelector", "envies"],
-    ["#moodSelector", "envies"],
-    ["#storiesRowFeed", "stories"]
+    ["#moodSelector", "envies"]
   ];
   // ⚠️ SEULES CES TROIS ÉTAPES forment le premier tour. Ajouter une entrée à
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
@@ -1978,6 +2082,29 @@
 
   function bulleVisible() { return !!document.querySelector(".fr-tip"); }
 
+  var _retourFilPrioritaire = false;
+  var _tourAttendFil = false;
+
+  function prioriserRetourFil(prioritaire) {
+    if (prioritaire === _retourFilPrioritaire) return;
+    _retourFilPrioritaire = prioritaire;
+    if (ecranActif() !== "feed") {
+      _tourAttendFil = false;
+      return;
+    }
+    var bulle = document.querySelector(".fr-tip");
+    if (bulle) {
+      // Un repère déjà vu retrouve sa place après le geste, sans seconde vue.
+      bulle.hidden = prioritaire;
+      var cible = ETAPES[bulle.getAttribute("data-fr-tip")].cible();
+      if (cible) cible.classList.toggle("fr-tip-cible", !prioritaire);
+    }
+    if (!prioritaire && _tourAttendFil) {
+      _tourAttendFil = false;
+      planifierTour();
+    }
+  }
+
   function fermerBulle(raison) {
     // ENT-C05 : le contour de la cible part avec sa bulle.
     try { Array.prototype.forEach.call(document.querySelectorAll(".fr-tip-cible"), function (n) { n.classList.remove("fr-tip-cible"); }); } catch (_) {}
@@ -1986,6 +2113,7 @@
     var id = el.getAttribute("data-fr-tip") || "";
     if (el.parentNode) el.parentNode.removeChild(el);
     if (raison === "abandon") {
+      _rejeuDemande = false;
       var p = prefs();
       p.tour.abandonne = true;
       sauverPrefs();
@@ -1997,6 +2125,7 @@
     // partie et peuvent très bien n'être jamais vues.
     if (ORDRE_ETAPES.every(etapeVue) && !prefs().tour.termine) {
       var p2 = prefs();
+      _rejeuDemande = false;
       p2.tour.termine = true;
       sauverPrefs();
       tel("first_run_completed", { n: ORDRE_ETAPES.length });
@@ -2005,9 +2134,16 @@
 
   function montrerEtape(id) {
     if (!reperesAutorises()) return false;
+    // Vérifier à l'affichage couvre aussi les rappels déjà armés par un geste
+    // ou une navigation avant que le visiteur ne choisisse de parcourir le fil.
+    if (lectureLibre()) return false;
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
+    if (_retourFilPrioritaire && ecranActif() === "feed") {
+      if (id === "decouvrir" || id === "creer") _tourAttendFil = true;
+      return false;
+    }
     var cible = null;
     try { cible = e.cible(); } catch (_) { cible = null; }
     // `offsetParent` nul = élément dans un conteneur masqué : une bulle ancrée
@@ -2022,13 +2158,13 @@
     bulle.setAttribute("role", "dialog");
     bulle.setAttribute("aria-modal", "false");
     bulle.setAttribute("aria-labelledby", "frTipTitle");
+    bulle.setAttribute("aria-describedby", "frTipText");
     // Contenu strictement statique (constantes ci-dessus) — aucune donnée
     // utilisateur n'entre ici. Échappé quand même : la règle ne souffre pas
     // d'exception, et le jour où un libellé devient dynamique, c'est déjà bon.
     bulle.innerHTML = ''
-      + (e.accroche ? '<div class="fr-tip-eyebrow">' + escapeHtml(e.accroche) + '</div>' : '')
       + '<div class="fr-tip-title" id="frTipTitle">' + escapeHtml(e.titre) + '</div>'
-      + '<div class="fr-tip-text">' + escapeHtml(e.texte) + '</div>'
+      + '<div class="fr-tip-text" id="frTipText">' + escapeHtml(e.texte) + '</div>'
       + '<div class="fr-tip-actions">'
       +   '<button type="button" class="fr-tip-skip" onclick="PassioFirstRun.abandonnerTour()">Ne plus afficher</button>'
       +   '<button type="button" class="fr-tip-ok" onclick="PassioFirstRun.fermerBulle()">Compris</button>'
@@ -2042,12 +2178,12 @@
     // ce bas d'écran, la carte monte en haut.
     var largeur = Math.min(360, window.innerWidth - 24);
     bulle.classList.add("fr-tip-carte");
+    bulle.style.width = largeur + "px";
     document.body.appendChild(bulle);
     var h = bulle.offsetHeight || 120;
     var BAS = 84;
     var basCarte = window.innerHeight - BAS;
     var enHaut = r.bottom > basCarte - h - 8 && r.top < basCarte;
-    bulle.style.width = largeur + "px";
     bulle.style.left = Math.round((window.innerWidth - largeur) / 2) + "px";
     if (enHaut) bulle.style.top = "calc(12px + env(safe-area-inset-top, 0px))";
     else bulle.style.bottom = "calc(" + BAS + "px + env(safe-area-inset-bottom, 0px))";
@@ -2111,38 +2247,35 @@
     }, true);
   }
 
+  // Le lecteur occupe tout l’écran. Le repère attend le retour sur le fil.
+  function apresLectureStory() {
+    if (estVisiteur() && ecranActif() === "feed") montrerEtape("stories");
+  }
+
   // Déclencheur des étapes du Fil (1 et 3). L'étape « Rencontrer » a le sien,
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
 
-  var _tourEcheance = 0;   // instant où la bulle planifiée partira (0 : aucune)
+  var _lectureApresValidation = false;
 
-  // `delaiMs` (facultatif) : 700 ms par défaut ; plus long quand un toast vient
-  // de partir, pour que la bulle ne se pose pas sous lui (`validerPersonnalisation`).
-  function planifierTour(delaiMs) {
-    if (!reperesAutorises() || tourAbandonne()) return;
-    var delai = (typeof delaiMs === "number" && delaiMs > 0) ? delaiMs : 700;
-    var echeance = Date.now() + delai;
-    // ⚠️ UNE ÉCHÉANCE POSÉE N'EST JAMAIS AVANCÉE (audit du lot, 2026-11-20). Après
-    // « Voir mon fil », la bulle attend la fin du toast (3,3 s) ; mais le retour
-    // au fil rappelle aussitôt `planifierTour()` (par `planifierAccueil`), et le
-    // `clearTimeout` ramenait la bulle à 700 ms — SOUS le toast, mesuré par
-    // `parcours-nouvel-inscrit` ② ter. Une demande plus tardive l'emporte.
-    if (_tourPlanifie && _tourEcheance > echeance) return;
-    if (_tourPlanifie) clearTimeout(_tourPlanifie);
-    _tourEcheance = echeance;
-    // ⚠️ `setTimeout`, JAMAIS `requestAnimationFrame` : sur une page qui ne
-    // compose pas de frames (onglet en arrière-plan, headless, machine
-    // saturée), rAF ne part pas — l'indication ne serait jamais posée, en
-    // silence. Piège payé au lot UI-3A.
+  function planifierTour() {
+    if (!reperesAutorises() || lectureLibre() || tourAbandonne() || _tourPlanifie) return;
     _tourPlanifie = setTimeout(function () {
       _tourPlanifie = null;
-      _tourEcheance = 0;
-      if (ecranActif() !== "feed") return;
-      if (document.getElementById("frWelcome")) return; // la carte parle déjà
-      if (!etapeVue("decouvrir")) { montrerEtape("decouvrir"); return; }
+      if (ecranActif() !== "feed" || document.getElementById("frWelcome")) return;
+      var visiteur = estVisiteur();
+      if (visiteur && _lectureApresValidation) return;
+      if (!etapeVue("decouvrir")) {
+        if (_rejeuDemande || !visiteur || !prefs().passions.length) {
+          montrerEtape("decouvrir");
+          return;
+        }
+        // Une fois les passions choisies, Découvrir se revoit sur demande.
+        // Créer peut encore se présenter au retour de Rencontrer.
+        if (!etapeVue("rencontrer")) return;
+      }
       if (!etapeVue("creer")) montrerEtape("creer");
-    }, delai);
+    }, 700);
   }
 
   function abandonnerTour() { fermerBulle("abandon"); }
@@ -2150,6 +2283,11 @@
   // « relançable depuis l'aide ou les options » : remet les trois indications à
   // zéro et repart de la première. Utilisable même quand le tour a été abandonné.
   function relancerTour() {
+    if (!actif() || !appPrete()) return;
+    fermerBulle();
+    if (typeof fermerHint === "function") fermerHint();
+    _lectureApresValidation = false;
+    _rejeuDemande = true;
     var p = prefs();
     // Remet TOUT à zéro — les trois étapes du premier tour comme les aides au
     // geste. « Revoir les repères » doit rendre l'écran tel qu'un nouveau venu
@@ -2157,7 +2295,7 @@
     p.tour = {};
     sauverPrefs();
     try { closeModal(); } catch (e) {}
-    fermerBulle();
+    if (estVisiteur()) fermerBienvenue();
     try { if (typeof goTo === "function" && ecranActif() !== "feed") goTo("feed"); } catch (e) {}
     planifierTour();
   }
@@ -2495,7 +2633,7 @@
       try {
         if (!estVisiteur()) return;
         if (ecranOccupe() || ecranActif() !== "feed") { planifierAccueil(); return; }
-        if (bienvenueFermeeCetteSession()) { planifierTour(); return; }
+        if (accueilCetteSession()) { planifierTour(); return; }
         if (!poserBienvenue()) { planifierAccueil(); return; }
       } catch (e) {
         // Le corps entier est sous `try` et REPLANIFIE au lieu de conclure :
@@ -2564,7 +2702,7 @@
     }
     sauverPrefs();
 
-    setTimeout(function () {
+    setTimeout(async function () {
       try {
         // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
         // bobine que la personne regardait est rouverte par sa fonction
@@ -2573,6 +2711,22 @@
           if (r.action && RAPPELS[r.action] && memeCible(cibleOuverte(), r.cible) && typeof toast === "function") {
             toast(RAPPELS[r.action]);
           }
+        }
+        if (r && r.cible && r.cible.genre === "discussion") {
+          // Une confirmation d'e-mail peut ouvrir un onglet dont le fil n'a
+          // pas encore chargé cette publication. Même lecture que le lien partagé.
+          if (!findPostAnywhere(r.cible.id) && !postSupprime(r.cible.id) && typeof _lienPartageChercherPost === "function") {
+            var ecranInitial = ecranActif();
+            var hashInitial = window.location.hash;
+            await _lienPartageChercherPost(r.cible.id);
+            if (ecranActif() !== ecranInitial || window.location.hash !== hashInitial || ecranOccupe()) return;
+          }
+          if (rouvrirCible(r.cible)) {
+            var champ = document.getElementById("newComment");
+            if (champ && pointeurFin()) champ.focus({ preventScroll: true });
+            setTimeout(rappelerSurLaFiche, 400);
+          } else if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+          return;
         }
         if (r && r.cible && rouvrirCible(r.cible)) {
           setTimeout(rappelerSurLaFiche, 400);
@@ -2630,6 +2784,7 @@
   // Appelé par `goTo` (app-02) après le changement d'écran.
   function surNavigation(screen) {
     if (!reperesAutorises()) return;
+    if (screen !== "feed") _lectureApresValidation = false;
     fermerBulle();
     if (screen === "irl") {
       // « Ne jamais déclencher automatiquement la géolocalisation. » UI-4A0 arme
@@ -2774,6 +2929,8 @@
   window.PassioFirstRun = {
     actif: actif,
     estVisiteur: estVisiteur,
+    etatPremierFil: etatPremierFil,
+    reprendrePremierFil: reprendrePremierFil,
     // Autorité UNIQUE des trois repères, et sa lecture par `montrerHint`
     // (app-02). Exposées pour que le verrou mesure la fonction RÉELLE.
     reperesAutorises: reperesAutorises,
@@ -2781,6 +2938,7 @@
     aidesHistoriquesEnPause: aidesHistoriquesEnPause,
     entreeDirecte: entreeDirecte,
     prefs: prefs,
+    passionsChoisies: function () { return interetsDuVisiteur(prefs()); },
     oublierPrefs: oublierPrefs,
     // Panneau
     ouvrirPersonnalisation: ouvrirPersonnalisation,
@@ -2797,6 +2955,8 @@
     // Bienvenue
     fermerBienvenue: fermerBienvenue,
     // Tour
+    prioriserRetourFil: prioriserRetourFil,
+    apresLectureStory: apresLectureStory,
     relancerTour: relancerTour,
     abandonnerTour: abandonnerTour,
     fermerBulle: fermerBulle,
@@ -2814,6 +2974,7 @@
     requireAuthentication: requireAuthentication,
     allerInscription: allerInscription,
     allerConnexion: allerConnexion,
+    noterConfirmationDiscussion: noterConfirmationDiscussion,
     // Exposée pour `openAuthScreen` (app-02) : quand l'écran de connexion est
     // ouvert depuis les Paramètres ou après une déconnexion, la porte
     // « ← Continuer à explorer » doit exister là aussi — sinon l'onboarding

@@ -13,7 +13,7 @@
 //     `selectedFeedPassions = ["outdoor-randonnee","sante-sport-sante","test5"]`
 //     — donc PAS musculation — et `feedIntents = ["learn"]`.
 // Rien ne l'amenait dans son fil, qu'un mood partagé. ADR-011 §1 faisait des
-// envies une TROISIÈME SOURCE en OU inclusif : cocher « Apprendre » ouvrait le
+// envies une TROISIÈME SOURCE en OU inclusif : cocher « Conseils » ouvrait le
 // fil à TOUT PASSIO. Le fil ne disait donc plus d'où venait ce qu'il montrait.
 //
 // LA RÈGLE, DÉSORMAIS (amendement d'ADR-011 §1) :
@@ -55,9 +55,9 @@ async function poser(page, opts = {}) {
       // Dans MA passion, autre mood : c'est elle que l'envie doit retrancher.
       { id: "p_yoga_neutre", authorId: "u_autre", passion: "yoga", type: "text",
         text: "MOI_YOGA_NEUTRE", mood: "all", createdAt: t - 3000, likes: 0, comments: [] },
-      // ⚠️ HORS DE TOUTE SOURCE, et porteuse du mood « Rencontrer ». C'est elle
+      // ⚠️ HORS DE TOUTE SOURCE, et porteuse du mood « À faire ensemble ». C'est elle
       // qui rend le cas ⑤ MORDANT : tant que l'envie était une source, cocher
-      // « Rencontrer » la faisait entrer. Elle ne doit jamais paraître.
+      // « À faire ensemble » la faisait entrer. Elle ne doit jamais paraître.
       { id: "p_irl_ailleurs", authorId: "u_autre", passion: "photo", type: "text",
         text: "AILLEURS_IRL", mood: "irl", createdAt: t - 4000, likes: 0, comments: [] },
     ];
@@ -116,7 +116,7 @@ const titreVide = (page) => page.evaluate(() => {
 // ① LE DÉFAUT RAPPORTÉ — l'état exact de la production
 // ══════════════════════════════════════════════════════════════════════════
 
-test("① l'envie « Apprendre » n'amène PAS une passion que je n'ai pas", async ({ page }) => {
+test("① l'envie « Conseils » n'amène PAS une passion que je n'ai pas", async ({ page }) => {
   await poser(page, { suivis: false, envies: ["learn"] });
 
   // Prémisse contrôlée : sans le rail d'intentions, les envies ne sont pas
@@ -141,13 +141,13 @@ test("① bis — le prédicat d'envie est SATISFAIT, et pourtant la carte n'ent
   // (filtre, plus critère d'entrée). Sans cette distinction, un correctif qui
   // aurait durci le prédicat au lieu de déplacer son point d'application aurait
   // rendu ce fichier vert pour la mauvaise raison — et le défaut serait revenu
-  // au premier post « Idées » ou « Rencontrer ».
+  // au premier post « Expériences » ou « À faire ensemble ».
   await poser(page, { suivis: false, envies: ["learn"] });
 
   expect(await page.evaluate(() => {
     const p = allFeedPosts().find((x) => x.id === "p_muscu");
     return !!p && feedPostMatchesIntent(p, "learn");
-  }), "le prédicat reste vrai : le post EST du « Apprendre »").toBe(true);
+  }), "le prédicat reste vrai : le post EST du « Conseils »").toBe(true);
 
   expect(await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_muscu"]').length),
@@ -198,9 +198,9 @@ test("③ « Suivis » + une passion : les deux sources cohabitent (OU inclusif 
 test("③ bis — l'envie retranche de l'union, sans jamais l'élargir", async ({ page }) => {
   await poser(page, { suivis: true, suit: true, envies: ["learn"] });
   const t = await filTexte(page);
-  expect(t, "suivie ET « Apprendre » : elle reste").toContain("LEANE_MUSCU");
-  expect(t, "ma passion ET « Apprendre » : elle reste").toContain("MOI_YOGA_LEARN");
-  expect(t, "ma passion mais pas « Apprendre » : retranchée").not.toContain("MOI_YOGA_NEUTRE");
+  expect(t, "suivie ET « Conseils » : elle reste").toContain("LEANE_MUSCU");
+  expect(t, "ma passion ET « Conseils » : elle reste").toContain("MOI_YOGA_LEARN");
+  expect(t, "ma passion mais pas « Conseils » : retranchée").not.toContain("MOI_YOGA_NEUTRE");
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -220,14 +220,14 @@ test("④ aucune source, une envie cochée : fil vide et « Choisis tes passions
 // ══════════════════════════════════════════════════════════════════════════
 
 test("⑤ l'écran vide nomme l'envie, et ne peint aucune autre passion", async ({ page }) => {
-  // Mes sources ont du contenu, mais aucune publication « Rencontrer ».
+  // Mes sources ont du contenu, mais aucune publication « À faire ensemble ».
   await poser(page, { suivis: false, envies: ["meet"] });
 
   expect(await titreVide(page), "la cause exacte, avec le libellé de l'envie")
-    .toBe("Rien en « Rencontrer »");
-  // ⚠️ ET SURTOUT : il EXISTE une publication « Rencontrer » sur PASSIO
+    .toBe("Aucune publication pour « À faire ensemble »");
+  // ⚠️ ET SURTOUT : il EXISTE une publication « À faire ensemble » sur PASSIO
   // (`AILLEURS_IRL`, passion « photo »). Tant que l'envie était une source,
-  // cocher « Rencontrer » la faisait entrer. Elle ne doit plus rien amener.
+  // cocher « À faire ensemble » la faisait entrer. Elle ne doit plus rien amener.
   expect(await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_irl_ailleurs"]').length),
     "une envie n'ouvre aucune passion").toBe(0);
@@ -243,6 +243,14 @@ test("⑤ l'écran vide nomme l'envie, et ne peint aucune autre passion", async 
   expect(await page.evaluate(() =>
     document.querySelectorAll("#feedList .feed-repli-tete").length),
     "et pas de repli d'exploration").toBe(0);
+
+  await page.getByRole("button", { name: "Voir tout mon fil" }).click();
+  await expect(page.locator("#feedEmpty")).toBeHidden();
+  await expect(page.locator('#feedIntentSelector [data-intent="meet"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator('#feedList [data-postid="p_yoga_learn"]')).toHaveCount(1);
+  await expect(page.locator('#feedList [data-postid="p_irl_ailleurs"]')).toHaveCount(0);
+  expect(await page.evaluate(() => [feedIntentsSelected(), [..._activeFeedPassions], feedFollowingSelected()]))
+    .toEqual([[], ["yoga", "voyage"], false]);
 });
 
 test("⑤ bis — le repli d'exploration reste vivant quand c'est la PASSION qui est vide", async ({ page }) => {
@@ -277,6 +285,57 @@ test("⑥ un visiteur qui coche une envie garde un fil de découverte", async ({
   expect(await page.locator("#feedList .post").count(),
     "et il reste du contenu à l'écran").toBeGreaterThan(0);
 });
+
+async function preparerFilDecouverte(page) {
+  await page.evaluate(() => {
+    state.seed.posts = [{
+      id: "p_invite_musique", authorId: "u_autre", passion: "musique", type: "text",
+      text: "Accorder sa guitare", mood: "all", createdAt: Date.now(), likes: 0, comments: [],
+    }];
+    state.supabasePosts = []; state.userPosts = []; window._feedExtraPosts = [];
+    state.feedFollowingOn = false;
+    renderFeed();
+  });
+}
+
+for (const dejaOuvert of [true, false]) {
+  test(`à 320 px, le visiteur retrouve le fil avec un repère ${dejaOuvert ? "déjà affiché" : "encore programmé"}`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await bootVisiteur(page, { sansBienvenue: dejaOuvert });
+    await preparerFilDecouverte(page);
+    const repere = page.locator('.fr-tip[data-fr-tip="decouvrir"]');
+    if (dejaOuvert) {
+      await expect(repere).toBeVisible();
+    } else {
+      await expect(page.locator("#frWelcome")).toBeVisible();
+      await page.clock.install();
+      await page.getByRole("button", { name: "Choisir mes passions" }).click();
+      await page.getByRole("button", { name: "Revoir les repères" }).click();
+    }
+    await page.evaluate(() => {
+      setFeedIntents(["meet", "create"]);
+      renderFeed();
+    });
+    if (!dejaOuvert) await page.clock.runFor(1000); // échéance automatique du tour : 700 ms
+    const vide = page.locator("#feedEmpty");
+    await expect(vide).toContainText("Aucune publication pour ces envies");
+    await expect(repere).toBeHidden();
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.decouvrir)).toBe(dejaOuvert);
+
+    await vide.getByRole("button", { name: "Voir tout mon fil" }).click();
+    if (!dejaOuvert) await page.clock.runFor(1000);
+    await expect(vide).toBeHidden();
+    await expect(page.locator('#feedList [data-postid="p_invite_musique"]')).toHaveCount(1);
+    await expect(page.locator('#feedIntentSelector [aria-pressed="true"]')).toHaveCount(0);
+    await expect(repere).toBeVisible();
+    await expect(page.locator(".fr-tip")).toHaveCount(1);
+    expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
+    if (dejaOuvert) {
+      await page.evaluate(() => { setFeedIntent("meet"); goTo("irl"); });
+      await expect(page.locator('.fr-tip[data-fr-tip="rencontrer"]')).toBeVisible();
+    }
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // ⑦ LES LIBELLÉS D'ENVIE NE PEUVENT PAS DIVERGER DE L'ÉCRAN

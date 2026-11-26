@@ -168,20 +168,23 @@ test.describe("Carte de bienvenue", () => {
     const carte = page.locator("#frWelcome");
     await expect(carte).toBeVisible({ timeout: 15000 });
     await expect(carte).toContainText("Bienvenue sur PASSIO");
-    await expect(carte).toContainText("Tout ce que tu aimes, au même endroit.");
+    await expect(carte).toContainText("Découvre ce que les autres partagent et trouve des sorties autour de tes passions.");
 
     // Non bloquante : elle occupe une fraction de l'écran, et le fil reste là.
     const boite = await carte.boundingBox();
     const h = page.viewportSize().height;
     expect(boite.height).toBeLessThan(h * 0.5);
+    const suivis = page.locator('#profileStrip [data-passion-tile="__suivis__"]');
+    await expect(suivis).toBeVisible();
+    expect(boite.y + boite.height, "la carte accueille avant les filtres").toBeLessThanOrEqual((await suivis.boundingBox()).y);
     expect(await page.locator("#feedList .post").count()).toBeGreaterThan(0);
 
-    // Elle est posée en FRÈRE de #feedList : un repeint du fil ne l'emporte pas.
+    // Un repeint des publications préserve la carte.
     expect(await page.evaluate(() => !!document.querySelector("#feedList #frWelcome"))).toBe(false);
     await page.evaluate(() => renderFeed());
     await expect(carte).toBeVisible();
 
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await carte.getByRole("button", { name: "Parcourir le fil" }).click();
     await expect(carte).toHaveCount(0);
     // Fermée, elle n'insiste pas DANS CETTE SESSION : un simple repeint du fil
     // ne la ramène pas.
@@ -208,7 +211,7 @@ test.describe("Carte de bienvenue", () => {
     // que pour la session en cours.
     await bootVisiteur(page);
     await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Parcourir le fil" }).click();
     await expect(page.locator("#frWelcome")).toHaveCount(0);
 
     // Nouvelle visite = `sessionStorage` reparti de zéro, comme quand on rouvre
@@ -223,7 +226,7 @@ test.describe("Carte de bienvenue", () => {
 
     // Et la preuve que ce n'est pas le rechargement qui la ramène : refermée,
     // elle reste absente tant que la clé de session est là.
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Parcourir le fil" }).click();
     await page.reload();
     await page.waitForTimeout(3400);
     expect(await page.locator("#frWelcome").count()).toBe(0);
@@ -237,6 +240,8 @@ test.describe("Carte de bienvenue", () => {
     // plus ce qu'est PASSIO, c'est que ses choix ne vivent que sur cet appareil.
     await expect(carte).toContainText("Tes passions sont sur cet appareil");
     await expect(carte).toContainText("Crée ton compte pour les garder");
+    await expect(carte.getByRole("button", { name: "Fermer la carte de bienvenue" })).toBeVisible();
+    await expect(carte.getByRole("button", { name: "Parcourir le fil" })).toHaveCount(0);
     await expect(carte).not.toContainText("Bienvenue sur PASSIO");
     // Le seul bouton est celui que le message annonce : créer le compte
     // (son ouverture est mesurée dans creer-compte-accueil.spec.js).
@@ -251,6 +256,17 @@ test.describe("Carte de bienvenue", () => {
     await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
   });
 
+  // La croix ne ferme QUE la carte : elle ne passe pas en lecture libre, les
+  // repères restent permis (contrairement à « Parcourir le fil »).
+  test("passions choisies : la croix ferme la carte sans couper les repères", async ({ page }) => {
+    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
+    const carte = page.locator("#frWelcome");
+    await expect(carte).toBeVisible({ timeout: 15000 });
+    await carte.getByRole("button", { name: "Fermer la carte de bienvenue" }).click();
+    await expect(carte).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("passio_first_run_bienvenue_fermee"))).toBe("1");
+  });
+
   // ⚠️ UN SEUL BOUTON (2026-11-03). La carte en alignait quatre à poids presque
   // égal, dont deux en double : « Explorer d'abord » faisait ce que fait le ×,
   // « Créer mon compte » ce que faisait la pastille de la barre du haut, retirée
@@ -262,9 +278,46 @@ test.describe("Carte de bienvenue", () => {
     await expect(carte).toBeVisible({ timeout: 15000 });
     await expect(carte.locator(".btn")).toHaveCount(1);
     await expect(carte.locator(".fr-welcome-cta")).toHaveText("Choisir mes passions");
-    await expect(carte.locator(".fr-welcome-lien")).toHaveCount(2);
+    await expect(carte.locator(".fr-welcome-lien")).toHaveCount(3);
+    await expect(carte.locator(".fr-welcome-close")).toHaveCount(0);
     await expect(carte.locator(".fr-welcome-signup")).toHaveText("Créer un compte");
     await expect(carte.locator(".fr-welcome-signin")).toHaveText("J'ai déjà un compte");
+  });
+
+  test("Parcourir le fil au clavier laisse lire une fiche et revenir, jusqu'au rejeu demandé", async ({ page }) => {
+    await bootVisiteur(page);
+    const fil = page.getByRole("region", { name: "Publications", exact: true });
+    const carte = page.locator("#frWelcome");
+    await carte.getByRole("button", { name: "Choisir mes passions" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(carte.getByRole("button", { name: "Parcourir le fil" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(fil).toBeFocused();
+    await expect(carte).toHaveCount(0);
+    expect(await page.evaluate(feedActif)).toBe(true);
+
+    await fil.locator(".post .post-body").first().click();
+    const fiche = page.locator("#postDetailPage");
+    await expect(fiche).toBeVisible();
+    await fiche.getByRole("button", { name: "Fermer la publication" }).click();
+    await expect(fiche).toBeHidden();
+    await page.clock.install();
+    await page.clock.runFor(1800);
+    await expect(page.locator(".fr-tip, .passio-hint")).toHaveCount(0);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().passions)).toEqual([]);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().tour)).toEqual({});
+
+    await page.reload();
+    await expect(fil.locator(".post").first()).toBeVisible();
+    await page.clock.runFor(3500);
+    await expect(page.locator("#frWelcome, .fr-tip, .passio-hint")).toHaveCount(0);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().tour)).toEqual({});
+
+    await page.locator("#topbarParametres").click();
+    await page.locator("#devPanel").getByText("Personnalisation", { exact: true }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
+    await page.clock.runFor(1000);
+    await expect(page.locator('.fr-tip[data-fr-tip="decouvrir"]')).toBeVisible();
   });
 });
 
@@ -277,7 +330,7 @@ test.describe("Personnalisation", () => {
     await page.locator("#frWelcome .fr-welcome-cta").click();
 
     await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
-    await expect(page.locator("#modalContent")).toContainText("Choisis quelques sujets");
+    await expect(page.locator("#modalContent")).toContainText("Une passion suffit pour découvrir ton fil.");
 
     // 10 à 12 passions populaires (+ la tuile « Voir toutes »).
     const populaires = await page.locator("#frGrid .fr-tile:not(.fr-tile-more)").count();
@@ -301,8 +354,15 @@ test.describe("Personnalisation", () => {
     await bootVisiteur(page);
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await page.locator('#frGrid [data-fr-passion="musique"]').click();
-    // Les spécialités de la passion retenue apparaissent.
-    await expect(page.locator('#frSpecs [data-fr-spec="musique-guitare"]')).toHaveCount(1);
+    // La première passion suffit, les spécialités restent au choix.
+    await expect(page.locator("#frValider")).toBeEnabled();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (1)");
+    const preciser = page.getByText("Préciser mes goûts", { exact: true });
+    const guitare = page.locator('#frSpecs [data-fr-spec="musique-guitare"]');
+    await expect(guitare).toBeHidden();
+    await preciser.focus();
+    await page.keyboard.press("Enter");
+    await expect(guitare).toBeVisible();
 
     // On coche une spécialité d'une AUTRE passion, non encore choisie.
     await page.evaluate(() => PassioFirstRun.basculerSpecialite("photo-portrait"));
@@ -357,9 +417,16 @@ test.describe("Personnalisation", () => {
 
     // La puce proposée sous « Sport » porte l'identifiant RÉEL de la passion,
     // pas un identifiant inventé pour l'occasion.
+    const preciser = page.getByText("Préciser mes goûts", { exact: true });
+    await preciser.click();
     const puce = page.locator('#frSpecs [data-fr-spec="cyclisme"]');
-    await expect(puce).toHaveCount(1);
-    await puce.click();
+    await puce.focus();
+    await page.keyboard.press("Space");
+    await expect(puce).toBeFocused();
+    await expect(puce).toHaveAttribute("aria-pressed", "true");
+    await preciser.click();
+    await expect(puce).toBeHidden();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (2)");
     await page.locator("#frValider").click();
     await page.waitForTimeout(1200);
 
@@ -374,6 +441,13 @@ test.describe("Personnalisation", () => {
     const bulle = page.locator('#profileStrip [data-passion-tile="cyclisme"]');
     await expect(bulle).toHaveCount(1, { timeout: 15000 });
     await expect(bulle).toContainText("Vélo", { timeout: 15000 });
+
+    // La modification reprend les goûts enregistrés, visibles et cochés.
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("menu"));
+    await expect(puce).toBeVisible();
+    await expect(puce).toHaveAttribute("aria-pressed", "true");
+    await puce.click();
+    await expect(page.locator("#frValider")).toHaveText("Voir mon fil (1)");
   });
 
   // ⚠️ LE CORRECTIF NE DOIT PAS COÛTER LE DÉMARRAGE. Nommer une spécialité
@@ -414,11 +488,16 @@ test.describe("Personnalisation", () => {
 test.describe("Tour contextuel", () => {
   test("trois indications au maximum, non bloquantes, mémorisées, relançables", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-close").click(); // libère la place
+    await page.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
 
     const bulle = page.locator(".fr-tip");
     await expect(bulle).toBeVisible({ timeout: 15000 });
-    await expect(bulle).toContainText("Un Fil construit autour de tes passions");
+    await expect(bulle.locator(".fr-tip-title")).toHaveText("Ce qui t'inspire");
+    await expect(bulle.locator(".fr-tip-text")).toContainText(/publication/i);
+    await expect(bulle.locator(".fr-tip-text")).toContainText("Rencontrer");
+    await expect(bulle).toHaveAccessibleDescription(await bulle.locator(".fr-tip-text").innerText());
+    await expect(page.locator(".fr-tip-cible")).toHaveAttribute("data-v2-key", "meet");
     // Une seule bulle à la fois — jamais d'accumulation de fenêtres.
     expect(await bulle.count()).toBe(1);
     // Non bloquante : elle ne couvre pas l'écran et le fil reste défilable.
@@ -445,17 +524,39 @@ test.describe("Tour contextuel", () => {
 
   test("l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL", async ({ page }) => {
     await bootVisiteur(page, { sansBienvenue: true, prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
-    await page.evaluate(() => goTo("irl"));
-    await page.waitForTimeout(1600);
+    await page.locator('.app-nav-v2 [data-v2-key="meet"]').click();
     const bulle = page.locator('.fr-tip[data-fr-tip="rencontrer"]');
     await expect(bulle).toHaveCount(1);
-    await expect(bulle).toContainText("Passe du numérique au réel");
-    await expect(bulle).toContainText("sans activer automatiquement ta position");
+    await expect(bulle.locator(".fr-tip-title")).toHaveText("Ce que tu veux vivre");
+    await expect(bulle.locator(".fr-tip-text")).toHaveText("Cherche une activité ou une ville. Tu peux explorer sans partager ta position.");
+    await expect(page.locator(".fr-tip-cible")).toHaveAttribute("id", "v4a0Search");
+  });
+
+  test("la feuille Créer écarte le repère visible et garde le focus quand un repère attend", async ({ page }) => {
+    await bootVisiteur(page, { sansBienvenue: true, prefs: { v: 1, tour: { decouvrir: true } } });
+    const creer = page.locator('#appNavV2 [data-v2-key="create"]');
+    const feuille = page.locator("#v2CreateSheet");
+    await expect(page.locator('.fr-tip[data-fr-tip="creer"]')).toBeVisible();
+    await creer.click();
+    await expect(feuille).toBeVisible();
+    await expect(page.locator(".fr-tip, .fr-tip-cible")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(feuille).toBeHidden();
+
+    // Rejouer et ouvrir la feuille dans le même tour garantit que l'ouverture
+    // précède l'échéance du repère, même lorsque le navigateur est lent.
+    await creer.evaluate((bouton) => { PassioFirstRun.relancerTour(); bouton.click(); });
+    await expect(feuille).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.locator(".fr-tip, .fr-tip-cible")).toHaveCount(0);
+    await expect(feuille.locator(".v2-sheet-item").first()).toBeFocused();
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.decouvrir)).toBe(false);
   });
 
   test("navigation clavier : Entrée active une seule fois, Échap ferme", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
     await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 15000 });
 
     // Le bouton « Compris » reçoit le focus : la bulle est utilisable au clavier.
@@ -484,7 +585,7 @@ test.describe("Tour contextuel", () => {
     await expect(page.locator(".fr-tip")).toHaveCount(0);
   });
 
-  test("le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part", async ({ page }) => {
+  test("le premier tour garde trois repères et laisse Profil, Messages et Studio libres", async ({ page }) => {
     await bootVisiteur(page, { sansBienvenue: true, prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
 
     // Les trois surfaces du premier tour portent leur formulation courte.
@@ -506,7 +607,13 @@ test.describe("Tour contextuel", () => {
       await page.waitForTimeout(900);
       await page.evaluate((e) => { PassioFirstRun.fermerBulle(); PassioFirstRun.prefs().tour = {}; PassioFirstRun.montrerEtape(e); }, etape);
       await page.waitForTimeout(300);
-      await expect(page.locator(".fr-tip .fr-tip-eyebrow")).toHaveText(formule);
+      const bulle = page.locator(`.fr-tip[data-fr-tip="${etape}"]`);
+      await expect(bulle.locator(".fr-tip-title")).toHaveText(formule);
+      await expect(bulle.locator(".fr-tip-eyebrow")).toHaveCount(0);
+      if (etape === "creer") {
+        await expect(bulle.locator(".fr-tip-text")).toContainText(/publication/i);
+        await expect(bulle.locator(".fr-tip-text")).toContainText(/sortie/i);
+      }
     }
     await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("feed"); });
     await page.waitForTimeout(600);
@@ -540,59 +647,80 @@ test.describe("Tour contextuel", () => {
 });
 
 test.describe("Aides au geste", () => {
-  // Demandé par Benjamin après essai : « une petite bulle d'explication pour
-  // toutes les fonctionnalités — les moods, les bulles de profil en haut… ».
-  // ⚠️ Elles ne s'empilent PAS à l'ouverture : chacune attend le premier geste
-  // sur la commande dont elle parle. Empiler six bulles sur le premier écran
-  // reconstruirait le tutoriel que ce lot remplace.
+  // Les trois repères de navigation ont déjà été lus. Seul le geste testé peut
+  // déclencher une aide ; les passions choisies viennent des préférences invité.
+  async function demarrerAides(page, passions = []) {
+    await bootVisiteur(page, {
+      sansBienvenue: true,
+      prefs: { v: 1, passions, specialites: [], intents: [], tour: { decouvrir: true, rencontrer: true, creer: true } },
+    });
+  }
+
   const zones = [
-    ["#profileStrip .profile-tile", "passions", "Tes passions filtrent le Fil"],
-    ["#feedIntentSelector .feed-intent-btn", "envies", "Ton envie du moment"],
-    // ⚠️ Deux pièges dans cette seule ligne. ① La classe est `.story-item`, PAS
-    // `.story` — une sonde écrite avec `.story` rend 0 et fait conclure à tort
-    // que le rail est vide pour un visiteur. Il ne l'est pas : « Ta story »
-    // suivie des comptes de la graine. ② On écarte la PREMIÈRE bulle : c'est
-    // « Ta story », donc une action de CRÉATION, désormais arrêtée par le gate —
-    // et le gate ouvre une modale, que `ecranOccupe()` refuse (à raison). Le
-    // geste qui porte l'aide est celui d'un visiteur qui REGARDE une story.
-    ["#storiesRowFeed .story-item:not(:first-child)", "stories", "Ce qui se passe maintenant"],
+    ['#profileStrip [data-passion-tile="__suivis__"]', "suivis", "Les personnes que tu suis"],
+    ['#profileStrip [data-passion-tile]:not([data-passion-tile="__suivis__"])', "passions", "Tes passions dans le fil"],
+    ['#feedIntentSelector [data-intent="learn"]', "envies", "Filtrer les publications"],
   ];
 
   for (const [selecteur, etape, titre] of zones) {
     test(`toucher ${etape} explique ${etape}, une seule fois`, async ({ page }) => {
-      await bootVisiteur(page, { sansBienvenue: true });
-
-      // Rien AVANT le geste : c'est tout l'intérêt.
-      expect(await page.locator(`.fr-tip[data-fr-tip="${etape}"]`).count()).toBe(0);
-
+      // Une passion désactivée peut quitter le rail visiteur. Une autre reste
+      // disponible pour vérifier que l'aide déjà lue ne revient pas.
+      await demarrerAides(page, etape === "passions" ? ["moto", "musique"] : []);
       const cible = page.locator(selecteur).first();
-      await expect(cible).toBeVisible({ timeout: 15000 });
-      await page.evaluate(() => PassioFirstRun.fermerBulle());
-      await cible.click();
-      await page.waitForTimeout(1200);
       const bulle = page.locator(`.fr-tip[data-fr-tip="${etape}"]`);
-      await expect(bulle).toHaveCount(1);
-      await expect(bulle).toContainText(titre);
-
-      // Une seule fois : refermée, un second geste ne la ramène pas.
-      await page.locator(".fr-tip-ok").click();
       await expect(page.locator(".fr-tip")).toHaveCount(0);
-      // ⚠️ On revient d'abord au Fil. Le geste qui déclenche l'aide OUVRE
-      // souvent quelque chose par-dessus le rail (ouvrir une story pose le
-      // lecteur plein écran) : sans ce retour, le second clic ne rate pas
-      // parce que l'aide serait revenue, mais parce que la commande n'est plus
-      // atteignable — un rouge qui ne dirait rien de ce qu'on veut prouver.
-      await page.evaluate(() => {
-        try { closeStoryViewer(); } catch (e) {}
-        try { closeModal(); } catch (e) {}
-        if (typeof goTo === "function") goTo("feed");
-      });
-      await page.waitForTimeout(800);
       await cible.click();
-      await page.waitForTimeout(1200);
-      expect(await page.locator(`.fr-tip[data-fr-tip="${etape}"]`).count()).toBe(0);
+      await expect(bulle.locator(".fr-tip-title")).toHaveText(titre);
+      if (etape === "envies") await expect(cible).toHaveAttribute("aria-pressed", "true");
+
+      await bulle.locator(".fr-tip-ok").click();
+      await cible.click();
+      await page.waitForTimeout(750); // le rappel au geste est différé
+      await expect(page.locator(".fr-tip")).toHaveCount(0);
     });
   }
+
+  test("la story se lit sans bulle et son aide apparaît une seule fois au retour au fil", async ({ page }) => {
+    await demarrerAides(page);
+    // La première vignette ouvre « Ta story ». Une vignette d'auteur ouvre bien le lecteur.
+    const story = page.locator("#storiesRowFeed .story-item:not(:first-child)").first();
+    const lecteur = page.locator("#storyViewer");
+    const bulle = page.locator('.fr-tip[data-fr-tip="stories"]');
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
+    await story.click();
+    await expect(lecteur).toBeVisible();
+    await page.waitForTimeout(750); // couvre l'ancien déclenchement pendant la lecture à 450 ms
+    await expect(lecteur).toBeVisible();
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.stories)).toBe(false);
+
+    const auteur = lecteur.locator("#storyAuthor");
+    const nom = await auteur.innerText();
+    await auteur.click();
+    const profil = page.locator("#modalContent");
+    await expect(lecteur).toBeHidden();
+    await expect(profil).toBeVisible();
+    await expect(profil).toContainText(nom);
+    await page.waitForTimeout(750);
+    await expect(bulle).toHaveCount(0);
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.stories)).toBe(false);
+    await profil.locator(".modal-close").click();
+    await expect(profil).toBeHidden();
+
+    await story.click();
+    await expect(lecteur).toBeVisible();
+    await lecteur.getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(lecteur).toBeHidden();
+    await expect(bulle.locator(".fr-tip-title")).toHaveText("Les stories durent 24 h");
+    await bulle.locator(".fr-tip-ok").click();
+    await story.click();
+    await expect(lecteur).toBeVisible();
+    await lecteur.getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(lecteur).toBeHidden();
+    await page.waitForTimeout(750);
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
+  });
 
   test("le geste n'est jamais empêché : la commande touchée agit quand même", async ({ page }) => {
     // ⚠️ L'aide s'affiche APRÈS le geste, elle ne le remplace pas. Sans cette
@@ -631,7 +759,7 @@ test.describe("Aides au geste", () => {
     // C'est la famille « une règle qui survit à la disparition de sa cible »,
     // déjà payée trois fois dans ce projet. On mesure donc l'ancre de CHAQUE
     // aide au geste, pas seulement celles qu'on a pensé à tester.
-    await bootVisiteur(page, { sansBienvenue: true });
+    await demarrerAides(page, ["moto"]);
     const bilan = await page.evaluate(() => {
       const out = [];
       for (const [selecteur, id] of PassioFirstRun.zonesGeste()) {
@@ -1228,7 +1356,7 @@ test.describe("Cadrage mobile", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 
       // Les actions de la carte tiennent dans l'écran et sont assez grandes.
-      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-signin", "#frWelcome .fr-welcome-close"]) {
+      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-parcourir", "#frWelcome .fr-welcome-signup", "#frWelcome .fr-welcome-signin"]) {
         const b = await page.locator(sel).boundingBox();
         expect(b.height).toBeGreaterThanOrEqual(43.5);
         expect(b.x).toBeGreaterThanOrEqual(-0.5);

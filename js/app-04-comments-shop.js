@@ -15,6 +15,8 @@ function openPostOptions(postId) {
   // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
   // Pas pour un repartage : son texte est la citation de l'original.
   var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  const aRelier = (state.userPosts || []).find(p => p.id === postId && p.authorId === MY_UID && p.sortieARelier);
+  const messagePourSortie = messageDisponiblePourSortie(postId);
   var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
     ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
@@ -24,7 +26,12 @@ function openPostOptions(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
+      ${messagePourSortie?.sortieDifferee === "aProposer" ? `<button type="button" class="post-option" id="proposerSortieMessage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-9 3v5m-2.5-2.5h5"/></svg>
+        Proposer une sortie
+      </button>` : ""}
       ${_editBtn}
+      ${aRelier ? '<button type="button" class="post-option" id="reprendreLienSortie">Réessayer le lien avec ma sortie</button>' : ""}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
         Supprimer la publication
@@ -32,6 +39,26 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+  if (messagePourSortie?.sortieDifferee === "aProposer") {
+    document.getElementById("proposerSortieMessage").onclick = () => {
+      const post = messageDisponiblePourSortie(postId);
+      if (post?.sortieDifferee === "aProposer" && post.authorId === messagePourSortie.authorId) ouvrirSortieDepuisMessage(post);
+      else closeModal();
+    };
+  }
+  if (aRelier) {
+    const sortieId = aRelier.sortieARelier;
+    document.getElementById("reprendreLienSortie").onclick = async function () {
+      this.disabled = true;
+      const auteur = MY_UID;
+      const verdict = await relierSortieStudio(postId, sortieId);
+      if (MY_UID !== auteur) return;
+      if (this.isConnected) closeModal();
+      toast(verdict === "liee" ? "La sortie est reliée à ton message."
+        : verdict === "attente" ? "Le lien reste en attente. Réessaie quand tu as du réseau."
+        : "La sortie n’a pas pu être reliée à ton message.", verdict === "liee" ? "success" : "warning");
+    };
+  }
 }
 
 // ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────
@@ -1504,6 +1531,14 @@ function openPostReactors(postId, event) {
 // juste au-dessus, partagent le même moteur (`_reactionItemsChipHtml`) et sont
 // intactes.
 
+function _peutChargerDiscussion(post) {
+  if (typeof supa === "undefined" || !supa) return false;
+  if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) {
+    return !!(window._supaReal && post && post.fromSupabase);
+  }
+  return typeof MY_UID !== "undefined" && !!MY_UID;
+}
+
 async function openComments(postId) {
   // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
   // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
@@ -1520,20 +1555,24 @@ async function openComments(postId) {
   // en rouvrant un fil vide déjà chargé < 20 s).
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
-  var _willLoad = !_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID;
+  var _willLoad = !_fresh && _peutChargerDiscussion(post);
   var _emptyStateHtml = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Discussion</div>
-    <div id="commentsBox" class="cmt-fil-liste" aria-live="polite">
-      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
-    </div>
+  const saisie = window.PassioFirstRun && PassioFirstRun.estVisiteur()
+    ? `<button type="button" class="btn primary block" onclick="PassioFirstRun.allerInscription('commenter','${escapeJsArg(postId)}')">Créer un compte pour répondre</button>`
+    : `
     <textarea class="textarea" id="newComment" aria-label="Écrire un commentaire" placeholder="Ajoute un commentaire…" maxlength="400" rows="1" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this);majCompteurCommentaire(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div class="cmt-compteur" id="newCommentCompteur" aria-live="polite" hidden></div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
       <button class="btn primary cmt-publier" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
+    </div>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Discussion</div>
+    <div id="commentsBox" data-thread="${escapeHtml(postId)}" class="cmt-fil-liste" aria-live="polite">
+      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
+    ${saisie}
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
   var _nc = document.getElementById("newComment");

@@ -1,5 +1,5 @@
 // Suite « Moods du Studio » — alignement du vocabulaire de publication sur le
-// rail d'intentions du Fil (Explorer · Apprendre · Idées · Rencontrer).
+// rail d'intentions du Fil (Explorer · Expériences · Conseils · À faire ensemble).
 //
 // Ce que la suite protège, dans l'ordre où ça s'est cassé pendant l'écriture :
 //
@@ -8,36 +8,35 @@
 //      un renommage de valeur ferait perdre son classement à toute publication
 //      existante. La suite vérifie donc le couple (libellé vu, valeur publiée).
 //
-//   ② « Rencontrer » (`irl`) n'était choisissable NULLE PART avant ce lot :
+//   ② « À faire ensemble » (`irl`) n'était choisissable NULLE PART avant ce lot :
 //      `legacyMoodToFeedIntent` savait le traduire en `meet` et `moodTagLabel`
 //      savait l'afficher, mais aucune pastille ne le produisait. Le bonus
-//      d'intention « Rencontrer » était donc structurellement inatteignable.
+//      d'intention « À faire ensemble » était donc structurellement inatteignable.
 //
 //   ③ Pas de pastille « Explorer ». Cette intention se calcule côté LECTEUR
 //      (auteur non suivi, passion inconnue) et ne regarde jamais le mood : une
 //      pastille y serait décorative, donc mensongère.
 //
-//   ④ Le mood « creation » reste le défaut, parce que `publishPost` n'appelle
-//      `bumpQuest("publish")` que sur cette valeur — changer le défaut arrêtait
-//      la quête quotidienne en silence.
+//   ④ Le premier choix garde sa valeur historique, y compris pour un auteur
+//      qui publie sans changer la sélection.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
-// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Apprendre · Idées · Rencontrer.
+// LOT-15 (CRE-C06) : l'ORDRE du rail du Fil — Expériences · Conseils · À faire ensemble.
 const PASTILLES = [
-  { label: "Apprendre", value: "learn" },
-  { label: "Idées", value: "creation" },
-  { label: "Rencontrer", value: "irl" },
-  { label: "Tous", value: "all" },
+  { label: "Expériences", value: "creation" },
+  { label: "Conseils", value: "learn" },
+  { label: "À faire ensemble", value: "irl" },
+  { label: "Sans étiquette", value: "all" },
 ];
 
 async function ouvrirStudio(page) {
   await page.evaluate(() => goTo("studio"));
   await expect(page.locator("#screen-studio")).toHaveClass(/active/);
   // ⚠️ Ce helper DÉPLIAIT le repli « Options » d'UI-6, où le champ vivait.
-  // Le repli a été retiré le 2026-09-03 : le mood est à découvert sous la
-  // passion. On EXIGE désormais ce qu'on obtenait avant par un geste — sans
+  // Le repli a été retiré : la catégorie est à découvert avant le message.
+  // On EXIGE désormais ce qu'on obtenait avant par un geste — sans
   // cette assertion, un retour du repli rendrait la suite verte sur des
   // pastilles présentes dans le DOM mais invisibles.
   await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
@@ -48,7 +47,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
-    const pills = page.locator("#postMoodRow .pill");
+    const pills = page.getByRole("group", { name: "Que veux-tu partager ?" }).getByRole("button");
     await expect(pills).toHaveCount(PASTILLES.length);
     expect((await pills.allTextContents()).map((t) => t.trim()))
       .toEqual(PASTILLES.map((p) => p.label));
@@ -75,20 +74,46 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await expect(page.locator('.feed-intent-btn[data-intent="discover"]')).toHaveCount(1);
   });
 
-  test("le défaut reste « creation » — sinon bumpQuest(\"publish\") s'arrête", async ({ page }) => {
+  test("Expériences garde la valeur de publication par défaut", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
     await expect(page.locator("#postMoodRow .pill.active")).toHaveCount(1);
     await expect(page.locator("#postMoodRow .pill.active")).toHaveAttribute("data-postmood", "creation");
+    await expect(page.getByRole("button", { name: "Expériences", exact: true, pressed: true })).toBeVisible();
   });
 
-  test("« Rencontrer » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
+  test("l’exemple suit la catégorie sans modifier le texte en cours", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    await ouvrirStudio(page);
+
+    const message = page.getByRole("textbox", { name: "Ton message" });
+    const categories = page.getByRole("group", { name: "Que veux-tu partager ?" });
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
+    await expect(message).toHaveValue("");
+
+    const texte = "Mon message en cours\navec sa deuxième ligne.";
+    await message.fill(texte);
+    for (const [categorie, exemple] of [
+      ["Conseils", /Mon astuce/], ["À faire ensemble", /Qui veut se retrouver/],
+      ["Sans étiquette", ""], ["Expériences", /Le déclic/],
+    ]) {
+      await categories.getByRole("button", { name: categorie, exact: true }).click();
+      await expect(message).toHaveValue(texte);
+      await expect(message).toHaveAttribute("placeholder", exemple);
+    }
+    await message.fill("");
+    await expect(message).toBeEmpty();
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
+  });
+
+  test("« À faire ensemble » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
     await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
     await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
+    await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("À faire ensemble");
     await expect(page.locator("#postMoodRow .pill.active")).toHaveCount(1);
 
     await page.fill("#postText", "On se retrouve au studio de répétition");
@@ -101,10 +126,10 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(publie.mood).toBe("irl");
     expect(publie.intent).toBe("meet");
-    expect(publie.tag).toBe("Rencontrer");
+    expect(publie.tag).toBe("À faire ensemble");
   });
 
-  test("« Tous » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
+  test("« Sans étiquette » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
 
@@ -120,6 +145,72 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(publie.mood).toBe("all");
     expect(publie.intent).toBe("generic");
     expect(publie.tag).toBe("");
+  });
+
+  test("après un envoi confirmé, proposer une sortie reprend la passion et le message", async ({ page }) => {
+    await bootOnboarded(page, null, 2);
+    await ouvrirStudio(page);
+    await page.locator("#postPassion").selectOption("sport", { force: true });
+    await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ton message" }).fill("Qui vient marcher samedi ?");
+    await page.evaluate(() => {
+      window.supaPublishPostWithRetry = () => new Promise(resolve => { window.confirmerPost = resolve; });
+      window.supaLoadPosts = async () => [];
+    });
+    await page.getByRole("button", { name: "Publier", exact: true }).click();
+    const suite = page.getByRole("region", { name: "Après la publication" });
+    await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+    await expect(suite).toBeHidden();
+    await page.addStyleTag({ content: "#feedList { min-height: 200vh; }" });
+    await page.locator("#appMain").evaluate(el => { el.scrollTop = 500; });
+    const id = await page.evaluate(() => { window.confirmerPost(true); return state.userPosts[0].id; });
+    await expect(suite.getByRole("button", { name: "Proposer une sortie" })).toBeInViewport();
+    await suite.getByRole("button", { name: "Proposer une sortie" }).click();
+    await expect(page.locator("#evPassion")).toHaveValue("sport");
+    await expect(page.locator("#modalContent")).toHaveAttribute("data-feed-irl-source", id);
+    await expect(suite).toHaveCount(0);
+  });
+
+  test("un verdict tardif respecte le départ du fil", async ({ page }) => {
+    await bootOnboarded(page);
+    await ouvrirStudio(page);
+    await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ton message" }).fill("Une balade ensemble ?");
+    await page.evaluate(() => {
+      window.supaPublishPostWithRetry = () => new Promise(resolve => { window.confirmerPost = resolve; });
+      window.supaLoadPosts = async () => [];
+      window.publicationEnCours = publishPost();
+    });
+    await page.evaluate(async () => {
+      goTo("studio");
+      document.getElementById("postText").value = "Mon prochain message";
+      window.confirmerPost(true);
+      await window.publicationEnCours;
+    });
+    await expect(page.locator("#screen-studio")).toHaveClass(/active/);
+    await expect(page.getByRole("textbox", { name: "Ton message" })).toHaveValue("Mon prochain message");
+    await expect(page.locator("#studioSuiteSortie")).toHaveCount(0);
+  });
+
+  test("la proposition est facultative et réservée aux invitations confirmées", async ({ page }) => {
+    await bootOnboarded(page);
+    const suite = page.locator("#studioSuiteSortie");
+    for (const [categorie, confirme] of [["Conseils", true], ["À faire ensemble", false], ["À faire ensemble", true]]) {
+      await ouvrirStudio(page);
+      await page.getByRole("button", { name: categorie, exact: true }).click();
+      await page.getByRole("textbox", { name: "Ton message" }).fill("Un nouveau message de test.");
+      await page.evaluate(async (ok) => {
+        window.supaPublishPostWithRetry = async () => ok;
+        window.supaLoadPosts = async () => [];
+        await publishPost();
+      }, confirme);
+      if (categorie === "À faire ensemble" && confirme) {
+        await suite.getByRole("button", { name: "Plus tard" }).click();
+      }
+      await expect(suite).toHaveCount(0);
+      await expect(page.locator("#evTitle")).toHaveCount(0);
+      await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+    }
   });
 
   test("un brouillon portant un mood retiré revient sur le neutre, pas sur une rangée muette", async ({ page }) => {
@@ -140,6 +231,9 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(etat.mood).toBe("all");
     expect(etat.actives).toEqual(["all"]);
+    await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("Sans étiquette");
+    await expect(page.locator("#postText")).toHaveValue("Ancien brouillon");
+    await expect(page.locator("#postText")).toHaveAttribute("placeholder", "");
   });
 
   test("la table de libellés est unique : fil et bobines disent le même mot", async ({ page }) => {
@@ -151,16 +245,16 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
       })));
 
     expect(dits).toEqual([
-      { m: "creation", tag: "Idées", court: "Idées" },
-      { m: "learn", tag: "Apprendre", court: "Apprendre" },
+      { m: "creation", tag: "Expériences", court: "Expériences" },
+      { m: "learn", tag: "Conseils", court: "Conseils" },
       // Les bobines ignoraient « irl » (« Tout ») : le trou est fermé par la
       // même table qui sert au fil.
-      { m: "irl", tag: "Rencontrer", court: "Rencontrer" },
+      { m: "irl", tag: "À faire ensemble", court: "À faire ensemble" },
       // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, ET C'EST LE POINT DU LOT.
       // « chill » et « actu » n'étaient déjà plus publiables (test ② de ce
       // fichier) ; ils gardaient pourtant un libellé, donc une pastille sur la
-      // carte. Le produit n'a plus que quatre intentions — Explorer · Apprendre
-      // · Idées · Rencontrer — et deux d'entre elles nommaient des mots que
+      // carte. Le produit n'a plus que quatre intentions — Explorer · Expériences
+      // · Conseils · À faire ensemble — et deux d'entre elles nommaient des mots que
       // l'utilisateur ne pouvait plus choisir nulle part. Ils rendent désormais
       // exactement ce que rend le neutre.
       { m: "chill", tag: "", court: "Tout" },

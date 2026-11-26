@@ -72,6 +72,7 @@ async function createEvent(page, title, open) {
   await page.evaluate(([t, c, viaBridge]) => {
     if (!viaBridge) openCreateEvent();
     document.getElementById("evTitle").value = t;
+    document.getElementById("evTime").value = "18:00";
     document.getElementById("evCity").value = c;
   }, [title, CITY, !!open]);
   await page.evaluate(() => submitEvent());

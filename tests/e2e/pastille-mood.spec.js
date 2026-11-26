@@ -91,7 +91,7 @@ test.describe("la pastille de mood", () => {
     await bootOnboarded(page);
     const m = await poser(page, "creation");
     expect(m.present).toBe(true);
-    expect(m.texte).toContain("Idées");
+    expect(m.texte).toContain("Expériences");
     expect(m.largeur).toBeGreaterThan(40);
   });
 });

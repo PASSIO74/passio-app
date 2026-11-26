@@ -5,12 +5,12 @@
 //      actions de la direction, dans l'ordre, et rien de plus ;
 //   ② une bobine RELIÉE à une activité reçoit le seul lien « Voir l'activité » —
 //      les deux branches sont EXCLUSIVES, jamais les deux à la fois ;
-//   ③ « Ça m'intéresse » pose un signal RÉEL et réversible : il est persisté, il
+//   ③ « Intérêt » pose un signal RÉEL et réversible : il est persisté, il
 //      pèse dans le classement du fil, et re-taper le retire ;
 //   ④ les trois sorties appellent les moteurs EXISTANTS d'UI-3A, jamais un
 //      second moteur, et ferment le viewer d'abord (sans quoi la surface
 //      s'ouvrirait invisible sous un overlay en z-index 9999) ;
-//   ⑤ « À vivre près de moi » ne demande JAMAIS la position ;
+//   ⑤ « Sorties » ne demande JAMAIS la position ;
 //   ⑥ le kill switch rend le viewer historique, sans rechargement ;
 //   ⑦ mobile 320 / 390 / 430 px : aucun débordement, cibles ≥ 44 px.
 //
@@ -100,7 +100,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     const chips = b.locator(".v5-actions .v5-chip");
     await expect(chips).toHaveCount(4);
     expect(await chips.allTextContents()).toEqual([
-      "Ça m'intéresse", "Découvrir Musique", "À vivre près de moi", "Proposer une sortie",
+      "Intérêt", "Découvrir", "Sorties", "Proposer",
     ]);
 
     // La rangée vit DANS le bloc d'information, pas dans le rail d'actions
@@ -131,8 +131,8 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     // Les deux branches sont EXCLUSIVES : une bobine reliée ne reçoit jamais
     // « Proposer une sortie », qui inviterait à créer un doublon de l'activité
     // qu'elle montre déjà.
-    await expect(b.locator(".v5-chip", { hasText: "Proposer une sortie" })).toHaveCount(0);
-    await expect(b.locator(".v5-chip", { hasText: "Ça m'intéresse" })).toHaveCount(0);
+    await expect(b.getByRole("button", { name: "Proposer une sortie" })).toHaveCount(0);
+    await expect(b.getByRole("button", { name: "Intérêt pour cette passion" })).toHaveCount(0);
   });
 
   test("une bobine sans Passio reconnue garde sa mise en page d'avant", async ({ page }) => {
@@ -162,10 +162,10 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(4); // + « Plus » (LOT-6, BOB-C04 : signaler / supprimer)
   });
 
-  test("« Ça m'intéresse » : signal réel, persisté, réversible, et il pèse", async ({ page }) => {
+  test("« Intérêt » : signal réel, persisté, réversible, et il pèse", async ({ page }) => {
     await boot(page);
     await ouvrirBobine(page, "v5_reel_libre");
-    const chip = item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intéresse" });
+    const chip = item(page, "v5_reel_libre").getByRole("button", { name: "Intérêt pour cette passion" });
 
     await expect(chip).toHaveAttribute("aria-pressed", "false");
     expect(await page.evaluate(() => !!(state.user.passionSignals || {}).musique)).toBe(false);
@@ -197,7 +197,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
   test("le signal survit à un rechargement", async ({ page }) => {
     await boot(page);
     await ouvrirBobine(page, "v5_reel_libre");
-    await item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intéresse" }).click();
+    await item(page, "v5_reel_libre").getByRole("button", { name: "Intérêt pour cette passion" }).click();
     await page.waitForTimeout(600);   // saveState est débouncé
 
     await page.reload();
@@ -222,12 +222,12 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     });
 
     for (const [texte, attendu] of [
-      ["À vivre près de moi", "seeActivities"],
+      ["Sorties près de moi", "seeActivities"],
       ["Découvrir Musique", "discoverPeople"],
       ["Proposer une sortie", "proposeOuting"],
     ]) {
       await ouvrirBobine(page, "v5_reel_libre");
-      await item(page, "v5_reel_libre").locator(".v5-chip", { hasText: texte }).click();
+      await item(page, "v5_reel_libre").getByRole("button", { name: texte, exact: true }).click();
       await page.waitForFunction(
         (n) => (window.__v5 || []).some((a) => a.nom === n),
         attendu, { timeout: 8000 },
@@ -258,11 +258,11 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     expect(a.viewerOuvert).toBe(false);
   });
 
-  test("« À vivre près de moi » ne demande jamais la position", async ({ page }) => {
+  test("« Sorties près de moi » ne demande jamais la position", async ({ page }) => {
     await boot(page);
     await page.evaluate(() => { irlUserLocation = null; window.__geoCalls = 0; });
     await ouvrirBobine(page, "v5_reel_libre");
-    await item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "À vivre près de moi" }).click();
+    await item(page, "v5_reel_libre").getByRole("button", { name: "Sorties près de moi" }).click();
 
     await page.waitForFunction(() => {
       const el = document.getElementById("screen-irl");
@@ -271,6 +271,41 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     await page.waitForTimeout(400);
     expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
   });
+
+  for (const archivee of [false, true]) {
+    test("Sorties sans résultat : proposer une sortie Cuisine, passion " + (archivee ? "archivée" : "active"), async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 740 });
+      await boot(page);
+      await page.evaluate((archived) => {
+        state.user.profiles.push({ ...state.user.profiles[0], id: "profil_cuisine", passion: "cuisine", archived });
+        state.seed.events = [{
+          id: "concert_v5", passion: "musique", title: "Concert acoustique", date: Date.now() + 86400000,
+          city: "Lyon", organizerId: "u_lea", attendees: [], maybes: [], waitlist: [],
+        }];
+        state.userEvents = [];
+      }, archivee);
+      const bobine = { ...BOBINES[0], passion: "cuisine" };
+      await ouvrirBobine(page, bobine.id, [bobine]);
+      await item(page, bobine.id).getByRole("button", { name: "Sorties près de moi" }).click();
+      const liste = page.locator("#eventList");
+      const proposer = liste.getByRole("button", { name: "Proposer une sortie Cuisine", exact: true });
+      await expect(liste).toContainText("Aucune sortie Cuisine avec ces filtres");
+      await proposer.click();
+      if (archivee) {
+        await expect(page.locator("#modalContent")).toContainText("Ajoute Cuisine à tes passions ou réactive-la");
+        await expect(page.getByRole("button", { name: "Gérer mes passions", exact: true })).toBeVisible();
+        await expect(page.locator("#evPassion")).toHaveCount(0);
+        expect(await page.evaluate(() => state.user.profiles.find(p => p.id === "profil_cuisine").archived)).toBe(true);
+      } else {
+        await expect(page.locator("#evPassion")).toHaveValue("cuisine");
+        await expect(page.locator("#evTitle")).toHaveValue("");
+      }
+      await page.evaluate(() => closeModal());
+      await liste.getByRole("button", { name: "Tout afficher", exact: true }).click();
+      await expect(liste.locator('[data-evid="concert_v5"]')).toBeVisible();
+      await expect(proposer).toHaveCount(0);
+    });
+  }
 
   test("kill switch local au boot : viewer historique, rien du lot", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
@@ -355,7 +390,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
   });
 
   for (const largeur of [320, 390, 430]) {
-    test("mobile " + largeur + " px : aucun débordement, cibles ≥ 44 px", async ({ page }) => {
+    test("mobile " + largeur + " px : quatre actions tactiles sur une seule ligne", async ({ page }) => {
       await page.setViewportSize({ width: largeur, height: 844 });
       await boot(page);
       await ouvrirBobine(page, "v5_reel_libre");
@@ -364,15 +399,36 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
         const doc = document.documentElement;
         const row = document.querySelector('.reel-item[data-post-id="v5_reel_libre"] .v5-actions');
         const chips = Array.from(row.querySelectorAll(".v5-chip"));
+        const rects = chips.map((c) => c.getBoundingClientRect());
         return {
           pageDeborde: doc.scrollWidth > doc.clientWidth + 1,
           rangeeDansLeCadre: row.getBoundingClientRect().right <= doc.clientWidth + 1,
-          minHauteur: Math.min.apply(null, chips.map((c) => c.getBoundingClientRect().height)),
+          hauteur: row.getBoundingClientRect().height,
+          boutons: rects.map((r, i) => {
+            const cible = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return {
+              texte: chips[i].textContent,
+              aligne: r.top === rects[0].top,
+              largeur: r.width,
+              hauteur: r.height,
+              debordement: chips[i].scrollWidth - chips[i].clientWidth,
+              dansLaBarre: r.right <= row.getBoundingClientRect().right,
+              recoitLeToucher: chips[i].contains(cible),
+            };
+          }),
         };
       });
       expect(m.pageDeborde, "la page déborde horizontalement").toBe(false);
       expect(m.rangeeDansLeCadre, "la rangée sort du cadre").toBe(true);
-      expect(m.minHauteur, "cible tactile d'une action").toBeGreaterThanOrEqual(44);
+      expect(m.hauteur, "encombrement de la barre sur la vidéo").toBeLessThanOrEqual(50);
+      expect(m.boutons).toHaveLength(4);
+      for (const bouton of m.boutons) {
+        expect(bouton.largeur, bouton.texte).toBeGreaterThanOrEqual(44);
+        expect(bouton.hauteur, bouton.texte).toBeGreaterThanOrEqual(44);
+        expect(bouton, bouton.texte).toMatchObject({
+          aligne: true, debordement: 0, dansLaBarre: true, recoitLeToucher: true,
+        });
+      }
     });
   }
 });

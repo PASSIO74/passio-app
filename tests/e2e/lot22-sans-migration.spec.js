@@ -55,6 +55,7 @@ test("② IRL-C51 : publier une activité ouvre sa discussion, tout de suite", a
     goTo("irl");
     openCreateEvent();
     document.getElementById("evTitle").value = "Atelier L22";
+    document.getElementById("evTime").value = "18:00";
     document.getElementById("evCity").value = "Paris";
     await submitEvent();
     await new Promise((res) => setTimeout(res, 300));

@@ -1,11 +1,11 @@
-// Lot UI-3B — publication DÉJÀ reliée à une activité : « Voir l'activité » puis
+// Lot UI-3B — publication DÉJÀ reliée à une activité : « Voir la sortie » puis
 // RSVP explicite dans la fiche.
 //
 // Ce que cette suite prouve, et rien d'autre :
 //   ① une publication reliée à une activité EXISTANTE porte UN SEUL lien,
-//      « Voir l'activité », et rien d'autre (pas de « À vivre en vrai », pas de
+//      « Voir la sortie », et rien d'autre (pas de « À vivre en vrai », pas de
 //      Passio répétée, pas de trait, pas de bouton de participation) ;
-//   ② une publication SANS activité liée garde « Trouver une expérience » (UI-3A) ;
+//   ② une publication SANS activité liée garde « Autour de cette passion » (UI-3A) ;
 //   ③ les deux références sont couvertes : `eventId` et `sharedReelData` ;
 //   ④ une activité introuvable ne produit AUCUN CTA — la publication reste nue ;
 //   ⑤ le tap ouvre exactement la fiche attendue, sans créer de participation ;
@@ -18,7 +18,7 @@
 //   ⑩ mobile 320 / 390 / 430 px, cibles ≥ 44 px, contraste AA sur l'action ;
 //   ⑪ cohabitation par défaut avec UI-4B : depuis sa mise en ligne du
 //      2026-08-28, c'est UI-4B qui sert seul l'action de la fiche, tandis que
-//      le lien « Voir l'activité » du Feed reste à UI-3B.
+//      le lien « Voir la sortie » du Feed reste à UI-3B.
 //
 // ⚠️ Lecture des coupures posées ci-dessous. Tout ce qui observe la BARRE
 // D'ACTION peinte par UI-3B démarre avec `localStorage.passio_ui_4b = "0"`
@@ -70,7 +70,7 @@ async function boot(page, opts = {}) {
   // de la fiche à UI-4B, et UI-3B ne la peint PLUS JAMAIS. C'est voulu — deux
   // modules ne peuvent pas écrire la même barre. Sans cette coupure, aucun des
   // contrôles portant sur `[data-v3-rsvp*]` n'a plus d'objet à observer.
-  // ⚠️ Le lien « Voir l'activité » du Feed, lui, appartient toujours à UI-3B :
+  // ⚠️ Le lien « Voir la sortie » du Feed, lui, appartient toujours à UI-3B :
   // il reste vérifié SANS aucune coupure.
   if (opts.killV4b) await page.addInitScript(() => localStorage.setItem("passio_ui_4b", "0"));
   await bootOnboarded(page, opts.errors, 1, { query: opts.query || "" });
@@ -171,8 +171,8 @@ test("aperçu UI-3B : une publication liée est visible sans donnée persistée"
 
   const carte = page.locator('article.post[data-postid="__passio_ui3b_demo_post"]');
   await expect(carte).toBeVisible();
-  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
-  expect(await carte.innerText()).not.toContain("Trouver une activité");
+  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir la sortie");
+  expect(await carte.innerText()).not.toContain("Autour de cette passion");
 
   const avant = await page.evaluate(() => ({
     post: [...(state.seed.posts || []), ...(state.userPosts || []), ...(state.supabasePosts || [])]
@@ -217,7 +217,7 @@ const POSTS = [
 ];
 
 // ── ① + ② + ③ + ④ Éligibilité et contrat visuel de la carte ────────────────
-test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre", async ({ page }) => {
+test("publication reliée : un seul CTA « Voir la sortie », et rien d'autre", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await boot(page, { errors });
   await seedFeed(page, POSTS, EVENTS);
@@ -229,24 +229,26 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
     const carte = page.locator('article.post[data-postid="p_share"]');
     await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
     await expect(carte.locator(".post-activite")).toHaveAttribute("data-v3-activity", "ev_jam");
+    await expect(carte.locator(".post-activite")).toHaveAccessibleName("Voir la sortie Jam acoustique");
     await expect(carte.locator("[data-v3-bridge]")).toHaveCount(0);
-    expect(await carte.innerText()).not.toContain("Voir l'activité");
+    expect(await carte.innerText()).not.toContain("Voir la sortie");
     await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
     await expect(carte.locator("[data-v3-rsvp-go]")).toHaveCount(0);
   }
   for (const id of ["p_direct"]) {
     const carte = page.locator(`article.post[data-postid="${id}"]`);
     await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
-    await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
+    await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir la sortie");
+    await expect(carte.locator("[data-v3-activity]")).toHaveAccessibleName("Voir la sortie");
     await expect(carte.locator("[data-v3-activity]")).toHaveAttribute("data-v3-activity", "ev_jam");
 
     // ① La ligne basse ne porte QUE ce lien : un seul enfant, aucun autre texte.
     const ligne = carte.locator("[data-v3-bridge]");
     expect(await ligne.evaluate((el) => el.children.length)).toBe(1);
-    expect(await ligne.innerText()).toBe("Voir l'activité");
+    expect(await ligne.innerText()).toBe("Voir la sortie");
     await expect(ligne.locator(".v3-bridge-trace")).toHaveCount(0);
     await expect(ligne.locator(".v3-bridge-passion")).toHaveCount(0);
-    // Ni « Trouver une expérience » (UI-3A), ni bouton de participation.
+    // Ni « Autour de cette passion » (UI-3A), ni bouton de participation.
     await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
     await expect(carte.locator("[data-v3-rsvp-go]")).toHaveCount(0);
   }
@@ -274,11 +276,11 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   await expect(perdu).toBeVisible();
   await expect(perdu.locator("[data-v3-bridge]")).toHaveCount(0);
   await expect(perdu).not.toHaveAttribute("data-v3-decore", "1");
-  expect(await perdu.innerText()).not.toContain("Voir l'activité");
+  expect(await perdu.innerText()).not.toContain("Voir la sortie");
 
   // ② Une publication sans activité liée garde exactement l'acquis UI-3A.
   const libre = page.locator('article.post[data-postid="p_libre"]');
-  await expect(libre.locator("[data-v3-tempt]")).toHaveText("Trouver une activité");
+  await expect(libre.locator("[data-v3-tempt]")).toHaveText("Autour de cette passion");
   await expect(libre.locator("[data-v3-activity]")).toHaveCount(0);
 
   // Coupure immédiate : l'ancienne sous-carte revient et le lien UI-3B part,
@@ -291,8 +293,58 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   expect(errors.js, "exceptions JS").toEqual([]);
 });
 
+test("deux messages directs ouvrent une sortie hors du catalogue après une seule lecture", async ({ page }) => {
+  await boot(page);
+  const lien = { eventId: "ev_ancienne", mood: "irl", fromSupabase: true };
+  await seedFeed(page, [post("p_un", "Alice", lien), post("p_deux", "Bruno", lien), post("p_libre", "Diane")], []);
+  const appels = await page.evaluate(() => {
+    window._supaReal = true;
+    const ids = [];
+    window.supaLoadEvents = (auteur, id) => {
+      ids.push([auteur, id]);
+      return new Promise(resolve => { window.__rendreSortie = resolve; });
+    };
+    PassioUIV3.decorateFeed();
+    PassioUIV3.decorateFeed();
+    return ids;
+  });
+  expect(appels).toEqual([[null, "ev_ancienne"]]);
+  await page.evaluate(ev => window.__rendreSortie([ev]), evenement("ev_ancienne", "Une balade ancienne"));
+  await expect(page.locator('#feedList [data-v3-activity="ev_ancienne"]')).toHaveCount(2);
+  await page.locator('article[data-postid="p_deux"] [data-v3-activity]').click();
+  await expect(page.locator("#eventDetailHeroTitle")).toContainText("Une balade ancienne");
+});
+
+test("une lecture tardive ou refusée ne révèle aucune sortie au compte suivant", async ({ page }) => {
+  await boot(page);
+  const lien = { eventId: "ev_privee", mood: "irl", fromSupabase: true };
+  await seedFeed(page, [post("p_prive", "Alice", lien), post("p_libre", "Diane")], []);
+  const resultat = await page.evaluate(async ev => {
+    window._supaReal = true;
+    let terminer;
+    const comptes = [];
+    window.supaLoadEvents = (auteur, id) => {
+      comptes.push([MY_UID, id]);
+      return new Promise(resolve => { terminer = resolve; });
+    };
+    const premier = MY_UID;
+    PassioUIV3.decorateFeed();
+    MY_UID = "autre_compte";
+    terminer([ev]);
+    await Promise.resolve();
+    PassioUIV3.decorateFeed();
+    terminer([]);
+    await Promise.resolve();
+    PassioUIV3.decorateFeed();
+    return { premier, comptes, enCache: !!_findCanonicalEvent(ev.id) };
+  }, evenement("ev_privee", "Sortie privée"));
+  expect(resultat.comptes).toEqual([[resultat.premier, "ev_privee"], ["autre_compte", "ev_privee"]]);
+  expect(resultat.enCache).toBe(false);
+  await expect(page.locator('article[data-postid="p_prive"] [data-v3-activity]')).toHaveCount(0);
+});
+
 // ── ⑤ + ⑥ Le tap ouvre la fiche, sans rien écrire ──────────────────────────
-test("« Voir l'activité » ouvre la fiche attendue, sans aucun RSVP", async ({ page }) => {
+test("« Voir la sortie » ouvre la fiche attendue, sans aucun RSVP", async ({ page }) => {
   await boot(page, { killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
 
@@ -541,7 +593,7 @@ for (const largeur of [320, 390, 430]) {
 // mesure l'application telle que la reçoit un utilisateur depuis le 2026-08-28,
 // une fois UI-4B basculé en actif par défaut. Le partage des rôles est explicite
 // et voulu — deux modules ne peuvent pas écrire la même barre d'action :
-//   · le lien « Voir l'activité » de la carte du Feed reste à UI-3B ;
+//   · le lien « Voir la sortie » de la carte du Feed reste à UI-3B ;
 //   · l'action primaire de la fiche est servie par UI-4B, seul écrivain, via le
 //     garde `ficheReprisParV4b()` de js/ui-v3-passerelle.js.
 test("cohabitation : le lien reste à UI-3B, l'action de la fiche revient à UI-4B", async ({ page }) => {
@@ -558,7 +610,7 @@ test("cohabitation : le lien reste à UI-3B, l'action de la fiche revient à UI-
   // ① La carte du Feed est inchangée : le lien appartient toujours à UI-3B.
   const carte = page.locator('article.post[data-postid="p_direct"]');
   await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
-  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
+  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir la sortie");
   await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
 
   await carte.locator("[data-v3-activity]").click();

@@ -71,9 +71,7 @@ test.describe("UI-6 — composer de publication", () => {
     const hote = page.locator("#v6Composer");
     await expect(hote).toBeVisible();
 
-    // L'ordre du §9 : texte, média, Passion, Mood, Publier.
-    // ⚠️ « Options » (le `<details>` `.v6-affiner`) a été RETIRÉ le 2026-09-03 :
-    // le mood se lit et se choisit directement sous la passion.
+    // La catégorie précède le champ dont elle détermine l'exemple.
     // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). La ligne d'identité
     // « Publier en tant que … » ouvrait cette liste ; elle a été retirée sur
     // demande de Benjamin — le multi-profil n'existe plus, l'expéditeur n'est
@@ -95,7 +93,7 @@ test.describe("UI-6 — composer de publication", () => {
         return "?";
       });
     })).toEqual([
-      "texte", "media", "apercu", "apercu", "passio", "select", "mood", "audience", "publier",
+      "mood", "texte", "media", "apercu", "apercu", "passio", "select", "audience", "publier",
     ]);
 
     // Une seule zone média, deux portes.
@@ -107,13 +105,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Options"))).toBe(false);
-    // Il suit la passion, jamais l'inverse : le bloc de destination se lit d'un
-    // trait (où je publie, puis sous quelle envie).
-    expect(await page.evaluate(() => {
-      const ids = Array.from(document.getElementById("v6Composer").children);
-      return ids.indexOf(document.getElementById("fieldMood"))
-           > ids.indexOf(document.getElementById("fieldPassion"));
-    })).toBe(true);
+    await expect(hote.locator("#fieldMood + .field #postText")).toBeVisible();
     // Et il reste CLIQUABLE d'un seul geste, sans rien déplier.
     await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
     await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
@@ -257,6 +249,7 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
+    await expect(page.locator("#fieldMood + .field #postText")).toBeVisible();
     // ⚠️ Ce test exigeait le libellé « +10 pts » et des pastilles score/Passia
     // visibles : c'était ce que ce lot MASQUAIT. L'ADR-009 a depuis retiré la
     // mécanique elle-même, donc le kill switch n'a plus rien à rendre de ce
@@ -305,7 +298,7 @@ test.describe("UI-6 — composer de publication", () => {
       const m = await page.evaluate(() => {
         const doc = document.documentElement;
         const h = document.getElementById("v6Composer");
-        const cibles = Array.from(h.querySelectorAll(".v6-lien, .v6-media-btn, [data-v6-publier]"));
+        const cibles = Array.from(h.querySelectorAll(".v6-lien, .v6-media-btn, [data-v6-publier], #postMoodRow button"));
         return {
           deborde: doc.scrollWidth > doc.clientWidth + 1,
           dansLeCadre: h.getBoundingClientRect().right <= doc.clientWidth + 1,
@@ -315,6 +308,26 @@ test.describe("UI-6 — composer de publication", () => {
       expect(m.deborde, "la page déborde horizontalement").toBe(false);
       expect(m.dansLeCadre, "le composer sort du cadre").toBe(true);
       expect(m.minHauteur, "cible tactile").toBeGreaterThanOrEqual(44);
+
+      const categories = page.getByRole("group", { name: "Que veux-tu partager ?" }).getByRole("button");
+      await expect(categories).toHaveCount(4);
+      const positions = await categories.evaluateAll((boutons) => boutons.map((bouton) => {
+        const cadre = bouton.getBoundingClientRect();
+        const texte = document.createRange();
+        texte.selectNodeContents(bouton);
+        const libelle = texte.getBoundingClientRect();
+        return {
+          haut: cadre.top,
+          visible: cadre.left >= 0 && cadre.right <= document.documentElement.clientWidth,
+          lisible: libelle.left >= cadre.left && libelle.right <= cadre.right
+            && libelle.top >= cadre.top && libelle.bottom <= cadre.bottom,
+        };
+      }));
+      for (const position of positions) {
+        expect(position.haut, "les quatre catégories tiennent sur une rangée").toBe(positions[0].haut);
+        expect(position.visible, "le bouton tient à l’écran").toBe(true);
+        expect(position.lisible, "le libellé tient dans son bouton").toBe(true);
+      }
     });
   }
 });

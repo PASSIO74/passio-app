@@ -10,13 +10,9 @@
 //      et recouvrait la grille et « Voir mon fil ». Le focus ne se pose plus
 //      qu'avec un pointeur fin (souris, pavé) — le poste de travail garde son
 //      raccourci, et c'est le témoin de ce cas.
-//   ② TROIS MESSAGES À LA FOIS. Le toast « Ton fil est à toi », la note
-//      « Gardées sur cet appareil » et la bulle « Un Fil construit autour de tes
-//      passions » arrivaient ensemble, le toast (3 s) posé SUR la rangée
-//      « Ne plus afficher / Compris » de la bulle (700 ms). Quand la note se
-//      pose À L'ÉCRAN, le toast se tait ; sinon la bulle attend la fin du
-//      toast — échéance qu'aucun autre appel n'avance (② ter), et jamais sous
-//      les Paramètres (② quater).
+//   ② APRÈS LE CHOIX, LA PREMIÈRE PUBLICATION RESTE LISIBLE. La note locale
+//      ou le toast confirme le choix. Le repère Découvrir se relance depuis
+//      « Revoir les repères ».
 //   ③ LA NOTE SUR TROIS LIGNES. À 390 px, texte, bouton et × passaient chacun
 //      sur leur ligne, le × seul en bas à gauche : 124 px de haut. Le × sort du
 //      flux, à droite.
@@ -115,41 +111,47 @@ test.describe("① témoin — poste de travail : le raccourci reste", () => {
 test.describe("② après « Voir mon fil », un message à la fois", () => {
   test.use({ viewport: IPHONE_13 });
 
-  test("② première validation : la note parle, aucun toast, la bulle seule", async ({ page }) => {
+  test("② première validation : la note confirme le choix et le fil reste lisible", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
     await choisirEtValider(page, ["musique", "cuisine", "voyage"]);
     await expect(page.locator("#frNoteLocale")).toBeVisible();
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(3500);   // la durée d'un toast, s'il était parti
+    await page.waitForTimeout(4200);   // couvre le repère différé et la durée du toast
     const vu = await lireSonde(page);
     expect(vu.length).toBeGreaterThan(40);
     expect(vu.filter((e) => e.toast).length).toBe(0);
-    expect(vu.some((e) => e.bulle)).toBe(true);
+    expect(vu.some((e) => e.bulle)).toBe(false);
+    expect(await page.evaluate(() => !!PassioFirstRun.prefs().tour.decouvrir)).toBe(false);
+    const note = page.locator("#frNoteLocale");
+    await note.getByRole("button", { name: "Créer mon compte", exact: true }).click();
+    await expect(page.locator("#onboarding")).toBeVisible();
+    await expect(page.locator("#authTabSignup")).toHaveAttribute("aria-selected", "true");
   });
 
-  test("② bis validation suivante (note déjà vue) : le toast, PUIS la bulle — jamais ensemble", async ({ page }) => {
+  test("② bis validation suivante : le toast confirme le choix et le repère reste disponible à la demande", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
     await choisirEtValider(page, ["musique"]);
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
-    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
     await lireSonde(page);
+
+    const note = page.locator("#frNoteLocale");
+    await note.getByRole("button", { name: "Fermer", exact: true }).click();
 
     // Le panneau, rouvert pour modifier : la note a déjà été vue.
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await expect(page.locator("#frValider")).toBeVisible();
     await choisirEtValider(page, ["cuisine"]);
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 7000 });
+    await page.waitForTimeout(4200);
     const vu = await lireSonde(page);
-    // Le toast ET la bulle ont bien parlé (sinon « jamais ensemble » serait vrai à vide)…
+    await expect(note).toHaveCount(0);
     expect(vu.some((e) => e.toast)).toBe(true);
-    expect(vu.some((e) => e.bulle)).toBe(true);
-    // …jamais en même temps…
-    expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
-    // …et dans cet ordre : la bulle après le toast.
-    const premierToast = vu.findIndex((e) => e.toast), premiereBulle = vu.findIndex((e) => e.bulle);
-    expect(premiereBulle).toBeGreaterThan(premierToast);
+    expect(vu.some((e) => e.bulle)).toBe(false);
+
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
+    await expect(page.locator('.fr-tip[data-fr-tip="decouvrir"] .fr-tip-title')).toHaveText("Ce qui t'inspire");
+    await page.getByRole("button", { name: "Compris", exact: true }).click();
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
   });
 
   test("② ter fil défilé : la note se pose hors de l'écran, donc le toast parle", async ({ page }) => {
@@ -171,12 +173,10 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
   });
 
-  test("② quinquies validée depuis un autre écran : le retour au fil n'avance pas la bulle sous le toast", async ({ page }) => {
+  test("② quinquies validation depuis un autre écran : le retour au fil reste libre de repère", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
     await choisirEtValider(page, ["musique"]);
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
-    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
     await lireSonde(page);
     // Ailleurs que sur le fil, la personne rouvre ses passions et valide :
     // `validerPersonnalisation` ramène au fil (`goTo`), ce qui replanifie
@@ -186,22 +186,18 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await expect(page.locator("#frValider")).toBeVisible();
     await choisirEtValider(page, ["cuisine"]);
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 7000 });
+    await page.waitForTimeout(4200);
     const vu = await lireSonde(page);
     expect(vu.some((e) => e.toast)).toBe(true);
-    expect(vu.some((e) => e.bulle)).toBe(true);
-    expect(vu.filter((e) => e.toast && e.bulle)).toEqual([]);
+    expect(vu.some((e) => e.bulle)).toBe(false);
   });
 
   test("② quater Paramètres ouverts pendant l'attente : aucune bulle ne se pose dessous", async ({ page }) => {
     await bootVisiteur(page);
     await ouvrirPanneauParLaCarte(page);
     await choisirEtValider(page, ["musique"]);
-    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
-    await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
     await lireSonde(page);
-    // Validation suivante (toast, donc bulle différée de 3,3 s) — et la personne
-    // ouvre les Paramètres pendant ce temps.
+    // La personne ouvre les paramètres juste après la deuxième validation.
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await expect(page.locator("#frValider")).toBeVisible();
     await choisirEtValider(page, ["cuisine"]);
@@ -209,13 +205,13 @@ test.describe("② après « Voir mon fil », un message à la fois", () => {
     await expect(page.locator("#devPanel")).toHaveClass(/active/);
     await page.waitForTimeout(4200);
     const vu = await lireSonde(page);
-    expect(vu.some((e) => e.toast)).toBe(true);   // le chemin différé a bien été pris
+    expect(vu.some((e) => e.toast)).toBe(true);
     expect(vu.filter((e) => e.bulle)).toEqual([]);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// ③ La note « Gardées sur cet appareil »
+// ③ La note sur les passions enregistrées
 // ─────────────────────────────────────────────────────────────────────────
 for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
   test.describe(`③ ${nom} (${vp.width} × ${vp.height})`, () => {
@@ -228,9 +224,9 @@ for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
       await lireSonde(page);
       const note = page.locator("#frNoteLocale");
       await expect(note).toBeVisible();
-      // La bulle du repère s'ancre ici : on la referme pour toucher la note.
-      await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 5000 });
-      await page.locator(".fr-tip").getByRole("button", { name: "Compris" }).click();
+      await expect(note.locator(".fr-note-locale-texte")).toHaveText("Tes passions sont enregistrées sur cet appareil.");
+      await expect(note.getByRole("button", { name: "Créer mon compte", exact: true })).toBeVisible();
+      await expect(page.locator(".fr-tip")).toHaveCount(0);
       await note.scrollIntoViewIfNeeded();
 
       const g = await page.evaluate(() => {

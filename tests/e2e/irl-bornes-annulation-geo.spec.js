@@ -51,6 +51,28 @@ const champs = (page, v) => page.evaluate((v) => {
 }, v);
 const jourPlus = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
+test("une heure oubliée se corrige sans perdre le titre ni le lieu", async ({ page }) => {
+  await banc(page);
+  await page.evaluate(() => openCreateEvent());
+  const heure = page.locator("#evTime");
+  await expect(heure).toHaveValue("");
+  await page.locator("#evTitle").fill("Marche au parc");
+  await page.locator("#evCity").fill("Annecy");
+  await page.locator("#evVenue").fill("Entrée du parc");
+  await page.locator("#evAddress").fill("1 rue du Parc");
+  const publier = page.locator('#modalContent button[onclick^="submitEvent"]');
+  await publier.click();
+  await expect(heure).toBeFocused();
+  expect(await page.evaluate(() => state.userEvents.some(e => e.title === "Marche au parc"))).toBe(false);
+  await expect(page.locator("#evTitle")).toHaveValue("Marche au parc");
+  await expect(page.locator("#evVenue")).toHaveValue("Entrée du parc");
+  await expect(page.locator("#evAddress")).toHaveValue("1 rue du Parc");
+  await heure.fill("10:35");
+  await publier.click();
+  await expect.poll(() => page.evaluate(() => state.userEvents.filter(e => e.title === "Marche au parc")
+    .map(e => [e.time, e.venue, e.address]))).toEqual([["10:35", "Entrée du parc", "1 rue du Parc"]]);
+});
+
 test.describe("IRL-11 — bornes revalidées au point d'écriture", () => {
   test("① prix négatif refusé, capacité négative refusée, rien n'est créé", async ({ page }) => {
     await banc(page);

@@ -1336,6 +1336,7 @@
     }
 
     .input::placeholder, .textarea::placeholder { color: var(--muted-2); }
+    #postText::placeholder { color: var(--muted); opacity: 1; }
     .input:focus, .textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
@@ -1348,11 +1349,15 @@
       line-height: 1.5;
     }
 
+    #fieldMessage,
+    #fieldMood,
     label.field {
       display: block;
       margin-bottom: 12px;
     }
 
+    #fieldMessage > label,
+    #fieldMood > span,
     label.field > span {
       display: block;
       font-size: 11px;
@@ -1363,6 +1368,8 @@
        toute `> span`, elles prenaient aussi les aides et les 164 caractères de la
        case de consentement de l'inscription. L'intitulé est toujours le premier
        enfant ; une case à cocher passe son `input` d'abord, donc son texte non. */
+    #fieldMessage > label,
+    #fieldMood > span:first-child,
     label.field > span:first-child {
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -2518,6 +2525,9 @@
 
     /* Event card clickable */
     .event-card { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .irl-avis-exemples { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px; margin-bottom: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+    .irl-avis-exemples p { flex: 1 1 230px; margin: 0; font-size: 14px; line-height: 1.45; }
+    .irl-avis-exemples button { min-height: 44px; }
     .event-card:active { transform: scale(0.985); }
 
     .attendees {
@@ -3687,6 +3697,8 @@
     .empty-title { font-size: 15px; font-weight: 800; letter-spacing: -0.015em; color: var(--text-dim); margin-bottom: 5px; }
     .empty-text { font-size: 12px; line-height: 1.5; max-width: 250px; margin: 0 auto; }
     .empty .btn { margin-top: 14px; }
+    .irl-empty-actions { display: grid; justify-items: center; gap: 6px; margin-top: 14px; }
+    .irl-empty-actions .btn { margin: 0; min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 
     /* ===== Cascade d'apparition des posts du Fil =====
        La cascade ne joue QU'au premier affichage du fil de la session : la
@@ -6492,7 +6504,8 @@
     }
     .vlive-paused {
       position: absolute; inset: 0;
-      z-index: 6;
+      /* SOUS les barres (z-index 5) : au-dessus, il cachait le bouton Reprendre (2026-11-26). */
+      z-index: 4;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
       background: rgba(0,0,0,0.72);
       color: #fff; font-size: 46px;
@@ -6500,6 +6513,17 @@
       backdrop-filter: blur(4px);
     }
     .vlive-paused span { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+    .vlive-resume-btn {
+      margin-top: 14px; min-height: 48px; padding: 0 26px;
+      border: 0; border-radius: 999px; cursor: pointer;
+      background: #7c3aed; color: #fff;
+      font-size: 16px; font-weight: 800; letter-spacing: 0.01em;
+      box-shadow: 0 6px 20px rgba(124,58,237,0.45);
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .vlive-resume-btn:active { transform: scale(0.96); }
+    .vlive-en-pause .vlive-bottom { pointer-events: none; }
+    .vlive-en-pause .vlive-chat-bar, .vlive-en-pause .vlive-react-rail { pointer-events: auto; }
     .vlive-unmute {
       position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
@@ -6561,6 +6585,9 @@
     }
     .vlive-chat-bar input {
       flex: 1;
+      /* min-width: 0 : sans lui le champ refusait de retrecir et poussait
+         micro + camera de l'hote HORS de l'ecran sous 420 px (2026-11-26). */
+      min-width: 0;
       min-height: 44px;
       border: 1px solid rgba(255,255,255,0.35);
       border-radius: 999px;
@@ -8314,8 +8341,13 @@ body.ctx-locked #appMain { overflow: hidden; }
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+:root.passio-ui-3 .v3-tempt[data-v3-sortie] {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
-/* ── Feuille « Trouver une expérience » ─────────────────────────────────────
+/* ── Feuille « Autour de cette passion » ─────────────────────────────────────
    Elle hérite de `.v2-sheet-backdrop` / `.v2-sheet` : mêmes rayons, même
    safe-area, même piège de focus. Seul le trait de tête est propre au lot. */
 #v3PassioSheet .v3-sheet-trace {
@@ -9239,24 +9271,50 @@ body.ctx-locked #appMain { overflow: hidden; }
   -ms-overflow-style: none;
 }
 :root.passio-ui-5 .v5-actions::-webkit-scrollbar { display: none; }
-/* LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : les quatre actions tiennent en
-   grille 2 × 2, sans défilement — les deux sorties vers le réel étaient hors de
-   l'écran à 390 px. Les sorties IRL portent un liseré corail (§5 : le corail
-   signale le passage au réel). Cibles de 44 px conservées. */
+/* Une seule surface sur la vidéo. Les quatre gestes restent à portée du pouce. */
 :root.passio-ui-5 .v5-actions.v5-actions-grille {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(max-content, 1fr));
+  max-width: 310px;
+  gap: 0;
+  margin-top: 6px;
+  padding: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  background: rgba(23, 21, 43, 0.78);
   overflow: visible;
 }
 :root.passio-ui-5 .v5-actions-grille .v5-chip {
-  width: 100%;
-  padding: 11px 10px;
-  white-space: normal;
-  text-align: center;
-  line-height: 1.15;
+  display: flex;
+  min-width: 44px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-size: clamp(11px, 3vw, 13px);
+  font-weight: 600;
+  line-height: 1.2;
 }
-:root.passio-ui-5 .v5-actions-grille .v5-chip-irl {
-  border: 2px solid var(--v2-coral, #ff6b57);
+:root.passio-ui-5 .v5-actions-grille svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+:root.passio-ui-5 .v5-chip-irl svg {
+  color: #ffac9e;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Verre dépoli sur la vidéo : les chips doivent rester lisibles sur n'importe
@@ -9301,10 +9359,11 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* Le signal posé : violet plein, l'identité de la découverte (§5). */
-:root.passio-ui-5 .v5-chip-actif {
+:root.passio-ui-5 .v5-actions-grille .v5-chip[aria-pressed="true"] {
   background: var(--v2-violet, #6d32f4);
-  border-color: transparent;
-  color: #fff;
+}
+:root.passio-ui-5 .v5-chip[aria-pressed="true"] svg {
+  fill: currentColor;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -9534,35 +9593,50 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-6 #fieldPassion { display: none; }
 :root.passio-ui-6 #fieldPassion.v6-ouvert { display: block; }
 
-/* Le mood, À DÉCOUVERT sous le choix de passion (2026-09-03).
-   ⚠️ Le repli « Options » (`.v6-affiner`, un `<details>`) est RETIRÉ avec
-   tout ce qui l'habillait : une règle qui survit à la disparition de sa cible
-   est un piège maison connu. Le champ prend désormais la même peau calme que
-   la ligne « Passion : … » juste au-dessus, pour qu'ils se lisent comme UN
-   seul bloc de destination. */
+/* Le choix de catégorie reste visible juste avant le message. */
 :root.passio-ui-6 #fieldMood {
-  display: block;
   margin: 0;
-  padding: 10px 12px 2px;
-  border-radius: 12px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
 }
 :root.passio-ui-6 #fieldMood > span {
-  display: block;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
 }
-/* Les pastilles remplissent la largeur : à 320 px les quatre tiennent sur deux
-   rangs sans qu'aucune ne déborde, et chacune garde sa cible tactile. */
-:root.passio-ui-6 #fieldMood .pill-row {
-  gap: 6px;
-  justify-content: flex-start;
-  margin-bottom: 8px;
+/* Les mots courts restent entiers. Les deux intitulés composés se partagent
+   la largeur restante, y compris avec une police système plus large. */
+:root.passio-ui-6 #postMoodRow {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(max-content, .85fr) repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
 }
-:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 40px; }
+:root.passio-ui-6 #postMoodRow .pill {
+  justify-content: center;
+  padding: 5px 1px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--v2-titre, inherit);
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+:root.passio-ui-6 #postMoodRow .pill.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
 
 /* Le bouton de publication est le nœud HISTORIQUE, déplacé tel quel : il porte
    la hauteur de `.btn` (39 px), sous la cible tactile de 44 px du projet. On la
@@ -10700,7 +10774,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 .fr-welcome {
   position: relative;
   margin: 10px 12px 14px;
-  padding: 16px 44px 16px 16px;
+  padding: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -10724,12 +10798,9 @@ body.ctx-locked #appMain { overflow: hidden; }
   gap: 8px;
   margin-top: 14px;
 }
-/* Un SEUL bouton dans la rangée depuis le 2026-11-03 : il la remplit. Les deux
-   rangées du bas reprennent les 28 px que `padding-right` réserve au × (44 px
-   contre 16 à gauche) : elles sont SOUS lui, et sans ça le bouton seul
-   paraissait décalé vers la gauche. */
 .fr-welcome-actions .btn { flex: 1 1 auto; min-height: 44px; }
-.fr-welcome-actions, .fr-welcome-liens { margin-right: -28px; }
+.fr-welcome-close ~ .fr-welcome-title, .fr-welcome-close ~ .fr-welcome-text { margin-right: 28px; }
+.fr-welcome-parcourir { flex-basis: 100%; }
 .fr-welcome-close {
   position: absolute;
   top: 4px;
@@ -10831,7 +10902,16 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ── Spécialités rattachées aux passions retenues ─────────────────────────── */
 .fr-specs { margin-top: 12px; }
-.fr-spec-intro { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.fr-specs > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 12px 4px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-specs > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fr-spec-bloc { margin-bottom: 10px; }
 .fr-spec-titre { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
 .fr-spec-row { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -10905,16 +10985,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   padding: 12px 14px;
   max-width: calc(100vw - 24px);
 }
-.fr-tip-eyebrow {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 3px;
-}
-.fr-tip-title { font-size: 13px; font-weight: 800; color: var(--text); line-height: 1.3; }
-.fr-tip-text { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.fr-tip-title { font-size: 15px; font-weight: 800; color: var(--text); line-height: 1.3; }
+.fr-tip-text { font-size: 14px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
 .fr-tip-actions {
   display: flex;
   align-items: center;
@@ -12434,14 +12506,27 @@ button, a, label, select, summary,
   grid-template-columns: auto minmax(0, 1fr) auto auto;
 }
 
-/* ── Bobines : l'indice de défilement passe AU-DESSUS du bloc auteur (2026-11-10) ──
-   Posé à 88 px du bas avant le lot UI-5, il tombait depuis exactement sur la
-   rangée de capsules (« Ça m'intéresse », « À vivre près de moi »…) et sur le
-   « Co » de « Commentaire », cinq secondes à CHAQUE ouverture du lecteur.
-   260 px : au-dessus du bloc auteur même avec une légende de quatre lignes,
-   sous le premier bouton de la colonne d'actions. LOT-3 : 310 px, la rangée
-   de capsules tient désormais sur deux lignes (grille 2 × 2). */
-:root.passio-ui-5 .reels-hint { bottom: calc(310px + env(safe-area-inset-bottom)); }
+/* Sous les commandes du haut, l'indice laisse la place aux catégories et aux
+   légendes qui peuvent prendre plusieurs lignes en bas de la bobine. */
+:root.passio-ui-5 .reels-hint {
+  top: calc(132px + env(safe-area-inset-top));
+  bottom: auto;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Entre « Bobines » et le compteur, même quand la légende remonte. */
+  :root.passio-ui-5 .reels-hint {
+    top: calc(12px + env(safe-area-inset-top));
+    width: max-content;
+    max-width: calc(100% - 224px);
+    white-space: normal;
+    text-align: center;
+    padding: 4px;
+  }
+}
+@media (orientation: landscape) and (max-height: 340px) {
+  /* La légende peut atteindre l'en-tête. Les deux flèches restent visibles. */
+  :root.passio-ui-5 .reels-hint { display: none; }
+}
 
 /* LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) : retour aux derniers messages.
    Rond de 44 px au-dessus de la saisie ; avec un compte, il devient une pastille
@@ -12803,6 +12888,22 @@ button, a, label, select, summary,
 .studio-brouillon { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); font-size: 13px; color: var(--text); }
 .studio-brouillon-texte { flex: 1 1 100%; min-width: 0; }
 .studio-brouillon .btn { min-height: 44px; }
+#studioSuiteSortie:not([hidden]) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+#studioSuiteSortie strong { flex-basis: 100%; font-size: 14px; }
+#studioSuiteSortie .btn { min-height: 44px; }
 /* CRE-C06 : les envies à 44 px / 13 px. */
 #postMoodRow .pill { min-height: 44px; font-size: 13px; padding-left: 14px; padding-right: 14px; }
 /* CRE-C07 : sous UI-6, les boutons du composer suffisent — plus de seconde zone d'envoi sombre. */
@@ -12838,7 +12939,6 @@ button, a, label, select, summary,
 .psel-item.psel-item-choisie { background: rgba(124, 58, 237, 0.08); }
 .psel-item.psel-item-choisie .psel-item-plus { color: var(--accent); font-weight: 800; }
 .psel-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: #5b21b6; font-weight: 600; }
-:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }
 
 /* LOT-16 (audit UX/UI du 2026-11-10) — le profil.
    PRO-C21 : la pastille du nombre de publications est RETIRÉE (2026-11-13,
@@ -13980,3 +14080,115 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 /* 2026-11-23 (retour de Benjamin) : une publication qui a des j'aime montre un
    coeur ROUGE plein, meme quand le j'aime vient d'un autre compte. */
 .post-action .pa-ico.pa-coeur-rouge { color: #ef4444; }
+#prochaineSortie:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  width: calc(100% - 32px);
+  margin: 8px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+#prochaineSortie .prochaine-sortie-libelle, #prochaineSortie time {
+  grid-column: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+#prochaineSortie .prochaine-sortie-titre { grid-column: 1; overflow-wrap: anywhere; }
+#prochaineSortie .prochaine-sortie-fleche { grid-area: 1 / 2 / 4 / 3; align-self: center; font-size: 24px; }
+
+/* ── STORY FAÇON INSTAGRAM (2026-11-26) : mode « Créer » + éditeur de texte en place ──
+   Le bouton de la capture remplissait l'écran d'un aplat, sans consigne ni curseur.
+   Désormais : fond + clavier d'un seul toucher, couleurs, fond du texte, alignement. */
+.me-cap-side.me-cap-creer {
+  font-size: 17px; font-weight: 900; letter-spacing: -0.5px;
+  border-color: #fff;
+  background: linear-gradient(135deg, #7c3aed, #ec4899 55%, #f97316);
+}
+.me-creer-hint {
+  position: absolute; left: 0; right: 0; top: 40%; z-index: 3;
+  display: none; text-align: center; padding: 0 24px;
+  color: rgba(255,255,255,0.8); font-size: 28px; font-weight: 800;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.25); pointer-events: none;
+}
+.media-editor.phase-edit.me-fond.me-vide:not(.me-texte-ouvert) .me-creer-hint { display: block; }
+.media-editor.phase-edit.me-fond .me-canvas { cursor: text; }
+.me-tool.me-tool-fond {
+  width: 44px; min-width: 44px; padding: 0; border-radius: 999px;
+  border: 2.5px solid #fff; background: linear-gradient(135deg,#ec4899,#f97316);
+}
+.media-editor:not(.me-fond) .me-tool-fond { display: none; }
+.me-overlay.me-en-edition { visibility: hidden; }
+.media-editor.me-texte-ouvert .me-topbar,
+.media-editor.me-texte-ouvert .me-toolbar,
+.media-editor.me-texte-ouvert .me-bottom,
+.media-editor.me-texte-ouvert .me-preview-ctrls { visibility: hidden; }
+.story-txt-fond {
+  display: inline; padding: 2px 10px; border-radius: 8px; line-height: 1.5;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  text-shadow: none;
+}
+.me-texte-editeur {
+  position: absolute; inset: 0; z-index: 40;
+  display: none; flex-direction: column;
+  background: rgba(0,0,0,0.42);
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+}
+.me-texte-editeur.open { display: flex; }
+.me-te-haut { display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.me-te-btn {
+  width: 44px; height: 44px; flex: 0 0 auto; padding: 0;
+  border-radius: 999px; border: 2px solid rgba(255,255,255,0.9);
+  background: rgba(0,0,0,0.28); color: #fff; cursor: pointer;
+  font-size: 18px; font-weight: 900;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.me-te-btn.actif { background: #fff; color: #111; }
+.me-te-btn:active, .me-te-ok:active, .me-te-couleur:active { transform: scale(0.92); }
+.me-texte-editeur:not(.avec-fond) .me-te-fond { display: none; }
+.me-te-ok {
+  margin-left: auto; min-height: 44px; padding: 0 20px;
+  border-radius: 999px; border: none; background: #fff; color: #111;
+  font-size: 15px; font-weight: 900; cursor: pointer;
+}
+.me-te-couleurs {
+  display: flex; gap: 12px; padding: 16px 18px 6px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.me-te-couleurs::-webkit-scrollbar { display: none; }
+.me-te-couleur {
+  position: relative; flex: 0 0 auto; width: 30px; height: 30px; padding: 0;
+  border-radius: 999px; border: 3px solid #fff; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  transition: transform 120ms ease;
+}
+.me-te-couleur::after { content: ""; position: absolute; inset: -7px; }
+.me-te-couleur.actif { transform: scale(1.25); }
+.me-te-zone {
+  flex: 1; min-height: 0; display: flex; align-items: flex-start; justify-content: center;
+  padding: 10vh 18px 18px; cursor: text;
+}
+.me-te-champ {
+  width: 100%; max-width: 88%; min-height: 48px; box-sizing: border-box;
+  margin: 0; padding: 6px 12px; border: none; outline: none; resize: none; overflow-y: auto;
+  border-radius: 10px; background: transparent; color: #fff; caret-color: #fff;
+  font-family: inherit; font-size: 30px; font-weight: 800; line-height: 1.25;
+  text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  -webkit-appearance: none; appearance: none;
+}
+.me-te-champ::placeholder { color: rgba(255,255,255,0.6); }
+/* Le filet anti-zoom iOS (16 px !important, pointeurs grossiers) écrasait la taille
+   du champ : on écrivait en 16 px un texte posé en 30. 30 px reste au-dessus du seuil. */
+@media (pointer: coarse) {
+  .me-texte-editeur textarea.me-te-champ { font-size: 30px !important; }
+}
+@supports (field-sizing: content) {
+  .me-te-champ { field-sizing: content; width: auto; min-width: 3ch; }
+}

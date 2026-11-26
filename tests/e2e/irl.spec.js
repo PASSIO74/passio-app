@@ -277,7 +277,10 @@ test.describe("IRL — cycle de vie d'un événement", () => {
       // inscrit (`prevenir_inscrits_activite`) : le client fait UN appel, plus une
       // écriture par personne. Le chemin serveur : prevenir-inscrits-serveur.spec.js.
       window.supaInsertNotif = (to, kind) => { window._notified.push(to + ":" + kind); };
-      window.supaPrevenirInscrits = async (id, genre) => { window._notified.push(id + ":" + genre); return { ok: true, destinataires: 1, prevenues: 1 }; };
+      window.supaPrevenirInscrits = async (id, genre, cle, message) => {
+        window._notified.push({ id, genre, message });
+        return { ok: true, destinataires: 1, prevenues: 1 };
+      };
       goTo("irl"); renderIRL();
       // Chemin de notification : il n'est emprunté QUE si l'écriture serveur a
       // réussi (on ne prévient pas d'une modification qui n'a pas été persistée).
@@ -285,12 +288,44 @@ test.describe("IRL — cycle de vie d'un événement", () => {
       window.supaUpdateEvent = async () => true;
       openCreateEvent("mine1");
       document.getElementById("evTitle").value = "Titre corrigé";
+      document.getElementById("evTime").value = "19:00";
+      document.getElementById("evAddress").value = "Place de la Gare";
     });
     await page.evaluate(() => submitEvent("mine1"));
     await expect.poll(() => page.evaluate(() => _findCanonicalEvent("mine1").title)).toBe("Titre corrigé");
     // Un seul événement : l'édition ne doit PAS créer de doublon.
     expect(await page.evaluate(() => state.userEvents.filter((e) => e.id === "mine1").length)).toBe(1);
-    await expect.poll(() => page.evaluate(() => window._notified)).toEqual(["mine1:event_update"]);
+    await expect.poll(() => page.evaluate(() => window._notified)).toEqual([{
+      id: "mine1", genre: "event_update",
+      message: "a modifié l’horaire et le lieu de rendez-vous de ta sortie.",
+    }]);
+  });
+
+  test("la cloche relit une sortie modifiée même si la fiche en mémoire est ancienne", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ id: "sortie_modifiee", address: "Quai Napoléon III" }]);
+    const urlAvant = page.url();
+    await page.evaluate(() => {
+      const ev = _findCanonicalEvent("sortie_modifiee");
+      window._supaReal = true;
+      window.supaLoadEvents = (_, id) => id === ev.id
+        ? new Promise(resolve => { window.finirLecture = () => resolve([{ ...ev, address: "Place de la Gare", time: "19:00" }]); })
+        : Promise.resolve([]);
+      state.notifications = [{ id: "avis_maj", kind: "event_update", refId: ev.id, text: "Modification", unread: true }];
+      window.supaLoadNotifications = async () => [];
+      openNotifications();
+    });
+    // La ligne reste affichée pendant que le démarrage renouvelle le cache.
+    await page.evaluate(() => { state.notifications = []; });
+    await page.locator(".notif-row[data-sortie-modifiee]").click();
+    await expect(page.locator("#modalBackdrop")).toHaveClass(/active/);
+    await page.evaluate(() => window.finirLecture());
+    await expect(page.locator("#eventDetailPage")).toContainText("Place de la Gare");
+    await expect(page.locator("#eventDetailPage")).toContainText("19:00");
+    await expect(page).toHaveURL(/#event-sortie_modifiee$/);
+    await page.goBack();
+    await expect(page).toHaveURL(urlAvant);
+    await expect(page.locator("#eventDetailPage")).toBeHidden();
   });
 
   test("modification refusée par la base : l'écran dit POURQUOI les inscrits ne sont pas prévenus", async ({ page }) => {
@@ -422,6 +457,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Dans le passé";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
       document.getElementById("evDate").value = "2020-01-01";
     });
@@ -431,6 +467,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Bien créé";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
     });
     await page.evaluate(() => submitEvent());
@@ -447,6 +484,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => {
       openCreateEvent();
       document.getElementById("evTitle").value = "Club hebdo";
+      document.getElementById("evTime").value = "18:00";
       document.getElementById("evCity").value = "Paris";
       document.getElementById("evRecurrence").value = "weekly";
       _evSyncRecurrenceUi();

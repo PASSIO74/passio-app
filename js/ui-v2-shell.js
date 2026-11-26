@@ -363,6 +363,7 @@
   }
 
   function openCreateSheet() {
+    if (window.PassioFirstRun) window.PassioFirstRun.fermerBulle();
     fermerAideContextuelle();
     var wrap = ensureSheet();
     renderCreateSheet();
@@ -805,20 +806,26 @@
     if (old && old.parentNode) old.parentNode.removeChild(old);
     if (!uiV2Enabled()) return false;
 
-    var rienChoisi = !!(ctx && ctx.nothingSelected);
-    // FIL-C17 (audit UX/UI du 2026-11-10) : « Tu ne suis encore personne »
-    // conseille de suivre quelqu'un — le bouton y mène (écran Rechercher).
-    var aucunSuivi = !rienChoisi && !!(ctx && ctx.aucunSuivi);
-    var genre = rienChoisi ? "explore" : (aucunSuivi ? "people" : "create");
+    var genre = "create";
+    var libelle = "Publier quelque chose";
+    var activer = openCreateSheet;
+    if (ctx && ctx.envieAVide) {
+      genre = "reset_intents";
+      libelle = "Voir tout mon fil";
+      activer = function () { window.setFeedIntent("for_you"); };
+    } else if (ctx && (ctx.nothingSelected || ctx.aucunSuivi)) {
+      genre = ctx.nothingSelected ? "explore" : "people";
+      libelle = ctx.nothingSelected ? "Explorer les passions" : "Trouver des personnes à suivre";
+      activer = function () { goToScreen("explore"); };
+    }
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn primary v2-empty-cta";
     btn.setAttribute("data-v2-empty-cta", genre);
-    btn.textContent = rienChoisi ? "Explorer les passions" : (aucunSuivi ? "Trouver des personnes à suivre" : "Publier quelque chose");
+    btn.textContent = libelle;
     btn.addEventListener("click", function () {
       track("ui_v2_empty_cta", { kind: genre });
-      if (genre !== "create") { goToScreen("explore"); return; }
-      openCreateSheet();
+      activer();
     });
     emptyEl.appendChild(btn);
     return true;
