@@ -16,6 +16,7 @@ function openPostOptions(postId) {
   // Pas pour un repartage : son texte est la citation de l'original.
   var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   const aRelier = (state.userPosts || []).find(p => p.id === postId && p.authorId === MY_UID && p.sortieARelier);
+  const messagePourSortie = messageDisponiblePourSortie(postId);
   var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
     ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
@@ -25,6 +26,10 @@ function openPostOptions(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
+      ${messagePourSortie?.sortieDifferee === "aProposer" ? `<button type="button" class="post-option" id="proposerSortieMessage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-9 3v5m-2.5-2.5h5"/></svg>
+        Proposer une sortie
+      </button>` : ""}
       ${_editBtn}
       ${aRelier ? '<button type="button" class="post-option" id="reprendreLienSortie">Réessayer le lien avec ma sortie</button>' : ""}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
@@ -34,6 +39,13 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+  if (messagePourSortie?.sortieDifferee === "aProposer") {
+    document.getElementById("proposerSortieMessage").onclick = () => {
+      const post = messageDisponiblePourSortie(postId);
+      if (post?.sortieDifferee === "aProposer" && post.authorId === messagePourSortie.authorId) ouvrirSortieDepuisMessage(post);
+      else closeModal();
+    };
+  }
   if (aRelier) {
     const sortieId = aRelier.sortieARelier;
     document.getElementById("reprendreLienSortie").onclick = async function () {

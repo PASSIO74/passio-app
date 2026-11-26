@@ -1996,8 +1996,19 @@ function _applyUserState(data) {
     state.supabasePosts = keepSupa;
     if (!Array.isArray(state.userPosts)) state.userPosts = [];
     if (postsLocauxAGarder.length) {
-      const idsServeur = new Set(state.userPosts.map(function (p) { return p && p.id; }));
-      const ajouts = postsLocauxAGarder.filter(function (p) { return !idsServeur.has(p.id); });
+      const parId = new Map(state.userPosts.filter(Boolean).map(p => [p.id, p]));
+      const ajouts = postsLocauxAGarder.filter(p => !parId.has(p.id));
+      // Un autre appareil peut avoir écrit son état juste avant le choix « Plus tard ».
+      for (const local of postsLocauxAGarder) {
+        const distant = parId.get(local.id);
+        if (!local.sortieDifferee || !distant || distant.authorId !== MY_UID) continue;
+        const repriseTerminee = (local.sortieDifferee === "publiee" && !local.sortieARelier)
+          || (distant.sortieDifferee === "publiee" && !distant.sortieARelier);
+        if (!distant.sortieDifferee || local.sortieDifferee === "publiee") distant.sortieDifferee = local.sortieDifferee;
+        if (!distant.eventId && local.eventId) distant.eventId = local.eventId;
+        if (distant.eventId || repriseTerminee) delete distant.sortieARelier;
+        else if (!distant.sortieARelier && local.sortieARelier) distant.sortieARelier = local.sortieARelier;
+      }
       if (ajouts.length) {
         state.userPosts = ajouts.concat(state.userPosts)
           .sort(function (a, b) { return (Number(b && b.createdAt) || 0) - (Number(a && a.createdAt) || 0); });
