@@ -61,7 +61,7 @@ test.describe("Créer un compte depuis la première page", () => {
   // Les deux liens de la carte partagent une rangée qui passe à la ligne : à
   // 320 px ils s'empilent, ils ne se coupent pas. Les deux états de la carte.
   const ETATS_LIENS = [
-    { nom: "nouveau venu", prefs: null, attendu: ["Créer un compte", "J'ai déjà un compte"] },
+    { nom: "nouveau venu", prefs: null, attendu: ["Parcourir le fil", "Créer un compte", "J'ai déjà un compte"] },
     { nom: "passions choisies", prefs: PREFS_CHOISIES, attendu: ["Modifier mes passions", "Me connecter"] },
   ];
   for (const etat of ETATS_LIENS) {

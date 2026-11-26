@@ -184,7 +184,7 @@ test.describe("Carte de bienvenue", () => {
     await page.evaluate(() => renderFeed());
     await expect(carte).toBeVisible();
 
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await carte.getByRole("button", { name: "Parcourir le fil" }).click();
     await expect(carte).toHaveCount(0);
     // Fermée, elle n'insiste pas DANS CETTE SESSION : un simple repeint du fil
     // ne la ramène pas.
@@ -211,7 +211,7 @@ test.describe("Carte de bienvenue", () => {
     // que pour la session en cours.
     await bootVisiteur(page);
     await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Parcourir le fil" }).click();
     await expect(page.locator("#frWelcome")).toHaveCount(0);
 
     // Nouvelle visite = `sessionStorage` reparti de zéro, comme quand on rouvre
@@ -226,7 +226,7 @@ test.describe("Carte de bienvenue", () => {
 
     // Et la preuve que ce n'est pas le rechargement qui la ramène : refermée,
     // elle reste absente tant que la clé de session est là.
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Parcourir le fil" }).click();
     await page.reload();
     await page.waitForTimeout(3400);
     expect(await page.locator("#frWelcome").count()).toBe(0);
@@ -240,6 +240,8 @@ test.describe("Carte de bienvenue", () => {
     // plus ce qu'est PASSIO, c'est que ses choix ne vivent que sur cet appareil.
     await expect(carte).toContainText("Tes passions sont sur cet appareil");
     await expect(carte).toContainText("Crée ton compte pour les garder");
+    await expect(carte.getByRole("button", { name: "Fermer la carte de bienvenue" })).toBeVisible();
+    await expect(carte.getByRole("button", { name: "Parcourir le fil" })).toHaveCount(0);
     await expect(carte).not.toContainText("Bienvenue sur PASSIO");
     // Le seul bouton est celui que le message annonce : créer le compte
     // (son ouverture est mesurée dans creer-compte-accueil.spec.js).
@@ -265,9 +267,46 @@ test.describe("Carte de bienvenue", () => {
     await expect(carte).toBeVisible({ timeout: 15000 });
     await expect(carte.locator(".btn")).toHaveCount(1);
     await expect(carte.locator(".fr-welcome-cta")).toHaveText("Choisir mes passions");
-    await expect(carte.locator(".fr-welcome-lien")).toHaveCount(2);
+    await expect(carte.locator(".fr-welcome-lien")).toHaveCount(3);
+    await expect(carte.locator(".fr-welcome-close")).toHaveCount(0);
     await expect(carte.locator(".fr-welcome-signup")).toHaveText("Créer un compte");
     await expect(carte.locator(".fr-welcome-signin")).toHaveText("J'ai déjà un compte");
+  });
+
+  test("Parcourir le fil au clavier laisse lire une fiche et revenir, jusqu'au rejeu demandé", async ({ page }) => {
+    await bootVisiteur(page);
+    const fil = page.getByRole("region", { name: "Publications", exact: true });
+    const carte = page.locator("#frWelcome");
+    await carte.getByRole("button", { name: "Choisir mes passions" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(carte.getByRole("button", { name: "Parcourir le fil" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(fil).toBeFocused();
+    await expect(carte).toHaveCount(0);
+    expect(await page.evaluate(feedActif)).toBe(true);
+
+    await fil.locator(".post .post-body").first().click();
+    const fiche = page.locator("#postDetailPage");
+    await expect(fiche).toBeVisible();
+    await fiche.getByRole("button", { name: "Fermer la publication" }).click();
+    await expect(fiche).toBeHidden();
+    await page.clock.install();
+    await page.clock.runFor(1800);
+    await expect(page.locator(".fr-tip, .passio-hint")).toHaveCount(0);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().passions)).toEqual([]);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().tour)).toEqual({});
+
+    await page.reload();
+    await expect(fil.locator(".post").first()).toBeVisible();
+    await page.clock.runFor(3500);
+    await expect(page.locator("#frWelcome, .fr-tip, .passio-hint")).toHaveCount(0);
+    expect(await page.evaluate(() => PassioFirstRun.prefs().tour)).toEqual({});
+
+    await page.locator("#topbarParametres").click();
+    await page.locator("#devPanel").getByText("Personnalisation", { exact: true }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
+    await page.clock.runFor(1000);
+    await expect(page.locator('.fr-tip[data-fr-tip="decouvrir"]')).toBeVisible();
   });
 });
 
@@ -438,7 +477,8 @@ test.describe("Personnalisation", () => {
 test.describe("Tour contextuel", () => {
   test("trois indications au maximum, non bloquantes, mémorisées, relançables", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-close").click(); // libère la place
+    await page.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
 
     const bulle = page.locator(".fr-tip");
     await expect(bulle).toBeVisible({ timeout: 15000 });
@@ -504,7 +544,8 @@ test.describe("Tour contextuel", () => {
 
   test("navigation clavier : Entrée active une seule fois, Échap ferme", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.getByRole("button", { name: "Choisir mes passions" }).click();
+    await page.getByRole("button", { name: "Revoir les repères" }).click();
     await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 15000 });
 
     // Le bouton « Compris » reçoit le focus : la bulle est utilisable au clavier.
@@ -1304,7 +1345,7 @@ test.describe("Cadrage mobile", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 
       // Les actions de la carte tiennent dans l'écran et sont assez grandes.
-      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-signin", "#frWelcome .fr-welcome-close"]) {
+      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-parcourir", "#frWelcome .fr-welcome-signup", "#frWelcome .fr-welcome-signin"]) {
         const b = await page.locator(sel).boundingBox();
         expect(b.height).toBeGreaterThanOrEqual(43.5);
         expect(b.x).toBeGreaterThanOrEqual(-0.5);

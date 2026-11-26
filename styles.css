@@ -10774,7 +10774,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 .fr-welcome {
   position: relative;
   margin: 10px 12px 14px;
-  padding: 16px 44px 16px 16px;
+  padding: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -10798,12 +10798,9 @@ body.ctx-locked #appMain { overflow: hidden; }
   gap: 8px;
   margin-top: 14px;
 }
-/* Un SEUL bouton dans la rangée depuis le 2026-11-03 : il la remplit. Les deux
-   rangées du bas reprennent les 28 px que `padding-right` réserve au × (44 px
-   contre 16 à gauche) : elles sont SOUS lui, et sans ça le bouton seul
-   paraissait décalé vers la gauche. */
 .fr-welcome-actions .btn { flex: 1 1 auto; min-height: 44px; }
-.fr-welcome-actions, .fr-welcome-liens { margin-right: -28px; }
+.fr-welcome-close ~ .fr-welcome-title, .fr-welcome-close ~ .fr-welcome-text { margin-right: 28px; }
+.fr-welcome-parcourir { flex-basis: 100%; }
 .fr-welcome-close {
   position: absolute;
   top: 4px;
