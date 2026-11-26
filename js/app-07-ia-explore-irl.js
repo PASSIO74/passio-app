@@ -6083,8 +6083,10 @@ function activiteEstPrivee(ev) { return !!(ev && ev.visibilite === "privee"); }
 // Une activité RÉCURRENTE est une série de vraies activités (`seriesId`
 // partagé, chacune sa ligne `events`). Inviter à l'une d'une série privée,
 // c'est ouvrir TOUTES les dates que j'organise dans cette série : sans cela,
-// l'invité ne voyait que la première (2026-11-26). Rend true si toutes les
-// écritures sont en base.
+// l'invité ne voyait que la première (2026-11-26). Rend le verdict de la
+// date INVITÉE seule : une autre date de la série restée locale (publication
+// échouée, la clé étrangère refuse son invitation) ne doit pas faire tomber
+// l'invitation elle-même — elle est notée au journal.
 function _idsSerieActivite(ev) {
   var ids = [ev.id];
   if (!ev.seriesId) return ids;
@@ -6098,8 +6100,15 @@ function _idsSerieActivite(ev) {
 }
 function inviterSerieActivite(ev, userIds) {
   if (typeof supaInviterActivite !== "function") return Promise.resolve(false);
-  return Promise.all(_idsSerieActivite(ev).map(function (id) { return supaInviterActivite(id, userIds); }))
-    .then(function (r) { return r.every(Boolean); });
+  var autres = _idsSerieActivite(ev).filter(function (id) { return id !== ev.id; });
+  return supaInviterActivite(ev.id, userIds).then(function (ok) {
+    if (ok) autres.forEach(function (id) {
+      supaInviterActivite(id, userIds).then(function (o) {
+        if (!o) { try { diagLog("invitation série privée refusée " + id); } catch (e) {} }
+      });
+    });
+    return ok;
+  });
 }
 function marquerActiviteHorsFil(evId) {
   if (!evId || !state.user) return;

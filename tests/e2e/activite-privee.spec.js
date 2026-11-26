@@ -197,6 +197,7 @@ test.describe("Activité privée, sur invitation", () => {
     await remplir(page);
     await page.evaluate(() => submitEvent());
     await expect.poll(() => page.evaluate(() => window.__journal.includes("carte"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => new Set(window.__invites.map((i) => i.evId)).size)).toBe(3);
     const r = await page.evaluate(() => ({
       ids: state.userEvents.map((e) => e.id).sort(),
       invites: window.__invites.map((i) => i.evId).sort(),
@@ -205,5 +206,25 @@ test.describe("Activité privée, sur invitation", () => {
     expect(r.ids.length).toBe(3);
     expect(r.privees).toBe(true);
     expect([...new Set(r.invites)].sort()).toEqual(r.ids);
+  });
+
+  test("⑧ bis une date de la série refusée ne fait pas tomber l'invitation", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      window.supaInviterActivite = async (evId, ids) => {
+        window.__journal.push("invite"); window.__invites.push({ evId, ids });
+        return evId === state.userEvents[state.userEvents.length - 1].id;   // seule la date principale passe
+      };
+    });
+    await ouvrirConvEtProposer(page);
+    await page.evaluate(() => {
+      const sel = document.getElementById("evRecurrence");
+      sel.value = "weekly"; sel.dispatchEvent(new Event("change"));
+      document.getElementById("evOccurrences").value = "3";
+    });
+    await remplir(page);
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("carte"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("notif:event_invite"))).toBe(true);
   });
 });
