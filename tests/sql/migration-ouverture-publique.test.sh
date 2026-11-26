@@ -312,7 +312,9 @@ cols_client="$(node -e '
   const s = require("fs").readFileSync(process.argv[1], "utf8");
   const m = s.match(/const _EVENT_COLS_PUBLIC = \[([\s\S]*?)\]\.join/);
   if (!m) { console.log("INTROUVABLE"); process.exit(0); }
-  console.log(m[1].replace(/["\s]/g, "").split(",").filter(Boolean).sort().join(","));
+  // `visibilite` est accordée par une migration POSTÉRIEURE
+  // (migration_activites_privees_2026-11-26.sql, son banc le compare) : hors de ce GRANT-ci.
+  console.log(m[1].replace(/["\s]/g, "").split(",").filter((c) => c && c !== "visibilite").sort().join(","));
 ' "$APP08")"
 cols_grant="$(awk '/^grant select \($/{f=1;next} f&&/^\) on public.events to anon;/{f=0} f' "$MIGRATION" \
   | tr -d ' \n' | tr ',' '\n' | grep -v '^$' | sort | paste -sd, -)"

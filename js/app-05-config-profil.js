@@ -1774,8 +1774,19 @@ async function ensureCallPushSubscription() {
     }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    let clePublique = CALL_VAPID_PUBLIC;
+    if (typeof SUPABASE_URL === "string" && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co") {
+      const cle = await supa.functions.invoke("notify-call", { body: { type: "cle_web_push" } });
+      if (cle.error || !/^[A-Za-z0-9_-]{87}$/.test(cle.data?.publicKey || "")) return;
+      clePublique = cle.data.publicKey;
+      const avant = sub?.options?.applicationServerKey;
+      if (avant && btoa(String.fromCharCode(...new Uint8Array(avant))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_") !== clePublique) {
+        if (!await sub.unsubscribe()) return;
+        sub = null;
+      }
+    }
     if (!sub) {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(CALL_VAPID_PUBLIC) });
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(clePublique) });
     }
     // ⚠️ L'ÉCHEC ÉTAIT DEUX FOIS MUET, ET `_callPushReady` MENTAIT.
     // Mesuré en production : 17 × POST /rest/v1/push_subscriptions → 403, sur
@@ -1805,7 +1816,7 @@ async function ensureCallPushSubscription() {
     if (refusAcces && !window._pushEndpointRepris) {
       window._pushEndpointRepris = true;
       try { await sub.unsubscribe(); } catch (e) {}
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(CALL_VAPID_PUBLIC) });
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(clePublique) });
       r = await supa.from("push_subscriptions").upsert(
         { endpoint: sub.endpoint, user_id: MY_UID, subscription: sub.toJSON() },
         { onConflict: "endpoint" }

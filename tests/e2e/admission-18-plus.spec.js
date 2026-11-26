@@ -326,6 +326,10 @@ test.describe("Admission 18+ — la porte côté client", () => {
     await installerAdmission(page, "admitted");
     await semerEvenement(page);
     await page.evaluate(() => setEventRsvp("ev_admission", "going"));
+    // L'inscription peut proposer les rappels (« Un rappel avant d'y aller ? »)
+    // là où le navigateur sait pousser : cette modale n'a rien à voir avec la
+    // porte d'âge et faussait la mesure ci-dessous. On la ferme.
+    await page.evaluate(() => { if (document.querySelector("#modalBackdrop.active")) closeModal(); });
     // La règle rattrape le compte APRÈS son inscription.
     await page.evaluate(() => { window.__statutServeur = "minor"; _admissionStatut = null; });
     const r = await page.evaluate(async () => {
