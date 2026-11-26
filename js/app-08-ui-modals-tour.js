@@ -2220,19 +2220,62 @@ function storyVoterSondage(bouton) {
 }
 // Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
 // la publication, garantit un seul envoi des messages de mention.
+// La marque est posée AVANT la lecture des destinataires : une lecture en échec
+// ne prévient personne, et ne rouvre pas un second envoi au prochain rejeu.
 function _prevenirMentionsBobine(post) {
   if (!post || post._mentionsEnvoyees) return;
   post._mentionsEnvoyees = true;
   try { saveState(); } catch (e) {}
-  try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
+  try {
+    Promise.resolve(_lireDestinatairesMentions(post.authorId, post.overlays)).then(function (ids) {
+      if (ids && ids.length && String(post.authorId) === String(MY_UID)) _prevenirMentionsStory(post.overlays, "bobine", ids);
+    }).catch(function () {});
+  } catch (e) {}
+}
+// Les comptes mentionnés qui pourront LIRE la publication (red team du
+// 2026-11-26) : si mon compte est PRIVÉ (`profiles.is_private`, relu au
+// SERVEUR), les policies de lecture des stories et des posts ne laissent passer
+// que mes abonnés ACCEPTÉS — un autre compte mentionné apprendrait qu'un contenu
+// existe sans pouvoir l'ouvrir. Compte public : tous les mentionnés (hors
+// comptes que j'ai bloqués). `null` si
+// une lecture échoue (jamais un échec pris pour « tout le monde »), ou si
+// l'auteur n'est plus le compte courant.
+async function _lireDestinatairesMentions(auteur, overlays) {
+  if (!auteur || String(auteur) !== String(MY_UID)) return null;
+  if (typeof supa === "undefined" || !supa || typeof supa.from !== "function") return null;
+  var ids = [];
+  (overlays || []).forEach(function (o) {
+    if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    var u = String(o.uid);
+    if (u === String(MY_UID) || u.indexOf("u_") === 0 || ids.indexOf(u) >= 0) return;
+    // Un compte que J'AI bloqué n'est jamais prévenu. Celui qui M'A bloqué ne
+    // se voit pas d'ici (RLS `blocks_select_own`) : la messagerie le refuse.
+    if (typeof isBlocked === "function" && isBlocked(u)) return;
+    ids.push(u);
+  });
+  if (!ids.length) return ids;
+  var moi = MY_UID;
+  try {
+    var prof = await supa.from("profiles").select("is_private").eq("id", moi).maybeSingle();
+    if (moi !== MY_UID || !prof || prof.error || !prof.data) return null;
+    if (prof.data.is_private !== true) return ids;
+    var ab = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", moi)).in("follower_id", ids);
+    if (moi !== MY_UID || !ab || ab.error) return null;
+    var acceptes = new Set((ab.data || []).map(function (r) { return String(r.follower_id); }));
+    return ids.filter(function (id) { return acceptes.has(id); });
+  } catch (e) { return null; }
 }
 var ME_MENTIONS_MAX = 10;
 // Après une publication RÉUSSIE : chaque compte mentionné (réel, pas soi, pas
 // un compte d'exemple « u_… ») reçoit un message, comme sur Instagram.
-function _prevenirMentionsStory(overlays, quoi) {
+// `seulement` : la liste des comptes AUTORISÉS (`_lireDestinatairesMentions`) —
+// tout autre compte mentionné n'est pas prévenu. Un tableau vide = personne.
+function _prevenirMentionsStory(overlays, quoi, seulement) {
   var deja = {}, n = 0;
+  var permis = Array.isArray(seulement) ? new Set(seulement.map(String)) : null;
   (overlays || []).forEach(function (o) {
     if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    if (permis && !permis.has(String(o.uid))) return;
     if (n >= ME_MENTIONS_MAX) return;
     if (deja[o.uid] || o.uid === MY_UID || String(o.uid).indexOf("u_") === 0) return;
     deja[o.uid] = 1; n++;
@@ -2702,7 +2745,11 @@ async function mePublish() {
       // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
       // story qu'il ne pourra pas ouvrir.
       var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
-      if (ok === true && serveur) _prevenirMentionsStory(story.overlays, "story");
+      if (ok !== true || !serveur) return;
+      // Compte privé : seuls les abonnés ACCEPTÉS mentionnés sont prévenus.
+      Promise.resolve(_lireDestinatairesMentions(story.authorId, story.overlays)).then(function (ids) {
+        if (ids && ids.length && String(story.authorId) === String(MY_UID)) _prevenirMentionsStory(story.overlays, "story", ids);
+      }).catch(function () {});
     });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
