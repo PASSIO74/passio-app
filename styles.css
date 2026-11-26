@@ -14202,3 +14202,132 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .ev-visibilite-choix:has(input:checked) { border-color:var(--accent, #7c3aed); box-shadow:0 0 0 1px var(--accent, #7c3aed) inset; }
 .ev-au-fil[hidden] { display:none; }
 .ev-badge-privee { display:inline-flex; align-items:center; gap:6px; margin:6px 0 2px; padding:4px 10px; border-radius:999px; background:rgba(124,58,237,0.12); color:var(--accent, #7c3aed); font-size:12px; font-weight:700; }
+/* ── STORY : TAILLE, POLICES, DESSIN (2026-11-26, lot A) ── */
+.me-te-polices {
+  display: flex; gap: 8px; padding: 10px 18px 2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.me-te-polices::-webkit-scrollbar { display: none; }
+.me-te-police {
+  flex: 0 0 auto; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid rgba(255,255,255,0.7); background: rgba(0,0,0,0.3);
+  color: #fff; font-size: 15px; cursor: pointer; white-space: nowrap;
+}
+.me-te-police.actif { background: #fff; color: #111; border-color: #fff; }
+/* Réglette de taille verticale, bord gauche (comme Instagram). Pivotée plutôt
+   que `writing-mode` : WebKit ancien ne sait pas dresser un range. */
+.me-te-taille {
+  position: absolute; left: -78px; top: 300px; width: 190px; height: 32px;
+  transform: rotate(-90deg); margin: 0; z-index: 2;
+  accent-color: #fff; background: transparent; cursor: pointer;
+}
+.me-dessin-couche {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
+  pointer-events: none; overflow: visible;
+}
+.media-editor.phase-capture .me-dessin-couche { display: none; }
+.media-editor.me-dessin .me-dessin-couche {
+  pointer-events: auto; z-index: 25; touch-action: none; cursor: crosshair;
+}
+.media-editor.me-dessin .me-overlays { pointer-events: none; }
+.media-editor.me-dessin .me-topbar,
+.media-editor.me-dessin .me-toolbar,
+.media-editor.me-dessin .me-bottom,
+.media-editor.me-dessin .me-preview-ctrls,
+.media-editor.me-dessin .me-creer-hint { visibility: hidden; }
+.me-dessin-barre {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 40; display: none;
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  background: linear-gradient(rgba(0,0,0,0.45), transparent);
+  pointer-events: none;
+}
+.me-dessin-barre.open { display: block; }
+.me-dessin-barre > * { pointer-events: auto; }
+.me-dessin-point { display: block; border-radius: 999px; background: #fff; }
+.story-ov-dessin {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: visible;
+}
+/* La ligne « Visible par… » (LOT-15) a grandi .me-bottom : il recouvrait la moitié
+   basse des outils (Aa, 😀, GIF…), un toucher bas tombait dans le vide. La barre
+   d'outils passe au-dessus et remonte d'autant (story ET bobine). */
+.me-toolbar { z-index: 11; bottom: calc(env(safe-area-inset-bottom) + 92px); }
+.me-preview-ctrls { bottom: calc(env(safe-area-inset-bottom) + 166px); }
+
+/* ── STORY / BOBINE : STICKERS (2026-11-26, lot B) ── */
+.me-panneau.me-panneau-stickers { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.me-sticker-choix {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-width: 92px; min-height: 76px; padding: 8px 10px; border-radius: 16px; border: none;
+  background: rgba(255,255,255,0.14); color: #fff; font-weight: 800; font-size: 13px; cursor: pointer;
+}
+.me-sticker-choix-ico { font-size: 24px; line-height: 1; }
+.me-panneau.me-panneau-liste { display: block; max-height: 52vh; overflow-y: auto; }
+.me-sticker-titre { color: #fff; font-weight: 800; font-size: 15px; padding: 2px 4px 10px; }
+.me-sticker-recherche {
+  width: 100%; box-sizing: border-box; min-height: 44px; margin-bottom: 8px; padding: 0 14px;
+  border-radius: 12px; border: none; background: rgba(255,255,255,0.16); color: #fff; font-size: 16px;
+}
+.me-sticker-liste { display: flex; flex-direction: column; gap: 6px; }
+.me-sticker-ligne {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  min-height: 48px; padding: 8px 12px; border-radius: 12px; border: none; cursor: pointer;
+  background: rgba(255,255,255,0.1); color: #fff; font-size: 14px;
+}
+.me-sticker-ligne span { font-size: 12px; opacity: 0.75; }
+.me-sticker-vide { color: rgba(255,255,255,0.75); font-size: 13px; padding: 8px 4px; }
+/* Le sticker lui-même : même allure dans l'éditeur et dans les lecteurs. */
+.me-sticker, .story-sticker {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 14px; border-radius: 14px; border: none;
+  background: #fff; color: #111; font-family: inherit; font-size: 16px; font-weight: 800;
+  line-height: 1.2; text-align: center; text-shadow: none; white-space: normal;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.me-sticker span, .story-sticker span { font-size: 12px; font-weight: 600; color: #6b7280; }
+.me-sticker-mention, .story-sticker.st-mention { color: #7c3aed; flex-direction: row; }
+.me-sticker-question, .story-sticker.st-question { min-width: 200px; background: #fff; }
+.me-sticker-rep, .story-sticker .st-q-rep {
+  display: block; width: 100%; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
+  border: none; background: #f3f4f6; color: #6b7280; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; min-height: 36px;
+}
+/* Lecteur : la couche d'overlays passe AU-DESSUS des zones de tap (z 2) pour que
+   les stickers se touchent ; elle-même ne capte rien, seul un sticker le fait. */
+.story-overlays-layer { z-index: 3; }
+.story-sticker { pointer-events: auto; cursor: pointer; }
+.story-sticker.st-question { cursor: default; }
+/* Panneau de stickers : couleurs du THÈME (le panneau suit --bg-card, clair ou sombre). */
+.me-sticker-choix, .me-sticker-ligne, .me-sticker-recherche { background: rgba(124,58,237,0.10); color: var(--text, #111); }
+.me-sticker-titre { color: var(--text, #111); }
+.me-sticker-vide { color: var(--muted, #6b7280); }
+.me-sticker-recherche::placeholder { color: var(--muted, #6b7280); }
+/* Les panneaux de l'éditeur passent au-dessus de la barre d'outils remontée (lot A). */
+.me-panneau { bottom: calc(env(safe-area-inset-bottom, 0px) + 168px); }
+/* L aide du fil (« Touche le nom… ») flottait AU-DESSUS de l editeur de story/bobine
+   et y interceptait les touchers (2026-11-26) : masquee tant qu il est ouvert. */
+body:has(#mediaEditor.open) .passio-hint { display: none !important; }
+
+/* ── STORY : STICKER SONDAGE (2026-11-26, lot C) ── */
+.me-sticker-sondage, .story-sticker.st-sondage { min-width: 230px; gap: 6px; cursor: default; }
+.me-sticker-opt {
+  display: block; width: 100%; padding: 9px 12px; border-radius: 10px;
+  background: #f3f4f6; color: #111 !important; font-size: 15px !important; font-weight: 800 !important;
+}
+.story-sticker .st-sd-opt {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 44px; padding: 0 14px; border-radius: 10px; border: none; overflow: hidden;
+  background: #f3f4f6; color: #111; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer;
+}
+.story-sticker .st-sd-opt::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: rgba(124,58,237,0.18); transition: width 450ms ease;
+}
+.story-sticker.st-sd-vote .st-sd-opt::before { width: var(--pct, 0%); }
+.story-sticker.st-sd-vote .st-sd-opt.st-sd-mien::before { background: rgba(124,58,237,0.38); }
+.story-sticker.st-sd-vote .st-sd-opt { cursor: default; }
+.story-sticker .st-sd-lib, .story-sticker .st-sd-pct { position: relative; color: #111; font-size: 15px; font-weight: 800; }
+.story-sticker .st-sd-total { font-size: 12px; color: #6b7280; min-height: 0; }
+.story-sticker.st-sondage:not(.st-sd-vote) .st-sd-total { display: none; }
+/* Idem au-dessus du LECTEUR de story : l aide du fil y volait les touchers des stickers. */
+body:has(#storyViewer.active) .passio-hint { display: none !important; }
