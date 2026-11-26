@@ -3434,7 +3434,7 @@ function renderIRL() {
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
           <div class="event-meta">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${activiteEstPrivee(e) ? '<span class="pill ev-tag-privee" title="Seules les personnes invitées la voient">🔒 Privée</span>' : ""}${priceTag}${typeTag}${spotsTag}</div>
         </div>
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
       </div>
@@ -4985,7 +4985,7 @@ function openEventDetails(id, remplaceModale = false) {
       ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
       <!-- LOT-12 (PAR-C12) : la porte « Partager » du milieu est retirée — deux suffisent
            (l'icône du haut, la barre d'actions du bas), et la feuille propose l'invitation. -->
-      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
+      ${over || (activiteEstPrivee(ev) && !_canManageEvent(ev)) ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">${activiteEstPrivee(ev) ? "Invités" : "Inviter"}</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
     ${_eventSocialProofHtml(ev)}
@@ -6079,6 +6079,37 @@ function poserChoixVisibilite(valeur) {
   majChoixVisibilite();
 }
 function activiteEstPrivee(ev) { return !!(ev && ev.visibilite === "privee"); }
+
+// Une activité RÉCURRENTE est une série de vraies activités (`seriesId`
+// partagé, chacune sa ligne `events`). Inviter à l'une d'une série privée,
+// c'est ouvrir TOUTES les dates que j'organise dans cette série : sans cela,
+// l'invité ne voyait que la première (2026-11-26). Rend le verdict de la
+// date INVITÉE seule : une autre date de la série restée locale (publication
+// échouée, la clé étrangère refuse son invitation) ne doit pas faire tomber
+// l'invitation elle-même — elle est notée au journal.
+function _idsSerieActivite(ev) {
+  var ids = [ev.id];
+  if (!ev.seriesId) return ids;
+  try {
+    (state.userEvents || []).forEach(function (o) {
+      if (o && o.id && o.seriesId === ev.seriesId && ids.indexOf(o.id) === -1
+          && activiteEstPrivee(o) && (o.organizerId || o.authorId || MY_UID) === MY_UID) ids.push(o.id);
+    });
+  } catch (e) {}
+  return ids.slice(0, 30);
+}
+function inviterSerieActivite(ev, userIds) {
+  if (typeof supaInviterActivite !== "function") return Promise.resolve(false);
+  var autres = _idsSerieActivite(ev).filter(function (id) { return id !== ev.id; });
+  return supaInviterActivite(ev.id, userIds).then(function (ok) {
+    if (ok) autres.forEach(function (id) {
+      supaInviterActivite(id, userIds).then(function (o) {
+        if (!o) { try { diagLog("invitation série privée refusée " + id); } catch (e) {} }
+      });
+    });
+    return ok;
+  });
+}
 function marquerActiviteHorsFil(evId) {
   if (!evId || !state.user) return;
   const l = Array.isArray(state.user.activitesHorsFil) ? state.user.activitesHorsFil : [];
@@ -7653,7 +7684,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
         retour("Invitation envoyée au groupe");
       };
       if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
-        supaInviterActivite(ev.id, admis).then(function (ok) {
+        inviterSerieActivite(ev, admis).then(function (ok) {
           if (ok) poursuivre();
           else toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning");
         });
@@ -7667,7 +7698,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   // 1:1 : la personne de la conversation a déjà passé le verdict à l'ouverture.
   // Privée : son droit de lecture part AVANT la carte (elle peut l'ouvrir aussitôt).
   if (activiteEstPrivee(ev) && ctx.userId && typeof supaInviterActivite === "function") {
-    supaInviterActivite(ev.id, [ctx.userId]).then(function (ok) {
+    inviterSerieActivite(ev, [ctx.userId]).then(function (ok) {
       if (!ok) { toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning"); return; }
       if (!envoyerCarte()) return;
       notifier(ctx.userId);
@@ -7735,6 +7766,7 @@ function carteActiviteMessage(texte, c, isMe) {
     corps = '<div class="mca-date" aria-hidden="true"><span>' + escapeHtml(String(d.day)) + '</span><span>' + escapeHtml(d.month) + '</span></div>'
       + '<div class="mca-infos"><div class="mca-titre">' + escapeHtml(ev.title || "Activité") + '</div>'
       + '<div class="mca-quand">' + escapeHtml(quand + (ev.city ? " · " + ev.city : "")) + '</div>'
+      + (activiteEstPrivee(ev) ? '<div class="mca-privee">🔒 Invitation privée</div>' : '')
       + (annulee ? '<div class="mca-etat mca-annulee">Annulée</div>' : finie ? '<div class="mca-etat">Terminée</div>' : '')
       + '</div>';
   } else {
@@ -8893,6 +8925,10 @@ async function submitEvent(editId) {
   // Funnel : une création = un résultat, celui de l'écriture réellement exécutée.
   // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
+  // Mesure d'usage de l'option privée (2026-11-26) : un compteur, aucune donnée.
+  if (!editId && ok && backend && activiteEstPrivee(ev)) {
+    try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: !!inviteConv, serie: extraOccurrences.length > 0 }); } catch (e) {}
+  }
   renderIRL();
   if (sourceStudio && MY_UID !== auteurStudio) return;
   const studioQuitte = sourceStudio && (!ecranStudio?.classList.contains("active")
@@ -9354,9 +9390,150 @@ function openEventInvite(eventId) {
     + '<input type="search" class="input" id="eventInviteSearch" aria-label="Chercher parmi tes abonnements" placeholder="Chercher parmi tes abonnements…" '
     + 'oninput="_renderEventInviteList()" style="margin-bottom:10px;"/>'
     + '<div id="eventInviteList"></div>'
-    + '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLien(\'' + escapeJsArg(eventId) + '\')">Envoyer le lien à quelqu\'un d\'autre</button>');
+    + (_gererInvitesPrives(ev)
+      ? '<div class="event-invite-section">Invités</div><div id="eventInvitesPrivee" class="ev-invites-privee">Chargement…</div>'
+        + '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLienPrive(\'' + escapeJsArg(eventId) + '\', false)">🔒 Copier le lien d\'invitation privé</button>'
+        + '<button type="button" class="btn ghost block ev-lien-renouveler" onclick="_inviterParLienPrive(\'' + escapeJsArg(eventId) + '\', true)">Renouveler le lien (l\'ancien ne marchera plus)</button>'
+      : '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLien(\'' + escapeJsArg(eventId) + '\')">Envoyer le lien à quelqu\'un d\'autre</button>'));
   _renderEventInviteList();
+  if (_gererInvitesPrives(ev)) _renderInvitesPrives(eventId);
 }
+
+// ── Activité privée : gérer ses invités (2026-11-26) ────────────────────────
+// Réservé à l'organisation d'une activité PRIVÉE. La liste vient de la BASE
+// (`event_invites`) ; « Retirer » passe par `retirer_invite_activite`, qui
+// retire aussi l'inscription et la place dans la discussion. Le lien
+// d'invitation privé porte un code secret (`code_invitation_activite`) :
+// `#ic-<id>.<code>`, rejoint par `rejoindre_par_code` (voir plus bas).
+function _gererInvitesPrives(ev) {
+  return !!(ev && activiteEstPrivee(ev) && _canManageEvent(ev) && window._supaReal);
+}
+function _renderInvitesPrives(eventId) {
+  var box = document.getElementById("eventInvitesPrivee");
+  if (!box || typeof supaLireInvitesActivite !== "function") return;
+  supaLireInvitesActivite(eventId).then(function (ids) {
+    box = document.getElementById("eventInvitesPrivee");
+    if (!box || window._inviteEventId !== eventId) return;
+    if (ids === null) { box.textContent = "Liste des invités indisponible pour le moment."; return; }
+    box.textContent = "";
+    if (!ids.length) { box.textContent = "Personne n'est encore invité."; return; }
+    ids.forEach(function (id) {
+      var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
+      var ligne = document.createElement("div");
+      ligne.className = "event-invite-row";
+      ligne.setAttribute("data-invite-prive", id);
+      var av = document.createElement("div");
+      av.className = "avatar sm";
+      av.style.background = avatarBg(u);
+      av.innerHTML = avatarInner(u);
+      var nom = document.createElement("div");
+      nom.className = "event-invite-nom";
+      nom.textContent = u.name || "Passionné";
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn small ghost event-invite-btn";
+      b.textContent = "Retirer";
+      b.setAttribute("aria-label", "Retirer " + (u.name || "cette personne") + " de l'activité");
+      b.addEventListener("click", function () { retirerInviteActivite(eventId, id, b); });
+      ligne.appendChild(av); ligne.appendChild(nom); ligne.appendChild(b);
+      box.appendChild(ligne);
+    });
+  });
+}
+function retirerInviteActivite(eventId, userId, btn) {
+  if (typeof supaRetirerInviteActivite !== "function") return;
+  if (btn) btn.disabled = true;
+  supaRetirerInviteActivite(eventId, userId).then(function (ok) {
+    if (!ok) {
+      if (btn) btn.disabled = false;
+      toast("Impossible de retirer cette personne — réessaie", "warning");
+      return;
+    }
+    var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+    if (ev) ["attendees", "maybes", "waitlist"].forEach(function (k) {
+      if (Array.isArray(ev[k])) ev[k] = ev[k].filter(function (x) { return x !== userId; });
+    });
+    if (state.user && state.user.eventInvitesSent && Array.isArray(state.user.eventInvitesSent[eventId])) {
+      state.user.eventInvitesSent[eventId] = state.user.eventInvitesSent[eventId].filter(function (x) { return x !== userId; });
+      saveState();
+    }
+    var l = document.querySelector('[data-invite-prive="' + (window.CSS && CSS.escape ? CSS.escape(userId) : userId) + '"]');
+    if (l && l.parentNode) l.parentNode.removeChild(l);
+    toast("Retiré·e de l'activité : elle ne lui est plus visible", "success");
+    try { if (window.tel && tel.action) tel.action("activite_privee_invite_retire", { v: 1 }); } catch (e) {}
+    try { _renderEventInviteList(); } catch (e) {}
+  });
+}
+function _inviterParLienPrive(eventId, renouveler) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev || typeof supaCodeInvitationActivite !== "function") return;
+  supaCodeInvitationActivite(eventId, renouveler).then(function (code) {
+    if (!code) { toast("Lien d'invitation indisponible — réessaie", "warning"); return; }
+    var url = location.origin + location.pathname + "#ic-" + eventId + "." + code;
+    var d = fmtEventDate(ev.date);
+    var texte = "Je t'invite ! " + (ev.title || "Une activité") + ", " + d.day + " " + d.month + " à " + _eventTimeLabel(ev)
+      + ". Invitation privée, rien que pour toi 👇";
+    try { if (window.tel && tel.action) tel.action("activite_privee_lien", { v: 1, renouvele: !!renouveler }); } catch (e) {}
+    partagerOuCopier({ title: ev.title || "PASSIO", text: texte, url: url },
+      renouveler ? "Nouveau lien copié — l'ancien ne fonctionne plus" : "Lien d'invitation privé copié");
+  });
+}
+
+// Ouvrir un lien d'invitation privée `#ic-<id>.<code>`. Sans compte, le lien
+// est GARDÉ sur l'appareil et repris à la connexion (`reprendreInvitationActivite`,
+// appelée au démarrage d'une session) ; il expire au bout de 7 jours.
+var INVITATION_ACTIVITE_RE = /^#ic-([\w-]{1,100})\.([0-9a-f]{64})$/;
+var INVITATION_ACTIVITE_CLE = "passio_invitation_activite_v1";
+var INVITATION_ACTIVITE_TTL_MS = 7 * 864e5;
+var _invitationActiviteEnCours = false;
+function _lireInvitationActivite() {
+  try {
+    var o = JSON.parse(localStorage.getItem(INVITATION_ACTIVITE_CLE) || "null");
+    if (!o || !/^[\w-]{1,100}$/.test(String(o.id || "")) || !/^[0-9a-f]{64}$/.test(String(o.code || ""))
+        || !(o.at > 0) || Date.now() - o.at > INVITATION_ACTIVITE_TTL_MS) return null;
+    return o;
+  } catch (e) { return null; }
+}
+function _oublierInvitationActivite() { try { localStorage.removeItem(INVITATION_ACTIVITE_CLE); } catch (e) {} }
+function _capterInvitationActivite() {
+  var m = INVITATION_ACTIVITE_RE.exec(location.hash || "");
+  if (!m) return false;
+  try { localStorage.setItem(INVITATION_ACTIVITE_CLE, JSON.stringify({ id: m[1], code: m[2], at: Date.now() })); } catch (e) {}
+  // Le code ne reste pas dans l'adresse (historique, capture d'écran).
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  reprendreInvitationActivite();
+  return true;
+}
+function reprendreInvitationActivite() {
+  var o = _lireInvitationActivite();
+  if (!o || _invitationActiviteEnCours) return false;
+  var compte = typeof _compteAuthReel === "function" && _compteAuthReel();
+  // Compte présent, client pas encore prêt : on attend `passio:app-ready`, en silence.
+  if (compte && (typeof supaRejoindreParCode !== "function" || !window._supaReal)) return false;
+  if (!compte) {
+    if (!o.dit) {
+      o.dit = true;
+      try { localStorage.setItem(INVITATION_ACTIVITE_CLE, JSON.stringify(o)); } catch (e) {}
+      toast("Invitation privée : connecte-toi ou crée ton compte pour la voir");
+    }
+    return false;
+  }
+  _invitationActiviteEnCours = true;
+  supaRejoindreParCode(o.id, o.code).then(function (ok) {
+    _invitationActiviteEnCours = false;
+    if (ok === null) return;   // réseau : on garde le lien pour la prochaine fois
+    _oublierInvitationActivite();
+    try { if (window.tel && tel.action) tel.action("activite_privee_lien_ouvert", { v: 1, ok: ok }); } catch (e) {}
+    if (!ok) { toast("Ce lien d'invitation n'est plus valable — demande-en un nouveau", "warning"); return; }
+    _ouvrirActiviteDepuisNotification(o.id);
+  });
+  return true;
+}
+window.addEventListener("hashchange", function () { _capterInvitationActivite(); });
+window.addEventListener("passio:app-ready", function () { if (!_capterInvitationActivite()) reprendreInvitationActivite(); });
+(function _invitationActiviteBoot() {
+  if (INVITATION_ACTIVITE_RE.test(location.hash || "")) setTimeout(_capterInvitationActivite, 1200);
+})();
 function _inviterParLien(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
@@ -9423,7 +9600,7 @@ function _notifierInviteEvent(ev, userId) {
   // Activité privée : l'invité doit pouvoir la LIRE avant d'être prévenu
   // (`event_invites`, sinon la notification ouvre une activité introuvable).
   if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
-    supaInviterActivite(ev.id, [userId]).then(function (ok) {
+    inviterSerieActivite(ev, [userId]).then(function (ok) {
       if (!ok) toast("L'invitation à ton activité privée n'a pas pu partir — réessaie", "warning");
       else notifier();
     });
@@ -9441,6 +9618,7 @@ function inviteToEvent(eventId, userId, btn) {
     if (window._invitesEnAttente[eventId]) delete window._invitesEnAttente[eventId][userId];
     _notifierInviteEvent(ev, userId);
     try { _renderEventInviteList(); } catch (e) {}
+    if (_gererInvitesPrives(ev)) setTimeout(function () { _renderInvitesPrives(eventId); }, 900);
   };
   if (!btn) { envoyer(); toast("Invitation envoyée"); return; }
   window._invitesEnAttente[eventId] = window._invitesEnAttente[eventId] || {};
