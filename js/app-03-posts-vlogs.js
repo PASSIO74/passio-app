@@ -398,6 +398,7 @@ async function _postLikeLireGroupe(ids) {
     return { counts };
   } catch (e) {
     if (utiliseRpcFil) _postLikeNoterEchecPartage();
+    try { if (typeof diagLog === "function") diagLog("compteurs cartes : " + (e && e.message)); } catch (_) {}
     return { error: true };
   } finally {
     clearTimeout(timeout);
