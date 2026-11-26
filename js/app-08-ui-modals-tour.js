@@ -963,7 +963,8 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert");
+  meFermerDessin();
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin");
   ed.classList.add("me-vide");
   _meTeReinitialiser();
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
@@ -1889,7 +1890,7 @@ function meFermerEditeurTexte(valider) {
 // en base. Bornes : 60 traits, 6 000 nombres en tout.
 var ME_DESSIN_EPAISSEURS = [5, 10, 20];
 var ME_DESSIN_MAX_TRAITS = 60, ME_DESSIN_MAX_NOMBRES = 6000;
-var meDessin = { couleur: "#ffffff", ep: 1, gomme: false, trait: null, el: null };
+var meDessin = { couleur: "#ffffff", ep: 1, gomme: false, trait: null, el: null, doigt: null };
 function _meDessinTotal() { return (meState.dessin || []).reduce(function (n, t) { return n + t.p.length; }, 0); }
 function _meDessinPolyline(t, i) {
   var ns = "http://www.w3.org/2000/svg";
@@ -1935,14 +1936,14 @@ function meFermerDessin() {
   var ed = document.getElementById("mediaEditor"); var barre = document.getElementById("meDessinBarre");
   if (ed) ed.classList.remove("me-dessin");
   if (barre) { barre.classList.remove("open"); barre.setAttribute("aria-hidden", "true"); }
-  meDessin.trait = null; meDessin.el = null; meDessin.gomme = false;
+  meDessin.trait = null; meDessin.el = null; meDessin.gomme = false; meDessin.doigt = null;
   _meMajVide();
 }
 function _meDessinBarre() {
   document.querySelectorAll("#meDessinCouleurs .me-te-couleur").forEach(function (bt) { bt.classList.toggle("actif", !meDessin.gomme && bt.getAttribute("data-couleur") === meDessin.couleur); });
-  var g = document.getElementById("meDessinGomme");
+  var g = document.getElementById("meDsGommeBtn");
   if (g) { g.classList.toggle("actif", meDessin.gomme); g.setAttribute("aria-pressed", meDessin.gomme ? "true" : "false"); }
-  var pt = document.querySelector("#meDessinEpaisseur .me-dessin-point");
+  var pt = document.querySelector("#meDsEpaisseurBtn .me-dessin-point");
   if (pt) { var w = ME_DESSIN_EPAISSEURS[meDessin.ep]; pt.style.width = pt.style.height = Math.max(6, Math.round(w * 0.9)) + "px"; pt.style.background = meDessin.couleur; }
 }
 function meDessinEpaisseur() { meDessin.ep = (meDessin.ep + 1) % ME_DESSIN_EPAISSEURS.length; _meDessinBarre(); }
@@ -1971,15 +1972,23 @@ function _meDessinGommer(e) {
       var ed = document.getElementById("mediaEditor");
       if (!ed || !ed.classList.contains("me-dessin")) return;
       e.preventDefault();
-      if (meDessin.gomme) { _meDessinGommer(e); meDessin.trait = "gomme"; return; }
+      // UN doigt à la fois : un second (paume, deux doigts) écrasait le trait en cours.
+      if (meDessin.doigt != null) return;
+      if (meDessin.gomme) {
+        meDessin.doigt = e.pointerId; meDessin.trait = "gomme";
+        try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+        _meDessinGommer(e); return;
+      }
       if (meState.dessin.length >= ME_DESSIN_MAX_TRAITS || _meDessinTotal() >= ME_DESSIN_MAX_NOMBRES) { toast("Dessin complet — annule un trait pour continuer"); return; }
       try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      meDessin.doigt = e.pointerId;
       var p = _meDessinPoint(svg, e);
       meDessin.trait = { c: meDessin.couleur, w: ME_DESSIN_EPAISSEURS[meDessin.ep], p: [p[0], p[1], p[0], p[1]] };
       meDessin.el = _meDessinPolyline(meDessin.trait, null);
       svg.appendChild(meDessin.el);
     });
     svg.addEventListener("pointermove", function (e) {
+      if (e.pointerId !== meDessin.doigt) return;
       if (meDessin.trait === "gomme") { _meDessinGommer(e); return; }
       var t = meDessin.trait; if (!t || !meDessin.el) return;
       var p = _meDessinPoint(svg, e);
@@ -1992,9 +2001,10 @@ function _meDessinGommer(e) {
       meDessin.el.setAttribute("points", pts.join(" "));
     });
     function fin(e) {
+      if (e.pointerId !== meDessin.doigt) return;
       var t = meDessin.trait;
       try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
-      meDessin.trait = null; meDessin.el = null;
+      meDessin.trait = null; meDessin.el = null; meDessin.doigt = null;
       if (t && t !== "gomme") { meState.dessin.push(t); _meDessinRendre(); _meMajVide(); }
     }
     svg.addEventListener("pointerup", fin);
@@ -2523,8 +2533,13 @@ function _storyFondCss(s) {
 function _storyDessinHtml(o) {
   var nb = function (v, d) { var n = Number(v); return Number.isFinite(n) ? n : d; };
   var traits = Array.isArray(o && o.traits) ? o.traits.slice(0, 60) : [];
+  // Plafond TOTAL, le même que l'éditeur : une ligne forgée ne peut pas peser
+  // 72 000 nombres sur chaque bobine du fil.
+  var reste = 6000;
   var corps = traits.map(function (t) {
-    var p = (t && Array.isArray(t.p)) ? t.p.slice(0, 1200) : [];
+    if (reste <= 0) return "";
+    var p = (t && Array.isArray(t.p)) ? t.p.slice(0, Math.min(1200, reste)) : [];
+    reste -= p.length;
     var pts = [];
     for (var k = 0; k + 1 < p.length; k += 2) {
       var x = Math.round(nb(p[k], NaN)), y = Math.round(nb(p[k + 1], NaN));

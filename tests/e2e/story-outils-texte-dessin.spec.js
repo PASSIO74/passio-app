@@ -75,13 +75,13 @@ test("③ dessin : trait, annuler, gomme ; voyage en vecteurs", async ({ page })
   await tracer(page, 80, 300, 300, 420);
   await tracer(page, 80, 500, 300, 520);
   expect(await page.evaluate(() => meState.dessin.length)).toBe(2);
-  await page.locator("#meDessinAnnuler").click();
+  await page.locator("#meDsAnnulerBtn").click();
   expect(await page.evaluate(() => meState.dessin.length)).toBe(1);
   // Gomme : toucher le trait restant l'efface.
-  await page.locator("#meDessinGomme").click();
+  await page.locator("#meDsGommeBtn").click();
   await tracer(page, 80, 300, 300, 420);
   expect(await page.evaluate(() => meState.dessin.length)).toBe(0);
-  await page.locator("#meDessinGomme").click();
+  await page.locator("#meDsGommeBtn").click();
   await tracer(page, 100, 600, 280, 640);
   await page.locator("#meDessinOk").click();
   await expect(page.locator("#meDessinBarre")).toBeHidden();
@@ -131,4 +131,23 @@ test("⑤ dessin ou police hostiles d'un autre compte : rien ne sort", async ({ 
   expect(h).toContain('points="5,5 1000,0"');
   expect(h).toContain('stroke-width="40"');
   expect(h).toContain("font-size:26px");
+});
+
+test("⑥ un long trait (300 points) ressort ENTIER dans les deux lecteurs", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const p = []; for (let i = 0; i < 300; i++) p.push(Math.round(i * 3), 500 + (i % 7));
+    const ovs = [{ type: "dessin", traits: [{ c: "#ffffff", w: 10, p }] }];
+    const st = { id: "s_long", authorId: "u_x", authorName: "X", text: "", overlays: ovs, createdAt: Date.now() };
+    storyGroups = [{ authorId: "u_x", stories: [st] }];
+    openStoryViewerAt(0, 0);
+    const pl = document.querySelector("#storyOverlays svg.story-ov-dessin polyline");
+    const story = pl ? pl.getAttribute("points").split(" ").length : 0;
+    closeStoryViewer();
+    const html = renderReelHTML(passioMediaProteges.contextualiser({ id: "reel_l", authorId: "u_x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: ovs, text: "", likes: 0, comments: [] }, { type: "posts", id: "reel_l" }), 0);
+    const m = html.match(/points="([^"]*)"/);
+    return { story, bobine: m ? m[1].split(" ").length : 0 };
+  });
+  expect(r.story).toBe(300);
+  expect(r.bobine).toBe(300);
 });
