@@ -2133,9 +2133,10 @@
   }
 
   function montrerEtape(id) {
+    if (!reperesAutorises()) return false;
     // Vérifier à l'affichage couvre aussi les rappels déjà armés par un geste
     // ou une navigation avant que le visiteur ne choisisse de parcourir le fil.
-    if (!reperesAutorises() || lectureLibre()) return false;
+    if (lectureLibre()) return false;
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
