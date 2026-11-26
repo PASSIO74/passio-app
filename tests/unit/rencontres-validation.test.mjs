@@ -35,7 +35,7 @@ test('une demande confirmée réveille l’organisation sans doubler sa notifica
    _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
    toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
-  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map();"+fn('_suspendreLectureRefus')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
+  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map(); var state={userEvents:[],seed:{events:[]}};"+fn('_suspendreLectureRefus')+fn('_sortiePourParticipation')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
   assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
   assert.equal(relectures,reel&&reponse===true?1:0,'Rencontrer relit la demande uniquement après enregistrement serveur');
   assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');

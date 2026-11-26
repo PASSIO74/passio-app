@@ -875,6 +875,13 @@
     if (enPanne || !uiV4bEnabled() || !ficheOuverte()) return;
     try {
       reorganiser();
+      // Une relecture peut arriver pendant que la personne parcourt la fiche.
+      var places = document.querySelector("#eventDetailContent .v4b-rdv-places");
+      var ev = evenementCourant();
+      if (places && ev) {
+        var texte = texteParticipation(ev);
+        if (places.textContent !== texte) places.textContent = texte;
+      }
       appliquerCta();
       masquerDoublonsDuPied();
     } catch (e) {

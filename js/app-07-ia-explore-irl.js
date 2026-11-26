@@ -890,6 +890,7 @@ function _setMyRsvpLocal(eventId, rsvp) {
 // et la liste fait foi, exactement comme avant.
 function _nbInscrits(ev, kind) {
   if (!ev) return 0;
+  ev = _sortiePourParticipation(ev);
   const k = kind || "going";
   const liste = k === "going" ? ev.attendees : k === "maybe" ? ev.maybes
     : k === "waitlist" ? ev.waitlist : k === "checked_in" ? ev.checkedIn : null;
@@ -1016,6 +1017,14 @@ function _findCanonicalEvent(id) {
   return (state.userEvents || []).find(e => e.id === id)
       || (state.seed.events || []).find(e => e.id === id)
       || null;
+}
+
+// La copie de création conserve les champs d'édition sur cet appareil. Pour les
+// inscriptions, la carte, la fiche et les gestes RSVP partagent la sortie relue
+// du serveur, comme allEvents(). Les listes nominatives restent en mémoire.
+function _sortiePourParticipation(ev) {
+  if (!ev || !(state.userEvents || []).includes(ev)) return ev;
+  return (state.seed.events || []).find(e => e.id === ev.id && e.fromSupabase) || ev;
 }
 
 // ===== Carte interactive Leaflet =====
@@ -3874,7 +3883,8 @@ async function setEventRsvp(id, rsvp) {
   if (rsvp && rsvp !== "declined" && !(await requireAdmission("rejoindre", function () { return setEventRsvp(id, rsvp); }))) return;
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
-  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  const sortie = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  const ev = _sortiePourParticipation(sortie);
   if (!ev) return;
   // Première visite : « une activité fictive ne doit jamais sembler être une
   // véritable rencontre disponible ». Le contenu de démonstration refuse la
@@ -3884,7 +3894,7 @@ async function setEventRsvp(id, rsvp) {
   try {
     if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
   } catch (e) {}
-  if (_eventIsCancelled(ev) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
+  if (_eventIsCancelled(sortie) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
   if (prev === rsvp) return;
@@ -3893,7 +3903,7 @@ async function setEventRsvp(id, rsvp) {
   // LOT-48 (audit UX/UI du 2026-11-10, IRL-C64) : un seul message par geste —
   // « C'est complet… » était suivi de « Liste d'attente » pour le même tap.
   let _gesteDejaDit = false;
-  if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
+  if (rsvp === "going" && _eventIsFull(sortie) && prev !== "going") {
     rsvp = "waitlist";
     toast("C'est complet — tu es sur liste d'attente");
     _gesteDejaDit = true;
@@ -4098,7 +4108,7 @@ async function _promoteNextWaitlisted(ev) {
     notifieeParServeur = !!promu.notifieeParServeur;
     // Après deux allers-retours, l'objet canonique a pu être remplacé
     // (`fusionnerEvenementsServeur`) : on peint celui qui est à l'écran.
-    ev = _findCanonicalEvent(ev.id) || ev;
+    ev = _sortiePourParticipation(_findCanonicalEvent(ev.id)) || ev;
   }
   if (!next) return;   // promotion écrite mais personne nommée : rien à peindre
   _appliquerPromotionLocale(ev, next);
@@ -4156,7 +4166,7 @@ async function _appliquerPromotionAnonyme(ev) {
   if (!ev) return;
   const id = ev.id;
   const lu = await _lireActivitePromue(id);
-  const cible = _findCanonicalEvent(id) || ev;
+  const cible = _sortiePourParticipation(_findCanonicalEvent(id)) || ev;
   // ⚠️ PAS DE DELTA SUR UN OBJET REMPLACÉ PENDANT L'ATTENTE (contre-revue du
   // 2026-11-03). Un chargement arrivé entre-temps a peut-être DÉJÀ compté la
   // promotion : −1 en file / +1 venant la compterait deux fois, et un
@@ -4242,7 +4252,7 @@ function _relirePromotionPlusTard(id) {
     const rejouer = async function () {
       const lu = await _lireActivitePromue(id);
       if (!lu || !lu.listesLues) { noterLectureAReprendre(nom, rejouer); return; }
-      const ev = _findCanonicalEvent(id);
+      const ev = _sortiePourParticipation(_findCanonicalEvent(id));
       if (ev) {
         if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
         _poserListesRelues(ev, lu);
@@ -4437,6 +4447,24 @@ function _refreshEventDetailIfOpen(id) {
   }
 }
 
+// Une sortie créée sur cet appareil peut être ouverte avant la relecture de
+// Rencontrer, ou être sortie de ses 60 résultats. Relire uniquement cette fiche.
+async function _relireSortieOrganisee(id) {
+  const etat = state, compte = MY_UID;
+  try {
+    const sorties = await supaLoadEvents(null, id);
+    if (state !== etat || MY_UID !== compte || window._openEventDetailId !== id) return;
+    if (fusionnerEvenementsServeur(sorties)) {
+      _patchEventCardJoin(id);
+      // Toute la fiche (file d'attente, « peut-être », visages), pas seulement
+      // le nombre : le re-rendu est un _isRerender, il ne relance pas de lecture.
+      _refreshEventDetailIfOpen(id);
+    }
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("compteur sortie : relecture indisponible — " + (e && e.message));
+  }
+}
+
 // Feuille de choix du niveau de participation. Un « peut-être » assumé vaut mieux
 // qu'un faux « je viens » : l'organisateur sait à quoi s'attendre.
 function openEventRsvpSheet(id) {
@@ -4478,7 +4506,7 @@ function _patchEventCardJoin(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   const card = document.querySelector('#eventList .event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   if (!ev || !card) { renderIRL(); return; }
-  const atts = ev.attendees || [];
+  const atts = _sortiePourParticipation(ev).attendees || [];
   const nbVenants = _nbInscrits(ev, "going");
   const maybeCount = _nbInscrits(ev, "maybe");
   const myState = myRsvp(id);
@@ -5078,6 +5106,10 @@ function openEventDetails(id, remplaceModale = false) {
   page.style.display = "flex";
   page.scrollTop = 0;
   _suivrePresencesOuvertes(ev);
+  if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()
+      && (state.userEvents || []).some(e => e && e.id === id)) {
+    _relireSortieOrganisee(id);
+  }
   // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
@@ -5265,7 +5297,7 @@ function _suivrePresencesOuvertes(ev) {
   _suiviPresences = suivi;
   const courant = () => {
     if (_suiviPresences !== suivi || state !== suivi.etat || MY_UID !== suivi.uid || window._openEventDetailId !== suivi.id) return null;
-    const cible = _findCanonicalEvent(suivi.id);
+    const cible = _sortiePourParticipation(_findCanonicalEvent(suivi.id));
     return cible && _pointageServeur(cible) && _canManageEvent(cible) && !_eventIsCancelled(cible) && Date.now() <= _eventEndAt(cible) ? cible : null;
   };
   function programmer(cible) {

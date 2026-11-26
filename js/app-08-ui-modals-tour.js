@@ -7962,7 +7962,10 @@ async function supaProchaineSortie(compte) {
 // l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
 // l'app (Jerem, 2026-10-23).
 // `eventId` cible une invitation même si l’activité est hors des 60 plus récentes.
+let _numeroLectureSorties = 0;
 async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
+  const lecture = ++_numeroLectureSorties;
+  const etat = state, compte = MY_UID;
   if (eventId != null && !LIEN_COURT_ID_RE.test(eventId)) return [];
   // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
@@ -8006,7 +8009,8 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
     // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.) Une
     // lecture en échec laisse les listes vides : les activités, déjà chargées,
     // survivent sans leurs participants.
-    const { attByEvent, maybeByEvent, waitByEvent, checkedByEvent, countsByEvent } = await supaLireParticipants(rows.map(r => r.id));
+    const { attByEvent, maybeByEvent, waitByEvent, checkedByEvent, countsByEvent, listesLues, comptesLus } = await supaLireParticipants(rows.map(r => r.id));
+    if (state !== etat || MY_UID !== compte) return [];
     return rows.map(r => ({
       id: r.id,
       authorId: r.author_id,
@@ -8052,6 +8056,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       waitlist: waitByEvent[r.id] || [],
       checkedIn: checkedByEvent[r.id] || [],
       counts: countsByEvent[r.id] || null,   // compteurs serveur (C-04) ; null = base pas migrée ou lecture en échec
+      _lectureSortie: lecture, _listesLues: listesLues, _comptesLus: comptesLus,
       fromSupabase: true,
     }));
   } catch(e) {
@@ -8078,9 +8083,23 @@ function fusionnerEvenementsServeur(evs) {
   const avant = _evenementsSig(arr);
   evs.forEach(function (ev) {
     const i = arr.findIndex(function (e) { return e && e.id === ev.id; });
+    const precedente = arr[i];
+    if (precedente && precedente._lectureSortie > ev._lectureSortie) return;
+    if (ev._comptesLus === false && ev._listesLues === false && ev.organizerId === MY_UID && _compteAuthReel()) {
+      // Une lecture partielle peut rafraîchir la sortie. Conserver seulement les
+      // nombres connus de l'organisateur, jamais une ancienne liste de noms.
+      const connue = precedente || (state.userEvents || []).find(e => e.id === ev.id);
+      if (connue) {
+        ev.counts = Object.fromEntries(["going", "maybe", "waitlist", "checked_in"].map(k => [k, _nbInscrits(connue, k)]));
+      }
+    }
     if (i >= 0) arr[i] = ev; else arr.unshift(ev);
   });
-  return _evenementsSig(arr) !== avant;
+  const change = _evenementsSig(arr) !== avant;
+  if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
+    window.PassioUIV4B?.refresh();
+  }
+  return change;
 }
 
 // Rechargement des activités en cours de session (2026-10-24). Elles n'étaient
