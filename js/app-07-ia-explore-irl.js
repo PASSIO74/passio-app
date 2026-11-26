@@ -3906,10 +3906,12 @@ async function setEventRsvp(id, rsvp) {
   // mode local il n'y a rien à confirmer. Réglé par `settle` au verdict de
   // l'écriture (plus bas) ou dans `annuler` (refus).
   let _rsvpCid = null;
+  const suiviRefus = window._supaReal ? _suspendreLectureRefus(id, meId) : null;
   try {
     if (window._supaReal && window.tel && tel.flowStart) _rsvpCid = tel.flowStart(rsvp ? "event_join" : "event_leave", { eventId: id, rsvp: rsvp || "none" });
   } catch (e) {}
   const _rsvpRegle = (ok, motif) => {
+    if (suiviRefus) suiviRefus();
     try {
       if (!_rsvpCid || !window.tel || !tel.settle) return;
       tel.settle(_rsvpCid, "saved", ok, ok ? null : { message: motif, code: motif });
@@ -4694,6 +4696,63 @@ function _lienContactEvenement(contact) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
 
+// Une lecture appartient à une ouverture et à un compte. Un nouvel RSVP
+// invalide la lecture en vol, même si la personne ferme puis rouvre la fiche.
+let _vueRefusSortie = null;
+const _ecrituresRsvp = new Map();
+
+function _suspendreLectureRefus(id, uid) {
+  const cle = JSON.stringify([uid, id]);
+  _ecrituresRsvp.set(cle, (_ecrituresRsvp.get(cle) || 0) + 1);
+  if (_vueRefusSortie?.id === id && _vueRefusSortie.uid === uid) {
+    _vueRefusSortie.lecture++;
+    _vueRefusSortie.refuse = false;
+    _vueRefusSortie.participantsRelus = false;
+  }
+  return () => {
+    const reste = _ecrituresRsvp.get(cle) - 1;
+    if (reste) { _ecrituresRsvp.set(cle, reste); return; }
+    _ecrituresRsvp.delete(cle);
+    if (_vueRefusSortie?.uid === uid) _relireRefusFiche(id);
+  };
+}
+
+async function _relireRefusFiche(id) {
+  const vue = _vueRefusSortie;
+  if (!vue || vue.id !== id || !window._supaReal || !vue.uid || vue.uid !== MY_UID
+      || !_compteAuthReel() || _identiteDivergeDeLaSession(vue.uid)
+      || _ecrituresRsvp.has(JSON.stringify([vue.uid, id]))) return;
+  const lecture = ++vue.lecture;
+  const actuelle = () => vue === _vueRefusSortie && lecture === vue.lecture && vue.uid === MY_UID
+    && _compteAuthReel() && !_identiteDivergeDeLaSession(vue.uid) && window._openEventDetailId === id;
+  try {
+    const {data, error} = await supa.rpc("mon_refus_demande_sortie", {p_event_id: id});
+    if (error || typeof data !== "boolean" || !actuelle()) return;
+    const perime = data && !!myRsvp(id);
+    const changement = vue.refuse !== data || perime;
+    if (!changement && (!data || vue.participantsRelus)) return;
+    if (changement) vue.participantsRelus = false;
+    vue.refuse = data;
+    if (perime) {
+      _setMyRsvpLocal(id, null);
+      saveState();
+    }
+    if (changement) _refreshEventDetailIfOpen(id);
+    if (data) {
+      const lu = await supaLireParticipants([id], "refus_demande");
+      if (!actuelle()) return;
+      for (const ev of [state.seed.events.find(e => e.id === id), (state.userEvents || []).find(e => e.id === id)]) {
+        if (!ev) continue;
+        if (lu.listesLues) _poserListesRelues(ev, lu);
+        if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
+      }
+      vue.participantsRelus = lu.listesLues && lu.comptesLus;
+      _patchEventCardJoin(id);
+      _refreshEventDetailIfOpen(id);
+    }
+  } catch (e) { /* Hors ligne : conserver le dernier état connu. */ }
+}
+
 function openEventDetails(id, remplaceModale = false) {
   if (window._openEventDetailId !== id) document.getElementById("confirmerArriveeApresAccord")?.remove();
   const ev = allEvents().find(e => e.id === id);
@@ -4735,6 +4794,13 @@ function openEventDetails(id, remplaceModale = false) {
   }
 
   window._openEventDetailId = id; // pour le refresh realtime des commentaires
+  const uidFiche = typeof MY_UID !== "undefined" && MY_UID;
+  if (!_isRerender || !_vueRefusSortie || _vueRefusSortie.uid !== uidFiche || _vueRefusSortie.id !== id) {
+    _vueRefusSortie = {id, uid: uidFiche, lecture: 0, refuse: false};
+    _relireRefusFiche(id);
+  } else if (remplaceModale) {
+    _relireRefusFiche(id);
+  }
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
   const joined = (state.user.joinedEvents || []).includes(id);
@@ -4879,6 +4945,7 @@ function openEventDetails(id, remplaceModale = false) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
+    ${_vueRefusSortie.refuse ? '<div class="event-detail-urgency" role="status" data-refus-demande>Ta demande n’a pas été acceptée.</div>' : ''}
     ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
         + (["going", "maybe", "waitlist"].indexOf(myRsvp(ev.id)) > -1 ? ' Ta participation est annulée, rien d\'autre à faire.' : '') + '</div>'
       : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
@@ -5243,6 +5310,7 @@ function _suivrePresencesOuvertes(ev) {
 }
 
 function closeEventDetail() {
+  _vueRefusSortie = null;
   document.getElementById("confirmerArriveeApresAccord")?.remove();
   _arreterSuiviPresences();
   const page = document.getElementById("eventDetailPage");
