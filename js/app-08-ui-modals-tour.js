@@ -699,6 +699,8 @@ function buildStoryGroups() {
   // sur le groupe pour que renderStories/le viewer n'aient pas à recalculer.
   const seen = (state.user && state.user.seenStories) || [];
   groups.forEach(g => { g.allSeen = g.stories.every(s => seen.includes(s.id)); });
+  // Anneau VERT (Instagram) : une story « Amis proches » pas encore vue dans le groupe.
+  groups.forEach(g => { g.proches = g.stories.some(s => s && s.audience === "proches" && !seen.includes(s.id)); });
   return groups.filter(g => !g.allSeen).concat(groups.filter(g => g.allSeen));
 }
 
@@ -747,7 +749,7 @@ function renderStories() {
     const allSeen = !!myGroup.allSeen;
     html = `
       <div class="story-item" onclick="openStoryGroup('${escapeJsArg(escapeHtml(String(myGroup.authorId)))}')" title="Voir ta story">
-        <div class="story-ring ${allSeen ? "seen" : ""}">
+        <div class="story-ring ${allSeen ? "seen" : ""}${myGroup.proches ? " proches" : ""}">
           <div class="story-inner" style="background:${myColor};">${myAvatarHtml}</div>
         </div>
         <button class="story-add-badge" onclick="event.stopPropagation();meOpen('story')" aria-label="Ajouter une story">+</button>
@@ -780,7 +782,7 @@ function renderStories() {
     const allSeen = !!g.allSeen;
     return `
       <div class="story-item" onclick="openStoryGroup('${escapeJsArg(g.authorId)}')">
-        <div class="story-ring ${allSeen ? "seen" : ""}">
+        <div class="story-ring ${allSeen ? "seen" : ""}${g.proches ? " proches" : ""}">
           <div class="story-inner" style="background: ${_cssColor(g.color)};">${_storyBubbleInner(g)}</div>
         </div>
         <div class="story-label">${escapeHtml(g.name.split(" ")[0])}</div>
@@ -890,7 +892,7 @@ async function _publierStoryAvecVerdict(story) {
   if (local) { toast("Story enregistrée sur cet appareil", "success"); return true; }
   let ok = false;
   try { ok = await supaPublishStory(story); } catch (e) { ok = false; }
-  if (ok) { toast("Story publiée", "success"); return true; }
+  if (ok) { toast(story.audience === "proches" ? "Story publiée pour tes amis proches" : "Story publiée", "success"); return true; }
   state.seed.stories = (state.seed.stories || []).filter(function (s) { return s.id !== story.id; });
   saveState();
   try { renderStories(); } catch (e) {}
@@ -962,6 +964,7 @@ function meOpen(mode) {
   var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
+  try { _mePeindreBoutonProches(); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin");
@@ -2538,6 +2541,7 @@ async function mePublish() {
   if (meState.dessin && meState.dessin.length) overlays.unshift({ type: "dessin", traits: meState.dessin.map(function (t) { return { c: t.c, w: t.w, p: t.p.slice() }; }) });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
+  var audience = (mode === "story" && meState._audience === "proches" && typeof storyProchesActif === "function" && storyProchesActif()) ? "proches" : null;
 
   // ⚠️ LE REFUS DOIT PRÉCÉDER `meClose()`. Une première version plaçait ce garde
   // plus bas, dans la branche bobine — donc APRÈS la fermeture de l'éditeur. Or
@@ -2573,6 +2577,7 @@ async function mePublish() {
       bg: media ? null : bg, media: media || null, mediaType: mediaType || null,
       overlays: overlays, emoji: p.emoji || "✨", passion: p.passion || null, createdAt: Date.now(), fromSupabase: false,
     };
+    if (audience) story.audience = audience;
     state.seed.stories = state.seed.stories || [];
     state.seed.stories.unshift(story);
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
@@ -2583,7 +2588,9 @@ async function mePublish() {
       // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
       // story qu'il ne pourra pas ouvrir.
       var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
-      if (ok === true && serveur) _prevenirMentionsStory(story.overlays, "story");
+      // Story « Amis proches » : aucun message de mention — un compte hors de la
+      // liste apprendrait qu'une story existe sans pouvoir l'ouvrir.
+      if (ok === true && serveur && story.audience !== "proches") _prevenirMentionsStory(story.overlays, "story");
     });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
@@ -2947,7 +2954,8 @@ function playCurrentStory() {
       _b2.addEventListener("click", function (e) {
         e.stopPropagation();
         window._storyEnPause = true;
-        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: [{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }], surAnnuler: function () { window._storyEnPause = false; } });
+        var _actsUne = (typeof _storyActionsUne === "function") ? _storyActionsUne(s) : [];
+        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: _actsUne.concat([{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }]), surAnnuler: function () { window._storyEnPause = false; } });
       });
       _hdr.insertBefore(_b2, _hdr.querySelector(".story-viewer-close"));
     }
@@ -2960,6 +2968,7 @@ function playCurrentStory() {
     }
     _barreReponseStory(s, u.name, _reel);
   } catch (e) {}
+  try { _storyPastilleProches(s); } catch (e) {}
 
   const card = $("#storyCard");
   card.style.background = _storyFondCss(s);
@@ -3829,6 +3838,383 @@ function closeStoryViewer(options) {
     releaseOverlayHistory();
     if (!(options && options.versAutreEcran) && window.PassioFirstRun) window.PassioFirstRun.apresLectureStory();
   }
+  try { _storyUneApresFermeture(options); } catch (e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STORIES « AMIS PROCHES » ET « À LA UNE » (lot E, 2026-11-26) — façon Instagram
+// Serveur : migrations/migration_stories_proches_une_2026-11-26.sql (banc
+// tests/sql/migration-stories-proches-une.test.sh). Fiche :
+// docs/lots-ui/32-STORY-CREER-2026-11-26.md, lot E.
+//
+// ⚠️ DEUX DRAPEAUX ÉTEINTS tant que la migration n'est pas appliquée : sans la
+// colonne `stories.audience`, une story « proches » serait REFUSÉE (42703) — on
+// ne la publie JAMAIS pour tous à la place. Les passer à `true` après
+// l'application ; `localStorage.passio_story_proches = "1"` /
+// `passio_story_une = "1"` les éprouvent sur un appareil.
+// La confidentialité ne dépend PAS du client : la RLS ferme la lecture, le
+// média, les j'aime, vues, commentaires et votes hors de la liste.
+// ════════════════════════════════════════════════════════════════════════
+var STORY_PROCHES_ACTIF = false;
+var STORY_UNE_ACTIF = false;
+function storyProchesActif() {
+  if (STORY_PROCHES_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_proches") === "1"; } catch (e) { return false; }
+}
+function storyUneActif() {
+  if (STORY_UNE_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_une") === "1"; } catch (e) { return false; }
+}
+// Table ou colonne absente (migration pas encore appliquée).
+function _storyLotAbsent(err) {
+  var c = String((err && err.code) || "");
+  return c === "42P01" || c === "PGRST205" || c === "42703" || c === "PGRST204";
+}
+function _storyLotServeur() {
+  return !!(window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && typeof MY_UID !== "undefined" && MY_UID);
+}
+var RE_UID_STORY_LOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ── Amis proches : la liste (lue et écrite par son propriétaire SEUL) ─────────
+// Cache mémoire PAR COMPTE (jamais dans `state`, qui peut appartenir à un autre
+// compte que la session).
+var _amisProches = { uid: null, ids: null, charge: null };
+function chargerAmisProches(forcer) {
+  if (!_storyLotServeur()) return Promise.resolve([]);
+  if (!forcer && _amisProches.uid === MY_UID && _amisProches.ids) return Promise.resolve(Array.from(_amisProches.ids));
+  if (!forcer && _amisProches.uid === MY_UID && _amisProches.charge) return _amisProches.charge;
+  var moi = MY_UID;
+  _amisProches = { uid: moi, ids: null, charge: null };
+  _amisProches.charge = Promise.resolve(supa.from("amis_proches").select("ami_id").limit(1000)).then(function (res) {
+    if (_amisProches.uid !== moi) return [];
+    if (!res || res.error) { _amisProches.charge = null; return []; }
+    _amisProches.ids = new Set((res.data || []).map(function (r) { return String(r.ami_id); }));
+    return Array.from(_amisProches.ids);
+  }).catch(function () { _amisProches.charge = null; return []; });
+  return _amisProches.charge;
+}
+// Ajoute / retire : l'INTENTION part, `{ error }` est lu, l'écran suit le verdict.
+async function basculerAmiProche(uid, ajouter) {
+  if (!_storyLotServeur() || !RE_UID_STORY_LOT.test(String(uid || "")) || uid === MY_UID) return false;
+  var moi = MY_UID;
+  try {
+    var res = ajouter
+      ? await supa.from("amis_proches").insert({ ami_id: String(uid) })
+      : await supa.from("amis_proches").delete().eq("owner_id", moi).eq("ami_id", String(uid)).select("ami_id");
+    if (moi !== MY_UID) return false;
+    var err = res && res.error;
+    if (ajouter && err && String(err.code) === "23505") err = null;        // déjà dans la liste
+    if (err) {
+      toast(_storyLotAbsent(err) ? "Amis proches : bientôt disponible" : "Liste non modifiée — réessaie", "warning");
+      return false;
+    }
+    if (_amisProches.uid === moi && _amisProches.ids) { if (ajouter) _amisProches.ids.add(String(uid)); else _amisProches.ids.delete(String(uid)); }
+    return true;
+  } catch (e) { toast("Liste non modifiée — réessaie", "warning"); return false; }
+}
+// Candidats : les comptes que je connais (abonnements, conversations, fil),
+// hors exemples et hors comptes bloqués, plus ceux déjà dans la liste.
+function _candidatsAmisProches(q) {
+  var vus = {}, out = [];
+  var ajouter = function (id, nom, emoji, couleur) {
+    id = String(id || "");
+    if (!RE_UID_STORY_LOT.test(id) || id === MY_UID || vus[id]) return;
+    if (typeof isBlocked === "function" && isBlocked(id)) return;
+    vus[id] = 1; out.push({ id: id, name: nom || "Passionné", emoji: emoji || "✨", color: couleur || "#8b5cf6" });
+  };
+  (state.seed.users || []).forEach(function (u) { if (u) ajouter(u.id, u.name, u.profileEmoji, u.avatar); });
+  if (_amisProches.ids) _amisProches.ids.forEach(function (id) { ajouter(id, (typeof userById === "function" && userById(id) || {}).name, null, null); });
+  q = String(q || "").trim().toLowerCase();
+  if (q) out = out.filter(function (u) { return String(u.name).toLowerCase().indexOf(q) > -1; });
+  out.sort(function (a, b) {
+    var pa = _amisProches.ids && _amisProches.ids.has(a.id) ? 0 : 1, pb = _amisProches.ids && _amisProches.ids.has(b.id) ? 0 : 1;
+    return pa !== pb ? pa - pb : String(a.name).localeCompare(String(b.name));
+  });
+  return out.slice(0, 60);
+}
+// Feuille « Amis proches » : rendu DOM, jamais d'onclick inline portant
+// l'identifiant ou le nom d'un autre compte (règle MSG-02).
+async function ouvrirAmisProches() {
+  if (!storyProchesActif()) return;
+  if (!_storyLotServeur()) { toast("Connecte-toi pour choisir tes amis proches"); return; }
+  window._storyEnPause = true;
+  openModal('<div class="modal-handle"></div><div class="modal-title">⭐ Amis proches</div>'
+    + '<p class="amis-proches-aide">Seules les personnes de cette liste voient tes stories « Amis proches ». Personne d\'autre ne voit la liste.</p>'
+    + '<input type="search" class="input" id="amisProchesRecherche" placeholder="Rechercher" autocomplete="off"/>'
+    + '<div class="amis-proches-liste" id="amisProchesListe" role="list"><p class="amis-proches-vide">Chargement…</p></div>', "amis_proches");
+  await chargerAmisProches(true);
+  var champ = document.getElementById("amisProchesRecherche");
+  var peindre = function () {
+    var liste = document.getElementById("amisProchesListe");
+    if (!liste) return;
+    var gens = _candidatsAmisProches(champ ? champ.value : "");
+    liste.innerHTML = "";
+    if (!gens.length) { var v = document.createElement("p"); v.className = "amis-proches-vide"; v.textContent = "Personne à proposer pour l'instant : suis des passionnés ou échange avec eux."; liste.appendChild(v); return; }
+    gens.forEach(function (u) {
+      var ligne = document.createElement("div"); ligne.className = "amis-proches-ligne"; ligne.setAttribute("role", "listitem");
+      var av = document.createElement("span"); av.className = "amis-proches-avatar"; av.style.background = _cssColor(u.color); av.textContent = u.emoji;
+      var nom = document.createElement("span"); nom.className = "amis-proches-nom"; nom.textContent = u.name;
+      var b = document.createElement("button"); b.type = "button"; b.className = "amis-proches-bascule";
+      var dedans = !!(_amisProches.ids && _amisProches.ids.has(u.id));
+      var poser = function (oui) { b.classList.toggle("on", oui); b.textContent = oui ? "★ Ajouté" : "Ajouter"; b.setAttribute("aria-pressed", oui ? "true" : "false"); b.setAttribute("aria-label", (oui ? "Retirer " : "Ajouter ") + u.name + (oui ? " des amis proches" : " aux amis proches")); };
+      poser(dedans);
+      b.addEventListener("click", async function () {
+        if (b.disabled) return;
+        var veut = !b.classList.contains("on");
+        b.disabled = true; poser(veut);                                   // optimiste
+        var ok = await basculerAmiProche(u.id, veut);
+        b.disabled = false;
+        if (!ok) poser(!veut);                                            // échec réel : on annule
+      });
+      ligne.appendChild(av); ligne.appendChild(nom); ligne.appendChild(b);
+      liste.appendChild(ligne);
+    });
+  };
+  if (champ) champ.addEventListener("input", peindre);
+  peindre();
+}
+
+// Rangée « Publier ma story | ⭐ Amis proches | ✎ » (story, compte réel). UNE
+// rangée, pas trois lignes : `.me-bottom` ne doit pas grandir, sinon il passe
+// sous la barre d'outils et « Publier » ne reçoit plus le toucher (vécu au banc).
+function _mePeindreBoutonProches() {
+  var pub = document.getElementById("mePublishBtn");
+  if (!pub) return;
+  var ligne = document.getElementById("mePublierLigne");
+  var voulu = !!(meState && meState.mode === "story" && storyProchesActif() && _storyLotServeur());
+  if (!voulu) {
+    if (ligne) { ligne.parentNode.insertBefore(pub, ligne); ligne.remove(); }
+    return;
+  }
+  if (!ligne) {
+    ligne = document.createElement("div");
+    ligne.id = "mePublierLigne"; ligne.className = "me-publier-ligne";
+    pub.parentNode.insertBefore(ligne, pub);
+    ligne.appendChild(pub);
+    var proches = document.createElement("button");
+    proches.type = "button"; proches.id = "mePublishProchesBtn"; proches.className = "btn me-publier-proches";
+    proches.textContent = "⭐ Amis proches";
+    proches.setAttribute("aria-label", "Publier pour mes amis proches seulement");
+    proches.addEventListener("click", function () { mePublishProches(); });
+    ligne.appendChild(proches);
+    var liste = document.createElement("button");
+    liste.type = "button"; liste.id = "meAmisProchesLien"; liste.className = "me-amis-proches-lien";
+    liste.textContent = "✎";
+    liste.setAttribute("aria-label", "Modifier ma liste d'amis proches");
+    liste.addEventListener("click", function () { ouvrirAmisProches(); });
+    ligne.appendChild(liste);
+  }
+  chargerAmisProches();
+}
+async function mePublishProches() {
+  if (!storyProchesActif() || !_storyLotServeur()) return;
+  var ids = await chargerAmisProches();
+  if (!ids.length) { toast("Ajoute d'abord des amis proches"); ouvrirAmisProches(); return; }
+  meState._audience = "proches";
+  try { await mePublish(); } finally { if (meState) meState._audience = null; }
+}
+
+// ── Lecteur : anneau vert, pastille « Amis proches » ─────────────────────────
+function _storyEstProches(s) { return !!(s && s.audience === "proches"); }
+function _storyPastilleProches(s) {
+  var hdr = document.querySelector("#storyViewer .story-viewer-header");
+  var old = document.getElementById("storyProchesPastille"); if (old) old.remove();
+  if (!hdr || !_storyEstProches(s)) return;
+  var p = document.createElement("span");
+  p.id = "storyProchesPastille"; p.className = "story-proches-pastille"; p.textContent = "⭐ Amis proches";
+  hdr.insertBefore(p, hdr.querySelector(".story-more-btn, .story-viewer-close"));
+}
+
+// ── À la une ─────────────────────────────────────────────────────────────────
+// Cache par compte affiché, 60 s : `renderMainProfile` est rappelée souvent.
+var _storiesUneCache = {};
+function _storyLigneVersStory(r, profs) {
+  var p = (profs && profs[r.author_id]) || {};
+  return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
+    passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null,
+    mediaType: r.media_type || null, overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous",
+    createdAt: supaTs(r.created_at), fromSupabase: true };
+}
+async function chargerStoriesUne(uid, forcer) {
+  uid = String(uid || "");
+  if (!storyUneActif() || !RE_UID_STORY_LOT.test(uid) || !window._supaReal || typeof supa === "undefined" || !supa) return [];
+  var c = _storiesUneCache[uid];
+  if (!forcer && c && (Date.now() - c.t) < 60000) return c.groupes;
+  try {
+    var r1 = await supa.from("stories_une").select("story_id,groupe,created_at").eq("owner_id", uid).order("created_at", { ascending: true }).limit(500);
+    if (r1.error) { if (!_storyLotAbsent(r1.error)) console.warn("stories à la une :", r1.error.message); return []; }
+    var lignes = r1.data || [];
+    var ids = Array.from(new Set(lignes.map(function (l) { return String(l.story_id); })));
+    var stories = {};
+    if (ids.length) {
+      var r2 = await supa.from("stories").select("*").in("id", ids).eq("author_id", uid);
+      if (r2.error) return [];
+      var profs = (typeof _resolveProfilesByIds === "function") ? await _resolveProfilesByIds([uid]) : {};
+      (r2.data || []).forEach(function (r) { stories[r.id] = _storyLigneVersStory(r, profs); });
+    }
+    var ordre = [], parGroupe = {};
+    lignes.forEach(function (l) {
+      var s = stories[l.story_id]; if (!s) return;                    // story non lisible par moi
+      var g = String(l.groupe || "").slice(0, 24);
+      if (!parGroupe[g]) { parGroupe[g] = []; ordre.push(g); }
+      parGroupe[g].push(s);
+    });
+    var groupes = ordre.map(function (g) {
+      var st = parGroupe[g].slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+      return { titre: g, stories: st };
+    });
+    _storiesUneCache[uid] = { t: Date.now(), groupes: groupes };
+    return groupes;
+  } catch (e) { return []; }
+}
+// Rangée de bulles sous la bio. `estMoi` : bulle « + Nouveau ».
+async function peindreStoriesUne(hote, uid, estMoi) {
+  if (!hote) return;
+  if (!storyUneActif()) { hote.hidden = true; hote.innerHTML = ""; return; }
+  var groupes = await chargerStoriesUne(uid);
+  if (!hote.isConnected) return;
+  hote.innerHTML = "";
+  if (!groupes.length && !estMoi) { hote.hidden = true; return; }
+  hote.hidden = false;
+  if (estMoi && _storyLotServeur()) {
+    var n = document.createElement("button"); n.type = "button"; n.className = "une-bulle une-nouveau";
+    n.innerHTML = '<span class="une-cercle" aria-hidden="true">+</span><span class="une-titre">Nouveau</span>';
+    n.setAttribute("aria-label", "Mettre une story à la une");
+    n.addEventListener("click", function () { ouvrirChoixStoryUne(); });
+    hote.appendChild(n);
+  }
+  groupes.forEach(function (g) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "une-bulle";
+    var cercle = document.createElement("span"); cercle.className = "une-cercle";
+    var couv = g.stories[g.stories.length - 1];
+    cercle.style.background = _storyFondCss(couv);
+    var img = couv && couv.media && couv.mediaType !== "video";
+    if (img) cercle.innerHTML = '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(passioMediaProteges.route(couv.media, { type: "stories", id: couv.id })) + '="' + safeUrlAttr(passioMediaProteges.route(couv.media, { type: "stories", id: couv.id })) + '" alt="" onerror="this.style.display=\'none\'"/>';
+    else cercle.textContent = (couv && couv.emoji) || "✨";
+    var t = document.createElement("span"); t.className = "une-titre"; t.textContent = g.titre;
+    b.appendChild(cercle); b.appendChild(t);
+    b.setAttribute("aria-label", "Voir « " + g.titre + " »");
+    b.addEventListener("click", function () { ouvrirStoriesUne(uid, g.titre); });
+    hote.appendChild(b);
+  });
+}
+// Ouvre un groupe « à la une » dans le lecteur. Depuis le profil d'un AUTRE
+// compte (modale, au-dessus du lecteur), on ferme la modale et on y revient à
+// la fermeture du lecteur.
+async function ouvrirStoriesUne(uid, titre) {
+  var groupes = await chargerStoriesUne(uid);
+  var g = groupes.find(function (x) { return x.titre === titre; });
+  if (!g || !g.stories.length) { toast("Cette story n'est plus disponible"); return; }
+  var s0 = g.stories[0];
+  var retour = null;
+  var bd = document.getElementById("modalBackdrop");
+  if (bd && bd.classList.contains("active")) { retour = String(uid); closeModal(); }
+  storyGroups = [{ authorId: s0.authorId, name: s0.authorName, emoji: s0.authorEmoji, color: s0.authorColor, stories: g.stories.slice(), une: g.titre, retourProfil: retour }];
+  openStoryViewerAt(0, 0);
+}
+// Fermeture du lecteur : revenir au profil visité d'où l'on avait ouvert la une.
+function _storyUneApresFermeture(options) {
+  var g = storyGroups && storyGroups[0];
+  var retour = g && g.une && g.retourProfil;
+  if (!retour) return;
+  g.retourProfil = null;
+  if (options && options.versAutreEcran) return;
+  setTimeout(function () { try { openUserProfile(retour); } catch (e) {} }, 0);
+}
+// Feuille « Mettre à la une » : groupes existants + titre neuf.
+async function choisirGroupeUne(storyId) {
+  if (!storyUneActif() || !_storyLotServeur()) return;
+  var s = (state.seed.stories || []).find(function (x) { return x && x.id === storyId; })
+    || ((storyGroups[storyGroupIdx] || {}).stories || []).find(function (x) { return x && x.id === storyId; });
+  if (!s || !s.fromSupabase || (s.authorId !== MY_UID)) { toast("Seule une story publiée peut aller à la une"); return; }
+  window._storyEnPause = true;
+  var groupes = await chargerStoriesUne(MY_UID, true);
+  openModal('<div class="modal-handle"></div><div class="modal-title">Mettre à la une</div>'
+    + '<div class="une-choix" id="uneChoixGroupes"></div>'
+    + '<label class="une-nouveau-titre">Nouveau groupe<input type="text" class="input" id="uneNouveauTitre" maxlength="24" placeholder="Ex. Voyages" autocomplete="off"/></label>'
+    + '<button type="button" class="btn primary block" id="uneCreerBtn">Ajouter</button>', "stories_une");
+  var zone = document.getElementById("uneChoixGroupes");
+  groupes.forEach(function (g) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "btn ghost une-groupe-btn";
+    var deja = g.stories.some(function (x) { return x.id === storyId; });
+    b.textContent = (deja ? "✓ " : "") + g.titre; b.disabled = deja;
+    b.addEventListener("click", function () { epinglerStory(storyId, g.titre); });
+    zone.appendChild(b);
+  });
+  var go = document.getElementById("uneCreerBtn");
+  if (go) go.addEventListener("click", function () {
+    var champ = document.getElementById("uneNouveauTitre");
+    var titre = String(champ && champ.value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 24);
+    if (!titre) { toast("Donne un titre au groupe"); return; }
+    epinglerStory(storyId, titre);
+  });
+}
+async function epinglerStory(storyId, titre) {
+  if (!_storyLotServeur()) return false;
+  var moi = MY_UID;
+  try {
+    var res = await supa.from("stories_une").insert({ story_id: String(storyId), groupe: String(titre) });
+    if (moi !== MY_UID) return false;
+    var err = res && res.error;
+    if (err && String(err.code) !== "23505") {
+      toast(_storyLotAbsent(err) ? "À la une : bientôt disponible" : (String(err.code) === "P0001" ? "Limite atteinte pour la une" : "Non ajoutée — réessaie"), "warning");
+      return false;
+    }
+    delete _storiesUneCache[moi];
+    closeModal();
+    window._storyEnPause = false;
+    toast("Ajoutée à « " + titre + " »", "success");
+    try { _rafraichirUneProfil(); } catch (e) {}
+    return true;
+  } catch (e) { toast("Non ajoutée — réessaie", "warning"); return false; }
+}
+async function retirerDeLaUne(storyId, titre) {
+  if (!_storyLotServeur()) return false;
+  var moi = MY_UID;
+  try {
+    var res = await supa.from("stories_une").delete().eq("owner_id", moi).eq("story_id", String(storyId)).eq("groupe", String(titre)).select("story_id");
+    if (res.error || !res.data || !res.data.length) { toast("Non retirée — réessaie", "warning"); window._storyEnPause = false; return false; }
+    delete _storiesUneCache[moi];
+    var g = storyGroups[storyGroupIdx];
+    if (g && g.une === titre) {
+      g.stories = g.stories.filter(function (x) { return x.id !== storyId; });
+      if (storyItemIdx >= g.stories.length) storyItemIdx = Math.max(0, g.stories.length - 1);
+    }
+    window._storyEnPause = false;
+    toast("Retirée de « " + titre + " »", "success");
+    if (g && g.une === titre && g.stories.length) playCurrentStory(); else closeStoryViewer();
+    try { _rafraichirUneProfil(); } catch (e) {}
+    return true;
+  } catch (e) { toast("Non retirée — réessaie", "warning"); window._storyEnPause = false; return false; }
+}
+// « + Nouveau » : mes stories en cours (serveur) à choisir.
+function ouvrirChoixStoryUne() {
+  var miennes = (state.seed.stories || []).filter(function (s) { return s && s.fromSupabase && s.authorId === MY_UID; });
+  if (!miennes.length) { toast("Publie une story, puis mets-la à la une depuis « ⋯ »"); return; }
+  openModal('<div class="modal-handle"></div><div class="modal-title">Choisis une story</div><div class="une-grille" id="uneGrille"></div>', "stories_une");
+  var grille = document.getElementById("uneGrille");
+  miennes.forEach(function (s) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "une-vignette";
+    b.style.background = _storyFondCss(s);
+    if (s.media && s.mediaType !== "video") b.innerHTML = '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '="' + safeUrlAttr(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '" alt=""/>';
+    else b.textContent = String(s.text || s.content || "✨").slice(0, 40);
+    b.setAttribute("aria-label", "Choisir cette story");
+    b.addEventListener("click", function () { choisirGroupeUne(s.id); });
+    grille.appendChild(b);
+  });
+}
+function _rafraichirUneProfil() {
+  var hote = document.getElementById("mainStoriesUne");
+  if (hote && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(hote, MY_UID, true);
+}
+// Actions du « ⋯ » de MA story : la une (ajouter, ou retirer quand on lit un groupe).
+function _storyActionsUne(s) {
+  if (!storyUneActif() || !_storyLotServeur() || !s || !s.fromSupabase || s.authorId !== MY_UID) return [];
+  var g = storyGroups[storyGroupIdx];
+  var acts = [{ id: "une", libelle: "⭐ Mettre à la une", agir: function () { choisirGroupeUne(s.id); } }];
+  if (g && g.une) acts.unshift({ id: "une_retirer", libelle: "Retirer de « " + g.une + " »", agir: function () { retirerDeLaUne(s.id, g.une); } });
+  return acts;
 }
 
 // ======== NOTIFICATIONS ========
@@ -7965,6 +8351,9 @@ async function _envoyerStory(story) {
       overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
     };
+    // « Amis proches » : la colonne n'est envoyée QUE pour cette audience (un
+    // serveur sans la migration refuse alors la story — jamais publiée pour tous).
+    if (story.audience === "proches") payload.audience = "proches";
     const res=await passioMediaProteges.avecSession(async function(c){return supa.from("stories").insert(payload).select("id,author_id,media_url").abortSignal(c.signal);});
     if(!passioMediaProteges.courant(_pmpCompte))return false;
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
@@ -7994,7 +8383,7 @@ async function supaLoadStories() {
     if (error) { console.warn("supaLoadStories:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, createdAt: supaTs(r.created_at), fromSupabase: true }; });
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous", createdAt: supaTs(r.created_at), fromSupabase: true }; });
   } catch(e) { return []; }
 }
 

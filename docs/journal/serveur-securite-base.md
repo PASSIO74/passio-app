@@ -36,6 +36,7 @@
 - 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
 - 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 - 📣 PRÉVENIR 99 INSCRITS : LA BASE ÉCRIT, LE PLAFOND NE COMPTE PLUS UNE DIFFUSION (village à 100, A3 — 2026-11-22)
+- ⭐ STORIES « AMIS PROCHES » ET « À LA UNE » — RESSERRER SANS TOUCHER LA POLICY FIGÉE (2026-11-26)
 
 ---
 
@@ -2312,3 +2313,55 @@ Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ 
 ⚠️ **UN PLAFOND PAR ÉMETTEUR NE BORNE PAS UNE DIFFUSION LÉGITIME, IL LA TRONQUE.** Prévenir N personnes est UN geste : il se compte une fois, côté serveur, et l'écran affiche le compte rendu par la base, jamais la longueur de la liste locale.
 
 Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (59). Il mesure d'abord les trois défauts, puis refuse six mutations et un corps inconnu (la sixième : identifiants occupés d'avance laissés en place), et éprouve deux appels CONCURRENTS (A, vérifié par réinjection : sans le verrou, le second passe). Il éprouve aussi la ré-annulation avec et sans réactivation, la co-organisation et la garde `ON CONFLICT`. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
+
+## ⭐ STORIES « AMIS PROCHES » ET « À LA UNE » — RESSERRER SANS TOUCHER LA POLICY FIGÉE (2026-11-26)
+
+Demande de Benjamin : copier Instagram pour les stories. Les deux fonctions qui touchent la base
+sont livrées en un lot : `migrations/migration_stories_proches_une_2026-11-26.sql`, banc
+`tests/sql/migration-stories-proches-une.test.sh` (96 cas, six identités + compte privé),
+client sous drapeaux (`docs/lots-ui/32-STORY-CREER-2026-11-26.md`, lot E).
+
+**Mesuré en production avant d'écrire (canal ①)** : `stories` n'est PAS publiée en Realtime ;
+trois policies seulement (SELECT permissive à `public`, INSERT, DELETE — aucune UPDATE) ; droits de
+TABLE pour anon/authenticated ; médias protégés actifs ; 0 story en base ; la purge des 48 h vit
+dans `rencontres_prive.purger_socle()` (md5 a73992a8…), appelée par `purger_donnees_expirees` à
+03:53.
+
+Décisions, et pourquoi :
+- **Ne pas réécrire la policy permissive.** Son empreinte (111ac554…) est figée par le socle des
+  médias protégés. La règle « proches » est ajoutée par deux policies **RESTRICTIVES**, une PAR
+  RÔLE : `anon` → `audience = 'tous'` ; `authenticated` → `audience = 'tous' or
+  story_proches_autorise(id)`. Une seule policy pour les deux rôles aurait fait lever 42501 à
+  CHAQUE lecture anonyme : le droit EXECUTE se vérifie à l'initialisation, même dans une branche
+  OR jamais évaluée.
+- **`story_proches_autorise(_story_id)` ne répond « vrai » que pour une story « proches » que
+  l'appelant peut lire** — faux pour une story « tous », privée ou inexistante : aucun oracle
+  d'existence (leçon de `story_a_un_sondage`).
+- **Les médias suivent sans règle de plus** : `media_resoudre` est INVOKER et les policies de
+  `media_assets` relisent `stories` sous la RLS de l'appelant. Elles gagnent une seule branche :
+  une story épinglée (`stories_une`, relue elle aussi sous la RLS de l'appelant) reste résolue
+  au-delà de 24 h.
+- **Purge** : corps de production recopié, seule la catégorie ② change (`not exists stories_une`).
+  Les fichiers suivent : `medias:orphelins` lit `stories.media_url`, une ligne gardée garde son
+  fichier.
+- **Prérequis figés** : la migration refuse une base dont la policy de lecture, le corps de la
+  purge ou les deux policies `media_assets_*` ont dérivé (md5 bruts relevés le 26/11) — le banc
+  éprouve deux de ces refus et vérifie que rien n'est posé.
+- Tables neuves : RLS, INSERT par colonne (`ami_id` ; `story_id, groupe`), aucun UPDATE, anon ne
+  lit pas la liste, plafonds (1 000 amis, 30 groupes, 100 par groupe, 500 épingles) sous verrou
+  consultatif, débit par compte, barrière de suppression ; FK `profiles ON DELETE CASCADE`,
+  déclarées dans `scripts/audit-tables-compte.js`. Hors publication Realtime.
+
+⚠️ **Piège du banc** : `rate_limit_insert` impose `created_at := now()` à l'insertion — une story
+« de 3 jours » insérée telle quelle a l'âge de la seconde. On la vieillit ENSUITE par `update`
+en administrateur (sinon la purge « rend 0 » sans rien prouver).
+
+⚠️ **Piège du banc, bis** : `select f() || (select count(*) …)` — la sous-requête non corrélée
+devient un InitPlan, évaluée AVANT `f()`. Un « supprimer puis compter » s'écrit en deux cas.
+
+Résidus assumés : l'ami SAIT qu'il est dans la liste (anneau vert, comme Instagram) ; la policy
+permissive ne regarde toujours pas le blocage pour un compte public (préexistant ; `story_visible`,
+le média et la règle « proches » le regardent) ; liste et épingles hors export RGPD, comme
+`story_likes` ; rejouer `migration_medias_proteges_go_2026-11-16.sql` APRÈS celle-ci est refusé
+par son propre prérequis (« Policies source supplementaires : revue requise ») — fermé, voulu.
+
