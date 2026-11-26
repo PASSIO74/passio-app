@@ -985,6 +985,7 @@ function meClose() {
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
   meFermerDessin();
+  _meMusiqueArreter();
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
@@ -1003,6 +1004,7 @@ function meTopBack() {
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
+  _meMusiqueArreter();
   meFermerDessin(); _meDessinRendre();
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
@@ -1887,6 +1889,170 @@ function meFermerEditeurTexte(valider) {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
+// ── MUSIQUE (2026-11-26) ─────────────────────────────────────────────────────
+// Gratuite et LÉGALE : morceaux sous licence libre trouvés par Openverse (moteur
+// de la fondation WordPress, API gratuite sans clé). Seules les licences qui
+// autorisent l'usage commercial ET l'adaptation (poser une musique sur une image
+// est une adaptation) : CC BY, CC BY-SA, CC0, domaine public — jamais « ND ».
+// Le crédit (titre, artiste, licence) s'ouvre d'un toucher sur le sticker.
+// ⚠️ L'adresse du son vient d'un AUTRE compte côté lecteur : https et hébergeurs
+// d'Openverse seulement (`musiqueSourceSure`), sinon une story piégée ferait
+// charger un son depuis n'importe quel serveur (adresse IP du spectateur).
+var OPENVERSE_AUDIO = "https://api.openverse.org/v1/audio/";
+var MUSIQUE_LICENCES = ["by", "by-sa", "cc0", "pdm"];
+var MUSIQUE_HOTES = /^(?:[a-z0-9-]+\.)*(?:jamendo\.com|freesound\.org|wikimedia\.org|ccmixter\.org)$/i;
+var MUSIQUE_SUGGESTIONS = ["chill", "acoustic", "piano", "lofi", "electronic", "jazz", "rock", "ambient"];
+function musiqueSourceSure(url) {
+  try { var u = new URL(String(url || "")); return (u.protocol === "https:" && MUSIQUE_HOTES.test(u.hostname)) ? u.href : ""; } catch (e) { return ""; }
+}
+function _musiqueLicenceUrlSure(url) {
+  try { var u = new URL(String(url || "")); return (u.protocol === "https:" && /(^|\.)creativecommons\.org$/i.test(u.hostname)) ? u.href : ""; } catch (e) { return ""; }
+}
+function _musiqueLibelleLicence(l, v) {
+  l = String(l || "").toLowerCase();
+  if (l === "cc0") return "CC0";
+  if (l === "pdm") return "Domaine public";
+  if (MUSIQUE_LICENCES.indexOf(l) < 0) return "";
+  return "CC " + l.toUpperCase() + (v ? " " + String(v).replace(/[^0-9.]/g, "").slice(0, 4) : "");
+}
+// Un résultat Openverse → morceau utilisable, ou null (lecture DÉFENSIVE).
+function _musiqueDepuisOpenverse(r) {
+  if (!r || typeof r !== "object") return null;
+  var src = musiqueSourceSure(r.url);
+  var licence = String(r.license || "").toLowerCase();
+  if (!src || MUSIQUE_LICENCES.indexOf(licence) < 0) return null;
+  return {
+    id: String(r.id || "").slice(0, 64), src: src,
+    titre: String(r.title || "Sans titre").slice(0, 80), artiste: String(r.creator || "Artiste inconnu").slice(0, 60),
+    licence: licence, version: String(r.license_version || "").slice(0, 8),
+    licenceUrl: _musiqueLicenceUrlSure(r.license_url), page: musiqueSourceSure(r.foreign_landing_url),
+    duree: Math.max(0, Math.round(Number(r.duration) || 0))
+  };
+}
+async function rechercherMusique(q) {
+  var url = OPENVERSE_AUDIO + "?q=" + encodeURIComponent(String(q || "").slice(0, 60)) + "&license=" + MUSIQUE_LICENCES.join(",") + "&category=music&mature=false&page_size=20";
+  var ctrl = (typeof AbortController === "function") ? new AbortController() : null;
+  var t = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
+  try {
+    var r = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+    if (!r.ok) return { erreur: r.status === 429 ? "trop" : "reseau" };
+    var d = await r.json();
+    return { liste: (Array.isArray(d && d.results) ? d.results : []).map(_musiqueDepuisOpenverse).filter(Boolean) };
+  } catch (e) { return { erreur: "reseau" }; }
+  finally { if (t) clearTimeout(t); }
+}
+// UN SEUL élément audio par usage (éditeur, lecteur) : sur iPhone, un élément
+// « débloqué » par un toucher le reste pour la suite des stories.
+var _meMusiqueAudio = null, _storyMusiqueAudio = null;
+function _meMusiqueArreter() { try { if (_meMusiqueAudio) { _meMusiqueAudio.pause(); _meMusiqueAudio.removeAttribute("src"); _meMusiqueAudio.load(); } } catch (e) {} }
+function _meMusiqueJouer(src) {
+  if (!src) return;
+  if (!_meMusiqueAudio) { _meMusiqueAudio = new Audio(); _meMusiqueAudio.loop = true; _meMusiqueAudio.preload = "none"; }
+  if (_meMusiqueAudio.src !== src) _meMusiqueAudio.src = src;
+  try { var pr = _meMusiqueAudio.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
+}
+function _meStickerMusique(panneau) {
+  _meMusiqueArreter();
+  var l = _meStickerListe(panneau, "🎵 Ajouter une musique");
+  var champ = document.createElement("input");
+  champ.type = "search"; champ.className = "me-sticker-recherche"; champ.placeholder = "Chercher une musique (chill, piano…)";
+  champ.setAttribute("aria-label", "Chercher une musique");
+  panneau.insertBefore(champ, l);
+  var puces = document.createElement("div"); puces.className = "me-musique-puces";
+  MUSIQUE_SUGGESTIONS.forEach(function (m) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-filtre"; b.textContent = m;
+    b.addEventListener("click", function () { champ.value = m; chercher(); });
+    puces.appendChild(b);
+  });
+  panneau.insertBefore(puces, l);
+  var credit = document.createElement("div"); credit.className = "me-musique-source";
+  credit.textContent = "Musiques libres de droits via Openverse — le crédit s'affiche sur ta story.";
+  panneau.appendChild(credit);
+  var jeton = 0;
+  var chercher = async function () {
+    var q = champ.value.trim() || "chill";
+    var mien = ++jeton;
+    l.innerHTML = ""; var att = document.createElement("div"); att.className = "me-sticker-vide"; att.textContent = "Recherche…"; l.appendChild(att);
+    var r = await rechercherMusique(q);
+    if (mien !== jeton || !document.body.contains(l)) return;
+    l.innerHTML = "";
+    if (r.erreur || !r.liste.length) {
+      var v = document.createElement("div"); v.className = "me-sticker-vide";
+      v.textContent = r.erreur === "trop" ? "Trop de recherches — réessaie dans une minute." : r.erreur ? "Musique indisponible — vérifie ta connexion." : "Aucune musique pour « " + q + " ».";
+      l.appendChild(v); return;
+    }
+    r.liste.forEach(function (m) {
+      var ligne = document.createElement("div"); ligne.className = "me-musique-ligne";
+      var ecoute = document.createElement("button"); ecoute.type = "button"; ecoute.className = "me-musique-ecoute"; ecoute.textContent = "▶"; ecoute.setAttribute("aria-label", "Écouter " + m.titre);
+      ecoute.addEventListener("click", function () {
+        var enCours = _meMusiqueAudio && !_meMusiqueAudio.paused && _meMusiqueAudio.src === m.src;
+        l.querySelectorAll(".me-musique-ecoute").forEach(function (x) { x.textContent = "▶"; });
+        if (enCours) { _meMusiqueArreter(); return; }
+        _meMusiqueJouer(m.src); ecoute.textContent = "⏸";
+      });
+      var info = document.createElement("button"); info.type = "button"; info.className = "me-sticker-ligne me-musique-choix";
+      var t = document.createElement("b"); t.textContent = m.titre;
+      var a = document.createElement("span"); a.textContent = m.artiste + " · " + _musiqueLibelleLicence(m.licence, m.version);
+      info.appendChild(t); info.appendChild(a); info.setAttribute("data-musique", m.id);
+      info.addEventListener("click", function () {
+        panneau.remove();
+        // UNE musique par story : la nouvelle remplace l'ancienne.
+        meState.overlays.filter(function (o) { return o.type === "musique"; }).forEach(function (o) { meRemoveOverlay(o.id); });
+        meAddOverlay({ type: "musique", src: m.src, titre: m.titre, artiste: m.artiste, licence: m.licence, version: m.version, licenceUrl: m.licenceUrl, page: m.page, x: 50, y: 18 });
+        _meMusiqueJouer(m.src);
+      });
+      ligne.appendChild(ecoute); ligne.appendChild(info);
+      l.appendChild(ligne);
+    });
+  };
+  var minuterie = null;
+  champ.addEventListener("input", function () { clearTimeout(minuterie); minuterie = setTimeout(chercher, 450); });
+  chercher();
+}
+// Lecteur de story : joue la musique de la story affichée, s'arrête avec elle.
+function _storyMusiqueArreter() { try { if (_storyMusiqueAudio) _storyMusiqueAudio.pause(); } catch (e) {} var b = document.getElementById("storyMusiqueSon"); if (b) b.remove(); }
+function _storyMusiqueJouer(s) {
+  _storyMusiqueArreter();
+  var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
+  var src = o && musiqueSourceSure(o.src);
+  if (!src) return;
+  if (!_storyMusiqueAudio) { _storyMusiqueAudio = new Audio(); _storyMusiqueAudio.loop = true; _storyMusiqueAudio.preload = "auto"; }
+  if (_storyMusiqueAudio.src !== src) _storyMusiqueAudio.src = src;
+  try { _storyMusiqueAudio.currentTime = 0; } catch (e) {}
+  var pr = null;
+  try { pr = _storyMusiqueAudio.play(); } catch (e) {}
+  if (pr && pr.catch) pr.catch(function () {
+    // Lecture refusée (aucun geste encore) : un bouton pour lancer le son.
+    var card = document.getElementById("storyCard"); if (!card || document.getElementById("storyMusiqueSon")) return;
+    var b = document.createElement("button"); b.type = "button"; b.id = "storyMusiqueSon"; b.className = "story-sound-btn"; b.textContent = "🔇";
+    b.setAttribute("aria-label", "Lancer la musique");
+    b.addEventListener("click", function (e) { e.stopPropagation(); try { _storyMusiqueAudio.play(); } catch (_) {} b.remove(); });
+    card.appendChild(b);
+  });
+}
+// Crédit d'un morceau (toucher sur le sticker) : rendu DOM, liens validés.
+function ouvrirCreditMusique(bouton) {
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
+  if (!o) return;
+  var pauseAvant = window._storyEnPause; window._storyEnPause = true;
+  openModal('<div class="modal-handle"></div><div class="modal-title">🎵 Musique</div><div id="mcCorps" class="mc-corps"></div>');
+  var c = document.getElementById("mcCorps"); if (!c) return;
+  var ligne = function (txt, cls) { var d = document.createElement("div"); d.className = cls || ""; d.textContent = txt; c.appendChild(d); return d; };
+  ligne("« " + String(o.titre || "Sans titre").slice(0, 80) + " »", "mc-titre");
+  ligne(String(o.artiste || "").slice(0, 60), "mc-artiste");
+  var lib = _musiqueLibelleLicence(o.licence, o.version);
+  if (lib) {
+    var lu = _musiqueLicenceUrlSure(o.licenceUrl);
+    if (lu) { var a = document.createElement("a"); a.href = lu; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "Licence " + lib; a.className = "mc-lien"; c.appendChild(a); }
+    else ligne("Licence " + lib, "mc-lien");
+  }
+  var page = musiqueSourceSure(o.page);
+  if (page) { var p2 = document.createElement("a"); p2.href = page; p2.target = "_blank"; p2.rel = "noopener noreferrer"; p2.textContent = "Écouter sur la page d'origine"; p2.className = "mc-lien"; c.appendChild(p2); }
+  ligne("Trouvée via Openverse (fondation WordPress).", "mc-source");
+  var fermeture = setInterval(function () { if (!document.body.contains(c)) { clearInterval(fermeture); window._storyEnPause = pauseAvant; } }, 400);
+}
+
 // ── FILTRES (2026-11-26) ─────────────────────────────────────────────────────
 // Appliqués à l'AFFICHAGE, jamais dans le fichier : la story/bobine porte un
 // overlay `{type:"filtre", f:<id>}` et chaque lecteur pose la classe
@@ -2011,6 +2177,10 @@ function _mePeindreSticker(content, ov) {
     if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
   } else if (ov.type === "mention") {
     content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "musique") {
+    var tm = document.createElement("b"); tm.textContent = "🎵 " + (ov.titre || "");
+    var am = document.createElement("span"); am.textContent = ov.artiste || "";
+    content.appendChild(tm); content.appendChild(am);
   } else if (ov.type === "compte") {
     var tc = document.createElement("b"); tc.textContent = "⏳ " + (ov.titre || "");
     var rc = document.createElement("span"); rc.textContent = storyCompteTexte(ov.fin);
@@ -2039,7 +2209,7 @@ function meOuvrirStickers() {
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
   var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention], ["⏳", "Compte à rebours", _meStickerCompte]];
-  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); }
+  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -2271,7 +2441,7 @@ function storyRepondreQuestion(bouton) {
 }
 (function _storyStickersBrancher() {
   document.addEventListener("click", function (e) {
-    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt");
+    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt, .st-musique");
     if (!b || b.closest("#mediaEditor")) return;
     e.preventDefault(); e.stopPropagation();
     var evt = b.getAttribute("data-evt"), u = b.getAttribute("data-uid");
@@ -2284,6 +2454,7 @@ function storyRepondreQuestion(bouton) {
       _storyQuitterLecteurs();
       openUserProfile(u);
     } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    else if (b.classList.contains("st-musique")) { if (b.closest("#storyOverlays")) ouvrirCreditMusique(b); }
     else storyRepondreQuestion(b);
   }, true);
 })();
@@ -2469,8 +2640,10 @@ function meSelectOverlay(ov) {
   var el = document.getElementById(ov.id); if (el) el.classList.add("selected");
 }
 function meRemoveOverlay(id) {
+  var retire = meState.overlays.find(function (o) { return o.id === id; });
   meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
   var el = document.getElementById(id); if (el) el.remove();
+  if (retire && retire.type === "musique") _meMusiqueArreter();
   _meMajVide();
 }
 // Applique position (left/top) + transform (scale/rotation) et garde les
@@ -2491,7 +2664,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
-  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage" || ov.type === "compte") { _mePeindreSticker(content, ov); }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage" || ov.type === "compte" || ov.type === "musique") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -2623,6 +2796,7 @@ function _meOverlaysData() {
     if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
     if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
     if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
+    if (o.type === "musique") { c.src = musiqueSourceSure(o.src); c.titre = String(o.titre || "").slice(0, 80); c.artiste = String(o.artiste || "").slice(0, 60); c.licence = String(o.licence || "").slice(0, 8); c.version = String(o.version || "").slice(0, 8); c.licenceUrl = _musiqueLicenceUrlSure(o.licenceUrl); c.page = musiqueSourceSure(o.page); }
     if (o.type === "compte") { c.titre = String(o.titre || "").slice(0, 60); c.fin = Math.round(Number(o.fin) || 0); if (o.eid) c.eid = o.eid; }
     if (o.type === "sondage") { c.q = String(o.q || "").slice(0, 120); c.a = String(o.a || "Oui").slice(0, 30); c.b = String(o.b || "Non").slice(0, 30); }
     return c;
@@ -3004,6 +3178,10 @@ function _storyOverlaysHtml(overlays, opts) {
       var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
       return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
+    if (o.type === "musique" && dansStory) {
+      if (!musiqueSourceSure(o.src)) return "";
+      return '<button type="button" class="story-ov story-sticker st-musique" style="' + pos + '"><b>🎵 ' + escapeHtml(String(o.titre || "").slice(0, 80)) + '</b><span>' + escapeHtml(String(o.artiste || "").slice(0, 60)) + '</span></button>';
+    }
     if (o.type === "compte") {
       var fin = Number(o.fin), lien = ME_ID_STICKER.test(String(o.eid || ""));
       if (!Number.isFinite(fin)) return "";
@@ -3135,6 +3313,7 @@ function playCurrentStory() {
   const overlays = Array.isArray(s.overlays) ? s.overlays : [];
   if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays, { story: true });
   try { if (overlays.some(function (o) { return o && o.type === "sondage"; })) _storySondagePeindre(s); } catch (e) {}
+  try { _storyMusiqueJouer(s); } catch (e) {}
 
   if (overlays.length) {
     $("#storyContent").innerHTML = "";
@@ -3943,6 +4122,7 @@ function storyGroupeVoisin(sens) {
 
 function closeStoryViewer(options) {
   clearInterval(storyTimer);
+  try { _storyMusiqueArreter(); } catch (e) {}
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
   if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
