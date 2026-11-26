@@ -5404,7 +5404,10 @@ function _checkEventReminders() {
       var rang = _rangPalierRappel(tier.key);
       var dejaLa = (state.notifications || []).some(function (n) {
         return n && n.kind === "event_reminder" && n.refId === e.id
-          && (n.palier ? _rangPalierRappel(n.palier) >= rang : String(n.id) === "rappel_" + mark);
+          && (n.palier
+            // Une activité REPORTÉE n'est pas la même échéance : l'ancien rappel ne la tait pas.
+            ? _rangPalierRappel(n.palier) >= rang && (n.dateActivite == null || n.dateActivite === e.date)
+            : String(n.id) === "rappel_" + mark);
       });
       if (dejaLa) { reminded.push(mark); return; }
 
@@ -5427,7 +5430,7 @@ function _checkEventReminders() {
           + " à " + _eventTimeLabel(e)
           + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id, id: "rappel_" + mark });
         var posee = (state.notifications || [])[0];
-        if (posee && posee.id === "rappel_" + mark) posee.palier = tier.key;
+        if (posee && posee.id === "rappel_" + mark) { posee.palier = tier.key; posee.dateActivite = e.date; }
       }
       change = true;
       reminded.push(mark);

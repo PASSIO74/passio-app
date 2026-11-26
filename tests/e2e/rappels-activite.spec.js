@@ -117,14 +117,20 @@ test.describe("Rappels d'activité — le tap ouvre l'activité", () => {
       ev.date = Date.now() + 90 * 60e3;             // palier H-2 : remplace le précédent
       _checkEventReminders();
       _checkEventReminders();
-      return { apres1, apres3, apresH2: compte(),
-        autre: state.notifications.some((n) => n.id === "autre"),
-        palier: state.notifications.find((n) => n.kind === "event_reminder").palier };
+      const palierH2 = state.notifications.find((n) => n.kind === "event_reminder").palier;
+      ev.date = Date.now() + 20 * 3600e3;           // reportée : la veille sonne de nouveau
+      _checkEventReminders();
+      const report = state.notifications.find((n) => n.kind === "event_reminder");
+      return { apres1, apres3, apresH2: compte(), apresReport: compte(),
+        palierReport: report && report.palier, palierH2,
+        autre: state.notifications.some((n) => n.id === "autre") };
     }, EVENT_SEED);
     expect(r.apres1, "les doublons se replient en un").toBe(1);
     expect(r.apres3, "l'activité absente un temps n'est pas re-rappelée").toBe(1);
     expect(r.apresH2, "le palier suivant remplace le précédent").toBe(1);
-    expect(r.palier).toBe("h2");
+    expect(r.palierH2).toBe("h2");
+    expect(r.palierReport, "une activité reportée est rappelée pour sa nouvelle date").toBe("d1");
+    expect(r.apresReport).toBe(1);
     expect(r.autre, "les autres notifications restent").toBe(true);
   });
 
