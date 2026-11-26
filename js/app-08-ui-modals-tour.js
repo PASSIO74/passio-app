@@ -1884,6 +1884,162 @@ function meFermerEditeurTexte(valider) {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
+// ── STICKERS (2026-11-26, lot B) ────────────────────────────────────────────
+// 📍 Activité (renvoie à la fiche), @ Mention (le compte est prévenu par un
+// message), ❓ Question (les réponses arrivent en message à l'auteur — story
+// seulement). Les identifiants voyagent tels quels et sont VALIDÉS au rendu.
+var ME_ID_STICKER = /^[A-Za-z0-9_-]{1,80}$/;
+function _mePeindreSticker(content, ov) {
+  content.className = "me-sticker me-sticker-" + ov.type;
+  content.textContent = "";
+  if (ov.type === "evenement") {
+    var t = document.createElement("b"); t.textContent = "📍 " + (ov.titre || "Activité");
+    content.appendChild(t);
+    if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
+  } else if (ov.type === "mention") {
+    content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "question") {
+    var qq = document.createElement("b"); qq.textContent = ov.q || "Pose-moi une question";
+    var r = document.createElement("span"); r.className = "me-sticker-rep"; r.textContent = "Écris ta réponse…";
+    content.appendChild(qq); content.appendChild(r);
+  }
+}
+function _meQuandEvenement(ev) {
+  try {
+    var ts = Number(ev && ev.date); if (!Number.isFinite(ts) || !ts) return "";
+    var d = new Date(ts);
+    var f = (typeof fmtEventDate === "function") ? fmtEventDate(ts) : null;
+    return d.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "") + " " + (f ? f.day + " " + f.month + " · " + f.time : "");
+  } catch (e) { return ""; }
+}
+function meOuvrirStickers() {
+  var exist = document.getElementById("meStickerPanel"); if (exist) { exist.remove(); return; }
+  ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
+  panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
+  var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention]];
+  if (meState.mode === "story") choix.push(["❓", "Question", _meStickerQuestion]);
+  choix.forEach(function (c) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
+    var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
+    var l = document.createElement("span"); l.textContent = c[1];
+    b.appendChild(i); b.appendChild(l);
+    b.setAttribute("data-sticker", c[1]);
+    b.addEventListener("click", function () { c[2](panneau); });
+    panneau.appendChild(b);
+  });
+  document.body.appendChild(panneau);
+}
+function _meStickerListe(panneau, titre) {
+  panneau.innerHTML = "";
+  panneau.classList.add("me-panneau-liste");
+  var h = document.createElement("div"); h.className = "me-sticker-titre"; h.textContent = titre;
+  panneau.appendChild(h);
+  var l = document.createElement("div"); l.className = "me-sticker-liste";
+  panneau.appendChild(l);
+  return l;
+}
+function _meStickerActivite(panneau) {
+  var maintenant = Date.now() - 3 * 3600 * 1000;
+  var evs = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
+    return e && ME_ID_STICKER.test(String(e.id || "")) && Number(e.date) >= maintenant;
+  }).slice(0, 30);
+  var l = _meStickerListe(panneau, "📍 Épingler une activité");
+  if (!evs.length) { var v = document.createElement("div"); v.className = "me-sticker-vide"; v.textContent = "Aucune activité à venir. Crée-en une dans Rencontrer."; l.appendChild(v); return; }
+  evs.forEach(function (ev) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-ligne";
+    var t = document.createElement("b"); t.textContent = (ev.emoji ? ev.emoji + " " : "") + (ev.title || "Activité");
+    var quandEl = document.createElement("span"); quandEl.textContent = _meQuandEvenement(ev);
+    b.appendChild(t); b.appendChild(quandEl);
+    b.setAttribute("data-eid", ev.id);
+    b.addEventListener("click", function () {
+      panneau.remove();
+      meAddOverlay({ type: "evenement", eid: String(ev.id), titre: String(ev.title || "Activité").slice(0, 80), quand: _meQuandEvenement(ev).slice(0, 40), x: 50, y: 66 });
+    });
+    l.appendChild(b);
+  });
+}
+function _meStickerMention(panneau) {
+  var l = _meStickerListe(panneau, "@ Mentionner quelqu'un");
+  var champ = document.createElement("input");
+  champ.type = "search"; champ.className = "me-sticker-recherche"; champ.placeholder = "Chercher un nom"; champ.setAttribute("aria-label", "Chercher un compte");
+  panneau.insertBefore(champ, l);
+  var peindre = function () {
+    l.innerHTML = "";
+    var cherche = champ.value.trim().toLowerCase().replace(/^@/, "");
+    var gens = (typeof _mentionCandidates === "function" ? _mentionCandidates(cherche) : []).filter(function (u) { return u && ME_ID_STICKER.test(String(u.id || "")); });
+    if (!gens.length) { var v = document.createElement("div"); v.className = "me-sticker-vide"; v.textContent = "Personne à ce nom."; l.appendChild(v); return; }
+    gens.forEach(function (u) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-ligne";
+      var t = document.createElement("b"); t.textContent = "@" + u.name;
+      b.appendChild(t);
+      b.setAttribute("data-uid", u.id);
+      b.addEventListener("click", function () {
+        panneau.remove();
+        meAddOverlay({ type: "mention", uid: String(u.id), nom: String(u.name).slice(0, 40), x: 50, y: 60 });
+      });
+      l.appendChild(b);
+    });
+  };
+  champ.addEventListener("input", peindre);
+  peindre();
+  try { champ.focus(); } catch (e) {}
+}
+async function _meStickerQuestion(panneau) {
+  panneau.remove();
+  var saisie = await demanderTexte({ titre: "Ta question", valeur: "Pose-moi une question", libelle: "Ajouter", max: 120 });
+  if (saisie == null) return; saisie = saisie.trim(); if (!saisie) return;
+  meAddOverlay({ type: "question", q: saisie.slice(0, 120), x: 50, y: 60 });
+}
+// Après une publication RÉUSSIE : chaque compte mentionné (réel, pas soi, pas
+// un compte d'exemple « u_… ») reçoit un message, comme sur Instagram.
+function _prevenirMentionsStory(overlays, quoi) {
+  var deja = {};
+  (overlays || []).forEach(function (o) {
+    if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    if (deja[o.uid] || o.uid === MY_UID || String(o.uid).indexOf("u_") === 0) return;
+    deja[o.uid] = 1;
+    try { _envoyerALAuteurStory({ authorId: o.uid, authorName: o.nom }, o.nom, "📣 Je t'ai mentionné·e dans ma " + (quoi === "bobine" ? "bobine" : "story")); } catch (e) {}
+  });
+}
+// Lecteurs (story ET bobine) : un toucher sur un sticker.
+function _storyQuitterLecteurs() {
+  try { if (typeof reelsState !== "undefined" && reelsState && reelsState.open) closeReels(); } catch (e) {}
+  var sv = document.getElementById("storyViewer");
+  if (sv && sv.classList.contains("active")) closeStoryViewer({ versAutreEcran: true });
+}
+function storyRepondreQuestion(bouton) {
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  if (!s) return;
+  if (s.authorId === MY_UID) { toast("Les réponses arrivent dans tes messages"); return; }
+  var carte = bouton.closest(".st-question");
+  var question = carte ? (carte.getAttribute("data-q") || "") : "";
+  window._storyEnPause = true;
+  demanderTexte({ titre: question || "Réponds", placeholder: "Ta réponse", libelle: "Envoyer", max: 300 }).then(function (t) {
+    window._storyEnPause = false;
+    if (t == null || !t.trim()) return;
+    Promise.resolve(_envoyerALAuteurStory(s, s.authorName, "❓ « " + question + " »\n" + t.trim())).then(function (ok) {
+      if (ok) toast("Réponse envoyée à " + (s.authorName || "l'auteur"), "success");
+    });
+  });
+}
+(function _storyStickersBrancher() {
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep");
+    if (!b || b.closest("#mediaEditor")) return;
+    e.preventDefault(); e.stopPropagation();
+    var evt = b.getAttribute("data-evt"), u = b.getAttribute("data-uid");
+    if (evt) {
+      var ev = (typeof allEvents === "function" ? allEvents() : []).find(function (x) { return x && x.id === evt; });
+      if (!ev) { toast("Cette activité n'est plus disponible"); return; }
+      _storyQuitterLecteurs();
+      openEventDetails(evt);
+    } else if (u) {
+      _storyQuitterLecteurs();
+      openUserProfile(u);
+    } else storyRepondreQuestion(b);
+  }, true);
+})();
 // ── DESSIN À MAIN LEVÉE (2026-11-26) ──────────────────────────────────────
 // Les traits sont des VECTEURS (coordonnées 0–1000 de la scène) : ils voyagent
 // dans `overlays` ({type:"dessin", traits:[{c,w,p}]}) — jamais une image base64
@@ -2041,7 +2197,7 @@ function meAddEmoji() {
 }
 (function _meFermerPanneauxDehors() {
   document.addEventListener("pointerdown", function (e) {
-    ["meEmojiBar", "meGifPanel"].forEach(function (id) {
+    ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) {
       var p = document.getElementById(id);
       if (!p || p.contains(e.target)) return;
       // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
@@ -2088,6 +2244,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -2216,6 +2373,9 @@ function _meOverlaysData() {
     if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; if (o.font && o.font !== "classique") c.font = _storyPolice(o.font).id; }
     if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
     if (o.type === "gif") { c.url = o.url; }
+    if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
+    if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
+    if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
     return c;
   });
 }
@@ -2287,7 +2447,7 @@ async function mePublish() {
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
     saveState();
     try { renderStories(); } catch(e) {}
-    _publierStoryAvecVerdict(story);
+    Promise.resolve(_publierStoryAvecVerdict(story)).then(function (ok) { if (ok) _prevenirMentionsStory(story.overlays, "story"); });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
@@ -2342,6 +2502,7 @@ function _publishReelWithFeedback(post) {
       post._pendingSync = false;
       try { saveState(); } catch (e) {}
       toast("Bobine publiée", "success");
+      try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
       return;
     }
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
@@ -2572,6 +2733,16 @@ function _storyOverlaysHtml(overlays) {
       return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + taille + 'px;font-weight:' + st.graisse + ';font-family:' + st.famille + ';' + (st.ombre ? 'text-shadow:' + st.ombre + ';' : '') + 'text-align:' + st.align + ';">' + interieur + '</div>';
     }
     if (o.type === "dessin") return _storyDessinHtml(o);
+    if (o.type === "evenement" && ME_ID_STICKER.test(String(o.eid || ""))) {
+      return '<button type="button" class="story-ov story-sticker st-evt" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '"><b>📍 ' + escapeHtml(String(o.titre || "Activité").slice(0, 80)) + '</b>' + (o.quand ? '<span>' + escapeHtml(String(o.quand).slice(0, 40)) + '</span>' : '') + '</button>';
+    }
+    if (o.type === "mention" && ME_ID_STICKER.test(String(o.uid || ""))) {
+      return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(String(o.nom || "").slice(0, 40)) + '</button>';
+    }
+    if (o.type === "question") {
+      var qv = String(o.q || "").slice(0, 120);
+      return '<div class="story-ov story-sticker st-question" style="' + pos + '" data-q="' + escapeHtml(qv) + '"><b>' + escapeHtml(qv) + '</b><button type="button" class="st-q-rep">Écris ta réponse…</button></div>';
+    }
     if (o.type === "emoji") {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
     }
