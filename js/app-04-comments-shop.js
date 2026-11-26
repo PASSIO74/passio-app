@@ -5248,6 +5248,7 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-stat"><span data-abonnes-visite="' + followerCount + '" data-suivi-initial="' + ((typeof etatSuivi === "function" && etatSuivi(authorId) === "suivi") ? 1 : 0) + '">' + followerCount + '</span><span>abonnés</span></div>\
           <div class="main-profile-stat"><span>' + followingCount + '</span><span>abonnements</span></div>\
         </div>\
+        <div class="stories-une" id="visitedStoriesUne" hidden></div>\
       </div>\
     </div>\
     \
@@ -5274,6 +5275,11 @@ async function openUserProfile(authorId, source) {
   // Remplit le contenu selon les sélections (comme renderProfileContent chez moi).
   _renderVisitedContent();
   _renderVisitedEvents();
+  // Stories à la une (lot E, 2026-11-26) : la RLS ne rend que ce que je peux lire
+  // (compte privé, « Amis proches », blocage) ; rien pour un compte que j'ai bloqué.
+  if (!_bloqueParMoi && typeof peindreStoriesUne === "function") {
+    try { peindreStoriesUne(document.getElementById("visitedStoriesUne"), authorId, false); } catch (e) {}
+  }
   // « Activité » lit `allEvents()`, que seul le DÉMARRAGE remplissait : une
   // activité publiée après l'ouverture de l'app restait absente de ce profil
   // jusqu'à la relance (Jerem, 2026-10-23). On recharge donc ses activités,

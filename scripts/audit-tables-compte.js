@@ -82,6 +82,11 @@ const EXCEPTIONS = {
   "story_comments.author_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
   // Sondages de story (2026-11-26, migration_story_sondage_2026-11-26.sql) : même règle.
   "story_sondage_votes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE (et stories(id) ON DELETE CASCADE) : le vote part avec le profil purgé, sans passer par la purge",
+  // Amis proches et stories à la une (2026-11-26, migration_stories_proches_une_2026-11-26.sql) :
+  // même règle — la base les emporte avec le profil (et `stories_une` avec la story).
+  "amis_proches.owner_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la liste part avec le profil purgé, sans passer par la purge",
+  "amis_proches.ami_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : l'entrée qui nomme le compte part avec son profil purgé",
+  "stories_une.owner_id": "clé étrangère vers profiles(id) ON DELETE CASCADE (et stories(id) ON DELETE CASCADE) : l'épingle part avec le profil purgé, sans passer par la purge",
   // Médias protégés : le relevé Storage par propriété précède les lignes.
   // Les FK emportent les registres avec le profil ; les octets sont ensuite
   // supprimés depuis le relevé conservé. L'export lit le même instantané.
