@@ -35,11 +35,34 @@ test('une demande confirmée réveille l’organisation sans doubler sa notifica
    _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
    toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
-  vm.runInContext(fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
+  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map();"+fn('_suspendreLectureRefus')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
   assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
   assert.equal(relectures,reel&&reponse===true?1:0,'Rencontrer relit la demande uniquement après enregistrement serveur');
   assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');
   if(pushes.length)assert.deepEqual(pushes[0],['orga','event_join','']);
+ }
+});
+test('le refus efface la présence périmée, mais une lecture dépassée ne touche jamais une nouvelle inscription',async()=>{
+ for(const cas of ['refus','réinscription','compte changé','fiche fermée','erreur réseau']){
+  let repondre, rsvp='waitlist';
+  const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
+  const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
+   state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+   myRsvp:()=>rsvp,_setMyRsvpLocal:(id,v)=>{rsvp=v},saveState(){},_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
+   supa:{rpc:()=>new Promise(resolve=>{repondre=resolve})},
+   supaLireParticipants:async()=>({listesLues:true,comptesLus:true,attByEvent:{e:['orga']},maybeByEvent:{},
+    waitByEvent:{},checkedByEvent:{},countsByEvent:{e:{going:1}}})});
+  vm.runInContext("let _vueRefusSortie={id:'e',uid:'moi',lecture:0,refuse:false}; const _ecrituresRsvp=new Map();"
+    +fn('_relireRefusFiche')+fn('_suspendreLectureRefus')+fn('_poserListesRelues'),c);
+  const lecture=c._relireRefusFiche('e');
+  if(cas==='réinscription'){c._suspendreLectureRefus('e','moi');rsvp='going';}
+  if(cas==='compte changé') c._identiteDivergeDeLaSession=()=>true;
+  if(cas==='fiche fermée') c.window._openEventDetailId=null;
+  repondre(cas==='erreur réseau'?{error:{code:'offline'}}:{data:true});await lecture;
+  assert.equal(vm.runInContext('_vueRefusSortie.refuse',c),cas==='refus',cas);
+  assert.equal(rsvp,cas==='refus'?null:cas==='réinscription'?'going':'waitlist',cas);
+  assert.equal(ev.attendees.includes('moi'),cas!=='refus',cas);
+  assert.equal(ev.counts.going,cas==='refus'?1:2,cas);
  }
 });
 test('la coorganisation suspendue ne produit ni mutation ni notification',async()=>{const t=contexte();vm.runInContext(fn('openEventCoOrganizers')+'\n'+fn('toggleEventCoOrganizer'),t.c);await t.c.toggleEventCoOrganizer('e','u');assert.match(t.messages[0],/consentement/);});
