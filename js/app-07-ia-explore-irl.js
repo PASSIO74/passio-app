@@ -8555,6 +8555,10 @@ async function submitEvent(editId) {
   // La première validation ferme la modale avant toute nouvelle attente.
   // Un double appui ou une fermeture pendant le géocodage s'arrête ici.
   if (sourceStudio && !formulaireStudioActif()) return;
+  if (sourceStudio && !window._supaReal && messageDisponiblePourSortie(sourceStudio)?.sortieDifferee === "aProposer") {
+    toast("Reconnecte-toi pour publier la sortie et la relier à ton message.", "warning");
+    return;
+  }
   window._evPickedCoords = null;
 
   // Origine « pont Fil → IRL » : lue AVANT closeModal (le marqueur vit sur le
@@ -8585,6 +8589,10 @@ async function submitEvent(editId) {
   // Occurrences suivantes d'un événement récurrent : de VRAIS événements qui
   // partagent le seriesId (chacun a ses inscrits et sa discussion).
   if (sourceStudio && MY_UID !== auteurStudio) return;
+  if (sourceStudio && !messageDisponiblePourSortie(sourceStudio)) {
+    toast("La proposition de sortie a changé. Rouvre le menu de ton message.");
+    return;
+  }
   const extraOccurrences = [];
   if (!editId && recurrence && recurrence !== "none") {
     _recurrenceDates(ts, recurrence, occurrences).forEach(t => {
@@ -8630,7 +8638,14 @@ async function submitEvent(editId) {
     if (sourceStudio) {
       if (meId !== MY_UID) return;
       // Un timeout peut suivre un INSERT réussi. Le menu vérifiera la même sortie.
-      if (ok) lienStudio = await relierSortieStudio(sourceStudio, ev.id);
+      if (ok) {
+        const message = state.userPosts.find(p => p.id === sourceStudio && p.authorId === meId);
+        if (message?.sortieDifferee === "aProposer") {
+          message.sortieDifferee = "publiee";
+          saveStateNow();
+        }
+        lienStudio = await relierSortieStudio(sourceStudio, ev.id);
+      }
       if (meId !== MY_UID) return;
     }
     // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
@@ -8707,7 +8722,8 @@ async function submitEvent(editId) {
 // sur les mêmes identifiants et ne crée jamais une deuxième sortie.
 async function relierSortieStudio(postId, eventId) {
   const auteur = MY_UID;
-  const post = (state.userPosts || []).find(p => p.id === postId && p.authorId === auteur);
+  const retrouverMessage = () => (state.userPosts || []).find(p => p.id === postId && p.authorId === auteur);
+  let post = retrouverMessage();
   if (post && eventId && post.eventId === eventId && !post.sortieARelier) return "liee";
   if (!post || !eventId || post.sortieARelier !== eventId) return "refusee";
   if (sortiesStudioEnCreation.has(eventId)) return "attente";
@@ -8716,7 +8732,8 @@ async function relierSortieStudio(postId, eventId) {
     reponse = await supa.rpc("relier_publication_sortie", { p_post_id: postId, p_event_id: eventId });
   } catch (_) { return "attente"; }
   if (!reponse || reponse.error || typeof reponse.data !== "boolean") return "attente";
-  if (MY_UID !== auteur) return "refusee";
+  post = retrouverMessage();
+  if (MY_UID !== auteur || !post) return "refusee";
   if (post.sortieARelier !== eventId) return post.eventId === eventId ? "liee" : "refusee";
   delete post.sortieARelier;
   const liee = reponse.data === true;
@@ -8727,6 +8744,7 @@ async function relierSortieStudio(postId, eventId) {
   }
   saveStateNow();
   if (liee && document.getElementById("screen-feed")?.classList.contains("active")) renderFeed();
+  if (liee) window.PassioUIV3?.decorateOpenPost?.();
   return liee ? "liee" : "refusee";
 }
 

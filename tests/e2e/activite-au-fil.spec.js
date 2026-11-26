@@ -19,9 +19,9 @@ const UUID = "9f35913c-0000-4a55-a0b8-000000000001";
 
 // Démarrage neutralisé (aucune écriture en production) : `supa` est un double
 // chaînable dont la lecture `posts` rend `window.__postsServeur`.
-async function banc(page, verdict) {
+async function banc(page, verdict, conserverPosts = false) {
   await bootOnboarded(page);
-  await page.evaluate(({ v, uuid }) => {
+  await page.evaluate(({ v, uuid, conserverPosts }) => {
     ["supaUpdateEvent", "supaJoinEvent", "supaLeaveEvent", "supaSetEventRsvp", "supaLoadEvents",
       "supaLoadMyRsvps", "supaLoadEventCommentCounts", "supaCreateEventConversation",
       "supaJoinEventConversation", "supaLeaveEventConversation",
@@ -45,11 +45,11 @@ async function banc(page, verdict) {
     MY_UID = uuid;
     state.user.general.username = "Jerem";
     state.userEvents = [];
-    state.userPosts = [];
+    if (!conserverPosts) state.userPosts = [];
     state.seed.events = [];
     goTo("irl");
     renderIRL();
-  }, { v: verdict, uuid: UUID });
+  }, { v: verdict, uuid: UUID, conserverPosts });
 }
 
 async function creer(page, titre) {
@@ -62,7 +62,7 @@ async function creer(page, titre) {
   await page.evaluate(() => submitEvent());
 }
 
-async function ouvrirSortieDepuisStudio(page, reponseLien, confirmation = false) {
+async function simulerLienStudio(page, reponseLien, confirmation = false) {
   await page.evaluate(({ reponse, confirmation }) => {
     window.__rpcLiens = [];
     window.__reponseLien = reponse;
@@ -73,11 +73,19 @@ async function ouvrirSortieDepuisStudio(page, reponseLien, confirmation = false)
     };
     window.supaLoadPosts = async () => [];
     window.PASSIO_INVITE_APRES_CREATION = confirmation;
-    goTo("studio");
   }, { reponse: reponseLien, confirmation });
+}
+
+async function publierMessageEnsemble(page) {
+  await page.evaluate(() => goTo("studio"));
   await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
   await page.getByRole("textbox", { name: "Ton message" }).fill("Qui vient marcher samedi ?");
   await page.getByRole("button", { name: "Publier", exact: true }).click();
+}
+
+async function ouvrirSortieDepuisStudio(page, reponseLien, confirmation = false) {
+  await simulerLienStudio(page, reponseLien, confirmation);
+  await publierMessageEnsemble(page);
   await page.locator("#studioSuiteSortie").getByRole("button", { name: "Proposer une sortie" }).click();
   await expect(page.locator("#evAuFil")).not.toBeChecked();
   await expect(page.locator("#evPassion")).toHaveValue("musique");
@@ -99,6 +107,117 @@ test("la sortie confirmée s’ouvre depuis le message d’origine", async ({ pa
   await expect(activite).toHaveAttribute("data-v3-activity", sortieId);
   await activite.click();
   await expect(page.locator("#eventDetailPage")).toContainText("Marche du samedi");
+});
+
+test("Plus tard permet de reprendre le même message depuis le fil et sa fiche après rechargement", async ({ page }) => {
+  await banc(page, true);
+  await publierMessageEnsemble(page);
+  const suite = page.locator("#studioSuiteSortie");
+  await expect(suite).toBeVisible();
+  const avantReport = await page.evaluate(() => state.userPosts[0]);
+  const postId = avantReport.id;
+  const carte = page.locator(`#feedList article[data-postid="${postId}"]`);
+  const menuCarte = carte.getByRole("button", { name: "Options de la publication" });
+  const fenetre = page.getByRole("dialog");
+  const proposer = fenetre.getByRole("button", { name: "Proposer une sortie", exact: true });
+
+  await menuCarte.click();
+  await expect(proposer).toHaveCount(0);
+  await fenetre.getByRole("button", { name: "Annuler", exact: true }).click();
+  await suite.getByRole("button", { name: "Plus tard" }).click();
+  await expect(suite).toHaveCount(0);
+
+  // Recharge la page, ses scripts et le compte simulé ; le message vient du stockage.
+  await banc(page, true, true);
+  await simulerLienStudio(page, { data: true, error: null });
+  await page.evaluate(ancien => {
+    _applyUserState({ userPosts: [ancien] });
+    goTo("feed");
+  }, avantReport);
+  await menuCarte.click();
+  await proposer.press("Enter");
+  await expect(page.locator("#evTitle")).toHaveAttribute("data-publication-studio", postId);
+  await expect(page.locator("#evAuFil")).not.toBeChecked();
+  await expect(page.locator("#evPassion")).toHaveValue("musique");
+  await fenetre.getByRole("button", { name: "Fermer", exact: true }).click();
+  expect(await page.evaluate(() => [state.userEvents.length, window.__rpcLiens.length])).toEqual([0, 0]);
+
+  await carte.locator(".post-body").click();
+  const detail = page.locator("#postDetailPage");
+  const menuDetail = detail.getByRole("button", { name: "Options de la publication" });
+  await menuDetail.click();
+  await proposer.click();
+  await page.locator("#evTitle").fill("Randonnée du samedi");
+  await page.locator("#evTime").fill("18:00");
+  await page.evaluate(() => { document.getElementById("evCity").value = "Sixt-Fer-à-Cheval"; });
+  await page.evaluate(async () => { window._supaReal = false; await submitEvent(); });
+  await expect(page.locator("#evTitle")).toHaveValue("Randonnée du samedi");
+  expect(await page.evaluate(() => state.userEvents.length)).toBe(0);
+  await page.evaluate(ancien => {
+    window._supaReal = true;
+    const repondre = supa.rpc;
+    supa.rpc = async (...args) => {
+      const resultat = await repondre(...args);
+      _applyUserState({ userPosts: [ancien] });
+      return resultat;
+    };
+  }, avantReport);
+  await page.evaluate(() => submitEvent());
+
+  const sorties = await page.evaluate(() => state.userEvents.map(ev => ev.id));
+  expect(sorties).toHaveLength(1);
+  expect(await page.evaluate(() => window.__rpcLiens)).toEqual([{ p_post_id: postId, p_event_id: sorties[0] }]);
+  await expect(carte.locator("[data-v3-activity]")).toHaveAttribute("data-v3-activity", sorties[0]);
+  await expect(detail.getByRole("button", { name: "Voir la sortie" })).toBeVisible();
+  await menuDetail.click();
+  await expect(proposer).toHaveCount(0);
+  await expect(fenetre.getByRole("button", { name: "Réessayer le lien avec ma sortie" })).toHaveCount(0);
+});
+
+test("le menu diffère seulement le message choisi et laisse la reprise d’un lien prioritaire", async ({ page }) => {
+  await banc(page, true);
+  await publierMessageEnsemble(page);
+  await page.locator("#studioSuiteSortie").getByRole("button", { name: "Plus tard" }).click();
+  const postId = await page.evaluate(() => state.userPosts[0].id);
+  const fenetre = page.getByRole("dialog");
+  const proposer = fenetre.getByRole("button", { name: "Proposer une sortie", exact: true });
+  async function verifierMenu(mutation) {
+    await page.evaluate(({ id, mutation }) => {
+      Object.assign(state.userPosts.find(p => p.id === id), mutation);
+      openPostOptions(id);
+    }, { id: postId, mutation });
+    await expect(proposer).toHaveCount(0);
+    await fenetre.getByRole("button", { name: "Annuler", exact: true }).click();
+  }
+
+  await verifierMenu({ mood: "learn" });
+  await verifierMenu({ mood: "irl", authorId: "9f35913c-0000-4a55-a0b8-000000000002" });
+  await verifierMenu({ authorId: UUID, isReel: true });
+  await verifierMenu({ isReel: false, sharedFromPostId: "repartage" });
+  await page.evaluate(id => {
+    const post = state.userPosts.find(p => p.id === id);
+    delete post.sharedFromPostId;
+    state.supabasePosts = [{ ...post, eventId: "sortie-deja-liee" }];
+    openPostOptions(id);
+  }, postId);
+  await expect(proposer).toHaveCount(0);
+  await fenetre.getByRole("button", { name: "Annuler", exact: true }).click();
+
+  await page.evaluate(id => {
+    state.supabasePosts = [];
+    window.PASSIO_UI_3 = false;
+    openPostOptions(id);
+  }, postId);
+  await expect(proposer).toHaveCount(0);
+  await fenetre.getByRole("button", { name: "Annuler", exact: true }).click();
+
+  await page.evaluate(id => {
+    window.PASSIO_UI_3 = true;
+    state.userPosts.find(p => p.id === id).sortieARelier = "sortie-en-attente";
+    openPostOptions(id);
+  }, postId);
+  await expect(proposer).toHaveCount(0);
+  await expect(fenetre.getByRole("button", { name: "Réessayer le lien avec ma sortie" })).toBeVisible();
 });
 
 test("un lien interrompu se reprend depuis le message sans recréer la sortie", async ({ page }) => {

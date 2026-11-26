@@ -5509,9 +5509,31 @@ function clearAudio() {
 // Verrou anti-double-clic : empêche deux soumissions simultanées du même post
 let _publishInProgress = false;
 
+function messageDisponiblePourSortie(postId) {
+  if (!window.PassioUIV3?.isEnabled() || postSupprime(postId)) return null;
+  const post = state.userPosts.find(p => p.id === postId && p.authorId === MY_UID);
+  if (!post || post.mood !== "irl" || post.isReel || post.sharedFromPostId || post.sharedReelData) return null;
+  if (post.sortieDifferee === "publiee") return null;
+  const copies = allPostCopies(postId).concat((window._feedExtraPosts || []).filter(p => p.id === postId));
+  return copies.some(p => p.eventId || p.sortieARelier) ? null : post;
+}
+
+function ouvrirSortieDepuisMessage(post) {
+  window.PassioUIV3.proposeOuting(post.passion, post.id);
+  const titre = document.getElementById("evTitle");
+  const caseFil = document.getElementById("evAuFil");
+  if (titre && caseFil && document.getElementById("modalContent").dataset.feedIrlSource === post.id) {
+    titre.dataset.publicationStudio = post.id;
+    titre.dataset.auteurStudio = post.authorId;
+    caseFil.checked = false;
+    const legende = caseFil.closest("label");
+    legende.querySelector("strong").textContent = "Publier aussi une carte de la sortie";
+    legende.querySelector("small").textContent = "La sortie sera reliée à ton message même si tu laisses cette case décochée.";
+  }
+}
+
 function preparerSuiteSortieStudio(post) {
-  const pont = window.PassioUIV3;
-  if (post.mood !== "irl" || post.isReel || post.eventId || !pont || !pont.isEnabled()) return null;
+  if (!messageDisponiblePourSortie(post.id)) return null;
   const suite = document.createElement("section");
   suite.id = "studioSuiteSortie";
   suite.hidden = true;
@@ -5519,22 +5541,18 @@ function preparerSuiteSortieStudio(post) {
   suite.innerHTML = '<strong role="status">Ton message est en ligne.</strong>'
     + '<button type="button" class="btn primary">Proposer une sortie</button>'
     + '<button type="button" class="btn ghost">Plus tard</button>';
-  suite.querySelector(".ghost").onclick = () => suite.remove();
+  suite.querySelector(".ghost").onclick = () => {
+    suite.remove();
+    const message = messageDisponiblePourSortie(post.id);
+    if (message && post.authorId === MY_UID) {
+      message.sortieDifferee = "aProposer";
+      saveStateNow();
+    }
+  };
   suite.querySelector(".primary").onclick = () => {
     suite.remove();
-    if (!pont.isEnabled() || post.authorId !== (MY_UID || "me")
-      || !state.userPosts.some(p => p.id === post.id && !p.eventId)) return;
-    pont.proposeOuting(post.passion, post.id);
-    const titre = document.getElementById("evTitle");
-    const caseFil = document.getElementById("evAuFil");
-    if (titre && caseFil && document.getElementById("modalContent").dataset.feedIrlSource === post.id) {
-      titre.dataset.publicationStudio = post.id;
-      titre.dataset.auteurStudio = post.authorId;
-      caseFil.checked = false;
-      const legende = caseFil.closest("label");
-      legende.querySelector("strong").textContent = "Publier aussi une carte de la sortie";
-      legende.querySelector("small").textContent = "La sortie sera reliée à ton message même si tu laisses cette case décochée.";
-    }
+    const message = messageDisponiblePourSortie(post.id);
+    if (message && post.authorId === MY_UID) ouvrirSortieDepuisMessage(message);
   };
   $("#screen-feed").prepend(suite);
   return suite;
