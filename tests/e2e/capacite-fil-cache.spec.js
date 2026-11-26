@@ -4,7 +4,10 @@ const { bootOnboarded } = require("./app-helper");
 // Le navigateur exécute les chargeurs et la pagination du produit. Ce serveur
 // miniature expose des pages brutes (dont des lignes cachées), des changements
 // concurrents et des refus ; aucun compte ni média distant n'est créé.
-async function preparer(page, n = 55) {
+async function preparer(page, n = 55, staging = false, testerCartesFil = true) {
+  if (staging) await page.addInitScript((essai) => {
+    window.PASSIO_SUPABASE_CIBLE = { url: "https://fcksxofaelcdmmifnwjo.supabase.co", anon: "cle-factice-test-local", testerCartesFil: essai };
+  }, testerCartesFil);
   await bootOnboarded(page);
   await page.evaluate((total) => {
     stopFeedRefreshLoop();
@@ -19,6 +22,7 @@ async function preparer(page, n = 55) {
       id: "capacite_" + String(total - i).padStart(3, "0"),
       author_id: "auteur_capacite", passion_id: "photo", mood: "creation",
       content: "Publication " + i, created_at: "2026-09-20T12:00:00", media_url: null,
+      edited_at: null, is_reel: false, overlays: null, vlog: null, shared_from_post_id: null, shared_data: null, event_id: null,
       profiles: { username: "Auteur", emoji: "📷", color: "#123456", avatar_url: null, is_private: i < 5 },
     }));
     window.__profil = { id: "auteur_commentaire", username: "Camille", emoji: "📷", color: "#123456",
@@ -32,6 +36,17 @@ async function preparer(page, n = 55) {
     sessionStorage.removeItem("passio_fil_compteurs_absente");
     window.__rpcPresent = false;
     supa.rpc = function (fn, args) {
+      if (fn === "fil_cartes_page") {
+        const data = __lignes.slice().sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))
+          .slice(0, 20).map(row => {
+            const version = row.xmin + "." + (row.profiles?.xmin || "-");
+            return { post_id: row.id, version, carte: args._versions[row.id] === version ? null : JSON.parse(JSON.stringify(row)) };
+          });
+        const req = { table: "rpc/" + fn, versions: args._versions, details: data.filter(r => r.carte).map(r => r.post_id) };
+        __lectures.push(req);
+        const res = { data, error: null };
+        return Promise.resolve(window.__retenirReponse ? window.__retenirReponse(req, res) : res);
+      }
       const req = { table: "rpc/" + fn, ids: (args && args._post_ids) || [] };
       const res = window.__rpcPresent
         ? { data: req.ids.map((id) => ({ post_id: id, likes: 0, aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null }
@@ -68,13 +83,154 @@ async function preparer(page, n = 55) {
           }
           rows = rows.slice(req.range[0], req.range[1] + 1);
           req.rows = rows.length;
-          return rendre({ data: rows, error: null });
+          return rendre({ data: JSON.parse(JSON.stringify(rows)), error: null });
         },
       };
       return q;
     };
   }, n);
 }
+
+test("la tête revalide le lecteur et l’auteur avant de réutiliser une carte", async ({ page }) => {
+  await preparer(page, 20, true);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_cartes";
+    for (const ligne of __lignes) {
+      ligne.xmin = "30";
+      ligne.profiles.xmin = "40";
+      ligne.profiles.is_private = false;
+    }
+    window.__rpcPresent = true;
+    const cible = __lignes[0], privee = __lignes[1], supprimee = __lignes[2];
+    await supaLoadPosts();
+    __lectures.length = 0;
+    const intact = await supaLoadPosts();
+    const intactRequetes = __lectures.filter(l => l.table === "rpc/fil_cartes_page").map(l => l.details);
+    const rpcRelu = __lectures.some(l => l.table === "rpc/fil_compteurs");
+    __lectures.length = 0;
+    __lignes[0] = { ...cible, xmin: "31", content: "Texte modifié" };
+    __lignes[1] = { ...privee, profiles: { ...privee.profiles, xmin: "41", is_private: true } };
+    __lignes.splice(2, 1);
+    const modifie = await supaLoadPosts();
+    const details = __lectures.filter(l => l.table === "rpc/fil_cartes_page").flatMap(l => l.details);
+    __lectures.length = 0;
+    MY_UID = "nouveau_lecteur";
+    await supaLoadPosts();
+    return { intact: intact.length, intactRequetes, rpcRelu, details,
+      cibles: [cible.id, privee.id], texte: modifie.find(p => p.id === cible.id)?.text,
+      cachees: modifie.filter(p => p.id === privee.id || p.id === supprimee.id).length,
+      nouveauLecteur: __lectures.filter(l => l.table === "rpc/fil_cartes_page").map(l => Object.keys(l.versions)) };
+  });
+  expect(r.intact).toBe(20);
+  expect(r.intactRequetes).toEqual([[]]);
+  expect(r.rpcRelu).toBe(true);
+  expect(r.details).toEqual(r.cibles);
+  expect(r.texte).toBe("Texte modifié");
+  expect(r.cachees).toBe(0);
+  expect(r.nouveauLecteur).toEqual([[]]);
+});
+
+test("le cache brut exclut les médias hérités et les cartes privées", async ({ page }) => {
+  await preparer(page, 10, true);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_media";
+    window.structuredClone = undefined;
+    window.__rpcPresent = true;
+    for (const row of __lignes) { row.xmin = "31"; row.profiles.xmin = "42"; }
+    const media = __lignes[5], prive = __lignes[0];
+    media.media_url = "/media/content/ancien/visuel.jpg";
+    const recus = await supaLoadPosts();
+    const conserves = Array.from(_feedCartesBrutes.page.lignes.keys());
+    __lectures.length = 0;
+    await supaLoadPosts();
+    return { carteAffichee: recus.some(p => p.id === media.id && !p.image),
+      aucunBrut: !conserves.includes(media.id) && !conserves.includes(prive.id), conservePublic: conserves.includes(__lignes[6].id),
+      heritageRelu: __lectures.some(l => l.table === "rpc/fil_cartes_page" && l.details.includes(media.id)) };
+  });
+  expect(r).toEqual({ carteAffichee: true, aucunBrut: true, conservePublic: true, heritageRelu: true });
+});
+
+test("le staging revient au GET si le RPC est retiré", async ({ page }) => {
+  await preparer(page, 20, true);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_compatibilite";
+    window.__rpcPresent = true;
+    const rpc = supa.rpc;
+    let appels = 0;
+    supa.rpc = (fn, args) => {
+      if (fn !== "fil_cartes_page") return rpc(fn, args);
+      appels++;
+      return Promise.resolve({ error: { code: "PGRST202" }, data: null });
+    };
+    const repli = await supaLoadPosts();
+    const suivant = await supaLoadPosts();
+    return { appels, tailles: [repli.length, suivant.length],
+      lecturesDirectes: __lectures.filter(l => l.table === "posts").length };
+  });
+  expect(r).toEqual({ appels: 1, tailles: [15,15], lecturesDirectes: 2 });
+});
+
+test("le staging utilise la lecture directe en dehors des essais explicitement activés", async ({ page }) => {
+  await preparer(page, 20, true, false);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_staging";
+    window.__rpcPresent = true;
+    const posts = await supaLoadPosts();
+    return { taille: posts.length, rpc: __lectures.some(l => l.table === "rpc/fil_cartes_page"),
+      direct: __lectures.filter(l => l.table === "posts").length };
+  });
+  expect(r).toEqual({ taille: 15, rpc: false, direct: 1 });
+});
+
+test("la cible de production garde la lecture directe même si le miroir de configuration change", async ({ page }) => {
+  await preparer(page, 20);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_prod";
+    window.__rpcPresent = true;
+    window.PASSIO_SUPABASE.url = "https://fcksxofaelcdmmifnwjo.supabase.co";
+    window.PASSIO_SUPABASE_CIBLE = { url: window.PASSIO_SUPABASE.url, testerCartesFil: true };
+    const posts = await supaLoadPosts();
+    return { taille: posts.length, rpc: __lectures.some(l => l.table === "rpc/fil_cartes_page"),
+      direct: __lectures.filter(l => l.table === "posts").length };
+  });
+  expect(r).toEqual({ taille: 15, rpc: false, direct: 1 });
+});
+
+test("le filet garde la page en panne et retire la dernière carte après une lecture vide réussie", async ({ page }) => {
+  await preparer(page, 1, true);
+  const r = await page.evaluate(async () => {
+    MY_UID = "lecteur_vide";
+    window.__rpcPresent = true;
+    __lignes[0].profiles.is_private = false;
+    __lignes[0].profiles.xmin = "12";
+    __lignes[0].xmin = "13";
+    state.supabasePosts = await supaLoadPosts();
+    const id = state.supabasePosts[0].id;
+    window._supaReal = true;
+    goTo("feed");
+    startFeedRefreshLoop();
+    let rendus = 0;
+    const rendre = renderFeed;
+    window.renderFeed = (...args) => { rendus++; return rendre(...args); };
+    await _feedRefreshTour();
+    const avantEdition = rendus;
+    __lignes[0].content = "Texte de la dernière édition";
+    __lignes[0].xmin = "14";
+    await _feedRefreshTour();
+    const editionPeinte = rendus > avantEdition;
+    __retenirReponse = (req, res) => req.table === "rpc/fil_cartes_page" ? { data: null, status: 503, error: { message: "Service unavailable" } } : res;
+    await _feedRefreshTour();
+    const garde = state.supabasePosts.some(p => p.id === id);
+    window.__retenirReponse = null;
+    window._feedRefreshSig = "";
+    const avantVide = rendus;
+    __lignes.length = 0;
+    await _feedRefreshTour();
+    stopFeedRefreshLoop();
+    return { garde, editionPeinte, videPeint: rendus > avantVide, restant: state.supabasePosts.some(p => p.id === id), cacheVide: !_feedCartesBrutes };
+  });
+  expect(r).toEqual({ garde: true, editionPeinte: true, videPeint: true, restant: false, cacheVide: true });
+});
 
 test("premier lot réseau de 20 lignes ; le profil visité conserve sa page de 60", async ({ page }) => {
   await preparer(page, 80);

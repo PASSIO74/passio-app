@@ -2625,6 +2625,90 @@
     }
   },
   {
+    "fichier": "migrations/migration_fil_likes_visibles_2026-11-24.sql",
+    "empreinte": "9742ab78fdec5db3b381467c3c8164e8b82606ec3e2518c47845c0ccaee817de",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#1063",
+    "commit": "d6e0ac0eb910e4e1ea536df10dfc1d90a84d62e9",
+    "revue_id": 6044671360,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-24",
+    "consigne_le": "2026-11-24",
+    "source": "https://github.com/PASSIO74/passio-app/pull/1063#pullrequestreview-6044671360",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-24T18:02:17Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_fil_cartes_page_2026-11-25.sql",
+    "empreinte": "52e95fcec3fd6c6448b4e7f695aeb960a69b72b1da5e52e945bd3d94a6850d6c",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#1063",
+    "commit": "616b99d113000635b8705b9f4c9dd74bba69feed",
+    "revue_id": 6053587782,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-25",
+    "consigne_le": "2026-11-25",
+    "source": "https://github.com/PASSIO74/passio-app/pull/1063#pullrequestreview-6053587782",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-25T07:39:58Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_fil_likes_visibles_2026-11-24.sql",
+    "empreinte": "9742ab78fdec5db3b381467c3c8164e8b82606ec3e2518c47845c0ccaee817de",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#1105",
+    "commit": "679e4ba03172b0accacba966a75b0a1bfe022481",
+    "revue_id": 6076260574,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-26",
+    "consigne_le": "2026-11-26",
+    "source": "https://github.com/PASSIO74/passio-app/pull/1105#pullrequestreview-6076260574",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-26T14:55:25Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_fil_cartes_page_2026-11-25.sql",
+    "empreinte": "52e95fcec3fd6c6448b4e7f695aeb960a69b72b1da5e52e945bd3d94a6850d6c",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#1105",
+    "commit": "679e4ba03172b0accacba966a75b0a1bfe022481",
+    "revue_id": 6076260574,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-26",
+    "consigne_le": "2026-11-26",
+    "source": "https://github.com/PASSIO74/passio-app/pull/1105#pullrequestreview-6076260574",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-26T14:55:25Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
     "fichier": "migrations/migration_stories_proches_une_2026-11-26.sql",
     "empreinte": "15d41214272334c1002233524d089d48daa0e8081d211843d9b9c707c0219922",
     "cibles": [

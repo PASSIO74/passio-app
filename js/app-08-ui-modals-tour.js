@@ -7715,6 +7715,9 @@ let _feedPagination = null;
 // pas concernés : ils ne remplacent pas la tête.
 let _feedTeteSeq = 0;
 let _feedTeteDerniereServie = 0;
+let _feedCartesBrutes = null;
+let _feedCartesRpcAbsentJusqua = 0;
+const _feedRevisionsAffichees = new WeakMap();
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   // Hors du `try` : le `catch` final rend lui aussi le verdict réseau de la tête.
@@ -7735,6 +7738,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         _feedTeteDerniereServie = teteSeq;
         noterLectureTeteFil(false);
+        if (options.teteServie) options.teteServie(teteSeq);
       }
     };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
@@ -7763,7 +7767,23 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
-    let { data, error, status } = await _interroger(COLONNES);
+    // La variante a réduit les octets, mais a dépassé le seuil de latence du banc.
+    const versionner = teteSeq && owner && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co"
+      && window.PASSIO_SUPABASE_CIBLE?.testerCartesFil === true
+      && Date.now() >= _feedCartesRpcAbsentJusqua && typeof PassioCartesFil !== "undefined";
+    const precedentBrut = _feedCartesBrutes;
+    function carteAdmissible(r) {
+      return !r.profiles?.is_private && !(typeof postSupprime === "function" && postSupprime(r.id))
+        && !projectionHeritageLecture().candidat(r.media_url);
+    }
+    let resultat = versionner ? await PassioCartesFil.lire(connues => supa.rpc("fil_cartes_page", { _versions: connues }),
+      precedentBrut && precedentBrut.owner === owner && precedentBrut.generation === cacheGeneration
+        ? precedentBrut.page : null, carteAdmissible) : await _interroger(COLONNES);
+    if (versionner && ["PGRST202", "42883", "42501", "PAGE_FIL_INVALIDE"].includes(resultat.error?.code)) {
+      if (["PGRST202", "42883"].includes(resultat.error.code)) _feedCartesRpcAbsentJusqua = Date.now() + 3600000;
+      resultat = await _interroger(COLONNES);
+    }
+    let { data, error, status } = resultat;
     if (error && /edited_at/.test(error.message || "")) {
       COLONNES = COLONNES.replace(" edited_at,", "");
       ({ data, error, status } = await _interroger(COLONNES));
@@ -7797,6 +7817,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
       if (authorId || !lectureValide()) return;
+      if (teteSeq) {
+        const page = resultat.cache;
+        if (page) {
+          const visibles = new Set(data.map(r => r.id));
+          for (const id of page.lignes.keys()) if (!visibles.has(id)) page.lignes.delete(id);
+        }
+        _feedCartesBrutes = page && page.lignes.size ? { owner, generation: cacheGeneration, page } : null;
+      }
       const derniere = lignesBrutes[lignesBrutes.length - 1];
       const cursor = derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null;
       if (options.pagePassions) {
@@ -8068,7 +8096,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (cpl.reactionsLues === true && typeof _recopierReactionsAutrui === "function") {
         _recopierReactionsAutrui(r.id, loadedPost.reactions, reactionsAvant);
       }
-      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
+      const carte = _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id), cpl.likesLusLe);
+      _feedRevisionsAffichees.set(carte, [r.xmin, r.profiles?.xmin, _pmpRef && _pmpPresentation ? r.media_url : ""].join(":"));
+      return carte;
     });
   } catch(e) {
     if (options.propagerErreur) throw e;
@@ -8238,12 +8268,15 @@ async function _chargerComplementsFil(postIds) {
       // POST, jamais GET : un identifiant de publication est un texte choisi par
       // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
       // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
+      const debutLecture = Date.now();
       const { data, error, status } = await supa.rpc("fil_compteurs", { _post_ids: ids });
       if (!error && Array.isArray(data)) {
         data.forEach(function (row) {
           if (!row || !row.post_id) return;
+          const likesLus = Number.isSafeInteger(row.likes) && row.likes >= 0;
           parPost.set(row.post_id, {
-            likes: Number.isSafeInteger(row.likes) && row.likes >= 0 ? row.likes : 0,
+            likes: likesLus ? row.likes : 0,
+            likesLusLe: likesLus ? debutLecture : 0,
             aime: row.aime === true,
             commentaires: Number.isSafeInteger(row.commentaires) && row.commentaires >= 0 ? row.commentaires : undefined,
             apercus: Array.isArray(row.apercus) ? row.apercus.filter(function (c) { return c && c.id; }) : [],
@@ -13306,7 +13339,7 @@ function _feedPostsSig(posts) {
     return (posts || []).map(function(p) {
       // Signature = ce qui change l'affichage : le compte affiché (le total
       // serveur, pas la longueur des deux aperçus) et l'aperçu de tête.
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
+      return p.id + ":" + (_feedRevisionsAffichees.get(p) || "") + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
     }).join("|");
   } catch (e) { return "err" + Date.now(); }
 }
@@ -13408,20 +13441,22 @@ function startFeedRefreshLoop() {
       if (!feedEl || !feedEl.classList.contains("active")) return;
       const degradesAvant = window._filComplementsDegradesSeq || 0;
       const reculAvant = window._filComplementsReculSeq || 0;
-      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
+      let teteServie = 0;
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true, teteServie: seq => { teteServie = seq; } });
       // D14-01 : des compteurs en échec (ou en recul) sont un ÉCHEC du tour, pas
       // un calme ni un succès — le tour suivant recule (`reculSurErreur`).
       if ((window._filComplementsDegradesSeq || 0) !== degradesAvant) echec = true;
       if ((window._filComplementsReculSeq || 0) !== reculAvant) echec = true;
       if (generation !== _feedRefreshGeneration) return;
-      if (posts && posts.length > 0) {
+      if (posts && (posts.length > 0 || (teteServie && teteServie === _feedTeteDerniereServie))) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+        const avant = state.supabasePosts;
         state.supabasePosts = posts.concat(extra);
         // Re-render UNIQUEMENT si le contenu visible a changé : le rebuild
         // périodique du fil (innerHTML complet) faisait flasher images et
         // stories toutes les 60 s même sans aucune nouveauté.
         const sig = _feedPostsSig(state.supabasePosts);
-        const changed = sig !== window._feedRefreshSig;
+        const changed = sig !== window._feedRefreshSig || sig !== _feedPostsSig(avant);
         window._feedRefreshSig = sig;
         vivant = changed;
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
