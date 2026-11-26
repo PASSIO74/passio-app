@@ -3927,7 +3927,11 @@ let _profileCacheGeneration = 0;
 // Vidé à la déconnexion par purgeAccountScopedData (app-02). Le rechargement qui
 // suit emporterait ce cache de toute façon, mais il peut échouer ou tarder : les
 // profils consultés par le compte sortant ne doivent pas rester en mémoire.
-function _clearProfileCache() { try { _profileCacheGeneration++; _profileCache.clear(); } catch (e) {} }
+function _clearProfileCache() {
+  _profileCacheGeneration++;
+  _profileCache.clear();
+  if (typeof _feedCartesBrutes !== "undefined") _feedCartesBrutes = null;
+}
 
 // Cache pré-rempli depuis les convs déjà connues
 function _primeProfileCache(convs) {

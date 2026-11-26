@@ -8,7 +8,11 @@
 //   ③ ❓ Question : posée sur la story ; un spectateur répond, la réponse part
 //      en message à l'auteur, la story est en pause pendant qu'il écrit ;
 //   ④ bobine : Activité et Mention proposées, pas la Question ;
-//   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs.
+//   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs ;
+//   ⑩ compte PRIVÉ : une story « tous » ou une bobine ne prévient que les
+//      mentionnés abonnés ACCEPTÉS (relus au serveur) — un autre compte
+//      n'apprend pas qu'un contenu existe (red team du 2026-11-26) ; une
+//      lecture en échec = personne ; jamais pour un autre auteur que moi.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -16,6 +20,39 @@ const { bootOnboarded } = require("./app-helper");
 test.use({ viewport: { width: 390, height: 780 }, hasTouch: true });
 
 const LEA = "a1b2c3d4-0000-4000-8000-00000000d101";
+const TOM = "a1b2c3d4-0000-4000-8000-00000000d102";
+const MOI = "a1b2c3d4-0000-4000-8000-00000000d1ff";
+
+// `supa` simulé : profil (public par défaut) et abonnés acceptés ; chaque
+// lecture est journalisée avec ses filtres.
+async function stubSupa(page) {
+  await page.evaluate(() => {
+    window.__prive = false; window.__profilErreur = null; window.__followsErreur = null; window.__abonnes = []; window.__lectures = [];
+    window.__pendantLecture = null;
+    supa = {
+      from: (t) => {
+        const f = []; let sel = null;
+        const rep = () => {
+          if (t === "profiles") return window.__profilErreur ? { data: null, error: window.__profilErreur } : { data: { is_private: window.__prive }, error: null };
+          if (t === "follows") return window.__followsErreur ? { data: null, error: window.__followsErreur } : { data: window.__abonnes.map((id) => ({ follower_id: id })), error: null };
+          return { data: null, error: { code: "banc" } };
+        };
+        const b = {
+          select(c) { sel = c; return b; }, eq(c, v) { f.push([c, v]); return b; }, in(c, v) { f.push([c, v]); return b; }, limit() { return b; },
+          maybeSingle() { return b; },
+          then(ok, ko) {
+            window.__lectures.push({ t, sel, f });
+            if (window.__pendantLecture && t === "profiles" && sel === "is_private") { const g = window.__pendantLecture; window.__pendantLecture = null; g(); }
+            return Promise.resolve(rep()).then(ok, ko);
+          },
+        };
+        return b;
+      },
+      channel: () => ({ on() { return this; }, subscribe() { return this; } }),
+      removeChannel() {},
+    };
+  });
+}
 
 async function banc(page, mode) {
   await bootOnboarded(page);
@@ -74,6 +111,7 @@ test("② @ Mention : posée, ouvre le profil, et prévient le compte à la publ
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__envois.length)).toBe(0);
   // Story écrite par le SERVEUR : le compte réel mentionné est prévenu, une fois.
+  await stubSupa(page);
   await page.evaluate(() => {
     window._supaReal = true; window.supaPublishStory = async () => true;
     const st = state.seed.stories[0];
@@ -138,7 +176,8 @@ test("④ bobine : Activité et Mention proposées, pas la Question", async ({ p
   expect(html).not.toContain("st-q-rep");
   expect(html).not.toContain("Piège");
   // Une bobine publiée au REJEU ne prévient qu'une fois.
-  const n = await page.evaluate((lea) => { const post = { id: "reel_m", isReel: true, overlays: [{ type: "mention", uid: lea, nom: "Léa" }] }; _prevenirMentionsBobine(post); _prevenirMentionsBobine(post); return new Promise((r) => setTimeout(() => r(window.__envois.length), 100)); }, LEA);
+  await stubSupa(page);
+  const n = await page.evaluate((lea) => { const post = { id: "reel_m", isReel: true, authorId: MY_UID, overlays: [{ type: "mention", uid: lea, nom: "Léa" }] }; _prevenirMentionsBobine(post); _prevenirMentionsBobine(post); return new Promise((r) => setTimeout(() => r(window.__envois.length), 100)); }, LEA);
   expect(n).toBe(1);
 });
 
@@ -257,4 +296,66 @@ test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", asy
   expect(r.deux, "un seul sondage rendu par story").toBe(1);
   expect(r.actifs).toBe(0);
   expect(r.opts).toBe(2);
+});
+
+test("⑩ compte privé : story « tous » et bobine ne préviennent que les abonnés acceptés", async ({ page }) => {
+  await banc(page, "story");
+  await stubSupa(page);
+  await page.evaluate(({ moi, lea, tom }) => {
+    MY_UID = moi; window._supaReal = true;
+    window.supaPublishStory = async () => true;
+    window.__publier = () => {
+      meOpen("story"); meState.overlays = [];
+      meCycleBg(); meFermerEditeurTexte(false);
+      meAddOverlay({ type: "mention", uid: lea, nom: "Léa Martin", x: 40, y: 40 });
+      meAddOverlay({ type: "mention", uid: tom, nom: "Tom Inconnu", x: 60, y: 60 });
+      meState._enteredEditAt = 0;
+      return mePublish();
+    };
+    window.__bobine = (id, auteur) => _prevenirMentionsBobine({ id, isReel: true, authorId: auteur || MY_UID,
+      overlays: [{ type: "mention", uid: lea, nom: "Léa" }, { type: "mention", uid: tom, nom: "Tom" }] });
+  }, { moi: MOI, lea: LEA, tom: TOM });
+  // Compte PRIVÉ, Léa abonnée acceptée, Tom non : seule Léa est prévenue.
+  await page.evaluate((lea) => { window.__prive = true; window.__abonnes = [lea]; return window.__publier(); }, LEA);
+  await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
+  // `is_private` relu au SERVEUR pour MON compte ; abonnés ACCEPTÉS parmi les
+  // mentionnés. Les lectures sont repérées par leur COLONNE : un minuteur de
+  // l'app peut lire `profiles` ou `follows` avec d'autres filtres entre-temps.
+  const lectures = await page.evaluate(() => window.__lectures);
+  expect(lectures.filter((r) => r.t === "profiles" && r.sel === "is_private").map((r) => r.f)).toEqual([[["id", MOI]]]);
+  expect(lectures.find((r) => r.t === "follows" && r.sel === "follower_id").f).toEqual(expect.arrayContaining([["following_id", MOI], ["status", "accepted"], ["follower_id", [LEA, TOM]]]));
+  // Aucun abonné accepté parmi les mentionnés : personne.
+  await page.evaluate(() => { window.__envois = []; window.__abonnes = []; return window.__publier(); });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Bobine d'un compte privé : même règle, et une seule fois.
+  await page.evaluate((lea) => { window.__abonnes = [lea]; window.__bobine("reel_p1"); }, LEA);
+  await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
+  // Lecture du profil en échec : personne n'est prévenu (story comme bobine).
+  await page.evaluate(() => { window.__envois = []; window.__profilErreur = { code: "500" }; window.__publier(); window.__bobine("reel_p2"); });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Lecture des abonnés en échec : personne.
+  await page.evaluate(() => { window.__envois = []; window.__profilErreur = null; window.__followsErreur = { code: "500" }; window.__publier(); window.__bobine("reel_p2b"); });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Le compte change PENDANT la lecture : personne.
+  await page.evaluate((lea) => { window.__followsErreur = null; window.__abonnes = [lea]; window.__pendantLecture = () => { MY_UID = "a1b2c3d4-0000-4000-8000-00000000d1ee"; }; window.__bobine("reel_p2c", MY_UID); }, LEA);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  await page.evaluate((moi) => { MY_UID = moi; }, MOI);
+  // Bobine d'un AUTRE compte (rejeu après changement de compte) : personne, sans lecture.
+  await page.evaluate(() => { window.__profilErreur = null; window.__prive = false; window.__lectures = []; window.__bobine("reel_p3", "a1b2c3d4-0000-4000-8000-00000000d1ee"); });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => ({ n: window.__envois.length, l: window.__lectures.filter((r) => r.sel === "is_private").length }))).toEqual({ n: 0, l: 0 });
+  // Compte PUBLIC : les deux mentionnés sont prévenus…
+  await page.evaluate(() => window.__publier());
+  await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a).sort())).toEqual([LEA, TOM].sort());
+  // … sauf un compte que J'AI bloqué.
+  await page.evaluate((tom) => { window.__envois = []; state.user.blocked = [tom]; window.__publier(); }, TOM);
+  await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
 });
