@@ -187,6 +187,11 @@ test("⑥ un bouton « Écris ta réponse » hors du lecteur de story n'envoie r
 
 test("⑦ 📊 Sondage : posé, un vote, les pourcentages ; serveur stub, double vote, table absente", async ({ page }) => {
   await banc(page, "story");
+  // Tant que la migration n'est pas appliquée, le sticker n'est PAS proposé.
+  await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
+  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
+  await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
+  await page.evaluate(() => localStorage.setItem("passio_story_sondage", "1"));
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await page.locator('#meStickerPanel [data-sticker="Sondage"]').click();
   await page.locator("#meSdQ").fill("Plage ou montagne ?");

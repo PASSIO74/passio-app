@@ -1922,7 +1922,7 @@ function meOuvrirStickers() {
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
   var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention]];
-  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); choix.push(["📊", "Sondage", _meStickerSondage]); }
+  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -1996,6 +1996,18 @@ async function _meStickerQuestion(panneau) {
   var saisie = await demanderTexte({ titre: "Ta question", valeur: "Pose-moi une question", libelle: "Ajouter", max: 120 });
   if (saisie == null) return; saisie = saisie.trim(); if (!saisie) return;
   meAddOverlay({ type: "question", q: saisie.slice(0, 120), x: 50, y: 60 });
+}
+// ⚠️ Le sticker Sondage n'est PROPOSÉ à la création qu'une fois la table des votes
+// en base (migration `migration_story_sondage_2026-11-26.sql`, en attente de la
+// contre-revue HUMAINE de Benjamin). Avant, on ne laisse personne poser un
+// sondage auquel personne ne pourrait répondre. Le LECTEUR, lui, reste branché :
+// un sondage déjà posé s'affiche, et dit « bientôt disponible » si la table manque.
+// Activer : `STORY_SONDAGE_ACTIF = true` une fois la migration appliquée (ou
+// `localStorage.passio_story_sondage = "1"` pour l'éprouver sur un appareil).
+var STORY_SONDAGE_ACTIF = false;
+function storySondageActif() {
+  if (STORY_SONDAGE_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
 }
 // 📊 Sondage (story seulement) : une question, deux réponses. Les votes vivent
 // dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
