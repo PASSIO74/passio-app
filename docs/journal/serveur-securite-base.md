@@ -2368,9 +2368,26 @@ ni l'une ni l'autre (`activite-privee.spec.js`). `visibilite` n'est JAMAIS dans
 
 **Ordre** : la migration AVANT le client (il lit `visibilite`, colonne inconnue = liste vide).
 
-**Reste hors lot (déclaré)** : `notes_evenement` (une moyenne de notes) ; une notification déjà
-écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte ; retirer une invitation ne retire pas une inscription déjà faite.
+**Reste hors lot (déclaré)** : une notification déjà écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte.
 
 **Suite (même jour)** : une série RÉCURRENTE privée ouvre désormais TOUTES ses dates à l'invité
 (`inviterSerieActivite`, app-07 : une ligne `event_invites` par activité de la série que
 j'organise, plafond 30) — avant, seule la première date lui était lisible.
+
+**Suite (même jour, `migration_activites_privees_suite_2026-11-26.sql`, banc commun : 90 contrôles)** :
+- **Retirer un invité** — `retirer_invite_activite` (organisation d'une activité PRIVÉE seule,
+  jamais un membre de l'organisation) retire d'un geste l'invitation, l'inscription ET la place
+  dans la discussion `evgrp_` : retirer la seule ligne `event_invites` laissait la lecture à un
+  inscrit. Liste et bouton « Retirer » dans la feuille « Invités » de la fiche.
+- **Lien d'invitation privé** — `#ic-<id>.<code>` : code de 128 bits par activité
+  (`event_codes_invitation`, AUCUN droit client), rendu à l'organisation par
+  `code_invitation_activite` (« Renouveler » invalide l'ancien lien), rejoint par
+  `rejoindre_par_code` (tout refus = `false`, sans motif). Le lien passe par l'ANCRE et non par
+  `/e/<id>?…` : la fonction d'aperçu Netlify ne transmet que `inv`/`plk`. Le code quitte
+  l'adresse dès sa lecture ; sans compte, il est gardé 7 jours sur l'appareil et repris à
+  l'ouverture de session (`reprendreInvitationActivite`) — un lien est un porteur : qui se
+  connecte sur cet appareil l'utilise.
+- `notes_evenement` rend `null` à un non-admis.
+- Repères « 🔒 Privée » sur la carte de Rencontrer et « 🔒 Invitation privée » sur la carte de
+  conversation ; un invité ne voit pas le bouton « Invités ». Mesure : `activite_privee_creee`,
+  `activite_privee_lien`, `activite_privee_lien_ouvert`, `activite_privee_invite_retire`.

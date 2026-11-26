@@ -20,10 +20,11 @@ set -euo pipefail
 
 RACINE="$(cd "$(dirname "$0")/../.." && pwd)"
 MIG="$RACINE/migrations/migration_activites_privees_2026-11-26.sql"
+SUITE="$RACINE/migrations/migration_activites_privees_suite_2026-11-26.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
-[ -f "$MIG" ] || { echo "❌ introuvable : $MIG"; exit 1; }
+for f in "$MIG" "$SUITE"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
 
 PORT=$(( 6200 + RANDOM % 120 ))
 if [ "$(id -u)" -eq 0 ]; then
@@ -101,7 +102,8 @@ create table public.blocks (blocker_id text, blocked_id text, primary key (block
 create table public.events (id text primary key, author_id text, organizer_id text, title text,
   status text default 'active', co_organizers jsonb, address text);
 create table public.event_attendees (event_id text references public.events(id) on delete cascade, user_id text, rsvp text,
-  checked_in_at timestamptz, primary key (event_id, user_id));
+  checked_in_at timestamptz, rating smallint, primary key (event_id, user_id));
+create table public.conv_members (conv_id text, user_id text, primary key (conv_id, user_id));
 create table public.event_comments (id text primary key, event_id text not null references public.events(id) on delete cascade,
   author_id text not null, text text);
 create table public.event_reactions (event_id text references public.events(id) on delete cascade, user_id text, emoji text,
@@ -166,6 +168,13 @@ language sql stable security definer set search_path = '' as $f$
     and a.event_id = any(p_event_ids[1:200]) group by a.event_id
 $f$;
 grant execute on function public.participants_compte(text[]) to authenticated;
+create function public.notes_evenement(p_event_id text) returns jsonb language sql stable security definer set search_path = '' as $f$
+  select case when auth.uid() is null then null
+    else (select jsonb_build_object('avg', case when n.nb >= 3 or public.organise_activite(p_event_id) then n.moyenne end, 'count', n.nb)
+      from (select count(*)::integer as nb, avg(a.rating)::numeric(4,2) as moyenne from public.event_attendees a
+             where a.event_id = p_event_id and a.rating is not null and a.rsvp = 'going') n) end;
+$f$;
+grant execute on function public.notes_evenement(text) to authenticated;
 -- Le fil d'une activité, comme `comment_target_visible(cid, pid)` en production.
 create function public.fil_activite_visible(pid text) returns boolean language sql stable security definer set search_path = '' as $f$
   select case when exists (select 1 from public.events where id = pid) then not public.activite_masquee_pour_moi(pid) else false end
@@ -302,6 +311,54 @@ MUT="$(sed '/^create policy events_privee_lecture_compte/,/;$/d' "$MIG" \
   | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1 || true)"
 verifier "le verdict LÈVE (rien n'est validé)" "1" "$(echo "$MUT" | grep -c "verdict en ECHEC" || true)"
 verifier "…et l'activité privée reste fermée à Kevin" "0" "$(EN "$KEVIN" "select count(*) from public.events where visibilite = 'privee';")"
+
+echo "④ SUITE — retirer un invité, lien d'invitation, notes"
+verifier "sans la suite, le code d'invitation n'existe pas" "42883" "$(ECRIT "$LEA" "perform public.code_invitation_activite('ev_priv')")"
+SORTIE3="$(APPLIQUER "$SUITE")"
+if echo "$SORTIE3" | grep -q "ERROR"; then echo "$SORTIE3"; fi
+verifier "la suite passe (7 OK)" "7" "$(echo "$SORTIE3" | grep -cE '\| *OK *$' || true)"
+verifier "la suite se REJOUE" "7" "$(APPLIQUER "$SUITE" | grep -cE '\| *OK *$' || true)"
+
+# Ben, invité, s'inscrit et entre dans la discussion ; une note de Ben.
+Q "insert into public.event_attendees (event_id, user_id, rsvp, rating) values ('ev_priv', '$BEN', 'going', 5) on conflict do nothing;
+   insert into public.conv_members values ('evgrp_ev_priv', '$BEN'), ('evgrp_ev_priv', '$LEA');" >/dev/null
+verifier "notes : fermées à Kevin (non admis)" "" "$(EN "$KEVIN" "select public.notes_evenement('ev_priv');")"
+verifier "notes : ouvertes à Ben (inscrit)" "1" "$(EN "$BEN" "select public.notes_evenement('ev_priv')->>'count';")"
+verifier "notes : une publique reste lisible par Kevin" "0" "$(EN "$KEVIN" "select public.notes_evenement('ev_pub')->>'count';")"
+
+verifier "Kevin ne retire personne" "f" "$(EN "$KEVIN" "select public.retirer_invite_activite('ev_priv', '$BEN');")"
+verifier "Ben (invité) ne retire personne" "f" "$(EN "$BEN" "select public.retirer_invite_activite('ev_priv', '$BEN');")"
+verifier "Léa ne retire pas son co-organisateur" "f" "$(EN "$LEA" "select public.retirer_invite_activite('ev_priv', '$CO');")"
+verifier "Léa ne retire personne d'une publique" "f" "$(EN "$LEA" "select public.retirer_invite_activite('ev_pub', '$BEN');")"
+verifier "Léa retire Ben" "t" "$(EN "$LEA" "select public.retirer_invite_activite('ev_priv', '$BEN');")"
+verifier "…son invitation, son inscription et sa place dans la discussion partent" "0|0|0" "$(Q "select (select count(*) from public.event_invites where user_id = '$BEN')||'|'||(select count(*) from public.event_attendees where event_id = 'ev_priv' and user_id = '$BEN')||'|'||(select count(*) from public.conv_members where user_id = '$BEN');")"
+verifier "…et Ben ne lit plus l'activité" "0" "$(EN "$BEN" "select count(*) from public.events where id = 'ev_priv';")"
+
+verifier "Kevin n'obtient pas le code" "" "$(EN "$KEVIN" "select public.code_invitation_activite('ev_priv');")"
+verifier "pas de code pour une activité publique" "" "$(EN "$LEA" "select public.code_invitation_activite('ev_pub');")"
+CODE="$(EN "$LEA" "select public.code_invitation_activite('ev_priv');")"
+verifier "Léa obtient un code de 64 hexadécimaux" "1" "$(echo "$CODE" | grep -cE '^[0-9a-f]{64}$' || true)"
+verifier "le code est stable sans renouvellement" "$CODE" "$(EN "$CO" "select public.code_invitation_activite('ev_priv');")"
+verifier "aucun compte ne lit la table des codes" "42501" "$(ECRIT "$LEA" "perform 1 from public.event_codes_invitation")"
+verifier "un mauvais code rend faux" "f" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', repeat('a', 64));")"
+verifier "un code d'une autre forme rend faux" "f" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', 'x');")"
+verifier "le bon code sur une autre activité rend faux" "f" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_pub', '$CODE');")"
+verifier "le bloqué n'entre pas par le lien" "f" "$(EN "$BLOQ" "select public.rejoindre_par_code('ev_priv', '$CODE');")"
+verifier "un visiteur ne peut pas l'appeler" "42501" "$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "begin; set local role anon; do \$x\$ begin begin perform public.rejoindre_par_code('ev_priv', '$CODE'); raise notice 'ETAT=ok'; exception when others then raise notice 'ETAT=%', sqlstate; end; end \$x\$; rollback;" 2>&1 | sed -n 's/.*ETAT=//p')"
+verifier "Kevin entre avec le bon code" "t" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', '$CODE');")"
+verifier "…et lit désormais l'activité" "1" "$(EN "$KEVIN" "select count(*) from public.events where id = 'ev_priv';")"
+verifier "…invité au nom de l'autrice" "$LEA" "$(Q "select invited_by from public.event_invites where event_id = 'ev_priv' and user_id = '$KEVIN';")"
+NOUVEAU="$(EN "$LEA" "select public.code_invitation_activite('ev_priv', true);")"
+verifier "renouveler change le code" "1" "$([ -n "$NOUVEAU" ] && [ "$NOUVEAU" != "$CODE" ] && echo 1 || echo 0)"
+verifier "l'ancien lien ne fait plus entrer Ben" "f" "$(EN "$BEN" "select public.rejoindre_par_code('ev_priv', '$CODE');")"
+verifier "le nouveau, si" "t" "$(EN "$BEN" "select public.rejoindre_par_code('ev_priv', '$NOUVEAU');")"
+verifier "supprimer l'activité emporte son code" "0" "$(Q "begin; delete from public.events where id = 'ev_priv'; select count(*) from public.event_codes_invitation; rollback;" | grep -E '^[0-9]+$')"
+
+echo "⑤ MUTATION — la suite sans la garde de l'organisation"
+MUT2="$(sed 's/or not public.organise_activite(p_event_id) then/then/' "$SUITE" \
+  | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1 || true)"
+verifier "le verdict LÈVE (rien n'est validé)" "1" "$(echo "$MUT2" | grep -c "verdict en ECHEC" || true)"
+verifier "…et Kevin n'obtient toujours pas le code" "" "$(EN "$KEVIN" "select public.code_invitation_activite('ev_priv');")"
 
 echo
 echo "Banc activités privées : $ok OK, $ko ÉCHEC"
