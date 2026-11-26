@@ -7668,11 +7668,10 @@ const _EVENT_COLS_PUBLIC = [
   "id", "author_id", "title", "passion_id", "lat", "lng", "city", "description",
   "emoji", "max_attendees", "date_at", "created_at", "venue", "postal_code",
   "price", "external_link", "event_type", "cover_url", "organizer_id", "end_at",
-  "status", "updated_at", "co_organizers", "series_id", "recurrence",
-  // Activité privée (2026-11-26) : accordée à anon et authenticated par
-  // `migration_activites_privees_2026-11-26.sql`, appliquée AVANT ce client.
-  "visibilite",
+  "status", "updated_at", "co_organizers", "series_id", "recurrence", "visibilite",
 ].join(",");
+// `visibilite` (activité privée, 2026-11-26) : accordée à anon et authenticated par
+// `migration_activites_privees_2026-11-26.sql`, appliquée AVANT ce client.
 // ⚠️ `conv_id` est PRIVÉ depuis le 2026-09-11 : combiné à `is_conv_member` (qui
 // était exécutable sans compte) et à `profiles.id` (public), il permettait de
 // reconstituer la liste NOMINATIVE des membres de la conversation d'une
