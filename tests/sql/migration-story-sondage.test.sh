@@ -107,7 +107,7 @@ sortie="$(FICHIER banc "$MIGRATION")"; code=$?
 verifier "la migration s'applique" "$code" "0"
 [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | head -8
 verifier "aucun ÉCHEC au tableau de verdict" "$(printf '%s\n' "$sortie" | grep -c '§ECHEC' || true)" "0"
-verifier "le verdict porte ses 4 lignes OK" "$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "4"
+verifier "le verdict porte ses 5 lignes OK" "$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "5"
 sortie2="$(FICHIER banc "$MIGRATION")"; code2=$?
 verifier "la migration se rejoue" "$code2" "0"
 [ "$code2" -ne 0 ] && printf '%s\n' "$sortie2" | head -8

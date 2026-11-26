@@ -2001,6 +2001,8 @@ async function _meStickerQuestion(panneau) {
 // dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
 function _meStickerSondage(panneau) {
   panneau.remove();
+  // UN sondage par story : la base n'enregistre qu'un vote par compte et par story.
+  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par story"); return; }
   openModal('<div class="modal-handle"></div><div class="modal-title">📊 Sondage</div>'
     + '<input class="input" id="meSdQ" maxlength="120" placeholder="Pose ta question" style="margin-top:8px;"/>'
     + '<input class="input" id="meSdA" maxlength="30" value="Oui" aria-label="Première réponse" style="margin-top:8px;"/>'
@@ -2067,6 +2069,9 @@ function storyVoterSondage(bouton) {
     // Story d'exemple ou locale : le vote reste sur cet appareil, rien ne part.
     state.user.sondagesLocaux = state.user.sondagesLocaux || {};
     state.user.sondagesLocaux[s.id] = choix;
+    // Borné : 50 derniers votes locaux (stories d'exemple), jamais une liste qui grossit.
+    var cles = Object.keys(state.user.sondagesLocaux);
+    if (cles.length > 50) cles.slice(0, cles.length - 50).forEach(function (k) { delete state.user.sondagesLocaux[k]; });
     try { saveState(); } catch (e) {}
     _storySondageAppliquer(carte, { a_vote: true, mon_choix: choix, a: choix === 0 ? 1 : 0, b: choix === 1 ? 1 : 0 });
     return;
@@ -2839,6 +2844,7 @@ function _storyDessinHtml(o) {
 // rendu que là (une bobine n'a pas de destinataire de réponse fiable).
 function _storyOverlaysHtml(overlays, opts) {
   var dansStory = !!(opts && opts.story);
+  var sondageRendu = false; // un seul sondage rendu : un seul vote par story en base
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
   // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
@@ -2867,7 +2873,8 @@ function _storyOverlaysHtml(overlays, opts) {
       var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
       return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
-    if (o.type === "sondage" && dansStory) {
+    if (o.type === "sondage" && dansStory && !sondageRendu) {
+      sondageRendu = true;
       var sq = String(o.q || "").slice(0, 120);
       var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
       return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';

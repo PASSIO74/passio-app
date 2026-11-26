@@ -244,9 +244,11 @@ test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", asy
     const bobine = renderReelHTML({ id: "reel_sd", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: ov, text: "", likes: 0, comments: [] }, 0);
     const d = document.createElement("div"); d.innerHTML = _storyOverlaysHtml(ov, { story: true });
     const els = Array.from(d.querySelectorAll("*"));
-    return { bobine: bobine.includes("st-sondage"), actifs: els.filter((e) => /^(IMG|SVG|SCRIPT)$/i.test(e.tagName) || Array.from(e.attributes).some((a) => /^on/i.test(a.name))).length, opts: d.querySelectorAll(".st-sd-opt").length };
+    const deux = _storyOverlaysHtml([{ type: "sondage", q: "Un", a: "a", b: "b" }, { type: "sondage", q: "Deux", a: "c", b: "d" }], { story: true });
+    return { deux: (deux.match(/st-sondage/g) || []).length, bobine: bobine.includes("st-sondage"), actifs: els.filter((e) => /^(IMG|SVG|SCRIPT)$/i.test(e.tagName) || Array.from(e.attributes).some((a) => /^on/i.test(a.name))).length, opts: d.querySelectorAll(".st-sd-opt").length };
   });
   expect(r.bobine).toBe(false);
+  expect(r.deux, "un seul sondage rendu par story").toBe(1);
   expect(r.actifs).toBe(0);
   expect(r.opts).toBe(2);
 });

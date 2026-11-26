@@ -63,6 +63,7 @@ select banc.cas('B vote Plage sur la story publique de A', banc.sous(banc.id('B'
 select banc.cas('B ne vote pas deux fois', banc.sous(banc.id('B'), $s$insert into public.story_sondage_votes (story_id, choix) values ('sA', 1)$s$), 'err:23505');
 select banc.cas('B ne change pas son vote (aucun UPDATE)', banc.sous(banc.id('B'), $s$update public.story_sondage_votes set choix = 1 where story_id = 'sA'$s$), 'err:42501');
 select banc.cas('B ne retire pas son vote (aucun DELETE)', banc.sous(banc.id('B'), $s$delete from public.story_sondage_votes where story_id = 'sA'$s$), 'err:42501');
+select banc.cas('M ne fournit pas la date de son vote', banc.sous(banc.id('M'), $s$insert into public.story_sondage_votes (story_id, choix, created_at) values ('sA', 1, '2000-01-01')$s$), 'err:42501');
 select banc.cas('B ne vote pas AU NOM de M', banc.sous(banc.id('B'), $s$insert into public.story_sondage_votes (story_id, user_id, choix) values ('sA', 'cccccccc-0000-4000-8000-000000000003', 1)$s$), 'err:42501');
 select banc.cas('un choix hors 0/1 est refusé', banc.sous(banc.id('M'), $s$insert into public.story_sondage_votes (story_id, choix) values ('sA', 2)$s$), 'err:23514');
 select banc.cas('M vote Montagne', banc.sous(banc.id('M'), $s$insert into public.story_sondage_votes (story_id, choix) values ('sA', 1)$s$), 'ok:1');
@@ -80,3 +81,8 @@ select banc.cas('l''auteur voit les comptes sans voter', banc.val(banc.id('A'), 
 select banc.cas('un inconnu ne lit pas les résultats d''une story privée', banc.val(banc.id('B'), $s$select coalesce(public.story_sondage_resultats('sP')::text, 'nul')$s$), 'nul');
 select banc.cas('anon n''appelle pas la fonction de résultats', banc.val(null, $s$select public.story_sondage_resultats('sA')::text$s$), 'err:42501');
 select banc.cas('anon ne lit pas les votes', banc.val(null, $s$select count(*)::text from public.story_sondage_votes$s$), 'err:42501');
+-- ── Red team du 2026-11-26 ──────────────────────────────────────────────────────────────────────
+select banc.cas('un inconnu n''apprend pas qu''une story PRIVÉE porte un sondage', banc.val(banc.id('B'), $s$select public.story_a_un_sondage('sP')::text$s$), 'false');
+select banc.cas('l''abonné accepté, lui, le sait', banc.val(banc.id('F'), $s$select public.story_a_un_sondage('sP')::text$s$), 'true');
+insert into public.blocks (blocker_id, blocked_id) values (banc.id('A'), banc.id('M'));
+select banc.cas('A bloque M : le vote de M sort du score de A', banc.val(banc.id('A'), $s$select (public.story_sondage_resultats('sA') ->> 'a') || '/' || (public.story_sondage_resultats('sA') ->> 'b')$s$), '1/0');
