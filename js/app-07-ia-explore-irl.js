@@ -6079,6 +6079,28 @@ function poserChoixVisibilite(valeur) {
   majChoixVisibilite();
 }
 function activiteEstPrivee(ev) { return !!(ev && ev.visibilite === "privee"); }
+
+// Une activité RÉCURRENTE est une série de vraies activités (`seriesId`
+// partagé, chacune sa ligne `events`). Inviter à l'une d'une série privée,
+// c'est ouvrir TOUTES les dates que j'organise dans cette série : sans cela,
+// l'invité ne voyait que la première (2026-11-26). Rend true si toutes les
+// écritures sont en base.
+function _idsSerieActivite(ev) {
+  var ids = [ev.id];
+  if (!ev.seriesId) return ids;
+  try {
+    (state.userEvents || []).forEach(function (o) {
+      if (o && o.id && o.seriesId === ev.seriesId && ids.indexOf(o.id) === -1
+          && activiteEstPrivee(o) && (o.organizerId || o.authorId || MY_UID) === MY_UID) ids.push(o.id);
+    });
+  } catch (e) {}
+  return ids.slice(0, 30);
+}
+function inviterSerieActivite(ev, userIds) {
+  if (typeof supaInviterActivite !== "function") return Promise.resolve(false);
+  return Promise.all(_idsSerieActivite(ev).map(function (id) { return supaInviterActivite(id, userIds); }))
+    .then(function (r) { return r.every(Boolean); });
+}
 function marquerActiviteHorsFil(evId) {
   if (!evId || !state.user) return;
   const l = Array.isArray(state.user.activitesHorsFil) ? state.user.activitesHorsFil : [];
@@ -7653,7 +7675,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
         retour("Invitation envoyée au groupe");
       };
       if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
-        supaInviterActivite(ev.id, admis).then(function (ok) {
+        inviterSerieActivite(ev, admis).then(function (ok) {
           if (ok) poursuivre();
           else toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning");
         });
@@ -7667,7 +7689,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   // 1:1 : la personne de la conversation a déjà passé le verdict à l'ouverture.
   // Privée : son droit de lecture part AVANT la carte (elle peut l'ouvrir aussitôt).
   if (activiteEstPrivee(ev) && ctx.userId && typeof supaInviterActivite === "function") {
-    supaInviterActivite(ev.id, [ctx.userId]).then(function (ok) {
+    inviterSerieActivite(ev, [ctx.userId]).then(function (ok) {
       if (!ok) { toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning"); return; }
       if (!envoyerCarte()) return;
       notifier(ctx.userId);
@@ -9423,7 +9445,7 @@ function _notifierInviteEvent(ev, userId) {
   // Activité privée : l'invité doit pouvoir la LIRE avant d'être prévenu
   // (`event_invites`, sinon la notification ouvre une activité introuvable).
   if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
-    supaInviterActivite(ev.id, [userId]).then(function (ok) {
+    inviterSerieActivite(ev, [userId]).then(function (ok) {
       if (!ok) toast("L'invitation à ton activité privée n'a pas pu partir — réessaie", "warning");
       else notifier();
     });

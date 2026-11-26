@@ -2369,6 +2369,8 @@ ni l'une ni l'autre (`activite-privee.spec.js`). `visibilite` n'est JAMAIS dans
 **Ordre** : la migration AVANT le client (il lit `visibilite`, colonne inconnue = liste vide).
 
 **Reste hors lot (déclaré)** : `notes_evenement` (une moyenne de notes) ; une notification déjà
-écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte ; les
-occurrences suivantes d'une activité récurrente privée n'ont pas d'invités (l'invitation vise la
-première) ; retirer une invitation ne retire pas une inscription déjà faite.
+écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte ; retirer une invitation ne retire pas une inscription déjà faite.
+
+**Suite (même jour)** : une série RÉCURRENTE privée ouvre désormais TOUTES ses dates à l'invité
+(`inviterSerieActivite`, app-07 : une ligne `event_invites` par activité de la série que
+j'organise, plafond 30) — avant, seule la première date lui était lisible.

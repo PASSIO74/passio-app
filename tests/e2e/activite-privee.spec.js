@@ -17,7 +17,8 @@
 //   ⑤ la publication au fil refuse une activité privée, même pas notée hors fil ;
 //   ⑥ `_eventRow` n'envoie la visibilité que si elle est connue, et elle n'est
 //      JAMAIS une colonne « optionnelle » qu'un refus retirerait ;
-//   ⑦ la fiche d'une activité privée le dit (« 🔒 Activité privée »).
+//   ⑦ la fiche d'une activité privée le dit (« 🔒 Activité privée ») ;
+//   ⑧ une série RÉCURRENTE privée ouvre TOUTES ses dates à l'invité.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -183,5 +184,26 @@ test.describe("Activité privée, sur invitation", () => {
       openEventDetails("ev_ap_fiche");
     });
     await expect(page.locator(".ev-badge-privee")).toContainText("Activité privée");
+  });
+
+  test("⑧ série récurrente privée : l'invité est ouvert à TOUTES les dates", async ({ page }) => {
+    await banc(page);
+    await ouvrirConvEtProposer(page);
+    await page.evaluate(() => {
+      const sel = document.getElementById("evRecurrence");
+      sel.value = "weekly"; sel.dispatchEvent(new Event("change"));
+      document.getElementById("evOccurrences").value = "3";
+    });
+    await remplir(page);
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("carte"))).toBe(true);
+    const r = await page.evaluate(() => ({
+      ids: state.userEvents.map((e) => e.id).sort(),
+      invites: window.__invites.map((i) => i.evId).sort(),
+      privees: state.userEvents.every((e) => e.visibilite === "privee"),
+    }));
+    expect(r.ids.length).toBe(3);
+    expect(r.privees).toBe(true);
+    expect([...new Set(r.invites)].sort()).toEqual(r.ids);
   });
 });
