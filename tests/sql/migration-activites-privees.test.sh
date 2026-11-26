@@ -21,10 +21,11 @@ set -euo pipefail
 RACINE="$(cd "$(dirname "$0")/../.." && pwd)"
 MIG="$RACINE/migrations/migration_activites_privees_2026-11-26.sql"
 SUITE="$RACINE/migrations/migration_activites_privees_suite_2026-11-26.sql"
+RETRAITS="$RACINE/migrations/migration_activites_privees_retraits_2026-11-26.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
-for f in "$MIG" "$SUITE"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
+for f in "$MIG" "$SUITE" "$RETRAITS"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
 
 PORT=$(( 6200 + RANDOM % 120 ))
 if [ "$(id -u)" -eq 0 ]; then
@@ -359,6 +360,27 @@ MUT2="$(sed 's/or not public.organise_activite(p_event_id) then/then/' "$SUITE" 
   | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1 || true)"
 verifier "le verdict LÈVE (rien n'est validé)" "1" "$(echo "$MUT2" | grep -c "verdict en ECHEC" || true)"
 verifier "…et Kevin n'obtient toujours pas le code" "" "$(EN "$KEVIN" "select public.code_invitation_activite('ev_priv');")"
+
+echo "⑥ RETRAITS — un invité retiré ne revient pas par le lien"
+CODE3="$(EN "$LEA" "select public.code_invitation_activite('ev_priv');")"
+Q "delete from public.event_invites where event_id = 'ev_priv' and user_id = '$KEVIN';" >/dev/null
+verifier "AVANT : Kevin entre par le lien" "t" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', '$CODE3');")"
+verifier "AVANT : Léa retire Kevin" "t" "$(EN "$LEA" "select public.retirer_invite_activite('ev_priv', '$KEVIN');")"
+verifier "AVANT (le défaut) : Kevin REVIENT par le même lien" "t" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', '$CODE3');")"
+SORTIE4="$(APPLIQUER "$RETRAITS")"
+if echo "$SORTIE4" | grep -q "ERROR"; then echo "$SORTIE4"; fi
+verifier "les retraits passent (6 OK)" "6" "$(echo "$SORTIE4" | grep -cE '\| *OK *$' || true)"
+verifier "…et se REJOUENT" "6" "$(APPLIQUER "$RETRAITS" | grep -cE '\| *OK *$' || true)"
+verifier "Léa retire Kevin" "t" "$(EN "$LEA" "select public.retirer_invite_activite('ev_priv', '$KEVIN');")"
+verifier "APRÈS : Kevin ne revient pas par le lien" "f" "$(EN "$KEVIN" "select public.rejoindre_par_code('ev_priv', '$CODE3');")"
+verifier "…ni ne lit l'activité" "0" "$(EN "$KEVIN" "select count(*) from public.events where id = 'ev_priv';")"
+verifier "…ni ne lit la liste des retraits" "42501" "$(ECRIT "$KEVIN" "perform 1 from public.event_invites_retires")"
+verifier "…ni ne s'en efface (aucun droit)" "42501" "$(ECRIT "$KEVIN" "delete from public.event_invites_retires")"
+verifier "Ben, lui, entre toujours par le lien" "t" "$(EN "$BEN" "select public.rejoindre_par_code('ev_priv', '$CODE3');")"
+verifier "Léa réinvite Kevin explicitement" "ok" "$(ECRIT "$LEA" "insert into public.event_invites (event_id, user_id) values ('ev_priv', '$KEVIN')")"
+EN "$LEA" "insert into public.event_invites (event_id, user_id) values ('ev_priv', '$KEVIN');" >/dev/null
+verifier "…la marque est effacée, Kevin lit de nouveau" "0|1" "$(Q "select (select count(*) from public.event_invites_retires where user_id = '$KEVIN')||'|'||(select count(*) from public.event_invites where event_id = 'ev_priv' and user_id = '$KEVIN');")"
+verifier "supprimer l'activité emporte ses retraits" "0" "$(Q "begin; insert into public.event_invites_retires values ('ev_priv', '$BLOQ'); delete from public.events where id = 'ev_priv'; select count(*) from public.event_invites_retires; rollback;" | grep -E '^[0-9]+$')"
 
 echo
 echo "Banc activités privées : $ok OK, $ko ÉCHEC"

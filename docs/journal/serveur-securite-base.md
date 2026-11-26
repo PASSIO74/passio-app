@@ -2391,3 +2391,8 @@ j'organise, plafond 30) — avant, seule la première date lui était lisible.
 - Repères « 🔒 Privée » sur la carte de Rencontrer et « 🔒 Invitation privée » sur la carte de
   conversation ; un invité ne voit pas le bouton « Invités ». Mesure : `activite_privee_creee`,
   `activite_privee_lien`, `activite_privee_lien_ouvert`, `activite_privee_invite_retire`.
+- **Trouvé par la revue de sécurité automatique** : un invité RETIRÉ qui avait reçu le lien
+  revenait par `rejoindre_par_code`. `migration_activites_privees_retraits_2026-11-26.sql` :
+  `event_invites_retires` (aucun droit client), tenue par `retirer_invite_activite`, refusée par
+  `rejoindre_par_code` ; seule une invitation EXPLICITE de l'organisation l'efface
+  (`trg_event_invites_retour`). Banc : le défaut reproduit AVANT, fermé APRÈS (104 contrôles).
