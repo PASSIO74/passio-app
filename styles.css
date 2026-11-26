@@ -14193,6 +14193,15 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   .me-te-champ { field-sizing: content; width: auto; min-width: 3ch; }
 }
 
+/* ── Activité privée (2026-11-26) : choix Publique / Privée du formulaire ── */
+.ev-visibilite { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0 4px; }
+.ev-visibilite-choix { display:flex; align-items:flex-start; gap:10px; padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--bg-soft); cursor:pointer; min-height:44px; }
+.ev-visibilite-choix input { width:20px; height:20px; margin:1px 0 0; flex-shrink:0; accent-color:var(--accent, #7c3aed); }
+.ev-visibilite-choix span { display:flex; flex-direction:column; gap:2px; font-size:14px; line-height:1.35; }
+.ev-visibilite-choix small { font-size:12px; color:var(--muted); }
+.ev-visibilite-choix:has(input:checked) { border-color:var(--accent, #7c3aed); box-shadow:0 0 0 1px var(--accent, #7c3aed) inset; }
+.ev-au-fil[hidden] { display:none; }
+.ev-badge-privee { display:inline-flex; align-items:center; gap:6px; margin:6px 0 2px; padding:4px 10px; border-radius:999px; background:rgba(124,58,237,0.12); color:var(--accent, #7c3aed); font-size:12px; font-weight:700; }
 /* ── STORY : TAILLE, POLICES, DESSIN (2026-11-26, lot A) ── */
 .me-te-polices {
   display: flex; gap: 8px; padding: 10px 18px 2px;

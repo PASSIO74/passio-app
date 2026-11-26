@@ -200,7 +200,9 @@ verifier "la liste EXPLICITE du client, elle, passe"         "Sortie photo" \
 # ④ ter — les deux listes doivent rester la MÊME. Un ajout de colonne fait ici
 # et pas là-bas (ou l'inverse) rendrait ce banc vert sur un client cassé.
 CLIENT_COLS="$(sed -n '/_EVENT_COLS_PUBLIC = \[/,/\].join/p' "$RACINE/js/app-08-ui-modals-tour.js" \
-  | grep -o '"[a-z_]*"' | tr -d '"' | paste -sd, -)"
+  | grep -o '"[a-z_]*"' | tr -d '"' | grep -vx visibilite | paste -sd, -)"
+# `visibilite` (2026-11-26) est accordée par `migration_activites_privees_2026-11-26.sql`,
+# une migration POSTÉRIEURE à celle-ci, dont le banc mesure la lecture par anon.
 verifier "la liste du banc est CELLE du client, à l'octet près" "$COLS_PUBLIC" "$CLIENT_COLS"
 
 echo
