@@ -9741,6 +9741,10 @@ function _rtNotificationRecue(r) {
     createdAt: supaTs(r.created_at),
     unread: !r.seen, fromSupabase: true,
   };
+  if (notif.kind === "event_update" && String(notif.id).startsWith("n_pi_refus_")
+      && window._openEventDetailId === notif.refId && typeof _relireRefusFiche === "function") {
+    _relireRefusFiche(notif.refId);
+  }
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
