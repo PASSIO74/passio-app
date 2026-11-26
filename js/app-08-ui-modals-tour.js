@@ -1960,6 +1960,8 @@ function _meStickerActivite(panneau) {
   });
 }
 function _meStickerMention(panneau) {
+  var dejaMentions = meState.overlays.filter(function (o) { return o.type === "mention"; }).length;
+  if (dejaMentions >= ME_MENTIONS_MAX) { panneau.remove(); toast("10 mentions au plus par publication"); return; }
   var l = _meStickerListe(panneau, "@ Mentionner quelqu'un");
   var champ = document.createElement("input");
   champ.type = "search"; champ.className = "me-sticker-recherche"; champ.placeholder = "Chercher un nom"; champ.setAttribute("aria-label", "Chercher un compte");
@@ -1991,14 +1993,24 @@ async function _meStickerQuestion(panneau) {
   if (saisie == null) return; saisie = saisie.trim(); if (!saisie) return;
   meAddOverlay({ type: "question", q: saisie.slice(0, 120), x: 50, y: 60 });
 }
+// Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
+// la publication, garantit un seul envoi des messages de mention.
+function _prevenirMentionsBobine(post) {
+  if (!post || post._mentionsEnvoyees) return;
+  post._mentionsEnvoyees = true;
+  try { saveState(); } catch (e) {}
+  try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
+}
+var ME_MENTIONS_MAX = 10;
 // Après une publication RÉUSSIE : chaque compte mentionné (réel, pas soi, pas
 // un compte d'exemple « u_… ») reçoit un message, comme sur Instagram.
 function _prevenirMentionsStory(overlays, quoi) {
-  var deja = {};
+  var deja = {}, n = 0;
   (overlays || []).forEach(function (o) {
     if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    if (n >= ME_MENTIONS_MAX) return;
     if (deja[o.uid] || o.uid === MY_UID || String(o.uid).indexOf("u_") === 0) return;
-    deja[o.uid] = 1;
+    deja[o.uid] = 1; n++;
     try { _envoyerALAuteurStory({ authorId: o.uid, authorName: o.nom }, o.nom, "📣 Je t'ai mentionné·e dans ma " + (quoi === "bobine" ? "bobine" : "story")); } catch (e) {}
   });
 }
@@ -2009,17 +2021,26 @@ function _storyQuitterLecteurs() {
   if (sv && sv.classList.contains("active")) closeStoryViewer({ versAutreEcran: true });
 }
 function storyRepondreQuestion(bouton) {
+  // La réponse part à l'auteur de la story OUVERTE : jamais depuis une bobine
+  // (posts.overlays est écrit par n'importe quel compte, et `storyGroups` garde
+  // la DERNIÈRE story vue — la réponse partait chez quelqu'un d'autre).
+  var sv = document.getElementById("storyViewer");
+  if (!sv || !sv.classList.contains("active") || !bouton.closest("#storyOverlays")) return;
   var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
   if (!s) return;
-  if (s.authorId === MY_UID) { toast("Les réponses arrivent dans tes messages"); return; }
+  if (s.authorId === MY_UID || s.authorId === "me") { toast("Les réponses arrivent dans tes messages"); return; }
+  var reelle = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && s.authorId && !/^u_/.test(String(s.authorId));
+  if (!reelle) { toast("Story d'exemple — crée ton compte pour répondre aux vraies stories"); return; }
   var carte = bouton.closest(".st-question");
   var question = carte ? (carte.getAttribute("data-q") || "") : "";
+  var pauseAvant = window._storyEnPause;
   window._storyEnPause = true;
   demanderTexte({ titre: question || "Réponds", placeholder: "Ta réponse", libelle: "Envoyer", max: 300 }).then(function (t) {
-    window._storyEnPause = false;
+    window._storyEnPause = pauseAvant;
     if (t == null || !t.trim()) return;
     Promise.resolve(_envoyerALAuteurStory(s, s.authorName, "❓ « " + question + " »\n" + t.trim())).then(function (ok) {
-      if (ok) toast("Réponse envoyée à " + (s.authorName || "l'auteur"), "success");
+      if (ok === "envoye") toast("Réponse envoyée à " + (s.authorName || "l'auteur"), "success");
+      else if (ok) toast("Réponse en attente — elle partira au retour du réseau");
     });
   });
 }
@@ -2447,7 +2468,13 @@ async function mePublish() {
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
     saveState();
     try { renderStories(); } catch(e) {}
-    Promise.resolve(_publierStoryAvecVerdict(story)).then(function (ok) { if (ok) _prevenirMentionsStory(story.overlays, "story"); });
+    Promise.resolve(_publierStoryAvecVerdict(story)).then(function (ok) {
+      // Mentions SEULEMENT si la story est sur le SERVEUR : une story gardée sur
+      // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
+      // story qu'il ne pourra pas ouvrir.
+      var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
+      if (ok === true && serveur) _prevenirMentionsStory(story.overlays, "story");
+    });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
@@ -2502,7 +2529,7 @@ function _publishReelWithFeedback(post) {
       post._pendingSync = false;
       try { saveState(); } catch (e) {}
       toast("Bobine publiée", "success");
-      try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
+      _prevenirMentionsBobine(post);
       return;
     }
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
@@ -2592,6 +2619,7 @@ async function _rejouerPublicationsEnAttente() {
     if (ok) {
       envoyees++;
       toast(p.isReel ? "Bobine publiée" : "Publication envoyée", "success");
+      if (p.isReel) _prevenirMentionsBobine(p);
       try { renderFeed(); } catch (e) {}
     }
   }
@@ -2714,7 +2742,10 @@ function _storyDessinHtml(o) {
   }).join("");
   return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
 }
-function _storyOverlaysHtml(overlays) {
+// `opts.story` : appelé par le lecteur de STORY. Le sticker Question n'y est
+// rendu que là (une bobine n'a pas de destinataire de réponse fiable).
+function _storyOverlaysHtml(overlays, opts) {
+  var dansStory = !!(opts && opts.story);
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
   // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
@@ -2737,9 +2768,13 @@ function _storyOverlaysHtml(overlays) {
       return '<button type="button" class="story-ov story-sticker st-evt" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '"><b>📍 ' + escapeHtml(String(o.titre || "Activité").slice(0, 80)) + '</b>' + (o.quand ? '<span>' + escapeHtml(String(o.quand).slice(0, 40)) + '</span>' : '') + '</button>';
     }
     if (o.type === "mention" && ME_ID_STICKER.test(String(o.uid || ""))) {
-      return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(String(o.nom || "").slice(0, 40)) + '</button>';
+      // Le nom affiché est celui du COMPTE quand on le connaît : un « @Alice »
+      // forgé ne peut pas ouvrir le profil de Bob sous le nom d'Alice.
+      var connu = (typeof userById === "function") ? userById(o.uid) : null;
+      var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
+      return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
-    if (o.type === "question") {
+    if (o.type === "question" && dansStory) {
       var qv = String(o.q || "").slice(0, 120);
       return '<div class="story-ov story-sticker st-question" style="' + pos + '" data-q="' + escapeHtml(qv) + '"><b>' + escapeHtml(qv) + '</b><button type="button" class="st-q-rep">Écris ta réponse…</button></div>';
     }
@@ -2853,7 +2888,7 @@ function playCurrentStory() {
   // Overlays (texte/emoji/GIF positionnés). Si présents, ils remplacent le texte centré.
   const ovLayer = document.getElementById("storyOverlays");
   const overlays = Array.isArray(s.overlays) ? s.overlays : [];
-  if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays);
+  if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays, { story: true });
 
   if (overlays.length) {
     $("#storyContent").innerHTML = "";

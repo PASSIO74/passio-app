@@ -25,7 +25,8 @@ async function banc(page, mode) {
     state.seed.users = (state.seed.users || []).filter((u) => u.id !== lea);
     state.seed.users.push({ id: lea, name: "Léa Martin", profileEmoji: "🎸", avatar: "#ec4899" });
     window.__envois = [];
-    window._envoyerALAuteurStory = async (s, nom, texte) => { window.__envois.push({ a: s.authorId, texte }); return true; };
+    window._envoyerALAuteurStory = async (s, nom, texte) => { window.__envois.push({ a: s.authorId, texte }); return "envoye"; };
+    window._uidEstUnCompte = () => true;
     meOpen(mode);
     if (mode === "bobine") meEnterEditPhase();
   }, { lea: LEA, mode });
@@ -68,7 +69,19 @@ test("② @ Mention : posée, ouvre le profil, et prévient le compte à la publ
   await expect(page.locator("#meOverlays .me-sticker-mention")).toHaveText("@Léa Martin");
   // Un compte d'exemple mentionné en plus : jamais prévenu.
   await page.evaluate(() => meAddOverlay({ type: "mention", uid: "u_lea", nom: "Léa Moreau", x: 50, y: 70 }));
+  // Story gardée sur l'appareil : personne n'est prévenu.
   await page.evaluate(() => { window._supaReal = false; meState._enteredEditAt = 0; mePublish(); });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Story écrite par le SERVEUR : le compte réel mentionné est prévenu, une fois.
+  await page.evaluate(() => {
+    window._supaReal = true; window.supaPublishStory = async () => true;
+    const st = state.seed.stories[0];
+    meOpen("story"); meState.overlays = []; 
+    meCycleBg(); meFermerEditeurTexte(false);
+    st.overlays.filter((o) => o.type === "mention").forEach((o) => meAddOverlay(Object.assign({}, o)));
+    meState._enteredEditAt = 0; mePublish();
+  });
   await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
   const envoi = await page.evaluate(() => window.__envois[0]);
   expect(envoi.a).toBe(LEA);
@@ -108,7 +121,7 @@ test("③ ❓ Question : la réponse d'un spectateur part en message à l'auteur
   expect(e.a).toBe(LEA);
   expect(e.texte).toContain("Ton meilleur spot ?");
   expect(e.texte).toContain("La plage du Moulin");
-  expect(await page.evaluate(() => window._storyEnPause)).toBe(false);
+  expect(await page.evaluate(() => !!window._storyEnPause), "la pause revient à ce qu elle était").toBe(false);
 });
 
 test("④ bobine : Activité et Mention proposées, pas la Question", async ({ page }) => {
@@ -117,9 +130,16 @@ test("④ bobine : Activité et Mention proposées, pas la Question", async ({ p
   await expect(page.locator('#meStickerPanel [data-sticker="Activité"]')).toBeVisible();
   await expect(page.locator('#meStickerPanel [data-sticker="Mention"]')).toBeVisible();
   await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toHaveCount(0);
-  // Le lecteur de bobines rend le sticker, touchable.
-  const html = await page.evaluate((lea) => renderReelHTML({ id: "reel_s", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: [{ type: "mention", uid: lea, nom: "Léa", x: 50, y: 50 }], text: "", likes: 0, comments: [] }, 0), LEA);
+  // Le lecteur de bobines rend la mention, touchable — mais JAMAIS une Question
+  // (posts.overlays est écrit par n'importe quel compte ; la réponse partirait
+  // vers la dernière story vue).
+  const html = await page.evaluate((lea) => renderReelHTML({ id: "reel_s", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: [{ type: "mention", uid: lea, nom: "Léa", x: 50, y: 50 }, { type: "question", q: "Piège ?" }], text: "", likes: 0, comments: [] }, 0), LEA);
   expect(html).toContain('class="story-ov story-sticker st-mention"');
+  expect(html).not.toContain("st-q-rep");
+  expect(html).not.toContain("Piège");
+  // Une bobine publiée au REJEU ne prévient qu'une fois.
+  const n = await page.evaluate((lea) => { const post = { id: "reel_m", isReel: true, overlays: [{ type: "mention", uid: lea, nom: "Léa" }] }; _prevenirMentionsBobine(post); _prevenirMentionsBobine(post); return new Promise((r) => setTimeout(() => r(window.__envois.length), 100)); }, LEA);
+  expect(n).toBe(1);
 });
 
 test("⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs", async ({ page }) => {
@@ -146,4 +166,21 @@ test("⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs", as
   expect(dom.on).toBe(0);
   expect(dom.evt).toEqual(["e1"]);
   expect(dom.uid).toEqual(["u_ok"]);
+});
+
+test("⑥ un bouton « Écris ta réponse » hors du lecteur de story n'envoie rien", async ({ page }) => {
+  await banc(page, "story");
+  const r = await page.evaluate((lea) => {
+    meClose();
+    // La dernière story vue est celle de Léa…
+    storyGroups = [{ authorId: lea, stories: [{ id: "s_l", authorId: lea, authorName: "Léa", text: "x", createdAt: Date.now() }] }];
+    // …mais le bouton est ailleurs (forgé dans une autre surface).
+    const d = document.createElement("div");
+    d.innerHTML = '<div class="story-sticker st-question" data-q="Piège"><button type="button" class="st-q-rep">x</button></div>';
+    document.body.appendChild(d);
+    d.querySelector(".st-q-rep").click();
+    return !!document.getElementById("feuilleConfirmation");
+  }, LEA);
+  expect(r).toBe(false);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
 });
