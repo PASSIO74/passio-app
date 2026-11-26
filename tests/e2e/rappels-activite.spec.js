@@ -87,6 +87,47 @@ test.describe("Rappels d'activité — le tap ouvre l'activité", () => {
     await ficheOuverte(page);
   });
 
+  test("④bis un rappel par activité : une activité absente au démarrage ne fait pas re-sonner la cloche", async ({ page }) => {
+    // Le défaut du 2026-11-26 : sept « Rappel : Test 2 events » en trois jours.
+    // Au démarrage, l'activité du serveur n'est pas encore relue ; la purge
+    // effaçait alors la marque, et le démarrage suivant reposait le rappel.
+    await bootOnboarded(page);
+    const r = await page.evaluate((id) => {
+      localStorage.removeItem("passio_event_reminded");
+      const ev = state.seed.events.find((e) => e.id === id);
+      ev.date = Date.now() + 3 * 86400e3;   // palier J-7
+      ev.status = "active";
+      state.user.joinedEvents = [id];
+      // Deux anciens doublons déjà dans la cloche : ils doivent se replier en un.
+      state.notifications = [
+        { id: "x1", kind: "event_reminder", refId: id, text: "Rappel : <b>Jam</b>", createdAt: Date.now() - 6e4, unread: true, emoji: "⏰", fromId: "me", html: true },
+        { id: "x2", kind: "event_reminder", refId: id, text: "Rappel : <b>Jam</b>", createdAt: Date.now() - 864e5, unread: false, emoji: "⏰", fromId: "me", html: true },
+        { id: "autre", kind: "local", text: "autre", createdAt: Date.now() - 1e5, unread: false, emoji: "✨", fromId: "me" },
+      ];
+      const compte = () => state.notifications.filter((n) => n.kind === "event_reminder" && n.refId === id).length;
+      const sauve = state.seed.events;
+      _checkEventReminders();                       // 1ᵉʳ démarrage : activité connue
+      const apres1 = compte();
+      state.seed.events = sauve.filter((e) => e.id !== id);
+      _checkEventReminders();                       // 2ᵉ : activité pas encore relue
+      state.seed.events = sauve;
+      _checkEventReminders();                       // 3ᵉ : de nouveau connue
+      _checkEventReminders();
+      const apres3 = compte();
+      ev.date = Date.now() + 90 * 60e3;             // palier H-2 : remplace le précédent
+      _checkEventReminders();
+      _checkEventReminders();
+      return { apres1, apres3, apresH2: compte(),
+        autre: state.notifications.some((n) => n.id === "autre"),
+        palier: state.notifications.find((n) => n.kind === "event_reminder").palier };
+    }, EVENT_SEED);
+    expect(r.apres1, "les doublons se replient en un").toBe(1);
+    expect(r.apres3, "l'activité absente un temps n'est pas re-rappelée").toBe(1);
+    expect(r.apresH2, "le palier suivant remplace le précédent").toBe(1);
+    expect(r.palier).toBe("h2");
+    expect(r.autre, "les autres notifications restent").toBe(true);
+  });
+
   test("⑤ inscription CONFIRMÉE : la proposition s'ouvre, « Activer » demande la permission puis abonne", async ({ page }) => {
     await bancInscription(page, { permission: "default" });
     await page.evaluate((id) => setEventRsvp(id, "going"), EVENT_SEED);

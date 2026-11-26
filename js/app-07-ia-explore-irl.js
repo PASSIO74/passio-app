@@ -5345,15 +5345,45 @@ function _quandRappel(ts, maintenant) {
   return "le " + d.getDate() + " " + d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
 }
 
+// Rang d'un palier : plus il est proche du départ, plus il est grand.
+function _rangPalierRappel(cle) {
+  for (var i = 0; i < EVENT_REMINDER_TIERS.length; i++) if (EVENT_REMINDER_TIERS[i].key === cle) return i;
+  return -1;
+}
+
+// UN rappel par activité dans la cloche (2026-11-26, « je trouve qu'il y a trop
+// de rappels ») : la même activité était rappelée SEPT fois en trois jours. Le
+// plus récent reste ; les plus anciens de la même activité partent.
+function _dedoublonnerRappelsCloche() {
+  var l = state.notifications;
+  if (!Array.isArray(l) || !l.length) return false;
+  var vus = new Set(), gardees = [];
+  // La cloche est triée du plus récent au plus ancien, mais on ne s'y fie pas.
+  var tri = l.map(function (n, i) { return { n: n, i: i }; }).sort(function (a, b) {
+    return ((b.n && b.n.createdAt) || 0) - ((a.n && a.n.createdAt) || 0) || a.i - b.i;
+  });
+  var retires = new Set();
+  tri.forEach(function (x) {
+    var n = x.n;
+    if (!n || n.kind !== "event_reminder" || !n.refId) return;
+    if (vus.has(n.refId)) retires.add(x.i); else vus.add(n.refId);
+  });
+  if (!retires.size) return false;
+  l.forEach(function (n, i) { if (!retires.has(i)) gardees.push(n); });
+  state.notifications = gardees;
+  return true;
+}
+
 function _checkEventReminders() {
   try {
     var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
+    if (!Array.isArray(reminded)) reminded = [];
     var now = Date.now();
+    var change = _dedoublonnerRappelsCloche();
     var joined = (state.user && state.user.joinedEvents) || [];
-    if (!joined.length) return;
     var events = allEvents();
 
-    events.forEach(function (e) {
+    if (joined.length) events.forEach(function (e) {
       if (joined.indexOf(e.id) === -1) return;
       if (_eventIsCancelled(e)) return;          // ne pas rappeler un événement annulé
       var diff = e.date - now;
@@ -5369,30 +5399,57 @@ function _checkEventReminders() {
 
       var mark = e.id + ":" + tier.key;
       if (reminded.indexOf(mark) > -1) return;
+      // Seconde ceinture : la cloche elle-même. Un rappel de ce palier (ou d'un
+      // palier plus proche) déjà présent pour cette activité vaut marque.
+      var rang = _rangPalierRappel(tier.key);
+      var dejaLa = (state.notifications || []).some(function (n) {
+        return n && n.kind === "event_reminder" && n.refId === e.id
+          && (n.palier ? _rangPalierRappel(n.palier) >= rang : String(n.id) === "rappel_" + mark);
+      });
+      if (dejaLa) { reminded.push(mark); return; }
 
       // LOT-7 (audit UX/UI du 2026-11-10, TRA-C15) : le palier dit QUAND rappeler,
       // jamais ce qu'on affiche. Une activité à 26 h tombait dans le palier d7 et
       // recevait « dans une semaine » ; on compose la date RÉELLE, en jours de
       // calendrier : « aujourd'hui », « demain », « samedi », « le 20 nov. ».
       var when = _quandRappel(e.date, now);
+      // Le rappel précédent de la même activité laisse la place au nouveau.
+      if (Array.isArray(state.notifications)) {
+        state.notifications = state.notifications.filter(function (n) {
+          return !(n && n.kind === "event_reminder" && n.refId === e.id);
+        });
+      }
       // `event_reminder` + `refId` : toucher le rappel dans la cloche ouvre
-      // l'activité (openNotifTarget), au lieu d'une ligne inerte.
+      // l'activité (openNotifTarget), au lieu d'une ligne inerte. L'identifiant
+      // est DÉTERMINISTE (`rappel_<activité>:<palier>`) : pushNotification ignore un doublon.
       if (typeof pushNotification === "function") {
         pushNotification("Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
           + " à " + _eventTimeLabel(e)
-          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id });
+          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id, id: "rappel_" + mark });
+        var posee = (state.notifications || [])[0];
+        if (posee && posee.id === "rappel_" + mark) posee.palier = tier.key;
       }
+      change = true;
       reminded.push(mark);
     });
 
-    // Purge les marques dont l'événement est passé depuis plus de 7 jours (ou a
-    // disparu) pour ne pas faire gonfler le cache indéfiniment.
+    // LE DÉFAUT du 2026-11-26 : la purge retirait la marque d'une activité
+    // ABSENTE de `allEvents()` — or au démarrage, les activités du serveur ne
+    // sont pas encore relues (`rafraichirEvenements` est asynchrone). Marque
+    // effacée au démarrage suivant, rappel reposé au suivant : sept rappels de
+    // la même activité. Une marque ne part que si son activité est CONNUE et
+    // passée depuis plus de 7 jours ; la liste reste bornée.
     reminded = reminded.filter(function (mark) {
       var id = String(mark).split(":")[0];
       var ev = events.find(function (x) { return x.id === id; });
-      return ev && ev.date > now - 7 * 86400000;
+      return !ev || ev.date > now - 7 * 86400000;
     });
+    if (reminded.length > 300) reminded = reminded.slice(-300);
     localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
+    if (change) {
+      try { saveState(); } catch (_) {}
+      try { if (typeof renderBell === "function") renderBell(); } catch (_) {}
+    }
   } catch (e) { try { diagLog("rappels : " + (e && e.message)); } catch (_) {} }
 }
 // ⚠️ Ce rappel-ci ne vit que DANS LA PAGE : appli fermée, il ne part pas. Les
