@@ -6504,7 +6504,8 @@
     }
     .vlive-paused {
       position: absolute; inset: 0;
-      z-index: 6;
+      /* SOUS les barres (z-index 5) : au-dessus, il cachait le bouton Reprendre (2026-11-26). */
+      z-index: 4;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
       background: rgba(0,0,0,0.72);
       color: #fff; font-size: 46px;
@@ -6512,6 +6513,15 @@
       backdrop-filter: blur(4px);
     }
     .vlive-paused span { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+    .vlive-resume-btn {
+      margin-top: 14px; min-height: 48px; padding: 0 26px;
+      border: 0; border-radius: 999px; cursor: pointer;
+      background: #7c3aed; color: #fff;
+      font-size: 16px; font-weight: 800; letter-spacing: 0.01em;
+      box-shadow: 0 6px 20px rgba(124,58,237,0.45);
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .vlive-resume-btn:active { transform: scale(0.96); }
     .vlive-unmute {
       position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
@@ -6573,6 +6583,9 @@
     }
     .vlive-chat-bar input {
       flex: 1;
+      /* min-width: 0 : sans lui le champ refusait de retrecir et poussait
+         micro + camera de l'hote HORS de l'ecran sous 420 px (2026-11-26). */
+      min-width: 0;
       min-height: 44px;
       border: 1px solid rgba(255,255,255,0.35);
       border-radius: 999px;

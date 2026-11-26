@@ -5214,32 +5214,53 @@ function _vliveStartTimer(startMs) {
   }, 1000);
 }
 
-// Micro on/off (diffuseur).
+// Micro on/off (diffuseur). `H.micOff` est la SEULE autorité de l'intention du
+// micro : la pause coupe les pistes sans la toucher, la reprise la relit. Avant,
+// la reprise rallumait le micro d'office (coupé avant la pause = rouvert après),
+// et basculer le micro PENDANT la pause rallumait le son d'un direct « en pause ».
 function toggleVliveMic(btn) {
   const H = window._vliveHost;
   if (!H || !H.stream) return;
-  const tracks = H.stream.getAudioTracks();
-  const on = tracks[0] && tracks[0].enabled;
-  tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "🔇" : "🎙"; }
+  H.micOff = !H.micOff;
+  _vliveAppliquerPistes();
+  _vlivePeindreMic(btn);
 }
 window.toggleVliveMic = toggleVliveMic;
+
+function _vlivePeindreMic(btn) {
+  const H = window._vliveHost;
+  const b = btn || document.getElementById("vliveMicBtn");
+  if (!H || !b) return;
+  b.classList.toggle("off", !!H.micOff);
+  b.textContent = H.micOff ? "🔇" : "🎙";
+  b.setAttribute("aria-pressed", H.micOff ? "true" : "false");
+}
+
+// Pose l'état RÉEL des pistes depuis les deux intentions (pause, micro).
+function _vliveAppliquerPistes() {
+  const H = window._vliveHost;
+  if (!H || !H.stream) return;
+  try { (H.stream.getVideoTracks() || []).forEach(t => { t.enabled = !H.paused; }); } catch (e) {}
+  try { (H.stream.getAudioTracks() || []).forEach(t => { t.enabled = !H.paused && !H.micOff; }); } catch (e) {}
+}
 
 // Pause / reprise du direct (diffuseur) : gèle la vidéo + coupe le micro sans
 // démonter les connexions (le live reste « vivant » ; les spectateurs voient un
 // écran « en pause »). Reprise = réactive les pistes.
+// ⚠️ 2026-11-26 : l'écran « en pause » (z-index 6, plein écran) RECOUVRAIT la
+// barre de commandes (z-index 5) — le bouton ▶️ était dessous, intouchable, et
+// l'hôte ne pouvait plus reprendre. Le voile passe SOUS les barres, et porte
+// lui-même un gros bouton « Reprendre » (verrou : tests/e2e/live-pause-reprise.spec.js).
 function toggleVlivePause(btn) {
   const H = window._vliveHost;
   if (!H || !H.stream) return;
   H.paused = !H.paused;
   const on = H.paused;
-  try { (H.stream.getVideoTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
-  try { (H.stream.getAudioTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
+  _vliveAppliquerPistes();
   _vliveSend("pause", { on: on });
-  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "▶️" : "⏸"; btn.setAttribute("aria-label", on ? "Reprendre" : "Mettre en pause"); }
-  // Micro : si on reprend, remet le bouton micro cohérent (réactivé ci-dessus).
-  const micBtn = btn && btn.parentElement && btn.parentElement.querySelector('[aria-label="Micro"]');
-  if (micBtn && !on) { micBtn.classList.remove("off"); micBtn.textContent = "🎙"; }
+  const b = btn || document.getElementById("vlivePauseBtn");
+  if (b) { b.classList.toggle("off", on); b.textContent = on ? "▶️" : "⏸"; b.setAttribute("aria-label", on ? "Reprendre" : "Mettre en pause"); }
+  _vlivePeindreMic();
   _vliveShowPaused(on, true);
   toast(on ? "⏸ Live en pause" : "▶️ Live repris");
 }
@@ -5249,7 +5270,10 @@ window.toggleVlivePause = toggleVlivePause;
 function _vliveShowPaused(on, isHost) {
   const el = document.getElementById("vlivePaused");
   if (!el) return;
-  el.querySelector("span").textContent = isHost ? "Live en pause (toi)" : "Le live est en pause";
+  const sp = el.querySelector("span");
+  if (sp) sp.textContent = isHost ? "Live en pause (toi)" : "Le live est en pause";
+  const rb = el.querySelector(".vlive-resume-btn");
+  if (rb) rb.style.display = isHost ? "" : "none";
   el.style.display = on ? "flex" : "none";
 }
 
@@ -5267,6 +5291,9 @@ async function flipVliveCamera() {
   const newTrack = ns.getVideoTracks()[0];
   if (!newTrack) return;
   H._facing = next;
+  // La nouvelle caméra hérite de la pause : sinon retourner la caméra en pause
+  // renvoyait l'image aux spectateurs derrière un écran « en pause ».
+  newTrack.enabled = !H.paused;
   for (const vid in H.pcs) {
     const sender = H.pcs[vid].pc.getSenders().find(s => s.track && s.track.kind === "video");
     if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
@@ -5355,7 +5382,9 @@ function _vliveRenderUI(mode, row) {
     '</div>' +
     (title ? '<div class="vlive-title-pill">' + escapeHtml(title) + '</div>' : "") +
     '<div class="vlive-status" id="vliveStatus">' + (isHost ? "" : "Connexion au direct…") + '</div>' +
-    '<div class="vlive-paused" id="vlivePaused" style="display:none;">⏸<span>Le live est en pause</span></div>' +
+    '<div class="vlive-paused" id="vlivePaused" style="display:none;">⏸<span>Le live est en pause</span>' +
+      (isHost ? '<button class="vlive-resume-btn" onclick="toggleVlivePause()" aria-label="Reprendre le live">▶ Reprendre le live</button>' : "") +
+    '</div>' +
     '<div class="vlive-hearts" id="vliveHearts"></div>' +
     '<button id="vliveUnmuteBtn" class="vlive-unmute" style="display:none;" onclick="_vliveUnmute()">🔊 Activer le son</button>' +
     '<div class="vlive-bottom">' +
@@ -5367,7 +5396,7 @@ function _vliveRenderUI(mode, row) {
         '<button class="vlive-bar-btn" onclick="_vliveSendChat()" aria-label="Envoyer">➤</button>' +
         (isHost
           ? '<button class="vlive-bar-btn" id="vlivePauseBtn" onclick="toggleVlivePause(this)" aria-label="Mettre en pause">⏸</button>' +
-            '<button class="vlive-bar-btn" onclick="toggleVliveMic(this)" aria-label="Micro">🎙</button>' +
+            '<button class="vlive-bar-btn" id="vliveMicBtn" onclick="toggleVliveMic(this)" aria-label="Micro" aria-pressed="false">🎙</button>' +
             '<button class="vlive-bar-btn" onclick="flipVliveCamera()" aria-label="Changer de caméra">🔄</button>'
           : '<button class="vlive-bar-btn heart" onclick="_vliveHeart()" aria-label="Envoyer un cœur">❤️</button>') +
       '</div>' +
