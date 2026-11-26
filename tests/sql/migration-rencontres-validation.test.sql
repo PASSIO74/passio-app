@@ -242,4 +242,46 @@ do $$ begin
 end $$;
 -- Restaurer seulement le profil synthétique pour les scénarios concurrents natifs.
 insert into public.profiles values('11111111-1111-4111-8111-111111111111');
+
+-- Socle notifications minimal de cette base jetable. Les déclencheurs et les
+-- RPC de décision et de réinscription ci-dessous sont ceux des migrations.
+insert into public.profiles values('44444444-4444-4444-8444-444444444444');
+alter table public.events add column title text;
+create function public.identifiant_reserve_au_serveur(text) returns boolean language sql immutable
+  as $$ select starts_with($1, 'n_pi_') $$;
+create function public.passio_echapper_html(text) returns text language sql immutable
+  as $$ select replace($1, '<', '&lt;') $$;
+\ir ../../migrations/migration_refus_demande_sortie_2026-11-26.sql
+insert into public.events(id,title,author_id,organizer_id) values
+ ('refus','Sortie <test>','11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111');
+set role authenticated;
+select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
+insert into public.event_attendees(event_id,user_id,rsvp) values ('refus',auth.uid()::text,'going');
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select public.valider_participant('refus','44444444-4444-4444-8444-444444444444',false);
+do $$ begin
+ if public.mon_refus_demande_sortie('refus')
+   or public.valider_participant('refus','44444444-4444-4444-8444-444444444444',false)
+ then raise exception 'décision lue par un tiers ou refus répété'; end if;
+end $$;
+select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
+do $$ begin
+ if not public.mon_refus_demande_sortie('refus') then raise exception 'refus invisible au membre'; end if;
+end $$;
+insert into public.event_attendees(event_id,user_id,rsvp) values ('refus',auth.uid()::text,'going');
+delete from public.event_attendees where event_id='refus' and user_id=auth.uid()::text;
+do $$ begin
+ if public.mon_refus_demande_sortie('refus') then raise exception 'refus périmé après le retrait'; end if;
+end $$;
+insert into public.event_attendees(event_id,user_id,rsvp) values ('refus',auth.uid()::text,'going');
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select public.valider_participant('refus','44444444-4444-4444-8444-444444444444',true);
+select public.valider_participant('refus','44444444-4444-4444-8444-444444444444',false);
+reset role;
+do $$ begin
+ if (select count(*) from public.notifications where ref_id='refus' and id like 'n\_pi\_refus\_%'
+     and user_id='44444444-4444-4444-8444-444444444444' and content like '%&lt;test%') <> 1
+   or exists(select 1 from rencontres_prive.decisions where event_id='refus' and refus_en_cours)
+ then raise exception 'avis manquant, en double, ou retrait confondu avec un refus'; end if;
+end $$;
 \ir confirmation-participation.test.sql

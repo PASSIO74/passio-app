@@ -804,6 +804,13 @@ const STORY_BGS = [
   "linear-gradient(135deg,#10b981,#84cc16)",
   "linear-gradient(135deg,#f43f5e,#fb7185)",
   "linear-gradient(135deg,#1e293b,#475569)",
+  // Ajouts du 2026-11-26 — TOUJOURS en fin de liste : une story publiée porte
+  // l'INDICE de son fond (overlay `{type:"bg", i}`), réordonner changerait le
+  // fond des stories déjà en ligne.
+  "linear-gradient(135deg,#f59e0b,#ef4444)",
+  "linear-gradient(160deg,#0f172a,#7c3aed)",
+  "linear-gradient(135deg,#fde68a,#f472b6)",
+  "linear-gradient(135deg,#14b8a6,#6366f1)",
 ];
 let _storyBg = STORY_BGS[0];
 
@@ -955,7 +962,9 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert");
+  ed.classList.add("me-vide");
+  _meTeReinitialiser();
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
   // le geste de retour ne le fermait pas — l'écran changeait dessous et
   // l'objectif restait actif.
@@ -971,7 +980,8 @@ function meClose() {
   meStopRecording(true);
   meStopCamera();
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
-  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
+  _meTeReinitialiser();
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
@@ -982,6 +992,7 @@ function meClose() {
 // Bouton ✕ : en édition → revient à la capture ; en capture → ferme.
 function meTopBack() {
   var ed = document.getElementById("mediaEditor");
+  if (ed && ed.classList.contains("me-texte-ouvert")) { meFermerEditeurTexte(true); return; }
   if (ed && ed.classList.contains("phase-edit")) { meBackToCapture(); return; }
   meClose();
 }
@@ -994,7 +1005,8 @@ function meBackToCapture() {
   document.getElementById("meOverlays").innerHTML = "";
   document.getElementById("meCanvas").style.background = "#000";
   document.getElementById("mePlaceholder").classList.add("hidden");
-  ed.classList.remove("phase-edit", "me-no-cam"); ed.classList.add("phase-capture");
+  _meTeReinitialiser();
+  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert"); ed.classList.add("phase-capture", "me-vide");
   meStartCamera();
 }
 function meEnterEditPhase() {
@@ -1204,16 +1216,48 @@ function _meBindShutter() {
 }
 
 function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
+// MODE « CRÉER » façon Instagram (2026-11-26). Le bouton « Aa » de la capture
+// remplissait l'écran d'un dégradé et s'arrêtait là : aucune consigne, aucun
+// curseur, il fallait trouver « Aa » tout en bas puis remplir une feuille.
+// Désormais : fond coloré ET clavier ouvert d'un seul toucher, on écrit
+// directement sur la story ; le fond se change depuis l'éditeur ou la barre.
+// ⚠️ `focus()` doit partir DANS le geste (clic) : iOS n'ouvre pas le clavier
+// sur un focus différé.
 function meCycleBg() {
   if (meState.mode === "bobine") return;
+  var ed = document.getElementById("mediaEditor");
+  if (ed && ed.classList.contains("phase-edit") && ed.classList.contains("me-fond")) { meChangerFond(); return; }
   meState.media = null; meState.mediaType = null;
   _meRemoveVideoControls();
+  _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
-  meState.bgIdx = (meState.bgIdx + 1) % STORY_BGS.length;
-  meState.bg = STORY_BGS[meState.bgIdx];
+  meState.bg = STORY_BGS[meState.bgIdx] || STORY_BGS[0];
   document.getElementById("meCanvas").style.background = meState.bg;
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
+  if (ed) ed.classList.add("me-fond");
+  _meMajVide(); _meMajBoutonsFond();
+  meOuvrirEditeurTexte(null);
+}
+// Fond suivant (mode Créer uniquement).
+function meChangerFond() {
+  if (meState.mode === "bobine" || meState.media) return;
+  meState.bgIdx = (meState.bgIdx + 1) % STORY_BGS.length;
+  meState.bg = STORY_BGS[meState.bgIdx];
+  var c = document.getElementById("meCanvas"); if (c) c.style.background = meState.bg;
+  _meMajBoutonsFond();
+  // Le focus reste dans le champ si l'éditeur est ouvert (le clavier ne retombe pas).
+  var champ = document.getElementById("meTeChamp");
+  var ed = document.getElementById("mediaEditor");
+  if (champ && ed && ed.classList.contains("me-texte-ouvert")) { try { champ.focus(); } catch (e) {} }
+}
+function _meMajBoutonsFond() {
+  var suivant = STORY_BGS[(meState.bgIdx + 1) % STORY_BGS.length];
+  ["meFondBtn", "meTeFond"].forEach(function (id) { var b = document.getElementById(id); if (b) b.style.background = suivant; });
+}
+function _meMajVide() {
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  ed.classList.toggle("me-vide", !meState.overlays.length);
 }
 function _meReadFile(file) {
   return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
@@ -1548,6 +1592,7 @@ async function meOnMedia(ev) {
 }
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;
+  try { var _edM = document.getElementById("mediaEditor"); if (_edM) _edM.classList.remove("me-fond"); } catch (e) {}
   _meRemoveVideoControls(); // nettoie d'éventuels contrôles de la vidéo précédente
   _meRevokePreviewUrl();    // libère l'éventuel blob: de l'aperçu précédent
   var box = document.getElementById("meMedia");
@@ -1647,11 +1692,159 @@ function _meSetupVideoPreviewControls(video) {
   canvas.appendChild(bar);
   syncPlay(); syncSound();
 }
-async function meAddText() {
-  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
-  var t = await demanderTexte({ titre: "Ajouter un texte", placeholder: "Ton texte", libelle: "Ajouter", max: 200 }); if (t == null) return; t = t.trim(); if (!t) return;
-  meAddOverlay({ type: "text", text: t, color: "#ffffff", x: 50, y: 45, size: 26 });
+// Texte : éditeur EN PLACE façon Instagram (2026-11-26) — il remplace la
+// feuille `demanderTexte` (LOT-6), qui cachait la story pendant qu'on écrivait.
+function meAddText() { meOuvrirEditeurTexte(null); }
+
+// Couleurs proposées (texte, ou fond du texte en style « fond »).
+var ME_TEXTE_COULEURS = ["#ffffff", "#000000", "#7c3aed", "#ec4899", "#f97316", "#facc15", "#22c55e", "#0ea5e9", "#ef4444"];
+var ME_TEXTE_ALIGNS = ["center", "left", "right"];
+var ME_ALIGN_SVG = {
+  center: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M3 15h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  left: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h8M3 15h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  right: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M9 10h8M3 15h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
+};
+// État de l'éditeur ; `couleur` survit d'un texte à l'autre (comme Instagram).
+var meTe = { ov: null, couleur: "#ffffff", style: "", align: "center" };
+
+// Styles d'un texte, partagés par l'éditeur ET le lecteur de story. Les valeurs
+// viennent d'un autre compte côté lecteur : alignement en liste fermée,
+// couleurs par `_cssColor`, contraste calculé ici (jamais lu dans la charge).
+function _storyTexteStyles(o) {
+  var couleur = _cssColor((o && o.color) || "#ffffff");
+  var align = (o && (o.align === "left" || o.align === "right")) ? o.align : "center";
+  var fond = !!(o && o.style === "fond");
+  var clair = /^#(fff|ffffff|facc15)$/i.test(couleur);
+  return { align: align, texte: fond ? (clair ? "#111111" : "#ffffff") : couleur, fond: fond ? couleur : "" };
 }
+function _mePeindreTexte(el, ov) {
+  if (!el) return;
+  var content = el.firstChild; if (!content) return;
+  var st = _storyTexteStyles(ov);
+  content.textContent = ov.text;
+  content.className = st.fond ? "story-txt-fond" : "";
+  content.style.background = st.fond || "";
+  el.style.color = st.texte;
+  el.style.textAlign = st.align;
+  if (ov.size) el.style.fontSize = ov.size + "px";
+}
+function _meTeReinitialiser() {
+  var ed = document.getElementById("meTexteEditeur");
+  if (ed) { ed.classList.remove("open"); ed.setAttribute("aria-hidden", "true"); }
+  if (meTe.ov) { var el = document.getElementById(meTe.ov.id); if (el) el.classList.remove("me-en-edition"); }
+  meTe.ov = null;
+}
+function meOuvrirEditeurTexte(ov) {
+  var box = document.getElementById("meTexteEditeur");
+  var champ = document.getElementById("meTeChamp");
+  var ed = document.getElementById("mediaEditor");
+  if (!box || !champ || !ed) return;
+  if (ed.classList.contains("me-texte-ouvert")) return;
+  var b = document.getElementById("meEmojiBar"); if (b) b.remove();
+  var g = document.getElementById("meGifPanel"); if (g) g.remove();
+  meTe.ov = ov || null;
+  if (ov) { meTe.couleur = ov.color || "#ffffff"; meTe.style = ov.style === "fond" ? "fond" : ""; meTe.align = ov.align || "center"; }
+  else { meTe.style = ""; meTe.align = "center"; }
+  champ.value = ov ? (ov.text || "") : "";
+  if (ov) { var el = document.getElementById(ov.id); if (el) el.classList.add("me-en-edition"); }
+  var row = document.getElementById("meTeCouleurs");
+  if (row && !row.childElementCount) {
+    ME_TEXTE_COULEURS.forEach(function (c) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.className = "me-te-couleur"; bt.style.background = c;
+      bt.setAttribute("data-couleur", c); bt.setAttribute("aria-label", "Couleur " + c);
+      // pointerdown + preventDefault : le champ garde le focus, le clavier reste ouvert.
+      bt.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+      bt.addEventListener("click", function () { meTe.couleur = c; _meTeAppliquer(); try { champ.focus(); } catch (e) {} });
+      row.appendChild(bt);
+    });
+  }
+  box.classList.toggle("avec-fond", ed.classList.contains("me-fond"));
+  _meMajBoutonsFond();
+  box.classList.add("open"); box.setAttribute("aria-hidden", "false");
+  ed.classList.add("me-texte-ouvert");
+  _meTeAppliquer();
+  try { champ.focus(); var n = champ.value.length; champ.setSelectionRange(n, n); } catch (e) {}
+}
+function _meTeAppliquer() {
+  var champ = document.getElementById("meTeChamp"); if (!champ) return;
+  var st = _storyTexteStyles({ color: meTe.couleur, style: meTe.style, align: meTe.align });
+  champ.style.color = st.texte;
+  champ.style.caretColor = st.texte;
+  champ.style.background = st.fond || "transparent";
+  champ.style.textAlign = st.align;
+  champ.style.textShadow = st.fond ? "none" : "";
+  var sb = document.getElementById("meTeStyle");
+  if (sb) { sb.classList.toggle("actif", meTe.style === "fond"); sb.setAttribute("aria-pressed", meTe.style === "fond" ? "true" : "false"); }
+  var ab = document.getElementById("meTeAlign"); if (ab) ab.innerHTML = ME_ALIGN_SVG[st.align];
+  document.querySelectorAll("#meTeCouleurs .me-te-couleur").forEach(function (bt) { bt.classList.toggle("actif", bt.getAttribute("data-couleur") === meTe.couleur); });
+  _meTeAjuster();
+}
+function _meTeAjuster() {
+  var champ = document.getElementById("meTeChamp"); if (!champ) return;
+  champ.style.height = "auto";
+  champ.style.height = Math.min(champ.scrollHeight + 2, Math.round(window.innerHeight * 0.5)) + "px";
+}
+function meTeBasculerStyle() {
+  meTe.style = meTe.style === "fond" ? "" : "fond";
+  _meTeAppliquer();
+  var champ = document.getElementById("meTeChamp"); if (champ) { try { champ.focus(); } catch (e) {} }
+}
+function meTeBasculerAlign() {
+  meTe.align = ME_TEXTE_ALIGNS[(ME_TEXTE_ALIGNS.indexOf(meTe.align) + 1) % ME_TEXTE_ALIGNS.length];
+  _meTeAppliquer();
+  var champ = document.getElementById("meTeChamp"); if (champ) { try { champ.focus(); } catch (e) {} }
+}
+// valider = true : le texte est posé / mis à jour (vidé = retiré). false : abandon.
+function meFermerEditeurTexte(valider) {
+  var box = document.getElementById("meTexteEditeur");
+  var champ = document.getElementById("meTeChamp");
+  var ed = document.getElementById("mediaEditor");
+  if (!box || !champ || !ed || !ed.classList.contains("me-texte-ouvert")) return;
+  var t = String(champ.value || "").replace(/\r/g, "").replace(/^\s+|\s+$/g, "").slice(0, 200);
+  var ov = meTe.ov;
+  box.classList.remove("open"); box.setAttribute("aria-hidden", "true");
+  ed.classList.remove("me-texte-ouvert");
+  try { champ.blur(); } catch (e) {}
+  meTe.ov = null;
+  if (ov) {
+    var el = document.getElementById(ov.id);
+    if (el) el.classList.remove("me-en-edition");
+    if (valider) {
+      if (!t) meRemoveOverlay(ov.id);
+      else { ov.text = t; ov.color = meTe.couleur; ov.style = meTe.style || undefined; ov.align = meTe.align; _mePeindreTexte(el, ov); }
+    }
+  } else if (valider && t) {
+    meAddOverlay({ type: "text", text: t, color: meTe.couleur, style: meTe.style || undefined, align: meTe.align, x: 50, y: 42, size: 30 });
+  }
+  champ.value = "";
+  _meMajVide();
+}
+(function _meTeBrancher() {
+  function brancher() {
+    var champ = document.getElementById("meTeChamp");
+    var zone = document.getElementById("meTeZone");
+    if (!champ || champ._meBranche) return;
+    champ._meBranche = true;
+    champ.addEventListener("input", _meTeAjuster);
+    champ.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); meFermerEditeurTexte(true); } });
+    // Toucher hors du champ = « OK » (comme Instagram).
+    if (zone) zone.addEventListener("click", function (e) { if (e.target === zone) meFermerEditeurTexte(true); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+// Mode Créer : toucher le fond (hors d'un élément) ouvre l'écriture.
+(function _meToucherPourEcrire() {
+  document.addEventListener("click", function (e) {
+    var ed = document.getElementById("mediaEditor");
+    if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-edit") || !ed.classList.contains("me-fond")) return;
+    if (ed.classList.contains("me-texte-ouvert")) return;
+    var c = document.getElementById("meCanvas");
+    if (!c || !c.contains(e.target)) return;
+    if (e.target.closest && e.target.closest(".me-overlay, button")) return;
+    meOuvrirEditeurTexte(null);
+  });
+})();
 var ME_EMOJIS = ["🔥","😂","❤️","✨","😍","🎉","👏","🙌","💯","🎸","📸","🌍","☕","🍕","⚽","🎬","💜","😎","🥳","🤩"];
 function meAddEmoji() {
   var existing = document.getElementById("meEmojiBar"); if (existing) { existing.remove(); return; }
@@ -1687,6 +1880,7 @@ function meAddOverlay(ov) {
   meState.overlays.push(ov);
   _meRenderOverlay(ov);
   meSelectOverlay(ov);
+  _meMajVide();
 }
 function meSelectOverlay(ov) {
   document.querySelectorAll("#meOverlays .me-overlay").forEach(function(e) { e.classList.remove("selected"); });
@@ -1695,6 +1889,7 @@ function meSelectOverlay(ov) {
 function meRemoveOverlay(id) {
   meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
   var el = document.getElementById(id); if (el) el.remove();
+  _meMajVide();
 }
 // Applique position (left/top) + transform (scale/rotation) et garde les
 // poignées à taille constante (contre-scale).
@@ -1711,18 +1906,23 @@ function _meRenderOverlay(ov) {
   var el = document.createElement("div");
   el.className = "me-overlay " + ov.type; el.id = ov.id;
   var content = document.createElement("span");
-  if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
+  if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
   el.appendChild(content);
+  if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
+  // Sans cet arrêt, le pointerdown remontait à l'overlay : un toucher bref sur ✕
+  // passait pour « toucher le texte » et ouvrait l'éditeur au lieu de supprimer.
+  del.addEventListener("pointerdown", function(e) { e.stopPropagation(); });
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
   el.appendChild(del);
   var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
   el.appendChild(rsz);
   if (ov.type === "text") {
-    var modifier = async function(e) { if (e) e.stopPropagation(); var nt = await demanderTexte({ titre: "Modifier le texte", valeur: ov.text, libelle: "Enregistrer", max: 200 }); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } };
-    el.addEventListener("dblclick", modifier);
+    // Éditeur en place (2026-11-26) ; un simple toucher sur le texte l'ouvre
+    // aussi (`_meMakeInteractive`), comme Instagram.
+    var modifier = function(e) { if (e) e.stopPropagation(); meOuvrirEditeurTexte(ov); };
     // LOT-15 (CRE-C09) : modifier un texte ne demande plus un double-clic de souris —
     // un bouton ✎ le fait au doigt.
     var edit = document.createElement("button"); edit.type = "button"; edit.className = "me-ov-edit me-ov-ctrl"; edit.textContent = "✎"; edit.setAttribute("aria-label", "Modifier le texte");
@@ -1741,16 +1941,18 @@ function _meMakeInteractive(el, ov, handle) {
   var pointers = {}; var rect = null;
   var drag = null;            // { px, py, ox, oy }
   var pinch = null;           // { dist, ang, scale, rot }
+  var tape = null;            // { x, y, t } — un toucher bref sans bouger = modifier le texte
 
   el.addEventListener("pointerdown", function(e) {
+    if (e.target && e.target.closest && e.target.closest(".me-ov-ctrl")) return; // ✕ ✎ ⤡ gèrent leur geste
     e.preventDefault(); e.stopPropagation();
     meSelectOverlay(ov);
     rect = canvas.getBoundingClientRect();
     try { el.setPointerCapture(e.pointerId); } catch(_) {}
     pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(pointers);
-    if (ids.length === 1) { drag = { px: e.clientX, py: e.clientY, ox: ov.x, oy: ov.y }; }
-    else if (ids.length === 2) { drag = null; pinch = _mePinchStart(pointers, ids, ov); }
+    if (ids.length === 1) { drag = { px: e.clientX, py: e.clientY, ox: ov.x, oy: ov.y }; tape = { x: e.clientX, y: e.clientY, t: Date.now() }; }
+    else if (ids.length === 2) { drag = null; tape = null; pinch = _mePinchStart(pointers, ids, ov); }
   });
   el.addEventListener("pointermove", function(e) {
     if (!pointers[e.pointerId]) return;
@@ -1772,6 +1974,18 @@ function _meMakeInteractive(el, ov, handle) {
     }
   });
   function up(e) {
+    var etaitTape = tape && e.type === "pointerup" && Object.keys(pointers).length === 1
+      && Math.hypot(e.clientX - tape.x, e.clientY - tape.y) < 8 && (Date.now() - tape.t) < 350;
+    if (Object.keys(pointers).length <= 1) tape = null;
+    if (etaitTape && ov.type === "text") {
+      delete pointers[e.pointerId];
+      try { el.releasePointerCapture(e.pointerId); } catch(_) {}
+      drag = null; pinch = null;
+      // Le clic synthétique qui suit tomberait sur la zone de l'éditeur et le refermerait.
+      _meSwallowNextClick();
+      meOuvrirEditeurTexte(ov);
+      return;
+    }
     delete pointers[e.pointerId];
     try { el.releasePointerCapture(e.pointerId); } catch(_) {}
     var ids = Object.keys(pointers);
@@ -1820,7 +2034,7 @@ function _mePinchStart(pointers, ids, ov) {
 function _meOverlaysData() {
   return meState.overlays.map(function(o) {
     var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y), scale: +(o.scale || 1).toFixed(3), rot: Math.round(o.rot || 0) };
-    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; }
+    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; }
     if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
     if (o.type === "gif") { c.url = o.url; }
     return c;
@@ -1834,9 +2048,22 @@ async function mePublish() {
   // Anti clic-fantôme : ignore une publication déclenchée dans la foulée d'une capture.
   if (meState._enteredEditAt && (Date.now() - meState._enteredEditAt) < 700) return;
   if (meState.mode === "bobine" && meState.mediaType !== "video") { toast("Une bobine est une vidéo — filme ou choisis une vidéo"); return; }
+  var _edPub = document.getElementById("mediaEditor");
+  if (_edPub && _edPub.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
+  // Une story « Créer » sans rien dessus est un aplat de couleur : Instagram ne
+  // la publie pas, nous non plus — on rouvre l'écriture.
+  if (meState.mode === "story" && !meState.media && !meState.overlays.length) {
+    toast("Écris quelque chose sur ta story");
+    meOuvrirEditeurTexte(null);
+    return;
+  }
   var p = (typeof currentProfile === "function" && currentProfile()) || {};
   var authorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var overlays = _meOverlaysData();
+  // Le fond choisi n'était JAMAIS envoyé (aucune colonne `bg`) : les autres
+  // voyaient le dégradé par défaut. Il voyage dans `overlays` sous forme
+  // d'INDICE dans STORY_BGS — jamais une chaîne CSS d'un autre compte.
+  if (meState.mode === "story" && !meState.media) overlays.push({ type: "bg", i: meState.bgIdx });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
 
@@ -2110,6 +2337,16 @@ function openStoryViewer(idx) {
 }
 
 // HTML des overlays (texte/emoji/GIF positionnés) pour les viewers story & bobine.
+// Fond d'une story : un indice de STORY_BGS porté par l'overlay `bg` (seule
+// forme qui voyage), sinon le `bg` local (composeur de cet appareil).
+function _storyFondCss(s) {
+  if (!s) return "var(--grad-hero)";
+  if (s.media) return "#000";
+  var o = (Array.isArray(s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "bg"; });
+  var i = o ? Number(o.i) : NaN;
+  if (Number.isInteger(i) && i >= 0 && i < STORY_BGS.length) return STORY_BGS[i];
+  return (typeof s.bg === "string" && s.bg) ? _cssColor(s.bg) : "var(--grad-hero)";
+}
 function _storyOverlaysHtml(overlays) {
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
@@ -2122,7 +2359,10 @@ function _storyOverlaysHtml(overlays) {
     var tr = "transform:translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg);";
     var pos = "left:" + _nb(o.x, 50) + "%;top:" + _nb(o.y, 50) + "%;" + tr;
     if (o.type === "text") {
-      return '<div class="story-ov" style="' + pos + 'color:' + _cssColor(o.color || "#fff") + ';font-size:' + _nb(o.size, 26) + 'px;font-weight:800;">' + escapeHtml(o.text || "")+ '</div>';
+      var st = _storyTexteStyles(o);
+      var interieur = escapeHtml(o.text || "");
+      if (st.fond) interieur = '<span class="story-txt-fond" style="background:' + st.fond + ';">' + interieur + '</span>';
+      return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + _nb(o.size, 26) + 'px;font-weight:800;text-align:' + st.align + ';">' + interieur + '</div>';
     }
     if (o.type === "emoji") {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
@@ -2191,7 +2431,7 @@ function playCurrentStory() {
   } catch (e) {}
 
   const card = $("#storyCard");
-  card.style.background = (s.media ? "#000" : (s.bg || "var(--grad-hero)"));
+  card.style.background = _storyFondCss(s);
 
   // Couche média (photo/vidéo) si présente
   const mediaLayer = document.getElementById("storyMedia");
@@ -3269,7 +3509,7 @@ function _notifListHtml(notifs) {
       <div class="empty-text">Tu es à jour, profite.</div>
     </div>`;
   return notifs.map(n => `
-    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
+    <div class="notif-row ${n.unread ? "unread" : ""}" ${n.kind === "event_update" && n.refId ? 'data-sortie-modifiee="' + escapeHtml(n.refId) + '" data-compte="' + escapeHtml(MY_UID || "") + '"' : ""} onclick="clickNotif('${escapeJsArg(n.id)}', this.dataset)">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteAfficheHtml(n)}</div>
@@ -3585,8 +3825,12 @@ function markNotifRead(id) {
 }
 
 // Clic sur une notif (panneau OU toast) : marque lu + emmène vers le contenu.
-function clickNotif(id) {
-  const n = (state.notifications || []).find(x => x.id === id);
+function clickNotif(id, ligne) {
+  // Au démarrage, la synchronisation du compte peut renouveler la liste entre
+  // son affichage et l'appui. La ligne garde la référence à relire en base.
+  if (ligne && ligne.sortieModifiee && ligne.compte !== (MY_UID || "")) return;
+  const n = (state.notifications || []).find(x => x.id === id)
+    || (ligne && ligne.sortieModifiee && { kind: "event_update", refId: ligne.sortieModifiee });
   markNotifRead(id);
   openNotifTarget(n);
 }
@@ -3604,6 +3848,12 @@ function openNotifTarget(n) {
   // une cible absente le dit, et le panneau reste ouvert.
   const manque = _cibleNotifAbsente(n);
   if (manque) { toast(manque); return; }
+  if (n.kind === "event_update") {
+    // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
+    // Fermer plus tôt déclencherait un retour qui annule cette lecture.
+    _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true });
+    return;
+  }
   try { closeModal(); } catch (e) {}
   const ref = n.refId, from = n.fromId;
   switch (n.kind) {
@@ -3631,7 +3881,6 @@ function openNotifTarget(n) {
       _ouvrirLienActivite(ref);
       break;
     case "event_comment":
-    case "event_update":
     case "event_cancelled":
     case "event_reminder":
     // Invitation directe reçue d'un abonnement (mécanique Partiful) : on ouvre la
@@ -3674,7 +3923,10 @@ function _cibleNotifAbsente(n) {
         // autre) : on le dit sans l'affirmer.
         if (typeof postSupprime === "function" && postSupprime(ref)) return "Cette publication n'existe plus";
         return (typeof findPostAnywhere === "function" && !findPostAnywhere(ref)) ? "Publication introuvable ici — elle a peut-être été supprimée" : "";
-      case "event_join": case "event_comment": case "event_update": case "event_cancelled":
+      case "event_update":
+        if (window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
+        // Hors connexion serveur, seule une sortie locale peut être ouverte.
+      case "event_join": case "event_comment": case "event_cancelled":
       case "event_reminder": case "event_invite": case "event_feedback": {
         if (!ref) return "";
         const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
@@ -6101,7 +6353,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
     const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
     const paginationAvant = _feedPagination;
-    teteSeq = (!authorId && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
+    teteSeq = (!authorId && !options.pagePassions && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
     const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
       && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
       && (options.generation === undefined || options.generation === _feedRefreshGeneration)
@@ -6116,7 +6368,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       }
     };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
-    const extraAvant = !authorId && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
+    const extraAvant = !authorId && !options.pagePassions && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
     // par `supaPublishPostWithRetry` mais jamais RELU : une publication reliée
     // à une activité perdait son lien au premier rechargement, et le
@@ -6129,6 +6381,8 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
+      if (options.pagePassions) q = q.in("passion_id", options.pagePassions.ids);
+      if (options.postId) q = q.eq("id", options.postId);
       // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
       // cache. Une insertion/suppression récente ne décale plus la page suivante.
       if (!authorId && options.cursor) {
@@ -6174,9 +6428,16 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     function memoriserPage() {
       if (authorId || !lectureValide()) return;
       const derniere = lignesBrutes[lignesBrutes.length - 1];
+      const cursor = derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null;
+      if (options.pagePassions) {
+        // La recherche du visiteur a sa propre frontière, y compris si toutes
+        // les lignes brutes ont été exclues à l’hydratation.
+        options.pagePassions.suite = lignesBrutes.length === pageSize ? cursor : null;
+        return;
+      }
       const suite = {
         owner, offset: offset + lignesBrutes.length,
-        cursor: derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null,
+        cursor,
         more: lignesBrutes.length === pageSize,
         advanced: offset > 0 || !!options.cursor,
         head: offset === 0 ? lignesBrutes.map(p => p.id).join("|") : (paginationAvant && paginationAvant.head),
@@ -6421,6 +6682,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       // total recalé à la page (30) au lieu du compte serveur.
       if (Number.isSafeInteger(loadedPost.commentsTotal) && state.userPosts) {
         state.userPosts.forEach(function (u) { if (u && u.id === r.id) u.commentsTotal = loadedPost.commentsTotal; });
+      }
+      if (loadedPost.eventId && r.author_id === MY_UID) {
+        const copie = (state.userPosts || []).find(u => u.id === r.id && u.authorId === r.author_id);
+        if (copie && (copie.eventId !== loadedPost.eventId || copie.sortieARelier)) {
+          copie.eventId = loadedPost.eventId;
+          delete copie.sortieARelier;
+          saveState();
+        }
       }
       // RV-39 : et les réactions d'AUTRUI, que la pastille y lit. Avant, elle
       // ne montrait sur l'appareil qui a publié que ce qui était arrivé en
@@ -7277,14 +7546,16 @@ function _passionEvenementRefusee(event) {
   return true;
 }
 
-async function supaPublishEvent(event) {
+async function supaPublishEvent(event, auteurAttendu) {
   if (_passionEvenementRefusee(event)) return false;
   try {
     await supaEnsureProfileExists();
+    if (auteurAttendu && auteurAttendu !== MY_UID) return false;
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
     for (let attempt = 0; attempt < 4; attempt++) {
+      if (auteurAttendu && auteurAttendu !== MY_UID) return false;
       const { error } = await supa.from("events").insert(row);
       if (!error) return true;
       // Un insert qui a réussi malgré un timeout client repasse ici en doublon.
@@ -7695,7 +7966,10 @@ async function supaProchaineSortie(compte) {
 // l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
 // l'app (Jerem, 2026-10-23).
 // `eventId` cible une invitation même si l’activité est hors des 60 plus récentes.
+let _numeroLectureSorties = 0;
 async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
+  const lecture = ++_numeroLectureSorties;
+  const etat = state, compte = MY_UID;
   if (eventId != null && !LIEN_COURT_ID_RE.test(eventId)) return [];
   // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
@@ -7739,7 +8013,8 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
     // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.) Une
     // lecture en échec laisse les listes vides : les activités, déjà chargées,
     // survivent sans leurs participants.
-    const { attByEvent, maybeByEvent, waitByEvent, checkedByEvent, countsByEvent } = await supaLireParticipants(rows.map(r => r.id));
+    const { attByEvent, maybeByEvent, waitByEvent, checkedByEvent, countsByEvent, listesLues, comptesLus } = await supaLireParticipants(rows.map(r => r.id));
+    if (state !== etat || MY_UID !== compte) return [];
     return rows.map(r => ({
       id: r.id,
       authorId: r.author_id,
@@ -7785,6 +8060,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       waitlist: waitByEvent[r.id] || [],
       checkedIn: checkedByEvent[r.id] || [],
       counts: countsByEvent[r.id] || null,   // compteurs serveur (C-04) ; null = base pas migrée ou lecture en échec
+      _lectureSortie: lecture, _listesLues: listesLues, _comptesLus: comptesLus,
       fromSupabase: true,
     }));
   } catch(e) {
@@ -7811,9 +8087,23 @@ function fusionnerEvenementsServeur(evs) {
   const avant = _evenementsSig(arr);
   evs.forEach(function (ev) {
     const i = arr.findIndex(function (e) { return e && e.id === ev.id; });
+    const precedente = arr[i];
+    if (precedente && precedente._lectureSortie > ev._lectureSortie) return;
+    if (ev._comptesLus === false && ev._listesLues === false && ev.organizerId === MY_UID && _compteAuthReel()) {
+      // Une lecture partielle peut rafraîchir la sortie. Conserver seulement les
+      // nombres connus de l'organisateur, jamais une ancienne liste de noms.
+      const connue = precedente || (state.userEvents || []).find(e => e.id === ev.id);
+      if (connue) {
+        ev.counts = Object.fromEntries(["going", "maybe", "waitlist", "checked_in"].map(k => [k, _nbInscrits(connue, k)]));
+      }
+    }
     if (i >= 0) arr[i] = ev; else arr.unshift(ev);
   });
-  return _evenementsSig(arr) !== avant;
+  const change = _evenementsSig(arr) !== avant;
+  if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
+    window.PassioUIV4B?.refresh();
+  }
+  return change;
 }
 
 // Rechargement des activités en cours de session (2026-10-24). Elles n'étaient
@@ -9714,6 +10004,10 @@ function _rtNotificationRecue(r) {
     createdAt: supaTs(r.created_at),
     unread: !r.seen, fromSupabase: true,
   };
+  if (notif.kind === "event_update" && String(notif.id).startsWith("n_pi_refus_")
+      && window._openEventDetailId === notif.refId && typeof _relireRefusFiche === "function") {
+    _relireRefusFiche(notif.refId);
+  }
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
@@ -12083,6 +12377,8 @@ async function supaInit() {
       // reçoivent (app-07) — les relectures suivantes n'ont pas à le refaire.
       if (typeof rafraichirEvenements === "function") rafraichirEvenements(true, function (e) {
         if (typeof rattraperActivitesAuFil === "function") rattraperActivitesAuFil(e).catch(function () {});
+        // Les activités du serveur sont là : le rappel juge sur la liste complète.
+        if (typeof _checkEventReminders === "function") _checkEventReminders();
       });
       // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
       // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS

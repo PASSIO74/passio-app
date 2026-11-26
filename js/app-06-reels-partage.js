@@ -242,17 +242,16 @@ function _lienPartageConclure(message) {
 }
 
 // ⑥ Une publication plus ancienne que la page chargée : on cherche son auteur,
-// puis on charge SES publications. Une seule fois par lien — un identifiant
+// puis on charge cette publication précise avec les filtres habituels. Une seule fois par lien — un identifiant
 // inconnu ne doit pas faire marteler la base.
 async function _lienPartageChercherPost(id) {
-  _lienPartageCible = true;
   if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supaLoadPosts !== "function") return;
   try {
     var r = await supa.from("posts").select("author_id").eq("id", id).maybeSingle();
     if (r.error) { diagLog("lien_partage_post", r.error.message); return; }
     var auteur = r.data && r.data.author_id;
     if (!auteur) return;
-    var lus = await supaLoadPosts(0, auteur);
+    var lus = await supaLoadPosts(0, auteur, { postId: id });
     state.supabasePosts = state.supabasePosts || [];
     (lus || []).forEach(function (p) {
       if (p && p.id && !state.supabasePosts.some(function (q) { return q.id === p.id; })) state.supabasePosts.push(p);
@@ -308,6 +307,7 @@ function _ouvrirLienPartage() {
       // Une publication RÉELLE peut n'arriver qu'avec `supaLoadPosts` : on
       // retente, puis on la cherche de façon ciblée (⑥), puis on conclut.
       if (!_lienPartageCible && _lienPartageEssais >= 3 && window._supaReal) {
+        _lienPartageCible = true;
         _lienPartageChercherPost(cible.id).then(function () { _lienPartageReplanifier(50); });
         _lienPartageEssais++;
         return false;
@@ -5204,16 +5204,22 @@ function normalizeStudioMood(mood) {
 
 function choisirCategorieStudio(mood) {
   studioMood = normalizeStudioMood(mood);
+  const message = $("#postText");
   $$("#postMoodRow .pill").forEach(el => {
     const choisie = el.getAttribute("data-postmood") === studioMood;
     el.classList.toggle("active", choisie);
     el.setAttribute("aria-pressed", String(choisie));
+    if (choisie) message.placeholder = el.dataset.exemple || "";
   });
 }
 
 $$("#postMoodRow .pill").forEach(p => {
-  p.addEventListener("click", () => choisirCategorieStudio(p.getAttribute("data-postmood")));
+  p.addEventListener("click", () => {
+    choisirCategorieStudio(p.getAttribute("data-postmood"));
+    if ($("#postText").value.trim()) enregistrerBrouillonStudio();
+  });
 });
+choisirCategorieStudio(studioMood);
 
 // Photo upload
 document.addEventListener("click", (e) => {
@@ -5503,6 +5509,55 @@ function clearAudio() {
 // Verrou anti-double-clic : empêche deux soumissions simultanées du même post
 let _publishInProgress = false;
 
+function messageDisponiblePourSortie(postId) {
+  if (!window.PassioUIV3?.isEnabled() || postSupprime(postId)) return null;
+  const post = state.userPosts.find(p => p.id === postId && p.authorId === MY_UID);
+  if (!post || post.mood !== "irl" || post.isReel || post.sharedFromPostId || post.sharedReelData) return null;
+  if (post.sortieDifferee === "publiee") return null;
+  const copies = allPostCopies(postId).concat((window._feedExtraPosts || []).filter(p => p.id === postId));
+  return copies.some(p => p.eventId || p.sortieARelier) ? null : post;
+}
+
+function ouvrirSortieDepuisMessage(post) {
+  window.PassioUIV3.proposeOuting(post.passion, post.id);
+  const titre = document.getElementById("evTitle");
+  const caseFil = document.getElementById("evAuFil");
+  if (titre && caseFil && document.getElementById("modalContent").dataset.feedIrlSource === post.id) {
+    titre.dataset.publicationStudio = post.id;
+    titre.dataset.auteurStudio = post.authorId;
+    caseFil.checked = false;
+    const legende = caseFil.closest("label");
+    legende.querySelector("strong").textContent = "Publier aussi une carte de la sortie";
+    legende.querySelector("small").textContent = "La sortie sera reliée à ton message même si tu laisses cette case décochée.";
+  }
+}
+
+function preparerSuiteSortieStudio(post) {
+  if (!messageDisponiblePourSortie(post.id)) return null;
+  const suite = document.createElement("section");
+  suite.id = "studioSuiteSortie";
+  suite.hidden = true;
+  suite.setAttribute("aria-label", "Après la publication");
+  suite.innerHTML = '<strong role="status">Ton message est en ligne.</strong>'
+    + '<button type="button" class="btn primary">Proposer une sortie</button>'
+    + '<button type="button" class="btn ghost">Plus tard</button>';
+  suite.querySelector(".ghost").onclick = () => {
+    suite.remove();
+    const message = messageDisponiblePourSortie(post.id);
+    if (message && post.authorId === MY_UID) {
+      message.sortieDifferee = "aProposer";
+      saveStateNow();
+    }
+  };
+  suite.querySelector(".primary").onclick = () => {
+    suite.remove();
+    const message = messageDisponiblePourSortie(post.id);
+    if (message && post.authorId === MY_UID) ouvrirSortieDepuisMessage(message);
+  };
+  $("#screen-feed").prepend(suite);
+  return suite;
+}
+
 async function publishPost() {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
@@ -5670,6 +5725,19 @@ async function publishPost() {
   state.userPosts.unshift(post);
   saveState();
 
+  // Le post garde ses propres médias. Vider seulement la saisie qui vient
+  // de partir, avant que la personne puisse commencer un autre brouillon.
+  $("#postText").value = "";
+  try { effacerBrouillonStudio(); } catch (e) {}
+  photoDataUrl = null;
+  videoDataUrl = null;
+  audioDataUrl = null;
+  renderPhotoPreview();
+  renderVideoPreview();
+  $("#recPlayback").innerHTML = "";
+  $("#recTime").textContent = "00:00";
+  $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
+
   // Naviguer et afficher immédiatement. Une bobine → viewer Bobines (pas le feed).
   if (post.isReel) {
     try { renderFeed(); } catch(e) {}
@@ -5679,6 +5747,7 @@ async function publishPost() {
     setTimeout(() => renderFeed(), 50);
   }
 
+  const suiteSortie = preparerSuiteSortieStudio(post);
   // Synchroniser EN BACKGROUND avec timeout 5s
   let syncSuccess = false;
   try {
@@ -5693,14 +5762,24 @@ async function publishPost() {
     // sautait le repeint (`_feedDomSig` ne voit pas `syncStatus`). On invalide
     // la signature AU VERDICT, quel qu'il soit, et seulement à lui.
     const _repeindreVerdict = () => { try { saveState(); window._feedDomSig = null; renderFeed(); } catch (e) {} };
-    const syncPromise = supaPublishPostWithRetry(post).then((ok) => { _repeindreVerdict(); return ok; },
-      (e) => { _repeindreVerdict(); throw e; });
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
+      _repeindreVerdict();
+      if (suiteSortie && suiteSortie.isConnected) {
+        if (ok && post.authorId === (MY_UID || "me")) suiteSortie.hidden = false;
+        else suiteSortie.remove();
+      }
+      return ok;
+    }, (e) => {
+      _repeindreVerdict();
+      if (suiteSortie) suiteSortie.remove();
+      throw e;
+    });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
     // Le verdict remplace « Publication en cours… » : jamais les deux à l'écran.
     try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e) {}
 
     if (syncSuccess) {
-      toast("Publication en ligne", "success");
+      if (!suiteSortie || !suiteSortie.isConnected) toast("Publication en ligne", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
@@ -5719,23 +5798,6 @@ async function publishPost() {
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }
-
-  // Clear form
-  $("#postText").value = "";
-  try { effacerBrouillonStudio(); } catch (e) {}
-  photoDataUrl = null;
-  videoDataUrl = null;
-  audioDataUrl = null;
-  renderPhotoPreview();
-  renderVideoPreview();
-  $("#recPlayback").innerHTML = "";
-  $("#recTime").textContent = "00:00";
-  $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
-
-
-  // ✅ Le message de confirmation est déjà dans supaPublishPostWithRetry
-  // (toast "Publication en cours..." → "✅ Post publié!" ou "❌ Erreur")
-  // Pas de duplication ici
 
   // Navigation immédiate
   {
@@ -5766,7 +5828,9 @@ async function publishPost() {
       } catch(e) { /* erreur réseau non bloquante */ }
     }
 
-    goTo("feed");
+    // Le formulaire peut être ouvert pendant la relecture du fil.
+    if (!suiteSortie) goTo("feed");
+    else if ($("#screen-feed").classList.contains("active")) renderFeed();
     pushNotification(`Ta publication est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
 }

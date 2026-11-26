@@ -17,7 +17,7 @@ function extraireFonction(source,name){
  assert.fail('fonction complète introuvable : '+name);
 }
 function fn(name){return extraireFonction(client,name);}
-function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({toast:x=>messages.push(x),window:{_supaReal:true},_pousserPushNotif:()=>{},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},...extra});return {c,messages,get ouvert(){return ouvert}};}
+function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({state:{},_pousserPushNotif:()=>{},toast:x=>messages.push(x),window:{_supaReal:true},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},...extra});return {c,messages,get ouvert(){return ouvert}};}
 test('un refus ou zéro ligne de la RPC ne devient jamais un succès local',async()=>{
  for(const reponse of [{data:false},{data:null},{error:{code:'42501'}}]){const t=contexte({supa:{rpc:async()=>reponse}});vm.runInContext(fn('validerEventParticipant'),t.c);assert.equal(await t.c.validerEventParticipant('e','u',true),false);assert.equal(t.ouvert,0);assert.match(t.messages[0],/non confirmée/);}
 });
@@ -35,12 +35,52 @@ test('une demande confirmée réveille l’organisation sans doubler sa notifica
    _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
    toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
-  vm.runInContext(fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
+  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map(); var state={userEvents:[],seed:{events:[]}};"+fn('_suspendreLectureRefus')+fn('_sortiePourParticipation')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
   assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
   assert.equal(relectures,reel&&reponse===true?1:0,'Rencontrer relit la demande uniquement après enregistrement serveur');
   assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');
   if(pushes.length)assert.deepEqual(pushes[0],['orga','event_join','']);
  }
+});
+test('le refus efface la présence périmée, mais une lecture dépassée ne touche jamais une nouvelle inscription',async()=>{
+ for(const cas of ['refus','réinscription','compte changé','fiche fermée','erreur réseau']){
+  let repondre, rsvp='waitlist';
+  const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
+  const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
+   state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+   myRsvp:()=>rsvp,_setMyRsvpLocal:(id,v)=>{rsvp=v},saveState(){},_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
+   supa:{rpc:()=>new Promise(resolve=>{repondre=resolve})},
+   supaLireParticipants:async()=>({listesLues:true,comptesLus:true,attByEvent:{e:['orga']},maybeByEvent:{},
+    waitByEvent:{},checkedByEvent:{},countsByEvent:{e:{going:1}}})});
+  vm.runInContext("let _vueRefusSortie={id:'e',uid:'moi',lecture:0,refuse:false}; const _ecrituresRsvp=new Map();"
+    +fn('_relireRefusFiche')+fn('_suspendreLectureRefus')+fn('_poserListesRelues'),c);
+  const lecture=c._relireRefusFiche('e');
+  if(cas==='réinscription'){c._suspendreLectureRefus('e','moi');rsvp='going';}
+  if(cas==='compte changé') c._identiteDivergeDeLaSession=()=>true;
+  if(cas==='fiche fermée') c.window._openEventDetailId=null;
+  repondre(cas==='erreur réseau'?{error:{code:'offline'}}:{data:true});await lecture;
+  assert.equal(vm.runInContext('_vueRefusSortie.refuse',c),cas==='refus',cas);
+  assert.equal(rsvp,cas==='refus'?null:cas==='réinscription'?'going':'waitlist',cas);
+  assert.equal(ev.attendees.includes('moi'),cas!=='refus',cas);
+  assert.equal(ev.counts.going,cas==='refus'?1:2,cas);
+ }
+});
+test('deux lectures du même refus réconcilient les participants même si la première réponse arrive en dernier',async()=>{
+ const lectures=[];
+ const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
+ const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
+  state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+  myRsvp:()=>null,_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
+  supa:{rpc:async()=>({data:true})},supaLireParticipants:()=>new Promise(resolve=>lectures.push(resolve))});
+ vm.runInContext("let _vueRefusSortie={id:'e',uid:'moi',lecture:0,refuse:false}; const _ecrituresRsvp=new Map();"
+  +fn('_relireRefusFiche')+fn('_poserListesRelues'),c);
+ const premier=c._relireRefusFiche('e');await new Promise(setImmediate);
+ const second=c._relireRefusFiche('e');await new Promise(setImmediate);
+ assert.equal(lectures.length,2);
+ lectures[1]({listesLues:true,comptesLus:true,attByEvent:{e:['orga']},maybeByEvent:{},waitByEvent:{},
+  checkedByEvent:{},countsByEvent:{e:{going:1}}});await second;
+ lectures[0]({listesLues:false,comptesLus:false});await premier;
+ assert.deepEqual(ev.attendees,['orga']);assert.equal(ev.counts.going,1);
 });
 test('la coorganisation suspendue ne produit ni mutation ni notification',async()=>{const t=contexte();vm.runInContext(fn('openEventCoOrganizers')+'\n'+fn('toggleEventCoOrganizer'),t.c);await t.c.toggleEventCoOrganizer('e','u');assert.match(t.messages[0],/consentement/);});
 test('contrat SQL : transaction, fermeture des droits et compteur indépendant du blocage',()=>{assert.match(sql,/begin;[\s\S]*commit;/);const corps=sql.split('function public.participants_compte')[1].split('$f$;')[0];assert.doesNotMatch(corps,/is_blocked_with|blocks/);assert.match(sql,/revoke all on schema rencontres_prive from public, anon, authenticated/);assert.match(sql,/revoke all on all functions in schema rencontres_prive/);assert.match(sql,/rencontres_prive.accords v using/);assert.match(sql,/identifiant_activite_reserve/);});
@@ -59,6 +99,17 @@ test('la personne touchée dans une notification passe en tête de la liste',asy
  let html='';const t=contexte({MY_UID:'orga',userById:u=>({name:u}),escapeHtml:x=>x,escapeJsArg:x=>x,openModal:x=>html=x,supa:{rpc:async()=>({data:[{user_id:'a',rsvp:'going',valide:false},{user_id:'b',rsvp:'going',valide:true},{user_id:'c',rsvp:'going',valide:false}]})}});
  vm.runInContext(fn('openEventParticipantValidation'),t.c);await t.c.openEventParticipantValidation('e','b');
  assert.deepEqual([...html.matchAll(/data-uid="([^"]+)"/g)].map(m=>m[1]),['b','a','c']);
+});
+test('changer de compte pendant la lecture ne rouvre pas le panneau de validation', async () => {
+ let terminer, ouvert = false;
+ const t = contexte({ MY_UID: 'orga', openModal: () => { ouvert = true; },
+   supa: { rpc: () => new Promise(resolve => { terminer = resolve; }) } });
+ vm.runInContext(fn('openEventParticipantValidation'), t.c);
+ const lecture = t.c.openEventParticipantValidation('e');
+ t.c.MY_UID = 'autre';
+ terminer({ data: [] });
+ await lecture;
+ assert.equal(ouvert, false);
 });
 test('is_conv_member préserve la garde de production sur autrui et le cas sans session',()=>{
  const corps=sql.split('function public.is_conv_member')[1].split('$f$;')[0];

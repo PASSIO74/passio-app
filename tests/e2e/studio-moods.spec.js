@@ -35,8 +35,8 @@ async function ouvrirStudio(page) {
   await page.evaluate(() => goTo("studio"));
   await expect(page.locator("#screen-studio")).toHaveClass(/active/);
   // ⚠️ Ce helper DÉPLIAIT le repli « Options » d'UI-6, où le champ vivait.
-  // Le repli a été retiré le 2026-09-03 : le mood est à découvert sous la
-  // passion. On EXIGE désormais ce qu'on obtenait avant par un geste — sans
+  // Le repli a été retiré : la catégorie est à découvert avant le message.
+  // On EXIGE désormais ce qu'on obtenait avant par un geste — sans
   // cette assertion, un retour du repli rendrait la suite verte sur des
   // pastilles présentes dans le DOM mais invisibles.
   await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
@@ -83,6 +83,30 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     await expect(page.getByRole("button", { name: "Expériences", exact: true, pressed: true })).toBeVisible();
   });
 
+  test("l’exemple suit la catégorie sans modifier le texte en cours", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    await ouvrirStudio(page);
+
+    const message = page.getByRole("textbox", { name: "Ton message" });
+    const categories = page.getByRole("group", { name: "Que veux-tu partager ?" });
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
+    await expect(message).toHaveValue("");
+
+    const texte = "Mon message en cours\navec sa deuxième ligne.";
+    await message.fill(texte);
+    for (const [categorie, exemple] of [
+      ["Conseils", /Mon astuce/], ["À faire ensemble", /Qui veut se retrouver/],
+      ["Sans étiquette", ""], ["Expériences", /Le déclic/],
+    ]) {
+      await categories.getByRole("button", { name: categorie, exact: true }).click();
+      await expect(message).toHaveValue(texte);
+      await expect(message).toHaveAttribute("placeholder", exemple);
+    }
+    await message.fill("");
+    await expect(message).toBeEmpty();
+    await expect(message).toHaveAttribute("placeholder", /Le déclic/);
+  });
+
   test("« À faire ensemble » publie bien la valeur irl, que le Fil traduit en meet", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
@@ -123,6 +147,72 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(publie.tag).toBe("");
   });
 
+  test("après un envoi confirmé, proposer une sortie reprend la passion et le message", async ({ page }) => {
+    await bootOnboarded(page, null, 2);
+    await ouvrirStudio(page);
+    await page.locator("#postPassion").selectOption("sport", { force: true });
+    await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ton message" }).fill("Qui vient marcher samedi ?");
+    await page.evaluate(() => {
+      window.supaPublishPostWithRetry = () => new Promise(resolve => { window.confirmerPost = resolve; });
+      window.supaLoadPosts = async () => [];
+    });
+    await page.getByRole("button", { name: "Publier", exact: true }).click();
+    const suite = page.getByRole("region", { name: "Après la publication" });
+    await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+    await expect(suite).toBeHidden();
+    await page.addStyleTag({ content: "#feedList { min-height: 200vh; }" });
+    await page.locator("#appMain").evaluate(el => { el.scrollTop = 500; });
+    const id = await page.evaluate(() => { window.confirmerPost(true); return state.userPosts[0].id; });
+    await expect(suite.getByRole("button", { name: "Proposer une sortie" })).toBeInViewport();
+    await suite.getByRole("button", { name: "Proposer une sortie" }).click();
+    await expect(page.locator("#evPassion")).toHaveValue("sport");
+    await expect(page.locator("#modalContent")).toHaveAttribute("data-feed-irl-source", id);
+    await expect(suite).toHaveCount(0);
+  });
+
+  test("un verdict tardif respecte le départ du fil", async ({ page }) => {
+    await bootOnboarded(page);
+    await ouvrirStudio(page);
+    await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ton message" }).fill("Une balade ensemble ?");
+    await page.evaluate(() => {
+      window.supaPublishPostWithRetry = () => new Promise(resolve => { window.confirmerPost = resolve; });
+      window.supaLoadPosts = async () => [];
+      window.publicationEnCours = publishPost();
+    });
+    await page.evaluate(async () => {
+      goTo("studio");
+      document.getElementById("postText").value = "Mon prochain message";
+      window.confirmerPost(true);
+      await window.publicationEnCours;
+    });
+    await expect(page.locator("#screen-studio")).toHaveClass(/active/);
+    await expect(page.getByRole("textbox", { name: "Ton message" })).toHaveValue("Mon prochain message");
+    await expect(page.locator("#studioSuiteSortie")).toHaveCount(0);
+  });
+
+  test("la proposition est facultative et réservée aux invitations confirmées", async ({ page }) => {
+    await bootOnboarded(page);
+    const suite = page.locator("#studioSuiteSortie");
+    for (const [categorie, confirme] of [["Conseils", true], ["À faire ensemble", false], ["À faire ensemble", true]]) {
+      await ouvrirStudio(page);
+      await page.getByRole("button", { name: categorie, exact: true }).click();
+      await page.getByRole("textbox", { name: "Ton message" }).fill("Un nouveau message de test.");
+      await page.evaluate(async (ok) => {
+        window.supaPublishPostWithRetry = async () => ok;
+        window.supaLoadPosts = async () => [];
+        await publishPost();
+      }, confirme);
+      if (categorie === "À faire ensemble" && confirme) {
+        await suite.getByRole("button", { name: "Plus tard" }).click();
+      }
+      await expect(suite).toHaveCount(0);
+      await expect(page.locator("#evTitle")).toHaveCount(0);
+      await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+    }
+  });
+
   test("un brouillon portant un mood retiré revient sur le neutre, pas sur une rangée muette", async ({ page }) => {
     await bootOnboarded(page, null, 1);
     await ouvrirStudio(page);
@@ -142,6 +232,8 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(etat.mood).toBe("all");
     expect(etat.actives).toEqual(["all"]);
     await expect(page.locator('#postMoodRow [aria-pressed="true"]')).toHaveText("Sans étiquette");
+    await expect(page.locator("#postText")).toHaveValue("Ancien brouillon");
+    await expect(page.locator("#postText")).toHaveAttribute("placeholder", "");
   });
 
   test("la table de libellés est unique : fil et bobines disent le même mot", async ({ page }) => {

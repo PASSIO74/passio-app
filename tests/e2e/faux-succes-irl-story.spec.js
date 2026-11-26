@@ -132,7 +132,7 @@ test.describe("IRL-04 — la promotion attend le verdict", () => {
     expect(r.attendees).toEqual(["u_autre"]);
     expect(r.waitlist).toEqual(["u_suivant"]);
     expect(r.notifs).toEqual([]);
-    expect(r.toasts.some((t) => /Participant inscrit/.test(t))).toBe(false);
+    expect(r.toasts.some((t) => /Participant inscrit|Place réservée/.test(t))).toBe(false);
     expect(r.toasts.some((t) => /non enregistrée/.test(t))).toBe(true);
   });
 
@@ -149,7 +149,7 @@ test.describe("IRL-04 — la promotion attend le verdict", () => {
     expect(r.attendees).toEqual(["u_suivant"]);
     expect(r.waitlist).toEqual([]);
     expect(r.notifs.some((n) => /event_update:u_suivant/.test(n))).toBe(true);
-    expect(r.toasts.some((t) => /Participant inscrit/.test(t))).toBe(true);
+    expect(r.toasts).toContain("Place réservée. Il te reste à confirmer la participation.");
   });
 });
 

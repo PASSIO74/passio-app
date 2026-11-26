@@ -1996,8 +1996,19 @@ function _applyUserState(data) {
     state.supabasePosts = keepSupa;
     if (!Array.isArray(state.userPosts)) state.userPosts = [];
     if (postsLocauxAGarder.length) {
-      const idsServeur = new Set(state.userPosts.map(function (p) { return p && p.id; }));
-      const ajouts = postsLocauxAGarder.filter(function (p) { return !idsServeur.has(p.id); });
+      const parId = new Map(state.userPosts.filter(Boolean).map(p => [p.id, p]));
+      const ajouts = postsLocauxAGarder.filter(p => !parId.has(p.id));
+      // Un autre appareil peut avoir écrit son état juste avant le choix « Plus tard ».
+      for (const local of postsLocauxAGarder) {
+        const distant = parId.get(local.id);
+        if (!local.sortieDifferee || !distant || distant.authorId !== MY_UID) continue;
+        const repriseTerminee = (local.sortieDifferee === "publiee" && !local.sortieARelier)
+          || (distant.sortieDifferee === "publiee" && !distant.sortieARelier);
+        if (!distant.sortieDifferee || local.sortieDifferee === "publiee") distant.sortieDifferee = local.sortieDifferee;
+        if (!distant.eventId && local.eventId) distant.eventId = local.eventId;
+        if (distant.eventId || repriseTerminee) delete distant.sortieARelier;
+        else if (!distant.sortieARelier && local.sortieARelier) distant.sortieARelier = local.sortieARelier;
+      }
       if (ajouts.length) {
         state.userPosts = ajouts.concat(state.userPosts)
           .sort(function (a, b) { return (Number(b && b.createdAt) || 0) - (Number(a && a.createdAt) || 0); });
@@ -4655,6 +4666,7 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  if (screen !== "feed") document.getElementById("studioSuiteSortie")?.remove();
   // LOT-12 (PAR-C16) : quitter le Studio efface le rattachement d'un souvenir à
   // l'album d'une activité — il ne doit pas s'appliquer à une autre publication.
   if (screen !== "studio" && window._pendingEventPost) {
@@ -7090,6 +7102,7 @@ async function onbResendConfirmation() {
     }
     // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
+    if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     // `confirmation_resent {ok:false}` reste émis TEL QUEL (une ligne par
@@ -8014,6 +8027,7 @@ async function onbDoAuth() {
         // avec le délai à la première session vue sur cet appareil
         // (signalerInscriptionConfirmee, app-08).
         try { window.tel && tel.action("signup_pending_confirmation"); } catch (e) {}
+        if (window.PassioFirstRun) PassioFirstRun.noterConfirmationDiscussion();
         try { localStorage.setItem("passio_signup_pending", String(Date.now())); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
@@ -10159,7 +10173,8 @@ function poserSeparateurExemples(list, repere) {
   // Trois textes : après du réel, seul — ou PANNE (2026-11-09) : la lecture du
   // réel a échoué faute de réseau et rien de réel n'est en mémoire. Annoncer
   // alors « pas encore de publication » mentait sur la communauté.
-  var genre = repere.reels > 0 ? "apres-reel" : (filCommunauteInjoignable() ? "panne" : "seul");
+  var genre = repere.reels > 0 ? "apres-reel"
+    : filCommunauteInjoignable() && !document.getElementById("feedRecherchePassions") ? "panne" : "seul";
   // « Inviter quelqu'un » : pour un VRAI compte seulement (son lien porte
   // `?inv=`, c'est lui qui fait suivre l'invitant), jamais sur une panne.
   var invite = genre !== "panne" && _uidEstUnCompte();
@@ -10405,7 +10420,13 @@ function rankFeedPostsForIntent(posts, intent) {
 // aucune. false n'arrive que si le nœud de liste manque.
 var FEED_EXPLORATION_MAX = 6;
 
-function renderFeedExplorationFallback(list) {
+function titrePremierFilVide() {
+  if (_activeFeedPassions.size !== 1) return "Pas encore de publication pour tes passions";
+  const id = _activeFeedPassions.values().next().value;
+  return "Pas encore de publication pour « " + (passionById(id)?.label || id) + " »";
+}
+
+function renderFeedExplorationFallback(list, absenceConfirmee) {
   if (!list) return false;
 
   var mesInterets = Array.from(_activeFeedPassions);
@@ -10461,13 +10482,15 @@ function renderFeedExplorationFallback(list) {
   var quoi = etiquettes.length === 1
     ? "Rien encore dans " + escapeHtml(etiquettes[0])
     : "Rien encore dans tes passions";
+  if (absenceConfirmee) quoi = escapeHtml(titrePremierFilVide());
 
   var html = ''
     + '<div class="feed-repli-tete" style="padding:18px 16px 8px;text-align:center;">'
     +   '<div style="font-size:30px;line-height:1;">🌱</div>'
     +   '<div style="font-size:16px;font-weight:800;margin-top:8px;">' + quoi + '</div>'
     +   '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;">'
-    +     'Personne n\'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.'
+    +     (absenceConfirmee ? "Découvre ce qui se partage autour d’autres passions."
+            : "Personne n'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.")
     +   '</div>'
     + '</div>'
     + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
@@ -10687,7 +10710,8 @@ function feedWindowEnabled() {
 // Sert au repeint incrémental — jamais à décider d'un affichage.
 function _feedWindowCardSig(p) {
   return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p)
-       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0)
+       + (p.eventId ? ":event:" + p.eventId : "");
 }
 
 // Marge d'hydratation, réglable pour les tests et pour un éventuel ajustement
@@ -11161,6 +11185,35 @@ function feedWindowStats() {
 }
 window.feedWindowStats = feedWindowStats;
 
+function afficherRecherchePremierFil(list, phase) {
+  const ancien = document.getElementById("feedRecherchePassions");
+  const message = phase === "vide" ? titrePremierFilVide() : phase === "chargement" ? "Recherche des publications de tes passions…"
+    : phase === "panne" ? "Impossible de charger les publications de tes passions pour le moment."
+    : phase === "suite" ? "D’autres publications restent à vérifier pour tes passions." : "";
+  if (ancien && ancien.querySelector(".empty-text").textContent === message) return;
+  if (ancien) ancien.remove();
+  if (!message) return;
+
+  const note = document.createElement("div");
+  note.id = "feedRecherchePassions";
+  note.className = "empty";
+  note.dataset.phase = phase;
+  const texte = document.createElement("p");
+  texte.className = "empty-text";
+  texte.setAttribute("role", "status");
+  texte.textContent = message;
+  note.appendChild(texte);
+  if (phase !== "chargement") {
+    const bouton = document.createElement("button");
+    bouton.className = "btn ghost";
+    bouton.type = "button";
+    bouton.textContent = phase === "vide" ? "Explorer d’autres passions" : phase === "panne" ? "Réessayer" : "Continuer la recherche";
+    bouton.addEventListener("click", phase === "vide" ? () => goTo("explore") : PassioFirstRun.reprendrePremierFil);
+    note.appendChild(bouton);
+  }
+  list.before(note);
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -11375,6 +11428,18 @@ function renderFeed() {
   window.PassioFirstRun?.prioriserRetourFil?.(_envieAVide && !!window.PassioUIV2?.isEnabled?.());
 
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">Afficher la suite</button></div>`;
+  const premierFil = window.PassioFirstRun?.etatPremierFil?.(posts, intentsEnabled && !enviesChoisies.length);
+  afficherRecherchePremierFil(list, premierFil === "vide" && !posts.length ? "" : premierFil);
+  if (premierFil === "chargement" || ((premierFil === "panne" || premierFil === "suite") && !posts.length)) {
+    // Une recherche inachevée ne peint ni un faux vide ni d'autres passions.
+    window._feedRenderToken = (window._feedRenderToken || 0) + 1;
+    window._feedDomSig = null;
+    _feedWindowNoterVisibles(0);
+    list.replaceChildren();
+    list._fwSigs = null;
+    $("#feedEmpty").style.display = "none";
+    return;
+  }
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
     // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
@@ -11400,7 +11465,7 @@ function renderFeed() {
     // retranché, on le DIT, et on nomme la commande qui l'a fait.
     if (!_envieAVide && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
-        && renderFeedExplorationFallback(list)) {
+        && renderFeedExplorationFallback(list, premierFil === "vide")) {
       var emptyElRepli = $("#feedEmpty");
       if (emptyElRepli) emptyElRepli.style.display = "none";
       if (window._feedServerMayHaveMore && !nothingSelected) list.insertAdjacentHTML("beforeend", moreBtnHtml);
@@ -11500,7 +11565,7 @@ function renderFeed() {
   // publications RÉELLES plus anciennes : on va les chercher MAINTENANT. Sans
   // ça, elles n'arrivaient qu'au bas de la fenêtre (sentinelle) — c'est-à-dire
   // après une vingtaine d'exemples, et insérées AU-DESSUS de ce qu'on lit.
-  if (_repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
+  if (!premierFil && _repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
     try { completerFilAvecLeReel(); } catch (e) { try { diagLog("completerFilAvecLeReel", e && e.message); } catch (_) {} }
   }
 
@@ -11525,9 +11590,7 @@ function renderFeed() {
     // `renderFeed()` de `blockUser` / `unblockUser` était sauté, et le compte
     // bloqué restait compté jusqu'à la tranche suivante de 5 minutes.
     "bl:" + ((state.user && state.user.blocked) || []).join(","),
-    visible.map(function(p) {
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
-    }).join("|"),
+    visible.map(_feedWindowCardSig).join("|"),
   ].join("§");
   if (_domSig === window._feedDomSig && list.children.length > 0) {
     // Le DOM est déjà le bon, mais l'observateur a pu être démonté en quittant
@@ -11931,7 +11994,7 @@ function carteActiviteFilHTML(p) {
   const img = photo
     ? `<img class="post-activite-photo" ${passioMediaProteges.attributImage(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}="${safeUrlAttr(passioThumb(typeof urlMediaDirecte === "function" ? urlMediaDirecte(photo) : photo, 700))}" alt="" loading="lazy" decoding="async" onerror="this.remove()"/>`
     : "";
-  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir l'activité ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
+  return `<div class="post-vlog-card post-activite" role="button" tabindex="0" aria-label="Voir la sortie ${escapeHtml(titre)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')">${img}
       <div class="post-activite-titre">${escapeHtml(titre)}</div>
       ${desc ? `<div class="post-activite-desc">${escapeHtml(desc)}</div>` : ""}
       <div class="post-activite-rdv">
@@ -12284,6 +12347,7 @@ async function openPost(id) {
   if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
+  window.PassioUIV3?.decorateOpenPost?.();
   // Le sujet privé de cette discussion (`fil:<id>`, app-08), avant la lecture.
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
@@ -12294,7 +12358,7 @@ async function openPost(id) {
 }
 
 async function _loadPostDetailComments(id, post) {
-  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  if (!_peutChargerDiscussion(post)) return;
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
   try {

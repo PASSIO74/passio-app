@@ -174,6 +174,94 @@ const compteRpc = (srv, nom) => srv.requetes((r) => r.rpc && r.table === nom && 
 test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client compatible avant ET après la migration)", () => {
   test.setTimeout(120000);
 
+  test("une sortie créée sur cet appareil suit l'inscription et le départ d'un autre compte, sur la carte et dans la fiche", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    srv.compte(ORGA, "orga_c04");
+    srv.compte(V, "vic_c04");
+    const id = "evt_c04_sortie_creee";
+    activite(srv, id, { date_at: iso(Date.now() + 2 * 86400000) });
+    srv.t.event_attendees.push(ligne(id, ORGA, "going"));
+    const ctxO = await browser.newContext();
+    const { ctx, page: visiteur } = await ouvrirV(browser, srv);
+    try {
+      const { page: orga } = await ouvrirCompte(ctxO, srv, ORGA, { nom: "orga_c04" });
+      await orga.evaluate(() => goTo("irl"));
+      await demarrageTermine(orga, srv, ORGA);
+      await charger(orga);
+      await charger(visiteur);
+      // Le formulaire conserve dans userEvents l'heure saisie et l'organisateur
+      // comme premier inscrit. La relecture serveur du même id vit dans le seed.
+      await orga.evaluate((id) => {
+        const ev = state.seed.events.find(e => e.id === id);
+        state.userEvents = [{ ...ev, time: "16:30", attendees: [MY_UID], counts: null, fromSupabase: false }];
+      }, id);
+
+      const carte = '#eventList .event-card[data-evid="' + id + '"]';
+      async function verifierCompteur(n) {
+        const nombre = n + " participant" + (n > 1 ? "s" : "");
+        expect(srv.t.event_attendees.filter(a => a.event_id === id && a.rsvp === "going")).toHaveLength(n);
+        for (const page of [orga, visiteur]) {
+          await expect(page.locator(carte + " .v4a2-monde")).toHaveText(nombre);
+          await expect(page.locator("#eventDetailPage .v4b-rdv-places")).toHaveText(nombre);
+        }
+        await expect(orga.locator("#eventDetailCta .v4b-rsvp-etat")).toHaveText("Tu organises · " + nombre);
+        expect(await orga.evaluate(id => {
+          const locale = state.userEvents.find(e => e.id === id);
+          return { heure: locale.time, inscrits: locale.attendees };
+        }, id)).toEqual({ heure: "16:30", inscrits: [ORGA] });
+      }
+      for (const page of [orga, visiteur]) await page.locator(carte + " .v4a2-titre").click();
+      await verifierCompteur(1);
+      await orga.evaluate(() => closeEventDetail());
+      await visiteur.evaluate(id => setEventRsvp(id, "going"), id);
+      // La carte de l'organisateur est encore à 1. Ouvrir sa fiche déclenche
+      // la lecture ciblée, sans changer d'écran ni rafraîchir toute la liste.
+      await orga.locator(carte + " .v4a2-titre").click();
+      await verifierCompteur(2);
+      await visiteur.evaluate(id => setEventRsvp(id, null), id);
+      // La fiche reste ouverte pendant la relecture de la liste.
+      await orga.evaluate(() => rafraichirEvenements(true));
+      await verifierCompteur(1);
+    } finally { await ctx.close(); await ctxO.close(); }
+  });
+
+  test("une lecture des inscriptions en échec conserve le nombre ; un vrai zéro résiste au retour tardif d'une lecture précédente", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    srv.compte(ORGA, "orga_c04");
+    srv.compte(V, "vic_c04");
+    const id = "evt_c04_ordre_relectures";
+    activite(srv, id, { date_at: iso(Date.now() + 2 * 86400000) });
+    srv.t.event_attendees.push(ligne(id, ORGA, "going"), ligne(id, V, "going"));
+    const ctx = await browser.newContext();
+    try {
+      const { page } = await ouvrirCompte(ctx, srv, ORGA, { nom: "orga_c04" });
+      await demarrageTermine(page, srv, ORGA);
+      const relire = () => page.evaluate(async id => {
+        const sorties = await supaLoadEvents(null, id);
+        fusionnerEvenementsServeur(sorties);
+        const ev = _findCanonicalEvent(id);
+        return { nombre: _nbInscrits(ev, "going"), visibles: ev.attendees.length };
+      }, id);
+      expect(await relire()).toEqual({ nombre: 2, visibles: 2 });
+      const ancienne = await page.evaluate(id => supaLoadEvents(null, id), id);
+
+      const lectures = /\/rest\/v1\/(rpc\/participants_compte|event_attendees)(?:\?|$)/;
+      const refuser = route => route.fulfill({ status: 409, json: { code: "40001", message: "Lecture interrompue" } });
+      await page.route(lectures, refuser);
+      expect(await relire(), "le nombre connu survit, les anciens noms restent masqués").toEqual({ nombre: 2, visibles: 0 });
+      await page.unroute(lectures, refuser);
+
+      srv.t.event_attendees.length = 0;
+      expect(await relire(), "une réponse lisible remplace le nombre mémorisé").toEqual({ nombre: 0, visibles: 0 });
+      const apres = await page.evaluate(({ ancienne, id }) => {
+        fusionnerEvenementsServeur(ancienne);
+        const ev = _findCanonicalEvent(id);
+        return { nombre: _nbInscrits(ev, "going"), visibles: ev.attendees.length };
+      }, { ancienne, id });
+      expect(apres, "une lecture plus ancienne ne rétablit ni le chiffre ni les noms").toEqual({ nombre: 0, visibles: 0 });
+    } finally { await ctx.close(); }
+  });
+
   test("a. APRÈS migration : la liste lisible porte 1 visage, la RPC dit 5/2/1 → carte, fiche, places et tri disent 5", async ({ browser }) => {
     const srv = new FauxServeur().migrerParticipants();
     peupler(srv);
@@ -920,7 +1008,7 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
     expect(srv.t.event_attendees.find((a) => a.event_id === E8 && a.user_id === W1).rsvp, "en base : `going`").toBe("going");
     expect(r.attendees).toContain(W1);
     expect(r.waitlist).toEqual([]);
-    expect(r.toasts.join(" | ")).toMatch(/Participant inscrit/);
+    expect(r.toasts).toContain("Place réservée. Il te reste à confirmer la participation.");
   });
 
   test("h6 bis. base d'AVANT R24 : la même promotion par l'organisateur désigné est REFUSÉE — rien d'écrit, et le client le dit", async ({ browser }) => {

@@ -1,10 +1,10 @@
 -- Compléments du socle de rencontres isolé, puis utilisation de la vraie RPC de validation.
-alter table public.events add title text;
+alter table public.events add column if not exists title text;
 alter table public.notifications add push_le timestamptz, add origine text;
 create table public.push_subscriptions (user_id text, endpoint text primary key);
-create function public.passio_echapper_html(text) returns text language sql immutable as $$select replace($1,'<','&lt;')$$;
+create or replace function public.passio_echapper_html(text) returns text language sql immutable as $$select replace($1,'<','&lt;')$$;
 create function public.genres_reserves_au_serveur(text) returns boolean language sql as $$select $1='event_accepted'$$;
-create function public.identifiant_reserve_au_serveur(text) returns boolean language sql as $$select starts_with($1,'n_pi_')$$;
+create or replace function public.identifiant_reserve_au_serveur(text) returns boolean language sql as $$select starts_with($1,'n_pi_')$$;
 create function public.origine_confirmation_de_test() returns trigger language plpgsql as $$
 begin new.origine := case when current_setting('passio.notification_serveur',true)='1' then 'serveur' else 'client' end; return new; end $$;
 create trigger origine_confirmation before insert on public.notifications for each row execute function public.origine_confirmation_de_test();

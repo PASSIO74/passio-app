@@ -1,24 +1,20 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO UI V3 — lot UI-3A : passerelle « Trouver une expérience » du Feed vers l'IRL.
+// PASSIO UI V3 — lot UI-3A : passerelle du Feed vers l'IRL.
 // Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §6 et §15.
 //
-// Périmètre EXACT de ce lot, et rien de plus :
-//   une publication du Feed qui porte une Passio et n'est PAS déjà reliée à un
-//   événement reçoit, en bas de carte, une pastille discrète « Trouver une
-//   activité » (« Vivre ça en vrai » jusqu'au 2026-08-31)
-//   — et rien d'autre depuis le 2026-08-27, voir `construireBridge`. Le tap ouvre
-//   une feuille basse du même nom, qui propose exactement trois suites, toutes
-//   servies par des moteurs QUI EXISTENT DÉJÀ :
+// Une publication avec une passion connue et sans sortie liée propose un menu.
+// Sur « À faire ensemble », le bouton ouvre directement les sorties de la passion.
+// Le menu « Autour de cette passion » propose ces trois actions :
 //     ① Voir les activités      → irlPassionFilters + goTo("irl")/renderIRL
 //     ② Voir la page de la passion → openPassionExplorer(passion)
 //     ③ Proposer une sortie     → openCreateEvent() + feedIrlBridgePrefill()
 //
 // Lot UI-3B (ajouté le 2026-08-27, même module) : les publications DÉJÀ reliées
 // à une activité EXISTANTE reçoivent, au même endroit et dans le même style, le
-// lien « Voir l'activité ». Le tap ouvre la fiche EXISTANTE (`openEventDetails`),
+// lien « Voir la sortie ». Le tap ouvre la fiche EXISTANTE (`openEventDetails`),
 // où l'action primaire devient un unique « Je participe » servi par le moteur
 // RSVP historique (`setEventRsvp`). Les deux lots sont EXCLUSIFS : une carte
-// reliée à une activité ne reçoit jamais « Trouver une expérience », et
+// reliée à une activité ne reçoit jamais « Autour de cette passion », et
 // inversement. Contrat visuel arrêté par Benjamin : pas de « À vivre en vrai »,
 // pas de trait, pas de Passio répétée, pas de bouton RSVP dans le Feed.
 //
@@ -51,28 +47,12 @@
   var ROOT_CLASS = "passio-ui-3";
   var VERSION = "ui3a";
 
-  // Vocabulaire validé par Benjamin le 2026-08-27, AMENDÉ le 2026-08-28 sur sa
-  // demande (« un petit onglet, plus discret »). Le libellé était unique, pour
-  // que la carte et le panneau ne puissent pas diverger ; il est désormais en
-  // DEUX temps, ce qui est le prix de la discrétion demandée :
-  //   • la carte porte une pastille courte — une invitation, pas une phrase ;
-  //   • le panneau, lui, garde la promesse entière et explicite.
-  // Les deux disent la même chose dans le même ordre d'idée (passer au réel) :
-  // aucune des deux ne promet ce que l'autre ne tient pas.
-  // ⚠️ 2026-08-31, sur essai réel de Benjamin : « je n'aime pas la phrase de
-  // l'onglet "Vivre ça en vrai", mets "Trouver une activité" ». La carte et le
-  // panneau se rejoignent donc presque — le panneau garde « Trouver une
-  // expérience » (`LIBELLE_CTA`), qui promet un peu plus large que la carte.
-  // Les deux constantes restent DISTINCTES : c'est ce qui permet de faire varier
-  // l'une sans que l'autre suive en silence.
-  var LIBELLE_CTA_CARTE = "Trouver une activité";
-  var LIBELLE_CTA = "Trouver une expérience";
+  // Le bouton et le titre accessible du menu annoncent les mêmes choix.
+  var LIBELLE_MENU = "Autour de cette passion";
 
-  // ── Vocabulaire UI-3B, validé par Benjamin le 2026-08-27 ─────────────────
-  // Trois constantes, et rien d'autre : la carte ne porte QUE « Voir l'activité »,
-  // la fiche QUE « Je participe », et le retrait reste une action secondaire.
+  // La fiche de la sortie porte l'action de participation.
   var VERSION_3B = "ui3b";
-  var LIBELLE_VOIR = "Voir l'activité";
+  var LIBELLE_VOIR = "Voir la sortie";
   var LIBELLE_RSVP = "Je participe";
   var LIBELLE_RSVP_FAIT = "✓ Je participe";
   var LIBELLE_RSVP_ATTENTE = "Sur liste d'attente";
@@ -248,11 +228,20 @@
   // « Publication portant une Passio, mais SANS événement déjà lié ». Les deux
   // exclusions relèvent du lot UI-3B et sont donc traitées ici comme des
   // non-éligibilités, pas comme des cas à décorer autrement.
-  function eligible(post) {
+  function sansActivite(post) {
     if (!post || !post.id) return false;
     if (post.sharedReelData && post.sharedReelData.kind === "event") return false;
-    if (post.eventId || post.event_id) return false;
-    return !!passionDuPost(post);
+    return !post.eventId && !post.event_id;
+  }
+
+  function passionPourSortie(post, nomsManquants) {
+    if (typeof feedPostMatchesIntent !== "function" || !feedPostMatchesIntent(post, "meet")
+        || typeof passionById !== "function") return null;
+    if (!post.passion) return null;
+    var passion = passionById(post.passion);
+    if (passion && passion.id === post.passion && passion.label) return passion;
+    nomsManquants.add(post.passion);
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -337,7 +326,7 @@
   // corail — retiré le 2026-08-27 après essai réel de Benjamin sur la preview :
   // la Passio figure déjà dans l'en-tête du post, la répéter en bas alourdissait
   // la carte sans rien apprendre. Le lien reste discret et aligné à droite.
-  function construireBridge(post) {
+  function construireBridge(post, sortie) {
     var row = document.createElement("div");
     row.className = "v3-bridge";
     row.setAttribute("data-v3-bridge", String(post.id));
@@ -345,14 +334,18 @@
     var cta = document.createElement("button");
     cta.type = "button";
     cta.className = "v3-tempt";
-    cta.setAttribute("data-v3-tempt", String(post.id));
-    cta.setAttribute("aria-haspopup", "dialog");
-    cta.setAttribute("aria-expanded", "false");
-    // `textContent` : le libellé est une constante du lot, mais la règle vaut
-    // pour toute la ligne — aucune chaîne HTML n'est construite ici.
-    // Libellé COURT sur la carte (pastille discrète) ; le panneau ouvert par le
-    // tap porte, lui, la promesse entière (`LIBELLE_CTA`).
-    cta.textContent = LIBELLE_CTA_CARTE;
+    if (sortie) {
+      cta.setAttribute("data-v3-sortie", sortie.id);
+      // Photo devient « photo » ; les sigles (VTT, IA…) gardent leur casse.
+      var nom = sortie.label.replace(/^\p{Lu}(?=\p{Ll})/u, function (initiale) { return initiale.toLocaleLowerCase("fr"); });
+      cta.textContent = "Chercher une sortie " + nom;
+    } else {
+      cta.setAttribute("data-v3-tempt", String(post.id));
+      cta.setAttribute("aria-haspopup", "dialog");
+      cta.setAttribute("aria-expanded", "false");
+      cta.textContent = LIBELLE_MENU;
+    }
+    cta.setAttribute("aria-label", cta.textContent); // le chevron CSS est décoratif
 
     row.appendChild(cta);
     return row;
@@ -368,7 +361,7 @@
   // carte se retrouvait sans aucune porte vers l'IRL jusqu'à la repeinte
   // suivante. Un masquage porté par la classe racine se défait tout seul quand
   // le kill switch la retire. (Défaut relevé en contre-revue, PR #163.)
-  function decorerArticle(article) {
+  function decorerArticle(article, nomsManquants) {
     var id = article.getAttribute("data-postid");
     if (!id) return;
     if (article.querySelector("[data-v3-bridge], [data-v3-activity]")) return; // déjà décorée
@@ -383,11 +376,10 @@
     var evId = refEvenement(post);
     if (evId) { decorerActivite(article, post, evId); return; }
 
-    if (!eligible(post)) return;
-    var passionId = passionDuPost(post);
-    if (!passionId) return;
-
-    article.appendChild(construireBridge(post));
+    if (!sansActivite(post)) return;
+    var sortie = passionPourSortie(post, nomsManquants);
+    if (!sortie && !passionDuPost(post)) return;
+    article.appendChild(construireBridge(post, sortie));
     // Marque la carte comme DÉCORÉE. C'est cet attribut, et lui seul, qui
     // autorise le CSS à masquer le CTA historique : les deux éligibilités ne se
     // recouvrent pas (le pont historique n'exige aucune passion, la passerelle
@@ -421,7 +413,16 @@
     if (!uiV3Enabled()) { nettoyer(list); return false; }
     try {
       var arts = list.querySelectorAll("article.post[data-postid]");
-      for (var i = 0; i < arts.length; i++) decorerArticle(arts[i]);
+      var nomsManquants = new Set();
+      for (var i = 0; i < arts.length; i++) decorerArticle(arts[i], nomsManquants);
+      var catalogue = window.PassioPassions;
+      if (nomsManquants.size && catalogue && catalogue.actif()) {
+        // Le miroir et les passions créées depuis sa génération repeignent le
+        // fil à réception. Une seule demande pour les cartes de cette vague.
+        var resoudre = function () { catalogue.resoudreNomsManquants(nomsManquants); };
+        if (catalogue.pret()) resoudre();
+        else catalogue.charger().then(resoudre);
+      }
       return true;
     } catch (e) {
       // Un fil décoré à moitié doit rester VISIBLE et l'échec rester audible.
@@ -464,7 +465,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // FEUILLE BASSE « TROUVER UNE EXPÉRIENCE »
+  // FEUILLE BASSE « AUTOUR DE CETTE PASSION »
   // ──────────────────────────────────────────────────────────────────────────
   // Même mécanique que la feuille « Créer » d'UI-1 (mêmes classes `.v2-sheet-*`,
   // mêmes jetons) : `openModal` empile mal — ouvrir une modale depuis une autre
@@ -622,7 +623,7 @@
     var titre = document.createElement("h2");
     titre.className = "v2-sheet-title";
     titre.id = "v3SheetTitle";
-    titre.textContent = LIBELLE_CTA;
+    titre.textContent = LIBELLE_MENU;
     var close = document.createElement("button");
     close.type = "button";
     close.className = "v2-sheet-close";
@@ -721,7 +722,7 @@
   function openSheet(postId) {
     if (!uiV3Enabled()) return false;
     var post = trouverPost(postId);
-    if (!eligible(post)) return false;
+    if (!sansActivite(post) || !passionDuPost(post)) return false;
     fermerAideContextuelle();
 
     ctxPostId = String(post.id);
@@ -905,7 +906,7 @@
   // LOT UI-3B — publication DÉJÀ reliée à une activité
   // ──────────────────────────────────────────────────────────────────────────
   // Deux surfaces, aucun moteur nouveau :
-  //   ① la carte du Feed reçoit le seul lien « Voir l'activité » ;
+  //   ① la carte du Feed reçoit le seul lien « Voir la sortie » ;
   //   ② la fiche EXISTANTE (`openEventDetails`) voit son action primaire
   //      remplacée par un unique « Je participe », servi par `setEventRsvp`.
   // Rien n'est écrit tant que le testeur n'a pas tapé « Je participe ».
@@ -969,6 +970,30 @@
     track("ui_v3b_ref_absente", { v: VERSION_3B });
   }
 
+  // Le catalogue général ne contient que les 60 dernières sorties. Deux cartes
+  // liées au même rendez-vous partagent leur lecture, même pendant un repeint.
+  var lecturesSortiesDuFil = null;
+  async function chargerSortieDuFil(postId, evId) {
+    if (!lecturesSortiesDuFil || lecturesSortiesDuFil.etat !== state || lecturesSortiesDuFil.compte !== MY_UID) {
+      lecturesSortiesDuFil = { etat: state, compte: MY_UID, relireApres: new Map() };
+    }
+    var lecture = lecturesSortiesDuFil;
+    if (lecture.relireApres.get(evId) > Date.now()) return;
+    lecture.relireApres.set(evId, Infinity);
+    try {
+      var sorties = await supaLoadEvents(null, evId);
+      if (lecturesSortiesDuFil !== lecture || lecture.etat !== state || lecture.compte !== MY_UID || !uiV3Enabled()) return;
+      if (!sorties || sorties.length !== 1 || sorties[0].id !== evId) {
+        signalerActiviteIntrouvable(postId);
+        return;
+      }
+      if (!trouverEvenement(evId)) fusionnerEvenementsServeur(sorties);
+      planifierScan();
+      decorerSortieDuPostOuvert();
+    } catch (e) { fail("event_lookup", "lecture ciblée indisponible"); }
+    finally { lecture.relireApres.set(evId, Date.now() + 60000); }
+  }
+
   // La ligne basse d'une carte reliée : le MÊME gabarit qu'UI-3A (lien discret,
   // aligné à droite, chevron), et rien d'autre. Pas de sous-carte, pas de titre
   // recopié, pas de date, pas de bouton de participation : le contrat visuel
@@ -984,6 +1009,7 @@
     cta.setAttribute("data-v3-activity", String(ev.id));
     cta.setAttribute("data-v3-post", String(post.id));
     cta.textContent = LIBELLE_VOIR;
+    cta.setAttribute("aria-label", LIBELLE_VOIR);
 
     row.appendChild(cta);
     return row;
@@ -995,13 +1021,14 @@
   function retirerDecoration(postId) {
     if (!postId) return;
     try {
-      var art = document.querySelector('#feedList article.post[data-postid="' + cssEscape(postId) + '"]');
-      if (!art) return;
-      var row = art.querySelector("[data-v3-bridge]");
-      if (row && row.parentNode) row.parentNode.removeChild(row);
-      retirerPorteCarte(art);
-      art.removeAttribute("data-v3-decore");
-      art.removeAttribute("data-v3-activity-source");
+      var carte = '.post[data-postid="' + cssEscape(postId) + '"]';
+      document.querySelectorAll("#feedList " + carte + ", #postDetailContent " + carte).forEach(function (art) {
+        var row = art.querySelector("[data-v3-bridge]");
+        if (row) row.remove();
+        retirerPorteCarte(art);
+        art.removeAttribute("data-v3-decore");
+        art.removeAttribute("data-v3-activity-source");
+      });
     } catch (e) { fail("decoration_retrait", e); }
   }
 
@@ -1032,17 +1059,35 @@
 
   function decorerActivite(article, post, evId) {
     var ev = trouverEvenement(evId);
-    if (!ev) { signalerActiviteIntrouvable(post.id); return; }
+    if (!ev) {
+      if (sourceRef(post) === "direct" && post.mood === "irl" && (post.fromSupabase || post.syncStatus === "synced")
+          && window._supaReal && navigator.onLine !== false && typeof supaLoadEvents === "function") {
+        chargerSortieDuFil(post.id, evId);
+      } else { signalerActiviteIntrouvable(post.id); }
+      return;
+    }
     if (!(sourceRef(post) === "shared" && porterSurCarte(article, post, ev))) {
       article.appendChild(construireVoirActivite(post, ev));
     }
     // Même marqueur qu'UI-3A : c'est lui qui autorise le CSS à masquer le CTA
     // historique, borné aux cartes réellement décorées.
     article.setAttribute("data-v3-decore", "1");
-    // Les partages d'événement portent déjà une sous-carte historique cliquable.
-    // Le CSS borné à cette source la masque pendant UI-3B afin de ne garder
-    // qu'une seule porte « Voir l'activité » ; le kill switch la restitue.
+    // Le CSS distingue la carte orange d'un partage du lien d'une référence directe.
     article.setAttribute("data-v3-activity-source", sourceRef(post));
+  }
+
+  // La publication ouverte reste accessible même hors de la fenêtre et des
+  // filtres du fil. Sa sortie directe emprunte la même porte que sur la carte.
+  function decorerSortieDuPostOuvert() {
+    if (!uiV3Enabled()) return;
+    var page = document.getElementById("postDetailPage");
+    if (!page || page.style.display !== "flex") return;
+    var carte = page.querySelector("#postDetailContent > .post[data-postid]");
+    if (!carte || carte.querySelector("[data-v3-activity]")) return;
+    var post = trouverPost(carte.getAttribute("data-postid"));
+    if (post && post.mood === "irl" && sourceRef(post) === "direct") {
+      decorerActivite(carte, post, refEvenement(post));
+    }
   }
 
   // ── La fiche ──────────────────────────────────────────────────────────────
@@ -1293,7 +1338,7 @@
   function onDocumentClick(e) {
     if (!e.target || !e.target.closest) return;
 
-    // UI-3B — « Voir l'activité » (carte du Feed) puis la fiche.
+    // UI-3B — « Voir la sortie » (carte du Feed) puis la fiche.
     var voir = e.target.closest("[data-v3-activity]");
     if (voir) {
       e.preventDefault();
@@ -1306,7 +1351,17 @@
     var rm = e.target.closest("[data-v3-rsvp-remove]");
     if (rm) { e.preventDefault(); e.stopPropagation(); retirerParticipation(); return; }
 
-    // UI-3A — « Trouver une expérience ».
+    var sortie = e.target.closest("button[data-v3-sortie]");
+    if (sortie) {
+      e.preventDefault();
+      e.stopPropagation();
+      fermerAideContextuelle();
+      voirActivites(sortie.getAttribute("data-v3-sortie"));
+      if (window.PassioUIV4A3) PassioUIV4A3.setVue("liste");
+      return;
+    }
+
+    // UI-3A — Menu de la passion.
     var cta = e.target.closest("[data-v3-tempt]");
     if (!cta) return;
     e.preventDefault();
@@ -1326,6 +1381,8 @@
     if (!on) {
       root.classList.remove(ROOT_CLASS);
       nettoyer(null);
+      var detailPost = document.getElementById("postDetailContent");
+      if (detailPost) nettoyer(detailPost);
       closeSheet({ restaurer: false });
       // La fiche ouverte par le lot redevient la fiche historique, barre
       // d'action comprise. On coupe le contexte AVANT de la repeindre, sinon
@@ -1350,6 +1407,7 @@
     observerLeFil();
     assurerDemoFeed();
     decorateFeed(null);
+    decorerSortieDuPostOuvert();
     return true;
   }
 
@@ -1370,6 +1428,7 @@
     isEnabled: uiV3Enabled,
     apply: apply,
     decorateFeed: decorateFeed,
+    decorateOpenPost: decorerSortieDuPostOuvert,
     openSheet: openSheet,
     closeSheet: closeSheet,
     dismissHint: fermerAideContextuelle,

@@ -253,6 +253,7 @@
   }
 
   function oublierPrefs() {
+    _premierFil = null;
     _prefsCache = null;
     try { localStorage.removeItem(CLE_PREFS); } catch (e) {}
   }
@@ -688,7 +689,8 @@
         supaLoadPosts().then(function (posts) {
           if (!Array.isArray(posts) || !posts.length) return;
           var s2 = etat(); if (!s2) return;
-          s2.supabasePosts = posts;
+          var ids = new Set(posts.map(function (post) { return post.id; }));
+          s2.supabasePosts = posts.concat((window._feedExtraPosts || []).filter(function (post) { return !ids.has(post.id); }));
           rendreFil();
         }).catch(function (e) { journal("posts publics", e); });
       }
@@ -706,6 +708,78 @@
 
   function rendreFil() {
     try { if (ecranActif() === "feed" && typeof renderFeed === "function") renderFeed(); } catch (e) { journal("renderFeed", e); }
+  }
+
+  // Armée uniquement au choix explicite du visiteur. Une réponse ne peut
+  // publier que dans le contexte qui l’a demandée.
+  var _premierFil = null;
+
+  function choixFilCourant(choix) {
+    return choix === _premierFil && estVisiteur() && choix.owner === MY_UID && choix.ids.length > 0
+      && choix.ids.length === _activeFeedPassions.size
+      && choix.ids.every(function (id) { return _activeFeedPassions.has(id); });
+  }
+
+  async function chercherPremierFil(choix) {
+    choix.phase = "chargement";
+    try {
+      // Au plus trois pages DE CES PASSIONS par geste. Le curseur progresse
+      // aussi lorsqu’une page entière contient des bobines ou des posts masqués.
+      for (var page = 0; page < 3; page++) {
+        if (!window._supaReal) { choix.phase = "panne"; break; }
+        // Borne aussi la longueur de l’URL pour une très grande sélection.
+        var lecture = { ids: choix.ids.slice(choix.debut, choix.debut + 24) };
+        var posts = await supaLoadPosts(0, null, { pagePassions: lecture, cursor: choix.cursor, propagerErreur: true });
+        if (!choixFilCourant(choix)) return;
+        if (lecture.suite === undefined) { choix.phase = "panne"; break; }
+        posts.forEach(feedAddRealtimePost);
+        choix.cursor = lecture.suite;
+        // Le rendu décide déjà quelles cartes sont montrables (blocages,
+        // suppressions, bobines, carnets). Le verdict emploie le même filtre.
+        if (allFeedPosts().some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+          choix.phase = !choix.cursor && choix.debut + lecture.ids.length >= choix.ids.length ? "complet" : "trouve";
+          break;
+        }
+        if (!choix.cursor) {
+          choix.debut += lecture.ids.length;
+          if (choix.debut >= choix.ids.length) { choix.phase = "vide"; break; }
+        }
+      }
+      if (choix.phase === "chargement") choix.phase = "suite";
+    } catch (e) {
+      if (!choixFilCourant(choix)) return;
+      choix.phase = "panne";
+      journal("lecture du premier fil", e);
+    }
+    // Différé même si le SDK est hors ligne : la lecture peut être lancée
+    // depuis renderFeed, qui doit pouvoir terminer son rendu avant le suivant.
+    if (choixFilCourant(choix)) queueMicrotask(rendreFil);
+  }
+
+  function etatPremierFil(posts, neutre) {
+    var choix = _premierFil;
+    if (!choix) return "";
+    if (!choixFilCourant(choix)) { _premierFil = null; return ""; }
+    if (!neutre) return "";
+    if (posts.some(function (p) { return !estExempleDuFil(p) && _activeFeedPassions.has(p.passion); })) {
+      // Un fil déjà alimenté garde sa complétion normale avant les exemples.
+      // Une lecture ciblée en cours ou exhaustive la rend redondante.
+      return choix.phase === "chargement" || choix.phase === "complet" ? "trouve" : "";
+    }
+    if (choix.phase === "trouve" || choix.phase === "complet") {
+      choix.phase = "initial";
+      choix.cursor = null;
+      choix.debut = 0;
+    }
+    if (choix.phase === "initial") chercherPremierFil(choix);
+    return choix.phase;
+  }
+
+  function reprendrePremierFil() {
+    if (!_premierFil || !choixFilCourant(_premierFil)
+        || (_premierFil.phase !== "panne" && _premierFil.phase !== "suite")) return;
+    _premierFil.phase = "initial";
+    rendreFil();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -775,12 +849,18 @@
   // devient faux et la carte ne se pose plus du tout.
   var CLE_BIENVENUE_SESSION = "passio_first_run_bienvenue_fermee";
 
-  function bienvenueFermeeCetteSession() {
-    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) === "1"; } catch (e) { return false; }
+  var _accueilSession = "";
+  function accueilCetteSession() {
+    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) || _accueilSession; } catch (e) { return _accueilSession; }
   }
 
-  function marquerBienvenueFermee() {
-    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, "1"); } catch (e) {}
+  function marquerBienvenueFermee(mode) {
+    _accueilSession = mode === "lecture" ? "lecture" : "1";
+    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, _accueilSession); } catch (e) {}
+  }
+
+  function lectureLibre() {
+    return estVisiteur() && accueilCetteSession() === "lecture";
   }
 
   function carteBienvenueHTML() {
@@ -814,7 +894,7 @@
     // reste à une seule action principale.
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
-      +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
+      +   (dejaChoisi ? '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>' : '')
       +   '<div class="fr-welcome-title" id="frWelcomeTitle">' + escapeHtml(titre) + '</div>'
       +   '<div class="fr-welcome-text">' + escapeHtml(texte) + '</div>'
       +   '<div class="fr-welcome-actions">'
@@ -823,6 +903,7 @@
             : '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Choisir mes passions</button>')
       +   '</div>'
       +   '<div class="fr-welcome-liens">'
+      +     (dejaChoisi ? '' : '<button type="button" class="fr-welcome-lien fr-welcome-parcourir" onclick="PassioFirstRun.fermerBienvenue(\'lecture\')">Parcourir le fil</button>')
       +     (dejaChoisi
             ? '<button type="button" class="fr-welcome-lien fr-welcome-passions" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Modifier mes passions</button>'
             : '<button type="button" class="fr-welcome-lien fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer un compte</button>')
@@ -838,7 +919,7 @@
     var p = prefs();
     // Fermée dans CETTE session : on n'insiste pas. Elle reviendra à la
     // prochaine visite, tant qu'aucun compte n'existe (cf. la note ci-dessus).
-    if (bienvenueFermeeCetteSession()) return false;
+    if (accueilCetteSession()) return false;
     if (document.getElementById("frWelcome")) return true;
     if (ecranOccupe() || ecranActif() !== "feed") return false;
     var premierBloc = document.getElementById("feedPassionsBlock");
@@ -855,10 +936,16 @@
     return true;
   }
 
-  function fermerBienvenue() {
+  function fermerBienvenue(mode) {
     var el = document.getElementById("frWelcome");
     if (el && el.parentNode) el.parentNode.removeChild(el);
-    marquerBienvenueFermee();
+    marquerBienvenueFermee(mode);
+    if (mode === "lecture") {
+      fermerBulle();
+      var fil = document.getElementById("feedList");
+      if (fil) fil.focus({ preventScroll: true });
+      return;
+    }
     // La carte partie, la première indication contextuelle peut prendre sa place.
     planifierTour();
   }
@@ -1297,6 +1384,8 @@
   function validerPersonnalisation() {
     var ids = Object.keys(_selPassions || {});
     if (!ids.length) { try { toast("Choisis au moins une passion"); } catch (e) {} return; }
+    _lectureApresValidation = true;
+    _rejeuDemande = false;
     var p = prefs();
     p.passions = ids.slice();
     p.specialites = Object.keys(_selSpecialites || {}).filter(specialiteValide);
@@ -1312,6 +1401,11 @@
     marquerBienvenueFermee();
     var carte = document.getElementById("frWelcome");
     if (carte && carte.parentNode) carte.parentNode.removeChild(carte);
+    var interets = interetsDuVisiteur(p);
+    if (!_premierFil || _premierFil.phase !== "chargement" || _premierFil.owner !== MY_UID
+        || _premierFil.ids.length !== interets.length || !interets.every(function (id) { return _premierFil.ids.includes(id); })) {
+      _premierFil = { ids: interets, owner: MY_UID, phase: "initial", cursor: null, debut: 0 };
+    }
     appliquerPrefs();
     try { closeModal(); } catch (e) {}
     // « Dès validation, le Fil doit visuellement se personnaliser immédiatement.
@@ -1320,26 +1414,12 @@
     rendreFil();
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
     tel("guest_passions_saved", { n: p.passions.length, s: p.specialites.length, from: _panneauOrigine });
-    // ⚠️ UN MESSAGE À LA FOIS (parcours du nouvel inscrit, 2026-11-20). Mesuré à
-    // 390 × 664 : le toast « Ton fil est à toi », la note « Gardées sur cet
-    // appareil » et la bulle « Un Fil construit autour de tes passions »
-    // arrivaient ensemble, le toast (3 s) posé SUR la rangée « Ne plus afficher
-    // / Compris » de la bulle (700 ms). La note dit déjà que le choix est pris,
-    // et porte la porte du compte : quand elle se pose À L'ÉCRAN, le toast se
-    // tait. Sinon (note déjà vue, ou posée au-dessus du pli d'un fil défilé —
-    // contre-revue du lot), le toast parle et la bulle attend sa fin.
-    // Une bulle restée à l'écran AVANT le panneau (posée au démarrage, jamais
-    // touchée : la fenêtre la recouvrait sans la retirer) reparaissait SOUS le
-    // toast — mesuré par ② ter. Elle est caduque : on la retire, comme
-    // `surNavigation` à chaque changement d'écran (son étape est déjà marquée
-    // vue), et le planificateur pose la suivante en temps voulu.
+    // Le fil reste lisible même si un repère était ouvert derrière le panneau.
     try { fermerBulle(); } catch (e) { journal("bulle avant validation", e); }
     var notePosee = false;
     try { notePosee = poserNoteLocale(); } catch (e) { journal("note locale", e); }
     var noteVue = notePosee && aLEcran(document.getElementById("frNoteLocale"));
-    var MESSAGE_FIL = "Ton fil est à toi ✨";
-    if (!noteVue) { try { toast(MESSAGE_FIL); } catch (e) {} }
-    planifierTour(noteVue ? undefined : dureeDuToast(MESSAGE_FIL) + 300);
+    if (!noteVue) { try { toast("Ton fil est à toi ✨"); } catch (e) {} }
   }
 
   // Un élément est-il dans la fenêtre, au moins en partie ?
@@ -1351,16 +1431,8 @@
     } catch (e) { return false; }
   }
 
-  // Durée réelle d'un toast (`dureeToast`, app-02) : la bulle qui le suit ne
-  // doit pas se poser dessous. Repli : 3 s, la durée plancher d'un toast.
-  function dureeDuToast(msg) {
-    try { if (typeof window.dureeToast === "function") return Number(window.dureeToast(msg, false)) || 3000; } catch (e) {}
-    return 3000;
-  }
-
-  // ENT-C15 (audit UX/UI du 2026-11-10) : au moment où le visiteur vient
-  // d'investir (ses passions), on dit qu'elles ne vivent que sur cet appareil,
-  // et la porte du compte qui les garderait. Une seule fois, refermable.
+  // Les passions du visiteur sont conservées sur cet appareil. La note propose
+  // le compte qui permet de les retrouver, une seule fois, et peut être fermée.
   function poserNoteLocale() {
     if (!estVisiteur()) return false;
     var p = prefs();
@@ -1631,6 +1703,8 @@
   // Publication, fiche d'activité ou bobine : ce que la personne regardait quand
   // elle a demandé un compte. Lu dans ce qui est AFFICHÉ, jamais dans l'adresse.
   function cibleOuverte() {
+    var discussion = document.querySelector("#modalBackdrop.active #commentsBox[data-thread]");
+    if (discussion) return { genre: "discussion", id: discussion.getAttribute("data-thread") };
     try {
       if (typeof reelsState !== "undefined" && reelsState && reelsState.open) {
         var it = reelsState.items && reelsState.items[reelsState.current];
@@ -1659,7 +1733,11 @@
     if (!c || !c.id) return false;
     if (memeCible(cibleOuverte(), c)) return true;
     try {
-      if (c.genre === "publication" && typeof openPost === "function"
+      if (c.genre === "discussion" && typeof openComments === "function") {
+        var post = findPostAnywhere(c.id);
+        if (!post || postSupprime(c.id) || isBlocked(post.authorId || post.userId)) return false;
+        openComments(c.id);
+      } else if (c.genre === "publication" && typeof openPost === "function"
           && typeof findPostAnywhere === "function" && findPostAnywhere(c.id)) openPost(c.id);
       else if (c.genre === "activite" && typeof openEventDetails === "function") openEventDetails(c.id);
       else if (c.genre === "bobine" && typeof openReelById === "function") openReelById(c.id);
@@ -1685,7 +1763,9 @@
   // ⚠️ ORDRE OBLIGATOIRE : `switchAuthTab` D'ABORD, message ensuite —
   // `switchAuthTab` remet `#authMsg` à zéro, donc tout ce qu'on veut voir
   // survivre à la bascule se pose APRÈS elle (piège ① du 2026-08-30).
-  function ouvrirAuth(mode, ctx) {
+  function ouvrirAuth(mode, ctx, discussionId) {
+    var discussion = ctx === "commenter" && discussionId && estVisiteur();
+    if (discussion) memoriserRetour(ctx);
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
@@ -1702,7 +1782,7 @@
       try {
         var _p = prefs();
         if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
-        _p.retour.cible = cibleOuverte();
+        _p.retour.cible = discussion ? { genre: "discussion", id: discussionId } : cibleOuverte();
         sauverPrefs();
       } catch (e) {}
     }
@@ -1807,6 +1887,18 @@
       try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
     }
     try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    var p = prefs();
+    var retour = p.retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion") {
+      // Après envoi du mail, la confirmation doit encore retrouver cette cible
+      // dans un nouvel onglet. Une simple annulation termine cette intention.
+      if (!retour.confirmationEnAttente) {
+        p.retour = null;
+        sauverPrefs();
+      }
+      if (rouvrirCible(retour.cible)) return;
+      if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+    }
     // LOT-2 (PAR-C01) : le contenu est resté ouvert SOUS le formulaire —
     // « continuer à explorer », c'est le retrouver tel quel, sans changer d'écran.
     if (cibleOuverte()) return;
@@ -1821,8 +1913,15 @@
     try { if (typeof goTo === "function") goTo("feed"); } catch (e) { journal("retour exploration", e); }
   }
 
-  function allerInscription(ctx) { ouvrirAuth("signup", ctx); }
+  function allerInscription(ctx, discussionId) { ouvrirAuth("signup", ctx, discussionId); }
   function allerConnexion(ctx) { ouvrirAuth("signin", ctx); }
+  function noterConfirmationDiscussion() {
+    var retour = prefs().retour;
+    if (retour && retour.cible && retour.cible.genre === "discussion" && !retour.confirmationEnAttente) {
+      retour.confirmationEnAttente = true;
+      sauverPrefs();
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // 13. TOUR CONTEXTUEL — trois indications, pas un carrousel
@@ -2035,6 +2134,9 @@
 
   function montrerEtape(id) {
     if (!reperesAutorises()) return false;
+    // Vérifier à l'affichage couvre aussi les rappels déjà armés par un geste
+    // ou une navigation avant que le visiteur ne choisisse de parcourir le fil.
+    if (lectureLibre()) return false;
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
@@ -2154,34 +2256,26 @@
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
 
-  var _tourEcheance = 0;   // instant où la bulle planifiée partira (0 : aucune)
+  var _lectureApresValidation = false;
 
-  // `delaiMs` (facultatif) : 700 ms par défaut ; plus long quand un toast vient
-  // de partir, pour que la bulle ne se pose pas sous lui (`validerPersonnalisation`).
-  function planifierTour(delaiMs) {
-    if (!reperesAutorises() || tourAbandonne()) return;
-    var delai = (typeof delaiMs === "number" && delaiMs > 0) ? delaiMs : 700;
-    var echeance = Date.now() + delai;
-    // ⚠️ UNE ÉCHÉANCE POSÉE N'EST JAMAIS AVANCÉE (audit du lot, 2026-11-20). Après
-    // « Voir mon fil », la bulle attend la fin du toast (3,3 s) ; mais le retour
-    // au fil rappelle aussitôt `planifierTour()` (par `planifierAccueil`), et le
-    // `clearTimeout` ramenait la bulle à 700 ms — SOUS le toast, mesuré par
-    // `parcours-nouvel-inscrit` ② ter. Une demande plus tardive l'emporte.
-    if (_tourPlanifie && _tourEcheance > echeance) return;
-    if (_tourPlanifie) clearTimeout(_tourPlanifie);
-    _tourEcheance = echeance;
-    // ⚠️ `setTimeout`, JAMAIS `requestAnimationFrame` : sur une page qui ne
-    // compose pas de frames (onglet en arrière-plan, headless, machine
-    // saturée), rAF ne part pas — l'indication ne serait jamais posée, en
-    // silence. Piège payé au lot UI-3A.
+  function planifierTour() {
+    if (!reperesAutorises() || lectureLibre() || tourAbandonne() || _tourPlanifie) return;
     _tourPlanifie = setTimeout(function () {
       _tourPlanifie = null;
-      _tourEcheance = 0;
-      if (ecranActif() !== "feed") return;
-      if (document.getElementById("frWelcome")) return; // la carte parle déjà
-      if (!etapeVue("decouvrir")) { montrerEtape("decouvrir"); return; }
+      if (ecranActif() !== "feed" || document.getElementById("frWelcome")) return;
+      var visiteur = estVisiteur();
+      if (visiteur && _lectureApresValidation) return;
+      if (!etapeVue("decouvrir")) {
+        if (_rejeuDemande || !visiteur || !prefs().passions.length) {
+          montrerEtape("decouvrir");
+          return;
+        }
+        // Une fois les passions choisies, Découvrir se revoit sur demande.
+        // Créer peut encore se présenter au retour de Rencontrer.
+        if (!etapeVue("rencontrer")) return;
+      }
       if (!etapeVue("creer")) montrerEtape("creer");
-    }, delai);
+    }, 700);
   }
 
   function abandonnerTour() { fermerBulle("abandon"); }
@@ -2192,6 +2286,7 @@
     if (!actif() || !appPrete()) return;
     fermerBulle();
     if (typeof fermerHint === "function") fermerHint();
+    _lectureApresValidation = false;
     _rejeuDemande = true;
     var p = prefs();
     // Remet TOUT à zéro — les trois étapes du premier tour comme les aides au
@@ -2538,7 +2633,7 @@
       try {
         if (!estVisiteur()) return;
         if (ecranOccupe() || ecranActif() !== "feed") { planifierAccueil(); return; }
-        if (bienvenueFermeeCetteSession()) { planifierTour(); return; }
+        if (accueilCetteSession()) { planifierTour(); return; }
         if (!poserBienvenue()) { planifierAccueil(); return; }
       } catch (e) {
         // Le corps entier est sous `try` et REPLANIFIE au lieu de conclure :
@@ -2607,7 +2702,7 @@
     }
     sauverPrefs();
 
-    setTimeout(function () {
+    setTimeout(async function () {
       try {
         // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
         // bobine que la personne regardait est rouverte par sa fonction
@@ -2616,6 +2711,22 @@
           if (r.action && RAPPELS[r.action] && memeCible(cibleOuverte(), r.cible) && typeof toast === "function") {
             toast(RAPPELS[r.action]);
           }
+        }
+        if (r && r.cible && r.cible.genre === "discussion") {
+          // Une confirmation d'e-mail peut ouvrir un onglet dont le fil n'a
+          // pas encore chargé cette publication. Même lecture que le lien partagé.
+          if (!findPostAnywhere(r.cible.id) && !postSupprime(r.cible.id) && typeof _lienPartageChercherPost === "function") {
+            var ecranInitial = ecranActif();
+            var hashInitial = window.location.hash;
+            await _lienPartageChercherPost(r.cible.id);
+            if (ecranActif() !== ecranInitial || window.location.hash !== hashInitial || ecranOccupe()) return;
+          }
+          if (rouvrirCible(r.cible)) {
+            var champ = document.getElementById("newComment");
+            if (champ && pointeurFin()) champ.focus({ preventScroll: true });
+            setTimeout(rappelerSurLaFiche, 400);
+          } else if (typeof toast === "function") toast("Cette discussion n’est plus disponible.");
+          return;
         }
         if (r && r.cible && rouvrirCible(r.cible)) {
           setTimeout(rappelerSurLaFiche, 400);
@@ -2673,6 +2784,7 @@
   // Appelé par `goTo` (app-02) après le changement d'écran.
   function surNavigation(screen) {
     if (!reperesAutorises()) return;
+    if (screen !== "feed") _lectureApresValidation = false;
     fermerBulle();
     if (screen === "irl") {
       // « Ne jamais déclencher automatiquement la géolocalisation. » UI-4A0 arme
@@ -2817,6 +2929,8 @@
   window.PassioFirstRun = {
     actif: actif,
     estVisiteur: estVisiteur,
+    etatPremierFil: etatPremierFil,
+    reprendrePremierFil: reprendrePremierFil,
     // Autorité UNIQUE des trois repères, et sa lecture par `montrerHint`
     // (app-02). Exposées pour que le verrou mesure la fonction RÉELLE.
     reperesAutorises: reperesAutorises,
@@ -2824,6 +2938,7 @@
     aidesHistoriquesEnPause: aidesHistoriquesEnPause,
     entreeDirecte: entreeDirecte,
     prefs: prefs,
+    passionsChoisies: function () { return interetsDuVisiteur(prefs()); },
     oublierPrefs: oublierPrefs,
     // Panneau
     ouvrirPersonnalisation: ouvrirPersonnalisation,
@@ -2859,6 +2974,7 @@
     requireAuthentication: requireAuthentication,
     allerInscription: allerInscription,
     allerConnexion: allerConnexion,
+    noterConfirmationDiscussion: noterConfirmationDiscussion,
     // Exposée pour `openAuthScreen` (app-02) : quand l'écran de connexion est
     // ouvert depuis les Paramètres ou après une déconnexion, la porte
     // « ← Continuer à explorer » doit exister là aussi — sinon l'onboarding

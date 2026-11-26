@@ -152,11 +152,9 @@ test.describe("UI-7 — le parcours complet", () => {
     expect(ouvert, "le jeu de démonstration doit contenir des bobines").toBe(true);
     await page.waitForTimeout(600);
 
-    // Les actions du §7 sont là, et « Ça m'intéresse » est bien le libellé
-    // arrêté avec Benjamin le 2026-08-28.
-    await expect(page.locator(".v5-actions").first()).toBeVisible({ timeout: 8000 });
-    expect(await page.evaluate(() =>
-      document.querySelector(".v5-actions").textContent)).toContain("Ça m'intéresse");
+    await expect(page.locator(".v5-actions").first().getByRole("button", {
+      name: "Intérêt pour cette passion",
+    })).toBeVisible({ timeout: 8000 });
   });
 
   test("⑤ conversation → IRL : l'entrée est là, et elle ne fait rien d'autre", async ({ page }) => {

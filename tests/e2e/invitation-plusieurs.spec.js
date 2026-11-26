@@ -93,6 +93,7 @@ async function ajouter(page, nom) {
 const publierBtn = (page) => page.locator('#modalContent button[onclick^="submitEvent"]');
 
 async function publier(page) {
+  await page.locator("#evTime").fill("18:00");
   await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });
   await page.evaluate(() => submitEvent());
   await expect.poll(() => page.evaluate(() => state.userEvents.length)).toBe(1);

@@ -264,6 +264,14 @@
     {
       "cle": "js/app-09-boot-pwa.js | onclick | action",
       "raison": "LOT-35 : helper item() d'openConvSettings (app-09). `action` est un appel littéral du code dont chaque argument variable (convId, uid, uname) passe déjà par escapeJsArg à l'appel ; aucune donnée brute n'y entre."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | st.texte",
+      "raison": "_storyTexteStyles (app-08) : soit _cssColor(o.color), soit l'un des deux littéraux #111111/#ffffff (contraste du style « fond ») — la couleur d'un autre compte passe toujours par _cssColor."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | st.align",
+      "raison": "_storyTexteStyles (app-08) : liste fermée — « left » ou « right » seulement si o.align est EXACTEMENT l'un d'eux, sinon le littéral « center » ; la valeur reçue n'est jamais recopiée."
     }
   ]
 }

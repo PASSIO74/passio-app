@@ -399,8 +399,8 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
   //   ① la télémétrie `feed_intent_meet_irl` du rail est portée par le CTA
   //      HISTORIQUE — elle se mesure donc UI-3A coupée, sinon le CTA est masqué
   //      et l'absence d'événement passerait pour une régression de télémétrie ;
-  //   ② le chemin NOMINAL (UI-3A active par défaut) doit présenter « Trouver une
-  //      expérience » sans rien engager à la place de l'utilisateur.
+  //   ② sur le fil filtré « À faire ensemble », la recherche ouvre les sorties
+  //      de la passion de la publication, sans créer de sortie ni de RSVP.
   test("Rencontrer sous kill switch UI-3A → CTA IRL existant, sans activer une proposition", async ({ page }) => {
     await page.addInitScript(() => { localStorage.setItem("passio_ui_3", "0"); });
     await boot(page, { preview: true });
@@ -416,7 +416,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
   });
 
-  test("Rencontrer, UI-3A active : « Trouver une activité », sans proposition automatique", async ({ page }) => {
+  test("« À faire ensemble » dans le fil ouvre les sorties musique, sans proposition automatique", async ({ page }) => {
     await boot(page);
     await seedFeed(page, true, true);
     // Le module doit être LÀ. Un module absent est un défaut de livraison, pas
@@ -426,14 +426,17 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     await page.locator('.feed-intent-btn[data-intent="meet"]').click();
     const carte = page.locator('#feedList .post[data-postid="intent_meet"]');
 
-    // Le vocabulaire validé est présent et réellement atteignable…
-    await expect(carte.getByText("Trouver une activité", { exact: true }).first()).toBeVisible();
-
-    // …et le CTA historique reste dans le DOM, seulement masqué : aucun doublon
-    // à l'écran, et les kill switches le restituent sans repeindre le fil.
+    const chercher = carte.getByRole("button", { name: "Chercher une sortie musique", exact: true });
+    await expect(chercher).toBeVisible();
+    // La coupure UI-3A peut restituer la commande historique.
     const historique = carte.locator(".feed-irl-cta");
     await expect(historique).toHaveCount(1);
     await expect(historique).toBeHidden();
+
+    await chercher.click();
+    await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+    await expect(page.locator("#v3PassioSheet")).toBeHidden();
+    expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual(["musique"]);
 
     // Rien n'est engagé à la place de l'utilisateur : ni événement, ni RSVP, ni
     // proposition activée.

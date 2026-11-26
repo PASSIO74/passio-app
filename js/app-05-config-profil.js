@@ -1468,39 +1468,115 @@ function toggleCallVideo(btn) {
     btn.setAttribute("aria-pressed", on ? "true" : "false");
     btn.setAttribute("aria-label", on ? "Réactiver la caméra" : "Couper la caméra"); }
 }
+// ════════════════ CHANGER DE CAMÉRA (appels ET lives) ════════════════
+// ⚠️ 2026-11-26, capture Android : « une seule caméra fonctionne, je n'arrive pas
+// à retourner ». Beaucoup d'Android n'ouvrent PAS une seconde caméra tant que la
+// première tourne (NotReadableError) : l'ancien code demandait l'arrière AVANT
+// de lâcher l'avant, échouait, et concluait « Une seule caméra disponible ».
+// Et le repli souple `facingMode: next` y rendait parfois la MÊME caméra.
+// Ordre : ① ancienne ouverte (iOS, ordinateur) ; ② ancienne LÂCHÉE puis exact,
+// souple, puis par deviceId d'une AUTRE caméra ; ③ échec total : on rouvre la
+// caméra d'origine — jamais d'écran noir. Une piste n'est acceptée que si elle
+// vient d'un AUTRE appareil (deviceId) que l'ancienne.
+// Rend { track, facing, change } — `track === oldTrack` si rien n'a bougé — ou
+// null : l'ancienne piste est alors ARRÊTÉE, l'appelant doit le dire.
+async function changerCameraPiste(oldTrack, actuel, quality) {
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return null;
+  const next = actuel === "environment" ? "user" : "environment";
+  const idDe = (t) => { try { return (t && t.getSettings && t.getSettings().deviceId) || ""; } catch (e) { return ""; } };
+  const ancienId = idDe(oldTrack);
+  const ouvrir = async (video) => {
+    try {
+      const flux = await md.getUserMedia({ audio: false, video: video });
+      const t = flux.getVideoTracks()[0];
+      if (!t) return null;
+      if (ancienId && idDe(t) === ancienId) { t.stop(); return null; } // même caméra
+      return t;
+    } catch (e) { return null; }
+  };
+  const pause = (ms) => new Promise(r => setTimeout(r, ms));
+  // Une seule caméra sur l'appareil : on ne touche à RIEN (sinon l'étape ②
+  // coupait la webcam d'un ordinateur pour la rouvrir — figé visible chez le pair).
+  try {
+    const nb = (await md.enumerateDevices()).filter(d => d.kind === "videoinput").length;
+    if (nb === 1 && oldTrack && oldTrack.readyState === "live") return { track: oldTrack, facing: actuel, change: false };
+  } catch (e) {}
+  const essais = () => [
+    () => ouvrir(Object.assign({ facingMode: { exact: next } }, quality)),
+    () => ouvrir(Object.assign({ facingMode: next }, quality)),
+    async () => {
+      let cams = [];
+      try { cams = (await md.enumerateDevices()).filter(d => d.kind === "videoinput" && d.deviceId && d.deviceId !== ancienId); } catch (e) {}
+      const dos = /back|rear|arri[eè]re|environment/i;
+      cams.sort((a, b) => (dos.test(b.label) === (next === "environment")) - (dos.test(a.label) === (next === "environment")));
+      for (const c of cams) {
+        const t = await ouvrir(Object.assign({ deviceId: { exact: c.deviceId } }, quality)) || await ouvrir({ deviceId: { exact: c.deviceId } });
+        if (t) return t;
+      }
+      return null;
+    },
+  ];
+  // ① sans lâcher l'ancienne (seulement l'essai exact : le souple rendrait la même).
+  let t = await essais()[0]();
+  if (t) return { track: t, facing: next, change: true };
+  // ② on lâche l'ancienne caméra, puis tous les essais.
+  try { if (oldTrack) oldTrack.stop(); } catch (e) {}
+  // Android libère la caméra de façon ASYNCHRONE : enchaîner tout de suite
+  // prenait NotReadableError sur tous les essais, réouverture comprise.
+  await pause(250);
+  for (const essai of essais()) { t = await essai(); if (t) return { track: t, facing: next, change: true }; }
+  // ③ rien : on rouvre la caméra d'origine (l'ancienne piste est arrêtée),
+  // deux fois, la seconde après une attente.
+  for (let i = 0; i < 2; i++) {
+    try {
+      const flux = await md.getUserMedia({ audio: false, video: Object.assign(ancienId ? { deviceId: { exact: ancienId } } : { facingMode: actuel }, quality) });
+      const r = flux.getVideoTracks()[0];
+      if (r) return { track: r, facing: actuel, change: false };
+    } catch (e) {}
+    await pause(500);
+  }
+  return null;
+}
+window.changerCameraPiste = changerCameraPiste;
+
 async function flipCallCamera() {
   const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
+  if (cs._flipEnCours) return;          // double toucher : un seul échange à la fois
+  cs._flipEnCours = true;
+  try { await _callFlipCamera(cs); } finally { cs._flipEnCours = false; }
+}
+async function _callFlipCamera(cs) {
   // La caméra de départ est frontale ("user") → le 1ᵉʳ appui doit passer à
   // l'arrière. Bug précédent : `cs._facing` partait `undefined`, donc le 1ᵉʳ
   // appui re-sélectionnait "user" (aucun changement visible).
   const current = cs._facing || "user";
-  const next = current === "environment" ? "user" : "environment";
-  const quality = CALL_VIDEO_QUALITY;
-  let ns = null;
-  try {
-    // `exact` force réellement le changement de caméra sur mobile.
-    ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: { exact: next } }, quality) });
-  } catch (e1) {
-    // Pas de caméra correspondant en "exact" (ex. webcam unique sur desktop) →
-    // on retente en préférence souple ; si ça échoue aussi, une seule caméra.
-    try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: next }, quality) }); }
-    catch (e2) { toast("Une seule caméra disponible"); return; }
-  }
-  const newTrack = ns.getVideoTracks()[0];
-  if (!newTrack) { toast("Caméra indisponible"); return; }
-  cs._facing = next;
+  const oldTrack = cs.localStream && cs.localStream.getVideoTracks()[0];
+  const res = await changerCameraPiste(oldTrack, current, CALL_VIDEO_QUALITY);
+  // Appel raccroché PENDANT le changement : on éteint la nouvelle caméra.
+  if (window._call !== cs) { if (res && res.track !== oldTrack) { try { res.track.stop(); } catch (e) {} } return; }
+  if (!res) { toast("Caméra perdue — touche 🔄 pour réessayer"); return; }
+  if (!res.change) toast("Impossible d'ouvrir l'autre caméra");
+  if (res.track === oldTrack) return;   // une seule caméra : rien n'a bougé
+  const newTrack = res.track;
+  // Caméra coupée par l'utilisateur (toggleCallVideo) : la nouvelle le reste.
+  // Lu APRÈS l'attente : couper pendant le changement doit compter. `enabled`
+  // reste lisible sur une piste arrêtée.
+  newTrack.enabled = !(oldTrack && oldTrack.enabled === false);
+  cs._facing = res.facing;
   const sender = cs.pc.getSenders().find(s => s.track && s.track.kind === "video");
   if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
+  if (window._call !== cs) { try { newTrack.stop(); } catch (e) {} return; }
   // Remplace la piste dans le flux local + aperçu.
   const old = cs.localStream.getVideoTracks()[0];
-  if (old) { cs.localStream.removeTrack(old); old.stop(); }
+  if (old && old !== newTrack) { cs.localStream.removeTrack(old); try { old.stop(); } catch (e) {} }
   cs.localStream.addTrack(newTrack);
   await _callApplyMediaQuality(); // ré-applique le débit sur la nouvelle piste
   const lv = document.getElementById("callLocalVideo");
   if (lv) {
     lv.srcObject = cs.localStream;
     // Effet miroir uniquement pour la caméra frontale (comme les apps natives).
-    lv.style.transform = next === "environment" ? "none" : "scaleX(-1)";
+    lv.style.transform = res.facing === "environment" ? "none" : "scaleX(-1)";
   }
 }
 
@@ -5225,32 +5301,53 @@ function _vliveStartTimer(startMs) {
   }, 1000);
 }
 
-// Micro on/off (diffuseur).
+// Micro on/off (diffuseur). `H.micOff` est la SEULE autorité de l'intention du
+// micro : la pause coupe les pistes sans la toucher, la reprise la relit. Avant,
+// la reprise rallumait le micro d'office (coupé avant la pause = rouvert après),
+// et basculer le micro PENDANT la pause rallumait le son d'un direct « en pause ».
 function toggleVliveMic(btn) {
   const H = window._vliveHost;
   if (!H || !H.stream) return;
-  const tracks = H.stream.getAudioTracks();
-  const on = tracks[0] && tracks[0].enabled;
-  tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "🔇" : "🎙"; }
+  H.micOff = !H.micOff;
+  _vliveAppliquerPistes();
+  _vlivePeindreMic(btn);
 }
 window.toggleVliveMic = toggleVliveMic;
+
+function _vlivePeindreMic(btn) {
+  const H = window._vliveHost;
+  const b = btn || document.getElementById("vliveMicBtn");
+  if (!H || !b) return;
+  b.classList.toggle("off", !!H.micOff);
+  b.textContent = H.micOff ? "🔇" : "🎙";
+  b.setAttribute("aria-pressed", H.micOff ? "true" : "false");
+}
+
+// Pose l'état RÉEL des pistes depuis les deux intentions (pause, micro).
+function _vliveAppliquerPistes() {
+  const H = window._vliveHost;
+  if (!H || !H.stream) return;
+  try { (H.stream.getVideoTracks() || []).forEach(t => { t.enabled = !H.paused; }); } catch (e) {}
+  try { (H.stream.getAudioTracks() || []).forEach(t => { t.enabled = !H.paused && !H.micOff; }); } catch (e) {}
+}
 
 // Pause / reprise du direct (diffuseur) : gèle la vidéo + coupe le micro sans
 // démonter les connexions (le live reste « vivant » ; les spectateurs voient un
 // écran « en pause »). Reprise = réactive les pistes.
+// ⚠️ 2026-11-26 : l'écran « en pause » (z-index 6, plein écran) RECOUVRAIT la
+// barre de commandes (z-index 5) — le bouton ▶️ était dessous, intouchable, et
+// l'hôte ne pouvait plus reprendre. Le voile passe SOUS les barres, et porte
+// lui-même un gros bouton « Reprendre » (verrou : tests/e2e/live-pause-reprise.spec.js).
 function toggleVlivePause(btn) {
   const H = window._vliveHost;
   if (!H || !H.stream) return;
   H.paused = !H.paused;
   const on = H.paused;
-  try { (H.stream.getVideoTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
-  try { (H.stream.getAudioTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
+  _vliveAppliquerPistes();
   _vliveSend("pause", { on: on });
-  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "▶️" : "⏸"; btn.setAttribute("aria-label", on ? "Reprendre" : "Mettre en pause"); }
-  // Micro : si on reprend, remet le bouton micro cohérent (réactivé ci-dessus).
-  const micBtn = btn && btn.parentElement && btn.parentElement.querySelector('[aria-label="Micro"]');
-  if (micBtn && !on) { micBtn.classList.remove("off"); micBtn.textContent = "🎙"; }
+  const b = btn || document.getElementById("vlivePauseBtn");
+  if (b) { b.classList.toggle("off", on); b.textContent = on ? "▶️" : "⏸"; b.setAttribute("aria-label", on ? "Reprendre" : "Mettre en pause"); }
+  _vlivePeindreMic();
   _vliveShowPaused(on, true);
   toast(on ? "⏸ Live en pause" : "▶️ Live repris");
 }
@@ -5260,34 +5357,53 @@ window.toggleVlivePause = toggleVlivePause;
 function _vliveShowPaused(on, isHost) {
   const el = document.getElementById("vlivePaused");
   if (!el) return;
-  el.querySelector("span").textContent = isHost ? "Live en pause (toi)" : "Le live est en pause";
+  const sp = el.querySelector("span");
+  if (sp) sp.textContent = isHost ? "Live en pause (toi)" : "Le live est en pause";
+  const rb = el.querySelector(".vlive-resume-btn");
+  if (rb) rb.style.display = isHost ? "" : "none";
   el.style.display = on ? "flex" : "none";
+  // En pause, la zone du chat (au-dessus du voile) ne capte plus les touchers :
+  // en paysage ou clavier ouvert, elle recouvrait le bouton « Reprendre ».
+  const ov = document.getElementById("vliveOverlay");
+  if (ov) ov.classList.toggle("vlive-en-pause", !!on);
 }
 
 // Changement de caméra (diffuseur) : replaceTrack sur TOUTES les connexions.
 async function flipVliveCamera() {
   const H = window._vliveHost;
   if (!H) return;
-  const next = (H._facing || "user") === "user" ? "environment" : "user";
-  let ns = null;
-  try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: { exact: next } }, VLIVE_VIDEO_QUALITY) }); }
-  catch (e1) {
-    try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: next }, VLIVE_VIDEO_QUALITY) }); }
-    catch (e2) { toast("Une seule caméra disponible"); return; }
-  }
-  const newTrack = ns.getVideoTracks()[0];
-  if (!newTrack) return;
-  H._facing = next;
+  if (H._flipEnCours) return;          // double toucher : un seul échange à la fois
+  H._flipEnCours = true;
+  try { await _vliveFlipCamera(H); } finally { H._flipEnCours = false; }
+}
+async function _vliveFlipCamera(H) {
+  const oldTrack = H.stream && H.stream.getVideoTracks()[0];
+  const res = await changerCameraPiste(oldTrack, H._facing || "user", VLIVE_VIDEO_QUALITY);
+  // Live terminé PENDANT le changement : la nouvelle caméra ne doit pas rester
+  // allumée sur un flux orphelin (personne ne l'arrêterait).
+  if (window._vliveHost !== H) { if (res && res.track !== oldTrack) { try { res.track.stop(); } catch (e) {} } return; }
+  if (!res) { toast("Caméra perdue — touche 🔄 pour réessayer"); return; }
+  if (!res.change) toast("Impossible d'ouvrir l'autre caméra");
+  if (res.track === oldTrack) return;   // une seule caméra : rien n'a bougé
+  const newTrack = res.track;
+  H._facing = res.facing;
+  // La nouvelle caméra hérite de la pause : sinon retourner la caméra en pause
+  // renvoyait l'image aux spectateurs derrière un écran « en pause ».
+  newTrack.enabled = !H.paused;
   for (const vid in H.pcs) {
     const sender = H.pcs[vid].pc.getSenders().find(s => s.track && s.track.kind === "video");
     if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
   }
+  if (window._vliveHost !== H) { try { newTrack.stop(); } catch (e) {} return; }
   const old = H.stream.getVideoTracks()[0];
-  if (old) { H.stream.removeTrack(old); old.stop(); }
+  if (old && old !== newTrack) { H.stream.removeTrack(old); try { old.stop(); } catch (e) {} }
   H.stream.addTrack(newTrack);
+  // Relit la pause APRÈS les `await replaceTrack` : une pause posée pendant
+  // l'échange visait l'ancienne piste, la nouvelle serait partie allumée.
+  _vliveAppliquerPistes();
   _vliveApplyHostQuality();
   const lv = document.getElementById("vliveVideo");
-  if (lv) { lv.srcObject = H.stream; lv.style.transform = next === "environment" ? "none" : "scaleX(-1)"; }
+  if (lv) { lv.srcObject = H.stream; lv.style.transform = res.facing === "environment" ? "none" : "scaleX(-1)"; }
 }
 window.flipVliveCamera = flipVliveCamera;
 
@@ -5366,7 +5482,9 @@ function _vliveRenderUI(mode, row) {
     '</div>' +
     (title ? '<div class="vlive-title-pill">' + escapeHtml(title) + '</div>' : "") +
     '<div class="vlive-status" id="vliveStatus">' + (isHost ? "" : "Connexion au direct…") + '</div>' +
-    '<div class="vlive-paused" id="vlivePaused" style="display:none;">⏸<span>Le live est en pause</span></div>' +
+    '<div class="vlive-paused" id="vlivePaused" style="display:none;">⏸<span>Le live est en pause</span>' +
+      (isHost ? '<button class="vlive-resume-btn" onclick="toggleVlivePause()" aria-label="Reprendre le live">▶ Reprendre le live</button>' : "") +
+    '</div>' +
     '<div class="vlive-hearts" id="vliveHearts"></div>' +
     '<button id="vliveUnmuteBtn" class="vlive-unmute" style="display:none;" onclick="_vliveUnmute()">🔊 Activer le son</button>' +
     '<div class="vlive-bottom">' +
@@ -5378,7 +5496,7 @@ function _vliveRenderUI(mode, row) {
         '<button class="vlive-bar-btn" onclick="_vliveSendChat()" aria-label="Envoyer">➤</button>' +
         (isHost
           ? '<button class="vlive-bar-btn" id="vlivePauseBtn" onclick="toggleVlivePause(this)" aria-label="Mettre en pause">⏸</button>' +
-            '<button class="vlive-bar-btn" onclick="toggleVliveMic(this)" aria-label="Micro">🎙</button>' +
+            '<button class="vlive-bar-btn" id="vliveMicBtn" onclick="toggleVliveMic(this)" aria-label="Couper le micro" aria-pressed="false">🎙</button>' +
             '<button class="vlive-bar-btn" onclick="flipVliveCamera()" aria-label="Changer de caméra">🔄</button>'
           : '<button class="vlive-bar-btn heart" onclick="_vliveHeart()" aria-label="Envoyer un cœur">❤️</button>') +
       '</div>' +
