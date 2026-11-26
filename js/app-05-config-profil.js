@@ -3415,7 +3415,7 @@ function renderReelHTML(post, idx) {
   const txt = post.text || post.caption || "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
-      <div class="reel-media-container"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
+      <div class="reel-media-container${(typeof storyFiltreClasse === "function" && storyFiltreClasse(post.overlays)) ? " " + storyFiltreClasse(post.overlays) : ""}"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
         ${reelMediaHTML(post)}
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>

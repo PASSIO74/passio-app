@@ -14322,3 +14322,34 @@ body:has(#mediaEditor.open) .passio-hint { display: none !important; }
 .story-sticker.st-sondage:not(.st-sd-vote) .st-sd-total { display: none; }
 /* Idem au-dessus du LECTEUR de story : l aide du fil y volait les touchers des stickers. */
 body:has(#storyViewer.active) .passio-hint { display: none !important; }
+
+/* ── STORY / BOBINE : FILTRES ET COMPTE À REBOURS (2026-11-26) ──
+   Un filtre est une CLASSE (liste fermée ME_FILTRES), posée sur la couche média
+   de l'éditeur, du lecteur de story et du lecteur de bobines. */
+.filtre-chaud > video, .filtre-chaud > img, video.filtre-chaud { filter: sepia(.25) saturate(1.3) hue-rotate(-8deg) brightness(1.03); }
+.filtre-froid > video, .filtre-froid > img, video.filtre-froid { filter: saturate(1.1) hue-rotate(14deg) brightness(1.02) contrast(1.05); }
+.filtre-vif > video, .filtre-vif > img, video.filtre-vif { filter: saturate(1.6) contrast(1.12); }
+.filtre-doux > video, .filtre-doux > img, video.filtre-doux { filter: brightness(1.08) contrast(.88) saturate(.9); }
+.filtre-vintage > video, .filtre-vintage > img, video.filtre-vintage { filter: sepia(.45) contrast(.9) brightness(1.05) saturate(.85); }
+.filtre-nb > video, .filtre-nb > img, video.filtre-nb { filter: grayscale(1) contrast(1.1); }
+.me-filtres {
+  position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 168px); z-index: 11;
+  display: none; gap: 8px; padding: 0 14px; overflow-x: auto; scrollbar-width: none;
+}
+.me-filtres::-webkit-scrollbar { display: none; }
+.media-editor.phase-capture.me-cam-on .me-filtres,
+.media-editor.phase-edit.me-filtres-ouverts .me-filtres { display: flex; }
+.media-editor.me-recording .me-filtres,
+.media-editor.me-texte-ouvert .me-filtres,
+.media-editor.me-dessin .me-filtres { display: none; }
+.me-filtre {
+  flex: 0 0 auto; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid rgba(255,255,255,0.7); background: rgba(0,0,0,0.35);
+  color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap;
+}
+.me-filtre.actif { background: #fff; color: #111; border-color: #fff; }
+.media-editor.phase-edit:not(.me-fond) .me-tool-filtres { display: inline-flex; }
+.media-editor.me-fond .me-tool-filtres { display: none; }
+.me-sticker-compte b, .story-sticker.st-compte b { font-size: 16px; }
+.me-sticker-compte span, .story-sticker.st-compte span { color: #7c3aed; font-size: 14px; font-weight: 800; }
+.story-sticker.st-compte:not(button) { cursor: default; }
