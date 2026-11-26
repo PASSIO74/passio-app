@@ -14106,3 +14106,92 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 }
 #prochaineSortie .prochaine-sortie-titre { grid-column: 1; overflow-wrap: anywhere; }
 #prochaineSortie .prochaine-sortie-fleche { grid-area: 1 / 2 / 4 / 3; align-self: center; font-size: 24px; }
+
+/* ── STORY FAÇON INSTAGRAM (2026-11-26) : mode « Créer » + éditeur de texte en place ──
+   Le bouton de la capture remplissait l'écran d'un aplat, sans consigne ni curseur.
+   Désormais : fond + clavier d'un seul toucher, couleurs, fond du texte, alignement. */
+.me-cap-side.me-cap-creer {
+  font-size: 17px; font-weight: 900; letter-spacing: -0.5px;
+  border-color: #fff;
+  background: linear-gradient(135deg, #7c3aed, #ec4899 55%, #f97316);
+}
+.me-creer-hint {
+  position: absolute; left: 0; right: 0; top: 40%; z-index: 3;
+  display: none; text-align: center; padding: 0 24px;
+  color: rgba(255,255,255,0.8); font-size: 28px; font-weight: 800;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.25); pointer-events: none;
+}
+.media-editor.phase-edit.me-fond.me-vide:not(.me-texte-ouvert) .me-creer-hint { display: block; }
+.media-editor.phase-edit.me-fond .me-canvas { cursor: text; }
+.me-tool.me-tool-fond {
+  width: 44px; min-width: 44px; padding: 0; border-radius: 999px;
+  border: 2.5px solid #fff; background: linear-gradient(135deg,#ec4899,#f97316);
+}
+.media-editor:not(.me-fond) .me-tool-fond { display: none; }
+.me-overlay.me-en-edition { visibility: hidden; }
+.media-editor.me-texte-ouvert .me-topbar,
+.media-editor.me-texte-ouvert .me-toolbar,
+.media-editor.me-texte-ouvert .me-bottom,
+.media-editor.me-texte-ouvert .me-preview-ctrls { visibility: hidden; }
+.story-txt-fond {
+  display: inline; padding: 2px 10px; border-radius: 8px; line-height: 1.5;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  text-shadow: none;
+}
+.me-texte-editeur {
+  position: absolute; inset: 0; z-index: 40;
+  display: none; flex-direction: column;
+  background: rgba(0,0,0,0.42);
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+}
+.me-texte-editeur.open { display: flex; }
+.me-te-haut { display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.me-te-btn {
+  width: 44px; height: 44px; flex: 0 0 auto; padding: 0;
+  border-radius: 999px; border: 2px solid rgba(255,255,255,0.9);
+  background: rgba(0,0,0,0.28); color: #fff; cursor: pointer;
+  font-size: 18px; font-weight: 900;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.me-te-btn.actif { background: #fff; color: #111; }
+.me-te-btn:active, .me-te-ok:active, .me-te-couleur:active { transform: scale(0.92); }
+.me-texte-editeur:not(.avec-fond) .me-te-fond { display: none; }
+.me-te-ok {
+  margin-left: auto; min-height: 44px; padding: 0 20px;
+  border-radius: 999px; border: none; background: #fff; color: #111;
+  font-size: 15px; font-weight: 900; cursor: pointer;
+}
+.me-te-couleurs {
+  display: flex; gap: 12px; padding: 16px 18px 6px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.me-te-couleurs::-webkit-scrollbar { display: none; }
+.me-te-couleur {
+  position: relative; flex: 0 0 auto; width: 30px; height: 30px; padding: 0;
+  border-radius: 999px; border: 3px solid #fff; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  transition: transform 120ms ease;
+}
+.me-te-couleur::after { content: ""; position: absolute; inset: -7px; }
+.me-te-couleur.actif { transform: scale(1.25); }
+.me-te-zone {
+  flex: 1; min-height: 0; display: flex; align-items: flex-start; justify-content: center;
+  padding: 10vh 18px 18px; cursor: text;
+}
+.me-te-champ {
+  width: 100%; max-width: 88%; min-height: 48px; box-sizing: border-box;
+  margin: 0; padding: 6px 12px; border: none; outline: none; resize: none; overflow-y: auto;
+  border-radius: 10px; background: transparent; color: #fff; caret-color: #fff;
+  font-family: inherit; font-size: 30px; font-weight: 800; line-height: 1.25;
+  text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  -webkit-appearance: none; appearance: none;
+}
+.me-te-champ::placeholder { color: rgba(255,255,255,0.6); }
+/* Le filet anti-zoom iOS (16 px !important, pointeurs grossiers) écrasait la taille
+   du champ : on écrivait en 16 px un texte posé en 30. 30 px reste au-dessus du seuil. */
+@media (pointer: coarse) {
+  .me-texte-editeur textarea.me-te-champ { font-size: 30px !important; }
+}
+@supports (field-sizing: content) {
+  .me-te-champ { field-sizing: content; width: auto; min-width: 3ch; }
+}
