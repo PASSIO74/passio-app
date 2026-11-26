@@ -65,6 +65,23 @@ test('le refus efface la présence périmée, mais une lecture dépassée ne tou
   assert.equal(ev.counts.going,cas==='refus'?1:2,cas);
  }
 });
+test('deux lectures du même refus réconcilient les participants même si la première réponse arrive en dernier',async()=>{
+ const lectures=[];
+ const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
+ const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
+  state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+  myRsvp:()=>null,_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
+  supa:{rpc:async()=>({data:true})},supaLireParticipants:()=>new Promise(resolve=>lectures.push(resolve))});
+ vm.runInContext("let _vueRefusSortie={id:'e',uid:'moi',lecture:0,refuse:false}; const _ecrituresRsvp=new Map();"
+  +fn('_relireRefusFiche')+fn('_poserListesRelues'),c);
+ const premier=c._relireRefusFiche('e');await new Promise(setImmediate);
+ const second=c._relireRefusFiche('e');await new Promise(setImmediate);
+ assert.equal(lectures.length,2);
+ lectures[1]({listesLues:true,comptesLus:true,attByEvent:{e:['orga']},maybeByEvent:{},waitByEvent:{},
+  checkedByEvent:{},countsByEvent:{e:{going:1}}});await second;
+ lectures[0]({listesLues:false,comptesLus:false});await premier;
+ assert.deepEqual(ev.attendees,['orga']);assert.equal(ev.counts.going,1);
+});
 test('la coorganisation suspendue ne produit ni mutation ni notification',async()=>{const t=contexte();vm.runInContext(fn('openEventCoOrganizers')+'\n'+fn('toggleEventCoOrganizer'),t.c);await t.c.toggleEventCoOrganizer('e','u');assert.match(t.messages[0],/consentement/);});
 test('contrat SQL : transaction, fermeture des droits et compteur indépendant du blocage',()=>{assert.match(sql,/begin;[\s\S]*commit;/);const corps=sql.split('function public.participants_compte')[1].split('$f$;')[0];assert.doesNotMatch(corps,/is_blocked_with|blocks/);assert.match(sql,/revoke all on schema rencontres_prive from public, anon, authenticated/);assert.match(sql,/revoke all on all functions in schema rencontres_prive/);assert.match(sql,/rencontres_prive.accords v using/);assert.match(sql,/identifiant_activite_reserve/);});
 

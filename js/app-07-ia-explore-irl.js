@@ -4707,6 +4707,7 @@ function _suspendreLectureRefus(id, uid) {
   if (_vueRefusSortie?.id === id && _vueRefusSortie.uid === uid) {
     _vueRefusSortie.lecture++;
     _vueRefusSortie.refuse = false;
+    _vueRefusSortie.participantsRelus = false;
   }
   return () => {
     const reste = _ecrituresRsvp.get(cle) - 1;
@@ -4728,13 +4729,15 @@ async function _relireRefusFiche(id) {
     const {data, error} = await supa.rpc("mon_refus_demande_sortie", {p_event_id: id});
     if (error || typeof data !== "boolean" || !actuelle()) return;
     const perime = data && !!myRsvp(id);
-    if (vue.refuse === data && !perime) return;
+    const changement = vue.refuse !== data || perime;
+    if (!changement && (!data || vue.participantsRelus)) return;
+    if (changement) vue.participantsRelus = false;
     vue.refuse = data;
     if (perime) {
       _setMyRsvpLocal(id, null);
       saveState();
     }
-    _refreshEventDetailIfOpen(id);
+    if (changement) _refreshEventDetailIfOpen(id);
     if (data) {
       const lu = await supaLireParticipants([id], "refus_demande");
       if (!actuelle()) return;
@@ -4743,6 +4746,7 @@ async function _relireRefusFiche(id) {
         if (lu.listesLues) _poserListesRelues(ev, lu);
         if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
       }
+      vue.participantsRelus = lu.listesLues && lu.comptesLus;
       _patchEventCardJoin(id);
       _refreshEventDetailIfOpen(id);
     }
