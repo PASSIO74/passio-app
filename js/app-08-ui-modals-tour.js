@@ -2228,7 +2228,7 @@ function _prevenirMentionsBobine(post) {
   try { saveState(); } catch (e) {}
   try {
     Promise.resolve(_lireDestinatairesMentions(post.authorId, post.overlays)).then(function (ids) {
-      if (ids && ids.length) _prevenirMentionsStory(post.overlays, "bobine", ids);
+      if (ids && ids.length && String(post.authorId) === String(MY_UID)) _prevenirMentionsStory(post.overlays, "bobine", ids);
     }).catch(function () {});
   } catch (e) {}
 }
@@ -2236,7 +2236,8 @@ function _prevenirMentionsBobine(post) {
 // 2026-11-26) : si mon compte est PRIVÉ (`profiles.is_private`, relu au
 // SERVEUR), les policies de lecture des stories et des posts ne laissent passer
 // que mes abonnés ACCEPTÉS — un autre compte mentionné apprendrait qu'un contenu
-// existe sans pouvoir l'ouvrir. Compte public : tous les mentionnés. `null` si
+// existe sans pouvoir l'ouvrir. Compte public : tous les mentionnés (hors
+// comptes que j'ai bloqués). `null` si
 // une lecture échoue (jamais un échec pris pour « tout le monde »), ou si
 // l'auteur n'est plus le compte courant.
 async function _lireDestinatairesMentions(auteur, overlays) {
@@ -2247,6 +2248,9 @@ async function _lireDestinatairesMentions(auteur, overlays) {
     if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
     var u = String(o.uid);
     if (u === String(MY_UID) || u.indexOf("u_") === 0 || ids.indexOf(u) >= 0) return;
+    // Un compte que J'AI bloqué n'est jamais prévenu. Celui qui M'A bloqué ne
+    // se voit pas d'ici (RLS `blocks_select_own`) : la messagerie le refuse.
+    if (typeof isBlocked === "function" && isBlocked(u)) return;
     ids.push(u);
   });
   if (!ids.length) return ids;
@@ -2744,7 +2748,7 @@ async function mePublish() {
       if (ok !== true || !serveur) return;
       // Compte privé : seuls les abonnés ACCEPTÉS mentionnés sont prévenus.
       Promise.resolve(_lireDestinatairesMentions(story.authorId, story.overlays)).then(function (ids) {
-        if (ids && ids.length) _prevenirMentionsStory(story.overlays, "story", ids);
+        if (ids && ids.length && String(story.authorId) === String(MY_UID)) _prevenirMentionsStory(story.overlays, "story", ids);
       }).catch(function () {});
     });
   } else {

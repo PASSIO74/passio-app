@@ -27,22 +27,29 @@ const MOI = "a1b2c3d4-0000-4000-8000-00000000d1ff";
 // lecture est journalisée avec ses filtres.
 async function stubSupa(page) {
   await page.evaluate(() => {
-    window.__prive = false; window.__profilErreur = null; window.__abonnes = []; window.__lectures = [];
+    window.__prive = false; window.__profilErreur = null; window.__followsErreur = null; window.__abonnes = []; window.__lectures = [];
+    window.__pendantLecture = null;
     supa = {
       from: (t) => {
-        const f = [];
+        const f = []; let sel = null;
         const rep = () => {
           if (t === "profiles") return window.__profilErreur ? { data: null, error: window.__profilErreur } : { data: { is_private: window.__prive }, error: null };
-          if (t === "follows") return { data: window.__abonnes.map((id) => ({ follower_id: id })), error: null };
+          if (t === "follows") return window.__followsErreur ? { data: null, error: window.__followsErreur } : { data: window.__abonnes.map((id) => ({ follower_id: id })), error: null };
           return { data: null, error: { code: "banc" } };
         };
         const b = {
-          select() { return b; }, eq(c, v) { f.push([c, v]); return b; }, in(c, v) { f.push([c, v]); return b; }, limit() { return b; },
+          select(c) { sel = c; return b; }, eq(c, v) { f.push([c, v]); return b; }, in(c, v) { f.push([c, v]); return b; }, limit() { return b; },
           maybeSingle() { return b; },
-          then(ok, ko) { window.__lectures.push({ t, f }); return Promise.resolve(rep()).then(ok, ko); },
+          then(ok, ko) {
+            window.__lectures.push({ t, sel, f });
+            if (window.__pendantLecture && t === "profiles" && sel === "is_private") { const g = window.__pendantLecture; window.__pendantLecture = null; g(); }
+            return Promise.resolve(rep()).then(ok, ko);
+          },
         };
         return b;
       },
+      channel: () => ({ on() { return this; }, subscribe() { return this; } }),
+      removeChannel() {},
     };
   });
 }
@@ -313,10 +320,12 @@ test("⑩ compte privé : story « tous » et bobine ne préviennent que les abo
   await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
-  // `is_private` relu au SERVEUR pour MON compte ; abonnés ACCEPTÉS parmi les mentionnés.
+  // `is_private` relu au SERVEUR pour MON compte ; abonnés ACCEPTÉS parmi les
+  // mentionnés. Les lectures sont repérées par leur COLONNE : un minuteur de
+  // l'app peut lire `profiles` ou `follows` avec d'autres filtres entre-temps.
   const lectures = await page.evaluate(() => window.__lectures);
-  expect(lectures.find((r) => r.t === "profiles").f).toEqual([["id", MOI]]);
-  expect(lectures.find((r) => r.t === "follows").f).toEqual(expect.arrayContaining([["following_id", MOI], ["status", "accepted"], ["follower_id", [LEA, TOM]]]));
+  expect(lectures.filter((r) => r.t === "profiles" && r.sel === "is_private").map((r) => r.f)).toEqual([[["id", MOI]]]);
+  expect(lectures.find((r) => r.t === "follows" && r.sel === "follower_id").f).toEqual(expect.arrayContaining([["following_id", MOI], ["status", "accepted"], ["follower_id", [LEA, TOM]]]));
   // Aucun abonné accepté parmi les mentionnés : personne.
   await page.evaluate(() => { window.__envois = []; window.__abonnes = []; return window.__publier(); });
   await page.waitForTimeout(500);
@@ -328,11 +337,25 @@ test("⑩ compte privé : story « tous » et bobine ne préviennent que les abo
   await page.evaluate(() => { window.__envois = []; window.__profilErreur = { code: "500" }; window.__publier(); window.__bobine("reel_p2"); });
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Lecture des abonnés en échec : personne.
+  await page.evaluate(() => { window.__envois = []; window.__profilErreur = null; window.__followsErreur = { code: "500" }; window.__publier(); window.__bobine("reel_p2b"); });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Le compte change PENDANT la lecture : personne.
+  await page.evaluate((lea) => { window.__followsErreur = null; window.__abonnes = [lea]; window.__pendantLecture = () => { MY_UID = "a1b2c3d4-0000-4000-8000-00000000d1ee"; }; window.__bobine("reel_p2c", MY_UID); }, LEA);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  await page.evaluate((moi) => { MY_UID = moi; }, MOI);
   // Bobine d'un AUTRE compte (rejeu après changement de compte) : personne, sans lecture.
   await page.evaluate(() => { window.__profilErreur = null; window.__prive = false; window.__lectures = []; window.__bobine("reel_p3", "a1b2c3d4-0000-4000-8000-00000000d1ee"); });
   await page.waitForTimeout(300);
-  expect(await page.evaluate(() => ({ n: window.__envois.length, l: window.__lectures.length }))).toEqual({ n: 0, l: 0 });
-  // Compte PUBLIC : les deux mentionnés sont prévenus.
+  expect(await page.evaluate(() => ({ n: window.__envois.length, l: window.__lectures.filter((r) => r.sel === "is_private").length }))).toEqual({ n: 0, l: 0 });
+  // Compte PUBLIC : les deux mentionnés sont prévenus…
   await page.evaluate(() => window.__publier());
   await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a).sort())).toEqual([LEA, TOM].sort());
+  // … sauf un compte que J'AI bloqué.
+  await page.evaluate((tom) => { window.__envois = []; state.user.blocked = [tom]; window.__publier(); }, TOM);
+  await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
 });
