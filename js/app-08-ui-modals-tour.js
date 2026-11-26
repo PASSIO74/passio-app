@@ -3176,7 +3176,13 @@ function openStoryGroup(authorId) {
 }
 
 function openStoryViewerAt(groupIdx, itemIdx) {
-  try { storyMusiqueDebloquer(); } catch (e) {}
+  // Débloquer l'audio (iPhone) SEULEMENT s'il y a une musique à lire : sinon une
+  // lecture de plus, inutile — et comptée comme telle en mode économe.
+  try {
+    var _avecMusique = (storyGroups || []).some(function (g) { return (g && g.stories || []).some(function (st) {
+      return Array.isArray(st && st.overlays) && st.overlays.some(function (o) { return o && o.type === "musique"; }); }); });
+    if (_avecMusique) storyMusiqueDebloquer();
+  } catch (e) {}
   if (!storyGroups.length) storyGroups = buildStoryGroups();
   if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
