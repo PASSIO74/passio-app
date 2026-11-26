@@ -849,12 +849,18 @@
   // devient faux et la carte ne se pose plus du tout.
   var CLE_BIENVENUE_SESSION = "passio_first_run_bienvenue_fermee";
 
-  function bienvenueFermeeCetteSession() {
-    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) === "1"; } catch (e) { return false; }
+  var _accueilSession = "";
+  function accueilCetteSession() {
+    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) || _accueilSession; } catch (e) { return _accueilSession; }
   }
 
-  function marquerBienvenueFermee() {
-    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, "1"); } catch (e) {}
+  function marquerBienvenueFermee(mode) {
+    _accueilSession = mode === "lecture" ? "lecture" : "1";
+    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, _accueilSession); } catch (e) {}
+  }
+
+  function lectureLibre() {
+    return estVisiteur() && accueilCetteSession() === "lecture";
   }
 
   function carteBienvenueHTML() {
@@ -888,7 +894,7 @@
     // reste à une seule action principale.
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
-      +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
+      +   (dejaChoisi ? '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>' : '')
       +   '<div class="fr-welcome-title" id="frWelcomeTitle">' + escapeHtml(titre) + '</div>'
       +   '<div class="fr-welcome-text">' + escapeHtml(texte) + '</div>'
       +   '<div class="fr-welcome-actions">'
@@ -897,6 +903,7 @@
             : '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Choisir mes passions</button>')
       +   '</div>'
       +   '<div class="fr-welcome-liens">'
+      +     (dejaChoisi ? '' : '<button type="button" class="fr-welcome-lien fr-welcome-parcourir" onclick="PassioFirstRun.fermerBienvenue(\'lecture\')">Parcourir le fil</button>')
       +     (dejaChoisi
             ? '<button type="button" class="fr-welcome-lien fr-welcome-passions" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Modifier mes passions</button>'
             : '<button type="button" class="fr-welcome-lien fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer un compte</button>')
@@ -912,7 +919,7 @@
     var p = prefs();
     // Fermée dans CETTE session : on n'insiste pas. Elle reviendra à la
     // prochaine visite, tant qu'aucun compte n'existe (cf. la note ci-dessus).
-    if (bienvenueFermeeCetteSession()) return false;
+    if (accueilCetteSession()) return false;
     if (document.getElementById("frWelcome")) return true;
     if (ecranOccupe() || ecranActif() !== "feed") return false;
     var premierBloc = document.getElementById("feedPassionsBlock");
@@ -929,10 +936,16 @@
     return true;
   }
 
-  function fermerBienvenue() {
+  function fermerBienvenue(mode) {
     var el = document.getElementById("frWelcome");
     if (el && el.parentNode) el.parentNode.removeChild(el);
-    marquerBienvenueFermee();
+    marquerBienvenueFermee(mode);
+    if (mode === "lecture") {
+      fermerBulle();
+      var fil = document.getElementById("feedList");
+      if (fil) fil.focus({ preventScroll: true });
+      return;
+    }
     // La carte partie, la première indication contextuelle peut prendre sa place.
     planifierTour();
   }
@@ -2121,6 +2134,9 @@
 
   function montrerEtape(id) {
     if (!reperesAutorises()) return false;
+    // Vérifier à l'affichage couvre aussi les rappels déjà armés par un geste
+    // ou une navigation avant que le visiteur ne choisisse de parcourir le fil.
+    if (lectureLibre()) return false;
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
@@ -2243,7 +2259,7 @@
   var _lectureApresValidation = false;
 
   function planifierTour() {
-    if (!reperesAutorises() || tourAbandonne() || _tourPlanifie) return;
+    if (!reperesAutorises() || lectureLibre() || tourAbandonne() || _tourPlanifie) return;
     _tourPlanifie = setTimeout(function () {
       _tourPlanifie = null;
       if (ecranActif() !== "feed" || document.getElementById("frWelcome")) return;
@@ -2617,7 +2633,7 @@
       try {
         if (!estVisiteur()) return;
         if (ecranOccupe() || ecranActif() !== "feed") { planifierAccueil(); return; }
-        if (bienvenueFermeeCetteSession()) { planifierTour(); return; }
+        if (accueilCetteSession()) { planifierTour(); return; }
         if (!poserBienvenue()) { planifierAccueil(); return; }
       } catch (e) {
         // Le corps entier est sous `try` et REPLANIFIE au lieu de conclure :

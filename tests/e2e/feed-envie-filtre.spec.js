@@ -309,7 +309,8 @@ for (const dejaOuvert of [true, false]) {
     } else {
       await expect(page.locator("#frWelcome")).toBeVisible();
       await page.clock.install();
-      await page.locator(".fr-welcome-close").click();
+      await page.getByRole("button", { name: "Choisir mes passions" }).click();
+      await page.getByRole("button", { name: "Revoir les repères" }).click();
     }
     await page.evaluate(() => {
       setFeedIntents(["meet", "create"]);
