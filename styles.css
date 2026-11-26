@@ -14364,6 +14364,26 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 .story-sticker.st-compte:not(button) { cursor: default; }
 /* La rangée de filtres ouverte recouvrait les contrôles lecture/son d une vidéo (relecture du 2026-11-26). */
 .media-editor.me-filtres-ouverts .me-preview-ctrls { visibility: hidden; }
+
+/* ── STORY : MUSIQUE LIBRE (Openverse, 2026-11-26) ── */
+.me-musique-puces { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 8px; scrollbar-width: none; }
+.me-musique-puces::-webkit-scrollbar { display: none; }
+.me-musique-puces .me-filtre { background: rgba(124,58,237,0.12); color: var(--text, #111); border-color: rgba(124,58,237,0.35); }
+.me-musique-ligne { display: flex; align-items: stretch; gap: 6px; }
+.me-musique-ecoute {
+  flex: 0 0 44px; min-height: 44px; border-radius: 12px; border: none; cursor: pointer;
+  background: var(--accent, #7c3aed); color: #fff; font-size: 16px;
+}
+.me-musique-choix { flex: 1 1 auto; min-width: 0; }
+.me-musique-choix b, .me-musique-choix span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.me-musique-source { margin-top: 8px; font-size: 11px; color: var(--muted, #6b7280); }
+.me-sticker-musique, .story-sticker.st-musique { flex-direction: column; background: rgba(255,255,255,0.92); }
+.me-sticker-musique b, .story-sticker.st-musique b { font-size: 14px; }
+.mc-corps { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.mc-titre { font-size: 17px; font-weight: 800; color: var(--text); }
+.mc-artiste { font-size: 14px; color: var(--muted); }
+.mc-lien { font-size: 14px; font-weight: 700; color: var(--accent, #7c3aed); }
+.mc-source { font-size: 12px; color: var(--muted); }
 /* ═══ Stories « Amis proches » et « À la une » (lot E, 2026-11-26) ═══ */
 /* Anneau VERT d'une story « Amis proches » non vue (Instagram). Plus spécifique
    que la règle de thème d'app-05 (`.story-ring:not(.seen):not(.create)`). */
