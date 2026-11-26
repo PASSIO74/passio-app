@@ -62,8 +62,8 @@ async function creer(page, titre) {
   await page.evaluate(() => submitEvent());
 }
 
-async function ouvrirSortieDepuisStudio(page, reponseLien) {
-  await page.evaluate((reponse) => {
+async function ouvrirSortieDepuisStudio(page, reponseLien, confirmation = false) {
+  await page.evaluate(({ reponse, confirmation }) => {
     window.__rpcLiens = [];
     window.__reponseLien = reponse;
     supa.rpc = async (nom, params) => {
@@ -72,9 +72,9 @@ async function ouvrirSortieDepuisStudio(page, reponseLien) {
       return window.__reponseLien;
     };
     window.supaLoadPosts = async () => [];
-    window.PASSIO_INVITE_APRES_CREATION = false;
+    window.PASSIO_INVITE_APRES_CREATION = confirmation;
     goTo("studio");
-  }, reponseLien);
+  }, { reponse: reponseLien, confirmation });
   await page.getByRole("button", { name: "À faire ensemble", exact: true }).click();
   await page.getByRole("textbox", { name: "Ton message" }).fill("Qui vient marcher samedi ?");
   await page.getByRole("button", { name: "Publier", exact: true }).click();
@@ -116,6 +116,95 @@ test("un lien interrompu se reprend depuis le message sans recréer la sortie", 
   expect(await page.evaluate(() => state.userEvents.length)).toBe(1);
   expect(await page.evaluate(() => window.__rpcLiens[0])).toEqual(await page.evaluate(() => window.__rpcLiens[1]));
   expect(await page.evaluate(() => state.userPosts[0].sortieARelier)).toBeUndefined();
+});
+
+test("Voir mon message ouvre la publication d’origine et sa sortie", async ({ page }) => {
+  await banc(page, true);
+  await ouvrirSortieDepuisStudio(page, { data: true, error: null }, true);
+  await page.evaluate(() => submitEvent());
+  const fenetre = page.getByRole("dialog", { name: "Ta sortie est reliée à ton message" });
+  await expect(fenetre.getByRole("button", { name: "Inviter mes amis" })).toBeVisible();
+  const postId = await page.evaluate(() => state.userPosts[0].id);
+  await fenetre.getByRole("button", { name: "Voir mon message" }).click();
+  const detail = page.locator("#postDetailPage");
+  await expect(detail).toBeVisible();
+  await expect(detail.locator(".post-body")).toHaveText("Qui vient marcher samedi ?");
+  await expect(detail.locator("#postDetailComments")).toHaveAttribute("data-thread", postId);
+  await detail.getByRole("button", { name: "Voir la sortie" }).click();
+  await expect(page.locator("#eventDetailPage")).toBeVisible();
+  await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Marche du samedi");
+});
+
+test("la confirmation reprend le même lien et devient Voir mon message", async ({ page }) => {
+  await banc(page, true);
+  await ouvrirSortieDepuisStudio(page, { data: null, error: { message: "Connexion interrompue" } }, true);
+  await page.evaluate(() => submitEvent());
+  const fenetre = page.getByRole("dialog");
+  const reprendre = fenetre.getByRole("button", { name: "Réessayer le lien" });
+  await expect(fenetre).toContainText("Il reste à la relier à ton message.");
+  await reprendre.click();
+  await expect(fenetre).toContainText("Le lien reste en attente.");
+  await page.evaluate(() => {
+    window.__reponseLien = new Promise(resolve => { window.__finLien = resolve; });
+  });
+  await reprendre.click();
+  await expect(fenetre.getByRole("button", { name: "Vérification…" })).toBeDisabled();
+  await page.evaluate(() => window.__finLien({ data: true, error: null }));
+  await expect(fenetre.getByRole("button", { name: "Voir mon message" })).toBeVisible();
+  const resultat = await page.evaluate(() => ({
+    appels: window.__rpcLiens, messages: state.userPosts.length, sorties: state.userEvents.length,
+    demande: { p_post_id: state.userPosts[0].id, p_event_id: state.userEvents[0].id },
+  }));
+  expect(resultat.appels).toEqual(Array(3).fill(resultat.demande));
+  expect([resultat.messages, resultat.sorties]).toEqual([1, 1]);
+});
+
+test("une reprise terminée après la fermeture garde le nouvel écran intact", async ({ page }) => {
+  await banc(page, true);
+  await ouvrirSortieDepuisStudio(page, { data: null, error: { message: "Connexion interrompue" } }, true);
+  await page.evaluate(() => submitEvent());
+  await page.evaluate(() => {
+    window.__reponseLien = new Promise(resolve => { window.__finLien = resolve; });
+  });
+  await page.getByRole("button", { name: "Réessayer le lien", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Fermer", exact: true }).click();
+  await page.evaluate(() => {
+    openModal('<div class="modal-title">Autre fenêtre</div>');
+    window.__finLien({ data: true, error: null });
+  });
+  await expect.poll(() => page.evaluate(() => state.userPosts[0].eventId)).toBeTruthy();
+  await expect(page.getByRole("dialog", { name: "Autre fenêtre" })).toBeVisible();
+});
+
+test("après un refus définitif, la confirmation indique le refus et conserve l’invitation", async ({ page }) => {
+  await banc(page, true);
+  await ouvrirSortieDepuisStudio(page, { data: null, error: { message: "Connexion interrompue" } }, true);
+  await page.evaluate(() => submitEvent());
+  await page.evaluate(() => { window.__reponseLien = { data: false, error: null }; });
+  const fenetre = page.getByRole("dialog");
+  await fenetre.getByRole("button", { name: "Réessayer le lien" }).click();
+  await expect(fenetre).toContainText("Le lien avec ton message a été refusé.");
+  await expect(fenetre.getByRole("button", { name: "Inviter mes amis" })).toBeVisible();
+  await expect(fenetre.getByRole("button", { name: /Réessayer le lien|Voir mon message/ })).toHaveCount(0);
+  expect(await page.evaluate(() => state.userPosts[0].eventId)).toBeFalsy();
+});
+
+test("quitter le fil pendant le premier rattachement empêche la confirmation de recouvrir le nouvel écran", async ({ page }) => {
+  await banc(page, true);
+  await ouvrirSortieDepuisStudio(page, null, true);
+  await page.evaluate(() => {
+    window.__reponseLien = new Promise(resolve => { window.__finLien = resolve; });
+    window.__creationStudio = submitEvent();
+  });
+  await expect.poll(() => page.evaluate(() => window.__rpcLiens.length)).toBe(1);
+  await page.evaluate(async () => {
+    goTo("messages");
+    window.__finLien({ data: true, error: null });
+    await window.__creationStudio;
+  });
+  await expect(page.locator("#screen-messages")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => state.userPosts[0].eventId)).toBeTruthy();
 });
 
 test("une sortie refusée ou un formulaire abandonné ne rattachent pas le message", async ({ page }) => {

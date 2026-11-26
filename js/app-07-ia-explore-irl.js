@@ -8565,6 +8565,7 @@ async function submitEvent(editId) {
   const inviteConv = editId ? null : lireInvitationFormulaire();
   // Le choix « Publier aussi dans le fil » (2026-11-23) : lu au même moment.
   const auFil = editId ? false : _lireChoixAuFil();
+  const ecranStudio = sourceStudio && document.querySelector(".screen.active");
 
   closeModal();
   toast(editId ? "Enregistrement…" : "Publication en cours…");
@@ -8655,29 +8656,36 @@ async function submitEvent(editId) {
   // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   renderIRL();
+  if (sourceStudio && MY_UID !== auteurStudio) return;
+  const studioQuitte = sourceStudio && (!ecranStudio?.classList.contains("active")
+    || document.getElementById("modalBackdrop")?.classList.contains("active"));
+  const confirmationStudio = sourceStudio && !studioQuitte && ok && backend && !inviteConv
+    && proposerInvitationActivite(ev, { postId: sourceStudio, auteur: auteurStudio, lien: lienStudio });
   // ⚠️ LE TYPE EST CONDITIONNEL, ET C'EST LE POINT. Le message d'échec a perdu son
   // « ⚠️ » de tête : sans un type distinct, il serait peint exactement comme la
   // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
   // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
-  if (sourceStudio && (!backend || !ok)) {
-    toast(backend
-      ? "Publication à confirmer. Tu peux réessayer le lien depuis le menu de ton message."
-      : "Sortie enregistrée uniquement sur cet appareil.", "warning");
-  } else if (sourceStudio && lienStudio !== "liee") {
-    toast(lienStudio === "attente"
-      ? "Sortie publiée. Pour réessayer le lien, ouvre le menu de ton message."
-      : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
-  } else toast(ok
-    ? (editId ? "Activité mise à jour"
-      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
-    : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
-    ok ? "success" : "warning");
+  if (!studioQuitte && !confirmationStudio) {
+    if (sourceStudio && (!backend || !ok)) {
+      toast(backend
+        ? "Publication à confirmer. Tu peux réessayer le lien depuis le menu de ton message."
+        : "Sortie enregistrée uniquement sur cet appareil.", "warning");
+    } else if (sourceStudio && lienStudio !== "liee") {
+      toast(lienStudio === "attente"
+        ? "Sortie publiée. Pour réessayer le lien, ouvre le menu de ton message."
+        : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
+    } else toast(ok
+      ? (editId ? "Activité mise à jour"
+        : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
+      : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+      ok ? "success" : "warning");
+  }
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
   // Créée depuis une conversation : l'invitation part DANS la conversation
   // (carte d'activité) à la place de la fenêtre « Inviter mes amis ».
   if (inviteConv) envoyerInvitationActivite(ev, inviteConv, ok && backend);
-  else if (ok && backend && !editId) proposerInvitationActivite(ev);
+  else if (ok && backend && !editId && !sourceStudio) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   // …seulement si la personne l'a choisi (« Publier aussi dans le fil »). Refusée,
   // l'activité est notée HORS FIL : le rattrapage ne la publiera jamais non plus.
@@ -8754,32 +8762,79 @@ function _inviteApresCreationActive() {
   return true;
 }
 
-function proposerInvitationActivite(ev) {
-  if (!ev || !ev.id || !_inviteApresCreationActive()) return;
+function proposerInvitationActivite(ev, studio) {
+  if (!ev || !ev.id || !_inviteApresCreationActive()) return false;
   const fond = document.getElementById("modalBackdrop");
-  if (fond && fond.classList.contains("active")) return;
+  if (!fond || fond.classList.contains("active")) return false;
   const d = fmtEventDate(ev.date);
   const quand = [d.day, d.month].filter(Boolean).join(" ") + (d.time ? ", " + d.time : "");
+  const titreLie = "Ta sortie est reliée à ton message";
+  const refus = "Le lien avec ton message a été refusé.";
+  const liee = studio?.lien === "liee";
+  const attente = studio?.lien === "attente";
+  const actionStudio = liee || attente;
+  const titre = studio ? (liee ? titreLie : "Ta sortie est créée") : "Ton activité est en ligne 🎉";
+  const precision = studio ? (attente ? "Il reste à la relier à ton message." : refus)
+    : "Une activité se remplit d'abord avec les gens que tu connais. Envoie-la à ton groupe ou à tes amis : le lien les amène directement dessus.";
   openModal(`
-    <div class="modal-title">Ton activité est en ligne 🎉</div>
-    <div class="modal-subtitle">Une activité se remplit d'abord avec les gens que tu connais. Envoie-la à ton groupe ou à tes amis : le lien les amène directement dessus.</div>
+    <div aria-live="polite" aria-atomic="true">
+      <div class="modal-title" ${studio ? 'style="margin-inline-end:36px;"' : ""}>${titre}</div>
+      <div class="modal-subtitle" ${liee ? "hidden" : ""}>${liee ? "" : precision}</div>
+    </div>
     <div id="_inviteEvApercu" style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin:14px 0 16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
       <strong style="color:var(--text);">${escapeHtml(ev.title || "Activité")}</strong><br>${escapeHtml(quand)}${ev.city ? " · " + escapeHtml(ev.city) : ""}
     </div>
-    <button class="btn primary block" id="_inviteEvBtn" style="margin-bottom:10px;">${shareIconSvg(16)} Inviter mes amis</button>
-    <button class="btn ghost block" id="_inviteEvPlusTard">Plus tard</button>
+    ${actionStudio ? `<button type="button" class="btn primary block" id="actionLienStudio" style="margin-bottom:10px;">${liee ? "Voir mon message" : "Réessayer le lien"}</button>` : ""}
+    <button type="button" class="btn ${actionStudio ? "ghost" : "primary"} block" id="_inviteEvBtn" style="margin-bottom:10px;">${shareIconSvg(16)} Inviter mes amis</button>
+    ${studio ? "" : '<button type="button" class="btn ghost block" id="_inviteEvPlusTard">Plus tard</button>'}
   `);
   try { if (window.tel && tel.action) tel.action("activite_invite_proposee", { v: 1 }); } catch (e) {}
   // Écouteurs posés en code : aucun texte d'autrui dans un onclick inline.
-  setTimeout(() => {
-    const go = document.getElementById("_inviteEvBtn");
-    if (go) go.addEventListener("click", function () { inviterActivite(ev, quand); });
-    const tard = document.getElementById("_inviteEvPlusTard");
-    if (tard) tard.addEventListener("click", function () {
-      try { if (window.tel && tel.action) tel.action("activite_invite_plus_tard", { v: 1 }); } catch (e) {}
-      closeModal();
-    });
-  }, 0);
+  const inviter = document.getElementById("_inviteEvBtn");
+  inviter.onclick = () => { if (!studio || MY_UID === studio.auteur) inviterActivite(ev, quand); };
+  const tard = document.getElementById("_inviteEvPlusTard");
+  if (tard) tard.onclick = () => {
+    try { if (window.tel && tel.action) tel.action("activite_invite_plus_tard", { v: 1 }); } catch (e) {}
+    closeModal();
+  };
+  const action = document.getElementById("actionLienStudio");
+  if (action) {
+    const fenetreActive = () => MY_UID === studio.auteur && action.isConnected && fond.classList.contains("active");
+    action.onclick = async () => {
+      if (!fenetreActive() || action.disabled) return;
+      if (studio.lien === "liee") {
+        closeModal();
+        await openPost(studio.postId);
+        const page = document.getElementById("postDetailPage");
+        if (MY_UID === studio.auteur && !fond.classList.contains("active") && page?.style.display === "flex"
+            && page.querySelector("#postDetailComments")?.dataset.thread === studio.postId) {
+          page.querySelector("button")?.focus({ preventScroll: true });
+        }
+        return;
+      }
+      action.disabled = true;
+      action.textContent = "Vérification…";
+      const verdict = await relierSortieStudio(studio.postId, ev.id);
+      if (!fenetreActive()) return;
+      studio.lien = verdict;
+      const sousTitre = fond.querySelector(".modal-subtitle");
+      sousTitre.hidden = verdict === "liee";
+      action.disabled = false;
+      if (verdict === "liee") {
+        fond.querySelector(".modal-title").textContent = titreLie;
+        action.textContent = "Voir mon message";
+      } else if (verdict === "attente") {
+        sousTitre.textContent = "Le lien reste en attente. Réessaie quand tu as du réseau.";
+        action.textContent = "Réessayer le lien";
+      } else {
+        sousTitre.textContent = refus;
+        action.remove();
+        inviter.classList.replace("ghost", "primary");
+        inviter.focus();
+      }
+    };
+  }
+  return true;
 }
 
 // Appelé DEPUIS le clic (geste utilisateur) : `partagerOuCopier` peut ouvrir la
