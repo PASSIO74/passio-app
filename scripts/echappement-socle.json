@@ -272,6 +272,22 @@
     {
       "cle": "js/app-08-ui-modals-tour.js | style | st.align",
       "raison": "_storyTexteStyles (app-08) : liste fermée — « left » ou « right » seulement si o.align est EXACTEMENT l'un d'eux, sinon le littéral « center » ; la valeur reçue n'est jamais recopiée."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | taille",
+      "raison": "Math.max(10, Math.min(96, _nb(o.size, 26))) : un NOMBRE borné (app-08 _storyOverlaysHtml), jamais une chaîne reçue."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | st.graisse",
+      "raison": "_storyPolice (app-08) : graisse numérique d'une entrée de ME_POLICES, liste fermée en dur ; l'identifiant reçu ne fait que choisir l'entrée."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | st.famille",
+      "raison": "_storyPolice (app-08) : pile de polices LITTÉRALE d'une entrée de ME_POLICES ; l'identifiant reçu (o.font) ne fait que choisir l'entrée, il n'est jamais recopié."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | (st.ombre ? 'text-shadow:' + st.ombre + ';' : '')",
+      "raison": "_storyTexteStyles (app-08) : ombre néon assemblée de littéraux et de `couleur` = _cssColor(o.color) (qui refuse ; \" ' < > { } & \\\\ et url())."
     }
   ]
 }

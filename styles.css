@@ -14195,3 +14195,55 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 @supports (field-sizing: content) {
   .me-te-champ { field-sizing: content; width: auto; min-width: 3ch; }
 }
+
+/* ── STORY : TAILLE, POLICES, DESSIN (2026-11-26, lot A) ── */
+.me-te-polices {
+  display: flex; gap: 8px; padding: 10px 18px 2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.me-te-polices::-webkit-scrollbar { display: none; }
+.me-te-police {
+  flex: 0 0 auto; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid rgba(255,255,255,0.7); background: rgba(0,0,0,0.3);
+  color: #fff; font-size: 15px; cursor: pointer; white-space: nowrap;
+}
+.me-te-police.actif { background: #fff; color: #111; border-color: #fff; }
+/* Réglette de taille verticale, bord gauche (comme Instagram). Pivotée plutôt
+   que `writing-mode` : WebKit ancien ne sait pas dresser un range. */
+.me-te-taille {
+  position: absolute; left: -78px; top: 300px; width: 190px; height: 32px;
+  transform: rotate(-90deg); margin: 0; z-index: 2;
+  accent-color: #fff; background: transparent; cursor: pointer;
+}
+.me-dessin-couche {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
+  pointer-events: none; overflow: visible;
+}
+.media-editor.phase-capture .me-dessin-couche { display: none; }
+.media-editor.me-dessin .me-dessin-couche {
+  pointer-events: auto; z-index: 25; touch-action: none; cursor: crosshair;
+}
+.media-editor.me-dessin .me-overlays { pointer-events: none; }
+.media-editor.me-dessin .me-topbar,
+.media-editor.me-dessin .me-toolbar,
+.media-editor.me-dessin .me-bottom,
+.media-editor.me-dessin .me-preview-ctrls,
+.media-editor.me-dessin .me-creer-hint { visibility: hidden; }
+.me-dessin-barre {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 40; display: none;
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  background: linear-gradient(rgba(0,0,0,0.45), transparent);
+  pointer-events: none;
+}
+.me-dessin-barre.open { display: block; }
+.me-dessin-barre > * { pointer-events: auto; }
+.me-dessin-point { display: block; border-radius: 999px; background: #fff; }
+.story-ov-dessin {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: visible;
+}
+/* La ligne « Visible par… » (LOT-15) a grandi .me-bottom : il recouvrait la moitié
+   basse des outils (Aa, 😀, GIF…), un toucher bas tombait dans le vide. La barre
+   d'outils passe au-dessus et remonte d'autant (story ET bobine). */
+.me-toolbar { z-index: 11; bottom: calc(env(safe-area-inset-bottom) + 92px); }
+.me-preview-ctrls { bottom: calc(env(safe-area-inset-bottom) + 166px); }

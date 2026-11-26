@@ -207,6 +207,7 @@
     <div class="me-canvas" id="meCanvas">
       <video id="meCamVideo" class="me-cam-video" autoplay playsinline muted></video>
       <div class="me-media" id="meMedia"></div>
+      <svg class="me-dessin-couche" id="meDessinSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="me-overlays" id="meOverlays"></div>
       <div class="me-rec-badge" id="meRecBadge"><span class="me-rec-dot"></span><span id="meRecTime">0:00</span></div>
       <div class="me-creer-hint" id="meCreerHint" aria-hidden="true">Touche pour écrire</div>
@@ -236,6 +237,7 @@
         <button type="button" class="me-tool" onclick="meAddText()" title="Texte" aria-label="Ajouter un texte">Aa</button>
         <button type="button" class="me-tool" onclick="meAddEmoji()" title="Emoji" aria-label="Ajouter un emoji">😀</button>
         <button type="button" class="me-tool" onclick="meAddGif()" title="GIF" aria-label="Ajouter un GIF">GIF</button>
+        <button type="button" class="me-tool" onclick="meOuvrirDessin()" title="Dessiner" aria-label="Dessiner">✏️</button>
         <button type="button" class="me-tool" onclick="mePickMedia()" title="Changer de média" aria-label="Changer de média">🖼️</button>
       </div>
     </div>
@@ -255,9 +257,25 @@
         <button type="button" class="me-te-ok" id="meTeOk" onclick="meFermerEditeurTexte(true)">OK</button>
       </div>
       <div class="me-te-couleurs" id="meTeCouleurs" role="group" aria-label="Couleur du texte"></div>
+      <div class="me-te-polices" id="meTePolices" role="group" aria-label="Police du texte"></div>
+      <input type="range" class="me-te-taille" id="meTeTaille" min="16" max="64" step="1" value="30" aria-label="Taille du texte"/>
       <div class="me-te-zone" id="meTeZone">
         <textarea id="meTeChamp" class="me-te-champ" rows="1" maxlength="200" placeholder="Écris quelque chose…" aria-label="Texte de la story"></textarea>
       </div>
+    </div>
+
+    <!-- Dessin à main levée (2026-11-26) : crayon, couleurs, épaisseur,
+         annuler le dernier trait, tout effacer. Les traits voyagent en
+         VECTEURS dans `overlays` ({type:"dessin"}), jamais en image base64. -->
+    <div class="me-dessin-barre" id="meDessinBarre" aria-hidden="true">
+      <div class="me-te-haut">
+        <button type="button" class="me-te-btn" id="meDessinAnnuler" onclick="meDessinAnnuler()" aria-label="Annuler le dernier trait">↶</button>
+        <button type="button" class="me-te-btn" id="meDessinEpaisseur" onclick="meDessinEpaisseur()" aria-label="Épaisseur du trait"><span class="me-dessin-point"></span></button>
+        <button type="button" class="me-te-btn" id="meDessinGomme" onclick="meDessinGomme()" aria-label="Gomme" aria-pressed="false">🧽</button>
+        <button type="button" class="me-te-btn" id="meDessinEffacer" onclick="meDessinToutEffacer()" aria-label="Tout effacer">🗑️</button>
+        <button type="button" class="me-te-ok" id="meDessinOk" onclick="meFermerDessin()">OK</button>
+      </div>
+      <div class="me-te-couleurs" id="meDessinCouleurs" role="group" aria-label="Couleur du crayon"></div>
     </div>
   </div>
 

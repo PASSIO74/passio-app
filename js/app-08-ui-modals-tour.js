@@ -907,7 +907,7 @@ function openStudioAsStory() { meOpen("story"); }
 // Média (photo/vidéo) ou fond dégradé (story) + overlays déplaçables :
 // texte, emoji, GIF. Publie en story (24h) ou en bobine (is_reel).
 // ════════════════════════════════════════════════════════════════════════
-var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
@@ -941,10 +941,11 @@ function meOpen(mode) {
   // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
   // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
   if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
-  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
+  _meDessinRendre();
   // Fond noir pendant la capture (pas le dégradé de l'ancien composer).
   document.getElementById("meCanvas").style.background = "#000";
   // Placeholder gardé masqué : il ne sert que de fallback si la caméra échoue.
@@ -981,6 +982,7 @@ function meClose() {
   meStopCamera();
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
+  meFermerDessin();
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
@@ -998,7 +1000,8 @@ function meTopBack() {
 }
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
-  meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
+  meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
+  meFermerDessin(); _meDessinRendre();
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
@@ -1257,7 +1260,7 @@ function _meMajBoutonsFond() {
 }
 function _meMajVide() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
-  ed.classList.toggle("me-vide", !meState.overlays.length);
+  ed.classList.toggle("me-vide", !meState.overlays.length && !(meState.dessin && meState.dessin.length));
 }
 function _meReadFile(file) {
   return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
@@ -1705,17 +1708,36 @@ var ME_ALIGN_SVG = {
   right: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M9 10h8M3 15h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
 };
 // État de l'éditeur ; `couleur` survit d'un texte à l'autre (comme Instagram).
-var meTe = { ov: null, couleur: "#ffffff", style: "", align: "center" };
+var meTe = { ov: null, couleur: "#ffffff", style: "", align: "center", police: "classique", taille: 30 };
 
 // Styles d'un texte, partagés par l'éditeur ET le lecteur de story. Les valeurs
 // viennent d'un autre compte côté lecteur : alignement en liste fermée,
 // couleurs par `_cssColor`, contraste calculé ici (jamais lu dans la charge).
+// Polices (2026-11-26) : liste FERMÉE — un identifiant reçu d'un autre compte
+// ne choisit qu'une entrée, il n'est jamais recopié dans le style. Polices du
+// système uniquement (rien à télécharger, la CSP reste fermée).
+var ME_POLICES = [
+  { id: "classique", nom: "Classique", famille: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", graisse: 800 },
+  { id: "machine", nom: "Machine", famille: "'Courier New', Courier, ui-monospace, monospace", graisse: 700 },
+  { id: "elegante", nom: "Élégante", famille: "Georgia, 'Times New Roman', serif", graisse: 700 },
+  { id: "neon", nom: "Néon", famille: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", graisse: 800, neon: true },
+  { id: "manuscrite", nom: "Manuscrite", famille: "'Segoe Script', 'Snell Roundhand', 'Brush Script MT', cursive", graisse: 400 }
+];
+function _storyPolice(id) {
+  for (var i = 0; i < ME_POLICES.length; i++) if (ME_POLICES[i].id === id) return ME_POLICES[i];
+  return ME_POLICES[0];
+}
 function _storyTexteStyles(o) {
   var couleur = _cssColor((o && o.color) || "#ffffff");
   var align = (o && (o.align === "left" || o.align === "right")) ? o.align : "center";
   var fond = !!(o && o.style === "fond");
   var clair = /^#(fff|ffffff|facc15)$/i.test(couleur);
-  return { align: align, texte: fond ? (clair ? "#111111" : "#ffffff") : couleur, fond: fond ? couleur : "" };
+  var pol = _storyPolice(o && o.font);
+  var ombre = (pol.neon && !fond) ? ("0 0 4px #fff, 0 0 10px " + couleur + ", 0 0 22px " + couleur) : "";
+  return {
+    align: align, texte: fond ? (clair ? "#111111" : "#ffffff") : (pol.neon ? "#ffffff" : couleur), fond: fond ? couleur : "",
+    famille: pol.famille, graisse: pol.graisse, ombre: ombre
+  };
 }
 function _mePeindreTexte(el, ov) {
   if (!el) return;
@@ -1726,6 +1748,9 @@ function _mePeindreTexte(el, ov) {
   content.style.background = st.fond || "";
   el.style.color = st.texte;
   el.style.textAlign = st.align;
+  el.style.fontFamily = st.famille;
+  el.style.fontWeight = String(st.graisse);
+  el.style.textShadow = st.ombre || (st.fond ? "none" : "");
   if (ov.size) el.style.fontSize = ov.size + "px";
 }
 function _meTeReinitialiser() {
@@ -1743,8 +1768,9 @@ function meOuvrirEditeurTexte(ov) {
   var b = document.getElementById("meEmojiBar"); if (b) b.remove();
   var g = document.getElementById("meGifPanel"); if (g) g.remove();
   meTe.ov = ov || null;
-  if (ov) { meTe.couleur = ov.color || "#ffffff"; meTe.style = ov.style === "fond" ? "fond" : ""; meTe.align = ov.align || "center"; }
-  else { meTe.style = ""; meTe.align = "center"; }
+  if (ov) { meTe.couleur = ov.color || "#ffffff"; meTe.style = ov.style === "fond" ? "fond" : ""; meTe.align = ov.align || "center"; meTe.police = _storyPolice(ov.font).id; meTe.taille = Math.max(16, Math.min(64, Number(ov.size) || 30)); }
+  else { meTe.style = ""; meTe.align = "center"; meTe.taille = 30; }
+  var curseur = document.getElementById("meTeTaille"); if (curseur) curseur.value = String(meTe.taille);
   champ.value = ov ? (ov.text || "") : "";
   if (ov) { var el = document.getElementById(ov.id); if (el) el.classList.add("me-en-edition"); }
   var row = document.getElementById("meTeCouleurs");
@@ -1759,6 +1785,18 @@ function meOuvrirEditeurTexte(ov) {
       row.appendChild(bt);
     });
   }
+  var rangeePol = document.getElementById("meTePolices");
+  if (rangeePol && !rangeePol.childElementCount) {
+    ME_POLICES.forEach(function (pol) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.className = "me-te-police"; bt.textContent = pol.nom;
+      bt.style.fontFamily = pol.famille; bt.style.fontWeight = String(pol.graisse);
+      bt.setAttribute("data-police", pol.id); bt.setAttribute("aria-label", "Police " + pol.nom);
+      bt.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+      bt.addEventListener("click", function () { meTe.police = pol.id; _meTeAppliquer(); try { champ.focus(); } catch (e) {} });
+      rangeePol.appendChild(bt);
+    });
+  }
   box.classList.toggle("avec-fond", ed.classList.contains("me-fond"));
   _meMajBoutonsFond();
   box.classList.add("open"); box.setAttribute("aria-hidden", "false");
@@ -1768,12 +1806,18 @@ function meOuvrirEditeurTexte(ov) {
 }
 function _meTeAppliquer() {
   var champ = document.getElementById("meTeChamp"); if (!champ) return;
-  var st = _storyTexteStyles({ color: meTe.couleur, style: meTe.style, align: meTe.align });
+  var st = _storyTexteStyles({ color: meTe.couleur, style: meTe.style, align: meTe.align, font: meTe.police });
   champ.style.color = st.texte;
   champ.style.caretColor = st.texte;
   champ.style.background = st.fond || "transparent";
   champ.style.textAlign = st.align;
-  champ.style.textShadow = st.fond ? "none" : "";
+  champ.style.textShadow = st.ombre || (st.fond ? "none" : "");
+  champ.style.fontFamily = st.famille;
+  champ.style.fontWeight = String(st.graisse);
+  // `important` : le filet anti-zoom iOS pose 16 px !important sur tout textarea
+  // tactile ; la réglette va de 16 à 64, jamais sous le seuil.
+  champ.style.setProperty("font-size", meTe.taille + "px", "important");
+  document.querySelectorAll("#meTePolices .me-te-police").forEach(function (bt) { bt.classList.toggle("actif", bt.getAttribute("data-police") === meTe.police); });
   var sb = document.getElementById("meTeStyle");
   if (sb) { sb.classList.toggle("actif", meTe.style === "fond"); sb.setAttribute("aria-pressed", meTe.style === "fond" ? "true" : "false"); }
   var ab = document.getElementById("meTeAlign"); if (ab) ab.innerHTML = ME_ALIGN_SVG[st.align];
@@ -1812,10 +1856,10 @@ function meFermerEditeurTexte(valider) {
     if (el) el.classList.remove("me-en-edition");
     if (valider) {
       if (!t) meRemoveOverlay(ov.id);
-      else { ov.text = t; ov.color = meTe.couleur; ov.style = meTe.style || undefined; ov.align = meTe.align; _mePeindreTexte(el, ov); }
+      else { ov.text = t; ov.color = meTe.couleur; ov.style = meTe.style || undefined; ov.align = meTe.align; ov.font = meTe.police; ov.size = meTe.taille; _mePeindreTexte(el, ov); }
     }
   } else if (valider && t) {
-    meAddOverlay({ type: "text", text: t, color: meTe.couleur, style: meTe.style || undefined, align: meTe.align, x: 50, y: 42, size: 30 });
+    meAddOverlay({ type: "text", text: t, color: meTe.couleur, style: meTe.style || undefined, align: meTe.align, font: meTe.police, x: 50, y: 42, size: meTe.taille });
   }
   champ.value = "";
   _meMajVide();
@@ -1827,9 +1871,134 @@ function meFermerEditeurTexte(valider) {
     if (!champ || champ._meBranche) return;
     champ._meBranche = true;
     champ.addEventListener("input", _meTeAjuster);
+    var curseur = document.getElementById("meTeTaille");
+    if (curseur) {
+      curseur.addEventListener("input", function () { meTe.taille = Math.max(16, Math.min(64, Number(curseur.value) || 30)); _meTeAppliquer(); });
+      // Rendre le focus au champ après la réglette : le clavier reste ouvert.
+      curseur.addEventListener("change", function () { try { champ.focus(); } catch (e) {} });
+    }
     champ.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); meFermerEditeurTexte(true); } });
     // Toucher hors du champ = « OK » (comme Instagram).
     if (zone) zone.addEventListener("click", function (e) { if (e.target === zone) meFermerEditeurTexte(true); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+// ── DESSIN À MAIN LEVÉE (2026-11-26) ──────────────────────────────────────
+// Les traits sont des VECTEURS (coordonnées 0–1000 de la scène) : ils voyagent
+// dans `overlays` ({type:"dessin", traits:[{c,w,p}]}) — jamais une image base64
+// en base. Bornes : 60 traits, 6 000 nombres en tout.
+var ME_DESSIN_EPAISSEURS = [5, 10, 20];
+var ME_DESSIN_MAX_TRAITS = 60, ME_DESSIN_MAX_NOMBRES = 6000;
+var meDessin = { couleur: "#ffffff", ep: 1, gomme: false, trait: null, el: null };
+function _meDessinTotal() { return (meState.dessin || []).reduce(function (n, t) { return n + t.p.length; }, 0); }
+function _meDessinPolyline(t, i) {
+  var ns = "http://www.w3.org/2000/svg";
+  var pl = document.createElementNS(ns, "polyline");
+  var pts = []; for (var k = 0; k + 1 < t.p.length; k += 2) pts.push(t.p[k] + "," + t.p[k + 1]);
+  pl.setAttribute("points", pts.join(" "));
+  pl.setAttribute("fill", "none");
+  pl.setAttribute("stroke", t.c);
+  pl.setAttribute("stroke-width", String(t.w));
+  pl.setAttribute("stroke-linecap", "round");
+  pl.setAttribute("stroke-linejoin", "round");
+  pl.setAttribute("vector-effect", "non-scaling-stroke");
+  if (i != null) pl.setAttribute("data-i", String(i));
+  return pl;
+}
+function _meDessinRendre() {
+  var svg = document.getElementById("meDessinSvg"); if (!svg) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  (meState.dessin || []).forEach(function (t, i) { svg.appendChild(_meDessinPolyline(t, i)); });
+}
+function meOuvrirDessin() {
+  var ed = document.getElementById("mediaEditor"); var barre = document.getElementById("meDessinBarre");
+  if (!ed || !barre || !ed.classList.contains("phase-edit")) return;
+  if (ed.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
+  ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  document.querySelectorAll("#meOverlays .me-overlay").forEach(function (e) { e.classList.remove("selected"); });
+  var row = document.getElementById("meDessinCouleurs");
+  if (row && !row.childElementCount) {
+    ME_TEXTE_COULEURS.forEach(function (c) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.className = "me-te-couleur"; bt.style.background = c;
+      bt.setAttribute("data-couleur", c); bt.setAttribute("aria-label", "Crayon " + c);
+      bt.addEventListener("click", function () { meDessin.couleur = c; meDessin.gomme = false; _meDessinBarre(); });
+      row.appendChild(bt);
+    });
+  }
+  meDessin.gomme = false;
+  ed.classList.add("me-dessin");
+  barre.classList.add("open"); barre.setAttribute("aria-hidden", "false");
+  _meDessinBarre();
+}
+function meFermerDessin() {
+  var ed = document.getElementById("mediaEditor"); var barre = document.getElementById("meDessinBarre");
+  if (ed) ed.classList.remove("me-dessin");
+  if (barre) { barre.classList.remove("open"); barre.setAttribute("aria-hidden", "true"); }
+  meDessin.trait = null; meDessin.el = null; meDessin.gomme = false;
+  _meMajVide();
+}
+function _meDessinBarre() {
+  document.querySelectorAll("#meDessinCouleurs .me-te-couleur").forEach(function (bt) { bt.classList.toggle("actif", !meDessin.gomme && bt.getAttribute("data-couleur") === meDessin.couleur); });
+  var g = document.getElementById("meDessinGomme");
+  if (g) { g.classList.toggle("actif", meDessin.gomme); g.setAttribute("aria-pressed", meDessin.gomme ? "true" : "false"); }
+  var pt = document.querySelector("#meDessinEpaisseur .me-dessin-point");
+  if (pt) { var w = ME_DESSIN_EPAISSEURS[meDessin.ep]; pt.style.width = pt.style.height = Math.max(6, Math.round(w * 0.9)) + "px"; pt.style.background = meDessin.couleur; }
+}
+function meDessinEpaisseur() { meDessin.ep = (meDessin.ep + 1) % ME_DESSIN_EPAISSEURS.length; _meDessinBarre(); }
+function meDessinGomme() { meDessin.gomme = !meDessin.gomme; _meDessinBarre(); }
+function meDessinAnnuler() { if (meState.dessin && meState.dessin.length) { meState.dessin.pop(); _meDessinRendre(); } }
+function meDessinToutEffacer() { meState.dessin = []; _meDessinRendre(); }
+function _meDessinPoint(svg, e) {
+  var r = svg.getBoundingClientRect();
+  var x = Math.round((e.clientX - r.left) / (r.width || 1) * 1000);
+  var y = Math.round((e.clientY - r.top) / (r.height || 1) * 1000);
+  return [Math.max(0, Math.min(1000, x)), Math.max(0, Math.min(1000, y))];
+}
+function _meDessinGommer(e) {
+  var cible = document.elementFromPoint(e.clientX, e.clientY);
+  var i = cible && cible.getAttribute && cible.getAttribute("data-i");
+  if (i == null || !cible.closest || !cible.closest("#meDessinSvg")) return;
+  meState.dessin.splice(Number(i), 1);
+  _meDessinRendre();
+}
+(function _meDessinBrancher() {
+  function brancher() {
+    var svg = document.getElementById("meDessinSvg");
+    if (!svg || svg._meBranche) return;
+    svg._meBranche = true;
+    svg.addEventListener("pointerdown", function (e) {
+      var ed = document.getElementById("mediaEditor");
+      if (!ed || !ed.classList.contains("me-dessin")) return;
+      e.preventDefault();
+      if (meDessin.gomme) { _meDessinGommer(e); meDessin.trait = "gomme"; return; }
+      if (meState.dessin.length >= ME_DESSIN_MAX_TRAITS || _meDessinTotal() >= ME_DESSIN_MAX_NOMBRES) { toast("Dessin complet — annule un trait pour continuer"); return; }
+      try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      var p = _meDessinPoint(svg, e);
+      meDessin.trait = { c: meDessin.couleur, w: ME_DESSIN_EPAISSEURS[meDessin.ep], p: [p[0], p[1], p[0], p[1]] };
+      meDessin.el = _meDessinPolyline(meDessin.trait, null);
+      svg.appendChild(meDessin.el);
+    });
+    svg.addEventListener("pointermove", function (e) {
+      if (meDessin.trait === "gomme") { _meDessinGommer(e); return; }
+      var t = meDessin.trait; if (!t || !meDessin.el) return;
+      var p = _meDessinPoint(svg, e);
+      var n = t.p.length;
+      if (Math.hypot(p[0] - t.p[n - 2], p[1] - t.p[n - 1]) < 5) return;
+      if (n >= 1200 || _meDessinTotal() + n >= ME_DESSIN_MAX_NOMBRES) return;
+      if (n === 4 && t.p[0] === t.p[2] && t.p[1] === t.p[3]) t.p.length = 2;
+      t.p.push(p[0], p[1]);
+      var pts = []; for (var k = 0; k + 1 < t.p.length; k += 2) pts.push(t.p[k] + "," + t.p[k + 1]);
+      meDessin.el.setAttribute("points", pts.join(" "));
+    });
+    function fin(e) {
+      var t = meDessin.trait;
+      try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
+      meDessin.trait = null; meDessin.el = null;
+      if (t && t !== "gomme") { meState.dessin.push(t); _meDessinRendre(); _meMajVide(); }
+    }
+    svg.addEventListener("pointerup", fin);
+    svg.addEventListener("pointercancel", fin);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
@@ -1838,7 +2007,7 @@ function meFermerEditeurTexte(valider) {
   document.addEventListener("click", function (e) {
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-edit") || !ed.classList.contains("me-fond")) return;
-    if (ed.classList.contains("me-texte-ouvert")) return;
+    if (ed.classList.contains("me-texte-ouvert") || ed.classList.contains("me-dessin")) return;
     var c = document.getElementById("meCanvas");
     if (!c || !c.contains(e.target)) return;
     if (e.target.closest && e.target.closest(".me-overlay, button")) return;
@@ -2034,7 +2203,7 @@ function _mePinchStart(pointers, ids, ov) {
 function _meOverlaysData() {
   return meState.overlays.map(function(o) {
     var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y), scale: +(o.scale || 1).toFixed(3), rot: Math.round(o.rot || 0) };
-    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; }
+    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; if (o.font && o.font !== "classique") c.font = _storyPolice(o.font).id; }
     if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
     if (o.type === "gif") { c.url = o.url; }
     return c;
@@ -2052,7 +2221,7 @@ async function mePublish() {
   if (_edPub && _edPub.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
   // Une story « Créer » sans rien dessus est un aplat de couleur : Instagram ne
   // la publie pas, nous non plus — on rouvre l'écriture.
-  if (meState.mode === "story" && !meState.media && !meState.overlays.length) {
+  if (meState.mode === "story" && !meState.media && !meState.overlays.length && !(meState.dessin && meState.dessin.length)) {
     toast("Écris quelque chose sur ta story");
     meOuvrirEditeurTexte(null);
     return;
@@ -2064,6 +2233,8 @@ async function mePublish() {
   // voyaient le dégradé par défaut. Il voyage dans `overlays` sous forme
   // d'INDICE dans STORY_BGS — jamais une chaîne CSS d'un autre compte.
   if (meState.mode === "story" && !meState.media) overlays.push({ type: "bg", i: meState.bgIdx });
+  // Le dessin passe SOUS les textes et stickers : premier de la liste.
+  if (meState.dessin && meState.dessin.length) overlays.unshift({ type: "dessin", traits: meState.dessin.map(function (t) { return { c: t.c, w: t.w, p: t.p.slice() }; }) });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
 
@@ -2347,6 +2518,26 @@ function _storyFondCss(s) {
   if (Number.isInteger(i) && i >= 0 && i < STORY_BGS.length) return STORY_BGS[i];
   return (typeof s.bg === "string" && s.bg) ? _cssColor(s.bg) : "var(--grad-hero)";
 }
+// Dessin d'une story d'un AUTRE compte : seuls des nombres bornés et une couleur
+// passée par `_cssColor` entrent dans le SVG.
+function _storyDessinHtml(o) {
+  var nb = function (v, d) { var n = Number(v); return Number.isFinite(n) ? n : d; };
+  var traits = Array.isArray(o && o.traits) ? o.traits.slice(0, 60) : [];
+  var corps = traits.map(function (t) {
+    var p = (t && Array.isArray(t.p)) ? t.p.slice(0, 1200) : [];
+    var pts = [];
+    for (var k = 0; k + 1 < p.length; k += 2) {
+      var x = Math.round(nb(p[k], NaN)), y = Math.round(nb(p[k + 1], NaN));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return "";
+      pts.push(Math.max(0, Math.min(1000, x)) + "," + Math.max(0, Math.min(1000, y)));
+    }
+    if (!pts.length) return "";
+    if (pts.length === 1) pts.push(pts[0]);
+    var w = Math.max(1, Math.min(40, nb(t.w, 8)));
+    return '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + _cssColor(t.c || "#ffffff") + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+  }).join("");
+  return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
+}
 function _storyOverlaysHtml(overlays) {
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
@@ -2362,8 +2553,10 @@ function _storyOverlaysHtml(overlays) {
       var st = _storyTexteStyles(o);
       var interieur = escapeHtml(o.text || "");
       if (st.fond) interieur = '<span class="story-txt-fond" style="background:' + st.fond + ';">' + interieur + '</span>';
-      return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + _nb(o.size, 26) + 'px;font-weight:800;text-align:' + st.align + ';">' + interieur + '</div>';
+      var taille = Math.max(10, Math.min(96, _nb(o.size, 26)));
+      return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + taille + 'px;font-weight:' + st.graisse + ';font-family:' + st.famille + ';' + (st.ombre ? 'text-shadow:' + st.ombre + ';' : '') + 'text-align:' + st.align + ';">' + interieur + '</div>';
     }
+    if (o.type === "dessin") return _storyDessinHtml(o);
     if (o.type === "emoji") {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
     }

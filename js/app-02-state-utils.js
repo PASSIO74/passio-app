@@ -4933,6 +4933,18 @@ function closeCurrentOverlay() {
   }
 
   const editeurMedia = document.getElementById("mediaEditor");
+  // Story (2026-11-26) : le retour pendant l'écriture ou le dessin ferme CET
+  // outil (texte gardé, comme Instagram) et repose l'entrée de l'éditeur — il
+  // fermait tout l'éditeur, texte en cours perdu.
+  if (editeurMedia && editeurMedia.classList.contains("open")
+      && (editeurMedia.classList.contains("me-texte-ouvert") || editeurMedia.classList.contains("me-dessin"))) {
+    try {
+      if (editeurMedia.classList.contains("me-texte-ouvert") && typeof meFermerEditeurTexte === "function") meFermerEditeurTexte(true);
+      if (editeurMedia.classList.contains("me-dessin") && typeof meFermerDessin === "function") meFermerDessin();
+    } catch (e) {}
+    if (pushHistorySafe({ overlay: "media", passioOverlay: true }, "#media")) _navOverlayDepth++;
+    return true;
+  }
   if (editeurMedia && editeurMedia.classList.contains("open")) {
     // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de
     // ce panneau sans lui laisserait l'objectif actif en arrière-plan.
