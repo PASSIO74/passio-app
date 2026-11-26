@@ -909,7 +909,7 @@ function openStudioAsStory() { meOpen("story"); }
 // Média (photo/vidéo) ou fond dégradé (story) + overlays déplaçables :
 // texte, emoji, GIF. Publie en story (24h) ou en bobine (is_reel).
 // ════════════════════════════════════════════════════════════════════════
-var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
+var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0 };
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
@@ -943,7 +943,7 @@ function meOpen(mode) {
   // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
   // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
   if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
-  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
+  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0 };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
@@ -967,7 +967,7 @@ function meOpen(mode) {
   try { _mePeindreBoutonProches(); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin");
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts");
   ed.classList.add("me-vide");
   _meTeReinitialiser();
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
@@ -978,6 +978,7 @@ function meOpen(mode) {
   ed.setAttribute("aria-hidden", "false");
   lockBodyScroll("mediaEditor");
   _meBindShutter();
+  _mePeindreFiltres();
   meStartCamera();
 }
 function meClose() {
@@ -987,7 +988,7 @@ function meClose() {
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
   meFermerDessin();
-  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert"); ed.setAttribute("aria-hidden", "true"); }
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
@@ -1013,7 +1014,8 @@ function meBackToCapture() {
   document.getElementById("meCanvas").style.background = "#000";
   document.getElementById("mePlaceholder").classList.add("hidden");
   _meTeReinitialiser();
-  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert"); ed.classList.add("phase-capture", "me-vide");
+  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.classList.add("phase-capture", "me-vide");
+  meState.filtre = "normal"; _mePeindreFiltres();
   meStartCamera();
 }
 function meEnterEditPhase() {
@@ -1239,6 +1241,7 @@ function meCycleBg() {
   _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
   meState.bg = STORY_BGS[meState.bgIdx] || STORY_BGS[0];
+  meChoisirFiltre("normal");
   document.getElementById("meCanvas").style.background = meState.bg;
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
@@ -1887,6 +1890,116 @@ function meFermerEditeurTexte(valider) {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
+// ── FILTRES (2026-11-26) ─────────────────────────────────────────────────────
+// Appliqués à l'AFFICHAGE, jamais dans le fichier : la story/bobine porte un
+// overlay `{type:"filtre", f:<id>}` et chaque lecteur pose la classe
+// `filtre-<id>` (liste FERMÉE, le CSS fait le reste) sur la couche média. Marche
+// pour photo ET vidéo, caméra ET galerie, sans réencoder. Un identifiant inconnu
+// = pas de filtre.
+var ME_FILTRES = [
+  { id: "normal", nom: "Normal" }, { id: "chaud", nom: "Chaud" }, { id: "froid", nom: "Froid" },
+  { id: "vif", nom: "Vif" }, { id: "doux", nom: "Doux" }, { id: "vintage", nom: "Vintage" }, { id: "nb", nom: "N&B" }
+];
+function _storyFiltreId(f) {
+  for (var i = 0; i < ME_FILTRES.length; i++) if (ME_FILTRES[i].id === f) return f;
+  return "normal";
+}
+// Classe à poser sur la couche média d'un lecteur, d'après les overlays reçus.
+function storyFiltreClasse(overlays) {
+  var o = (Array.isArray(overlays) ? overlays : []).find(function (x) { return x && x.type === "filtre"; });
+  var id = _storyFiltreId(o && o.f);
+  return id === "normal" ? "" : "filtre-" + id;
+}
+function _mePoserFiltreClasse(el, id) {
+  if (!el) return;
+  ME_FILTRES.forEach(function (f) { el.classList.remove("filtre-" + f.id); });
+  if (id && id !== "normal") el.classList.add("filtre-" + id);
+}
+function meChoisirFiltre(id) {
+  meState.filtre = _storyFiltreId(id);
+  _mePoserFiltreClasse(document.getElementById("meMedia"), meState.filtre);
+  _mePoserFiltreClasse(document.getElementById("meCamVideo"), meState.filtre);
+  document.querySelectorAll("#meFiltres .me-filtre").forEach(function (b) {
+    var actif = b.getAttribute("data-filtre") === meState.filtre;
+    b.classList.toggle("actif", actif); b.setAttribute("aria-pressed", actif ? "true" : "false");
+  });
+}
+function _mePeindreFiltres() {
+  var row = document.getElementById("meFiltres"); if (!row) return;
+  if (!row.childElementCount) {
+    ME_FILTRES.forEach(function (f) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "me-filtre";
+      b.textContent = f.nom; b.setAttribute("data-filtre", f.id); b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", function (e) { e.stopPropagation(); meChoisirFiltre(f.id); });
+      row.appendChild(b);
+    });
+  }
+  meChoisirFiltre(meState.filtre || "normal");
+}
+// En édition, la rangée se montre au bouton ✨ (la capture l'affiche toujours).
+function meBasculerFiltres() {
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  if (!meState.media) { toast("Les filtres s'appliquent à une photo ou une vidéo"); return; }
+  _mePeindreFiltres();
+  ed.classList.toggle("me-filtres-ouverts");
+}
+
+// ── COMPTE À REBOURS (2026-11-26) ────────────────────────────────────────────
+// `{type:"compte", titre, fin (ms), eid?}` : lié à une activité, un toucher ouvre
+// sa fiche (même chemin que 📍). Le reste est calculé à l'affichage.
+function storyCompteTexte(fin) {
+  var ms = Number(fin) - Date.now();
+  if (!Number.isFinite(ms)) return "";
+  if (ms <= 0) return "C'est maintenant !";
+  var min = Math.floor(ms / 60000), h = Math.floor(min / 60), j = Math.floor(h / 24);
+  if (j >= 1) return "dans " + j + " j " + (h % 24) + " h";
+  if (h >= 1) return "dans " + h + " h " + (min % 60) + " min";
+  return "dans " + Math.max(1, min) + " min";
+}
+// Le lecteur de bobines rend toute la liste d'un coup : le reste d'un compte à
+// rebours y serait figé. On le recalcule toutes les 30 s, et seulement s'il y en
+// a un à l'écran (une requête, aucun rendu cadencé sur l'image).
+setInterval(function () {
+  var l = document.querySelectorAll(".st-compte[data-fin] span");
+  for (var i = 0; i < l.length; i++) {
+    var t = storyCompteTexte(Number(l[i].parentNode.getAttribute("data-fin")));
+    if (t && l[i].textContent !== t) l[i].textContent = t;
+  }
+}, 30000);
+function _meStickerCompte(panneau) {
+  panneau.remove();
+  var evs = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
+    return e && ME_ID_STICKER.test(String(e.id || "")) && Number(e.date) > Date.now();
+  }).slice(0, 30);
+  var options = '<option value="">— Aucune —</option>' + evs.map(function (e) {
+    return '<option value="' + escapeHtml(e.id) + '">' + escapeHtml((e.emoji ? e.emoji + " " : "") + (e.title || "Activité")) + '</option>';
+  }).join("");
+  openModal('<div class="modal-handle"></div><div class="modal-title">⏳ Compte à rebours</div>'
+    + '<label class="field" style="margin-top:8px;"><span>Lier à une activité</span><select class="input" id="meCrEvt">' + options + '</select></label>'
+    + '<input class="input" id="meCrTitre" maxlength="60" placeholder="Titre (ex. Concert)" style="margin-top:8px;"/>'
+    + '<input class="input" id="meCrDate" type="datetime-local" aria-label="Date et heure" style="margin-top:8px;"/>'
+    + '<button type="button" class="btn primary block" id="meCrOk" style="margin-top:12px;">Ajouter le compte à rebours</button>');
+  var sel = document.getElementById("meCrEvt"), titre = document.getElementById("meCrTitre"), date = document.getElementById("meCrDate");
+  var versLocal = function (ts) { var d = new Date(ts); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+  if (date) date.value = versLocal(Date.now() + 24 * 3600 * 1000);
+  if (sel) sel.addEventListener("change", function () {
+    var ev = evs.find(function (e) { return e.id === sel.value; });
+    if (ev) { titre.value = String(ev.title || "Activité").slice(0, 60); date.value = versLocal(Number(ev.date)); }
+  });
+  var ok = document.getElementById("meCrOk");
+  if (ok) ok.addEventListener("click", function () {
+    var fin = date && date.value ? new Date(date.value).getTime() : NaN;
+    var t = (titre.value || "").trim();
+    if (!t) { toast("Donne un titre au compte à rebours"); return; }
+    if (!Number.isFinite(fin) || fin <= Date.now()) { toast("Choisis une date à venir"); return; }
+    var eid = sel && sel.value && ME_ID_STICKER.test(sel.value) ? sel.value : null;
+    closeModal();
+    var ov = { type: "compte", titre: t.slice(0, 60), fin: fin, x: 50, y: 60 };
+    if (eid) ov.eid = eid;
+    meAddOverlay(ov);
+  });
+}
+
 // ── STICKERS (2026-11-26, lot B) ────────────────────────────────────────────
 // 📍 Activité (renvoie à la fiche), @ Mention (le compte est prévenu par un
 // message), ❓ Question (les réponses arrivent en message à l'auteur — story
@@ -1901,6 +2014,10 @@ function _mePeindreSticker(content, ov) {
     if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
   } else if (ov.type === "mention") {
     content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "compte") {
+    var tc = document.createElement("b"); tc.textContent = "⏳ " + (ov.titre || "");
+    var rc = document.createElement("span"); rc.textContent = storyCompteTexte(ov.fin);
+    content.appendChild(tc); content.appendChild(rc);
   } else if (ov.type === "sondage") {
     var titre = document.createElement("b"); titre.textContent = ov.q || "Sondage";
     content.appendChild(titre);
@@ -1924,7 +2041,7 @@ function meOuvrirStickers() {
   ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
-  var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention]];
+  var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention], ["⏳", "Compte à rebours", _meStickerCompte]];
   if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
@@ -2007,7 +2124,7 @@ async function _meStickerQuestion(panneau) {
 // un sondage déjà posé s'affiche, et dit « bientôt disponible » si la table manque.
 // Activer : `STORY_SONDAGE_ACTIF = true` une fois la migration appliquée (ou
 // `localStorage.passio_story_sondage = "1"` pour l'éprouver sur un appareil).
-var STORY_SONDAGE_ACTIF = false;
+var STORY_SONDAGE_ACTIF = true;
 function storySondageActif() {
   if (STORY_SONDAGE_ACTIF) return true;
   try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
@@ -2377,7 +2494,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
-  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage") { _mePeindreSticker(content, ov); }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage" || ov.type === "compte") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -2509,6 +2626,7 @@ function _meOverlaysData() {
     if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
     if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
     if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
+    if (o.type === "compte") { c.titre = String(o.titre || "").slice(0, 60); c.fin = Math.round(Number(o.fin) || 0); if (o.eid) c.eid = o.eid; }
     if (o.type === "sondage") { c.q = String(o.q || "").slice(0, 120); c.a = String(o.a || "Oui").slice(0, 30); c.b = String(o.b || "Non").slice(0, 30); }
     return c;
   });
@@ -2537,6 +2655,7 @@ async function mePublish() {
   // voyaient le dégradé par défaut. Il voyage dans `overlays` sous forme
   // d'INDICE dans STORY_BGS — jamais une chaîne CSS d'un autre compte.
   if (meState.mode === "story" && !meState.media) overlays.push({ type: "bg", i: meState.bgIdx });
+  if (meState.media && meState.filtre && meState.filtre !== "normal") overlays.push({ type: "filtre", f: _storyFiltreId(meState.filtre) });
   // Le dessin passe SOUS les textes et stickers : premier de la liste.
   if (meState.dessin && meState.dessin.length) overlays.unshift({ type: "dessin", traits: meState.dessin.map(function (t) { return { c: t.c, w: t.w, p: t.p.slice() }; }) });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
@@ -2892,6 +3011,14 @@ function _storyOverlaysHtml(overlays, opts) {
       var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
       return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
+    if (o.type === "compte") {
+      var fin = Number(o.fin), lien = ME_ID_STICKER.test(String(o.eid || ""));
+      if (!Number.isFinite(fin)) return "";
+      var corpsC = '<b>⏳ ' + escapeHtml(String(o.titre || "").slice(0, 60)) + '</b><span>' + escapeHtml(storyCompteTexte(fin)) + '</span>';
+      return lien
+        ? '<button type="button" class="story-ov story-sticker st-compte" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</button>'
+        : '<div class="story-ov story-sticker st-compte" style="' + pos + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</div>';
+    }
     if (o.type === "sondage" && dansStory && !sondageRendu) {
       sondageRendu = true;
       var sq = String(o.q || "").slice(0, 120);
@@ -2975,6 +3102,7 @@ function playCurrentStory() {
 
   // Couche média (photo/vidéo) si présente
   const mediaLayer = document.getElementById("storyMedia");
+  if (mediaLayer) { mediaLayer.className = "story-media-layer"; var _fc = storyFiltreClasse(s.overlays); if (_fc) mediaLayer.classList.add(_fc); }
   const oldSoundBtn = document.getElementById("storySoundBtn"); if (oldSoundBtn) oldSoundBtn.remove();
   const oldPlayBtn = card.querySelector('[data-video-public-play]'); if (oldPlayBtn) oldPlayBtn.remove();
   let storyVideo = null;
@@ -4552,6 +4680,7 @@ async function repondreDemandeParticipation(eventId, uid, notifId, accepter) {
       return false;
     }
     _demandeAbonnementTraitee(notifId, accepter ? "validée" : "refusée");
+    if (accepter) _pousserPushNotif(uid, "event_accepted", "", eventId);
     toast(accepter ? "Participation validée" : "Demande refusée");
     return true;
   } catch (e) {
@@ -4794,6 +4923,9 @@ function openNotifTarget(n) {
         if (ref && evj && typeof _canManageEvent === "function" && _canManageEvent(evj)
             && typeof openEventParticipantValidation === "function") openEventParticipantValidation(ref, from);
       } catch (e) { try { diagLog("notifs : validation — " + (e && e.message)); } catch (_) {} }
+      break;
+    case "event_accepted":
+      _ouvrirLienActivite(ref);
       break;
     case "event_comment":
     case "event_cancelled":
@@ -8433,6 +8565,10 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
+  // ⚠️ Jamais dans `_EVENT_OPTIONAL_COLS` : retirer la colonne sur un refus
+  // publierait PUBLIQUE une activité voulue privée. Absente du modèle local
+  // (activité d'avant), elle n'est pas envoyée : la base garde la sienne.
+  if (event.visibilite === "privee" || event.visibilite === "publique") _row.visibilite = event.visibilite;
   // Une adresse qu'on n'a pas pu lire n'est pas une adresse vide : l'envoyer l'effacerait en base.
   if (event._adresseInconnue && !event.address) delete _row.address;
   if (event._adresseInconnue && !event.contact) delete _row.contact;
@@ -8485,6 +8621,23 @@ async function supaPublishEvent(event, auteurAttendu) {
     }
     return false;
   } catch(e) { console.warn("Event error:", e); return false; }
+}
+
+// Invités d'une activité PRIVÉE (2026-11-26) : une ligne `event_invites` par
+// invité, écrite par l'organisation (RLS `event_invites_ecriture`). C'est elle
+// qui ouvre la LECTURE de l'activité à l'invité. Rejouable (clé primaire).
+// Rend true si toutes les lignes sont en base.
+async function supaInviterActivite(eventId, userIds) {
+  const ids = (userIds || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x) && x !== MY_UID; })
+    .map(function (x) { return x.toLowerCase(); });
+  if (!eventId || !ids.length) return !!eventId;
+  if (!window._supaReal || !_compteAuthReel()) return false;
+  try {
+    const lignes = ids.slice(0, 100).map(function (id) { return { event_id: eventId, user_id: id, invited_by: MY_UID }; });
+    const { error } = await supa.from("event_invites").upsert(lignes, { onConflict: "event_id,user_id", ignoreDuplicates: true });
+    if (error) { console.warn("supaInviterActivite:", error.code || error.message); return false; }
+    return true;
+  } catch (e) { console.warn("supaInviterActivite:", e && e.message); return false; }
 }
 
 // Édition d'un événement par son organisateur OU un co-organisateur.
@@ -8569,8 +8722,10 @@ const _EVENT_COLS_PUBLIC = [
   "id", "author_id", "title", "passion_id", "lat", "lng", "city", "description",
   "emoji", "max_attendees", "date_at", "created_at", "venue", "postal_code",
   "price", "external_link", "event_type", "cover_url", "organizer_id", "end_at",
-  "status", "updated_at", "co_organizers", "series_id", "recurrence",
+  "status", "updated_at", "co_organizers", "series_id", "recurrence", "visibilite",
 ].join(",");
+// `visibilite` (activité privée, 2026-11-26) : accordée à anon et authenticated par
+// `migration_activites_privees_2026-11-26.sql`, appliquée AVANT ce client.
 // ⚠️ `conv_id` est PRIVÉ depuis le 2026-09-11 : combiné à `is_conv_member` (qui
 // était exécutable sans compte) et à `profiles.id` (public), il permettait de
 // reconstituer la liste NOMINATIVE des membres de la conversation d'une
@@ -8972,6 +9127,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
         : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
+      visibilite: r.visibilite === "privee" ? "privee" : "publique",
       convId: r.conv_id || null,
       attendees: attByEvent[r.id] || [],
       maybes: maybeByEvent[r.id] || [],
@@ -10349,11 +10505,11 @@ async function _mentionnerServeur(genre, refId, ids) {
 // écrite par le SERVEUR (abonnements, `follows_notifier` depuis le 2026-09-11) —
 // une ligne de plus côté client ferait un doublon, mais le push, lui, ne part
 // que d'ici. `texte` est déjà complet (« Camille a commencé à te suivre »).
-function _pousserPushNotif(toUserId, kind, texte) {
+function _pousserPushNotif(toUserId, kind, texte, eventId) {
   try {
     if (!toUserId || toUserId === MY_UID) return;
     supa.functions.invoke("notify-call", {
-      body: { toUserId: toUserId, type: "notif", kind: kind, text: texte, emoji: _notifEmoji(kind) }
+      body: { toUserId: toUserId, type: "notif", kind: kind, text: texte, emoji: _notifEmoji(kind), eventId }
     }).catch(() => {});
   } catch (e) {}
 }
@@ -10942,7 +11098,7 @@ function _rtNotificationRecue(r) {
   // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
   // émetteur bloqué, et le toast partait quand même (défaut préexistant).
   if (!(state.notifications || []).some(n => n.id === notif.id)) return;
-  if ((notif.kind === "event_update" || notif.kind === "event_cancelled") &&
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
       typeof signalerChangementSortie === "function") signalerChangementSortie();
   // Demande de participation : le texte serveur ne nomme personne — le toast
   // attend le nom (une lecture `profiles` au plus).

@@ -4873,6 +4873,7 @@ function openEventDetails(id, remplaceModale = false) {
     heroTitle.innerHTML = `
       <div class="event-detail-passion-badge">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
       <div class="event-detail-title">${escapeHtml(ev.title || "Activité")}</div>
+      ${activiteEstPrivee(ev) ? '<div class="ev-badge-privee" title="Seules les personnes invitées voient cette activité">🔒 Activité privée · sur invitation</div>' : ""}
     `;
   }
 
@@ -5832,7 +5833,7 @@ function reporterRappelsActivite() {
 // (sw.js, `OUVRIR_ACTIVITE`). On passe par le hash : c'est le routeur ci-dessus
 // qui attend l'application et retente le chargement — jamais un second chemin.
 function _ouvrirActiviteDepuisNotification(id) {
-  if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)) return false;
+  if (typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) return false;
   var cible = "#irl-event-" + id;
   if (location.hash !== cible) location.hash = cible;
   else _openIrlEventFromHash();
@@ -6051,9 +6052,33 @@ function _activiteDejaAuFil(evId) {
 // Sans la case (ancien formulaire, coupure), le défaut reste « au fil ».
 var ACTIVITES_HORS_FIL_MAX = 200;
 function _lireChoixAuFil() {
+  if (_lireVisibilite() === "privee") return false;
   const c = document.getElementById("evAuFil");
   return c ? !!c.checked : true;
 }
+
+// ── Activité PRIVÉE (2026-11-26) ────────────────────────────────────────────
+// Demande de Benjamin : « une invitation ciblée et privée ». Le formulaire de
+// création porte un choix Publique / Privée (`input[name=evVisibilite]`).
+// Privée : `events.visibilite = 'privee'`, et la BASE (RLS,
+// `migration_activites_privees_2026-11-26.sql`) ne la montre qu'à
+// l'organisation, aux invités (`event_invites`, écrits par
+// `supaInviterActivite` à chaque invitation) et aux inscrits. Jamais de carte
+// au fil. Défaut : Publique ; Privée quand on invite depuis une conversation.
+function _lireVisibilite() {
+  const c = document.querySelector('input[name="evVisibilite"]:checked');
+  return c && c.value === "privee" ? "privee" : "publique";
+}
+function majChoixVisibilite() {
+  const fil = document.querySelector("#modalContent .ev-au-fil");
+  if (fil) fil.hidden = _lireVisibilite() === "privee";
+}
+function poserChoixVisibilite(valeur) {
+  const r = document.getElementById(valeur === "privee" ? "evVisPrivee" : "evVisPublique");
+  if (r) r.checked = true;
+  majChoixVisibilite();
+}
+function activiteEstPrivee(ev) { return !!(ev && ev.visibilite === "privee"); }
 function marquerActiviteHorsFil(evId) {
   if (!evId || !state.user) return;
   const l = Array.isArray(state.user.activitesHorsFil) ? state.user.activitesHorsFil : [];
@@ -6068,6 +6093,7 @@ function _activiteHorsFil(evId) {
 
 async function publierActiviteAuFil(ev) {
   if (!ev || !ev.id || !_activiteAuFilActive()) return false;
+  if (activiteEstPrivee(ev)) return false;
   if (_activiteHorsFil(ev.id)) return false;
   if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return false;
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return false;
@@ -7506,6 +7532,8 @@ function poserInvitationFormulaire(convId) {
   // défaut (2026-11-23) ; la personne peut la cocher.
   var caseFil = document.getElementById("evAuFil");
   if (caseFil) caseFil.checked = false;
+  // …et elle est PRIVÉE par défaut (2026-11-26) : seuls les invités la voient.
+  poserChoixVisibilite("privee");
 
   // Groupe : ses membres sont pré-cochés (chacun retirable), chacun sous verdict.
   if (groupe) {
@@ -7526,6 +7554,7 @@ function poserInvitationFormulaire(convId) {
     if (sous && avant.sous) sous.textContent = avant.sous;
     if (publier && libelleAvant) publier.textContent = libelleAvant;
     if (caseFil) caseFil.checked = true;
+    poserChoixVisibilite("publique");
     try { if (window.tel && tel.action) tel.action("invite_conv_retiree", { v: 1 }); } catch (e) {}
   });
   try { if (window.tel && tel.action) tel.action("invite_conv_posee", { v: 2, grp: groupe }); } catch (e) {}
@@ -7618,14 +7647,36 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
         toast("Activité publiée, mais personne dans ce groupe ne peut recevoir l'invitation", "warning");
         return;
       }
-      if (!envoyerCarte()) return;
-      admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); });
-      retour("Invitation envoyée au groupe");
+      var poursuivre = function () {
+        if (!envoyerCarte()) return;
+        admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); });
+        retour("Invitation envoyée au groupe");
+      };
+      if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+        supaInviterActivite(ev.id, admis).then(function (ok) {
+          if (ok) poursuivre();
+          else toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning");
+        });
+        return;
+      }
+      poursuivre();
     });
     return true;
   }
 
   // 1:1 : la personne de la conversation a déjà passé le verdict à l'ouverture.
+  // Privée : son droit de lecture part AVANT la carte (elle peut l'ouvrir aussitôt).
+  if (activiteEstPrivee(ev) && ctx.userId && typeof supaInviterActivite === "function") {
+    supaInviterActivite(ev.id, [ctx.userId]).then(function (ok) {
+      if (!ok) { toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning"); return; }
+      if (!envoyerCarte()) return;
+      notifier(ctx.userId);
+      trier().then(function (admis) { admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); }); });
+      retour(autres.length ? "Invitation privée envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
+        : "Invitation privée envoyée à " + ctx.nom);
+    });
+    return true;
+  }
   if (!envoyerCarte()) return false;
   // La notification « t'invite à … » : l'activité est en base (`enLigne`), la
   // preuve qu'exige `trg_notifications_preuve`.
@@ -8140,7 +8191,17 @@ function openCreateEvent(editId, passionSouhaitee) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    ${editId ? "" : `<label class="ev-au-fil" for="evAuFil">
+    ${editId ? "" : `<div class="ev-visibilite" role="radiogroup" aria-label="Qui peut voir cette activité ?">
+      <label class="ev-visibilite-choix" for="evVisPublique">
+        <input type="radio" name="evVisibilite" id="evVisPublique" value="publique" checked onchange="majChoixVisibilite()"/>
+        <span><strong>🌍 Publique</strong><small>Visible par tous dans Rencontrer.</small></span>
+      </label>
+      <label class="ev-visibilite-choix" for="evVisPrivee">
+        <input type="radio" name="evVisibilite" id="evVisPrivee" value="privee" onchange="majChoixVisibilite()"/>
+        <span><strong>🔒 Privée</strong><small>Seules les personnes invitées la voient.</small></span>
+      </label>
+    </div>
+    <label class="ev-au-fil" for="evAuFil">
       <input type="checkbox" id="evAuFil" checked/>
       <span><strong>Publier aussi dans le fil Découvrir</strong><small>Une carte de l'activité apparaît dans le fil de tes abonnés.</small></span>
     </label>`}
@@ -8688,6 +8749,8 @@ async function submitEvent(editId) {
     recurrence: editId ? (existing.recurrence || "none") : (recurrence || "none"),
     seriesId: editId ? (existing.seriesId || null) : (recurrence && recurrence !== "none" ? "s_" + uid() : null),
     coOrganizers: (existing && existing.coOrganizers) || [],
+    // Fixée à la création ; une édition garde celle de l'activité.
+    visibilite: editId ? ((existing && existing.visibilite) || "publique") : _lireVisibilite(),
     convId: (existing && existing.convId) || null,
     organizerId: (existing && existing.organizerId) || meId,
     attendees: (existing && existing.attendees) || [meId],
@@ -8851,6 +8914,7 @@ async function submitEvent(editId) {
         : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
     } else toast(ok
       ? (editId ? "Activité mise à jour"
+        : activiteEstPrivee(ev) && !inviteConv ? "Activité privée créée : invite les personnes qui pourront la voir"
         : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
       : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
       ok ? "success" : "warning");
@@ -9350,10 +9414,22 @@ function _renderEventInviteList() {
 function _notifierInviteEvent(ev, userId) {
   if (!ev || !ev.id || !userId) return;
   _rememberEventInvite(ev.id, userId);
-  if (typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_invite", ev.id,
-      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+  var notifier = function () {
+    if (typeof supaInsertNotif === "function") {
+      supaInsertNotif(userId, "event_invite", ev.id,
+        "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+    }
+  };
+  // Activité privée : l'invité doit pouvoir la LIRE avant d'être prévenu
+  // (`event_invites`, sinon la notification ouvre une activité introuvable).
+  if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+    supaInviterActivite(ev.id, [userId]).then(function (ok) {
+      if (!ok) toast("L'invitation à ton activité privée n'a pas pu partir — réessaie", "warning");
+      else notifier();
+    });
+    return;
   }
+  notifier();
 }
 
 // `btn` présent = un geste à l'écran : 5 s pour annuler avant que la notification
@@ -10297,6 +10373,7 @@ async function validerEventParticipant(id, uid, accepter) {
   try {
     const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
     if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    if (accepter) _pousserPushNotif(uid, "event_accepted", "", id);
     toast(accepter ? "Participation validée" : "Participant retiré");
     // La notification correspondante ne repropose plus ses boutons.
     try {

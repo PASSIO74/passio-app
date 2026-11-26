@@ -36,6 +36,7 @@
 - 🚏 LE PRÉREQUIS « MÉDIAS PROTÉGÉS FERMÉS » EST RETIRÉ — IL RETENAIT TOUT DÉPLOIEMENT DE FONCTION DEPUIS L'OUVERTURE (2026-11-21)
 - 🚫 BLOQUER FERME AUSSI LA LECTURE DES ACTIVITÉS — LE BLOQUÉ LISAIT LA VILLE ET L'HEURE DU RENDEZ-VOUS (2026-11-22)
 - 📣 PRÉVENIR 99 INSCRITS : LA BASE ÉCRIT, LE PLAFOND NE COMPTE PLUS UNE DIFFUSION (village à 100, A3 — 2026-11-22)
+- 🔒 ACTIVITÉS PRIVÉES, SUR INVITATION — UNE INVITATION CIBLÉE N'EST PLUS UNE ANNONCE PUBLIQUE (2026-11-26)
 - ⭐ STORIES « AMIS PROCHES » ET « À LA UNE » — RESSERRER SANS TOUCHER LA POLICY FIGÉE (2026-11-26)
 
 ---
@@ -2314,6 +2315,64 @@ Côté client (app-07/app-08) : `_prevenirInscrits(ev, genre, message)` rend `{ 
 
 Banc : `tests/sql/migration-prevenir-inscrits-serveur.test.sh` (59). Il mesure d'abord les trois défauts, puis refuse six mutations et un corps inconnu (la sixième : identifiants occupés d'avance laissés en place), et éprouve deux appels CONCURRENTS (A, vérifié par réinjection : sans le verrou, le second passe). Il éprouve aussi la ré-annulation avec et sans réactivation, la co-organisation et la garde `ON CONFLICT`. Il applique et rejoue la migration, et éprouve les bornes de l'extérieur, sous `authenticated`. Exécuté sur ce poste avec un PostgreSQL 17 portable. Client : `tests/e2e/prevenir-inscrits-serveur.spec.js` (5). La base est appelée même si la liste locale est vide, et 42883 n'est pas « absente ». Preuve de bout en bout : `npm run village:100`, contrôle A3 (99/99, sans doublon), après application au staging.
 
+## 📊 SONDAGE DES STORIES — `migration_story_sondage_2026-11-26.sql` (**appliquée en prod** le 2026-11-26)
+
+`story_sondage_votes` (story_id, user_id, choix 0|1) : un vote par compte et par story, jamais modifié ni
+retiré. Écrit sur une story VISIBLE qui porte un sondage et n'est pas la sienne ; INSERT par colonne
+`(story_id, choix)` ; lu par le votant et l'auteur (hors bloqués). `story_sondage_resultats` ne rend les
+comptes qu'après le vote ou à l'auteur, hors comptes bloqués. Banc `tests/sql/migration-story-sondage.test.sh`
+(26 cas). Appliquée par Benjamin depuis son poste (`appliquer-migration.mjs`, journal n°89) ; l'application
+par la session cloud avait été refusée par ses permissions. Mesuré au canal ① après coup : RLS, 2 policies,
+2 fonctions, INSERT limité à `choix`/`story_id`, aucun UPDATE/DELETE, rien pour `anon`, hors temps réel.
+- Piège (red team) : une fonction SECURITY DEFINER appelée par une POLICY est exécutable en RPC par tout
+  compte (la policy exige EXECUTE) — `story_a_un_sondage` vérifie donc la visibilité DEDANS, sinon elle
+  disait qu'une story privée existait.
+- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit (`is_blocked_with`),
+  sinon un compte bloqué pèse encore sur le pourcentage.
+
+## 🔒 ACTIVITÉS PRIVÉES, SUR INVITATION — UNE INVITATION CIBLÉE N'EST PLUS UNE ANNONCE PUBLIQUE (2026-11-26)
+
+**Demande de Benjamin** (capture du formulaire « Créer et inviter … ») : pouvoir faire une
+invitation « ciblée et privée », qui n'apparaisse pas dans les activités publiques.
+
+**Mesuré en production avant le lot** : `events` portait « Lecture publique » (`true`, rôle
+public). Une activité créée pour UNE personne était lisible par tout compte ET tout visiteur
+(carte de Rencontrer, API, aperçu de lien). La case « Publier aussi dans le fil » ne réglait que
+la carte du fil.
+
+**Le modèle** (`migrations/migration_activites_privees_2026-11-26.sql`, banc
+`tests/sql/migration-activites-privees.test.sh`, 56 contrôles) :
+- `events.visibilite` ∈ `publique` | `privee` (défaut `publique`, aucune activité existante ne change) ;
+- `event_invites (event_id, user_id, invited_by)` : écrite par l'organisation seule, lue ligne
+  par ligne par l'invité lui-même (personne ne voit la liste des autres invités), clés
+  étrangères en cascade vers `events` et `profiles` (la purge de compte l'emporte, exception
+  déclarée dans `audit-tables-compte.js`) ;
+- UNE autorité : `activite_privee_fermee_pour_moi(id)`. Elle entre dans
+  `activite_masquee_pour_moi` (le masquage du blocage), donc dans TOUT ce qui le lit déjà :
+  participants, commentaires, réactions, `comment_target_visible` (réponses, temps réel du fil),
+  `publication_masquee_pour_moi` (carte, album, repartage) ;
+- écritures fermées aussi (s'inscrire, commenter, réagir) : sinon « s'inscrire » ouvrait la
+  lecture (C-04) ;
+- **trouvé en contre-revue** : `notifications_texte_serveur` écrit LUI-MÊME le titre dans
+  « t'invite à … » ; un compte qui connaissait l'identifiant se faisait envoyer le titre d'une
+  activité privée par un complice. Garde `trg_notifications_invite_privee` (INSERT seulement :
+  marquer lue est un UPDATE). ⚠️ Elle lit l'origine au RÉGLAGE `passio.notification_serveur`,
+  jamais dans la colonne : les déclencheurs partent par ordre alphabétique et celui-ci passe
+  AVANT `trg_notifications_origine` — la colonne y est encore celle du client, et un
+  `origine = 'serveur'` forgé sautait la garde (revue de sécurité automatique, même jour).
+
+**Client** : choix 🌍 Publique / 🔒 Privée à la création (Privée par défaut quand on invite
+depuis une conversation, la case du fil disparaît) ; le droit de lecture de l'invité
+(`supaInviterActivite`, app-08) part AVANT la carte et la notification, et un refus n'envoie
+ni l'une ni l'autre (`activite-privee.spec.js`). `visibilite` n'est JAMAIS dans
+`_EVENT_OPTIONAL_COLS` : la retirer sur un refus publierait publique une activité voulue privée.
+
+**Ordre** : la migration AVANT le client (il lit `visibilite`, colonne inconnue = liste vide).
+
+**Reste hors lot (déclaré)** : `notes_evenement` (une moyenne de notes) ; une notification déjà
+écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte ; les
+occurrences suivantes d'une activité récurrente privée n'ont pas d'invités (l'invitation vise la
+première) ; retirer une invitation ne retire pas une inscription déjà faite.
 ## ⭐ STORIES « AMIS PROCHES » ET « À LA UNE » — RESSERRER SANS TOUCHER LA POLICY FIGÉE (2026-11-26)
 
 Demande de Benjamin : copier Instagram pour les stories. Les deux fonctions qui touchent la base

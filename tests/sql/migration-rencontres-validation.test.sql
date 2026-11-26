@@ -284,3 +284,4 @@ do $$ begin
    or exists(select 1 from rencontres_prive.decisions where event_id='refus' and refus_en_cours)
  then raise exception 'avis manquant, en double, ou retrait confondu avec un refus'; end if;
 end $$;
+\ir confirmation-participation.test.sql

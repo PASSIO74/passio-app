@@ -230,6 +230,9 @@
       </div>
     </div>
 
+    <!-- Filtres (capture et édition) : hors de la zone de capture, masquée en édition. -->
+    <div class="me-filtres" id="meFiltres" role="group" aria-label="Filtres"></div>
+
     <!-- Outils d'édition (overlays) -->
     <div class="me-toolbar">
       <div class="me-tool-group">
@@ -239,6 +242,7 @@
         <button type="button" class="me-tool" onclick="meAddGif()" title="GIF" aria-label="Ajouter un GIF">GIF</button>
         <button type="button" class="me-tool" onclick="meOuvrirDessin()" title="Dessiner" aria-label="Dessiner">✏️</button>
         <button type="button" class="me-tool" onclick="meOuvrirStickers()" title="Stickers" aria-label="Ajouter un sticker">🏷️</button>
+        <button type="button" class="me-tool me-tool-filtres" onclick="meBasculerFiltres()" title="Filtres" aria-label="Filtres">✨</button>
         <button type="button" class="me-tool" onclick="mePickMedia()" title="Changer de média" aria-label="Changer de média">🖼️</button>
       </div>
     </div>
