@@ -8076,6 +8076,10 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
+  // ⚠️ Jamais dans `_EVENT_OPTIONAL_COLS` : retirer la colonne sur un refus
+  // publierait PUBLIQUE une activité voulue privée. Absente du modèle local
+  // (activité d'avant), elle n'est pas envoyée : la base garde la sienne.
+  if (event.visibilite === "privee" || event.visibilite === "publique") _row.visibilite = event.visibilite;
   // Une adresse qu'on n'a pas pu lire n'est pas une adresse vide : l'envoyer l'effacerait en base.
   if (event._adresseInconnue && !event.address) delete _row.address;
   if (event._adresseInconnue && !event.contact) delete _row.contact;
@@ -8128,6 +8132,23 @@ async function supaPublishEvent(event, auteurAttendu) {
     }
     return false;
   } catch(e) { console.warn("Event error:", e); return false; }
+}
+
+// Invités d'une activité PRIVÉE (2026-11-26) : une ligne `event_invites` par
+// invité, écrite par l'organisation (RLS `event_invites_ecriture`). C'est elle
+// qui ouvre la LECTURE de l'activité à l'invité. Rejouable (clé primaire).
+// Rend true si toutes les lignes sont en base.
+async function supaInviterActivite(eventId, userIds) {
+  const ids = (userIds || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x) && x !== MY_UID; })
+    .map(function (x) { return x.toLowerCase(); });
+  if (!eventId || !ids.length) return !!eventId;
+  if (!window._supaReal || !_compteAuthReel()) return false;
+  try {
+    const lignes = ids.slice(0, 100).map(function (id) { return { event_id: eventId, user_id: id, invited_by: MY_UID }; });
+    const { error } = await supa.from("event_invites").upsert(lignes, { onConflict: "event_id,user_id", ignoreDuplicates: true });
+    if (error) { console.warn("supaInviterActivite:", error.code || error.message); return false; }
+    return true;
+  } catch (e) { console.warn("supaInviterActivite:", e && e.message); return false; }
 }
 
 // Édition d'un événement par son organisateur OU un co-organisateur.
@@ -8212,8 +8233,10 @@ const _EVENT_COLS_PUBLIC = [
   "id", "author_id", "title", "passion_id", "lat", "lng", "city", "description",
   "emoji", "max_attendees", "date_at", "created_at", "venue", "postal_code",
   "price", "external_link", "event_type", "cover_url", "organizer_id", "end_at",
-  "status", "updated_at", "co_organizers", "series_id", "recurrence",
+  "status", "updated_at", "co_organizers", "series_id", "recurrence", "visibilite",
 ].join(",");
+// `visibilite` (activité privée, 2026-11-26) : accordée à anon et authenticated par
+// `migration_activites_privees_2026-11-26.sql`, appliquée AVANT ce client.
 // ⚠️ `conv_id` est PRIVÉ depuis le 2026-09-11 : combiné à `is_conv_member` (qui
 // était exécutable sans compte) et à `profiles.id` (public), il permettait de
 // reconstituer la liste NOMINATIVE des membres de la conversation d'une
@@ -8615,6 +8638,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
         : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
+      visibilite: r.visibilite === "privee" ? "privee" : "publique",
       convId: r.conv_id || null,
       attendees: attByEvent[r.id] || [],
       maybes: maybeByEvent[r.id] || [],

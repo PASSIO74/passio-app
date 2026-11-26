@@ -75,6 +75,9 @@ const EXCEPTIONS = {
   // dans TABLES_COMPTE ferait ÉCHOUER toute purge tant que la migration n'est pas
   // appliquée (table absente = échec nommé, fail-closed).
   "story_likes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
+  // Activités privées (2026-11-26, migration_activites_privees_2026-11-26.sql) : même règle.
+  "event_invites.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : l'invitation reçue part avec le profil purgé, sans passer par la purge",
+  "event_invites.invited_by": "clé étrangère vers profiles(id) ON DELETE CASCADE : l'invitation envoyée part avec le profil purgé, sans passer par la purge",
   "story_comments.author_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
   // Sondages de story (2026-11-26, migration_story_sondage_2026-11-26.sql) : même règle.
   "story_sondage_votes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE (et stories(id) ON DELETE CASCADE) : le vote part avec le profil purgé, sans passer par la purge",
