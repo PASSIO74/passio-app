@@ -14,7 +14,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · inscrits · relancer · fusionner · fermer · pause · reprendre · signalement · masquage · reparer · reglages
+//      etat · inscrits · connectes · relancer · fusionner · fermer · pause · reprendre · signalement · masquage · reparer · reglages
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -36,7 +36,7 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
-  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
+  pageInscrits, INSCRITS_PAR_PAGE, debutJourParis, connectesDuJour, nommerConnectes, CONNECTES_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
   EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
   EVT_CANARI, CANARI_LECTURE_MS, CANARI_MARQUES_MAX, marqueCanari, bilanCanari, MIGRATION_TELEMETRIE_CLASSES, remplissage, remplissageAveugle, jaugeRemplissage,
 } from "../_shared/pilotage.js";
@@ -88,7 +88,7 @@ const ACCUSE = ADRESSE.accuse;
 type Admin = ReturnType<typeof createClient>;
 
 // Les actions qui n'écrivent rien : interrompues, elles ne laissent aucun doute derrière elles.
-const LECTURES_SEULES = new Set(["etat", "inscrits", "retour_apercu"]);
+const LECTURES_SEULES = new Set(["etat", "inscrits", "connectes", "retour_apercu"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -142,6 +142,7 @@ Deno.serve(async (req) => {
       case "retour_apercu": return retourApercu(admin);
       case "retour_arriere": return retourManuel(admin, corps);
       case "inscrits": return listerInscrits(admin, corps);
+      case "connectes": return listerConnectes(admin, corps);
       default: return json({ error: "Action inconnue." }, 400);
     }
   };
@@ -679,6 +680,8 @@ async function etat(admin: Admin, frais = false) {
     parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
     relances: lireRelances(admin), fusionsArmees: lireFusionsArmees(admin),
     remplissage: lireRemplissage(admin), canari: lireCanari(admin),
+    // Le nombre seul : la liste se lit à la demande (action `connectes`).
+    connectes: lireConnectesJour(admin).then(({ total, tronque, depuis }) => ({ total, tronque, depuis })),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -1467,6 +1470,61 @@ async function listerInscrits(admin: Admin, corps: Record<string, unknown>) {
       comptes: comptesRecents(tranche.comptes, profils, { nomsLus, max: tranche.parPage }) });
   } catch (err) {
     return json({ error: "Comptes illisibles : " + String((err as { message?: string })?.message || err).slice(0, 120) }, 502);
+  }
+}
+
+// ─── Les connectés du jour (2026-11-26) ─────────────────────────────────────
+// Le nombre à côté des utilisateurs : les comptes venus depuis minuit, heure de
+// Paris (debutJourParis), remis à zéro chaque nuit. Règle et exclusions :
+// `connectesDuJour` (_shared). Seuls les passages d'ouverture (`session/start`,
+// `lifecycle/visible`) sont lus, et seulement `auth_uid` : quelques lignes par
+// compte et par jour. Au-delà de CONNECTES_LIGNES_PAGES pages de 1 000, le
+// nombre est une borne basse et le DIT (`tronque`).
+const CONNECTES_LIGNES_PAGES = 20;
+async function lireConnectesJour(admin: Admin) {
+  const depuis = debutJourParis(Date.now());
+  const depuisIso = new Date(depuis).toISOString();
+  const vus: { auth_uid: string; received_at: string }[] = [];
+  let tronque = false;
+  for (let p = 0; p < CONNECTES_LIGNES_PAGES; p++) {
+    const { data, error } = await admin.from("telemetry_events").select("auth_uid,received_at")
+      .eq("env", "production").gte("received_at", depuisIso).not("auth_uid", "is", null).is("meta->>trafic", null)
+      // session/start ou lifecycle/visible (les deux autres croisements n'existent pas : session/end, lifecycle/hidden).
+      .in("type", ["session", "lifecycle"]).in("action", ["start", "visible"])
+      .order("received_at", { ascending: false }).range(p * MAX_LIGNES_POSTGREST, (p + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) throw error;
+    const lot = (data || []) as { auth_uid: string; received_at: string }[];
+    vus.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) break;
+    if (p === CONNECTES_LIGNES_PAGES - 1) tronque = true;
+  }
+  const comptes: Record<string, unknown>[] = [];
+  for (let page = 1; page <= INSCRITS_PAGES_COMPTES_MAX; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const lot = (data && data.users) || [];
+    comptes.push(...(lot as unknown as Record<string, unknown>[]));
+    if (lot.length < 1000) break;
+    if (page === INSCRITS_PAGES_COMPTES_MAX) tronque = true;
+  }
+  const liste = connectesDuJour(comptes, vus, depuis, EXTRA);
+  return { total: liste.length, tronque, depuis: depuisIso, liste };
+}
+// Le toucher sur le nombre : les connectés du jour par leur NOM, le dernier venu
+// d'abord, 100 par page, lus À LA DEMANDE.
+async function listerConnectes(admin: Admin, corps: Record<string, unknown>) {
+  try {
+    const { tronque, depuis, liste } = await lireConnectesJour(admin);
+    const tranche = pageInscrits(liste, Number(corps.page) || 1, CONNECTES_PAR_PAGE, "vu");
+    let profils: { id: string; username: string | null }[] = [], nomsLus = true;
+    if (tranche.ids.length) {
+      const { data: pr, error: ep } = await admin.from("profiles").select("id,username").in("id", tranche.ids);
+      if (ep) nomsLus = false; else profils = (pr || []) as { id: string; username: string | null }[];
+    }
+    return json({ total: tranche.total, tronque, depuis, page: tranche.page, pages: tranche.pages, parPage: tranche.parPage,
+      comptes: nommerConnectes(tranche.comptes, profils, { nomsLus }) });
+  } catch (err) {
+    return json({ error: "Connexions illisibles : " + String((err as { message?: string })?.message || err).slice(0, 120) }, 502);
   }
 }
 

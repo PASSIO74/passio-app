@@ -669,6 +669,49 @@ test("⑳ « Voir les N utilisateurs » des derniers arrivés mène à la même 
   await expect(page.locator("#inscritsSuite")).toBeHidden();
 });
 
+test("connectés aujourd'hui (2026-11-26) : à côté du total, ils ouvrent la liste du jour par nom et heure ; non lu = « — », jamais 0", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const vu = (min) => new Date(Date.now() - min * 60e3).toISOString();
+  const liste = { total: 2, tronque: false, depuis: vu(600), page: 1, pages: 1, parPage: 100, comptes: [
+    { nom: CHARGE, nomLu: true, vu: vu(2), cree: vu(60 * 24 * 3), confirme: true, voie: "Google" },
+    { nom: null, nomLu: true, vu: vu(90), cree: vu(60 * 24 * 40), confirme: false, voie: "e-mail" },
+  ] };
+  await routerFonction(page, envois, etat({ connectes: { total: 2, tronque: false, depuis: vu(600) } }), { connectes: liste });
+  await page.goto("/pilotage/");
+  const jour = page.locator("#connectesJour");
+  await expect(jour).toContainText("2");
+  await expect(jour).toContainText("connectés aujourd'hui");
+  await expect(page.locator("#totalNombre")).toHaveText("13");
+  const [a, b] = [await page.locator("#totalUtilisateurs").boundingBox(), await jour.boundingBox()];
+  expect(b.x, "à côté du total, pas dessous").toBeGreaterThanOrEqual(a.x + a.width);
+  expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  expect(envois.filter((e) => e.corps.action === "connectes"), "la liste ne se lit qu'au toucher").toHaveLength(0);
+  await jour.click();
+  await expect(page.locator("#connectes")).toBeVisible();
+  await expect(page.locator("#titreOnglet")).toHaveText("Connectés aujourd'hui");
+  const l = page.locator("#connectesListe");
+  await expect(l.locator("li.compte")).toHaveCount(2);
+  expect(envois.filter((e) => e.corps.action === "connectes").map((e) => e.corps)).toEqual([{ action: "connectes", page: 1 }]);
+  expect(await l.textContent()).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  await expect(l.locator("li.compte").first()).toContainText(/vu à \d\d h \d\d/);
+  await expect(l.locator("li.compte").nth(1)).toContainText("Profil pas encore rempli");
+  await expect(l.locator("li.compte").nth(1)).toContainText("e-mail pas encore confirmé");
+  await expect(page.locator("#connectesResume")).toContainText("2 comptes venus depuis minuit");
+  await page.click("#retour");
+  await expect(page.locator("#accueil")).toBeVisible();
+});
+
+test("connectés aujourd'hui : une fonction pas encore à jour ou une lecture ratée montre « — »", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], etat({ connectes: null, nonLus: ["connectes"], erreursLecture: { connectes: "HTTP 500" } }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#totalNombre")).toHaveText("13");
+  await expect(page.locator("#connectesNombre")).toHaveText("—");
+});
+
 test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu » ; fonction pas à jour → « Liste indisponible »", async ({ page }) => {
   await poserSession(page);
   await routerFonction(page, [], etat({ activation: { ...BASE.activation, nouveaux: [] } }));
