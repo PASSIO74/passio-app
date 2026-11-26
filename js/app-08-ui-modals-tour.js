@@ -986,6 +986,7 @@ function meClose() {
   _meTeReinitialiser();
   meFermerDessin();
   _meMusiqueArreter();
+  var _pst = document.getElementById("meStickerPanel"); if (_pst) _pst.remove();
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
@@ -1893,17 +1894,23 @@ function meFermerEditeurTexte(valider) {
 // Gratuite et LÉGALE : morceaux sous licence libre trouvés par Openverse (moteur
 // de la fondation WordPress, API gratuite sans clé). Seules les licences qui
 // autorisent l'usage commercial ET l'adaptation (poser une musique sur une image
-// est une adaptation) : CC BY, CC BY-SA, CC0, domaine public — jamais « ND ».
+// est une adaptation) : CC BY, CC0, domaine public — jamais « ND » ni « SA ».
 // Le crédit (titre, artiste, licence) s'ouvre d'un toucher sur le sticker.
 // ⚠️ L'adresse du son vient d'un AUTRE compte côté lecteur : https et hébergeurs
 // d'Openverse seulement (`musiqueSourceSure`), sinon une story piégée ferait
 // charger un son depuis n'importe quel serveur (adresse IP du spectateur).
 var OPENVERSE_AUDIO = "https://api.openverse.org/v1/audio/";
-var MUSIQUE_LICENCES = ["by", "by-sa", "cc0", "pdm"];
+// BY-SA écartée (relecture du 2026-11-26) : synchronisée avec une image animée, la
+// musique fait de la story une adaptation qui devrait alors être publiée en BY-SA.
+var MUSIQUE_LICENCES = ["by", "cc0", "pdm"];
 var MUSIQUE_HOTES = /^(?:[a-z0-9-]+\.)*(?:jamendo\.com|freesound\.org|wikimedia\.org|ccmixter\.org)$/i;
 var MUSIQUE_SUGGESTIONS = ["chill", "acoustic", "piano", "lofi", "electronic", "jazz", "rock", "ambient"];
 function musiqueSourceSure(url) {
-  try { var u = new URL(String(url || "")); return (u.protocol === "https:" && MUSIQUE_HOTES.test(u.hostname)) ? u.href : ""; } catch (e) { return ""; }
+  try {
+    var u = new URL(String(url || ""));
+    if (u.protocol !== "https:" || u.username || u.password || u.port) return "";
+    return MUSIQUE_HOTES.test(u.hostname) ? u.href : "";
+  } catch (e) { return ""; }
 }
 function _musiqueLicenceUrlSure(url) {
   try { var u = new URL(String(url || "")); return (u.protocol === "https:" && /(^|\.)creativecommons\.org$/i.test(u.hostname)) ? u.href : ""; } catch (e) { return ""; }
@@ -1921,6 +1928,9 @@ function _musiqueDepuisOpenverse(r) {
   var src = musiqueSourceSure(r.url);
   var licence = String(r.license || "").toLowerCase();
   if (!src || MUSIQUE_LICENCES.indexOf(licence) < 0) return null;
+  // MP3 seulement : l'iPhone ne lit pas l'Ogg (fréquent chez Wikimedia et Freesound).
+  var ft = String(r.filetype || "").toLowerCase();
+  if (ft ? ft !== "mp3" : !/\.mp3(?:$|\?)/i.test(src)) return null;
   return {
     id: String(r.id || "").slice(0, 64), src: src,
     titre: String(r.title || "Sans titre").slice(0, 80), artiste: String(r.creator || "Artiste inconnu").slice(0, 60),
@@ -1929,16 +1939,24 @@ function _musiqueDepuisOpenverse(r) {
     duree: Math.max(0, Math.round(Number(r.duration) || 0))
   };
 }
+// Une recherche à la fois (la précédente est ANNULÉE) ; cache mémoire par requête :
+// l'API gratuite plafonne les appels anonymes.
+var _musiqueCache = {}, _musiqueCtrl = null;
 async function rechercherMusique(q) {
-  var url = OPENVERSE_AUDIO + "?q=" + encodeURIComponent(String(q || "").slice(0, 60)) + "&license=" + MUSIQUE_LICENCES.join(",") + "&category=music&mature=false&page_size=20";
-  var ctrl = (typeof AbortController === "function") ? new AbortController() : null;
+  q = String(q || "").trim().toLowerCase().slice(0, 60);
+  if (_musiqueCache[q]) return _musiqueCache[q];
+  var url = OPENVERSE_AUDIO + "?q=" + encodeURIComponent(q) + "&license=" + MUSIQUE_LICENCES.join(",") + "&category=music&extension=mp3&mature=false&page_size=20";
+  try { if (_musiqueCtrl) _musiqueCtrl.abort(); } catch (e) {}
+  var ctrl = _musiqueCtrl = (typeof AbortController === "function") ? new AbortController() : null;
   var t = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
   try {
     var r = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
     if (!r.ok) return { erreur: r.status === 429 ? "trop" : "reseau" };
     var d = await r.json();
-    return { liste: (Array.isArray(d && d.results) ? d.results : []).map(_musiqueDepuisOpenverse).filter(Boolean) };
-  } catch (e) { return { erreur: "reseau" }; }
+    var res = { liste: (Array.isArray(d && d.results) ? d.results : []).map(_musiqueDepuisOpenverse).filter(Boolean) };
+    _musiqueCache[q] = res;
+    return res;
+  } catch (e) { return { erreur: (e && e.name === "AbortError" && ctrl !== _musiqueCtrl) ? "annulee" : "reseau" }; }
   finally { if (t) clearTimeout(t); }
 }
 // UN SEUL élément audio par usage (éditeur, lecteur) : sur iPhone, un élément
@@ -1947,7 +1965,7 @@ var _meMusiqueAudio = null, _storyMusiqueAudio = null;
 function _meMusiqueArreter() { try { if (_meMusiqueAudio) { _meMusiqueAudio.pause(); _meMusiqueAudio.removeAttribute("src"); _meMusiqueAudio.load(); } } catch (e) {} }
 function _meMusiqueJouer(src) {
   if (!src) return;
-  if (!_meMusiqueAudio) { _meMusiqueAudio = new Audio(); _meMusiqueAudio.loop = true; _meMusiqueAudio.preload = "none"; }
+  if (!_meMusiqueAudio) { _meMusiqueAudio = new Audio(); _meMusiqueAudio.loop = true; _meMusiqueAudio.preload = "none"; _meMusiqueAudio.referrerPolicy = "no-referrer"; }
   if (_meMusiqueAudio.src !== src) _meMusiqueAudio.src = src;
   try { var pr = _meMusiqueAudio.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
 }
@@ -1970,11 +1988,12 @@ function _meStickerMusique(panneau) {
   panneau.appendChild(credit);
   var jeton = 0;
   var chercher = async function () {
+    clearTimeout(minuterie);
     var q = champ.value.trim() || "chill";
     var mien = ++jeton;
     l.innerHTML = ""; var att = document.createElement("div"); att.className = "me-sticker-vide"; att.textContent = "Recherche…"; l.appendChild(att);
     var r = await rechercherMusique(q);
-    if (mien !== jeton || !document.body.contains(l)) return;
+    if (mien !== jeton || !document.body.contains(l) || r.erreur === "annulee") return;
     l.innerHTML = "";
     if (r.erreur || !r.liste.length) {
       var v = document.createElement("div"); v.className = "me-sticker-vide";
@@ -2010,32 +2029,98 @@ function _meStickerMusique(panneau) {
   chercher();
 }
 // Lecteur de story : joue la musique de la story affichée, s'arrête avec elle.
-function _storyMusiqueArreter() { try { if (_storyMusiqueAudio) _storyMusiqueAudio.pause(); } catch (e) {} var b = document.getElementById("storyMusiqueSon"); if (b) b.remove(); }
+// Jeton de la story qui JOUE : un rejet de lecture arrivé après qu'on est passé à
+// la story suivante n'a plus rien à dire (il posait un 🔇 sur la mauvaise story).
+var _storyMusiqueJeton = 0;
+// `window._storyMusiqueCoupee` : le spectateur a coupé la musique (le temps de la session).
+function _storyMusiqueAudioPret() {
+  if (!_storyMusiqueAudio) {
+    _storyMusiqueAudio = new Audio(); _storyMusiqueAudio.loop = true; _storyMusiqueAudio.preload = "auto";
+    _storyMusiqueAudio.referrerPolicy = "no-referrer";
+  }
+  return _storyMusiqueAudio;
+}
+// iPhone : un élément audio n'est « débloqué » que par une lecture lancée PENDANT
+// un geste. Appelée à l'ouverture du lecteur (un toucher), avec un silence.
+function storyMusiqueDebloquer() {
+  try {
+    var a = _storyMusiqueAudioPret();
+    if (a.dataset.debloque === "1" || a.src) return;
+    a.dataset.debloque = "1";
+    a.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+    var pr = a.play(); if (pr && pr.then) pr.then(function () { a.pause(); }, function () {});
+  } catch (e) {}
+}
+function _storyMusiqueArreter() {
+  _storyMusiqueJeton++;
+  // Vider la source : sinon le navigateur continue de télécharger, et l'écran
+  // verrouillé garde un lecteur capable de relancer le morceau app fermée.
+  try { if (_storyMusiqueAudio) { _storyMusiqueAudio.pause(); _storyMusiqueAudio.removeAttribute("src"); _storyMusiqueAudio.load(); } } catch (e) {}
+  var b = document.getElementById("storyMusiqueSon"); if (b) b.remove();
+}
+function _storyMusiqueBouton(card, coupe) {
+  var b = document.getElementById("storyMusiqueSon");
+  if (!b) {
+    b = document.createElement("button"); b.type = "button"; b.id = "storyMusiqueSon"; b.className = "story-sound-btn";
+    b.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var a = _storyMusiqueAudio; if (!a || !a.src) return;
+      if (a.paused || a.muted) { window._storyMusiqueCoupee = false; a.muted = false; try { var pr = a.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (_) {} }
+      else { window._storyMusiqueCoupee = true; a.muted = true; }
+      _storyMusiqueBouton(card, a.muted || a.paused);
+    });
+    card.appendChild(b);
+  }
+  b.textContent = coupe ? "🔇" : "🔊";
+  b.setAttribute("aria-label", coupe ? "Activer la musique" : "Couper la musique");
+}
 function _storyMusiqueJouer(s) {
   _storyMusiqueArreter();
   var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
   var src = o && musiqueSourceSure(o.src);
   if (!src) return;
-  if (!_storyMusiqueAudio) { _storyMusiqueAudio = new Audio(); _storyMusiqueAudio.loop = true; _storyMusiqueAudio.preload = "auto"; }
-  if (_storyMusiqueAudio.src !== src) _storyMusiqueAudio.src = src;
-  try { _storyMusiqueAudio.currentTime = 0; } catch (e) {}
+  var card = document.getElementById("storyCard"); if (!card) return;
+  // Story VIDÉO avec musique : la musique remplace le son de la vidéo, et UN seul
+  // bouton son (celui de la musique) — jamais deux boutons superposés.
+  var vid = card.querySelector("#storyMedia video");
+  if (vid) { vid.muted = true; vid.defaultMuted = true; var sb = document.getElementById("storySoundBtn"); if (sb) sb.remove(); }
+  var a = _storyMusiqueAudioPret();
+  var jeton = _storyMusiqueJeton;
+  a.src = src;
+  a.muted = !!window._storyMusiqueCoupee;
+  _storyMusiqueBouton(card, a.muted);
   var pr = null;
-  try { pr = _storyMusiqueAudio.play(); } catch (e) {}
-  if (pr && pr.catch) pr.catch(function () {
-    // Lecture refusée (aucun geste encore) : un bouton pour lancer le son.
-    var card = document.getElementById("storyCard"); if (!card || document.getElementById("storyMusiqueSon")) return;
-    var b = document.createElement("button"); b.type = "button"; b.id = "storyMusiqueSon"; b.className = "story-sound-btn"; b.textContent = "🔇";
-    b.setAttribute("aria-label", "Lancer la musique");
-    b.addEventListener("click", function (e) { e.stopPropagation(); try { _storyMusiqueAudio.play(); } catch (_) {} b.remove(); });
-    card.appendChild(b);
+  try { pr = a.play(); } catch (e) {}
+  if (pr && pr.catch) pr.catch(function (e) {
+    if (jeton !== _storyMusiqueJeton) return;           // on a changé de story entre-temps
+    if (!e || e.name !== "NotAllowedError") return;      // interruption ordinaire, pas un refus
+    _storyMusiqueBouton(card, true);                     // un toucher sur 🔇 lancera le son
   });
 }
+// Pause de la story (page masquée, maintien du doigt, saisie, feuille ouverte) =
+// pause de la musique ; reprise = reprise. Appelée par la minuterie de la story.
+function _storyMusiqueSuivrePause(enPause) {
+  var a = _storyMusiqueAudio; if (!a || !a.src || a.src.indexOf("data:") === 0) return;
+  if (enPause) { if (!a.paused) { a._pauseStory = true; a.pause(); } }
+  else if (a._pauseStory) { a._pauseStory = false; try { var pr = a.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {} }
+}
+// Quitter l'app (accueil, lien ouvert ailleurs) : le son ne continue pas en fond.
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) {
+    var sv = document.getElementById("storyViewer");
+    if (sv && sv.classList.contains("active")) _storyMusiqueSuivrePause(false);
+    return;
+  }
+  _storyMusiqueSuivrePause(true);
+  _meMusiqueArreter();
+});
 // Crédit d'un morceau (toucher sur le sticker) : rendu DOM, liens validés.
 function ouvrirCreditMusique(bouton) {
   var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
   var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
   if (!o) return;
-  var pauseAvant = window._storyEnPause; window._storyEnPause = true;
+  // Pas de pause à gérer ici : la minuterie de la story s'arrête d'elle-même tant
+  // qu'une fenêtre est ouverte (#modalBackdrop.active), et la musique avec elle.
   openModal('<div class="modal-handle"></div><div class="modal-title">🎵 Musique</div><div id="mcCorps" class="mc-corps"></div>');
   var c = document.getElementById("mcCorps"); if (!c) return;
   var ligne = function (txt, cls) { var d = document.createElement("div"); d.className = cls || ""; d.textContent = txt; c.appendChild(d); return d; };
@@ -2050,7 +2135,6 @@ function ouvrirCreditMusique(bouton) {
   var page = musiqueSourceSure(o.page);
   if (page) { var p2 = document.createElement("a"); p2.href = page; p2.target = "_blank"; p2.rel = "noopener noreferrer"; p2.textContent = "Écouter sur la page d'origine"; p2.className = "mc-lien"; c.appendChild(p2); }
   ligne("Trouvée via Openverse (fondation WordPress).", "mc-source");
-  var fermeture = setInterval(function () { if (!document.body.contains(c)) { clearInterval(fermeture); window._storyEnPause = pauseAvant; } }, 400);
 }
 
 // ── FILTRES (2026-11-26) ─────────────────────────────────────────────────────
@@ -2618,6 +2702,8 @@ function meAddEmoji() {
     ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) {
       var p = document.getElementById(id);
       if (!p || p.contains(e.target)) return;
+      // Panneau musique fermé sans choisir : l'aperçu s'arrête (sauf musique déjà posée).
+      if (id === "meStickerPanel" && !meState.overlays.some(function (o) { return o.type === "musique"; })) _meMusiqueArreter();
       // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
       if (e.target.closest && e.target.closest(".me-tool")) return;
       p.remove();
@@ -3090,6 +3176,7 @@ function openStoryGroup(authorId) {
 }
 
 function openStoryViewerAt(groupIdx, itemIdx) {
+  try { storyMusiqueDebloquer(); } catch (e) {}
   if (!storyGroups.length) storyGroups = buildStoryGroups();
   if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
@@ -3354,8 +3441,10 @@ function playCurrentStory() {
       // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
       // Une feuille ouverte par-dessus (partage, signalement, porte de compte)
       // met la story en pause ; elle reprend à la fermeture.
-      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause
-          || document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
+      const _enPause = document.hidden || window._storyEnPause
+          || !!document.querySelector("#modalBackdrop.active, #feuilleConfirmation");
+      try { _storyMusiqueSuivrePause(_enPause); } catch (_e) {}
+      if (_enPause || (storyVideo && storyVideo.paused)) return;
       // Une story VIDÉO dure le temps de sa vidéo (bornée à 60 s), et sa barre
       // suit la LECTURE réelle : ni l'attente des métadonnées ni un temps de mise
       // en mémoire ne comptent (réseau lent), et la fin se lit au retour en

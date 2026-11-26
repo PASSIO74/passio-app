@@ -3,8 +3,9 @@
 // « Pour le son, trouve une solution gratuite » (Benjamin). Openverse (fondation
 // WordPress) : API gratuite, morceaux sous licence libre.
 //   ① la recherche part vers Openverse avec les SEULES licences commerciales ET
-//      adaptables (by, by-sa, cc0, pdm — jamais « nd »), catégorie musique ;
-//      un résultat d'un hébergeur inconnu, en http ou « nd » est écarté ;
+//      adaptables sans partage à l'identique (by, cc0, pdm — jamais « nd » ni
+//      « sa »), catégorie musique, MP3 ; un résultat d'un hébergeur inconnu, en
+//      http, « nd », « by-sa » ou en Ogg (illisible sur iPhone) est écarté ;
 //   ② choisir pose UN sticker 🎵 (le second remplace le premier), la musique
 //      voyage, et le lecteur de story la joue ; elle s'arrête à la fermeture ;
 //   ③ toucher le sticker ouvre le crédit (titre, artiste, licence, liens sûrs) ;
@@ -29,6 +30,8 @@ const RESULTATS = [
   { id: "x1", title: "Piège", creator: "X", url: "https://evil.example/t.mp3", license: "by" },
   { id: "x2", title: "Clair", creator: "X", url: "http://mp3d.jamendo.com/x/c.mp3", license: "by" },
   { id: "x3", title: "Sans modif", creator: "X", url: "https://mp3d.jamendo.com/x/nd.mp3", license: "by-nd" },
+  { id: "x4", title: "Partage", creator: "X", url: "https://mp3d.jamendo.com/x/sa.mp3", license: "by-sa" },
+  { id: "x5", title: "Ogg", creator: "X", url: "https://upload.wikimedia.org/x.ogg", license: "cc0", filetype: "ogg" },
 ];
 
 async function banc(page) {
@@ -55,13 +58,16 @@ test("① recherche Openverse : licences libres et adaptables seulement, héberg
   await expect(page.locator("#meStickerPanel .me-musique-choix")).toHaveCount(2);
   const url = new URL(page.__requetes[0]);
   expect(url.origin + url.pathname).toBe("https://api.openverse.org/v1/audio/");
-  expect(url.searchParams.get("license")).toBe("by,by-sa,cc0,pdm");
+  expect(url.searchParams.get("license")).toBe("by,cc0,pdm");
+  expect(url.searchParams.get("extension")).toBe("mp3");
   expect(url.searchParams.get("category")).toBe("music");
   expect(url.searchParams.get("mature")).toBe("false");
   await expect(page.locator("#meStickerPanel")).toContainText("Soleil");
   await expect(page.locator("#meStickerPanel")).toContainText("CC BY 3.0");
   await expect(page.locator("#meStickerPanel")).not.toContainText("Piège");
   await expect(page.locator("#meStickerPanel")).not.toContainText("Sans modif");
+  await expect(page.locator("#meStickerPanel")).not.toContainText("Partage");
+  await expect(page.locator("#meStickerPanel")).not.toContainText("Ogg");
   // Une puce relance la recherche.
   await page.locator("#meStickerPanel .me-musique-puces button", { hasText: "piano" }).click();
   await expect.poll(() => page.__requetes.length).toBeGreaterThan(1);
@@ -103,7 +109,42 @@ test("③ toucher le sticker ouvre le crédit, liens sûrs seulement", async ({ 
   await expect(corps).toContainText("Léa");
   await expect(corps.locator("a", { hasText: "Licence CC BY 3.0" })).toHaveAttribute("href", "https://creativecommons.org/licenses/by/3.0/");
   await expect(corps.locator("a", { hasText: "page d'origine" })).toHaveCount(0);
-  expect(await page.evaluate(() => window._storyEnPause)).toBe(true);
+  // Fermer le crédit : la story REPART (elle restait figée, relecture du 2026-11-26).
+  await page.evaluate(() => closeModal());
+  expect(await page.evaluate(() => !!window._storyEnPause)).toBe(false);
+  const avant = await page.evaluate(() => parseFloat(document.getElementById("sp-0").style.width) || 0);
+  await page.waitForTimeout(800);
+  const apres = await page.evaluate(() => parseFloat(document.getElementById("sp-0").style.width) || 0);
+  expect(apres, "la barre de progression avance de nouveau").toBeGreaterThan(avant);
+});
+
+test("③ bis la musique suit les pauses de la story et ne reste pas sur la story suivante", async ({ page }) => {
+  await page.route(/jamendo\.com/, (route) => route.fulfill({ status: 200, contentType: "audio/wav", body: wav() }));
+  await bootOnboarded(page);
+  await page.evaluate(() => {
+    const ov = [{ type: "musique", src: "https://mp3d.jamendo.com/x/soleil.mp3", titre: "Soleil", artiste: "Léa", licence: "by", x: 50, y: 20 }];
+    storyGroups = [{ authorId: "u_x", stories: [
+      { id: "s_a", authorId: "u_x", authorName: "X", text: "", overlays: ov, createdAt: Date.now() },
+      { id: "s_b", authorId: "u_x", authorName: "X", text: "sans musique", createdAt: Date.now() },
+    ] }];
+    openStoryViewerAt(0, 0);
+  });
+  await expect.poll(() => page.evaluate(() => _storyMusiqueAudio && !_storyMusiqueAudio.paused)).toBe(true);
+  await expect(page.locator("#storyMusiqueSon")).toHaveText("🔊");
+  // Pause de la story (maintien, saisie…) = pause de la musique ; reprise = reprise.
+  await page.evaluate(() => { window._storyEnPause = true; });
+  await expect.poll(() => page.evaluate(() => _storyMusiqueAudio.paused)).toBe(true);
+  await page.evaluate(() => { window._storyEnPause = false; });
+  await expect.poll(() => page.evaluate(() => _storyMusiqueAudio.paused)).toBe(false);
+  // Couper le son au bouton.
+  await page.locator("#storyMusiqueSon").click();
+  expect(await page.evaluate(() => _storyMusiqueAudio.muted)).toBe(true);
+  await expect(page.locator("#storyMusiqueSon")).toHaveText("🔇");
+  // Story suivante, sans musique : plus de son, plus de bouton, source vidée.
+  await page.evaluate(() => storyTap("next"));
+  await expect(page.locator("#storyMusiqueSon")).toHaveCount(0);
+  expect(await page.evaluate(() => ({ p: _storyMusiqueAudio.paused, src: _storyMusiqueAudio.getAttribute("src") }))).toEqual({ p: true, src: null });
+  await page.evaluate(() => { window._storyMusiqueCoupee = false; });
 });
 
 test("④ hostile : source piégée sans sticker ni lecture ; jamais dans une bobine", async ({ page }) => {
