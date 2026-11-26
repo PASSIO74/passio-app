@@ -106,6 +106,7 @@ const GABARITS_PUSH = {
   follow_request: "{nom} souhaite s'abonner à ton compte privé",
   follow_accept: "{nom} a accepté ta demande d'abonnement",
   event_join: "{nom} demande à participer à ton activité",
+  event_accepted: "Ta participation à la sortie est confirmée.",
   event_feedback: "{nom} a laissé un avis sur ton activité",
   event_comment: "{nom} a commenté ton activité",
   event_update: "{nom} a mis à jour une activité où tu es inscrit·e",
@@ -181,13 +182,13 @@ export async function autoriserPushNotif(admin, fromUid, toUserId, maintenantMs)
  * Échec de lecture ou d'écriture = pas de push. Seule l'ABSENCE de la colonne (migration pas
  * encore appliquée) laisse passer, comme avant.
  */
-export async function reserverPush(admin, idNotification, toUserId, maxParHeure = 30, maintenantMs = Date.now(), fromId = null) {
+export async function reserverPush(admin, idNotification, toUserId, maxParHeure = 30, maintenantMs = Date.now(), fromId = null, { exigerReservation = false } = {}) {
   const absente = (e) => !!e && (e.code === "42703" || e.code === "PGRST204");
   if (!idNotification) return false;
   const depuis = new Date(maintenantMs - 3600e3).toISOString();
   const { count, error } = await admin.from("notifications").select("id", { count: "exact", head: true })
     .eq("user_id", toUserId).gte("push_le", depuis).lte("push_le", new Date(maintenantMs).toISOString());
-  if (absente(error)) return true;
+  if (absente(error)) return !exigerReservation;
   if (error || (count || 0) >= maxParHeure) return false;
   // Un seul compte ne consomme pas tout le budget d'une cible : sinon 30 notifications ordinaires la coupaient
   // de toutes ses push pendant une heure. `fromId` est lu sur la ligne, jamais sur la requête.
@@ -199,7 +200,7 @@ export async function reserverPush(admin, idNotification, toUserId, maxParHeure 
   const { data, error: e2 } = await admin.from("notifications")
     .update({ push_le: new Date(maintenantMs).toISOString() })
     .eq("id", idNotification).is("push_le", null).select("id");
-  if (absente(e2)) return true;
+  if (absente(e2)) return !exigerReservation;
   return !e2 && !!(data && data.length);
 }
 

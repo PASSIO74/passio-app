@@ -626,6 +626,18 @@ test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adre
   assert.equal(admin2.journal.some((j) => j.op === "insert" && premiere(j).event === "push_envoye"), false);
 });
 
+test("validation app fermée : une décision garde son tag et le tap ouvre exactement la sortie", async () => {
+  const sw = chargerSw();
+  const eventId = "e".repeat(80);
+  const push = { type: "notif", kind: "event_accepted", eventId, decisionId: "n_pi_confirmation_00000000-0000-4000-8000-000000000001" };
+  await sw.push(push);
+  await sw.push(push);
+  assert.equal(sw.notifs[0].opts.tag, sw.notifs[1].opts.tag);
+  assert.equal(sw.notifs[1].opts.renotify, false);
+  await sw.clic(sw.notifs[0].opts);
+  assert.deepEqual(sw.ouverts, ["./#irl-event-" + eventId]);
+});
+
 test("⑫ service worker : la push « rappel » s'affiche et le TAP ouvre l'activité ; un identifiant douteux n'ouvre que l'accueil", async () => {
   const sw = chargerSw();
   await sw.push({ type: "rappel", titre: "Rando", texte: "Ça commence dans 1 h", eventId: "ev_1" });
