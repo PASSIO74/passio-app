@@ -1238,7 +1238,7 @@ function meCycleBg() {
   _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
   meState.bg = STORY_BGS[meState.bgIdx] || STORY_BGS[0];
-  meState.filtre = "normal"; _mePoserFiltreClasse(document.getElementById("meMedia"), "normal");
+  meChoisirFiltre("normal");
   document.getElementById("meCanvas").style.background = meState.bg;
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
@@ -1953,6 +1953,16 @@ function storyCompteTexte(fin) {
   if (h >= 1) return "dans " + h + " h " + (min % 60) + " min";
   return "dans " + Math.max(1, min) + " min";
 }
+// Le lecteur de bobines rend toute la liste d'un coup : le reste d'un compte à
+// rebours y serait figé. On le recalcule toutes les 30 s, et seulement s'il y en
+// a un à l'écran (une requête, aucun rendu cadencé sur l'image).
+setInterval(function () {
+  var l = document.querySelectorAll(".st-compte[data-fin] span");
+  for (var i = 0; i < l.length; i++) {
+    var t = storyCompteTexte(Number(l[i].parentNode.getAttribute("data-fin")));
+    if (t && l[i].textContent !== t) l[i].textContent = t;
+  }
+}, 30000);
 function _meStickerCompte(panneau) {
   panneau.remove();
   var evs = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
@@ -2999,8 +3009,8 @@ function _storyOverlaysHtml(overlays, opts) {
       if (!Number.isFinite(fin)) return "";
       var corpsC = '<b>⏳ ' + escapeHtml(String(o.titre || "").slice(0, 60)) + '</b><span>' + escapeHtml(storyCompteTexte(fin)) + '</span>';
       return lien
-        ? '<button type="button" class="story-ov story-sticker st-compte" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '">' + corpsC + '</button>'
-        : '<div class="story-ov story-sticker st-compte" style="' + pos + '">' + corpsC + '</div>';
+        ? '<button type="button" class="story-ov story-sticker st-compte" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</button>'
+        : '<div class="story-ov story-sticker st-compte" style="' + pos + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</div>';
     }
     if (o.type === "sondage" && dansStory && !sondageRendu) {
       sondageRendu = true;

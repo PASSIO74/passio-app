@@ -14353,3 +14353,5 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 .me-sticker-compte b, .story-sticker.st-compte b { font-size: 16px; }
 .me-sticker-compte span, .story-sticker.st-compte span { color: #7c3aed; font-size: 14px; font-weight: 800; }
 .story-sticker.st-compte:not(button) { cursor: default; }
+/* La rangée de filtres ouverte recouvrait les contrôles lecture/son d une vidéo (relecture du 2026-11-26). */
+.media-editor.me-filtres-ouverts .me-preview-ctrls { visibility: hidden; }

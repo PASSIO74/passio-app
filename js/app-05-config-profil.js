@@ -3413,9 +3413,10 @@ function renderReelHTML(post, idx) {
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
   const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
   const txt = post.text || post.caption || "";
+  const filtreBobine = (typeof storyFiltreClasse === "function") ? storyFiltreClasse(post.overlays) : "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
-      <div class="reel-media-container${(typeof storyFiltreClasse === "function" && storyFiltreClasse(post.overlays)) ? " " + storyFiltreClasse(post.overlays) : ""}"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
+      <div class="reel-media-container${filtreBobine ? " " + filtreBobine : ""}"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
         ${reelMediaHTML(post)}
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
