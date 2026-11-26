@@ -105,11 +105,11 @@ test("② la liste : liste vide → la feuille s'ouvre ; ajout envoyé, refus an
   await expect(page.locator(".amis-proches-ligne")).toHaveCount(0);
 });
 
-test("③ publier « proches » : audience dans l'INSERT, aucune mention ; « tous » n'envoie pas la colonne", async ({ page }) => {
+test("③ publier « proches » : audience dans l'INSERT, mentions bornées à la liste ; « tous » n'envoie pas la colonne", async ({ page }) => {
   await banc(page);
   await page.evaluate(({ lea }) => {
     window.__tables.amis_proches = { rows: [{ ami_id: lea }] };
-    window.__mentions = 0; window._prevenirMentionsStory = () => { window.__mentions++; };
+    window.__mentions = []; window._prevenirMentionsStory = (ov, quoi, seulement) => { window.__mentions.push(seulement); };
     supaEnsureProfileExists = async () => {};
     passioMediaProteges.capture = () => ({ uid: MY_UID });
     passioMediaProteges.courant = () => true;
@@ -132,7 +132,10 @@ test("③ publier « proches » : audience dans l'INSERT, aucune mention ; « to
   const [p1] = (await requetes(page, "stories")).filter((r) => r.op === "insert");
   expect(p1.row.audience).toBe("proches");
   await expect.poll(() => page.evaluate(() => window.__toasts.join("|"))).toContain("amis proches");
-  expect(await page.evaluate(() => window.__mentions), "aucune mention pour une story proches").toBe(0);
+  // Mentions : prévenues avec la liste relue au serveur comme SEULE audience
+  // (le filtrage lui-même est éprouvé dans story-stickers.spec.js ⑥).
+  await expect.poll(() => page.evaluate(() => window.__mentions.length)).toBe(1);
+  expect(await page.evaluate(() => window.__mentions[0]), "mentions bornées aux amis proches").toEqual([LEA]);
   // Story « tous » : la colonne ne part pas (un serveur sans migration l'accepte).
   await page.evaluate(() => { meOpen("story"); meAddOverlay({ type: "text", text: "Pour tous", color: "#fff", size: 30, x: 50, y: 40 }); meEnterEditPhase(); meState._enteredEditAt = 0; });
   await page.locator("#mePublishBtn").click();

@@ -8,7 +8,10 @@
 //   ③ ❓ Question : posée sur la story ; un spectateur répond, la réponse part
 //      en message à l'auteur, la story est en pause pendant qu'il écrit ;
 //   ④ bobine : Activité et Mention proposées, pas la Question ;
-//   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs.
+//   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs ;
+//   ⑥ story « Amis proches » : seul un compte mentionné MEMBRE de la liste
+//      (relue au serveur) est prévenu — un non-membre n'apprend pas qu'une
+//      story existe (red team du 2026-11-26) ; liste illisible = personne.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -16,6 +19,8 @@ const { bootOnboarded } = require("./app-helper");
 test.use({ viewport: { width: 390, height: 780 }, hasTouch: true });
 
 const LEA = "a1b2c3d4-0000-4000-8000-00000000d101";
+const TOM = "a1b2c3d4-0000-4000-8000-00000000d102";
+const MOI = "a1b2c3d4-0000-4000-8000-00000000d1ff";
 
 async function banc(page, mode) {
   await bootOnboarded(page);
@@ -257,4 +262,59 @@ test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", asy
   expect(r.deux, "un seul sondage rendu par story").toBe(1);
   expect(r.actifs).toBe(0);
   expect(r.opts).toBe(2);
+});
+
+test("⑥ story « Amis proches » : seul un mentionné MEMBRE de la liste est prévenu", async ({ page }) => {
+  await banc(page, "story");
+  await page.evaluate(({ moi, lea, tom }) => {
+    MY_UID = moi; STORY_PROCHES_ACTIF = true; window._supaReal = true;
+    window.__liste = { rows: [{ ami_id: lea }], error: null }; window.__lectures = [];
+    supa = {
+      from: (t) => {
+        const f = [];
+        const b = {
+          select() { return b; }, eq(c, v) { f.push([c, v]); return b; }, limit() { return b; },
+          then(ok, ko) { window.__lectures.push({ t, f }); return Promise.resolve({ data: window.__liste.error ? null : window.__liste.rows, error: window.__liste.error }).then(ok, ko); },
+        };
+        return b;
+      },
+    };
+    window.supaPublishStory = async () => true;
+    window.__publier = () => {
+      meOpen("story"); meState.overlays = [];
+      meCycleBg(); meFermerEditeurTexte(false);
+      meAddOverlay({ type: "mention", uid: lea, nom: "Léa Martin", x: 40, y: 40 });
+      meAddOverlay({ type: "mention", uid: tom, nom: "Tom Hors-liste", x: 60, y: 60 });
+      meState._enteredEditAt = 0;
+      return mePublishProches();
+    };
+  }, { moi: MOI, lea: LEA, tom: TOM });
+  // Léa est dans la liste, Tom non : seule Léa reçoit le message.
+  await page.evaluate(() => window.__publier());
+  await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+  await page.waitForTimeout(300);
+  const envois = await page.evaluate(() => window.__envois);
+  expect(envois.map((e) => e.a)).toEqual([LEA]);
+  expect(await page.evaluate(() => state.seed.stories[0].audience)).toBe("proches");
+  // La liste est relue au SERVEUR, filtrée sur le propriétaire.
+  const lectures = await page.evaluate(() => window.__lectures.filter((r) => r.t === "amis_proches"));
+  expect(lectures.some((r) => r.f.some(([c, v]) => c === "owner_id" && v === MOI))).toBe(true);
+  // Lecture de la liste en échec (après le passage de mePublishProches) : personne.
+  await page.evaluate(() => {
+    window.__envois = [];
+    const lire = window._lireAmisProchesPourMentions;
+    window._lireAmisProchesPourMentions = async () => { window.__liste = { rows: null, error: { code: "500" } }; return lire(); };
+    return window.__publier();
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Story pour TOUS : les deux comptes réels mentionnés sont prévenus.
+  await page.evaluate(({ lea, tom }) => {
+    meOpen("story"); meState.overlays = [];
+    meCycleBg(); meFermerEditeurTexte(false);
+    meAddOverlay({ type: "mention", uid: lea, nom: "Léa Martin", x: 40, y: 40 });
+    meAddOverlay({ type: "mention", uid: tom, nom: "Tom Hors-liste", x: 60, y: 60 });
+    meState._enteredEditAt = 0; mePublish();
+  }, { lea: LEA, tom: TOM });
+  await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a).sort())).toEqual([LEA, TOM].sort());
 });
