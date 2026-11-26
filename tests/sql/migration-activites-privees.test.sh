@@ -89,6 +89,14 @@ alter table public.notifications enable row level security;
 grant select, insert on public.notifications to authenticated; grant update (seen) on public.notifications to authenticated;
 create policy notif_ecriture on public.notifications for insert to authenticated with check (from_id = (select auth.uid())::text);
 create policy notif_lecture on public.notifications for select to authenticated using (user_id = (select auth.uid())::text);
+-- L'origine est POSÉE par le serveur (définition de production) : le client ne la choisit pas.
+create function public.notifications_origine() returns trigger language plpgsql security definer set search_path = '' as $f$
+begin
+  new.origine := case when current_setting('passio.notification_serveur', true) = '1' then 'serveur' else 'client' end;
+  return new;
+end $f$;
+create trigger trg_notifications_origine before insert or update on public.notifications
+  for each row execute function public.notifications_origine();
 create table public.blocks (blocker_id text, blocked_id text, primary key (blocker_id, blocked_id));
 create table public.events (id text primary key, author_id text, organizer_id text, title text,
   status text default 'active', co_organizers jsonb, address text);
@@ -268,6 +276,8 @@ EN "$LEA" "insert into public.notifications (id, user_id, from_id, kind, ref_id)
 verifier "Ben marque l'invitation lue" "ok" "$(ECRIT "$BEN" "update public.notifications set seen = true where id = 'n_ben'")"
 verifier "Léa ne notifie pas un non-invité" "42501" "$(ECRIT "$LEA" "insert into public.notifications (user_id, from_id, kind, ref_id) values ('$BLOQ', '$LEA', 'event_invite', 'ev_priv')")"
 verifier "Kevin ne se fait pas envoyer le titre (complice)" "42501" "$(ECRIT "$KEVIN" "insert into public.notifications (user_id, from_id, kind, ref_id) values ('$BEN', '$KEVIN', 'event_invite', 'ev_priv')")"
+verifier "Kevin ne saute pas la garde en forgeant origine = serveur" "42501" "$(ECRIT "$KEVIN" "insert into public.notifications (user_id, from_id, kind, ref_id, origine) values ('$BEN', '$KEVIN', 'event_invite', 'ev_priv', 'serveur')")"
+verifier "une ligne du SERVEUR (réglage posé) n'est pas touchée" "ok" "$(ECRIT "$KEVIN" "perform set_config('passio.notification_serveur', '1', true); insert into public.notifications (user_id, from_id, kind, ref_id) values ('$BEN', '$KEVIN', 'event_invite', 'ev_priv')")"
 verifier "Ben (invité, pas organisateur) n'invite pas" "42501" "$(ECRIT "$BEN" "insert into public.notifications (user_id, from_id, kind, ref_id) values ('$BEN', '$BEN', 'event_invite', 'ev_priv')")"
 verifier "une invitation à une publique n'est pas touchée" "ok" "$(ECRIT "$KEVIN" "insert into public.notifications (user_id, from_id, kind, ref_id) values ('$BEN', '$KEVIN', 'event_invite', 'ev_pub')")"
 verifier "Léa ré-invite Ben sans erreur (rejeu idempotent)" "ok" "$(ECRIT "$LEA" "insert into public.event_invites (event_id, user_id) values ('ev_priv', '$BEN') on conflict do nothing")"

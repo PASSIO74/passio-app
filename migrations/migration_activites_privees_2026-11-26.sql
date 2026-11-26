@@ -267,7 +267,14 @@ returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
-  if new.kind is distinct from 'event_invite' or new.origine is distinct from 'client'
+  -- ⚠️ L'ORIGINE SE LIT AU RÉGLAGE, JAMAIS DANS LA COLONNE DE LA LIGNE : les déclencheurs
+  -- partent par ordre alphabétique, et celui-ci passe AVANT
+  -- `trg_notifications_origine` — la colonne est encore celle que le CLIENT a
+  -- envoyée. Un `origine = 'serveur'` forgé sautait la garde, puis l'origine
+  -- était réécrite à 'client' et le titre ajouté (revue de sécurité du
+  -- 2026-11-26). Même règle que `notifications_origine`.
+  if new.kind is distinct from 'event_invite'
+     or current_setting('passio.notification_serveur', true) = '1'
      or auth.uid() is null then
     return new;
   end if;
@@ -340,7 +347,9 @@ select * from (values
        and contype = 'f' and confdeltype = 'c') = 3),
   (16, 'notifications : la garde d''invitation privée est posée',
      exists (select 1 from pg_trigger where tgname = 'trg_notifications_invite_privee'
-              and tgrelid = 'public.notifications'::regclass and not tgisinternal and tgenabled <> 'D')),
+              and tgrelid = 'public.notifications'::regclass and not tgisinternal and tgenabled <> 'D')
+     and pg_get_functiondef('public.notifications_invite_privee_garde()'::regprocedure) like '%passio.notification_serveur%'
+     and pg_get_functiondef('public.notifications_invite_privee_garde()'::regprocedure) not like '%new.origine%'),
   (14, 'event_invites n''est pas publiée en temps réel',
      not exists (select 1 from pg_publication_tables where schemaname = 'public' and tablename = 'event_invites'))
 ) as v(n, controle, ok_bool);

@@ -2340,7 +2340,10 @@ la carte du fil.
 - **trouvé en contre-revue** : `notifications_texte_serveur` écrit LUI-MÊME le titre dans
   « t'invite à … » ; un compte qui connaissait l'identifiant se faisait envoyer le titre d'une
   activité privée par un complice. Garde `trg_notifications_invite_privee` (INSERT seulement :
-  marquer lue est un UPDATE).
+  marquer lue est un UPDATE). ⚠️ Elle lit l'origine au RÉGLAGE `passio.notification_serveur`,
+  jamais dans la colonne : les déclencheurs partent par ordre alphabétique et celui-ci passe
+  AVANT `trg_notifications_origine` — la colonne y est encore celle du client, et un
+  `origine = 'serveur'` forgé sautait la garde (revue de sécurité automatique, même jour).
 
 **Client** : choix 🌍 Publique / 🔒 Privée à la création (Privée par défaut quand on invite
 depuis une conversation, la case du fil disparaît) ; le droit de lecture de l'invité
