@@ -907,7 +907,7 @@ function openStudioAsStory() { meOpen("story"); }
 // Média (photo/vidéo) ou fond dégradé (story) + overlays déplaçables :
 // texte, emoji, GIF. Publie en story (24h) ou en bobine (is_reel).
 // ════════════════════════════════════════════════════════════════════════
-var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
@@ -941,10 +941,11 @@ function meOpen(mode) {
   // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
   // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
   if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
-  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], _seq: 0 };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
+  _meDessinRendre();
   // Fond noir pendant la capture (pas le dégradé de l'ancien composer).
   document.getElementById("meCanvas").style.background = "#000";
   // Placeholder gardé masqué : il ne sert que de fallback si la caméra échoue.
@@ -962,7 +963,8 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert");
+  meFermerDessin();
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin");
   ed.classList.add("me-vide");
   _meTeReinitialiser();
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
@@ -981,6 +983,7 @@ function meClose() {
   meStopCamera();
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
+  meFermerDessin();
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
@@ -998,7 +1001,8 @@ function meTopBack() {
 }
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
-  meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
+  meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
+  meFermerDessin(); _meDessinRendre();
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
@@ -1257,7 +1261,7 @@ function _meMajBoutonsFond() {
 }
 function _meMajVide() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
-  ed.classList.toggle("me-vide", !meState.overlays.length);
+  ed.classList.toggle("me-vide", !meState.overlays.length && !(meState.dessin && meState.dessin.length));
 }
 function _meReadFile(file) {
   return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
@@ -1705,17 +1709,36 @@ var ME_ALIGN_SVG = {
   right: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M9 10h8M3 15h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
 };
 // État de l'éditeur ; `couleur` survit d'un texte à l'autre (comme Instagram).
-var meTe = { ov: null, couleur: "#ffffff", style: "", align: "center" };
+var meTe = { ov: null, couleur: "#ffffff", style: "", align: "center", police: "classique", taille: 30 };
 
 // Styles d'un texte, partagés par l'éditeur ET le lecteur de story. Les valeurs
 // viennent d'un autre compte côté lecteur : alignement en liste fermée,
 // couleurs par `_cssColor`, contraste calculé ici (jamais lu dans la charge).
+// Polices (2026-11-26) : liste FERMÉE — un identifiant reçu d'un autre compte
+// ne choisit qu'une entrée, il n'est jamais recopié dans le style. Polices du
+// système uniquement (rien à télécharger, la CSP reste fermée).
+var ME_POLICES = [
+  { id: "classique", nom: "Classique", famille: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", graisse: 800 },
+  { id: "machine", nom: "Machine", famille: "'Courier New', Courier, ui-monospace, monospace", graisse: 700 },
+  { id: "elegante", nom: "Élégante", famille: "Georgia, 'Times New Roman', serif", graisse: 700 },
+  { id: "neon", nom: "Néon", famille: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", graisse: 800, neon: true },
+  { id: "manuscrite", nom: "Manuscrite", famille: "'Segoe Script', 'Snell Roundhand', 'Brush Script MT', cursive", graisse: 400 }
+];
+function _storyPolice(id) {
+  for (var i = 0; i < ME_POLICES.length; i++) if (ME_POLICES[i].id === id) return ME_POLICES[i];
+  return ME_POLICES[0];
+}
 function _storyTexteStyles(o) {
   var couleur = _cssColor((o && o.color) || "#ffffff");
   var align = (o && (o.align === "left" || o.align === "right")) ? o.align : "center";
   var fond = !!(o && o.style === "fond");
   var clair = /^#(fff|ffffff|facc15)$/i.test(couleur);
-  return { align: align, texte: fond ? (clair ? "#111111" : "#ffffff") : couleur, fond: fond ? couleur : "" };
+  var pol = _storyPolice(o && o.font);
+  var ombre = (pol.neon && !fond) ? ("0 0 4px #fff, 0 0 10px " + couleur + ", 0 0 22px " + couleur) : "";
+  return {
+    align: align, texte: fond ? (clair ? "#111111" : "#ffffff") : (pol.neon ? "#ffffff" : couleur), fond: fond ? couleur : "",
+    famille: pol.famille, graisse: pol.graisse, ombre: ombre
+  };
 }
 function _mePeindreTexte(el, ov) {
   if (!el) return;
@@ -1726,6 +1749,9 @@ function _mePeindreTexte(el, ov) {
   content.style.background = st.fond || "";
   el.style.color = st.texte;
   el.style.textAlign = st.align;
+  el.style.fontFamily = st.famille;
+  el.style.fontWeight = String(st.graisse);
+  el.style.textShadow = st.ombre || (st.fond ? "none" : "");
   if (ov.size) el.style.fontSize = ov.size + "px";
 }
 function _meTeReinitialiser() {
@@ -1743,8 +1769,9 @@ function meOuvrirEditeurTexte(ov) {
   var b = document.getElementById("meEmojiBar"); if (b) b.remove();
   var g = document.getElementById("meGifPanel"); if (g) g.remove();
   meTe.ov = ov || null;
-  if (ov) { meTe.couleur = ov.color || "#ffffff"; meTe.style = ov.style === "fond" ? "fond" : ""; meTe.align = ov.align || "center"; }
-  else { meTe.style = ""; meTe.align = "center"; }
+  if (ov) { meTe.couleur = ov.color || "#ffffff"; meTe.style = ov.style === "fond" ? "fond" : ""; meTe.align = ov.align || "center"; meTe.police = _storyPolice(ov.font).id; meTe.taille = Math.max(16, Math.min(64, Number(ov.size) || 30)); }
+  else { meTe.style = ""; meTe.align = "center"; meTe.taille = 30; }
+  var curseur = document.getElementById("meTeTaille"); if (curseur) curseur.value = String(meTe.taille);
   champ.value = ov ? (ov.text || "") : "";
   if (ov) { var el = document.getElementById(ov.id); if (el) el.classList.add("me-en-edition"); }
   var row = document.getElementById("meTeCouleurs");
@@ -1759,6 +1786,18 @@ function meOuvrirEditeurTexte(ov) {
       row.appendChild(bt);
     });
   }
+  var rangeePol = document.getElementById("meTePolices");
+  if (rangeePol && !rangeePol.childElementCount) {
+    ME_POLICES.forEach(function (pol) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.className = "me-te-police"; bt.textContent = pol.nom;
+      bt.style.fontFamily = pol.famille; bt.style.fontWeight = String(pol.graisse);
+      bt.setAttribute("data-police", pol.id); bt.setAttribute("aria-label", "Police " + pol.nom);
+      bt.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+      bt.addEventListener("click", function () { meTe.police = pol.id; _meTeAppliquer(); try { champ.focus(); } catch (e) {} });
+      rangeePol.appendChild(bt);
+    });
+  }
   box.classList.toggle("avec-fond", ed.classList.contains("me-fond"));
   _meMajBoutonsFond();
   box.classList.add("open"); box.setAttribute("aria-hidden", "false");
@@ -1768,12 +1807,18 @@ function meOuvrirEditeurTexte(ov) {
 }
 function _meTeAppliquer() {
   var champ = document.getElementById("meTeChamp"); if (!champ) return;
-  var st = _storyTexteStyles({ color: meTe.couleur, style: meTe.style, align: meTe.align });
+  var st = _storyTexteStyles({ color: meTe.couleur, style: meTe.style, align: meTe.align, font: meTe.police });
   champ.style.color = st.texte;
   champ.style.caretColor = st.texte;
   champ.style.background = st.fond || "transparent";
   champ.style.textAlign = st.align;
-  champ.style.textShadow = st.fond ? "none" : "";
+  champ.style.textShadow = st.ombre || (st.fond ? "none" : "");
+  champ.style.fontFamily = st.famille;
+  champ.style.fontWeight = String(st.graisse);
+  // `important` : le filet anti-zoom iOS pose 16 px !important sur tout textarea
+  // tactile ; la réglette va de 16 à 64, jamais sous le seuil.
+  champ.style.setProperty("font-size", meTe.taille + "px", "important");
+  document.querySelectorAll("#meTePolices .me-te-police").forEach(function (bt) { bt.classList.toggle("actif", bt.getAttribute("data-police") === meTe.police); });
   var sb = document.getElementById("meTeStyle");
   if (sb) { sb.classList.toggle("actif", meTe.style === "fond"); sb.setAttribute("aria-pressed", meTe.style === "fond" ? "true" : "false"); }
   var ab = document.getElementById("meTeAlign"); if (ab) ab.innerHTML = ME_ALIGN_SVG[st.align];
@@ -1812,10 +1857,10 @@ function meFermerEditeurTexte(valider) {
     if (el) el.classList.remove("me-en-edition");
     if (valider) {
       if (!t) meRemoveOverlay(ov.id);
-      else { ov.text = t; ov.color = meTe.couleur; ov.style = meTe.style || undefined; ov.align = meTe.align; _mePeindreTexte(el, ov); }
+      else { ov.text = t; ov.color = meTe.couleur; ov.style = meTe.style || undefined; ov.align = meTe.align; ov.font = meTe.police; ov.size = meTe.taille; _mePeindreTexte(el, ov); }
     }
   } else if (valider && t) {
-    meAddOverlay({ type: "text", text: t, color: meTe.couleur, style: meTe.style || undefined, align: meTe.align, x: 50, y: 42, size: 30 });
+    meAddOverlay({ type: "text", text: t, color: meTe.couleur, style: meTe.style || undefined, align: meTe.align, font: meTe.police, x: 50, y: 42, size: meTe.taille });
   }
   champ.value = "";
   _meMajVide();
@@ -1827,9 +1872,429 @@ function meFermerEditeurTexte(valider) {
     if (!champ || champ._meBranche) return;
     champ._meBranche = true;
     champ.addEventListener("input", _meTeAjuster);
+    var curseur = document.getElementById("meTeTaille");
+    if (curseur) {
+      curseur.addEventListener("input", function () { meTe.taille = Math.max(16, Math.min(64, Number(curseur.value) || 30)); _meTeAppliquer(); });
+      // Rendre le focus au champ après la réglette : le clavier reste ouvert.
+      curseur.addEventListener("change", function () { try { champ.focus(); } catch (e) {} });
+    }
     champ.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); meFermerEditeurTexte(true); } });
     // Toucher hors du champ = « OK » (comme Instagram).
     if (zone) zone.addEventListener("click", function (e) { if (e.target === zone) meFermerEditeurTexte(true); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+// ── STICKERS (2026-11-26, lot B) ────────────────────────────────────────────
+// 📍 Activité (renvoie à la fiche), @ Mention (le compte est prévenu par un
+// message), ❓ Question (les réponses arrivent en message à l'auteur — story
+// seulement). Les identifiants voyagent tels quels et sont VALIDÉS au rendu.
+var ME_ID_STICKER = /^[A-Za-z0-9_-]{1,80}$/;
+function _mePeindreSticker(content, ov) {
+  content.className = "me-sticker me-sticker-" + ov.type;
+  content.textContent = "";
+  if (ov.type === "evenement") {
+    var t = document.createElement("b"); t.textContent = "📍 " + (ov.titre || "Activité");
+    content.appendChild(t);
+    if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
+  } else if (ov.type === "mention") {
+    content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "sondage") {
+    var titre = document.createElement("b"); titre.textContent = ov.q || "Sondage";
+    content.appendChild(titre);
+    [ov.a, ov.b].forEach(function (lib) { var o = document.createElement("span"); o.className = "me-sticker-opt"; o.textContent = lib; content.appendChild(o); });
+  } else if (ov.type === "question") {
+    var qq = document.createElement("b"); qq.textContent = ov.q || "Pose-moi une question";
+    var r = document.createElement("span"); r.className = "me-sticker-rep"; r.textContent = "Écris ta réponse…";
+    content.appendChild(qq); content.appendChild(r);
+  }
+}
+function _meQuandEvenement(ev) {
+  try {
+    var ts = Number(ev && ev.date); if (!Number.isFinite(ts) || !ts) return "";
+    var d = new Date(ts);
+    var f = (typeof fmtEventDate === "function") ? fmtEventDate(ts) : null;
+    return d.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "") + " " + (f ? f.day + " " + f.month + " · " + f.time : "");
+  } catch (e) { return ""; }
+}
+function meOuvrirStickers() {
+  var exist = document.getElementById("meStickerPanel"); if (exist) { exist.remove(); return; }
+  ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
+  panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
+  var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention]];
+  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); }
+  choix.forEach(function (c) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
+    var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
+    var l = document.createElement("span"); l.textContent = c[1];
+    b.appendChild(i); b.appendChild(l);
+    b.setAttribute("data-sticker", c[1]);
+    b.addEventListener("click", function () { c[2](panneau); });
+    panneau.appendChild(b);
+  });
+  document.body.appendChild(panneau);
+}
+function _meStickerListe(panneau, titre) {
+  panneau.innerHTML = "";
+  panneau.classList.add("me-panneau-liste");
+  var h = document.createElement("div"); h.className = "me-sticker-titre"; h.textContent = titre;
+  panneau.appendChild(h);
+  var l = document.createElement("div"); l.className = "me-sticker-liste";
+  panneau.appendChild(l);
+  return l;
+}
+function _meStickerActivite(panneau) {
+  var maintenant = Date.now() - 3 * 3600 * 1000;
+  var evs = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
+    return e && ME_ID_STICKER.test(String(e.id || "")) && Number(e.date) >= maintenant;
+  }).slice(0, 30);
+  var l = _meStickerListe(panneau, "📍 Épingler une activité");
+  if (!evs.length) { var v = document.createElement("div"); v.className = "me-sticker-vide"; v.textContent = "Aucune activité à venir. Crée-en une dans Rencontrer."; l.appendChild(v); return; }
+  evs.forEach(function (ev) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-ligne";
+    var t = document.createElement("b"); t.textContent = (ev.emoji ? ev.emoji + " " : "") + (ev.title || "Activité");
+    var quandEl = document.createElement("span"); quandEl.textContent = _meQuandEvenement(ev);
+    b.appendChild(t); b.appendChild(quandEl);
+    b.setAttribute("data-eid", ev.id);
+    b.addEventListener("click", function () {
+      panneau.remove();
+      meAddOverlay({ type: "evenement", eid: String(ev.id), titre: String(ev.title || "Activité").slice(0, 80), quand: _meQuandEvenement(ev).slice(0, 40), x: 50, y: 66 });
+    });
+    l.appendChild(b);
+  });
+}
+function _meStickerMention(panneau) {
+  var dejaMentions = meState.overlays.filter(function (o) { return o.type === "mention"; }).length;
+  if (dejaMentions >= ME_MENTIONS_MAX) { panneau.remove(); toast("10 mentions au plus par publication"); return; }
+  var l = _meStickerListe(panneau, "@ Mentionner quelqu'un");
+  var champ = document.createElement("input");
+  champ.type = "search"; champ.className = "me-sticker-recherche"; champ.placeholder = "Chercher un nom"; champ.setAttribute("aria-label", "Chercher un compte");
+  panneau.insertBefore(champ, l);
+  var peindre = function () {
+    l.innerHTML = "";
+    var cherche = champ.value.trim().toLowerCase().replace(/^@/, "");
+    var gens = (typeof _mentionCandidates === "function" ? _mentionCandidates(cherche) : []).filter(function (u) { return u && ME_ID_STICKER.test(String(u.id || "")); });
+    if (!gens.length) { var v = document.createElement("div"); v.className = "me-sticker-vide"; v.textContent = "Personne à ce nom."; l.appendChild(v); return; }
+    gens.forEach(function (u) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-ligne";
+      var t = document.createElement("b"); t.textContent = "@" + u.name;
+      b.appendChild(t);
+      b.setAttribute("data-uid", u.id);
+      b.addEventListener("click", function () {
+        panneau.remove();
+        meAddOverlay({ type: "mention", uid: String(u.id), nom: String(u.name).slice(0, 40), x: 50, y: 60 });
+      });
+      l.appendChild(b);
+    });
+  };
+  champ.addEventListener("input", peindre);
+  peindre();
+  try { champ.focus(); } catch (e) {}
+}
+async function _meStickerQuestion(panneau) {
+  panneau.remove();
+  var saisie = await demanderTexte({ titre: "Ta question", valeur: "Pose-moi une question", libelle: "Ajouter", max: 120 });
+  if (saisie == null) return; saisie = saisie.trim(); if (!saisie) return;
+  meAddOverlay({ type: "question", q: saisie.slice(0, 120), x: 50, y: 60 });
+}
+// ⚠️ Le sticker Sondage n'est PROPOSÉ à la création qu'une fois la table des votes
+// en base (migration `migration_story_sondage_2026-11-26.sql`, en attente de la
+// contre-revue HUMAINE de Benjamin). Avant, on ne laisse personne poser un
+// sondage auquel personne ne pourrait répondre. Le LECTEUR, lui, reste branché :
+// un sondage déjà posé s'affiche, et dit « bientôt disponible » si la table manque.
+// Activer : `STORY_SONDAGE_ACTIF = true` une fois la migration appliquée (ou
+// `localStorage.passio_story_sondage = "1"` pour l'éprouver sur un appareil).
+var STORY_SONDAGE_ACTIF = false;
+function storySondageActif() {
+  if (STORY_SONDAGE_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
+}
+// 📊 Sondage (story seulement) : une question, deux réponses. Les votes vivent
+// dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
+function _meStickerSondage(panneau) {
+  panneau.remove();
+  // UN sondage par story : la base n'enregistre qu'un vote par compte et par story.
+  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par story"); return; }
+  openModal('<div class="modal-handle"></div><div class="modal-title">📊 Sondage</div>'
+    + '<input class="input" id="meSdQ" maxlength="120" placeholder="Pose ta question" style="margin-top:8px;"/>'
+    + '<input class="input" id="meSdA" maxlength="30" value="Oui" aria-label="Première réponse" style="margin-top:8px;"/>'
+    + '<input class="input" id="meSdB" maxlength="30" value="Non" aria-label="Seconde réponse" style="margin-top:8px;"/>'
+    + '<button type="button" class="btn primary block" id="meSdOk" style="margin-top:12px;">Ajouter le sondage</button>');
+  var ok = document.getElementById("meSdOk");
+  var champQ = document.getElementById("meSdQ");
+  if (champQ) { try { champQ.focus(); } catch (e) {} }
+  if (ok) ok.addEventListener("click", function () {
+    var question = (document.getElementById("meSdQ").value || "").trim();
+    var a = (document.getElementById("meSdA").value || "").trim() || "Oui";
+    var b = (document.getElementById("meSdB").value || "").trim() || "Non";
+    if (!question) { toast("Écris la question du sondage"); return; }
+    closeModal();
+    meAddOverlay({ type: "sondage", q: question.slice(0, 120), a: a.slice(0, 30), b: b.slice(0, 30), x: 50, y: 62 });
+  });
+}
+// Lecteur de story : résultats d'un sondage (après mon vote, ou si c'est ma story).
+function _storySondageAppliquer(carte, r) {
+  if (!carte || !r || !r.a_vote) return;
+  var a = Number(r.a) || 0, b = Number(r.b) || 0, total = a + b;
+  carte.classList.add("st-sd-vote");
+  carte.querySelectorAll(".st-sd-opt").forEach(function (bt) {
+    var c = Number(bt.getAttribute("data-choix"));
+    var n = c === 0 ? a : b;
+    var pct = total ? Math.round(n * 100 / total) : 0;
+    bt.style.setProperty("--pct", pct + "%");
+    var el = bt.querySelector(".st-sd-pct"); if (el) el.textContent = pct + " %";
+    bt.classList.toggle("st-sd-mien", r.mon_choix === c);
+    bt.setAttribute("aria-pressed", r.mon_choix === c ? "true" : "false");
+  });
+  var tot = carte.querySelector(".st-sd-total");
+  if (tot) tot.textContent = total + (total > 1 ? " votes" : " vote");
+}
+function _storySondageServeurPossible(s) {
+  return !!(s && s.fromSupabase && window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+}
+function _storySondagePeindre(s) {
+  var carte = document.querySelector("#storyOverlays .st-sondage");
+  if (!carte || !s) return;
+  var local = (state.user && state.user.sondagesLocaux) || {};
+  if (!_storySondageServeurPossible(s)) {
+    if (local[s.id] != null) _storySondageAppliquer(carte, { a_vote: true, mon_choix: local[s.id], a: local[s.id] === 0 ? 1 : 0, b: local[s.id] === 1 ? 1 : 0 });
+    return;
+  }
+  var id = s.id;
+  Promise.resolve(supa.rpc("story_sondage_resultats", { _story_id: String(id) })).then(function (res) {
+    if (!res || res.error || !res.data) return;
+    var g = storyGroups[storyGroupIdx], cur = g && g.stories && g.stories[storyItemIdx];
+    if (!cur || cur.id !== id) return;
+    _storySondageAppliquer(document.querySelector("#storyOverlays .st-sondage"), res.data);
+  }).catch(function () {});
+}
+function storyVoterSondage(bouton) {
+  var sv = document.getElementById("storyViewer");
+  if (!sv || !sv.classList.contains("active") || !bouton.closest("#storyOverlays")) return;
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  var carte = bouton.closest(".st-sondage");
+  if (!s || !carte || carte.classList.contains("st-sd-vote") || carte._envoi) return;
+  if (s.authorId === MY_UID || s.authorId === "me") { toast("Les votes de ton sondage s'affichent ici"); return; }
+  var choix = Number(bouton.getAttribute("data-choix")) === 1 ? 1 : 0;
+  if (!_storySondageServeurPossible(s)) {
+    // Story d'exemple ou locale : le vote reste sur cet appareil, rien ne part.
+    state.user.sondagesLocaux = state.user.sondagesLocaux || {};
+    state.user.sondagesLocaux[s.id] = choix;
+    // Borné : 50 derniers votes locaux (stories d'exemple), jamais une liste qui grossit.
+    var cles = Object.keys(state.user.sondagesLocaux);
+    if (cles.length > 50) cles.slice(0, cles.length - 50).forEach(function (k) { delete state.user.sondagesLocaux[k]; });
+    try { saveState(); } catch (e) {}
+    _storySondageAppliquer(carte, { a_vote: true, mon_choix: choix, a: choix === 0 ? 1 : 0, b: choix === 1 ? 1 : 0 });
+    return;
+  }
+  carte._envoi = true;
+  // L'INTENTION part (jamais une lecture préalable) ; le verdict de la base décide.
+  Promise.resolve(supa.from("story_sondage_votes").insert({ story_id: String(s.id), choix: choix })).then(function (res) {
+    carte._envoi = false;
+    var err = res && res.error;
+    if (err && err.code !== "23505") {
+      var absente = err.code === "42P01" || err.code === "PGRST205";
+      toast(absente ? "Les sondages arrivent bientôt" : "Vote non enregistré — réessaie", "warning");
+      return;
+    }
+    _storySondagePeindre(s);
+  }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
+}
+// Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
+// la publication, garantit un seul envoi des messages de mention.
+function _prevenirMentionsBobine(post) {
+  if (!post || post._mentionsEnvoyees) return;
+  post._mentionsEnvoyees = true;
+  try { saveState(); } catch (e) {}
+  try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
+}
+var ME_MENTIONS_MAX = 10;
+// Après une publication RÉUSSIE : chaque compte mentionné (réel, pas soi, pas
+// un compte d'exemple « u_… ») reçoit un message, comme sur Instagram.
+function _prevenirMentionsStory(overlays, quoi) {
+  var deja = {}, n = 0;
+  (overlays || []).forEach(function (o) {
+    if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    if (n >= ME_MENTIONS_MAX) return;
+    if (deja[o.uid] || o.uid === MY_UID || String(o.uid).indexOf("u_") === 0) return;
+    deja[o.uid] = 1; n++;
+    try { _envoyerALAuteurStory({ authorId: o.uid, authorName: o.nom }, o.nom, "📣 Je t'ai mentionné·e dans ma " + (quoi === "bobine" ? "bobine" : "story")); } catch (e) {}
+  });
+}
+// Lecteurs (story ET bobine) : un toucher sur un sticker.
+function _storyQuitterLecteurs() {
+  try { if (typeof reelsState !== "undefined" && reelsState && reelsState.open) closeReels(); } catch (e) {}
+  var sv = document.getElementById("storyViewer");
+  if (sv && sv.classList.contains("active")) closeStoryViewer({ versAutreEcran: true });
+}
+function storyRepondreQuestion(bouton) {
+  // La réponse part à l'auteur de la story OUVERTE : jamais depuis une bobine
+  // (posts.overlays est écrit par n'importe quel compte, et `storyGroups` garde
+  // la DERNIÈRE story vue — la réponse partait chez quelqu'un d'autre).
+  var sv = document.getElementById("storyViewer");
+  if (!sv || !sv.classList.contains("active") || !bouton.closest("#storyOverlays")) return;
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  if (!s) return;
+  if (s.authorId === MY_UID || s.authorId === "me") { toast("Les réponses arrivent dans tes messages"); return; }
+  var reelle = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && s.authorId && !/^u_/.test(String(s.authorId));
+  if (!reelle) { toast("Story d'exemple — crée ton compte pour répondre aux vraies stories"); return; }
+  var carte = bouton.closest(".st-question");
+  var question = carte ? (carte.getAttribute("data-q") || "") : "";
+  var pauseAvant = window._storyEnPause;
+  window._storyEnPause = true;
+  demanderTexte({ titre: question || "Réponds", placeholder: "Ta réponse", libelle: "Envoyer", max: 300 }).then(function (t) {
+    window._storyEnPause = pauseAvant;
+    if (t == null || !t.trim()) return;
+    Promise.resolve(_envoyerALAuteurStory(s, s.authorName, "❓ « " + question + " »\n" + t.trim())).then(function (ok) {
+      if (ok === "envoye") toast("Réponse envoyée à " + (s.authorName || "l'auteur"), "success");
+      else if (ok) toast("Réponse en attente — elle partira au retour du réseau");
+    });
+  });
+}
+(function _storyStickersBrancher() {
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt");
+    if (!b || b.closest("#mediaEditor")) return;
+    e.preventDefault(); e.stopPropagation();
+    var evt = b.getAttribute("data-evt"), u = b.getAttribute("data-uid");
+    if (evt) {
+      var ev = (typeof allEvents === "function" ? allEvents() : []).find(function (x) { return x && x.id === evt; });
+      if (!ev) { toast("Cette activité n'est plus disponible"); return; }
+      _storyQuitterLecteurs();
+      openEventDetails(evt);
+    } else if (u) {
+      _storyQuitterLecteurs();
+      openUserProfile(u);
+    } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    else storyRepondreQuestion(b);
+  }, true);
+})();
+// ── DESSIN À MAIN LEVÉE (2026-11-26) ──────────────────────────────────────
+// Les traits sont des VECTEURS (coordonnées 0–1000 de la scène) : ils voyagent
+// dans `overlays` ({type:"dessin", traits:[{c,w,p}]}) — jamais une image base64
+// en base. Bornes : 60 traits, 6 000 nombres en tout.
+var ME_DESSIN_EPAISSEURS = [5, 10, 20];
+var ME_DESSIN_MAX_TRAITS = 60, ME_DESSIN_MAX_NOMBRES = 6000;
+var meDessin = { couleur: "#ffffff", ep: 1, gomme: false, trait: null, el: null, doigt: null };
+function _meDessinTotal() { return (meState.dessin || []).reduce(function (n, t) { return n + t.p.length; }, 0); }
+function _meDessinPolyline(t, i) {
+  var ns = "http://www.w3.org/2000/svg";
+  var pl = document.createElementNS(ns, "polyline");
+  var pts = []; for (var k = 0; k + 1 < t.p.length; k += 2) pts.push(t.p[k] + "," + t.p[k + 1]);
+  pl.setAttribute("points", pts.join(" "));
+  pl.setAttribute("fill", "none");
+  pl.setAttribute("stroke", t.c);
+  pl.setAttribute("stroke-width", String(t.w));
+  pl.setAttribute("stroke-linecap", "round");
+  pl.setAttribute("stroke-linejoin", "round");
+  pl.setAttribute("vector-effect", "non-scaling-stroke");
+  if (i != null) pl.setAttribute("data-i", String(i));
+  return pl;
+}
+function _meDessinRendre() {
+  var svg = document.getElementById("meDessinSvg"); if (!svg) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  (meState.dessin || []).forEach(function (t, i) { svg.appendChild(_meDessinPolyline(t, i)); });
+}
+function meOuvrirDessin() {
+  var ed = document.getElementById("mediaEditor"); var barre = document.getElementById("meDessinBarre");
+  if (!ed || !barre || !ed.classList.contains("phase-edit")) return;
+  if (ed.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
+  ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  document.querySelectorAll("#meOverlays .me-overlay").forEach(function (e) { e.classList.remove("selected"); });
+  var row = document.getElementById("meDessinCouleurs");
+  if (row && !row.childElementCount) {
+    ME_TEXTE_COULEURS.forEach(function (c) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.className = "me-te-couleur"; bt.style.background = c;
+      bt.setAttribute("data-couleur", c); bt.setAttribute("aria-label", "Crayon " + c);
+      bt.addEventListener("click", function () { meDessin.couleur = c; meDessin.gomme = false; _meDessinBarre(); });
+      row.appendChild(bt);
+    });
+  }
+  meDessin.gomme = false;
+  ed.classList.add("me-dessin");
+  barre.classList.add("open"); barre.setAttribute("aria-hidden", "false");
+  _meDessinBarre();
+}
+function meFermerDessin() {
+  var ed = document.getElementById("mediaEditor"); var barre = document.getElementById("meDessinBarre");
+  if (ed) ed.classList.remove("me-dessin");
+  if (barre) { barre.classList.remove("open"); barre.setAttribute("aria-hidden", "true"); }
+  meDessin.trait = null; meDessin.el = null; meDessin.gomme = false; meDessin.doigt = null;
+  _meMajVide();
+}
+function _meDessinBarre() {
+  document.querySelectorAll("#meDessinCouleurs .me-te-couleur").forEach(function (bt) { bt.classList.toggle("actif", !meDessin.gomme && bt.getAttribute("data-couleur") === meDessin.couleur); });
+  var g = document.getElementById("meDsGommeBtn");
+  if (g) { g.classList.toggle("actif", meDessin.gomme); g.setAttribute("aria-pressed", meDessin.gomme ? "true" : "false"); }
+  var pt = document.querySelector("#meDsEpaisseurBtn .me-dessin-point");
+  if (pt) { var w = ME_DESSIN_EPAISSEURS[meDessin.ep]; pt.style.width = pt.style.height = Math.max(6, Math.round(w * 0.9)) + "px"; pt.style.background = meDessin.couleur; }
+}
+function meDessinEpaisseur() { meDessin.ep = (meDessin.ep + 1) % ME_DESSIN_EPAISSEURS.length; _meDessinBarre(); }
+function meDessinGomme() { meDessin.gomme = !meDessin.gomme; _meDessinBarre(); }
+function meDessinAnnuler() { if (meState.dessin && meState.dessin.length) { meState.dessin.pop(); _meDessinRendre(); } }
+function meDessinToutEffacer() { meState.dessin = []; _meDessinRendre(); }
+function _meDessinPoint(svg, e) {
+  var r = svg.getBoundingClientRect();
+  var x = Math.round((e.clientX - r.left) / (r.width || 1) * 1000);
+  var y = Math.round((e.clientY - r.top) / (r.height || 1) * 1000);
+  return [Math.max(0, Math.min(1000, x)), Math.max(0, Math.min(1000, y))];
+}
+function _meDessinGommer(e) {
+  var cible = document.elementFromPoint(e.clientX, e.clientY);
+  var i = cible && cible.getAttribute && cible.getAttribute("data-i");
+  if (i == null || !cible.closest || !cible.closest("#meDessinSvg")) return;
+  meState.dessin.splice(Number(i), 1);
+  _meDessinRendre();
+}
+(function _meDessinBrancher() {
+  function brancher() {
+    var svg = document.getElementById("meDessinSvg");
+    if (!svg || svg._meBranche) return;
+    svg._meBranche = true;
+    svg.addEventListener("pointerdown", function (e) {
+      var ed = document.getElementById("mediaEditor");
+      if (!ed || !ed.classList.contains("me-dessin")) return;
+      e.preventDefault();
+      // UN doigt à la fois : un second (paume, deux doigts) écrasait le trait en cours.
+      if (meDessin.doigt != null) return;
+      if (meDessin.gomme) {
+        meDessin.doigt = e.pointerId; meDessin.trait = "gomme";
+        try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+        _meDessinGommer(e); return;
+      }
+      if (meState.dessin.length >= ME_DESSIN_MAX_TRAITS || _meDessinTotal() >= ME_DESSIN_MAX_NOMBRES) { toast("Dessin complet — annule un trait pour continuer"); return; }
+      try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      meDessin.doigt = e.pointerId;
+      var p = _meDessinPoint(svg, e);
+      meDessin.trait = { c: meDessin.couleur, w: ME_DESSIN_EPAISSEURS[meDessin.ep], p: [p[0], p[1], p[0], p[1]] };
+      meDessin.el = _meDessinPolyline(meDessin.trait, null);
+      svg.appendChild(meDessin.el);
+    });
+    svg.addEventListener("pointermove", function (e) {
+      if (e.pointerId !== meDessin.doigt) return;
+      if (meDessin.trait === "gomme") { _meDessinGommer(e); return; }
+      var t = meDessin.trait; if (!t || !meDessin.el) return;
+      var p = _meDessinPoint(svg, e);
+      var n = t.p.length;
+      if (Math.hypot(p[0] - t.p[n - 2], p[1] - t.p[n - 1]) < 5) return;
+      if (n >= 1200 || _meDessinTotal() + n >= ME_DESSIN_MAX_NOMBRES) return;
+      if (n === 4 && t.p[0] === t.p[2] && t.p[1] === t.p[3]) t.p.length = 2;
+      t.p.push(p[0], p[1]);
+      var pts = []; for (var k = 0; k + 1 < t.p.length; k += 2) pts.push(t.p[k] + "," + t.p[k + 1]);
+      meDessin.el.setAttribute("points", pts.join(" "));
+    });
+    function fin(e) {
+      if (e.pointerId !== meDessin.doigt) return;
+      var t = meDessin.trait;
+      try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
+      meDessin.trait = null; meDessin.el = null; meDessin.doigt = null;
+      if (t && t !== "gomme") { meState.dessin.push(t); _meDessinRendre(); _meMajVide(); }
+    }
+    svg.addEventListener("pointerup", fin);
+    svg.addEventListener("pointercancel", fin);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
@@ -1838,7 +2303,7 @@ function meFermerEditeurTexte(valider) {
   document.addEventListener("click", function (e) {
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-edit") || !ed.classList.contains("me-fond")) return;
-    if (ed.classList.contains("me-texte-ouvert")) return;
+    if (ed.classList.contains("me-texte-ouvert") || ed.classList.contains("me-dessin")) return;
     var c = document.getElementById("meCanvas");
     if (!c || !c.contains(e.target)) return;
     if (e.target.closest && e.target.closest(".me-overlay, button")) return;
@@ -1862,7 +2327,7 @@ function meAddEmoji() {
 }
 (function _meFermerPanneauxDehors() {
   document.addEventListener("pointerdown", function (e) {
-    ["meEmojiBar", "meGifPanel"].forEach(function (id) {
+    ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) {
       var p = document.getElementById(id);
       if (!p || p.contains(e.target)) return;
       // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
@@ -1909,6 +2374,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -2034,9 +2500,13 @@ function _mePinchStart(pointers, ids, ov) {
 function _meOverlaysData() {
   return meState.overlays.map(function(o) {
     var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y), scale: +(o.scale || 1).toFixed(3), rot: Math.round(o.rot || 0) };
-    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; }
+    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; if (o.style === "fond") c.style = "fond"; if (o.align === "left" || o.align === "right") c.align = o.align; if (o.font && o.font !== "classique") c.font = _storyPolice(o.font).id; }
     if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
     if (o.type === "gif") { c.url = o.url; }
+    if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
+    if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
+    if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
+    if (o.type === "sondage") { c.q = String(o.q || "").slice(0, 120); c.a = String(o.a || "Oui").slice(0, 30); c.b = String(o.b || "Non").slice(0, 30); }
     return c;
   });
 }
@@ -2052,7 +2522,7 @@ async function mePublish() {
   if (_edPub && _edPub.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
   // Une story « Créer » sans rien dessus est un aplat de couleur : Instagram ne
   // la publie pas, nous non plus — on rouvre l'écriture.
-  if (meState.mode === "story" && !meState.media && !meState.overlays.length) {
+  if (meState.mode === "story" && !meState.media && !meState.overlays.length && !(meState.dessin && meState.dessin.length)) {
     toast("Écris quelque chose sur ta story");
     meOuvrirEditeurTexte(null);
     return;
@@ -2064,6 +2534,8 @@ async function mePublish() {
   // voyaient le dégradé par défaut. Il voyage dans `overlays` sous forme
   // d'INDICE dans STORY_BGS — jamais une chaîne CSS d'un autre compte.
   if (meState.mode === "story" && !meState.media) overlays.push({ type: "bg", i: meState.bgIdx });
+  // Le dessin passe SOUS les textes et stickers : premier de la liste.
+  if (meState.dessin && meState.dessin.length) overlays.unshift({ type: "dessin", traits: meState.dessin.map(function (t) { return { c: t.c, w: t.w, p: t.p.slice() }; }) });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
 
@@ -2106,7 +2578,13 @@ async function mePublish() {
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
     saveState();
     try { renderStories(); } catch(e) {}
-    _publierStoryAvecVerdict(story);
+    Promise.resolve(_publierStoryAvecVerdict(story)).then(function (ok) {
+      // Mentions SEULEMENT si la story est sur le SERVEUR : une story gardée sur
+      // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
+      // story qu'il ne pourra pas ouvrir.
+      var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
+      if (ok === true && serveur) _prevenirMentionsStory(story.overlays, "story");
+    });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
@@ -2161,6 +2639,7 @@ function _publishReelWithFeedback(post) {
       post._pendingSync = false;
       try { saveState(); } catch (e) {}
       toast("Bobine publiée", "success");
+      _prevenirMentionsBobine(post);
       return;
     }
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
@@ -2250,6 +2729,7 @@ async function _rejouerPublicationsEnAttente() {
     if (ok) {
       envoyees++;
       toast(p.isReel ? "Bobine publiée" : "Publication envoyée", "success");
+      if (p.isReel) _prevenirMentionsBobine(p);
       try { renderFeed(); } catch (e) {}
     }
   }
@@ -2347,7 +2827,36 @@ function _storyFondCss(s) {
   if (Number.isInteger(i) && i >= 0 && i < STORY_BGS.length) return STORY_BGS[i];
   return (typeof s.bg === "string" && s.bg) ? _cssColor(s.bg) : "var(--grad-hero)";
 }
-function _storyOverlaysHtml(overlays) {
+// Dessin d'une story d'un AUTRE compte : seuls des nombres bornés et une couleur
+// passée par `_cssColor` entrent dans le SVG.
+function _storyDessinHtml(o) {
+  var nb = function (v, d) { var n = Number(v); return Number.isFinite(n) ? n : d; };
+  var traits = Array.isArray(o && o.traits) ? o.traits.slice(0, 60) : [];
+  // Plafond TOTAL, le même que l'éditeur : une ligne forgée ne peut pas peser
+  // 72 000 nombres sur chaque bobine du fil.
+  var reste = 6000;
+  var corps = traits.map(function (t) {
+    if (reste <= 0) return "";
+    var p = (t && Array.isArray(t.p)) ? t.p.slice(0, Math.min(1200, reste)) : [];
+    reste -= p.length;
+    var pts = [];
+    for (var k = 0; k + 1 < p.length; k += 2) {
+      var x = Math.round(nb(p[k], NaN)), y = Math.round(nb(p[k + 1], NaN));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return "";
+      pts.push(Math.max(0, Math.min(1000, x)) + "," + Math.max(0, Math.min(1000, y)));
+    }
+    if (!pts.length) return "";
+    if (pts.length === 1) pts.push(pts[0]);
+    var w = Math.max(1, Math.min(40, nb(t.w, 8)));
+    return '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + _cssColor(t.c || "#ffffff") + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+  }).join("");
+  return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
+}
+// `opts.story` : appelé par le lecteur de STORY. Le sticker Question n'y est
+// rendu que là (une bobine n'a pas de destinataire de réponse fiable).
+function _storyOverlaysHtml(overlays, opts) {
+  var dansStory = !!(opts && opts.story);
+  var sondageRendu = false; // un seul sondage rendu : un seul vote par story en base
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
   // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
@@ -2362,7 +2871,29 @@ function _storyOverlaysHtml(overlays) {
       var st = _storyTexteStyles(o);
       var interieur = escapeHtml(o.text || "");
       if (st.fond) interieur = '<span class="story-txt-fond" style="background:' + st.fond + ';">' + interieur + '</span>';
-      return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + _nb(o.size, 26) + 'px;font-weight:800;text-align:' + st.align + ';">' + interieur + '</div>';
+      var taille = Math.max(10, Math.min(96, _nb(o.size, 26)));
+      return '<div class="story-ov" style="' + pos + 'color:' + st.texte + ';font-size:' + taille + 'px;font-weight:' + st.graisse + ';font-family:' + st.famille + ';' + (st.ombre ? 'text-shadow:' + st.ombre + ';' : '') + 'text-align:' + st.align + ';">' + interieur + '</div>';
+    }
+    if (o.type === "dessin") return _storyDessinHtml(o);
+    if (o.type === "evenement" && ME_ID_STICKER.test(String(o.eid || ""))) {
+      return '<button type="button" class="story-ov story-sticker st-evt" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '"><b>📍 ' + escapeHtml(String(o.titre || "Activité").slice(0, 80)) + '</b>' + (o.quand ? '<span>' + escapeHtml(String(o.quand).slice(0, 40)) + '</span>' : '') + '</button>';
+    }
+    if (o.type === "mention" && ME_ID_STICKER.test(String(o.uid || ""))) {
+      // Le nom affiché est celui du COMPTE quand on le connaît : un « @Alice »
+      // forgé ne peut pas ouvrir le profil de Bob sous le nom d'Alice.
+      var connu = (typeof userById === "function") ? userById(o.uid) : null;
+      var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
+      return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
+    }
+    if (o.type === "sondage" && dansStory && !sondageRendu) {
+      sondageRendu = true;
+      var sq = String(o.q || "").slice(0, 120);
+      var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
+      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
+    }
+    if (o.type === "question" && dansStory) {
+      var qv = String(o.q || "").slice(0, 120);
+      return '<div class="story-ov story-sticker st-question" style="' + pos + '" data-q="' + escapeHtml(qv) + '"><b>' + escapeHtml(qv) + '</b><button type="button" class="st-q-rep">Écris ta réponse…</button></div>';
     }
     if (o.type === "emoji") {
       return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
@@ -2474,7 +3005,8 @@ function playCurrentStory() {
   // Overlays (texte/emoji/GIF positionnés). Si présents, ils remplacent le texte centré.
   const ovLayer = document.getElementById("storyOverlays");
   const overlays = Array.isArray(s.overlays) ? s.overlays : [];
-  if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays);
+  if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays, { story: true });
+  try { if (overlays.some(function (o) { return o && o.type === "sondage"; })) _storySondagePeindre(s); } catch (e) {}
 
   if (overlays.length) {
     $("#storyContent").innerHTML = "";
