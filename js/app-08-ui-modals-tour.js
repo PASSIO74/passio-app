@@ -12373,6 +12373,8 @@ async function supaInit() {
       // reçoivent (app-07) — les relectures suivantes n'ont pas à le refaire.
       if (typeof rafraichirEvenements === "function") rafraichirEvenements(true, function (e) {
         if (typeof rattraperActivitesAuFil === "function") rattraperActivitesAuFil(e).catch(function () {});
+        // Les activités du serveur sont là : le rappel juge sur la liste complète.
+        if (typeof _checkEventReminders === "function") _checkEventReminders();
       });
       // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
       // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS
