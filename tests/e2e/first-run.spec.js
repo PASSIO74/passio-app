@@ -256,6 +256,17 @@ test.describe("Carte de bienvenue", () => {
     await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
   });
 
+  // La croix ne ferme QUE la carte : elle ne passe pas en lecture libre, les
+  // repères restent permis (contrairement à « Parcourir le fil »).
+  test("passions choisies : la croix ferme la carte sans couper les repères", async ({ page }) => {
+    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
+    const carte = page.locator("#frWelcome");
+    await expect(carte).toBeVisible({ timeout: 15000 });
+    await carte.getByRole("button", { name: "Fermer la carte de bienvenue" }).click();
+    await expect(carte).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("passio_first_run_bienvenue_fermee"))).toBe("1");
+  });
+
   // ⚠️ UN SEUL BOUTON (2026-11-03). La carte en alignait quatre à poids presque
   // égal, dont deux en double : « Explorer d'abord » faisait ce que fait le ×,
   // « Créer mon compte » ce que faisait la pastille de la barre du haut, retirée
