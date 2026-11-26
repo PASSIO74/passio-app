@@ -1827,7 +1827,7 @@ function meFermerEditeurTexte(valider) {
     if (!champ || champ._meBranche) return;
     champ._meBranche = true;
     champ.addEventListener("input", _meTeAjuster);
-    champ.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); meFermerEditeurTexte(true); } });
+    champ.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); meFermerEditeurTexte(true); } });
     // Toucher hors du champ = « OK » (comme Instagram).
     if (zone) zone.addEventListener("click", function (e) { if (e.target === zone) meFermerEditeurTexte(true); });
   }
@@ -1912,6 +1912,9 @@ function _meRenderOverlay(ov) {
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
+  // Sans cet arrêt, le pointerdown remontait à l'overlay : un toucher bref sur ✕
+  // passait pour « toucher le texte » et ouvrait l'éditeur au lieu de supprimer.
+  del.addEventListener("pointerdown", function(e) { e.stopPropagation(); });
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
   el.appendChild(del);
   var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
@@ -1941,6 +1944,7 @@ function _meMakeInteractive(el, ov, handle) {
   var tape = null;            // { x, y, t } — un toucher bref sans bouger = modifier le texte
 
   el.addEventListener("pointerdown", function(e) {
+    if (e.target && e.target.closest && e.target.closest(".me-ov-ctrl")) return; // ✕ ✎ ⤡ gèrent leur geste
     e.preventDefault(); e.stopPropagation();
     meSelectOverlay(ov);
     rect = canvas.getBoundingClientRect();

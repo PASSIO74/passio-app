@@ -146,3 +146,14 @@ test("⑤bis un indice hostile ou une couleur piégée ne sortent pas de l'attri
   expect(html.txt).not.toContain("<b>");
   expect(html.txt).toContain("text-align:center");
 });
+
+test("⑥ le ✕ d'un texte le SUPPRIME (il n'ouvre pas l'éditeur)", async ({ page }) => {
+  await ouvrirCreer(page);
+  await page.locator("#meTeChamp").fill("À retirer");
+  await page.locator("#meTeOk").click();
+  const texte = page.locator("#meOverlays .me-overlay.text");
+  await expect(texte).toHaveCount(1);
+  await texte.locator(".me-ov-del").tap();
+  await expect(page.locator("#meOverlays .me-overlay")).toHaveCount(0);
+  await expect(page.locator("#meTexteEditeur")).toBeHidden();
+});
