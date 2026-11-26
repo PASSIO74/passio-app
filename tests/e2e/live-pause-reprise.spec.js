@@ -10,6 +10,7 @@
 // ③ le micro coupé AVANT la pause reste coupé après la reprise ;
 // ④ basculer le micro pendant la pause ne rallume pas le son ;
 // ⑤ le spectateur ne voit pas le bouton « Reprendre » ;
+// ⑦ paysage + chat plein, ⑧ caméra retournée pendant la pause ;
 // ⑥ à 360 px, TOUTES les commandes de l'hôte tiennent dans l'écran (le champ
 //    sans `min-width: 0` poussait micro et caméra hors champ).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -90,7 +91,40 @@ test.describe("Live — pause et reprise", () => {
     await page.evaluate(() => { _vliveRenderUI("viewer", { title: "Banc", author_name: "Hôte" }); _vliveShowPaused(true, false); });
     await expect(page.locator("#vlivePaused")).toBeVisible();
     await expect(page.locator(".vlive-resume-btn")).toHaveCount(0);
-    await expect(page.locator(".vlive-close")).toBeVisible();
+    const box = await page.locator(".vlive-close").boundingBox();
+    const touchable = await page.evaluate(([x, y]) => !!(document.elementFromPoint(x, y) || {}).closest && !!document.elementFromPoint(x, y).closest(".vlive-close"), [box.x + box.width / 2, box.y + box.height / 2]);
+    expect(touchable, "la croix du spectateur reste touchable en pause").toBe(true);
+  });
+
+  test("⑦ paysage, chat plein : le chat ne recouvre pas « Reprendre le live »", async ({ page }) => {
+    await page.setViewportSize({ width: 812, height: 375 });
+    await hote(page);
+    await page.evaluate(() => {
+      const l = document.getElementById("vliveChatList");
+      for (let i = 0; i < 30; i++) { const d = document.createElement("div"); d.className = "vlive-chat-msg"; d.textContent = "message " + i; l.appendChild(d); }
+    });
+    await page.locator("#vlivePauseBtn").click();
+    await toucherAuCentre(page, ".vlive-resume-btn");
+    await expect(page.locator("#vlivePaused")).toBeHidden();
+    expect((await pistes(page)).paused).toBe(false);
+  });
+
+  test("⑧ caméra retournée PENDANT l'échange de piste : la pause s'applique à la nouvelle", async ({ page }) => {
+    await hote(page);
+    const allumee = await page.evaluate(async () => {
+      const H = window._vliveHost;
+      let lacher;
+      H.pcs = { v1: { pc: { getSenders: () => [{ track: { kind: "video" }, replaceTrack: () => new Promise(r => { lacher = r; }) }] } } };
+      const cv = document.createElement("canvas"); cv.width = 16; cv.height = 16; cv.getContext("2d").fillRect(0, 0, 16, 16);
+      navigator.mediaDevices.getUserMedia = async () => cv.captureStream(5);
+      const p = flipVliveCamera();
+      while (!lacher) await new Promise(r => setTimeout(r, 10));
+      toggleVlivePause();          // pause posée pendant replaceTrack
+      lacher();
+      await p;
+      return H.stream.getVideoTracks()[0].enabled;
+    });
+    expect(allumee).toBe(false);
   });
 
   for (const largeur of [360, 390]) {

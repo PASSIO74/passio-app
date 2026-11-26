@@ -5275,6 +5275,10 @@ function _vliveShowPaused(on, isHost) {
   const rb = el.querySelector(".vlive-resume-btn");
   if (rb) rb.style.display = isHost ? "" : "none";
   el.style.display = on ? "flex" : "none";
+  // En pause, la zone du chat (au-dessus du voile) ne capte plus les touchers :
+  // en paysage ou clavier ouvert, elle recouvrait le bouton « Reprendre ».
+  const ov = document.getElementById("vliveOverlay");
+  if (ov) ov.classList.toggle("vlive-en-pause", !!on);
 }
 
 // Changement de caméra (diffuseur) : replaceTrack sur TOUTES les connexions.
@@ -5301,6 +5305,9 @@ async function flipVliveCamera() {
   const old = H.stream.getVideoTracks()[0];
   if (old) { H.stream.removeTrack(old); old.stop(); }
   H.stream.addTrack(newTrack);
+  // Relit la pause APRÈS les `await replaceTrack` : une pause posée pendant
+  // l'échange visait l'ancienne piste, la nouvelle serait partie allumée.
+  _vliveAppliquerPistes();
   _vliveApplyHostQuality();
   const lv = document.getElementById("vliveVideo");
   if (lv) { lv.srcObject = H.stream; lv.style.transform = next === "environment" ? "none" : "scaleX(-1)"; }
@@ -5396,7 +5403,7 @@ function _vliveRenderUI(mode, row) {
         '<button class="vlive-bar-btn" onclick="_vliveSendChat()" aria-label="Envoyer">➤</button>' +
         (isHost
           ? '<button class="vlive-bar-btn" id="vlivePauseBtn" onclick="toggleVlivePause(this)" aria-label="Mettre en pause">⏸</button>' +
-            '<button class="vlive-bar-btn" id="vliveMicBtn" onclick="toggleVliveMic(this)" aria-label="Micro" aria-pressed="false">🎙</button>' +
+            '<button class="vlive-bar-btn" id="vliveMicBtn" onclick="toggleVliveMic(this)" aria-label="Couper le micro" aria-pressed="false">🎙</button>' +
             '<button class="vlive-bar-btn" onclick="flipVliveCamera()" aria-label="Changer de caméra">🔄</button>'
           : '<button class="vlive-bar-btn heart" onclick="_vliveHeart()" aria-label="Envoyer un cœur">❤️</button>') +
       '</div>' +

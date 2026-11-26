@@ -1200,4 +1200,5 @@ Verrous : `tests/e2e/invitation-plusieurs.spec.js` (8) ; `ui-v6c-proposer-irl.sp
 - `H.micOff` est la seule autorité de l'intention micro ; `_vliveAppliquerPistes()` pose les pistes depuis (pause, micro) — la reprise rouvrait d'office un micro coupé avant la pause, et basculer le micro en pause rallumait le son ;
 - retourner la caméra en pause envoie une piste DÉJÀ désactivée (`newTrack.enabled = !H.paused`) ;
 - `.vlive-chat-bar input` reçoit `min-width: 0` : sans lui, sous ~420 px, le champ refusait de rétrécir et poussait micro + caméra hors écran (trouvé par le banc, pas par la capture).
-**Verrou** : `tests/e2e/live-pause-reprise.spec.js` (6) — touchabilité mesurée par `elementFromPoint` ; réinjection du `z-index: 6` → ① rouge.
+**Contre-revue** (audit-passio, puis revue GitHub sur demande de Benjamin) : chat qui recouvrait « Reprendre » en paysage → `.vlive-en-pause .vlive-bottom { pointer-events: none }` ; pause posée pendant `replaceTrack` → `_vliveAppliquerPistes()` après `addTrack` ; libellé « Couper le micro » (cohérent avec `aria-pressed`).
+**Verrou** : `tests/e2e/live-pause-reprise.spec.js` (8) — touchabilité mesurée par `elementFromPoint` ; réinjection du `z-index: 6` → ① rouge.
