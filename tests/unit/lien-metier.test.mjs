@@ -406,6 +406,9 @@ test("audit 2026-11-06 : une panne n'envoie rien ; seule l'absence de la colonne
   assert.equal(await reserverPush(adminPush(), null, "u"), false, "sans ligne, rien à réserver");
   assert.equal(await reserverPush(adminPush({ erreurCompte: { code: "42703" } }), "n1", "u"), true);
   assert.equal(await reserverPush(adminPush({ erreurMaj: { code: "PGRST204" } }), "n1", "u"), true);
+  for (const erreur of [{ erreurCompte: { code: "42703" } }, { erreurMaj: { code: "PGRST204" } }]) {
+    assert.equal(await reserverPush(adminPush(erreur), "n1", "u", 30, Date.now(), "organisateur", { exigerReservation: true }), false);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

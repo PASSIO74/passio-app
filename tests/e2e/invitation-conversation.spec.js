@@ -17,8 +17,8 @@
 //   ⑧ la coupure rend le formulaire et le lien d'avant ;
 //   ⑨ une invitation ne part PAS dans le fil Découvrir par défaut (case décochée),
 //      et l'activité est notée hors fil — le rattrapage ne la publiera pas ;
-//   ⑩ une création ordinaire garde la carte du fil ; cocher la case pendant une
-//      invitation la publie aussi.
+//   ⑩ une création ordinaire garde la carte du fil ; rendre l'invitation
+//      publique puis cocher la case la publie aussi.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -274,7 +274,10 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
       window.estPassionCanonique = () => true;
       const parti = [];
       window.supaPublishPostWithRetry = async (p) => { parti.push(p.id); return true; };
-      const ev = Object.assign({}, state.userEvents[0]);
+      // Rendue publique ici : c'est le refus « hors fil » qu'on éprouve (une
+      // invitation est PRIVÉE par défaut depuis le 2026-11-26, refusée au fil
+      // pour cette raison-là — voir activite-privee.spec.js).
+      const ev = Object.assign({}, state.userEvents[0], { visibilite: "publique" });
       const hors = await window.__publierAuFilOrig(ev);
       state.user.activitesHorsFil = [];
       state.userPosts = (state.userPosts || []).filter((p) => p.id !== "post_ev_" + id);
@@ -298,6 +301,10 @@ test.describe("Inviter la personne de la conversation à une activité", () => {
 
     await ouvrirConv(page);
     await proposer(page);
+    // Une invitation est privée par défaut (2026-11-26) : la case du fil
+    // n'apparaît qu'une fois l'activité rendue publique.
+    await expect(page.locator("#evAuFil")).toBeHidden();
+    await page.locator("#evVisPublique").check();
     await page.locator("#evAuFil").check();
     await page.locator("#evTime").fill("18:00");
     await page.evaluate(() => { document.getElementById("evCity").value = "Annecy"; });

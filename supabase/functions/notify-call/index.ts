@@ -53,6 +53,7 @@ import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from ".
 import { adresseAccuse, TTL_NOTIFS_MS } from "../_shared/reception.js";
 import { APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S, contexteIce, iceAutorise, PLAFOND_ICE } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
+import { pousserConfirmations } from "../_shared/confirmations.js";
 // Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
 // (`PASSIO_APPELS_ACTIFS`, app-05). `APPELS_ACTIFS` vit dans _shared/appels.js
 // depuis le 2026-11-07, pour que le pilotage dise « appels coupés » au lieu de
@@ -107,8 +108,9 @@ Deno.serve(async (req) => {
   const verdict = await verifierPlafondEnBase(admin, fromUid, "notify-call", PLAFOND);
   if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);
 
-  let body: { toUserId?: string; callId?: string; liveId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
+  let body: { toUserId?: string; eventId?: string; callId?: string; liveId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
   try { body = await req.json(); } catch { return json({ error: "Body invalide" }, 400); }
+  if (body?.type === "cle_web_push") return json({ publicKey: Deno.env.get("VAPID_PUBLIC_KEY") || null });
   // 1 ter. IDENTIFIANTS TURN (2026-11-09, `_shared/appels.js`) — `{ type: "ice" }`.
   // Servis aux appels ET aux lives : AVANT l'interrupteur des appels (un live en a
   // besoin même quand les appels sont coupés), APRÈS l'authentification et le
@@ -157,6 +159,14 @@ Deno.serve(async (req) => {
     .or(`and(blocker_id.eq.${fromUid},blocked_id.eq.${toUserId}),and(blocker_id.eq.${toUserId},blocked_id.eq.${fromUid})`)
     .limit(1);
   if (blocErr || (bloc && bloc.length)) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+
+  if (type === "notif" && kind === "event_accepted") {
+    if (typeof body.eventId !== "string" || !/^[\w-]{1,100}$/.test(body.eventId)) return json({ error: "Activité invalide" }, 400);
+    if (Deno.env.get("PASSIO_CONFIRMATIONS_PUSH") === "1") {
+      await pousserConfirmations(admin, webpush.sendNotification.bind(webpush), ACCUSE, { sortie: body.eventId, emetteur: fromUid, membre: toUserId });
+    }
+    return json({ ok: true });
+  }
 
   // 3 bis. LIEN MÉTIER (garde ④). Même réponse qu'un blocage : rien à apprendre.
   let texteServeur = "";

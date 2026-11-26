@@ -78,9 +78,20 @@ const MODULES_DE = (appelsActifs) => ({
     TTL_ICE_S: M_APPELS.TTL_ICE_S,
   },
   "../_shared/revision.js": { REVISION: "banc" },
+  "../_shared/confirmations.js": {
+    pousserConfirmations: async (_admin, _envoyer, _accuse, cible) => banc.appels.push({ table: "confirmations", cible }),
+  },
 });
 
 const gestionnaires = {};
+
+test("une confirmation désigne la sortie et les deux comptes, sans exposer les abonnements", async () => {
+  remettre({ env: { PASSIO_CONFIRMATIONS_PUSH: "1" } });
+  const r = await appeler({ type: "notif", kind: "event_accepted", eventId: "ev_1", toUserId: LUI });
+  assert.deepEqual(r.corps, { ok: true });
+  assert.deepEqual(banc.appels.filter(a => a.table === "confirmations").map(a => a.cible),
+    [{ sortie: "ev_1", emetteur: MOI, membre: LUI }]);
+});
 
 function charger(appelsActifs) {
   const modules = MODULES_DE(appelsActifs);
