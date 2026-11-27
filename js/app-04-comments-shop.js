@@ -3344,7 +3344,8 @@ function openCommentSheet(threadId, title) {
     //    la feuille, chez tous ceux qui touchent la pastille de commentaires.
     //    C'est le contexte d'escapeHtml, et il se pose ICI, à l'affichage.
     + '<div class="modal-title">' + escapeHtml(title || "Commentaires") + '</div>'
-    + '<div class="modal-subtitle">Réponds à cette publication.</div>'
+    // Le fil d'une ACTIVITÉ n'est pas une publication (2026-11-27, sujet 160).
+    + '<div class="modal-subtitle">' + (thread.kind === "event" ? "Commente cette activité." : "Réponds à cette publication.") + '</div>'
     + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'
     + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + escapeJsArg(threadId) + '\')"/>'

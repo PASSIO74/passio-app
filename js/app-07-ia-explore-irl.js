@@ -1032,9 +1032,13 @@ async function _convergerApresRefus(ev, motif) {
 // droit) et mes réponses (`supaLoadMyRsvps`, que `_fusionnerRsvpServeur` applique
 // en respectant un geste en vol). Une rafale de notifications = une lecture.
 const _activitesNotifiees = new Map();
-function activiteNotifiee(id) {
+// `opts.entrerDiscussion` : la notification est une VALIDATION (`event_accepted`)
+// — voir `_entrerDiscussionValidee`, appelée après la relecture.
+const _discussionsAEntrer = new Set();
+function activiteNotifiee(id, opts) {
   if (!id || !window._supaReal || typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;
   if (typeof LIEN_COURT_ID_RE !== "undefined" && !LIEN_COURT_ID_RE.test(id)) return;
+  if (opts && opts.entrerDiscussion) _discussionsAEntrer.add(id);
   if (_activitesNotifiees.has(id)) return;
   _activitesNotifiees.set(id, setTimeout(function () {
     _activitesNotifiees.delete(id);
@@ -1060,9 +1064,35 @@ async function _relireActiviteNotifiee(id) {
     saveState();
     if (_irlEcranVisible()) { window._irlMapSig = null; renderIRL(); }
     _refreshEventDetailIfOpen(id);
+    if (_discussionsAEntrer.delete(id)) await _entrerDiscussionValidee(id);
   } catch (e) {
     try { if (typeof diagLog === "function") diagLog("activité notifiée : relecture — " + (e && e.message)); } catch (_) {}
   }
+}
+
+// ⚠️ VALIDÉ = ENTRÉ DANS LA DISCUSSION (2026-11-27, sujet 134). La base n'admet
+// dans `evgrp_<id>` qu'une personne dont la participation est VALIDÉE (accord),
+// et `valider_participant` n'y inscrit personne : la seule tentative d'entrée
+// (à l'inscription) précède la validation et est refusée. Le participant validé
+// ne voyait ni la discussion ni ses messages tant qu'il ne touchait pas lui-même
+// « Écrire aux participants ». À la validation (notification relue ci-dessus), on
+// entre — une fois par session et par activité, jamais pour qui a QUITTÉ le
+// groupe (pierre tombale : ADR-008), ni si le miroir existe déjà.
+// La part serveur (insérer conv_members dans `valider_participant`) reste à faire.
+const _discussionsTentees = new Set();
+async function _entrerDiscussionValidee(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !ev.convId || _canManageEvent(ev) || _eventIsCancelled(ev)) return false;
+  if (myRsvp(id) !== "going") return false;
+  if (_discussionsTentees.has(ev.convId)) return false;
+  try {
+    if (typeof getConversations === "function" && getConversations().some(c => c && c.id === ev.convId)) return false;
+    if (typeof convTombLoad === "function" && typeof convTombHas === "function" && convTombHas(convTombLoad(), "conv", ev.convId)) return false;
+  } catch (e) { return false; }
+  _discussionsTentees.add(ev.convId);
+  const entre = await _joinEventConversation(ev);
+  if (entre) { try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {} }
+  return entre;
 }
 
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
@@ -4550,11 +4580,30 @@ async function _leaveEventConversation(ev) {
   if (!ev || !ev.convId || !window._supaReal) return;
   if (_canManageEvent(ev)) return; // l'organisateur reste dans son groupe
   try { await supaLeaveEventConversation(ev.convId); } catch (e) {}
+  // ⚠️ LE MIROIR LOCAL PART AUSSI (2026-11-27, sujet 135). Sans lui, la discussion
+  // restait dans la messagerie après le désistement — y compris au redémarrage
+  // (la fusion garde les conversations locales absentes du serveur) — bulles en
+  // échec, et « Quitter » impossible. Pas de pierre tombale : une réinscription
+  // doit pouvoir la recréer. La base retire l'appartenance de son côté.
+  try {
+    if (typeof getConversations === "function" && getConversations().some(c => c && c.id === ev.convId)) {
+      conversationsState = getConversations().filter(c => !(c && c.id === ev.convId));
+      if (typeof saveConversationsNow === "function") saveConversationsNow(); else saveConversations();
+      if (window._openedConvId === ev.convId && typeof closeConversation === "function") { try { closeConversation(); } catch (e) {} }
+      try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 // Miroir local de la conversation de groupe (la messagerie lit conversationsState).
 function _ensureLocalEventConv(ev) {
   if (!ev || !ev.convId || typeof getConversations !== "function") return;
+  // ⚠️ REVENU = PIERRE LEVÉE (2026-11-27, sujet 136). On n'arrive ici qu'après un
+  // verdict serveur positif (`_joinEventConversation`) ou en mode local : la
+  // personne est REDEVENUE membre. La pierre « conv » posée par « Quitter le
+  // groupe » écartait sinon la conversation à chaque démarrage, alors qu'elle en
+  // était membre. La marque « clr » (historique effacé) reste.
+  try { if (typeof convTombRemove === "function") convTombRemove("conv", ev.convId); } catch (e) {}
   try {
     const convs = getConversations();
     if (convs.some(c => c.id === ev.convId)) return;
@@ -5833,8 +5882,13 @@ function _irlWeeklyDigest() {
 function downloadEventIcs(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
+  // ⚠️ (2026-11-27, sujet 157) Une activité annulée ne s'exporte plus (le fichier
+  // n'a ni STATUS ni SEQUENCE : l'entrée importée sonnerait la veille quand même),
+  // et la fin est CELLE DE L'ACTIVITÉ (`_eventEndAt`, 2 h par défaut seulement
+  // sans fin connue) — une randonnée de 5 h s'inscrivait 9 h-11 h.
+  if (_eventIsCancelled(ev)) { toast("Cette activité est annulée"); return; }
   const start = new Date(ev.date);
-  const end = new Date(ev.date + 2 * 3600000); // durée par défaut 2 h
+  const end = new Date(_eventEndAt(ev));
   const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
   const loc = [ev.venue, ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const esc = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
@@ -5861,7 +5915,8 @@ function downloadEventIcs(id) {
     a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast("Activité ajoutée à ton calendrier (rappel J-1 inclus)");
+    // Un fichier a été téléchargé, rien n'est encore dans l'agenda : on le dit.
+    toast("Fichier calendrier téléchargé — ouvre-le pour l'ajouter à ton agenda (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
 
@@ -6057,7 +6112,12 @@ function _rappelsVerdict(ev, maintenant) {
 function proposerRappelsActivite(ev) {
   var v = _rappelsVerdict(ev, Date.now());
   if (v === "abonner") {
-    if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription();
+    // Rien n'est promis ici, mais un échec laisse une trace (sujet 139).
+    if (typeof ensureCallPushSubscription === "function") {
+      Promise.resolve(ensureCallPushSubscription()).then(function (ok) {
+        if (ok === false) { try { diagLog("rappels : abonnement push non enregistré"); } catch (e) {} }
+      }, function () {});
+    }
     return v;
   }
   if (v !== "proposer") return v;
@@ -6081,7 +6141,17 @@ async function activerRappelsActivite() {
   try { perm = await Notification.requestPermission(); } catch (e) {}
   try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: String(perm) }); } catch (e) {}
   if (perm !== "granted") { toast("Rappels non activés — tu peux les autoriser dans les réglages du téléphone"); return false; }
-  if (typeof ensureCallPushSubscription === "function") await ensureCallPushSubscription();
+  // ⚠️ LA PROMESSE SUIT LE VERDICT DE L'ABONNEMENT (2026-11-27, sujet 139) : sans
+  // ligne push_subscriptions, aucun rappel ne part — « C'est noté » mentait. On
+  // le dit, et la proposition pourra revenir (la marque de repos est levée).
+  var abonne = false;
+  try { abonne = (typeof ensureCallPushSubscription === "function") && (await ensureCallPushSubscription()) === true; } catch (e) { abonne = false; }
+  if (!abonne) {
+    try { localStorage.removeItem(RAPPELS_PROPOSES_KEY); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: "abonnement_ko" }); } catch (e) {}
+    toast("Rappels pas encore activés sur ce téléphone — réessaie plus tard", "warning");
+    return false;
+  }
   toast("C'est noté : rappel la veille et 2 h avant ⏰");
   return true;
 }
@@ -6169,6 +6239,9 @@ function shareEvent(id) {
 // et se re-parse au chargement Supabase — donc visible cross-compte.
 async function shareEventInFeed(id) {
   const btn = document.getElementById("_shareEvInFeedBtn");
+  // Porte invité (2026-11-27, sujet 153) : un visiteur a un MY_UID « u_xxx »
+  // fabriqué, la garde ci-dessous ne l'arrêtait jamais — publication purement locale.
+  if (window.requireAuthentication && !requireAuthentication("publier")) return;
   if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
 
   if (typeof MY_UID === "undefined" || !MY_UID) {
@@ -6549,14 +6622,24 @@ function _setEventComments(eventId, serverList) {
 
 // `opts.epingle === false` : ne pas relire l'épingle (un rechargement déclenché
 // par le temps réel : le direct la tient déjà — RV-38, contre-revue du delta P3-B).
+// ⚠️ LA FEUILLE N'EST LA CIBLE QUE SI ELLE EST OUVERTE (2026-11-27, sujet 132).
+// `closeModal` retire seulement la classe `active` : #cmtThreadList et
+// #cmtThreadInput restent dans le DOM. Les choisir sur leur seul data-thread
+// laissait la fiche de la même activité sur « Chargement… », et l'envoi lisait le
+// champ PÉRIMÉ (vide) de la feuille fermée → retour muet, pour toute activité.
+// Rend la feuille si elle est ouverte sur CETTE activité, sinon null.
+function _feuilleCmtEvtOuverte(eventId) {
+  var bd = document.getElementById("modalBackdrop");
+  var sheet = document.getElementById("cmtThreadList");
+  if (!bd || !bd.classList.contains("active") || !sheet) return null;
+  return sheet.getAttribute("data-thread") === String(eventId) ? sheet : null;
+}
+
 async function _loadEventComments(eventId, opts) {
   // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
   // une carte (#cmtThreadList). Sans ce 2ᵉ cas, commenter un événement depuis sa
   // carte n'affichait jamais les commentaires distants (early-return → "Chargement…").
-  var sheet = document.getElementById("cmtThreadList");
-  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
-    ? sheet
-    : document.getElementById("eventCommentsList");
+  var box = _feuilleCmtEvtOuverte(eventId) || document.getElementById("eventCommentsList");
   if (!box) return;
   var list = [];
   if (typeof supaLoadEventComments === "function" && window._supaReal) {
@@ -6612,10 +6695,7 @@ function _renderEventComments(eventId) {
   // page détail (#eventDetailPage) reste dans le DOM en display:none après
   // fermeture, donc #eventCommentsList existe encore mais est caché → écrire
   // dedans plutôt que dans la feuille au 1er plan serait invisible.
-  var sheet = document.getElementById("cmtThreadList");
-  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
-    ? sheet
-    : document.getElementById("eventCommentsList");
+  var box = _feuilleCmtEvtOuverte(eventId) || document.getElementById("eventCommentsList");
   if (!box) return;
   var list = (_eventCommentsCache[eventId] || []).map(_normalizeThreadComment);
   if (!list.length) {
@@ -6632,13 +6712,30 @@ function _renderEventComments(eventId) {
 }
 
 async function addEventComment(eventId) {
-  // Feuille inline prioritaire (cf. _renderEventComments) : #eventCommentInput de la
-  // page détail reste dans le DOM (caché) après fermeture et serait lu à tort.
-  var inp = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput");
+  // ⚠️ PORTE INVITÉ (2026-11-27, sujet 153) : le composeur de la FICHE appelle
+  // directement ici, sans passer par `submitCommentSheet` qui la portait. Un
+  // visiteur voyait son commentaire « publié », persisté, jamais en base. Posée
+  // AVANT de lire le champ : le texte y reste. Inerte (true) hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return;
+  // Feuille inline prioritaire QUAND ELLE EST OUVERTE sur cette activité (sujet
+  // 132) : fermée, son champ reste dans le DOM et serait lu à tort.
+  var inp = _feuilleCmtEvtOuverte(eventId)
+    ? document.getElementById("cmtThreadInput")
+    : document.getElementById("eventCommentInput");
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
   inp.value = "";
+  return _envoyerCommentaireActivite(eventId, text, inp);
+}
+
+// Le chemin commun d'un commentaire d'activité — texte (`addEventComment`) ou GIF
+// (`_postGifComment`, emoji-misc.js). Le GIF avait sa copie à lui, qui ne lisait
+// pas le verdict (fantôme sur refus, doublon à la relecture) et ne notifiait
+// jamais l'organisation (2026-11-27, sujet 151). `opts.gif` : pas de texte à
+// rendre au champ, messages propres au GIF. Rend true si le commentaire tient.
+async function _envoyerCommentaireActivite(eventId, text, inp, opts) {
+  opts = opts || {};
   var ev = allEvents().find(function (e) { return e.id === eventId; });
   var name = (state.user.general && state.user.general.username) || state.user.name || "Moi";
   var myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
@@ -6665,8 +6762,9 @@ async function addEventComment(eventId) {
       // est retiré et le texte revient dans le champ ; un visiteur n'a rien en
       // base, sa copie locale reste comme avant.
       else if (typeof _compteAuthReel === "function" && _compteAuthReel()) {
-        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp);
-        return;
+        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, opts.gif ? null : text, inp,
+          opts.gif ? "GIF non envoyé — réessaie" : null);
+        return false;
       }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
       // Sur un commentaire ÉCRIT seulement (SRV-02 : la base exige la ligne réelle).
@@ -6675,11 +6773,22 @@ async function addEventComment(eventId) {
       }
     } catch (e) {}
   }
+  if (opts.gif) toast("GIF ajouté en commentaire 🎬");
+  return true;
+}
+
+// Un GIF en commentaire d'activité (appelé par `_postGifComment`, emoji-misc.js).
+function _gifCommentaireActivite(eventId, gifUrl) {
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return false;
+  if (!gifUrl) return false;
+  _envoyerCommentaireActivite(eventId, String(gifUrl), null, { gif: true });
+  return false;
 }
 
 // Retire le commentaire optimiste qu'un refus serveur a laissé sans ligne, et rend
 // le texte à la personne : rien n'a été publié, l'écran ne doit pas le prétendre.
-function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
+// `text` nul (un GIF) : rien à rendre au champ ; `message` remplace le toast.
+function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp, message) {
   var liste = _eventCommentsCache[eventId] || [];
   var i = liste.indexOf(optimistic);
   if (i >= 0) liste.splice(i, 1);
@@ -6691,9 +6800,11 @@ function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
   } catch (e) {}
   try { _renderEventComments(eventId); } catch (e) {}
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
-  var champ = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput") || inp;
+  if (text == null) { toast(message || "Commentaire non envoyé — réessaie", "warning"); return; }
+  // Le champ VISIBLE (sujet 132) : la feuille ouverte sur cette activité, sinon la fiche.
+  var champ = (_feuilleCmtEvtOuverte(eventId) ? document.getElementById("cmtThreadInput") : document.getElementById("eventCommentInput")) || inp;
   if (champ && !champ.value) champ.value = text;
-  toast("Commentaire non envoyé — ton texte est resté dans le champ");
+  toast(message || "Commentaire non envoyé — ton texte est resté dans le champ");
 }
 
 function previewEventCover(input) {
@@ -9538,7 +9649,12 @@ async function _submitEventCorps(editId, relacher) {
       retirerCarteActiviteDuFil(ev.id);
       try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: false, serie: false, edition: true }); } catch (e) {}
     }
-    if (ok && editId && !jamaisPubliee) {
+    // ⚠️ SEUL UN CHANGEMENT UTILE AUX INSCRITS LES PRÉVIENT (2026-11-27, sujet 147) :
+    // date, horaire ou lieu (`avisModification`). Une coquille de titre partait en
+    // « a modifié un événement » à chaque inscrit et consommait le plafond serveur
+    // de 3 diffusions/heure (partagé avec « Prévenir les inscrits ») — le vrai
+    // changement de lieu, ensuite, était refusé.
+    if (ok && editId && !jamaisPubliee && avisModification) {
       _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
         // …et un refus SANS libellé connu aussi (réseau, 500, `non_autorise`) : l'appareil de
