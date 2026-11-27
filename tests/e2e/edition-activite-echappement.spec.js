@@ -28,6 +28,8 @@ async function ouvrirEdition(page, champs) {
     const ev = Object.assign({
       id: "ev_edit", passion: "cuisine", date: Date.now() + 3 * 86400000,
       time: "14:00", price: 12, maxAttendees: 10, attendees: [], ownerId: "me",
+      // L'édition est réservée à qui organise (garde du moteur depuis le 2026-11-27).
+      organizerId: MY_UID, authorId: MY_UID,
     }, c);
     state.userEvents = [ev];
     state.seed.events = [];
