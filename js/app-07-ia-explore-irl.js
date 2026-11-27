@@ -1018,6 +1018,53 @@ async function _convergerApresRefus(ev, motif) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UNE NOTIFICATION D'ACTIVITÉ FAIT RELIRE CETTE ACTIVITÉ ET MA RÉPONSE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Mesuré sur le staging à dix comptes réels (village « Rencontrer ») : validée
+// par l'organisation, Inès gardait « L'adresse s'affiche après validation » sur
+// sa fiche ouverte ; promue de la liste d'attente, Chloé gardait « En attente » ;
+// une activité annulée restait « ouverte » chez ses inscrits. Aucune table
+// d'activité n'est diffusée en temps réel : la notification (sujet privé
+// `user:<moi>`) est la SEULE nouvelle qui arrive — elle ne faisait que
+// rafraîchir la carte « prochaine sortie ». Elle déclenche maintenant deux
+// lectures ciblées : cette activité (statut, date, lieu, adresse si j'y ai
+// droit) et mes réponses (`supaLoadMyRsvps`, que `_fusionnerRsvpServeur` applique
+// en respectant un geste en vol). Une rafale de notifications = une lecture.
+const _activitesNotifiees = new Map();
+function activiteNotifiee(id) {
+  if (!id || !window._supaReal || typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;
+  if (typeof LIEN_COURT_ID_RE !== "undefined" && !LIEN_COURT_ID_RE.test(id)) return;
+  if (_activitesNotifiees.has(id)) return;
+  _activitesNotifiees.set(id, setTimeout(function () {
+    _activitesNotifiees.delete(id);
+    _relireActiviteNotifiee(id);
+  }, 400));
+}
+async function _relireActiviteNotifiee(id) {
+  const etat = state, compte = MY_UID;
+  try {
+    const [lisible, reponses] = await Promise.all([
+      _activiteEncoreLisible({ id: id }),
+      (typeof supaLoadMyRsvps === "function") ? supaLoadMyRsvps() : null,
+    ]);
+    if (state !== etat || MY_UID !== compte) return;
+    // La base ne me la rend plus (retiré d'une activité privée, supprimée) : elle part.
+    if (lisible === false) { _retirerActiviteFermee(id); return; }
+    if (reponses && typeof _fusionnerRsvpServeur === "function") {
+      // Remplacer n'est sûr que sous la session de CE compte (ETAT-08).
+      const sure = (typeof _sessionEstMoi === "function") ? await _sessionEstMoi() : false;
+      if (state !== etat || MY_UID !== compte) return;
+      _fusionnerRsvpServeur(reponses, sure);
+    }
+    saveState();
+    if (_irlEcranVisible()) { window._irlMapSig = null; renderIRL(); }
+    _refreshEventDetailIfOpen(id);
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("activité notifiée : relecture — " + (e && e.message)); } catch (_) {}
+  }
+}
+
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
 function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
@@ -4139,7 +4186,17 @@ async function _setEventRsvpUn(id, rsvp) {
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
-    if (prev === "going") _promoteNextWaitlisted(ev);
+    // ⚠️ SOUS LE SERVEUR, ON LE DEMANDE À CHAQUE RETRAIT D'UNE ACTIVITÉ À PLACES
+    // (2026-11-27). Mesuré sur le staging à dix comptes réels : Chloé, promue de
+    // la file par la base, garde « liste d'attente » à l'écran (sa réponse locale
+    // n'avait pas suivi) ; elle se retire — la base efface une ligne « je viens »,
+    // mais `prev` valait « waitlist » ici, donc personne n'était promu : une
+    // place libre, Tom toujours en file. La base seule sait si une place vient de
+    // se libérer (`promouvoir_attente` compte les venants sous verrou, et ne
+    // promeut que s'il en reste une) : la question lui est posée, la réponse est
+    // « rien à faire » dans tous les autres cas. Hors serveur (activité locale),
+    // la règle d'avant tient : seul un « je viens » rend une place.
+    if (prev === "going" || _promotionADemander(ev)) _promoteNextWaitlisted(ev);
     _leaveEventConversation(ev);
     return;
   }
@@ -4199,7 +4256,7 @@ async function _setEventRsvpUn(id, rsvp) {
   // la base n'a pas écrit le changement, la place n'est pas libre (et
   // `promouvoir_attente` le vérifierait de toute façon : elle compte les
   // venants sous verrou avant de promouvoir quiconque).
-  if (rsvpOk === true && prev === "going" && rsvp !== "going") _promoteNextWaitlisted(ev);
+  if (rsvpOk === true && rsvp !== "going" && (prev === "going" || _promotionADemander(ev))) _promoteNextWaitlisted(ev);
   // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
   // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
   // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
@@ -4244,6 +4301,14 @@ async function _majAdresseActivite(ev) {
   ev._adresseInconnue = false;
   saveState();
   _refreshEventDetailIfOpen(ev.id);
+}
+
+// La base peut-elle répondre à « une place vient-elle de se libérer ? » — une
+// activité du serveur, à places comptées, sous un compte réel. Voir le retrait
+// dans `_setEventRsvpUn`.
+function _promotionADemander(ev) {
+  return !!(ev && ev.maxAttendees && ev.fromSupabase && window._supaReal && !window._promotionRpcAbsente
+    && typeof _compteAuthReel === "function" && _compteAuthReel());
 }
 
 async function _promoteNextWaitlisted(ev) {

@@ -6797,7 +6797,13 @@ function openNotifTarget(n) {
   // une cible absente le dit, et le panneau reste ouvert.
   const manque = _cibleNotifAbsente(n);
   if (manque) { toast(manque); return; }
-  if (n.kind === "event_update") {
+  // « Annulée » et « participation confirmée » disent, comme « modifiée », que
+  // l'activité N'EST PLUS celle qu'on a en mémoire (2026-11-27) : la fiche
+  // s'ouvrait sur l'ancienne copie — ni mention « annulée », ni adresse pourtant
+  // accordée. Sous le serveur, les trois se relisent avant de s'ouvrir ; hors
+  // serveur, « modifiée » garde son chemin et les deux autres le leur (plus bas).
+  if (n.kind === "event_update" || ((n.kind === "event_cancelled" || n.kind === "event_accepted")
+      && window._supaReal && n.refId && LIEN_COURT_ID_RE.test(n.refId))) {
     // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
     // Fermer plus tôt déclencherait un retour qui annule cette lecture.
     _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true });
@@ -6875,7 +6881,11 @@ function _cibleNotifAbsente(n) {
       case "event_update":
         if (window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
         // Hors connexion serveur, seule une sortie locale peut être ouverte.
-      case "event_join": case "event_comment": case "event_cancelled":
+      case "event_cancelled": case "event_accepted":
+        // Relues avant d'être ouvertes, comme « modifiée » (`openNotifTarget`) :
+        // la mémoire seule ne dit pas qu'elles n'existent plus.
+        if ((n.kind === "event_cancelled" || n.kind === "event_accepted") && window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
+      case "event_join": case "event_comment":
       case "event_reminder": case "event_invite": case "event_feedback": {
         if (!ref) return "";
         const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
@@ -11202,7 +11212,10 @@ async function rafraichirEvenements(force, apresLecture) {
   try {
     const evs = await supaLoadEvents(null, null, true);
     if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
-    const change = fusionnerEvenementsServeur(evs);
+    let change = fusionnerEvenementsServeur(evs);
+    try { if (await _rafraichirMesReponses(lecture)) change = true; }
+    catch (e) { if (typeof diagLog === "function") diagLog("mes réponses : relecture — " + (e && e.message)); }
+    if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     _lectureListeSorties = lecture;
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     const irl = document.getElementById("screen-irl");
@@ -13060,6 +13073,13 @@ function _rtNotificationRecue(r) {
       && window._openEventDetailId === notif.refId && typeof _relireRefusFiche === "function") {
     _relireRefusFiche(notif.refId);
   }
+  // L'activité elle-même, avec MA réponse, sont relues (2026-11-27) : sans cela la
+  // fiche ouverte et la liste gardaient l'état d'avant (app-07, `activiteNotifiee`).
+  // ⚠️ AVANT les sorties ci-dessous : une promotion porte un identifiant FIXE
+  // (`n_pa_<activité>_<compte>`) — la seconde promotion de la même personne est
+  // une notification « déjà connue », et pourtant une vraie nouvelle.
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
+      notif.refId && typeof activiteNotifiee === "function") activiteNotifiee(notif.refId);
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
@@ -14738,6 +14758,33 @@ function _fusionnerRsvpServeur(map, remplacer) {
   return true;
 }
 
+// ── Mes réponses suivent la relecture des activités (2026-11-27) ────────────
+// Elles n'étaient relues qu'AU DÉMARRAGE : promu de la liste d'attente, retiré
+// par l'organisation, ou inscrit depuis un autre appareil, on gardait l'état
+// d'avant jusqu'à la relance — et une application installée reste ouverte des
+// jours. Elles sont relues avec la liste des activités (à l'entrée sur
+// Rencontrer et au retour au premier plan, une fois par minute au plus), par la
+// même lecture et la même fusion que le démarrage (`_fusionnerRsvpServeur`, qui
+// respecte un geste en vol). Pas pendant le démarrage, qui les lit lui-même, ni
+// dans les 30 s qui suivent une lecture. Rend vrai si l'écran doit être repeint.
+let _mesReponsesLuesA = 0;
+async function _rafraichirMesReponses(lecture) {
+  if (window._supaInitTerminee !== true || !_compteAuthReel() || !_attendeesLisibles()) return false;
+  if (Date.now() - _mesReponsesLuesA < 30000) return false;
+  const signature = function () {
+    const r = (state && state.user && state.user.eventRsvp) || {};
+    return Object.keys(r).sort().map(function (k) { return k + "=" + r[k]; }).join("&");
+  };
+  const avant = signature();
+  const map = await supaLoadMyRsvps();
+  if (!map || lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  const sure = await _sessionEstMoi();   // remplacer n'est sûr que sous la session de ce compte (ETAT-08)
+  if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  if (!_fusionnerRsvpServeur(map, sure) || signature() === avant) return false;
+  saveState();
+  return true;
+}
+
 async function supaLoadMyRsvps() {
   // ⚠️ CE CHEMIN COÛTAIT DEUX REFUS, PAS UN : `if (error) throw error` tombait
   // dans le repli ci-dessous, qui REFAISAIT la même requête refusée. Sans compte
@@ -14751,7 +14798,7 @@ async function supaLoadMyRsvps() {
   // elle est plus fraîche en local que dans ce que la base rend ici
   // (`_fusionnerRsvpServeur`).
   const debut = Date.now();
-  const dater = function (o) { try { Object.defineProperty(o, "_luA", { value: debut, enumerable: false }); } catch (e) {} return o; };
+  const dater = function (o) { try { Object.defineProperty(o, "_luA", { value: debut, enumerable: false }); } catch (e) {} _mesReponsesLuesA = Date.now(); return o; };
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);

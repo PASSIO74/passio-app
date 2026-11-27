@@ -20,12 +20,20 @@
 //      foi » (`_fusionnerRsvpServeur`) s'appliquait aussi à une lecture partie
 //      AVANT le geste : « pas inscrit » à l'écran, « je viens » en base (⑩⑪).
 //
+//   D. L'ÉCRAN NE SUIVAIT PAS LA BASE EN SÉANCE (mesuré sur le staging, village
+//      « Rencontrer » à dix comptes réels). Promue de la liste d'attente par la
+//      base, une personne gardait « En attente » ; si elle se retirait alors, la
+//      place n'allait à PERSONNE (la promotion n'était demandée que si l'écran
+//      croyait à un « je viens ») ; une annulation ou une validation reçues en
+//      direct ne changeaient ni la fiche ouverte ni la liste (⑫ à ⑯).
+//
 // Contre-épreuve de chaque cas : sur le code d'avant (8d5b5b29), il est rouge.
 const { test, expect } = require("@playwright/test");
 const { FauxServeur, ouvrirCompte } = require("./audit-2026-11-parcours-faux-serveur");
 
 const ORGA = "aaaaaaaa-0000-4000-8000-000000000031";
 const B = "bbbbbbbb-0000-4000-8000-000000000032";
+const C = "cccccccc-0000-4000-8000-000000000033";
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function peupler(srv, evId, { inscrit = false, places = 5 } = {}) {
@@ -339,6 +347,103 @@ test.describe("Rencontrer — fiabilité de la participation", () => {
       expect(apres.avecMoi, "témoin : la lecture, plus vieille, me croit encore inscrit").toBe(true);
       expect(apres.rsvp, "l'écran reste « pas inscrit », comme la base").toBeNull();
       expect(apres.autre, "contre-épreuve : sans geste récent, la base fait foi (inscription locale sans ligne → retirée)").toBeNull();
+    } finally { await ctx.close(); }
+  });
+
+  // ── D. L'écran suit la base en séance ─────────────────────────────────────
+  const ligneDe = (srv, evId, uid) => srv.t.event_attendees.find((x) => x.event_id === evId && x.user_id === uid) || null;
+  const notifier = (page, n) => page.evaluate((n) => _rtNotificationRecue(Object.assign({ seen: false, created_at: new Date().toISOString() }, n)), n);
+
+  test("⑫ promue par la base, l'écran croyait encore « liste d'attente » : en se retirant, la place va au suivant", async ({ browser }) => {
+    const srv = new FauxServeur();
+    const evId = "evt_fiab_12";
+    peupler(srv, evId, { inscrit: true, places: 2 });   // organisatrice + B (promu par la base) : complet
+    srv.compte(C, "carol_fiab");
+    srv.t.event_attendees.push({ event_id: evId, user_id: C, rsvp: "waitlist", created_at: new Date(Date.now() - 3600000).toISOString() });
+    const { ctx, page } = await ouvrir(browser, srv, evId);
+    try {
+      await page.evaluate((id) => { _setMyRsvpLocal(id, "waitlist"); saveState(); }, evId);   // ce que l'écran croyait
+      const j0 = srv.journal.length;
+      await page.evaluate((id) => setEventRsvp(id, null), evId);
+      await expect.poll(() => (ligneDe(srv, evId, C) || {}).rsvp, { message: "la suivante de la file reçoit la place" }).toBe("going");
+      expect(ligneDe(srv, evId, B), "la ligne de B est partie").toBeNull();
+      const rpc = srv.journal.slice(j0).filter((r) => r.rpc && r.table === "promouvoir_attente" && r.me === B);
+      expect(rpc.length, "la question est posée à la base").toBe(1);
+      expect(rpc[0].body.p_user_id, "la base choisit (premier arrivé)").toBeNull();
+    } finally { await ctx.close(); }
+  });
+
+  test("⑬ annulation reçue en direct : la fiche ouverte passe à « Activité annulée », sans un geste", async ({ browser }) => {
+    const srv = new FauxServeur();
+    const evId = "evt_fiab_13";
+    peupler(srv, evId, { inscrit: true });
+    const { ctx, page } = await ouvrir(browser, srv, evId, { inscrit: true });
+    try {
+      await page.evaluate((id) => { goTo("irl"); openEventDetails(id); }, evId);
+      const fiche = page.locator("#eventDetailPage");
+      await expect(fiche.getByRole("button", { name: "Activité annulée" })).toHaveCount(0);
+      srv.t.events.find((e) => e.id === evId).status = "cancelled";   // l'organisation annule, ailleurs
+      await notifier(page, { id: "n_fiab_13", user_id: B, from_id: ORGA, kind: "event_cancelled", ref_id: evId, content: "a annulé une activité à laquelle tu participais" });
+      await expect(fiche.getByRole("button", { name: "Activité annulée" }).first()).toBeVisible({ timeout: 10000 });
+      expect(await page.evaluate((id) => _findCanonicalEvent(id).status, evId)).toBe("cancelled");
+    } finally { await ctx.close(); }
+  });
+
+  test("⑭ promotion reçue en direct : « En attente » devient « Je participe » à l'écran, même à la SECONDE promotion (même identifiant de notification)", async ({ browser }) => {
+    const srv = new FauxServeur();
+    const evId = "evt_fiab_14";
+    peupler(srv, evId, { places: 2 });
+    srv.t.event_attendees.push({ event_id: evId, user_id: B, rsvp: "waitlist", created_at: new Date(Date.now() - 3600000).toISOString() });
+    const { ctx, page } = await ouvrir(browser, srv, evId);
+    try {
+      await page.evaluate((id) => { _setMyRsvpLocal(id, "waitlist"); saveState(); }, evId);
+      const promo = { id: "n_pa_" + evId.slice(0, 12) + "_" + B.slice(0, 8), user_id: B, from_id: ORGA, kind: "event_update", ref_id: evId, content: "Une place s'est libérée" };
+      ligneDe(srv, evId, B).rsvp = "going";   // la base promeut
+      await notifier(page, promo);
+      await expect.poll(() => ecran(page, evId), { message: "l'écran suit la base" }).toBe("going");
+      // Retour en file (retirée puis réinscrite ailleurs), puis seconde promotion : même identifiant.
+      ligneDe(srv, evId, B).rsvp = "waitlist";
+      await page.evaluate((id) => { _setMyRsvpLocal(id, "waitlist"); saveState(); }, evId);
+      ligneDe(srv, evId, B).rsvp = "going";
+      await notifier(page, promo);
+      await expect.poll(() => ecran(page, evId), { message: "la seconde promotion est une vraie nouvelle" }).toBe("going");
+    } finally { await ctx.close(); }
+  });
+
+  test("⑮ toucher la notification « annulée » ouvre une fiche RELUE, pas la copie d'avant", async ({ browser }) => {
+    const srv = new FauxServeur();
+    const evId = "evt_fiab_15";
+    peupler(srv, evId, { inscrit: true });
+    const { ctx, page } = await ouvrir(browser, srv, evId, { inscrit: true });
+    try {
+      await page.evaluate(() => goTo("feed"));
+      srv.t.events.find((e) => e.id === evId).status = "cancelled";
+      expect(await page.evaluate((id) => _findCanonicalEvent(id).status, evId), "témoin : la mémoire dit encore « active »").toBe("active");
+      await page.evaluate(([id, de]) => openNotifTarget({ id: "n_fiab_15", kind: "event_cancelled", refId: id, fromId: de }), [evId, ORGA]);
+      await expect(page.locator("#eventDetailPage").getByRole("button", { name: "Activité annulée" }).first()).toBeVisible({ timeout: 10000 });
+    } finally { await ctx.close(); }
+  });
+
+  test("⑯ mes réponses sont relues avec la liste des activités : inscrit depuis un autre appareil, l'écran le sait au retour sur Rencontrer", async ({ browser }) => {
+    const srv = new FauxServeur();
+    const evId = "evt_fiab_16";
+    peupler(srv, evId);
+    const { ctx, page } = await ouvrir(browser, srv, evId);
+    try {
+      expect(await ecran(page, evId), "témoin : pas inscrit à l'écran").toBeNull();
+      // La lecture de la liste du démarrage est finie : la nôtre ne sera pas écartée comme « déjà en vol ».
+      await page.waitForFunction(() => typeof lectureListeSortiesConfirmee === "function" && lectureListeSortiesConfirmee(), null, { timeout: 30000 });
+      srv.t.event_attendees.push({ event_id: evId, user_id: B, rsvp: "going", created_at: new Date().toISOString() });   // inscrit « ailleurs »
+      const j0 = srv.journal.length;
+      // Plus d'une minute a passé depuis la dernière lecture (l'horloge de la page avance).
+      await page.evaluate(async () => {
+        const vrai = Date.now;
+        Date.now = () => vrai() + 61000;
+        try { await rafraichirEvenements(true); } finally { Date.now = vrai; }
+      });
+      await expect.poll(() => ecran(page, evId), { message: "l'écran suit la base" }).toBe("going");
+      const mesReponses = srv.journal.slice(j0).filter((r) => r.table === "event_attendees" && r.m === "GET" && r.me === B && r.url.includes("user_id=eq." + B));
+      expect(mesReponses.length, "UNE lecture de mes réponses, avec la liste").toBe(1);
     } finally { await ctx.close(); }
   });
 });

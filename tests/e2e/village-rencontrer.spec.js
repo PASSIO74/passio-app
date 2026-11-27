@@ -113,7 +113,13 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
       return ok;
     }
     const contexts = [], pages = [], uids = [];
-    const ev = (i, fn, arg) => pages[i].evaluate(fn, arg);
+    // ⚠️ Un geste qui attend un humain (feuille de confirmation) FIGERAIT la séance
+    // jusqu'à son délai de 30 min, bail des dix comptes compris : il échoue en 60 s.
+    const ev = (i, fn, arg) => {
+      let minuteur;
+      const borne = new Promise((_, ko) => { minuteur = setTimeout(() => ko(new Error("geste figé (60 s) chez " + PERSONAS[i].nom)), 60000); });
+      return Promise.race([pages[i].evaluate(fn, arg), borne]).finally(() => clearTimeout(minuteur));
+    };
     const nom = (i) => PERSONAS[i].nom;
     async function capturer(etiquette, qui) {
       for (const i of qui) {
@@ -193,6 +199,8 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
       }
       for (const i of [MARC, INES, HUGO, CHLOE, TOM, SARAH, KEVIN, JADE]) await ev(i, (t) => supaFollowUser(t), uids[LEA]);
       for (let i = 0; i < 10; i++) await poserToasts(i);
+      // Les feuilles « Annuler cette activité ? » / « Supprimer… ? » : acceptées, comme le ferait un humain.
+      for (let i = 0; i < 10; i++) await ev(i, () => { window.confirmerAction = async () => true; });
       await verifier("I1", "dix comptes, neuf publics et Nina privée", async () => {
         const rows = await db.lire("profiles", `select=id,is_private&id=in.(${uids.join(",")})`);
         return { ok: rows.length === 10 && rows.filter((r) => r.is_private).length === 1, detail: `${rows.length} profils` };
@@ -265,7 +273,7 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
       await verifier("P11", "Chloé (promue) se retire : Tom reçoit la place à son tour", async () => {
         const ok = await attendre(async () => (await rsvpDe(evP, TOM)) === "going", { delai: 15000 });
         return { ok: !!ok, detail: `Tom ${await rsvpDe(evP, TOM)}, Chloé ${await rsvpDe(evP, CHLOE)}` };
-      }, { exige: false });
+      });
 
       // Gestes croisés, sur le vrai réseau : « Je participe » puis « Retirer » aussitôt.
       const evG = await creer(LEA, { title: "Gestes croisés [rencontrer]", city: "Lyon", date: dansJours(5) });
@@ -496,7 +504,8 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
       });
       await verifier("S2", "Léa (organisatrice) occupe une place à CHAQUE date de sa série", async () => {
         if (!serie.length) return { ok: false, detail: "pas de série" };
-        const r = await db.lire("event_attendees", `select=event_id&user_id=eq.${uids[LEA]}&event_id=in.(${serie.map((e) => e.id).join(",")})`);
+        const lire = () => db.lire("event_attendees", `select=event_id&user_id=eq.${uids[LEA]}&event_id=in.(${serie.map((e) => e.id).join(",")})`);
+        const r = await attendre(async () => { const x = await lire(); return x.length === serie.length ? x : null; }, { delai: 12000, pas: 1500 }) || await lire();
         return { ok: r.length === serie.length, detail: `${r.length}/${serie.length} date(s)` };
       }, { exige: false });
 
