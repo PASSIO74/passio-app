@@ -733,6 +733,60 @@ test("connectés aujourd'hui : une fonction pas encore à jour ou une lecture ra
   await expect(page.locator("#connectesNombre")).toHaveText("—");
 });
 
+test("ouvertures aujourd'hui (2026-11-27) : 3ᵉ nombre, toute ouverture avec ou sans compte ; la liste au toucher dit qui, sans compte compris", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const vu = (min) => new Date(Date.now() - min * 60e3).toISOString();
+  const liste = { total: 3, avecCompte: 1, ouvertures: 6, tronque: false, depuis: vu(600), page: 1, pages: 1, parPage: 100, appareils: [
+    { compte: false, nom: null, nomLu: true, ouvertures: 1, premier: vu(1), vu: vu(1), plateforme: "iPhone", source: "instagram" },
+    { compte: true, nom: CHARGE, nomLu: true, ouvertures: 4, premier: vu(300), vu: vu(5), plateforme: "Android", source: "direct" },
+    { compte: false, nom: null, nomLu: true, ouvertures: 0, premier: vu(400), vu: vu(400), plateforme: null, source: null },
+  ] };
+  await routerFonction(page, envois, etat({ connectes: { total: 2, tronque: false }, ouvertures: { total: 3, avecCompte: 1, ouvertures: 6, tronque: false } }), { ouvertures: liste });
+  await page.goto("/pilotage/");
+  const o = page.locator("#ouverturesJour");
+  await expect(page.locator("#ouverturesNombre")).toHaveText("3");
+  await expect(o).toContainText("ont ouvert l'app aujourd'hui");
+  await expect(page.locator("#connectesNombre")).toHaveText("2");
+  const b = await o.boundingBox();
+  expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  expect(envois.filter((e) => e.corps.action === "ouvertures"), "la liste ne se lit qu'au toucher").toHaveLength(0);
+  await o.click();
+  await expect(page.locator("#ouvertures")).toBeVisible();
+  await expect(page.locator("#titreOnglet")).toHaveText("Ouvertures aujourd'hui");
+  const l = page.locator("#ouverturesListe li.compte");
+  await expect(l).toHaveCount(3);
+  expect(envois.filter((e) => e.corps.action === "ouvertures").map((e) => e.corps)).toEqual([{ action: "ouvertures", page: 1 }]);
+  await expect(l.nth(0)).toContainText("Sans compte");
+  await expect(l.nth(0)).toContainText("venu par Instagram");
+  await expect(l.nth(0)).toContainText(/vu à \d\d h \d\d/);
+  expect(await l.nth(1).textContent()).toContain(CHARGE);
+  await expect(l.nth(1)).toContainText("4 ouvertures, la première à");
+  await expect(l.nth(2)).toContainText("app déjà ouverte avant minuit");
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  await expect(page.locator("#ouverturesResume")).toContainText("3 appareils depuis minuit (heure de Paris) : 1 avec un compte, 2 sans compte, 6 ouvertures en tout");
+  await page.click("#retour");
+  await expect(page.locator("#accueil")).toBeVisible();
+});
+
+test("ouvertures aujourd'hui : grands nombres dans l'écran au gabarit iPhone ; non lu = « — », jamais 0", async ({ page }) => {
+  await poserSession(page);
+  let e = etat({ activation: { ...BASE.activation, inscrits: { total: 12345, tronque: true } }, connectes: { total: 1234, tronque: true }, ouvertures: { total: 5678, tronque: true } });
+  await page.route(FONCTION, (r) => r.fulfill({ json: e }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#ouverturesNombre")).toHaveText("5678+");
+  const b = await page.locator("#ouverturesJour").boundingBox();
+  expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
+  const hero = await page.locator(".hero").boundingBox();
+  expect(b.y + b.height, "les trois nombres tiennent dans la courbe, rien ne déborde sur le texte dessous").toBeLessThanOrEqual(hero.y + hero.height + 1);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  e = etat({ ouvertures: null, nonLus: ["ouvertures"], erreursLecture: { ouvertures: "HTTP 500" } });
+  await page.reload();
+  await expect(page.locator("#totalNombre")).toHaveText("13");
+  await expect(page.locator("#ouverturesNombre")).toHaveText("—");
+});
+
 test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu » ; fonction pas à jour → « Liste indisponible »", async ({ page }) => {
   await poserSession(page);
   await routerFonction(page, [], etat({ activation: { ...BASE.activation, nouveaux: [] } }));
