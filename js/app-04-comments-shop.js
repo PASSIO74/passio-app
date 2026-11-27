@@ -5278,7 +5278,7 @@ async function openUserProfile(authorId, source) {
   // Stories à la une (lot E, 2026-11-26) : la RLS ne rend que ce que je peux lire
   // (compte privé, « Amis proches », blocage) ; rien pour un compte que j'ai bloqué.
   if (!_bloqueParMoi && typeof peindreStoriesUne === "function") {
-    try { peindreStoriesUne(document.getElementById("visitedStoriesUne"), authorId, false); } catch (e) {}
+    try { peindreStoriesUne(document.getElementById("visitedStoriesUne"), authorId); } catch (e) {}
   }
   // « Activité » lit `allEvents()`, que seul le DÉMARRAGE remplissait : une
   // activité publiée après l'ouverture de l'app restait absente de ce profil

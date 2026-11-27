@@ -26,7 +26,10 @@
 //      rejointe puis l'activité ouverte ; refusée → dit, oubliée ; réseau → gardée ;
 //      sans compte → gardée et reprise à la connexion ;
 //   ⑫ un invité ne voit pas « Invités » ; la carte de Rencontrer et la carte
-//      de conversation disent « Privée ».
+//      de conversation disent « Privée » ;
+//   ⑬ à l'édition : le choix est là, pré-rempli ; passer en PRIVÉE envoie la
+//      visibilité et retire la carte du fil (pierre tombale + file serveur) ;
+//      revenir en publique ne republie rien.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -358,5 +361,42 @@ test.describe("Activité privée, sur invitation", () => {
     expect(carte).toContain("Invitation privée");
     await page.evaluate(() => { document.getElementById("eventDetailPage").style.display = "none"; goTo("irl"); renderIRL(); });
     await expect.poll(() => page.locator(".ev-tag-privee").count()).toBeGreaterThan(0);
+  });
+
+  test("⑬ édition : rendre privée retire la carte du fil ; le choix est pré-rempli", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      window.__maj = []; window.__suppr = [];
+      window.supaUpdateEvent = async (ev) => { window.__maj.push(_eventRow(ev)); return true; };
+      window._enqueuePostDelete = (id) => { window.__suppr.push(id); };
+      window._prevenirInscrits = async () => ({});
+      state.userEvents = [{
+        id: "ev_ap_ed", title: "Rando", passion: "musique", emoji: "🎵", date: Date.now() + 864e5, time: "09:00",
+        city: "Annecy", visibilite: "publique", attendees: [MY_UID], maybes: [], waitlist: [], checkedIn: [],
+        organizerId: MY_UID, authorId: MY_UID,
+      }];
+      state.userPosts = [{ id: "post_ev_ev_ap_ed", authorId: MY_UID, text: "", sharedReelData: { kind: "event", id: "ev_ap_ed" }, ts: Date.now() }];
+      openCreateEvent("ev_ap_ed");
+    });
+    await expect(page.locator("#evVisPublique")).toBeChecked();
+    await expect(page.locator("#evAuFil"), "la case du fil n'existe qu'à la création").toHaveCount(0);
+    await page.locator("#evVisPrivee").check();
+    await page.evaluate(() => submitEvent("ev_ap_ed"));
+    await expect.poll(() => page.evaluate(() => window.__suppr)).toEqual(["post_ev_ev_ap_ed"]);
+    const r = await page.evaluate(() => ({
+      ligne: window.__maj[0], post: !!findPostAnywhere("post_ev_ev_ap_ed"),
+      horsFil: (state.user.activitesHorsFil || []).includes("ev_ap_ed"),
+    }));
+    expect(r.ligne.visibilite).toBe("privee");
+    expect(r.post, "la carte a quitté les tableaux").toBe(false);
+    expect(r.horsFil, "le rattrapage ne la republiera pas").toBe(true);
+
+    // Rouvrir : « Privée » pré-coché ; repasser en publique ne republie rien.
+    await page.evaluate(() => openCreateEvent("ev_ap_ed"));
+    await expect(page.locator("#evVisPrivee")).toBeChecked();
+    await page.locator("#evVisPublique").check();
+    await page.evaluate(() => submitEvent("ev_ap_ed"));
+    await expect.poll(() => page.evaluate(() => window.__maj.length)).toBe(2);
+    expect(await page.evaluate(() => [window.__maj[1].visibilite, window.__auFil.length, window.__suppr.length])).toEqual(["publique", 0, 1]);
   });
 });

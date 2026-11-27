@@ -1114,7 +1114,8 @@ function renderMainProfile() {
   bioEl.innerHTML = _bioHtml;
   bioEl.style.display = _bioHtml ? "" : "none";
   // Stories à la une (lot E, 2026-11-26) : cache 60 s, sans effet sous drapeau éteint.
-  try { if (typeof peindreStoriesUne === "function" && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(document.getElementById("mainStoriesUne"), MY_UID, true); } catch (e) {}
+  // Rangée absente tant qu'aucun groupe n'existe (plus de bulle « + Nouveau », 2026-11-27).
+  try { if (typeof peindreStoriesUne === "function" && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(document.getElementById("mainStoriesUne"), MY_UID); } catch (e) {}
 
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var links = g.rsLinks || [];

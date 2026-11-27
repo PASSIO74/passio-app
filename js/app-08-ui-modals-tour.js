@@ -5549,23 +5549,20 @@ async function chargerStoriesUne(uid, forcer) {
     return groupes;
   } catch (e) { return []; }
 }
-// Rangée de bulles sous la bio. `estMoi` : bulle « + Nouveau ».
-async function peindreStoriesUne(hote, uid, estMoi) {
+// Rangée de bulles sous la bio : UNIQUEMENT les groupes qui existent, sur mon
+// profil comme sur un profil visité. Sans groupe, la rangée n'existe pas.
+// ⚠️ La bulle « + Nouveau » de mon profil est RETIRÉE (2026-11-27, Benjamin :
+// « enlève l'onglet nouveau ») : seule sur sa rangée, elle prenait une bande
+// entière du profil de tout compte sans story à la une. La porte de création
+// reste le « ⋯ » de MA story → « Mettre à la une » (`_storyActionsUne`).
+async function peindreStoriesUne(hote, uid) {
   if (!hote) return;
   if (!storyUneActif()) { hote.hidden = true; hote.innerHTML = ""; return; }
   var groupes = await chargerStoriesUne(uid);
   if (!hote.isConnected) return;
   hote.innerHTML = "";
-  var plus = !!(estMoi && _storyLotServeur());
-  if (!groupes.length && !plus) { hote.hidden = true; return; }
+  if (!groupes.length) { hote.hidden = true; return; }
   hote.hidden = false;
-  if (plus) {
-    var n = document.createElement("button"); n.type = "button"; n.className = "une-bulle une-nouveau";
-    n.innerHTML = '<span class="une-cercle" aria-hidden="true">+</span><span class="une-titre">Nouveau</span>';
-    n.setAttribute("aria-label", "Mettre une story à la une");
-    n.addEventListener("click", function () { ouvrirChoixStoryUne(); });
-    hote.appendChild(n);
-  }
   groupes.forEach(function (g) {
     var b = document.createElement("button"); b.type = "button"; b.className = "une-bulle";
     var cercle = document.createElement("span"); cercle.className = "une-cercle";
@@ -5670,25 +5667,9 @@ async function retirerDeLaUne(storyId, titre) {
     return true;
   } catch (e) { toast("Non retirée — réessaie", "warning"); window._storyEnPause = false; return false; }
 }
-// « + Nouveau » : mes stories en cours (serveur) à choisir.
-function ouvrirChoixStoryUne() {
-  var miennes = (state.seed.stories || []).filter(function (s) { return s && s.fromSupabase && s.authorId === MY_UID; });
-  if (!miennes.length) { toast("Publie une story, puis mets-la à la une depuis « ⋯ »"); return; }
-  openModal('<div class="modal-handle"></div><div class="modal-title">Choisis une story</div><div class="une-grille" id="uneGrille"></div>', "stories_une");
-  var grille = document.getElementById("uneGrille");
-  miennes.forEach(function (s) {
-    var b = document.createElement("button"); b.type = "button"; b.className = "une-vignette";
-    b.style.background = _storyFondCss(s);
-    if (s.media && s.mediaType !== "video") b.innerHTML = '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '="' + safeUrlAttr(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '" alt=""/>';
-    else b.textContent = String(s.text || s.content || "✨").slice(0, 40);
-    b.setAttribute("aria-label", "Choisir cette story");
-    b.addEventListener("click", function () { choisirGroupeUne(s.id); });
-    grille.appendChild(b);
-  });
-}
 function _rafraichirUneProfil() {
   var hote = document.getElementById("mainStoriesUne");
-  if (hote && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(hote, MY_UID, true);
+  if (hote && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(hote, MY_UID);
 }
 // Actions du « ⋯ » de MA story : la une (ajouter, ou retirer quand on lit un groupe).
 function _storyActionsUne(s) {
