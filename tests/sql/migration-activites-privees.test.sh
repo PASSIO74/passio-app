@@ -23,10 +23,11 @@ MIG="$RACINE/migrations/migration_activites_privees_2026-11-26.sql"
 SUITE="$RACINE/migrations/migration_activites_privees_suite_2026-11-26.sql"
 RETRAITS="$RACINE/migrations/migration_activites_privees_retraits_2026-11-26.sql"
 RESTES="$RACINE/migrations/migration_activites_privees_restes_2026-11-27.sql"
+VISITEUR="$RACINE/migrations/migration_activites_privees_visiteur_2026-11-27.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
-for f in "$MIG" "$SUITE" "$RETRAITS" "$RESTES"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
+for f in "$MIG" "$SUITE" "$RETRAITS" "$RESTES" "$VISITEUR"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
 
 PORT=$(( 6200 + RANDOM % 120 ))
 if [ "$(id -u)" -eq 0 ]; then
@@ -126,6 +127,34 @@ create function public.activite_de_partage(p_shared_data text) returns text lang
     else substring(p_shared_data from '"id"\s*:\s*"([^"\\]{1,200})"') end
 $f$;
 grant execute on function public.activite_de_partage(text) to authenticated;
+-- `post_is_visible` : définition de PRODUCTION du 2026-11-27 (aides réduites à leur cas neutre),
+-- et un lecteur SECURITY DEFINER exécutable par anon qui juge par elle, comme `interactions_cibles`.
+alter table public.profiles add column is_private boolean default false;
+create function public.est_identifiant_exemple(p text) returns boolean language sql immutable as $f$ select false $f$;
+create function public.post_masque(p text) returns boolean language sql stable as $f$ select false $f$;
+create function public.abonne_accepte_non_bloque(p text) returns boolean language sql stable as $f$ select false $f$;
+create function public.publication_masquee_pour_moi(p text) returns boolean language sql stable as $f$ select false $f$;
+create function public.post_is_visible(pid text) returns boolean language sql stable security definer set search_path to 'public' as $function$
+  select case
+    when pid is null then false
+    when not exists (select 1 from posts where id = pid) then public.est_identifiant_exemple(pid)
+    else exists (
+      select 1 from posts p
+      where p.id = pid and (
+        p.author_id = (select auth.uid())::text
+        or (not public.post_masque(p.id) and (
+              not exists (select 1 from profiles pr where pr.id = p.author_id and pr.is_private)
+              or public.abonne_accepte_non_bloque(p.author_id))
+            and not public.publication_masquee_pour_moi(p.id))
+      )
+    )
+  end
+$function$;
+grant execute on function public.post_is_visible(text) to anon, authenticated;
+create function public.reponses_lues(p_post text) returns bigint language sql stable security definer set search_path = '' as $f$
+  select count(*) from public.comment_interactions i where i.post_id = p_post and public.post_is_visible(p_post)
+$f$;
+grant execute on function public.reponses_lues(text) to anon, authenticated;
 create table public.event_comments (id text primary key, event_id text not null references public.events(id) on delete cascade,
   author_id text not null, text text);
 create table public.event_reactions (event_id text references public.events(id) on delete cascade, user_id text, emoji text,
@@ -431,6 +460,18 @@ verifier "visiteur : une publication publique ou libre se lit" "2" "$(ANON "sele
 verifier "visiteur : ni commentaires, ni j'aime, ni réponses de l'album" "0|0|0" "$(ANON "select (select count(*) from public.post_comments)||'|'||(select count(*) from public.post_likes)||'|'||(select count(*) from public.comment_interactions);")"
 verifier "un compte n'est pas touché par ces restrictives" "3" "$(EN "$KEVIN" "select count(*) from public.posts where id in ('p_album', 'p_carte', 'p_repost');")"
 verifier "rendue publique, l'activité rouvre son album au visiteur" "1" "$(Q "begin; update public.events set visibilite = 'publique' where id = 'ev_priv'; set local role anon; select count(*) from public.posts where id = 'p_album'; rollback;" | grep -E '^[0-9]+$')"
+
+echo "⑧ VISITEUR — les lecteurs SECURITY DEFINER (interactions_cibles, fil_compteurs…)"
+verifier "AVANT (le défaut) : un visiteur relit les réponses de l'album par un lecteur DEFINER" "1" "$(ANON "select public.reponses_lues('p_album');")"
+SORTIE6="$(APPLIQUER "$VISITEUR")"
+if echo "$SORTIE6" | grep -q "ERROR"; then echo "$SORTIE6"; fi
+verifier "la règle visiteur passe (3 OK)" "3" "$(echo "$SORTIE6" | grep -cE '\| *OK *$' || true)"
+verifier "…et se REJOUE" "3" "$(APPLIQUER "$VISITEUR" | grep -cE '\| *OK *$' || true)"
+verifier "APRÈS : le lecteur DEFINER ne rend plus rien au visiteur" "0" "$(ANON "select public.reponses_lues('p_album');")"
+verifier "…post_is_visible : faux pour l'album, vrai pour une publication libre" "false|true" "$(ANON "select public.post_is_visible('p_album')||'|'||public.post_is_visible('p_libre');")"
+verifier "…un compte n'est pas touché par cette règle" "t" "$(EN "$KEVIN" "select public.post_is_visible('p_album');")"
+verifier "la garde refuse une post_is_visible inattendue" "1" "$(Q "begin; create or replace function public.post_is_visible(pid text) returns boolean language sql stable security definer as \$x\$ select true \$x\$; rollback;" >/dev/null; sed 's/^begin;$/begin; create or replace function public.post_is_visible(pid text) returns boolean language sql stable security definer as $x$ select true $x$;/' "$VISITEUR" | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1 | grep -c "définition attendue" || true)"
+verifier "…et rien n'a changé (transaction annulée)" "f" "$(ANON "select public.post_is_visible('p_album');")"
 
 echo
 echo "Banc activités privées : $ok OK, $ko ÉCHEC"

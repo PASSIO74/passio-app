@@ -2369,7 +2369,7 @@ ni l'une ni l'autre (`activite-privee.spec.js`). `visibilite` n'est JAMAIS dans
 
 **Ordre** : la migration AVANT le client (il lit `visibilite`, colonne inconnue = liste vide).
 
-**Reste hors lot (déclaré)** : fermé le 2026-11-27 (voir plus bas), sauf les « j'aime » d'un commentaire lus sans compte.
+**Reste hors lot (déclaré)** : fermé le 2026-11-27 (voir plus bas).
 
 **Suite (même jour)** : une série RÉCURRENTE privée ouvre désormais TOUTES ses dates à l'invité
 (`inviterSerieActivite`, app-07 : une ligne `event_invites` par activité de la série que
@@ -2470,11 +2470,18 @@ le média et la règle « proches » le regardent) ; liste et épingles hors exp
 par son propre prérequis (« Policies source supplementaires : revue requise ») — fermé, voulu.
 
 **2026-11-27 — les restes, la visibilité modifiable, un verrou à comptes réels**
-(`migration_activites_privees_restes_2026-11-27.sql`, banc commun : 117 contrôles) :
+(`migration_activites_privees_restes_2026-11-27.sql`, banc commun : 125 contrôles) :
 - `retirer_invite_activite` supprime aussi la notification `event_invite` de la personne retirée.
 - Visiteur sans compte : `publication_privee_pour_visiteur(id)` (SECURITY DEFINER, exécutable par
   anon : elle ne dit que ce qu'un visiteur constate) + restrictives au SEUL rôle anon sur `posts`,
-  `post_comments`, `post_likes`, `comment_interactions`. Reste : `comment_likes` sans compte.
+  `post_comments`, `post_likes`, `comment_interactions`.
+- **Trouvé par la revue de sécurité automatique** : ces restrictives ne ferment que la lecture
+  DIRECTE ; `interactions_cibles`, `fil_compteurs`, `comment_target_visible` sont SECURITY DEFINER
+  et exécutables par anon, et jugent par `post_is_visible`. La règle du visiteur entre donc DANS
+  `post_is_visible` (`migration_activites_privees_visiteur_2026-11-27.sql`, garde : la définition
+  remplacée doit être celle lue en production) — ce qui ferme aussi `comment_likes`. Leçon : une
+  règle de lecture posée en RLS seule est contournée par tout lecteur SECURITY DEFINER ; la mettre
+  dans l'aide que ces lecteurs partagent.
 - Le choix Publique / Privée est dans le formulaire de MODIFICATION ; passer en privée retire la
   carte du fil par le chemin d'une suppression (`retirerCarteActiviteDuFil` : pierre tombale,
   quatre tableaux, file serveur) et la note hors fil ; revenir en publique ne republie rien.
