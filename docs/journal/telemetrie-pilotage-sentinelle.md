@@ -64,6 +64,7 @@
 - 🔔 UN NOUVEAU PROBLÈME SONNE SOUS UN ROUGE QUI DURE ; L'ÉCHELLE SE MESURE SANS CHANGER DE COULEUR — T3 DE L'AUDIT « 100 000 », LOT B1 (2026-11-21)
 - ⏰ LA SENTINELLE PASSE CHAQUE HEURE — SON CRON N'ÉTAIT SERVI QUE 3,7 FOIS PAR JOUR (2026-11-21)
 - 📥 « INGESTION : LECTURES EN ÉCHEC » PARLAIT D'AUTRE CHOSE — UN `catch` QUI COUVRAIT AUSSI L'INGESTION (2026-11-23)
+- 🎬 UNE BOBINE SE COMPTAIT « PUBLICATION » — LE LIBELLÉ LISAIT LE NOM DE LA COLONNE (2026-11-27)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -3099,3 +3100,54 @@ produit.
 
 **Règle : un compteur qui porte le nom d'une étape ne compte que cette étape — sinon l'alerte envoie
 chercher la panne ailleurs qu'où elle est, et la vraie panne reste invisible.**
+
+## 🎬 UNE BOBINE SE COMPTAIT « PUBLICATION » — LE LIBELLÉ LISAIT LE NOM DE LA COLONNE (2026-11-27)
+
+Relevé par une revue en lecture seule. `_publierAvecEssais` (app-08, le point d'écriture central des
+publications) choisissait le nom de son action et de son flux sur `post.is_reel` :
+`tel.action(post && post.is_reel ? "publish_reel" : "publish_post", …)`, et la même condition dans
+`tel.flowStart`. Or `is_reel` est le nom de la **COLONNE**. Aucun objet qui arrive à cette fonction
+ne le porte — relu producteur par producteur :
+
+| Producteur | Forme de l'objet |
+|---|---|
+| Éditeur de média, `mePublish` (app-08) — la voie des bobines | `isReel: true` |
+| Studio, `publishPost` (app-06) | `isReel: studioType === "bobine"` |
+| File de renvoi, `_rejouerPublicationsEnAttente` | l'objet de `state.userPosts`, donc `isReel` |
+| Repartages (`sharePostInFeed`, `shareReelInFeed`), activité au fil (app-07) | ni l'un ni l'autre — `isReel` n'est que dans l'aperçu cité `sharedReelData` |
+| Ligne relue du serveur (`supaLoadPosts`) | re-mappée en `isReel: !!r.is_reel` |
+
+La condition était donc **toujours fausse** : chaque bobine partait sous `publish_post`, à l'action
+comme au flux, **pendant que l'INSERT, trois lignes plus bas, écrivait `is_reel: !!post.isReel`** —
+la télémétrie contredisait la ligne écrite. Conséquences : `publish_reel` n'a jamais été émis par
+l'application ; le contrat `publish_reel` (critique, `finMs` 10 min, objectif P95 30 s) ne jugeait
+rien, et une bobine était jugée par celui d'une publication (3 min, 3 s) ; les libellés du poste
+(`dashboard/server/traces.js`, `interactions.js`, « Bobine publiée ») ne servaient jamais. La garde
+`audit-contrats-actions` restait verte : elle vérifie que le fichier PORTE le littéral
+`flowStart("publish_reel")`, pas qu'un chemin l'atteint.
+
+Correctif : UN booléen, `_estBobine = !!(post && (post.isReel || post.is_reel))`, lu par l'action,
+par le flux **et par l'INSERT** (`is_reel: _estBobine`). Les deux formes sont comprises, et le
+libellé ne peut plus dire autre chose que la ligne. ⚠️ Le ternaire de littéraux reste écrit DANS
+l'appel `flowStart(` : la garde refuse une action non littérale (une variable `nom` lui serait
+illisible). Aucun champ de télémétrie nouveau ; contrat, émetteur et libellés du pilotage existaient
+déjà — rien à ajouter côté `supabase/` ni `dashboard/`.
+
+Verrou : `tests/e2e/publications-reprise.spec.js` ⑧ (le VRAI producteur : `mePublish` en mode
+bobine, puis la file de télémétrie telle qu'elle partira, `tel._queue()`) et ⑧ bis (renvoi d'une
+bobine au média déjà déposé : `publish_reel` jusqu'au `saved ok`, ligne écrite `is_reel: true` ;
+témoins : une vidéo ordinaire et le repartage d'une bobine restent `publish_post` ; la forme
+`is_reel` est comprise). Réinjection du code d'avant : les deux rouges, `"publish_post"` reçu pour
+`"publish_reel"` attendu, avec `is_reel: true` dans la ligne.
+
+⚠️ **Ce que ce lot NE prouve PAS.** Le défaut est établi **par lecture du code et par le banc**, pas
+par la production : mesuré le 2026-11-27 (canal ①), `posts` ne contient **aucune** bobine (8 lignes,
+toutes `is_reel = false`) et `telemetry_events` (7 219 lignes, du 20 au 27/11) ne porte ni
+`publish_post` ni `publish_reel` — la télémétrie brute ne vit que 3 jours. Aucun chiffre de
+production n'a donc été faussé qu'on puisse encore relire ; le premier `publish_reel` réel sera la
+preuve de bout en bout. Et ⑧ ne mesure pas le DÉPÔT du média (le banc n'en a pas : le flux de
+l'éditeur s'y ferme en échec) — le libellé part au début de l'envoi, avant tout dépôt.
+
+**Règle : un objet local ne porte pas le nom d'une colonne (`isReel` ≠ `is_reel`) — un libellé de
+télémétrie se déduit du MÊME booléen que la ligne écrite, et un émetteur déclaré n'est prouvé que
+par un banc qui lit ce que son producteur réel fait partir.**

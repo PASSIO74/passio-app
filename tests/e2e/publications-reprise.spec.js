@@ -15,7 +15,11 @@
 //   ③ elle survit à un RECHARGEMENT : l'envoi repart au lancement suivant ;
 //   ④ un refus définitif (passion inconnue) n'est PAS rejoué ("refusee") ;
 //   ⑤ un média absent de cet appareil n'est jamais inséré sans média ("perdue") ;
-//   ⑥ la publication d'un AUTRE compte n'est jamais publiée sous le mien.
+//   ⑥ la publication d'un AUTRE compte n'est jamais publiée sous le mien ;
+//   ⑧ une BOBINE se compte `publish_reel` au pilotage — par l'éditeur comme au
+//     renvoi — et ce libellé dit la même chose que la ligne écrite (`is_reel`)
+//     (RÉINJECTION : le code d'avant lisait `post.is_reel`, le nom de la COLONNE,
+//     qu'aucun objet local ne porte : chaque bobine partait sous `publish_post`).
 // Aucune requête ne part : `window.supa.from` est muté (jamais remplacé) et
 // `window.__posts` dicte la réponse de l'INSERT sur `posts`.
 const { test, expect } = require("@playwright/test");
@@ -57,11 +61,11 @@ Object.defineProperty(window.supa, "from", {
 });
 `;
 
-async function banc(page) {
+async function banc(page, query) {
   await page.route(/supabase\.co/, (route) => route.abort());
   await page.addInitScript(preparerBootPublication, UID_MOI);
   await page.addInitScript((u) => { localStorage.setItem("passio_uid", u); }, UID_MOI);
-  await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
+  await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true, query: query || "" });
   await page.evaluate(installerSessionPublication, UID_MOI);
   await page.evaluate(FAUX_SUPA);
 }
@@ -72,6 +76,27 @@ const statutPersiste = (page, id) => page.evaluate((id) => {
   const s = JSON.parse(localStorage.getItem("passio_mvp_state_v1") || "{}");
   return ((s.userPosts || []).find((p) => p.id === id) || {}).syncStatus || null;
 }, id);
+
+// ⑧ La file de télémétrie TELLE QU'ELLE PARTIRA (`tel._queue()`), réduite à UNE
+// publication : l'action comptée, le flux ouvert, et ce qui le ferme sous le même
+// identifiant. `?telemetry=1` est obligatoire (sans lui `track` ne garde rien) ;
+// rien ne quitte le banc, toute requête vers `supabase.co` y est coupée.
+const TELEMETRIE = "?telemetry=1";
+const telemetrieDe = (page, id) => page.evaluate((id) => {
+  const file = window.tel._queue();
+  const debuts = file.filter((e) => e.type === "flow" && e.action === "start" && e.meta && e.meta.postId === id);
+  const cids = debuts.map((e) => e.correlation_id);
+  return {
+    actions: file.filter((e) => e.type === "action" && e.meta && e.meta.postId === id).map((e) => e.action),
+    flux: debuts.map((e) => e.meta.flow_action),
+    suites: file.filter((e) => e.type === "flow" && e.action !== "start" && cids.includes(e.correlation_id))
+      .map((e) => e.action + ":" + (e.meta && e.meta.step) + ":" + e.status),
+  };
+}, id);
+const ligneEcrite = (page, id) => page.evaluate((id) => (window.__ecrits.find((e) => e.table === "posts" && e.row.id === id) || {}).row || null, id);
+// Un média DÉJÀ déposé (la réservation a abouti, l'insert non) : `envoyer` rend
+// sa référence sans rien redéposer — le banc n'a pas de dépôt, et n'en simule pas.
+const mediaDepose = (id) => ({ _pmpOwner: UID_MOI, _pmpReference: "https://media.passio.invalid/private-media/posts/" + id + "/11111111-1111-4111-8111-111111111111/original" });
 
 test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   test("① l'échec transitoire est écrit sur la publication et persisté", async ({ page }) => {
@@ -195,5 +220,67 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
     expect(n).toBe(0);
     expect(await inserts(page)).toEqual([]);
     expect(await statut(page, "p6")).toBe("offline");
+  });
+
+  // ⑧ LE LIBELLÉ D'UNE BOBINE (2026-11-27). `_publierAvecEssais` choisissait
+  // `publish_reel` sur `post.is_reel` — le nom de la COLONNE. Or tout objet qui
+  // lui arrive porte la forme locale `isReel` : l'éditeur (`mePublish`), le
+  // Studio, la file de renvoi. Le test était toujours faux, chaque bobine se
+  // comptait `publish_post`, et le contrat `publish_reel` ne jugeait rien.
+  test("⑧ une bobine publiée depuis l'éditeur se compte « publish_reel », action et flux", async ({ page }) => {
+    await banc(page, TELEMETRIE);
+    const b = await page.evaluate(async () => {
+      // Le VRAI producteur : c'est sa forme d'objet qui est sous test.
+      meState.mode = "bobine";
+      meState.mediaType = "video";
+      meState.media = "data:video/mp4;base64,AAAA";
+      meState.overlays = [];
+      meState.details = {};
+      meState._enteredEditAt = 0;
+      await mePublish();
+      const p = state.userPosts[0] || {};
+      return { id: p.id, isReel: p.isReel, colonne: Object.prototype.hasOwnProperty.call(p, "is_reel") };
+    });
+    expect(b.id, "prémisse : l'éditeur a bien créé une bobine").toMatch(/^reel_/);
+    expect(b.isReel, "prémisse : elle porte la forme LOCALE").toBe(true);
+    expect(b.colonne, "prémisse : et pas le nom de la colonne").toBe(false);
+    // Le libellé part au DÉBUT de l'envoi, avant tout dépôt. On attend la fin du
+    // flux — quel que soit son verdict : ce banc n'a pas de dépôt de média.
+    await expect.poll(async () => (await telemetrieDe(page, b.id)).suites.filter((x) => /^end:/.test(x)).length, { timeout: 15000 }).toBe(1);
+    const t = await telemetrieDe(page, b.id);
+    // RÉINJECTION : sur le code d'avant, ["publish_post"] aux deux lignes.
+    expect(t.actions).toEqual(["publish_reel"]);
+    expect(t.flux).toEqual(["publish_reel"]);
+    expect(t.suites.filter((x) => /^step:saved:/.test(x)).length, "le flux « publish_reel » porte son étape de confirmation").toBe(1);
+  });
+
+  test("⑧ bis au renvoi : la bobine garde son libellé jusqu'au « saved », la ligne écrite est bien une bobine", async ({ page }) => {
+    await banc(page, TELEMETRIE);
+    const n = await page.evaluate(async (posts) => {
+      posts.forEach((p) => state.userPosts.unshift(Object.assign(p, { syncStatus: "offline" })));
+      window.__posts = null;
+      return _rejouerPublicationsEnAttente();
+    }, [
+      post("r_bobine", Object.assign({ type: "video", isReel: true, video: null }, mediaDepose("r_bobine"))),
+      // Témoin : une vidéo ordinaire, même média déposé, reste une publication.
+      post("r_video", Object.assign({ type: "video", video: null }, mediaDepose("r_video"))),
+      // Témoin : REPARTAGER une bobine est une publication du fil, pas une bobine
+      // (`isReel` n'est porté que par l'aperçu cité, `sharedReelData`).
+      post("r_repartage", { sharedReel: "reel_source", sharedReelData: { id: "reel_source", isReel: true, text: "x" } }),
+      // Les deux formes sont comprises : une ligne au format de la base (`is_reel`).
+      post("r_colonne", Object.assign({ type: "video", is_reel: true, video: null }, mediaDepose("r_colonne"))),
+    ]);
+    expect(n).toBe(4);
+    const lu = {};
+    for (const id of ["r_bobine", "r_video", "r_repartage", "r_colonne"]) {
+      lu[id] = Object.assign(await telemetrieDe(page, id), { is_reel: (await ligneEcrite(page, id)).is_reel, statut: await statut(page, id) });
+    }
+    const attendu = (nom, bobine) => ({ actions: [nom], flux: [nom], suites: ["step:saved:ok", "end:done:ok"], is_reel: bobine, statut: "synced" });
+    // RÉINJECTION : sur le code d'avant, `r_bobine` rend "publish_post" — avec
+    // `is_reel: true` en base : la télémétrie contredisait la ligne écrite.
+    expect(lu.r_bobine).toEqual(attendu("publish_reel", true));
+    expect(lu.r_video).toEqual(attendu("publish_post", false));
+    expect(lu.r_repartage).toEqual(attendu("publish_post", false));
+    expect(lu.r_colonne).toEqual(attendu("publish_reel", true));
   });
 });
