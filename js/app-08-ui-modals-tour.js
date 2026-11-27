@@ -6506,8 +6506,12 @@ function _texteNotifListeAttente(n) {
 function _notifTexteHtml(n) {
   if (!n) return "";
   var texte = _neutraliserBalisesNotif(_texteNotifListeAttente(n));
-  return n.html === true || n.kind === "local"
-    ? texte.replace(/&lt;(\/?b)&gt;/g, "<$1>") : texte;
+  // ⚠️ LE GRAS NU EST RÉTABLI POUR TOUTES (2026-11-27, sujet 144). La base compose
+  // elle-même « t'invite à <b>titre</b> » et « a noté <b>titre</b> n/5 »
+  // (`notifications_texte_serveur`) : la cloche affichait les balises en clair.
+  // Sûr : tout chevron est neutralisé juste au-dessus, seul `<b>` / `</b>` SANS
+  // attribut redevient une balise — `<b onclick=…>` et `<img …>` restent du texte.
+  return texte.replace(/&lt;(\/?b)&gt;/g, "<$1>");
 }
 
 // 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
@@ -6519,6 +6523,22 @@ function _notifTexteHtml(n) {
 // « Léa, Malik et 3 autres ont aimé ta publication ». Toucher la ligne ouvre la
 // cible, comme avant ; elle est non lue si l'une des notifications l'est.
 var _NOTIF_REGROUPABLES = { like: "ont aimé ta publication", reaction: "ont réagi à ta publication" };
+// ⚠️ UN J'AIME D'ACTIVITÉ N'EST PAS UN J'AIME DE PUBLICATION (2026-11-27, sujet 133).
+// La base n'a pas de genre dédié : le j'aime et la réaction d'une ACTIVITÉ
+// arrivent en `like` / `reaction` avec ref = l'activité (« a aimé ton
+// événement »). La cloche les jugeait comme des publications : « Publication
+// introuvable ici », fiche jamais ouverte, regroupés en « ont aimé ta
+// publication ». Vrai quand la cible n'est pas une publication connue mais une
+// activité connue, ou que le texte serveur parle de « ton événement / activité ».
+var _NOTIF_REGROUPABLES_ACTIVITE = { like: "ont aimé ton activité", reaction: "ont réagi à ton activité" };
+function _notifViseActivite(n) {
+  if (!n || !n.refId || ["like", "comment", "reaction"].indexOf(n.kind) < 0) return false;
+  try {
+    if (typeof findPostAnywhere === "function" && findPostAnywhere(n.refId)) return false;
+    if (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(n.refId)) return true;
+    return /ton (événement|activité)/.test(String(n.text || ""));
+  } catch (e) { return false; }
+}
 function _regrouperNotifs(notifs) {
   var groupes = {}, sortie = [];
   (notifs || []).forEach(function (n) {
@@ -6542,7 +6562,8 @@ function _regrouperNotifs(notifs) {
     var qui = noms.length === 1 ? "<b>" + escapeHtml(noms[0]) + "</b>"
       : noms.length === 2 ? "<b>" + escapeHtml(noms[0]) + "</b> et <b>" + escapeHtml(noms[1]) + "</b>"
       : "<b>" + escapeHtml(noms[0]) + "</b>, <b>" + escapeHtml(noms[1]) + "</b> et " + reste + " autre" + (reste > 1 ? "s" : "");
-    var verbe = noms.length === 1 ? _NOTIF_REGROUPABLES[x.tete.kind].replace(/^ont /, "a ") : _NOTIF_REGROUPABLES[x.tete.kind];
+    var _libelles = _notifViseActivite(x.tete) ? _NOTIF_REGROUPABLES_ACTIVITE : _NOTIF_REGROUPABLES;
+    var verbe = noms.length === 1 ? _libelles[x.tete.kind].replace(/^ont /, "a ") : _libelles[x.tete.kind];
     return Object.assign({}, x.tete, {
       unread: x.membres.some(function (m) { return m.unread; }),
       _texteGroupe: qui + " " + verbe,
@@ -6898,6 +6919,15 @@ function clickNotif(id, ligne) {
 //  message                       → la conversation
 function openNotifTarget(n) {
   if (!n) return;
+  // Un j'aime / une réaction / un commentaire sur une ACTIVITÉ ouvre sa fiche (sujet 133).
+  if (_notifViseActivite(n)) {
+    if (!_ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true })) {
+      // Identifiant hors du format des liens (activité locale) : la fiche directement.
+      try { closeModal(); } catch (e) {}
+      if (typeof openEventDetails === "function") openEventDetails(n.refId);
+    }
+    return;
+  }
   // LOT-21 (audit UX/UI du 2026-11-10, TRA-C12) : toucher une notification
   // dont la cible a disparu fermait le panneau et laissait sur le fil, sans un
   // mot (`openPost` et consorts sortent en silence). On vérifie AVANT de fermer ;
@@ -10578,7 +10608,7 @@ async function supaLoadStories() {
 // Colonnes « récentes » de `events` (migration_events_lifecycle.sql). Retirées une
 // à une si la base ne les a pas encore (même filet que supaUpsertProfile) — un
 // insert qui échoue en entier laissait l'événement en local seulement.
-const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence", "conv_id"];
+const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence"];
 
 // ⚠️ POINT UNIQUE de départ d'un événement vers la base — et `events` est en
 // LECTURE PUBLIQUE INTÉGRALE (`[SELECT] Lecture publique · using: true`), donc
@@ -10626,7 +10656,12 @@ function _eventRow(event) {
       .map(function (x) { return x.toLowerCase(); }).slice(0, 20),
     series_id: event.seriesId || null,
     recurrence: event.recurrence || "none",
-    conv_id: event.convId || null,
+    // ⚠️ PLUS DE `conv_id` ICI (2026-11-27, sujet 145). Une copie locale sans
+    // `convId` (repli de lecture publique, copie de création jamais relue)
+    // écrivait NULL à chaque édition : la discussion de l'activité se fermait à
+    // tous (`can_join_event_conversation` exige e.conv_id). Le lien n'est posé
+    // que par l'UPDATE dédié de `supaCreateEventConversation` ; à l'insertion, la
+    // colonne vaut NULL par défaut.
   };
   // ⚠️ Jamais dans `_EVENT_OPTIONAL_COLS` : retirer la colonne sur un refus
   // publierait PUBLIQUE une activité voulue privée. Absente du modèle local
@@ -11519,7 +11554,11 @@ async function supaLoadEventComments(eventId) {
   try {
     const { data, error } = await supa.from("event_comments").select("*").eq("event_id", eventId).order("created_at", { ascending: true });
     if (error) { console.warn("load event comments:", error.message); return null; }
-    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) }));
+    // `fromSupabase` comme le lot (2026-11-27, sujet 152) : sans lui, le j'aime et la
+    // réponse donnés depuis la FICHE (qui relit par ici) ne notifiaient jamais
+    // l'auteur du commentaire (gardes d'emoji-misc.js), selon la dernière lecture.
+    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme",
+      authorName: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at), fromSupabase: true }));
   } catch(e) { console.warn("load event comments:", e); return null; }
 }
 // ── Likes cross-compte sur les commentaires (table comment_likes) ──
@@ -13236,7 +13275,10 @@ function _rtNotificationRecue(r) {
   // (`n_pa_<activité>_<compte>`) — la seconde promotion de la même personne est
   // une notification « déjà connue », et pourtant une vraie nouvelle.
   if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
-      notif.refId && typeof activiteNotifiee === "function") activiteNotifiee(notif.refId);
+      notif.refId && typeof activiteNotifiee === "function") {
+    // Une validation fait aussi ENTRER dans la discussion du groupe (sujet 134).
+    activiteNotifiee(notif.refId, { entrerDiscussion: notif.kind === "event_accepted" });
+  }
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).

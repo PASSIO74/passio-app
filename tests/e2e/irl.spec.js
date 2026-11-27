@@ -348,6 +348,9 @@ test.describe("IRL — cycle de vie d'un événement", () => {
       window.supaUpdateEvent = async () => true;
       openCreateEvent("mine1");
       document.getElementById("evTitle").value = "Titre corrigé";
+      // Depuis le 2026-11-27 (sujet 147), seul un changement de date, d'horaire ou
+      // de lieu prévient les inscrits : l'horaire change aussi, la diffusion part.
+      document.getElementById("evTime").value = "20:30";
     });
     await page.evaluate(() => submitEvent("mine1"));
     await expect.poll(() => page.evaluate(() => window._toasts.filter((m) => /18 mois/.test(m))))
