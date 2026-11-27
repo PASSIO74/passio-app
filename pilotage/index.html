@@ -78,15 +78,21 @@
           <section class="croissance-zone" aria-label="Croissance">
             <div class="hero">
               <div id="marche" class="marche" role="img" tabindex="0" aria-label="Évolution du nombre d'utilisateurs"></div>
-              <!-- Deux nombres qu'on touche (2026-11-26) : tous les utilisateurs, et ceux venus
-                   aujourd'hui (de 00 h à 00 h, heure de Paris, remis à zéro chaque nuit). -->
+              <!-- Trois nombres qu'on touche : tous les utilisateurs, les comptes venus aujourd'hui
+                   (2026-11-26) et toute ouverture de l'app aujourd'hui, avec ou sans compte (2026-11-27).
+                   « Aujourd'hui » = de 00 h à 00 h, heure de Paris, remis à zéro chaque nuit. -->
               <div class="totaux">
                 <button id="totalUtilisateurs" class="total" type="button">
                   <b id="totalNombre">—</b><span id="totalLibelle">utilisateurs</span>
                 </button>
+                <div class="totaux-jour">
                 <button id="connectesJour" class="total total-jour" type="button">
                   <b id="connectesNombre">—</b><span id="connectesLibelle">connectés aujourd'hui</span>
                 </button>
+                <button id="ouverturesJour" class="total total-jour total-ouvertures" type="button">
+                  <b id="ouverturesNombre">—</b><span id="ouverturesLibelle">ont ouvert aujourd'hui</span>
+                </button>
+                </div>
               </div>
               <div id="marcheInfo" class="marche-info" hidden></div>
             </div>
@@ -183,6 +189,13 @@
         <p id="connectesResume" class="discret"></p>
         <div id="connectesListe" class="pile"></div>
         <button id="connectesSuite" class="btn btn-plein" type="button" hidden>Voir les suivants</button>
+      </section>
+
+      <!-- OUVERTURES AUJOURD'HUI (2026-11-27) : ouvert en touchant le 3ᵉ nombre de l'accueil. -->
+      <section id="ouvertures" class="onglet" data-titre="Ouvertures aujourd'hui">
+        <p id="ouverturesResume" class="discret"></p>
+        <div id="ouverturesListe" class="pile"></div>
+        <button id="ouverturesSuite" class="btn btn-plein" type="button" hidden>Voir les suivants</button>
       </section>
 
       <!-- RÉGLAGES : ce qu'on change rarement. -->

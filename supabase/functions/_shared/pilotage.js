@@ -2061,6 +2061,82 @@ export function nommerConnectes(liste, profils, { nomsLus = true } = {}) {
   }));
 }
 
+// ─── LES OUVERTURES DU JOUR (2026-11-27) ────────────────────────────────────
+// Demande de Benjamin : un 3ᵉ nombre, TOUTE ouverture de l'app depuis minuit
+// (heure de Paris), avec ou sans compte — « savoir qui ouvre le lien au
+// quotidien ». On compte des APPAREILS distincts (`device_id`) qui ont ouvert
+// l'app, l'ont remise au premier plan ou l'avaient à l'écran (`session/start`,
+// `lifecycle/visible`, `lifecycle/heartbeat`). Le nombre d'ouvertures d'un
+// appareil ne compte que `session/start` et `lifecycle/visible` (le battement
+// dit « encore là », pas « ouvert »). Le PUBLIC seulement : un appareil marqué
+// robot/émulation/équipe une fois l'est pour la journée (`traficHorsPublic`).
+// Un appareil qui porte un compte de test ou l'éditeur sort (`compteCree`) ; le
+// compte rattaché est l'identité posée par le SERVEUR (`auth_uid`), jamais le
+// `user_id` du client. `device_id` ne sort jamais de la fonction.
+const PLATEFORMES = Object.freeze({ ios: "iPhone", android: "Android", windows: "Windows", mac: "Mac", linux: "Linux" });
+const OUVERTURE = (r) => (r.type === "session" && r.action === "start") || (r.type === "lifecycle" && r.action === "visible");
+/** Une source d'arrivée d'une liste fermée côté client, relue ici comme une entrée hostile. */
+const sourceSure = (s) => (typeof s === "string" && /^[a-z0-9_-]{1,24}$/.test(s) ? s : null);
+/**
+ * Les appareils du public venus depuis `depuis` (ms), le dernier venu d'abord :
+ * `{ id, uid, ouvertures, premier, vu, plateforme, source }` (`id` = appareil,
+ * à usage interne). `comptes` : utilisateurs d'auth (listUsers), pour écarter
+ * les comptes de test et l'éditeur ; un compte inconnu (supprimé) est oublié.
+ */
+export function ouverturesDuJour(lignes, depuis, comptes = [], extra = "") {
+  const horsPublic = new Set();
+  for (const r of lignes || []) if (r && r.device_id && traficHorsPublic(r)) horsPublic.add(String(r.device_id));
+  const parId = new Map((comptes || []).filter((u) => u && u.id != null).map((u) => [String(u.id), u]));
+  const app = new Map();
+  for (const r of lignes || []) {
+    if (!r || !r.device_id) continue;
+    const id = String(r.device_id), t = dateUtc(r.received_at);
+    if (horsPublic.has(id) || !Number.isFinite(t) || t < depuis) continue;
+    let a = app.get(id);
+    if (!a) app.set(id, a = { id, uid: null, tUid: -Infinity, ouvertures: 0, premier: t, vu: t, plateforme: null, tPf: -Infinity, source: null, tSrc: Infinity });
+    if (OUVERTURE(r)) a.ouvertures++;
+    if (t < a.premier) a.premier = t;
+    if (t > a.vu) a.vu = t;
+    if (r.auth_uid && t >= a.tUid) { a.uid = String(r.auth_uid); a.tUid = t; }
+    if (r.platform && t >= a.tPf) { a.plateforme = String(r.platform); a.tPf = t; }
+    // La source de la PREMIÈRE ouverture du jour : d'où la personne est arrivée.
+    const src = r.type === "session" && r.action === "start" ? sourceSure(r.src) : null;
+    if (src && t < a.tSrc) { a.source = src; a.tSrc = t; }
+  }
+  const out = [];
+  for (const a of app.values()) {
+    let uid = a.uid;
+    if (uid) {
+      const u = parId.get(uid);
+      // Un compte anonyme est un visiteur sans compte (le public) ; un compte disparu aussi.
+      if (!u || u.is_anonymous) uid = null;
+      else if (!compteCree(u, extra)) continue;   // test e2e, éditeur : pas le public
+    }
+    out.push({ id: a.id, uid, ouvertures: a.ouvertures, premier: new Date(a.premier).toISOString(), vu: new Date(a.vu).toISOString(),
+      plateforme: a.plateforme, source: a.source });
+  }
+  return out.sort((x, y) => dateUtc(y.vu) - dateUtc(x.vu));
+}
+/** Le résumé de l'accueil : appareils, dont avec un compte, et ouvertures. */
+export function resumerOuvertures(liste) {
+  const l = liste || [];
+  return { total: l.length, avecCompte: l.filter((a) => a && a.uid).length, ouvertures: l.reduce((n, a) => n + (Number(a && a.ouvertures) || 0), 0) };
+}
+/** Les appareils pour l'écran : le NOM du compte s'il y en a un, jamais l'appareil ni l'identifiant. */
+export function nommerOuvertures(liste, profils, { nomsLus = true } = {}) {
+  const noms = new Map((profils || []).filter((p) => p && p.id != null).map((p) => [String(p.id), p.username]));
+  return (liste || []).filter((a) => a && Number.isFinite(dateUtc(a.vu))).map((a) => ({
+    compte: !!a.uid,
+    nom: a.uid && nomsLus ? (borne(noms.get(String(a.uid)), 60) || null) : null,
+    nomLu: !a.uid || !!nomsLus,
+    ouvertures: Math.max(0, Number(a.ouvertures) || 0),
+    premier: new Date(dateUtc(a.premier)).toISOString(),
+    vu: new Date(dateUtc(a.vu)).toISOString(),
+    plateforme: a.plateforme ? (Object.hasOwn(PLATEFORMES, a.plateforme) ? PLATEFORMES[a.plateforme] : "autre") : null,
+    source: sourceSure(a.source),
+  }));
+}
+
 /** Lignes de `sqlActivation()` → `activation()`. */
 export function activationDepuisLignes(lignes, maintenant = Date.now()) {
   const comptes = [], gestes = [];

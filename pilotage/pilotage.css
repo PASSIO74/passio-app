@@ -153,7 +153,13 @@ details[open] .depliable::after { transform: rotate(90deg); }
    Le bloc laisse passer le doigt vers la courbe ; seuls les deux boutons le prennent. */
 .totaux { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: clamp(14px, 5vw, 28px); max-width: 100%; pointer-events: none; }
 .total { pointer-events: auto; min-width: 0; display: grid; justify-items: start; padding: 0 8px 4px 0; font: inherit; color: var(--texte); text-align: left; background: none; border: 0; cursor: pointer; }
-.total-jour b { color: var(--marche); font-size: clamp(44px, 13vw, 64px); }
+/* Les nombres du jour (2026-11-27, 3 nombres) : plus petits que le total — `.total.total-jour` passe devant
+   `.total b`, qui l'écrasait — et libellés sur deux lignes étroites, pour que les trois tiennent sur UNE
+   rangée : une seconde rangée couvrirait le milieu de la courbe et prendrait le doigt qui la lit. */
+.totaux-jour { display: flex; flex-direction: column; gap: 8px; min-width: 0; pointer-events: none; }
+.total.total-jour { grid-auto-flow: column; justify-content: start; align-items: center; column-gap: 6px; padding: 0 8px 0 0; }
+.total.total-jour b { color: var(--marche); font-size: clamp(28px, 8.5vw, 42px); }
+.total.total-jour span { font-size: 13px; max-width: 6.2em; line-height: 1.25; margin-top: 0; }
 .total b { font-size: clamp(64px, 19vw, 92px); font-weight: 800; line-height: .95; letter-spacing: -.04em; text-shadow: 0 0 14px var(--fond), 0 0 3px var(--fond); }
 .total span { font-size: 15px; font-weight: 600; color: var(--discret); margin-top: 2px; text-shadow: 0 0 8px var(--fond), 0 0 2px var(--fond); text-decoration: underline; text-decoration-color: var(--ligne); text-underline-offset: 3px; }
 .marche-axe { display: flex; justify-content: space-between; font-size: 12px; color: var(--discret); margin-top: 4px; }
