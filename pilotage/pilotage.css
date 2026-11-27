@@ -149,7 +149,11 @@ details[open] .depliable::after { transform: rotate(90deg); }
 .marche-info { position: absolute; top: 0; z-index: 2; display: grid; padding: 6px 10px; border-radius: 10px; pointer-events: none; white-space: nowrap;
   background: var(--carte2); border: 1px solid var(--ligne); font-size: 12px; color: var(--discret); }
 .marche-info strong { color: var(--texte); font-size: 14px; }
-.total { position: absolute; top: 0; left: 0; z-index: 1; display: grid; justify-items: start; padding: 0 8px 4px 0; font: inherit; color: var(--texte); text-align: left; background: none; border: 0; cursor: pointer; }
+/* Les deux nombres côte à côte (2026-11-26) : tous les utilisateurs, puis ceux venus aujourd'hui.
+   Le bloc laisse passer le doigt vers la courbe ; seuls les deux boutons le prennent. */
+.totaux { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: clamp(14px, 5vw, 28px); max-width: 100%; pointer-events: none; }
+.total { pointer-events: auto; min-width: 0; display: grid; justify-items: start; padding: 0 8px 4px 0; font: inherit; color: var(--texte); text-align: left; background: none; border: 0; cursor: pointer; }
+.total-jour b { color: var(--marche); font-size: clamp(44px, 13vw, 64px); }
 .total b { font-size: clamp(64px, 19vw, 92px); font-weight: 800; line-height: .95; letter-spacing: -.04em; text-shadow: 0 0 14px var(--fond), 0 0 3px var(--fond); }
 .total span { font-size: 15px; font-weight: 600; color: var(--discret); margin-top: 2px; text-shadow: 0 0 8px var(--fond), 0 0 2px var(--fond); text-decoration: underline; text-decoration-color: var(--ligne); text-underline-offset: 3px; }
 .marche-axe { display: flex; justify-content: space-between; font-size: 12px; color: var(--discret); margin-top: 4px; }

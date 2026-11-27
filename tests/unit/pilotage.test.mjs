@@ -2991,3 +2991,65 @@ test("T3-p une raison neuve arrivée avec « PASSIO ne répond plus » sonne au 
   const presque = { ...futur, annonces: { humain: futur.annonces.humain, erreurs: new Date(T + 30e3).toISOString() } };
   assert.equal(decideAlerte(presque, rouge(["humain", "erreurs"]), T).sonner, false);
 });
+
+// ─── Les connectés du jour (2026-11-26) ─────────────────────────────────────
+import { debutJourParis, connectesDuJour, nommerConnectes, pageInscrits as pageConnectes } from "../../supabase/functions/_shared/pilotage.js";
+
+test("connectés du jour : la journée commence à minuit, heure de Paris, été comme hiver", () => {
+  // Hiver (UTC+1) : minuit à Paris = 23 h UTC la veille.
+  assert.equal(new Date(debutJourParis(Date.parse("2026-11-26T10:00:00Z"))).toISOString(), "2026-11-25T23:00:00.000Z");
+  // 23 h 30 UTC = 0 h 30 à Paris : c'est DÉJÀ le lendemain, le compteur est remis à zéro.
+  assert.equal(new Date(debutJourParis(Date.parse("2026-11-25T23:30:00Z"))).toISOString(), "2026-11-25T23:00:00.000Z");
+  assert.equal(new Date(debutJourParis(Date.parse("2026-11-25T22:59:59Z"))).toISOString(), "2026-11-24T23:00:00.000Z");
+  // Été (UTC+2).
+  assert.equal(new Date(debutJourParis(Date.parse("2026-07-14T12:00:00Z"))).toISOString(), "2026-07-13T22:00:00.000Z");
+  // Jours du changement d'heure : minuit est encore à l'heure d'avant.
+  assert.equal(new Date(debutJourParis(Date.parse("2026-03-29T12:00:00Z"))).toISOString(), "2026-03-28T23:00:00.000Z");
+  assert.equal(new Date(debutJourParis(Date.parse("2026-10-25T12:00:00Z"))).toISOString(), "2026-10-24T22:00:00.000Z");
+});
+
+test("connectés du jour : passage d'ouverture OU connexion depuis minuit, comptes de test et éditeur exclus", () => {
+  const depuis = Date.parse("2026-11-25T23:00:00Z");
+  const u = (id, email, extra = {}) => ({ id, email, created_at: "2026-10-01T00:00:00Z", email_confirmed_at: "2026-10-01T00:00:00Z", app_metadata: { provider: "email" }, ...extra });
+  const comptes = [
+    u("a", "a@x.fr"),
+    u("b", "b@x.fr", { last_sign_in_at: "2026-11-26T08:00:00Z" }),           // connecté ce matin, sans télémétrie
+    u("c", "c@x.fr", { last_sign_in_at: "2026-11-20T08:00:00Z" }),           // connecté il y a 6 jours, revenu hier soir seulement
+    u("d", "d@x.fr"),                                                        // jamais vu aujourd'hui
+    u("e", "e@passio-e2e.test"),                                             // test e2e
+    u("f", COMPTE_PILOTE),                                                   // l'éditeur
+    u("g", "g@x.fr", { is_anonymous: true }),
+  ];
+  const vus = [
+    { auth_uid: "a", received_at: "2026-11-26T09:00:00Z" },
+    { auth_uid: "a", received_at: "2026-11-26T11:00:00Z" },
+    { auth_uid: "c", received_at: "2026-11-25T22:30:00Z" },                  // 23 h 30 à Paris HIER : ne compte pas
+    { auth_uid: "e", received_at: "2026-11-26T09:00:00Z" },
+    { auth_uid: "f", received_at: "2026-11-26T09:00:00Z" },
+    { auth_uid: "g", received_at: "2026-11-26T09:00:00Z" },
+    { auth_uid: "zz-supprime", received_at: "2026-11-26T09:00:00Z" },
+    { auth_uid: null, received_at: "2026-11-26T09:00:00Z" },
+  ];
+  const l = connectesDuJour(comptes, vus, depuis);
+  assert.deepEqual(l.map((x) => x.id), ["a", "b"], "le dernier venu d'abord");
+  assert.equal(l[0].vu, "2026-11-26T11:00:00.000Z", "le DERNIER passage");
+  assert.equal(l[1].vu, "2026-11-26T08:00:00.000Z");
+  assert.equal(connectesDuJour(comptes, [], depuis).length, 1, "sans télémétrie, la connexion seule");
+  assert.deepEqual(connectesDuJour([], vus, depuis), []);
+});
+
+test("connectés du jour : le NOM seul (jamais l'e-mail ni l'identifiant), pages par heure de passage", () => {
+  const liste = [
+    { id: "a", vu: "2026-11-26T11:00:00Z", cree: "2026-10-01T00:00:00Z", confirme: true, voie: "google" },
+    { id: "b", vu: "2026-11-26T08:00:00Z", cree: "2026-10-02T00:00:00Z", confirme: false, voie: "email" },
+  ];
+  const n = nommerConnectes(liste, [{ id: "a", username: "Lou" }]);
+  assert.deepEqual(n[0], { nom: "Lou", nomLu: true, vu: "2026-11-26T11:00:00.000Z", cree: "2026-10-01T00:00:00.000Z", confirme: true, voie: "Google" });
+  assert.equal(n[1].nom, null, "profil pas rempli");
+  assert.equal(n[1].voie, "e-mail");
+  for (const x of n) assert.ok(!("id" in x) && !("email" in x), "ni identifiant ni e-mail");
+  assert.equal(nommerConnectes(liste, [], { nomsLus: false })[0].nomLu, false);
+  const p = pageConnectes([...liste].reverse(), 1, 1, "vu");
+  assert.deepEqual(p.ids, ["a"], "trié par passage, pas par inscription");
+  assert.equal(p.pages, 2);
+});

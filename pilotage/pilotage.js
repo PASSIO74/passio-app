@@ -300,6 +300,7 @@
     window.scrollTo(0, 0);
     if (id === "accueil") dessinerMarche();
     if (id === "inscrits" && !inscritsCharges.length) chargerInscrits();
+    if (id === "connectes" && !connectesCharges.length) chargerConnectes();
     if (id === "reglages") rendreSecondFacteur();
   }
   function aller(id) { history.pushState({ vue: id, depuisPage: true }, "", "#" + id); afficher(id); }
@@ -586,6 +587,7 @@
   });
   if (window.ResizeObserver) new ResizeObserver(() => dessinerMarche()).observe($("marche"));
   $("totalUtilisateurs").addEventListener("click", () => ouvrirInscrits());
+  $("connectesJour").addEventListener("click", () => ouvrirConnectes());
 
   function rendreCroissanceAccueil(d) {
     const act = d.activation, u = d.utilisateurs;
@@ -593,6 +595,11 @@
     $("totalNombre").textContent = ins ? ins.total + (ins.tronque ? "+" : "") : "—";
     $("totalLibelle").textContent = ins && ins.total === 1 ? "utilisateur" : "utilisateurs";
     $("totalUtilisateurs").setAttribute("aria-label", (ins ? ins.total + (ins.tronque ? " au moins" : "") : "Nombre non lu :") + " utilisateurs, voir la liste");
+    // Les connectés du jour (2026-11-26) : de 00 h à 00 h, heure de Paris. Non lu = « — », jamais 0.
+    const cj = d.connectes && typeof d.connectes.total === "number" ? d.connectes : null;
+    $("connectesNombre").textContent = cj ? cj.total + (cj.tronque ? "+" : "") : "—";
+    $("connectesLibelle").textContent = cj && cj.total <= 1 ? "connecté aujourd'hui" : "connectés aujourd'hui";
+    $("connectesJour").setAttribute("aria-label", (cj ? cj.total + (cj.tronque ? " au moins" : "") : "Nombre non lu :") + " connectés aujourd'hui depuis minuit, voir qui");
     // Les chiffres de la courbe d'abord : ils s'additionnent exactement au total.
     const semaine = ins && typeof ins.semaine === "number" ? ins.semaine : u ? u.inscritsSemaine : null;
     const avant = ins && typeof ins.semainePrec === "number" ? ins.semainePrec : u ? u.inscritsSemainePrec : null;
@@ -779,6 +786,74 @@
     }
   }
   $("inscritsSuite").addEventListener("click", () => chargerInscrits());
+
+  // ─── Connectés aujourd'hui (2026-11-26) ───────────────────────────────────
+  // Ouverts en touchant le second nombre : les comptes venus depuis minuit (heure
+  // de Paris), le dernier venu d'abord, par leur NOM (jamais l'e-mail ; écrit par
+  // la personne : rendu en TEXTE). Lus À LA DEMANDE (action `connectes`).
+  const fmtHeure = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  function heureParis(v) { const t = Date.parse(String(v)); return Number.isFinite(t) ? fmtHeure.format(new Date(t)).replace(":", " h ") : "?"; }
+  function listeConnectes(liste) {
+    const c = el("article", "carte");
+    const ul = el("ul", "liste-comptes");
+    liste.forEach((x) => {
+      const li = el("li", "compte");
+      const tete = el("div", "compte-tete");
+      tete.append(x.nom ? el("span", "compte-nom", x.nom) : el("span", "compte-nom sans-nom", x.nomLu === false ? "Nom non lu" : "Profil pas encore rempli"));
+      tete.append(el("span", "compte-quand", "vu à " + heureParis(x.vu)));
+      li.append(tete);
+      const morceaux = [];
+      if (x.cree) morceaux.push(el("span", null, "inscrit " + ilYA(x.cree)));
+      if (x.voie) morceaux.push(el("span", null, x.voie === "e-mail" ? "par e-mail" : "par " + x.voie));
+      if (!x.confirme) morceaux.push(el("span", "orange", "e-mail pas encore confirmé"));
+      if (morceaux.length) {
+        const det = el("p", "compte-detail");
+        morceaux.forEach((m, i) => { if (i) det.append(document.createTextNode(" · ")); det.append(m); });
+        li.append(det);
+      }
+      ul.append(li);
+    });
+    c.append(ul);
+    return c;
+  }
+  let connectesCharges = [], connectesPage = 0, connectesPages = 1, connectesEnCours = false;
+  function ouvrirConnectes() {
+    connectesCharges = []; connectesPage = 0; connectesPages = 1;
+    aller("connectes");
+  }
+  async function chargerConnectes() {
+    if (connectesEnCours) return;
+    connectesEnCours = true;
+    const liste = $("connectesListe"), suite = $("connectesSuite");
+    suite.disabled = true;
+    if (!connectesCharges.length) { vider("connectesListe").append(carte("Chargement…", "", "", "")); $("connectesResume").textContent = ""; }
+    try {
+      const r = await appeler({ action: "connectes", page: connectesPage + 1 });
+      const lot = Array.isArray(r && r.comptes) ? r.comptes : [];
+      connectesCharges = connectesCharges.concat(lot);
+      connectesPage = Number(r.page) || connectesPage + 1;
+      connectesPages = Number(r.pages) || 1;
+      vider("connectesListe");
+      if (!connectesCharges.length) liste.append(carte("Personne depuis minuit", "", "", ""));
+      else liste.append(listeConnectes(connectesCharges));
+      const total = Number(r.total) || 0;
+      $("connectesResume").textContent = total + " compte" + (total > 1 ? "s" : "") + (r.tronque ? " au moins" : "")
+        + " venu" + (total > 1 ? "s" : "") + " depuis minuit (heure de Paris), le dernier venu d'abord. Remis à zéro chaque nuit. Hors comptes de test et compte de l'éditeur"
+        + (connectesPages > 1 ? ". " + connectesCharges.length + " affichés." : ".");
+      suite.hidden = connectesPage >= connectesPages;
+    } catch (e) {
+      if (e.status === 401) { ecran("connexion"); return; }
+      const c = carte("Liste impossible à lire", "Non lu", e.message, "gris");
+      const b = el("button", "btn", "Réessayer"); b.type = "button";
+      b.addEventListener("click", () => chargerConnectes());
+      actions(c).append(b);
+      if (!connectesCharges.length) vider("connectesListe");
+      liste.append(c);
+    } finally {
+      connectesEnCours = false; suite.disabled = false;
+    }
+  }
+  $("connectesSuite").addEventListener("click", () => chargerConnectes());
 
   function rendreSite(d) {
     const dispo = d.disponibilite;
