@@ -27,10 +27,13 @@ set -euo pipefail
 RACINE="$(cd "$(dirname "$0")/../.." && pwd)"
 MIG="$RACINE/migrations/migration_rencontrer_serveur_2026-11-27.sql"
 RETOUR="$RACINE/migrations/migration_rencontrer_serveur_retour_2026-11-27.sql"
+# Correctif du 2026-11-28 : la garde de pointage lisait un réglage ABSENT comme NULL
+# (« peut-être » et demande non validée se pointaient en direct). Appliqué après MIG.
+CORR="$RACINE/migrations/migration_rencontrer_pointage_coalesce_2026-11-28.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
-for f in "$MIG" "$RETOUR"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
+for f in "$MIG" "$RETOUR" "$CORR"; do [ -f "$f" ] || { echo "❌ introuvable : $f"; exit 1; }; done
 
 PORT=$(( 6320 + RANDOM % 120 ))
 if [ "$(id -u)" -eq 0 ]; then
@@ -622,6 +625,12 @@ SORTIE="$(APPLIQUER "$MIG")" || { echo "$SORTIE"; echo "❌ la migration ne s'ap
 verifier "neuf lignes de verdict, aucune en ECHEC" "9|0" "$(printf '%s\n' "$SORTIE" | grep -c -E '^ *[0-9]+ \|' || true)|$(printf '%s\n' "$SORTIE" | grep -c 'ECHEC' || true)"
 SORTIE2="$(APPLIQUER "$MIG")" || { echo "$SORTIE2"; echo "❌ la migration ne se rejoue pas"; exit 1; }
 verifier "rejeu : verdict sans ECHEC" "0" "$(printf '%s\n' "$SORTIE2" | grep -c 'ECHEC' || true)"
+SORTIEC="$(APPLIQUER "$CORR")" || { echo "$SORTIEC"; echo "❌ le correctif de pointage ne s'applique pas"; exit 1; }
+verifier "correctif de pointage : verdict sans ECHEC, garde coalescée" "0|1" "$(printf '%s\n' "$SORTIEC" | grep -c 'ECHEC' || true)|$(Q "select (position('coalesce(current_setting' in pg_get_functiondef('public.event_attendees_pointage_garde()'::regprocedure)) > 0)::int;")"
+SORTIEC2="$(APPLIQUER "$CORR")" || { echo "$SORTIEC2"; echo "❌ le correctif de pointage ne se rejoue pas"; exit 1; }
+# Rejouer MIG exige la garde de pointage qu'elle a écrite (garde d'empreinte) : on la remet avant.
+GARDE_MIG="$(awk '/^create or replace function public.event_attendees_pointage_garde\(\)/{p=1} p{print} p&&/^\$\$;/{exit}' "$MIG")"
+RAMENER_GARDE_MIG() { PREP "$GARDE_MIG"; }
 verifier "couverture : contrainte posée VALIDE (aucune ligne hors hôte)" "t" "$(Q "select convalidated from pg_constraint where conname = 'events_cover_url_hote';")"
 
 # ══ ② APRÈS ═════════════════════════════════════════════════════════════════
@@ -738,11 +747,13 @@ verifier "sans trg_event_attendees_note : la note avant la fin repasse (le banc 
 PREP "drop trigger zz_rencontres_place_liberee on public.event_attendees;"
 EN "$LEA" "select public.valider_participant('cap_mu', '$INES', false)" >/dev/null
 verifier "sans zz_rencontres_place_liberee : Chloé reste en file (le banc le voit)" "waitlist" "$(rsvp cap_mu "$CHLOE")"
+RAMENER_GARDE_MIG
 SORTIE3="$(APPLIQUER "$MIG")" || { echo "$SORTIE3"; echo "❌ la migration ne se réapplique pas après mutation"; exit 1; }
 refuse "migration réappliquée : la garde de note est de retour" "note_avant_fin" "$(ESSAI "$TOM" "update public.event_attendees set rating = 1 where event_id = 'now_mu' and user_id = '$TOM'")"
 
 # ══ ④ RETOUR ARRIÈRE ════════════════════════════════════════════════════════
 echo "── ④ Retour arrière ──"
+RAMENER_GARDE_MIG
 SORTIE4="$(APPLIQUER "$RETOUR")" || { echo "$SORTIE4"; echo "❌ le retour arrière ne s'applique pas"; exit 1; }
 verifier "retour : trois lignes de verdict, aucune en ECHEC" "3|0" "$(printf '%s\n' "$SORTIE4" | grep -c -E '^ *[0-9]+ \|' || true)|$(printf '%s\n' "$SORTIE4" | grep -c 'ECHEC' || true)"
 verifier "retour : le défaut ④ revient (Chloé « je ne peux pas » se pointe)" "ok" "$(ESSAI "$CHLOE" "update public.event_attendees set checked_in_at = now() where event_id = 'now_mu' and user_id = '$CHLOE'")"
