@@ -6080,6 +6080,25 @@ function poserChoixVisibilite(valeur) {
 }
 function activiteEstPrivee(ev) { return !!(ev && ev.visibilite === "privee"); }
 
+// Une activité rendue PRIVÉE après coup (2026-11-27) : sa carte du fil
+// (`post_ev_<id>`, publiée par moi) passe par le même chemin qu'une suppression
+// de publication (pierre tombale, quatre tableaux, file serveur) — jamais un
+// simple filtre d'affichage, qui la laisserait revenir au prochain chargement.
+function retirerCarteActiviteDuFil(evId) {
+  if (!evId) return false;
+  marquerActiviteHorsFil(evId);
+  var postId = _postIdActiviteAuFil(evId);
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || typeof _estMonPost !== "function" || !_estMonPost(post)) return false;
+  var chemins = (typeof _cheminsMediaPost === "function") ? _cheminsMediaPost(post) : [];
+  marquerPostSupprime(postId);
+  purgerPostsSupprimes();
+  saveState();
+  if (typeof _enqueuePostDelete === "function") _enqueuePostDelete(postId, chemins);
+  try { if (typeof renderFeed === "function") renderFeed(); } catch (e) {}
+  return true;
+}
+
 // Une activité RÉCURRENTE est une série de vraies activités (`seriesId`
 // partagé, chacune sa ligne `events`). Inviter à l'une d'une série privée,
 // c'est ouvrir TOUTES les dates que j'organise dans cette série : sans cela,
@@ -8223,17 +8242,17 @@ function openCreateEvent(editId, passionSouhaitee) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    ${editId ? "" : `<div class="ev-visibilite" role="radiogroup" aria-label="Qui peut voir cette activité ?">
+    <div class="ev-visibilite" role="radiogroup" aria-label="Qui peut voir cette activité ?">
       <label class="ev-visibilite-choix" for="evVisPublique">
-        <input type="radio" name="evVisibilite" id="evVisPublique" value="publique" checked onchange="majChoixVisibilite()"/>
+        <input type="radio" name="evVisibilite" id="evVisPublique" value="publique"${ed && ed.visibilite === "privee" ? "" : " checked"} onchange="majChoixVisibilite()"/>
         <span><strong>🌍 Publique</strong><small>Visible par tous dans Rencontrer.</small></span>
       </label>
       <label class="ev-visibilite-choix" for="evVisPrivee">
-        <input type="radio" name="evVisibilite" id="evVisPrivee" value="privee" onchange="majChoixVisibilite()"/>
-        <span><strong>🔒 Privée</strong><small>Seules les personnes invitées la voient.</small></span>
+        <input type="radio" name="evVisibilite" id="evVisPrivee" value="privee"${ed && ed.visibilite === "privee" ? " checked" : ""} onchange="majChoixVisibilite()"/>
+        <span><strong>🔒 Privée</strong><small>${editId ? "Seuls les invités et les inscrits la voient." : "Seules les personnes invitées la voient."}</small></span>
       </label>
     </div>
-    <label class="ev-au-fil" for="evAuFil">
+    ${editId ? "" : `<label class="ev-au-fil" for="evAuFil">
       <input type="checkbox" id="evAuFil" checked/>
       <span><strong>Publier aussi dans le fil Découvrir</strong><small>Une carte de l'activité apparaît dans le fil de tes abonnés.</small></span>
     </label>`}
@@ -8769,6 +8788,7 @@ async function submitEvent(editId) {
   }
 
   const p = passionById(passion) || { emoji: "✨" };
+  const visibiliteAvant = (existing && existing.visibilite) || "publique";
   const ev = Object.assign(existing || {}, {
     id: editId || uid(), title, passion,
     emoji: p.emoji, date: ts, time, city,
@@ -8781,8 +8801,10 @@ async function submitEvent(editId) {
     recurrence: editId ? (existing.recurrence || "none") : (recurrence || "none"),
     seriesId: editId ? (existing.seriesId || null) : (recurrence && recurrence !== "none" ? "s_" + uid() : null),
     coOrganizers: (existing && existing.coOrganizers) || [],
-    // Fixée à la création ; une édition garde celle de l'activité.
-    visibilite: editId ? ((existing && existing.visibilite) || "publique") : _lireVisibilite(),
+    // Choisie à la création, modifiable à l'édition depuis le 2026-11-27 ; sans le choix à l'écran
+    // (ancien formulaire), l'édition garde celle de l'activité.
+    visibilite: (editId && !document.querySelector('input[name="evVisibilite"]'))
+      ? ((existing && existing.visibilite) || "publique") : _lireVisibilite(),
     convId: (existing && existing.convId) || null,
     organizerId: (existing && existing.organizerId) || meId,
     attendees: (existing && existing.attendees) || [meId],
@@ -8908,6 +8930,12 @@ async function submitEvent(editId) {
     if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
     // Village à 100 (A3) : la base prévient chaque inscrit ; une notification qui n'a
     // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
+    // Devenue PRIVÉE : sa carte du fil part (la base la masque déjà aux non-admis,
+    // c'est ici l'auteur qui la retire), et le rattrapage ne la republiera pas.
+    if (ok && editId && visibiliteAvant !== "privee" && activiteEstPrivee(ev)) {
+      retirerCarteActiviteDuFil(ev.id);
+      try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: false, serie: false, edition: true }); } catch (e) {}
+    }
     if (ok && editId) {
       _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
