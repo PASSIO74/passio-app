@@ -5424,7 +5424,12 @@ function lancerVideoPublique(video, volontaire) {
     videoPubliqueBouton(video, false);
     // LOT-26 (FIL-C21) : les commandes natives n'apparaissent qu'une fois la
     // lecture lancée — avant, « ▶ Lire » et la barre native se superposaient.
-    try { if (video.hasAttribute("data-video-public-src")) video.controls = true; } catch (e) {}
+    // ⚠️ Pas dans les lecteurs de bobines et de stories (2026-11-27) : ils ont LEURS
+    // commandes (toucher = pause, bouton son, zones de la story). La barre native y
+    // CAPTAIT les touchers — tracé : sur une bobine en lecture, aucun `click`
+    // n'atteignait plus la page, donc ni la pause au toucher (BOB-C06) ni le
+    // double toucher « j'aime » ne répondaient au centre de la vidéo.
+    try { if (video.hasAttribute("data-video-public-src") && !video.closest(".reel-item, #storyCard")) video.controls = true; } catch (e) {}
     return true;
   }, function () {
     // Un navigateur peut refuser la lecture auto sonore. Garder une vraie porte

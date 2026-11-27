@@ -966,6 +966,8 @@ function meOpen(mode) {
   document.getElementById("mePlaceholder").classList.add("hidden");
   // Outils de capture : chaque ouverture repart d'un appareil photo « neutre ».
   _meAnnulerCompte();
+  _meBoomerangAbandonner();
+  meCam._flashEnCours = false;
   meCap.boomerang = false; meCap.mainsLibres = false; meCap.minuteur = 0; meCap.duree = 60; meCap.flash = false; meCap.boomEnCours = false;
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
@@ -1021,7 +1023,7 @@ function _meAppliquerMode(mode) {
 function meChoisirMode(m) {
   var ed = document.getElementById("mediaEditor");
   if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-capture")) return;
-  if (meCam.recording || meCap.compteTimer || meCap.boomEnCours) return;   // pas en plein tournage
+  if (meCam.recording || meCap.compteTimer || meCap.boomEnCours || meCam._flashEnCours) return;   // pas en plein tournage
   // ⚠️ La suite part 80 ms APRÈS la fermeture (même patron que les capsules des
   // bobines) : `meClose()` rend son entrée d'historique par un retour différé, et
   // une navigation posée avant lui laisserait cette entrée orpheline sous l'écran
@@ -1050,7 +1052,6 @@ function _meMajModes(sansAnimation) {
     var oui = b.getAttribute("data-mode") === meState.mode;
     b.classList.toggle("actif", oui);
     b.setAttribute("aria-selected", oui ? "true" : "false");
-    b.tabIndex = oui ? 0 : -1;
     if (oui) actif = b;
   });
   // L'onglet actif se place au CENTRE de la bande (comme Instagram).
@@ -1116,8 +1117,12 @@ function _meMajRail() {
     flash.classList.toggle("actif", meCap.flash); flash.setAttribute("aria-pressed", meCap.flash ? "true" : "false");
     flash.setAttribute("aria-label", meCap.flash ? "Flash activé" : "Flash désactivé");
   }
-  var replie = false;
-  try { replie = localStorage.getItem("passio_me_rail_replie") === "1"; } catch (e) {}
+  // Choix gardé d'une ouverture à l'autre ; lu UNE fois (sans stockage, il vit en mémoire).
+  if (meCap.railReplie == null) {
+    meCap.railReplie = false;
+    try { meCap.railReplie = localStorage.getItem("passio_me_rail_replie") === "1"; } catch (e) {}
+  }
+  var replie = !!meCap.railReplie;
   if (ed) ed.classList.toggle("me-rail-replie", replie);
   var plier = document.getElementById("meRailPlier");
   if (plier) { plier.setAttribute("aria-expanded", replie ? "false" : "true"); plier.setAttribute("aria-label", replie ? "Afficher les noms des outils" : "Masquer les noms des outils"); }
@@ -1132,6 +1137,11 @@ function _meMajConsigne() {
   else if (meCap.compteTimer) t = "Touche le bouton pour annuler";
   else if (meCam.recording) t = "Appuie pour arrêter";
   else if (!cam) t = meState.mode === "bobine" ? "Appuie pour choisir une vidéo" : "Appuie pour choisir une photo ou une vidéo";
+  else if (meCap.minuteur) {
+    // Minuteur armé : tout part au relâché, après le décompte (un maintien ne filme pas).
+    var quoi = (meState.mode === "bobine" || meCap.mainsLibres) ? "la vidéo démarre" : (meCap.boomerang ? "boomerang" : "photo");
+    t = "Appuie · " + quoi + " dans " + meCap.minuteur + " s";
+  }
   else if (meState.mode === "bobine") t = "Appuie pour filmer · appuie encore pour arrêter";
   else if (meCap.boomerang) t = "Appuie pour un boomerang";
   else if (meCap.mainsLibres) t = "Appuie pour filmer · appuie encore pour arrêter";
@@ -1156,6 +1166,7 @@ function meChangerMinuteur() {
   _meAnnulerCompte();
   meCap.minuteur = ME_MINUTEURS[(ME_MINUTEURS.indexOf(meCap.minuteur) + 1) % ME_MINUTEURS.length];
   _meMajRail();   // la pastille du bouton dit la durée : pas de toast par-dessus le déclencheur
+  _meMajConsigne();
 }
 function meChangerDuree() {
   if (meState.mode !== "bobine" || meCam.recording) return;
@@ -1171,14 +1182,9 @@ function meBasculerEffets() {
   _meMajRail();
 }
 function meBasculerRail() {
-  var replie = false;
-  try { replie = localStorage.getItem("passio_me_rail_replie") === "1"; } catch (e) {}
-  try { localStorage.setItem("passio_me_rail_replie", replie ? "0" : "1"); } catch (e) {}
-  var ed = document.getElementById("mediaEditor");
-  // Sans stockage (navigation privée), la bascule vit le temps de l'écran.
-  if (ed) ed.classList.toggle("me-rail-replie", !replie);
-  var plier = document.getElementById("meRailPlier");
-  if (plier) { plier.setAttribute("aria-expanded", replie ? "true" : "false"); plier.setAttribute("aria-label", replie ? "Masquer les noms des outils" : "Afficher les noms des outils"); }
+  meCap.railReplie = !meCap.railReplie;
+  try { localStorage.setItem("passio_me_rail_replie", meCap.railReplie ? "1" : "0"); } catch (e) {}
+  _meMajRail();
 }
 
 // ── FLASH ──────────────────────────────────────────────────────────────────
@@ -1195,7 +1201,11 @@ function _meTorche(oui) {
     var piste = meCam.stream && meCam.stream.getVideoTracks && meCam.stream.getVideoTracks()[0];
     var caps = piste && piste.getCapabilities ? piste.getCapabilities() : null;
     if (!piste || !caps || !caps.torch) return Promise.resolve(false);
-    return piste.applyConstraints({ advanced: [{ torch: !!oui }] }).then(function () { return true; }, function () { return false; });
+    // Un pilote qui ne répond jamais ne doit pas retenir la prise : 1 s, puis on fait sans.
+    return Promise.race([
+      piste.applyConstraints({ advanced: [{ torch: !!oui }] }).then(function () { return true; }, function () { return false; }),
+      new Promise(function (res) { setTimeout(function () { res(false); }, 1000); })
+    ]);
   } catch (e) { return Promise.resolve(false); }
 }
 
@@ -1228,6 +1238,22 @@ function _meAnnulerCompte() {
 function _meVerrouiller(oui) {
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.toggle("me-verrouille", !!oui);
   _meMajConsigne();
+}
+// Page masquée (appel entrant, changement d'application) : une prise verrouillée
+// continuait « dans le vide » — horloge au-delà de la durée choisie, image figée.
+// Elle s'arrête sur son aperçu ; un décompte ou un boomerang s'annule.
+if (!window._meVeilleArmee) {
+  window._meVeilleArmee = true;
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) return;
+    var ed = document.getElementById("mediaEditor");
+    if (!ed || !ed.classList.contains("open")) return;
+    try {
+      if (meCap.compteTimer) _meAnnulerCompte();
+      if (meCap.boomEnCours) { _meBoomerangAbandonner(); _meMajConsigne(); }
+      if (meCam.recording) meStopRecording();
+    } catch (e) { try { if (typeof diagLog === "function") diagLog("editeur en veille: " + ((e && e.message) || e)); } catch (_) {} }
+  });
 }
 // Ce que fait UN toucher du déclencheur, selon le mode et les outils armés.
 function _meDeclencher() {
@@ -1296,7 +1322,16 @@ function _meDemanderAbandon() {
 // Rend `true` quand l'éditeur RESTE ouvert (l'appelant repose son entrée d'historique).
 function meRetourGarde() {
   var ed = document.getElementById("mediaEditor");
-  if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-edit")) return false;
+  if (!ed || !ed.classList.contains("open")) return false;
+  // En capture : une prise en cours s'ARRÊTE sur son aperçu (elle n'est pas jetée),
+  // un décompte ou un boomerang s'annule. Le retour suivant fermera l'éditeur.
+  if (meCam.recording) { meStopRecording(); return true; }
+  if (meCap.compteTimer) { _meAnnulerCompte(); return true; }
+  if (meCap.boomEnCours) { _meBoomerangAbandonner(); _meMajConsigne(); return true; }
+  if (!ed.classList.contains("phase-edit")) return false;
+  // La feuille de finition de la bobine (lot UI-7) : le retour la referme, elle seule.
+  var finition = document.getElementById("v7BobineSheet");
+  if (finition && !finition.hidden && window.PassioUIV7 && typeof PassioUIV7.closeReelSheet === "function") { PassioUIV7.closeReelSheet(); return true; }
   // Un tiroir ouvert (stickers, emoji, GIF) : le retour le referme, lui seul.
   var tiroir = ["meStickerPanel", "meEmojiBar", "meGifPanel"].map(function (id) { return document.getElementById(id); }).filter(Boolean);
   if (tiroir.length) { tiroir.forEach(function (p) { p.remove(); }); _meMusiqueArreterSiLibre(); return true; }
@@ -1347,12 +1382,14 @@ function meBackToCapture() {
   meState.filtre = "normal"; _mePeindreFiltres();
   _meAnnulerCompte();
   ["meStickerPanel", "meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  try { if (window.PassioUIV7 && typeof PassioUIV7.closeReelSheet === "function") PassioUIV7.closeReelSheet(); } catch (e) {}
   _meMajRail(); _meMajRetour(); _meMajModes(true); _meMajConsigne();
   meStartCamera();
 }
 function meEnterEditPhase() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   _meAnnulerCompte();
+  _meBoomerangAbandonner();   // un média posé par un autre chemin ne sera pas remplacé par une rafale en vol
   meStopRecording(true);
   meStopCamera();
   // La rangée d'effets ouverte en capture se replie : le filtre choisi RESTE
@@ -1379,6 +1416,11 @@ function _meSwallowNextClick() {
 async function meStartCamera() {
   if (meState.mode !== "bobine" && meState.mode !== "story") return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { _meNoCamera(); return; }
+  // ⚠️ `getUserMedia` rend la main APRÈS un délai (permission, matériel). Entre
+  // temps la personne a pu fermer l'éditeur, toucher « Publier » ou « Créer », ou
+  // rechanger de caméra : sans ce jeton, le flux arrivé en retard restait allumé,
+  // éditeur fermé (relecture du 2026-11-27).
+  var jetonCam = meCam._jetonCam = (meCam._jetonCam || 0) + 1;
   try {
     meStopCamera();
     var stream = await navigator.mediaDevices.getUserMedia({
@@ -1388,6 +1430,11 @@ async function meStartCamera() {
       video: { facingMode: meCam.facing, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 1 }, sampleRate: 48000 }
     });
+    var edCam = document.getElementById("mediaEditor");
+    if (jetonCam !== meCam._jetonCam || !edCam || !edCam.classList.contains("open") || !edCam.classList.contains("phase-capture")) {
+      try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      return;
+    }
     meCam.stream = stream;
     var v = document.getElementById("meCamVideo");
     if (!v) { meStopCamera(); _meNoCamera(); return; }
@@ -1396,7 +1443,7 @@ async function meStartCamera() {
     var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.remove("me-no-cam"); ed.classList.add("me-cam-on"); }
     _meMajConsigne();
     try { await v.play(); } catch(e) {}
-  } catch(e) { _meNoCamera(); }
+  } catch(e) { if (jetonCam === meCam._jetonCam) _meNoCamera(); }
 }
 function meStopCamera() {
   try { if (meCam.stream) meCam.stream.getTracks().forEach(function(t) { t.stop(); }); } catch(e) {}
@@ -1569,7 +1616,7 @@ function _meBindShutter() {
   if (meCam._boundShutter) return;
   var sh = document.getElementById("meShutter"); if (!sh) return;
   meCam._boundShutter = true;
-  var held = false, appuiA = 0, arretAuRelache = false, ignorer = false;
+  var held = false, appuiA = 0, arretAuRelache = false, ignorer = false, appuiEnCours = false;
   function toucherFilme() { return meState.mode === "bobine" || meCap.mainsLibres; }
   sh.addEventListener("pointerdown", function(e) {
     e.preventDefault();
@@ -1578,7 +1625,9 @@ function _meBindShutter() {
     if (!ed || !ed.classList.contains("me-cam-on")) { ignorer = true; mePickMedia(); return; }
     // Décompte en cours : ce toucher l'annule, rien d'autre.
     if (meCap.compteTimer) { ignorer = true; _meAnnulerCompte(); return; }
-    if (meCap.boomEnCours) { ignorer = true; return; }
+    // Boomerang en cours, ou photo au flash déjà partie : ce toucher ne déclenche rien de plus.
+    if (meCap.boomEnCours || meCam._flashEnCours) { ignorer = true; return; }
+    appuiEnCours = true;
     try { sh.setPointerCapture(e.pointerId); } catch(_) {}
     // Prise verrouillée (lancée par un toucher) : celui-ci l'arrête, au relâché.
     if (meCam.recording) { arretAuRelache = true; return; }
@@ -1597,7 +1646,9 @@ function _meBindShutter() {
   function end(e) {
     if (e) { e.preventDefault(); try { sh.releasePointerCapture(e.pointerId); } catch(_) {} }
     clearTimeout(meCam.holdTimer);
-    if (ignorer) { ignorer = false; return; }
+    if (ignorer) { ignorer = false; appuiEnCours = false; return; }
+    if (!appuiEnCours) return;   // relâché sans appui sur le déclencheur : rien à conclure
+    appuiEnCours = false;
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) return;
     var annule = !!(e && e.type === "pointercancel");
@@ -1639,6 +1690,8 @@ var ME_BOOM = { images: 16, intervalle: 70, boucles: 3, ips: 22, cote: 720, dela
 function _meBoomerangAbandonner() {
   if (meCap.boomTimer) { clearInterval(meCap.boomTimer); meCap.boomTimer = null; }
   meCap.boomJeton = (meCap.boomJeton || 0) + 1;   // un encodage en vol ne posera plus rien
+  // … et il s'arrête pour de bon (sans effet s'il a déjà conclu).
+  if (meCap.boomArreter) { var _arret = meCap.boomArreter; meCap.boomArreter = null; try { _arret(); } catch (e) {} }
   meCap.boomEnCours = false;
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-boom-capture");
   var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
@@ -1726,6 +1779,7 @@ function _meBoomerangEncoder(images, w, h, surProgres) {
       r.readAsDataURL(blob);
     };
     try { rec.start(); } catch (e) { conclure(false, e); return; }
+    meCap.boomArreter = function () { try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} conclure(false, new Error("boomerang-abandonne")); };
     // Un encodeur qui ne conclut jamais ne doit pas laisser l'écran en attente.
     garde = setTimeout(function () { try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} conclure(false, new Error("boomerang-sans-verdict")); }, ME_BOOM.delaiMax);
     minuteur = setInterval(function () {
@@ -3820,6 +3874,12 @@ function _meMakeInteractive(el, ov, handle) {
   }
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
+  // Relâché perdu (clic droit, nœud retiré pendant le geste) : la capture du
+  // pointeur est rendue quand même — les outils reviennent.
+  el.addEventListener("lostpointercapture", function (e) {
+    delete pointers[e.pointerId];
+    if (!Object.keys(pointers).length) { drag = null; pinch = null; _meOutilsEffaces(false); }
+  });
 
   // Poignée d'angle : redimensionne selon la distance au centre de l'overlay.
   if (handle) {

@@ -14107,11 +14107,6 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 /* ── STORY FAÇON INSTAGRAM (2026-11-26) : mode « Créer » + éditeur de texte en place ──
    Le bouton de la capture remplissait l'écran d'un aplat, sans consigne ni curseur.
    Désormais : fond + clavier d'un seul toucher, couleurs, fond du texte, alignement. */
-.me-cap-side.me-cap-creer {
-  font-size: 17px; font-weight: 900; letter-spacing: -0.5px;
-  border-color: #fff;
-  background: linear-gradient(135deg, #7c3aed, #ec4899 55%, #f97316);
-}
 .me-creer-hint {
   position: absolute; left: 0; right: 0; top: 40%; z-index: 3;
   display: none; text-align: center; padding: 0 24px;
@@ -14594,8 +14589,11 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* La rangée de filtres de la capture ne s'ouvre qu'au bouton « Effets ». */
 .media-editor.phase-capture.me-cam-on:not(.me-filtres-ouverts) .me-filtres { display: none; }
 .media-editor.phase-capture .me-filtres { bottom: calc(env(safe-area-inset-bottom) + 212px); }
-.media-editor.me-compte-actif .me-filtres,
-.media-editor.me-boom-capture .me-filtres { display: none; }
+/* Cinq classes : la règle d'affichage (`.phase-capture.me-cam-on .me-filtres`) en compte
+   quatre — à trois, ce masquage perdait, comme l'ancien `.me-recording .me-filtres`. */
+.media-editor.phase-capture.me-cam-on.me-recording .me-filtres,
+.media-editor.phase-capture.me-cam-on.me-compte-actif .me-filtres,
+.media-editor.phase-capture.me-cam-on.me-boom-capture .me-filtres { display: none; }
 
 /* ── Minuteur et flash d'écran ── */
 .me-compte {
@@ -14669,9 +14667,17 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* Noms des outils d'édition : visibles à l'arrivée (.me-noms-outils), puis seuls les ronds restent. */
 .media-editor.phase-edit:not(.me-noms-outils) .me-tool-lib { display: none; }
 .media-editor.phase-edit:not(.me-noms-outils) .me-toolbar .me-tool { padding-left: 2px; }
+/* Sans caméra, « Créer » reste en haut à gauche : au centre il croiserait le repli « Choisir un média ». */
+.media-editor:not(.me-cam-on) .me-rail { top: calc(env(safe-area-inset-top) + 68px); transform: none; }
+/* Écrans de moins de 760 px de haut : centrée, la colonne passerait sous la rangée de
+   filtres (Minuteur et chevron recouverts) — elle s'ancre sous la barre du haut. */
+@media (max-height: 760px) {
+  .me-rail { top: calc(env(safe-area-inset-top) + 68px); transform: none; }
+}
 /* Petits écrans (iPhone SE, Android compacts) : la colonne se resserre. */
 @media (max-height: 640px) {
-  .me-rail { gap: 0; transform: translateY(-62%); }
+  .me-rail { gap: 0; }
+  .media-editor.me-filtres-ouverts .me-rail-plier { display: none; }
   .me-rail-btn { min-height: 46px; font-size: 14px; }
   .me-toolbar .me-tool-group { gap: 2px; }
   .me-toolbar .me-tool { min-height: 46px; }
@@ -14695,6 +14701,10 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
    toute la largeur, du haut de l'écran à la barre de réponse (comme Instagram), et sa
    géométrie se rapproche de celle de l'éditeur : un élément posé à la création
    retombe au même endroit à la lecture. Au-delà de 520 px, la carte reste. */
+/* L'en-tête (fermer, « ⋯ » signaler) et les barres de progression passent AU-DESSUS de la
+   couche des stickers (z 3, posée après eux dans le document) : en plein cadre ils sont SUR
+   la story, et un sticker d'un autre compte placé tout en haut les aurait recouverts. */
+.story-viewer .story-viewer-header, .story-viewer .story-progress-row { z-index: 4; }
 @media (max-width: 520px) {
   .story-viewer .story-viewer-stage {
     align-items: stretch;
@@ -14711,6 +14721,13 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
    On glisse : les deux flèches n'ont plus lieu d'être, la légende reprend la place
    que la flèche du bas lui faisait quitter, et l'indice dit les gestes du doigt. */
 .reels-hint-tactile { display: none; }
+.reel-media-container { touch-action: manipulation; }
+/* Progression d'une bobine vidéo : un trait au bas de la bobine, sans prise au toucher. */
+.reel-progres {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 5;
+  background: rgba(255,255,255,0.22); pointer-events: none;
+}
+.reel-progres > span { display: block; height: 100%; width: 0; background: #fff; }
 @media (hover: none) and (pointer: coarse) {
   .reels-viewer .reels-nav { display: none; }
   :root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: calc(22px + env(safe-area-inset-bottom)); }

@@ -103,10 +103,47 @@ Mesuré avant d'y toucher (captures 390 × 844, caméra simulée) :
   retombe au même endroit à la lecture.
 - **Bobines** : sur un écran tactile, les deux flèches ↑ ↓ disparaissent (on glisse),
   la légende redescend à leur place, et un **double toucher aime la bobine** (cœur au
-  centre, jamais un « je n'aime plus »).
+  centre, jamais un « je n'aime plus »). Un trait de progression suit la vidéo.
+- ⚠️ **Plus de barre native dans les lecteurs de bobines et de stories.** Depuis
+  LOT-26 (FIL-C21), `lancerVideoPublique` posait `video.controls = true` après une
+  lecture réussie — pensé pour le FIL. Dans le lecteur de bobines, la barre native
+  CAPTAIT les touchers : tracé, plus aucun `click` n'atteignait la page sur une
+  bobine en lecture, donc ni la pause au toucher (BOB-C06), ni le double toucher ne
+  répondaient au centre de la vidéo. Le fil garde ses commandes natives.
 
-Verrou : `tests/e2e/capture-instagram.spec.js` (11) — chaque onglet et chaque outil
-par ses vrais gestes sur une caméra simulée ; `tests/e2e/lecteurs-instagram.spec.js`.
+Verrous : `tests/e2e/capture-instagram.spec.js` (12) — chaque onglet et chaque outil
+par ses vrais gestes sur une caméra simulée ; `tests/e2e/lecteurs-instagram.spec.js` (8).
+
+## Relecture indépendante (subagent `audit-passio`, même jour)
+
+Aucun P0 ni P1 ; corrigé avant la mise en ligne :
+
+- **Caméra tardive** : `getUserMedia` rendait la main après la fermeture de l'éditeur
+  (ou un second changement de caméra) et le flux restait ALLUMÉ. Jeton de génération
+  dans `meStartCamera` : un flux arrivé trop tard est coupé. Défaut préexistant, rendu
+  plus atteignable par les onglets (« Publier » pendant l'ouverture de la caméra).
+- **Prise verrouillée** : page masquée (appel entrant) → elle s'arrête sur son aperçu ;
+  geste retour → idem (elle n'est pas jetée) ; décompte et boomerang s'annulent.
+- **Double toucher** : le premier met la vidéo en pause et fait paraître « ▶ Lire »
+  sous le doigt du second — il compte donc comme second toucher ; « aimée » se lit
+  par `postAimeParMoi` (une copie serveur compte), sinon le geste RETIRAIT un j'aime
+  posé depuis un autre appareil ; `touch-action: manipulation` sur la bobine.
+- **Story plein cadre** : l'en-tête (fermer, « ⋯ » signaler) passe au-dessus de la
+  couche des stickers — un sticker d'un autre compte posé tout en haut le recouvrait.
+- **Flash** : rien d'autre ne part pendant l'éclair ; une torche qui ne répond pas a 1 s.
+- Rangée d'effets VRAIMENT masquée pendant une prise (la règle historique
+  `.me-recording .me-filtres`, à trois classes, perdait contre l'affichage à quatre) ;
+  colonne ancrée en haut sous 760 px de haut ; onglets atteignables au clavier ;
+  consigne juste quand le minuteur est armé ; feuille de finition UI-7 refermée par
+  le retour ; règle `.me-cap-creer` sans émetteur retirée.
+
+## Invariants ajoutés par la relecture
+
+- Après tout `await getUserMedia`, revérifier le jeton ET l'état de l'éditeur avant de
+  garder le flux.
+- Un masquage d'élément de la capture s'écrit avec PLUS de classes que sa règle
+  d'affichage (`.media-editor.phase-capture.me-cam-on …` en compte quatre).
+- `lancerVideoPublique` ne pose `controls` que hors `.reel-item` et `#storyCard`.
 
 ## Non éprouvé ici
 

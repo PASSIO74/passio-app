@@ -20,7 +20,9 @@
 //   ⑧ effets : la rangée s'ouvre au bouton, le filtre choisi suit la prise ;
 //   ⑨ édition : chaque outil reçoit son toucher, Emoji et GIF sont dans le
 //      tiroir Stickers, les outils s'effacent pendant un déplacement ;
-//   ⑩ abandon : le bouton ‹ et le retour système DEMANDENT avant de tout jeter.
+//   ⑩ abandon : le bouton ‹ et le retour système DEMANDENT avant de tout jeter ;
+//   ⑫ relecture indépendante : caméra tardive coupée, prise arrêtée sur son aperçu
+//      (retour, veille), feuille de finition refermée seule, consigne du minuteur.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -465,4 +467,97 @@ test("⑪ sans caméra : « Créer » et la galerie restent, les outils de camé
   // Le déclencheur ouvre alors la galerie.
   const [choix] = await Promise.all([page.waitForEvent("filechooser", { timeout: 8000 }), page.locator("#meShutter").tap()]);
   expect(choix.isMultiple()).toBe(false);
+});
+
+test("⑫ relecture : rien ne survit à une sortie — caméra tardive, prise en cours, veille, feuille de finition", async ({ page }) => {
+  // (a) Le flux caméra arrive APRÈS la fermeture : il est coupé, jamais gardé allumé.
+  await bootOnboarded(page);
+  const tardif = await page.evaluate(async () => {
+    window.requireAuthentication = () => true;
+    window.__toasts = [];
+    const t = window.toast;
+    window.toast = function (msg) { window.__toasts.push(String(msg)); return t.apply(this, arguments); };
+    const vrai = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let flux = null;
+    navigator.mediaDevices.getUserMedia = (c) => new Promise((res, rej) => setTimeout(() => vrai(c).then((s) => { flux = s; res(s); }, rej), 500));
+    meOpen("story");
+    meClose();   // fermé pendant l'ouverture de la caméra
+    await new Promise((r) => setTimeout(r, 1500));
+    navigator.mediaDevices.getUserMedia = vrai;
+    return { obtenu: !!flux, pistes: flux ? flux.getTracks().map((p) => p.readyState) : [], garde: !!meCam.stream, ouvert: document.getElementById("mediaEditor").classList.contains("open") };
+  });
+  expect(tardif.obtenu, "prémisse : la caméra a bien répondu, en retard").toBe(true);
+  expect(tardif.pistes.every((e) => e === "ended"), "toutes les pistes sont arrêtées").toBe(true);
+  expect(tardif.garde).toBe(false);
+  expect(tardif.ouvert).toBe(false);
+
+  // (b) Geste RETOUR pendant une prise lancée d'un toucher : elle s'arrête sur son aperçu.
+  await page.evaluate(() => meOpen("bobine"));
+  await page.waitForFunction(CAPTURE, null, { timeout: 20000 });
+  await page.locator("#meShutter").tap();
+  await expect.poll(() => page.evaluate(() => meCam.recording)).toBe(true);
+  await page.waitForTimeout(900);
+  await page.goBack();
+  await page.waitForFunction(EDITION, null, { timeout: 20000 });
+  expect(await page.evaluate(() => ({ ouvert: document.getElementById("mediaEditor").classList.contains("open"), type: meState.mediaType, enCours: meCam.recording }))).toEqual({ ouvert: true, type: "video", enCours: false });
+
+  // (c) Feuille de finition ouverte : le retour la referme, elle seule — ni question, ni feuille orpheline.
+  await page.evaluate(() => { meState._enteredEditAt = 0; });
+  await page.locator('[data-v7-bobine-act="continuer"]').tap();
+  await expect(page.locator("#v7BobineSheet")).toBeVisible();
+  await page.goBack();
+  await expect(page.locator("#v7BobineSheet")).toBeHidden();
+  await expect(page.locator("#feuilleConfirmation")).toHaveCount(0);
+  expect(await page.evaluate(EDITION)).toBe(true);
+  // « Abandonner » depuis la feuille rouverte : la capture revient SANS la feuille dessus.
+  await page.locator('[data-v7-bobine-act="continuer"]').tap();
+  await expect(page.locator("#v7BobineSheet")).toBeVisible();
+  await page.evaluate(() => meBackToCapture());
+  await expect(page.locator("#v7BobineSheet")).toBeHidden();
+  await page.waitForFunction(CAPTURE, null, { timeout: 20000 });
+
+  // (d) L'application passe en arrière-plan pendant une prise verrouillée : elle s'arrête sur son aperçu.
+  await page.locator("#meShutter").tap();
+  await expect.poll(() => page.evaluate(() => meCam.recording)).toBe(true);
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    delete document.hidden;
+  });
+  await page.waitForFunction(EDITION, null, { timeout: 20000 });
+  expect(await page.evaluate(() => ({ type: meState.mediaType, enCours: meCam.recording }))).toEqual({ type: "video", enCours: false });
+
+  // (e) Décompte en cours : le retour l'annule et l'éditeur reste ; rangée d'effets masquée pendant une prise.
+  await retourCapture(page);
+  await page.locator("#meMinuteurBtn").tap();
+  await expect(page.locator("#meCaptureHint"), "minuteur armé : la consigne ne promet plus le maintien").toHaveText("Appuie · la vidéo démarre dans 3 s");
+  await page.locator("#meShutter").tap();
+  await expect(page.locator("#meCompte")).toHaveText("3");
+  await page.goBack();
+  await expect(page.locator("#meCompte")).toBeHidden();
+  expect(await page.evaluate(() => ({ ouvert: document.getElementById("mediaEditor").classList.contains("open"), timer: meCap.compteTimer }))).toEqual({ ouvert: true, timer: null });
+  await page.locator("#meMinuteurBtn").tap(); await page.locator("#meMinuteurBtn").tap();   // 10 s puis désactivé
+  await page.locator("#meEffetsBtn").tap();
+  await expect(page.locator("#meFiltres")).toBeVisible();
+  await page.locator("#meShutter").tap();
+  await expect.poll(() => page.evaluate(() => meCam.recording)).toBe(true);
+  await expect(page.locator("#meFiltres"), "pas de rangée d'effets pendant la prise").toBeHidden();
+  await page.waitForTimeout(900);   // une prise de moins d'une demi-seconde est refusée (« trop courte »)
+  await page.locator("#meShutter").tap();
+  await page.waitForFunction(EDITION, null, { timeout: 20000 });
+
+  // (f) Flash : pendant l'éclair, ni second déclenchement ni changement de mode ; les onglets restent au clavier.
+  await retourCapture(page);
+  await page.locator('#meModes [data-mode="story"]').tap();
+  const eclair = await page.evaluate(() => {
+    meCap.flash = true;
+    meCapturePhoto();
+    const pendant = meCam._flashEnCours;
+    meChoisirMode("bobine");
+    return { pendant, mode: meState.mode, clavier: Array.from(document.querySelectorAll("#meModes .me-mode")).every((b) => b.tabIndex === 0) };
+  });
+  expect(eclair).toEqual({ pendant: true, mode: "story", clavier: true });
+  await page.waitForFunction(EDITION, null, { timeout: 15000 });
+  expect(await page.evaluate(() => ({ type: meState.mediaType, flash: meCam._flashEnCours }))).toEqual({ type: "photo", flash: false });
 });

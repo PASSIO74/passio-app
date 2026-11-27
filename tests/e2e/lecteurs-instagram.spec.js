@@ -10,7 +10,10 @@
 //      légende reprend la place de la flèche du bas ;
 //   ④ double toucher sur une bobine = j'aime (cœur), jamais « je n'aime plus » ;
 //      un bouton posé sur la bobine garde son propre toucher ;
-//   ⑤ à la souris, les flèches restent (rien ne change hors tactile).
+//   ⑤ à la souris, les flèches restent (rien ne change hors tactile) ;
+//   ⑥ ⑦ double toucher : le second sur « ▶ Lire » compte ; une bobine aimée côté
+//      serveur n'est jamais « désaimée » ;
+//   ⑧ story : fermer et « ⋯ » restent au-dessus d'un sticker posé tout en haut.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -142,6 +145,111 @@ test.describe("téléphone (tactile)", () => {
     await page.touchscreen.tap(bb.x + 30, bb.y + 30);
     await page.waitForTimeout(200);
     await expect(coeur).not.toHaveClass(/liked/);
+  });
+});
+
+test.describe("téléphone (tactile) — double toucher, cas de bord", () => {
+  test.use({ viewport: { width: 390, height: 780 }, hasTouch: true });
+
+  test("⑥ le second toucher tombe sur « ▶ Lire » (vidéo mise en pause par le premier) : c'est quand même un j'aime", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => {
+      window.requireAuthentication = () => true;
+      // Vidéo factice : sans ces deux gardes, son erreur de décodage remplacerait le
+      // lecteur par un repli (et retirerait « ▶ Lire », l'objet du test).
+      window._reelVideoError = () => {};
+      HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
+      state.supabasePosts = [{ id: "reel_dt_video", authorId: "u_bob", authorName: "Bob", isReel: true, type: "video", video: "data:video/mp4;base64,AAAA", passion: "cuisine", mood: "all", text: "Vidéo", fromSupabase: true, createdAt: Date.now() - 60000, likes: 3, comments: [] }];
+      openReelById("reel_dt_video");
+    });
+    const item = page.locator('#reelsList .reel-item[data-post-id="reel_dt_video"]');
+    await expect(item).toHaveCount(1);
+    const coeur = item.locator("[data-reellike]");
+    await expect(coeur).not.toHaveClass(/liked/);
+    // « ▶ Lire » est au centre, par-dessus la vidéo — exactement là où tombe le second toucher.
+    const lireEl = item.locator("[data-video-public-play]");
+    const enLecture = () => item.locator("video").evaluate((v) => {
+      // La vidéo factice ne joue pas vraiment : on la déclare « en lecture », bouton masqué.
+      Object.defineProperty(v, "paused", { configurable: true, get: () => false });
+      v.pause = () => {};
+      v.closest(".reel-item").querySelector("[data-video-public-play]").hidden = true;
+    });
+    // Seul, un toucher sur « ▶ Lire » n'arme rien et n'aime pas.
+    await lireEl.evaluate((b) => { b.hidden = false; });
+    const lire = await lireEl.boundingBox();
+    await page.touchscreen.tap(lire.x + lire.width / 2, lire.y + lire.height / 2);
+    await page.waitForTimeout(450);
+    await expect(coeur).not.toHaveClass(/liked/);
+    // La lecture est lancée : PAS de barre native dans le lecteur de bobines — elle
+    // captait les touchers (ni pause au toucher, ni double toucher au centre).
+    expect(await item.locator("video").evaluate((v) => ({ src: v.hasAttribute("src"), natives: v.controls }))).toEqual({ src: true, natives: false });
+    // À la place, un trait de progression suit la lecture.
+    const trait = await item.locator("video").evaluate((v) => {
+      Object.defineProperty(v, "duration", { configurable: true, get: () => 20 });
+      Object.defineProperty(v, "currentTime", { configurable: true, get: () => 5 });
+      v.dispatchEvent(new Event("timeupdate"));
+      return v.closest(".reel-item").querySelector(".reel-progres > span").style.width;
+    });
+    expect(trait).toBe("25%");
+    // Vidéo en lecture : deux touchers AU CENTRE. Le premier met en pause — c'est
+    // l'application qui fait paraître « ▶ Lire » sous le doigt ; le second tombe dessus.
+    await enLecture();
+    await expect(lireEl).toBeHidden();
+    await page.touchscreen.tap(lire.x + lire.width / 2, lire.y + lire.height / 2);
+    await page.touchscreen.tap(lire.x + lire.width / 2, lire.y + lire.height / 2);
+    await expect(coeur).toHaveClass(/liked/);
+    await expect(coeur.locator(".reel-action-label")).toHaveText("4");
+    await expect(item.locator(".reel-media-container .heart-burst")).toHaveCount(1);
+  });
+
+  test("⑦ bobine déjà aimée CÔTÉ SERVEUR (liste locale en retard) : le double toucher ne retire rien", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => {
+      window.requireAuthentication = () => true;
+      state.user.likedPosts = [];
+      state.supabasePosts = [{ id: "reel_dt_serveur", authorId: "u_bob", authorName: "Bob", isReel: true, type: "photo", image: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", passion: "cuisine", mood: "all", text: "Photo", fromSupabase: true, liked: true, createdAt: Date.now() - 60000, likes: 7, comments: [] }];
+      window.__bascules = 0;
+      const vrai = window.toggleReelLike;
+      window.toggleReelLike = function () { window.__bascules++; return vrai.apply(this, arguments); };
+      openReelById("reel_dt_serveur");
+    });
+    const item = page.locator('#reelsList .reel-item[data-post-id="reel_dt_serveur"]');
+    const coeur = item.locator("[data-reellike]");
+    // Le cœur de la colonne est déjà rouge : la copie serveur « aimée » compte.
+    await expect(coeur).toHaveClass(/liked/);
+    const zone = await item.locator(".reel-media-container").boundingBox();
+    await page.touchscreen.tap(zone.x + zone.width / 2, zone.y + zone.height / 3);
+    await page.touchscreen.tap(zone.x + zone.width / 2, zone.y + zone.height / 3);
+    await expect(item.locator(".reel-media-container .heart-burst")).toHaveCount(1);
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => window.__bascules), "aucune bascule : rien n'est retiré").toBe(0);
+    await expect(coeur).toHaveClass(/liked/);
+    await expect(coeur.locator(".reel-action-label")).toHaveText("7");
+  });
+
+  test("⑧ story : un sticker posé tout en haut ne recouvre ni « fermer » ni « ⋯ »", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(({ moi, lea }) => {
+      MY_UID = moi;
+      window._uidEstUnCompte = () => true;
+      window.requireAuthentication = () => true;
+      // Deux stickers géants, placés sur l'en-tête : à gauche (nom) et à droite (fermer, « ⋯ »).
+      const haut = (x) => ({ type: "mention", uid: lea, nom: "Léa Léa Léa Léa", x, y: 6, scale: 3 });
+      storyGroups = [{ authorId: lea, stories: [{ id: "s_haut", authorId: lea, authorName: "Léa", text: "", createdAt: Date.now() - 60000, bg: "#7c3aed", overlays: [haut(20), haut(85)] }] }];
+      openStoryViewerAt(0, 0);
+    }, { moi: MOI, lea: LEA });
+    await expect(page.locator("#storyOverlays .story-sticker").first()).toBeVisible();
+    await expect.poll(async () => (await boite(page, "#storyCard")).y).toBeLessThanOrEqual(1);
+    // Prémisse : le sticker est bien SOUS le bouton (sinon le test ne prouverait rien).
+    const dessous = await page.evaluate(() => {
+      const f = document.querySelector("#storyViewer .story-viewer-close").getBoundingClientRect();
+      return Array.from(document.querySelectorAll("#storyOverlays .story-sticker")).some((s) => { const r = s.getBoundingClientRect(); return r.left < f.right && r.right > f.left && r.top < f.bottom && r.bottom > f.top; });
+    });
+    expect(dessous, "prémisse : un sticker chevauche le bouton fermer").toBe(true);
+    expect(await atteint(page, "#storyViewer .story-viewer-close"), "fermer reste au-dessus").toBe(true);
+    expect(await atteint(page, "#storyReportBtn"), "« ⋯ » signaler reste au-dessus").toBe(true);
+    await page.locator("#storyViewer .story-viewer-close").tap();
+    await expect(page.locator("#storyViewer")).not.toHaveClass(/active/);
   });
 });
 

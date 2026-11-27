@@ -3422,7 +3422,7 @@ function renderReelHTML(post, idx) {
   const moodLabel = moodShortLabel(post.mood);
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
-  const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
+  const isLiked = ((typeof postAimeParMoi === "function") ? postAimeParMoi(post) : ((state.user.likedPosts || []).indexOf(post.id) > -1)) || reelsState.liked.has(post.id);
   const txt = post.text || post.caption || "";
   const filtreBobine = (typeof storyFiltreClasse === "function") ? storyFiltreClasse(post.overlays) : "";
   return `
@@ -3433,6 +3433,7 @@ function renderReelHTML(post, idx) {
       </div>
       <div class="reel-overlay"></div>
       ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
+      ${post.type === "video" ? '<div class="reel-progres" aria-hidden="true"><span></span></div>' : ""}
       ${/* LOT-14 (BOB-C14) : l'étiquette du haut répétait la passion et chevauchait la flèche ; l'envie rejoint la ligne de passion, sous le nom. */ ""}
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
@@ -3678,19 +3679,48 @@ function _brancherDoubleToucherBobines() {
   let dernier = { t: 0, id: null };
   liste.addEventListener("click", function (e) {
     const cible = e.target && e.target.closest ? e.target : null;
-    const zone = cible ? cible.closest(".reel-media-container") : null;
-    // Un bouton ou un sticker posé sur la bobine garde son propre toucher.
-    if (!zone || cible.closest("button, a, .story-sticker")) { dernier = { t: 0, id: null }; return; }
-    const item = zone.closest(".reel-item");
+    const item = cible ? cible.closest(".reel-item") : null;
     const id = item ? item.getAttribute("data-post-id") : null;
+    const zone = item ? item.querySelector(".reel-media-container") : null;
+    // La surface de la bobine ; un bouton ou un sticker posé dessus garde son propre toucher.
+    const surSurface = !!(zone && zone.contains(cible) && !cible.closest("button, a, .story-sticker"));
+    // ⚠️ Le PREMIER toucher met la vidéo en pause, ce qui fait paraître « ▶ Lire »
+    // au centre — sous le doigt du second. Il compte donc comme second toucher
+    // (et relance la lecture, comme il se doit) ; seul, il n'arme rien.
+    const surLire = !!cible && !!cible.closest("[data-video-public-play]");
     const maintenant = Date.now();
-    if (!id || dernier.id !== id || maintenant - dernier.t > 320) { dernier = { t: maintenant, id: id }; return; }
+    const second = !!id && dernier.id === id && maintenant - dernier.t <= 320;
+    if (!second || !(surSurface || surLire)) {
+      dernier = surSurface && id ? { t: maintenant, id: id } : { t: 0, id: null };
+      return;
+    }
     dernier = { t: 0, id: null };
-    const aimee = function () { return (state.user.likedPosts || []).indexOf(id) > -1; };
+    // Même autorité que `likePost` : une copie serveur « aimée » compte, sinon le
+    // double toucher RETIRAIT un j'aime posé depuis un autre appareil.
+    const aimee = function () {
+      const p = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+      if (p && typeof postAimeParMoi === "function") return postAimeParMoi(p);
+      return (state.user.likedPosts || []).indexOf(id) > -1;
+    };
     if (!aimee()) toggleReelLike(id, item.querySelector("[data-reellike]"));
     // Le cœur n'éclot que si la bobine est VRAIMENT aimée (un visiteur est renvoyé à l'inscription).
-    if (aimee() && typeof _heartBurst === "function") _heartBurst(zone);
+    if (aimee() && zone && typeof _heartBurst === "function") _heartBurst(zone);
   }, true);
+}
+
+// Fine barre de progression au bas d'une bobine vidéo (façon Instagram) : le
+// lecteur n'a plus la ligne de temps native, qui captait les touchers. Branchée
+// une fois par élément vidéo ; `timeupdate` (pas un minuteur, pas de rAF).
+function _suivreProgresBobine(vid) {
+  if (!vid || vid._progresBranche) return;
+  vid._progresBranche = true;
+  vid.addEventListener("timeupdate", function () {
+    const item = vid.closest(".reel-item");
+    const barre = item && item.querySelector(".reel-progres > span");
+    if (!barre) return;
+    const d = vid.duration;
+    barre.style.width = (isFinite(d) && d > 0 ? Math.max(0, Math.min(100, vid.currentTime / d * 100)) : 0) + "%";
+  });
 }
 
 function playReelAt(idx) {
@@ -3704,6 +3734,7 @@ function playReelAt(idx) {
     // (bobine figée/noire, surtout mobile). Même correctif que meSetMedia.
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
+    _suivreProgresBobine(vid);
     if (i === idx) {
       lancerVideoPublique(vid, false).then((ok) => {
         // Un navigateur peut refuser la lecture SONORE hors geste (iOS en
