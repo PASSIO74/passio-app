@@ -7659,7 +7659,7 @@ function _inviteMax(ctx) {
 }
 
 // Total des destinataires : la personne de la conversation + les pastilles.
-function _inviteTotal(ctx) { return (ctx.groupe ? 0 : 1) + (ctx.extras || []).length; }
+function _inviteTotal(ctx) { return (ctx.groupe || ctx.direct ? 0 : 1) + (ctx.extras || []).length; }
 
 function _inviteAvatar(u) {
   var a = document.createElement("div");
@@ -7678,7 +7678,12 @@ function _inviteRepeindre(ctx) {
   var n = (ctx.extras || []).length;
   var strong = b.querySelector(".ev-invite-bandeau-txt strong");
   var span = b.querySelector(".ev-invite-bandeau-txt span");
-  if (ctx.groupe) {
+  if (ctx.direct) {
+    if (strong) strong.textContent = n ? "Tu invites " + n + " personne" + (n > 1 ? "s" : "") : "Inviter des personnes";
+    if (span) span.textContent = n
+      ? "Chacun la reçoit dès la publication, dans votre conversation s'il y en a une, sinon en notification. Personne ne voit la liste des invités."
+      : "Choisis parmi tes conversations et tes abonnements : l'invitation part dès la publication.";
+  } else if (ctx.groupe) {
     if (strong) strong.textContent = "Invitation pour " + ctx.nom;
     if (span) span.textContent = "Elle part dans la discussion du groupe"
       + (n ? ", et " + n + " personne" + (n > 1 ? "s" : "") + " reçoi" + (n > 1 ? "vent" : "t") + " une notification." : ".")
@@ -7736,7 +7741,14 @@ function _inviteRepeindre(ctx) {
     chips.appendChild(ajout);
   }
   var publier = document.querySelector('#modalContent button[onclick^="submitEvent"]');
-  if (publier) {
+  if (publier && ctx.direct) {
+    // Le libellé d'origine (« Publier l'activité », posé par UI-6A0) revient
+    // quand la dernière pastille part.
+    if (n) {
+      if (!ctx.libelleAvant) ctx.libelleAvant = publier.textContent;
+      publier.textContent = "Publier et inviter " + n + " personne" + (n > 1 ? "s" : "");
+    } else if (ctx.libelleAvant) { publier.textContent = ctx.libelleAvant; ctx.libelleAvant = null; }
+  } else if (publier) {
     var total = _inviteTotal(ctx);
     publier.textContent = ctx.groupe ? "Créer et inviter le groupe"
       : total > 1 ? "Créer et inviter " + total + " personnes" : "Créer et inviter " + ctx.nom;
@@ -7816,6 +7828,10 @@ function poserInvitationFormulaire(convId) {
   var c = _convInvitable(convId);
   var racine = document.getElementById("modalContent");
   if (!c || !racine || !document.getElementById("evTitle")) return false;
+  // La section « Inviter des personnes » du formulaire ordinaire cède la place
+  // au bandeau de la conversation (qui sait, lui aussi, ajouter des personnes).
+  var directe = document.getElementById("evInviteBandeau");
+  if (directe && directe.parentNode) directe.parentNode.removeChild(directe);
   var groupe = !!c.isGroup;
   var nom = _nomInterlocuteur(c);
   var ctx = { jeton: uid(), convId: c.id, userId: groupe ? null : c.userId, nom: nom, at: Date.now(),
@@ -7896,6 +7912,13 @@ function lireInvitationFormulaire() {
   window._evInviteCtx = null;
   if (!ctx || !_inviteConvActive()) return null;
   var b = document.getElementById("evInviteBandeau");
+  // Invitation directe : seulement depuis SON formulaire, et avec au moins un
+  // invité — un formulaire refermé ne prête jamais ses invités à une autre
+  // publication (Studio…).
+  if (ctx.direct) {
+    if (!b || b.getAttribute("data-jeton") !== ctx.jeton) return null;
+    return (ctx.extras || []).length ? ctx : null;
+  }
   if (b) return b.getAttribute("data-jeton") === ctx.jeton ? ctx : null;
   return (Date.now() - (ctx.at || 0) < INVITE_CONV_FRAICHEUR_MS) ? ctx : null;
 }
@@ -7914,6 +7937,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
     toast("Activité enregistrée, mais pas encore en ligne : l'invitation n'est pas partie", "warning");
     return false;
   }
+  if (ctx.direct) return _envoyerInvitationDirecte(ev, ctx);
   if (!_convInvitable(ctx.convId)) return false;
   var lien = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
@@ -8010,6 +8034,108 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   trier().then(function (admis) { admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); }); });
   retour(autres.length ? "Invitation envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
     : "Invitation envoyée à " + ctx.nom);
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVITER DIRECTEMENT DEPUIS « CRÉER UNE ACTIVITÉ » (2026-11-27, demande de
+// Benjamin : « dans créer une activité rajoute la possibilité d'inviter
+// directement des gens »).
+// Le formulaire ordinaire porte une section « Inviter des personnes » : le MÊME
+// sélecteur que l'invitation depuis une conversation (conversations récentes,
+// abonnements, recherche, plafond `INVITE_CONV_MAX`), le MÊME verdict serveur
+// par personne (`irlProposalServerVerdict`), et à la publication confirmée :
+// droit de lecture d'abord si l'activité est privée (`event_invites`), puis la
+// carte dans notre conversation 1:1 quand elle existe, et toujours la
+// notification `event_invite`. Aucune conversation n'est créée d'office, aucun
+// invité ne voit la liste des autres. Rien ne part avant « Publier ».
+// Coupures : `localStorage.passio_invite_directe_v1 = "0"` ou
+// `window.PASSIO_INVITE_DIRECTE = false` (et celles de l'invitation de conversation).
+// ═══════════════════════════════════════════════════════════════════════════
+function _inviteDirecteActive() {
+  if (!_inviteConvActive()) return false;
+  try {
+    if (window.PASSIO_INVITE_DIRECTE === false) return false;
+    if (localStorage.getItem("passio_invite_directe_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+// Appelée par `openCreateEvent` (création seulement), juste après l'ouverture.
+function poserInvitationDirecte() {
+  if (!_inviteDirecteActive()) return false;
+  var racine = document.getElementById("modalContent");
+  if (!racine || !document.getElementById("evTitle") || document.getElementById("evInviteBandeau")) return false;
+  var ctx = { jeton: uid(), convId: null, userId: null, nom: "", at: Date.now(),
+    groupe: false, direct: true, extras: [], verdicts: {} };
+  window._evInviteCtx = ctx;
+  var bandeau = document.createElement("div");
+  bandeau.id = "evInviteBandeau";
+  bandeau.className = "ev-invite-bandeau ev-invite-directe";
+  bandeau.setAttribute("data-jeton", ctx.jeton);
+  bandeau.innerHTML = '<div class="ev-invite-directe-ico" aria-hidden="true">✉️</div>'
+    + '<div class="ev-invite-bandeau-txt"><strong></strong><span></span></div>'
+    + '<div class="ev-invite-chips"></div>'
+    + '<div class="ev-invite-picker" hidden>'
+    + '<input type="search" class="input ev-invite-recherche" aria-label="Chercher une personne à inviter" placeholder="Chercher parmi tes conversations et abonnements…" autocomplete="off"/>'
+    + '<div class="ev-invite-liste"></div></div>';
+  // Juste après « Qui peut voir cette activité ? » : inviter et rendre privée
+  // se décident ensemble.
+  var vis = racine.querySelector(".ev-visibilite");
+  var publier = racine.querySelector('button[onclick^="submitEvent"]');
+  if (vis && vis.parentNode) vis.parentNode.insertBefore(bandeau, vis.nextSibling);
+  else if (publier && publier.parentNode) publier.parentNode.insertBefore(bandeau, publier);
+  else racine.appendChild(bandeau);
+  var recherche = bandeau.querySelector(".ev-invite-recherche");
+  if (recherche) recherche.addEventListener("input", function () { _inviteRendreListe(ctx); });
+  _inviteRepeindre(ctx);
+  return true;
+}
+
+// À la publication confirmée (`envoyerInvitationActivite`, `enLigne` vérifié).
+function _envoyerInvitationDirecte(ev, ctx) {
+  var ids = (ctx.extras || []).map(function (p) { return p.id; }).filter(Boolean);
+  if (!ids.length) return false;
+  var lien = (typeof lienPartageDe === "function")
+    ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
+  var quand = _quandActivite(ev);
+  var texte = "📅 Je t'invite à une activité !\n"
+    + (ev.title || "Activité") + (quand ? " · " + quand : "") + (ev.city ? " · " + ev.city : "")
+    + "\n" + lien;
+  try { if (window.tel && tel.action) tel.action("invite_directe_envoyee", { v: 1, n: ids.length, privee: activiteEstPrivee(ev) }); } catch (e) {}
+  // Les verdicts un après l'autre (jamais 10 RPC d'un coup) ; une panne vaut refus.
+  var admis = [];
+  ids.reduce(function (file, id) {
+    return file.then(function () { return _verdictInvite(ctx, id); })
+      .then(function (v) { if (v && v.ok) admis.push(id); });
+  }, Promise.resolve()).then(function () {
+    if (!admis.length) {
+      toast("Activité publiée, mais personne n'a pu recevoir l'invitation", "warning");
+      return;
+    }
+    var prevenir = function () {
+      admis.forEach(function (id) {
+        var c1 = _conv1a1Avec(id);
+        if (c1 && typeof envoyerTexteConversation === "function") {
+          try { envoyerTexteConversation(c1.id, texte); } catch (e) { try { diagLog("invite directe carte " + (e && e.message)); } catch (_) {} }
+        }
+        // Le seul site d'envoi d'`event_invite` (banc notifications-apres-ecriture) ;
+        // en privée, son droit de lecture est un upsert idempotent, déjà posé.
+        try { _notifierInviteEvent(ev, id); } catch (e) { try { diagLog("invite directe notif " + (e && e.message)); } catch (_) {} }
+      });
+      var refuses = ids.length - admis.length;
+      toast("Invitation envoyée à " + admis.length + " personne" + (admis.length > 1 ? "s" : "")
+        + (refuses ? " (" + refuses + " n'a pas pu la recevoir)" : ""), refuses ? "warning" : "success");
+    };
+    if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+      inviterSerieActivite(ev, admis).then(function (ok) {
+        if (ok) prevenir();
+        else toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning");
+      });
+      return;
+    }
+    prevenir();
+  });
   return true;
 }
 
@@ -8572,6 +8698,9 @@ function openCreateEvent(editId, passionSouhaitee) {
       if (dt) dt.value = ed.coverUrl;
     }
   }, 20);
+
+  // Inviter directement des personnes (création seulement).
+  if (!editId) { try { poserInvitationDirecte(); } catch (e) { try { diagLog("invite directe " + (e && e.message)); } catch (_) {} } }
 
   _irlAssurerReferentielPassions(myPassionIds);
 }
