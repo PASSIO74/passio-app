@@ -268,7 +268,11 @@ test.describe("Activité privée, sur invitation", () => {
     const ligne = page.locator(`[data-invite-prive="${NINA}"]`);
     await expect(ligne).toContainText("Nina Costa");
     await ligne.getByRole("button", { name: /Retirer/ }).click();
-    await expect(ligne).toHaveCount(0);
+    // 2026-11-27 (ergonomie c) : 5 s pour annuler, comme pour inviter — rien ne
+    // part au premier appui, le bouton devient « Annuler ».
+    await expect(ligne.getByRole("button", { name: /Annuler/ })).toBeVisible();
+    expect(await page.evaluate(() => window.__retraits.length)).toBe(0);
+    await expect(ligne).toHaveCount(0, { timeout: 10000 });
     const r = await page.evaluate(() => ({ retraits: window.__retraits, att: state.userEvents[0].attendees }));
     expect(r.retraits).toEqual([["ev_ap_g", NINA]]);
     expect(r.att).not.toContain(NINA);
@@ -284,7 +288,8 @@ test.describe("Activité privée, sur invitation", () => {
     }, NINA);
     const ligne = page.locator(`[data-invite-prive="${NINA}"]`);
     await ligne.getByRole("button", { name: /Retirer/ }).click();
-    await page.waitForTimeout(300);
+    // Le retrait part au bout des 5 s pour annuler (2026-11-27) : on attend le refus.
+    await page.waitForTimeout(6000);
     await expect(ligne).toHaveCount(1);
     expect(await page.evaluate(() => state.userEvents[0].attendees.length)).toBe(2);
   });

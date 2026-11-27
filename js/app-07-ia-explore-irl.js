@@ -4520,6 +4520,11 @@ async function _setEventRsvpUn(id, rsvp) {
 
   if (rsvp === "going" && prev !== "going") {
     pushNotification(`Demande envoyée pour <b>${escapeHtml(ev.title)}</b> · accès privés après validation`, "🤝");
+    // 2026-11-27 (ergonomie d) : la confirmation ne partait QUE dans la cloche —
+    // rien à l'écran. Le retour se dit là où le geste a eu lieu, avec les mots
+    // du pied (« Demande envoyée » / « Participation confirmée »).
+    const _vu = _etatParticipationAffiche(sortie || ev);
+    toast(_vu === "demande" ? "Demande envoyée — l'organisation va la valider" : "C'est noté : tu participes !", "success");
   } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
@@ -5006,12 +5011,22 @@ function openEventRsvpSheet(id) {
   // LOT-47 (audit UX/UI du 2026-11-10, IRL-C59) : titre et description étaient
   // côte à côte (« Je participe » sur deux lignes) ; ils s'empilent, alignés à
   // gauche, sur une cible de 56 px. Les mots sont ceux de la fiche.
+  // 2026-11-27 (revue ergonomie) : la réponse EN COURS était peinte comme le
+  // bouton principal (plein violet) — elle se lisait comme une recommandation, et
+  // seule la couleur la distinguait. Elle porte désormais un contour, la mention
+  // « ✓ Ta réponse actuelle » et `aria-pressed`.
   const opt = (key, desc) => `
-    <button class="btn ${cur === key ? "primary" : "ghost"} block rsvp-option" style="margin-bottom:8px;text-align:left;"
+    <button class="btn ghost block rsvp-option${cur === key ? " rsvp-option-actuelle" : ""}" aria-pressed="${cur === key ? "true" : "false"}" style="margin-bottom:8px;text-align:left;"
       onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${escapeJsArg(key)}')">
       <b>${RSVP_LABELS[key].label}</b>
       <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
+      ${cur === key ? '<span class="rsvp-actuelle">✓ Ta réponse actuelle</span>' : ""}
     </button>`;
+  // « Je participe » ne promet pas la discussion : sur une activité publiée, c'est
+  // une DEMANDE que l'organisation valide (`_etatParticipationAffiche`).
+  const descVenir = ev.fromSupabase && !_canManageEvent(ev)
+    ? "Tu demandes une place ; la discussion s'ouvre quand l'organisation a validé"
+    : "Tu comptes dans les places et tu rejoins la discussion du groupe";
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${escapeHtml(ev.title || "Activité")}</div>
@@ -5019,7 +5034,7 @@ function openEventRsvpSheet(id) {
     <div style="margin-top:14px;">
       ${full && cur !== "going"
         ? opt("waitlist", RSVP_LABELS.waitlist.detail)
-        : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
+        : opt("going", descVenir)}
       ${opt("maybe", "Tu suis l'activité sans bloquer de place")}
       ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
     </div>
@@ -5680,6 +5695,7 @@ function openEventDetails(id, remplaceModale = false) {
   page.style.display = "flex";
   if (_memoRerendu) _ficheRestaurerApresRerendu(_memoRerendu);
   else page.scrollTop = 0;
+  _ficheDialogue(page, ev, _isRerender);
   _suivrePresencesOuvertes(ev);
   if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()
       && (state.userEvents || []).some(e => e && e.id === id)) {
@@ -5967,14 +5983,79 @@ function _suivrePresencesOuvertes(ev) {
   programmer(ev);
 }
 
+// ── LA FICHE EST UN DIALOGUE (2026-11-27, ergonomie h) ───────────────────────
+// Plein écran, elle restait pour le clavier et le lecteur d'écran une simple
+// <div> : le focus restait DERRIÈRE (sur la carte de la liste), Tab en sortait,
+// et rien ne la nommait. Désormais : `role="dialog"`, `aria-modal`, le titre de
+// l'activité pour nom, le focus posé DEDANS à l'ouverture, Tab qui boucle dans la
+// fiche, Échap qui la ferme (UI-4B le fait déjà ; repli ici quand le lot est
+// coupé), et le focus rendu au déclencheur à la fermeture.
+// ⚠️ Aucun « focusin » global qui ramènerait le focus de force : d'autres
+// surfaces (conversation, lecteurs, feuilles) s'ouvrent PAR-DESSUS la fiche hors
+// de `#modalBackdrop`, et leur voler le focus les rendrait inutilisables.
+var _ficheDeclencheur = null;
+const FICHE_FOCUSABLES = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function _ficheFocusables(page) {
+  return Array.prototype.filter.call(page.querySelectorAll(FICHE_FOCUSABLES), function (el) {
+    return el.getClientRects().length > 0 && !el.closest("[hidden], [aria-hidden='true']");
+  });
+}
+function _ficheDialogue(page, ev, rerendu) {
+  if (!page) return;
+  page.setAttribute("role", "dialog");
+  page.setAttribute("aria-modal", "true");
+  page.setAttribute("aria-label", (ev && ev.title) || "Activité");
+  if (!page.hasAttribute("tabindex")) page.setAttribute("tabindex", "-1");
+  if (!page._dialogueBranche) {
+    page._dialogueBranche = true;
+    page.addEventListener("keydown", function (e) {
+      if (page.style.display === "none") return;
+      if (e.key === "Tab") {
+        const f = _ficheFocusables(page);
+        if (!f.length) { e.preventDefault(); page.focus({ preventScroll: true }); return; }
+        const premier = f[0], dernier = f[f.length - 1], actif = document.activeElement;
+        if (e.shiftKey && (actif === premier || actif === page || !page.contains(actif))) { e.preventDefault(); dernier.focus(); }
+        else if (!e.shiftKey && (actif === dernier || !page.contains(actif))) { e.preventDefault(); premier.focus(); }
+        return;
+      }
+      if ((e.key === "Escape" || e.key === "Esc") && !e.defaultPrevented) {
+        const modale = document.getElementById("modalBackdrop");
+        if (modale && modale.classList.contains("active")) return;
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "")) return;
+        e.preventDefault();
+        closeEventDetail();
+      }
+    });
+  }
+  if (rerendu) return;
+  const actif = document.activeElement;
+  if (actif && actif !== document.body && !page.contains(actif)) _ficheDeclencheur = actif;
+  // Le focus entre dans la fiche, sans la faire défiler (elle s'ouvre en haut).
+  setTimeout(function () {
+    if (page.style.display === "none" || page.contains(document.activeElement)) return;
+    const modale = document.getElementById("modalBackdrop");
+    if (modale && modale.classList.contains("active")) return;
+    try { page.focus({ preventScroll: true }); } catch (e) {}
+  }, 0);
+}
+
 function closeEventDetail() {
   _vueRefusSortie = null;
   document.getElementById("confirmerArriveeApresAccord")?.remove();
   _arreterSuiviPresences();
   const page = document.getElementById("eventDetailPage");
   const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
+  const focusDedans = !!(page && page.contains(document.activeElement));
   if (page) page.style.display = "none";
   window._openEventDetailId = null;
+  // Le focus revient là d'où l'on est parti (ergonomie h) — seulement s'il était
+  // encore dans la fiche : une fermeture provoquée par une autre surface ne le vole pas.
+  const declencheur = _ficheDeclencheur;
+  if (etaitOuverte) _ficheDeclencheur = null;
+  if (etaitOuverte && (focusDedans || document.activeElement === document.body)
+      && declencheur && declencheur.isConnected && declencheur.getClientRects().length) {
+    try { declencheur.focus({ preventScroll: true }); } catch (e) {}
+  }
   // `openEventDetails` posait bien une entrée — mais rien ne la reprenait à la
   // fermeture au doigt : chaque fiche consultée coûtait un appui « retour ».
   if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
@@ -6422,6 +6503,35 @@ function _rappelsVerdict(ev, maintenant) {
   return "proposer";
 }
 
+var RAPPELS_BANDEAU_MS = 30000;
+var _bandeauRappelsMinuteur = null;
+function _fermerBandeauRappels() {
+  if (_bandeauRappelsMinuteur) { clearTimeout(_bandeauRappelsMinuteur); _bandeauRappelsMinuteur = null; }
+  var b = document.getElementById("bandeauRappels");
+  if (b) b.remove();
+}
+function _ouvrirBandeauRappels(ev) {
+  _fermerBandeauRappels();
+  var b = document.createElement("div");
+  b.id = "bandeauRappels";
+  b.className = "bandeau-rappels";
+  b.setAttribute("role", "region");
+  b.setAttribute("aria-label", "Rappels de l'activité");
+  b.innerHTML = '<div class="bandeau-rappels-texte"><div class="bandeau-rappels-titre">Un rappel avant d\'y aller ?</div>'
+    + '<div class="bandeau-rappels-sous">On te prévient la veille et 2 h avant <b>' + escapeHtml(ev.title || "ton activité")
+    + '</b>, même si l\'appli est fermée.</div></div>'
+    + '<div class="bandeau-rappels-actions"><button type="button" class="btn primary" id="_rappelsOuiBtn" onclick="activerRappelsActivite()">Activer les rappels</button>'
+    + '<button type="button" class="btn ghost" onclick="reporterRappelsActivite()">Plus tard</button></div>';
+  // Fiche ouverte : le bandeau vit DANS la fiche (le dialogue — Tab l'atteint), au-
+  // dessus de son pied, dont il suit la hauteur MESURÉE (`--fiche-pied`) : le pied
+  // grandit juste après l'inscription. Sinon : au-dessus de la barre du bas.
+  var page = document.getElementById("eventDetailPage");
+  var ficheOuverte = !!(page && page.style.display && page.style.display !== "none");
+  if (ficheOuverte) { b.classList.add("bandeau-rappels-fiche"); page.appendChild(b); }
+  else document.body.appendChild(b);
+  _bandeauRappelsMinuteur = setTimeout(_fermerBandeauRappels, RAPPELS_BANDEAU_MS);
+}
+
 function proposerRappelsActivite(ev) {
   var v = _rappelsVerdict(ev, Date.now());
   if (v === "abonner") {
@@ -6435,21 +6545,18 @@ function proposerRappelsActivite(ev) {
   }
   if (v !== "proposer") return v;
   try { localStorage.setItem(RAPPELS_PROPOSES_KEY, String(Date.now())); } catch (e) {}
-  openModal(
-    '<div class="modal-handle"></div>'
-    + '<div class="modal-title">⏰ Un rappel avant d\'y aller ?</div>'
-    + '<div class="modal-subtitle">On te prévient la veille et 2 h avant <b>' + escapeHtml(ev.title || "ton activité")
-    + '</b>, même si l\'appli est fermée.</div>'
-    + '<button class="btn primary block" id="_rappelsOuiBtn" onclick="activerRappelsActivite()">Activer les rappels</button>'
-    + '<button class="btn ghost block" style="margin-top:8px;" onclick="reporterRappelsActivite()">Plus tard</button>'
-  );
+  // 2026-11-27 (ergonomie d) : la proposition s'ouvrait en FEUILLE, par-dessus la
+  // fiche, à l'instant même où l'on venait de s'inscrire — l'état du pied et la
+  // confirmation passaient dessous. C'est désormais un bandeau qui ne bloque rien :
+  // la fiche reste lisible et utilisable, le bandeau se ferme seul.
+  _ouvrirBandeauRappels(ev);
   try { if (window.tel && tel.action) tel.action("rappels_proposes", { delai_h: Math.round((ev.date - Date.now()) / 3600e3) }); } catch (e) {}
   return v;
 }
 
 // Le clic EST le geste qu'exige `Notification.requestPermission`.
 async function activerRappelsActivite() {
-  try { closeModal(); } catch (e) {}
+  _fermerBandeauRappels();
   var perm = "default";
   try { perm = await Notification.requestPermission(); } catch (e) {}
   try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: String(perm) }); } catch (e) {}
@@ -6470,7 +6577,7 @@ async function activerRappelsActivite() {
 }
 
 function reporterRappelsActivite() {
-  try { closeModal(); } catch (e) {}
+  _fermerBandeauRappels();
   try { if (window.tel && tel.action) tel.action("rappels_plus_tard", {}); } catch (e) {}
 }
 
@@ -9249,23 +9356,42 @@ function openEventManage(id) {
   const seriesCount = ev.seriesId ? allEvents().filter(e => e.seriesId === ev.seriesId).length : 0;
   const checked = _nbInscrits(ev, "checked_in");
   const enAttente = _nbInscrits(ev, "waitlist");
+  // 2026-11-27 (ergonomie c) : huit boutons identiques, « Supprimer » collé à
+  // « Annuler l'activité ». Désormais : les demandes à valider en tête (quand il
+  // y en a — nombre lu en base), puis Modifier · Inviter · Participants, les
+  // gestes secondaires ensuite, et une zone « sensible » à part pour annuler et
+  // supprimer. Aucun geste n'est retiré.
+  const demandes = demandesAValider(id);
+  const over = _eventIsOver(ev);
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Gérer l'activité</div>
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""} · <span data-presence-total="${escapeHtml(id)}">${checked} sur place</span></div>
     ${ev._nonPubliee ? `<div role="status" style="margin-top:12px;font-size:13px;color:var(--muted);">Cette activité n'existe encore que sur cet appareil : personne d'autre ne la voit.</div>
     <button class="btn primary block" style="margin-top:8px;" data-republier="1" onclick="republierActivite('${escapeJsArg(id)}')">Publier maintenant</button>` : ""}
-    <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
-    ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
-    ${cancelled && ev._annulationNonPrevenue ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_reprevenirAnnulation('${escapeJsArg(id)}')">Prévenir les inscrits de l'annulation</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
-    ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
-    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+    <button class="btn primary block ev-gerer-demandes" data-gerer-demandes="${escapeHtml(id)}" ${demandes > 0 ? "" : "hidden"} style="margin-top:12px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">${demandes > 0 ? texteDemandesAValider(demandes) : ""}</button>
+    <div class="ev-gerer-groupe" role="group" aria-label="Actions principales">
+      <button class="btn secondary block" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
+      ${cancelled || over ? "" : `<button class="btn secondary block" onclick="closeModal();openEventInvite('${escapeJsArg(id)}')">${activiteEstPrivee(ev) ? "Invités" : "Inviter des personnes"}</button>`}
+      <button class="btn secondary block" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Participants</button>
+    </div>
+    <div class="ev-gerer-groupe ev-gerer-secondaire" role="group" aria-label="Autres actions">
+      <button class="btn ghost block" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
+      ${enAttente ? `<button class="btn ghost block" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
+      ${cancelled && ev._annulationNonPrevenue ? `<button class="btn ghost block" onclick="closeModal();_reprevenirAnnulation('${escapeJsArg(id)}')">Prévenir les inscrits de l'annulation</button>` : ""}
+      <button class="btn ghost block" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
+    </div>
+    <div class="ev-gerer-danger" role="group" aria-labelledby="evGererDangerTitre">
+      <div class="ev-gerer-danger-titre" id="evGererDangerTitre">Zone sensible</div>
+      <button class="btn ghost block" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
+      ${seriesCount > 1 ? `<button class="btn ghost block" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
+      <button class="btn ghost block ev-gerer-supprimer" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
+    </div>
+    <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `);
+  // Le nombre de demandes vient de la base : relu à chaque ouverture, le bouton
+  // de tête suit sa réponse (`_signalerDemandesAValider`).
+  rafraichirDemandesAValider(id, true);
 }
 
 // ===== Co-organisateurs =====
@@ -9697,6 +9823,71 @@ const sortiesStudioEnCreation = new Set();
 // Un jeton par appel : la fin d'une publication ne relâche jamais le verrou d'un
 // AUTRE formulaire.
 let _evEnvoiFormulaire = null;
+// ── ERREURS DU FORMULAIRE, SOUS LE CHAMP (2026-11-27, ergonomie b) ──────────
+// L'erreur ne vivait que dans un toast de 3 s, en haut de l'écran, loin du champ
+// (souvent hors de vue sur un téléphone, et jamais annoncée sur le champ). Elle
+// s'écrit maintenant DANS le bloc du champ (`.champ-erreur`, LOT-6), le champ
+// porte `aria-invalid` et `aria-describedby`, et le focus va au premier champ
+// fautif dans l'ordre de la page. Le toast reste, pour le même message.
+// Le message vit dans le `<label class="field">` du champ (le module UI-6A0
+// déplace ces blocs : le message suit) ; `aria-hidden` le garde hors du NOM du
+// champ, `aria-describedby` en fait sa DESCRIPTION.
+function _evBlocChamp(champ) {
+  return champ ? (champ.closest(".field") || champ.parentElement) : null;
+}
+function _evEffacerErreurs() {
+  document.querySelectorAll("#modalBackdrop [data-ev-erreur]").forEach(function (m) {
+    const champ = document.getElementById(m.getAttribute("data-ev-erreur"));
+    if (champ) {
+      champ.removeAttribute("aria-invalid");
+      const d = (champ.getAttribute("aria-describedby") || "").split(/\s+/).filter(function (x) { return x && x !== m.id; }).join(" ");
+      if (d) champ.setAttribute("aria-describedby", d); else champ.removeAttribute("aria-describedby");
+    }
+    m.remove();
+  });
+}
+function _evMarquerErreurs(liste) {
+  _evEffacerErreurs();
+  const posees = [];
+  liste.forEach(function (e) {
+    const champ = document.getElementById(e.champ);
+    const bloc = _evBlocChamp(champ);
+    if (!champ || !bloc) return;
+    const m = document.createElement("span");
+    m.className = "champ-erreur ev-champ-erreur";
+    m.id = e.champ + "Erreur";
+    m.setAttribute("data-ev-erreur", e.champ);
+    m.setAttribute("aria-hidden", "true");
+    m.textContent = e.message;
+    bloc.appendChild(m);
+    champ.setAttribute("aria-invalid", "true");
+    const d = (champ.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+    if (d.indexOf(m.id) < 0) d.push(m.id);
+    champ.setAttribute("aria-describedby", d.join(" "));
+    // Corriger le champ efface son message.
+    const effacer = function () {
+      champ.removeEventListener("input", effacer); champ.removeEventListener("change", effacer);
+      champ.removeAttribute("aria-invalid");
+      const r = (champ.getAttribute("aria-describedby") || "").split(/\s+/).filter(function (x) { return x && x !== m.id; }).join(" ");
+      if (r) champ.setAttribute("aria-describedby", r); else champ.removeAttribute("aria-describedby");
+      m.remove();
+    };
+    champ.addEventListener("input", effacer);
+    champ.addEventListener("change", effacer);
+    posees.push({ champ: champ, message: e.message });
+  });
+  if (!posees.length) { if (liste[0]) toast(liste[0].message, "error"); return; }
+  // Le PREMIER dans l'ordre de la page, quel que soit l'ordre des contrôles.
+  posees.sort(function (a, b) { return a.champ.compareDocumentPosition(b.champ) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1; });
+  const premier = posees[0];
+  // Un champ replié dans « Plus d'options » s'ouvre avant de recevoir le focus.
+  const plie = premier.champ.closest("details:not([open])");
+  if (plie) plie.open = true;
+  try { premier.champ.focus({ preventScroll: true }); } catch (e) {}
+  try { premier.champ.scrollIntoView({ block: "center" }); } catch (e) {}
+  toast(premier.message, "error");
+}
+
 async function submitEvent(editId) {
   if (_evEnvoiFormulaire) return;
   const jeton = _evEnvoiFormulaire = {};
@@ -9847,8 +10038,14 @@ async function _submitEventCorps(editId, relacher) {
   // rend `""` pour « 1e » ou « douze » : le prix partait à 0 sans un mot, et
   // `parseInt("1e3")` lisait UNE place là où le champ en annonçait mille.
   // `validity.badInput` dit qu'il y a une saisie que le navigateur n'a pas su lire.
-  if (g("evPrice")?.validity?.badInput) { toast("Prix illisible : écris un nombre (ou laisse vide pour gratuit)", "error"); g("evPrice").focus(); return; }
-  if (g("evMax")?.validity?.badInput) { toast("Nombre de places illisible : écris un nombre entier (ou laisse vide)", "error"); g("evMax").focus(); return; }
+  // 2026-11-27 (ergonomie b) : chaque erreur s'écrit SOUS son champ (et plus
+  // seulement dans un toast de 3 s) ; toutes celles qu'on peut voir d'un coup
+  // sont posées ensemble, et le focus va au premier champ fautif.
+  _evEffacerErreurs();
+  const erreurs = [];
+  const erreur = (champ, message) => { if (!erreurs.some((e) => e.champ === champ)) erreurs.push({ champ, message }); };
+  if (g("evPrice")?.validity?.badInput) erreur("evPrice", "Prix illisible : écris un nombre (ou laisse vide pour gratuit)");
+  if (g("evMax")?.validity?.badInput) erreur("evMax", "Nombre de places illisible : écris un nombre entier (ou laisse vide)");
   const prixBrut = String(g("evPrice")?.value || "").trim().replace(",", ".");
   const price = prixBrut === "" ? 0 : Number(prixBrut);
   // ⚠️ IRL-11, second volet (contre-revue Astra, 2026-09-15) : `parseInt("0") || null`
@@ -9860,9 +10057,9 @@ async function _submitEventCorps(editId, relacher) {
   // ⚠️ BORNES REVALIDÉES ICI, pas seulement dans le `min` du champ (IRL-11,
   // 2026-09-14) : un prix négatif s'affichait « Gratuit », une capacité
   // négative rendait l'activité « complète » dès sa création.
-  if (!(price >= 0) || price > 99999) { toast("Le prix doit être un montant positif (ou 0)", "error"); return; }
-  if (maxAttendees !== null && !Number.isInteger(maxAttendees)) { toast("Le nombre de places doit être un nombre entier", "error"); return; }
-  if (maxAttendees !== null && (!(maxAttendees >= 1) || maxAttendees > 9999)) { toast("Le nombre de places doit être au moins 1", "error"); return; }
+  if (!(price >= 0) || price > 99999) erreur("evPrice", "Le prix doit être un montant positif (ou 0)");
+  if (maxAttendees !== null && !Number.isInteger(maxAttendees)) erreur("evMax", "Le nombre de places doit être un nombre entier");
+  if (maxAttendees !== null && (!(maxAttendees >= 1) || maxAttendees > 9999)) erreur("evMax", "Le nombre de places doit être au moins 1");
   const contact = (g("evContact")?.value || "").trim();
   const externalLink = (g("evLink")?.value || "").trim();
   const eventType = g("evType")?.value || "Autre";
@@ -9870,28 +10067,25 @@ async function _submitEventCorps(editId, relacher) {
 
   const durationH = parseFloat(g("evDuration")?.value || "2") || 2;
 
-  if (title.length < 3) { toast("Titre trop court (3 caractères min)", "error"); return; }
-  if (!city) { toast("Indique une ville", "error"); return; }
-  if (!date) { toast("Choisis une date", "error"); return; }
-  if (!time) {
-    toast("Choisis une heure de départ", "error");
-    g("evTime")?.focus();
-    return;
-  }
-  if (!passion) { toast("Sélectionne une passion", "error"); return; }
+  if (title.length < 3) erreur("evTitle", "Titre trop court (3 caractères min)");
+  if (!city) erreur("evCity", "Indique une ville");
+  if (!date) erreur("evDate", "Choisis une date");
+  if (!time) erreur("evTime", "Choisis une heure de départ");
+  if (!passion) erreur("evPassion", "Sélectionne une passion");
+  if (erreurs.length) { _evMarquerErreurs(erreurs); return; }
   // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
   // passions publiables, donc ce garde ne se déclenche que sur un état bâti
   // autrement (brouillon ancien, édition d'un événement d'avant le correctif).
   if (!(await _evAttendrePassionCanonique(passion))) {
-    toast(_irlPassionPlateConnue(passion)
+    _evMarquerErreurs([{ champ: "evPassion", message: _irlPassionPlateConnue(passion)
       ? "Cette passion n'a pas encore pu être vérifiée — réessaie dans un instant."
-      : "Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.", "error");
+      : "Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité." }]);
     return;
   }
   if (sourceStudio && !formulaireStudioActif()) return;
 
   const ts = new Date(date + "T" + time).getTime();
-  if (isNaN(ts)) { toast("Date invalide", "error"); return; }
+  if (isNaN(ts)) { _evMarquerErreurs([{ champ: "evDate", message: "Date invalide" }]); return; }
   // Créer un événement DANS LE PASSÉ n'avait aucun garde-fou : il partait en base
   // puis était filtré à l'affichage → l'organisateur ne le retrouvait jamais.
   // À l'ÉDITION aussi (IRL-11) : on ne peut pas DÉPLACER une activité dans le
@@ -9899,7 +10093,7 @@ async function _submitEventCorps(editId, relacher) {
   // date (correction d'un titre après coup).
   if (ts < Date.now() - 3600000) {
     const _dejaCetteDate = !!editId && (function () { const ex = _findCanonicalEvent(editId); if (!ex) return false; const jour = (t) => new Date(t - new Date(t).getTimezoneOffset() * 60000).toISOString().slice(0, 10); return jour(Number(ex.date)) === jour(ts); })();
-    if (!_dejaCetteDate) { toast("Cette date est déjà passée", "error"); return; }
+    if (!_dejaCetteDate) { _evMarquerErreurs([{ champ: "evDate", message: "Cette date est déjà passée" }]); return; }
   }
 
   const recurrence = editId ? null : (g("evRecurrence")?.value || "none");
@@ -10672,13 +10866,52 @@ function _renderInvitesPrives(eventId) {
       var b = document.createElement("button");
       b.type = "button";
       b.className = "btn small ghost event-invite-btn";
-      b.textContent = "Retirer";
-      b.setAttribute("aria-label", "Retirer " + (u.name || "cette personne") + " de l'activité");
-      b.addEventListener("click", function () { retirerInviteActivite(eventId, id, b); });
+      var differe = !!(window._retraitsInvitesEnAttente[eventId] || {})[id];
+      b.textContent = differe ? "Annuler" : "Retirer";
+      b.setAttribute("aria-label", differe ? "Annuler le retrait de " + (u.name || "cette personne") : "Retirer " + (u.name || "cette personne") + " de l'activité");
+      if (differe) b.setAttribute("data-retrait-annuler", id);
+      b.addEventListener("click", function () {
+        if ((window._retraitsInvitesEnAttente[eventId] || {})[id]) annulerRetraitInvite(eventId, id);
+        else retirerInviteDiffere(eventId, id);
+      });
       ligne.appendChild(av); ligne.appendChild(nom); ligne.appendChild(b);
       box.appendChild(ligne);
     });
   });
+}
+// 2026-11-27 (ergonomie c) : « Retirer » un invité agissait au premier appui (et
+// lui retire l'accès à l'activité ET la place) : 5 s pour annuler, comme pour
+// inviter (`inviteToEvent`). L'écriture part au bout du délai, et elle seule.
+window._retraitsInvitesEnAttente = window._retraitsInvitesEnAttente || {};
+function retirerInviteDiffere(eventId, userId) {
+  var en = window._retraitsInvitesEnAttente[eventId] = window._retraitsInvitesEnAttente[eventId] || {};
+  if (en[userId]) return;
+  var compte = MY_UID;
+  en[userId] = setTimeout(function () {
+    delete en[userId];
+    _peindreRetraitInvite(eventId, userId);   // « Annuler » n'a plus d'objet : le bouton redevient « Retirer »
+    if (MY_UID !== compte) return;
+    var l = document.querySelector('[data-invite-prive="' + (window.CSS && CSS.escape ? CSS.escape(userId) : userId) + '"]');
+    retirerInviteActivite(eventId, userId, l ? l.querySelector("button") : null);
+  }, EVENT_INVITE_ANNULER_MS);
+  _peindreRetraitInvite(eventId, userId);
+  toast("Retrait dans 5 s — touche « Annuler » pour le retenir");
+}
+function annulerRetraitInvite(eventId, userId) {
+  var en = window._retraitsInvitesEnAttente[eventId] || {};
+  if (en[userId]) { clearTimeout(en[userId]); delete en[userId]; }
+  _peindreRetraitInvite(eventId, userId);
+  toast("Retrait annulé");
+}
+function _peindreRetraitInvite(eventId, userId) {
+  var l = document.querySelector('[data-invite-prive="' + (window.CSS && CSS.escape ? CSS.escape(userId) : userId) + '"]');
+  var b = l && l.querySelector("button");
+  if (!b) return;
+  var differe = !!(window._retraitsInvitesEnAttente[eventId] || {})[userId];
+  var nom = (l.querySelector(".event-invite-nom") || {}).textContent || "cette personne";
+  b.textContent = differe ? "Annuler" : "Retirer";
+  b.setAttribute("aria-label", differe ? "Annuler le retrait de " + nom : "Retirer " + nom + " de l'activité");
+  if (differe) b.setAttribute("data-retrait-annuler", userId); else b.removeAttribute("data-retrait-annuler");
 }
 function retirerInviteActivite(eventId, userId, btn) {
   if (typeof supaRetirerInviteActivite !== "function") return;
@@ -11815,30 +12048,40 @@ async function openEventParticipantValidation(id, focusUid, origine) {
   const rang = a => (a.user_id === focusUid ? 0 : (a.rsvp === "going" && !a.valide ? 1 : 2));
   lignes = lignes.slice().sort((x, y) => rang(x) - rang(y));
   const nbAttente = lignes.filter(a => a.rsvp === "going" && !a.valide).length;
+  // Le compte lu ici EST celui de la base : la pastille de la carte et le bouton
+  // de la fiche le reprennent (2026-11-27, ergonomie a).
+  _poserDemandesAValider(id, nbAttente, compte);
   const ligneHtml = a => {
     const u = userById(a.user_id) || {};
     const enAttente = a.rsvp === "going" && !a.valide;
-    const statut = a.valide ? "Validé·e" : (enAttente ? "Demande en attente" : (a.rsvp === "waitlist" ? "Liste d’attente" : "Intéressé·e"));
+    const differe = _retraitParticipantEnAttente(id, a.user_id);
+    const statut = differe ? "Retrait dans quelques secondes…" : a.valide ? "Validé·e" : (enAttente ? "Demande en attente" : (a.rsvp === "waitlist" ? "Liste d’attente" : "Intéressé·e"));
     return '<div class="ev-valid-row" data-uid="' + escapeHtml(a.user_id) + '" style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:14px;margin-top:8px;'
       + (a.user_id === focusUid ? 'background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.35);' : 'border:1px solid var(--border);') + '">'
       + '<div style="flex:1;min-width:0;cursor:pointer" onclick="closeModal();openUserProfile(' + "'" + escapeJsArg(a.user_id) + "'" + ')">'
       + '<div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(u.name || "Participant") + '</div>'
       + '<div style="font-size:12px;color:' + (enAttente ? 'var(--accent,#7c3aed)' : 'var(--muted)') + '">' + statut + '</div></div>'
-      + (enAttente ? '<button class="btn small primary" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',true)">Valider</button>' : '')
-      + '<button class="btn small ghost" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',false)">' + (enAttente ? 'Refuser' : 'Retirer') + '</button>'
+      + (differe
+        ? '<button class="btn small ghost ev-valid-annuler" data-retrait-annuler="' + escapeHtml(a.user_id) + '" onclick="annulerRetraitParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\')">Annuler</button>'
+        : (enAttente ? '<button class="btn small primary" onclick="validerEventParticipant(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',true)">Valider</button>' : '')
+          + '<button class="btn small ghost" data-retrait="' + escapeHtml(a.user_id) + '" onclick="retirerParticipantDiffere(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(a.user_id) + '\',' + (enAttente ? 'true' : 'false') + ')">' + (enAttente ? 'Refuser' : 'Retirer') + '</button>')
       + '</div>';
   };
-  openModal('<div class="modal-handle"></div><div class="modal-title">Participants</div>'
+  openModal('<div class="modal-handle"></div><div class="modal-title" data-validation-ev="' + escapeHtml(id) + '">Participants</div>'
     + '<div class="modal-subtitle">' + escapeHtml(ev.title || "") + (nbAttente ? ' · ' + nbAttente + ' demande' + (nbAttente > 1 ? 's' : '') + ' en attente' : '') + '</div>'
     + '<div style="font-size:13px;color:var(--muted);margin-top:4px">Valider ouvre l’adresse, le contact et la discussion. Retirer ferme ces accès.</div>'
     + lignes.map(ligneHtml).join("")
     + (lignes.length ? '' : '<p style="color:var(--muted);margin-top:12px">Aucune demande en cours.</p>')
     + '<button class="btn secondary block" style="margin-top:14px" onclick="closeModal()">Fermer</button>');
 }
-async function validerEventParticipant(id, uid, accepter) {
+async function validerEventParticipant(id, uid, accepter, rouvrir) {
   try {
     const r = await supa.rpc("valider_participant", { p_event_id: id, p_user_id: uid, p_accepter: accepter });
-    if (r.error || r.data !== true) { toast("Modification non confirmée — réessaie"); return false; }
+    if (r.error || r.data !== true) {
+      toast("Modification non confirmée — réessaie");
+      if (rouvrir === false && _validationOuverte(id)) await openEventParticipantValidation(id, uid);
+      return false;
+    }
     if (accepter) _pousserPushNotif(uid, "event_accepted", "", id);
     toast(accepter ? "Participation validée" : "Participant retiré");
     // La notification correspondante ne repropose plus ses boutons.
@@ -11848,7 +12091,122 @@ async function validerEventParticipant(id, uid, accepter) {
           _demandeAbonnementTraitee(n.id, accepter ? "validée" : "refusée");
       });
     } catch (e) {}
-    await openEventParticipantValidation(id, uid);
+    // Un retrait DIFFÉRÉ (5 s) se règle peut-être fenêtre fermée : on ne la
+    // rouvre pas par-dessus ce que la personne fait maintenant.
+    if (rouvrir !== false || _validationOuverte(id)) await openEventParticipantValidation(id, uid);
+    else rafraichirDemandesAValider(id, true);
     return true;
   } catch (e) { toast("Modification non confirmée — réessaie"); return false; }
+}
+
+// ── RETIRER / REFUSER : 5 S POUR ANNULER (2026-11-27, ergonomie c) ──────────
+// « Retirer » agissait au premier appui : un doigt qui glisse sur la mauvaise
+// ligne fermait l'adresse, le contact et la discussion à quelqu'un. Même
+// mécanique que l'invitation (`inviteToEvent`, EVENT_INVITE_ANNULER_MS) : la
+// ligne dit « Retrait dans quelques secondes… », son bouton devient « Annuler »,
+// et l'écriture ne part qu'au bout du délai. La base reste seule juge du verdict.
+window._retraitsParticipantsEnAttente = window._retraitsParticipantsEnAttente || {};
+function _retraitParticipantEnAttente(id, uid) {
+  return !!window._retraitsParticipantsEnAttente[id + "|" + uid];
+}
+function _validationOuverte(id) {
+  const t = document.querySelector("#modalBackdrop.active [data-validation-ev]");
+  return !!t && t.getAttribute("data-validation-ev") === id;
+}
+function retirerParticipantDiffere(id, uid, demande) {
+  const cle = id + "|" + uid;
+  if (window._retraitsParticipantsEnAttente[cle]) return;
+  const compte = MY_UID;
+  window._retraitsParticipantsEnAttente[cle] = setTimeout(function () {
+    delete window._retraitsParticipantsEnAttente[cle];
+    if (MY_UID !== compte) return;
+    validerEventParticipant(id, uid, false, false);
+  }, EVENT_INVITE_ANNULER_MS);
+  _repeindreLigneValidation(id, uid);
+  toast((demande ? "Demande refusée" : "Participant retiré") + " dans 5 s — touche « Annuler » pour la retenir");
+}
+function annulerRetraitParticipant(id, uid) {
+  const cle = id + "|" + uid;
+  const t = window._retraitsParticipantsEnAttente[cle];
+  if (t) { clearTimeout(t); delete window._retraitsParticipantsEnAttente[cle]; }
+  toast("Retrait annulé");
+  if (_validationOuverte(id)) openEventParticipantValidation(id, uid);
+}
+// La ligne seule change (pas de relecture serveur pour un geste encore réversible).
+function _repeindreLigneValidation(id, uid) {
+  if (!_validationOuverte(id)) return;
+  const sel = '#modalBackdrop.active .ev-valid-row[data-uid="' + (window.CSS && CSS.escape ? CSS.escape(uid) : uid) + '"]';
+  const l = document.querySelector(sel);
+  if (!l) return;
+  const st = l.querySelector("div > div:nth-child(2)");
+  if (st) st.textContent = "Retrait dans quelques secondes…";
+  l.querySelectorAll(":scope > button").forEach(function (b) { b.remove(); });
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn small ghost ev-valid-annuler";
+  b.setAttribute("data-retrait-annuler", uid);
+  b.textContent = "Annuler";
+  b.addEventListener("click", function () { annulerRetraitParticipant(id, uid); });
+  l.appendChild(b);
+  try { b.focus({ preventScroll: true }); } catch (e) {}
+}
+
+// ── DEMANDES À VALIDER, VUES PAR L'ORGANISATION (2026-11-27, ergonomie a) ───
+// Une demande de participation n'apparaissait ni sur la carte, ni sur la fiche,
+// ni dans « Gérer » : l'organisation l'apprenait par la cloche, ou jamais. Le
+// NOMBRE vient de la base (`participants_validation`, la même lecture que la
+// fenêtre « Participants », paginée par `_lireFileOrganisation`) — jamais
+// déduit des listes locales, qui ne savent pas ce qui est validé. Une lecture par
+// activité que JE gère, à venir, au plus une par minute ; inconnu = rien affiché.
+const DEMANDES_A_VALIDER_TTL_MS = 60000;
+const _demandesAValiderCache = {};
+function _cleDemandes(id, compte) { return String(compte || "") + "|" + id; }
+function demandesAValider(id) {
+  const c = _demandesAValiderCache[_cleDemandes(id, MY_UID)];
+  return c && typeof c.n === "number" ? c.n : null;
+}
+function _poserDemandesAValider(id, n, compte) {
+  if (compte !== MY_UID || typeof n !== "number") return;
+  const cle = _cleDemandes(id, compte);
+  const c = _demandesAValiderCache[cle] || (_demandesAValiderCache[cle] = {});
+  const avant = c.n;
+  c.n = n; c.t = Date.now();
+  if (avant !== n) _signalerDemandesAValider(id);
+}
+function _demandesLisibles(ev) {
+  return !!(ev && window._supaReal && ev.fromSupabase && _canManageEvent(ev) && !_eventIsCancelled(ev) && !_eventIsOver(ev));
+}
+function rafraichirDemandesAValider(id, force) {
+  const ev = _findCanonicalEvent(id);
+  if (!_demandesLisibles(ev)) return Promise.resolve(null);
+  const compte = MY_UID, etat = state;
+  const cle = _cleDemandes(id, compte);
+  const c = _demandesAValiderCache[cle] || (_demandesAValiderCache[cle] = {});
+  if (c.enVol) return c.enVol;
+  if (!force && c.t && Date.now() - c.t < DEMANDES_A_VALIDER_TTL_MS) return Promise.resolve(c.n);
+  c.t = Date.now();   // même un échec attend la minute suivante : pas de rafale de relectures
+  c.enVol = _lireFileOrganisation(id).then(function (lignes) {
+    if (MY_UID !== compte || state !== etat) return null;
+    const n = lignes.filter(function (a) { return a.user_id !== compte && a.rsvp === "going" && !a.valide; }).length;
+    _poserDemandesAValider(id, n, compte);
+    return n;
+  }, function () {
+    try { if (typeof diagLog === "function") diagLog("demandes à valider : lecture KO"); } catch (_) {}
+    return null;
+  }).then(function (n) { c.enVol = null; return n; });
+  return c.enVol;
+}
+// Les surfaces qui montrent le nombre le relisent ici (aucune ne le recalcule).
+function _signalerDemandesAValider(id) {
+  try { if (window.PassioUIV4A2 && typeof PassioUIV4A2.refresh === "function") PassioUIV4A2.refresh(); } catch (e) {}
+  try { if (window._openEventDetailId === id && window.PassioUIV4B && typeof PassioUIV4B.refresh === "function") PassioUIV4B.refresh(); } catch (e) {}
+  const b = document.querySelector('#modalBackdrop.active [data-gerer-demandes="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (b) _peindreBoutonDemandes(b, demandesAValider(id));
+}
+function texteDemandesAValider(n) {
+  return n + " demande" + (n > 1 ? "s" : "") + " à valider";
+}
+function _peindreBoutonDemandes(b, n) {
+  b.hidden = !(n > 0);
+  if (n > 0) b.textContent = texteDemandesAValider(n);
 }

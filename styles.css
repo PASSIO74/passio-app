@@ -14830,3 +14830,186 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* Sujet 208 : retours écrits des participants, côté organisation. */
 .event-feedback-retours:empty { display: none; }
 .event-feedback-retours { margin: 6px 0 10px; }
+/* ══ Rencontrer — ergonomie, visuel, accessibilité (2026-11-27) ══════════════
+   Ajout en fin de fichier : à spécificité égale, ces règles l'emportent sur les
+   précédentes sans en réécrire aucune. Revue sur captures réelles (320, 390,
+   1440 px) ; chaque règle dit le défaut qu'elle ferme. */
+
+/* f) Bouton principal : le départ « iris » #a784ff du dégradé portait le texte
+   blanc à 2,84:1. Départ #7445f6 (5,4:1 ; 4,9:1 encore sous le survol, qui
+   éclaircit de 8 %), arrivée inchangée. */
+.btn.primary { background: linear-gradient(135deg, #7445f6 0%, #6d32f4 100%); }
+
+/* f) Pastilles d'échéance du « Rendez-vous » : orange #f59e0b sur voile orange
+   (1,68:1), vert #22c55e (1,76:1). Fonds opaques, textes foncés : ≥ 7:1. */
+.event-detail-urgency.today { background: #fef3f2; color: #b42318; }
+.event-detail-urgency.soon { background: #fef3c7; color: #7a3e00; }
+.event-detail-urgency.normal { background: #dcfce7; color: #14532d; }
+.event-detail-urgency.live { background: #ddd6fe; color: #4c1d95; }
+.event-detail-urgency.past { background: #f1f5f9; color: #475569; }
+
+/* f) Cibles : le × des feuilles (34 px), les boutons de validation et de liste
+   d'attente (29 px), « Plus d'options » (33 px) passent à 44 px RÉELS — la
+   boîte du bouton, pas un pseudo-élément. */
+.modal-close { width: 44px; height: 44px; top: 8px; right: 8px; }
+.ev-valid-row .btn.small,
+[data-file-sortie] .btn.small {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.v6a0-options > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* b) Le champ fautif se voit, et son message aussi : `label.field > span`
+   (le libellé en petites capitales grises) s'appliquait au message. */
+label.field > span.ev-champ-erreur {
+  display: block; margin-top: 6px; font-size: 13px; font-weight: 600;
+  color: #b42318; text-transform: none; letter-spacing: normal;
+}
+#modalContent .input[aria-invalid="true"] {
+  border-color: #b42318;
+  box-shadow: 0 0 0 1px #b42318;
+}
+
+/* c) « Gérer l'activité » : trois étages — l'essentiel, le reste, la zone
+   sensible (annuler, supprimer) à part, cadrée de rouge. */
+.ev-gerer-groupe { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ev-gerer-groupe .btn,
+.ev-gerer-danger .btn,
+.ev-gerer-demandes { min-height: 44px; }
+.ev-gerer-secondaire { padding-top: 12px; border-top: 1px solid var(--border); }
+.ev-gerer-danger {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid rgba(180, 35, 24, 0.32);
+  border-radius: 14px;
+  background: #fef3f2;
+}
+.ev-gerer-danger-titre {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #b42318;
+}
+.ev-gerer-danger .btn { background: #fff; color: #b42318; border-color: rgba(180, 35, 24, 0.35); }
+.ev-gerer-demandes[hidden] { display: none !important; }
+
+/* a) Demandes à valider : pastille sur la carte, bouton en tête de fiche. */
+.v4a2-demandes {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 44px;
+  margin: 6px 0 2px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #e8a317;
+  background: #fef3c7;
+  color: #7a3e00;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.v4a2-demandes[hidden] { display: none !important; }
+.v4a2-demandes:focus-visible { outline: 2px solid #7a3e00; outline-offset: 2px; }
+#eventDetailContent .v4b-demandes { min-height: 48px; margin: 0 0 16px; font-size: 15px; }
+
+/* d) La proposition de rappels : un bandeau qui ne recouvre pas la fiche. */
+.bandeau-rappels {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  max-width: 520px;
+  margin: 0 auto;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(23, 21, 43, 0.18);
+}
+.bandeau-rappels { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+.bandeau-rappels-fiche { bottom: calc(var(--fiche-pied, 140px) + 8px); }
+.bandeau-rappels-titre { font-weight: 800; font-size: 15px; }
+.bandeau-rappels-sous { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+.bandeau-rappels-actions { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 8px; }
+.bandeau-rappels-actions .btn { min-height: 44px; white-space: normal; line-height: 1.2; }
+
+/* L'état « Tu organises » n'a pas de ligne de détail sous lui : sa boîte
+   se ferme seule (elle restait ouverte, mangée par les boutons). */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-orga .v4b-rsvp-etat {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #bfe8d0;
+  border-radius: 14px;
+}
+
+/* e) Pendant l'activité, « Je suis arrivé·e » est l'action du pied. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite-pointer .v4b-rsvp-pointer { font-size: 15px; }
+
+/* g) Petits écrans (hauteur ≤ 700 px) : héros plus bas, pied plus serré. */
+@media (max-height: 700px) {
+  :root.passio-ui-4b .event-detail-hero { height: min(300px, 32vh); }
+  :root.passio-ui-4b .event-detail-cta { padding-top: 8px; padding-left: 12px; padding-right: 12px; padding-bottom: max(12px, calc(8px + env(safe-area-inset-bottom))); }
+  :root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite .btn { min-height: 44px; }
+  :root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-etat { font-size: 14px; padding-top: 8px; }
+  :root.passio-ui-4b #eventDetailCta .v4b-rsvp-detail { font-size: 12.5px; padding-bottom: 8px; }
+  :root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-retirer { margin-top: 0; }
+}
+/* g) Dès qu'on lit (la fiche défile), le pied se resserre : le rappel de la
+   date — déjà dans « Le rendez-vous » — se tait, aucune action ne disparaît. */
+#eventDetailPage.v4b-defile #eventDetailCta .v4b-rsvp-detail { display: none; }
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-etat { border-bottom-color: #bfe8d0; }
+:root.passio-ui-4b #eventDetailPage.v4b-defile #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-etat {
+  padding-bottom: 8px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-radius: 14px;
+}
+
+/* g) Ordinateur (menu latéral) : le pied se centrait sur la FENÊTRE, 125 px à
+   gauche de la colonne de lecture. Il commence où commence la fiche. */
+@media (min-width: 1024px) {
+  #eventDetailPage.event-detail-page > .event-detail-cta { left: var(--pc-rail); }
+}
+
+/* g) Le pied fixe se cale sur la FENÊTRE… sauf pendant les 200 ms d'entrée de
+   la fiche : `fadeIn` y pose un `transform`, qui fait de la fiche le bloc de
+   référence du pied (décalé de la moitié du menu sur ordinateur, et entraîné
+   par le défilement sur téléphone). La fiche entre en fondu seul. */
+@keyframes ficheEntre { from { opacity: 0; } to { opacity: 1; } }
+#eventDetailPage.event-detail-page { animation-name: ficheEntre; }
+
+/* h) La fiche est un dialogue : elle reçoit le focus sans halo parasite. */
+#eventDetailPage:focus { outline: none; }
+
+/* Revue visuelle : demande en attente, place validée et liste d'attente avaient
+   le même pied vert. Demande = ambre (#7a3e00 sur #fef7e0 : 8,3:1), file =
+   gris ardoise (#334155 sur #f1f5f9 : 9,8:1), confirmée = vert d'origine. */
+:root.passio-ui-4b #eventDetailCta .v4b-etat-demande .v4b-rsvp-etat,
+:root.passio-ui-4b #eventDetailCta .v4b-etat-demande .v4b-rsvp-detail {
+  background: #fef7e0; border-color: #f0cf7a; color: #7a3e00;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-etat-attente .v4b-rsvp-etat,
+:root.passio-ui-4b #eventDetailCta .v4b-etat-attente .v4b-rsvp-detail {
+  background: #f1f5f9; border-color: #cbd5e1; color: #334155;
+}
+/* La réponse en cours, dans la feuille à trois états : un contour et un mot,
+   pas le remplissage du bouton principal. */
+.rsvp-option-actuelle { border: 2px solid var(--accent, #6d32f4) !important; color: var(--text) !important; }
+.rsvp-option .rsvp-actuelle { display: block; margin-top: 4px; font-size: 12px; font-weight: 800; color: var(--accent, #6d32f4); }
