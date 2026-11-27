@@ -82,6 +82,8 @@ const EXCEPTIONS = {
   "story_comments.author_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la ligne part avec le profil purgé, sans passer par la purge",
   // Sondages de story (2026-11-26, migration_story_sondage_2026-11-26.sql) : même règle.
   "story_sondage_votes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE (et stories(id) ON DELETE CASCADE) : le vote part avec le profil purgé, sans passer par la purge",
+  // Sondages de bobine (2026-11-27, migration_bobine_sondage_2026-11-27.sql) : même règle.
+  "bobine_sondage_votes.user_id": "clé étrangère vers profiles(id) ON DELETE CASCADE (et posts(id) ON DELETE CASCADE) : le vote part avec le profil purgé, sans passer par la purge",
   // Amis proches et stories à la une (2026-11-26, migration_stories_proches_une_2026-11-26.sql) :
   // même règle — la base les emporte avec le profil (et `stories_une` avec la story).
   "amis_proches.owner_id": "clé étrangère vers profiles(id) ON DELETE CASCADE : la liste part avec le profil purgé, sans passer par la purge",

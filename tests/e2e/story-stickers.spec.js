@@ -291,7 +291,11 @@ test("⑦ 📊 Sondage : posé, un vote, les pourcentages ; serveur stub, double
   await expect(page.locator("#storyOverlays .st-sondage")).not.toHaveClass(/st-sd-vote/);
 });
 
-test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", async ({ page }) => {
+// ⚠️ ATTENTE CHANGÉE À DESSEIN le 2026-11-27 : ce test affirmait « jamais rendu dans une
+// bobine » (les votes n'avaient de place que par `story_id`). Les bobines ont désormais leur
+// table (`bobine_sondage_votes`) : le lecteur de bobines REND le sondage — une seule fois, et
+// tout aussi inerte quand son contenu est hostile. Son vote : tests/e2e/bobine-sondage.spec.js.
+test("⑧ 📊 Sondage : rendu une seule fois, en story comme en bobine, et hostile = inerte", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(() => {
     const ov = [{ type: "sondage", q: '<img src=x onerror=alert(1)>', a: '"><svg onload=1>', b: "x" }];
@@ -299,9 +303,22 @@ test("⑧ 📊 Sondage : jamais rendu dans une bobine, et hostile = inerte", asy
     const d = document.createElement("div"); d.innerHTML = _storyOverlaysHtml(ov, { story: true });
     const els = Array.from(d.querySelectorAll("*"));
     const deux = _storyOverlaysHtml([{ type: "sondage", q: "Un", a: "a", b: "b" }, { type: "sondage", q: "Deux", a: "c", b: "d" }], { story: true });
-    return { deux: (deux.match(/st-sondage/g) || []).length, bobine: bobine.includes("st-sondage"), actifs: els.filter((e) => /^(IMG|SVG|SCRIPT)$/i.test(e.tagName) || Array.from(e.attributes).some((a) => /^on/i.test(a.name))).length, opts: d.querySelectorAll(".st-sd-opt").length };
+    const actif = (e) => /^(IMG|SVG|SCRIPT)$/i.test(e.tagName) || Array.from(e.attributes).some((a) => /^on/i.test(a.name));
+    // La même charge hostile, rendue par le lecteur de BOBINES : dans la carte du sondage, rien d'actif.
+    const db = document.createElement("div"); db.innerHTML = bobine;
+    const carteBobine = db.querySelector(".reel-overlays-layer .st-sondage");
+    const deuxBobine = _storyOverlaysHtml([{ type: "sondage", q: "Un", a: "a", b: "b" }, { type: "sondage", q: "Deux", a: "c", b: "d" }], { bobine: true });
+    return {
+      deux: (deux.match(/st-sondage/g) || []).length, deuxBobine: (deuxBobine.match(/st-sondage/g) || []).length,
+      bobine: !!carteBobine, actifsBobine: carteBobine ? Array.from(carteBobine.querySelectorAll("*")).filter(actif).length : -1, optsBobine: carteBobine ? carteBobine.querySelectorAll(".st-sd-opt").length : -1,
+      ailleurs: _storyOverlaysHtml(ov, {}).includes("st-sondage"),
+      actifs: els.filter(actif).length, opts: d.querySelectorAll(".st-sd-opt").length,
+    };
   });
-  expect(r.bobine).toBe(false);
+  expect(r.bobine, "le lecteur de bobines rend le sondage").toBe(true);
+  expect({ actifs: r.actifsBobine, opts: r.optsBobine }, "hostile = inerte, dans une bobine aussi").toEqual({ actifs: 0, opts: 2 });
+  expect(r.deuxBobine, "un seul sondage rendu par bobine").toBe(1);
+  expect(r.ailleurs, "hors des deux lecteurs (aperçu, partage), il n'est pas rendu : personne ne saurait à qui va le vote").toBe(false);
   expect(r.deux, "un seul sondage rendu par story").toBe(1);
   expect(r.actifs).toBe(0);
   expect(r.opts).toBe(2);

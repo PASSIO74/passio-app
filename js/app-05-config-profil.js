@@ -3820,6 +3820,10 @@ function playReelAt(idx) {
     else arreterVideoPublique(vid);
   });
   _syncReelSoundBtns();
+  // 📊 Sondage : les résultats de la bobine ACTIVE (après mon vote, ou si c'est la
+  // mienne). Ici et pas au rendu de la liste : une requête par bobine regardée.
+  try { if (items[idx] && typeof bobineSondagePeindre === "function") bobineSondagePeindre(items[idx]); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("sondage bobine: " + ((e && e.message) || e)); } catch (e2) {} }
 }
 
 // Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
