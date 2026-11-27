@@ -367,8 +367,10 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     // états plutôt que d'en dupliquer une seconde.
     await expect(carte.locator('[data-v4a2-act="go"]')).toHaveCount(0);
     await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveAttribute("data-v4a2-rsvp", "going");
-    // §2 du lot UI-7 : le CTA dit « Je viens » AVANT, « Inscrit ✓ » APRÈS.
-    await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Inscrit ✓");
+    // §2 du lot UI-7 : le CTA dit « Je viens » AVANT, l'ÉTAT APRÈS. 2026-11-27 : une
+    // activité locale n'a pas d'organisation qui valide — « Participation confirmée »
+    // (une activité du serveur dirait « Demande envoyée » jusqu'à la validation).
+    await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Participation confirmée");
   });
 
   test("annulé et terminé ne sont jamais recouverts", async ({ page }) => {

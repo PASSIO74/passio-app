@@ -10924,7 +10924,9 @@ async function supaLireAdresses(ids) {
   try {
     if (!_adressesParColonnes) {
       const r = await supa.rpc("adresses_activites", { p_event_ids: ids.slice(0, 200) });
-      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true }; }
+      // `parRpc` : la RPC ne rend une ligne qu'à l'organisation et à qui VIENT
+      // (validé) — la PRÉSENCE de la ligne est donc une information (2026-11-27).
+      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true, parRpc: true }; }
       if (String(r.error.code || "") !== "PGRST202") {
         console.warn("supaLireAdresses:", r.error.code || r.error.message);
         return { adresses, lu: false };
@@ -11279,7 +11281,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
         } else if (r2.error) console.warn("supaLoadEvents (récentes):", r2.error.message);
       } catch (e) { console.warn("supaLoadEvents (récentes):", e && e.message); }
     }
-    const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
+    const { adresses, lu: adressesLues, parRpc: adressesParRpc } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
@@ -11307,6 +11309,10 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       venue: r.venue || "",
       address: (adresses[r.id] || {}).address || "",
       _adresseInconnue: !adressesLues,
+      // 2026-11-27 : vrai = la base m'ouvre les accès privés de cette activité
+      // (j'organise, ou ma participation est VALIDÉE) ; faux = elle ne me les
+      // ouvre pas ; indéfini = on ne sait pas (lecture en échec, repli par colonnes).
+      _accesPrive: adressesLues && adressesParRpc ? Object.prototype.hasOwnProperty.call(adresses, r.id) : undefined,
       postalCode: r.postal_code || "",
       price: r.price || 0,
       maxAttendees: r.max_attendees || null,
@@ -11350,7 +11356,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
 // Rend `true` si ce qui s'affiche a changé — l'appelant ne repeint qu'alors.
 function _evenementsSig(evs) {
   return (evs || []).map(function (e) {
-    return e ? [e.id, e.title, e.date, e.status, e.updatedAt,
+    return e ? [e.id, e.title, e.date, e.status, e.updatedAt, e._accesPrive,
       (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length,
       e.counts ? [e.counts.going, e.counts.maybe, e.counts.waitlist, e.counts.checked_in].join(",") : ""].join("|") : "";
   }).sort().join("~");
@@ -11382,8 +11388,14 @@ function fusionnerEvenementsServeur(evs) {
     }
   });
   const change = _evenementsSig(arr) !== avant;
+  // ⚠️ LA FICHE OUVERTE SE REPEINT EN ENTIER (2026-11-27, sujet 205). Le seul
+  // rafraîchissement d'UI-4B ne touchait que la ligne des places : une activité
+  // annulée pendant qu'on la regarde gardait « Je participe », « Discussion des
+  // participants » et aucun bandeau. Le re-rendu garde désormais la position et
+  // le brouillon de commentaire (`openEventDetails`, sujet 195).
   if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
-    window.PassioUIV4B?.refresh();
+    if (typeof _refreshEventDetailIfOpen === "function") _refreshEventDetailIfOpen(window._openEventDetailId);
+    else window.PassioUIV4B?.refresh();
   }
   return change;
 }
@@ -14854,6 +14866,23 @@ async function supaLoadEventRatings(eventId) {
     const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
     if (!notes.length) return { avg: 0, count: 0 };
     return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };
+  } catch (e) { return null; }
+}
+
+// Les retours écrits (note + mot) d'une activité, pour SON organisation
+// (2026-11-27, sujet 208) : `retours_evenement` ne rend des lignes qu'à qui
+// `organise_activite`, et rien à tout autre compte. `null` = indisponible
+// (refus, RPC absente, réseau) — jamais « aucun retour ».
+async function supaLoadEventRetours(eventId) {
+  if (!_compteAuthReel() || !eventId) return null;
+  try {
+    const { data, error } = await supa.rpc("retours_evenement", { p_event_id: eventId });
+    if (error) {
+      try { if (typeof diagLog === "function") diagLog("retours_evenement : " + (error.code || error.message)); } catch (e) {}
+      return null;
+    }
+    return (Array.isArray(data) ? data : []).filter(r => r && r.user_id)
+      .map(r => ({ user_id: r.user_id, rating: r.rating == null ? null : Number(r.rating), feedback: r.feedback || "", rated_at: r.rated_at || null }));
   } catch (e) { return null; }
 }
 
