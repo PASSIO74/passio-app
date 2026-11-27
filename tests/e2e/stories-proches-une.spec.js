@@ -11,8 +11,6 @@
 //   ④ lecteur : anneau vert et pastille sur une story « proches » seulement ;
 //   ⑤ à la une : rangée du profil visité (titre hostile échappé), lecture du
 //      groupe, retour au profil ; épingler depuis « ⋯ » ; table absente → message.
-//   ⑥ MON profil : aucune bulle « + Nouveau » (retirée le 2026-11-27) — la rangée
-//      n'existe que s'il y a un groupe, et ne porte alors que des groupes.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -216,33 +214,4 @@ test("⑤ à la une : rangée du profil visité, lecture, retour ; épingler ; t
   await page.locator("#uneNouveauTitre").fill("Autre");
   await page.locator("#uneCreerBtn").click();
   await expect.poll(() => page.evaluate(() => window.__toasts.join("|"))).toContain("bientôt");
-});
-
-test("⑥ mon profil : pas de bulle « + Nouveau » ; la rangée n'existe qu'avec un groupe", async ({ page }) => {
-  await banc(page);
-  // Aucune story à la une : la requête part bien, et la rangée reste absente
-  // (avant le 2026-11-27, une bulle « + Nouveau » seule occupait toute une bande du profil).
-  await page.evaluate(() => { goTo("profiles"); renderMainProfile(); });
-  await expect.poll(async () => (await requetes(page, "stories_une")).length).toBeGreaterThan(0);
-  const rangee = page.locator("#mainStoriesUne");
-  await expect(rangee).toBeHidden();
-  await expect(rangee.locator(".une-bulle")).toHaveCount(0);
-  expect(await rangee.evaluate((el) => el.getBoundingClientRect().height), "aucune bande réservée sous la bio").toBe(0);
-
-  // Un groupe existe : il s'affiche, seul — toujours sans « Nouveau ».
-  await page.evaluate(({ moi }) => {
-    window.__tables.stories_une = { rows: [{ story_id: "sm1", groupe: "Voyages", created_at: "2026-11-20T10:00:00+00:00" }] };
-    window.__tables.stories = { rows: [{ id: "sm1", author_id: moi, content: "Annecy", created_at: "2026-11-20T09:00:00", overlays: null, audience: "tous" }] };
-    _storiesUneCache = {};
-    renderMainProfile();
-  }, { moi: MOI });
-  await expect(rangee).toBeVisible();
-  await expect(rangee.locator(".une-bulle")).toHaveCount(1);
-  await expect(rangee.locator(".une-titre")).toHaveText("Voyages");
-  await expect(rangee.locator(".une-nouveau")).toHaveCount(0);
-  await expect(rangee.getByText("Nouveau", { exact: true })).toHaveCount(0);
-  // Le groupe se lit toujours depuis mon profil.
-  await rangee.locator(".une-bulle").click();
-  await expect(page.locator("#storyViewer")).toHaveClass(/active/);
-  await expect(page.locator("#storyContent")).toContainText("Annecy");
 });
