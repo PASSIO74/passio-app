@@ -3449,8 +3449,36 @@ function _brancherSuivreBobines() {
     const pid = item ? item.getAttribute("data-post-id") : null;
     const post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
     const nom = post ? (authorOfReel(post).name || "") : "";
-    if (uidAuteur && typeof toggleFollowUser === "function") toggleFollowUser(uidAuteur, nom || "ce compte");
+    if (!uidAuteur || typeof toggleFollowUser !== "function") return;
+    // ⚠️ SUR UNE BOBINE, « ✓ Suivi » EST UN ACCUSÉ, PAS UN BOUTON. Ailleurs, un toucher
+    // sur « ✓ Suivi » désabonne ; ici, le second toucher est presque toujours le reste
+    // d'un double toucher (« j'aime ») ou une impatience — il défaisait le suivi qu'on
+    // venait de poser. On ne se désabonne pas depuis une bobine : depuis le profil.
+    // Verdict tombé : l'accusé s'efface au toucher. Écriture encore en vol : on ne
+    // retire rien (un refus doit pouvoir rendre « Suivre »), et on ne désabonne pas.
+    if (typeof etatSuivi === "function" && etatSuivi(uidAuteur) === "suivi") {
+      const enVol = (typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) ? !!_ecritureSuiviEnCours[uidAuteur] : false;
+      if (!enVol) _retirerSuivreBobines(uidAuteur);
+      return;
+    }
+    toggleFollowUser(uidAuteur, nom || "ce compte");
+    _retirerSuivreBobinesApresVerdict(uidAuteur, 0);
   }, true);
+}
+// Suivi ACQUIS (verdict du serveur tombé) : la pastille « ✓ Suivi » reste le temps
+// d'être lue, puis s'efface — comme elle ne s'affiche pas sur la bobine d'un compte
+// déjà suivi. Une demande en attente (compte privé) ou un refus laissent le bouton.
+function _retirerSuivreBobines(uidAuteur) {
+  document.querySelectorAll("#reelsList .reel-suivre").forEach(function (b) {
+    if (b.getAttribute("data-follow-uid") === uidAuteur) b.remove();
+  });
+}
+function _retirerSuivreBobinesApresVerdict(uidAuteur, essai) {
+  setTimeout(function () {
+    const enVol = (typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) ? !!_ecritureSuiviEnCours[uidAuteur] : false;
+    if (enVol) { if (essai < 40) _retirerSuivreBobinesApresVerdict(uidAuteur, essai + 1); return; }
+    if (typeof etatSuivi === "function" && etatSuivi(uidAuteur) === "suivi") _retirerSuivreBobines(uidAuteur);
+  }, essai === 0 ? 1500 : 500);
 }
 
 function renderReelHTML(post, idx) {

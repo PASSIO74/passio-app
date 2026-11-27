@@ -6,11 +6,13 @@
 //      déjà suivi ;
 //   ② un toucher suit le compte par l'AUTORITÉ commune (`toggleFollowUser`) :
 //      toutes les bobines de cet auteur se repeignent, le lecteur reste ouvert
-//      (le toucher ne remonte pas jusqu'à l'ouverture du profil) ; un refus du
-//      serveur rend « Suivre » ;
+//      (le toucher ne remonte pas jusqu'à l'ouverture du profil) ; « ✓ Suivi »
+//      y est un ACCUSÉ — un second toucher ne désabonne pas — qui s'efface une
+//      fois le verdict tombé ; un refus du serveur rend « Suivre », et il reste ;
 //   ③ compte privé : « Demande envoyée », lisible et distincte ; la demande
 //      acceptée se voit tout de suite sur le bouton ; une lecture de la liste
-//      partie AVANT le toucher ne l'efface pas en répondant après ;
+//      partie AVANT un geste (demander, suivre, ne plus suivre) ne le défait
+//      pas en répondant après — jugé au moment d'APPLIQUER la réponse ;
 //   ④ le bouton reçoit son toucher sur 44 px et la légende ne passe pas sous
 //      la colonne d'actions, à 320 comme à 390 px ;
 //   ⑤ « Créer → Publication » : UN geste retour ramène à l'écran d'origine
@@ -86,6 +88,8 @@ test("② un toucher suit le compte : toutes ses bobines se repeignent, le lecte
   await banc(page);
   await bouton(page, "reel_lea_1").tap();
   await expect(bouton(page, "reel_lea_1")).toHaveText("✓ Suivi");
+  // L'étiquette ne promet pas un désabonnement que ce toucher ne fait pas.
+  await expect(bouton(page, "reel_lea_1")).toHaveAttribute("aria-label", "Suivi");
   await expect(bouton(page, "reel_lea_2"), "l'autre bobine du même auteur suit").toHaveText("✓ Suivi");
   await expect(bouton(page, "reel_sam")).toHaveText("Suivre");
   const r = await page.evaluate((lea) => ({ suivi: state.user.following.includes(lea), appels: window.__suivis.slice(), lecteur: document.getElementById("reelsViewer").classList.contains("open"), profil: !!document.querySelector("#modalBackdrop.active"), toasts: window.__toasts.join("|") }), LEA);
@@ -96,6 +100,23 @@ test("② un toucher suit le compte : toutes ses bobines se repeignent, le lecte
   expect(r.toasts).toContain("Tu suis Léa Martin");
   // Le nom reste cliquable pour ouvrir le profil (le bouton n'a pas mangé sa ligne).
   expect(await page.locator('#reelsList .reel-item[data-post-id="reel_lea_1"] .reel-author').getAttribute("onclick")).toContain("_openReelAuthor");
+  // Suivi ACQUIS : l'accusé s'efface de lui-même, sur toutes les bobines de l'auteur.
+  await expect(bouton(page, "reel_lea_1")).toHaveCount(0, { timeout: 8000 });
+  await expect(bouton(page, "reel_lea_2")).toHaveCount(0);
+  await expect(bouton(page, "reel_sam")).toHaveText("Suivre");
+  // « ✓ Suivi » est un ACCUSÉ, pas un bouton de désabonnement : un second toucher (le
+  // reste d'un double toucher) pendant l'écriture ne fait rien ; après le verdict, il
+  // efface l'accusé. Dans les deux cas, AUCUN désabonnement ne part.
+  const double = await page.evaluate(async (sam) => {
+    const b = () => document.querySelector('#reelsList .reel-item[data-post-id="reel_sam"] .reel-suivre');
+    b().click();
+    b().click();                                    // écriture en vol : ignoré, rien n'est retiré
+    const pendant = { present: !!b(), texte: b() && b().textContent };
+    await new Promise((res) => setTimeout(res, 50)); // le verdict tombe
+    b().click();                                    // verdict tombé : l'accusé s'efface
+    return { pendant, apres: !!b(), suivis: window.__suivis.filter((x) => x === sam).length, desabonnes: window.__desabonnes.length, suivi: state.user.following.includes(sam) };
+  }, SAM);
+  expect(double).toEqual({ pendant: { present: true, texte: "✓ Suivi" }, apres: false, suivis: 1, desabonnes: 0, suivi: true });
 
   // Refus du serveur : l'affichage optimiste est annulé.
   await banc(page, "refus");
@@ -103,6 +124,10 @@ test("② un toucher suit le compte : toutes ses bobines se repeignent, le lecte
   await expect.poll(() => page.evaluate(() => window.__suivis.length)).toBe(1);
   await expect(bouton(page, "reel_lea_1")).toHaveText("Suivre");
   expect(await page.evaluate((lea) => state.user.following.includes(lea) || state.user.followingPending.includes(lea), LEA)).toBe(false);
+  // … et le bouton RESTE (le retrait différé ne vaut que pour un suivi acquis) : on peut réessayer.
+  await page.waitForTimeout(2300);
+  await expect(bouton(page, "reel_lea_1")).toHaveText("Suivre");
+  await expect(bouton(page, "reel_lea_2")).toHaveText("Suivre");
 });
 
 test("③ compte privé : « Demande envoyée », lisible sur la vidéo ; acceptée, elle devient « ✓ Suivi » sans attendre", async ({ page }) => {
@@ -122,20 +147,24 @@ test("③ compte privé : « Demande envoyée », lisible sur la vidéo ; accept
   await page.evaluate((lea) => mergeSupaNotifs([{ id: "n_accept", kind: "follow", fromId: lea, text: "Léa a accepté ta demande d'abonnement", fromSupabase: true, createdAt: Date.now() }]), LEA);
   await expect(bouton(page, "reel_lea_1")).toHaveText("✓ Suivi");
   await expect(bouton(page, "reel_lea_1")).not.toHaveAttribute("data-suivi-attente", "1");
+  // Une demande en attente n'avait pas été retirée entre-temps (seul un suivi acquis l'est),
+  // et toucher l'accusé ne désabonne pas.
+  await bouton(page, "reel_lea_1").tap();
+  await expect(bouton(page, "reel_lea_1")).toHaveCount(0);
+  expect(await page.evaluate((lea) => ({ suivi: state.user.following.includes(lea), desabonnes: window.__desabonnes.length }), LEA)).toEqual({ suivi: true, desabonnes: 0 });
 });
 
-test("③bis une lecture de la liste partie AVANT le toucher ne l'efface pas en répondant après", async ({ page }) => {
-  await banc(page, "prive");
-  // La vraie `supaLoadFollowing`, sur un faux client dont la réponse est RETENUE :
-  // elle part maintenant, et répondra « aucune ligne » (l'état d'avant le toucher).
+// La vraie `supaLoadFollowing`, sur un faux client dont la réponse est RETENUE : la
+// lecture part à l'appel et ne répond qu'à `__repondre(lignes)`. Seule cette lecture de
+// `follows` est retenue ; tout autre appel du client (télémétrie, notifications…) passe
+// au vrai, sinon il volerait le déclencheur.
+async function lectureRetenue(page) {
   await page.evaluate(() => {
     window.supaLoadFollowing = window.__vraiSupaLoadFollowing;
     window._compteAuthReel = () => true;
     window._followsSansStatut = false;
-    // Seule la PREMIÈRE lecture de `follows` est retenue ; tout autre appel du client
-    // (télémétrie, notifications…) passe au vrai, sinon il volerait le déclencheur.
     const vrai = supa;
-    const retenue = { select: () => ({ eq: () => new Promise((res) => { window.__repondre = () => res({ data: [], error: null }); }) }) };
+    const retenue = { select: () => ({ eq: () => new Promise((res) => { window.__repondre = (lignes) => res({ data: lignes || [], error: null }); }) }) };
     let prise = false;
     supa = new Proxy(vrai, { get(cible, cle) {
       if (cle !== "from") { const v = cible[cle]; return typeof v === "function" ? v.bind(cible) : v; }
@@ -144,19 +173,72 @@ test("③bis une lecture de la liste partie AVANT le toucher ne l'efface pas en 
     window.__lecture = supaLoadFollowing();
     supa = vrai;
   });
+}
+
+test("③bis une lecture de la liste partie AVANT le toucher ne l'efface pas en répondant après", async ({ page }) => {
+  await banc(page, "prive");
+  // Elle part maintenant, et répondra « aucune ligne » (l'état d'avant le toucher).
+  await lectureRetenue(page);
   await bouton(page, "reel_lea_1").tap();
   await expect(bouton(page, "reel_lea_1")).toHaveText("Demande envoyée");
   // Sam, lui, a été suivi AVANT la lecture et le serveur ne le rend pas : la base fait foi.
   const r = await page.evaluate(async ({ lea, sam }) => {
     state.user.following.push(sam);
-    window.__repondre();
+    window.__repondre([]);
     const acceptes = await window.__lecture;
     repeindreBoutonsSuiviVisibles();
-    return { attente: state.user.followingPending.slice(), acceptes };
+    return { attente: state.user.followingPending.slice(), acceptes: acceptes.slice() };
   }, { lea: LEA, sam: SAM });
   expect(r.attente, "la demande faite pendant la lecture est gardée").toEqual([LEA]);
-  expect(r.acceptes, "un suivi antérieur que la base ne connaît pas n'est pas réintroduit par la lecture").toEqual([]);
+  expect(r.acceptes, "la lecture rend la liste BRUTE du serveur").toEqual([]);
   await expect(bouton(page, "reel_lea_1")).toHaveText("Demande envoyée");
+});
+
+test("③ter suivre ou ne plus suivre pendant la lecture : la fusion, faite PLUS TARD, ne défait ni l'un ni l'autre", async ({ page }) => {
+  await banc(page, "ok");
+  // Sam est suivi d'avant (aucune écriture récente) ; le serveur, lui, ne le connaît pas.
+  await page.evaluate((sam) => { state.user.following = [sam]; }, SAM);
+  await lectureRetenue(page);
+  // SUIVRE pendant la lecture (compte public : accepté tout de suite).
+  await bouton(page, "reel_lea_1").tap();
+  await expect(bouton(page, "reel_lea_1")).toHaveText("✓ Suivi");
+  await expect.poll(() => page.evaluate(() => window.__suivis.length)).toBe(1);
+  const suivre = await page.evaluate(async ({ lea, sam }) => {
+    window.__repondre([]);                                  // la réponse date d'avant le toucher
+    const ids = await window.__lecture;
+    await new Promise((res) => setTimeout(res, 30));       // l'attente de `_sessionEstMoi`, dans l'application
+    _fusionnerSuivisServeur(ids, true);                    // la base fait foi… sauf pour ce qui est plus frais ici
+    return { lea: state.user.following.includes(lea), sam: state.user.following.includes(sam) };
+  }, { lea: LEA, sam: SAM });
+  expect(suivre, "le suivi posé pendant la lecture est gardé ; l'ancien, inconnu de la base, part").toEqual({ lea: true, sam: false });
+
+  // NE PLUS SUIVRE pendant la lecture : la réponse, plus ancienne, liste encore le compte.
+  await lectureRetenue(page);
+  const quitter = await page.evaluate(async (lea) => {
+    // Une surface qui porte le bouton de ce compte (l'accusé de la bobine a pu s'effacer).
+    const b = document.createElement("button"); b.setAttribute("data-follow-uid", lea); b.hidden = true; document.body.appendChild(b);
+    toggleFollowUser(lea, "Léa Martin");                    // « suivi » → on se désabonne
+    await new Promise((res) => setTimeout(res, 30));       // l'écriture aboutit APRÈS le départ de la lecture
+    window.__repondre([{ following_id: lea, status: "accepted" }]);
+    const ids = await window.__lecture;
+    const brute = ids.slice();
+    const avantFusion = state.user.following.includes(lea);
+    _fusionnerSuivisServeur(ids, true);
+    const remplace = state.user.following.includes(lea);
+    _fusionnerSuivisServeur(ids, false);                    // l'union (session non vérifiée) ne le réintroduit pas non plus
+    b.remove();
+    return { desabonnes: window.__desabonnes.slice(), brute, avantFusion, remplace, union: state.user.following.includes(lea) };
+  }, LEA);
+  expect(quitter).toEqual({ desabonnes: [LEA], brute: [LEA], avantFusion: false, remplace: false, union: false });
+  // Une lecture partie APRÈS l'écriture, elle, fait foi : la base dit « suivi », l'appareil suit.
+  await page.waitForTimeout(20);
+  await lectureRetenue(page);
+  const apres = await page.evaluate(async (lea) => {
+    window.__repondre([{ following_id: lea, status: "accepted" }]);
+    _fusionnerSuivisServeur(await window.__lecture, true);
+    return state.user.following.includes(lea);
+  }, LEA);
+  expect(apres, "sans geste plus récent que la lecture, la base fait foi").toBe(true);
 });
 
 for (const largeur of [320, 390]) {
@@ -199,9 +281,8 @@ test("⑤ « Créer → Publication » : un seul geste retour ramène à l'écra
   await page.locator('#v2CreateSheet [data-v2-create="post"]').click();
   await page.waitForFunction(() => document.getElementById("screen-studio").classList.contains("active"), null, { timeout: 8000 });
   await expect(page.locator("#v2CreateSheet")).toBeHidden();
-  // Aucune entrée de la feuille « Créer » ne reste sous le Studio.
-  await page.waitForTimeout(300);
-  expect(await page.evaluate(() => (history.state || {}).screen)).toBe("studio");
+  // L'entrée d'historique courante est celle du Studio (la feuille « Créer » a rendu la sienne).
+  await expect.poll(() => page.evaluate(() => (history.state || {}).screen)).toBe("studio");
   await page.goBack();
   await page.waitForFunction(() => document.getElementById("screen-explore").classList.contains("active"), null, { timeout: 8000 });
   expect(await page.evaluate(() => ({ ecran: (document.querySelector(".screen.active") || {}).id, etat: (history.state || {}).overlay || null }))).toEqual({ ecran: "screen-explore", etat: null });

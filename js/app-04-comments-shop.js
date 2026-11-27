@@ -5857,6 +5857,10 @@ function _peindreBoutonsSuivi(userId, etat) {
     // bouton d'état muet sur son geste est ce qui a coûté la demande du 22/09.
     if (aide) { btn.setAttribute("title", aide); btn.setAttribute("aria-label", aide); }
     else { btn.removeAttribute("title"); btn.removeAttribute("aria-label"); }
+    // Sur une BOBINE, « ✓ Suivi » est un accusé (app-05, `_brancherSuivreBobines`) : le
+    // toucher n'y désabonne pas. L'étiquette commune (« appuie pour ne plus suivre »)
+    // y annoncerait un geste qui n'existe pas.
+    if (etat === "suivi" && btn.classList.contains("reel-suivre")) { btn.setAttribute("title", "Suivi"); btn.setAttribute("aria-label", "Suivi"); }
   });
   _majBlocPriveVisite(userId);
 }

@@ -43,7 +43,20 @@
           var db = rq.result;
           if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
         };
-        rq.onsuccess = function () { ok(rq.result); };
+        rq.onsuccess = function () {
+          // ⚠️ UNE CONNEXION PERDUE NE RESTE PAS MÉMORISÉE (2026-11-27). Le navigateur
+          // peut fermer la base de lui-même (`close` : stockage évincé, erreur disque)
+          // ou la réclamer pour une autre version (`versionchange`). La promesse
+          // gardée rendait alors une connexion MORTE à chaque appel : plus une
+          // lecture, plus une écriture jusqu'au rechargement — même défaut que le
+          // piège ② ci-dessus, par un autre chemin.
+          var db = rq.result;
+          try {
+            db.onclose = function () { if (_dbPromise === p) _dbPromise = null; };
+            db.onversionchange = function () { try { db.close(); } catch (e) {} if (_dbPromise === p) _dbPromise = null; };
+          } catch (e) {}
+          ok(db);
+        };
         rq.onerror = function () { ko(rq.error || new Error("idb-open-error")); };
         // `onblocked` : une autre page tient une version antérieure. Sans ce
         // gestionnaire l'ouverture reste en attente indéfiniment.
@@ -209,21 +222,104 @@
   window.idbReferentielClear = function () { return idbPut("referentiel_publiable_v1", null); };
 
   // ─── BROUILLONS DE STORY / BOBINE (2026-11-27) ─────────────────────────────
-  // Une LISTE d'enregistrements { id, compte, mode, mediaType, blob, overlays, … }.
-  // Le média est un BLOB (structured clone) : jamais du base64, et PAS de passage
-  // par JSON, qui le perdrait. Une vidéo de bobine pèse jusqu'à ~27 Mo — hors de
-  // portée de localStorage.
+  // UNE CLÉ PAR BROUILLON + UN PETIT INDEX.
+  //   • `brouillon_media_v1:<id>` : l'enregistrement complet { id, compte, mode,
+  //     mediaType, blob, overlays, dessin, … }. Le média est un BLOB (structured
+  //     clone) : jamais du base64, et PAS de passage par JSON, qui le perdrait.
+  //   • `brouillons_media_index_v1` : la liste des FICHES légères { id, compte,
+  //     mode, mediaType, bgIdx, apercu, at } — tout ce qu'il faut pour compter et
+  //     peindre la liste SANS charger un seul média.
+  // ⚠️ Pourquoi pas une liste unique (premier jet, relevé par `audit-passio`) :
+  // une vidéo de bobine pèse jusqu'à ~27 Mo, six brouillons ~160 Mo. La liste
+  // unique les remontait TOUS en mémoire à chaque ouverture de l'éditeur (pour
+  // afficher un simple compteur) et les réécrivait TOUS à chaque enregistrement.
+  // ⚠️ L'INDEX SE MODIFIE DANS UNE SEULE TRANSACTION `readwrite` (lecture de
+  // l'index, décision, écritures) : deux enregistrements qui se croisent — deux
+  // onglets, ou un enregistrement et une suppression — ne se perdent plus l'un
+  // l'autre. `decider(index)` est appelée DANS la transaction, de façon
+  // synchrone, et rend { index, poser: [enr…], retirer: [id…], rendu }.
+  // Les retraits passent AVANT les poses : remplacer un brouillon par lui-même tient.
   // ⚠️ Même contrat de lecture que `idbGet` : `[]` = rien d'enregistré,
-  // `undefined` = LECTURE IMPOSSIBLE. L'appelant ne réécrit JAMAIS la liste sur un
-  // `undefined` (il effacerait les brouillons existants sur une erreur passagère).
-  window.idbBrouillonsLoad = function () {
-    return idbGet("brouillons_media_v1").then(function (v) {
+  // `undefined` = LECTURE IMPOSSIBLE (ne jamais la prendre pour un vide).
+  var BR_INDEX = "brouillons_media_index_v1", BR_CLE = "brouillon_media_v1:";
+  window.idbBrouillonsIndex = function () {
+    return idbGet(BR_INDEX).then(function (v) {
       if (v === undefined) return undefined;
       return Array.isArray(v) ? v : [];
     });
   };
-  window.idbBrouillonsSave = function (liste) { return idbPut("brouillons_media_v1", Array.isArray(liste) ? liste : []); };
-  window.idbBrouillonsClear = function () { return idbPut("brouillons_media_v1", []); };
+  // → enregistrement | null (absent) | undefined (lecture impossible)
+  window.idbBrouillonLire = function (id) {
+    if (typeof id !== "string" || !id) return Promise.resolve(null);
+    return idbGet(BR_CLE + id);
+  };
+  // → Promise<{ ok: true, rendu }> quand la transaction est VALIDÉE (`rendu` : ce que
+  //   la décision a voulu rendre) ; Promise<{ ok: false, cause }> sinon — RIEN n'est
+  //   alors écrit (une transaction abandonnée défait ses écritures déjà posées).
+  //   `cause` : "quota" (plus de place), "delai", "indisponible" (base fermée),
+  //   "erreur" (tout le reste). L'appelant ne dit pas « plus de place » pour une
+  //   erreur de programme.
+  // ⚠️ UN ÉCHEC LAISSE UNE TRACE (`diagLog`) : `decider` et `put` peuvent lever
+  // (ReferenceError, DataCloneError d'une valeur non clonable) — avalée sans un mot,
+  // l'erreur s'affichait « stockage plein » et ne se retrouvait nulle part.
+  // ⚠️ L'ÉCRITURE EST BORNÉE (`MODIFIER_MAX_MS`). WebKit peut n'émettre ni
+  // `complete`, ni `error`, ni `abort` (même famille que le piège ① de `openDB`) :
+  // sans borne, l'appelant — qui tient l'écran pendant l'écriture — ne rendrait
+  // jamais la main. Passé le délai, la transaction est abandonnée.
+  var MODIFIER_MAX_MS = 90000;
+  function journalBrouillons(quoi, e) {
+    try { if (typeof diagLog === "function") diagLog("idb brouillons " + quoi + ": " + ((e && (e.name || e.message)) || e || "?")); } catch (e2) {}
+  }
+  function causeEchec(e) {
+    var nom = String((e && e.name) || "");
+    return nom === "QuotaExceededError" ? "quota" : "erreur";
+  }
+  window.idbBrouillonsModifier = function (decider) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve) {
+        var fini = false, rendu, leve = null, minuteur = null;
+        function finir(v) { if (fini) return; fini = true; clearTimeout(minuteur); resolve(v); }
+        function echec(cause, e) { journalBrouillons(cause, e); finir({ ok: false, cause: cause }); }
+        try {
+          var tx = db.transaction(STORE, "readwrite"), st = tx.objectStore(STORE);
+          minuteur = setTimeout(function () {
+            if (fini) return;
+            try { tx.abort(); } catch (e) {}
+            echec("delai", new Error("transaction sans réponse"));
+          }, MODIFIER_MAX_MS);
+          var rq = st.get(BR_INDEX);
+          rq.onsuccess = function () {
+            try {
+              var plan = decider(Array.isArray(rq.result) ? rq.result.slice() : []) || {};
+              (plan.retirer || []).forEach(function (id) { st.delete(BR_CLE + id); });
+              (plan.poser || []).forEach(function (e) { st.put(e, BR_CLE + e.id); });
+              if (Array.isArray(plan.index)) st.put(plan.index, BR_INDEX);
+              rendu = plan.rendu;
+            } catch (e) { leve = e; try { tx.abort(); } catch (e2) {} }
+          };
+          tx.oncomplete = function () { finir({ ok: true, rendu: rendu }); };
+          tx.onerror = function () { echec(causeEchec(leve || tx.error), leve || tx.error); };
+          tx.onabort = function () { echec(causeEchec(leve || tx.error), leve || tx.error); };
+        } catch (e) { echec("erreur", e); }
+      });
+    }).catch(function (e) { journalBrouillons("indisponible", e); return { ok: false, cause: "indisponible" }; });
+  };
+  // Purge de compte : l'index ET toutes les clés de brouillon — par PLAGE de clés,
+  // pas d'après l'index (un média resté sans fiche partirait sinon jamais).
+  window.idbBrouillonsClear = function () {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(STORE, "readwrite"), st = tx.objectStore(STORE);
+          st.delete(IDBKeyRange.bound(BR_CLE, BR_CLE + "\uffff"));
+          st.put([], BR_INDEX);
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { journalBrouillons("purge", tx.error); resolve(false); };
+          tx.onabort = function () { journalBrouillons("purge", tx.error); resolve(false); };
+        } catch (e) { journalBrouillons("purge", e); resolve(false); }
+      });
+    }).catch(function (e) { journalBrouillons("purge", e); return false; });
+  };
 })();
 
 // ⚠️ LE BLOC « CDV, FONCTIONNALITÉ SECONDAIRE DE LA PASSION VOYAGE » A ÉTÉ
