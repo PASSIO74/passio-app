@@ -14,6 +14,9 @@ s'ouvre aux bobines.
 
 ### Allumer (dans cet ordre, jamais l'inverse)
 
+0. **D'abord, et indépendamment du sondage des bobines** : appliquer
+   `migrations/migration_story_sondage_score_auteur_2026-11-27.sql` — correctif de sécurité du sondage des
+   STORIES, déjà en ligne (le score y était un oracle, voir `docs/journal/serveur-securite-base.md`).
 1. Appliquer `migrations/migration_bobine_sondage_2026-11-27.sql` depuis le poste
    (`npm run migration:appliquer -- migrations/migration_bobine_sondage_2026-11-27.sql`).
 2. MESURER en base (canal ①), pas le tableau imprimé :
@@ -38,6 +41,9 @@ Essayer sur un seul appareil sans rien allumer : `localStorage.passio_bobine_son
   la liste. La base ne rend les pourcentages qu'après le vote, ou à l'auteur.
 - Typographie : espace insécable devant « ? » et « ! » dans la question d'un sondage (story comme
   bobine) — le point d'interrogation partait seul à la ligne.
+- **Taille bornée** (`meEchelleMax`, app-08) : un sticker ne dépasse pas l'échelle que l'éditeur permet
+  (5), et un SONDAGE pas 1,6 — au rendu (valeur forgée) comme au pincement. Agrandi à toute la scène, chacune
+  de ses réponses couvrait la moitié de l'écran : un toucher de pause devenait un vote, lu par l'auteur.
 
 ## Invariants
 
@@ -58,8 +64,9 @@ Essayer sur un seul appareil sans rien allumer : `localStorage.passio_bobine_son
   rendu hors des deux lecteurs.
 - `tests/e2e/bobine-montage-video.spec.js` ⑤ : même ligne (« le sondage reste story seulement »).
 
-Verrous : `tests/e2e/bobine-sondage.spec.js` (4), `tests/sql/migration-bobine-sondage.test.sh`
-(36 contrôles, 90 cas par identité).
+Verrous : `tests/e2e/bobine-sondage.spec.js` (5), `tests/sql/migration-bobine-sondage.test.sh`
+(41 contrôles, 94 cas par identité, dont l'oracle par blocage),
+`tests/sql/migration-story-sondage-score-auteur.test.sh` (16 contrôles, 40 cas).
 
 ## Non éprouvé
 

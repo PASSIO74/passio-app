@@ -137,6 +137,27 @@ QD banc "drop policy lecture_de_trop on public.bobine_sondage_votes" >/dev/null
 sortie="$(FICHIER banc "$MIGRATION")"; code=$?
 verifier "la policy retirée, la migration repasse (10 OK)" "$code/$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "0/10"
 
+# La barrière de suppression éprouvée SEULE : la policy INSERT perd son « not suppression_de_mon_compte() ».
+QD banc "drop policy bobine_sondage_votes_insert on public.bobine_sondage_votes;
+  create policy bobine_sondage_votes_insert on public.bobine_sondage_votes for insert to authenticated
+    with check (user_id = (select auth.uid())::text and public.bobine_sondage_visible(post_id) and not public.bobine_est_a_moi(post_id))" >/dev/null
+verifier "mutation (policy sans garde de suppression) : le déclencheur refuse seul le compte en suppression" "$(QD banc "select banc.sous(banc.id('S'), \$s\$insert into public.bobine_sondage_votes (post_id, choix) values ('bA', 0)\$s\$)" | sed 's/^err:.*/refus/')" "refus"
+sortie="$(FICHIER banc "$MIGRATION")"; code=$?
+verifier "rejouer la migration remet la policy" "$code/$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "0/10"
+
+# Un déclencheur dont l'ARGUMENT est faux : la barrière regarderait une colonne qui n'existe pas.
+QD banc "drop trigger zz_barriere_suppression on public.bobine_sondage_votes;
+  create trigger zz_barriere_suppression before insert or update on public.bobine_sondage_votes
+    for each row execute function public.refuser_ecriture_compte_en_suppression('userid')" >/dev/null
+sortie="$(FICHIER banc "$MIGRATION")"; code=$?
+verifier "rejoué sur un déclencheur à l'argument faux : la migration le repose (10 OK)" "$code/$(printf '%s\n' "$sortie" | grep -c '§OK$' || true)" "0/10"
+QD banc "drop trigger zz_barriere_suppression on public.bobine_sondage_votes;
+  create trigger zz_barriere_suppression before insert or update on public.bobine_sondage_votes
+    for each row execute function public.refuser_ecriture_compte_en_suppression('userid')" >/dev/null
+verifier "verdict seul sur ce déclencheur : la ligne 7 est en ÉCHEC" "$(QD banc "select case when (select count(*) from pg_trigger t where t.tgrelid = 'public.bobine_sondage_votes'::regclass and t.tgname = 'zz_barriere_suppression' and encode(t.tgargs, 'escape') = 'user_id\\000') = 1 then 'OK' else 'ECHEC' end")" "ECHEC"
+sortie="$(FICHIER banc "$MIGRATION")"; code=$?
+verifier "… et la migration rejouée le répare" "$code/$(QD banc "select count(*) from pg_trigger t where t.tgrelid = 'public.bobine_sondage_votes'::regclass and t.tgname = 'zz_barriere_suppression' and encode(t.tgargs, 'escape') = 'user_id\\000'")" "0/1"
+
 echo "══ ④ Retour arrière ══"
 sortie="$(RETOUR_ARRIERE)"; code=$?
 verifier "le bloc --| de l'en-tête s'exécute tel quel" "$code" "0"

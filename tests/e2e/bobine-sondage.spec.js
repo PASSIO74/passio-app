@@ -13,7 +13,9 @@
 //      les résultats viennent de la base ; « déjà voté » montre les résultats ;
 //      un refus et une table absente se DISENT et laissent revoter ; ma bobine
 //      montre les résultats sans voter ; une bobine d'exemple reste locale ;
-//   ④ les résultats ne sont demandés que pour la bobine REGARDÉE.
+//   ④ les résultats ne sont demandés que pour la bobine REGARDÉE ;
+//   ⑤ un sondage ne se fait pas VOILE : sa taille est bornée (1,6) au rendu comme
+//      à l'éditeur — agrandi à toute la scène, un toucher de pause devenait un vote.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -239,4 +241,35 @@ test("④ les résultats ne sont demandés que pour la bobine regardée — et r
   await page.evaluate(() => { const b = document.querySelector('#reelsList .reel-item[data-post-id="reel_lea"] .st-sd-opt'); reelsState.open = false; if (b) b.click(); });
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => window.__votes.length)).toBe(avant);
+});
+
+test("⑤ un sondage ne se fait pas voile : taille bornée au rendu (valeur forgée) et à l'éditeur (pincement)", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const echelle = (html) => { const d = document.createElement("div"); d.innerHTML = html; const el = d.firstElementChild; const m = /scale\(([\d.]+)\)/.exec(el.getAttribute("style")); return m ? Number(m[1]) : null; };
+    const forge = [{ type: "sondage", q: "?", a: "Oui", b: "Non", x: 50, y: 50, scale: 40 }];
+    const texte = [{ type: "text", text: "x", x: 50, y: 50, scale: 40 }];
+    return {
+      sondageBobine: echelle(_storyOverlaysHtml(forge, { bobine: true })),
+      sondageStory: echelle(_storyOverlaysHtml(forge, { story: true })),
+      texte: echelle(_storyOverlaysHtml(texte, { story: true })),
+      petit: echelle(_storyOverlaysHtml([{ type: "sondage", q: "?", a: "a", b: "b", scale: 0.01 }], { bobine: true })),
+      normal: echelle(_storyOverlaysHtml([{ type: "sondage", q: "?", a: "a", b: "b", scale: 1.2 }], { bobine: true })),
+      maxEditeur: [meEchelleMax({ type: "sondage" }), meEchelleMax({ type: "text" })],
+    };
+  });
+  expect(r).toEqual({ sondageBobine: 1.6, sondageStory: 1.6, texte: 5, petit: 0.3, normal: 1.2, maxEditeur: [1.6, 5] });
+  // Rendu à 390 px : la carte bornée laisse la plus grande partie de la scène au toucher de la vidéo.
+  await page.setViewportSize({ width: 390, height: 780 });
+  const part = await page.evaluate(() => {
+    const hote = document.createElement("div");
+    hote.style.cssText = "position:fixed;inset:0;";
+    hote.className = "reel-overlays-layer";
+    hote.innerHTML = _storyOverlaysHtml([{ type: "sondage", q: "Plutôt mer ou montagne ?", a: "Mer", b: "Montagne", x: 50, y: 50, scale: 40 }], { bobine: true });
+    document.body.appendChild(hote);
+    const b = hote.querySelector(".st-sondage").getBoundingClientRect();
+    hote.remove();
+    return (b.width * b.height) / (innerWidth * innerHeight);
+  });
+  expect(part, "la carte couvre moins de la moitié de l'écran").toBeLessThan(0.5);
 });

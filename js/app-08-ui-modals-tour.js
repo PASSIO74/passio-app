@@ -4473,7 +4473,7 @@ function _meMakeInteractive(el, ov, handle) {
       var p = pointers[ids[0]], q = pointers[ids[1]];
       var dist = Math.hypot(p.x - q.x, p.y - q.y) || 1;
       var ang = Math.atan2(q.y - p.y, q.x - p.x);
-      ov.scale = Math.max(0.3, Math.min(5, pinch.scale * (dist / pinch.dist)));
+      ov.scale = Math.max(0.3, Math.min(meEchelleMax(ov), pinch.scale * (dist / pinch.dist)));
       ov.rot = pinch.rot + (ang - pinch.ang) * 180 / Math.PI;
       _meApplyTransform(el, ov);
     } else if (drag && rect) {
@@ -4524,7 +4524,7 @@ function _meMakeInteractive(el, ov, handle) {
       try { handle.setPointerCapture(e.pointerId); } catch(_) {}
       function mv(ev) {
         var d = Math.hypot(ev.clientX - cx, ev.clientY - cy) || 1;
-        ov.scale = Math.max(0.3, Math.min(5, sScale * (d / startD)));
+        ov.scale = Math.max(0.3, Math.min(meEchelleMax(ov), sScale * (d / startD)));
         _meApplyTransform(el, ov);
       }
       function end(ev) {
@@ -4964,6 +4964,12 @@ function _storyDessinHtml(o) {
   }).join("");
   return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
 }
+// Taille maximale d'un sticker, dans l'éditeur comme dans les lecteurs. ⚠️ Le SONDAGE est borné
+// plus bas (red team du 2026-11-27) : agrandi à toute la scène, chacune de ses deux réponses couvrait
+// la moitié de l'écran — un toucher pour mettre la vidéo en pause devenait un vote, que l'auteur lit
+// nominativement. À 1,6, la carte occupe au plus une bande de l'écran.
+var ME_ECHELLE_MAX = 5, ME_SONDAGE_ECHELLE_MAX = 1.6;
+function meEchelleMax(o) { return o && o.type === "sondage" ? ME_SONDAGE_ECHELLE_MAX : ME_ECHELLE_MAX; }
 // `opts.story` : appelé par le lecteur de STORY ; `opts.bobine` : par le lecteur
 // de BOBINES (`renderReelHTML`, app-05). Le sticker Question n'est rendu que par
 // ces deux lecteurs, qui savent à qui va la réponse (la story active, ou la
@@ -4980,7 +4986,9 @@ function _storyOverlaysHtml(overlays, opts) {
   // couleur par _cssColor.
   var _nb = function(v, parDefaut) { var n = Number(v); return Number.isFinite(n) ? n : parDefaut; };
   return (overlays || []).map(function(o) {
-    var s = _nb(o.scale, 1), r = _nb(o.rot, 0);
+    // Échelle BORNÉE à ce que l'éditeur permet (`meEchelleMax`) : une valeur forgée ne fait pas
+    // d'un sticker un voile sur toute la story ou la bobine.
+    var s = Math.max(0.3, Math.min(meEchelleMax(o), _nb(o.scale, 1))), r = _nb(o.rot, 0);
     var tr = "transform:translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg);";
     var pos = "left:" + _nb(o.x, 50) + "%;top:" + _nb(o.y, 50) + "%;" + tr;
     if (o.type === "text") {

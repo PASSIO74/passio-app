@@ -180,16 +180,29 @@ select banc.cas('bobine_est_a_moi : vrai pour sa bobine, faux pour sa publicatio
 -- ── La même règle que la lecture de `posts` ─────────────────────────────────────────────────────
 select banc.cas('12 identités × 5 bobines à sondage : l''aide et la RLS de posts disent la même chose (0 écart, 26 vues)', banc.aide_contre_rls(), '0/26');
 
+-- ── L'ORACLE PAR BLOCAGE (red team du 2026-11-27, P1) ─────────────────────────────────────────
+-- Un spectateur qui bloque un votant, relit le score, puis débloque, ne doit RIEN apprendre :
+-- le score se compte du point de vue de l'auteur, pas de celui de l'appelant. Votes sur bA :
+-- B Plage, M Montagne, N Plage.
+insert into public.blocks (blocker_id, blocked_id) values (banc.id('B'), banc.id('M'));
+select banc.cas('oracle : B bloque M (votant) — le score que lit B ne bouge pas', banc.val(banc.id('B'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 1, "a_vote": true, "mon_choix": 0}');
+delete from public.blocks where blocker_id = banc.id('B') and blocked_id = banc.id('M');
+insert into public.blocks (blocker_id, blocked_id) values (banc.id('M'), banc.id('B'));
+select banc.cas('oracle : M bloque B (l''autre sens) — le score que lit B ne bouge pas', banc.val(banc.id('B'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 1, "a_vote": true, "mon_choix": 0}');
+select banc.cas('oracle : … ni celui que lit M', banc.val(banc.id('M'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 1, "a_vote": true, "mon_choix": 1}');
+delete from public.blocks where blocker_id = banc.id('M') and blocked_id = banc.id('B');
+
 -- ── Le blocage APRÈS le vote ─────────────────────────────────────────────────────────────────
 insert into public.blocks (blocker_id, blocked_id) values (banc.id('A'), banc.id('M'));
 select banc.cas('A bloque M : le vote de M sort de la LISTE de A', banc.val(banc.id('A'), $s$select string_agg(choix::text, ',' order by choix, user_id) from public.bobine_sondage_votes where post_id = 'bA'$s$), '0,0');
 select banc.cas('A bloque M : le vote de M sort du SCORE de A', banc.val(banc.id('A'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 0, "a_vote": true, "mon_choix": null}');
 select banc.cas('M, bloqué, ne lit plus les résultats', banc.val(banc.id('M'), $s$select coalesce(public.bobine_sondage_resultats('bA')::text, 'nul')$s$), 'nul');
 select banc.cas('résidu assumé : M relit encore SA ligne', banc.val(banc.id('M'), $s$select count(*)::text from public.bobine_sondage_votes$s$), '1');
-select banc.cas('résidu assumé : B, sans blocage avec M, compte encore le vote de M', banc.val(banc.id('B'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 1, "a_vote": true, "mon_choix": 0}');
+select banc.cas('B lit le score de l''AUTEUR : le vote de M, que A a bloqué, n''y est plus pour personne', banc.val(banc.id('B'), $s$select public.bobine_sondage_resultats('bA')::text$s$), '{"a": 2, "b": 0, "a_vote": true, "mon_choix": 0}');
 insert into public.blocks (blocker_id, blocked_id) values (banc.id('N'), banc.id('A'));
 select banc.cas('N bloque A : le vote de N sort aussi du score et de la liste de A', banc.val(banc.id('A'), $s$select public.bobine_sondage_resultats('bA')::text$s$) || ' ' || banc.val(banc.id('A'), $s$select count(*)::text from public.bobine_sondage_votes where post_id = 'bA'$s$), '{"a": 1, "b": 0, "a_vote": true, "mon_choix": null} 1');
 select banc.cas('N, qui a bloqué A, ne lit plus les résultats', banc.val(banc.id('N'), $s$select coalesce(public.bobine_sondage_resultats('bA')::text, 'nul')$s$), 'nul');
+select banc.cas('après N bloque A, B lit toujours le même score que A', banc.val(banc.id('B'), $s$select (public.bobine_sondage_resultats('bA') ->> 'a') || '/' || (public.bobine_sondage_resultats('bA') ->> 'b')$s$) || ' ' || banc.val(banc.id('A'), $s$select (public.bobine_sondage_resultats('bA') ->> 'a') || '/' || (public.bobine_sondage_resultats('bA') ->> 'b')$s$), '1/0 1/0');
 
 -- ── L'abonnement retiré, la modération ───────────────────────────────────────────────────────
 delete from public.follows where follower_id = banc.id('F') and following_id = banc.id('P');

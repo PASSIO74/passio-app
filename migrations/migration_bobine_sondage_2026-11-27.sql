@@ -17,7 +17,8 @@
 --      `(post_id, choix)` : `user_id` et `created_at` prennent leur défaut (règle C-04).
 --      Lu par le votant (le sien) et par l'AUTEUR DE LA BOBINE (hors comptes bloqués).
 --   ② `bobine_sondage_resultats(_post_id)` : les comptes 0 / 1 et mon choix — rendus SEULEMENT à
---      qui a voté ou à l'auteur (on ne voit pas la tendance avant de voter).
+--      qui a voté ou à l'auteur (on ne voit pas la tendance avant de voter). Le score se compte du
+--      point de vue de l'AUTEUR (hors comptes en blocage avec LUI) : le même pour tous.
 --   Bornes : débit par compte (120 / minute), barrière de suppression de compte, compte suspendu —
 --      comme `post_likes` et `story_sondage_votes`.
 --
@@ -55,12 +56,21 @@
 --   · table NON publiée en temps réel (les résultats se relisent à l'ouverture) ;
 --   · le votant relit SA ligne même après avoir perdu la vue de la bobine (bloqué, désabonné) :
 --     elle lui dit que la bobine existe encore — comme son « j'aime » dans `post_likes` ;
---   · le score d'un spectateur exclut les comptes en blocage avec LUI (même filtre que la liste
---     de l'auteur) : deux spectateurs peuvent lire deux totaux ;
 --   · votes hors export de compte, emportés par les clés étrangères à la suppression.
+--
+-- ⚠️ LE SCORE NE SE COMPTE PAS DU POINT DE VUE DE L'APPELANT (red team du 2026-11-27, P1). Le
+--   premier jet excluait les votes des comptes « en blocage avec moi » — `is_blocked_with(v.user_id)`,
+--   évalué sous l'APPELANT. Or chacun pose et retire ses blocages lui-même (règle C-04) : un votant
+--   lisait le score, bloquait X, relisait — le score avait perdu une unité, il savait ce que X avait
+--   voté — puis débloquait X. Toute la liste des votants se désanonymisait à 60 blocages par minute,
+--   sans que X en sache rien. Le score se compte désormais du point de vue de l'AUTEUR de la bobine
+--   (hors comptes en blocage avec LUI, la liste qu'il lit) : le même pour tous les spectateurs, et
+--   aucun geste d'un spectateur ne le fait bouger. Le même défaut est corrigé pour les stories par
+--   `migration_story_sondage_score_auteur_2026-11-27.sql`.
 --
 -- RETOUR ARRIÈRE (éditeur SQL ; la table d'abord : ses policies tiennent les fonctions) :
 --| begin;
+--| set local lock_timeout = '3s';
 --| drop function if exists public.bobine_sondage_resultats(text);
 --| drop table if exists public.bobine_sondage_votes;
 --| drop function if exists public.bobine_sondage_visible(text);
@@ -155,10 +165,18 @@ revoke all on public.bobine_sondage_votes from public, anon, authenticated;
 grant select on public.bobine_sondage_votes to authenticated;
 grant insert (post_id, choix) on public.bobine_sondage_votes to authenticated;
 
+-- Lecture : le votant (sa ligne), et l'auteur (les votes de SES bobines, hors comptes en blocage
+-- avec lui). ⚠️ « Mes bobines » est une sous-requête NON corrélée, calculée UNE fois par requête
+-- (index `idx_posts_author`) : la première écriture appelait `bobine_est_a_moi(post_id)` sur chaque
+-- ligne — un `GET` sans filtre, par n'importe quel compte, parcourait toute la table en appelant une
+-- fonction par vote (red team, P2). L'auteur lit toujours ses propres publications (les quatre règles
+-- de lecture de `posts` commencent par « auteur OU … »).
 drop policy if exists bobine_sondage_votes_select on public.bobine_sondage_votes;
 create policy bobine_sondage_votes_select on public.bobine_sondage_votes for select to authenticated
   using (user_id = (select auth.uid())::text
-         or (public.bobine_est_a_moi(post_id) and not public.is_blocked_with(user_id)));
+         or (post_id in (select p.id from public.posts p
+                          where p.author_id = (select auth.uid())::text and p.is_reel is true)
+             and not public.is_blocked_with(user_id)));
 drop policy if exists bobine_sondage_votes_insert on public.bobine_sondage_votes;
 create policy bobine_sondage_votes_insert on public.bobine_sondage_votes for insert to authenticated
   with check (user_id = (select auth.uid())::text
@@ -176,7 +194,9 @@ create trigger zz_barriere_suppression before insert or update on public.bobine_
 -- ── ② Les résultats ──────────────────────────────────────────────────────────────────────────────
 -- `null` : pas de compte, ou pas une bobine à sondage que je vois (privée, bloquée, masquée,
 -- inconnue : la même réponse). `{a_vote:false}` : je la vois, je n'ai pas voté, elle n'est pas à
--- moi. Sinon les comptes — hors comptes en blocage avec moi, comme la liste que l'auteur lit.
+-- moi. Sinon les comptes, du point de vue de l'AUTEUR : hors comptes en blocage avec LUI (la liste
+-- qu'il lit), jamais selon les blocages de l'appelant (voir l'en-tête : c'était un oracle). Une
+-- anti-jointure sur `blocks_pkey`, pas un appel de fonction par vote.
 create or replace function public.bobine_sondage_resultats(_post_id text) returns jsonb
 language sql stable security definer set search_path = '' as $fn$
   select case
@@ -192,8 +212,12 @@ language sql stable security definer set search_path = '' as $fn$
                               where m.post_id = _post_id and m.user_id = (auth.uid())::text),
                'a', count(*) filter (where v.choix = 0),
                'b', count(*) filter (where v.choix = 1))
-        from public.bobine_sondage_votes v
-       where v.post_id = _post_id and not public.is_blocked_with(v.user_id))
+        from public.posts p
+        join public.bobine_sondage_votes v on v.post_id = p.id
+       where p.id = _post_id
+         and not exists (select 1 from public.blocks b
+                          where (b.blocker_id = p.author_id and b.blocked_id = v.user_id)
+                             or (b.blocker_id = v.user_id and b.blocked_id = p.author_id)))
   end
 $fn$;
 revoke all on function public.bobine_sondage_resultats(text) from public, anon;
@@ -244,12 +268,16 @@ select * from (values
            or (c.contype = 'f' and c.confrelid = 'public.posts'::regclass and c.confdeltype = 'c')
            or (c.contype = 'f' and c.confrelid = 'public.profiles'::regclass and c.confdeltype = 'c')
            or (c.contype = 'c' and c.conname = 'bobine_sondage_votes_choix'))) = 4),
-  (7, 'débit par compte et barrière de suppression posés',
+  (7, 'débit par compte (120) et barrière de suppression (user_id) posés, avec leurs arguments',
      (select count(*) from pg_trigger t
        where t.tgrelid = 'public.bobine_sondage_votes'::regclass and not t.tgisinternal and t.tgenabled = 'O'
-         and ((t.tgname = 'trg_debit_compte' and t.tgfoid = 'public.debit_par_compte()'::regprocedure)
+         -- Les ARGUMENTS comptent : une faute de frappe dans la colonne de la barrière la rendrait
+         -- muette, avec un verdict OK (red team, P3).
+         and ((t.tgname = 'trg_debit_compte' and t.tgfoid = 'public.debit_par_compte()'::regprocedure
+               and encode(t.tgargs, 'escape') = '120\000')
            or (t.tgname = 'zz_barriere_suppression'
-               and t.tgfoid = 'public.refuser_ecriture_compte_en_suppression()'::regprocedure))) = 2),
+               and t.tgfoid = 'public.refuser_ecriture_compte_en_suppression()'::regprocedure
+               and encode(t.tgargs, 'escape') = 'user_id\000'))) = 2),
   (8, 'table hors de toute publication (temps réel compris)',
      not exists (select 1 from pg_publication_tables
                   where schemaname = 'public' and tablename = 'bobine_sondage_votes')),

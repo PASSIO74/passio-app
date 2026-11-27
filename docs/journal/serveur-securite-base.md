@@ -2327,8 +2327,12 @@ par la session cloud avait été refusée par ses permissions. Mesuré au canal 
 - Piège (red team) : une fonction SECURITY DEFINER appelée par une POLICY est exécutable en RPC par tout
   compte (la policy exige EXECUTE) — `story_a_un_sondage` vérifie donc la visibilité DEDANS, sinon elle
   disait qu'une story privée existait.
-- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit (`is_blocked_with`),
-  sinon un compte bloqué pèse encore sur le pourcentage.
+- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit — **du point de vue
+  de l'AUTEUR**. ⚠️ Mis en œuvre par `not is_blocked_with(v.user_id)`, évalué sous l'APPELANT, il est
+  devenu un ORACLE (red team du sondage des bobines, 2026-11-27) : un votant bloquait X, relisait le
+  score, savait ce que X avait voté, débloquait X. Corrigé par `migration_story_sondage_score_auteur_2026-11-27.sql`
+  (anti-jointure sur `blocks` avec `stories.author_id`, banc `tests/sql/migration-story-sondage-score-auteur.test.sh`) —
+  **NON appliquée** au 2026-11-27 ; 0 vote en base ce jour-là.
 
 ## 🔒 ACTIVITÉS PRIVÉES, SUR INVITATION — UNE INVITATION CIBLÉE N'EST PLUS UNE ANNONCE PUBLIQUE (2026-11-26)
 
@@ -2493,6 +2497,11 @@ par son propre prérequis (« Policies source supplementaires : revue requise »
 
 ## 📊 SONDAGE DES BOBINES — `migration_bobine_sondage_2026-11-27.sql` (**NON appliquée** au 2026-11-27)
 
+> **Règle tirée de ce lot** : un filtre qui dépend d'un état que l'APPELANT écrit lui-même (ses blocages,
+> ses abonnements, ses masquages) ne s'applique jamais à un AGRÉGAT que d'autres comptes alimentent —
+> il en ferait un oracle sur ces comptes. Un agrégat se calcule du point de vue du PROPRIÉTAIRE de ce
+> qu'on agrège (l'auteur), le même pour tous. C'est la règle C-04, appliquée aux lectures.
+
 Le sondage des stories ouvert aux bobines (une bobine = une ligne de `posts` marquée `is_reel`, son
 sticker dans `posts.overlays`). `bobine_sondage_votes` (post_id, user_id, choix 0|1) : un vote par
 compte et par bobine, jamais modifié ni retiré (aucun droit UPDATE / DELETE). Écrit sur une bobine
@@ -2516,6 +2525,22 @@ livré drapeau éteint.
   mutations sur base migrée, retour arrière exécuté tel quel, gardes. Le socle du banc datant du 06/11,
   `tests/sql/fixtures/bobine-sondage-production-2026-11-27.sql` y repose ce que la production portait le
   27/11 et lève si l'empreinte d'une fonction s'en écarte.
+- **Red team du 2026-11-27 (`passio-red-team`, lecture seule, quatre lectures de production)** :
+  - **P1** — le score était filtré par `is_blocked_with(v.user_id)` sous l'APPELANT : oracle par blocage
+    (voir la règle en tête de fiche). Corrigé : score du point de vue de l'auteur, anti-jointure sur
+    `blocks_pkey` ; cas de banc « B bloque M : le score de B ne bouge pas » (réinjecté : rouge sur l'ancien
+    code). Même défaut, déjà en ligne, corrigé pour les stories (fiche 📊 SONDAGE DES STORIES).
+  - **P2** — la policy SELECT appelait `bobine_est_a_moi(post_id)` sur chaque ligne d'un `GET` sans filtre :
+    remplacée par une sous-requête NON corrélée « mes bobines » (calculée une fois, `idx_posts_author`).
+  - **P3 corrigés** : `lock_timeout` dans le retour arrière ; la ligne 7 du verdict lit les ARGUMENTS des
+    déclencheurs (`tgargs`) ; banc : la barrière de suppression éprouvée SEULE (policy amputée) ; client :
+    taille d'un sticker bornée au rendu, et le SONDAGE à 1,6 (agrandi, il faisait d'un toucher de pause un vote).
+  - **P3 non corrigés, assumés** : la garde et la ligne 9 lisent le TEXTE de `post_is_visible` (une définition
+    future qui garderait ces appels dans une branche morte passerait) ; `post_is_visible` est en
+    `search_path = public` (antérieur au lot, pas exploitable aujourd'hui : aucun chemin PostgREST ne crée de
+    table temporaire) ; `Prefer: count=planned` pourrait donner un ordre de grandeur des votes d'une bobine
+    populaire une fois la table analysée (générique au projet) ; un vote n'est ni exporté ni retirable
+    (comme `story_sondage_votes` — à trancher au regard du RGPD).
 - Vu en passant, non corrigé (fichier appliqué et attesté par empreinte) : le bloc « RETOUR ARRIÈRE » de
   `migration_story_sondage_2026-11-26.sql` supprime `story_a_un_sondage` AVANT la table dont la policy en
   dépend — il échoue tel quel ; inverser les deux lignes le jour où on le joue.
