@@ -2000,8 +2000,9 @@ export function pageInscrits(tous, page = 1, parPage = INSCRITS_PAR_PAGE, cle = 
 // Demande de Benjamin : à côté du nombre d'utilisateurs, combien de comptes sont
 // venus AUJOURD'HUI — de 00 h à 00 h, heure de Paris, remis à zéro chaque nuit —
 // et, en le touchant, lesquels, par leur nom (jamais l'e-mail, comme les inscrits).
-// « Venu » = le compte a ouvert l'app ou l'a remise au premier plan (télémétrie
-// `session/start` ou `lifecycle/visible`, identité `auth_uid` posée par le
+// « Venu » = le compte a ouvert l'app, l'a remise au premier plan ou l'avait à
+// l'écran (télémétrie `session/start`, `lifecycle/visible` ou
+// `lifecycle/heartbeat`), identité `auth_uid` posée par le
 // SERVEUR, jamais un `user_id` écrit par le client), OU s'est connecté
 // (`last_sign_in_at`). La connexion seule ne suffirait pas : une app installée
 // garde sa session des semaines sans jamais se reconnecter. Mêmes exclusions que

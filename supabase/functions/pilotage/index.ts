@@ -1476,9 +1476,12 @@ async function listerInscrits(admin: Admin, corps: Record<string, unknown>) {
 // ─── Les connectés du jour (2026-11-26) ─────────────────────────────────────
 // Le nombre à côté des utilisateurs : les comptes venus depuis minuit, heure de
 // Paris (debutJourParis), remis à zéro chaque nuit. Règle et exclusions :
-// `connectesDuJour` (_shared). Seuls les passages d'ouverture (`session/start`,
-// `lifecycle/visible`) sont lus, et seulement `auth_uid` : quelques lignes par
-// compte et par jour. Au-delà de CONNECTES_LIGNES_PAGES pages de 1 000, le
+// `connectesDuJour` (_shared). Seuls les passages d'ouverture et de présence
+// (`session/start`, `lifecycle/visible`, `lifecycle/heartbeat`) sont lus, et
+// seulement `auth_uid`. Le battement (une fois par minute à l'écran) est
+// indispensable : à une ouverture à froid, `session/start` part souvent AVANT que
+// la session soit restaurée, donc sans identité (contre-revue de la PR #1112).
+// Au-delà de CONNECTES_LIGNES_PAGES pages de 1 000, le
 // nombre est une borne basse et le DIT (`tronque`).
 const CONNECTES_LIGNES_PAGES = 20;
 async function lireConnectesJour(admin: Admin) {
@@ -1489,8 +1492,8 @@ async function lireConnectesJour(admin: Admin) {
   for (let p = 0; p < CONNECTES_LIGNES_PAGES; p++) {
     const { data, error } = await admin.from("telemetry_events").select("auth_uid,received_at")
       .eq("env", "production").gte("received_at", depuisIso).not("auth_uid", "is", null).is("meta->>trafic", null)
-      // session/start ou lifecycle/visible (les deux autres croisements n'existent pas : session/end, lifecycle/hidden).
-      .in("type", ["session", "lifecycle"]).in("action", ["start", "visible"])
+      // session/start, lifecycle/visible ou lifecycle/heartbeat (les autres croisements n'existent pas).
+      .in("type", ["session", "lifecycle"]).in("action", ["start", "visible", "heartbeat"])
       .order("received_at", { ascending: false }).range(p * MAX_LIGNES_POSTGREST, (p + 1) * MAX_LIGNES_POSTGREST - 1);
     if (error) throw error;
     const lot = (data || []) as { auth_uid: string; received_at: string }[];

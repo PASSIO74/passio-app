@@ -23,7 +23,9 @@
 - **À côté, les connectés du jour (2026-11-26).** Les comptes venus depuis minuit, heure de Paris
   (`debutJourParis`), remis à zéro chaque nuit. Toucher le nombre ouvre la liste par nom, le dernier
   venu d'abord avec son heure (action `connectes`, lue à la demande). « Venu » = un passage
-  d'ouverture en télémétrie (`session/start` ou `lifecycle/visible`, identité `auth_uid` posée par le
+  d'ouverture ou de présence en télémétrie (`session/start`, `lifecycle/visible` ou
+  `lifecycle/heartbeat` — le battement compte, car à une ouverture à froid `session/start` part
+  souvent avant que la session soit restaurée, sans identité), `auth_uid` posé par le
   serveur, trafic robot/émulation/équipe écarté) OU une connexion (`last_sign_in_at`) : la connexion
   seule ne suffirait pas, une app installée garde sa session des semaines. Mêmes exclusions que le
   total (`compteCree`) ; aucune migration. Limites : un appareil qui a coupé la télémétrie

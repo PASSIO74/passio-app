@@ -704,6 +704,26 @@ test("connectés aujourd'hui (2026-11-26) : à côté du total, ils ouvrent la l
   await expect(page.locator("#accueil")).toBeVisible();
 });
 
+test("connectés aujourd'hui : jusqu'à 4 chiffres, côte à côte au gabarit iPhone ; au-delà, le second passe dessous, jamais de barre horizontale", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  let e = etat({ activation: { ...BASE.activation, inscrits: { total: 1234, tronque: false } }, connectes: { total: 567, tronque: false } });
+  await page.route(FONCTION, async (r) => { envois.push(1); await r.fulfill({ json: e }); });
+  await page.goto("/pilotage/");
+  await expect(page.locator("#connectesNombre")).toHaveText("567");
+  let [a, b] = [await page.locator("#totalUtilisateurs").boundingBox(), await page.locator("#connectesJour").boundingBox()];
+  expect(b.x, "à côté").toBeGreaterThanOrEqual(a.x + a.width);
+  expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  e = etat({ activation: { ...BASE.activation, inscrits: { total: 12345, tronque: true } }, connectes: { total: 1234, tronque: true } });
+  await page.reload();
+  await expect(page.locator("#totalNombre")).toHaveText("12345+");
+  await expect(page.locator("#connectesNombre")).toHaveText("1234+");
+  b = await page.locator("#connectesJour").boundingBox();
+  expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+});
+
 test("connectés aujourd'hui : une fonction pas encore à jour ou une lecture ratée montre « — »", async ({ page }) => {
   await poserSession(page);
   await routerFonction(page, [], etat({ connectes: null, nonLus: ["connectes"], erreursLecture: { connectes: "HTTP 500" } }));

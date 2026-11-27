@@ -973,13 +973,18 @@ test("connectés aujourd'hui (2026-11-26) : le nombre à l'accueil, la liste par
   const reconnecte = compte("66666666-6666-4666-8666-666666666666", "max@exemple.fr", { last_sign_in_at: iso(maintenant - 1000) });  // à quelques secondes près : le banc tient même juste après minuit
   const hier = compte("77777777-7777-4777-8777-777777777777", "ana@exemple.fr", { last_sign_in_at: iso(minuit - 60e3) });
   const e2e = compte("55555555-5555-4555-8555-555555555555", "robot@passio-e2e.test");
+  // Ouverture à froid : son session/start est parti SANS identité ; seul son battement le porte.
+  const present = compte("88888888-8888-4888-8888-888888888888", "nina@exemple.fr");
   const ligne = (uid, ms, type = "session", act = "start", meta = {}) => ({ env: "production", type, action: act, auth_uid: uid, received_at: iso(ms), meta });
   await monter({
-    utilisateurs: [PILOTE, venu, reconnecte, hier, e2e],
+    utilisateurs: [PILOTE, venu, reconnecte, hier, e2e, present],
     tables: {
-      profiles: [{ id: venu.id, username: "Zoé d'Annecy" }, { id: reconnecte.id, username: "Max" }, { id: hier.id, username: "Ana" }],
+      profiles: [{ id: venu.id, username: "Zoé d'Annecy" }, { id: reconnecte.id, username: "Max" }, { id: hier.id, username: "Ana" }, { id: present.id, username: "Nina" }],
       telemetry_events: [
         ligne(venu.id, maintenant - 2000, "lifecycle", "visible"),
+        ligne(null, maintenant - 4000),                                  // session/start parti avant la session
+        ligne(present.id, maintenant - 3000, "lifecycle", "heartbeat"),
+        ligne(present.id, maintenant - 2500, "lifecycle", "hidden"),     // ni hidden ni end ne comptent seuls
         ligne(hier.id, minuit - 5 * 60e3),                            // hier soir : remis à zéro
         ligne(e2e.id, maintenant - 60e3),
         ligne(PILOTE.id, maintenant - 60e3),
@@ -989,13 +994,13 @@ test("connectés aujourd'hui (2026-11-26) : le nombre à l'accueil, la liste par
   });
   const e = await action({ action: "etat" });
   assert.equal(e.status, 200);
-  assert.equal(e.corps.connectes.total, 2);
+  assert.equal(e.corps.connectes.total, 3);
   assert.equal(e.corps.connectes.depuis, iso(minuit));
   assert.ok(!("liste" in e.corps.connectes), "l'accueil ne porte que le nombre");
   const r = await action({ action: "connectes", page: 1 });
   assert.equal(r.status, 200);
-  assert.equal(r.corps.total, 2);
-  assert.deepEqual(r.corps.comptes.map((c) => c.nom), ["Max", "Zoé d'Annecy"], "le dernier venu d'abord");
+  assert.equal(r.corps.total, 3);
+  assert.deepEqual(r.corps.comptes.map((c) => c.nom), ["Max", "Zoé d'Annecy", "Nina"], "le dernier venu d'abord ; le battement compte");
   const texte = JSON.stringify(r.corps);
   assert.ok(!texte.includes("@") && !texte.includes(venu.id), "ni e-mail ni identifiant");
   assert.deepEqual(ecrituresHorsMarque(), [], "lire n'écrit rien");
