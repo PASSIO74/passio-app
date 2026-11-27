@@ -3787,10 +3787,12 @@ function meOuvrirStickers() {
   // ❓ Question : story ET bobine (2026-11-26, « les mêmes fonctionnalités que la
   // story », Benjamin). Dans le lecteur de bobines, la réponse part à l'AUTEUR
   // DE LA BOBINE affichée, lu dans `reelsState.items` (la ligne serveur), jamais
-  // dans l'overlay. 📊 Sondage reste story seulement : ses votes sont rangés par
-  // `story_id` en base, une bobine n'y a pas de place sans migration.
+  // dans l'overlay. 📊 Sondage : story (votes rangés par `story_id`) ; en BOBINE
+  // il a sa propre table (`bobine_sondage_votes`, migration du 2026-11-27) et n'est
+  // proposé qu'une fois celle-ci appliquée (`bobineSondageActif`).
   choix.push(["❓", "Question", _meStickerQuestion]);
   if (meState.mode === "story") { if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
+  else if (meState.mode === "bobine" && bobineSondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]);
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -3877,12 +3879,13 @@ function storySondageActif() {
   if (STORY_SONDAGE_ACTIF) return true;
   try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
 }
-// 📊 Sondage (story seulement) : une question, deux réponses. Les votes vivent
-// dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
+// 📊 Sondage : une question, deux réponses. Les votes vivent dans
+// `story_sondage_votes` (story, migration du 2026-11-26) ou `bobine_sondage_votes`
+// (bobine, migration du 2026-11-27) ; un vote par compte.
 function _meStickerSondage(panneau) {
   panneau.remove();
-  // UN sondage par story : la base n'enregistre qu'un vote par compte et par story.
-  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par story"); return; }
+  // UN sondage par story ou par bobine : la base n'enregistre qu'un vote par compte et par publication.
+  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par " + (meState.mode === "bobine" ? "bobine" : "story")); return; }
   openModal('<div class="modal-handle"></div><div class="modal-title">📊 Sondage</div>'
     + '<input class="input" id="meSdQ" maxlength="120" placeholder="Pose ta question" style="margin-top:8px;"/>'
     + '<input class="input" id="meSdA" maxlength="30" value="Oui" aria-label="Première réponse" style="margin-top:8px;"/>'
@@ -3967,6 +3970,98 @@ function storyVoterSondage(bouton) {
       return;
     }
     _storySondagePeindre(s);
+  }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
+}
+// ── 📊 SONDAGE EN BOBINE (2026-11-27) ────────────────────────────────────────
+// Le même sticker que la story, rangé par BOBINE : un vote s'écrit dans
+// `bobine_sondage_votes (post_id, choix)`, les résultats se lisent par
+// `bobine_sondage_resultats(_post_id)` (migration_bobine_sondage_2026-11-27.sql).
+// ⚠️ LE STICKER N'EST PROPOSÉ À LA CRÉATION QU'UNE FOIS LA MIGRATION APPLIQUÉE :
+// tant que `BOBINE_SONDAGE_ACTIF` est faux, personne ne pose un sondage auquel
+// personne ne pourrait répondre. Le LECTEUR, lui, reste branché : un sondage déjà
+// posé s'affiche, et dit « bientôt » si la table manque.
+// Activer : passer la constante à vrai une fois la migration appliquée ET mesurée
+// en base (`to_regclass('public.bobine_sondage_votes')`), jamais avant ;
+// `localStorage.passio_bobine_sondage = "1"` pour l'éprouver sur un appareil.
+var BOBINE_SONDAGE_ACTIF = false;
+function bobineSondageActif() {
+  if (BOBINE_SONDAGE_ACTIF) return true;
+  try { return localStorage.getItem("passio_bobine_sondage") === "1"; } catch (e) { return false; }
+}
+// La bobine AFFICHÉE qui porte cet élément : lue dans `reelsState.items` (la ligne
+// du serveur) par l'identifiant de SA carte — jamais dans l'overlay, qu'un autre
+// compte a écrit.
+function _bobineDuSondage(el) {
+  var carteBobine = el && el.closest ? el.closest(".reel-item[data-post-id]") : null;
+  if (!carteBobine || typeof reelsState === "undefined" || !reelsState || !reelsState.open) return null;
+  var pid = carteBobine.getAttribute("data-post-id");
+  var post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
+  return post ? { post: post, carteBobine: carteBobine } : null;
+}
+function _bobineSondageServeurPossible(post) {
+  return !!(post && post.fromSupabase && window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+}
+// La carte du sondage de CETTE bobine, telle qu'elle est à l'écran maintenant (la
+// liste a pu être repeinte entre la demande et la réponse).
+function _bobineSondageCarte(id) {
+  var trouvee = null;
+  document.querySelectorAll("#reelsList .reel-item[data-post-id]").forEach(function (it) {
+    if (!trouvee && it.getAttribute("data-post-id") === id) trouvee = it.querySelector(".st-sondage");
+  });
+  return trouvee;
+}
+// Résultats du sondage d'une bobine (après mon vote, ou si c'est ma bobine).
+// Appelée quand la bobine devient ACTIVE (`playReelAt`, app-05) et après un vote :
+// une requête par bobine à sondage REGARDÉE, jamais une par bobine de la liste.
+function bobineSondagePeindre(carteBobine) {
+  var carte = carteBobine && carteBobine.querySelector ? carteBobine.querySelector(".st-sondage") : null;
+  if (!carte) return;
+  var b = _bobineDuSondage(carte); if (!b) return;
+  var post = b.post, id = String(post.id);
+  if (!_bobineSondageServeurPossible(post)) {
+    // Bobine d'exemple ou locale : seul MON vote, gardé sur cet appareil.
+    var local = (state.user && state.user.sondagesLocaux) || {};
+    if (local[id] != null) _storySondageAppliquer(carte, { a_vote: true, mon_choix: local[id], a: local[id] === 0 ? 1 : 0, b: local[id] === 1 ? 1 : 0 });
+    return;
+  }
+  Promise.resolve(supa.rpc("bobine_sondage_resultats", { _post_id: id })).then(function (res) {
+    // `null` : pas une bobine à sondage que je vois ; `{a_vote:false}` : pas encore voté.
+    if (!res || res.error || !res.data) return;
+    _storySondageAppliquer(_bobineSondageCarte(id), res.data);
+  }).catch(function () {});
+}
+function bobineVoterSondage(bouton) {
+  var b = _bobineDuSondage(bouton);
+  var carte = bouton.closest(".st-sondage");
+  if (!b || !carte || carte.classList.contains("st-sd-vote") || carte._envoi) return;
+  var post = b.post, auteur = post.authorId || post.userId, id = String(post.id);
+  if (auteur === MY_UID || auteur === "me") { toast("Les votes de ton sondage s'affichent ici"); return; }
+  var choix = Number(bouton.getAttribute("data-choix")) === 1 ? 1 : 0;
+  if (!_bobineSondageServeurPossible(post)) {
+    // Bobine d'exemple ou locale : le vote reste sur cet appareil, rien ne part.
+    state.user.sondagesLocaux = state.user.sondagesLocaux || {};
+    state.user.sondagesLocaux[id] = choix;
+    var cles = Object.keys(state.user.sondagesLocaux);
+    if (cles.length > 50) cles.slice(0, cles.length - 50).forEach(function (k) { delete state.user.sondagesLocaux[k]; });
+    try { saveState(); } catch (e) {}
+    _storySondageAppliquer(carte, { a_vote: true, mon_choix: choix, a: choix === 0 ? 1 : 0, b: choix === 1 ? 1 : 0 });
+    return;
+  }
+  carte._envoi = true;
+  // L'INTENTION part (jamais une lecture préalable) ; le verdict de la base décide.
+  // Deux colonnes seulement : `user_id` et `created_at` sont posés par la base.
+  Promise.resolve(supa.from("bobine_sondage_votes").insert({ post_id: id, choix: choix })).then(function (res) {
+    carte._envoi = false;
+    var err = res && res.error;
+    // 23505 : j'ai déjà voté (autre appareil) — l'état voulu existe, on montre les résultats.
+    if (err && err.code !== "23505") {
+      var absente = err.code === "42P01" || err.code === "PGRST205";
+      toast(absente ? "Les sondages arrivent bientôt" : "Vote non enregistré — réessaie", "warning");
+      return;
+    }
+    var actuelle = _bobineSondageCarte(id);
+    if (actuelle) bobineSondagePeindre(actuelle.closest(".reel-item"));
   }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
 }
 // Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
@@ -4107,7 +4202,7 @@ function storyRepondreQuestion(bouton) {
     } else if (u) {
       _storyQuitterLecteurs();
       openUserProfile(u);
-    } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    } else if (b.classList.contains("st-sd-opt")) { if (b.closest(".reel-item")) bobineVoterSondage(b); else storyVoterSondage(b); }
     else if (b.classList.contains("st-musique")) { if (b.closest("#storyOverlays")) ouvrirCreditMusique(b); }
     else storyRepondreQuestion(b);
   }, true);
@@ -4872,11 +4967,12 @@ function _storyDessinHtml(o) {
 // `opts.story` : appelé par le lecteur de STORY ; `opts.bobine` : par le lecteur
 // de BOBINES (`renderReelHTML`, app-05). Le sticker Question n'est rendu que par
 // ces deux lecteurs, qui savent à qui va la réponse (la story active, ou la
-// bobine dont la carte porte `data-post-id`). Le Sondage, lui, reste story seule.
+// bobine dont la carte porte `data-post-id`). Le Sondage de même (2026-11-27) :
+// le vote va à la story active, ou à la bobine de la carte.
 function _storyOverlaysHtml(overlays, opts) {
   var dansStory = !!(opts && opts.story);
   var dansBobine = !!(opts && opts.bobine);
-  var sondageRendu = false; // un seul sondage rendu : un seul vote par story en base
+  var sondageRendu = false; // un seul sondage rendu : un seul vote par story (ou par bobine) en base
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
   // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
@@ -4917,11 +5013,14 @@ function _storyOverlaysHtml(overlays, opts) {
         ? '<button type="button" class="story-ov story-sticker st-compte" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</button>'
         : '<div class="story-ov story-sticker st-compte" style="' + pos + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</div>';
     }
-    if (o.type === "sondage" && dansStory && !sondageRendu) {
+    if (o.type === "sondage" && (dansStory || dansBobine) && !sondageRendu) {
       sondageRendu = true;
       var sq = String(o.q || "").slice(0, 120);
       var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
-      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
+      // Espace INSÉCABLE devant « ? » et « ! » (après l'échappement : seul un espace est remplacé) —
+      // sans elle, le point d'interrogation d'une question partait seul à la ligne.
+      var sqHtml = escapeHtml(sq).replace(/ ([?!])/g, "\u00a0$1");
+      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + sqHtml + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
     }
     if (o.type === "question" && (dansStory || dansBobine)) {
       var qv = String(o.q || "").slice(0, 120);
