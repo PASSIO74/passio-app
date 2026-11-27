@@ -3539,6 +3539,7 @@ function openReels(pinnedId) {
 
   // Lance la lecture du premier item visible et observe les changements de visibilité
   setupReelsObserver();
+  _brancherDoubleToucherBobines();
   // Auto-focus sur le premier reel
   list.scrollTop = 0;
   playReelAt(0);
@@ -3662,6 +3663,34 @@ function basculerLectureBobine(conteneur, ev) {
     try { vid.pause(); } catch (e) {}
     videoPubliqueBouton(vid, true);
   }
+}
+
+// DOUBLE TOUCHER = J'AIME (2026-11-27, façon Instagram) — jamais un « je n'aime
+// plus » : seul le cœur de la colonne retire un j'aime. Branché UNE fois sur la
+// liste (son contenu est réécrit à chaque ouverture), en phase de CAPTURE : le
+// `onclick` du conteneur vidéo arrête la propagation, un écouteur ordinaire ne
+// verrait jamais ces touchers. Les deux touchers basculent chacun lecture/pause
+// (le second annule le premier) : la vidéo continue, seul le j'aime reste.
+function _brancherDoubleToucherBobines() {
+  const liste = document.getElementById("reelsList");
+  if (!liste || liste._doubleToucher) return;
+  liste._doubleToucher = true;
+  let dernier = { t: 0, id: null };
+  liste.addEventListener("click", function (e) {
+    const cible = e.target && e.target.closest ? e.target : null;
+    const zone = cible ? cible.closest(".reel-media-container") : null;
+    // Un bouton ou un sticker posé sur la bobine garde son propre toucher.
+    if (!zone || cible.closest("button, a, .story-sticker")) { dernier = { t: 0, id: null }; return; }
+    const item = zone.closest(".reel-item");
+    const id = item ? item.getAttribute("data-post-id") : null;
+    const maintenant = Date.now();
+    if (!id || dernier.id !== id || maintenant - dernier.t > 320) { dernier = { t: maintenant, id: id }; return; }
+    dernier = { t: 0, id: null };
+    const aimee = function () { return (state.user.likedPosts || []).indexOf(id) > -1; };
+    if (!aimee()) toggleReelLike(id, item.querySelector("[data-reellike]"));
+    // Le cœur n'éclot que si la bobine est VRAIMENT aimée (un visiteur est renvoyé à l'inscription).
+    if (aimee() && typeof _heartBurst === "function") _heartBurst(zone);
+  }, true);
 }
 
 function playReelAt(idx) {

@@ -4954,6 +4954,16 @@ function closeCurrentOverlay() {
     }
   }
   if (editeurMedia && editeurMedia.classList.contains("open")) {
+    // Édition avec du contenu (2026-11-27) : le retour ne jette plus la story ou
+    // la bobine préparée — il referme un tiroir, ou demande « Abandonner ? »
+    // (`meRetourGarde`, app-08). L'éditeur reste ouvert : on repose son entrée.
+    let garde = false;
+    try { garde = typeof meRetourGarde === "function" && meRetourGarde(); }
+    catch (e) { try { console.warn("[nav] garde de l'éditeur média:", e); } catch (e2) {} }
+    if (garde) {
+      if (pushHistorySafe({ overlay: "media", passioOverlay: true }, "#media")) _navOverlayDepth++;
+      return true;
+    }
     // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de
     // ce panneau sans lui laisserait l'objectif actif en arrière-plan.
     if (typeof meClose === "function") meClose(); else editeurMedia.classList.remove("open");

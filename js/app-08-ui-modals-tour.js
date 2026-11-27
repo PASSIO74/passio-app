@@ -912,6 +912,16 @@ function openStudioAsStory() { meOpen("story"); }
 var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0 };
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
+// Outils de la capture (colonne de gauche + flash), façon appareil photo
+// Instagram (2026-11-27). Remis à zéro à chaque ouverture de l'éditeur.
+//   boomerang   : story — un toucher = courte vidéo en aller-retour ;
+//   mainsLibres : story — un toucher lance la vidéo, un toucher l'arrête ;
+//   minuteur    : 0 | 3 | 10 secondes avant le déclenchement ;
+//   duree       : bobine — durée maximale (15 | 30 | 60 s) ;
+//   flash       : torche si la caméra en a une, sinon l'écran éclaire.
+var meCap = { boomerang: false, mainsLibres: false, minuteur: 0, duree: 60, flash: false, compteTimer: null, compteReste: 0, boomEnCours: false, boomTimer: null };
+var ME_DUREES_BOBINE = [15, 30, 60];
+var ME_MINUTEURS = [0, 3, 10];
 
 // LOT-15 (audit UX/UI du 2026-11-10, CRE-C10) : avant « Publier », une ligne dit
 // POUR QUI et COMBIEN DE TEMPS — « Visible 24 h par ta communauté · 🎸 Musique ».
@@ -952,23 +962,14 @@ function meOpen(mode) {
   document.getElementById("meCanvas").style.background = "#000";
   // Placeholder gardé masqué : il ne sert que de fallback si la caméra échoue.
   document.getElementById("mePlaceholder").classList.add("hidden");
-  var isBob = (mode === "bobine");
-  document.getElementById("mePhTitle").textContent = isBob
-    ? "Ajoute une vidéo pour ta bobine" : "Ajoute une photo ou une vidéo";
-  // Bobine = VIDÉO uniquement (galerie filtrée sur les vidéos, pas de photo).
-  var mediaInput = document.getElementById("meMediaInput"); if (mediaInput) mediaInput.accept = isBob ? "video/*" : "image/*,video/*";
-  var galThumb = document.getElementById("meGalleryThumb"); if (galThumb) { galThumb.textContent = isBob ? "🎬" : "🖼️"; galThumb.setAttribute("aria-label", isBob ? "Choisir une vidéo" : "Choisir dans la galerie"); }
-  var capHint = document.getElementById("meCaptureHint"); if (capHint) capHint.textContent = isBob ? "Maintiens pour filmer · relâche pour l'aperçu" : "Appuie pour une photo · maintiens pour une vidéo";
-  var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = isBob ? "none" : "";
-  var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = isBob ? "none" : "";
-  var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
-  document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
-  try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
-  try { _mePeindreBoutonProches(); } catch (e) {}
+  // Outils de capture : chaque ouverture repart d'un appareil photo « neutre ».
+  _meAnnulerCompte();
+  meCap.boomerang = false; meCap.mainsLibres = false; meCap.minuteur = 0; meCap.duree = 60; meCap.flash = false; meCap.boomEnCours = false;
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts");
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse");
   ed.classList.add("me-vide");
+  _meAppliquerMode(mode);
   _meTeReinitialiser();
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
   // le geste de retour ne le fermait pas — l'écran changeait dessous et
@@ -978,11 +979,267 @@ function meOpen(mode) {
   ed.setAttribute("aria-hidden", "false");
   lockBodyScroll("mediaEditor");
   _meBindShutter();
+  _meBrancherGlisseModes();
   _mePeindreFiltres();
+  _meMajRail();
+  _meMajRetour();
+  _meMajModes(true);   // l'éditeur vient d'être affiché : l'onglet actif se centre maintenant
   meStartCamera();
 }
+
+// ── MODE (story | bobine) — UNE fonction pour l'ouverture ET pour les onglets ──
+// Tout ce qui dépend du mode est posé ici : textes, galerie (une bobine est une
+// vidéo), outils du rail, consigne. Changer d'onglet ne rallume PAS la caméra.
+function _meAppliquerMode(mode) {
+  var isBob = (mode === "bobine");
+  meState.mode = isBob ? "bobine" : "story";
+  var ed = document.getElementById("mediaEditor");
+  if (ed) { ed.classList.toggle("me-mode-bobine", isBob); ed.classList.toggle("me-mode-story", !isBob); }
+  var phTitle = document.getElementById("mePhTitle"); if (phTitle) phTitle.textContent = isBob
+    ? "Ajoute une vidéo pour ta bobine" : "Ajoute une photo ou une vidéo";
+  // Bobine = VIDÉO uniquement (galerie filtrée sur les vidéos, pas de photo).
+  var mediaInput = document.getElementById("meMediaInput"); if (mediaInput) mediaInput.accept = isBob ? "video/*" : "image/*,video/*";
+  var galThumb = document.getElementById("meGalleryThumb"); if (galThumb) galThumb.setAttribute("aria-label", isBob ? "Choisir une vidéo" : "Choisir dans la galerie");
+  var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = isBob ? "none" : "";
+  var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
+  var pub = document.getElementById("mePublishBtn");
+  if (pub) pub.textContent = isBob ? "Publier ma bobine" : "Publier ma story";
+  try { peindreLigneAudience(pub, isBob ? "bobine" : "story"); } catch (e) {}
+  try { _mePeindreBoutonProches(); } catch (e) {}
+  // Les outils propres à la story s'éteignent en passant à la bobine.
+  if (isBob) { meCap.boomerang = false; meCap.mainsLibres = false; }
+  _meMajRail();
+  _meMajModes();
+  _meMajConsigne();
+}
+
+// Onglets du bas : Publier · Story · Bobine · Live. Story et Bobine se changent
+// SUR PLACE (même caméra) ; Publier et Live rendent la main aux moteurs
+// existants (Studio, direct) — l'éditeur se ferme d'abord, caméra comprise.
+function meChoisirMode(m) {
+  var ed = document.getElementById("mediaEditor");
+  if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-capture")) return;
+  if (meCam.recording || meCap.compteTimer || meCap.boomEnCours) return;   // pas en plein tournage
+  if (m === "post") {
+    meClose();
+    if (typeof ouvrirStudioPublication !== "function" || !ouvrirStudioPublication()) { try { goTo("studio"); } catch (e) {} }
+    return;
+  }
+  if (m === "live") {
+    if (typeof startVideoLive !== "function") { toast("Le direct n'est pas disponible ici"); return; }
+    meClose();
+    startVideoLive();
+    return;
+  }
+  if (m !== "story" && m !== "bobine") return;
+  if (meState.mode === m) { _meMajModes(); return; }
+  _meAppliquerMode(m);
+}
+function _meMajModes(sansAnimation) {
+  var bande = document.getElementById("meModes"); if (!bande) return;
+  var actif = null;
+  bande.querySelectorAll(".me-mode").forEach(function (b) {
+    var oui = b.getAttribute("data-mode") === meState.mode;
+    b.classList.toggle("actif", oui);
+    b.setAttribute("aria-selected", oui ? "true" : "false");
+    b.tabIndex = oui ? 0 : -1;
+    if (oui) actif = b;
+  });
+  // L'onglet actif se place au CENTRE de la bande (comme Instagram).
+  if (actif && bande.clientWidth) {
+    var cible = actif.offsetLeft - (bande.clientWidth - actif.offsetWidth) / 2;
+    try { bande.scrollTo({ left: cible, behavior: sansAnimation ? "auto" : "smooth" }); } catch (e) { bande.scrollLeft = cible; }
+  }
+}
+// Glisser sur la scène (capture seulement) passe de Story à Bobine et retour.
+function _meBrancherGlisseModes() {
+  if (meCam._boundGlisse) return;
+  var c = document.getElementById("meCanvas"); if (!c) return;
+  meCam._boundGlisse = true;
+  var depart = null;
+  c.addEventListener("pointerdown", function (e) {
+    var ed = document.getElementById("mediaEditor");
+    depart = (ed && ed.classList.contains("phase-capture") && e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: Date.now() } : null;
+  });
+  c.addEventListener("pointerup", function (e) {
+    var d = depart; depart = null;
+    if (!d) return;
+    var dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2 || Date.now() - d.t > 700) return;
+    meChoisirMode(dx < 0 ? "bobine" : "story");
+  });
+  c.addEventListener("pointercancel", function () { depart = null; });
+}
+
+// ── RAIL D'OUTILS (colonne de gauche) ───────────────────────────────────────
+function _meBoomerangPossible() {
+  return !!(window.MediaRecorder && window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream);
+}
+function _meMajRail() {
+  var ed = document.getElementById("mediaEditor");
+  document.querySelectorAll("#meRail .me-rail-btn[data-modes]").forEach(function (b) {
+    var modes = " " + b.getAttribute("data-modes") + " ";
+    var montre = modes.indexOf(" " + meState.mode + " ") !== -1;
+    if (b.id === "meBoomBtn" && !_meBoomerangPossible()) montre = false;
+    b.hidden = !montre;
+  });
+  var poser = function (id, actif) {
+    var b = document.getElementById(id); if (!b) return;
+    b.classList.toggle("actif", !!actif); b.setAttribute("aria-pressed", actif ? "true" : "false");
+  };
+  poser("meBoomBtn", meCap.boomerang);
+  poser("meMainsBtn", meCap.mainsLibres);
+  poser("meEffetsBtn", !!(ed && ed.classList.contains("me-filtres-ouverts") && ed.classList.contains("phase-capture")));
+  var min = document.getElementById("meMinuteurBtn");
+  if (min) {
+    min.classList.toggle("actif", meCap.minuteur > 0);
+    min.setAttribute("aria-label", meCap.minuteur ? "Minuteur : " + meCap.minuteur + " secondes" : "Minuteur désactivé");
+    var past = document.getElementById("meMinuteurPastille"); if (past) past.textContent = meCap.minuteur ? meCap.minuteur + " s" : "";
+    var libMin = document.getElementById("meMinuteurLib"); if (libMin) libMin.textContent = meCap.minuteur ? "Minuteur · " + meCap.minuteur + " s" : "Minuteur";
+  }
+  var dur = document.getElementById("meDureeBtn");
+  if (dur) {
+    dur.setAttribute("aria-label", "Durée maximale de la bobine : " + meCap.duree + " secondes");
+    var ico = document.getElementById("meDureeIco"); if (ico) ico.textContent = String(meCap.duree);
+    var libDur = dur.querySelector(".me-rail-lib"); if (libDur) libDur.textContent = "Durée · " + meCap.duree + " s";
+  }
+  var flash = document.getElementById("meFlashBtn");
+  if (flash) {
+    flash.classList.toggle("actif", meCap.flash); flash.setAttribute("aria-pressed", meCap.flash ? "true" : "false");
+    flash.setAttribute("aria-label", meCap.flash ? "Flash activé" : "Flash désactivé");
+  }
+  var replie = false;
+  try { replie = localStorage.getItem("passio_me_rail_replie") === "1"; } catch (e) {}
+  if (ed) ed.classList.toggle("me-rail-replie", replie);
+  var plier = document.getElementById("meRailPlier");
+  if (plier) { plier.setAttribute("aria-expanded", replie ? "false" : "true"); plier.setAttribute("aria-label", replie ? "Afficher les noms des outils" : "Masquer les noms des outils"); }
+}
+// La consigne sous le déclencheur dit TOUJOURS ce que fait le prochain toucher.
+function _meMajConsigne() {
+  var h = document.getElementById("meCaptureHint"); if (!h) return;
+  var ed = document.getElementById("mediaEditor");
+  var cam = !!(ed && ed.classList.contains("me-cam-on"));
+  var t;
+  if (meCap.boomEnCours) t = "Création du boomerang…";
+  else if (meCap.compteTimer) t = "Touche le bouton pour annuler";
+  else if (meCam.recording) t = "Appuie pour arrêter";
+  else if (!cam) t = meState.mode === "bobine" ? "Appuie pour choisir une vidéo" : "Appuie pour choisir une photo ou une vidéo";
+  else if (meState.mode === "bobine") t = "Appuie pour filmer · appuie encore pour arrêter";
+  else if (meCap.boomerang) t = "Appuie pour un boomerang";
+  else if (meCap.mainsLibres) t = "Appuie pour filmer · appuie encore pour arrêter";
+  else t = "Appuie pour une photo · maintiens pour une vidéo";
+  h.textContent = t;
+}
+function meBasculerBoomerang() {
+  if (meState.mode !== "story" || meCam.recording || meCap.boomEnCours) return;
+  if (!_meBoomerangPossible()) { toast("Boomerang indisponible sur cet appareil"); return; }
+  meCap.boomerang = !meCap.boomerang;
+  if (meCap.boomerang) meCap.mainsLibres = false;   // un seul sens pour le toucher
+  _meMajRail(); _meMajConsigne();
+}
+function meBasculerMainsLibres() {
+  if (meState.mode !== "story" || meCam.recording || meCap.boomEnCours) return;
+  meCap.mainsLibres = !meCap.mainsLibres;
+  if (meCap.mainsLibres) meCap.boomerang = false;
+  _meMajRail(); _meMajConsigne();
+}
+function meChangerMinuteur() {
+  if (meCam.recording || meCap.boomEnCours) return;
+  _meAnnulerCompte();
+  meCap.minuteur = ME_MINUTEURS[(ME_MINUTEURS.indexOf(meCap.minuteur) + 1) % ME_MINUTEURS.length];
+  _meMajRail();   // la pastille du bouton dit la durée : pas de toast par-dessus le déclencheur
+}
+function meChangerDuree() {
+  if (meState.mode !== "bobine" || meCam.recording) return;
+  meCap.duree = ME_DUREES_BOBINE[(ME_DUREES_BOBINE.indexOf(meCap.duree) + 1) % ME_DUREES_BOBINE.length];
+  _meMajRail();   // le rond du bouton porte le nombre de secondes
+}
+// Effets = la rangée de filtres, repliée par défaut (l'écran de capture reste net).
+function meBasculerEffets() {
+  var ed = document.getElementById("mediaEditor");
+  if (!ed || !ed.classList.contains("phase-capture") || meCam.recording) return;
+  _mePeindreFiltres();
+  ed.classList.toggle("me-filtres-ouverts");
+  _meMajRail();
+}
+function meBasculerRail() {
+  var replie = false;
+  try { replie = localStorage.getItem("passio_me_rail_replie") === "1"; } catch (e) {}
+  try { localStorage.setItem("passio_me_rail_replie", replie ? "0" : "1"); } catch (e) {}
+  var ed = document.getElementById("mediaEditor");
+  // Sans stockage (navigation privée), la bascule vit le temps de l'écran.
+  if (ed) ed.classList.toggle("me-rail-replie", !replie);
+  var plier = document.getElementById("meRailPlier");
+  if (plier) { plier.setAttribute("aria-expanded", replie ? "true" : "false"); plier.setAttribute("aria-label", replie ? "Masquer les noms des outils" : "Afficher les noms des outils"); }
+}
+
+// ── FLASH ──────────────────────────────────────────────────────────────────
+// Torche matérielle quand la piste vidéo en propose une (caméra arrière,
+// Android) ; sinon c'est l'ÉCRAN qui éclaire (caméra avant, iPhone) : plein
+// blanc le temps d'une photo, anneau lumineux pendant une vidéo.
+function meBasculerFlash() {
+  if (meCam.recording) return;
+  meCap.flash = !meCap.flash;
+  _meMajRail();
+}
+function _meTorche(oui) {
+  try {
+    var piste = meCam.stream && meCam.stream.getVideoTracks && meCam.stream.getVideoTracks()[0];
+    var caps = piste && piste.getCapabilities ? piste.getCapabilities() : null;
+    if (!piste || !caps || !caps.torch) return Promise.resolve(false);
+    return piste.applyConstraints({ advanced: [{ torch: !!oui }] }).then(function () { return true; }, function () { return false; });
+  } catch (e) { return Promise.resolve(false); }
+}
+
+// ── MINUTEUR ───────────────────────────────────────────────────────────────
+function _meLancerCompte(secondes, puis) {
+  _meAnnulerCompte();
+  var el = document.getElementById("meCompte");
+  var ed = document.getElementById("mediaEditor");
+  meCap.compteReste = secondes;
+  if (el) el.textContent = String(secondes);
+  if (ed) ed.classList.add("me-compte-actif");
+  setTimeout(_meMajConsigne, 0);   // après la pose du minuteur ci-dessous
+  meCap.compteTimer = setInterval(function () {
+    meCap.compteReste--;
+    if (meCap.compteReste > 0) { if (el) el.textContent = String(meCap.compteReste); return; }
+    _meAnnulerCompte();
+    // L'éditeur a pu être fermé ou la caméra coupée pendant le décompte.
+    var e2 = document.getElementById("mediaEditor");
+    if (e2 && e2.classList.contains("open") && e2.classList.contains("phase-capture") && e2.classList.contains("me-cam-on")) puis();
+  }, 1000);
+}
+function _meAnnulerCompte() {
+  if (meCap.compteTimer) { clearInterval(meCap.compteTimer); meCap.compteTimer = null; }
+  meCap.compteReste = 0;
+  var el = document.getElementById("meCompte"); if (el) el.textContent = "";
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-compte-actif");
+  _meMajConsigne();
+}
+// Enregistrement « verrouillé » : lancé par un toucher, il continue doigt levé.
+function _meVerrouiller(oui) {
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.toggle("me-verrouille", !!oui);
+  _meMajConsigne();
+}
+// Ce que fait UN toucher du déclencheur, selon le mode et les outils armés.
+function _meDeclencher() {
+  var action = function () {
+    if (meState.mode === "story" && meCap.boomerang) { meCaptureBoomerang(); return; }
+    if (meState.mode === "bobine" || meCap.mainsLibres) {
+      if (window.MediaRecorder) meStartRecording();
+      if (meCam.recording) _meVerrouiller(true);
+      else toast("Enregistrement impossible ici — choisis une vidéo dans la galerie");
+      return;
+    }
+    meCapturePhoto();
+  };
+  if (meCap.minuteur) _meLancerCompte(meCap.minuteur, action); else action();
+}
+
 function meClose() {
   var ed = document.getElementById("mediaEditor");
+  _meAnnulerCompte();
+  _meBoomerangAbandonner();
   meStopRecording(true);
   meStopCamera();
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
@@ -990,7 +1247,7 @@ function meClose() {
   meFermerDessin();
   _meMusiqueArreter();
   var _pst = document.getElementById("meStickerPanel"); if (_pst) _pst.remove();
-  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.setAttribute("aria-hidden", "true"); }
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
@@ -998,12 +1255,67 @@ function meClose() {
   _meRevokePreviewUrl();
   var bar = document.getElementById("meEmojiBar"); if (bar) bar.remove();
 }
-// Bouton ✕ : en édition → revient à la capture ; en capture → ferme.
+// Bouton du haut : en édition (‹) → revient à la capture ; en capture (✕) → ferme.
+// ⚠️ Ce qui a été préparé (photo, vidéo, textes, dessin) ne se jette plus d'un
+// seul toucher (2026-11-27) : on DEMANDE avant d'abandonner, comme Instagram.
 function meTopBack() {
   var ed = document.getElementById("mediaEditor");
   if (ed && ed.classList.contains("me-texte-ouvert")) { meFermerEditeurTexte(true); return; }
-  if (ed && ed.classList.contains("phase-edit")) { meBackToCapture(); return; }
+  if (ed && ed.classList.contains("phase-edit")) {
+    if (_meADuContenu()) { _meDemanderAbandon(); return; }
+    meBackToCapture(); return;
+  }
   meClose();
+}
+function _meADuContenu() {
+  return !!(meState && (meState.media || (meState.overlays && meState.overlays.length) || (meState.dessin && meState.dessin.length)));
+}
+function _meDemanderAbandon() {
+  if (typeof ouvrirFeuilleConfirmation !== "function") { meBackToCapture(); return; }
+  var quoi = meState.mode === "bobine" ? "cette bobine" : "cette story";
+  ouvrirFeuilleConfirmation({
+    titre: "Abandonner " + quoi + " ?",
+    texte: "Ce que tu as préparé sera perdu.",
+    actions: [{ id: "abandonner", libelle: "Abandonner", danger: true, agir: function () { meBackToCapture(); } }],
+    annuler: "Continuer la modification"
+  });
+}
+// Geste RETOUR du système (app-02, `closeCurrentOverlay`) : en édition avec du
+// contenu, il ne ferme pas tout — il pose la même question que le bouton ‹.
+// Rend `true` quand l'éditeur RESTE ouvert (l'appelant repose son entrée d'historique).
+function meRetourGarde() {
+  var ed = document.getElementById("mediaEditor");
+  if (!ed || !ed.classList.contains("open") || !ed.classList.contains("phase-edit")) return false;
+  // Un tiroir ouvert (stickers, emoji, GIF) : le retour le referme, lui seul.
+  var tiroir = ["meStickerPanel", "meEmojiBar", "meGifPanel"].map(function (id) { return document.getElementById(id); }).filter(Boolean);
+  if (tiroir.length) { tiroir.forEach(function (p) { p.remove(); }); _meMusiqueArreterSiLibre(); return true; }
+  if (!_meADuContenu()) return false;
+  // Question déjà à l'écran : le retour vaut « Continuer ».
+  if (document.getElementById("feuilleConfirmation") && typeof window._fermerFeuilleConf === "function") { window._fermerFeuilleConf(); return true; }
+  _meDemanderAbandon();
+  return true;
+}
+// Aperçu musical lancé depuis le tiroir puis tiroir fermé sans choisir : il s'arrête.
+function _meMusiqueArreterSiLibre() {
+  try { if (!meState.overlays.some(function (o) { return o.type === "musique"; })) _meMusiqueArreter(); } catch (e) {}
+}
+// Les NOMS des outils d'édition s'affichent à l'arrivée, puis s'effacent : il
+// ne reste que les ronds, et la story est dégagée (comme Instagram).
+var ME_NOMS_OUTILS_MS = 4500;
+function _meMontrerNomsOutils() {
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  clearTimeout(meCam._nomsTimer);
+  ed.classList.add("me-noms-outils");
+  meCam._nomsTimer = setTimeout(function () { ed.classList.remove("me-noms-outils"); }, ME_NOMS_OUTILS_MS);
+}
+// Le bouton du haut dit ce qu'il fait : ✕ ferme (capture), ‹ revient à l'appareil photo (édition).
+function _meMajRetour() {
+  var b = document.getElementById("meBackBtn"), ed = document.getElementById("mediaEditor");
+  if (!b || !ed) return;
+  var edition = ed.classList.contains("phase-edit");
+  b.textContent = edition ? "‹" : "✕";
+  b.classList.toggle("me-retour-chevron", edition);
+  b.setAttribute("aria-label", edition ? "Revenir à l'appareil photo" : "Fermer");
 }
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
@@ -1017,15 +1329,23 @@ function meBackToCapture() {
   document.getElementById("meCanvas").style.background = "#000";
   document.getElementById("mePlaceholder").classList.add("hidden");
   _meTeReinitialiser();
-  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.classList.add("phase-capture", "me-vide");
+  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.classList.add("phase-capture", "me-vide");
   meState.filtre = "normal"; _mePeindreFiltres();
+  _meAnnulerCompte();
+  ["meStickerPanel", "meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  _meMajRail(); _meMajRetour(); _meMajModes(true); _meMajConsigne();
   meStartCamera();
 }
 function meEnterEditPhase() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  _meAnnulerCompte();
   meStopRecording(true);
   meStopCamera();
-  ed.classList.remove("phase-capture"); ed.classList.add("phase-edit");
+  // La rangée d'effets ouverte en capture se replie : le filtre choisi RESTE
+  // appliqué, et le bouton ✨ de l'édition la rouvre.
+  ed.classList.remove("phase-capture", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.classList.add("phase-edit");
+  _meMajRetour();
+  _meMontrerNomsOutils();
   meState._enteredEditAt = Date.now(); // anti clic-fantôme : bloque une publication immédiate
 }
 // Absorbe le prochain clic (le « ghost click » émis après un pointerup tactile),
@@ -1060,6 +1380,7 @@ async function meStartCamera() {
     v.srcObject = stream; v.muted = true;
     v.style.transform = (meCam.facing === "user") ? "scaleX(-1)" : "none";
     var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.remove("me-no-cam"); ed.classList.add("me-cam-on"); }
+    _meMajConsigne();
     try { await v.play(); } catch(e) {}
   } catch(e) { _meNoCamera(); }
 }
@@ -1073,8 +1394,10 @@ function _meNoCamera() {
   // Pas d'accès caméra → on masque le loader et on retombe sur le placeholder galerie/fond.
   var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.remove("me-cam-on"); ed.classList.add("me-no-cam"); }
   var ph = document.getElementById("mePlaceholder"); if (ph) ph.classList.remove("hidden");
+  _meMajConsigne();
 }
 function meFlipCamera() {
+  if (meCam.recording || meCap.boomEnCours) return;   // changer de caméra couperait la prise
   if (!meCam.stream) { meStartCamera(); return; }
   meCam.facing = (meCam.facing === "user") ? "environment" : "user";
   meStartCamera();
@@ -1086,6 +1409,24 @@ function meCapturePhoto() {
   if (meState.mode === "bobine") { toast("Une bobine est une vidéo : appuie pour filmer"); return; }
   var v = document.getElementById("meCamVideo");
   if (!v || !v.videoWidth) { mePickMedia(); return; }
+  // Flash : la torche s'allume (ou l'écran passe au blanc) un court instant
+  // AVANT la prise, le temps que l'exposition de la caméra s'y fasse.
+  if (meCap.flash && !meCam._flashEnCours) {
+    meCam._flashEnCours = true;
+    var edF = document.getElementById("mediaEditor");
+    _meTorche(true).then(function (torche) {
+      if (!torche && edF) edF.classList.add("me-flash-plein");
+      setTimeout(function () {
+        try { meCapturePhoto(); }
+        finally {
+          meCam._flashEnCours = false;
+          if (torche) _meTorche(false);
+          if (edF) edF.classList.remove("me-flash-plein");
+        }
+      }, torche ? 380 : 240);
+    });
+    return;
+  }
   try {
     var c = document.createElement("canvas");
     c.width = v.videoWidth; c.height = v.videoHeight;
@@ -1138,9 +1479,14 @@ function meStartRecording() {
   try { meCam.recorder.start(); } catch(e) { return; }
   meCam.recording = true; meCam.recStart = Date.now();
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-recording");
-  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "● Enregistrement… relâche pour arrêter";
+  if (meCap.flash) _meTorche(true).then(function (torche) { if (!torche && ed && meCam.recording) ed.classList.add("me-flash-anneau"); });
+  _meMajConsigne();
   meCam.recTimer = setInterval(_meUpdateRecTime, 200);
-  meCam.maxTimer = setTimeout(function() { meStopRecording(); }, 60000); // 60 s max
+  meCam.maxTimer = setTimeout(function() { meStopRecording(); }, _meDureeMaxMs());
+}
+// Durée maximale d'une prise : celle choisie pour la bobine (15 / 30 / 60 s), 60 s en story.
+function _meDureeMaxMs() {
+  return (meState.mode === "bobine" ? (meCap.duree || 60) : 60) * 1000;
 }
 function meStopRecording(silent) {
   clearTimeout(meCam.maxTimer); clearInterval(meCam.recTimer);
@@ -1149,26 +1495,30 @@ function meStopRecording(silent) {
   meCam._silent = !!silent;
   if (!silent) _mediaEnPreparation();
   try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
-  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording", "me-verrouille", "me-flash-anneau");
+  if (meCap.flash) _meTorche(false);
   var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
-  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "Maintiens pour filmer · relâche pour l'aperçu";
+  _meMajConsigne();
 }
 function _meUpdateRecTime() {
   var elapsed = Date.now() - meCam.recStart;
   var el = document.getElementById("meRecTime");
-  if (el) { var s = Math.floor(elapsed / 1000); el.textContent = "0:" + (s < 10 ? "0" : "") + s; }
-  // Anneau de progression (0→100 % sur 60 s).
+  if (el) { var s = Math.floor(elapsed / 1000); el.textContent = Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60); }
+  // Anneau de progression (0→100 % sur la durée maximale de la prise).
   var sh = document.getElementById("meShutter");
-  if (sh) sh.style.setProperty("--p", Math.min(100, (elapsed / 60000) * 100));
+  if (sh) sh.style.setProperty("--p", Math.min(100, (elapsed / _meDureeMaxMs()) * 100));
 }
 function _meOnRecordingStop() {
   if (meCam._silent) { meCam._silent = false; return; }
   var dur = Date.now() - meCam.recStart;
   var hasData = meCam.chunks && meCam.chunks.length;
   if (meState.mode === "bobine") {
-    // Appui trop bref (relâché tout de suite) → on invite à maintenir, sans rien casser.
-    if (dur < 500) { toast("Maintiens le bouton pour filmer ta bobine"); return; }
+    // Prise trop brève (deux touchers coup sur coup) : rien à montrer, on le dit.
+    if (dur < 500) { toast("Vidéo trop courte — appuie pour filmer, appuie encore pour arrêter"); return; }
     if (!hasData) { toast("Enregistrement impossible — réessaie ou choisis une vidéo dans la galerie"); return; }
+  } else if (meCap.mainsLibres) {
+    // Mains libres : c'est une VIDÉO qu'on voulait — jamais une photo de repli.
+    if (dur < 500 || !hasData) { toast("Vidéo trop courte — appuie pour filmer, appuie encore pour arrêter"); return; }
   } else if (dur < 700 || !hasData) { meCapturePhoto(); return; } // story : appui bref → photo
   // ⚠️ Type SANS paramètres codecs : « video/mp4;codecs=avc1…,mp4a… » contient
   // une VIRGULE, or une data URL est coupée à la première virgule (RFC 2397) →
@@ -1188,43 +1538,183 @@ function _meOnRecordingStop() {
   r.readAsDataURL(blob);
 }
 
-// Déclencheur :
-//  • Story  : tap = photo, maintien = vidéo.
-//  • Bobine : MAINTIENS pour filmer, RELÂCHE pour voir l'aperçu (vidéo only).
+// Déclencheur (2026-11-27, façon Instagram) :
+//  • Story        : toucher = photo, maintien = vidéo (relâcher l'arrête).
+//  • Bobine       : toucher = filmer, toucher encore = arrêter ; maintenir filme
+//                   aussi, et relâcher arrête. Avant, il fallait MAINTENIR le
+//                   doigt pendant toute la bobine (jusqu'à 60 s).
+//  • Mains libres : la story se filme comme une bobine (toucher / toucher).
+//  • Boomerang    : toucher = courte vidéo en aller-retour.
+//  • Minuteur     : le toucher lance le décompte ; un second toucher l'annule.
 function _meBindShutter() {
   if (meCam._boundShutter) return;
   var sh = document.getElementById("meShutter"); if (!sh) return;
   meCam._boundShutter = true;
-  var held = false;
+  var held = false, appuiA = 0, arretAuRelache = false, ignorer = false;
+  function toucherFilme() { return meState.mode === "bobine" || meCap.mainsLibres; }
   sh.addEventListener("pointerdown", function(e) {
     e.preventDefault();
+    ignorer = false; held = false; arretAuRelache = false; appuiA = Date.now();
     var ed = document.getElementById("mediaEditor");
-    if (!ed || !ed.classList.contains("me-cam-on")) { mePickMedia(); return; }
+    if (!ed || !ed.classList.contains("me-cam-on")) { ignorer = true; mePickMedia(); return; }
+    // Décompte en cours : ce toucher l'annule, rien d'autre.
+    if (meCap.compteTimer) { ignorer = true; _meAnnulerCompte(); return; }
+    if (meCap.boomEnCours) { ignorer = true; return; }
     try { sh.setPointerCapture(e.pointerId); } catch(_) {}
-    if (meState.mode === "bobine") {
+    // Prise verrouillée (lancée par un toucher) : celui-ci l'arrête, au relâché.
+    if (meCam.recording) { arretAuRelache = true; return; }
+    // Boomerang ou minuteur : tout part au relâché.
+    if (meCap.minuteur || (meState.mode === "story" && meCap.boomerang)) return;
+    if (toucherFilme()) {
       // Pas de MediaRecorder (vieux navigateur) → repli galerie vidéo.
-      if (!window.MediaRecorder) { try { sh.releasePointerCapture(e.pointerId); } catch(_) {} mePickMedia(); return; }
+      if (!window.MediaRecorder) { ignorer = true; try { sh.releasePointerCapture(e.pointerId); } catch(_) {} mePickMedia(); return; }
       held = true;
-      meStartRecording();   // démarre dès l'appui
+      meStartRecording();   // filme dès l'appui : le relâché décide (toucher = verrouille, maintien = arrête)
+      if (!meCam.recording) { ignorer = true; held = false; toast("Enregistrement impossible ici — choisis une vidéo dans la galerie"); }
       return;
     }
-    held = false;
     meCam.holdTimer = setTimeout(function() { held = true; meStartRecording(); }, 320);
   });
   function end(e) {
     if (e) { e.preventDefault(); try { sh.releasePointerCapture(e.pointerId); } catch(_) {} }
+    clearTimeout(meCam.holdTimer);
+    if (ignorer) { ignorer = false; return; }
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) return;
-    clearTimeout(meCam.holdTimer);
-    // Bobine : relâcher = arrêter → aperçu (géré par _meOnRecordingStop).
-    if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
-    else if (!held && meState.mode !== "bobine") { _meSwallowNextClick(); meCapturePhoto(); }
-    held = false;
+    var annule = !!(e && e.type === "pointercancel");
+    // « Bref » va jusqu'à 500 ms, la durée minimale d'une prise : un toucher un peu
+    // lent verrouille la prise au lieu de l'arrêter sur une vidéo trop courte.
+    var bref = (Date.now() - appuiA) < 500;
+    if (arretAuRelache) {
+      arretAuRelache = false;
+      if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
+      return;
+    }
+    if (meCam.recording) {
+      // Toucher bref là où « toucher = filmer » : la prise continue, doigt levé.
+      if (held && bref && !annule && toucherFilme()) { held = false; _meVerrouiller(true); return; }
+      held = false;
+      _meSwallowNextClick(); meStopRecording();
+      return;
+    }
+    var etaitTenu = held; held = false;
+    // pointercancel = geste interrompu par le système : on ne déclenche rien.
+    if (annule || etaitTenu) return;
+    _meSwallowNextClick();
+    _meDeclencher();
   }
   sh.addEventListener("pointerup", end);
   // pointercancel = relâché/interrompu → on arrête aussi (avec touch-action:none il
   // ne se déclenche normalement plus en plein enregistrement).
   sh.addEventListener("pointercancel", end);
+}
+
+// ── BOOMERANG ──────────────────────────────────────────────────────────────
+// Une rafale d'images de la caméra (~1 s), rejouée en aller-retour et encodée
+// en une courte vidéo par le MÊME couple canvas + MediaRecorder que la
+// compression vidéo (`passioCompressVideo`). Le résultat suit ensuite le chemin
+// d'une vidéo de story ordinaire (aperçu, outils, publication).
+// ⚠️ Cadencé par `setInterval`, JAMAIS par requestAnimationFrame (règle maison :
+// une page qui ne compose pas de frames ne le déclencherait pas).
+var ME_BOOM = { images: 16, intervalle: 70, boucles: 3, ips: 22, cote: 720, delaiMax: 20000 };
+function _meBoomerangAbandonner() {
+  if (meCap.boomTimer) { clearInterval(meCap.boomTimer); meCap.boomTimer = null; }
+  meCap.boomJeton = (meCap.boomJeton || 0) + 1;   // un encodage en vol ne posera plus rien
+  meCap.boomEnCours = false;
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-boom-capture");
+  var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
+}
+function meCaptureBoomerang() {
+  if (meCap.boomEnCours) return;
+  var v = document.getElementById("meCamVideo");
+  if (!v || !v.videoWidth || !_meBoomerangPossible()) { toast("Boomerang indisponible sur cet appareil"); return; }
+  var ed = document.getElementById("mediaEditor"), sh = document.getElementById("meShutter");
+  var echelle = Math.min(1, ME_BOOM.cote / Math.max(v.videoWidth, v.videoHeight));
+  // Dimensions PAIRES (H.264), comme le compresseur vidéo.
+  var w = Math.max(2, Math.round(v.videoWidth * echelle / 2) * 2), h = Math.max(2, Math.round(v.videoHeight * echelle / 2) * 2);
+  var miroir = meCam.facing === "user";   // ce qu'on voit est ce qu'on obtient (comme la photo)
+  var images = [];
+  meCap.boomEnCours = true;
+  var jeton = meCap.boomJeton = (meCap.boomJeton || 0) + 1;
+  if (ed) ed.classList.add("me-boom-capture");
+  _meMajConsigne();
+  var finir = function (message) {
+    if (jeton !== meCap.boomJeton) return false;   // abandonné entre-temps (fermeture, retour)
+    _meBoomerangAbandonner();
+    _meMajConsigne();
+    if (message) toast(message);
+    return true;
+  };
+  meCap.boomTimer = setInterval(function () {
+    try {
+      var c = document.createElement("canvas"); c.width = w; c.height = h;
+      var x = c.getContext("2d");
+      if (miroir) { x.translate(w, 0); x.scale(-1, 1); }
+      x.drawImage(v, 0, 0, w, h);
+      images.push(c);
+    } catch (e) { finir("Boomerang impossible — réessaie"); return; }
+    // Première moitié de l'anneau : la rafale ; seconde moitié : l'encodage.
+    if (sh) sh.style.setProperty("--p", Math.round(images.length / ME_BOOM.images * 50));
+    if (images.length < ME_BOOM.images) return;
+    clearInterval(meCap.boomTimer); meCap.boomTimer = null;
+    _meBoomerangEncoder(images, w, h, function (part) { if (sh && jeton === meCap.boomJeton) sh.style.setProperty("--p", 50 + Math.round(part * 50)); })
+      .then(function (dataUrl) { if (finir()) meSetMedia(dataUrl, "video"); },
+            function (e) {
+              try { if (typeof diagLog === "function") diagLog("boomerang KO: " + ((e && e.message) || e)); } catch (_) {}
+              finir("Boomerang impossible sur cet appareil — filme une vidéo à la place");
+            });
+  }, ME_BOOM.intervalle);
+}
+function _meBoomerangEncoder(images, w, h, surProgres) {
+  return new Promise(function (resolve, reject) {
+    var canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext("2d");
+    try { ctx.drawImage(images[0], 0, 0); } catch (e) { reject(e); return; }
+    var flux, rec, morceaux = [], minuteur = null, garde = null, regle = false;
+    function conclure(ok, v) {
+      if (regle) return; regle = true;
+      clearInterval(minuteur); clearTimeout(garde);
+      try { flux.getTracks().forEach(function (t) { t.stop(); }); } catch (_) {}
+      if (ok) resolve(v); else reject(v);
+    }
+    try {
+      flux = canvas.captureStream(30);
+      var mime = (typeof _passioBestVideoMime === "function") ? _passioBestVideoMime() : "";
+      var opts = { videoBitsPerSecond: 2500000 };
+      if (mime) opts.mimeType = mime;
+      rec = new MediaRecorder(flux, opts);
+    } catch (e) { reject(e); return; }
+    // Aller puis retour (sans doubler les deux bouts), répété.
+    var cycle = images.concat(images.slice(1, -1).reverse());
+    var ordre = [];
+    for (var b = 0; b < ME_BOOM.boucles; b++) ordre = ordre.concat(cycle);
+    var i = 0;
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) morceaux.push(ev.data); };
+    rec.onerror = function (ev) { conclure(false, (ev && ev.error) || new Error("boomerang-encodeur")); };
+    rec.onstop = function () {
+      // Type SANS paramètres codecs (virgule interdite dans une data URL — cf. _meOnRecordingStop).
+      var type = ((morceaux[0] && morceaux[0].type) || "video/webm").split(";")[0];
+      var blob = new Blob(morceaux, { type: type });
+      if (!blob.size) { conclure(false, new Error("boomerang-vide")); return; }
+      var r = new FileReader();
+      r.onload = function () { conclure(true, r.result); };
+      r.onerror = function () { conclure(false, r.error || new Error("boomerang-lecture")); };
+      r.readAsDataURL(blob);
+    };
+    try { rec.start(); } catch (e) { conclure(false, e); return; }
+    // Un encodeur qui ne conclut jamais ne doit pas laisser l'écran en attente.
+    garde = setTimeout(function () { try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} conclure(false, new Error("boomerang-sans-verdict")); }, ME_BOOM.delaiMax);
+    minuteur = setInterval(function () {
+      if (i >= ordre.length) {
+        clearInterval(minuteur);
+        try { if (rec.state !== "inactive") rec.stop(); } catch (e) { conclure(false, e); }
+        return;
+      }
+      try { ctx.drawImage(ordre[i], 0, 0); } catch (e) {}
+      i++;
+      if (surProgres) { try { surProgres(i / ordre.length); } catch (_) {} }
+    }, Math.round(1000 / ME_BOOM.ips));
+  });
 }
 
 function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
@@ -1266,7 +1756,7 @@ function meChangerFond() {
 }
 function _meMajBoutonsFond() {
   var suivant = STORY_BGS[(meState.bgIdx + 1) % STORY_BGS.length];
-  ["meFondBtn", "meTeFond"].forEach(function (id) { var b = document.getElementById(id); if (b) b.style.background = suivant; });
+  ["meFondBtn", "meTeFond"].forEach(function (id) { var b = document.getElementById(id); if (b) { b.style.background = suivant; b.style.setProperty("--me-fond-suivant", suivant); } });
 }
 function _meMajVide() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
@@ -2295,7 +2785,12 @@ function meOuvrirStickers() {
   ["meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
-  var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention], ["⏳", "Compte à rebours", _meStickerCompte]];
+  var titreTiroir = document.createElement("div"); titreTiroir.className = "me-tiroir-titre"; titreTiroir.textContent = "Stickers";
+  panneau.appendChild(titreTiroir);
+  var choix = [
+    ["😀", "Emoji", function (pn) { pn.remove(); meAddEmoji(); }],
+    ["GIF", "GIF", function (pn) { pn.remove(); meAddGif(); }],
+    ["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention], ["⏳", "Compte à rebours", _meStickerCompte]];
   if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
@@ -2776,6 +3271,7 @@ function meRemoveOverlay(id) {
   meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
   var el = document.getElementById(id); if (el) el.remove();
   if (retire && retire.type === "musique") _meMusiqueArreter();
+  _meOutilsEffaces(false);
   _meMajVide();
 }
 // Applique position (left/top) + transform (scale/rotation) et garde les
@@ -2838,6 +3334,7 @@ function _meMakeInteractive(el, ov, handle) {
     rect = canvas.getBoundingClientRect();
     try { el.setPointerCapture(e.pointerId); } catch(_) {}
     pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    _meOutilsEffaces(true);
     var ids = Object.keys(pointers);
     if (ids.length === 1) { drag = { px: e.clientX, py: e.clientY, ox: ov.x, oy: ov.y }; tape = { x: e.clientX, y: e.clientY, t: Date.now() }; }
     else if (ids.length === 2) { drag = null; tape = null; pinch = _mePinchStart(pointers, ids, ov); }
@@ -2868,7 +3365,7 @@ function _meMakeInteractive(el, ov, handle) {
     if (etaitTape && ov.type === "text") {
       delete pointers[e.pointerId];
       try { el.releasePointerCapture(e.pointerId); } catch(_) {}
-      drag = null; pinch = null;
+      drag = null; pinch = null; _meOutilsEffaces(false);
       // Le clic synthétique qui suit tomberait sur la zone de l'éditeur et le refermerait.
       _meSwallowNextClick();
       meOuvrirEditeurTexte(ov);
@@ -2878,7 +3375,7 @@ function _meMakeInteractive(el, ov, handle) {
     try { el.releasePointerCapture(e.pointerId); } catch(_) {}
     var ids = Object.keys(pointers);
     if (ids.length === 1) { pinch = null; drag = { px: pointers[ids[0]].x, py: pointers[ids[0]].y, ox: ov.x, oy: ov.y }; }
-    else if (ids.length === 0) { drag = null; pinch = null; }
+    else if (ids.length === 0) { drag = null; pinch = null; _meOutilsEffaces(false); }
   }
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
@@ -2909,6 +3406,11 @@ function _meMakeInteractive(el, ov, handle) {
       handle.addEventListener("pointercancel", end);
     });
   }
+}
+// Les colonnes d'outils et la rangée « Publier » s'effacent le temps d'un
+// déplacement : l'élément peut aller partout, rien ne le masque.
+function _meOutilsEffaces(oui) {
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.toggle("me-glisse", !!oui);
 }
 function _mePinchStart(pointers, ids, ov) {
   var p = pointers[ids[0]], q = pointers[ids[1]];

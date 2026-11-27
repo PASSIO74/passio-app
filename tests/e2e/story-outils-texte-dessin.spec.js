@@ -61,7 +61,18 @@ test("② retour pendant l'écriture : clavier fermé, texte gardé, éditeur ou
   await expect(page.locator("#meTexteEditeur")).toBeHidden();
   await expect(page.locator("#mediaEditor")).toHaveClass(/open/);
   await expect(page.locator("#meOverlays .me-overlay.text")).toHaveText(/Ne pas perdre/);
-  // Un second retour ferme bien l'éditeur média (l'entrée a été reposée, pas perdue).
+  // Un second retour atteint bien l'éditeur média (l'entrée a été reposée, pas
+  // perdue). Depuis le 2026-11-27, il ne jette plus le texte d'un seul geste : il
+  // DEMANDE (« Abandonner cette story ? »), l'éditeur reste ouvert.
+  await page.goBack();
+  const feuille = page.locator("#feuilleConfirmation");
+  await expect(feuille.locator(".feuille-conf-titre")).toHaveText("Abandonner cette story ?");
+  await expect(page.locator("#mediaEditor")).toHaveClass(/open/);
+  await expect(page.locator("#meOverlays .me-overlay.text")).toHaveText(/Ne pas perdre/);
+  // « Abandonner » rend l'appareil photo ; le retour suivant ferme l'éditeur.
+  await feuille.locator('[data-conf="abandonner"]').click();
+  await expect(page.locator("#mediaEditor")).toHaveClass(/phase-capture/);
+  await expect(page.locator("#meOverlays .me-overlay")).toHaveCount(0);
   await page.goBack();
   await expect(page.locator("#mediaEditor")).not.toHaveClass(/open/);
 });
