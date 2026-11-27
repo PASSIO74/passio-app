@@ -37,6 +37,17 @@ async function ouvrirStory(page) {
   await expect(page.locator("#storyViewer")).toHaveClass(/active/);
 }
 const boite = (page, sel) => page.locator(sel).evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, d: r.right, b: r.bottom, w: r.width, h: r.height }; });
+// Deux touchers au même point, dans le MÊME tour du navigateur. Deux appels Playwright
+// successifs peuvent être séparés de plus de 320 ms (la fenêtre du double toucher) sur une
+// machine chargée — vu en CI le 2026-11-27 : le geste n'était alors plus un double toucher,
+// et c'est le test qui échouait, pas le produit. La cible du second est relue APRÈS le
+// premier : un bouton (« ▶ Lire ») a pu paraître sous le doigt entre les deux.
+const doubleToucher = (page, x, y) => page.evaluate(([px, py]) => {
+  for (let i = 0; i < 2; i++) {
+    const el = document.elementFromPoint(px, py);
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, composed: true, clientX: px, clientY: py }));
+  }
+}, [x, y]);
 const atteint = (page, sel) => page.locator(sel).evaluate((el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && (t === el || el.contains(t)); });
 
 test.describe("téléphone (tactile)", () => {
@@ -114,8 +125,7 @@ test.describe("téléphone (tactile)", () => {
     await page.waitForTimeout(450);
     await expect(coeur).not.toHaveClass(/liked/);
     // Deux touchers rapprochés : aimée, compteur + 1, cœur au centre.
-    await page.touchscreen.tap(x, y);
-    await page.touchscreen.tap(x, y);
+    await doubleToucher(page, x, y);
     await expect(coeur).toHaveClass(/liked/);
     await expect(coeur.locator(".reel-action-label")).toHaveText(String(avant + 1));
     await expect(item.locator(".reel-media-container .heart-burst")).toHaveCount(1);
@@ -123,8 +133,7 @@ test.describe("téléphone (tactile)", () => {
     expect(await page.evaluate((i) => state.user.likedPosts.includes(i), id)).toBe(true);
     // Recommencer ne retire PAS le j'aime (seul le cœur de la colonne le fait).
     await page.waitForTimeout(450);
-    await page.touchscreen.tap(x, y);
-    await page.touchscreen.tap(x, y);
+    await doubleToucher(page, x, y);
     await page.waitForTimeout(200);
     await expect(coeur).toHaveClass(/liked/);
     await expect(coeur.locator(".reel-action-label")).toHaveText(String(avant + 1));
@@ -141,8 +150,7 @@ test.describe("téléphone (tactile)", () => {
       it.querySelector(".reel-media-container").appendChild(b);
     });
     const bb = await page.locator("#boutonSurBobine").boundingBox();
-    await page.touchscreen.tap(bb.x + 30, bb.y + 30);
-    await page.touchscreen.tap(bb.x + 30, bb.y + 30);
+    await doubleToucher(page, bb.x + 30, bb.y + 30);
     await page.waitForTimeout(200);
     await expect(coeur).not.toHaveClass(/liked/);
   });
@@ -195,8 +203,7 @@ test.describe("téléphone (tactile) — double toucher, cas de bord", () => {
     // l'application qui fait paraître « ▶ Lire » sous le doigt ; le second tombe dessus.
     await enLecture();
     await expect(lireEl).toBeHidden();
-    await page.touchscreen.tap(lire.x + lire.width / 2, lire.y + lire.height / 2);
-    await page.touchscreen.tap(lire.x + lire.width / 2, lire.y + lire.height / 2);
+    await doubleToucher(page, lire.x + lire.width / 2, lire.y + lire.height / 2);
     await expect(coeur).toHaveClass(/liked/);
     await expect(coeur.locator(".reel-action-label")).toHaveText("4");
     await expect(item.locator(".reel-media-container .heart-burst")).toHaveCount(1);
@@ -218,8 +225,7 @@ test.describe("téléphone (tactile) — double toucher, cas de bord", () => {
     // Le cœur de la colonne est déjà rouge : la copie serveur « aimée » compte.
     await expect(coeur).toHaveClass(/liked/);
     const zone = await item.locator(".reel-media-container").boundingBox();
-    await page.touchscreen.tap(zone.x + zone.width / 2, zone.y + zone.height / 3);
-    await page.touchscreen.tap(zone.x + zone.width / 2, zone.y + zone.height / 3);
+    await doubleToucher(page, zone.x + zone.width / 2, zone.y + zone.height / 3);
     await expect(item.locator(".reel-media-container .heart-burst")).toHaveCount(1);
     await page.waitForTimeout(200);
     expect(await page.evaluate(() => window.__bascules), "aucune bascule : rien n'est retiré").toBe(0);

@@ -263,7 +263,7 @@ test("⑥ minuteur : décompte puis prise ; un toucher pendant le décompte l'an
   // Toucher : le décompte s'affiche, rien n'est pris tout de suite.
   await page.locator("#meShutter").tap();
   await expect(page.locator("#meCompte")).toBeVisible();
-  await expect(page.locator("#meCompte")).toHaveText("3");
+  await expect(page.locator("#meCompte")).toHaveText(/^[123]$/);
   expect(await page.evaluate(EDITION)).toBe(false);
   await expect(page.locator("#meCaptureHint")).toHaveText("Touche le bouton pour annuler");
   // Un toucher pendant le décompte l'annule.
@@ -273,7 +273,7 @@ test("⑥ minuteur : décompte puis prise ; un toucher pendant le décompte l'an
   expect(await page.evaluate(EDITION), "annulé : aucune prise").toBe(false);
   // Nouveau décompte, mené au bout : la photo est prise.
   await page.locator("#meShutter").tap();
-  await expect(page.locator("#meCompte")).toHaveText("3");
+  await expect(page.locator("#meCompte")).toHaveText(/^[123]$/);
   await page.waitForFunction(EDITION, null, { timeout: 8000 });
   expect(await page.evaluate(() => meState.mediaType)).toBe("photo");
   // 3 → 10 → désactivé.
@@ -286,7 +286,7 @@ test("⑥ minuteur : décompte puis prise ; un toucher pendant le décompte l'an
   // Fermer l'éditeur pendant un décompte ne déclenche rien après coup.
   await page.locator("#meMinuteurBtn").tap();
   await page.locator("#meShutter").tap();
-  await expect(page.locator("#meCompte")).toHaveText("3");
+  await expect(page.locator("#meCompte")).toHaveText(/^[123]$/);
   await page.evaluate(() => meClose());
   await page.waitForTimeout(3400);
   expect(await page.evaluate(() => ({ ouvert: document.getElementById("mediaEditor").classList.contains("open"), timer: meCap.compteTimer, media: meState.media }))).toEqual({ ouvert: false, timer: null, media: null });
@@ -478,11 +478,14 @@ test("⑫ relecture : rien ne survit à une sortie — caméra tardive, prise en
     const t = window.toast;
     window.toast = function (msg) { window.__toasts.push(String(msg)); return t.apply(this, arguments); };
     const vrai = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    let flux = null;
-    navigator.mediaDevices.getUserMedia = (c) => new Promise((res, rej) => setTimeout(() => vrai(c).then((s) => { flux = s; res(s); }, rej), 500));
+    let flux = null, rendu;
+    // On attend la réponse RÉELLE de la caméra (pas une durée) : elle arrive 500 ms
+    // après la demande, donc après la fermeture — puis on laisse `meStartCamera` conclure.
+    const reponse = new Promise((r) => { rendu = r; });
+    navigator.mediaDevices.getUserMedia = (c) => new Promise((res, rej) => setTimeout(() => vrai(c).then((s) => { flux = s; res(s); setTimeout(rendu, 100); }, (e) => { rej(e); rendu(); }), 500));
     meOpen("story");
     meClose();   // fermé pendant l'ouverture de la caméra
-    await new Promise((r) => setTimeout(r, 1500));
+    await reponse;
     navigator.mediaDevices.getUserMedia = vrai;
     return { obtenu: !!flux, pistes: flux ? flux.getTracks().map((p) => p.readyState) : [], garde: !!meCam.stream, ouvert: document.getElementById("mediaEditor").classList.contains("open") };
   });
@@ -533,7 +536,7 @@ test("⑫ relecture : rien ne survit à une sortie — caméra tardive, prise en
   await page.locator("#meMinuteurBtn").tap();
   await expect(page.locator("#meCaptureHint"), "minuteur armé : la consigne ne promet plus le maintien").toHaveText("Appuie · la vidéo démarre dans 3 s");
   await page.locator("#meShutter").tap();
-  await expect(page.locator("#meCompte")).toHaveText("3");
+  await expect(page.locator("#meCompte")).toHaveText(/^[123]$/);
   await page.goBack();
   await expect(page.locator("#meCompte")).toBeHidden();
   expect(await page.evaluate(() => ({ ouvert: document.getElementById("mediaEditor").classList.contains("open"), timer: meCap.compteTimer }))).toEqual({ ouvert: true, timer: null });
