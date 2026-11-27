@@ -2490,3 +2490,33 @@ par son propre prérequis (« Policies source supplementaires : revue requise »
   `event_invites` et `event_invites_retires`.
 - Usage mesuré le 2026-11-27 au matin : 0 activité privée, 0 lien — et 0 activité créée tout
   court depuis deux jours. À relire dans une semaine (`activite_privee_*`, `meta.trafic` vide).
+
+## 📊 SONDAGE DES BOBINES — `migration_bobine_sondage_2026-11-27.sql` (**NON appliquée** au 2026-11-27)
+
+Le sondage des stories ouvert aux bobines (une bobine = une ligne de `posts` marquée `is_reel`, son
+sticker dans `posts.overlays`). `bobine_sondage_votes` (post_id, user_id, choix 0|1) : un vote par
+compte et par bobine, jamais modifié ni retiré (aucun droit UPDATE / DELETE). Écrit sur une bobine
+VISIBLE, qui porte un sondage et n'est pas la sienne ; INSERT par colonne `(post_id, choix)` ; lu par
+le votant (le sien) et par l'auteur de la bobine (hors comptes bloqués). `bobine_sondage_resultats`
+ne rend les comptes qu'après le vote ou à l'auteur. Débit par compte (120 / minute), barrière de
+suppression de compte, table hors de toute publication. Client : `docs/lots-ui/35-BOBINE-SONDAGE-2026-11-27.md`,
+livré drapeau éteint.
+
+- **La visibilité est DÉLÉGUÉE, pas recopiée** : `bobine_sondage_visible` appelle `post_is_visible(text)`,
+  la fonction qui juge déjà `post_likes` et `post_comments`. Une règle de lecture ajoutée demain à `posts`
+  y entre et vaut ici sans migration. Contrepartie : la migration porte une GARDE qui refuse une base où
+  `post_is_visible` ne contient ni le compte privé, ni le blocage, ni le masquage.
+- **Piège : `post_is_visible` rend VRAI pour un identifiant d'exemple absent de `posts`.** Les aides
+  exigent donc la LIGNE — sinon « exemple inexistant » et « bobine privée au même identifiant » ne
+  répondraient pas pareil (un oracle d'existence).
+- **Le tableau de verdict LÈVE** (plus strict que celui des stories) : une ligne en ÉCHEC, rien n'est
+  validé. Sa ligne 10 exige qu'un client ne puisse modifier ni `posts.is_reel` ni `posts.overlays` (le
+  sondage voté ne change pas après coup) — vrai en production le 27/11.
+- Banc : `tests/sql/migration-bobine-sondage.test.sh` — application et rejeu, cas par identité (90),
+  mutations sur base migrée, retour arrière exécuté tel quel, gardes. Le socle du banc datant du 06/11,
+  `tests/sql/fixtures/bobine-sondage-production-2026-11-27.sql` y repose ce que la production portait le
+  27/11 et lève si l'empreinte d'une fonction s'en écarte.
+- Vu en passant, non corrigé (fichier appliqué et attesté par empreinte) : le bloc « RETOUR ARRIÈRE » de
+  `migration_story_sondage_2026-11-26.sql` supprime `story_a_un_sondage` AVANT la table dont la policy en
+  dépend — il échoue tel quel ; inverser les deux lignes le jour où on le joue.
+- Non éprouvé : PostgreSQL 17 (banc en 16), PostgREST, comptes réels, staging.
