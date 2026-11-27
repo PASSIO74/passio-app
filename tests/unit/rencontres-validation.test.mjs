@@ -35,7 +35,8 @@ test('une demande confirmée réveille l’organisation sans doubler sa notifica
    _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
    toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
-  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map(); var state={userEvents:[],seed:{events:[]}};"+fn('_suspendreLectureRefus')+fn('_sortiePourParticipation')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
+  // (2026-11-27) setEventRsvp est la FILE par activité ; le moteur est _setEventRsvpUn.
+  vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map(); const _fileRsvp=new Map(); const _rsvpRegleA={}; const _rsvpPosees=new Set(); var state={userEvents:[],seed:{events:[]}};"+fn('_suspendreLectureRefus')+fn('_sortiePourParticipation')+fn('_convergerApresRefus')+fn('_setEventRsvpUn')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');
   assert.equal(insertions.length,0,'la ligne de notification appartient au serveur');
   assert.equal(relectures,reel&&reponse===true?1:0,'Rencontrer relit la demande uniquement après enregistrement serveur');
   assert.equal(pushes.length,reel&&reponse===true?1:0,'aucun push après refus ou hors ligne');

@@ -4196,7 +4196,7 @@ async function _setEventRsvpUn(id, rsvp) {
     // promeut que s'il en reste une) : la question lui est posée, la réponse est
     // « rien à faire » dans tous les autres cas. Hors serveur (activité locale),
     // la règle d'avant tient : seul un « je viens » rend une place.
-    if (prev === "going" || _promotionADemander(ev)) _promoteNextWaitlisted(ev);
+    if (prev === "going" || (prev === "waitlist" && _promotionADemander(ev))) _promoteNextWaitlisted(ev);
     _leaveEventConversation(ev);
     return;
   }
@@ -4256,7 +4256,7 @@ async function _setEventRsvpUn(id, rsvp) {
   // la base n'a pas écrit le changement, la place n'est pas libre (et
   // `promouvoir_attente` le vérifierait de toute façon : elle compte les
   // venants sous verrou avant de promouvoir quiconque).
-  if (rsvpOk === true && rsvp !== "going" && (prev === "going" || _promotionADemander(ev))) _promoteNextWaitlisted(ev);
+  if (rsvpOk === true && rsvp !== "going" && (prev === "going" || (prev === "waitlist" && _promotionADemander(ev)))) _promoteNextWaitlisted(ev);
   // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
   // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
   // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
