@@ -157,7 +157,13 @@
   // l'attache : on lui redemande un recadrage. `irlMap` est un `let` de portée
   // script (donc absent de `window`, et en zone morte tant qu'app-07 n'a pas
   // tourné) — d'où le `typeof` DANS un `try`, le seul des deux qui protège.
+  // ⚠️ La carte n'est plus construite en vue Liste (2026-11-27, app-07
+  // `_scheduleIrlMapUpdate`) : c'est l'arrivée en vue Carte qui la demande, et
+  // qui pose ses marqueurs s'ils ont changé pendant qu'elle était cachée.
   function recadrerCarte() {
+    try {
+      if (vue === "carte" && typeof _scheduleIrlMapUpdate === "function") _scheduleIrlMapUpdate();
+    } catch (e) {}
     setTimeout(function () {
       try {
         if (typeof irlMap !== "undefined" && irlMap

@@ -594,7 +594,9 @@ function showEmojiPickerForEvent(eventId, event) {
   if (typeof emojiReactPanel === "function") {
     return emojiReactPanel(event,
       function(e){ if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, [e]); if (typeof toast === "function") toast("Réaction envoyée " + e); },
-      function(url){ if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, url); if (typeof toast === "function") toast("GIF envoyé 🎬"); });
+      // Le toast du GIF part au verdict de l'écriture (`_gifCommentaireActivite`,
+      // sujet 151) : celui d'ici s'ajoutait au sien, même sur un refus.
+      function(url){ if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, url); });
   }
   return false;
 }
@@ -721,6 +723,11 @@ function _postGifComment(threadId, gifUrl) {
   var p = (typeof currentProfile === "function") ? currentProfile() : null;
   var nm = (p && p.name) || (state.user && state.user.name) || "Moi";
   var kind = thread.kind;
+  // Une ACTIVITÉ passe par le chemin commun des commentaires d'activité (app-07,
+  // 2026-11-27, sujet 151) : porte invité, verdict lu (retrait sur refus, vrai
+  // identifiant sinon — plus de doublon à la relecture), notification de
+  // l'organisation, un seul toast, au succès.
+  if (kind === "event" && typeof _gifCommentaireActivite === "function") return _gifCommentaireActivite(threadId, gifUrl);
   // ⚠️ Le préfixe « lc_local_ » servait aux commentaires de live CDV : ce genre
   // de fil n'existe plus (ADR-011 §5).
   var cid = (kind === "event" ? "ec_local_" : "c_") + (typeof uid === "function" ? uid() : Date.now());

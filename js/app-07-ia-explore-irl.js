@@ -861,11 +861,43 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) actualiserProchaineSortie(true);
 });
 
+// ⚠️ UNE VALEUR INCONNUE N'EST PAS UNE RÉPONSE (2026-11-27, sujet 211). Un état
+// posé par une version plus récente (ou un état local abîmé) arrivait tel quel
+// aux lecteurs de `RSVP_LABELS[état].short` : `renderIRL` levait, et Rencontrer
+// s'affichait VIDE à chaque ouverture. Hors des quatre états connus, on retombe
+// sur `joinedEvents`, comme si rien n'avait été répondu ici.
 function myRsvp(eventId) {
   const m = (state.user.eventRsvp || {})[eventId];
-  if (m) return m;
+  if (m && RSVP_LABELS[m]) return m;
   return (state.user.joinedEvents || []).includes(eventId) ? "going" : null;
 }
+
+// ── CE QUE MA RÉPONSE VAUT VRAIMENT (2026-11-27) ─────────────────────────────
+// Un « je participe » est une DEMANDE tant que l'organisation ne l'a pas
+// validée (`rencontres_prive.accords`, lu par `vient_a_activite`). La carte et
+// le pied de la fiche disaient « Inscrit ✓ » / « ✓ Tu participes » dès le geste :
+// la personne se croyait attendue alors que sa demande dormait. La validation se
+// lit par `adresses_activites`, qui ne rend une ligne qu'à l'organisation et à
+// qui VIENT (posée en `_accesPrive` par `supaLoadEvents` / `_majAdresseActivite`).
+// Une activité locale (exemple, brouillon hors ligne) n'a pas d'organisation
+// qui valide : « je participe » y vaut confirmation, comme avant.
+// Rend "demande" | "confirmee" | "attente" | "maybe" | "declined" | null.
+function _etatParticipationAffiche(ev) {
+  if (!ev) return null;
+  const r = myRsvp(ev.id);
+  if (!r) return null;
+  if (r === "waitlist") return "attente";
+  if (r !== "going") return r;
+  if (!ev.fromSupabase || _canManageEvent(ev)) return "confirmee";
+  const src = _sortiePourParticipation(_findCanonicalEvent(ev.id) || ev) || ev;
+  return (src._accesPrive === true || ev._accesPrive === true) ? "confirmee" : "demande";
+}
+// Les MÊMES mots sur la carte de la liste et au pied de la fiche.
+const LIBELLES_PARTICIPATION = {
+  demande: "Demande envoyée",
+  confirmee: "Participation confirmée",
+  attente: "En liste d'attente",
+};
 
 function _setMyRsvpLocal(eventId, rsvp) {
   state.user.eventRsvp = state.user.eventRsvp || {};
@@ -906,6 +938,27 @@ function _ajusterCompteInscrits(ev, kind, delta) {
   const c = Number(ev.counts[kind]);
   if (!(c >= 0)) return;
   ev.counts[kind] = Math.max(0, c + delta);
+}
+
+// ── « INCONNU » N'EST PAS « ZÉRO » (2026-11-27, sujet 197) ───────────────────
+// Sans compte, la base ne rend ni la liste ni le compteur (`participants_compte`
+// et `event_attendees` sont fermés à `anon`, exprès) ; un compte dont les deux
+// lectures ont échoué est dans le même cas. `_nbInscrits` rendait alors 0 : un
+// visiteur lisait « 0 participant · 3 places restantes » et « sois le premier ! »
+// sur une activité COMPLÈTE avec liste d'attente. On ne dit pas un nombre qu'on
+// ne connaît pas.
+function _inscritsInconnus(ev) {
+  if (!ev) return false;
+  const src = _sortiePourParticipation(ev) || ev;
+  return src.fromSupabase === true && src._comptesLus === false && src._listesLues === false
+    && !src.counts && !(src.attendees || []).length;
+}
+// Ce qu'on peut dire à la place du nombre : la capacité, et comment en savoir plus.
+function _texteInscritsInconnus(ev) {
+  const compte = typeof _compteAuthReel === "function" && _compteAuthReel();
+  const suite = compte ? "participants indisponibles pour l'instant" : "connecte-toi pour voir qui vient";
+  return ev && ev.maxAttendees ? ev.maxAttendees + " place" + (ev.maxAttendees > 1 ? "s" : "") + " au total · " + suite
+    : suite.charAt(0).toUpperCase() + suite.slice(1);
 }
 
 // Places restantes (null = illimité). Seuls les « je viens » occupent une place.
@@ -1032,9 +1085,13 @@ async function _convergerApresRefus(ev, motif) {
 // droit) et mes réponses (`supaLoadMyRsvps`, que `_fusionnerRsvpServeur` applique
 // en respectant un geste en vol). Une rafale de notifications = une lecture.
 const _activitesNotifiees = new Map();
-function activiteNotifiee(id) {
+// `opts.entrerDiscussion` : la notification est une VALIDATION (`event_accepted`)
+// — voir `_entrerDiscussionValidee`, appelée après la relecture.
+const _discussionsAEntrer = new Set();
+function activiteNotifiee(id, opts) {
   if (!id || !window._supaReal || typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;
   if (typeof LIEN_COURT_ID_RE !== "undefined" && !LIEN_COURT_ID_RE.test(id)) return;
+  if (opts && opts.entrerDiscussion) _discussionsAEntrer.add(id);
   if (_activitesNotifiees.has(id)) return;
   _activitesNotifiees.set(id, setTimeout(function () {
     _activitesNotifiees.delete(id);
@@ -1060,9 +1117,35 @@ async function _relireActiviteNotifiee(id) {
     saveState();
     if (_irlEcranVisible()) { window._irlMapSig = null; renderIRL(); }
     _refreshEventDetailIfOpen(id);
+    if (_discussionsAEntrer.delete(id)) await _entrerDiscussionValidee(id);
   } catch (e) {
     try { if (typeof diagLog === "function") diagLog("activité notifiée : relecture — " + (e && e.message)); } catch (_) {}
   }
+}
+
+// ⚠️ VALIDÉ = ENTRÉ DANS LA DISCUSSION (2026-11-27, sujet 134). La base n'admet
+// dans `evgrp_<id>` qu'une personne dont la participation est VALIDÉE (accord),
+// et `valider_participant` n'y inscrit personne : la seule tentative d'entrée
+// (à l'inscription) précède la validation et est refusée. Le participant validé
+// ne voyait ni la discussion ni ses messages tant qu'il ne touchait pas lui-même
+// « Écrire aux participants ». À la validation (notification relue ci-dessus), on
+// entre — une fois par session et par activité, jamais pour qui a QUITTÉ le
+// groupe (pierre tombale : ADR-008), ni si le miroir existe déjà.
+// La part serveur (insérer conv_members dans `valider_participant`) reste à faire.
+const _discussionsTentees = new Set();
+async function _entrerDiscussionValidee(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !ev.convId || _canManageEvent(ev) || _eventIsCancelled(ev)) return false;
+  if (myRsvp(id) !== "going") return false;
+  if (_discussionsTentees.has(ev.convId)) return false;
+  try {
+    if (typeof getConversations === "function" && getConversations().some(c => c && c.id === ev.convId)) return false;
+    if (typeof convTombLoad === "function" && typeof convTombHas === "function" && convTombHas(convTombLoad(), "conv", ev.convId)) return false;
+  } catch (e) { return false; }
+  _discussionsTentees.add(ev.convId);
+  const entre = await _joinEventConversation(ev);
+  if (entre) { try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {} }
+  return entre;
 }
 
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
@@ -1519,18 +1602,26 @@ async function passioGeoSuggest(query, limit) {
   if (hit !== undefined) return hit;
 
   let out = [];
+  // ⚠️ UNE PANNE N'EST PAS UNE RÉPONSE VIDE (2026-11-27). `_geoFetchJson` rend
+  // `null` sur toute panne (hors ligne, délai, statut d'erreur) : la liste vide
+  // était pourtant mise en cache 7 jours, et la même saisie, réseau revenu,
+  // répondait « Aucune ville trouvée » sans plus jamais interroger le
+  // géocodeur. Seule une vraie réponse (même vide) des fournisseurs se cache.
+  let echec = false;
   const ban = await _geoThrottle(() => _geoFetchJson(
     "https://api-adresse.data.gouv.fr/search/?limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+  if (ban === null) echec = true;
   if (ban && ban.features && ban.features.length) out = ban.features.map(_geoFromBan);
 
   if (!out.length) {
     const ph = await _geoThrottle(() => _geoFetchJson(
       "https://photon.komoot.io/api/?lang=fr&limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+    if (ph === null) echec = true;
     if (ph && ph.features) out = ph.features.map(_geoFromPhoton);
   }
 
   out = out.filter(r => typeof r.lat === "number" && typeof r.lng === "number");
-  _geoCacheSet(key, out);
+  if (out.length || !echec) _geoCacheSet(key, out);
   return out;
 }
 
@@ -1543,7 +1634,9 @@ async function passioGeocode(query) {
   if (hit !== undefined) return hit;
   const res = await passioGeoSuggest(q, 1);
   const best = res && res[0] ? res[0] : null;
-  _geoCacheSet(key, best);
+  // « Introuvable » ne se cache que si la suggestion l'a établi (elle ne cache
+  // pas une panne) : sinon on redemandera (2026-11-27).
+  if (best || _geoCacheGet("s:" + q.toLowerCase() + ":1") !== undefined) _geoCacheSet(key, best);
   return best;
 }
 
@@ -1557,16 +1650,19 @@ async function passioReverseGeocode(lat, lng) {
   if (hit !== undefined) return hit;
 
   let out = null;
+  let echec = false;   // même règle que `passioGeoSuggest` : une panne ne se cache pas
   const ban = await _geoThrottle(() => _geoFetchJson(
     "https://api-adresse.data.gouv.fr/reverse/?lat=" + lat + "&lon=" + lng));
+  if (ban === null) echec = true;
   if (ban && ban.features && ban.features[0]) out = _geoFromBan(ban.features[0]);
 
   if (!out || !out.city) {
     const ph = await _geoThrottle(() => _geoFetchJson(
       "https://photon.komoot.io/reverse?lang=fr&lat=" + lat + "&lon=" + lng));
+    if (ph === null) echec = true;
     if (ph && ph.features && ph.features[0]) out = _geoFromPhoton(ph.features[0]);
   }
-  _geoCacheSet(key, out);
+  if ((out && out.city) || !echec) _geoCacheSet(key, out);
   return out;
 }
 
@@ -1580,23 +1676,44 @@ function _irlEcranVisible() {
   } catch (e) { return false; }
 }
 
+// ⚠️ UNE SECONDE CHANCE APRÈS UN REFUS OU UN DÉLAI (2026-11-27). Le repli
+// d'échec pose Paris dans `irlUserLocation` : la garde « déjà obtenue » le
+// prenait pour une vraie position, et plus aucun « Utiliser ma position » ne
+// redemandait rien de la session — la personne autorisait la position dans son
+// navigateur, retapait le bouton, et il ne se passait strictement rien. Une
+// position EN ÉCHEC se redemande ; une demande déjà en vol ne se double pas.
+let _irlGeoEnCours = false;
 function requestUserLocation() {
-  // SI DÉJÀ obtenue, ne pas redemander
-  if (irlUserLocation) {
+  // SI DÉJÀ obtenue (une vraie position, pas le repli d'échec), ne pas redemander
+  if (irlUserLocation && !irlUserLocationError) {
     _diag("[GEO] Position déjà obtenue: " + irlUserLocation.lat.toFixed(4) + ", " + irlUserLocation.lng.toFixed(4));
     return;
   }
+  if (_irlGeoEnCours) return;
 
   if (!navigator.geolocation) {
-    _diag("[GEO] ❌ Géolocalisation non supportée → PARIS");
+    // Repli SIGNALÉ comme tel (2026-11-27) : sans `irlUserLocationError`, Paris
+    // passait pour « Position actuelle » — distances et filtre comptés depuis
+    // Paris pour une personne qui n'y est pas.
+    _diag("[GEO] ❌ Géolocalisation non supportée → aucun point");
     irlUserLocation = { lat: 48.8566, lng: 2.3522 };
+    irlUserLocationError = true;
+    if (!window._geoRefusDit) {
+      window._geoRefusDit = true;
+      try { toast("Position indisponible sur cet appareil. Choisis ta ville dans « Où ? ».", "warning"); } catch (e) {}
+    }
+    updateIrlCityTitle();
+    renderIRL();
     return;
   }
 
   _diag("[GEO] 📍 Demande position utilisateur...");
+  _irlGeoEnCours = true;
 
   navigator.geolocation.getCurrentPosition(
     function(position) {
+      _irlGeoEnCours = false;
+      irlUserLocationError = false;
       irlUserLocation = {
         lat: position.coords.latitude,
         lng: position.coords.longitude
@@ -1614,26 +1731,35 @@ function requestUserLocation() {
       renderIRL(); // Re-render avec la nouvelle position
     },
     function(error) {
-      _diag("[GEO] ❌ Erreur: " + error.message);
+      _irlGeoEnCours = false;
+      _diag("[GEO] ❌ Erreur: " + (error && error.message));
       irlUserLocationError = true;
-      // Utiliser Paris par défaut
+      // Point de repli INTERNE seulement : `irlUserLocationError` le marque, et
+      // ni les distances, ni le filtre, ni l'épingle ne s'en servent
+      // (`_irlAReferenceReelle`, 2026-11-27).
       irlUserLocation = { lat: 48.8566, lng: 2.3522 };
-      _diag("[GEO] 🔄 Fallback PARIS: 48.8566, 2.3522");
       // ⚠️ LE REPLI SE DIT (ROB-05, 2026-09-14) : l'écran titrait « Paris »
       // comme si c'était la position de la personne — résultats trompeurs pour
-      // quiconque n'est pas en Île-de-France. Une fois par session, et la
-      // sortie est nommée : choisir sa ville.
+      // quiconque n'est pas en Île-de-France. Une fois par session pour une
+      // demande implicite ; un geste explicite remet le drapeau (2026-11-27), et
+      // le message dit la VRAIE cause : un refus ne se règle pas en réessayant.
       if (!window._geoRefusDit) {
         window._geoRefusDit = true;
-        try { toast("Position indisponible. Choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */ } catch (e) {}
+        var refus = !!(error && error.code === 1);
+        try {
+          toast(refus
+            ? "Position refusée. Autorise-la dans ton navigateur ou choisis ta ville dans « Où ? »."
+            : "Position indisponible pour l'instant. Réessaie, ou choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */
+        } catch (e) {}
       }
 
-      // Afficher Paris comme fallback
       updateIrlCityTitle();
 
       renderIRL();
     },
-    { timeout: 5000, enableHighAccuracy: false }
+    // 5 s ne suffisaient pas à un GPS froid : le délai tombait en échec muet
+    // (2026-11-27). Une position d'il y a une minute vaut pour trouver une sortie.
+    { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false }
   );
 }
 
@@ -1920,6 +2046,10 @@ function openIrlCitySelector() {
   searchInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
+    // Champ vide : Entrée ne choisit RIEN (2026-11-27). Elle prenait la première
+    // des « grandes villes » affichées par défaut — Bordeaux, par ordre
+    // alphabétique — et fermait la feuille.
+    if (!_normIrlCityName(searchInput.value)) return;
     const visibles = [...citiesGrid.querySelectorAll("button")]
       .filter(b => b.style.display !== "none" && b.offsetParent !== null)
       .sort((a, b) => (parseInt(a.style.order || "0", 10) - parseInt(b.style.order || "0", 10)));
@@ -1963,6 +2093,9 @@ function selectIrlCity(cityId, cityName) {
 // titre et relance `renderIRL()` quand la position arrive.
 function useMyPositionForIrl() {
   clearIrlCitySelection();
+  // Un geste explicite redit l'échec (2026-11-27) : sans quoi le second tap,
+  // après un premier refus, restait parfaitement muet.
+  window._geoRefusDit = false;
   try {
     if (typeof requestUserLocation === "function") requestUserLocation();
   } catch (e) { _diag("[GEO] ❌ demande explicite: " + (e && e.message)); }
@@ -1999,11 +2132,30 @@ function initIrlMap() {
       // carte ne peut pas s'afficher — la LISTE reste parfaitement utilisable,
       // il faut juste le dire au lieu de laisser un cadre vide.
       .catch(function(){
-        el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
-          + 'La liste des activités ci-dessous fonctionne normalement.</div>';
+        // Deux causes, deux messages (2026-11-27) : sans WebGL c'est l'appareil ;
+        // sinon c'est le chargement (réseau), et un second essai suffit —
+        // `ensureLeaflet` n'est plus figée sur son premier échec.
+        var appareil = typeof passioMapSupported === "function" && !passioMapSupported();
+        if (appareil) {
+          el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
+            + 'La liste des activités ci-dessous fonctionne normalement.</div>';
+          return;
+        }
+        el.innerHTML = '<div class="irl-map-fallback irl-map-echec" role="status">La carte n\'a pas pu se charger (connexion ?).<br/>'
+          + 'La liste des activités ci-dessous fonctionne normalement.<br/>'
+          + '<button type="button" class="btn small ghost irl-map-reessayer">Réessayer</button></div>';
+        var b = el.querySelector(".irl-map-reessayer");
+        if (b) b.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          el.innerHTML = "";
+          window._irlMapSig = null;
+          initIrlMap();
+        });
       });
     return;
   }
+  // Un message d'échec de chargement laissé par un essai précédent part.
+  try { var _echecAvant = el.querySelector(".irl-map-echec"); if (_echecAvant) _echecAvant.remove(); } catch (e) {}
   // Vue initiale : centre de la France, zoom 5.5 → on voit tout le pays
   irlMap = L.map(el, { zoomControl: true, attributionControl: true })
     .setView([46.6, 2.5], 5.7);
@@ -2041,6 +2193,13 @@ function resetToUserLocation() {
   updateIrlCityTitle();
   if (irlMap) irlMap.closePopup();
   renderIRL();
+  // Geste explicite : c'est lui qui demande la position, plus le rendu
+  // (2026-11-27, plus aucune demande implicite dans `renderIRL`).
+  if (!irlUserLocation || irlUserLocationError) {
+    window._geoRefusDit = false;
+    requestUserLocation();
+    return;
+  }
   toast("Position actuelle");
 }
 
@@ -2150,22 +2309,37 @@ function updateIrlMapMarkers() {
   // et le zoom manuel était perdu à chaque clic. On ne reconstruit que si
   // l'ensemble filtré a réellement changé. (Corrigé le 2026-07-21.)
   var _filteredNow = _filterIrlEvents(allEvents());
-  var _sig = _filteredNow.map(function(e) { return e.id; }).join(",")
+  // ⚠️ CE QUE LE MARQUEUR MONTRE entre dans la signature (2026-11-27) : titre,
+  // date, heure, point, ville, passion, emoji. Avec les seuls ids, une activité
+  // modifiée (nouveau titre, nouveau lieu) gardait sur la carte son ancien
+  // marqueur et son ancienne bulle tant que le jeu d'ids ne bougeait pas. Les
+  // likes, commentaires et inscrits n'y entrent PAS : c'est l'objectif du
+  // 2026-07-21 ci-dessus (ne rien recadrer à chaque interaction).
+  var _sig = _filteredNow.map(function(e) {
+    var ll = eventLatLng(e);
+    return [e.id, e.title, e.date, e.time, ll ? ll.join(";") : "", e.city, e.passion, e.emoji].join("~");
+  }).join(",")
     + "|" + (irlSelectedCity ? irlSelectedCity.name : "")
-    + "|" + (irlUserLocation ? irlUserLocation.lat.toFixed(3) + "," + irlUserLocation.lng.toFixed(3) : "");
+    + "|" + (irlUserLocation ? irlUserLocation.lat.toFixed(3) + "," + irlUserLocation.lng.toFixed(3) : "")
+    + "|" + (_irlAReferenceReelle() ? "ref" : "");
   if (_sig === window._irlMapSig) return;
   var _isFirstDraw = !window._irlMapSig;
-  window._irlMapSig = _sig;
+  // ⚠️ La signature n'est posée qu'une fois la construction FINIE (2026-11-27) :
+  // posée avant, une exception en cours de boucle laissait une carte partielle
+  // que plus aucun rendu ne reconstruisait.
+  window._irlMapSig = null;
 
   irlMarkersLayer.clearLayers();
 
-  // Ajouter un marqueur pour la position actuelle
+  // Ajouter un marqueur pour la position actuelle — seulement s'il en existe une
+  // RÉELLE (2026-11-27) : après un refus, l'épingle se posait sur le repli Paris,
+  // titrée « Paris », avec « ← Ma position actuelle ».
   var refLoc = null;
   var locLabel = "";
   if (irlSelectedCity) {
     refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
     locLabel = irlSelectedCity.name;
-  } else if (irlUserLocation) {
+  } else if (irlUserLocation && _irlAReferenceReelle()) {
     refLoc = irlUserLocation;
     locLabel = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
   }
@@ -2186,7 +2360,7 @@ function updateIrlMapMarkers() {
           ← Ma position actuelle
         </button>
         <div style="margin-bottom:10px;">
-          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
+          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." oninput="searchIrlAddressSuggestions(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();geocodeIrlAddress();}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -2194,24 +2368,10 @@ function updateIrlMapMarkers() {
         </button>
       </div>
     `);
-
-    // Focus sur l'input après l'ouverture du popup et setup autocomplete
-    setTimeout(() => {
-      const input = document.getElementById("irlAddressInput");
-      if (input) {
-        input.focus();
-
-        // Recherche en temps réel
-        input.addEventListener("input", (e) => {
-          searchIrlAddressSuggestions(e.target.value);
-        });
-
-        // Touche Enter pour rechercher
-        input.addEventListener("keypress", (e) => {
-          if (e.key === "Enter") geocodeIrlAddress();
-        });
-      }
-    }, 100);
+    // ⚠️ Écouteurs EN LIGNE ci-dessus, plus dans un setTimeout (2026-11-27) : la
+    // bulle n'entre dans le document qu'à son ouverture, le champ était
+    // introuvable 100 ms après la construction des marqueurs — ni suggestions ni
+    // Entrée, seul le bouton « Chercher » répondait.
   }
 
   // Même filtrage que la liste (helper partagé) → carte et liste cohérentes.
@@ -2242,14 +2402,19 @@ function updateIrlMapMarkers() {
         popupAnchor: [0, -18],
       });
       const mg = L.marker([ll[0], ll[1]], { icon: icone }).addTo(irlMarkersLayer);
+      // La bulle GROUPÉE dit aussi qu'une activité est un exemple (2026-11-27),
+      // comme la bulle d'un marqueur seul (LOT-5) : elle listait « Session
+      // escalade nocturne » comme une vraie sortie.
+      const _exG = evs.map(ev => { try { return !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) { return false; } });
+      const _tousEx = _exG.every(Boolean);
       mg.bindPopup(`
-        <div class="irl-popup-title">${evs.length} activités à cet endroit</div>
-        <div class="irl-popup-liste">${evs.map(ev => {
+        <div class="irl-popup-title">${evs.length} ${_tousEx ? "exemples" : "activités"} à cet endroit</div>
+        <div class="irl-popup-liste">${evs.map((ev, i) => {
           const dd = fmtEventDate(ev.date);
           const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
           return `<button type="button" class="irl-popup-ligne" onclick="openEventDetails('${escapeJsArg(ev.id)}')">
             <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Activité")}</span>
-            <span class="irl-popup-ligne-meta">${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
+            <span class="irl-popup-ligne-meta">${_exG[i] ? "Exemple · " : ""}${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
           </button>`;
         }).join("")}</div>
       `);
@@ -2299,7 +2464,17 @@ function updateIrlMapMarkers() {
   // cadre donc sur les marqueurs PROCHES du point de référence, et on ne
   // s'élargit que s'il n'y en a aucun.
   const IRL_MAP_LOCAL_KM = 150;
+  // Construction finie : la signature peut être posée (voir plus haut).
+  window._irlMapSig = _sig;
   setTimeout(() => {
+    // Sans référence RÉELLE, pas de cadrage « autour de Paris » (2026-11-27) :
+    // la vue générale de la France, que la personne recentre en choisissant sa
+    // ville.
+    if (!_irlAReferenceReelle()) {
+      irlMap.setView([46.6, 2.5], 5.7);
+      if (irlMap) irlMap.invalidateSize();
+      return;
+    }
     const ref = _irlReferenceLoc();
     const near = points.filter(p => calculateDistance(ref.lat, ref.lng, p[0], p[1]) <= IRL_MAP_LOCAL_KM);
     if (near.length > 1) {
@@ -2345,8 +2520,10 @@ function toggleIrlMapFullscreen() {
 
 // LOT-19 (audit UX/UI du 2026-11-10, IRL-C10) : en plein écran, la seule sortie
 // était l'icône d'entrée, sans libellé. Le bouton dit maintenant « Fermer la
-// carte » (texte visible, nom accessible) ; appelé par les TROIS chemins qui
-// entrent ou sortent du plein écran (bouton, retour, changement d'écran).
+// carte » (texte visible, nom accessible) ; appelé par les chemins qui entrent
+// ou sortent du plein écran (bouton, retour, Échap — ces deux derniers passent
+// par `toggleIrlMapFullscreen`). Aucun changement d'écran ne sort du plein
+// écran (constat du 2026-11-27) : la carte y recouvre la navigation.
 function majBoutonPleinEcranCarte() {
   try {
     var wrap = document.getElementById("irlMapWrap");
@@ -2389,14 +2566,17 @@ function _syncIrlMapPeek() {
   }
 }
 
-// Échap pour sortir du plein écran de la carte
+// Échap pour sortir du plein écran de la carte — par `toggleIrlMapFullscreen`,
+// qui reprend l'entrée d'historique « #carte » (2026-11-27) : retirer la classe
+// à la main la laissait au sommet de la pile, et le retour suivant était mort.
+// Une modale ouverte par-dessus se ferme d'abord : un Échap, une couche.
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     const wrap = document.getElementById("irlMapWrap");
     if (wrap && wrap.classList.contains("fullscreen")) {
-      wrap.classList.remove("fullscreen");
-      majBoutonPleinEcranCarte();
-      setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
+      const modale = document.getElementById("modalBackdrop");
+      if (modale && modale.classList.contains("active")) return;
+      toggleIrlMapFullscreen();
     }
   }
 });
@@ -2577,10 +2757,14 @@ function irlCalNavMonth(delta) {
 // Jours (timestamp minuit) portant au moins un événement à venir.
 function _irlEventDaySet() {
   var set = {};
+  var now = Date.now();
   try {
     allEvents().forEach(function (e) {
       var ts = e && e.date;              // même champ que le filtre de date
       if (!ts) return;
+      // Seulement ce que la liste montrerait (2026-11-27) : un jour dont la
+      // seule activité est annulée, ou déjà finie, portait une pastille.
+      if (_eventIsCancelled(e) || !_irlDansPeriode(e, now)) return;
       var d = new Date(ts);
       set[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()] = 1;
     });
@@ -2739,6 +2923,17 @@ function irlDistanceValue() { return irlDistanceFilter || ""; }
 
 function setIrlDistanceKm(km) {
   var v = String(km == null ? "" : km);
+  // ⚠️ PAS DE DISTANCE SANS CENTRE (2026-11-27). Sans ville choisie ni position
+  // obtenue, « 10 km » filtrait en silence autour de PARIS (le repli de
+  // `_irlReferenceLoc`) : une personne à Lyon lisait « Afficher 10 résultats »
+  // — Boulogne, Neuilly, Montreuil — et croyait qu'il n'y avait rien près
+  // d'elle. On demande d'abord le centre ; le palier n'est pas posé.
+  if (v && irlDistanceFilter !== v && !_irlAReferenceReelle()) {
+    try { toast("Choisis d'abord une ville ou ta position dans « Où ? ».", "warning"); } catch (e) {}
+    if (typeof openIrlCitySelector === "function") openIrlCitySelector();
+    _syncIrlDistanceUI();
+    return;
+  }
   irlDistanceFilter = (irlDistanceFilter === v) ? "" : v;
   _syncIrlDistanceUI();
   renderIRL();
@@ -2782,9 +2977,16 @@ function setIrlPassionsToutes() {
 
 function setIrlPassionsMiennes() {
   var set = irlPassionFilterSet();
+  var miennes = _irlMyPassions();
+  // Sans passion choisie, le tap vidait le filtre en cours et cochait
+  // « Toutes », sans un mot (2026-11-27). On ne touche à rien et on le dit.
+  if (!miennes.length) {
+    try { toast("Tu n'as pas encore de passion. Choisis-en d'abord pour filtrer dessus.", "info"); } catch (e) {}
+    return;
+  }
   var deja = irlPassionsMode() === "miennes";
   set.clear();
-  if (!deja) _irlMyPassions().forEach(function (p) { set.add(p); });
+  if (!deja) miennes.forEach(function (p) { set.add(p); });
   renderIRL();
 }
 
@@ -2895,33 +3097,9 @@ function _irlReferenceLabel() {
   return (el && el.textContent && el.textContent !== "…") ? el.textContent : "ta position";
 }
 
-function openIrlCalendar() {
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Choisir une date</div>\
-    <label class="field"><span>Date de début</span>\
-      <input type="date" class="input" id="irlCalStart" value="' + new Date().toISOString().split("T")[0] + '"/>\
-    </label>\
-    <label class="field"><span>Date de fin (optionnel)</span>\
-      <input type="date" class="input" id="irlCalEnd"/>\
-    </label>\
-    <button class="btn primary block" onclick="applyIrlCalendar()" style="margin-top:14px;">Appliquer</button>\
-  ');
-}
-
-function applyIrlCalendar() {
-  var start = document.getElementById("irlCalStart")?.value;
-  var end = document.getElementById("irlCalEnd")?.value;
-  if (!start) { toast("Choisis une date", "error"); return; }
-
-  // Ajouter "custom" aux filtres de date
-  if (!irlDateFilters) irlDateFilters = new Set();
-  irlDateFilters.add("custom");
-  irlCustomDate = { start: new Date(start).getTime(), end: end ? new Date(end + "T23:59:59").getTime() : new Date(start + "T23:59:59").getTime() };
-
-  closeModal();
-  renderIRL();
-}
+// `openIrlCalendar` / `applyIrlCalendar` retirées (2026-11-27) : l'ancienne
+// modale de dates n'avait plus aucun appelant ; le filtre « custom » est posé
+// par le calendrier en ligne (`_renderIrlInlineCal`).
 
 // Retire complètement le filtre de date (le ✕ à côté du bouton calendrier).
 function clearIrlDateFilter() {
@@ -3075,8 +3253,12 @@ function _filterIrlEvents(events) {
         if (e.date >= ms.getTime() && e.date <= me.getTime()) return true;
       }
       if (_we && e.date >= _we.start && e.date <= _we.end) return true;
-      if (irlDateFilters.has("week") && e.date >= now && e.date <= now + 7 * 86400000) return true;
-      if (irlDateFilters.has("month") && e.date >= now && e.date <= now + 30 * 86400000) return true;
+      // Pas de borne basse « commence après maintenant » (2026-11-27) : une
+      // activité EN COURS sortait de « Cette semaine » alors que « Aujourd'hui »
+      // et la liste sans filtre la gardent. La période (`_irlDansPeriode`) a
+      // déjà retiré ce qui est fini.
+      if (irlDateFilters.has("week") && e.date <= now + 7 * 86400000) return true;
+      if (irlDateFilters.has("month") && e.date <= now + 30 * 86400000) return true;
       if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
       return false;
     });
@@ -3086,8 +3268,10 @@ function _filterIrlEvents(events) {
   if (irlCityIntent) {
     filtered = filtered.filter(_eventMatchesCityIntent);
   }
-  // 4. Distance
-  if (irlDistanceFilter && irlDistanceFilter !== "") {
+  // 4. Distance — seulement autour d'un point RÉEL (ville choisie ou position
+  // obtenue). Sans lui, le repli Paris filtrait en silence (2026-11-27) : le
+  // palier reste mémorisé, inerte, et reprend dès qu'un centre existe.
+  if (irlDistanceFilter && irlDistanceFilter !== "" && _irlAReferenceReelle()) {
     var maxKm = parseInt(irlDistanceFilter);
     var ref = _irlReferenceLoc();
     filtered = filtered.filter(function(e) {
@@ -3100,22 +3284,32 @@ function _filterIrlEvents(events) {
   // la carte est celle qui filtre (cf. le commentaire de la fonction).
   if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
     var parts = irlTimeFilter.split(" - ");
+    // Fin EXCLUSIVE (2026-11-27) : « Matin » 6-12 et « Après-midi » 12-18 se
+    // recouvraient d'une heure (12:30 dans les deux). Une fin à 23 h vaut fin
+    // de journée, pour que « Soir » garde 23:00-23:59.
     var sMin = parseInt(parts[0].split(":")[0]) * 60;
-    var eMin = parseInt(parts[1].split(":")[0]) * 60 + 59;
+    var hFin = parseInt(parts[1].split(":")[0]);
+    var eMin = hFin >= 23 ? 24 * 60 : hFin * 60;
+    if (eMin <= sMin) eMin = sMin + 60;   // « 18:00 - 18:00 » : l'heure entière, comme avant
     filtered = filtered.filter(function(e) {
       var m = _eventTimeMinutes(e);
-      return m >= sMin && m <= eMin;
+      return m >= sMin && m < eMin;
     });
   }
   // 6. Recherche texte (titre / ville / lieu / description / passion) — avant, la
   // recherche masquait juste des cartes en CSS : le compteur, la carte et l'état
   // vide continuaient de compter les événements invisibles.
+  // Accents pliés des DEUX côtés (2026-11-27) : « nimes » ne trouvait pas
+  // « Nîmes », ni « peche » la « Pêche » — sur clavier mobile, la majorité des
+  // saisies. Seuls les diacritiques sont retirés : la ponctuation reste
+  // cherchable, contrairement à `_normIrlCityName`.
   if (irlSearchQuery) {
-    var q = irlSearchQuery;
+    var plier = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); };
+    var q = plier(irlSearchQuery);
     filtered = filtered.filter(function(e) {
       var p = passionById(e.passion) || {};
       return [e.title, e.city, e.venue, e.address, e.desc, e.eventType, p.label]
-        .some(function(v) { return String(v || "").toLowerCase().indexOf(q) > -1; });
+        .some(function(v) { return plier(v).indexOf(q) > -1; });
     });
   }
   return _reelsAvantExemples(_sortIrlEvents(filtered));
@@ -3190,13 +3384,16 @@ function _irlActiveFilterCount() {
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
   if (irlCityIntent) n += 1;
-  if (irlDistanceFilter) n += 1;
+  if (irlDistanceFilter && _irlAReferenceReelle()) n += 1; // inerte sans centre : ne compte pas
   if (irlTimeFilter) n += 1;
   return n;
 }
 
 // Réinitialise tous les filtres IRL et l'état UI associé.
 function clearAllIrlFilters() {
+  // Une frappe encore en attente (220 ms, `filterIrlByCity`) ne doit pas
+  // reposer l'ancienne recherche APRÈS l'effacement (2026-11-27).
+  clearTimeout(window._irlSearchT);
   if (irlPassionFilters) irlPassionFilters.clear();
   if (irlFilters) irlFilters.clear();
   if (irlDateFilters) irlDateFilters.clear();
@@ -3404,6 +3601,18 @@ function _scheduleIrlMapUpdate() {
       // l'ouverture. Verrou : tests/e2e/audit-2026-11-perf-dist.spec.js (① bis).
       var ecranIrl = document.getElementById("screen-irl");
       if (ecranIrl && !ecranIrl.classList.contains("active")) return;
+      // ⚠️ … et seulement si la carte est VUE (2026-11-27). Sous UI-4A3, la vue
+      // Liste (par défaut) range la carte hors écran : MapLibre était quand même
+      // téléchargé, compilé, construit et animé pour quelqu'un qui ne regardait
+      // que la liste. Le passage en vue Carte (`recadrerCarte`, ui-v4a3-vue.js)
+      // la demande ; le plein écran n'existe que depuis une carte déjà là.
+      try {
+        var v4a3 = window.PassioUIV4A3;
+        var wrapCarte = document.getElementById("irlMapWrap");
+        if (v4a3 && typeof v4a3.isActive === "function" && v4a3.isActive()
+            && typeof v4a3.vue === "function" && v4a3.vue() !== "carte"
+            && !(wrapCarte && wrapCarte.classList.contains("fullscreen"))) return;
+      } catch (e) {}
       try { initIrlMap(); } catch (e) {}
       try { updateIrlMapMarkers(); } catch (e) {}
     };
@@ -3481,11 +3690,15 @@ function renderIRL() {
   // arrive : il ne peut jamais désactiver durablement la géolocalisation, et le
   // premier geste fait ensuite SUR l'écran IRL (filtre, carte) la redemande
   // normalement.
-  var _sansGeoUneFois = window._passioIrlSkipGeoOnce === true;
+  //
+  // ⚠️ PLUS AUCUNE DEMANDE IMPLICITE, MÊME LOT COUPÉ (2026-11-27). La garantie
+  // « la position n'est jamais demandée sans geste » ne tenait que par
+  // l'enveloppe UI-4A0, qui arme ce marqueur avant chaque rendu : la couper
+  // (réglage distant `passio_ui_4a0`) faisait surgir l'invite du navigateur à
+  // l'ouverture de « Rencontrer », chez tout compte existant. Seuls les gestes
+  // explicites demandent désormais (`useMyPositionForIrl`, « Ma position »).
+  // Le marqueur est encore consommé, pour les modules qui l'arment.
   window._passioIrlSkipGeoOnce = false;
-  if (!irlUserLocation && !_sansGeoUneFois && _irlEcranVisible()) {
-    requestUserLocation();
-  }
 
   const catalogue = allEvents();
   var filtered = _filterIrlEvents(catalogue);
@@ -3514,6 +3727,7 @@ function renderIRL() {
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
+    if (typeof avisLectureSortiesEchec === "function") avisLectureSortiesEchec();
     return;
   }
 
@@ -3579,7 +3793,7 @@ function renderIRL() {
       data-evid="${escapeHtml(e.id)}"
       data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
       onclick="openEventDetails('${escapeJsArg(e.id)}')"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
+      onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
       ${cancelled ? '<div class="event-card-banner cancelled">Activité annulée par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
@@ -3616,10 +3830,35 @@ function renderIRL() {
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
   // écraseraient les données de démo des événements seed.
+  // Dernière lecture du catalogue en échec : l'avis reste en tête (app-08).
+  if (typeof avisLectureSortiesEchec === "function") avisLectureSortiesEchec();
+
   var _supaEvIds = filtered.filter(function(e){ return e.fromSupabase; }).map(function(e){ return e.id; });
-  _loadEventCommentCounts(_supaEvIds);
-  _loadEventReactions(_supaEvIds);
-  _loadEventCommentsPreviews(_supaEvIds);
+  _irlChargerInteractions(_supaEvIds);
+}
+
+// ⚠️ TROIS LECTURES PAR RENDU, C'ÉTAIT 3N REQUÊTES (2026-11-27). Chaque
+// `renderIRL` (une case de filtre, « Afficher plus », un like, un rendu de fond
+// depuis le Fil) relançait commentaires, réactions et aperçus des cartes
+// visibles. Les caches (`_eventLikes`, compteurs) gardent ce qui a été lu, et
+// les cartes repeintes s'en servent : on ne relit que si l'écran est VU, une
+// fois les rendus rapprochés retombés, et si le jeu d'activités a changé ou si
+// la dernière lecture a plus de 30 s.
+let _irlLecturesSig = "";
+let _irlLecturesA = 0;
+function _irlChargerInteractions(ids) {
+  clearTimeout(window._irlLecturesT);
+  if (!ids || !ids.length || !_irlEcranVisible()) return;
+  window._irlLecturesT = setTimeout(function () {
+    if (!_irlEcranVisible()) return;
+    var sig = ids.slice().sort().join(",");
+    if (sig === _irlLecturesSig && Date.now() - _irlLecturesA < 30000) return;
+    _irlLecturesSig = sig;
+    _irlLecturesA = Date.now();
+    _loadEventCommentCounts(ids);
+    _loadEventReactions(ids);
+    _loadEventCommentsPreviews(ids);
+  }, 250);
 }
 
 // Charge en une requête les likes/réactions des événements visibles puis met à
@@ -3654,7 +3893,12 @@ function toggleEventLike(id, el) {
   state.user.likedEvents = state.user.likedEvents || [];
   window._eventLikes = window._eventLikes || {};
   var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
-  var liked = state.user.likedEvents.indexOf(id) > -1;
+  // ⚠️ LE SENS DU GESTE SUIT CE QUE LE CŒUR MONTRE (2026-11-27, sujet 149). La
+  // carte peint « aimé » d'après la mémoire locale OU la base (`_eventLikes`) ;
+  // le geste ne lisait que la mémoire locale : un j'aime posé depuis un autre
+  // appareil, cœur plein à l'écran, était… ajouté une seconde fois (doublon avalé,
+  // organisation renotifiée) au lieu d'être retiré.
+  var liked = state.user.likedEvents.indexOf(id) > -1 || !!cur.liked;
   if (liked) {
     state.user.likedEvents = state.user.likedEvents.filter(function(x){ return x !== id; });
     cur.likes = Math.max(0, (cur.likes || 1) - 1); cur.liked = false;
@@ -3727,13 +3971,23 @@ var _DEMO_EV_COMMENTS = [
   "Je ramène de quoi grignoter 🍪", "Hâte de rencontrer la communauté !"
 ];
 var _DEMO_EV_EMOJIS = ["🔥", "😍", "👏", "🎉", "💯", "😮"];
+// Les 36 activités livrées par le seed portent un identifiant court (« e1 »…) ;
+// tout le reste (uuid serveur, `evt_…` de création) est réel. Même règle que
+// `PassioFirstRun.evenementDemo`, qui n'est pas toujours chargée.
+function _estActiviteExemple(e) {
+  return /^e\d+$/.test(String((e && e.id) || ""));
+}
 function _seedDemoEventInteractions(events) {
   window._eventCommentsCache = window._eventCommentsCache || {};
   window._eventLikes = window._eventLikes || {};
   window._eventCommentCounts = window._eventCommentCounts || {};
   window._eventReactDetail = window._eventReactDetail || {};
   (events || []).forEach(function(e){
-    if (!e || e.fromSupabase) return; // vrais événements : on garde les données réelles
+    // ⚠️ SEULES LES ACTIVITÉS D'EXEMPLE (2026-11-27, sujet 201). Une activité tout
+    // juste créée n'a pas encore `fromSupabase` (copie de création, relue plus
+    // tard) : elle recevait de faux j'aime, de fausses réactions signées de
+    // personnages de démonstration et de faux commentaires, sur une vraie activité.
+    if (!e || e.fromSupabase || !_estActiviteExemple(e)) return; // vrais événements : on garde les données réelles
     var h = 0; for (var i = 0; i < e.id.length; i++) { h = (h * 31 + e.id.charCodeAt(i)) >>> 0; }
     // Commentaires démo
     if (window._eventCommentsCache[e.id] === undefined) {
@@ -4293,13 +4547,19 @@ async function _setEventRsvpUn(id, rsvp) {
 // L'adresse et le contact suivent l'inscription : la base dit ce que ce compte peut voir maintenant.
 async function _majAdresseActivite(ev) {
   if (!window._supaReal || !ev || !ev.fromSupabase || typeof supaLireAdresses !== "function") return;
-  const { adresses, lu } = await supaLireAdresses([ev.id]);
+  const { adresses, lu, parRpc } = await supaLireAdresses([ev.id]);
   if (!lu) return;
   const a = adresses[ev.id] || {};
+  const avant = ev._accesPrive;
   ev.address = a.address || "";
   ev.contact = a.contact || "";
   ev._adresseInconnue = false;
+  // La validation de ma demande se lit ici aussi (voir `_etatParticipationAffiche`).
+  ev._accesPrive = parRpc ? Object.prototype.hasOwnProperty.call(adresses, ev.id) : undefined;
   saveState();
+  if (avant !== ev._accesPrive) {
+    try { if (window.PassioUIV4A2 && typeof PassioUIV4A2.refresh === "function") PassioUIV4A2.refresh(); } catch (e) {}
+  }
   _refreshEventDetailIfOpen(ev.id);
 }
 
@@ -4550,11 +4810,30 @@ async function _leaveEventConversation(ev) {
   if (!ev || !ev.convId || !window._supaReal) return;
   if (_canManageEvent(ev)) return; // l'organisateur reste dans son groupe
   try { await supaLeaveEventConversation(ev.convId); } catch (e) {}
+  // ⚠️ LE MIROIR LOCAL PART AUSSI (2026-11-27, sujet 135). Sans lui, la discussion
+  // restait dans la messagerie après le désistement — y compris au redémarrage
+  // (la fusion garde les conversations locales absentes du serveur) — bulles en
+  // échec, et « Quitter » impossible. Pas de pierre tombale : une réinscription
+  // doit pouvoir la recréer. La base retire l'appartenance de son côté.
+  try {
+    if (typeof getConversations === "function" && getConversations().some(c => c && c.id === ev.convId)) {
+      conversationsState = getConversations().filter(c => !(c && c.id === ev.convId));
+      if (typeof saveConversationsNow === "function") saveConversationsNow(); else saveConversations();
+      if (window._openedConvId === ev.convId && typeof closeConversation === "function") { try { closeConversation(); } catch (e) {} }
+      try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 // Miroir local de la conversation de groupe (la messagerie lit conversationsState).
 function _ensureLocalEventConv(ev) {
   if (!ev || !ev.convId || typeof getConversations !== "function") return;
+  // ⚠️ REVENU = PIERRE LEVÉE (2026-11-27, sujet 136). On n'arrive ici qu'après un
+  // verdict serveur positif (`_joinEventConversation`) ou en mode local : la
+  // personne est REDEVENUE membre. La pierre « conv » posée par « Quitter le
+  // groupe » écartait sinon la conversation à chaque démarrage, alors qu'elle en
+  // était membre. La marque « clr » (historique effacé) reste.
+  try { if (typeof convTombRemove === "function") convTombRemove("conv", ev.convId); } catch (e) {}
   try {
     const convs = getConversations();
     if (convs.some(c => c.id === ev.convId)) return;
@@ -4621,6 +4900,10 @@ function checkInEvent(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return; }
+  // ⚠️ SANS COMPTE, UNE VRAIE ACTIVITÉ NE SE POINTE PAS (2026-11-27, sujet 203) :
+  // le chemin local annonçait « Arrivée confirmée » sans rien écrire. Même garde
+  // que le lien profond de pointage ; le local reste aux activités de démonstration.
+  if (ev.fromSupabase && !_pointageServeur(ev)) { toast("Connecte-toi pour pointer"); return; }
   if (!_canCheckIn(ev)) { toast("Le pointage ouvre 1 h avant le début", "warning"); return; }
   const loc = eventLatLng(ev);
   // ⚠️ POINTER SUPPOSE UNE PREUVE (IRL-12, 2026-09-14) : la position vérifiée,
@@ -4942,7 +5225,11 @@ function _lienContactEvenement(contact) {
   // celui de la personne — il n'est ajouté qu'APRÈS que la forme a été validée
   // par les deux expressions ci-dessous, qui excluent `:` et les blancs. Et
   // `escapeHtml` échappe les guillemets, donc on ne peut pas quitter l'attribut.
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(brut)) {
+  // ⚠️ 2026-11-27 (sujet 214) : la forme e-mail acceptait `?`, `&` et `:` (la
+  // phrase ci-dessus était fausse pour elle) — « a@x.fr?subject=…&body=… »
+  // ouvrait un courriel PRÉ-REMPLI par l'organisation. Ni requête, ni fragment,
+  // ni schéma, ni encodage : sinon, texte nu (branche du bas).
+  if (/^[^\s@?&#:\/%]+@[^\s@?&#:\/%]+\.[^\s@?&#:\/%]{2,}$/.test(brut)) {
     return '<a href="' + escapeHtml("mailto:" + brut) + '"' + style + '>' + escapeHtml(brut) + '</a>';
   }
   // Un numéro : au moins 8 chiffres, et rien d'autre que chiffres, espaces,
@@ -5041,6 +5328,8 @@ function openEventDetails(id, remplaceModale = false) {
   const _isRerender = window._openEventDetailId === id
     && (document.getElementById("eventDetailPage") || {}).style
     && document.getElementById("eventDetailPage").style.display !== "none";
+  // Lu AVANT toute écriture dans la fiche (héros compris) : voir sujet 195 plus bas.
+  const _memoRerendu = _isRerender ? _ficheMemoAvantRerendu(id) : null;
   // ⚠️ La fiche (z-index 200) s'ouvre SOUS une conversation (#conv-fullpage,
   // 1200). Profil visité depuis un fil de messages → onglet « Activité » → tap :
   // la modale se fermait, la fiche s'ouvrait derrière, et l'on voyait… la
@@ -5076,7 +5365,12 @@ function openEventDetails(id, remplaceModale = false) {
     _relireRefusFiche(id);
   }
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
-  const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
+  // ⚠️ LE REPLI N'EST PAS MOI (2026-11-27, sujet 210) : profil de l'organisation
+  // illisible (panne, compte sans profil) → la fiche affichait MON pseudo sous
+  // « Organisateur·ice ». Le nom lu avec l'activité, ou « Organisateur » ; le mien
+  // seulement si l'activité est vraiment la mienne.
+  const _orgaEstMoi = !ev.organizerId || ev.organizerId === "me" || ev.organizerId === MY_UID;
+  const organizer = userById(ev.organizerId) || { name: (_orgaEstMoi ? currentProfile()?.name : ev.organizerName) || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
   const joined = (state.user.joinedEvents || []).includes(id);
   // ⚠️ JOURS DE CALENDRIER, PAS UNE DURÉE (2026-11-10). `Math.ceil(durée / 24 h)` rendait 1
   // pour une activité du soir même : la fiche affichait « Demain » au-dessus de la date du
@@ -5139,8 +5433,18 @@ function openEventDetails(id, remplaceModale = false) {
 
   const atts = ev.attendees || [];
   const nbVenants = _nbInscrits(ev, "going");
-  const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
-  const spotsLeft = ev.maxAttendees ? ev.maxAttendees - nbVenants : null;
+  // Trois cas où la fiche ne doit PAS compter de places (2026-11-27) :
+  //  · inscrits INCONNUS (visiteur, lecture en échec) — sujet 197 : « 0 / 3 max »
+  //    et « sois le premier ! » sur une activité complète ;
+  //  · activité d'EXEMPLE — sujet 200 : la carte dit « pas d'inscription », la
+  //    fiche annonçait « 7 places disponibles » et des visages fictifs ;
+  //  · activité ANNULÉE ou TERMINÉE — sujet 204 : « 4 places disponibles » sur une
+  //    activité qui n'aura pas (ou plus) lieu.
+  const _inconnus = _inscritsInconnus(ev);
+  const _exemple = (() => { try { return !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) { return false; } })();
+  const _sansPlaces = _inconnus || _exemple || _eventIsCancelled(ev) || _eventIsOver(ev);
+  const maxStr = ev.maxAttendees && !_sansPlaces ? ` / ${ev.maxAttendees} max` : "";
+  const spotsLeft = ev.maxAttendees && !_sansPlaces ? ev.maxAttendees - nbVenants : null;
   const spotsHtml = spotsLeft !== null
     ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "Complet" : spotsLeft <= 3 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
     : "";
@@ -5177,7 +5481,11 @@ function openEventDetails(id, remplaceModale = false) {
     const caches = Math.max(0, Math.max(total || 0, vus) - Math.min(vus, lim));
     return caches ? html + _pastilleReste(caches, "Autres inscrits") : html;
   };
-  const participantsHtml = _facesEtReste(atts, 12, nbVenants);
+  const participantsHtml = (_inconnus || _exemple) ? "" : _facesEtReste(atts, 12, nbVenants);
+  const participantsVide = _inconnus
+    ? (_compteAuthReel() ? "Participants indisponibles pour l'instant." : "Crée un compte pour voir qui vient.")
+    : _exemple ? "Activité d'exemple · pas d'inscription."
+    : "Aucun inscrit pour l'instant — sois le premier !";
 
   // LOT-19 (audit UX/UI du 2026-11-10, IRL-C58) : quand l'adresse est réservée
   // à qui participe, la zone publique (code postal, ville) n'est PAS une adresse.
@@ -5185,9 +5493,15 @@ function openEventDetails(id, remplaceModale = false) {
   // ville entière, puis « Adresse exacte : Communiquée une fois inscrit·e » —
   // deux lignes qui se contredisaient. Une seule ligne « Lieu » désormais, sans
   // lien tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.
-  const adresseReservee = !!(ev.fromSupabase && !ev.address);
+  // ⚠️ UNE ADRESSE VIDE N'EST PAS UNE ADRESSE RÉSERVÉE (2026-11-27, sujet 196).
+  // L'adresse est facultative : l'organisation (et l'inscrit validé) lisaient
+  // « L'adresse exacte s'affiche après validation » sur une activité qui n'en a
+  // pas. `adresses_activites` ne rend une ligne qu'à qui y a droit : une ligne
+  // reçue (`_accesPrive`, l'organisation comprise) et vide = aucune adresse
+  // saisie, rien à dévoiler.
+  const adresseReservee = !!(ev.fromSupabase && !ev.address && ev._accesPrive !== true);
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
+  const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
   const zonePublique = [ev.postalCode, ev.city].filter(Boolean).join(" ");
   const lieuReserve = [ev.venue, zonePublique].filter(Boolean).join(" · ");
@@ -5218,7 +5532,15 @@ function openEventDetails(id, remplaceModale = false) {
   const over = _eventIsOver(ev);
   const live = _eventIsLive(ev);
   const mine = _isMyEvent(ev);
+  // Le cœur de la fiche se peint comme celui de la carte : mémoire locale OU base (sujet 149).
+  const _evAime = (state.user.likedEvents || []).indexOf(ev.id) > -1 || !!((window._eventLikes || {})[ev.id] || {}).liked;
 
+  // ⚠️ UN RE-RENDU N'EST PAS UNE OUVERTURE (2026-11-27, sujet 195). Chaque
+  // changement (« Je participe », relecture d'adresse, temps réel) repeint toute
+  // la fiche : elle remontait EN HAUT, et le commentaire en cours d'écriture
+  // disparaissait avec le champ (clavier refermé, texte perdu sans un mot). On
+  // garde la position, le brouillon et le focus, et l'on ne relit pas ce que la
+  // fiche tient déjà (commentaires, album).
   document.getElementById("eventDetailContent").innerHTML = `
     ${_vueRefusSortie.refuse ? '<div class="event-detail-urgency" role="status" data-refus-demande>Ta demande n’a pas été acceptée.</div>' : ''}
     ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
@@ -5228,10 +5550,10 @@ function openEventDetails(id, remplaceModale = false) {
       : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
-      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
+      ${over || cancelled ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
       <!-- LOT-12 (PAR-C12) : la porte « Partager » du milieu est retirée — deux suffisent
            (l'icône du haut, la barre d'actions du bas), et la feuille propose l'invitation. -->
-      ${over || (activiteEstPrivee(ev) && !_canManageEvent(ev)) ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">${activiteEstPrivee(ev) ? "Invités" : "Inviter"}</button>`}
+      ${over || cancelled || (activiteEstPrivee(ev) && !_canManageEvent(ev)) ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">${activiteEstPrivee(ev) ? "Invités" : "Inviter"}</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
     ${_eventSocialProofHtml(ev)}
@@ -5247,7 +5569,7 @@ function openEventDetails(id, remplaceModale = false) {
 
     <!-- Check-in : récompense la présence RÉELLE, pas un clic. Deux chemins —
          la position GPS, ou le QR/code affiché à l'accueil par l'organisateur. -->
-    ${_canCheckIn(ev) ? `
+    ${_canCheckIn(ev) && !_canManageEvent(ev) && (_hasCheckedIn(ev) || ["going", "maybe"].indexOf(myRsvp(ev.id)) > -1) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
         ${_hasCheckedIn(ev) ? "Arrivée confirmée" : "Je suis sur place"}
@@ -5265,6 +5587,7 @@ function openEventDetails(id, remplaceModale = false) {
          l'événement terminé, + la moyenne publique dès qu'il y a des avis. -->
     ${_eventFeedbackPromptHtml(ev)}
     <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
+    ${over && !cancelled && _canManageEvent(ev) ? `<div class="event-feedback-retours" data-evretours="${escapeHtml(ev.id)}">${_eventRetoursHtml(ev.id)}</div>` : ""}
 
     ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Activité récurrente — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
@@ -5288,15 +5611,15 @@ function openEventDetails(id, remplaceModale = false) {
       <div style="font-size:14px;font-weight:700;">${escapeHtml(organizer.name || "?")}</div>
     </div>
 
-    <div class="event-detail-section-title">Participants (${nbVenants}${maxStr})</div>
+    <div class="event-detail-section-title">Participants${_inconnus || _exemple ? "" : ` (${nbVenants}${maxStr})`}</div>
     ${spotsHtml ? `<div style="margin-bottom:8px;">${spotsHtml}</div>` : ""}
-    <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
+    <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>" + participantsVide + "</span>"}</div>
 
-    ${_nbInscrits(ev, "maybe") ? `
+    ${!_exemple && _nbInscrits(ev, "maybe") ? `
       <div class="event-detail-section-title">Peut-être (${_nbInscrits(ev, "maybe")})</div>
       <div class="event-detail-participants">${_facesEtReste(ev.maybes, 8, _nbInscrits(ev, "maybe"))}</div>` : ""}
 
-    ${_nbInscrits(ev, "waitlist") ? `
+    ${!_exemple && !_eventIsCancelled(ev) && !_eventIsOver(ev) && _nbInscrits(ev, "waitlist") ? `
       <div class="event-detail-section-title">Liste d'attente (${_nbInscrits(ev, "waitlist")})</div>
       <div class="event-detail-participants">${_facesEtReste(ev.waitlist, 8, _nbInscrits(ev, "waitlist"))}</div>
       ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${RSVP_LABELS.waitlist.detailOrganisation}</div>` : ""}` : ""}
@@ -5314,7 +5637,7 @@ function openEventDetails(id, remplaceModale = false) {
          handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
          personne ». -->
     <div class="post-actions" style="margin-top:18px;">
-      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}"${attrsLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${contenuLikePost((state.user.likedEvents || []).indexOf(ev.id) > -1, ((window._eventLikes || {})[ev.id] || {}).likes || 0)}</span>
+      <span class="post-action ${_evAime ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}"${attrsLikePost(_evAime, ((window._eventLikes || {})[ev.id] || {}).likes || 0)} onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${contenuLikePost(_evAime, ((window._eventLikes || {})[ev.id] || {}).likes || 0)}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
       <!-- LOT-12 (PAR-C12) : deux portes de partage sur la fiche — l'icône du haut et celle-ci.
            IRL-C67 proposait de n'en garder qu'une : la décision de LOT-12, déjà livrée, l'emporte. -->
@@ -5335,11 +5658,15 @@ function openEventDetails(id, remplaceModale = false) {
     ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cette activité</button>`}
   `;
 
-  _loadEventComments(ev.id);
-  _loadEventAlbum(ev.id);
+  if (_memoRerendu && _memoRerendu.commentairesLus) _renderEventComments(ev.id);
+  else _loadEventComments(ev.id);
+  const _album = document.getElementById("eventAlbum");
+  if (_memoRerendu && _memoRerendu.album !== null && _album) _album.innerHTML = _memoRerendu.album;
+  else _loadEventAlbum(ev.id);
   // Moyenne des notes : seulement pour un événement terminé (avant, il n'y a rien
   // à noter — autant s'épargner la requête sur le chemin chaud).
   if (over) _loadEventRatings(ev.id);
+  if (over && !cancelled && _canManageEvent(ev) && !_memoRerendu) _loadEventRetours(ev.id);
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
@@ -5351,7 +5678,8 @@ function openEventDetails(id, remplaceModale = false) {
 
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
-  page.scrollTop = 0;
+  if (_memoRerendu) _ficheRestaurerApresRerendu(_memoRerendu);
+  else page.scrollTop = 0;
   _suivrePresencesOuvertes(ev);
   if (!_isRerender && _canManageEvent(ev) && window._supaReal && _compteAuthReel()
       && (state.userEvents || []).some(e => e && e.id === id)) {
@@ -5360,6 +5688,40 @@ function openEventDetails(id, remplaceModale = false) {
   // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
   try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
+}
+
+// Ce que la personne était en train de faire dans la fiche ouverte (sujet 195).
+function _ficheMemoAvantRerendu(id) {
+  const page = document.getElementById("eventDetailPage");
+  const champ = document.getElementById("eventCommentInput");
+  const album = document.getElementById("eventAlbum");
+  // « Chargement… » : la lecture de l'ouverture n'a pas fini, on la relance.
+  const albumCharge = !!album && !/Chargement/.test(album.textContent || "");
+  return {
+    id, scroll: page ? page.scrollTop : 0,
+    brouillon: champ ? champ.value : "",
+    focus: !!champ && document.activeElement === champ,
+    debut: champ ? champ.selectionStart : null, fin: champ ? champ.selectionEnd : null,
+    commentairesLus: Array.isArray((window._eventCommentsCache || {})[id]),
+    album: album && albumCharge ? album.innerHTML : null,
+  };
+}
+// Rejoué aussitôt PUIS après la réorganisation de UI-4B, qui déplace les nœuds
+// au tour suivant (`setTimeout` : un déplacement fait perdre le focus, et la
+// hauteur change). `setTimeout` et non rAF, pour la même raison qu'UI-4B.
+function _ficheRestaurerApresRerendu(memo) {
+  const poser = () => {
+    const page = document.getElementById("eventDetailPage");
+    if (!page || window._openEventDetailId !== memo.id || page.style.display === "none") return;
+    const champ = document.getElementById("eventCommentInput");
+    if (champ && memo.brouillon && !champ.value) champ.value = memo.brouillon;
+    if (champ && memo.focus && document.activeElement !== champ) {
+      try { champ.focus({ preventScroll: true }); if (memo.debut != null) champ.setSelectionRange(memo.debut, memo.fin); } catch (e) {}
+    }
+    page.scrollTop = memo.scroll;
+  };
+  poser();
+  setTimeout(() => setTimeout(poser, 0), 0);
 }
 
 function _refreshEventDetailCta(ev, joined) {
@@ -5833,8 +6195,13 @@ function _irlWeeklyDigest() {
 function downloadEventIcs(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
+  // ⚠️ (2026-11-27, sujet 157) Une activité annulée ne s'exporte plus (le fichier
+  // n'a ni STATUS ni SEQUENCE : l'entrée importée sonnerait la veille quand même),
+  // et la fin est CELLE DE L'ACTIVITÉ (`_eventEndAt`, 2 h par défaut seulement
+  // sans fin connue) — une randonnée de 5 h s'inscrivait 9 h-11 h.
+  if (_eventIsCancelled(ev)) { toast("Cette activité est annulée", "warning"); return; }
   const start = new Date(ev.date);
-  const end = new Date(ev.date + 2 * 3600000); // durée par défaut 2 h
+  const end = new Date(_eventEndAt(ev));
   const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
   const loc = [ev.venue, ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const esc = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
@@ -5861,7 +6228,8 @@ function downloadEventIcs(id) {
     a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast("Activité ajoutée à ton calendrier (rappel J-1 inclus)");
+    // Un fichier a été téléchargé, rien n'est encore dans l'agenda : on le dit.
+    toast("Fichier calendrier téléchargé — ouvre-le pour l'ajouter à ton agenda (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
 
@@ -6057,7 +6425,12 @@ function _rappelsVerdict(ev, maintenant) {
 function proposerRappelsActivite(ev) {
   var v = _rappelsVerdict(ev, Date.now());
   if (v === "abonner") {
-    if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription();
+    // Rien n'est promis ici, mais un échec laisse une trace (sujet 139).
+    if (typeof ensureCallPushSubscription === "function") {
+      Promise.resolve(ensureCallPushSubscription()).then(function (ok) {
+        if (ok === false) { try { diagLog("rappels : abonnement push non enregistré"); } catch (e) {} }
+      }, function () {});
+    }
     return v;
   }
   if (v !== "proposer") return v;
@@ -6081,7 +6454,17 @@ async function activerRappelsActivite() {
   try { perm = await Notification.requestPermission(); } catch (e) {}
   try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: String(perm) }); } catch (e) {}
   if (perm !== "granted") { toast("Rappels non activés — tu peux les autoriser dans les réglages du téléphone"); return false; }
-  if (typeof ensureCallPushSubscription === "function") await ensureCallPushSubscription();
+  // ⚠️ LA PROMESSE SUIT LE VERDICT DE L'ABONNEMENT (2026-11-27, sujet 139) : sans
+  // ligne push_subscriptions, aucun rappel ne part — « C'est noté » mentait. On
+  // le dit, et la proposition pourra revenir (la marque de repos est levée).
+  var abonne = false;
+  try { abonne = (typeof ensureCallPushSubscription === "function") && (await ensureCallPushSubscription()) === true; } catch (e) { abonne = false; }
+  if (!abonne) {
+    try { localStorage.removeItem(RAPPELS_PROPOSES_KEY); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: "abonnement_ko" }); } catch (e) {}
+    toast("Rappels pas encore activés sur ce téléphone — réessaie plus tard", "warning");
+    return false;
+  }
   toast("C'est noté : rappel la veille et 2 h avant ⏰");
   return true;
 }
@@ -6121,6 +6504,15 @@ if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.ser
   });
 }
 (function _irlDeepLinkBoot() {
+  // ⚠️ 2026-11-27 (sujet 213) : la fiche pose « #event-<id> » (entrée
+  // d'historique d'overlay) que AUCUN routeur ne relit — un rechargement (ou une
+  // adresse copiée) retombait sur le Fil, sans un mot. Au DÉMARRAGE seulement
+  // (jamais sur hashchange : un retour arrière rouvrirait la fiche fermée), on
+  // le traduit en lien profond, que le routeur ci-dessous sait ouvrir.
+  try {
+    const ancien = /^#event-([\w-]{1,100})$/.exec(location.hash || "");
+    if (ancien) history.replaceState(null, "", "#irl-event-" + ancien[1]);
+  } catch (e) {}
   if (!IRL_EVENT_HASH_RE.test(location.hash || "")) return;
   // Après le gate + le boot (les événements Supabase arrivent en différé).
   _irlEvLinkTimer = setTimeout(function () {
@@ -6169,6 +6561,9 @@ function shareEvent(id) {
 // et se re-parse au chargement Supabase — donc visible cross-compte.
 async function shareEventInFeed(id) {
   const btn = document.getElementById("_shareEvInFeedBtn");
+  // Porte invité (2026-11-27, sujet 153) : un visiteur a un MY_UID « u_xxx »
+  // fabriqué, la garde ci-dessous ne l'arrêtait jamais — publication purement locale.
+  if (window.requireAuthentication && !requireAuthentication("publier")) return;
   if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
 
   if (typeof MY_UID === "undefined" || !MY_UID) {
@@ -6549,15 +6944,34 @@ function _setEventComments(eventId, serverList) {
 
 // `opts.epingle === false` : ne pas relire l'épingle (un rechargement déclenché
 // par le temps réel : le direct la tient déjà — RV-38, contre-revue du delta P3-B).
+// ⚠️ LA FEUILLE N'EST LA CIBLE QUE SI ELLE EST OUVERTE (2026-11-27, sujet 132).
+// `closeModal` retire seulement la classe `active` : #cmtThreadList et
+// #cmtThreadInput restent dans le DOM. Les choisir sur leur seul data-thread
+// laissait la fiche de la même activité sur « Chargement… », et l'envoi lisait le
+// champ PÉRIMÉ (vide) de la feuille fermée → retour muet, pour toute activité.
+// Rend la feuille si elle est ouverte sur CETTE activité, sinon null.
+function _feuilleCmtEvtOuverte(eventId) {
+  var bd = document.getElementById("modalBackdrop");
+  var sheet = document.getElementById("cmtThreadList");
+  if (!bd || !bd.classList.contains("active") || !sheet) return null;
+  return sheet.getAttribute("data-thread") === String(eventId) ? sheet : null;
+}
+
 async function _loadEventComments(eventId, opts) {
   // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
   // une carte (#cmtThreadList). Sans ce 2ᵉ cas, commenter un événement depuis sa
   // carte n'affichait jamais les commentaires distants (early-return → "Chargement…").
-  var sheet = document.getElementById("cmtThreadList");
-  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
-    ? sheet
-    : document.getElementById("eventCommentsList");
+  var box = _feuilleCmtEvtOuverte(eventId) || document.getElementById("eventCommentsList");
   if (!box) return;
+  // ⚠️ UNE ACTIVITÉ D'EXEMPLE N'A RIEN EN BASE (2026-11-27, sujet 200) : la lecture
+  // rendait [] et `_setEventComments` effaçait en place ses commentaires de
+  // démonstration — la fiche disait « Aucun commentaire », la carte « 2 ». Même
+  // garde que la liste, qui ne relit que les activités réelles.
+  var _evCmt = _findCanonicalEvent(eventId);
+  if (_evCmt && !_evCmt.fromSupabase && _estActiviteExemple(_evCmt)) {
+    _renderEventComments(eventId);
+    return true;
+  }
   var list = [];
   if (typeof supaLoadEventComments === "function" && window._supaReal) {
     try { list = await supaLoadEventComments(eventId); } catch (e) { list = null; }
@@ -6612,10 +7026,7 @@ function _renderEventComments(eventId) {
   // page détail (#eventDetailPage) reste dans le DOM en display:none après
   // fermeture, donc #eventCommentsList existe encore mais est caché → écrire
   // dedans plutôt que dans la feuille au 1er plan serait invisible.
-  var sheet = document.getElementById("cmtThreadList");
-  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
-    ? sheet
-    : document.getElementById("eventCommentsList");
+  var box = _feuilleCmtEvtOuverte(eventId) || document.getElementById("eventCommentsList");
   if (!box) return;
   var list = (_eventCommentsCache[eventId] || []).map(_normalizeThreadComment);
   if (!list.length) {
@@ -6632,13 +7043,30 @@ function _renderEventComments(eventId) {
 }
 
 async function addEventComment(eventId) {
-  // Feuille inline prioritaire (cf. _renderEventComments) : #eventCommentInput de la
-  // page détail reste dans le DOM (caché) après fermeture et serait lu à tort.
-  var inp = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput");
+  // ⚠️ PORTE INVITÉ (2026-11-27, sujet 153) : le composeur de la FICHE appelle
+  // directement ici, sans passer par `submitCommentSheet` qui la portait. Un
+  // visiteur voyait son commentaire « publié », persisté, jamais en base. Posée
+  // AVANT de lire le champ : le texte y reste. Inerte (true) hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return;
+  // Feuille inline prioritaire QUAND ELLE EST OUVERTE sur cette activité (sujet
+  // 132) : fermée, son champ reste dans le DOM et serait lu à tort.
+  var inp = _feuilleCmtEvtOuverte(eventId)
+    ? document.getElementById("cmtThreadInput")
+    : document.getElementById("eventCommentInput");
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
   inp.value = "";
+  return _envoyerCommentaireActivite(eventId, text, inp);
+}
+
+// Le chemin commun d'un commentaire d'activité — texte (`addEventComment`) ou GIF
+// (`_postGifComment`, emoji-misc.js). Le GIF avait sa copie à lui, qui ne lisait
+// pas le verdict (fantôme sur refus, doublon à la relecture) et ne notifiait
+// jamais l'organisation (2026-11-27, sujet 151). `opts.gif` : pas de texte à
+// rendre au champ, messages propres au GIF. Rend true si le commentaire tient.
+async function _envoyerCommentaireActivite(eventId, text, inp, opts) {
+  opts = opts || {};
   var ev = allEvents().find(function (e) { return e.id === eventId; });
   var name = (state.user.general && state.user.general.username) || state.user.name || "Moi";
   var myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
@@ -6665,8 +7093,9 @@ async function addEventComment(eventId) {
       // est retiré et le texte revient dans le champ ; un visiteur n'a rien en
       // base, sa copie locale reste comme avant.
       else if (typeof _compteAuthReel === "function" && _compteAuthReel()) {
-        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp);
-        return;
+        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, opts.gif ? null : text, inp,
+          opts.gif ? "GIF non envoyé — réessaie" : null);
+        return false;
       }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
       // Sur un commentaire ÉCRIT seulement (SRV-02 : la base exige la ligne réelle).
@@ -6675,11 +7104,22 @@ async function addEventComment(eventId) {
       }
     } catch (e) {}
   }
+  if (opts.gif) toast("GIF ajouté en commentaire 🎬");
+  return true;
+}
+
+// Un GIF en commentaire d'activité (appelé par `_postGifComment`, emoji-misc.js).
+function _gifCommentaireActivite(eventId, gifUrl) {
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return false;
+  if (!gifUrl) return false;
+  _envoyerCommentaireActivite(eventId, String(gifUrl), null, { gif: true });
+  return false;
 }
 
 // Retire le commentaire optimiste qu'un refus serveur a laissé sans ligne, et rend
 // le texte à la personne : rien n'a été publié, l'écran ne doit pas le prétendre.
-function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
+// `text` nul (un GIF) : rien à rendre au champ ; `message` remplace le toast.
+function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp, message) {
   var liste = _eventCommentsCache[eventId] || [];
   var i = liste.indexOf(optimistic);
   if (i >= 0) liste.splice(i, 1);
@@ -6691,9 +7131,11 @@ function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
   } catch (e) {}
   try { _renderEventComments(eventId); } catch (e) {}
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
-  var champ = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput") || inp;
+  if (text == null) { toast(message || "Commentaire non envoyé — réessaie", "warning"); return; }
+  // Le champ VISIBLE (sujet 132) : la feuille ouverte sur cette activité, sinon la fiche.
+  var champ = (_feuilleCmtEvtOuverte(eventId) ? document.getElementById("cmtThreadInput") : document.getElementById("eventCommentInput")) || inp;
   if (champ && !champ.value) champ.value = text;
-  toast("Commentaire non envoyé — ton texte est resté dans le champ");
+  toast(message || "Commentaire non envoyé — ton texte est resté dans le champ");
 }
 
 function previewEventCover(input) {
@@ -9674,7 +10116,12 @@ async function _submitEventCorps(editId, relacher) {
       retirerCarteActiviteDuFil(ev.id);
       try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: false, serie: false, edition: true }); } catch (e) {}
     }
-    if (ok && editId && !jamaisPubliee) {
+    // ⚠️ SEUL UN CHANGEMENT UTILE AUX INSCRITS LES PRÉVIENT (2026-11-27, sujet 147) :
+    // date, horaire ou lieu (`avisModification`). Une coquille de titre partait en
+    // « a modifié un événement » à chaque inscrit et consommait le plafond serveur
+    // de 3 diffusions/heure (partagé avec « Prévenir les inscrits ») — le vrai
+    // changement de lieu, ensuite, était refusé.
+    if (ok && editId && !jamaisPubliee && avisModification) {
       _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
         // …et un refus SANS libellé connu aussi (réseau, 500, `non_autorise`) : l'appareil de
@@ -10046,36 +10493,9 @@ function eventLatLng(ev) {
 }
 
 
-// Fonction de test pour vérifier le filtre distance
-function testIrlDistance() {
-  // Créer des événements de test avec des villes exactes de FRANCE_CITIES
-  // Calibré pour un point de référence à Annecy
-  const testEvents = [
-    { id: "test_nearby_10km", title: "🍽️ Déjeuner local", passion: "cuisine", city: "annecy", date: Date.now() + 86400000, time: "12:00", organizerId: "test", emoji: "🍽️", attendees: [] },
-    { id: "test_nearby_25km", title: "🏔️ Rando montagne", passion: "sport", city: "chamonix", date: Date.now() + 2*86400000, time: "09:00", organizerId: "test", emoji: "⛰️", attendees: [] },
-    { id: "test_nearby_80km", title: "🎵 Festival musique", passion: "musique", city: "lyon", date: Date.now() + 3*86400000, time: "20:00", organizerId: "test", emoji: "🎵", attendees: [] },
-    { id: "test_far_350km", title: "🎨 Expo moderne", passion: "art", city: "marseille", date: Date.now() + 4*86400000, time: "14:00", organizerId: "test", emoji: "🎨", attendees: [] },
-    { id: "test_far_650km", title: "💻 Tech conference", passion: "tech", city: "paris", date: Date.now() + 5*86400000, time: "19:00", organizerId: "test", emoji: "💻", attendees: [] },
-  ];
-
-  state.userEvents = (state.userEvents || []).concat(testEvents);
-  saveState();
-
-  _diag("🧪 === TEST DISTANCE ===");
-  _diag("🧪 " + testEvents.length + " événements de test créés");
-  testEvents.forEach(ev => {
-    const loc = cityToLatLng(ev.city);
-    if (loc) {
-      const dist = calculateDistance(45.8992, 6.1294, loc[0], loc[1]); // Annecy as reference
-      _diag("🧪 [" + dist.toFixed(0) + "km] " + ev.title + " → " + ev.city);
-    } else {
-      _diag("🧪 ❌ " + ev.title + " → " + ev.city + " NON RECONNUE");
-    }
-  });
-
-  renderIRL();
-  toast("🧪 5 événements de test créés! Ouvre le diagnostic (F12)");
-}
+// `testIrlDistance` retirée (2026-11-27) : une globale de PRODUCTION qui
+// écrivait 5 fausses activités « à moi » dans l'état du compte, persistées et
+// synchronisées. Aucune porte d'interface, aucun appelant.
 
 // ======== WALLET — SUPPRIMÉ (ADR-009) ========
 // `renderWallet`, le Score Passion, le prochain rang, le guide de gains, le
@@ -10201,6 +10621,8 @@ window._invitesEnAttente = window._invitesEnAttente || {};
 function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) { toast("Activité introuvable"); return; }
+  // On n'invite personne à une activité qui n'aura pas lieu (sujet 204).
+  if (_eventIsCancelled(ev)) { toast("Cette activité a été annulée", "warning"); return; }
   window._inviteEventId = eventId;
   openModal('<div class="modal-title">Inviter mes abonnements</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
@@ -10753,6 +11175,50 @@ async function _loadEventRatings(eventId) {
   if (holder) holder.innerHTML = _eventRatingSummaryHtml({ id: eventId });
 }
 
+// ── LES RETOURS ÉCRITS ARRIVENT À L'ORGANISATION (2026-11-27, sujet 208) ─────
+// « Un mot sur ce moment ? » était bien écrit en base, puis lu par PERSONNE : la
+// colonne est fermée aux comptes, et la porte prévue pour l'organisation
+// (`retours_evenement`, SECURITY DEFINER, filtrée par `organise_activite`) n'était
+// appelée nulle part. La personne qui notait croyait son mot transmis. Le bloc
+// n'est rendu QUE pour qui gère l'activité ; la base, elle, ne rend des lignes
+// qu'à l'organisation — le client ne protège rien, il n'ouvre que sa porte.
+// Cache : `window._eventRetours[id]` (tableau ; absent = pas encore lu).
+function _eventRetoursHtml(eventId) {
+  var liste = (window._eventRetours || {})[eventId];
+  if (!Array.isArray(liste) || !liste.length) return "";
+  return '<div class="event-detail-section-title">Retours des participants</div>'
+    + liste.map(function (r) {
+      var u = userById(r.user_id) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
+      var n = Math.max(0, Math.min(5, Math.round(Number(r.rating) || 0)));
+      var texte = String(r.feedback || "").trim();
+      return '<div class="event-retour" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;">'
+        + '<div class="avatar sm" style="background:' + avatarBg(u) + ';flex:none;">' + avatarInner(u) + '</div>'
+        + '<div style="min-width:0;flex:1;">'
+        + '<div style="font-size:12px;font-weight:700;">' + escapeHtml((u.name || "Participant").split(" ")[0])
+        + (n ? ' <span class="ev-rating-stars-static" aria-label="' + n + ' sur 5">' + "★".repeat(n) + "☆".repeat(5 - n) + '</span>' : '')
+        + '</div>'
+        + (texte ? '<div class="event-retour-texte" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;">' + escapeHtml(texte) + '</div>' : '')
+        + '</div></div>';
+    }).join("");
+}
+
+async function _loadEventRetours(eventId) {
+  if (!window._supaReal || typeof supaLoadEventRetours !== "function") return;
+  var lecteur = MY_UID;
+  var lignes = await supaLoadEventRetours(eventId);
+  if (!lignes || MY_UID !== lecteur || window._openEventDetailId !== eventId) return;
+  window._eventRetours = window._eventRetours || {};
+  window._eventRetours[eventId] = lignes;
+  // Les auteurs pas encore en cache : on résout leurs profils, puis on repeint.
+  var inconnus = lignes.map(function (r) { return r.user_id; }).filter(function (u) { return u && !userById(u); });
+  if (inconnus.length && typeof _resolveProfilesByIds === "function") {
+    try { await _resolveProfilesByIds(inconnus); } catch (e) {}
+    if (MY_UID !== lecteur || window._openEventDetailId !== eventId) return;
+  }
+  var holder = document.querySelector('[data-evretours="' + ((window.CSS && CSS.escape) ? CSS.escape(String(eventId)) : String(eventId)) + '"]');
+  if (holder) holder.innerHTML = _eventRetoursHtml(eventId);
+}
+
 /* ============================================================================
    QR — GÉNÉRATEUR AUTONOME (2026-07-21)
    ----------------------------------------------------------------------------
@@ -11109,6 +11575,8 @@ function submitCheckinCode(eventId) {
   var val = ((document.getElementById("checkinCodeInput") || {}).value || "")
     .trim().toUpperCase().replace(/\s/g, "");
   if (_pointageServeur(ev)) { _pointerParCodeServeur(ev, val); return; }
+  // Le code dérivé de l'identifiant n'ouvre qu'une activité de démonstration (sujet 203).
+  if (ev.fromSupabase) { toast("Connecte-toi pour pointer"); return; }
   if (val !== _eventCheckinCode(ev)) { toast("Code incorrect — vérifie avec l'organisateur"); return; }
   closeModal();
   _checkInViaCode(ev);

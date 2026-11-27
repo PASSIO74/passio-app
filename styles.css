@@ -14797,3 +14797,36 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* Inviter directement depuis « Créer une activité » (2026-11-27, app-07 `poserInvitationDirecte`) */
 .ev-invite-directe { margin:12px 0 4px; }
 .ev-invite-directe-ico { width:36px; height:36px; flex-shrink:0; border-radius:999px; background:rgba(124,58,237,0.14); display:flex; align-items:center; justify-content:center; font-size:17px; }
+/* ── Rencontrer · attribution de la carte en vue Carte (2026-11-27) ──
+   L'attribution OpenFreeMap / OpenStreetMap (ODbL, OBLIGATION LÉGALE, cf.
+   js/map-loader.js) n'était visible qu'en plein écran : depuis UI-4A3, la carte
+   dépliée de la vue Carte est la carte principale de l'écran, et elle n'en
+   portait aucune. Seule la vignette repliée (.peek) reste épurée. */
+.irl-map-wrap:not(.peek):not(.fullscreen) .maplibregl-ctrl-bottom-right,
+.irl-map-wrap:not(.peek):not(.fullscreen) .maplibregl-ctrl-attrib { display: block !important; }
+/* ══ Rencontrer — carte et fiche d'activité (2026-11-27) ══════════════════
+   Ajout en fin de fichier : ces règles l'emportent sur les précédentes à
+   spécificité égale, sans en réécrire aucune. */
+/* Sujet 202 : la pastille « Privée » de la carte V2 (la pastille historique
+   est masquée par le lot UI-4A2). `[hidden]` doit gagner sur le display. */
+.v4a2-privee {
+  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
+  margin: 2px 0; padding: 2px 8px; border-radius: 999px;
+  background: rgba(124,58,237,0.12); color: var(--accent, #7c3aed);
+  font-size: 11px; font-weight: 700; line-height: 1.4;
+}
+.v4a2-privee[hidden] { display: none !important; }
+/* Le badge « Activité privée » de la fiche est posé sur l'en-tête SOMBRE (photo
+   + dégradé) : violet sur voile violet à 12 % y était illisible. */
+.event-detail-hero-title .ev-badge-privee {
+  background: rgba(15,10,30,0.62); color: #fff;
+  border: 1px solid rgba(255,255,255,0.45);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+/* Sujet 209 : une seule icône de partage sur le héros — le SVG injecté par la
+   fiche. La flèche « ⤴ » en pseudo-élément s'y ajoutait, décentrée. */
+:root.passio-ui-4b #eventDetailShareBtn::before { content: none; }
+/* Sujet 208 : retours écrits des participants, côté organisation. */
+.event-feedback-retours:empty { display: none; }
+.event-feedback-retours { margin: 6px 0 10px; }

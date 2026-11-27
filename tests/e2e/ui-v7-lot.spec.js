@@ -253,7 +253,8 @@ test.describe("UI-7 §2 — la carte d'activité dit ce qu'il faut", () => {
     await expect(carte.locator('[data-v4a2-act="go"]')).toHaveText("Je participe"); // LOT-3 (PCS-C06)
     await carte.locator('[data-v4a2-act="go"]').click();
     await page.waitForTimeout(500);
-    await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Inscrit ✓");
+    // 2026-11-27 : l'état réel ; activité locale, donc sans validation à attendre.
+    await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Participation confirmée");
   });
 
   test("ouvrir Rencontrer ne demande JAMAIS la position", async ({ page }) => {

@@ -6506,8 +6506,12 @@ function _texteNotifListeAttente(n) {
 function _notifTexteHtml(n) {
   if (!n) return "";
   var texte = _neutraliserBalisesNotif(_texteNotifListeAttente(n));
-  return n.html === true || n.kind === "local"
-    ? texte.replace(/&lt;(\/?b)&gt;/g, "<$1>") : texte;
+  // ⚠️ LE GRAS NU EST RÉTABLI POUR TOUTES (2026-11-27, sujet 144). La base compose
+  // elle-même « t'invite à <b>titre</b> » et « a noté <b>titre</b> n/5 »
+  // (`notifications_texte_serveur`) : la cloche affichait les balises en clair.
+  // Sûr : tout chevron est neutralisé juste au-dessus, seul `<b>` / `</b>` SANS
+  // attribut redevient une balise — `<b onclick=…>` et `<img …>` restent du texte.
+  return texte.replace(/&lt;(\/?b)&gt;/g, "<$1>");
 }
 
 // 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
@@ -6519,6 +6523,22 @@ function _notifTexteHtml(n) {
 // « Léa, Malik et 3 autres ont aimé ta publication ». Toucher la ligne ouvre la
 // cible, comme avant ; elle est non lue si l'une des notifications l'est.
 var _NOTIF_REGROUPABLES = { like: "ont aimé ta publication", reaction: "ont réagi à ta publication" };
+// ⚠️ UN J'AIME D'ACTIVITÉ N'EST PAS UN J'AIME DE PUBLICATION (2026-11-27, sujet 133).
+// La base n'a pas de genre dédié : le j'aime et la réaction d'une ACTIVITÉ
+// arrivent en `like` / `reaction` avec ref = l'activité (« a aimé ton
+// événement »). La cloche les jugeait comme des publications : « Publication
+// introuvable ici », fiche jamais ouverte, regroupés en « ont aimé ta
+// publication ». Vrai quand la cible n'est pas une publication connue mais une
+// activité connue, ou que le texte serveur parle de « ton événement / activité ».
+var _NOTIF_REGROUPABLES_ACTIVITE = { like: "ont aimé ton activité", reaction: "ont réagi à ton activité" };
+function _notifViseActivite(n) {
+  if (!n || !n.refId || ["like", "comment", "reaction"].indexOf(n.kind) < 0) return false;
+  try {
+    if (typeof findPostAnywhere === "function" && findPostAnywhere(n.refId)) return false;
+    if (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(n.refId)) return true;
+    return /ton (événement|activité)/.test(String(n.text || ""));
+  } catch (e) { return false; }
+}
 function _regrouperNotifs(notifs) {
   var groupes = {}, sortie = [];
   (notifs || []).forEach(function (n) {
@@ -6542,7 +6562,8 @@ function _regrouperNotifs(notifs) {
     var qui = noms.length === 1 ? "<b>" + escapeHtml(noms[0]) + "</b>"
       : noms.length === 2 ? "<b>" + escapeHtml(noms[0]) + "</b> et <b>" + escapeHtml(noms[1]) + "</b>"
       : "<b>" + escapeHtml(noms[0]) + "</b>, <b>" + escapeHtml(noms[1]) + "</b> et " + reste + " autre" + (reste > 1 ? "s" : "");
-    var verbe = noms.length === 1 ? _NOTIF_REGROUPABLES[x.tete.kind].replace(/^ont /, "a ") : _NOTIF_REGROUPABLES[x.tete.kind];
+    var _libelles = _notifViseActivite(x.tete) ? _NOTIF_REGROUPABLES_ACTIVITE : _NOTIF_REGROUPABLES;
+    var verbe = noms.length === 1 ? _libelles[x.tete.kind].replace(/^ont /, "a ") : _libelles[x.tete.kind];
     return Object.assign({}, x.tete, {
       unread: x.membres.some(function (m) { return m.unread; }),
       _texteGroupe: qui + " " + verbe,
@@ -6898,6 +6919,15 @@ function clickNotif(id, ligne) {
 //  message                       → la conversation
 function openNotifTarget(n) {
   if (!n) return;
+  // Un j'aime / une réaction / un commentaire sur une ACTIVITÉ ouvre sa fiche (sujet 133).
+  if (_notifViseActivite(n)) {
+    if (!_ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true })) {
+      // Identifiant hors du format des liens (activité locale) : la fiche directement.
+      try { closeModal(); } catch (e) {}
+      if (typeof openEventDetails === "function") openEventDetails(n.refId);
+    }
+    return;
+  }
   // LOT-21 (audit UX/UI du 2026-11-10, TRA-C12) : toucher une notification
   // dont la cible a disparu fermait le panneau et laissait sur le fil, sans un
   // mot (`openPost` et consorts sortent en silence). On vérifie AVANT de fermer ;
@@ -10578,7 +10608,7 @@ async function supaLoadStories() {
 // Colonnes « récentes » de `events` (migration_events_lifecycle.sql). Retirées une
 // à une si la base ne les a pas encore (même filet que supaUpsertProfile) — un
 // insert qui échoue en entier laissait l'événement en local seulement.
-const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence", "conv_id"];
+const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence"];
 
 // ⚠️ POINT UNIQUE de départ d'un événement vers la base — et `events` est en
 // LECTURE PUBLIQUE INTÉGRALE (`[SELECT] Lecture publique · using: true`), donc
@@ -10626,7 +10656,12 @@ function _eventRow(event) {
       .map(function (x) { return x.toLowerCase(); }).slice(0, 20),
     series_id: event.seriesId || null,
     recurrence: event.recurrence || "none",
-    conv_id: event.convId || null,
+    // ⚠️ PLUS DE `conv_id` ICI (2026-11-27, sujet 145). Une copie locale sans
+    // `convId` (repli de lecture publique, copie de création jamais relue)
+    // écrivait NULL à chaque édition : la discussion de l'activité se fermait à
+    // tous (`can_join_event_conversation` exige e.conv_id). Le lien n'est posé
+    // que par l'UPDATE dédié de `supaCreateEventConversation` ; à l'insertion, la
+    // colonne vaut NULL par défaut.
   };
   // ⚠️ Jamais dans `_EVENT_OPTIONAL_COLS` : retirer la colonne sur un refus
   // publierait PUBLIQUE une activité voulue privée. Absente du modèle local
@@ -10889,7 +10924,9 @@ async function supaLireAdresses(ids) {
   try {
     if (!_adressesParColonnes) {
       const r = await supa.rpc("adresses_activites", { p_event_ids: ids.slice(0, 200) });
-      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true }; }
+      // `parRpc` : la RPC ne rend une ligne qu'à l'organisation et à qui VIENT
+      // (validé) — la PRÉSENCE de la ligne est donc une information (2026-11-27).
+      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true, parRpc: true }; }
       if (String(r.error.code || "") !== "PGRST202") {
         console.warn("supaLireAdresses:", r.error.code || r.error.message);
         return { adresses, lu: false };
@@ -11185,16 +11222,32 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
   if (authorId && !/^[A-Za-z0-9_-]+$/.test(String(authorId))) return [];
   try {
-    const lire = (cols) => {
+    // ⚠️ LE CATALOGUE, CE SONT LES PROCHAINES SORTIES, PAS LES 60 DERNIÈRES
+    // CRÉÉES (2026-11-27). Coupé par date de CRÉATION, il perdait une sortie
+    // publiée tôt dès que 60 autres étaient créées après elle — passées,
+    // annulées, ou cinq séries de 12 : un appareil neuf ne la voyait jamais.
+    // Lecture ① : ce qui n'est pas fini (un jour de marge : en cours, tout juste
+    // fini), le plus proche d'abord. Lecture ② (`recentes`), à part et bornée :
+    // les sorties terminées depuis 30 jours au plus — pointage, avis et notes
+    // de la fiche s'en servent, et elles ne prennent plus la place des sorties à
+    // venir. Le profil (`authorId`) et les lectures par id ne changent pas.
+    const listeCatalogue = eventId == null && !authorId;
+    const borneVenir = new Date(Date.now() - 86400000).toISOString();
+    const lire = (cols, recentes) => {
       let q = supa.from("events").select(cols);
       if (eventId != null) return q.eq("id", eventId).limit(1);
-      if (authorId) q = q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId);
-      return q.order("created_at", { ascending: false }).limit(60);
+      if (authorId) return q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId)
+        .order("created_at", { ascending: false }).limit(60);
+      if (recentes) return q.lt("date_at", borneVenir).gte("date_at", new Date(Date.now() - 30 * 86400000).toISOString())
+        .order("date_at", { ascending: false }).order("id", { ascending: true }).limit(30);
+      return q.gte("date_at", borneVenir)
+        .order("date_at", { ascending: true }).order("id", { ascending: true }).limit(60);
     };
     // ⚠️ Sans compte, la demande privée est refusée à COUP SÛR (401) : on ne la
     // fait plus partir du tout. Voir `_compteAuthReel` plus haut.
     const prive = !_eventColsPubliquesSeulement && _compteAuthReel();
-    let { data, error } = await lire(prive ? _EVENT_COLS_PRIVE : _EVENT_COLS_PUBLIC);
+    let colsLues = prive ? _EVENT_COLS_PRIVE : _EVENT_COLS_PUBLIC;
+    let { data, error } = await lire(colsLues);
     // Refus portant sur les colonnes privées : le compte a un uuid mais plus de
     // session utilisable. On retombe sur la liste publique — la correspondance
     // plus bas rend déjà `address` et `contact` à la chaîne vide quand elles
@@ -11208,7 +11261,8 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       // adresse, contact et conv_id pour toute la session — la relance suivante
       // aurait suffi. Le repli public, lui, s'applique quoi qu'il arrive.
       if (_refusDeDroit(error)) _eventColsPubliquesSeulement = true;
-      ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
+      colsLues = _EVENT_COLS_PUBLIC;
+      ({ data, error } = await lire(colsLues));
     }
     if (error) {
       if (eventId != null || signalerErreur) throw error;
@@ -11216,7 +11270,18 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       return [];
     }
     const rows = data || [];
-    const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
+    if (listeCatalogue) {
+      // Lecture ② : mêmes colonnes que celles que la ① a obtenues. Son échec
+      // n'efface pas la ① — on perd seulement les sorties terminées.
+      try {
+        const r2 = await lire(colsLues, true);
+        if (!r2.error && Array.isArray(r2.data)) {
+          const vus = new Set(rows.map(r => r.id));
+          r2.data.forEach(r => { if (!vus.has(r.id)) rows.push(r); });
+        } else if (r2.error) console.warn("supaLoadEvents (récentes):", r2.error.message);
+      } catch (e) { console.warn("supaLoadEvents (récentes):", e && e.message); }
+    }
+    const { adresses, lu: adressesLues, parRpc: adressesParRpc } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
@@ -11244,6 +11309,10 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       venue: r.venue || "",
       address: (adresses[r.id] || {}).address || "",
       _adresseInconnue: !adressesLues,
+      // 2026-11-27 : vrai = la base m'ouvre les accès privés de cette activité
+      // (j'organise, ou ma participation est VALIDÉE) ; faux = elle ne me les
+      // ouvre pas ; indéfini = on ne sait pas (lecture en échec, repli par colonnes).
+      _accesPrive: adressesLues && adressesParRpc ? Object.prototype.hasOwnProperty.call(adresses, r.id) : undefined,
       postalCode: r.postal_code || "",
       price: r.price || 0,
       maxAttendees: r.max_attendees || null,
@@ -11287,7 +11356,7 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
 // Rend `true` si ce qui s'affiche a changé — l'appelant ne repeint qu'alors.
 function _evenementsSig(evs) {
   return (evs || []).map(function (e) {
-    return e ? [e.id, e.title, e.date, e.status, e.updatedAt,
+    return e ? [e.id, e.title, e.date, e.status, e.updatedAt, e._accesPrive,
       (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length,
       e.counts ? [e.counts.going, e.counts.maybe, e.counts.waitlist, e.counts.checked_in].join(",") : ""].join("|") : "";
   }).sort().join("~");
@@ -11319,8 +11388,14 @@ function fusionnerEvenementsServeur(evs) {
     }
   });
   const change = _evenementsSig(arr) !== avant;
+  // ⚠️ LA FICHE OUVERTE SE REPEINT EN ENTIER (2026-11-27, sujet 205). Le seul
+  // rafraîchissement d'UI-4B ne touchait que la ligne des places : une activité
+  // annulée pendant qu'on la regarde gardait « Je participe », « Discussion des
+  // participants » et aucun bandeau. Le re-rendu garde désormais la position et
+  // le brouillon de commentaire (`openEventDetails`, sujet 195).
   if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
-    window.PassioUIV4B?.refresh();
+    if (typeof _refreshEventDetailIfOpen === "function") _refreshEventDetailIfOpen(window._openEventDetailId);
+    else window.PassioUIV4B?.refresh();
   }
   return change;
 }
@@ -11339,6 +11414,20 @@ let _lectureListeSorties = null;
 function lectureListeSortiesConfirmee() {
   return navigator.onLine !== false && _lectureListeSorties !== null &&
     _lectureListeSorties.etat === state && _lectureListeSorties.compte === MY_UID;
+}
+
+// Avis « liste peut-être pas à jour » (2026-11-27) : posé en tête de la liste
+// quand la dernière lecture a échoué, l'écran étant affiché et le réseau
+// annoncé présent ; reposé par `renderIRL` tant que l'échec dure. Pas de toast :
+// la relecture part aussi au retour au premier plan, il se répéterait.
+let _lectureSortiesEnEchec = false;
+function avisLectureSortiesEchec() {
+  const liste = document.getElementById("eventList");
+  if (!_lectureSortiesEnEchec || !liste || navigator.onLine === false || !_irlEcranVisible()) return;
+  if (liste.querySelector("#irlAvisLecture")) return;
+  liste.insertAdjacentHTML("afterbegin",
+    '<div class="irl-avis-exemples" id="irlAvisLecture" role="status"><p>La liste n\'a pas pu être mise à jour.</p>'
+    + '<button type="button" class="btn ghost" onclick="rafraichirEvenements(true)">Réessayer</button></div>');
 }
 
 function retirerAvisSortiesExemples() {
@@ -11374,6 +11463,8 @@ async function rafraichirEvenements(force, apresLecture) {
     catch (e) { if (typeof diagLog === "function") diagLog("mes réponses : relecture — " + (e && e.message)); }
     if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     _lectureListeSorties = lecture;
+    _lectureSortiesEnEchec = false;
+    document.getElementById("irlAvisLecture")?.remove();
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     const irl = document.getElementById("screen-irl");
     if (irl && irl.classList.contains("active")) {
@@ -11391,6 +11482,15 @@ async function rafraichirEvenements(force, apresLecture) {
     return change;
   } catch (e) {
     if (typeof diagLog === "function") diagLog("rafraichir_evenements " + (e && e.message));
+    // ⚠️ UN ÉCHEC NE SE TAIT PLUS (2026-11-27). La liste gardait son cache (ou
+    // les seuls exemples, sans même leur avis) sans rien dire, et l'horodatage
+    // posé AVANT la lecture interdisait toute relecture pendant 60 s. On relit
+    // à la prochaine entrée, et l'écran le dit, avec de quoi réessayer.
+    if (lecture.etat === state && lecture.compte === MY_UID) {
+      _evenementsLusA = 0;
+      _lectureSortiesEnEchec = true;
+      avisLectureSortiesEchec();
+    }
     return false;
   } finally {
     _evenementsLectureEnVol = false;
@@ -11519,7 +11619,11 @@ async function supaLoadEventComments(eventId) {
   try {
     const { data, error } = await supa.from("event_comments").select("*").eq("event_id", eventId).order("created_at", { ascending: true });
     if (error) { console.warn("load event comments:", error.message); return null; }
-    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) }));
+    // `fromSupabase` comme le lot (2026-11-27, sujet 152) : sans lui, le j'aime et la
+    // réponse donnés depuis la FICHE (qui relit par ici) ne notifiaient jamais
+    // l'auteur du commentaire (gardes d'emoji-misc.js), selon la dernière lecture.
+    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme",
+      authorName: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at), fromSupabase: true }));
   } catch(e) { console.warn("load event comments:", e); return null; }
 }
 // ── Likes cross-compte sur les commentaires (table comment_likes) ──
@@ -13236,7 +13340,10 @@ function _rtNotificationRecue(r) {
   // (`n_pa_<activité>_<compte>`) — la seconde promotion de la même personne est
   // une notification « déjà connue », et pourtant une vraie nouvelle.
   if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
-      notif.refId && typeof activiteNotifiee === "function") activiteNotifiee(notif.refId);
+      notif.refId && typeof activiteNotifiee === "function") {
+    // Une validation fait aussi ENTRER dans la discussion du groupe (sujet 134).
+    activiteNotifiee(notif.refId, { entrerDiscussion: notif.kind === "event_accepted" });
+  }
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
@@ -14759,6 +14866,23 @@ async function supaLoadEventRatings(eventId) {
     const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
     if (!notes.length) return { avg: 0, count: 0 };
     return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };
+  } catch (e) { return null; }
+}
+
+// Les retours écrits (note + mot) d'une activité, pour SON organisation
+// (2026-11-27, sujet 208) : `retours_evenement` ne rend des lignes qu'à qui
+// `organise_activite`, et rien à tout autre compte. `null` = indisponible
+// (refus, RPC absente, réseau) — jamais « aucun retour ».
+async function supaLoadEventRetours(eventId) {
+  if (!_compteAuthReel() || !eventId) return null;
+  try {
+    const { data, error } = await supa.rpc("retours_evenement", { p_event_id: eventId });
+    if (error) {
+      try { if (typeof diagLog === "function") diagLog("retours_evenement : " + (error.code || error.message)); } catch (e) {}
+      return null;
+    }
+    return (Array.isArray(data) ? data : []).filter(r => r && r.user_id)
+      .map(r => ({ user_id: r.user_id, rating: r.rating == null ? null : Number(r.rating), feedback: r.feedback || "", rated_at: r.rated_at || null }));
   } catch (e) { return null; }
 }
 

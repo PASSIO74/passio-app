@@ -204,6 +204,25 @@
     catch (e) { fail("etat_termine", e); return false; }
   }
 
+  // 2026-11-27 : ce que vaut ma réponse — « demande » tant que l'organisation ne
+  // l'a pas validée, « confirmee » ensuite, « attente » en file. Seule autorité :
+  // `_etatParticipationAffiche` (app-07), partagée avec le pied de la fiche.
+  function etatAffiche(ev) {
+    try { if (typeof _etatParticipationAffiche === "function") return _etatParticipationAffiche(ev) || ""; }
+    catch (e) { fail("etat_affiche", e); }
+    return "";
+  }
+
+  function estPrivee(ev) {
+    try { return typeof activiteEstPrivee === "function" ? !!activiteEstPrivee(ev) : !!(ev && ev.visibilite === "privee"); }
+    catch (e) { fail("etat_privee", e); return false; }
+  }
+
+  function inscritsInconnus(ev) {
+    try { return typeof _inscritsInconnus === "function" && !!_inscritsInconnus(ev); }
+    catch (e) { fail("inscrits_inconnus", e); return false; }
+  }
+
   function estEnCours(ev) {
     try { return typeof _eventIsLive === "function" ? !!_eventIsLive(ev) : false; }
     catch (e) { fail("etat_live", e); return false; }
@@ -371,10 +390,16 @@
         return "Activité d'exemple · pas d'inscription";
       }
     } catch (e) {}
+    // 2026-11-27 (sujet 197) : sans compte, la base ne dit pas qui vient — on
+    // n'écrit pas « 0 participant · 3 places restantes » sur une activité pleine.
+    if (inscritsInconnus(ev)) {
+      try { return _texteInscritsInconnus(ev); } catch (e) { fail("inscrits_inconnus_texte", e); return ""; }
+    }
     var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
-    // LOT-19 (IRL-C56) : pas de « places restantes » sur une activité finie.
-    var fini = estTermine(ev);
+    // LOT-19 (IRL-C56) : pas de « places restantes » sur une activité finie —
+    // ni, depuis le 2026-11-27 (sujet 204), sur une activité ANNULÉE.
+    var fini = estTermine(ev) || estAnnule(ev);
     var reste = fini ? null : placesRestantes(ev);
     if (reste !== null && reste !== undefined) {
       bouts.push(reste <= 0
@@ -504,7 +529,10 @@
     return true;
   }
 
-  function libelleReponse(etat) {
+  function libelleReponse(etat, vu) {
+    try {
+      if (vu && typeof LIBELLES_PARTICIPATION !== "undefined" && LIBELLES_PARTICIPATION[vu]) return LIBELLES_PARTICIPATION[vu];
+    } catch (e) { fail("libelle_participation", e); }
     if (etat === "going") return LIB_INSCRIT;
     try {
       if (typeof RSVP_LABELS !== "undefined" && RSVP_LABELS && RSVP_LABELS[etat]) {
@@ -526,6 +554,9 @@
   function signature(ev) {
     return [
       etatRsvp(ev.id) || "-",
+      etatAffiche(ev) || "-",
+      estPrivee(ev) ? "p" : "-",
+      inscritsInconnus(ev) ? "?" : "-",
       nbInscrits(ev, "going"),
       String(placesRestantes(ev)),
       nbInscrits(ev, "waitlist"),
@@ -552,6 +583,17 @@
     titre.textContent = String((ev && ev.title) || "Activité");
     corps.appendChild(titre);
 
+    // 2026-11-27 (sujet 202) : la pastille « 🔒 Privée » de la carte historique est
+    // masquée par ce lot ; rien ne distinguait une activité privée d'une publique.
+    // Posée ici, rendue visible ou non par `peindre` (la visibilité peut changer).
+    var privee = document.createElement("span");
+    privee.className = "v4a2-privee";
+    privee.setAttribute("data-v4a2-privee", "1");
+    privee.title = "Seules les personnes invitées voient cette activité";
+    privee.textContent = "🔒 Privée";
+    privee.hidden = true;
+    corps.appendChild(privee);
+
     var quoi = document.createElement("div");
     quoi.className = "v4a2-l v4a2-quoi";
     corps.appendChild(quoi);
@@ -570,6 +612,12 @@
     // en `onclick` inline) : sans cette barrière, « Je viens » ouvrirait aussi
     // la fiche par-dessus le geste.
     actions.addEventListener("click", function (e) { e.stopPropagation(); });
+    // 2026-11-27 (sujet 206) : même barrière au CLAVIER. Entrée / Espace sur
+    // « Je participe » remontaient jusqu'à la carte, dont le `keydown` annulait
+    // l'activation du bouton et ouvrait la fiche à la place.
+    actions.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+    });
     corps.appendChild(actions);
 
     bloc.appendChild(corps);
@@ -590,6 +638,8 @@
     // ville n'en affiche aucune plutôt qu'un séparateur orphelin.
     o.hidden = !lo;
     m.textContent = ligneMonde(ev);
+    var pv = bloc.querySelector(".v4a2-privee");
+    if (pv) pv.hidden = !estPrivee(ev);
 
     while (a.firstChild) a.removeChild(a.firstChild);
 
@@ -643,8 +693,10 @@
     }
 
     if (reponse) {
-      var bRep = bouton("btn small ghost v4a2-reponse", libelleReponse(reponse), "reponse");
+      var vu = etatAffiche(ev);
+      var bRep = bouton("btn small ghost v4a2-reponse", libelleReponse(reponse, vu), "reponse");
       bRep.setAttribute("data-v4a2-rsvp", reponse);
+      if (vu) bRep.setAttribute("data-v4a2-participation", vu);
       bRep.addEventListener("click", function () { ouvrirFeuilleRsvp(ev.id); });
       a.appendChild(bRep);
       return true;

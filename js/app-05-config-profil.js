@@ -1742,15 +1742,19 @@ function _urlB64ToUint8(base64) {
 
 // Abonne CET appareil aux push et enregistre l'abonnement en base. Idempotent.
 // N'agit que si la permission de notification est déjà accordée (ne prompte pas).
+// ⚠️ REND UN VERDICT (2026-11-27, sujet 139) : `true` seulement quand la ligne
+// push_subscriptions est écrite, `false` sur toute sortie anticipée ou échec.
+// « Rappel la veille et 2 h avant » se promettait sans le lire, alors que les
+// rappels serveur ne partent QU'AUX lignes de cette table.
 async function ensureCallPushSubscription() {
   try {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     // `MY_UID` ne prouve pas qu'un compte existe (#367) : sous le placeholder
     // d'un visiteur, `push_insert_own` refuse — et un visiteur n'a personne à
     // qui répondre au téléphone.
-    if (typeof _uidEstUnCompte === "function" ? !_uidEstUnCompte() : !MY_UID) return;
+    if (typeof _uidEstUnCompte === "function" ? !_uidEstUnCompte() : !MY_UID) return false;
     // ⚠️ UN 403 AVEC UN COMPTE N'EST PAS TOUJOURS UN ENDPOINT VOLÉ, ET LA
     // REPRISE D'ENDPOINT EST ALORS UN REMÈDE DESTRUCTIF POSÉ SUR LA MAUVAISE
     // CAUSE. `_uidEstUnCompte()` ne regarde que la FORME de `MY_UID` ; la policy
@@ -1770,18 +1774,18 @@ async function ensureCallPushSubscription() {
     // est indiscernable d'un calme plat.
     if (typeof _identiteDivergeDeLaSession === "function" && _identiteDivergeDeLaSession(MY_UID)) {
       try { if (typeof diagLog === "function") diagLog("push_subscription: identite locale != session"); } catch (e) {}
-      return;
+      return false;
     }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     let clePublique = CALL_VAPID_PUBLIC;
     if (typeof SUPABASE_URL === "string" && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co") {
       const cle = await supa.functions.invoke("notify-call", { body: { type: "cle_web_push" } });
-      if (cle.error || !/^[A-Za-z0-9_-]{87}$/.test(cle.data?.publicKey || "")) return;
+      if (cle.error || !/^[A-Za-z0-9_-]{87}$/.test(cle.data?.publicKey || "")) return false;
       clePublique = cle.data.publicKey;
       const avant = sub?.options?.applicationServerKey;
       if (avant && btoa(String.fromCharCode(...new Uint8Array(avant))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_") !== clePublique) {
-        if (!await sub.unsubscribe()) return;
+        if (!await sub.unsubscribe()) return false;
         sub = null;
       }
     }
@@ -1826,11 +1830,12 @@ async function ensureCallPushSubscription() {
       // Le refus laisse une trace : c'est ce qui manquait pour qu'il se voie.
       try { if (typeof diagLog === "function") diagLog("push_subscription refus " + String(r.error.code || r.status || "?")); } catch (e) {}
       console.warn("[call] push subscription refusée :", r.error.message);
-      return;
+      return false;
     }
     window._callPushReady = true;
     console.log("[call] push subscription enregistrée");
-  } catch (e) { console.warn("[call] ensureCallPushSubscription:", e && e.message); }
+    return true;
+  } catch (e) { console.warn("[call] ensureCallPushSubscription:", e && e.message); return false; }
 }
 window.ensureCallPushSubscription = ensureCallPushSubscription;
 
@@ -2254,6 +2259,24 @@ function confirmerRetraitMembre(convId, userId, nom) {
   });
 }
 
+// ⚠️ UNE DISCUSSION D'ACTIVITÉ N'EST PAS UN GROUPE ORDINAIRE (2026-11-27, sujet 159).
+// Ses membres SONT les personnes qui viennent (la base les y admet ou les en
+// retire avec l'inscription) : « Ajouter » proposait des personnages d'exemple
+// (ajout local seulement) ou des comptes que la base refuse, « Retirer » n'avait
+// aucun effet durable (la personne revenait par la fiche), et l'organisation
+// pouvait QUITTER la discussion de sa propre activité. Rend null hors evgrp_,
+// sinon { eventId, gere } (gere : j'organise ou j'ai créé la discussion).
+function _convActivite(convId) {
+  var id = String(convId || "");
+  if (id.indexOf("evgrp_") !== 0) return null;
+  var evId = id.slice(6);
+  var ev = null;
+  try { ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null; } catch (e) { ev = null; }
+  var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+  var gere = !!((ev && typeof _canManageEvent === "function" && _canManageEvent(ev)) || estCreateurGroupe(c));
+  return { eventId: evId, gere: gere };
+}
+
 function showGroupMembers(convId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
@@ -2272,12 +2295,14 @@ function _renderGroupMembersModal(convId) {
   // ne sont proposés qu'au créateur, jamais sur le créateur.
   var memberIds = membresAutresGroupe(c);
   var nbMembres = memberIds.length + 1;
-  var jeCree = estCreateurGroupe(c);
+  var activite = _convActivite(convId);
+  // Discussion d'activité : ni « Ajouter » ni « Retirer » (sujet 159, voir _convActivite).
+  var jeCree = estCreateurGroupe(c) && !activite;
   var moi = (state.user && state.user.general) || {};
 
   var membersHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
     '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;">' + escapeHtml(moi.profileEmoji || "😊") + '</div>' +
-    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div>' + (jeCree ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') + '</div>' +
+    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div>' + (estCreateurGroupe(c) ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') + '</div>' +
   '</div>';
 
   membersHTML += memberIds.map(function(uid) {
@@ -2342,6 +2367,7 @@ function _renderGroupMembersModal(convId) {
     '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
       (c.groupDesc ? escapeHtml(c.groupDesc) : 'Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
+    (activite ? '<div class="grp-activite-note" style="font-size:12px;color:var(--muted);margin-bottom:10px;">Les membres sont les personnes qui viennent à l’activité — ' + (activite.gere ? 'gère-les depuis sa fiche.' : 'la liste suit les inscriptions.') + '</div>' : '') +
     // Onglets
     '<div role="tablist" aria-label="Groupe" style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
       '<button id="grpTab_members" role="tab" aria-selected="true" aria-controls="grpPanel_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + nbMembres + ')</button>' +
@@ -2362,7 +2388,9 @@ function _renderGroupMembersModal(convId) {
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
       '<button class="btn ghost" onclick="closeModal();openConversation(\'' + escapeJsArg(convId) + '\')" style="flex:1;">← Retour</button>' +
-      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter le groupe</button>' +
+      ((activite && activite.gere)
+        ? '<button class="btn ghost grp-voir-activite" onclick="closeModal();openEventDetails(\'' + escapeJsArg(activite.eventId) + '\')" style="flex:1;">Voir l’activité</button>'
+        : '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter le groupe</button>') +
     '</div>'
   );
 
@@ -2502,6 +2530,8 @@ function _ajoutMembreLocal(c, convId, userId, name, apresAllerRetour) {
   if (fp && fp.classList.contains("active") && (!apresAllerRetour || window._openedConvId === convId)) renderConvFpThread(c, c.groupName || "Groupe");
 }
 function addGroupMember(convId, userId) {
+  // Discussion d'activité : on n'y ajoute personne à la main (sujet 159).
+  if (_convActivite(convId)) { toast("Les membres de cette discussion sont les personnes qui viennent à l’activité"); return; }
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
@@ -2788,15 +2818,30 @@ function removeGroupMember(convId, userId) {
 // restait MEMBRE — il continuait d'en recevoir les messages et les notifications.
 // Pour un compte, on attend le verdict ; un échec garde la conversation et le dit.
 async function leaveGroup(convId) {
+  // L'organisation reste dans la discussion de SA propre activité (sujet 159) —
+  // même invariant que `_leaveEventConversation` (app-07).
+  var _act = _convActivite(convId);
+  if (_act && _act.gere) { toast("Tu organises cette activité : tu restes dans sa discussion"); return; }
   // LOT-6 (TRA-C11) : feuille de l'application, plus de boîte native.
   if (!(await confirmerAction({ titre: "Quitter ce groupe ?", texte: "Tu ne recevras plus ses messages.", libelle: "Quitter le groupe", danger: true }))) return;
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal
       && typeof _compteAuthReel === "function" && _compteAuthReel()) {
-    var v;
+    var v, res = null;
     try {
-      v = _writeVerdict(await supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id"),
-        { expectRows: true, label: "quitter le groupe" });
+      res = await supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id");
+      v = _writeVerdict(res, { expectRows: true, label: "quitter le groupe" });
     } catch (e) { v = { ok: false }; }
+    // ⚠️ ZÉRO LIGNE SANS ERREUR N'EST PAS UN ÉCHEC SI JE NE SUIS DÉJÀ PLUS MEMBRE
+    // (2026-11-27, sujet 135). La base retire elle-même l'appartenance à une
+    // discussion d'activité (désistement, refus, retrait par l'organisation) :
+    // la copie locale restait, et « Quitter » échouait pour toujours. On relit ;
+    // ligne absente = le but est atteint, le retrait local se fait.
+    if (!v.ok && res && !res.error) {
+      try {
+        var relu = await supa.from("conv_members").select("conv_id").eq("conv_id", convId).eq("user_id", MY_UID);
+        if (relu && !relu.error && Array.isArray(relu.data) && relu.data.length === 0) v = { ok: true };
+      } catch (e) {}
+    }
     if (!v.ok) { toast("Impossible de quitter le groupe pour l'instant — réessaie"); return; }
   }
   conversationsState = (getConversations() || []).filter(function(c){ return c.id !== convId; });

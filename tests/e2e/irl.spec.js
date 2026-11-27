@@ -348,6 +348,9 @@ test.describe("IRL — cycle de vie d'un événement", () => {
       window.supaUpdateEvent = async () => true;
       openCreateEvent("mine1");
       document.getElementById("evTitle").value = "Titre corrigé";
+      // Depuis le 2026-11-27 (sujet 147), seul un changement de date, d'horaire ou
+      // de lieu prévient les inscrits : l'horaire change aussi, la diffusion part.
+      document.getElementById("evTime").value = "20:30";
     });
     await page.evaluate(() => submitEvent("mine1"));
     await expect.poll(() => page.evaluate(() => window._toasts.filter((m) => /18 mois/.test(m))))
@@ -555,6 +558,9 @@ test.describe("IRL — création, récurrence et vues", () => {
       { title: "Paris", lat: 48.8566, lng: 2.3522 },
       { title: "Marseille", lat: 43.2965, lng: 5.3698 },
     ]);
+    // 2026-11-27 (dossier ECR, sujet 103) : une distance ne filtre qu'autour
+    // d'un centre RÉEL — plus autour du repli Paris. Le centre est donc choisi.
+    await page.evaluate(() => { irlSelectedCity = { id: "paris", name: "Paris", coords: [48.8566, 2.3522] }; renderIRL(); });
     await page.evaluate(() => openIrlFiltersPanel());
     await page.locator("#irlFtabDist").click();
     await expect(page.locator("#irlPaneDist")).toHaveClass(/on/);

@@ -114,6 +114,7 @@
   ];
 
   var vueFiltres = false;
+  var vueAvant = null;     // « carte » si la vue Filtre a été ouverte depuis la Carte
   var enPanne = false;
   var observateur = null;
   var listeObservee = null;
@@ -738,6 +739,16 @@
       var m = cases[i].getAttribute("data-v4a5-passions");
       // « Chercher » ouvre un sélecteur : ce n'est pas un état, donc jamais coché.
       cocher(cases[i], m !== "chercher" && m === mode);
+      // … et il n'existe que si le sélecteur de passions (flat_passions_v1) est
+      // là (2026-11-27) : lot coupé, la case restait visible et le clic ne
+      // faisait rien, sans un mot. Même règle que la tuile des bulles (app-07).
+      if (m === "chercher") {
+        var flat = false;
+        try { flat = !!(window.PassioFlatUI && typeof PassioFlatUI.actif === "function" && PassioFlatUI.actif()); } catch (e) {}
+        // `display` et non `hidden` : la règle d'affichage de la case l'emporte sur l'attribut.
+        var voulu = flat ? "" : "none";
+        if (cases[i].style.display !== voulu) cases[i].style.display = voulu;
+      }
     }
   }
 
@@ -879,10 +890,19 @@
   function ouvrir() {
     if (!actif()) return;
     vueFiltres = true;
-    // La carte quitte l'écran comme en vue Liste : trois vues exclusives.
+    // ⚠️ UNE ENTRÉE D'HISTORIQUE, COMME LA FEUILLE HISTORIQUE (2026-11-27). Sans
+    // elle, le geste de retour — LE chemin de retour sur téléphone — traversait
+    // la vue Filtre et changeait d'écran (Rencontrer → Fil), voire quittait
+    // l'application. Le retour la referme ; `closeCurrentOverlay` (app-02) la
+    // connaît désormais.
+    try { if (typeof pushOverlayHistory === "function") pushOverlayHistory("filtres", "#filtres"); } catch (e) { fail("historique", e); }
+    // La carte quitte l'écran comme en vue Liste : trois vues exclusives. On
+    // retient qu'on venait d'elle, pour l'y rendre à la fermeture.
+    vueAvant = null;
     try {
       if (window.PassioUIV4A3 && typeof PassioUIV4A3.vue === "function"
         && PassioUIV4A3.vue() === "carte" && typeof PassioUIV4A3.setVue === "function") {
+        vueAvant = "carte";
         PassioUIV4A3.setVue("liste");
       }
     } catch (e) { fail("vue_carte", e); }
@@ -912,7 +932,20 @@
     vueFiltres = false;
     document.documentElement.removeAttribute(ATTR_VUE);
     rendreVoletParDefaut();
+    // Retour à la Carte si l'on venait d'elle (2026-11-27) — sauf si la
+    // personne vient de choisir une vue (« vue ») ou de quitter l'écran.
+    var revenir = vueAvant === "carte" && raison !== "vue" && raison !== "ecran";
+    vueAvant = null;
+    if (revenir) {
+      try { if (window.PassioUIV4A3 && typeof PassioUIV4A3.setVue === "function") PassioUIV4A3.setVue("carte"); } catch (e) { fail("vue_retour", e); }
+    }
     syncOnglets();
+    // L'entrée posée à l'ouverture est reprise. Fermeture par un retour :
+    // `releaseOverlayHistory` le sait (le navigateur l'a déjà retirée). Sortie
+    // d'écran : `goTo` a poussé par-dessus et oublié nos entrées.
+    if (raison !== "ecran") {
+      try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) { fail("historique", e); }
+    }
     track("ui_v4a5_ferme", { v: VERSION, r: String(raison || "onglet") });
   }
 
@@ -940,6 +973,15 @@
     // referme, et l'événement suit son cours normal.
     if (vueFiltres && t.closest("[data-v4a3-onglet]")) fermer("vue");
   }, true);
+
+  // Échap referme la vue Filtre, comme le retour (2026-11-27) — sauf si une
+  // modale (le sélecteur de ville) est ouverte par-dessus : elle d'abord.
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" || !vueFiltres || !actif()) return;
+    var modale = document.getElementById("modalBackdrop");
+    if (modale && modale.classList.contains("active")) return;
+    fermer("echap");
+  }, true);   // capture : on lit l'état de la modale AVANT que son Échap ne la ferme
 
   // ══════════════════════════════════════════════════════════════════════════
   // APPLICATION
@@ -983,7 +1025,12 @@
     var racine = document.documentElement;
     if (!actif()) {
       cesserObservation();
+      // Coupure vue ouverte : son entrée d'historique est reprise (2026-11-27).
+      if (vueFiltres) {
+        try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+      }
       vueFiltres = false;
+      vueAvant = null;
       racine.classList.remove(ROOT_CLASS);
       racine.removeAttribute(ATTR_VUE);
       // Restituer AVANT de retirer le panneau : les nœuds déplacés vivent
@@ -1081,7 +1128,7 @@
     apply: apply,
     decorate: appliquer,
     open: ouvrir,
-    close: function () { fermer("api"); },
+    close: function (raison) { fermer(raison || "api"); },
     toggle: basculer,
     isOpen: function () { return vueFiltres; },
     calendarOpen: calendrierOuvert,

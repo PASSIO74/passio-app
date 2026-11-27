@@ -221,7 +221,8 @@ async function bancInscription(page, { permission, rsvpOk = true }) {
     window.__abonnements = 0;
     window.__notif = { permission, requestPermission: async () => { window.__demandes++; window.__notif.permission = "granted"; return "granted"; } };
     Object.defineProperty(window, "Notification", { configurable: true, get: () => window.__notif });
-    window.ensureCallPushSubscription = async () => { window.__abonnements++; };
+    // L'abonnement rend son verdict depuis le 2026-11-27 (sujet 139) : réussi ici.
+    window.ensureCallPushSubscription = async () => { window.__abonnements++; return true; };
     window.__telCap = [];
     window.tel = window.tel || {};
     window.tel.action = (name, meta) => { window.__telCap.push({ name, meta }); };

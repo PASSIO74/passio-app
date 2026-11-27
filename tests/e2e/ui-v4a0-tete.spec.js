@@ -133,8 +133,10 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     // Réversibilité du retrait de « Créer un événement » : coupure = bouton rendu.
     await expect(page.locator(".irl-chip-create")).toBeVisible();
 
-    // Contrôle du contraste ③ : sans le lot, la position EST demandée.
-    expect(await page.evaluate(() => window.__geoCalls)).toBeGreaterThan(0);
+    // Contrôle du contraste ③ — RENVERSÉ le 2026-11-27 (dossier ECR, sujet 127) :
+    // la garantie « aucune demande de position sans geste » est passée de
+    // l'enveloppe UI-4A0 au moteur (`renderIRL`). Lot coupé, rien n'est demandé.
+    expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
   });
 
   // ⚠️ Énoncé RÉÉCRIT : ce contrôle s'appelait « aperçu : … » et bootait sur
