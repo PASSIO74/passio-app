@@ -4919,6 +4919,7 @@ function checkInEvent(id) {
         const motif = window._irlRefusMotif || null;
         toast(motif === "hors_fenetre" ? "Le pointage n'est ouvert que de 1 h avant le début jusqu'à la fin"
           : motif === "annulee" ? "Cette activité a été annulée"
+          : motif === "non_valide" ? "Le pointage est réservé aux participations validées par l'organisation — demande-lui le code d'accueil"
           : "⚠️ Pointage non enregistré — inscris-toi d'abord, ou réessaie", "warning");
         _refreshEventDetailIfOpen(id);
         return;
@@ -11094,8 +11095,16 @@ async function submitEventFeedback(eventId) {
   var ecrite = false;
   if (window._supaReal && typeof supaRateEvent === "function") {
     var ok = false;
+    window._noteRefusMotif = null;   // jamais le motif d'un essai précédent
     try { ok = await supaRateEvent(eventId, n, txt); } catch (e) { ok = false; }
-    if (!ok) { toast("⚠️ Retour non enregistré — réessaie", "warning"); return; }
+    // Un refus de la BASE (2026-11-27) se dit tel quel : réessayer n'y changerait rien.
+    if (!ok) {
+      var motifNote = window._noteRefusMotif || null;
+      toast(motifNote === "avant_fin" ? "Tu pourras noter cette activité une fois qu'elle sera terminée"
+        : motifNote === "sans_participation" ? "Seules les personnes venues (participation validée ou arrivée pointée) peuvent noter"
+        : "⚠️ Retour non enregistré — réessaie", "warning");
+      return;
+    }
     ecrite = true;
   }
   state.user.eventRatings = state.user.eventRatings || {};

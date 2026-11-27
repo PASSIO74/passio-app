@@ -11,7 +11,9 @@
 //       la file, pointage, note, validation, notification forgée) ;
 //   V · l'activité PRIVÉE : invité, inconnu, visiteur, lien, lien renouvelé, retrait ;
 //   C · le pointage par code ;
-//   S · la série, la modification, l'annulation, la suppression.
+//   S · la série, la modification, l'annulation, la suppression ;
+//   R · ce que la base fait d'elle-même (promotion sur retrait, avis au retiré,
+//       entrée dans la discussion, couverture d'un hôte tiers — 2026-11-27).
 //
 // Même cadre que le village : chaque personnage = un BrowserContext, on pilote
 // les VRAIS handlers, et on juge sur l'écran, sur la base (clé de service), sur
@@ -275,6 +277,56 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
         return { ok: !!ok, detail: `Tom ${await rsvpDe(evP, TOM)}, Chloé ${await rsvpDe(evP, CHLOE)}` };
       });
 
+      // ═══ ACTE R — CE QUE LA BASE FAIT D'ELLE-MÊME (2026-11-27) ═══════════
+      // `migration_rencontrer_serveur_2026-11-27.sql` : la base promeut la file
+      // quand l'ORGANISATION retire quelqu'un (aucun client n'appelle la
+      // promotion), prévient la personne retirée, fait entrer une personne
+      // validée dans la discussion sans qu'elle ouvre l'app, et refuse une
+      // couverture servie par un hôte tiers.
+      acteCourant = "R · Ce que la base fait d'elle-même";
+      log("── ACTE R : promotion, avis, discussion, couverture — par la base ──");
+      const evR = await creer(LEA, { title: "Deux places [rencontrer]", city: "Lyon", address: ADRESSE, date: dansJours(4), maxAttendees: 2 });
+      for (const i of [INES, CHLOE]) await attendre(() => charger(i, evR), { delai: 10000, pas: 1500 });
+      await repondre(INES, evR, "going");
+      await attendre(async () => (await rsvpDe(evR, INES)) === "going", { delai: 10000 });
+      await valider(evR, INES, true);
+      // La discussion s'ouvre APRÈS la validation d'Inès, par le vrai geste de Léa.
+      const convR = await ev(LEA, async (id) => {
+        const e = ((await supaLoadEvents(null, id)) || [])[0];
+        return e ? supaCreateEventConversation(e) : null;
+      }, evR);
+      const membreR = (i) => db.lire("conv_members", `select=user_id&conv_id=eq.evgrp_${evR}&user_id=eq.${uids[i]}`);
+      await verifier("R1", "Léa ouvre la discussion APRÈS avoir validé Inès : Inès en est membre sans ouvrir l'app", async () => {
+        const m = await attendre(async () => { const x = await membreR(INES); return x.length ? x : null; }, { delai: 8000 }) || [];
+        return { ok: convR === "evgrp_" + evR && m.length === 1, detail: `discussion ${convR || "non ouverte"} · Inès membre : ${m.length}` };
+      });
+      await charger(CHLOE, evR);
+      await repondre(CHLOE, evR, "going");
+      await attendre(async () => (await rsvpDe(evR, CHLOE)) === "waitlist", { delai: 10000 });
+      const retraitR = await valider(evR, INES, false);
+      await verifier("R2", "Léa retire Inès (validée) : la base donne sa place à Chloé, première en file — sans geste d'aucun client", async () => {
+        const ok = await attendre(async () => (await rsvpDe(evR, CHLOE)) === "going", { delai: 10000 });
+        return { ok: retraitR.data === true && !!ok && (await rsvpDe(evR, INES)) === null, detail: `RPC : ${JSON.stringify(retraitR)} · Chloé ${await rsvpDe(evR, CHLOE)} · Inès ${await rsvpDe(evR, INES)}` };
+      });
+      await verifier("R3", "Inès, retirée alors qu'elle était validée, en est prévenue (avis écrit par la base, sans contenu libre)", async () => {
+        const n = await attendre(async () => { const x = await db.lire("notifications", `select=id,origine,content&user_id=eq.${uids[INES]}&ref_id=eq.${evR}&kind=eq.event_update`); const y = x.filter((r) => /^n_pi_retrait_/.test(r.id) && r.origine === "serveur"); return y.length ? y : null; }, { delai: 8000 }) || [];
+        return { ok: n.length === 1, detail: `${n.length} avis${n[0] ? " : « " + String(n[0].content).slice(0, 80) + " »" : ""}` };
+      });
+      await valider(evR, CHLOE, true);
+      await verifier("R4", "Chloé (promue) validée : membre de la discussion aussitôt, sans ouvrir l'app", async () => {
+        const m = await attendre(async () => { const x = await membreR(CHLOE); return x.length ? x : null; }, { delai: 8000 }) || [];
+        return { ok: m.length === 1, detail: `Chloé membre : ${m.length}` };
+      });
+      await verifier("R5", "une couverture servie par un hôte tiers est refusée ; le Storage du projet passe", async () => {
+        const r = await ev(LEA, async ([id, ref]) => {
+          const a = await supa.from("events").update({ cover_url: "https://pixel.example/p.png" }).eq("id", id).select("id");
+          const b = await supa.from("events").update({ cover_url: "https://" + ref + ".supabase.co/storage/v1/object/public/media/content/events/village.jpg" }).eq("id", id).select("id");
+          return { tiers: a.error ? String(a.error.code) : "ACCEPTÉ", storage: b.error ? "refus " + String(b.error.code) : (b.data || []).length };
+        }, [evR, STAGING_REF]);
+        const e = await db.lire("events", `select=cover_url&id=eq.${evR}`);
+        return { ok: r.tiers !== "ACCEPTÉ" && r.storage === 1 && !/pixel\.example/.test(String(e[0] && e[0].cover_url)), detail: `hôte tiers : ${r.tiers} · Storage : ${r.storage}` };
+      });
+
       // Gestes croisés, sur le vrai réseau : « Je participe » puis « Retirer » aussitôt.
       const evG = await creer(LEA, { title: "Gestes croisés [rencontrer]", city: "Lyon", date: dansJours(5) });
       await attendre(() => charger(SARAH, evG), { delai: 10000, pas: 1500 });
@@ -348,7 +400,7 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
         const r = await k(async (id) => { const w = await supa.from("event_attendees").update({ rating: 1, feedback: "nul [rencontrer]" }).eq("event_id", id).eq("user_id", MY_UID).select("event_id"); return w.error ? String(w.error.code) : "ACCEPTÉ"; }, evP);
         const l = await ligneDe(evP, KEVIN);
         return { ok: r !== "ACCEPTÉ" && !(l && l.rating), detail: `réponse : ${r} · note en base : ${l ? l.rating : "—"}` };
-      }, { exige: false });
+      });
       await verifier("A7", "Kevin ne peut pas modifier l'activité de Léa (places, titre)", async () => {
         const r = await k(async (id) => { const w = await supa.from("events").update({ max_attendees: 999, title: "piraté" }).eq("id", id).select("id"); return (w.data || []).length; }, evP);
         const e = await db.lire("events", `select=title,max_attendees&id=eq.${evP}`);
@@ -477,7 +529,7 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
         const r = await ev(CHLOE, async (id) => { const w = await supa.from("event_attendees").update({ checked_in_at: new Date().toISOString() }).eq("event_id", id).eq("user_id", MY_UID).select("event_id"); return w.error ? String(w.error.message).slice(0, 40) : "ACCEPTÉ"; }, evC);
         const l = await ligneDe(evC, CHLOE);
         return { ok: r !== "ACCEPTÉ" && !(l && l.checked_in_at), detail: `réponse : ${r} · pointée en base : ${!!(l && l.checked_in_at)}` };
-      }, { exige: false });
+      });
 
       // ═══ ACTE S — SÉRIE, MODIFICATION, ANNULATION, SUPPRESSION ═══════════
       acteCourant = "S · Série, modification, annulation, suppression";
@@ -530,7 +582,7 @@ test.describe("Le village — Rencontrer, dix comptes réels", () => {
         if (!file.length) return { ok: true, detail: "personne en file à ce moment : sans objet" };
         const promu = await attendre(async () => { const x = await lignes(evP); return x.filter((a) => a.rsvp === "waitlist").length < file.length ? x : null; }, { delai: 12000 });
         return { ok: !!promu, detail: `file avant : ${file.length} · going : ${avant.filter((a) => a.rsvp === "going").length}/4` };
-      }, { exige: false });
+      });
 
       const annul = await ev(LEA, (id) => toggleCancelEvent(id), evP).then(() => true).catch(() => false);
       await verifier("S5", "Léa annule : statut « annulée » en base, Inès prévenue, plus personne ne peut s'inscrire", async () => {
