@@ -7,12 +7,15 @@
 //      message (jamais un compte d'exemple, jamais soi) ;
 //   ③ ❓ Question : posée sur la story ; un spectateur répond, la réponse part
 //      en message à l'auteur, la story est en pause pendant qu'il écrit ;
-//   ④ bobine : Activité et Mention proposées, pas la Question ;
+//   ④ bobine : Activité, Mention et Question proposées (lot H), pas le Sondage ;
 //   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs ;
 //   ⑩ compte PRIVÉ : une story « tous » ou une bobine ne prévient que les
 //      mentionnés abonnés ACCEPTÉS (relus au serveur) — un autre compte
 //      n'apprend pas qu'un contenu existe (red team du 2026-11-26) ; une
 //      lecture en échec = personne ; jamais pour un autre auteur que moi.
+//   ⑨ story « Amis proches » : seul un mentionné MEMBRE de la liste (relue au
+//      serveur) est prévenu — un non-membre n'apprend pas qu'une story existe ;
+//      compte privé : membre ET abonné accepté ; liste illisible = personne.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -28,6 +31,7 @@ const MOI = "a1b2c3d4-0000-4000-8000-00000000d1ff";
 async function stubSupa(page) {
   await page.evaluate(() => {
     window.__prive = false; window.__profilErreur = null; window.__followsErreur = null; window.__abonnes = []; window.__lectures = [];
+    window.__liste = []; window.__listeErreur = null;
     window.__pendantLecture = null;
     supa = {
       from: (t) => {
@@ -35,6 +39,7 @@ async function stubSupa(page) {
         const rep = () => {
           if (t === "profiles") return window.__profilErreur ? { data: null, error: window.__profilErreur } : { data: { is_private: window.__prive }, error: null };
           if (t === "follows") return window.__followsErreur ? { data: null, error: window.__followsErreur } : { data: window.__abonnes.map((id) => ({ follower_id: id })), error: null };
+          if (t === "amis_proches") return window.__listeErreur ? { data: null, error: window.__listeErreur } : { data: window.__liste.map((id) => ({ ami_id: id })), error: null };
           return { data: null, error: { code: "banc" } };
         };
         const b = {
@@ -162,19 +167,23 @@ test("③ ❓ Question : la réponse d'un spectateur part en message à l'auteur
   expect(await page.evaluate(() => !!window._storyEnPause), "la pause revient à ce qu elle était").toBe(false);
 });
 
-test("④ bobine : Activité et Mention proposées, pas la Question", async ({ page }) => {
+test("④ bobine : Activité, Mention et Question proposées, pas le Sondage", async ({ page }) => {
   await banc(page, "bobine");
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await expect(page.locator('#meStickerPanel [data-sticker="Activité"]')).toBeVisible();
   await expect(page.locator('#meStickerPanel [data-sticker="Mention"]')).toBeVisible();
-  await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toHaveCount(0);
-  // Le lecteur de bobines rend la mention, touchable — mais JAMAIS une Question
-  // (posts.overlays est écrit par n'importe quel compte ; la réponse partirait
-  // vers la dernière story vue).
-  const html = await page.evaluate((lea) => renderReelHTML({ id: "reel_s", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: [{ type: "mention", uid: lea, nom: "Léa", x: 50, y: 50 }, { type: "question", q: "Piège ?" }], text: "", likes: 0, comments: [] }, 0), LEA);
+  // ❓ Question proposée aux bobines depuis le 2026-11-26 (lot H) : la réponse va à
+  // l'auteur de la bobine lu dans reelsState.items (bobine-montage-video.spec.js ⑤).
+  // 📊 Sondage reste story seulement (votes rangés par story_id).
+  await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
+  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
+  // Le lecteur de bobines rend la mention, touchable, et la Question — son texte
+  // ÉCHAPPÉ (posts.overlays est écrit par n'importe quel compte).
+  const html = await page.evaluate((lea) => renderReelHTML({ id: "reel_s", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: [{ type: "mention", uid: lea, nom: "Léa", x: 50, y: 50 }, { type: "question", q: "Piège <img src=x onerror=alert(1)> ?" }], text: "", likes: 0, comments: [] }, 0), LEA);
   expect(html).toContain('class="story-ov story-sticker st-mention"');
-  expect(html).not.toContain("st-q-rep");
-  expect(html).not.toContain("Piège");
+  expect(html).toContain("st-q-rep");
+  expect(html).toContain("Piège &lt;img");
+  expect(html).not.toContain("<img src=x");
   // Une bobine publiée au REJEU ne prévient qu'une fois.
   await stubSupa(page);
   const n = await page.evaluate((lea) => { const post = { id: "reel_m", isReel: true, authorId: MY_UID, overlays: [{ type: "mention", uid: lea, nom: "Léa" }] }; _prevenirMentionsBobine(post); _prevenirMentionsBobine(post); return new Promise((r) => setTimeout(() => r(window.__envois.length), 100)); }, LEA);
@@ -358,4 +367,48 @@ test("⑩ compte privé : story « tous » et bobine ne préviennent que les abo
   await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
+});
+
+test("⑨ story « Amis proches » : seul un mentionné membre de la liste (et abonné si privé) est prévenu", async ({ page }) => {
+  await banc(page, "story");
+  await stubSupa(page);
+  await page.evaluate(({ moi, lea, tom }) => {
+    MY_UID = moi; window._supaReal = true; STORY_PROCHES_ACTIF = true;
+    window.supaPublishStory = async () => true;
+    window.__publier = (proches) => {
+      meOpen("story"); meState.overlays = [];
+      meCycleBg(); meFermerEditeurTexte(false);
+      meAddOverlay({ type: "mention", uid: lea, nom: "Léa Martin", x: 40, y: 40 });
+      meAddOverlay({ type: "mention", uid: tom, nom: "Tom Hors-liste", x: 60, y: 60 });
+      meState._enteredEditAt = 0;
+      return proches ? mePublishProches() : mePublish();
+    };
+  }, { moi: MOI, lea: LEA, tom: TOM });
+  // Léa est dans la liste, Tom non : seule Léa reçoit le message.
+  await page.evaluate((lea) => { window.__liste = [lea]; return window.__publier(true); }, LEA);
+  await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
+  expect(await page.evaluate(() => state.seed.stories[0].audience)).toBe("proches");
+  // La liste est relue au SERVEUR, filtrée sur le propriétaire.
+  const lectures = await page.evaluate(() => window.__lectures.filter((r) => r.t === "amis_proches" && r.sel === "ami_id"));
+  expect(lectures.some((r) => r.f.some(([c, v]) => c === "owner_id" && v === MOI))).toBe(true);
+  // Compte PRIVÉ : Léa membre mais pas abonnée acceptée → personne ; abonnée → Léa.
+  await page.evaluate(() => { window.__envois = []; window.__prive = true; window.__abonnes = []; return window.__publier(true); });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  await page.evaluate(({ lea, tom }) => { window.__abonnes = [lea, tom]; return window.__publier(true); }, { lea: LEA, tom: TOM });
+  await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a))).toEqual([LEA]);
+  // Lecture de la liste en échec (APRÈS le passage de mePublishProches) : personne.
+  await page.evaluate(() => {
+    window.__envois = []; window.__prive = false;
+    const lire = window._lireAmisProchesPourMentions;
+    window._lireAmisProchesPourMentions = (a) => { window.__listeErreur = { code: "500" }; return lire(a); };
+    return window.__publier(true);
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__envois.length)).toBe(0);
+  // Story pour TOUS : la liste ne s'applique pas, les deux sont prévenus.
+  await page.evaluate(() => window.__publier(false));
+  await expect.poll(() => page.evaluate(() => window.__envois.map((e) => e.a).sort())).toEqual([LEA, TOM].sort());
 });

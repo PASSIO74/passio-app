@@ -14,7 +14,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · inscrits · connectes · relancer · fusionner · fermer · pause · reprendre · signalement · masquage · reparer · reglages
+//      etat · inscrits · connectes · ouvertures · relancer · fusionner · fermer · pause · reprendre · signalement · masquage · reparer · reglages
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -36,7 +36,7 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
-  pageInscrits, INSCRITS_PAR_PAGE, debutJourParis, connectesDuJour, nommerConnectes, CONNECTES_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
+  pageInscrits, INSCRITS_PAR_PAGE, debutJourParis, connectesDuJour, nommerConnectes, CONNECTES_PAR_PAGE, ouverturesDuJour, resumerOuvertures, nommerOuvertures, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
   EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
   EVT_CANARI, CANARI_LECTURE_MS, CANARI_MARQUES_MAX, marqueCanari, bilanCanari, MIGRATION_TELEMETRIE_CLASSES, remplissage, remplissageAveugle, jaugeRemplissage,
 } from "../_shared/pilotage.js";
@@ -88,7 +88,7 @@ const ACCUSE = ADRESSE.accuse;
 type Admin = ReturnType<typeof createClient>;
 
 // Les actions qui n'écrivent rien : interrompues, elles ne laissent aucun doute derrière elles.
-const LECTURES_SEULES = new Set(["etat", "inscrits", "connectes", "retour_apercu"]);
+const LECTURES_SEULES = new Set(["etat", "inscrits", "connectes", "ouvertures", "retour_apercu"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
       case "retour_arriere": return retourManuel(admin, corps);
       case "inscrits": return listerInscrits(admin, corps);
       case "connectes": return listerConnectes(admin, corps);
+      case "ouvertures": return listerOuvertures(admin, corps);
       default: return json({ error: "Action inconnue." }, 400);
     }
   };
@@ -682,6 +683,8 @@ async function etat(admin: Admin, frais = false) {
     remplissage: lireRemplissage(admin), canari: lireCanari(admin),
     // Le nombre seul : la liste se lit à la demande (action `connectes`).
     connectes: lireConnectesJour(admin).then(({ total, tronque, depuis }) => ({ total, tronque, depuis })),
+    // Toute ouverture de l'app, avec ou sans compte (2026-11-27) : le nombre seul, la liste à la demande.
+    ouvertures: lireOuverturesJour(admin).then(({ resume, tronque, depuis }) => ({ ...resume, tronque, depuis })),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -1528,6 +1531,62 @@ async function listerConnectes(admin: Admin, corps: Record<string, unknown>) {
       comptes: nommerConnectes(tranche.comptes, profils, { nomsLus }) });
   } catch (err) {
     return json({ error: "Connexions illisibles : " + String((err as { message?: string })?.message || err).slice(0, 120) }, 502);
+  }
+}
+
+// ─── Les ouvertures du jour (2026-11-27) ────────────────────────────────────
+// Le 3ᵉ nombre : les APPAREILS du public qui ont ouvert l'app depuis minuit,
+// heure de Paris, avec ou sans compte. Règle : `ouverturesDuJour` (_shared).
+// Les lignes marquées hors public sont LUES (pour écarter tout l'appareil), pas
+// filtrées en base. Même borne que les connectés : au-delà, « + ».
+async function lireOuverturesJour(admin: Admin) {
+  const depuis = debutJourParis(Date.now());
+  const depuisIso = new Date(depuis).toISOString();
+  const lignes: Record<string, unknown>[] = [];
+  let tronque = false;
+  for (let p = 0; p < CONNECTES_LIGNES_PAGES; p++) {
+    const { data, error } = await admin.from("telemetry_events")
+      .select("device_id,auth_uid,received_at,type,action,platform,connection,trafic:meta->>trafic,src:meta->>src")
+      .eq("env", "production").gte("received_at", depuisIso).not("device_id", "is", null)
+      .in("type", ["session", "lifecycle"]).in("action", ["start", "visible", "heartbeat"])
+      .order("received_at", { ascending: false }).range(p * MAX_LIGNES_POSTGREST, (p + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) throw error;
+    const lot = (data || []) as Record<string, unknown>[];
+    lignes.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) break;
+    if (p === CONNECTES_LIGNES_PAGES - 1) tronque = true;
+  }
+  // Les comptes d'auth ne servent qu'à écarter tests et éditeur : lus seulement si un appareil en porte un.
+  const comptes: Record<string, unknown>[] = [];
+  if (lignes.some((l) => l.auth_uid)) {
+    for (let page = 1; page <= INSCRITS_PAGES_COMPTES_MAX; page++) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw error;
+      const lot = (data && data.users) || [];
+      comptes.push(...(lot as unknown as Record<string, unknown>[]));
+      if (lot.length < 1000) break;
+      if (page === INSCRITS_PAGES_COMPTES_MAX) tronque = true;
+    }
+  }
+  const liste = ouverturesDuJour(lignes, depuis, comptes, EXTRA);
+  return { resume: resumerOuvertures(liste), tronque, depuis: depuisIso, liste };
+}
+// Le toucher sur le 3ᵉ nombre : qui a ouvert l'app aujourd'hui, le dernier venu
+// d'abord, le NOM du compte quand il y en a un, sinon « sans compte ».
+async function listerOuvertures(admin: Admin, corps: Record<string, unknown>) {
+  try {
+    const { resume, tronque, depuis, liste } = await lireOuverturesJour(admin);
+    const tranche = pageInscrits(liste, Number(corps.page) || 1, CONNECTES_PAR_PAGE, "vu");
+    const uids = [...new Set(tranche.comptes.map((a) => a.uid).filter(Boolean))];
+    let profils: { id: string; username: string | null }[] = [], nomsLus = true;
+    if (uids.length) {
+      const { data: pr, error: ep } = await admin.from("profiles").select("id,username").in("id", uids);
+      if (ep) nomsLus = false; else profils = (pr || []) as { id: string; username: string | null }[];
+    }
+    return json({ ...resume, tronque, depuis, page: tranche.page, pages: tranche.pages, parPage: tranche.parPage,
+      appareils: nommerOuvertures(tranche.comptes, profils, { nomsLus }) });
+  } catch (err) {
+    return json({ error: "Ouvertures illisibles : " + String((err as { message?: string })?.message || err).slice(0, 120) }, 502);
   }
 }
 

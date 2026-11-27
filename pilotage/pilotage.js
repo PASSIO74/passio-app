@@ -301,6 +301,7 @@
     if (id === "accueil") dessinerMarche();
     if (id === "inscrits" && !inscritsCharges.length) chargerInscrits();
     if (id === "connectes" && !connectesCharges.length) chargerConnectes();
+    if (id === "ouvertures" && !ouverturesChargees.length) chargerOuvertures();
     if (id === "reglages") rendreSecondFacteur();
   }
   function aller(id) { history.pushState({ vue: id, depuisPage: true }, "", "#" + id); afficher(id); }
@@ -588,6 +589,7 @@
   if (window.ResizeObserver) new ResizeObserver(() => dessinerMarche()).observe($("marche"));
   $("totalUtilisateurs").addEventListener("click", () => ouvrirInscrits());
   $("connectesJour").addEventListener("click", () => ouvrirConnectes());
+  $("ouverturesJour").addEventListener("click", () => ouvrirOuvertures());
 
   function rendreCroissanceAccueil(d) {
     const act = d.activation, u = d.utilisateurs;
@@ -600,6 +602,11 @@
     $("connectesNombre").textContent = cj ? cj.total + (cj.tronque ? "+" : "") : "—";
     $("connectesLibelle").textContent = cj && cj.total <= 1 ? "connecté aujourd'hui" : "connectés aujourd'hui";
     $("connectesJour").setAttribute("aria-label", (cj ? cj.total + (cj.tronque ? " au moins" : "") : "Nombre non lu :") + " connectés aujourd'hui depuis minuit, voir qui");
+    // Toute ouverture de l'app aujourd'hui, avec ou sans compte (2026-11-27) : des APPAREILS distincts.
+    const oj = d.ouvertures && typeof d.ouvertures.total === "number" ? d.ouvertures : null;
+    $("ouverturesNombre").textContent = oj ? oj.total + (oj.tronque ? "+" : "") : "—";
+    $("ouverturesLibelle").textContent = oj && oj.total <= 1 ? "a ouvert aujourd'hui" : "ont ouvert aujourd'hui";
+    $("ouverturesJour").setAttribute("aria-label", (oj ? oj.total + (oj.tronque ? " au moins" : "") : "Nombre non lu :") + " appareils ont ouvert l'app aujourd'hui depuis minuit, avec ou sans compte, voir qui");
     // Les chiffres de la courbe d'abord : ils s'additionnent exactement au total.
     const semaine = ins && typeof ins.semaine === "number" ? ins.semaine : u ? u.inscritsSemaine : null;
     const avant = ins && typeof ins.semainePrec === "number" ? ins.semainePrec : u ? u.inscritsSemainePrec : null;
@@ -854,6 +861,75 @@
     }
   }
   $("connectesSuite").addEventListener("click", () => chargerConnectes());
+
+  // ─── Ouvertures aujourd'hui (2026-11-27) ──────────────────────────────────
+  // Ouvertes en touchant le 3ᵉ nombre : chaque appareil qui a ouvert l'app depuis
+  // minuit (heure de Paris), avec ou sans compte, le dernier venu d'abord. Le NOM
+  // du compte quand il y en a un (écrit par la personne : rendu en TEXTE), sinon
+  // « Sans compte » ; l'appareil, la source d'arrivée et le nombre d'ouvertures.
+  const SOURCES = { direct: "lien direct ou appli", lien: "lien partagé", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok",
+    google: "Google", whatsapp: "WhatsApp", x: "X", linkedin: "LinkedIn", snapchat: "Snapchat", youtube: "YouTube", reddit: "Reddit", autre: "un autre site" };
+  function listeOuvertures(liste) {
+    const c = el("article", "carte");
+    const ul = el("ul", "liste-comptes");
+    liste.forEach((x) => {
+      const li = el("li", "compte");
+      const tete = el("div", "compte-tete");
+      if (!x.compte) tete.append(el("span", "compte-nom sans-nom", "Sans compte"));
+      else tete.append(x.nom ? el("span", "compte-nom", x.nom) : el("span", "compte-nom sans-nom", x.nomLu === false ? "Nom non lu" : "Compte, profil pas encore rempli"));
+      tete.append(el("span", "compte-quand", "vu à " + heureParis(x.vu)));
+      li.append(tete);
+      const n = Number(x.ouvertures) || 0;
+      const morceaux = [el("span", null, n ? n + " ouverture" + (n > 1 ? "s" : "") + (n > 1 ? ", la première à " + heureParis(x.premier) : "") : "app déjà ouverte avant minuit")];
+      if (x.plateforme) morceaux.push(el("span", null, x.plateforme === "autre" ? "autre appareil" : x.plateforme));
+      if (x.source) morceaux.push(el("span", null, "venu par " + (Object.hasOwn(SOURCES, x.source) ? SOURCES[x.source] : x.source)));
+      const det = el("p", "compte-detail");
+      morceaux.forEach((m, i) => { if (i) det.append(document.createTextNode(" · ")); det.append(m); });
+      li.append(det);
+      ul.append(li);
+    });
+    c.append(ul);
+    return c;
+  }
+  let ouverturesChargees = [], ouverturesPage = 0, ouverturesPages = 1, ouverturesEnCours = false;
+  function ouvrirOuvertures() {
+    ouverturesChargees = []; ouverturesPage = 0; ouverturesPages = 1;
+    aller("ouvertures");
+  }
+  async function chargerOuvertures() {
+    if (ouverturesEnCours) return;
+    ouverturesEnCours = true;
+    const liste = $("ouverturesListe"), suite = $("ouverturesSuite");
+    suite.disabled = true;
+    if (!ouverturesChargees.length) { vider("ouverturesListe").append(carte("Chargement…", "", "", "")); $("ouverturesResume").textContent = ""; }
+    try {
+      const r = await appeler({ action: "ouvertures", page: ouverturesPage + 1 });
+      const lot = Array.isArray(r && r.appareils) ? r.appareils : [];
+      ouverturesChargees = ouverturesChargees.concat(lot);
+      ouverturesPage = Number(r.page) || ouverturesPage + 1;
+      ouverturesPages = Number(r.pages) || 1;
+      vider("ouverturesListe");
+      if (!ouverturesChargees.length) liste.append(carte("Personne depuis minuit", "", "", ""));
+      else liste.append(listeOuvertures(ouverturesChargees));
+      const total = Number(r.total) || 0, avec = Number(r.avecCompte) || 0, nb = Number(r.ouvertures) || 0;
+      $("ouverturesResume").textContent = total + " appareil" + (total > 1 ? "s" : "") + (r.tronque ? " au moins" : "")
+        + " depuis minuit (heure de Paris) : " + avec + " avec un compte, " + (total - avec) + " sans compte, "
+        + nb + " ouverture" + (nb > 1 ? "s" : "") + " en tout. Le dernier venu d'abord, remis à zéro chaque nuit. Hors robots, émulations, appareils de l'équipe et comptes de test"
+        + (ouverturesPages > 1 ? ". " + ouverturesChargees.length + " affichés." : ".");
+      suite.hidden = ouverturesPage >= ouverturesPages;
+    } catch (e) {
+      if (e.status === 401) { ecran("connexion"); return; }
+      const c = carte("Liste impossible à lire", "Non lu", e.message, "gris");
+      const b = el("button", "btn", "Réessayer"); b.type = "button";
+      b.addEventListener("click", () => chargerOuvertures());
+      actions(c).append(b);
+      if (!ouverturesChargees.length) vider("ouverturesListe");
+      liste.append(c);
+    } finally {
+      ouverturesEnCours = false; suite.disabled = false;
+    }
+  }
+  $("ouverturesSuite").addEventListener("click", () => chargerOuvertures());
 
   function rendreSite(d) {
     const dispo = d.disponibilite;

@@ -139,8 +139,13 @@ test("② onglets : Story ⇄ Bobine sur place, Publier ouvre le Studio, Live la
   await page.evaluate(() => { goTo("feed"); window.__lives = 0; window.startVideoLive = async () => { window.__lives++; }; meOpen("bobine"); });
   await page.waitForFunction(CAPTURE, null, { timeout: 20000 });
   await page.locator('#meModes [data-mode="live"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__lives)).toBe(1);
   r = await page.evaluate(() => ({ ouvert: document.getElementById("mediaEditor").classList.contains("open"), camera: !!meCam.stream, lives: window.__lives }));
   expect(r).toEqual({ ouvert: false, camera: false, lives: 1 });
+  // Le geste retour, après « Publier » ou « Live », n'est pas avalé par une entrée
+  // d'historique orpheline de l'éditeur : il ne le rouvre pas et ne laisse rien derrière.
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (history.state || {}).overlay || null), "aucune entrée d'éditeur au sommet").not.toBe("media");
 });
 
 test("③ bobine : toucher = filmer, toucher = arrêter ; la durée choisie borne la prise", async ({ page }) => {
@@ -345,6 +350,8 @@ test("⑨ édition : chaque outil reçoit son toucher ; Emoji et GIF sont dans l
     expect(Math.min(m.w, m.h), nom + " mesure au moins 44 px").toBeGreaterThanOrEqual(44);
   }
   for (const sel of ["#meBackBtn", "#mePublishBtn"]) expect((await sousLeDoigt(page, sel)).atteint, sel).toBe(true);
+  // Une photo ne se coupe pas : l'outil ✂️ n'est pas là.
+  await expect(page.locator("#meMontageBtn")).toBeHidden();
   // Les noms des outils sont montrés à l'arrivée.
   await expect(page.locator('.me-tool[aria-label="Dessiner"] .me-tool-lib')).toBeVisible();
   // Le bouton du haut dit « revenir », plus « fermer ».
@@ -389,7 +396,14 @@ test("⑨ édition : chaque outil reçoit son toucher ; Emoji et GIF sont dans l
   await page.evaluate(() => { meChoisirMode("bobine"); meSetMedia("data:video/webm;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "video"); meState._enteredEditAt = 0; });
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').tap();
   const bob = await page.locator("#meStickerPanel .me-sticker-choix").evaluateAll((els) => els.map((e) => e.getAttribute("data-sticker")));
-  expect(bob).toEqual(["Emoji", "GIF", "Activité", "Mention", "Compte à rebours"]);
+  expect(bob, "ni Sondage ni Musique en bobine").toEqual(["Emoji", "GIF", "Activité", "Mention", "Compte à rebours", "Question"]);
+  // ✂️ « Couper » n'est proposé que sur une vidéo, et reçoit son toucher dans la colonne.
+  await page.locator('.me-tool[aria-label="Ajouter un sticker"]').tap();
+  await expect(page.locator("#meStickerPanel")).toHaveCount(0);
+  await expect(page.locator("#meMontageBtn")).toBeVisible();
+  const couper = await sousLeDoigt(page, "#meMontageBtn");
+  expect(couper.atteint).toBe(true);
+  expect(Math.min(couper.w, couper.h)).toBeGreaterThanOrEqual(44);
 });
 
 test("⑩ abandon : ‹ et le retour système demandent avant de jeter ce qui est préparé", async ({ page }) => {

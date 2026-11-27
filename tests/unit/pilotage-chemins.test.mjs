@@ -1006,6 +1006,45 @@ test("connectés aujourd'hui (2026-11-26) : le nombre à l'accueil, la liste par
   assert.deepEqual(ecrituresHorsMarque(), [], "lire n'écrit rien");
 });
 
+test("ouvertures aujourd'hui (2026-11-27) : le 3ᵉ nombre compte TOUT appareil du public venu depuis minuit, avec ou sans compte ; la liste dit qui", async () => {
+  const maintenant = Date.now();
+  const iso = (ms) => new Date(ms).toISOString();
+  const minuit = debutJourParis(maintenant);
+  const compte = (id, email) => ({ id, email, email_confirmed_at: "2026-11-01T00:00:00Z", created_at: "2026-11-01T00:00:00Z", app_metadata: { provider: "email" } });
+  const zoe = compte("44444444-4444-4444-8444-444444444444", "zoe@exemple.fr");
+  const e2e = compte("55555555-5555-4555-8555-555555555555", "robot@passio-e2e.test");
+  const ligne = (device_id, ms, extra = {}) => ({ env: "production", type: "session", action: "start", device_id, received_at: iso(ms), meta: {}, ...extra });
+  await monter({
+    utilisateurs: [PILOTE, zoe, e2e],
+    tables: {
+      profiles: [{ id: zoe.id, username: "Zoé d'Annecy" }],
+      telemetry_events: [
+        ligne("app-anonyme", maintenant - 1000, { platform: "ios", meta: { src: "instagram" } }),
+        ligne("app-zoe", maintenant - 3000, { auth_uid: zoe.id, platform: "android" }),
+        ligne("app-zoe", maintenant - 2000, { type: "lifecycle", action: "visible", auth_uid: zoe.id }),
+        ligne("app-hier", minuit - 60e3),
+        ligne("app-robot", maintenant - 1000, { meta: { trafic: "robot" } }),
+        ligne("app-e2e", maintenant - 1000, { auth_uid: e2e.id }),
+        ligne("app-pilote", maintenant - 1000, { auth_uid: PILOTE.id }),
+        ligne("app-cachee", maintenant - 1000, { type: "lifecycle", action: "hidden" }),
+      ],
+    },
+  });
+  const e = await action({ action: "etat" });
+  assert.equal(e.status, 200);
+  assert.equal(e.corps.ouvertures.total, 2);
+  assert.equal(e.corps.ouvertures.avecCompte, 1);
+  assert.equal(e.corps.ouvertures.ouvertures, 3);
+  assert.ok(!("liste" in e.corps.ouvertures), "l'accueil ne porte que le nombre");
+  const r = await action({ action: "ouvertures", page: 1 });
+  assert.equal(r.status, 200);
+  assert.equal(r.corps.total, 2);
+  assert.deepEqual(r.corps.appareils.map((a) => [a.compte, a.nom, a.source]), [[false, null, "instagram"], [true, "Zoé d'Annecy", null]]);
+  const texte = JSON.stringify(r.corps);
+  assert.ok(!texte.includes("@") && !texte.includes(zoe.id) && !texte.includes("app-"), "ni e-mail, ni identifiant, ni appareil");
+  assert.deepEqual(ecrituresHorsMarque(), [], "lire n'écrit rien");
+});
+
 // ═══ LA VEILLE — ce qui fait sonner le téléphone ════════════════════════════
 
 test("㉗ veille : réservée au secret serveur, elle ne rend que { ok: true } ; elle prend son créneau, note l'état, bat — et ne sonne pas quand tout va bien", async () => {
@@ -2294,3 +2333,4 @@ test("T3-q les réécritures « pour les seuls codes » sont marquées et écart
   const e2 = await appeler({ action: "etat" });
   assert.deepEqual(e2.corps.historique.map((x) => x.dispo), [true, false, true]);
 });
+

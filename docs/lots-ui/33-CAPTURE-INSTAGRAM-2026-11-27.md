@@ -57,7 +57,8 @@ Mesuré avant d'y toucher (captures 390 × 844, caméra simulée) :
 ### Édition
 
 - **Outils en colonne à droite**, icône + nom (Texte, Stickers, Effets, Dessin,
-  Galerie, et Fond en mode Créer). Les noms s'affichent à l'arrivée puis s'effacent
+  Couper — le ✂️ montage du lot H, sur une vidéo seulement —, Galerie, et Fond en
+  mode Créer). Les noms s'affichent à l'arrivée puis s'effacent
   (`ME_NOMS_OUTILS_MS`). **Emoji et GIF sont dans le tiroir Stickers**, en tête.
 - Les panneaux (stickers, emoji) sont des feuilles posées en bas de l'écran.
 - Pendant qu'on déplace un élément, colonnes et rangée « Publier » s'effacent
@@ -81,7 +82,15 @@ Mesuré avant d'y toucher (captures 390 × 844, caméra simulée) :
 - Le boomerang et le minuteur sont cadencés par `setInterval`, jamais par
   `requestAnimationFrame` ; l'encodeur a une garde de temps (`ME_BOOM.delaiMax`) et un
   jeton (`meCap.boomJeton`) : fermé en route, il ne pose rien après coup.
-- Rien n'est pris pendant un décompte si l'éditeur a été fermé ou la caméra coupée.
+- Rien n'est pris pendant un décompte si l'éditeur a été fermé ou la caméra coupée ;
+  même garde pour la photo différée du flash (sans image, `meCapturePhoto` ouvrirait
+  la galerie — après coup).
+- « Publier » et « Live » partent 80 ms APRÈS `meClose()` (même patron que les
+  capsules des bobines) : la fermeture rend son entrée d'historique par un retour
+  différé, une navigation posée avant lui la laisserait orpheline.
+- `.me-tool-montage` (lot H) se masque par une règle à UNE classe : la colonne la
+  re-masque explicitement (`.me-toolbar .me-tool.me-tool-montage`), sinon ✂️
+  s'afficherait sur une photo.
 - On ne change ni de mode ni de caméra pendant une prise, un décompte ou un boomerang.
 - Tout le style vit dans UN bloc de fin de `styles.css` (marqueur « ÉCRAN DE CAPTURE
   FAÇON INSTAGRAM ») — écrit en CRLF, sans toucher aux règles d'avant.
