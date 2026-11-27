@@ -31,6 +31,16 @@
   total (`compteCree`) ; aucune migration. Limites : un appareil qui a coupé la télémétrie
   (`?telemetry=0`) n'est vu que s'il se reconnecte ; au-delà de 20 000 passages dans la journée le
   nombre est une borne basse et le dit (« + »). Logique : `connectesDuJour`, `nommerConnectes`.
+- **Puis les ouvertures du jour (2026-11-27), 3ᵉ nombre.** TOUTE ouverture de l'app depuis minuit
+  (heure de Paris), avec ou sans compte : des APPAREILS distincts (`device_id`) vus en `session/start`,
+  `lifecycle/visible` ou `lifecycle/heartbeat`. Le public seulement : un appareil marqué
+  robot/émulation/équipe une fois l'est pour la journée ; un appareil qui porte un compte de test ou
+  l'éditeur sort (`compteCree`). Toucher le nombre ouvre la liste (action `ouvertures`, à la demande) :
+  le NOM du compte (`auth_uid`, posé par le serveur) ou « Sans compte », l'heure, le nombre
+  d'ouvertures (start + visible ; le battement n'en est pas une), l'appareil et la source d'arrivée
+  de la première ouverture (`meta.src`, relue comme hostile). Jamais l'identifiant d'appareil.
+  Limite : la télémétrie coupée (`?telemetry=0`) n'est pas vue. Logique : `ouverturesDuJour`,
+  `resumerOuvertures`, `nommerOuvertures`.
 - **Un problème, un bouton « Régler ».** Le serveur décide de ce que fait le bouton (`gestes[]`,
   `principal`) et le dit en une ligne (`quoi`) : Claude prépare le correctif, mettre en ligne, remettre
   la version d'avant, ouvrir la page du forfait… Aucun problème sans issue (banc ㊴). Une décision

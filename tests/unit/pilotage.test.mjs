@@ -3053,3 +3053,58 @@ test("connectés du jour : le NOM seul (jamais l'e-mail ni l'identifiant), pages
   assert.deepEqual(p.ids, ["a"], "trié par passage, pas par inscription");
   assert.equal(p.pages, 2);
 });
+
+// ─── Les ouvertures du jour (2026-11-27) ────────────────────────────────────
+import { ouverturesDuJour, resumerOuvertures, nommerOuvertures } from "../../supabase/functions/_shared/pilotage.js";
+
+test("ouvertures du jour : appareils du public depuis minuit, avec ou sans compte ; tests, éditeur et hors-public écartés", () => {
+  const depuis = Date.parse("2026-11-26T23:00:00Z");
+  const u = (id, email, extra = {}) => ({ id, email, created_at: "2026-10-01T00:00:00Z", app_metadata: { provider: "email" }, ...extra });
+  const comptes = [u("a", "a@x.fr"), u("e", "e@passio-e2e.test"), u("f", COMPTE_PILOTE), u("g", "", { is_anonymous: true })];
+  const L = (device_id, at, type, action, extra = {}) => ({ device_id, received_at: at, type, action, ...extra });
+  const lignes = [
+    L("d1", "2026-11-27T08:00:00Z", "session", "start", { platform: "ios", src: "instagram" }),
+    L("d1", "2026-11-27T09:00:00Z", "lifecycle", "visible", { platform: "ios" }),
+    L("d1", "2026-11-27T09:01:00Z", "lifecycle", "heartbeat", { platform: "ios" }),
+    L("d2", "2026-11-27T07:00:00Z", "session", "start", { platform: "android", src: "direct" }),        // anonyme au démarrage…
+    L("d2", "2026-11-27T10:00:00Z", "lifecycle", "visible", { auth_uid: "a", platform: "android" }),     // …puis connecté
+    L("d3", "2026-11-27T06:00:00Z", "lifecycle", "heartbeat", { platform: "mac" }),                      // app ouverte avant minuit
+    L("d4", "2026-11-26T22:30:00Z", "session", "start"),                                                 // 23 h 30 HIER à Paris
+    L("d5", "2026-11-27T08:00:00Z", "session", "start", { trafic: "robot" }),
+    L("d6", "2026-11-27T08:00:00Z", "session", "start", { trafic: "equipe" }),
+    L("d6", "2026-11-27T08:05:00Z", "lifecycle", "visible"),                                             // ancien client en cache : toujours l'équipe
+    L("d7", "2026-11-27T08:00:00Z", "session", "start", { platform: "ios", connection: "4g" }),          // émulation iOS
+    L("d8", "2026-11-27T08:00:00Z", "session", "start", { auth_uid: "e" }),
+    L("d9", "2026-11-27T08:00:00Z", "session", "start", { auth_uid: "f" }),
+    L("d10", "2026-11-27T08:00:00Z", "session", "start", { auth_uid: "zz-supprime", src: "<script>" }),
+    L(null, "2026-11-27T08:00:00Z", "session", "start"),
+    L("d11", "2026-11-27T05:00:00Z", "session", "start", { auth_uid: "g", src: "constructor" }),     // anonyme : le public, sans compte
+  ];
+  const l = ouverturesDuJour(lignes, depuis, comptes);
+  assert.deepEqual(l.map((x) => x.id), ["d2", "d1", "d10", "d3", "d11"], "le dernier venu d'abord");
+  assert.equal(l[4].uid, null, "un compte anonyme est un visiteur sans compte, jamais écarté");
+  assert.deepEqual(l[0], { id: "d2", uid: "a", ouvertures: 2, premier: "2026-11-27T07:00:00.000Z", vu: "2026-11-27T10:00:00.000Z", plateforme: "android", source: "direct" });
+  assert.equal(l[1].ouvertures, 2, "le battement ne compte pas comme une ouverture");
+  assert.equal(l[1].source, "instagram");
+  assert.equal(l[2].uid, null, "compte disparu : sans compte");
+  assert.equal(l[2].source, null, "source hostile écartée");
+  assert.equal(l[3].ouvertures, 0);
+  assert.deepEqual(resumerOuvertures(l), { total: 5, avecCompte: 1, ouvertures: 6 });
+  assert.deepEqual(ouverturesDuJour([], depuis, comptes), []);
+});
+
+test("ouvertures du jour : le NOM du compte seul, jamais l'appareil ni l'identifiant", () => {
+  const liste = [
+    { id: "d2", uid: "a", ouvertures: 2, premier: "2026-11-27T07:00:00Z", vu: "2026-11-27T10:00:00Z", plateforme: "android", source: "direct" },
+    { id: "d1", uid: null, ouvertures: 1, premier: "2026-11-27T08:00:00Z", vu: "2026-11-27T08:00:00Z", plateforme: "playstation", source: null },
+  ];
+  const n = nommerOuvertures(liste, [{ id: "a", username: "Lou" }]);
+  assert.deepEqual(n[0], { compte: true, nom: "Lou", nomLu: true, ouvertures: 2, premier: "2026-11-27T07:00:00.000Z", vu: "2026-11-27T10:00:00.000Z", plateforme: "Android", source: "direct" });
+  assert.equal(n[1].compte, false);
+  assert.equal(n[1].nom, null);
+  assert.equal(n[1].plateforme, "autre");
+  for (const x of n) assert.ok(!("id" in x) && !("uid" in x), "ni appareil ni identifiant");
+  const nl = nommerOuvertures(liste, [], { nomsLus: false });
+  assert.equal(nl[0].nomLu, false);
+  assert.equal(nl[1].nomLu, true, "sans compte : rien à lire");
+});
