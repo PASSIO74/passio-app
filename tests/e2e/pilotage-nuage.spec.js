@@ -740,7 +740,7 @@ test("ouvertures aujourd'hui (2026-11-27) : 3ᵉ nombre, toute ouverture avec ou
   const liste = { total: 3, avecCompte: 1, ouvertures: 6, tronque: false, depuis: vu(600), page: 1, pages: 1, parPage: 100, appareils: [
     { compte: false, nom: null, nomLu: true, ouvertures: 1, premier: vu(1), vu: vu(1), plateforme: "iPhone", source: "instagram" },
     { compte: true, nom: CHARGE, nomLu: true, ouvertures: 4, premier: vu(300), vu: vu(5), plateforme: "Android", source: "direct" },
-    { compte: false, nom: null, nomLu: true, ouvertures: 0, premier: vu(400), vu: vu(400), plateforme: null, source: null },
+    { compte: false, nom: null, nomLu: true, ouvertures: 0, premier: vu(400), vu: vu(400), plateforme: null, source: "constructor" },
   ] };
   await routerFonction(page, envois, etat({ connectes: { total: 2, tronque: false }, ouvertures: { total: 3, avecCompte: 1, ouvertures: 6, tronque: false } }), { ouvertures: liste });
   await page.goto("/pilotage/");
@@ -764,6 +764,7 @@ test("ouvertures aujourd'hui (2026-11-27) : 3ᵉ nombre, toute ouverture avec ou
   expect(await l.nth(1).textContent()).toContain(CHARGE);
   await expect(l.nth(1)).toContainText("4 ouvertures, la première à");
   await expect(l.nth(2)).toContainText("app déjà ouverte avant minuit");
+  await expect(l.nth(2)).toContainText("venu par constructor", { useInnerText: true });
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
   await expect(page.locator("#ouverturesResume")).toContainText("3 appareils depuis minuit (heure de Paris) : 1 avec un compte, 2 sans compte, 6 ouvertures en tout");
   await page.click("#retour");

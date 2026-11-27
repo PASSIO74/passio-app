@@ -3060,7 +3060,7 @@ import { ouverturesDuJour, resumerOuvertures, nommerOuvertures } from "../../sup
 test("ouvertures du jour : appareils du public depuis minuit, avec ou sans compte ; tests, éditeur et hors-public écartés", () => {
   const depuis = Date.parse("2026-11-26T23:00:00Z");
   const u = (id, email, extra = {}) => ({ id, email, created_at: "2026-10-01T00:00:00Z", app_metadata: { provider: "email" }, ...extra });
-  const comptes = [u("a", "a@x.fr"), u("e", "e@passio-e2e.test"), u("f", COMPTE_PILOTE)];
+  const comptes = [u("a", "a@x.fr"), u("e", "e@passio-e2e.test"), u("f", COMPTE_PILOTE), u("g", "", { is_anonymous: true })];
   const L = (device_id, at, type, action, extra = {}) => ({ device_id, received_at: at, type, action, ...extra });
   const lignes = [
     L("d1", "2026-11-27T08:00:00Z", "session", "start", { platform: "ios", src: "instagram" }),
@@ -3078,16 +3078,18 @@ test("ouvertures du jour : appareils du public depuis minuit, avec ou sans compt
     L("d9", "2026-11-27T08:00:00Z", "session", "start", { auth_uid: "f" }),
     L("d10", "2026-11-27T08:00:00Z", "session", "start", { auth_uid: "zz-supprime", src: "<script>" }),
     L(null, "2026-11-27T08:00:00Z", "session", "start"),
+    L("d11", "2026-11-27T05:00:00Z", "session", "start", { auth_uid: "g", src: "constructor" }),     // anonyme : le public, sans compte
   ];
   const l = ouverturesDuJour(lignes, depuis, comptes);
-  assert.deepEqual(l.map((x) => x.id), ["d2", "d1", "d10", "d3"], "le dernier venu d'abord");
+  assert.deepEqual(l.map((x) => x.id), ["d2", "d1", "d10", "d3", "d11"], "le dernier venu d'abord");
+  assert.equal(l[4].uid, null, "un compte anonyme est un visiteur sans compte, jamais écarté");
   assert.deepEqual(l[0], { id: "d2", uid: "a", ouvertures: 2, premier: "2026-11-27T07:00:00.000Z", vu: "2026-11-27T10:00:00.000Z", plateforme: "android", source: "direct" });
   assert.equal(l[1].ouvertures, 2, "le battement ne compte pas comme une ouverture");
   assert.equal(l[1].source, "instagram");
   assert.equal(l[2].uid, null, "compte disparu : sans compte");
   assert.equal(l[2].source, null, "source hostile écartée");
   assert.equal(l[3].ouvertures, 0);
-  assert.deepEqual(resumerOuvertures(l), { total: 4, avecCompte: 1, ouvertures: 5 });
+  assert.deepEqual(resumerOuvertures(l), { total: 5, avecCompte: 1, ouvertures: 6 });
   assert.deepEqual(ouverturesDuJour([], depuis, comptes), []);
 });
 

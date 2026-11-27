@@ -2108,8 +2108,9 @@ export function ouverturesDuJour(lignes, depuis, comptes = [], extra = "") {
     let uid = a.uid;
     if (uid) {
       const u = parId.get(uid);
-      if (u && !compteCree(u, extra)) continue;   // test e2e, éditeur, anonyme : pas le public
-      if (!u) uid = null;
+      // Un compte anonyme est un visiteur sans compte (le public) ; un compte disparu aussi.
+      if (!u || u.is_anonymous) uid = null;
+      else if (!compteCree(u, extra)) continue;   // test e2e, éditeur : pas le public
     }
     out.push({ id: a.id, uid, ouvertures: a.ouvertures, premier: new Date(a.premier).toISOString(), vu: new Date(a.vu).toISOString(),
       plateforme: a.plateforme, source: a.source });

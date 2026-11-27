@@ -882,7 +882,7 @@
       const n = Number(x.ouvertures) || 0;
       const morceaux = [el("span", null, n ? n + " ouverture" + (n > 1 ? "s" : "") + (n > 1 ? ", la première à " + heureParis(x.premier) : "") : "app déjà ouverte avant minuit")];
       if (x.plateforme) morceaux.push(el("span", null, x.plateforme === "autre" ? "autre appareil" : x.plateforme));
-      if (x.source) morceaux.push(el("span", null, "venu par " + (SOURCES[x.source] || x.source)));
+      if (x.source) morceaux.push(el("span", null, "venu par " + (Object.hasOwn(SOURCES, x.source) ? SOURCES[x.source] : x.source)));
       const det = el("p", "compte-detail");
       morceaux.forEach((m, i) => { if (i) det.append(document.createTextNode(" · ")); det.append(m); });
       li.append(det);
