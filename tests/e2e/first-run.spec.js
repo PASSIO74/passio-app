@@ -987,8 +987,11 @@ test.describe("Gate d'authentification", () => {
     // vit derrière `requireAuthentication`/`requireAdmission`, un chemin que ce
     // banc ne parcourt pas. Sans ce contrôle, la garde pourrait être supprimée
     // de l'appelant sans qu'un seul cas ne rougisse.
-    const cable = await page.evaluate(() => String(window.setEventRsvp || ""));
-    expect(cable).toContain("participationPossible");
+    // (2026-11-27) `setEventRsvp` est devenue la FILE par activité : la garde vit
+    // dans le moteur qu'elle appelle, `_setEventRsvpUn`. Les deux maillons sont lus.
+    const cable = await page.evaluate(() => ({ porte: String(window.setEventRsvp || ""), moteur: String(window._setEventRsvpUn || "") }));
+    expect(cable.porte, "la porte passe par le moteur").toContain("_setEventRsvpUn");
+    expect(cable.moteur, "le moteur garde les activités de démonstration").toContain("participationPossible");
   });
 
 

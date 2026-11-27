@@ -949,8 +949,10 @@ async function _activiteEncoreLisible(ev) {
   if (!ev || !ev.id || !window._supaReal || typeof supaLoadEvents !== "function") return null;
   const etat = state, compte = MY_UID;
   try {
-    const lues = await supaLoadEvents(null, ev.id);
-    if (state !== etat || MY_UID !== compte || !Array.isArray(lues)) return null;
+    const rendues = await supaLoadEvents(null, ev.id);
+    if (state !== etat || MY_UID !== compte || !Array.isArray(rendues)) return null;
+    // Seule CETTE activité compte : rien d'autre n'entre en mémoire par ici.
+    const lues = rendues.filter(function (e) { return e && e.id === ev.id; });
     if (!lues.length) {
       // `supaLoadEvents` rend aussi [] pour un identifiant qu'il refuse de lire :
       // ce n'est pas une absence constatée.
