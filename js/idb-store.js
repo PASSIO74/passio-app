@@ -207,6 +207,23 @@
     return idbPut("referentiel_publiable_v1", { at: Date.now(), ids: propres });
   };
   window.idbReferentielClear = function () { return idbPut("referentiel_publiable_v1", null); };
+
+  // ─── BROUILLONS DE STORY / BOBINE (2026-11-27) ─────────────────────────────
+  // Une LISTE d'enregistrements { id, compte, mode, mediaType, blob, overlays, … }.
+  // Le média est un BLOB (structured clone) : jamais du base64, et PAS de passage
+  // par JSON, qui le perdrait. Une vidéo de bobine pèse jusqu'à ~27 Mo — hors de
+  // portée de localStorage.
+  // ⚠️ Même contrat de lecture que `idbGet` : `[]` = rien d'enregistré,
+  // `undefined` = LECTURE IMPOSSIBLE. L'appelant ne réécrit JAMAIS la liste sur un
+  // `undefined` (il effacerait les brouillons existants sur une erreur passagère).
+  window.idbBrouillonsLoad = function () {
+    return idbGet("brouillons_media_v1").then(function (v) {
+      if (v === undefined) return undefined;
+      return Array.isArray(v) ? v : [];
+    });
+  };
+  window.idbBrouillonsSave = function (liste) { return idbPut("brouillons_media_v1", Array.isArray(liste) ? liste : []); };
+  window.idbBrouillonsClear = function () { return idbPut("brouillons_media_v1", []); };
 })();
 
 // ⚠️ LE BLOC « CDV, FONCTIONNALITÉ SECONDAIRE DE LA PASSION VOYAGE » A ÉTÉ

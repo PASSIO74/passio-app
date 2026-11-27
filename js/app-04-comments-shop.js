@@ -5623,9 +5623,14 @@ function _boutonsSuivi(userId) {
 // minuteur. Même famille que `_likePending` et `_publishInProgress`.
 var _ecritureSuiviEnCours = {};
 var _ecritureBlocageEnCours = {};
+// Heure de fin de la DERNIÈRE écriture de suivi par compte (2026-11-27). Une lecture
+// de la liste partie AVANT cette heure est périmée pour ce compte : `supaLoadFollowing`
+// (app-08) garde alors l'état local, qui porte déjà le verdict du serveur.
+var _ecritureSuiviFinA = {};
 function _verrouEcriture(table, id, promesse) {
   table[id] = true;
-  return Promise.resolve(promesse).then(function (r) { delete table[id]; return r; }, function (e) { delete table[id]; throw e; });
+  var finir = function () { delete table[id]; if (table === _ecritureSuiviEnCours) _ecritureSuiviFinA[id] = Date.now(); };
+  return Promise.resolve(promesse).then(function (r) { finir(); return r; }, function (e) { finir(); throw e; });
 }
 
 // ⚠️ SUR UN COMPTE PRIVÉ, L'OPTIMISTE PROMETTAIT UN SUIVI QUI N'AURAIT PAS LIEU.

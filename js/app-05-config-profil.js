@@ -3415,6 +3415,44 @@ function bobineExemple(post) {
   return dans(state.seed.posts) && !dans(state.supabasePosts) && !dans(state.userPosts);
 }
 
+// « SUIVRE » SUR UNE BOBINE (2026-11-27) — la SIXIÈME surface de l'état de suivi.
+// Elle ne porte AUCUN moteur à elle : `data-follow-uid` la fait trouver par
+// `_boutonsSuivi` / `_peindreBoutonsSuivi` (app-04) après chaque geste, comme les
+// autres ; le libellé, l'infobulle et l'état d'attente viennent des trois tables
+// communes (`libelleBoutonSuivi`, `attrsBoutonSuivi`, `etatSuivi`, app-02).
+// Pas de bouton : sur MA bobine, sur un personnage d'exemple (l'étiquette
+// « Exemple PASSIO » le dit déjà), ni quand je suis DÉJÀ ce compte (comme
+// Instagram — on se désabonne depuis le profil, pas par mégarde en regardant).
+// ⚠️ Aucun `onclick` : le nom et l'identifiant d'un AUTRE compte ne passent pas
+// par un gestionnaire inline (règle MSG-02) — le toucher est écouté sur la liste.
+function boutonSuivreBobineHTML(post) {
+  const uidAuteur = String((post && (post.authorId || post.userId)) || "");
+  const moi = (typeof MY_UID !== "undefined" && MY_UID) ? String(MY_UID) : "";
+  if (!uidAuteur || uidAuteur === "me" || uidAuteur === moi || (post && post._source === "me")) return "";
+  if (typeof estPersonneExemple === "function" && estPersonneExemple(uidAuteur)) return "";
+  if (typeof etatSuivi !== "function" || etatSuivi(uidAuteur) === "suivi") return "";
+  return `<button type="button" class="reel-suivre" data-follow-uid="${escapeHtml(uidAuteur)}"${attrsBoutonSuivi(uidAuteur)}>${escapeHtml(libelleBoutonSuivi(uidAuteur))}</button>`;
+}
+// Le toucher du bouton : écouté sur la liste, en phase de CAPTURE — il ne doit pas
+// remonter jusqu'à `.reel-author`, dont le `onclick` fermerait le lecteur pour
+// ouvrir le profil. Le nom vient de la bobine affichée (`reelsState.items`).
+function _brancherSuivreBobines() {
+  const liste = document.getElementById("reelsList");
+  if (!liste || liste._suivreBranche) return;
+  liste._suivreBranche = true;
+  liste.addEventListener("click", function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest(".reel-suivre") : null;
+    if (!btn) return;
+    e.stopPropagation(); e.preventDefault();
+    const uidAuteur = btn.getAttribute("data-follow-uid") || "";
+    const item = btn.closest(".reel-item");
+    const pid = item ? item.getAttribute("data-post-id") : null;
+    const post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
+    const nom = post ? (authorOfReel(post).name || "") : "";
+    if (uidAuteur && typeof toggleFollowUser === "function") toggleFollowUser(uidAuteur, nom || "ce compte");
+  }, true);
+}
+
 function renderReelHTML(post, idx) {
   post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
@@ -3443,6 +3481,7 @@ function renderReelHTML(post, idx) {
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
             <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
+          ${boutonSuivreBobineHTML(post)}
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
       </div>
@@ -3541,6 +3580,7 @@ function openReels(pinnedId) {
   // Lance la lecture du premier item visible et observe les changements de visibilité
   setupReelsObserver();
   _brancherDoubleToucherBobines();
+  _brancherSuivreBobines();
   // Auto-focus sur le premier reel
   list.scrollTop = 0;
   playReelAt(0);
