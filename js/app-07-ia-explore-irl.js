@@ -934,6 +934,88 @@ async function _rafraichirApresComplet(ev) {
   try { _refreshEventDetailIfOpen(ev.id); } catch (e) {}
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// APRÈS UN REFUS, L'ÉCRAN REJOINT LA BASE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Les activités ne sont relues qu'à l'entrée sur Rencontrer (une fois par
+// minute au plus) et la fusion n'ENLÈVE rien : une activité annulée, supprimée
+// ou déplacée pendant qu'on la regarde reste telle qu'on l'a lue. Le refus du
+// serveur est alors la SEULE nouvelle qu'on reçoive — autant qu'elle serve.
+//
+// L'activité se lit-elle encore pour ce compte ? `true` (la copie fraîche est
+// fusionnée), `false` (la base ne la rend plus : supprimée, ou fermée pour ce
+// compte), `null` (on ne sait pas : panne, compte changé — on ne touche à rien).
+async function _activiteEncoreLisible(ev) {
+  if (!ev || !ev.id || !window._supaReal || typeof supaLoadEvents !== "function") return null;
+  const etat = state, compte = MY_UID;
+  try {
+    const lues = await supaLoadEvents(null, ev.id);
+    if (state !== etat || MY_UID !== compte || !Array.isArray(lues)) return null;
+    if (!lues.length) {
+      // `supaLoadEvents` rend aussi [] pour un identifiant qu'il refuse de lire :
+      // ce n'est pas une absence constatée.
+      return (typeof LIEN_COURT_ID_RE !== "undefined" && LIEN_COURT_ID_RE.test(ev.id)) ? false : null;
+    }
+    if (typeof fusionnerEvenementsServeur === "function") fusionnerEvenementsServeur(lues);
+    return true;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("rsvp refus : relecture — " + (e && e.message)); } catch (_) {}
+    return null;
+  }
+}
+
+// La base ne rend plus cette activité à ce compte : elle quitte l'écran et la
+// mémoire de la session, comme elle l'aurait fait au prochain démarrage.
+// ⚠️ Seule une copie VENUE DU SERVEUR part (`fromSupabase`). Une activité
+// d'exemple, ou une création restée locale (publication pas encore partie),
+// n'a jamais été en base : son absence n'y prouve rien, on la garde.
+function _retirerActiviteFermee(id) {
+  const venueDuServeur = (state.seed.events || []).some(e => e && e.id === id && e.fromSupabase);
+  if (!venueDuServeur) return false;
+  state.seed.events = (state.seed.events || []).filter(e => !(e && e.id === id));
+  state.userEvents = (state.userEvents || []).filter(e => !(e && e.id === id));
+  _setMyRsvpLocal(id, null);
+  saveState();
+  if (window._openEventDetailId === id) { try { closeEventDetail(); } catch (e) {} }
+  window._irlMapSig = null;   // la carte doit perdre son marqueur
+  // Hors de l'écran Rencontrer (fiche ouverte depuis le fil, une conversation…),
+  // rien à repeindre : `goTo("irl")` rend la liste à l'entrée.
+  try { if (_irlEcranVisible()) renderIRL(); } catch (e) {}
+  return true;
+}
+
+// `motif` : « fermee » (plus lisible), « annulee », « passee ». Tout autre refus
+// (limite du jour, panne) ne dit rien de l'activité : rien à rejoindre.
+async function _convergerApresRefus(ev, motif) {
+  if (!ev || !ev.id) return;
+  const id = ev.id;
+  try {
+    if (motif === "fermee") { _retirerActiviteFermee(id); return; }
+    if (motif === "annulee") {
+      // La base vient de le dire : pas besoin de la relire pour le savoir.
+      [(state.seed.events || []).find(e => e && e.id === id), (state.userEvents || []).find(e => e && e.id === id)]
+        .forEach(function (e) { if (e) e.status = "cancelled"; });
+      saveState();
+      window._irlMapSig = null;
+      if (_irlEcranVisible()) renderIRL();
+      _refreshEventDetailIfOpen(id);
+      return;
+    }
+    if (motif === "passee") {
+      // Sa date a changé : seule la base la connaît.
+      const lisible = await _activiteEncoreLisible(ev);
+      if (lisible === false) { _retirerActiviteFermee(id); return; }
+      if (lisible === true) {
+        window._irlMapSig = null;
+        if (_irlEcranVisible()) renderIRL();
+        _refreshEventDetailIfOpen(id);
+      }
+    }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("rsvp refus : convergence — " + (e && e.message)); } catch (_) {}
+  }
+}
+
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
 function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
@@ -1506,15 +1588,40 @@ function requestUserLocation() {
   );
 }
 
+// ⚠️ UNE VILLE DU DICTIONNAIRE, OU RIEN — JAMAIS UNE SOUS-CHAÎNE (2026-11-27).
+// La « recherche partielle » prenait la première clé CONTENUE dans le nom tapé,
+// ou qui le contenait : « Riom » et « Brioude » partaient à Rio de Janeiro
+// (`rio`), « Limay » à Lima, « Venice » à Nice, « Mittelwihr » à Berlin
+// (`mitte`), « Parisot » et « Lyons-la-Forêt » à Paris et Lyon — et comme ce
+// dictionnaire passe AVANT le géocodage (`submitEvent`), le point faux partait
+// en base : activité à 9 000 km sur la carte, hors de tout filtre de distance,
+// pointage sur place impossible. Un point absent vaut mieux qu'un point faux :
+// sans correspondance, `submitEvent` géocode l'adresse (BAN / Photon).
+// Sont la même ville : la casse, les accents, tirets et apostrophes
+// (« saint etienne », « St Malo »), et une PRÉCISION après le nom — un
+// arrondissement, un code postal, « centre », ou ce qui suit une virgule
+// (« Paris 11e », « Lyon 3ème », « Bordeaux centre », « Nice, France »).
+// Pas un nom composé : « Tours-sur-Marne » n'est pas Tours.
+function _cleVille(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[-'’_.]+/g, " ").replace(/\s+/g, " ").trim()
+    .replace(/^ste? /, function (m) { return m === "st " ? "saint " : "sainte "; });
+}
+let _villesParCle = null;
 function cityToLatLng(city) {
   if (!city) return null;
-  const key = String(city).toLowerCase().trim();
-  if (FRANCE_CITIES[key]) return FRANCE_CITIES[key];
-  // Recherche partielle
-  for (const k in FRANCE_CITIES) {
-    if (key.includes(k) || k.includes(key)) return FRANCE_CITIES[k];
+  const brut = String(city).toLowerCase().trim();
+  if (FRANCE_CITIES[brut]) return FRANCE_CITIES[brut];
+  if (!_villesParCle) {
+    _villesParCle = new Map();
+    for (const k in FRANCE_CITIES) { const c = _cleVille(k); if (c && !_villesParCle.has(c)) _villesParCle.set(c, FRANCE_CITIES[k]); }
   }
-  return null;
+  // Ce qui suit une virgule précise la ville, sans la changer.
+  let cle = _cleVille(brut.split(",")[0]);
+  if (_villesParCle.has(cle)) return _villesParCle.get(cle);
+  // Arrondissement, code postal ou « centre » en fin de nom.
+  cle = cle.replace(/( (\d{1,2}(er|e|eme)?( arrondissement)?|\d{5}|centre( ville)?|cedex( \d+)?))+$/, "");
+  return (cle && _villesParCle.has(cle)) ? _villesParCle.get(cle) : null;
 }
 
 // « le havre » → « Le Havre » (l'ancienne capitalisation ne traitait que la
@@ -3869,9 +3976,61 @@ function toggleJoinEvent(id) {
   setEventRsvp(id, _eventIsFull(ev) ? "waitlist" : "going");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UNE FILE PAR ACTIVITÉ : DEUX RÉPONSES SUR LA MÊME ACTIVITÉ NE PARTENT JAMAIS
+// EN PARALLÈLE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Reproduit sur le faux serveur multi-comptes (latence de 120 ms par trajet) :
+// « Je participe » puis « Retirer ma réponse » avant le verdict du premier
+// geste. S'inscrire, c'est un UPDATE (0 ligne) PUIS un INSERT ; le DELETE du
+// retrait arrivait ENTRE les deux — 0 ligne, donc « réussi » — et l'INSERT se
+// posait après lui. L'écran disait « Désinscrit », la base gardait « je viens » :
+// une place prise par quelqu'un qui croit l'avoir rendue (et, dans l'autre
+// ordre, quelqu'un qui se croit inscrit sans l'être). Même famille que la
+// réaction qui s'effaçait elle-même (`_syncReactionEmoji`, une file par cible).
+// Portes concernées : la fiche (participer puis retirer), la feuille de choix
+// (deux réponses de suite), la carte d'invitation d'une conversation.
+// ⚠️ Rien en vol → le chemin d'avant, À L'IDENTIQUE : le geste s'exécute tout de
+// suite (l'affichage optimiste n'attend rien). Un geste en vol → le suivant
+// attend son VERDICT, puis relit l'état réglé (« inchangé » se juge alors sur
+// ce que la base a répondu, pas sur un optimiste qui peut encore être annulé).
+// ⚠️ La file ne se rompt jamais : un geste qui lève laisse passer le suivant.
+const _fileRsvp = new Map();
+const _rsvpRegleA = {};   // id d'activité → heure du dernier verdict (voir `_rsvpLocalFaitFoi`)
+const _rsvpPosees = new Set();   // activités dont une réponse a passé les gardes pendant ce passage de la file
+function setEventRsvp(id, rsvp) {
+  const enVol = _fileRsvp.get(id);
+  const lancer = function () { return _setEventRsvpUn(id, rsvp); };
+  const geste = enVol ? enVol.then(lancer) : lancer();
+  const regle = Promise.resolve(geste).catch(function () {}).then(function () {
+    // Un geste arrêté par une garde (invité, exemple, « inchangé ») n'a rien écrit :
+    // il ne date rien, la prochaine lecture du serveur garde la main sur cette activité.
+    if (_rsvpPosees.delete(id)) _rsvpRegleA[id] = Date.now();
+    if (_fileRsvp.get(id) === regle) _fileRsvp.delete(id);
+  });
+  _fileRsvp.set(id, regle);
+  return geste;
+}
+
+// ⚠️ UNE LECTURE PARTIE AVANT MON GESTE NE L'EFFACE PAS (2026-11-27). Mesuré sur
+// le faux serveur multi-comptes : « Je participe » touché pendant que la lecture
+// de mes réponses du démarrage (`supaLoadMyRsvps`) était en vol — la réponse,
+// antérieure à l'écriture, REMPLAÇAIT l'état local (`_fusionnerRsvpServeur`,
+// app-08, « la base fait foi ») : l'écran repassait à « pas inscrit » alors que
+// la base venait d'écrire « je viens » ; et, dans l'autre sens, une
+// désinscription revenait « inscrite ». C'est le chemin d'un lien d'invitation :
+// l'app s'ouvre sur la fiche, on répond dans les premières secondes.
+// Face à une lecture partie à `debut`, l'état LOCAL d'une activité fait foi quand
+// une réponse y est en vol, ou s'y est réglée après ce départ (la lecture ne peut
+// pas la connaître). Sans heure de départ, seule la réponse en vol compte.
+// Même règle que `_suiviLocalFaitFoi` (app-08), posée le même jour pour « Suivre ».
+function _rsvpLocalFaitFoi(id, debut) {
+  return _fileRsvp.has(id) || (Number(debut) > 0 && Number(_rsvpRegleA[id]) >= Number(debut));
+}
+
 // Cœur du système de participation. `rsvp` : "going" | "maybe" | "declined" |
-// "waitlist" | null (= retrait complet).
-async function setEventRsvp(id, rsvp) {
+// "waitlist" | null (= retrait complet). Appelé par `setEventRsvp`, seule porte.
+async function _setEventRsvpUn(id, rsvp) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -3951,6 +4110,7 @@ async function setEventRsvp(id, rsvp) {
     _rsvpRegle(false, (rsvp && window._irlRefusMotif) || (rsvp && _mineur ? "majorite" : "refus"));
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
+  _rsvpPosees.add(id);   // à partir d'ici l'état local a changé : voir `_rsvpLocalFaitFoi`
   ev.attendees = strip(ev.attendees);
   ev.maybes = strip(ev.maybes);
   ev.waitlist = strip(ev.waitlist);
@@ -3995,9 +4155,23 @@ async function setEventRsvp(id, rsvp) {
     // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
     // quand il nomme sa raison, on la dit — et on nomme la sortie.
     const motif = window._irlRefusMotif || null;
+    // ⚠️ L'ACTIVITÉ SE LIT-ELLE ENCORE ? (2026-11-27) « Introuvable » : la base l'a
+    // dit. « Bloque », ou un refus de DROIT sans motif (42501) chez un compte qui
+    // ne s'est pas déclaré mineur : elle a pu se fermer pour ce compte (retiré
+    // d'une activité privée, blocage) — on la relit AVANT de parler, pour ne dire
+    // qu'une chose par geste. Un mineur déclaré, lui, lit la règle de majorité.
+    const _mineurDeclare = (() => { try { return typeof irlProposerEstMineur === "function" && irlProposerEstMineur() === true; } catch (e) { return false; } })();
+    let fermee = motif === "introuvable";
+    if (!fermee && (motif === "bloque" || (!motif && window._irlRefusCode === "42501" && !_mineurDeclare))) {
+      fermee = (await _activiteEncoreLisible(ev)) === false;
+      if (fermee && !motif) window._irlRefusMotif = "introuvable";   // le code fermé du contrat `event_join`
+    }
     annuler(motif === "complete" ? "Activité complète : la dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
+      : fermee ? "Cette activité n'est plus disponible"
+      : motif === "limite" ? "Tu as atteint la limite d'inscriptions pour aujourd'hui — réessaie demain"
+      : motif === "bloque" ? "Tu ne peux pas t'inscrire à cette activité"
       : "⚠️ Inscription non enregistrée — réessaie");
     // LOT-19 (IRL-C54) : sur « complète », l'écran gardait le compteur périmé
     // (« 1 place restante ») et le bouton « Je participe », qu'un nouvel appui
@@ -4005,6 +4179,11 @@ async function setEventRsvp(id, rsvp) {
     // On relit les compteurs, et au pire on pose le plein — le pied repasse à
     // « Rejoindre la liste d'attente ».
     if (motif === "complete") await _rafraichirApresComplet(ev);
+    // Les AUTRES refus laissaient le même défaut (mesuré sur le faux serveur
+    // multi-comptes : annulée, supprimée ou déplacée dans le passé PENDANT qu'on
+    // regarde la fiche) : le message juste, puis « Je participe » toujours là,
+    // et le même refus à chaque nouvel appui. L'écran rejoint la base.
+    else await _convergerApresRefus(ev, fermee ? "fermee" : motif);
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
@@ -5256,17 +5435,34 @@ const RECURRENCE_LABELS = {
 const RECURRENCE_STEP_DAYS = { weekly: 7, biweekly: 14, monthly: 0 /* mois calendaire */ };
 const RECURRENCE_MAX_OCCURRENCES = 12;
 
+// ⚠️ LES DATES D'UNE SÉRIE SE COMPTENT AU CALENDRIER, PAS EN MILLISECONDES
+// (2026-11-27). Deux défauts, mesurés :
+//  · mensuel par `setMonth` : une série partie du 29, 30 ou 31 DÉBORDAIT sur le
+//    mois suivant (31 janvier → 3 mars, 31 mars → 1er mai…) — un mois sauté,
+//    et un jour qui dérive. Le jour est désormais RAMENÉ à la fin du mois
+//    (31 janvier → 28 février → 31 mars) ;
+//  · hebdomadaire / toutes les deux semaines par multiples de 24 h : au
+//    changement d'heure (dernier dimanche de mars et d'octobre), toutes les
+//    dates suivantes glissaient d'UNE HEURE — « tous les mardis à 19 h »
+//    devenait 18 h ou 20 h. On avance de N JOURS de calendrier, l'heure
+//    affichée reste celle choisie.
 function _recurrenceDates(startTs, rule, count) {
   const out = [];
   if (!rule || rule === "none") return out;
+  const depart = new Date(startTs);
+  if (isNaN(depart.getTime())) return out;
   for (let i = 1; i < Math.min(count || RECURRENCE_MAX_OCCURRENCES, RECURRENCE_MAX_OCCURRENCES); i++) {
+    let d;
     if (rule === "monthly") {
-      const d = new Date(startTs);
-      d.setMonth(d.getMonth() + i);
-      out.push(d.getTime());
+      const mois = depart.getMonth() + i;
+      const dernierJour = new Date(depart.getFullYear(), mois + 1, 0).getDate();
+      d = new Date(depart.getFullYear(), mois, Math.min(depart.getDate(), dernierJour),
+        depart.getHours(), depart.getMinutes(), depart.getSeconds(), depart.getMilliseconds());
     } else {
-      out.push(startTs + i * (RECURRENCE_STEP_DAYS[rule] || 7) * 86400000);
+      d = new Date(depart.getTime());
+      d.setDate(d.getDate() + i * (RECURRENCE_STEP_DAYS[rule] || 7));
     }
+    out.push(d.getTime());
   }
   return out;
 }
@@ -8069,7 +8265,9 @@ function openCreateEvent(editId, passionSouhaitee) {
   window._evInviteCtx = null;
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Activité introuvable"); return; }
-  window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
+  // Le point appartient au LIEU qu'il désigne (`_evSignatureLieu`) : retaper la
+  // ville, le code postal ou l'adresse le périme (voir `submitEvent`).
+  window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng, lieu: _evSignatureLieu(ed.city, ed.postalCode, ed.address) } : null;
 
   // 🔁 REVIREMENT DU 2026-11-15 (demande de Benjamin) : SEULES les passions du
   // profil sont proposées. Organiser dans une autre passion = l'ajouter d'abord
@@ -8212,14 +8410,14 @@ function openCreateEvent(editId, passionSouhaitee) {
       <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
     </label>
     <label class="field"><span>Adresse</span>
-      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}"/>
+      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}" oninput="_evLieuRetouche()"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
       <label class="field"><span>Code postal</span>
-        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}"/>
+        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}" oninput="_evLieuRetouche()"/>
       </label>
       <label class="field"><span>Ville *</span>
-        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}"/>
+        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}" oninput="_evLieuRetouche()"/>
       </label>
     </div>
 
@@ -8312,6 +8510,30 @@ function _evPlaceSuggest(query) {
   }, 300);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UN POINT APPARTIENT AU LIEU QU'IL DÉSIGNE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// `_evPickedCoords` — le point d'une suggestion choisie, ou celui de l'activité
+// qu'on modifie — passait AVANT tout à la soumission, quoi qu'on ait retapé
+// ensuite : déplacer une activité de Paris à Lyon en changeant la ville à la
+// main laissait le marqueur, les distances et le pointage à Paris, tout en
+// prévenant les inscrits que « le lieu a changé ». Le point porte désormais la
+// signature du lieu saisi au moment où il a été posé ; s'il ne correspond plus à
+// ce que le formulaire envoie, il est abandonné et le lieu est recalculé.
+// Le NOM du lieu n'en fait pas partie : on le corrige sans changer d'endroit.
+function _evSignatureLieu(ville, codePostal, adresse) {
+  return [ville, codePostal, adresse].map(function (x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/s+/g, " "); }).join("|");
+}
+function _evSignatureLieuSaisi() {
+  var v = function (id) { var el = document.getElementById(id); return el ? el.value : ""; };
+  return _evSignatureLieu(v("evCity"), v("evPostal"), v("evAddress"));
+}
+// La mention « Position précise enregistrée » ne reste que tant qu'elle est vraie.
+function _evLieuRetouche() {
+  var p = window._evPickedCoords, ok = document.getElementById("evPlacePicked");
+  if (ok) ok.style.display = (p && p.lat && (p.lieu == null || p.lieu === _evSignatureLieuSaisi())) ? "flex" : "none";
+}
+
 function _evPlacePick(i) {
   const res = (window._evSuggestCache || [])[i];
   if (!res) return;
@@ -8322,7 +8544,7 @@ function _evPlacePick(i) {
   set("evAddress", /^\d/.test(head) ? head : "");
   set("evPostal", res.postcode);
   set("evCity", res.city);
-  window._evPickedCoords = { lat: res.lat, lng: res.lng };
+  window._evPickedCoords = { lat: res.lat, lng: res.lng, lieu: _evSignatureLieuSaisi() };
   const box = document.getElementById("evPlaceSuggestions");
   if (box) box.style.display = "none";
   const ok = document.getElementById("evPlacePicked");
@@ -8818,8 +9040,12 @@ async function submitEvent(editId) {
   // Coordonnées : ① choisies via l'autocomplétion d'adresse (les plus précises),
   // ② dictionnaire de villes, ③ géocodage Nominatim de l'adresse complète.
   const picked = window._evPickedCoords;
-  if (picked && picked.lat) { ev.lat = picked.lat; ev.lng = picked.lng; }
+  const pointDuLieu = !!(picked && picked.lat && (picked.lieu == null || picked.lieu === _evSignatureLieu(city, postalCode, address)));
+  if (pointDuLieu) { ev.lat = picked.lat; ev.lng = picked.lng; }
   else {
+    // Le lieu a été retapé : l'ancien point n'est plus le sien. Mieux vaut une
+    // activité sans point (la carte retombe sur la ville) qu'un point ailleurs.
+    if (picked && picked.lat) { ev.lat = null; ev.lng = null; }
     const known = cityToLatLng(city);
     if (known) { ev.lat = known[0]; ev.lng = known[1]; }
     else {

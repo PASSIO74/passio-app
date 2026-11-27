@@ -14402,16 +14402,35 @@ async function supaLoadStoryViews() {
 // → on tente l'UPDATE d'abord, puis l'INSERT (l'inverse générerait une erreur de
 // doublon à chaque changement d'avis).
 // Motif du dernier refus d'inscription, posé par le SERVEUR (trigger
-// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee`,
-// ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt que
-// « non enregistrée ».
+// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee` /
+// `introuvable`, ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt
+// que « non enregistrée ».
+// ⚠️ TOUS LES MOTIFS QUE LA BASE SAIT DIRE (2026-11-27, relevé au catalogue de
+// production : les dix déclencheurs de `event_attendees`). Trois refus n'étaient
+// pas reconnus et tombaient sur « réessaie », qu'aucun nouvel essai ne lève :
+//  · l'activité SUPPRIMÉE pendant qu'on la regarde — `activite_introuvable` pour
+//    « je viens », mais la clé étrangère (23503, la SEULE de la table) pour
+//    « peut-être » et la liste d'attente, que la garde de capacité ne juge pas ;
+//  · `inscriptions_jour_limite` (`rencontres_prive.inscription_gardee` : 20
+//    réponses par jour) → « limite », le code commun de `rate_limit_insert` ;
+//  · `organisateur_bloque` (même garde, 42501) → « bloque ». Le MOT ne va jamais
+//    à l'écran : la personne lit « plus disponible », comme pour une activité
+//    retirée — on ne dit pas à quelqu'un qu'il est bloqué.
+// Les codes rendus sont ceux de la liste fermée de `contrats-actions.js`.
 function _motifRefusRsvp(error) {
   const m = String((error && error.message) || "");
   const x = /activite_(complete|annulee|passee|introuvable)/.exec(m);
-  return x ? x[1] : null;
+  if (x) return x[1];
+  if (/inscriptions_jour_limite/.test(m)) return "limite";
+  if (/organisateur_bloque/.test(m)) return "bloque";
+  if (String((error && error.code) || "") === "23503") return "introuvable";
+  return null;
 }
 async function supaSetEventRsvp(eventId, rsvp) {
   window._irlRefusMotif = null;
+  // Le SQLSTATE du dernier refus SANS motif nommé (42501 : policy, activité
+  // fermée pour ce compte). `setEventRsvp` s'en sert pour relire l'activité.
+  window._irlRefusCode = null;
   try {
     await supaEnsureProfileExists();
     // ⚠️ `.select("event_id")`, jamais `.select()` : un RETURNING * demande AUSSI
@@ -14436,11 +14455,17 @@ async function supaSetEventRsvp(eventId, rsvp) {
       return false;
     }
     // Colonne `rsvp` absente : repli sur l'ancien modèle (présence = je viens).
-    if (/rsvp/.test(ins.error.message || "")) {
+    // ⚠️ Sur une colonne INCONNUE seulement (42703 de PostgreSQL, PGRST204 du
+    // cache de PostgREST). Le motif `/rsvp/` seul prenait aussi tout message qui
+    // CITE la colonne — et le repli écrit une ligne SANS `rsvp`, que la base
+    // range en « je viens » : un « peut-être » refusé serait devenu une place prise.
+    const _codeIns = String(ins.error.code || "");
+    if ((_codeIns === "42703" || _codeIns === "PGRST204") && /rsvp/.test(ins.error.message || "")) {
       const f = await supa.from("event_attendees")
         .insert({ event_id: eventId, user_id: MY_UID, created_at: new Date().toISOString() });
       return !f.error || String(f.error.code) === "23505";
     }
+    window._irlRefusCode = _codeIns || null;
     return false;
   } catch(e) { return false; }
 }
@@ -14686,16 +14711,25 @@ function _fusionnerBlocagesServeur(bl, remplacer) {
 // Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
 // désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
 // activités d'exemple, qui n'existent qu'ici, gardent leur réponse locale.
+// ⚠️ SAUF LA RÉPONSE QUE LA LECTURE NE PEUT PAS CONNAÎTRE (2026-11-27) : une
+// activité dont ma réponse est en vol, ou s'est réglée APRÈS le départ de cette
+// lecture (`map._luA`, posée par `supaLoadMyRsvps`), garde son état LOCAL — dans
+// les deux sens (ne pas l'effacer, ne pas la réécrire). Sans cela, « Je participe »
+// touché dans les premières secondes repassait à « pas inscrit » alors que la base
+// venait de l'écrire. Règle et mesure : `_rsvpLocalFaitFoi` (app-07).
 function _fusionnerRsvpServeur(map, remplacer) {
   if (!map || typeof map !== "object" || !state || !state.user) return false;
   state.user.eventRsvp = state.user.eventRsvp || {};
   state.user.checkedInEvents = state.user.checkedInEvents || [];
+  var debut = Number(map._luA) || 0;
+  var local = function (evId) { try { return typeof _rsvpLocalFaitFoi === "function" && _rsvpLocalFaitFoi(evId, debut); } catch (e) { return false; } };
   if (remplacer === true) Object.keys(state.user.eventRsvp).forEach(function (evId) {
-    if (map[evId]) return;
+    if (map[evId] || local(evId)) return;
     var ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null;
     if (ev && ev.fromSupabase) delete state.user.eventRsvp[evId];
   });
   Object.keys(map).forEach(function (evId) {
+    if (local(evId)) return;
     state.user.eventRsvp[evId] = map[evId].rsvp;
     if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1) state.user.checkedInEvents.push(evId);
   });
@@ -14712,6 +14746,12 @@ async function supaLoadMyRsvps() {
   // Un visiteur n'a aucune inscription (`{}`) ; un COMPTE dont la lecture est
   // refusée (mémo de refus) ne sait pas : `null` (ETAT-08, revue du 12/11).
   if (!_attendeesLisibles()) return _compteAuthReel() ? null : {};
+  // Heure de DÉPART de la lecture, portée par la réponse sans en être une clé
+  // (non énumérable : `Object.keys` ne la voit pas). Toute réponse posée APRÈS
+  // elle est plus fraîche en local que dans ce que la base rend ici
+  // (`_fusionnerRsvpServeur`).
+  const debut = Date.now();
+  const dater = function (o) { try { Object.defineProperty(o, "_luA", { value: debut, enumerable: false }); } catch (e) {} return o; };
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
@@ -14721,7 +14761,7 @@ async function supaLoadMyRsvps() {
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
-    return out;
+    return dater(out);
   } catch(e) {
     // Repli sans la colonne rsvp.
     try {
@@ -14729,7 +14769,7 @@ async function supaLoadMyRsvps() {
       if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return null; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
-      return out;
+      return dater(out);
     } catch(e2) { return null; }
   }
 }
