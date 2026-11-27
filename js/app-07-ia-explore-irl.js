@@ -8121,11 +8121,11 @@ function _envoyerInvitationDirecte(ev, ctx) {
         }
         // Le seul site d'envoi d'`event_invite` (banc notifications-apres-ecriture) ;
         // en privée, son droit de lecture est un upsert idempotent, déjà posé.
-        try { _notifierInviteEvent(ev, id); } catch (e) { try { diagLog("invite directe notif " + (e && e.message)); } catch (_) {} }
+        try { _notifierInviteEvent(ev, id, { droitDejaPose: activiteEstPrivee(ev) }); } catch (e) { try { diagLog("invite directe notif " + (e && e.message)); } catch (_) {} }
       });
       var refuses = ids.length - admis.length;
       toast("Invitation envoyée à " + admis.length + " personne" + (admis.length > 1 ? "s" : "")
-        + (refuses ? " (" + refuses + " n'a pas pu la recevoir)" : ""), refuses ? "warning" : "success");
+        + (refuses ? " (" + refuses + (refuses > 1 ? " n'ont" : " n'a") + " pas pu la recevoir)" : ""), refuses ? "warning" : "success");
     };
     if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
       inviterSerieActivite(ev, admis).then(function (ok) {
@@ -9384,6 +9384,13 @@ async function _submitEventCorps(editId, relacher) {
   // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
   if (!(await requireAdmission("activite", function () { return submitEvent(editId); }))) return;
   if (sourceStudio && !formulaireStudioActif()) return;
+  // Invitation DIRECTE tenue dès maintenant : les attentes qui suivent (passion,
+  // géocodage) laissent le temps de fermer la fenêtre, et le bouton avait promis
+  // « Publier et inviter N personnes » — les invités ne se perdent pas en route.
+  const inviteDirecteTenue = editId ? null : (function () {
+    const c = window._evInviteCtx, b = document.getElementById("evInviteBandeau");
+    return c && c.direct && (c.extras || []).length && b && b.getAttribute("data-jeton") === c.jeton ? c : null;
+  })();
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
@@ -9543,7 +9550,7 @@ async function _submitEventCorps(editId, relacher) {
   const fromFeed = feedIrlBridgeConsumeOrigin();
   // Invitation d'une conversation : lue elle aussi AVANT closeModal (le bandeau
   // vit dans le formulaire), et jamais à l'édition.
-  const inviteConv = editId ? null : lireInvitationFormulaire();
+  const inviteConv = editId ? null : (lireInvitationFormulaire() || inviteDirecteTenue);
   // Le choix « Publier aussi dans le fil » (2026-11-23) : lu au même moment.
   const auFil = editId ? false : _lireChoixAuFil();
   const ecranStudio = sourceStudio && document.querySelector(".screen.active");
@@ -9700,7 +9707,7 @@ async function _submitEventCorps(editId, relacher) {
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   // Mesure d'usage de l'option privée (2026-11-26) : un compteur, aucune donnée.
   if (!editId && ok && backend && activiteEstPrivee(ev)) {
-    try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: !!inviteConv, serie: extraOccurrences.length > 0 }); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: !!(inviteConv && !inviteConv.direct), directe: !!(inviteConv && inviteConv.direct), serie: extraOccurrences.length > 0 }); } catch (e) {}
   }
   renderIRL();
   if (sourceStudio && MY_UID !== auteurStudio) return;
@@ -10399,7 +10406,7 @@ function _renderEventInviteList() {
 // L'invitation EST la notification (kind "event_invite" → openEventDetails),
 // mémorisée localement contre le double envoi. Sans toast : l'appelant parle.
 // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-function _notifierInviteEvent(ev, userId) {
+function _notifierInviteEvent(ev, userId, opts) {
   if (!ev || !ev.id || !userId) return;
   _rememberEventInvite(ev.id, userId);
   var notifier = function () {
@@ -10410,7 +10417,9 @@ function _notifierInviteEvent(ev, userId) {
   };
   // Activité privée : l'invité doit pouvoir la LIRE avant d'être prévenu
   // (`event_invites`, sinon la notification ouvre une activité introuvable).
-  if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+  // `droitDejaPose` : l'appelant vient de poser le droit de lecture de TOUS les
+  // invités en un lot (`_envoyerInvitationDirecte`) — ne pas le reposer un par un.
+  if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function" && !(opts && opts.droitDejaPose)) {
     inviterSerieActivite(ev, [userId]).then(function (ok) {
       if (!ok) toast("L'invitation à ton activité privée n'a pas pu partir — réessaie", "warning");
       else notifier();

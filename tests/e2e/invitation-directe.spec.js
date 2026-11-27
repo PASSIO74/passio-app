@@ -8,7 +8,8 @@
 //      inviter N personnes » qui revient à son libellé — RIEN ne part avant ;
 //   ② publiée (publique) : chaque invité reçoit la notification, la carte part
 //      dans notre conversation 1:1 quand elle existe, aucune n'est créée ;
-//   ③ privée : le droit de lecture part pour tous, avant les notifications ;
+//   ③ privée : le droit de lecture part UNE fois pour tous, avant les notifications ;
+//   ③ bis fenêtre fermée pendant la publication : les invités sont quand même invités ;
 //   ④ un invité refusé par le verdict serveur ne reçoit rien ;
 //   ⑤ ni à l'édition, ni sous coupure ; sans invité, rien ne part ;
 //      depuis une conversation, le bandeau de la conversation remplace la section.
@@ -123,7 +124,7 @@ test.describe("Inviter directement depuis « Créer une activité »", () => {
     expect(leo[leo.length - 1].text).toContain("Je t'invite à une activité");
   });
 
-  test("③ privée : le droit de lecture part pour tous, avant les notifications", async ({ page }) => {
+  test("③ privée : le droit de lecture part une fois pour tous, avant les notifications", async ({ page }) => {
     await banc(page);
     await ouvrir(page);
     await page.locator('label[for="evVisPrivee"]').click();
@@ -133,10 +134,27 @@ test.describe("Inviter directement depuis « Créer une activité »", () => {
     await expect.poll(() => page.evaluate(() => window.__notifs.length)).toBe(2);
     const r = await page.evaluate(() => ({ id: state.userEvents[0].id, invites: window.__invites, vis: state.userEvents[0].visibilite }));
     expect(r.vis).toBe("privee");
-    expect(r.invites.length).toBeGreaterThan(0);
+    expect(r.invites.length).toBe(1); // un seul lot, jamais reposé invité par invité
     expect(r.invites[0].evId).toBe(r.id);
     expect(r.invites[0].ids.sort()).toEqual(["u_id_nina", "u_id_sam"]);
     expect(r.invites[0].nNotifs).toBe(0);
+  });
+
+  test("③ bis fermer la fenêtre pendant la publication ne perd pas les invités", async ({ page }) => {
+    await banc(page);
+    await ouvrir(page);
+    await ajouter(page, "Léo Martin");
+    await page.locator("#evTitle").fill("Balade du dimanche");
+    await page.locator("#evTime").fill("18:00");
+    await page.evaluate(() => {
+      document.getElementById("evCity").value = "Annecy";
+      const lent = () => new Promise((r) => setTimeout(() => r(null), 800));
+      window.passioGeocode = lent; window._geocodeAddress = lent;
+      submitEvent();
+      setTimeout(() => { try { closeModal(); } catch (e) {} }, 100);
+    });
+    await expect.poll(() => page.evaluate(() => state.userEvents.length)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__notifs.map((n) => n.to))).toEqual(["u_id_leo"]);
   });
 
   test("④ un invité refusé par le verdict serveur ne reçoit rien", async ({ page }) => {
