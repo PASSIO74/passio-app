@@ -100,6 +100,8 @@ const TABLES_CONTENU = [
   { table: "event_attendees",      colonnes: ["user_id"] },
   { table: "event_reactions",      colonnes: ["user_id"] },
   { table: "pointage_essais",      colonnes: ["user_id"] },
+  { table: "event_invites",        colonnes: ["user_id", "invited_by"] },
+  { table: "event_invites_retires", colonnes: ["user_id"] },
   { table: "events",               colonnes: ["author_id", "organizer_id"] },
   { table: "cdv_live_comments",    colonnes: ["author_id"] },
   { table: "cdv_live_reactions",   colonnes: ["user_id"] },

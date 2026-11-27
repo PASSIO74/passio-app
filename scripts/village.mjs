@@ -16,8 +16,12 @@
 //
 //   npm run village                 # 10 navigateurs invisibles
 //   npm run village -- --headed     # regarder les 10 fenêtres en direct
+//   npm run village:rencontrer      # la séance « Rencontrer » (2026-11-27) : demande et
+//                                   # validation, file d'attente, activité privée, pointage,
+//                                   # écritures directes — tests/e2e/village-rencontrer.spec.js
 //
-// Le rapport : test-results/village/rapport.md (+ rapport.json).
+// Le rapport : test-results/village/rapport.md (+ rapport.json) ; pour la séance
+// « Rencontrer » : test-results/village-rencontrer/rapport.md.
 // ═══════════════════════════════════════════════════════════════════════════
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -30,6 +34,21 @@ if (process.env.GITHUB_ACTIONS || process.env.CI) {
   console.error("[village] refusé en CI : simulation de poste, dix navigateurs.");
   process.exit(2);
 }
+
+// Les séances. Elles prennent les MÊMES dix personnages (couloir « village » du
+// jeu persistant) : le bail du couloir interdit de les lancer en même temps.
+const SEANCES = {
+  village: { suite: "tests/e2e/village-10-comptes.spec.js", drapeau: "PASSIO_E2E_VILLAGE", rapport: "test-results/village/rapport.md" },
+  rencontrer: { suite: "tests/e2e/village-rencontrer.spec.js", drapeau: "PASSIO_E2E_VILLAGE_RENCONTRER", rapport: "test-results/village-rencontrer/rapport.md" },
+};
+const argSuite = process.argv.slice(2).find((a) => a.startsWith("--suite="));
+const nomSeance = argSuite ? argSuite.slice("--suite=".length) : "village";
+const SEANCE = SEANCES[nomSeance];
+if (!SEANCE) {
+  console.error(`[village] séance inconnue « ${nomSeance} » (connues : ${Object.keys(SEANCES).join(", ")}).`);
+  process.exit(2);
+}
+const argsPlaywright = process.argv.slice(2).filter((a) => !a.startsWith("--suite="));
 
 const patPath = resolve(homedir(), ".supabase", "access-token");
 const pat = (process.env.SUPABASE_ACCESS_TOKEN || (existsSync(patPath) ? readFileSync(patPath, "utf8") : "")).trim();
@@ -82,19 +101,19 @@ const env = {
   PASSIO_SUPABASE_ANON: anon,
   SUPABASE_URL: url,
   SUPABASE_SERVICE_ROLE_KEY: service,
-  PASSIO_E2E_VILLAGE: "1",
+  [SEANCE.drapeau]: "1",
   PASSIO_STAGING_REF: STAGING_REF,
   PASSIO_PORT: port,
 };
-console.log(`[village] cible : staging ${STAGING_REF} — 10 comptes du jeu persistant (couloir « village »), contenus purgés en fin de séance.`);
+console.log(`[village] séance « ${nomSeance} » — cible : staging ${STAGING_REF} — 10 comptes du jeu persistant (couloir « village »), contenus purgés en fin de séance.`);
 
 const res = spawnSync(
   "npx",
-  ["playwright", "test", "tests/e2e/village-10-comptes.spec.js", "--project=prod", "--workers=1", "--retries=0", ...process.argv.slice(2)],
+  ["playwright", "test", SEANCE.suite, "--project=prod", "--workers=1", "--retries=0", ...argsPlaywright],
   { stdio: "inherit", env, shell: process.platform === "win32" }
 );
 
-console.log("\n[village] rapport : test-results/village/rapport.md");
+console.log("\n[village] rapport : " + SEANCE.rapport);
 if (res.status !== 0) {
   console.log("[village] séance en échec ou interrompue. Les dix personnages sont des comptes du JEU PERSISTANT\n" +
     "          (e2e_village_0_<i>@fixe.passio-e2e.test) : jamais supprimés ; leurs contenus restés en base\n" +

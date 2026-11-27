@@ -10,7 +10,8 @@
 //   ③ vidéo de galerie trop longue : la piste s'ouvre AVANT tout encodage, on
 //      choisit le passage (il était coupé d'office aux 60 premières secondes) ;
 //   ④ un montage qui échoue ne retombe JAMAIS sur la vidéo entière ;
-//   ⑤ ❓ Question en bobine : proposée à la création (pas le Sondage), rendue par
+//   ⑤ ❓ Question en bobine : proposée à la création (le Sondage aussi depuis le
+//      2026-11-27 — voir bobine-sondage.spec.js), rendue par
 //      le lecteur de bobines, la réponse part à l'AUTEUR DE LA BOBINE affichée ;
 //   ⑥ annuler l'import d'une vidéo longue garde la photo et ses calques.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -196,7 +197,8 @@ test("⑤ ❓ Question en bobine : proposée, rendue, réponse à l'auteur de la
   });
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
-  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
+  // Le Sondage aussi, depuis que ses votes ont leur table (2026-11-27, bobine-sondage.spec.js).
+  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toBeVisible();
   await page.evaluate(() => meClose());
 
   const r = await page.evaluate(async () => {
@@ -217,7 +219,9 @@ test("⑤ ❓ Question en bobine : proposée, rendue, réponse à l'auteur de la
     return { question: !!hote.querySelector(".st-question"), sondage: !!hote.querySelector(".st-sondage") };
   });
   expect(r.question).toBe(true);
-  expect(r.sondage, "le sondage reste story seulement").toBe(false);
+  // Depuis le 2026-11-27 le sondage d'une bobine est RENDU par le lecteur (ses votes ont
+  // leur table) ; c'est sa CRÉATION qui reste sous drapeau (voir bobine-sondage.spec.js).
+  expect(r.sondage, "le sondage d'une bobine est rendu par le lecteur").toBe(true);
   await page.evaluate(() => document.querySelector("#banc-bobine .st-q-rep").click());
   await expect.poll(() => page.evaluate(() => window.__envois.length)).toBe(1);
   const e = await page.evaluate(() => window.__envois[0]);

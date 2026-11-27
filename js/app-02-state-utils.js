@@ -4956,6 +4956,16 @@ function closeCurrentOverlay() {
     }
   }
   if (editeurMedia && editeurMedia.classList.contains("open")) {
+    // Édition avec du contenu (2026-11-27) : le retour ne jette plus la story ou
+    // la bobine préparée — il referme un tiroir, ou demande « Abandonner ? »
+    // (`meRetourGarde`, app-08). L'éditeur reste ouvert : on repose son entrée.
+    let garde = false;
+    try { garde = typeof meRetourGarde === "function" && meRetourGarde(); }
+    catch (e) { try { console.warn("[nav] garde de l'éditeur média:", e); } catch (e2) {} }
+    if (garde) {
+      if (pushHistorySafe({ overlay: "media", passioOverlay: true }, "#media")) _navOverlayDepth++;
+      return true;
+    }
     // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de
     // ce panneau sans lui laisserait l'objectif actif en arrière-plan.
     if (typeof meClose === "function") meClose(); else editeurMedia.classList.remove("open");
@@ -5414,7 +5424,12 @@ function lancerVideoPublique(video, volontaire) {
     videoPubliqueBouton(video, false);
     // LOT-26 (FIL-C21) : les commandes natives n'apparaissent qu'une fois la
     // lecture lancée — avant, « ▶ Lire » et la barre native se superposaient.
-    try { if (video.hasAttribute("data-video-public-src")) video.controls = true; } catch (e) {}
+    // ⚠️ Pas dans les lecteurs de bobines et de stories (2026-11-27) : ils ont LEURS
+    // commandes (toucher = pause, bouton son, zones de la story). La barre native y
+    // CAPTAIT les touchers — tracé : sur une bobine en lecture, aucun `click`
+    // n'atteignait plus la page, donc ni la pause au toucher (BOB-C06) ni le
+    // double toucher « j'aime » ne répondaient au centre de la vidéo.
+    try { if (video.hasAttribute("data-video-public-src") && !video.closest(".reel-item, #storyCard")) video.controls = true; } catch (e) {}
     return true;
   }, function () {
     // Un navigateur peut refuser la lecture auto sonore. Garder une vraie porte
@@ -5884,10 +5899,12 @@ function purgeAccountScopedData() {
   // Les conversations ont un second store DURABLE (IndexedDB, idb-store.js) que
   // localStorage.removeItem ne touche pas : sans ça, hydrateConvsFromIDB() au boot
   // ré-injecte les messages du compte précédent chez le suivant.
-  try {
-    if (typeof idbConvClear === "function") return Promise.resolve(idbConvClear()).catch(function () {});
-  } catch (e) {}
-  return Promise.resolve();
+  // Idem pour les BROUILLONS de story / bobine (2026-11-27) : des photos et des
+  // vidéos du compte, gardées en IndexedDB — elles ne doivent pas attendre le suivant.
+  var _purgesDurables = [];
+  try { if (typeof idbConvClear === "function") _purgesDurables.push(Promise.resolve(idbConvClear()).catch(function () {})); } catch (e) {}
+  try { if (typeof idbBrouillonsClear === "function") _purgesDurables.push(Promise.resolve(idbBrouillonsClear()).catch(function () {})); } catch (e) {}
+  return Promise.all(_purgesDurables).then(function () {});
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
@@ -6428,6 +6445,7 @@ async function doDeleteAccount() {
   } catch (e) {}
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
   try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
+  try { if (typeof idbBrouillonsClear === "function") await Promise.resolve(idbBrouillonsClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
   if (compteFermeSansGarantie) {
     toast("Ton compte est fermé et tes données supprimées, mais la confirmation finale n'a pas pu être enregistrée. Écris à " + PASSIO_EDITEUR.email + " si tu constates quoi que ce soit.");

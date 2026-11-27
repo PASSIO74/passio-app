@@ -42,7 +42,6 @@
   "use strict";
 
   var CLASSE = "v6a0";
-  var enCours = false;
 
   function actif() {
     try { if (window.PASSIO_UI_6A0 === false) return false; } catch (e) {}
@@ -163,8 +162,12 @@
   // ── ①③④⑤⑦ le rangement ───────────────────────────────────────────────────
   function ranger(editId) {
     var r = racine();
-    if (!r || !el("evTitle") || r.getAttribute("data-v6a0")) return;
-    r.setAttribute("data-v6a0", "1");
+    // ⚠️ LE MARQUEUR « DÉJÀ RANGÉ » VIT DANS LE FORMULAIRE, PAS SUR SON CONTENEUR
+    // (2026-11-27). `#modalContent` survit à toutes les fenêtres : un attribut posé
+    // sur lui restait après la première ouverture, et dès la SECONDE le rangement
+    // ne s'appliquait plus (bouton « Publier » nu, pas de « Plus d'options », plus
+    // de garde visuelle). La barre d'actions, elle, part avec le formulaire.
+    if (!r || !el("evTitle") || r.querySelector(".v6a0-actions")) return;
     r.classList.add(CLASSE);
 
     var t = r.querySelector(".modal-title");
@@ -236,9 +239,9 @@
   // UNE enveloppe par fonction, retenue ICI et non sur la fonction : le marqueur
   // `__v6a0` ne vit que sur NOTRE enveloppe, et un module qui envelopperait
   // `submitEvent` par-dessus le cacherait. Une seconde enveloppe ne serait pas
-  // un doublon inoffensif : l'extérieure poserait `enCours`, l'intérieure le
-  // lirait et rendrait la main sans jamais appeler le moteur — plus aucune
-  // activité publiée. `brancher` est appelée jusqu'à trois fois (chargement,
+  // un doublon inoffensif (du temps où la garde vivait ici, l'extérieure la
+  // posait et l'intérieure rendait la main sans jamais appeler le moteur — plus
+  // aucune activité publiée). `brancher` est appelée jusqu'à trois fois (chargement,
   // `DOMContentLoaded`, `passio:app-ready`) : elle ne pose que ce qui manque.
   var branche = {};
   function envelopper(nom, fabrique) {
@@ -260,18 +263,18 @@
         return r;
       };
     });
-    // ⑦ Un seul envoi à la fois : sous la garde, un second clic pendant l'envoi
-    // ne crée pas une seconde activité. Coupé, `submitEvent` reste l'original.
+    // ⑦ Un seul envoi à la fois. La GARDE est dans le moteur depuis le 2026-11-27
+    // (`submitEvent`, app-07 : elle tient aussi quand ce lot est coupé, et se
+    // relâche dès que la fenêtre est fermée). Celle d'ici tenait jusqu'à la fin de
+    // toute la publication : un second formulaire ouvert entre-temps voyait ses
+    // appuis avalés sans un mot. Il ne reste ici que l'état VISUEL du bouton.
     envelopper("submitEvent", function (origine) {
       return async function () {
         if (!actif()) return origine.apply(this, arguments);
-        if (enCours) return;
-        enCours = true;
         var b = document.querySelector("#modalContent .v6a0-publier");
         if (b) { b.disabled = true; b.setAttribute("aria-busy", "true"); }
         try { return await origine.apply(this, arguments); }
         finally {
-          enCours = false;
           if (b && b.isConnected) { b.disabled = false; b.removeAttribute("aria-busy"); }
         }
       };

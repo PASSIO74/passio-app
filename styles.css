@@ -14107,11 +14107,6 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 /* ── STORY FAÇON INSTAGRAM (2026-11-26) : mode « Créer » + éditeur de texte en place ──
    Le bouton de la capture remplissait l'écran d'un aplat, sans consigne ni curseur.
    Désormais : fond + clavier d'un seul toucher, couleurs, fond du texte, alignement. */
-.me-cap-side.me-cap-creer {
-  font-size: 17px; font-weight: 900; letter-spacing: -0.5px;
-  border-color: #fff;
-  background: linear-gradient(135deg, #7c3aed, #ec4899 55%, #f97316);
-}
 .me-creer-hint {
   position: absolute; left: 0; right: 0; top: 40%; z-index: 3;
   display: none; text-align: center; padding: 0 24px;
@@ -14478,3 +14473,327 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 .me-mt-poignee:focus-visible::before { outline: 3px solid #facc15; outline-offset: 1px; }
 .me-mt-infos { text-align: center; font-size: 13px; font-weight: 700; margin-top: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 .me-mt-bas { display: flex; flex-direction: column; }
+/* ═══ STORY / BOBINE : ÉCRAN DE CAPTURE FAÇON INSTAGRAM (2026-11-27) ═══
+   Retour de Benjamin, capture d'Instagram à l'appui : « les fonctionnalités de story
+   et de bobine ne sont pas ergonomiques — copie Instagram, veille à ce que tous les
+   onglets fonctionnent ». Disposition : fermer + flash en haut, outils NOMMÉS à
+   gauche, galerie · déclencheur centré · caméra, puis les onglets de mode.
+   En édition, les outils passent à droite (icône + nom) et libèrent le bas pour
+   « Publier ». Fiche : docs/lots-ui/33-CAPTURE-INSTAGRAM-2026-11-27.md. */
+.me-topbar .me-title {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.me-topbar .me-icon-btn { width: 44px; height: 44px; background: rgba(0,0,0,0.32); }
+/* Flash : au centre de la barre, visible caméra allumée seulement. */
+.me-flash-btn { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 10px); transform: translateX(-50%); }
+.me-flash-btn:active { transform: translateX(-50%) scale(0.92); }
+.me-flash-btn.actif { background: #fff; color: #111; }
+.me-flash-btn.actif .me-flash-barre { display: none; }
+.media-editor.phase-edit .me-flash-btn,
+.media-editor:not(.me-cam-on) .me-flash-btn,
+.media-editor.me-recording .me-flash-btn { display: none; }
+
+/* ── Colonne d'outils de la capture (gauche) ── */
+.me-rail {
+  position: absolute; left: 10px; top: 50%; z-index: 11;
+  transform: translateY(-58%);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
+.media-editor.phase-edit .me-rail,
+.media-editor.me-recording .me-rail,
+.media-editor.me-compte-actif .me-rail,
+.media-editor.me-boom-capture .me-rail { display: none; }
+.me-rail-btn {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 48px; padding: 2px 10px 2px 2px; margin: 0;
+  border: none; border-radius: 999px; background: none; color: #fff;
+  font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.55);
+  -webkit-tap-highlight-color: transparent;
+}
+.me-rail-btn[hidden] { display: none; }
+/* Sans caméra, seuls restent les outils qui n'en ont pas besoin (Créer). */
+.media-editor:not(.me-cam-on) .me-rail-btn[data-camera] { display: none; }
+.media-editor:not(.me-cam-on) .me-rail-plier { display: none; }
+.me-rail-ico {
+  position: relative; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.32); color: #fff;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: background 160ms ease, color 160ms ease, transform 140ms ease;
+}
+.me-rail-ico-texte { font-size: 17px; font-weight: 900; letter-spacing: -0.5px; }
+.me-rail-btn:active .me-rail-ico { transform: scale(0.92); }
+.me-rail-btn.actif .me-rail-ico { background: #fff; color: #111; }
+#meBgBtn .me-rail-ico { background: linear-gradient(135deg, #7c3aed, #ec4899 55%, #f97316); }
+.me-rail-pastille {
+  position: absolute; right: -6px; bottom: -4px; min-width: 0; padding: 1px 5px; border-radius: 999px;
+  background: #facc15; color: #111; font-size: 10.5px; font-weight: 900; line-height: 1.3; text-shadow: none;
+}
+.me-rail-pastille:empty { display: none; }
+.me-rail-plier .me-rail-ico { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; transition: transform 200ms ease; }
+.media-editor.me-rail-replie .me-rail-lib { display: none; }
+.media-editor.me-rail-replie .me-rail-btn { padding-right: 2px; }
+.media-editor.me-rail-replie .me-rail-plier .me-rail-ico { transform: rotate(-90deg); }
+
+/* ── Bas de la capture : consigne · galerie + déclencheur + caméra · onglets ── */
+.me-capture-area { gap: 8px; padding: 28px 0 calc(env(safe-area-inset-bottom) + 8px); background: linear-gradient(transparent, rgba(0,0,0,0.55)); }
+/* Le déclencheur reste CENTRÉ dans les deux modes : ses deux voisins gardent leur place,
+   même invisibles (avant, la bobine masquait un voisin et le déclencheur partait à droite). */
+.me-capture-bar { justify-content: space-between; padding: 0 26px; box-sizing: border-box; }
+.me-capture-bar .me-gallery-thumb,
+.me-capture-bar .me-cap-side { flex: 0 0 48px; width: 48px; height: 48px; padding: 0; }
+.me-capture-bar .me-cap-side { border: none; background: rgba(255,255,255,0.16); }
+.media-editor:not(.me-cam-on) #meFlipBtn { visibility: hidden; }
+.media-editor.me-recording .me-capture-bar .me-gallery-thumb,
+.media-editor.me-recording #meFlipBtn,
+.media-editor.me-compte-actif .me-capture-bar .me-gallery-thumb,
+.media-editor.me-compte-actif #meFlipBtn,
+.media-editor.me-boom-capture .me-capture-bar .me-gallery-thumb,
+.media-editor.me-boom-capture #meFlipBtn,
+.media-editor.me-recording .me-modes,
+.media-editor.me-compte-actif .me-modes,
+.media-editor.me-boom-capture .me-modes { visibility: hidden; }
+.me-modes {
+  position: relative; width: 100%; box-sizing: border-box;
+  display: flex; align-items: center; gap: 2px;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* Les bords s'estompent : l'onglet actif est au centre, les autres s'éloignent. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.me-modes::-webkit-scrollbar { display: none; }
+/* Marges de bout de bande : le premier et le dernier onglet peuvent se centrer. */
+.me-modes::before, .me-modes::after { content: ""; flex: 0 0 42%; }
+.me-mode {
+  flex: 0 0 auto; min-height: 44px; padding: 0 9px; border: none; background: none;
+  color: rgba(255,255,255,0.66); font: inherit; font-size: 12.5px; font-weight: 800;
+  letter-spacing: 1.3px; text-transform: uppercase; cursor: pointer; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+  transition: color 160ms ease, transform 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.me-mode.actif { color: #fff; transform: scale(1.08); }
+@media (max-width: 340px) { .me-mode { padding: 0 6px; letter-spacing: 0.8px; font-size: 12px; } }
+.media-editor.me-verrouille .me-capture-hint,
+.media-editor.me-boom-capture .me-capture-hint { visibility: visible; color: #fff; }
+/* Boomerang : l'anneau du déclencheur se remplit pendant la rafale puis l'encodage. */
+.media-editor.me-boom-capture .me-shutter-progress { display: block; background: conic-gradient(#fff calc(var(--p, 0) * 1%), rgba(255,255,255,0.28) 0); }
+.media-editor.me-boom-capture .me-shutter-inner { transform: scale(0.8); }
+
+/* La rangée de filtres de la capture ne s'ouvre qu'au bouton « Effets ». */
+.media-editor.phase-capture.me-cam-on:not(.me-filtres-ouverts) .me-filtres { display: none; }
+.media-editor.phase-capture .me-filtres { bottom: calc(env(safe-area-inset-bottom) + 212px); }
+/* Cinq classes : la règle d'affichage (`.phase-capture.me-cam-on .me-filtres`) en compte
+   quatre — à trois, ce masquage perdait, comme l'ancien `.me-recording .me-filtres`. */
+.media-editor.phase-capture.me-cam-on.me-recording .me-filtres,
+.media-editor.phase-capture.me-cam-on.me-compte-actif .me-filtres,
+.media-editor.phase-capture.me-cam-on.me-boom-capture .me-filtres { display: none; }
+
+/* ── Minuteur et flash d'écran ── */
+.me-compte {
+  position: absolute; inset: 0; z-index: 6; display: none;
+  align-items: center; justify-content: center; pointer-events: none;
+  color: #fff; font-size: 132px; font-weight: 900; line-height: 1;
+  text-shadow: 0 4px 28px rgba(0,0,0,0.55);
+}
+.media-editor.me-compte-actif .me-compte { display: flex; }
+.me-flash-ecran { position: absolute; inset: 0; z-index: 7; display: none; pointer-events: none; }
+.media-editor.me-flash-plein .me-flash-ecran { display: block; background: #fff; }
+.media-editor.me-flash-anneau .me-flash-ecran { display: block; box-shadow: inset 0 0 0 26px rgba(255,255,255,0.94); }
+
+/* ── Édition : outils en colonne à DROITE, icône + nom ── */
+.media-editor.phase-edit .me-toolbar {
+  top: calc(env(safe-area-inset-top) + 64px); bottom: auto; left: auto; right: 10px;
+  padding: 0; display: block;
+}
+.me-toolbar .me-tool-group { flex-direction: column; align-items: flex-end; gap: 6px; }
+.me-toolbar .me-tool {
+  display: flex; align-items: center; flex-direction: row-reverse; gap: 10px;
+  min-width: 0; width: auto; height: auto; min-height: 48px; padding: 2px 2px 2px 10px;
+  border-radius: 999px; background: none; color: #fff;
+  font-size: 14px; font-weight: 700; text-shadow: 0 1px 6px rgba(0,0,0,0.55);
+  -webkit-tap-highlight-color: transparent;
+}
+.me-toolbar .me-tool:active { transform: none; background: none; }
+.me-tool-ico {
+  flex: 0 0 44px; width: 44px; height: 44px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.38); color: #fff;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: transform 140ms ease, background 160ms ease;
+}
+.me-tool-ico-texte { font-size: 17px; font-weight: 900; letter-spacing: -0.5px; }
+.me-toolbar .me-tool:active .me-tool-ico { transform: scale(0.92); background: rgba(0,0,0,0.6); }
+/* Le rond « Fond » (mode Créer) montre le fond SUIVANT : son dégradé va sur l'icône. */
+.me-toolbar .me-tool.me-tool-fond { width: auto; min-width: 0; padding: 2px 2px 2px 10px; border: none; background: none !important; }
+.me-tool-fond .me-tool-ico { border: 2.5px solid #fff; background: var(--me-fond-suivant, linear-gradient(135deg,#ec4899,#f97316)); box-sizing: border-box; }
+/* ✂️ « Couper » (montage vidéo) : seulement sur une vidéo. La règle d'origine
+   (`.me-tool-montage { display: none }`, une classe) perdrait contre la colonne. */
+.me-toolbar .me-tool.me-tool-montage { display: none; }
+.media-editor.phase-edit.me-video:not(.me-fond) .me-toolbar .me-tool.me-tool-montage { display: flex; }
+.media-editor.me-rail-replie .me-tool-lib { display: none; }
+.media-editor.me-rail-replie .me-toolbar .me-tool { padding-left: 2px; }
+.media-editor.me-filtres-ouverts .me-tool-filtres .me-tool-ico { background: #fff; color: #111; }
+/* Pendant qu'on déplace un élément, les outils s'effacent : rien ne le masque. */
+.media-editor.me-glisse .me-toolbar,
+.media-editor.me-glisse .me-bottom,
+.media-editor.me-glisse .me-topbar,
+.media-editor.me-glisse .me-preview-ctrls { opacity: 0; pointer-events: none; transition: opacity 140ms ease; }
+.media-editor.phase-edit .me-filtres { bottom: calc(env(safe-area-inset-bottom) + 112px); }
+.media-editor.phase-edit .me-preview-ctrls { bottom: calc(env(safe-area-inset-bottom) + 112px); right: auto; left: 12px; }
+.media-editor.phase-edit.me-filtres-ouverts .me-preview-ctrls { visibility: hidden; }
+/* Bas de l'édition : boutons en pilule (la rangée « Publier | Amis proches | ✎ »). */
+.me-bottom .btn { border-radius: 999px; min-height: 48px; }
+
+/* ── Tiroir de stickers et panneaux : feuille posée en bas de l'écran ── */
+.me-panneau {
+  left: 0; right: 0; bottom: 0; border-radius: 22px 22px 0 0; border-bottom: none;
+  padding: 14px 14px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  max-height: 72vh; overflow-y: auto; box-sizing: border-box;
+}
+.me-tiroir-titre {
+  flex: 0 0 100%; grid-column: 1 / -1; text-align: center; padding: 0 0 4px;
+  font-size: 15px; font-weight: 800; color: var(--text, #111);
+}
+.me-panneau.me-panneau-stickers { justify-content: flex-start; }
+.me-panneau.me-panneau-stickers .me-sticker-choix { flex: 1 1 28%; min-width: 0; }
+.me-icon-btn.me-retour-chevron { font-size: 30px; line-height: 1; padding-bottom: 4px; }
+/* Noms des outils d'édition : visibles à l'arrivée (.me-noms-outils), puis seuls les ronds restent. */
+.media-editor.phase-edit:not(.me-noms-outils) .me-tool-lib { display: none; }
+.media-editor.phase-edit:not(.me-noms-outils) .me-toolbar .me-tool { padding-left: 2px; }
+/* Sans caméra, « Créer » reste en haut à gauche : au centre il croiserait le repli « Choisir un média ». */
+.media-editor:not(.me-cam-on) .me-rail { top: calc(env(safe-area-inset-top) + 68px); transform: none; }
+/* Écrans de moins de 760 px de haut : centrée, la colonne passerait sous la rangée de
+   filtres (Minuteur et chevron recouverts) — elle s'ancre sous la barre du haut. */
+@media (max-height: 760px) {
+  .me-rail { top: calc(env(safe-area-inset-top) + 68px); transform: none; }
+}
+/* Petits écrans (iPhone SE, Android compacts) : la colonne se resserre. */
+@media (max-height: 640px) {
+  .me-rail { gap: 0; }
+  .media-editor.me-filtres-ouverts .me-rail-plier { display: none; }
+  .me-rail-btn { min-height: 46px; font-size: 14px; }
+  .me-toolbar .me-tool-group { gap: 2px; }
+  .me-toolbar .me-tool { min-height: 46px; }
+  .media-editor.phase-capture .me-filtres { bottom: calc(env(safe-area-inset-bottom) + 204px); }
+  .me-compte { font-size: 104px; }
+}
+/* Téléphone couché : pas la hauteur d'une colonne — les outils passent en rangée, sans leur nom. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .me-rail { top: calc(env(safe-area-inset-top) + 62px); left: 12px; right: 12px; transform: none; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .me-rail-lib, .me-tool-lib { display: none; }
+  .me-rail-btn { padding-right: 2px; }
+  .media-editor.phase-edit .me-toolbar { top: calc(env(safe-area-inset-top) + 10px); right: 12px; }
+  .me-toolbar .me-tool-group { flex-direction: row; }
+  .me-toolbar .me-tool { padding-left: 2px; }
+  .me-capture-hint { display: none; }
+  .me-compte { font-size: 96px; }
+}
+
+/* ── LECTEUR DE STORY : plein cadre sur téléphone (2026-11-27) ──
+   La story était une carte de 346 px au milieu d'un fond ; elle occupe désormais
+   toute la largeur, du haut de l'écran à la barre de réponse (comme Instagram), et sa
+   géométrie se rapproche de celle de l'éditeur : un élément posé à la création
+   retombe au même endroit à la lecture. Au-delà de 520 px, la carte reste. */
+/* L'en-tête (fermer, « ⋯ » signaler) et les barres de progression passent AU-DESSUS de la
+   couche des stickers (z 3, posée après eux dans le document) : en plein cadre ils sont SUR
+   la story, et un sticker d'un autre compte placé tout en haut les aurait recouverts. */
+.story-viewer .story-viewer-header, .story-viewer .story-progress-row { z-index: 4; }
+@media (max-width: 520px) {
+  .story-viewer .story-viewer-stage {
+    align-items: stretch;
+    padding: env(safe-area-inset-top, 0px) 0 calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  .story-viewer .story-viewer-card {
+    max-width: none; height: 100%; aspect-ratio: auto;
+    border-radius: 16px; box-shadow: none;
+    padding: 30px 22px 28px;
+  }
+}
+
+/* ── LECTEUR DE BOBINES sur écran tactile (2026-11-27) ──
+   On glisse : les deux flèches n'ont plus lieu d'être, la légende reprend la place
+   que la flèche du bas lui faisait quitter, et l'indice dit les gestes du doigt. */
+.reels-hint-tactile { display: none; }
+.reel-media-container { touch-action: manipulation; }
+/* Progression d'une bobine vidéo : un trait au bas de la bobine, sans prise au toucher. */
+.reel-progres {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 5;
+  background: rgba(255,255,255,0.22); pointer-events: none;
+}
+.reel-progres > span { display: block; height: 100%; width: 0; background: #fff; }
+@media (hover: none) and (pointer: coarse) {
+  .reels-viewer .reels-nav { display: none; }
+  :root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .reels-hint .reels-hint-souris { display: none; }
+  .reels-hint .reels-hint-tactile { display: inline; }
+}
+
+/* ═══ STORY / BOBINE, SUITE (2026-11-27) : plusieurs prises, brouillons, « Suivre » ═══
+   Fiche : docs/lots-ui/34-BOBINE-PRISES-BROUILLONS-SUIVRE-2026-11-27.md. */
+/* ── Bobine en plusieurs prises ──
+   Une prise existe (.me-prises) : la galerie et le changement de caméra cèdent leur place à
+   « Refaire » et « Terminer », visibles seulement EN PAUSE (.me-pause). Pendant qu'on filme,
+   ils gardent leur place sans se montrer : le déclencheur reste centré. */
+.me-prises-cote { display: none; position: relative; }
+.media-editor.me-prises .me-capture-bar .me-gallery-thumb,
+.media-editor.me-prises .me-capture-bar #meFlipBtn { display: none; }
+.media-editor.me-prises .me-capture-bar .me-prises-cote { display: inline-flex; visibility: hidden; }
+.media-editor.me-prises.me-pause .me-capture-bar .me-prises-cote { visibility: visible; }
+.me-capture-bar .me-prises-terminer { background: #fff; color: #111; }
+.me-prises-lib {
+  position: absolute; left: 50%; top: calc(100% + 4px); transform: translateX(-50%);
+  font-size: 11.5px; font-weight: 800; color: #fff; white-space: nowrap; text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+}
+/* En pause : ni outils, ni onglets, ni flash — on reprend ou on termine. */
+.media-editor.me-pause .me-rail,
+.media-editor.me-pause .me-flash-btn { display: none; }
+.media-editor.me-pause .me-modes { visibility: hidden; }
+.media-editor.me-pause .me-rec-badge { display: inline-flex; }
+.media-editor.me-pause .me-rec-dot { animation: none; background: #fff; border-radius: 2px; }
+.media-editor.me-pause .me-shutter-progress { display: block; }
+.media-editor.me-pause .me-shutter-inner { background: #ef4444; width: 52px; height: 52px; }
+.media-editor.phase-capture.me-cam-on.me-pause .me-filtres { display: none; }
+/* ── Brouillons : feuille de reprise ── */
+.me-brouillons-liste { display: flex; flex-direction: column; gap: 8px; }
+.me-brouillon { display: flex; align-items: center; gap: 8px; }
+.me-brouillon-reprendre {
+  flex: 1 1 auto; min-width: 0; min-height: 64px; display: flex; align-items: center; gap: 12px;
+  padding: 6px 10px 6px 6px; border: none; border-radius: 14px; cursor: pointer; text-align: left;
+  background: rgba(124,58,237,0.10); color: var(--text, #111); font: inherit;
+}
+.me-brouillon-vignette {
+  flex: 0 0 40px; width: 40px; height: 56px; border-radius: 8px; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #111; color: #fff; font-size: 15px; font-weight: 900;
+}
+.me-brouillon-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.me-brouillon-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.me-brouillon-texte b { font-size: 15px; font-weight: 800; }
+.me-brouillon-texte span { font-size: 12.5px; color: var(--muted, #6b7280); }
+.me-brouillon-suppr {
+  flex: 0 0 44px; width: 44px; height: 44px; border: none; border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,0.06); color: var(--text, #111); font-size: 15px;
+}
+#meBrouillonsBtn .me-rail-pastille { background: #fff; }
+/* ── « Suivre » sur une bobine ──
+   Sur une vidéo : contour et texte blancs. L'état « suivi » (fond accent) et l'attente sont
+   posés en ligne par `_peindreBoutonsSuivi` ; ici, l'attente reste lisible sur fond sombre
+   (le violet accent ne l'est pas) et se distingue par un contour en tirets. */
+.reel-author { flex-wrap: wrap; row-gap: 6px; }
+.reel-author-meta { flex: 1 1 0; min-width: 92px; }
+.reel-suivre {
+  flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid #fff; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  -webkit-tap-highlight-color: transparent;
+}
+.reel-suivre:active { transform: scale(0.95); }
+.reel-suivre[data-suivi-attente] { color: #fff !important; border-color: #fff !important; border-style: dashed; }
+
+/* Inviter directement depuis « Créer une activité » (2026-11-27, app-07 `poserInvitationDirecte`) */
+.ev-invite-directe { margin:12px 0 4px; }
+.ev-invite-directe-ico { width:36px; height:36px; flex-shrink:0; border-radius:999px; background:rgba(124,58,237,0.14); display:flex; align-items:center; justify-content:center; font-size:17px; }

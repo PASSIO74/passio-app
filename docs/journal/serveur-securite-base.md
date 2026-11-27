@@ -2327,8 +2327,12 @@ par la session cloud avait été refusée par ses permissions. Mesuré au canal 
 - Piège (red team) : une fonction SECURITY DEFINER appelée par une POLICY est exécutable en RPC par tout
   compte (la policy exige EXECUTE) — `story_a_un_sondage` vérifie donc la visibilité DEDANS, sinon elle
   disait qu'une story privée existait.
-- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit (`is_blocked_with`),
-  sinon un compte bloqué pèse encore sur le pourcentage.
+- Piège : un score agrégé doit appliquer le MÊME filtre que la liste que l'auteur lit — **du point de vue
+  de l'AUTEUR**. ⚠️ Mis en œuvre par `not is_blocked_with(v.user_id)`, évalué sous l'APPELANT, il est
+  devenu un ORACLE (red team du sondage des bobines, 2026-11-27) : un votant bloquait X, relisait le
+  score, savait ce que X avait voté, débloquait X. Corrigé par `migration_story_sondage_score_auteur_2026-11-27.sql`
+  (anti-jointure sur `blocks` avec `stories.author_id`, banc `tests/sql/migration-story-sondage-score-auteur.test.sh`) —
+  **appliquée en prod le 2026-11-27** (journal n°95), avant le premier vote (0 vote en base ce jour-là).
 
 ## 🔒 ACTIVITÉS PRIVÉES, SUR INVITATION — UNE INVITATION CIBLÉE N'EST PLUS UNE ANNONCE PUBLIQUE (2026-11-26)
 
@@ -2369,7 +2373,7 @@ ni l'une ni l'autre (`activite-privee.spec.js`). `visibilite` n'est JAMAIS dans
 
 **Ordre** : la migration AVANT le client (il lit `visibilite`, colonne inconnue = liste vide).
 
-**Reste hors lot (déclaré)** : une notification déjà écrite ; un album relié par son auteur à une activité privée reste lisible SANS compte.
+**Reste hors lot (déclaré)** : fermé le 2026-11-27 (voir plus bas).
 
 **Suite (même jour)** : une série RÉCURRENTE privée ouvre désormais TOUTES ses dates à l'invité
 (`inviterSerieActivite`, app-07 : une ligne `event_invites` par activité de la série que
@@ -2469,3 +2473,82 @@ le média et la règle « proches » le regardent) ; liste et épingles hors exp
 `story_likes` ; rejouer `migration_medias_proteges_go_2026-11-16.sql` APRÈS celle-ci est refusé
 par son propre prérequis (« Policies source supplementaires : revue requise ») — fermé, voulu.
 
+**2026-11-27 — les restes, la visibilité modifiable, un verrou à comptes réels**
+(`migration_activites_privees_restes_2026-11-27.sql`, banc commun : 125 contrôles) :
+- `retirer_invite_activite` supprime aussi la notification `event_invite` de la personne retirée.
+- Visiteur sans compte : `publication_privee_pour_visiteur(id)` (SECURITY DEFINER, exécutable par
+  anon : elle ne dit que ce qu'un visiteur constate) + restrictives au SEUL rôle anon sur `posts`,
+  `post_comments`, `post_likes`, `comment_interactions`.
+- **Trouvé par la revue de sécurité automatique** : ces restrictives ne ferment que la lecture
+  DIRECTE ; `interactions_cibles`, `fil_compteurs`, `comment_target_visible` sont SECURITY DEFINER
+  et exécutables par anon, et jugent par `post_is_visible`. La règle du visiteur entre donc DANS
+  `post_is_visible` (`migration_activites_privees_visiteur_2026-11-27.sql`, garde : la définition
+  remplacée doit être celle lue en production) — ce qui ferme aussi `comment_likes`. Leçon : une
+  règle de lecture posée en RLS seule est contournée par tout lecteur SECURITY DEFINER ; la mettre
+  dans l'aide que ces lecteurs partagent.
+- Le choix Publique / Privée est dans le formulaire de MODIFICATION ; passer en privée retire la
+  carte du fil par le chemin d'une suppression (`retirerCarteActiviteDuFil` : pierre tombale,
+  quatre tableaux, file serveur) et la note hors fil ; revenir en publique ne republie rien.
+- `tests/e2e/activite-privee-reel.spec.js` (projet `prod`, staging, `PASSIO_E2E_MULTI`) : trois
+  vrais comptes — invité, inconnu, lien, retrait, visiteur. Le jeu persistant purge
+  `event_invites` et `event_invites_retires`.
+- Usage mesuré le 2026-11-27 au matin : 0 activité privée, 0 lien — et 0 activité créée tout
+  court depuis deux jours. À relire dans une semaine (`activite_privee_*`, `meta.trafic` vide).
+
+## 📊 SONDAGE DES BOBINES — `migration_bobine_sondage_2026-11-27.sql` (**appliquée en prod** le 2026-11-27)
+
+Appliquée depuis la session cloud, à la demande de Benjamin (« Fait toi même »), par `appliquer-migration.mjs`
+au travers de l'API de gestion Supabase (connectée à la session) : journal n°95 (correctif du score des
+stories, d'abord) puis n°96. ⚠️ Depuis une session cloud, `fetch` de Node n'emprunte pas le proxy sans
+`NODE_USE_ENV_PROXY=1` (« fetch failed », rien n'est envoyé). Mesuré ensuite au canal ① : table, RLS, deux
+policies, trois fonctions DEFINER à `search_path` vide, déclencheurs `120` / `user_id`, hors publication,
+score du point de vue de l'auteur, 0 vote. Client allumé ensuite (`BOBINE_SONDAGE_ACTIF = true`).
+
+> **Règle tirée de ce lot** : un filtre qui dépend d'un état que l'APPELANT écrit lui-même (ses blocages,
+> ses abonnements, ses masquages) ne s'applique jamais à un AGRÉGAT que d'autres comptes alimentent —
+> il en ferait un oracle sur ces comptes. Un agrégat se calcule du point de vue du PROPRIÉTAIRE de ce
+> qu'on agrège (l'auteur), le même pour tous. C'est la règle C-04, appliquée aux lectures.
+
+Le sondage des stories ouvert aux bobines (une bobine = une ligne de `posts` marquée `is_reel`, son
+sticker dans `posts.overlays`). `bobine_sondage_votes` (post_id, user_id, choix 0|1) : un vote par
+compte et par bobine, jamais modifié ni retiré (aucun droit UPDATE / DELETE). Écrit sur une bobine
+VISIBLE, qui porte un sondage et n'est pas la sienne ; INSERT par colonne `(post_id, choix)` ; lu par
+le votant (le sien) et par l'auteur de la bobine (hors comptes bloqués). `bobine_sondage_resultats`
+ne rend les comptes qu'après le vote ou à l'auteur. Débit par compte (120 / minute), barrière de
+suppression de compte, table hors de toute publication. Client : `docs/lots-ui/35-BOBINE-SONDAGE-2026-11-27.md`,
+livré drapeau éteint.
+
+- **La visibilité est DÉLÉGUÉE, pas recopiée** : `bobine_sondage_visible` appelle `post_is_visible(text)`,
+  la fonction qui juge déjà `post_likes` et `post_comments`. Une règle de lecture ajoutée demain à `posts`
+  y entre et vaut ici sans migration. Contrepartie : la migration porte une GARDE qui refuse une base où
+  `post_is_visible` ne contient ni le compte privé, ni le blocage, ni le masquage.
+- **Piège : `post_is_visible` rend VRAI pour un identifiant d'exemple absent de `posts`.** Les aides
+  exigent donc la LIGNE — sinon « exemple inexistant » et « bobine privée au même identifiant » ne
+  répondraient pas pareil (un oracle d'existence).
+- **Le tableau de verdict LÈVE** (plus strict que celui des stories) : une ligne en ÉCHEC, rien n'est
+  validé. Sa ligne 10 exige qu'un client ne puisse modifier ni `posts.is_reel` ni `posts.overlays` (le
+  sondage voté ne change pas après coup) — vrai en production le 27/11.
+- Banc : `tests/sql/migration-bobine-sondage.test.sh` — application et rejeu, cas par identité (90),
+  mutations sur base migrée, retour arrière exécuté tel quel, gardes. Le socle du banc datant du 06/11,
+  `tests/sql/fixtures/bobine-sondage-production-2026-11-27.sql` y repose ce que la production portait le
+  27/11 et lève si l'empreinte d'une fonction s'en écarte.
+- **Red team du 2026-11-27 (`passio-red-team`, lecture seule, quatre lectures de production)** :
+  - **P1** — le score était filtré par `is_blocked_with(v.user_id)` sous l'APPELANT : oracle par blocage
+    (voir la règle en tête de fiche). Corrigé : score du point de vue de l'auteur, anti-jointure sur
+    `blocks_pkey` ; cas de banc « B bloque M : le score de B ne bouge pas » (réinjecté : rouge sur l'ancien
+    code). Même défaut, déjà en ligne, corrigé pour les stories (fiche 📊 SONDAGE DES STORIES).
+  - **P2** — la policy SELECT appelait `bobine_est_a_moi(post_id)` sur chaque ligne d'un `GET` sans filtre :
+    remplacée par une sous-requête NON corrélée « mes bobines » (calculée une fois, `idx_posts_author`).
+  - **P3 corrigés** : `lock_timeout` dans le retour arrière ; la ligne 7 du verdict lit les ARGUMENTS des
+    déclencheurs (`tgargs`) ; banc : la barrière de suppression éprouvée SEULE (policy amputée) ; client :
+    taille d'un sticker bornée au rendu, et le SONDAGE à 1,6 (agrandi, il faisait d'un toucher de pause un vote).
+  - **P3 non corrigés, assumés** : la garde et la ligne 9 lisent le TEXTE de `post_is_visible` (une définition
+    future qui garderait ces appels dans une branche morte passerait) ; `post_is_visible` est en
+    `search_path = public` (antérieur au lot, pas exploitable aujourd'hui : aucun chemin PostgREST ne crée de
+    table temporaire) ; `Prefer: count=planned` pourrait donner un ordre de grandeur des votes d'une bobine
+    populaire une fois la table analysée (générique au projet) ; un vote n'est ni exporté ni retirable
+    (comme `story_sondage_votes` — à trancher au regard du RGPD).
+- Vu en passant, non corrigé (fichier appliqué et attesté par empreinte) : le bloc « RETOUR ARRIÈRE » de
+  `migration_story_sondage_2026-11-26.sql` supprime `story_a_un_sondage` AVANT la table dont la policy en
+  dépend — il échoue tel quel ; inverser les deux lignes le jour où on le joue.
+- Non éprouvé : PostgreSQL 17 (banc en 16), PostgREST, comptes réels, staging.

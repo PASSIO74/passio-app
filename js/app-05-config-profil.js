@@ -3415,6 +3415,72 @@ function bobineExemple(post) {
   return dans(state.seed.posts) && !dans(state.supabasePosts) && !dans(state.userPosts);
 }
 
+// « SUIVRE » SUR UNE BOBINE (2026-11-27) — la SIXIÈME surface de l'état de suivi.
+// Elle ne porte AUCUN moteur à elle : `data-follow-uid` la fait trouver par
+// `_boutonsSuivi` / `_peindreBoutonsSuivi` (app-04) après chaque geste, comme les
+// autres ; le libellé, l'infobulle et l'état d'attente viennent des trois tables
+// communes (`libelleBoutonSuivi`, `attrsBoutonSuivi`, `etatSuivi`, app-02).
+// Pas de bouton : sur MA bobine, sur un personnage d'exemple (l'étiquette
+// « Exemple PASSIO » le dit déjà), ni quand je suis DÉJÀ ce compte (comme
+// Instagram — on se désabonne depuis le profil, pas par mégarde en regardant).
+// ⚠️ Aucun `onclick` : le nom et l'identifiant d'un AUTRE compte ne passent pas
+// par un gestionnaire inline (règle MSG-02) — le toucher est écouté sur la liste.
+function boutonSuivreBobineHTML(post) {
+  const uidAuteur = String((post && (post.authorId || post.userId)) || "");
+  const moi = (typeof MY_UID !== "undefined" && MY_UID) ? String(MY_UID) : "";
+  if (!uidAuteur || uidAuteur === "me" || uidAuteur === moi || (post && post._source === "me")) return "";
+  if (typeof estPersonneExemple === "function" && estPersonneExemple(uidAuteur)) return "";
+  if (typeof etatSuivi !== "function" || etatSuivi(uidAuteur) === "suivi") return "";
+  return `<button type="button" class="reel-suivre" data-follow-uid="${escapeHtml(uidAuteur)}"${attrsBoutonSuivi(uidAuteur)}>${escapeHtml(libelleBoutonSuivi(uidAuteur))}</button>`;
+}
+// Le toucher du bouton : écouté sur la liste, en phase de CAPTURE — il ne doit pas
+// remonter jusqu'à `.reel-author`, dont le `onclick` fermerait le lecteur pour
+// ouvrir le profil. Le nom vient de la bobine affichée (`reelsState.items`).
+function _brancherSuivreBobines() {
+  const liste = document.getElementById("reelsList");
+  if (!liste || liste._suivreBranche) return;
+  liste._suivreBranche = true;
+  liste.addEventListener("click", function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest(".reel-suivre") : null;
+    if (!btn) return;
+    e.stopPropagation(); e.preventDefault();
+    const uidAuteur = btn.getAttribute("data-follow-uid") || "";
+    const item = btn.closest(".reel-item");
+    const pid = item ? item.getAttribute("data-post-id") : null;
+    const post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
+    const nom = post ? (authorOfReel(post).name || "") : "";
+    if (!uidAuteur || typeof toggleFollowUser !== "function") return;
+    // ⚠️ SUR UNE BOBINE, « ✓ Suivi » EST UN ACCUSÉ, PAS UN BOUTON. Ailleurs, un toucher
+    // sur « ✓ Suivi » désabonne ; ici, le second toucher est presque toujours le reste
+    // d'un double toucher (« j'aime ») ou une impatience — il défaisait le suivi qu'on
+    // venait de poser. On ne se désabonne pas depuis une bobine : depuis le profil.
+    // Verdict tombé : l'accusé s'efface au toucher. Écriture encore en vol : on ne
+    // retire rien (un refus doit pouvoir rendre « Suivre »), et on ne désabonne pas.
+    if (typeof etatSuivi === "function" && etatSuivi(uidAuteur) === "suivi") {
+      const enVol = (typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) ? !!_ecritureSuiviEnCours[uidAuteur] : false;
+      if (!enVol) _retirerSuivreBobines(uidAuteur);
+      return;
+    }
+    toggleFollowUser(uidAuteur, nom || "ce compte");
+    _retirerSuivreBobinesApresVerdict(uidAuteur, 0);
+  }, true);
+}
+// Suivi ACQUIS (verdict du serveur tombé) : la pastille « ✓ Suivi » reste le temps
+// d'être lue, puis s'efface — comme elle ne s'affiche pas sur la bobine d'un compte
+// déjà suivi. Une demande en attente (compte privé) ou un refus laissent le bouton.
+function _retirerSuivreBobines(uidAuteur) {
+  document.querySelectorAll("#reelsList .reel-suivre").forEach(function (b) {
+    if (b.getAttribute("data-follow-uid") === uidAuteur) b.remove();
+  });
+}
+function _retirerSuivreBobinesApresVerdict(uidAuteur, essai) {
+  setTimeout(function () {
+    const enVol = (typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) ? !!_ecritureSuiviEnCours[uidAuteur] : false;
+    if (enVol) { if (essai < 40) _retirerSuivreBobinesApresVerdict(uidAuteur, essai + 1); return; }
+    if (typeof etatSuivi === "function" && etatSuivi(uidAuteur) === "suivi") _retirerSuivreBobines(uidAuteur);
+  }, essai === 0 ? 1500 : 500);
+}
+
 function renderReelHTML(post, idx) {
   post = passioMediaProteges.contextualiser(post,{type:"posts",id:post.id});
   const author = authorOfReel(post);
@@ -3422,7 +3488,7 @@ function renderReelHTML(post, idx) {
   const moodLabel = moodShortLabel(post.mood);
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
-  const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
+  const isLiked = ((typeof postAimeParMoi === "function") ? postAimeParMoi(post) : ((state.user.likedPosts || []).indexOf(post.id) > -1)) || reelsState.liked.has(post.id);
   const txt = post.text || post.caption || "";
   const filtreBobine = (typeof storyFiltreClasse === "function") ? storyFiltreClasse(post.overlays) : "";
   return `
@@ -3433,6 +3499,7 @@ function renderReelHTML(post, idx) {
       </div>
       <div class="reel-overlay"></div>
       ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
+      ${post.type === "video" ? '<div class="reel-progres" aria-hidden="true"><span></span></div>' : ""}
       ${/* LOT-14 (BOB-C14) : l'étiquette du haut répétait la passion et chevauchait la flèche ; l'envie rejoint la ligne de passion, sous le nom. */ ""}
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
@@ -3442,6 +3509,7 @@ function renderReelHTML(post, idx) {
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
             <div class="reel-passion">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
+          ${boutonSuivreBobineHTML(post)}
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
       </div>
@@ -3539,6 +3607,8 @@ function openReels(pinnedId) {
 
   // Lance la lecture du premier item visible et observe les changements de visibilité
   setupReelsObserver();
+  _brancherDoubleToucherBobines();
+  _brancherSuivreBobines();
   // Auto-focus sur le premier reel
   list.scrollTop = 0;
   playReelAt(0);
@@ -3664,6 +3734,63 @@ function basculerLectureBobine(conteneur, ev) {
   }
 }
 
+// DOUBLE TOUCHER = J'AIME (2026-11-27, façon Instagram) — jamais un « je n'aime
+// plus » : seul le cœur de la colonne retire un j'aime. Branché UNE fois sur la
+// liste (son contenu est réécrit à chaque ouverture), en phase de CAPTURE : le
+// `onclick` du conteneur vidéo arrête la propagation, un écouteur ordinaire ne
+// verrait jamais ces touchers. Les deux touchers basculent chacun lecture/pause
+// (le second annule le premier) : la vidéo continue, seul le j'aime reste.
+function _brancherDoubleToucherBobines() {
+  const liste = document.getElementById("reelsList");
+  if (!liste || liste._doubleToucher) return;
+  liste._doubleToucher = true;
+  let dernier = { t: 0, id: null };
+  liste.addEventListener("click", function (e) {
+    const cible = e.target && e.target.closest ? e.target : null;
+    const item = cible ? cible.closest(".reel-item") : null;
+    const id = item ? item.getAttribute("data-post-id") : null;
+    const zone = item ? item.querySelector(".reel-media-container") : null;
+    // La surface de la bobine ; un bouton ou un sticker posé dessus garde son propre toucher.
+    const surSurface = !!(zone && zone.contains(cible) && !cible.closest("button, a, .story-sticker"));
+    // ⚠️ Le PREMIER toucher met la vidéo en pause, ce qui fait paraître « ▶ Lire »
+    // au centre — sous le doigt du second. Il compte donc comme second toucher
+    // (et relance la lecture, comme il se doit) ; seul, il n'arme rien.
+    const surLire = !!cible && !!cible.closest("[data-video-public-play]");
+    const maintenant = Date.now();
+    const second = !!id && dernier.id === id && maintenant - dernier.t <= 320;
+    if (!second || !(surSurface || surLire)) {
+      dernier = surSurface && id ? { t: maintenant, id: id } : { t: 0, id: null };
+      return;
+    }
+    dernier = { t: 0, id: null };
+    // Même autorité que `likePost` : une copie serveur « aimée » compte, sinon le
+    // double toucher RETIRAIT un j'aime posé depuis un autre appareil.
+    const aimee = function () {
+      const p = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+      if (p && typeof postAimeParMoi === "function") return postAimeParMoi(p);
+      return (state.user.likedPosts || []).indexOf(id) > -1;
+    };
+    if (!aimee()) toggleReelLike(id, item.querySelector("[data-reellike]"));
+    // Le cœur n'éclot que si la bobine est VRAIMENT aimée (un visiteur est renvoyé à l'inscription).
+    if (aimee() && zone && typeof _heartBurst === "function") _heartBurst(zone);
+  }, true);
+}
+
+// Fine barre de progression au bas d'une bobine vidéo (façon Instagram) : le
+// lecteur n'a plus la ligne de temps native, qui captait les touchers. Branchée
+// une fois par élément vidéo ; `timeupdate` (pas un minuteur, pas de rAF).
+function _suivreProgresBobine(vid) {
+  if (!vid || vid._progresBranche) return;
+  vid._progresBranche = true;
+  vid.addEventListener("timeupdate", function () {
+    const item = vid.closest(".reel-item");
+    const barre = item && item.querySelector(".reel-progres > span");
+    if (!barre) return;
+    const d = vid.duration;
+    barre.style.width = (isFinite(d) && d > 0 ? Math.max(0, Math.min(100, vid.currentTime / d * 100)) : 0) + "%";
+  });
+}
+
 function playReelAt(idx) {
   const items = document.querySelectorAll("#reelsList .reel-item");
   const soundOn = !!reelsState.soundOn;
@@ -3675,6 +3802,7 @@ function playReelAt(idx) {
     // (bobine figée/noire, surtout mobile). Même correctif que meSetMedia.
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
+    _suivreProgresBobine(vid);
     if (i === idx) {
       lancerVideoPublique(vid, false).then((ok) => {
         // Un navigateur peut refuser la lecture SONORE hors geste (iOS en
@@ -3692,6 +3820,10 @@ function playReelAt(idx) {
     else arreterVideoPublique(vid);
   });
   _syncReelSoundBtns();
+  // 📊 Sondage : les résultats de la bobine ACTIVE (après mon vote, ou si c'est la
+  // mienne). Ici et pas au rendu de la liste : une requête par bobine regardée.
+  try { if (items[idx] && typeof bobineSondagePeindre === "function") bobineSondagePeindre(items[idx]); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("sondage bobine: " + ((e && e.message) || e)); } catch (e2) {} }
 }
 
 // Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
