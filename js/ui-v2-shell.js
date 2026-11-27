@@ -126,6 +126,8 @@
       // LOT-15 (CRE-C15 / CRE-C01) : le sous-titre ne cache plus le texte seul, et
       // « Publication » rouvre le Studio sur le média RÉELLEMENT attaché (texte sinon).
       key: "post", icon: ICONS.post, title: "Publication", hint: "Texte, photo ou vidéo",
+      // `ecran: true` : ce choix NAVIGUE vers un écran (voir le clic, plus bas).
+      ecran: true,
       run: function () { if (!call("ouvrirStudioPublication")) goToScreen("studio"); },
     },
     {
@@ -150,6 +152,7 @@
     },
     {
       key: "audio", icon: ICONS.audio, title: "Audio / podcast",
+      ecran: true,
       run: function () { openStudioOnType("audio"); },
     },
   ];
@@ -339,7 +342,17 @@
         // une saisie au clavier, Chrome Android y peignait l'anneau de focus :
         // « Créer » restait encadré sur le Fil. Même règle que la feuille UI-3.
         closeCreateSheet({ rendreFocus: false });
-        c.run();
+        // ⚠️ Un choix qui NAVIGUE vers un écran part 80 ms après la fermeture
+        // (2026-11-27, même patron que les capsules des bobines). La feuille rend
+        // son entrée d'historique par un retour DIFFÉRÉ ; `goTo`, lancé aussitôt,
+        // poussait l'écran avant lui et la reprise était abandonnée — l'entrée
+        // « creer » restait ORPHELINE sous le Studio. Mesuré : depuis le Studio, le
+        // premier geste retour affichait le Fil, quel que soit l'écran d'origine,
+        // et il en fallait un second pour y revenir.
+        // Les choix qui ouvrent un panneau (bobine, story, activité, live) restent
+        // immédiats : `pushOverlayHistory` y RÉUTILISE déjà l'entrée de la feuille.
+        if (c.ecran) setTimeout(c.run, 80);
+        else c.run();
       });
       list.appendChild(btn);
     });
