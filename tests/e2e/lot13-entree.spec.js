@@ -186,7 +186,25 @@ test("⑧ ENT-C14 : l'aide « auteur » dit « profil » et « Compris » fait 4
   });
   const bulle = page.locator(".passio-hint");
   await expect(bulle).toContainText("Touche le nom pour voir son profil");
-  expect((await bulle.locator(".passio-hint-ok").boundingBox()).height).toBeGreaterThanOrEqual(44);
+  // (2026-11-27) LA BULLE ENTRE PAR `passio-hint-in` : 180 ms de
+  // translateY(-6px → 0). Ce test lisait la boîte de « Compris » ~85 ms après
+  // la pose, donc EN VOL, à travers une translation non entière : haut et bas
+  // sont arrondis chacun en flottant simple, et leur différence rend
+  // 44 ± 2⁻¹⁵ — 43,999969 une lecture sur cinq, soit un rouge sur un bouton
+  // qui fait bien 44 px (2 échecs sur 12 en local, absorbés en CI par les
+  // deux essais). Mesuré image par image : 61 lectures ≠ 44 sur 149 pendant
+  // l'animation, dans les DEUX sens ; 0 sur 177 une fois finie ; la hauteur de
+  // mise en page, elle, vaut 44 à chaque image. Ce n'était donc pas la mise en
+  // page, et le seuil n'a pas à bouger.
+  // On attend la FIN de l'animation (sa promesse, pas un délai), puis on mesure
+  // dans le même tour DOM. ⚠️ Pas `offsetHeight` : il ARRONDIT à l'entier, un
+  // bouton de 43,6 px y passerait pour 44.
+  // MUTATION : `.passio-hint-ok { min-height: 43px; }` dans styles.css → rouge ici.
+  const hauteur = await bulle.evaluate(async (el) => {
+    await Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished));
+    return el.querySelector(".passio-hint-ok").getBoundingClientRect().height;
+  });
+  expect(hauteur, "« Compris », bulle au repos").toBeGreaterThanOrEqual(44);
 });
 
 test("⑨ ENT-C12 / C13 : liens d'évitement, et une seule action principale à l'accueil", async ({ page }) => {
