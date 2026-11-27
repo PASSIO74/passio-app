@@ -3011,11 +3011,21 @@ async function mePublish() {
       // story qu'il ne pourra pas ouvrir.
       var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
       if (ok !== true || !serveur) return;
-      // Story « Amis proches » : aucun message de mention — un compte hors de la
-      // liste apprendrait qu'une story existe sans pouvoir l'ouvrir.
-      if (story.audience === "proches") return;
       // Compte privé : seuls les abonnés ACCEPTÉS mentionnés sont prévenus.
-      Promise.resolve(_lireDestinatairesMentions(story.authorId, story.overlays)).then(function (ids) {
+      // Story « Amis proches » : en plus, seuls les MEMBRES de la liste (relue
+      // au serveur) — un compte hors de la liste apprendrait qu'une story existe
+      // sans pouvoir l'ouvrir. Une lecture en échec ne prévient personne.
+      var proches = story.audience === "proches";
+      Promise.all([
+        _lireDestinatairesMentions(story.authorId, story.overlays),
+        proches ? _lireAmisProchesPourMentions(story.authorId) : null,
+      ]).then(function (r) {
+        var ids = r[0], liste = r[1];
+        if (proches) {
+          if (!ids || !liste) return;
+          var membres = new Set(liste);
+          ids = ids.filter(function (id) { return membres.has(id); });
+        }
         if (ids && ids.length && String(story.authorId) === String(MY_UID)) _prevenirMentionsStory(story.overlays, "story", ids);
       }).catch(function () {});
     });
@@ -4344,6 +4354,20 @@ function chargerAmisProches(forcer) {
     return Array.from(_amisProches.ids);
   }).catch(function () { _amisProches.charge = null; return []; });
   return _amisProches.charge;
+}
+// Mentions d'une story « proches » : la liste de l'auteur relue au SERVEUR
+// (jamais le cache : un retrait fait dans un autre onglet), ou `null` si la
+// lecture échoue ou si l'auteur n'est plus le compte courant — jamais un échec
+// pris pour « tout le monde ». La règle du compte privé reste celle de
+// `_lireDestinatairesMentions`, croisée avec cette liste dans `mePublish`.
+async function _lireAmisProchesPourMentions(auteur) {
+  if (!_storyLotServeur() || !auteur || String(auteur) !== String(MY_UID)) return null;
+  var moi = MY_UID;
+  try {
+    var res = await supa.from("amis_proches").select("ami_id").eq("owner_id", moi).limit(1000);
+    if (moi !== MY_UID || !res || res.error) return null;
+    return (res.data || []).map(function (r) { return String(r.ami_id); });
+  } catch (e) { return null; }
 }
 // Ajoute / retire : l'INTENTION part, `{ error }` est lu, l'écran suit le verdict.
 async function basculerAmiProche(uid, ajouter) {
