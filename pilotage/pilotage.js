@@ -605,7 +605,7 @@
     // Toute ouverture de l'app aujourd'hui, avec ou sans compte (2026-11-27) : des APPAREILS distincts.
     const oj = d.ouvertures && typeof d.ouvertures.total === "number" ? d.ouvertures : null;
     $("ouverturesNombre").textContent = oj ? oj.total + (oj.tronque ? "+" : "") : "—";
-    $("ouverturesLibelle").textContent = oj && oj.total <= 1 ? "a ouvert l'app aujourd'hui" : "ont ouvert l'app aujourd'hui";
+    $("ouverturesLibelle").textContent = oj && oj.total <= 1 ? "a ouvert aujourd'hui" : "ont ouvert aujourd'hui";
     $("ouverturesJour").setAttribute("aria-label", (oj ? oj.total + (oj.tronque ? " au moins" : "") : "Nombre non lu :") + " appareils ont ouvert l'app aujourd'hui depuis minuit, avec ou sans compte, voir qui");
     // Les chiffres de la courbe d'abord : ils s'additionnent exactement au total.
     const semaine = ins && typeof ins.semaine === "number" ? ins.semaine : u ? u.inscritsSemaine : null;

@@ -746,7 +746,11 @@ test("ouvertures aujourd'hui (2026-11-27) : 3ᵉ nombre, toute ouverture avec ou
   await page.goto("/pilotage/");
   const o = page.locator("#ouverturesJour");
   await expect(page.locator("#ouverturesNombre")).toHaveText("3");
-  await expect(o).toContainText("ont ouvert l'app aujourd'hui");
+  await expect(o).toContainText("ont ouvert aujourd'hui");
+  const t = await page.locator("#totalUtilisateurs").boundingBox();
+  const ob = await o.boundingBox();
+  expect(ob.x, "à droite du total").toBeGreaterThanOrEqual(t.x + t.width);
+  expect(ob.y + ob.height, "à hauteur du total : rien ne descend sur la courbe, que le doigt lit").toBeLessThanOrEqual(t.y + t.height + 8);
   await expect(page.locator("#connectesNombre")).toHaveText("2");
   const b = await o.boundingBox();
   expect(b.x + b.width, "dans l'écran").toBeLessThanOrEqual(390);
