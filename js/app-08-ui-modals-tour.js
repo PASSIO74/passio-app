@@ -8751,9 +8751,6 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
 }
 async function _publierAvecEssais(post, maxRetries) {
   var _pmpCompte=passioMediaProteges.capture();
-  // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
-  // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
-  // pas regrouper les publications par passion. Même valeur, nom neutre.
   // ⚠️ `isReel`, PAS `is_reel` SEUL (2026-11-27). `is_reel` est le nom de la
   // COLONNE : tout objet qui arrive ici porte la forme LOCALE `isReel` (éditeur,
   // Studio, file de renvoi — même une ligne relue du serveur est re-mappée). Le
@@ -8761,6 +8758,9 @@ async function _publierAvecEssais(post, maxRetries) {
   // `publish_post`, et le contrat `publish_reel` ne jugeait rien. UN booléen, lu
   // aussi par l'INSERT plus bas : le libellé dit ce que la ligne écrit.
   var _estBobine = !!(post && (post.isReel || post.is_reel));
+  // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
+  // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
+  // pas regrouper les publications par passion. Même valeur, nom neutre.
   try { window.tel && tel.action(_estBobine ? "publish_reel" : "publish_post", { pid: post && post.passion, postId: post && post.id }); } catch (e) {}
   // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
   // via un « saved » explicite au VRAI résultat (l'upload + insert peut échouer/retry).

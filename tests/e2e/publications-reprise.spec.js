@@ -97,6 +97,13 @@ const ligneEcrite = (page, id) => page.evaluate((id) => (window.__ecrits.find((e
 // Un média DÉJÀ déposé (la réservation a abouti, l'insert non) : `envoyer` rend
 // sa référence sans rien redéposer — le banc n'a pas de dépôt, et n'en simule pas.
 const mediaDepose = (id) => ({ _pmpOwner: UID_MOI, _pmpReference: "https://media.passio.invalid/private-media/posts/" + id + "/11111111-1111-4111-8111-111111111111/original" });
+// ⑧ POSSÈDE SON RENVOI. Le démarrage arme un renvoi de toute la file à 6 s
+// (`_reprisePublicationsArmee`, app-08) : s'il part avant la lecture, la bobine
+// en échec repart, et la file porte deux `publish_reel` pour un seul geste.
+// Relevé par la relecture indépendante du 2026-11-27 : rouge sous un processeur
+// ralenti ×10, et à coup sûr quand la lecture a lieu après 6 s. ③ s'appuie
+// sur ce minuteur : la garde n'est posée que pour ⑧.
+const sansRepriseAuDemarrage = (page) => page.addInitScript(() => { window._reprisePublicationsArmee = true; });
 
 test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   test("① l'échec transitoire est écrit sur la publication et persisté", async ({ page }) => {
@@ -228,6 +235,7 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   // Studio, la file de renvoi. Le test était toujours faux, chaque bobine se
   // comptait `publish_post`, et le contrat `publish_reel` ne jugeait rien.
   test("⑧ une bobine publiée depuis l'éditeur se compte « publish_reel », action et flux", async ({ page }) => {
+    await sansRepriseAuDemarrage(page);
     await banc(page, TELEMETRIE);
     const b = await page.evaluate(async () => {
       // Le VRAI producteur : c'est sa forme d'objet qui est sous test.
@@ -255,6 +263,7 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
   });
 
   test("⑧ bis au renvoi : la bobine garde son libellé jusqu'au « saved », la ligne écrite est bien une bobine", async ({ page }) => {
+    await sansRepriseAuDemarrage(page);
     await banc(page, TELEMETRIE);
     const n = await page.evaluate(async (posts) => {
       posts.forEach((p) => state.userPosts.unshift(Object.assign(p, { syncStatus: "offline" })));

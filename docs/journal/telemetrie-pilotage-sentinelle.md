@@ -3142,11 +3142,20 @@ témoins : une vidéo ordinaire et le repartage d'une bobine restent `publish_po
 
 ⚠️ **Ce que ce lot NE prouve PAS.** Le défaut est établi **par lecture du code et par le banc**, pas
 par la production : mesuré le 2026-11-27 (canal ①), `posts` ne contient **aucune** bobine (8 lignes,
-toutes `is_reel = false`) et `telemetry_events` (7 219 lignes, du 20 au 27/11) ne porte ni
-`publish_post` ni `publish_reel` — la télémétrie brute ne vit que 3 jours. Aucun chiffre de
+toutes `is_reel = false`) et `telemetry_events` ne porte ni `publish_post` ni `publish_reel` — ses
+lignes `action` ne remontent qu'au 26/11 (la télémétrie brute ne vit que 3 jours ; seuls les
+échecs, 7, font remonter la table au 20/11). Aucun chiffre de
 production n'a donc été faussé qu'on puisse encore relire ; le premier `publish_reel` réel sera la
 preuve de bout en bout. Et ⑧ ne mesure pas le DÉPÔT du média (le banc n'en a pas : le flux de
 l'éditeur s'y ferme en échec) — le libellé part au début de l'envoi, avant tout dépôt.
+
+⚠️ **Le premier jet de ⑧ dépendait d'un minuteur qu'il ne possède pas** (relecture indépendante
+`audit-passio`, même jour, aucun P0/P1). Le démarrage arme un renvoi de toute la file à 6 s
+(`_reprisePublicationsArmee`, app-08) ; la bobine de ⑧, en échec faute de dépôt, est « offline »,
+et si le minuteur part avant la lecture la file porte DEUX `publish_reel` pour un geste. Rouge
+sous un processeur ralenti ×10, et à coup sûr quand la lecture a lieu après 6 s (mesuré :
+`Received: 2`). ⑧ et ⑧ bis posent `_reprisePublicationsArmee` avant le démarrage
+(`sansRepriseAuDemarrage`) ; ③, qui éprouve justement ce minuteur, ne la pose pas.
 
 **Règle : un objet local ne porte pas le nom d'une colonne (`isReel` ≠ `is_reel`) — un libellé de
 télémétrie se déduit du MÊME booléen que la ligne écrite, et un émetteur déclaré n'est prouvé que
