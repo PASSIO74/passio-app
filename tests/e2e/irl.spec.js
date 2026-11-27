@@ -555,6 +555,9 @@ test.describe("IRL — création, récurrence et vues", () => {
       { title: "Paris", lat: 48.8566, lng: 2.3522 },
       { title: "Marseille", lat: 43.2965, lng: 5.3698 },
     ]);
+    // 2026-11-27 (dossier ECR, sujet 103) : une distance ne filtre qu'autour
+    // d'un centre RÉEL — plus autour du repli Paris. Le centre est donc choisi.
+    await page.evaluate(() => { irlSelectedCity = { id: "paris", name: "Paris", coords: [48.8566, 2.3522] }; renderIRL(); });
     await page.evaluate(() => openIrlFiltersPanel());
     await page.locator("#irlFtabDist").click();
     await expect(page.locator("#irlPaneDist")).toHaveClass(/on/);

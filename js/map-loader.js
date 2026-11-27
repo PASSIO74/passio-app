@@ -104,6 +104,16 @@
       this._lineSeq = 0;
       this._popup = null;
       this._destroyed = false;
+      // Un geste de la personne (glisser, zoomer) annule le cadrage mémorisé
+      // (2026-11-27) : sinon le prochain `invalidateSize` le rejouait et le zoom
+      // choisi à la main était perdu. Les mouvements programmés n'ont pas
+      // d'`originalEvent` : ils ne l'annulent pas.
+      var self = this;
+      try {
+        var oublierCadrage = function (e) { if (e && e.originalEvent) self._lastFit = null; };
+        this._map.on("dragstart", oublierCadrage);
+        this._map.on("zoomstart", oublierCadrage);
+      } catch (e) {}
     }
 
     // Exécute `fn` dès que le style accepte des sources/couches.
@@ -127,6 +137,10 @@
     };
 
     MapShim.prototype.setView = function (latlng, zoom) {
+      // Un recentrage EXPLICITE remplace le cadrage mémorisé (2026-11-27) : sans
+      // ceci, « Autour de Bordeaux » recentrait la carte, et l'`invalidateSize`
+      // suivant la renvoyait 0 ms plus tard sur l'ancien fitBounds (Annecy).
+      this._lastFit = null;
       this._map.jumpTo({ center: toLngLat(latlng), zoom: typeof zoom === "number" ? toMlZoom(zoom) : this._map.getZoom() });
       return this; // chaînable : les appels font L.map(...).setView(...)
     };
@@ -136,9 +150,12 @@
       var pad = opts.padding;
       // Leaflet : padding [x, y] · MapLibre : un nombre ou {top,bottom,left,right}.
       var padding = Array.isArray(pad) ? { top: pad[1], bottom: pad[1], left: pad[0], right: pad[0] } : (pad || 20);
-      this._lastFit = { b: bounds._b, o: { padding: padding, maxZoom: toMlZoom(opts.maxZoom || 16), duration: 0 } };
+      this._lastFit = { b: bounds._b, o: { padding: padding, maxZoom: toMlZoom(opts.maxZoom || 16), duration: 0 }, taille: this._taille() };
       try { this._map.fitBounds(this._lastFit.b, this._lastFit.o); } catch (e) {}
       return this;
+    };
+    MapShim.prototype._taille = function () {
+      try { var c = this._map.getContainer(); return c.clientWidth + "x" + c.clientHeight; } catch (e) { return ""; }
     };
 
     // ⚠️ Recadre APRÈS le redimensionnement. Les cartes des modales sont créées
@@ -146,10 +163,18 @@
     // boîte trop petite et le fitBounds initial sortait dézoomé (Paris–Marseille
     // s'affichait à l'échelle du continent). Les appelants invoquent déjà
     // invalidateSize() une fois la modale peinte : on en profite.
+    // ⚠️ … mais SEULEMENT si la taille a changé depuis ce cadrage (2026-11-27).
+    // La carte de « Rencontrer » appelle invalidateSize à chaque rendu de la
+    // liste : le rejeu inconditionnel ramenait la carte au cadrage initial à
+    // chaque like, inscription ou recherche — le zoom manuel était perdu.
     MapShim.prototype.invalidateSize = function () {
       try {
         this._map.resize();
-        if (this._lastFit) this._map.fitBounds(this._lastFit.b, this._lastFit.o);
+        var t = this._taille();
+        if (this._lastFit && t !== this._lastFit.taille) {
+          this._lastFit.taille = t;
+          this._map.fitBounds(this._lastFit.b, this._lastFit.o);
+        }
       } catch (e) {}
       return this;
     };
@@ -308,15 +333,24 @@
     if (window.L && window.maplibregl) return Promise.resolve();
     if (!window.passioMapSupported()) return Promise.reject(new Error("WebGL indisponible"));
     if (window._mapLoading) return window._mapLoading;
+    // ⚠️ Un échec de chargement n'est pas définitif (2026-11-27) : la promesse
+    // rejetée restait dans `_mapLoading` et tout appel suivant la rendait telle
+    // quelle — une coupure d'une seconde dans le métro privait de carte jusqu'au
+    // rechargement. On l'oublie, et la balise fautive part avec elle.
+    var echouer = function (s, reject, e) {
+      window._mapLoading = null;
+      try { if (s && s.parentNode) s.parentNode.removeChild(s); } catch (x) {}
+      reject(e || new Error("chargement de la carte impossible"));
+    };
     window._mapLoading = new Promise(function (resolve, reject) {
       loadCss();
       var s = document.createElement("script");
       s.src = MAPLIBRE_JS;
       s.onload = function () {
         try { buildShim(); resolve(); }
-        catch (e) { reject(e); }
+        catch (e) { echouer(s, reject, e); }
       };
-      s.onerror = reject;
+      s.onerror = function (e) { echouer(s, reject, e); };
       document.head.appendChild(s);
     });
     return window._mapLoading;

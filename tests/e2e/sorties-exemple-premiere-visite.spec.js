@@ -21,7 +21,7 @@ async function ouvrirSorties(page, autres = []) {
     const from = supa.from.bind(supa);
     supa.from = table => {
       if (table !== "events") return from(table);
-      const q = { select: () => q, order: () => q, limit: () => window.reponseCatalogue };
+      const q = { select: () => q, order: () => q, gte: () => q, lt: () => q, limit: () => window.reponseCatalogue };
       return q;
     };
     window._supaReal = true;

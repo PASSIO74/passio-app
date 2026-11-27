@@ -27,8 +27,11 @@ async function banc(page, { compte, rpc, repli }) {
     window.supaLireParticipants = async () => ({ attByEvent: {}, maybeByEvent: {}, waitByEvent: {}, checkedByEvent: {}, countsByEvent: {} });
     window.supa.from = (table) => {
       const q = { __cols: "" };
-      ["order", "limit", "in", "eq", "not", "or", "maybeSingle", "single"].forEach((m) => { q[m] = () => q; });
-      q.select = (cols) => { q.__cols = String(cols || ""); window.__lectures.push({ table, cols: q.__cols }); return q; };
+      ["order", "limit", "in", "eq", "not", "or", "maybeSingle", "single", "gte"].forEach((m) => { q[m] = () => q; });
+      q.select = (cols) => { q.__cols = String(cols || ""); q.__lecture = { table, cols: q.__cols }; window.__lectures.push(q.__lecture); return q; };
+      // 2026-11-27 (dossier ECR, sujet 105) : le catalogue lit aussi, à part, les sorties
+      // terminées depuis 30 jours (`date_at < …`) ; marquée, cette lecture n'est pas comptée.
+      q.lt = () => { if (q.__lecture) q.__lecture.recentes = true; return q; };
       q.then = (ok, ko) => {
         const r = table === "events" && q.__cols === "id,address,contact" ? repli : { data: table === "events" ? [ligne] : [], error: null };
         return Promise.resolve(r).then(ok, ko);
@@ -48,7 +51,7 @@ const charger = (page) => page.evaluate(async () => {
   const evs = await supaLoadEvents();
   return {
     ev: evs[0] ? { address: evs[0].address, contact: evs[0].contact, inconnue: evs[0]._adresseInconnue } : null,
-    colonnes: window.__lectures.filter((l) => l.table === "events").map((l) => l.cols),
+    colonnes: window.__lectures.filter((l) => l.table === "events" && !l.recentes).map((l) => l.cols),
     rpc: window.__rpc.filter((r) => r.nom === "adresses_activites").map((r) => r.args.p_event_ids),
   };
 });

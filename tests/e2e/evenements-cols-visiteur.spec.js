@@ -139,13 +139,18 @@ async function banc(page, { compte, plan }) {
     };
     const requete = (table) => {
       const q = { __cols: "" };
-      ["order", "limit", "in", "eq", "not", "maybeSingle", "single"]
+      ["order", "limit", "in", "eq", "not", "maybeSingle", "single", "gte"]
         .forEach((m) => { q[m] = () => q; });
       q.select = (cols) => {
         q.__cols = String(cols || "");
-        window.__lectures.push({ table: table, cols: q.__cols });
+        q.__lecture = { table: table, cols: q.__cols };
+        window.__lectures.push(q.__lecture);
         return q;
       };
+      // 2026-11-27 (dossier ECR, sujet 105) : le catalogue lit aussi, à part, les
+      // sorties terminées depuis 30 jours (`date_at < …`). Cette seconde lecture
+      // est marquée : les cas ci-dessous comptent les demandes du CATALOGUE.
+      q.lt = () => { if (q.__lecture) q.__lecture.recentes = true; return q; };
       q.then = (ok, ko) => Promise.resolve(projeter(reponse(table), q.__cols)).then(ok, ko);
       return q;
     };
@@ -171,7 +176,7 @@ async function banc(page, { compte, plan }) {
 }
 
 const lecturesEvents = (page) => page.evaluate(() =>
-  window.__lectures.filter((l) => l.table === "events").map((l) => l.cols));
+  window.__lectures.filter((l) => l.table === "events" && !l.recentes).map((l) => l.cols));
 
 test.describe("events : les colonnes privées ne partent qu'avec un compte", () => {
   test("⓪ source — le choix des colonnes et le repli passent par la même autorité", () => {

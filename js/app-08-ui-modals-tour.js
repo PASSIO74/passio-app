@@ -11185,16 +11185,32 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
   // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
   if (authorId && !/^[A-Za-z0-9_-]+$/.test(String(authorId))) return [];
   try {
-    const lire = (cols) => {
+    // ⚠️ LE CATALOGUE, CE SONT LES PROCHAINES SORTIES, PAS LES 60 DERNIÈRES
+    // CRÉÉES (2026-11-27). Coupé par date de CRÉATION, il perdait une sortie
+    // publiée tôt dès que 60 autres étaient créées après elle — passées,
+    // annulées, ou cinq séries de 12 : un appareil neuf ne la voyait jamais.
+    // Lecture ① : ce qui n'est pas fini (un jour de marge : en cours, tout juste
+    // fini), le plus proche d'abord. Lecture ② (`recentes`), à part et bornée :
+    // les sorties terminées depuis 30 jours au plus — pointage, avis et notes
+    // de la fiche s'en servent, et elles ne prennent plus la place des sorties à
+    // venir. Le profil (`authorId`) et les lectures par id ne changent pas.
+    const listeCatalogue = eventId == null && !authorId;
+    const borneVenir = new Date(Date.now() - 86400000).toISOString();
+    const lire = (cols, recentes) => {
       let q = supa.from("events").select(cols);
       if (eventId != null) return q.eq("id", eventId).limit(1);
-      if (authorId) q = q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId);
-      return q.order("created_at", { ascending: false }).limit(60);
+      if (authorId) return q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId)
+        .order("created_at", { ascending: false }).limit(60);
+      if (recentes) return q.lt("date_at", borneVenir).gte("date_at", new Date(Date.now() - 30 * 86400000).toISOString())
+        .order("date_at", { ascending: false }).order("id", { ascending: true }).limit(30);
+      return q.gte("date_at", borneVenir)
+        .order("date_at", { ascending: true }).order("id", { ascending: true }).limit(60);
     };
     // ⚠️ Sans compte, la demande privée est refusée à COUP SÛR (401) : on ne la
     // fait plus partir du tout. Voir `_compteAuthReel` plus haut.
     const prive = !_eventColsPubliquesSeulement && _compteAuthReel();
-    let { data, error } = await lire(prive ? _EVENT_COLS_PRIVE : _EVENT_COLS_PUBLIC);
+    let colsLues = prive ? _EVENT_COLS_PRIVE : _EVENT_COLS_PUBLIC;
+    let { data, error } = await lire(colsLues);
     // Refus portant sur les colonnes privées : le compte a un uuid mais plus de
     // session utilisable. On retombe sur la liste publique — la correspondance
     // plus bas rend déjà `address` et `contact` à la chaîne vide quand elles
@@ -11208,7 +11224,8 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       // adresse, contact et conv_id pour toute la session — la relance suivante
       // aurait suffi. Le repli public, lui, s'applique quoi qu'il arrive.
       if (_refusDeDroit(error)) _eventColsPubliquesSeulement = true;
-      ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
+      colsLues = _EVENT_COLS_PUBLIC;
+      ({ data, error } = await lire(colsLues));
     }
     if (error) {
       if (eventId != null || signalerErreur) throw error;
@@ -11216,6 +11233,17 @@ async function supaLoadEvents(authorId, eventId, signalerErreur = false) {
       return [];
     }
     const rows = data || [];
+    if (listeCatalogue) {
+      // Lecture ② : mêmes colonnes que celles que la ① a obtenues. Son échec
+      // n'efface pas la ① — on perd seulement les sorties terminées.
+      try {
+        const r2 = await lire(colsLues, true);
+        if (!r2.error && Array.isArray(r2.data)) {
+          const vus = new Set(rows.map(r => r.id));
+          r2.data.forEach(r => { if (!vus.has(r.id)) rows.push(r); });
+        } else if (r2.error) console.warn("supaLoadEvents (récentes):", r2.error.message);
+      } catch (e) { console.warn("supaLoadEvents (récentes):", e && e.message); }
+    }
     const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
@@ -11341,6 +11369,20 @@ function lectureListeSortiesConfirmee() {
     _lectureListeSorties.etat === state && _lectureListeSorties.compte === MY_UID;
 }
 
+// Avis « liste peut-être pas à jour » (2026-11-27) : posé en tête de la liste
+// quand la dernière lecture a échoué, l'écran étant affiché et le réseau
+// annoncé présent ; reposé par `renderIRL` tant que l'échec dure. Pas de toast :
+// la relecture part aussi au retour au premier plan, il se répéterait.
+let _lectureSortiesEnEchec = false;
+function avisLectureSortiesEchec() {
+  const liste = document.getElementById("eventList");
+  if (!_lectureSortiesEnEchec || !liste || navigator.onLine === false || !_irlEcranVisible()) return;
+  if (liste.querySelector("#irlAvisLecture")) return;
+  liste.insertAdjacentHTML("afterbegin",
+    '<div class="irl-avis-exemples" id="irlAvisLecture" role="status"><p>La liste n\'a pas pu être mise à jour.</p>'
+    + '<button type="button" class="btn ghost" onclick="rafraichirEvenements(true)">Réessayer</button></div>');
+}
+
 function retirerAvisSortiesExemples() {
   _lectureListeSorties = null;
   document.getElementById("irlAvisExemples")?.remove();
@@ -11374,6 +11416,8 @@ async function rafraichirEvenements(force, apresLecture) {
     catch (e) { if (typeof diagLog === "function") diagLog("mes réponses : relecture — " + (e && e.message)); }
     if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     _lectureListeSorties = lecture;
+    _lectureSortiesEnEchec = false;
+    document.getElementById("irlAvisLecture")?.remove();
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     const irl = document.getElementById("screen-irl");
     if (irl && irl.classList.contains("active")) {
@@ -11391,6 +11435,15 @@ async function rafraichirEvenements(force, apresLecture) {
     return change;
   } catch (e) {
     if (typeof diagLog === "function") diagLog("rafraichir_evenements " + (e && e.message));
+    // ⚠️ UN ÉCHEC NE SE TAIT PLUS (2026-11-27). La liste gardait son cache (ou
+    // les seuls exemples, sans même leur avis) sans rien dire, et l'horodatage
+    // posé AVANT la lecture interdisait toute relecture pendant 60 s. On relit
+    // à la prochaine entrée, et l'écran le dit, avec de quoi réessayer.
+    if (lecture.etat === state && lecture.compte === MY_UID) {
+      _evenementsLusA = 0;
+      _lectureSortiesEnEchec = true;
+      avisLectureSortiesEchec();
+    }
     return false;
   } finally {
     _evenementsLectureEnVol = false;
