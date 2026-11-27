@@ -14425,3 +14425,60 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 .me-publier-ligne #mePublishBtn { flex: 1 1 auto; min-width: 0; }
 .me-publier-ligne .me-publier-proches { flex: 0 0 auto; margin-top: 0; }
 .me-publier-ligne .me-amis-proches-lien { flex: 0 0 44px; width: 44px; min-height: 44px; margin: 0; border-radius: 50%; background: rgba(255,255,255,0.16); color: #fff; text-decoration: none; font-size: 18px; }
+
+
+/* ── ✂️ MONTAGE VIDÉO (2026-11-26) — story ET bobine ── */
+.me-tool-montage { display: none; }
+.media-editor.phase-edit.me-video:not(.me-fond) .me-tool-montage { display: inline-flex; }
+.media-editor.me-montage .me-topbar,
+.media-editor.me-montage .me-toolbar,
+.media-editor.me-montage .me-bottom,
+.media-editor.me-montage .me-preview-ctrls,
+.media-editor.me-montage .me-play-overlay,
+.media-editor.me-montage .me-overlays,
+.media-editor.me-montage .me-dessin-couche,
+.media-editor.me-montage .me-filtres { visibility: hidden; }
+.me-montage-barre {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 40; display: none;
+  flex-direction: column; justify-content: space-between;
+  padding: calc(env(safe-area-inset-top) + 10px) 0 calc(env(safe-area-inset-bottom) + 22px);
+  background: linear-gradient(rgba(0,0,0,0.5), transparent 22%, transparent 64%, rgba(0,0,0,0.72));
+  pointer-events: none; color: #fff;
+}
+.media-editor.me-montage .me-montage-barre { display: flex; }
+.me-montage-barre > * { pointer-events: auto; }
+.me-mt-titre { flex: 1; text-align: center; font-weight: 800; font-size: 15px; }
+.me-te-ok:disabled { opacity: 0.45; }
+.me-mt-piste {
+  position: relative; height: 64px; margin: 0 26px; border-radius: 10px;
+  background: rgba(255,255,255,0.14); touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.me-mt-vignettes { position: absolute; inset: 0; display: flex; overflow: hidden; border-radius: 10px; }
+.me-mt-vignettes img { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; }
+.me-mt-ombre { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,0.62); pointer-events: none; }
+.me-mt-ombre-g { left: 0; border-radius: 10px 0 0 10px; }
+.me-mt-ombre-d { right: 0; border-radius: 0 10px 10px 0; }
+.me-mt-cadre {
+  position: absolute; top: -3px; bottom: -3px; box-sizing: border-box;
+  border: 3px solid #fff; border-radius: 8px; cursor: grab; touch-action: none;
+}
+.me-mt-tete {
+  position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1.5px;
+  background: #facc15; border-radius: 2px; pointer-events: none; box-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+/* Poignées : 44 px de cible tactile (la barre visible fait 14 px). */
+.me-mt-poignee {
+  position: absolute; top: -10px; bottom: -10px; width: 44px; margin-left: -22px;
+  border: 0; padding: 0; background: transparent; cursor: ew-resize; touch-action: none;
+}
+.me-mt-poignee::before {
+  content: ""; position: absolute; top: 8px; bottom: 8px; left: 15px; width: 14px;
+  background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,0.45);
+}
+.me-mt-poignee::after {
+  content: ""; position: absolute; top: 50%; left: 21px; width: 2px; height: 18px; margin-top: -9px;
+  background: #7c3aed; border-radius: 1px;
+}
+.me-mt-poignee:focus-visible::before { outline: 3px solid #facc15; outline-offset: 1px; }
+.me-mt-infos { text-align: center; font-size: 13px; font-weight: 700; margin-top: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.me-mt-bas { display: flex; flex-direction: column; }

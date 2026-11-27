@@ -4941,14 +4941,16 @@ function closeCurrentOverlay() {
   // outil (texte gardé, comme Instagram) et repose l'entrée de l'éditeur — il
   // fermait tout l'éditeur, texte en cours perdu.
   if (editeurMedia && editeurMedia.classList.contains("open")
-      && (editeurMedia.classList.contains("me-texte-ouvert") || editeurMedia.classList.contains("me-dessin"))) {
+      && (editeurMedia.classList.contains("me-texte-ouvert") || editeurMedia.classList.contains("me-dessin") || editeurMedia.classList.contains("me-montage"))) {
     try {
       if (editeurMedia.classList.contains("me-texte-ouvert") && typeof meFermerEditeurTexte === "function") meFermerEditeurTexte(true);
       if (editeurMedia.classList.contains("me-dessin") && typeof meFermerDessin === "function") meFermerDessin();
+      // ✂️ Montage (2026-11-26) : le retour ANNULE le montage, l'éditeur reste.
+      if (editeurMedia.classList.contains("me-montage") && typeof meFermerMontage === "function") meFermerMontage(false);
     } catch (e) { try { console.warn("[nav] fermeture d'un outil de l'éditeur:", e); } catch (e2) {} }
     // L'outil est-il VRAIMENT fermé ? Sinon on retombe sur la fermeture de
     // l'éditeur entier plus bas, au lieu de reboucler sur cette branche à chaque retour.
-    if (!editeurMedia.classList.contains("me-texte-ouvert") && !editeurMedia.classList.contains("me-dessin")) {
+    if (!editeurMedia.classList.contains("me-texte-ouvert") && !editeurMedia.classList.contains("me-dessin") && !editeurMedia.classList.contains("me-montage")) {
       if (pushHistorySafe({ overlay: "media", passioOverlay: true }, "#media")) _navOverlayDepth++;
       return true;
     }

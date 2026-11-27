@@ -943,8 +943,10 @@ function meOpen(mode) {
   // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
   // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
   if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
-  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0 };
+  _meMontageDemonter();
+  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0, source: null, montage: null };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  ed.classList.remove("me-video", "me-montage");
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
   _meDessinRendre();
@@ -990,7 +992,9 @@ function meClose() {
   meFermerDessin();
   _meMusiqueArreter();
   var _pst = document.getElementById("meStickerPanel"); if (_pst) _pst.remove();
-  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts"); ed.setAttribute("aria-hidden", "true"); }
+  _meMontageDemonter();
+  meState.source = null; meState.montage = null;
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-video", "me-montage"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
@@ -1002,12 +1006,16 @@ function meClose() {
 function meTopBack() {
   var ed = document.getElementById("mediaEditor");
   if (ed && ed.classList.contains("me-texte-ouvert")) { meFermerEditeurTexte(true); return; }
+  if (ed && ed.classList.contains("me-montage")) { meFermerMontage(false); return; }
   if (ed && ed.classList.contains("phase-edit")) { meBackToCapture(); return; }
   meClose();
 }
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  _meMontageDemonter();
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
+  meState.source = null; meState.montage = null;
+  ed.classList.remove("me-video");
   _meMusiqueArreter();
   meFermerDessin(); _meDessinRendre();
   _meRemoveVideoControls();
@@ -1183,7 +1191,9 @@ function _meOnRecordingStop() {
   }
   // Toujours afficher l'aperçu (phase édition) avant publication.
   var r = new FileReader();
-  r.onload = function() { meSetMedia(r.result, "video"); };
+  // La SOURCE est gardée pour ✂️ (durée mesurée : MediaRecorder annonce souvent
+  // une durée infinie).
+  r.onload = function() { meSetMedia(r.result, "video"); meState.source = { blob: blob, duree: dur / 1000, origine: "camera" }; meState.montage = null; };
   r.onerror = function() { toast("Impossible de lire la vidéo"); };
   r.readAsDataURL(blob);
 }
@@ -1239,7 +1249,9 @@ function meCycleBg() {
   if (meState.mode === "bobine") return;
   var ed = document.getElementById("mediaEditor");
   if (ed && ed.classList.contains("phase-edit") && ed.classList.contains("me-fond")) { meChangerFond(); return; }
-  meState.media = null; meState.mediaType = null;
+  _meMontageDemonter();
+  meState.media = null; meState.mediaType = null; meState.source = null; meState.montage = null;
+  if (ed) ed.classList.remove("me-video");
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
@@ -1339,15 +1351,26 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
     video.onerror = function() { cleanup(); reject(new Error("video load failed")); };
     video.onloadedmetadata = function() {
       var dur = video.duration;
+      // Une vidéo FILMÉE dans l'app (MediaRecorder) annonce souvent une durée
+      // infinie : l'appelant qui la connaît (durée d'enregistrement) la passe.
+      if (!isFinite(dur) || dur <= 0) dur = Number(ctl.dureeConnue) || NaN;
       if (!isFinite(dur) || dur <= 0) { cleanup(); reject(new Error("bad duration")); return; }
       // ⚠️ UNE VIDÉO LONGUE SE COUPE, ELLE NE SE REFUSE PLUS (2026-11-22). La
       // garde `dur > 65 → reject("too long")` faisait de TOUTE vidéo de
       // galerie de plus d'une minute un refus — mesuré : une testeuse iPhone,
       // vidéo de 34 Mo, refusée deux fois de suite. On encode les
       // VIDEO_DUREE_MAX premières secondes (comme une story ailleurs).
+      // MONTAGE (2026-11-26) : `ctl.debut` / `ctl.fin` (secondes) choisissent le
+      // passage encodé — c'est le ✂️ de l'éditeur ; la borne VIDEO_DUREE_MAX
+      // s'applique au PASSAGE, pas à la vidéo source.
       var durMax = ctl.dureeMax || 60;
-      var coupee = dur > durMax + 0.5;
-      var durEff = coupee ? durMax : dur;
+      var debut = Math.max(0, Math.min(Number(ctl.debut) || 0, dur - 0.2));
+      var fin = (Number(ctl.fin) > debut) ? Math.min(Number(ctl.fin), dur) : dur;
+      var coupee = (fin - debut) > durMax + 0.5;
+      if (coupee) fin = debut + durMax;
+      var durEff = fin - debut;
+      var arretA = (fin < dur - 0.05) ? fin : 0;   // 0 : jusqu'à la fin naturelle
+      var sansSon = !!ctl.sansSon;                 // « Son d'origine » coupé au montage
       var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
       // H.264 attend des dimensions paires : 1920×1080 ramené à 720 donnerait
       // sinon 720×405, refusé par certains encodeurs matériels.
@@ -1364,7 +1387,10 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
       // le gain de l'élément s'applique au graphe, il faut volume=1 non-muet.
       // L'ancien video.captureStream() perdait le son (piste absente avant play
       // sur certains navigateurs, ou muette à cause de volume=0).
-      try {
+      // Sans son (montage) : aucune piste audio, élément muet — iOS lit alors
+      // sans exiger de toucher.
+      if (sansSon) { video.muted = true; }
+      else try {
         var AC = window.AudioContext || window.webkitAudioContext;
         if (AC) {
           actx = new AC();
@@ -1377,7 +1403,7 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
           try { actx.resume(); } catch (e) {}
         }
       } catch (e) { actx = null; }
-      if (!actx) {
+      if (!actx && !sansSon) {
         // Repli historique (pas d'AudioContext — quasi inexistant en pratique).
         try {
           var vstream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
@@ -1404,8 +1430,8 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
       };
       function draw() {
         try { ctx.drawImage(video, 0, 0, w, h); } catch (e) {}
-        if (onProgress) onProgress(Math.min(1, video.currentTime / durEff));
-        if (coupee && video.currentTime >= durEff) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} return; }
+        if (onProgress) onProgress(Math.max(0, Math.min(1, (video.currentTime - debut) / durEff)));
+        if (arretA && video.currentTime >= arretA) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} return; }
         if (!video.ended) raf = requestAnimationFrame(draw);
       }
       video.onended = function() { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} };
@@ -1415,7 +1441,11 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
       // fichier, suivi d'`await`, n'est plus un geste. Au lieu de rejeter, on
       // demande UN toucher (`ctl.demanderGeste`) et on relance DANS ce geste —
       // muter la vidéo aurait publié une vidéo sans son.
+      // Abandon posé par `echec` : un `seeked` (ou son délai de 4 s) qui arrive
+      // APRÈS l'annulation ne doit pas démarrer un encodage fantôme.
+      var abandonne = false;
       function lancer() {
+        if (abandonne) return Promise.resolve();
         try { if (actx && actx.state === "suspended") actx.resume(); } catch (_) {}
         var p = video.play();
         if (!p || !p.then) { demarrer(); return Promise.resolve(); }
@@ -1423,17 +1453,34 @@ function passioCompressVideo(file, opts, onProgress, ctl) {
       }
       var demarre = false;
       function demarrer() {
-        if (demarre) return; demarre = true;
+        if (demarre || abandonne) return; demarre = true;
         try { rec.start(); } catch (e) { try { video.pause(); } catch (_) {} cleanup(); reject(e); return; }
         if (ctl.surDemarrage) { try { ctl.surDemarrage(durEff); } catch (_) {} }
         draw();
       }
-      function echec(e) { try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} cleanup(); reject(e); }
+      function echec(e) { abandonne = true; try { video.pause(); } catch (_) {} try { if (rec.state !== "inactive") rec.stop(); } catch (_) {} cleanup(); reject(e); }
       // L'appelant qui renonce (annulation, expiration) LIBÈRE tout : sinon
       // l'AudioContext survit, et iOS en plafonne le nombre — la vidéo suivante
       // partirait sans son.
       if (ctl.abandon) ctl.abandon(function () { cancelAnimationFrame(raf); echec(new Error("abandon")); });
-      lancer().catch(function(e) {
+      // Début du passage (montage) : on se place AVANT de lire. Un appareil qui
+      // ne sait pas s'y placer (vidéo filmée sans index) refuse le montage —
+      // jamais un passage encodé depuis 0 s présenté comme celui choisi.
+      function seDeplacer() {
+        if (debut < 0.05) return Promise.resolve();
+        return new Promise(function (res, rej) {
+          var fini = false;
+          var conclure = function () {
+            if (fini) return; fini = true;
+            video.removeEventListener("seeked", conclure);
+            if (Math.abs(video.currentTime - debut) > 0.75) rej(new Error("seek impossible")); else res();
+          };
+          video.addEventListener("seeked", conclure);
+          setTimeout(conclure, 4000);
+          try { video.currentTime = debut; } catch (e) { conclure(); }
+        });
+      }
+      seDeplacer().then(lancer).catch(function(e) {
         if (e && e.name === "NotAllowedError" && typeof ctl.demanderGeste === "function") {
           ctl.demanderGeste(function () { lancer().catch(echec); });
         } else echec(e);
@@ -1487,7 +1534,7 @@ function retourVideoPreparee(file, dataUrl, issue) {
   return dataUrl;
 }
 
-async function passioVideoPourEnvoi(file) {
+async function passioVideoPourEnvoi(file, montage) {
   var mo = Math.round((file.size || 0) / 1048576);
   // Un webm n'est pas lisible sur iPhone : si le navigateur sait encoder en mp4,
   // on CONVERTIT même un petit fichier (le ré-encodage sert alors de transcodage
@@ -1495,7 +1542,12 @@ async function passioVideoPourEnvoi(file) {
   var _isWebm = /webm/i.test(file.type || file.name || "");
   var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
   var transcodageRequis = _isWebm && _canMp4;
-  if (file.size <= VIDEO_COMPRESSER_AU_DELA && !transcodageRequis) return retourVideoPreparee(file, await _meReadFile(file), "original");
+  // MONTAGE (✂️ de l'éditeur, 2026-11-26) : `montage` = { debut, fin, sansSon,
+  // dureeConnue }. Un passage choisi ou un son coupé IMPOSE l'encodage : ni le
+  // raccourci « petit fichier », ni l'original « plus léger », ni le repli brut
+  // ne peuvent rendre la vidéo entière à la place du passage choisi.
+  var avecMontage = !!(montage && ((Number(montage.debut) > 0.05) || Number(montage.fin) > 0 || montage.sansSon));
+  if (file.size <= VIDEO_COMPRESSER_AU_DELA && !transcodageRequis && !avecMontage) return retourVideoPreparee(file, await _meReadFile(file), "original");
   if (file.size > VIDEO_PLAFOND_DUR) {
     throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo plus légère.");
   }
@@ -1503,7 +1555,7 @@ async function passioVideoPourEnvoi(file) {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
     var _annuler;
     var _annulation = new Promise(function (_r, rej) { _annuler = function () { var e = _erreurVideo("Préparation annulée."); e.annulee = true; rej(e); }; });
-    _meShowProgress("Optimisation de la vidéo…", function () { _annuler(); });
+    _meShowProgress(avecMontage ? "Montage de la vidéo…" : "Optimisation de la vidéo…", function () { _annuler(); });
     // ⚠️ `passioCompressVideo` PEUT NE JAMAIS SE RÉGLER, et l'overlay ne se
     // retire que sur une sortie. Sa boucle de dessin est un `requestAnimationFrame`
     // et elle ne conclut que sur `video.onended` : une page passée en arrière-plan
@@ -1527,6 +1579,10 @@ async function passioVideoPourEnvoi(file) {
     var dataUrl = await Promise.race([
       passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress, {
         dureeMax: VIDEO_DUREE_MAX,
+        debut: avecMontage ? Number(montage.debut) || 0 : 0,
+        fin: avecMontage ? Number(montage.fin) || 0 : 0,
+        sansSon: !!(avecMontage && montage.sansSon),
+        dureeConnue: montage ? Number(montage.dureeConnue) || 0 : 0,
         surCoupe: function (s) { _coupeA = s; },
         surDemarrage: function (d) { _armer(Math.max(VIDEO_COMPRESSION_DELAI_MAX, Math.round(d * 1000) + 45000)); },
         abandon: function (f) { _abandonner = f; },
@@ -1545,6 +1601,7 @@ async function passioVideoPourEnvoi(file) {
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
     // Réencoder une source déjà efficace peut la grossir. Garder l'original,
     // sauf conversion WebM→MP4 nécessaire à la compatibilité iPhone.
+    if (avecMontage) return retourVideoPreparee(file, dataUrl, "montage");
     if (_coupeA) { try { toast("Vidéo coupée aux " + _coupeA + " premières secondes"); } catch (_) {} }
     else if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
       return retourVideoPreparee(file, await _meReadFile(file), "original_plus_petit");
@@ -1564,6 +1621,12 @@ async function passioVideoPourEnvoi(file) {
     if (e && e.annulee) throw e;
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
+    // Un MONTAGE n'a pas de repli brut : la vidéo entière n'est pas le passage choisi.
+    // Une préparation sans verdict, c'est le plus souvent l'app passée en
+    // arrière-plan (la lecture s'y suspend) : on le dit, l'appareil sait encoder.
+    if (avecMontage) throw _erreurVideo((e && e.message === "compression-sans-verdict")
+      ? "Montage interrompu — garde l'app ouverte pendant la préparation, puis réessaie."
+      : "Montage impossible sur cet appareil — ta vidéo n'a pas été modifiée.");
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
     // Une vidéo longue n'est plus un motif de refus (coupée à VIDEO_DUREE_MAX,
     // 2026-11-22) : ici, c'est l'appareil qui n'a pas su l'encoder.
@@ -1593,7 +1656,22 @@ async function meOnMedia(ev) {
     // Seuils, transcodage webm→mp4 et repli brut : `passioVideoPourEnvoi`, la
     // seule autorité, partagée avec la porte du Studio (#videoInput, app-06).
     if (isVideo) {
+      // ✂️ Une vidéo de galerie plus longue que la durée maximale : on CHOISIT
+      // le passage avant d'encoder (il était coupé d'office à ses 60 premières
+      // secondes). Durée illisible : chemin historique, coupe au début.
+      var duree = await _meDureeFichier(file);
+      // Appareil sans encodeur, ou fichier au-delà du garde-fou mémoire : le
+      // montage n'aboutirait pas — chemin historique (coupe au début, repli brut).
+      var peutMonter = !!(window.MediaRecorder && window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream) && file.size <= VIDEO_PLAFOND_DUR;
+      if (peutMonter && duree > VIDEO_DUREE_MAX + 0.5) {
+        meOuvrirMontage({ importation: true, source: { blob: file, duree: duree, origine: "fichier" } });
+        return;
+      }
       dataUrl = await passioVideoPourEnvoi(file);
+      meSetMedia(dataUrl, "video");
+      meState.source = { blob: file, duree: duree, origine: "fichier" };
+      meState.montage = null;
+      return;
     } else {
       try { dataUrl = await window.passioCompressImage(file, 1280, 0.85); } catch (e) { dataUrl = await _meReadFile(file); }
     }
@@ -1605,7 +1683,9 @@ async function meOnMedia(ev) {
 }
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;
-  try { var _edM = document.getElementById("mediaEditor"); if (_edM) _edM.classList.remove("me-fond"); } catch (e) {}
+  // ✂️ n'existe que pour une vidéo ; une photo n'a ni source vidéo ni montage.
+  if (type !== "video") { meState.source = null; meState.montage = null; }
+  try { var _edM = document.getElementById("mediaEditor"); if (_edM) { _edM.classList.remove("me-fond"); _edM.classList.toggle("me-video", type === "video"); } } catch (e) {}
   _meRemoveVideoControls(); // nettoie d'éventuels contrôles de la vidéo précédente
   _meRevokePreviewUrl();    // libère l'éventuel blob: de l'aperçu précédent
   var box = document.getElementById("meMedia");
@@ -1705,6 +1785,316 @@ function _meSetupVideoPreviewControls(video) {
   canvas.appendChild(bar);
   syncPlay(); syncSound();
 }
+// ════════════════════════════════════════════════════════════════════════
+// ✂️ MONTAGE VIDÉO DANS L'APP (2026-11-26) — story ET bobine.
+// « La possibilité de télécharger des vidéos et de les modifier direct dans
+// l'app » (Benjamin). Une vidéo importée de plus d'une minute était coupée
+// d'office à ses 60 PREMIÈRES secondes, sans choix ; aucune vidéo ne pouvait
+// être raccourcie ni rendue muette. Désormais :
+//   · le bouton ✂️ (vidéo seulement) ouvre une piste : vignettes, poignées
+//     début/fin, cadre glissable, aperçu qui boucle sur le passage, son on/off ;
+//   · une vidéo de galerie trop longue ouvre CETTE piste avant tout encodage,
+//     pour choisir LA minute qu'on garde.
+// Le passage est ENCODÉ pour de vrai (`passioVideoPourEnvoi(source, montage)`,
+// la seule autorité de préparation) : la vidéo publiée est le passage choisi,
+// lisible par tous les clients, anciens compris — pas une consigne d'affichage.
+// La SOURCE (fichier choisi ou enregistrement caméra) est gardée dans
+// `meState.source` : on peut rouvrir ✂️, rallonger le passage ou rendre le son,
+// sans ré-encoder une vidéo déjà encodée.
+// ════════════════════════════════════════════════════════════════════════
+var ME_MONTAGE_MIN = 1;          // secondes : passage le plus court
+var ME_MONTAGE_VIGNETTES = 8;
+var meMontage = null;            // { source, importation, duree, debut, fin, sansSon, video, url }
+function _meFmtDuree(s) {
+  s = Math.max(0, Math.round(Number(s) || 0));
+  return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+}
+// Durée FIABLE d'un <video> : une vidéo filmée par MediaRecorder annonce souvent
+// `Infinity` tant qu'on ne l'a pas parcourue. `connue` (durée d'enregistrement)
+// sert alors ; sinon on force le calcul en visant très loin. Rend 0 si illisible.
+function _meDureeVideo(v, connue) {
+  return new Promise(function (res) {
+    var fini = false;
+    function ok(d) { if (fini) return; fini = true; res(Number(d) > 0 && isFinite(d) ? d : 0); }
+    function lire() { var d = v.duration; if (isFinite(d) && d > 0) { ok(d); return true; } return false; }
+    function surMeta() {
+      if (lire()) return;
+      if (Number(connue) > 0) { ok(connue); return; }
+      var t = function () {
+        if (!(isFinite(v.duration) && v.duration > 0)) return;
+        v.removeEventListener("durationchange", t);
+        var d = v.duration; try { v.currentTime = 0; } catch (e) {} ok(d);
+      };
+      v.addEventListener("durationchange", t);
+      try { v.currentTime = 1e7; } catch (e) {}
+    }
+    if (v.readyState >= 1) surMeta(); else v.addEventListener("loadedmetadata", surMeta, { once: true });
+    v.addEventListener("error", function () { ok(connue || 0); }, { once: true });
+    setTimeout(function () { ok(connue || 0); }, 8000);
+  });
+}
+function _meDureeFichier(blob) {
+  return new Promise(function (res) {
+    var url; try { url = URL.createObjectURL(blob); } catch (e) { res(0); return; }
+    var v = document.createElement("video");
+    v.muted = true; v.preload = "metadata"; v.playsInline = true;
+    _meDureeVideo(v, 0).then(function (d) {
+      try { v.removeAttribute("src"); v.load(); } catch (e) {}
+      try { URL.revokeObjectURL(url); } catch (e) {}
+      res(d);
+    });
+    v.src = url;
+  });
+}
+function meOuvrirMontage(opts) {
+  opts = opts || {};
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  if (!opts.importation && meState.mediaType !== "video") { toast("Le montage concerne une vidéo"); return; }
+  var src = opts.source || meState.source;
+  if (!src) {
+    // Vidéo posée par un chemin qui n'a pas gardé sa source : on part du média.
+    var b = meState.media ? _meDataUrlToBlob(meState.media) : null;
+    if (!b) { toast("Aucune vidéo à couper"); return; }
+    src = meState.source = { blob: b, duree: 0, origine: "media" };
+  }
+  _meMontageDemonter();   // jamais deux pistes (ni deux URL blob) à la fois
+  if (ed.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
+  meFermerDessin();
+  ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  var prec = (!opts.importation && meState.montage) || {};
+  meMontage = { source: src, importation: !!opts.importation, duree: 0, debut: prec.debut || 0, fin: prec.fin || 0, sansSon: !!prec.sansSon };
+  var m = meMontage;
+  _meRemoveVideoControls();
+  try { var vPrec = document.querySelector("#meMedia video"); if (vPrec) vPrec.pause(); } catch (e) {}
+  var box = document.getElementById("meMedia");
+  box.innerHTML = "";
+  m.url = URL.createObjectURL(src.blob);
+  var v = document.createElement("video");
+  v.muted = true; v.defaultMuted = true; v.playsInline = true; v.preload = "auto";
+  v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+  v.src = m.url;
+  box.appendChild(v);
+  m.video = v;
+  if (opts.importation) {
+    document.getElementById("mePlaceholder").classList.add("hidden");
+    meEnterEditPhase();
+  }
+  ed.classList.add("me-montage");
+  var panneau = document.getElementById("meMontage");
+  if (panneau) panneau.setAttribute("aria-hidden", "false");
+  _meMontageBrancher();
+  _meMontagePeindre();
+  v.addEventListener("timeupdate", function () {
+    if (m !== meMontage || m.glisse) return;
+    if (m.fin && (v.currentTime >= m.fin - 0.05 || v.currentTime < m.debut - 0.3)) { try { v.currentTime = m.debut; } catch (e) {} }
+    _meMontageTete();
+  });
+  // Passage qui finit avec la vidéo : `ended` met en pause, on reboucle.
+  v.addEventListener("ended", function () {
+    if (m !== meMontage || m.glisse) return;
+    try { v.currentTime = m.debut; } catch (e) {}
+    _meTryPlayPreview(v);
+  });
+  _meDureeVideo(v, src.duree).then(function (d) {
+    if (m !== meMontage) return;
+    if (!d) { toast("Durée de la vidéo illisible — impossible de la couper ici"); meFermerMontage(false); return; }
+    m.duree = d;
+    if (!src.duree) src.duree = d;
+    if (!(m.fin > m.debut) || m.fin > d) m.fin = Math.min(d, m.debut + VIDEO_DUREE_MAX);
+    if (m.fin - m.debut > VIDEO_DUREE_MAX) m.fin = m.debut + VIDEO_DUREE_MAX;
+    _meMontagePeindre();
+    try { v.currentTime = m.debut; } catch (e) {}
+    _meTryPlayPreview(v);
+    _meMontageVignettes(m);
+  });
+  try { if (typeof track === "function") track("me_montage_ouvert", { mode: meState.mode, importation: !!opts.importation }); } catch (e) {}
+}
+function _meMontagePeindre() {
+  var m = meMontage; if (!m) return;
+  var d = m.duree || 0;
+  var pc = function (t) { return d ? Math.max(0, Math.min(100, t / d * 100)) : 0; };
+  var g = pc(m.debut), r = d ? pc(m.fin) : 100;
+  var set = function (id, prop, val) { var el = document.getElementById(id); if (el) el.style[prop] = val; };
+  set("meMtDebut", "left", g + "%");
+  set("meMtFin", "left", r + "%");
+  set("meMtCadre", "left", g + "%");
+  set("meMtCadre", "width", Math.max(0, r - g) + "%");
+  set("meMtOmbreG", "width", g + "%");
+  set("meMtOmbreD", "width", Math.max(0, 100 - r) + "%");
+  var info = document.getElementById("meMtInfos");
+  if (info) info.textContent = d
+    ? _meFmtDuree(m.debut) + " → " + _meFmtDuree(m.fin) + " · " + Math.max(1, Math.round(m.fin - m.debut)) + " s gardées sur " + _meFmtDuree(d)
+    : "Lecture de la vidéo…";
+  var son = document.getElementById("meMtSon");
+  if (son) { son.textContent = m.sansSon ? "🔇" : "🔊"; son.setAttribute("aria-pressed", m.sansSon ? "true" : "false"); son.setAttribute("aria-label", m.sansSon ? "Son coupé — toucher pour le garder" : "Son gardé — toucher pour le couper"); }
+  [["meMtDebut", m.debut], ["meMtFin", m.fin]].forEach(function (x) {
+    var el = document.getElementById(x[0]); if (!el) return;
+    el.setAttribute("aria-valuemin", "0"); el.setAttribute("aria-valuemax", String(Math.round(d)));
+    el.setAttribute("aria-valuenow", String(Math.round(x[1]))); el.setAttribute("aria-valuetext", _meFmtDuree(x[1]));
+  });
+  var ok = document.getElementById("meMtOk"); if (ok) ok.disabled = !d;
+}
+function _meMontageTete() {
+  var m = meMontage, t = document.getElementById("meMtTete");
+  if (!m || !t || !m.duree || !m.video) return;
+  t.style.left = Math.max(0, Math.min(100, m.video.currentTime / m.duree * 100)) + "%";
+}
+// Bornes : passage d'au moins ME_MONTAGE_MIN, d'au plus VIDEO_DUREE_MAX. Tirer
+// une poignée au-delà de la minute ENTRAÎNE l'autre (comme Instagram).
+function _meMontagePoser(quoi, t) {
+  var m = meMontage; if (!m || !m.duree) return;
+  var d = m.duree, lg = m.fin - m.debut;
+  if (quoi === "debut") {
+    m.debut = Math.max(0, Math.min(t, m.fin - ME_MONTAGE_MIN));
+    if (m.fin - m.debut > VIDEO_DUREE_MAX) m.fin = m.debut + VIDEO_DUREE_MAX;
+  } else if (quoi === "fin") {
+    m.fin = Math.min(d, Math.max(t, m.debut + ME_MONTAGE_MIN));
+    if (m.fin - m.debut > VIDEO_DUREE_MAX) m.debut = m.fin - VIDEO_DUREE_MAX;
+  } else {
+    m.debut = Math.max(0, Math.min(t, d - lg)); m.fin = m.debut + lg;
+  }
+  _meMontagePeindre();
+}
+function _meMontageBrancher() {
+  var piste = document.getElementById("meMtPiste");
+  if (!piste || piste._branche) return;
+  piste._branche = true;
+  function temps(e) {
+    var r = piste.getBoundingClientRect();
+    return meMontage && meMontage.duree ? Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1))) * meMontage.duree : 0;
+  }
+  function brancher(el, quoi) {
+    if (!el) return;
+    var depart = 0, debut0 = 0;
+    el.addEventListener("pointerdown", function (e) {
+      var m = meMontage; if (!m || !m.duree) return;
+      e.preventDefault(); e.stopPropagation();
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      m.glisse = quoi; depart = temps(e); debut0 = m.debut;
+      try { m.video.pause(); } catch (_) {}
+    });
+    el.addEventListener("pointermove", function (e) {
+      var m = meMontage; if (!m || m.glisse !== quoi) return;
+      var t = temps(e);
+      _meMontagePoser(quoi, quoi === "cadre" ? debut0 + (t - depart) : t);
+      try { m.video.currentTime = (quoi === "fin") ? m.fin : m.debut; } catch (_) {}
+      _meMontageTete();
+    });
+    function fin(e) {
+      var m = meMontage; if (!m || m.glisse !== quoi) return;
+      m.glisse = null;
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      try { m.video.currentTime = m.debut; } catch (_) {}
+      _meTryPlayPreview(m.video);
+    }
+    el.addEventListener("pointerup", fin);
+    el.addEventListener("pointercancel", fin);
+    // Clavier : ← → déplacent d'une demi-seconde.
+    el.addEventListener("keydown", function (e) {
+      var m = meMontage; if (!m || !m.duree) return;
+      var pas = e.key === "ArrowLeft" ? -0.5 : (e.key === "ArrowRight" ? 0.5 : 0);
+      if (!pas) return;
+      e.preventDefault();
+      _meMontagePoser(quoi, (quoi === "fin" ? m.fin : m.debut) + pas);
+      try { m.video.currentTime = m.debut; } catch (_) {}
+    });
+  }
+  brancher(document.getElementById("meMtDebut"), "debut");
+  brancher(document.getElementById("meMtFin"), "fin");
+  brancher(document.getElementById("meMtCadre"), "cadre");
+}
+// Vignettes de la piste : au mieux. Une vidéo que l'appareil ne sait pas
+// parcourir laisse une piste unie, le montage reste possible.
+function _meMontageVignettes(m) {
+  var piste = document.getElementById("meMtVignettes"); if (!piste) return;
+  piste.innerHTML = "";
+  var v = document.createElement("video");
+  v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = m.url;
+  var c = document.createElement("canvas"), i = 0;
+  function finir() { try { v.removeAttribute("src"); v.load(); } catch (e) {} }
+  function suivante() {
+    if (m !== meMontage || i >= ME_MONTAGE_VIGNETTES) { finir(); return; }
+    var fait = false;
+    var dessiner = function () {
+      if (fait) return; fait = true;
+      v.removeEventListener("seeked", dessiner);
+      if (m !== meMontage) { finir(); return; }
+      try {
+        var w = 72, h = Math.round(72 * (v.videoHeight || 16) / (v.videoWidth || 9));
+        c.width = w; c.height = Math.max(8, Math.min(200, h));
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        var img = document.createElement("img");
+        img.alt = ""; img.src = c.toDataURL("image/jpeg", 0.6);
+        piste.appendChild(img);
+      } catch (e) {}
+      i++; suivante();
+    };
+    v.addEventListener("seeked", dessiner);
+    setTimeout(dessiner, 2500);
+    try { v.currentTime = Math.min(m.duree - 0.05, (i + 0.5) * m.duree / ME_MONTAGE_VIGNETTES); } catch (e) { dessiner(); }
+  }
+  v.addEventListener("loadeddata", suivante, { once: true });
+  v.addEventListener("error", finir, { once: true });
+}
+function meMontageBasculerSon() {
+  if (!meMontage) return;
+  meMontage.sansSon = !meMontage.sansSon;
+  _meMontagePeindre();
+}
+// Ferme la piste sans rien encoder. Annuler une IMPORTATION (vidéo longue pas
+// encore préparée) ramène à la capture ; sinon l'aperçu du média courant revient.
+function _meMontageDemonter() {
+  var m = meMontage; meMontage = null;
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-montage");
+  var panneau = document.getElementById("meMontage"); if (panneau) panneau.setAttribute("aria-hidden", "true");
+  var vg = document.getElementById("meMtVignettes"); if (vg) vg.innerHTML = "";
+  if (m) {
+    try { m.video.pause(); m.video.removeAttribute("src"); m.video.load(); } catch (e) {}
+    try { URL.revokeObjectURL(m.url); } catch (e) {}
+  }
+  return m;
+}
+function meFermerMontage(valider) {
+  if (valider) { meAppliquerMontage(); return; }
+  var m = _meMontageDemonter();
+  if (!m) return;
+  _meMontageRetablir();
+}
+// Rend l'éditeur tel qu'il était avant la piste : le média en place (photo ou
+// vidéo, calques intacts) — même quand on annulait l'IMPORT d'une vidéo longue
+// par-dessus un travail en cours. Sans média, retour à la capture.
+function _meMontageRetablir() {
+  if (!meState.media) { meBackToCapture(); return; }
+  meSetMedia(meState.media, meState.mediaType || "video");
+}
+async function meAppliquerMontage() {
+  var m = meMontage;
+  if (!m || !m.duree) return;
+  var src = m.source, prec = meState.montage || {};
+  var plein = m.debut < 0.05 && m.fin >= m.duree - 0.05 && !m.sansSon;
+  var proche = function (a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.05; };
+  var inchange = !m.importation && (plein ? !meState.montage
+    : (!!meState.montage && proche(prec.debut, m.debut) && proche(prec.fin, m.fin) && !!prec.sansSon === m.sansSon));
+  if (inchange) { meFermerMontage(false); return; }
+  var reglage = plein ? null : { debut: m.debut, fin: m.fin, sansSon: m.sansSon };
+  _meMontageDemonter();
+  try {
+    var dataUrl;
+    if (plein && src.origine === "camera") dataUrl = await _meReadFile(src.blob);     // l'enregistrement tel quel, comme avant
+    else if (plein) dataUrl = await passioVideoPourEnvoi(src.blob, { dureeConnue: src.duree });
+    else dataUrl = await passioVideoPourEnvoi(src.blob, { debut: reglage.debut, fin: reglage.fin, sansSon: reglage.sansSon, dureeConnue: src.duree });
+    meSetMedia(dataUrl, "video");
+    meState.source = src;
+    meState.montage = reglage;
+    try { if (typeof track === "function") track("me_montage_applique", { mode: meState.mode, coupe: !!reglage && !(reglage.debut < 0.05 && reglage.fin >= m.duree - 0.05), sans_son: !!(reglage && reglage.sansSon), secondes: Math.round(m.fin - m.debut) }); } catch (e) {}
+    if (reglage) toast(reglage.sansSon ? "Vidéo coupée, sans son" : "Vidéo coupée — " + Math.max(1, Math.round(m.fin - m.debut)) + " s", "success");
+  } catch (e) {
+    _meHideProgress();
+    toast((e && e.motifUtilisateur) || "Montage impossible — ta vidéo n'a pas été modifiée");
+    _meMontageRetablir();
+  }
+}
+
 // Texte : éditeur EN PLACE façon Instagram (2026-11-26) — il remplace la
 // feuille `demanderTexte` (LOT-6), qui cachait la story pendant qu'on écrivait.
 function meAddText() { meOuvrirEditeurTexte(null); }
@@ -2296,7 +2686,13 @@ function meOuvrirStickers() {
   var panneau = document.createElement("div"); panneau.id = "meStickerPanel"; panneau.className = "me-panneau me-panneau-stickers";
   panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Ajouter un sticker");
   var choix = [["📍", "Activité", _meStickerActivite], ["@", "Mention", _meStickerMention], ["⏳", "Compte à rebours", _meStickerCompte]];
-  if (meState.mode === "story") { choix.push(["❓", "Question", _meStickerQuestion]); if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
+  // ❓ Question : story ET bobine (2026-11-26, « les mêmes fonctionnalités que la
+  // story », Benjamin). Dans le lecteur de bobines, la réponse part à l'AUTEUR
+  // DE LA BOBINE affichée, lu dans `reelsState.items` (la ligne serveur), jamais
+  // dans l'overlay. 📊 Sondage reste story seulement : ses votes sont rangés par
+  // `story_id` en base, une bobine n'y a pas de place sans migration.
+  choix.push(["❓", "Question", _meStickerQuestion]);
+  if (meState.mode === "story") { if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -2545,10 +2941,40 @@ function _storyQuitterLecteurs() {
   var sv = document.getElementById("storyViewer");
   if (sv && sv.classList.contains("active")) closeStoryViewer({ versAutreEcran: true });
 }
+// Question posée sur une BOBINE (2026-11-26). Le destinataire est l'auteur de
+// la bobine dont la carte contient le bouton, lu dans `reelsState.items` — la
+// ligne serveur (`author_id`), jamais un champ de l'overlay ni `storyGroups`.
+function bobineRepondreQuestion(bouton) {
+  var carteBobine = bouton.closest(".reel-item[data-post-id]");
+  if (!carteBobine || typeof reelsState === "undefined" || !reelsState || !reelsState.open) return;
+  var pid = carteBobine.getAttribute("data-post-id");
+  var post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
+  var auteur = post && (post.authorId || post.userId);
+  if (!post || !auteur) { toast("Bobine indisponible"); return; }
+  if (auteur === MY_UID || auteur === "me") { toast("Les réponses arrivent dans tes messages"); return; }
+  var reelle = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && ME_ID_STICKER.test(String(auteur)) && !/^u_/.test(String(auteur));
+  if (!reelle) { toast("Bobine d'exemple — crée ton compte pour répondre aux vraies bobines"); return; }
+  var carte = bouton.closest(".st-question");
+  var question = carte ? (carte.getAttribute("data-q") || "") : "";
+  var video = carteBobine.querySelector("video.reel-media");
+  var jouait = !!(video && !video.paused);
+  if (jouait) { try { video.pause(); } catch (e) {} }
+  var nom = post.authorName || (typeof authorOfReel === "function" ? authorOfReel(post).name : "") || "l'auteur";
+  demanderTexte({ titre: question || "Réponds", placeholder: "Ta réponse", libelle: "Envoyer", max: 300 }).then(function (t) {
+    if (jouait && video && video.isConnected) { try { var p = video.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+    if (t == null || !t.trim()) return;
+    Promise.resolve(_envoyerALAuteurStory({ authorId: auteur, authorName: nom, authorEmoji: post.authorEmoji, authorColor: post.authorColor }, nom, "❓ « " + question + " » (ta bobine)\n" + t.trim())).then(function (ok) {
+      if (ok === "envoye") toast("Réponse envoyée à " + nom, "success");
+      else if (ok) toast("Réponse en attente — elle partira au retour du réseau");
+    });
+  });
+}
 function storyRepondreQuestion(bouton) {
-  // La réponse part à l'auteur de la story OUVERTE : jamais depuis une bobine
-  // (posts.overlays est écrit par n'importe quel compte, et `storyGroups` garde
-  // la DERNIÈRE story vue — la réponse partait chez quelqu'un d'autre).
+  // Bouton dans une carte de BOBINE : son propre chemin, son propre destinataire.
+  if (bouton.closest(".reel-item")) { bobineRepondreQuestion(bouton); return; }
+  // La réponse part à l'auteur de la story OUVERTE (`storyGroups` garde la
+  // DERNIÈRE story vue : une Question hors du lecteur actif partait chez
+  // quelqu'un d'autre).
   var sv = document.getElementById("storyViewer");
   if (!sv || !sv.classList.contains("active") || !bouton.closest("#storyOverlays")) return;
   var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
@@ -3293,10 +3719,13 @@ function _storyDessinHtml(o) {
   }).join("");
   return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
 }
-// `opts.story` : appelé par le lecteur de STORY. Le sticker Question n'y est
-// rendu que là (une bobine n'a pas de destinataire de réponse fiable).
+// `opts.story` : appelé par le lecteur de STORY ; `opts.bobine` : par le lecteur
+// de BOBINES (`renderReelHTML`, app-05). Le sticker Question n'est rendu que par
+// ces deux lecteurs, qui savent à qui va la réponse (la story active, ou la
+// bobine dont la carte porte `data-post-id`). Le Sondage, lui, reste story seule.
 function _storyOverlaysHtml(overlays, opts) {
   var dansStory = !!(opts && opts.story);
+  var dansBobine = !!(opts && opts.bobine);
   var sondageRendu = false; // un seul sondage rendu : un seul vote par story en base
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
@@ -3344,7 +3773,7 @@ function _storyOverlaysHtml(overlays, opts) {
       var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
       return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
     }
-    if (o.type === "question" && dansStory) {
+    if (o.type === "question" && (dansStory || dansBobine)) {
       var qv = String(o.q || "").slice(0, 120);
       return '<div class="story-ov story-sticker st-question" style="' + pos + '" data-q="' + escapeHtml(qv) + '"><b>' + escapeHtml(qv) + '</b><button type="button" class="st-q-rep">Écris ta réponse…</button></div>';
     }
