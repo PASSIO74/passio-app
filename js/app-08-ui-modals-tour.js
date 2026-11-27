@@ -8898,14 +8898,21 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
 }
 async function _publierAvecEssais(post, maxRetries) {
   var _pmpCompte=passioMediaProteges.capture();
+  // ⚠️ `isReel`, PAS `is_reel` SEUL (2026-11-27). `is_reel` est le nom de la
+  // COLONNE : tout objet qui arrive ici porte la forme LOCALE `isReel` (éditeur,
+  // Studio, file de renvoi — même une ligne relue du serveur est re-mappée). Le
+  // test sur `post.is_reel` était donc toujours faux : chaque bobine se comptait
+  // `publish_post`, et le contrat `publish_reel` ne jugeait rien. UN booléen, lu
+  // aussi par l'INSERT plus bas : le libellé dit ce que la ligne écrit.
+  var _estBobine = !!(post && (post.isReel || post.is_reel));
   // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
   // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
   // pas regrouper les publications par passion. Même valeur, nom neutre.
-  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { pid: post && post.passion, postId: post && post.id }); } catch (e) {}
+  try { window.tel && tel.action(_estBobine ? "publish_reel" : "publish_post", { pid: post && post.passion, postId: post && post.id }); } catch (e) {}
   // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
   // via un « saved » explicite au VRAI résultat (l'upload + insert peut échouer/retry).
   var _pubCid = null;
-  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
+  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(_estBobine ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
     if(!passioMediaProteges.courant(_pmpCompte))return false;
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
@@ -8957,7 +8964,7 @@ async function _publierAvecEssais(post, maxRetries) {
         // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage
         media_url: (mediaUrl && !mediaUrl.startsWith("data:")) ? mediaUrl : null,
         created_at: new Date(post.createdAt).toISOString(),
-        is_reel: !!post.isReel, // bobine → Bobines (exclu du feed)
+        is_reel: _estBobine, // bobine → Bobines (exclu du feed)
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
