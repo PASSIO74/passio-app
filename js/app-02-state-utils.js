@@ -5899,10 +5899,12 @@ function purgeAccountScopedData() {
   // Les conversations ont un second store DURABLE (IndexedDB, idb-store.js) que
   // localStorage.removeItem ne touche pas : sans ça, hydrateConvsFromIDB() au boot
   // ré-injecte les messages du compte précédent chez le suivant.
-  try {
-    if (typeof idbConvClear === "function") return Promise.resolve(idbConvClear()).catch(function () {});
-  } catch (e) {}
-  return Promise.resolve();
+  // Idem pour les BROUILLONS de story / bobine (2026-11-27) : des photos et des
+  // vidéos du compte, gardées en IndexedDB — elles ne doivent pas attendre le suivant.
+  var _purgesDurables = [];
+  try { if (typeof idbConvClear === "function") _purgesDurables.push(Promise.resolve(idbConvClear()).catch(function () {})); } catch (e) {}
+  try { if (typeof idbBrouillonsClear === "function") _purgesDurables.push(Promise.resolve(idbBrouillonsClear()).catch(function () {})); } catch (e) {}
+  return Promise.all(_purgesDurables).then(function () {});
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
@@ -6443,6 +6445,7 @@ async function doDeleteAccount() {
   } catch (e) {}
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
   try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
+  try { if (typeof idbBrouillonsClear === "function") await Promise.resolve(idbBrouillonsClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
   if (compteFermeSansGarantie) {
     toast("Ton compte est fermé et tes données supprimées, mais la confirmation finale n'a pas pu être enregistrée. Écris à " + PASSIO_EDITEUR.email + " si tu constates quoi que ce soit.");

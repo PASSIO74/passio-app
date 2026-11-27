@@ -85,7 +85,8 @@
       //
       // ⚠️ TOUTE LECTURE EST BORNÉE, parce qu'un rechargement ne se perd jamais. Le
       // vocal n'a aucune durée maximale : sa borne est ici. La capture s'arrête seule à
-      // 60 s et le Studio à 120 s. `ENVOI_MAX_MS` laisse passer la pièce jointe la plus
+      // 60 s de film — en plusieurs prises (bobine), chaque PAUSE se termine seule au
+      // bout de 3 min (`ME_PAUSE_MAX_MS`, app-08) — et le Studio à 120 s. `ENVOI_MAX_MS` laisse passer la pièce jointe la plus
       // lourde (25 Mo à 256 kb/s : 13 min) ; une publication abandonne bien avant (deux
       // essais de 180 s). L'aperçu et le Studio se comportent comme un champ rempli :
       // ils finissent quand on les quitte.

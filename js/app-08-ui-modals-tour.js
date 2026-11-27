@@ -919,7 +919,9 @@ var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recordin
 //   minuteur    : 0 | 3 | 10 secondes avant le déclenchement ;
 //   duree       : bobine — durée maximale (15 | 30 | 60 s) ;
 //   flash       : torche si la caméra en a une, sinon l'écran éclaire.
-var meCap = { boomerang: false, mainsLibres: false, minuteur: 0, duree: 60, flash: false, compteTimer: null, compteReste: 0, boomEnCours: false, boomTimer: null };
+//   prises      : bobine — plusieurs prises à la suite (toucher = filmer, toucher = pause,
+//                 « Terminer » = aperçu) ; un seul enregistreur, mis en pause entre deux prises.
+var meCap = { boomerang: false, mainsLibres: false, minuteur: 0, duree: 60, flash: false, prises: false, compteTimer: null, compteReste: 0, boomEnCours: false, boomTimer: null, nbBrouillons: 0, brouillonEnCours: false };
 var ME_DUREES_BOBINE = [15, 30, 60];
 var ME_MINUTEURS = [0, 3, 10];
 
@@ -955,6 +957,9 @@ function meOpen(mode) {
   if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
   _meMontageDemonter();
   meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], dessin: [], filtre: "normal", _seq: 0, source: null, montage: null };
+  // Une ouverture repart d'un écran LIBRE : un drapeau d'écriture de brouillon resté
+  // levé rendrait le geste retour inerte pour toute la session.
+  meCap.brouillonEnCours = false;
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   ed.classList.remove("me-video", "me-montage");
   document.getElementById("meMedia").innerHTML = "";
@@ -968,10 +973,10 @@ function meOpen(mode) {
   _meAnnulerCompte();
   _meBoomerangAbandonner();
   meCam._flashEnCours = false;
-  meCap.boomerang = false; meCap.mainsLibres = false; meCap.minuteur = 0; meCap.duree = 60; meCap.flash = false; meCap.boomEnCours = false;
+  meCap.boomerang = false; meCap.mainsLibres = false; meCap.minuteur = 0; meCap.duree = 60; meCap.flash = false; meCap.prises = false; meCap.boomEnCours = false;
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse");
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse", "me-pause", "me-prises");
   ed.classList.add("me-vide");
   _meAppliquerMode(mode);
   _meTeReinitialiser();
@@ -988,6 +993,7 @@ function meOpen(mode) {
   _meMajRail();
   _meMajRetour();
   _meMajModes(true);   // l'éditeur vient d'être affiché : l'onglet actif se centre maintenant
+  _meMajBrouillons();
   meStartCamera();
 }
 
@@ -1012,6 +1018,7 @@ function _meAppliquerMode(mode) {
   try { _mePeindreBoutonProches(); } catch (e) {}
   // Les outils propres à la story s'éteignent en passant à la bobine.
   if (isBob) { meCap.boomerang = false; meCap.mainsLibres = false; }
+  else meCap.prises = false;
   _meMajRail();
   _meMajModes();
   _meMajConsigne();
@@ -1090,6 +1097,7 @@ function _meMajRail() {
     var modes = " " + b.getAttribute("data-modes") + " ";
     var montre = modes.indexOf(" " + meState.mode + " ") !== -1;
     if (b.id === "meBoomBtn" && !_meBoomerangPossible()) montre = false;
+    if (b.id === "meBrouillonsBtn" && !(meCap.nbBrouillons > 0)) montre = false;
     b.hidden = !montre;
   });
   var poser = function (id, actif) {
@@ -1098,6 +1106,9 @@ function _meMajRail() {
   };
   poser("meBoomBtn", meCap.boomerang);
   poser("meMainsBtn", meCap.mainsLibres);
+  poser("mePrisesBtn", meCap.prises);
+  var pastB = document.getElementById("meBrouillonsPastille"); if (pastB) pastB.textContent = meCap.nbBrouillons > 0 ? String(meCap.nbBrouillons) : "";
+  var btnB = document.getElementById("meBrouillonsBtn"); if (btnB) btnB.setAttribute("aria-label", "Mes brouillons" + (meCap.nbBrouillons > 0 ? " (" + meCap.nbBrouillons + ")" : ""));
   poser("meEffetsBtn", !!(ed && ed.classList.contains("me-filtres-ouverts") && ed.classList.contains("phase-capture")));
   var min = document.getElementById("meMinuteurBtn");
   if (min) {
@@ -1135,6 +1146,10 @@ function _meMajConsigne() {
   var t;
   if (meCap.boomEnCours) t = "Création du boomerang…";
   else if (meCap.compteTimer) t = "Touche le bouton pour annuler";
+  else if (meCam.recording && meCam.enPause) t = meCap.minuteur
+    ? "Appuie · la suite démarre dans " + meCap.minuteur + " s · « Terminer » pour l'aperçu"
+    : "Appuie pour filmer la suite · « Terminer » pour l'aperçu";
+  else if (meCam.recording && _mePlusieursPrises()) t = "Appuie pour mettre en pause";
   else if (meCam.recording) t = "Appuie pour arrêter";
   else if (!cam) t = meState.mode === "bobine" ? "Appuie pour choisir une vidéo" : "Appuie pour choisir une photo ou une vidéo";
   else if (meCap.minuteur) {
@@ -1142,6 +1157,7 @@ function _meMajConsigne() {
     var quoi = (meState.mode === "bobine" || meCap.mainsLibres) ? "la vidéo démarre" : (meCap.boomerang ? "boomerang" : "photo");
     t = "Appuie · " + quoi + " dans " + meCap.minuteur + " s";
   }
+  else if (_mePlusieursPrises()) t = "Appuie pour filmer une prise · appuie encore pour la mettre en pause";
   else if (meState.mode === "bobine") t = "Appuie pour filmer · appuie encore pour arrêter";
   else if (meCap.boomerang) t = "Appuie pour un boomerang";
   else if (meCap.mainsLibres) t = "Appuie pour filmer · appuie encore pour arrêter";
@@ -1251,7 +1267,8 @@ if (!window._meVeilleArmee) {
     try {
       if (meCap.compteTimer) _meAnnulerCompte();
       if (meCap.boomEnCours) { _meBoomerangAbandonner(); _meMajConsigne(); }
-      if (meCam.recording) meStopRecording();
+      if (meCam.recording && _mePlusieursPrises()) { if (!meCam.enPause) _meMettreEnPause(); }
+      else if (meCam.recording) meStopRecording();
     } catch (e) { try { if (typeof diagLog === "function") diagLog("editeur en veille: " + ((e && e.message) || e)); } catch (_) {} }
   });
 }
@@ -1259,6 +1276,7 @@ if (!window._meVeilleArmee) {
 function _meDeclencher() {
   var action = function () {
     if (meState.mode === "story" && meCap.boomerang) { meCaptureBoomerang(); return; }
+    if (meCam.recording && meCam.enPause) { _meReprendrePrise(); if (meCam.recording && !meCam.enPause) _meVerrouiller(true); return; }
     if (meState.mode === "bobine" || meCap.mainsLibres) {
       if (window.MediaRecorder) meStartRecording();
       if (meCam.recording) _meVerrouiller(true);
@@ -1275,15 +1293,17 @@ function meClose() {
   _meAnnulerCompte();
   _meBoomerangAbandonner();
   meStopRecording(true);
+  _meOublierPriseEnFin();
   meStopCamera();
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
   meFermerDessin();
   _meMusiqueArreter();
   var _pst = document.getElementById("meStickerPanel"); if (_pst) _pst.remove();
+  var _pbr = document.getElementById("meBrouillonsPanel"); if (_pbr) _pbr.remove();
   _meMontageDemonter();
   meState.source = null; meState.montage = null;
-  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-video", "me-montage", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.setAttribute("aria-hidden", "true"); }
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-video", "me-montage", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse", "me-pause", "me-prises"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
   if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
@@ -1302,6 +1322,17 @@ function meTopBack() {
     if (_meADuContenu()) { _meDemanderAbandon(); return; }
     meBackToCapture(); return;
   }
+  // En capture : des prises déjà filmées (en cours ou en pause) ne se jettent pas d'un toucher.
+  if (ed && meCam.recording && _meTempsFilme() > 500 && typeof ouvrirFeuilleConfirmation === "function") {
+    _meAnnulerCompte();   // sous la question, un décompte de reprise ne doit pas relancer la prise
+    ouvrirFeuilleConfirmation({
+      titre: "Abandonner " + (meState.mode === "bobine" ? "cette bobine" : "cette story") + " ?",
+      texte: "Ce que tu as filmé sera perdu.",
+      actions: [{ id: "abandonner", libelle: "Abandonner", danger: true, agir: function () { meClose(); } }],
+      annuler: "Continuer"
+    });
+    return;
+  }
   meClose();
 }
 function _meADuContenu() {
@@ -1310,12 +1341,338 @@ function _meADuContenu() {
 function _meDemanderAbandon() {
   if (typeof ouvrirFeuilleConfirmation !== "function") { meBackToCapture(); return; }
   var quoi = meState.mode === "bobine" ? "cette bobine" : "cette story";
+  var actions = [];
+  // « Enregistrer le brouillon » (2026-11-27, comme Instagram) : on retrouve son
+  // travail depuis l'écran de capture. Proposé seulement là où le stockage durable existe.
+  if (_meBrouillonsPossibles()) actions.push({ id: "brouillon", libelle: "Enregistrer le brouillon", agir: function () {
+    var edition = meState;
+    meEnregistrerBrouillon().then(function (ok) {
+      // L'écriture d'une vidéo prend du temps : l'éditeur a pu être fermé entre-temps
+      // (`meBackToCapture` rallumerait alors la caméra d'un éditeur invisible), ou
+      // rouvert sur autre chose (`meOpen` repart d'un état neuf).
+      var e = document.getElementById("mediaEditor");
+      if (ok && meState === edition && e && e.classList.contains("open") && e.classList.contains("phase-edit")) meBackToCapture();
+    }).catch(function (err) {
+      try { if (typeof diagLog === "function") diagLog("brouillon: " + ((err && err.message) || err)); } catch (e2) {}
+      toast("⚠️ Brouillon non enregistré — réessaie", "warning");
+    });
+  } });
+  actions.push({ id: "abandonner", libelle: "Abandonner", danger: true, agir: function () { meBackToCapture(); } });
   ouvrirFeuilleConfirmation({
     titre: "Abandonner " + quoi + " ?",
-    texte: "Ce que tu as préparé sera perdu.",
-    actions: [{ id: "abandonner", libelle: "Abandonner", danger: true, agir: function () { meBackToCapture(); } }],
+    texte: actions.length > 1 ? "Enregistre un brouillon pour la reprendre plus tard, ou abandonne : ce que tu as préparé sera perdu." : "Ce que tu as préparé sera perdu.",
+    actions: actions,
     annuler: "Continuer la modification"
   });
+}
+
+// ── BROUILLONS (story et bobine, 2026-11-27) ─────────────────────────────────
+// Un brouillon garde le média (BLOB), les textes, stickers, dessin, filtre et fond
+// dans IndexedDB (`idb-store.js`) : il survit au rechargement. Six au plus par
+// compte, quatorze jours.
+// Stockage : UNE CLÉ PAR BROUILLON + un index de fiches légères. Compter et lister
+// ne lisent que l'index ; un média n'est remonté qu'à la reprise de SON brouillon.
+// ⚠️ UN BROUILLON APPARTIENT À UN COMPTE (`_fileProprietaire`, règle AUTH-06) et
+// part avec lui (`purgeAccountScopedData`, `doDeleteAccount`). PAS DE COMPTE, PAS
+// DE BROUILLON : un propriétaire « visiteur » serait le même pour tous les
+// visiteurs de l'appareil — le travail de l'un proposé au suivant.
+// ⚠️ Écritures : on LIT le verdict de la transaction — un brouillon qu'on croit
+// enregistré et qui ne l'est pas, c'est un travail perdu sans le savoir.
+var ME_BROUILLONS_MAX = 6;
+var ME_BROUILLON_JOURS = 14;
+function _meBrouillonCompte() {
+  try { return (typeof _fileProprietaire === "function" && _fileProprietaire()) || null; } catch (e) { return null; }
+}
+function _meBrouillonsPossibles() {
+  return typeof idbBrouillonsIndex === "function" && typeof idbBrouillonsModifier === "function"
+    && typeof idbBrouillonLire === "function" && !!window.indexedDB && !!_meBrouillonCompte();
+}
+function _meBrouillonPerime(f) {
+  return !(Number(f && f.at) > Date.now() - ME_BROUILLON_JOURS * 86400000);
+}
+function _meBrouillonValide(f, compte) {
+  return !!f && typeof f.id === "string" && !!compte && f.compte === compte
+    && (f.mode === "story" || f.mode === "bobine") && !_meBrouillonPerime(f);
+}
+// Les FICHES des brouillons de CE compte, les plus récentes d'abord (sans média).
+// Une lecture impossible rend [] (rien à montrer) — elle ne sert jamais de base à une écriture.
+async function meBrouillonsLire() {
+  if (!_meBrouillonsPossibles()) return [];
+  var compte = _meBrouillonCompte(), index;
+  try { index = await idbBrouillonsIndex(); } catch (e) { index = undefined; }
+  if (!Array.isArray(index) || _meBrouillonCompte() !== compte) return [];
+  // Un brouillon PÉRIMÉ n'est plus montré : il ne doit pas non plus rester sur
+  // l'appareil (jusqu'à ~27 Mo chacun, que personne ne pourrait plus supprimer).
+  if (index.some(function (f) { return !f || typeof f.id !== "string" || _meBrouillonPerime(f); })) _mePurgerBrouillonsPerimes();
+  return index.filter(function (f) { return _meBrouillonValide(f, compte); })
+    .sort(function (a, b) { return Number(b.at) - Number(a.at); });
+}
+// Retire du stockage les brouillons périmés (de tous les comptes) et les fiches illisibles.
+function _mePurgerBrouillonsPerimes() {
+  if (meCap.purgeBrouillons || typeof idbBrouillonsModifier !== "function") return;
+  meCap.purgeBrouillons = true;
+  Promise.resolve(idbBrouillonsModifier(function (index) {
+    var dehors = index.filter(function (f) { return f && typeof f.id === "string" && _meBrouillonPerime(f); });
+    return {
+      index: index.filter(function (f) { return f && typeof f.id === "string" && !_meBrouillonPerime(f); }),
+      retirer: dehors.map(function (f) { return f.id; })
+    };
+  })).catch(function () {}).then(function () { meCap.purgeBrouillons = false; });
+}
+// Le voile qui TIENT l'écran pendant une lecture ou une écriture de brouillon (durée
+// inconnue : pas de faux pourcentage). Rend faux si un autre traitement tient déjà
+// l'écran — on ne lui retire pas son voile.
+function _meVoileBrouillon(texte) {
+  if (document.getElementById("meProgressOv")) return false;
+  _meShowProgress(texte);
+  ["meProgressPct", "meProgressBar"].forEach(function (id) {
+    var n = document.getElementById(id); if (!n) return;
+    (id === "meProgressBar" && n.parentNode ? n.parentNode : n).remove();
+  });
+  return true;
+}
+// Vignette de la liste : une image réduite de ce qui est à l'écran (photo, ou image courante de la vidéo).
+function _meBrouillonApercu() {
+  try {
+    var src = document.querySelector("#meMedia img, #meMedia video");
+    if (!src) return null;
+    var w = src.videoWidth || src.naturalWidth, h = src.videoHeight || src.naturalHeight;
+    if (!w || !h) return null;
+    var k = Math.min(1, 220 / Math.max(w, h));
+    var c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.7);
+  } catch (e) { return null; }
+}
+async function meEnregistrerBrouillon() {
+  if (!_meADuContenu()) return false;
+  // Un seul enregistrement à la fois : un second toucher pendant l'écriture d'une
+  // vidéo lourde créerait un second brouillon du même travail.
+  if (meCap.brouillonEnCours) return false;
+  var refus = function (pourquoi) { toast("⚠️ Brouillon non enregistré — " + pourquoi, "warning"); return false; };
+  if (!_meBrouillonsPossibles()) return refus(_meBrouillonCompte() ? "indisponible sur cet appareil" : "connecte-toi pour garder un brouillon");
+  var ed = document.getElementById("mediaEditor");
+  if (ed && ed.classList.contains("me-texte-ouvert")) meFermerEditeurTexte(true);
+  var compte = _meBrouillonCompte();
+  var edition = meState;   // l'édition qu'on enregistre (`meOpen` en crée une autre)
+  var blob = meState.media ? _meDataUrlToBlob(meState.media) : null;
+  if (meState.media && !blob) return refus("média illisible");
+  // L'écran est TENU pendant l'écriture (une bobine pèse jusqu'à ~27 Mo) : sans
+  // voile, on pouvait retoucher l'édition, publier ou fermer pendant qu'un état
+  // déjà dépassé s'enregistrait. Un autre traitement tient déjà l'écran : pas maintenant.
+  if (!_meVoileBrouillon("Enregistrement du brouillon…")) return false;
+  meCap.brouillonEnCours = true;
+  var res = null, enr = null;
+  try {
+    enr = {
+      v: 2,
+      id: meState.brouillonId || ("br_" + uid()),
+      compte: compte,
+      mode: meState.mode === "bobine" ? "bobine" : "story",
+      mediaType: meState.media ? (meState.mediaType === "video" ? "video" : "photo") : null,
+      blob: blob,
+      // Copies à plat : ni l'identifiant d'écran d'un élément, ni une référence vivante.
+      overlays: meState.overlays.map(function (o) { var c = JSON.parse(JSON.stringify(o)); delete c.id; return c; }),
+      dessin: JSON.parse(JSON.stringify(meState.dessin || [])),
+      filtre: _storyFiltreId(meState.filtre),
+      bgIdx: meState.media ? null : meState.bgIdx,
+      at: Date.now()
+    };
+    var fiche = { id: enr.id, compte: compte, mode: enr.mode, mediaType: enr.mediaType, bgIdx: enr.bgIdx, apercu: _meBrouillonApercu(), at: enr.at };
+    // UNE transaction : la fiche, l'enregistrement et le ménage partent ensemble.
+    res = await idbBrouillonsModifier(function (index) {
+      var autres = index.filter(function (f) { return f && typeof f.id === "string" && f.id !== enr.id; });
+      var dehors = {};
+      // On ne retire QUE ce qui est périmé, et — au-delà du plafond — MES plus
+      // anciens : jamais le brouillon d'un autre compte (sa purge est celle de son compte).
+      autres.filter(_meBrouillonPerime).forEach(function (f) { dehors[f.id] = true; });
+      var evinces = autres.filter(function (f) { return !dehors[f.id] && f.compte === compte; })
+        .sort(function (a, b) { return Number(b.at) - Number(a.at); })
+        .slice(ME_BROUILLONS_MAX - 1);
+      evinces.forEach(function (f) { dehors[f.id] = true; });
+      return {
+        index: [fiche].concat(autres.filter(function (f) { return !dehors[f.id]; })),
+        poser: [enr],
+        retirer: Object.keys(dehors),
+        rendu: { evinces: evinces.length }
+      };
+    });
+  } catch (e) {
+    // Une erreur de PROGRAMME n'est pas un stockage plein : elle laisse une trace.
+    try { if (typeof diagLog === "function") diagLog("brouillon enregistrer: " + ((e && e.message) || e)); } catch (e2) {}
+    res = null;
+  } finally {
+    // Quoi qu'il arrive, l'écran est rendu : un drapeau resté levé rendait le retour
+    // inerte et retenait les mises à jour de l'application.
+    meCap.brouillonEnCours = false;
+    _meHideProgress();
+  }
+  if (!res || res.ok !== true) {
+    return refus(res && res.cause === "quota" ? "plus assez de place sur l'appareil"
+      : res && res.cause === "delai" ? "l'appareil n'a pas répondu, réessaie"
+      : "stockage de l'appareil indisponible");
+  }
+  // Le compte a changé PENDANT l'écriture (déconnexion, autre compte) : la purge du
+  // compte est passée avant la fin de la transaction — ce brouillon n'a plus de propriétaire ici.
+  if (_meBrouillonCompte() !== compte) { meSupprimerBrouillon(enr.id); return false; }
+  // Le lien « cette édition = ce brouillon » ne se pose que sur l'édition ENREGISTRÉE :
+  // posé sur une autre (éditeur rouvert pendant l'écriture), sa publication
+  // supprimerait ce brouillon-ci.
+  if (meState === edition) meState.brouillonId = enr.id;
+  var evinces = (res.rendu && res.rendu.evinces) || 0;
+  toast(evinces ? "Brouillon enregistré — le plus ancien a été retiré (" + ME_BROUILLONS_MAX + " au plus)" : "Brouillon enregistré", "success");
+  _meMajBrouillons();
+  return true;
+}
+// Retire un brouillon (fiche + média) par son identifiant. Pas de garde de compte :
+// l'identifiant est aléatoire, et la suppression doit aussi pouvoir suivre une
+// publication arrivée ou un changement de compte.
+async function meSupprimerBrouillon(id) {
+  if (!id || typeof idbBrouillonsModifier !== "function") return false;
+  var res = null;
+  try {
+    res = await idbBrouillonsModifier(function (index) {
+      return { index: index.filter(function (f) { return f && f.id !== id; }), retirer: [id] };
+    });
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("brouillon supprimer: " + ((e && e.message) || e)); } catch (e2) {}
+    res = null;
+  }
+  _meMajBrouillons();
+  return !!(res && res.ok === true);
+}
+// Le bouton « Brouillons » de la colonne ne se montre que s'il y en a.
+function _meMajBrouillons() {
+  return meBrouillonsLire().then(function (liste) {
+    meCap.nbBrouillons = liste.length;
+    _meMajRail();
+    return liste;
+  }, function () { meCap.nbBrouillons = 0; _meMajRail(); return []; });
+}
+function meOuvrirBrouillons() {
+  var exist = document.getElementById("meBrouillonsPanel"); if (exist) { exist.remove(); return; }
+  if (meCam.recording || meCap.compteTimer || meCap.boomEnCours) return;
+  var panneau = document.createElement("div");
+  panneau.id = "meBrouillonsPanel"; panneau.className = "me-panneau me-panneau-liste me-panneau-brouillons";
+  panneau.setAttribute("role", "dialog"); panneau.setAttribute("aria-label", "Mes brouillons");
+  var titre = document.createElement("div"); titre.className = "me-tiroir-titre"; titre.textContent = "Brouillons";
+  panneau.appendChild(titre);
+  var liste = document.createElement("div"); liste.className = "me-brouillons-liste";
+  panneau.appendChild(liste);
+  document.body.appendChild(panneau);
+  var peindre = function (brouillons) {
+    liste.textContent = "";
+    if (!brouillons.length) {
+      var vide = document.createElement("div"); vide.className = "me-sticker-vide"; vide.textContent = "Aucun brouillon.";
+      liste.appendChild(vide); return;
+    }
+    brouillons.forEach(function (b) {
+      var ligne = document.createElement("div"); ligne.className = "me-brouillon"; ligne.setAttribute("data-brouillon", b.id);
+      var reprendre = document.createElement("button"); reprendre.type = "button"; reprendre.className = "me-brouillon-reprendre";
+      var vignette = document.createElement("span"); vignette.className = "me-brouillon-vignette";
+      if (typeof b.apercu === "string" && b.apercu.indexOf("data:image/") === 0) {
+        var im = document.createElement("img"); im.alt = ""; im.src = b.apercu; vignette.appendChild(im);
+      } else {
+        vignette.style.background = b.mediaType ? "#111" : (STORY_BGS[Number(b.bgIdx) % STORY_BGS.length] || STORY_BGS[0]);
+        vignette.textContent = b.mediaType === "video" ? "🎬" : "Aa";
+      }
+      var texte = document.createElement("span"); texte.className = "me-brouillon-texte";
+      var quoi = document.createElement("b"); quoi.textContent = (b.mode === "bobine" ? "Bobine" : "Story") + (b.mediaType === "video" ? " · vidéo" : b.mediaType === "photo" ? " · photo" : " · texte");
+      var quand = document.createElement("span"); quand.textContent = (typeof fmtTime === "function") ? fmtTime(b.at) : "";
+      texte.appendChild(quoi); texte.appendChild(quand);
+      reprendre.appendChild(vignette); reprendre.appendChild(texte);
+      reprendre.setAttribute("aria-label", "Reprendre ce brouillon de " + (b.mode === "bobine" ? "bobine" : "story"));
+      reprendre.addEventListener("click", function () { meReprendreBrouillon(b.id); });
+      var suppr = document.createElement("button"); suppr.type = "button"; suppr.className = "me-brouillon-suppr";
+      suppr.textContent = "✕"; suppr.setAttribute("aria-label", "Supprimer ce brouillon");
+      suppr.addEventListener("click", function () {
+        var effacer = function () {
+          meSupprimerBrouillon(b.id).then(function (ok) {
+            if (!ok) { toast("⚠️ Brouillon non supprimé — réessaie", "warning"); return; }
+            meBrouillonsLire().then(function (l) { if (l.length) peindre(l); else panneau.remove(); });
+          });
+        };
+        // Un brouillon ne se jette pas d'un toucher : la croix est à 8 px de « Reprendre ».
+        if (typeof ouvrirFeuilleConfirmation !== "function") { effacer(); return; }
+        ouvrirFeuilleConfirmation({
+          titre: "Supprimer ce brouillon ?",
+          texte: "Il sera effacé de cet appareil.",
+          actions: [{ id: "supprimer", libelle: "Supprimer", danger: true, agir: effacer }],
+          annuler: "Garder"
+        });
+      });
+      ligne.appendChild(reprendre); ligne.appendChild(suppr);
+      liste.appendChild(ligne);
+    });
+  };
+  meBrouillonsLire().then(peindre);
+}
+// Reprendre : le brouillon redevient l'édition en cours (il reste enregistré tant
+// qu'il n'est ni publié, ni supprimé — un rechargement en route ne le perd pas).
+async function meReprendreBrouillon(id) {
+  var ed = document.getElementById("mediaEditor");
+  // La capture au repos : ni prise, ni décompte, ni boomerang, ni photo au flash en route.
+  var auRepos = function () {
+    return !!ed && ed.classList.contains("open") && ed.classList.contains("phase-capture")
+      && !meCam.recording && !meCap.compteTimer && !meCap.boomEnCours && !meCam._flashEnCours;
+  };
+  if (!auRepos()) return false;
+  var compte = _meBrouillonCompte();
+  var fiche = (await meBrouillonsLire()).find(function (x) { return x.id === id; });
+  var panneau = document.getElementById("meBrouillonsPanel"); if (panneau) panneau.remove();
+  if (!fiche) { toast("Ce brouillon n'existe plus"); _meMajBrouillons(); return false; }
+  // L'écran est TENU pendant la lecture du média (une vidéo lourde prend du temps) : un
+  // déclencheur touché à ce moment posait un autre média sous le lien de CE brouillon —
+  // et sa publication aurait supprimé le brouillon.
+  if (!auRepos() || !_meVoileBrouillon("Ouverture du brouillon…")) return false;
+  var b, data = null, illisible = false;
+  try {
+    // L'enregistrement complet (avec son média) n'est lu qu'ICI, pour CE brouillon.
+    try { b = await idbBrouillonLire(id); } catch (e) { b = undefined; }
+    if (b && b.blob) {
+      try { data = await _meReadFile(b.blob); } catch (e) { data = null; }
+      if (!data) illisible = true;
+    }
+  } finally { _meHideProgress(); }
+  if (b === undefined || illisible) { toast("⚠️ Brouillon illisible sur cet appareil", "warning"); return false; }
+  // Fiche sans enregistrement, ou enregistrement d'un autre compte : rien à reprendre.
+  if (!b || b.compte !== compte || _meBrouillonCompte() !== compte) {
+    if (!b) meSupprimerBrouillon(id);
+    toast("Ce brouillon n'existe plus"); return false;
+  }
+  // L'éditeur a pu être fermé pendant la lecture (retour système, appel entrant).
+  if (!auRepos()) return false;
+  var zoneMedia = document.getElementById("meMedia"), zoneOverlays = document.getElementById("meOverlays");
+  var toile = document.getElementById("meCanvas"), attente = document.getElementById("mePlaceholder");
+  if (!zoneMedia || !zoneOverlays || !toile) return false;
+  if (meState.mode !== b.mode) _meAppliquerMode(b.mode);
+  meState.overlays = []; meState.dessin = []; meState._seq = 0;
+  zoneOverlays.innerHTML = "";
+  if (data) {
+    meSetMedia(data, b.mediaType === "video" ? "video" : "photo");
+    meState.source = null; meState.montage = null;   // ✂️ repartira de la vidéo posée
+    meChoisirFiltre(b.filtre || "normal");
+  } else {
+    // Mode Créer : le fond choisi (un INDICE de STORY_BGS, jamais une chaîne CSS).
+    meState.media = null; meState.mediaType = null;
+    meState.bgIdx = Number.isInteger(b.bgIdx) ? ((b.bgIdx % STORY_BGS.length) + STORY_BGS.length) % STORY_BGS.length : 0;
+    meState.bg = STORY_BGS[meState.bgIdx];
+    zoneMedia.innerHTML = "";
+    toile.style.background = meState.bg;
+    if (attente) attente.classList.add("hidden");
+    meEnterEditPhase();
+    ed.classList.add("me-fond");
+    _meMajBoutonsFond();
+  }
+  (Array.isArray(b.overlays) ? b.overlays : []).forEach(function (o) { if (o && typeof o === "object") meAddOverlay(JSON.parse(JSON.stringify(o))); });
+  document.querySelectorAll("#meOverlays .me-overlay.selected").forEach(function (e) { e.classList.remove("selected"); });
+  meState.dessin = JSON.parse(JSON.stringify(Array.isArray(b.dessin) ? b.dessin : []));
+  _meDessinRendre();
+  _meMajVide();
+  meState.brouillonId = b.id;
+  toast("Brouillon repris");
+  return true;
 }
 // Geste RETOUR du système (app-02, `closeCurrentOverlay`) : en édition avec du
 // contenu, il ne ferme pas tout — il pose la même question que le bouton ‹.
@@ -1323,11 +1680,19 @@ function _meDemanderAbandon() {
 function meRetourGarde() {
   var ed = document.getElementById("mediaEditor");
   if (!ed || !ed.classList.contains("open")) return false;
+  // Un brouillon en cours d'écriture : l'écran est tenu, le retour ne fait rien.
+  if (meCap.brouillonEnCours) return true;
+  // Une question déjà à l'écran (« Abandonner ? », « Supprimer ce brouillon ? ») : le
+  // retour vaut « Continuer », en capture comme en édition, et il ne fait QUE cela.
+  // Placée plus bas, elle laissait le retour arrêter une prise SOUS la feuille.
+  if (document.getElementById("feuilleConfirmation") && typeof window._fermerFeuilleConf === "function") { window._fermerFeuilleConf(); return true; }
   // En capture : une prise en cours s'ARRÊTE sur son aperçu (elle n'est pas jetée),
   // un décompte ou un boomerang s'annule. Le retour suivant fermera l'éditeur.
   if (meCam.recording) { meStopRecording(); return true; }
   if (meCap.compteTimer) { _meAnnulerCompte(); return true; }
   if (meCap.boomEnCours) { _meBoomerangAbandonner(); _meMajConsigne(); return true; }
+  var brouillons = document.getElementById("meBrouillonsPanel");
+  if (brouillons) { brouillons.remove(); return true; }
   if (!ed.classList.contains("phase-edit")) return false;
   // La feuille de finition de la bobine (lot UI-7) : le retour la referme, elle seule.
   var finition = document.getElementById("v7BobineSheet");
@@ -1336,8 +1701,6 @@ function meRetourGarde() {
   var tiroir = ["meStickerPanel", "meEmojiBar", "meGifPanel"].map(function (id) { return document.getElementById(id); }).filter(Boolean);
   if (tiroir.length) { tiroir.forEach(function (p) { p.remove(); }); _meMusiqueArreterSiLibre(); return true; }
   if (!_meADuContenu()) return false;
-  // Question déjà à l'écran : le retour vaut « Continuer ».
-  if (document.getElementById("feuilleConfirmation") && typeof window._fermerFeuilleConf === "function") { window._fermerFeuilleConf(); return true; }
   _meDemanderAbandon();
   return true;
 }
@@ -1367,7 +1730,7 @@ function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   _meMontageDemonter();
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
-  meState.source = null; meState.montage = null;
+  meState.source = null; meState.montage = null; meState.brouillonId = null;
   ed.classList.remove("me-video");
   _meMusiqueArreter();
   meFermerDessin(); _meDessinRendre();
@@ -1378,12 +1741,13 @@ function meBackToCapture() {
   document.getElementById("meCanvas").style.background = "#000";
   document.getElementById("mePlaceholder").classList.add("hidden");
   _meTeReinitialiser();
-  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.classList.add("phase-capture", "me-vide");
+  ed.classList.remove("phase-edit", "me-no-cam", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse", "me-pause", "me-prises"); ed.classList.add("phase-capture", "me-vide");
   meState.filtre = "normal"; _mePeindreFiltres();
   _meAnnulerCompte();
-  ["meStickerPanel", "meEmojiBar", "meGifPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
+  ["meStickerPanel", "meEmojiBar", "meGifPanel", "meBrouillonsPanel"].forEach(function (id) { var p = document.getElementById(id); if (p) p.remove(); });
   try { if (window.PassioUIV7 && typeof PassioUIV7.closeReelSheet === "function") PassioUIV7.closeReelSheet(); } catch (e) {}
   _meMajRail(); _meMajRetour(); _meMajModes(true); _meMajConsigne();
+  _meMajBrouillons();
   meStartCamera();
 }
 function meEnterEditPhase() {
@@ -1394,7 +1758,7 @@ function meEnterEditPhase() {
   meStopCamera();
   // La rangée d'effets ouverte en capture se replie : le filtre choisi RESTE
   // appliqué, et le bouton ✨ de l'édition la rouvre.
-  ed.classList.remove("phase-capture", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse"); ed.classList.add("phase-edit");
+  ed.classList.remove("phase-capture", "me-filtres-ouverts", "me-verrouille", "me-boom-capture", "me-flash-plein", "me-flash-anneau", "me-glisse", "me-pause", "me-prises"); ed.classList.add("phase-edit");
   _meMajRetour();
   _meMontrerNomsOutils();
   meState._enteredEditAt = Date.now(); // anti clic-fantôme : bloque une publication immédiate
@@ -1523,10 +1887,28 @@ function _passioBestVideoMime() {
 }
 
 // Enregistrement vidéo (maintien du déclencheur).
+// Attente maximale de la fin d'une prise arrêtée (voir `meStartRecording`).
+var ME_FIN_PRISE_MAX_MS = 5000;
+function _mePriseEnFin() {
+  return !!meCam._finAttendueA && Date.now() - meCam._finAttendueA < ME_FIN_PRISE_MAX_MS;
+}
+// L'éditeur se ferme, ou revient à une capture neuve : la fin d'une prise encore
+// attendue ne doit plus poser son aperçu (sur un éditeur fermé, ou sur la capture).
+function _meOublierPriseEnFin() {
+  if (meCam.recorder) meCam.recorder._jete = true;
+  meCam._finAttendueA = 0;
+}
 function meStartRecording() {
   if (!meCam.stream || !window.MediaRecorder || meCam.recording) return;
+  // ⚠️ UNE PRISE QUI FINIT N'EST PAS ÉCRASÉE PAR LA SUIVANTE. Entre `stop()` et la fin
+  // réelle de l'enregistreur (`onstop`), `meCam.recording` est déjà faux : un second
+  // toucher (double toucher pour arrêter, « Terminer » puis le déclencheur) lançait
+  // un NOUVEL enregistreur et la prise qui finissait était perdue. Tant que son aperçu
+  // est attendu, on ne filme pas ; l'attente est bornée (un `onstop` qui ne viendrait
+  // jamais ne condamne pas la caméra).
+  if (_mePriseEnFin()) return;
+  meCam._finAttendueA = 0;
   var mime = _passioBestVideoMime();
-  meCam.chunks = [];
   // Bitrate plafonné : sans ça le navigateur enregistre à 5-8 Mbps → une
   // vidéo de 60 s pèse 40+ Mo et sature le Storage (1 Go en gratuit).
   // 3,5 Mbps vidéo (1080p30 H.264 net) + 128 kbps audio → 60 s ≈ 27 Mo,
@@ -1538,11 +1920,22 @@ function meStartRecording() {
     try { meCam.recorder = mime ? new MediaRecorder(meCam.stream, { mimeType: mime }) : new MediaRecorder(meCam.stream); }
     catch(e2) { return; }
   }
-  meCam.recorder.ondataavailable = function(ev) { if (ev.data && ev.data.size) meCam.chunks.push(ev.data); };
-  meCam.recorder.onstop = _meOnRecordingStop;
-  try { meCam.recorder.start(); } catch(e) { return; }
+  // ⚠️ UN ENREGISTREUR NE PARLE QUE POUR LUI. Ses morceaux et sa fin sont liés à SON
+  // instance, et « jeté » (`_jete`, posé par un arrêt silencieux) est SON drapeau :
+  // un drapeau commun (`meCam._silent`) restait levé quand l'enregistreur était déjà
+  // inactif, et avalait la prise suivante ; la fin tardive d'une prise jetée versait
+  // son dernier morceau dans la suivante.
+  var rec = meCam.recorder, morceaux = [];
+  rec._jete = false;
+  rec.ondataavailable = function(ev) { if (ev.data && ev.data.size) morceaux.push(ev.data); };
+  rec.onstop = function () { _meOnRecordingStop(rec, morceaux); };
+  try { rec.start(); } catch(e) { return; }
+  meCam.chunks = morceaux;
   meCam.recording = true; meCam.recStart = Date.now();
-  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-recording");
+  // Temps RÉELLEMENT filmé : cumul des prises terminées + prise en cours (les pauses
+  // d'une bobine en plusieurs prises ne comptent pas).
+  meCam.recCumul = 0; meCam.segStart = meCam.recStart; meCam.enPause = false; meCam.nbPrises = 1; meCam.recDuree = null;
+  var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.add("me-recording"); ed.classList.toggle("me-prises", _mePlusieursPrises()); }
   if (meCap.flash) _meTorche(true).then(function (torche) { if (!torche && ed && meCam.recording) ed.classList.add("me-flash-anneau"); });
   _meMajConsigne();
   meCam.recTimer = setInterval(_meUpdateRecTime, 200);
@@ -1552,30 +1945,145 @@ function meStartRecording() {
 function _meDureeMaxMs() {
   return (meState.mode === "bobine" ? (meCap.duree || 60) : 60) * 1000;
 }
-function meStopRecording(silent) {
+// Temps réellement filmé (ms), pauses exclues.
+function _meTempsFilme() {
+  return (meCam.recCumul || 0) + (meCam.recording && !meCam.enPause ? Date.now() - (meCam.segStart || meCam.recStart) : 0);
+}
+
+// ── PLUSIEURS PRISES (bobine, 2026-11-27) ────────────────────────────────────
+// Comme Instagram : on filme, on s'arrête, on reprend ailleurs, puis « Terminer ».
+// UN SEUL MediaRecorder, mis en `pause()` entre deux prises : le fichier produit ne
+// contient que ce qui a été filmé, sans montage ni assemblage après coup. Entre deux
+// prises on ne change ni de caméra ni de mode (l'enregistreur est lié au flux).
+function _mePlusieursPrises() { return meState.mode === "bobine" && !!meCap.prises; }
+function meBasculerPrises() {
+  if (meState.mode !== "bobine" || meCam.recording || meCap.boomEnCours) return;
+  meCap.prises = !meCap.prises;
+  _meMajRail(); _meMajConsigne();
+}
+// Une pause ne dure pas indéfiniment : la caméra reste allumée, et une mise à jour
+// de l'application attend la fin de l'enregistrement (pwa-detect.js). Passé ce
+// délai, les prises filmées vont à leur aperçu — elles ne sont pas jetées.
+var ME_PAUSE_MAX_MS = 180000;
+function _meMettreEnPause() {
+  if (!meCam.recording || meCam.enPause || !meCam.recorder) return;
+  // Durée presque atteinte : il ne resterait rien à filmer — l'aperçu, pas une pause
+  // dont le toucher suivant ne pourrait que terminer.
+  if (_meDureeMaxMs() - _meTempsFilme() < 400) { meStopRecording(); return; }
+  // Navigateur sans pause() : la prise se termine (aperçu), elle n'est pas perdue.
+  try { meCam.recorder.pause(); } catch (e) { meStopRecording(); return; }
+  meCam.recCumul = _meTempsFilme();
+  meCam.enPause = true;
   clearTimeout(meCam.maxTimer); clearInterval(meCam.recTimer);
+  clearTimeout(meCam.pauseTimer);
+  meCam.pauseTimer = setTimeout(function () {
+    if (!meCam.recording || !meCam.enPause) return;
+    _meAnnulerCompte();
+    var f = document.getElementById("feuilleConfirmation");
+    if (f && typeof window._fermerFeuilleConf === "function") window._fermerFeuilleConf();
+    toast("Pause trop longue — voici l'aperçu de tes prises");
+    meStopRecording();
+  }, ME_PAUSE_MAX_MS);
+  var ed = document.getElementById("mediaEditor");
+  if (ed) { ed.classList.remove("me-recording", "me-verrouille", "me-flash-anneau"); ed.classList.add("me-pause"); }
+  if (meCap.flash) _meTorche(false);
+  _meUpdateRecTime();
+  _meMajConsigne();
+}
+function _meReprendrePrise() {
+  if (!meCam.recording || !meCam.enPause || !meCam.recorder) return;
+  var reste = _meDureeMaxMs() - (meCam.recCumul || 0);
+  if (reste < 400) { meStopRecording(); return; }   // durée atteinte : l'aperçu
+  try { meCam.recorder.resume(); } catch (e) { meStopRecording(); return; }
+  clearTimeout(meCam.pauseTimer);
+  meCam.enPause = false; meCam.segStart = Date.now(); meCam.nbPrises = (meCam.nbPrises || 1) + 1;
+  var ed = document.getElementById("mediaEditor");
+  if (ed) { ed.classList.remove("me-pause"); ed.classList.add("me-recording"); }
+  if (meCap.flash) _meTorche(true).then(function (torche) { if (!torche && ed && meCam.recording && !meCam.enPause) ed.classList.add("me-flash-anneau"); });
+  meCam.recTimer = setInterval(_meUpdateRecTime, 200);
+  meCam.maxTimer = setTimeout(function () { meStopRecording(); }, reste);
+  _meMajConsigne();
+}
+// « Terminer » : l'aperçu de ce qui a été filmé.
+function mePrisesTerminer() {
   if (!meCam.recording) return;
-  meCam.recording = false;
-  meCam._silent = !!silent;
+  _meAnnulerCompte();   // minuteur armé : le décompte d'une reprise ne survit pas à « Terminer »
+  meStopRecording();
+}
+// « Refaire » : on jette les prises — après l'avoir demandé.
+function mePrisesRecommencer() {
+  if (!meCam.recording) return;
+  _meAnnulerCompte();
+  var jeter = function () { _meAnnulerCompte(); meStopRecording(true); _meMajRail(); _meMajConsigne(); };
+  if (typeof ouvrirFeuilleConfirmation !== "function") { jeter(); return; }
+  ouvrirFeuilleConfirmation({
+    titre: "Refaire la bobine ?",
+    texte: "Les prises déjà filmées seront perdues.",
+    actions: [{ id: "recommencer", libelle: "Refaire", danger: true, agir: jeter }],
+    annuler: "Garder mes prises"
+  });
+}
+function meStopRecording(silent) {
+  clearTimeout(meCam.maxTimer); clearInterval(meCam.recTimer); clearTimeout(meCam.pauseTimer);
+  if (!meCam.recording) return;
+  meCam.recDuree = _meTempsFilme();   // AVANT de baisser le drapeau : la durée exclut les pauses
+  meCam.recording = false; meCam.enPause = false;
+  // Un décompte armé pour une REPRISE (minuteur + plusieurs prises) ne survit pas à
+  // l'arrêt : arrivé à zéro, il relançait un enregistreur sous l'aperçu ou sous la question.
+  _meAnnulerCompte();
   if (!silent) _mediaEnPreparation();
-  try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
-  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording", "me-verrouille", "me-flash-anneau");
+  var rec = meCam.recorder, actif = false;
+  try { actif = !!rec && rec.state !== "inactive"; } catch (e) {}
+  if (rec) rec._jete = !!silent;
+  // Fin NON silencieuse d'un enregistreur encore actif : son aperçu arrive (`onstop`).
+  meCam._finAttendueA = (!silent && actif) ? Date.now() : 0;
+  try { if (actif) rec.stop(); } catch(e) { meCam._finAttendueA = 0; }
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording", "me-verrouille", "me-flash-anneau", "me-pause", "me-prises");
   if (meCap.flash) _meTorche(false);
   var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
   _meMajConsigne();
 }
 function _meUpdateRecTime() {
-  var elapsed = Date.now() - meCam.recStart;
+  var elapsed = _meTempsFilme();
   var el = document.getElementById("meRecTime");
-  if (el) { var s = Math.floor(elapsed / 1000); el.textContent = Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60); }
+  if (el) {
+    var s = Math.floor(elapsed / 1000);
+    var texte = Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+    // En pause entre deux prises : le badge dit aussi combien de prises sont dans la boîte.
+    if (meCam.enPause) texte += " · " + (meCam.nbPrises || 1) + (meCam.nbPrises > 1 ? " prises" : " prise");
+    el.textContent = texte;
+  }
   // Anneau de progression (0→100 % sur la durée maximale de la prise).
   var sh = document.getElementById("meShutter");
   if (sh) sh.style.setProperty("--p", Math.min(100, (elapsed / _meDureeMaxMs()) * 100));
 }
-function _meOnRecordingStop() {
-  if (meCam._silent) { meCam._silent = false; return; }
-  var dur = Date.now() - meCam.recStart;
-  var hasData = meCam.chunks && meCam.chunks.length;
+function _meOnRecordingStop(rec, morceaux) {
+  // Prise JETÉE (« Refaire », fermeture, média posé par un autre chemin) : rien à montrer.
+  if (rec && rec._jete) return;
+  // La fin d'un enregistreur REMPLACÉ ne regarde plus personne (ne se produit qu'au-delà
+  // de `ME_FIN_PRISE_MAX_MS` : on le note, on ne pose pas son aperçu sous la prise en cours).
+  if (rec && rec !== meCam.recorder) { try { if (typeof diagLog === "function") diagLog("capture: fin tardive d'un enregistreur remplacé"); } catch (e) {} return; }
+  meCam._finAttendueA = 0;
+  morceaux = morceaux || meCam.chunks || [];
+  // ⚠️ L'ENREGISTREUR S'EST ARRÊTÉ TOUT SEUL (piste coupée par le système, caméra
+  // reprise par une autre application — surtout pendant une pause) : personne n'a
+  // appelé `meStopRecording`. Sans ce bloc l'écran restait « en pause » sur un
+  // enregistreur mort, et « Terminer » n'aboutissait à rien. On range l'état comme
+  // le ferait un arrêt, et ce qui a été filmé part à son aperçu.
+  if (meCam.recording) {
+    clearTimeout(meCam.maxTimer); clearInterval(meCam.recTimer); clearTimeout(meCam.pauseTimer);
+    meCam.recDuree = _meTempsFilme();
+    meCam.recording = false; meCam.enPause = false;
+    _meAnnulerCompte();
+    _mediaEnPreparation();
+    var edA = document.getElementById("mediaEditor"); if (edA) edA.classList.remove("me-recording", "me-verrouille", "me-flash-anneau", "me-pause", "me-prises");
+    if (meCap.flash) _meTorche(false);
+    var shA = document.getElementById("meShutter"); if (shA) shA.style.setProperty("--p", 0);
+    _meMajConsigne();
+  }
+  // Durée RÉELLEMENT filmée (les pauses entre deux prises ne comptent pas).
+  var dur = (meCam.recDuree != null) ? meCam.recDuree : (Date.now() - meCam.recStart);
+  var hasData = morceaux.length > 0;
   if (meState.mode === "bobine") {
     // Prise trop brève (deux touchers coup sur coup) : rien à montrer, on le dit.
     if (dur < 500) { toast("Vidéo trop courte — appuie pour filmer, appuie encore pour arrêter"); return; }
@@ -1588,8 +2096,8 @@ function _meOnRecordingStop() {
   // une VIRGULE, or une data URL est coupée à la première virgule (RFC 2397) →
   // le readAsDataURL produisait une URL invalide (aperçu noir + upload cassé
   // dès qu'il y avait une piste audio). On garde juste « video/mp4 »/« video/webm ».
-  var recType = ((meCam.chunks[0] && meCam.chunks[0].type) || "video/webm").split(";")[0];
-  var blob = new Blob(meCam.chunks, { type: recType });
+  var recType = ((morceaux[0] && morceaux[0].type) || "video/webm").split(";")[0];
+  var blob = new Blob(morceaux, { type: recType });
   if (!blob.size) {
     if (meState.mode === "bobine") toast("Enregistrement vide — réessaie");
     else meCapturePhoto();
@@ -1616,19 +2124,31 @@ function _meBindShutter() {
   if (meCam._boundShutter) return;
   var sh = document.getElementById("meShutter"); if (!sh) return;
   meCam._boundShutter = true;
-  var held = false, appuiA = 0, arretAuRelache = false, ignorer = false, appuiEnCours = false;
+  var held = false, appuiA = 0, arretAuRelache = false, pauseAuRelache = false, ignorer = false, appuiEnCours = false;
   function toucherFilme() { return meState.mode === "bobine" || meCap.mainsLibres; }
   sh.addEventListener("pointerdown", function(e) {
     e.preventDefault();
-    ignorer = false; held = false; arretAuRelache = false; appuiA = Date.now();
+    ignorer = false; held = false; arretAuRelache = false; pauseAuRelache = false; appuiA = Date.now();
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) { ignorer = true; mePickMedia(); return; }
     // Décompte en cours : ce toucher l'annule, rien d'autre.
     if (meCap.compteTimer) { ignorer = true; _meAnnulerCompte(); return; }
     // Boomerang en cours, ou photo au flash déjà partie : ce toucher ne déclenche rien de plus.
     if (meCap.boomEnCours || meCam._flashEnCours) { ignorer = true; return; }
+    // Une prise vient d'être arrêtée : son aperçu arrive — ce toucher (le second d'un
+    // double toucher) ne relance rien, et n'annonce pas un enregistrement « impossible ».
+    if (_mePriseEnFin()) { ignorer = true; return; }
     appuiEnCours = true;
     try { sh.setPointerCapture(e.pointerId); } catch(_) {}
+    // Plusieurs prises : en pause, ce toucher REPREND (le relâché décide : bref = la
+    // prise continue, maintien = pause au relâché) ; en cours, il met en pause.
+    if (meCam.recording && _mePlusieursPrises()) {
+      if (meCam.enPause) {
+        if (meCap.minuteur) return;            // minuteur : la reprise part au relâché, après le décompte
+        held = true; _meReprendrePrise();
+      } else pauseAuRelache = true;
+      return;
+    }
     // Prise verrouillée (lancée par un toucher) : celui-ci l'arrête, au relâché.
     if (meCam.recording) { arretAuRelache = true; return; }
     // Boomerang ou minuteur : tout part au relâché.
@@ -1655,9 +2175,23 @@ function _meBindShutter() {
     // « Bref » va jusqu'à 500 ms, la durée minimale d'une prise : un toucher un peu
     // lent verrouille la prise au lieu de l'arrêter sur une vidéo trop courte.
     var bref = (Date.now() - appuiA) < 500;
+    if (pauseAuRelache) {
+      pauseAuRelache = false;
+      if (meCam.recording && !meCam.enPause) _meMettreEnPause();
+      return;
+    }
     if (arretAuRelache) {
       arretAuRelache = false;
       if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
+      return;
+    }
+    if (meCam.recording && _mePlusieursPrises()) {
+      // En pause ici = minuteur armé : la reprise part après le décompte.
+      if (meCam.enPause) { held = false; if (!annule) _meDeclencher(); return; }
+      // Toucher bref : la prise continue, doigt levé. Maintien : pause au relâché.
+      var tenuP = held; held = false;
+      if (tenuP && bref && !annule) { _meVerrouiller(true); return; }
+      _meMettreEnPause();
       return;
     }
     if (meCam.recording) {
@@ -3735,13 +4269,15 @@ function meAddEmoji() {
 }
 (function _meFermerPanneauxDehors() {
   document.addEventListener("pointerdown", function (e) {
-    ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) {
+    ["meEmojiBar", "meGifPanel", "meStickerPanel", "meBrouillonsPanel"].forEach(function (id) {
       var p = document.getElementById(id);
       if (!p || p.contains(e.target)) return;
+      // La feuille « Supprimer ce brouillon ? » est posée PAR le panneau : y répondre ne le ferme pas.
+      if (e.target.closest && e.target.closest("#feuilleConfirmation")) return;
       // Panneau musique fermé sans choisir : l'aperçu s'arrête (sauf musique déjà posée).
       if (id === "meStickerPanel" && !meState.overlays.some(function (o) { return o.type === "musique"; })) _meMusiqueArreter();
       // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
-      if (e.target.closest && e.target.closest(".me-tool")) return;
+      if (e.target.closest && e.target.closest(".me-tool, #meBrouillonsBtn")) return;
       p.remove();
     });
   }, true);
@@ -3993,6 +4529,17 @@ async function mePublish() {
         && publicationRefuseeFautePassion(_passionBobine)) return;   // éditeur INTACT
   }
 
+  // Brouillon repris : il n'est supprimé qu'une fois la publication ARRIVÉE (un envoi
+  // refusé ou interrompu ne doit pas emporter le travail avec lui). Story : au
+  // verdict de `_publierStoryAvecVerdict`. Bobine : l'identifiant voyage SUR la
+  // publication (`_brouillonId`) et `_verdictPublication` le retire au succès —
+  // celui du premier essai comme celui d'un renvoi (45 s plus tard, ou au prochain
+  // lancement). Un rappel passé à `_publishReelWithFeedback` ne voyait que le premier.
+  // `_brouillonId` est un identifiant aléatoire de CET appareil ; il suit la
+  // publication dans l'état synchronisé, et c'est voulu : il doit survivre à
+  // l'hydratation du démarrage pour qu'un renvoi au prochain lancement retire le brouillon.
+  var brouillonPublie = meState.brouillonId || null;
+  meState.brouillonId = null;
   meClose();
   if (mode === "story") {
     var story = {
@@ -4013,6 +4560,10 @@ async function mePublish() {
       // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
       // story qu'il ne pourra pas ouvrir.
       var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
+      // ⚠️ MÊME RÈGLE POUR LE BROUILLON : « Story enregistrée sur cet appareil » rend
+      // VRAI aussi, mais une story locale ne survit pas au rechargement (`_leanState`
+      // n'écrit pas `seed`) — supprimer le brouillon là, c'était perdre le travail.
+      if (ok === true && serveur && brouillonPublie) meSupprimerBrouillon(brouillonPublie);
       if (ok !== true || !serveur) return;
       // Compte privé : seuls les abonnés ACCEPTÉS mentionnés sont prévenus.
       // Story « Amis proches » : en plus, seuls les MEMBRES de la liste (relue
@@ -4059,6 +4610,7 @@ async function mePublish() {
       createdAt: Date.now(), likes: 0, liked: false, comments: [],
     };
     if (d.eventId) post.eventId = d.eventId;
+    if (brouillonPublie) post._brouillonId = brouillonPublie;
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();
@@ -4122,8 +4674,18 @@ function _publishReelWithFeedback(post) {
 // un état hydraté d'un autre compte ne publie jamais sous ce compte.
 function _verdictPublication(post, ok) {
   if (!post || typeof post !== "object") return;
-  if (ok) { post.syncStatus = "synced"; post._pendingSync = false; }
-  else if (window._passioEchecPublication) { post.syncStatus = "refusee"; post._pendingSync = false; }
+  if (ok) {
+    post.syncStatus = "synced"; post._pendingSync = false;
+    // Publiée depuis un brouillon : il a rempli son office, à CE verdict seulement
+    // (premier essai ou renvoi). Un refus ou une attente le laissent en place.
+    if (post._brouillonId) {
+      var _brouillon = post._brouillonId; delete post._brouillonId;
+      try { if (typeof meSupprimerBrouillon === "function") meSupprimerBrouillon(_brouillon); } catch (e) {}
+    }
+  }
+  // Refus DÉFINITIF : aucun autre verdict ne viendra. Le brouillon RESTE (le travail
+  // n'est pas perdu), seul le lien — désormais sans objet — quitte la publication.
+  else if (window._passioEchecPublication) { post.syncStatus = "refusee"; post._pendingSync = false; delete post._brouillonId; }
   else { post.syncStatus = "offline"; post._pendingSync = true; _planifierReprisePublications(); }
   try { saveState(); } catch (e) {}
 }
@@ -4166,6 +4728,7 @@ async function _rejouerPublicationsEnAttente() {
     var p = pending[i];
     if (!_publicationRejouable(p)) {
       p.syncStatus = "perdue"; p._pendingSync = false;
+      delete p._brouillonId;   // le brouillon, lui, reste : c'est tout ce qu'il reste de ce travail
       try { saveState(); } catch (e) {}
       toast("⚠️ Une publication n'a pas pu être envoyée : son média n'est plus sur cet appareil — republie-la", "warning");
       try { if (typeof diagLog === "function") diagLog("publication perdue " + p.id); } catch (e) {}
@@ -6070,6 +6633,7 @@ function mergeSupaNotifs(ns) {
   try {
     var attente = (state.user && state.user.followingPending) || [];
     if (attente.length) {
+      var promus = 0;
       ns.forEach(function (n) {
         if (!n || n.kind !== "follow" || !n.fromId || !/accept/i.test(String(n.text || ""))) return;
         if (attente.indexOf(n.fromId) < 0) return;
@@ -6077,7 +6641,11 @@ function mergeSupaNotifs(ns) {
         state.user.following = state.user.following || [];
         if (state.user.following.indexOf(n.fromId) < 0) state.user.following.push(n.fromId);
         attente = state.user.followingPending;
+        promus++;
       });
+      // Les boutons À L'ÉCRAN suivent (2026-11-27) : « Demande envoyée » restait
+      // affiché sur une bobine ou une suggestion jusqu'au prochain rendu.
+      if (promus && typeof repeindreBoutonsSuiviVisibles === "function") { try { repeindreBoutonsSuiviVisibles(); } catch (e) {} }
     }
     // Une demande d'abonnement RAFRAÎCHIE (même id, date plus récente que le
     // verdict mémorisé) est une nouvelle demande : le verdict d'avant est périmé.
@@ -13553,6 +14121,9 @@ async function supaUnfollowUser(targetId) {
 
 async function supaLoadFollowing() {
   if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
+  // Heure de DÉPART de la lecture : tout compte suivi / désabonné / demandé APRÈS
+  // elle est plus frais en local que dans cette réponse (voir plus bas).
+  const debut = Date.now();
   try {
     let res = null;
     if (window._followsSansStatut !== true) {
@@ -13568,9 +14139,35 @@ async function supaLoadFollowing() {
     // Les demandes EN ATTENTE ne sont pas des abonnements : elles n'entrent ni
     // dans « Suivis » ni dans le verrou du profil visité, mais le bouton les dit.
     const enAttente = lignes.filter(r => r.status === "pending").map(r => r.following_id);
-    if (state && state.user) state.user.followingPending = enAttente;
-    return lignes.filter(r => r.status !== "pending").map(r => r.following_id);
+    const acceptes = lignes.filter(r => r.status !== "pending").map(r => r.following_id);
+    // ⚠️ UNE LECTURE PARTIE AVANT UN GESTE NE L'EFFACE PAS (2026-11-27). Mesuré :
+    // « Suivre » touché pendant que cette lecture était en vol (les premières secondes
+    // après l'ouverture) — la réponse, antérieure à l'écriture, REMPLAÇAIT la liste des
+    // demandes : « Demande envoyée » redevenait « Suivre » alors que la demande existait
+    // en base, et un second toucher la renvoyait. Pour un compte dont l'écriture est en
+    // vol, ou s'est terminée APRÈS le départ de cette lecture, l'état LOCAL fait foi (il
+    // porte déjà le verdict du serveur) ; pour tous les autres, la base fait foi.
+    // Les demandes sont fusionnées ICI (aucune attente entre la réponse et cette
+    // écriture). La liste des suivis, elle, est rendue BRUTE avec l'heure de départ
+    // de la lecture (`_luA`) : c'est `_fusionnerSuivisServeur` qui l'applique, plus
+    // tard, et c'est À CE MOMENT-LÀ que « récent » doit être jugé.
+    acceptes._luA = debut;
+    if (!state || !state.user) return acceptes;
+    const localAttente = state.user.followingPending || [];
+    state.user.followingPending = [...new Set([
+      ...enAttente.filter(id => !_suiviLocalFaitFoi(id, debut)),
+      ...localAttente.filter(id => _suiviLocalFaitFoi(id, debut)),
+    ])];
+    return acceptes;
   } catch(e) { return null; }
+}
+// Face à une lecture partie à `debut`, l'état LOCAL d'un compte fait foi quand son
+// écriture est en vol, ou s'est terminée après ce départ (la réponse ne peut pas la
+// connaître). Sans heure de départ, seule l'écriture en vol compte.
+function _suiviLocalFaitFoi(id, debut) {
+  const enVol = (typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {};
+  const finA = (typeof _ecritureSuiviFinA !== "undefined" && _ecritureSuiviFinA) || {};
+  return !!enVol[id] || (Number(debut) > 0 && Number(finA[id]) >= Number(debut));
 }
 
 // ---- MODÉRATION : BLOCAGE / SIGNALEMENT ----
@@ -14053,12 +14650,18 @@ async function _sessionEstMoi() {
 }
 function _fusionnerSuivisServeur(ids, remplacer) {
   if (!Array.isArray(ids) || !state || !state.user) return false;
-  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...ids])]; }
+  // « Récent » se juge ICI, au moment d'appliquer (2026-11-27) : entre la réponse du
+  // serveur et cette fusion il y a une attente (`_sessionEstMoi`), pendant laquelle un
+  // « Suivre » ou un « Ne plus suivre » peut aboutir. `ids._luA` est l'heure de DÉPART
+  // de la lecture (posée par `supaLoadFollowing`) ; sans elle, seule l'écriture en vol compte.
+  var debut = Number(ids._luA) || 0;
+  var local = function (id) { return _suiviLocalFaitFoi(id, debut); };
+  var duServeur = ids.filter(function (id) { return !local(id); });
+  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...duServeur])]; }
   else {
-    var enVol = Object.keys((typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {});
     state.user.following = [...new Set([
-      ...ids.filter(function (id) { return enVol.indexOf(id) < 0; }),
-      ...(state.user.following || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+      ...duServeur,
+      ...(state.user.following || []).filter(function (id) { return local(id) || !RE_UID_COMPTE.test(String(id)); }),
     ])];
   }
   // FIL-C30 : « Passionnés à découvrir » ne propose pas un compte déjà suivi.
