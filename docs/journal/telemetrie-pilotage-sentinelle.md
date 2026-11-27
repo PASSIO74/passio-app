@@ -770,6 +770,13 @@ v2, run 42201705763 — l'étape RÉELLE de `test-local`, extraite par le lecteu
 - **Le geste quand les deux essais échouent** : « Re-run failed jobs », dans `docs/RUNBOOK_MOIS_DE_TEST.md` §1. Un job **annulé** que personne n'a annulé a dépassé sa propre borne : là, c'est un test figé, pas le miroir.
 - **Non vérifié** : le figement réel du 06/11 ne se reproduit pas à la demande, le banc le simule par un serveur muet. Le premier vrai figement après la fusion devra se lire « essai 1/2 en échec ou figé », puis une tranche verte, sans geste humain. Les autres jobs (`governance`, `audits`, `smoke`, `deploy`, `retour-issue`, `preview`) n'installent pas Playwright et gardent les 360 min par défaut : hors de ce lot.
 
+### Deuxième régime, vu le 2026-11-27 : un dépôt APT TIERS qui REFUSE, et la relance n'y change rien (run 45965960832)
+
+Sur `main` (commit 4eaa2a5b), la tranche 1/6 de `test-local` est tombée deux fois de suite, en moins d'une minute chacune, sur la MÊME erreur : `packages.microsoft.com/ubuntu/26.04/prod resolute InRelease` en **403 Forbidden** (IP 13.107.246.40) → « is no longer signed » → `apt-get update` en code 100 → `playwright install --with-deps` en échec. Ce dépôt n'est pas le miroir Ubuntu : il vient de l'image du runner GitHub, PASSIO ne le configure nulle part, et les miroirs `*.ec2.archive.ubuntu.com` répondaient tous `Hit:`.
+
+- **Ce n'est pas un défaut du dépôt, et il ne faut rien y corriger.** La même étape, au même octet, a réussi dans le MÊME run sur `test-prod`, sur `test-webkit` et sur les cinq autres tranches : l'échec est local à une machine (ou à une arête de CDN), pas à `main`. Geste : « Re-run failed jobs » (runbook §1). Aucun test n'a tourné, donc aucun verdict de test n'est en cause.
+- **Ce que la relance du 06/11 n'absorbe pas.** Elle a été conçue contre un essai FIGÉ (borne de 10 min). Un 403 échoue en quelques secondes : les deux essais partent dans la même minute, vers la même arête, et `pkill apt-get` n'a rien à achever. Le verrou durable se tiendrait dans l'étape « Installer Playwright » de `deploy.yml` — écarter le dépôt tiers avant d'installer, ou attendre entre les deux essais. **Non appliqué ici** : `.github/` est hors des droits de l'agent distant, délibérément (`deploy.yml` est aussi dans le périmètre « Gouvernance critique », contre-revue humaine obligatoire). C'est donc un geste de session, pas de réparation automatique.
+
 ## 🧭 LES PARCOURS JUGÉS DANS LE NUAGE, LA VEILLE QUI PROUVE SON TRAVAIL, LA POLITIQUE QUI DIT CE QUE FAIT LE CODE (2026-11-06)
 
 Consigne du 2026-11-06 (« Sentinelle, centre de pilotage et exploitation autonome »). Doc de référence : `docs/AUTONOMIE_EXPLOITATION.md` (architecture, matrice des 48 cas, blocages). Ici, les pièges.
