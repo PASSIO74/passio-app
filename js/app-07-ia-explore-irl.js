@@ -1549,18 +1549,26 @@ async function passioGeoSuggest(query, limit) {
   if (hit !== undefined) return hit;
 
   let out = [];
+  // ⚠️ UNE PANNE N'EST PAS UNE RÉPONSE VIDE (2026-11-27). `_geoFetchJson` rend
+  // `null` sur toute panne (hors ligne, délai, statut d'erreur) : la liste vide
+  // était pourtant mise en cache 7 jours, et la même saisie, réseau revenu,
+  // répondait « Aucune ville trouvée » sans plus jamais interroger le
+  // géocodeur. Seule une vraie réponse (même vide) des fournisseurs se cache.
+  let echec = false;
   const ban = await _geoThrottle(() => _geoFetchJson(
     "https://api-adresse.data.gouv.fr/search/?limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+  if (ban === null) echec = true;
   if (ban && ban.features && ban.features.length) out = ban.features.map(_geoFromBan);
 
   if (!out.length) {
     const ph = await _geoThrottle(() => _geoFetchJson(
       "https://photon.komoot.io/api/?lang=fr&limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+    if (ph === null) echec = true;
     if (ph && ph.features) out = ph.features.map(_geoFromPhoton);
   }
 
   out = out.filter(r => typeof r.lat === "number" && typeof r.lng === "number");
-  _geoCacheSet(key, out);
+  if (out.length || !echec) _geoCacheSet(key, out);
   return out;
 }
 
@@ -1573,7 +1581,9 @@ async function passioGeocode(query) {
   if (hit !== undefined) return hit;
   const res = await passioGeoSuggest(q, 1);
   const best = res && res[0] ? res[0] : null;
-  _geoCacheSet(key, best);
+  // « Introuvable » ne se cache que si la suggestion l'a établi (elle ne cache
+  // pas une panne) : sinon on redemandera (2026-11-27).
+  if (best || _geoCacheGet("s:" + q.toLowerCase() + ":1") !== undefined) _geoCacheSet(key, best);
   return best;
 }
 
@@ -1587,16 +1597,19 @@ async function passioReverseGeocode(lat, lng) {
   if (hit !== undefined) return hit;
 
   let out = null;
+  let echec = false;   // même règle que `passioGeoSuggest` : une panne ne se cache pas
   const ban = await _geoThrottle(() => _geoFetchJson(
     "https://api-adresse.data.gouv.fr/reverse/?lat=" + lat + "&lon=" + lng));
+  if (ban === null) echec = true;
   if (ban && ban.features && ban.features[0]) out = _geoFromBan(ban.features[0]);
 
   if (!out || !out.city) {
     const ph = await _geoThrottle(() => _geoFetchJson(
       "https://photon.komoot.io/reverse?lang=fr&lat=" + lat + "&lon=" + lng));
+    if (ph === null) echec = true;
     if (ph && ph.features && ph.features[0]) out = _geoFromPhoton(ph.features[0]);
   }
-  _geoCacheSet(key, out);
+  if ((out && out.city) || !echec) _geoCacheSet(key, out);
   return out;
 }
 
@@ -1610,23 +1623,44 @@ function _irlEcranVisible() {
   } catch (e) { return false; }
 }
 
+// ⚠️ UNE SECONDE CHANCE APRÈS UN REFUS OU UN DÉLAI (2026-11-27). Le repli
+// d'échec pose Paris dans `irlUserLocation` : la garde « déjà obtenue » le
+// prenait pour une vraie position, et plus aucun « Utiliser ma position » ne
+// redemandait rien de la session — la personne autorisait la position dans son
+// navigateur, retapait le bouton, et il ne se passait strictement rien. Une
+// position EN ÉCHEC se redemande ; une demande déjà en vol ne se double pas.
+let _irlGeoEnCours = false;
 function requestUserLocation() {
-  // SI DÉJÀ obtenue, ne pas redemander
-  if (irlUserLocation) {
+  // SI DÉJÀ obtenue (une vraie position, pas le repli d'échec), ne pas redemander
+  if (irlUserLocation && !irlUserLocationError) {
     _diag("[GEO] Position déjà obtenue: " + irlUserLocation.lat.toFixed(4) + ", " + irlUserLocation.lng.toFixed(4));
     return;
   }
+  if (_irlGeoEnCours) return;
 
   if (!navigator.geolocation) {
-    _diag("[GEO] ❌ Géolocalisation non supportée → PARIS");
+    // Repli SIGNALÉ comme tel (2026-11-27) : sans `irlUserLocationError`, Paris
+    // passait pour « Position actuelle » — distances et filtre comptés depuis
+    // Paris pour une personne qui n'y est pas.
+    _diag("[GEO] ❌ Géolocalisation non supportée → aucun point");
     irlUserLocation = { lat: 48.8566, lng: 2.3522 };
+    irlUserLocationError = true;
+    if (!window._geoRefusDit) {
+      window._geoRefusDit = true;
+      try { toast("Position indisponible sur cet appareil. Choisis ta ville dans « Où ? ».", "warning"); } catch (e) {}
+    }
+    updateIrlCityTitle();
+    renderIRL();
     return;
   }
 
   _diag("[GEO] 📍 Demande position utilisateur...");
+  _irlGeoEnCours = true;
 
   navigator.geolocation.getCurrentPosition(
     function(position) {
+      _irlGeoEnCours = false;
+      irlUserLocationError = false;
       irlUserLocation = {
         lat: position.coords.latitude,
         lng: position.coords.longitude
@@ -1644,26 +1678,35 @@ function requestUserLocation() {
       renderIRL(); // Re-render avec la nouvelle position
     },
     function(error) {
-      _diag("[GEO] ❌ Erreur: " + error.message);
+      _irlGeoEnCours = false;
+      _diag("[GEO] ❌ Erreur: " + (error && error.message));
       irlUserLocationError = true;
-      // Utiliser Paris par défaut
+      // Point de repli INTERNE seulement : `irlUserLocationError` le marque, et
+      // ni les distances, ni le filtre, ni l'épingle ne s'en servent
+      // (`_irlAReferenceReelle`, 2026-11-27).
       irlUserLocation = { lat: 48.8566, lng: 2.3522 };
-      _diag("[GEO] 🔄 Fallback PARIS: 48.8566, 2.3522");
       // ⚠️ LE REPLI SE DIT (ROB-05, 2026-09-14) : l'écran titrait « Paris »
       // comme si c'était la position de la personne — résultats trompeurs pour
-      // quiconque n'est pas en Île-de-France. Une fois par session, et la
-      // sortie est nommée : choisir sa ville.
+      // quiconque n'est pas en Île-de-France. Une fois par session pour une
+      // demande implicite ; un geste explicite remet le drapeau (2026-11-27), et
+      // le message dit la VRAIE cause : un refus ne se règle pas en réessayant.
       if (!window._geoRefusDit) {
         window._geoRefusDit = true;
-        try { toast("Position indisponible. Choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */ } catch (e) {}
+        var refus = !!(error && error.code === 1);
+        try {
+          toast(refus
+            ? "Position refusée. Autorise-la dans ton navigateur ou choisis ta ville dans « Où ? »."
+            : "Position indisponible pour l'instant. Réessaie, ou choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */
+        } catch (e) {}
       }
 
-      // Afficher Paris comme fallback
       updateIrlCityTitle();
 
       renderIRL();
     },
-    { timeout: 5000, enableHighAccuracy: false }
+    // 5 s ne suffisaient pas à un GPS froid : le délai tombait en échec muet
+    // (2026-11-27). Une position d'il y a une minute vaut pour trouver une sortie.
+    { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false }
   );
 }
 
@@ -1950,6 +1993,10 @@ function openIrlCitySelector() {
   searchInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
+    // Champ vide : Entrée ne choisit RIEN (2026-11-27). Elle prenait la première
+    // des « grandes villes » affichées par défaut — Bordeaux, par ordre
+    // alphabétique — et fermait la feuille.
+    if (!_normIrlCityName(searchInput.value)) return;
     const visibles = [...citiesGrid.querySelectorAll("button")]
       .filter(b => b.style.display !== "none" && b.offsetParent !== null)
       .sort((a, b) => (parseInt(a.style.order || "0", 10) - parseInt(b.style.order || "0", 10)));
@@ -1993,6 +2040,9 @@ function selectIrlCity(cityId, cityName) {
 // titre et relance `renderIRL()` quand la position arrive.
 function useMyPositionForIrl() {
   clearIrlCitySelection();
+  // Un geste explicite redit l'échec (2026-11-27) : sans quoi le second tap,
+  // après un premier refus, restait parfaitement muet.
+  window._geoRefusDit = false;
   try {
     if (typeof requestUserLocation === "function") requestUserLocation();
   } catch (e) { _diag("[GEO] ❌ demande explicite: " + (e && e.message)); }
@@ -2029,11 +2079,30 @@ function initIrlMap() {
       // carte ne peut pas s'afficher — la LISTE reste parfaitement utilisable,
       // il faut juste le dire au lieu de laisser un cadre vide.
       .catch(function(){
-        el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
-          + 'La liste des activités ci-dessous fonctionne normalement.</div>';
+        // Deux causes, deux messages (2026-11-27) : sans WebGL c'est l'appareil ;
+        // sinon c'est le chargement (réseau), et un second essai suffit —
+        // `ensureLeaflet` n'est plus figée sur son premier échec.
+        var appareil = typeof passioMapSupported === "function" && !passioMapSupported();
+        if (appareil) {
+          el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
+            + 'La liste des activités ci-dessous fonctionne normalement.</div>';
+          return;
+        }
+        el.innerHTML = '<div class="irl-map-fallback irl-map-echec" role="status">La carte n\'a pas pu se charger (connexion ?).<br/>'
+          + 'La liste des activités ci-dessous fonctionne normalement.<br/>'
+          + '<button type="button" class="btn small ghost irl-map-reessayer">Réessayer</button></div>';
+        var b = el.querySelector(".irl-map-reessayer");
+        if (b) b.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          el.innerHTML = "";
+          window._irlMapSig = null;
+          initIrlMap();
+        });
       });
     return;
   }
+  // Un message d'échec de chargement laissé par un essai précédent part.
+  try { var _echecAvant = el.querySelector(".irl-map-echec"); if (_echecAvant) _echecAvant.remove(); } catch (e) {}
   // Vue initiale : centre de la France, zoom 5.5 → on voit tout le pays
   irlMap = L.map(el, { zoomControl: true, attributionControl: true })
     .setView([46.6, 2.5], 5.7);
@@ -2071,6 +2140,13 @@ function resetToUserLocation() {
   updateIrlCityTitle();
   if (irlMap) irlMap.closePopup();
   renderIRL();
+  // Geste explicite : c'est lui qui demande la position, plus le rendu
+  // (2026-11-27, plus aucune demande implicite dans `renderIRL`).
+  if (!irlUserLocation || irlUserLocationError) {
+    window._geoRefusDit = false;
+    requestUserLocation();
+    return;
+  }
   toast("Position actuelle");
 }
 
@@ -2180,22 +2256,37 @@ function updateIrlMapMarkers() {
   // et le zoom manuel était perdu à chaque clic. On ne reconstruit que si
   // l'ensemble filtré a réellement changé. (Corrigé le 2026-07-21.)
   var _filteredNow = _filterIrlEvents(allEvents());
-  var _sig = _filteredNow.map(function(e) { return e.id; }).join(",")
+  // ⚠️ CE QUE LE MARQUEUR MONTRE entre dans la signature (2026-11-27) : titre,
+  // date, heure, point, ville, passion, emoji. Avec les seuls ids, une activité
+  // modifiée (nouveau titre, nouveau lieu) gardait sur la carte son ancien
+  // marqueur et son ancienne bulle tant que le jeu d'ids ne bougeait pas. Les
+  // likes, commentaires et inscrits n'y entrent PAS : c'est l'objectif du
+  // 2026-07-21 ci-dessus (ne rien recadrer à chaque interaction).
+  var _sig = _filteredNow.map(function(e) {
+    var ll = eventLatLng(e);
+    return [e.id, e.title, e.date, e.time, ll ? ll.join(";") : "", e.city, e.passion, e.emoji].join("~");
+  }).join(",")
     + "|" + (irlSelectedCity ? irlSelectedCity.name : "")
-    + "|" + (irlUserLocation ? irlUserLocation.lat.toFixed(3) + "," + irlUserLocation.lng.toFixed(3) : "");
+    + "|" + (irlUserLocation ? irlUserLocation.lat.toFixed(3) + "," + irlUserLocation.lng.toFixed(3) : "")
+    + "|" + (_irlAReferenceReelle() ? "ref" : "");
   if (_sig === window._irlMapSig) return;
   var _isFirstDraw = !window._irlMapSig;
-  window._irlMapSig = _sig;
+  // ⚠️ La signature n'est posée qu'une fois la construction FINIE (2026-11-27) :
+  // posée avant, une exception en cours de boucle laissait une carte partielle
+  // que plus aucun rendu ne reconstruisait.
+  window._irlMapSig = null;
 
   irlMarkersLayer.clearLayers();
 
-  // Ajouter un marqueur pour la position actuelle
+  // Ajouter un marqueur pour la position actuelle — seulement s'il en existe une
+  // RÉELLE (2026-11-27) : après un refus, l'épingle se posait sur le repli Paris,
+  // titrée « Paris », avec « ← Ma position actuelle ».
   var refLoc = null;
   var locLabel = "";
   if (irlSelectedCity) {
     refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
     locLabel = irlSelectedCity.name;
-  } else if (irlUserLocation) {
+  } else if (irlUserLocation && _irlAReferenceReelle()) {
     refLoc = irlUserLocation;
     locLabel = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
   }
@@ -2216,7 +2307,7 @@ function updateIrlMapMarkers() {
           ← Ma position actuelle
         </button>
         <div style="margin-bottom:10px;">
-          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
+          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." oninput="searchIrlAddressSuggestions(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();geocodeIrlAddress();}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -2224,24 +2315,10 @@ function updateIrlMapMarkers() {
         </button>
       </div>
     `);
-
-    // Focus sur l'input après l'ouverture du popup et setup autocomplete
-    setTimeout(() => {
-      const input = document.getElementById("irlAddressInput");
-      if (input) {
-        input.focus();
-
-        // Recherche en temps réel
-        input.addEventListener("input", (e) => {
-          searchIrlAddressSuggestions(e.target.value);
-        });
-
-        // Touche Enter pour rechercher
-        input.addEventListener("keypress", (e) => {
-          if (e.key === "Enter") geocodeIrlAddress();
-        });
-      }
-    }, 100);
+    // ⚠️ Écouteurs EN LIGNE ci-dessus, plus dans un setTimeout (2026-11-27) : la
+    // bulle n'entre dans le document qu'à son ouverture, le champ était
+    // introuvable 100 ms après la construction des marqueurs — ni suggestions ni
+    // Entrée, seul le bouton « Chercher » répondait.
   }
 
   // Même filtrage que la liste (helper partagé) → carte et liste cohérentes.
@@ -2272,14 +2349,19 @@ function updateIrlMapMarkers() {
         popupAnchor: [0, -18],
       });
       const mg = L.marker([ll[0], ll[1]], { icon: icone }).addTo(irlMarkersLayer);
+      // La bulle GROUPÉE dit aussi qu'une activité est un exemple (2026-11-27),
+      // comme la bulle d'un marqueur seul (LOT-5) : elle listait « Session
+      // escalade nocturne » comme une vraie sortie.
+      const _exG = evs.map(ev => { try { return !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) { return false; } });
+      const _tousEx = _exG.every(Boolean);
       mg.bindPopup(`
-        <div class="irl-popup-title">${evs.length} activités à cet endroit</div>
-        <div class="irl-popup-liste">${evs.map(ev => {
+        <div class="irl-popup-title">${evs.length} ${_tousEx ? "exemples" : "activités"} à cet endroit</div>
+        <div class="irl-popup-liste">${evs.map((ev, i) => {
           const dd = fmtEventDate(ev.date);
           const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
           return `<button type="button" class="irl-popup-ligne" onclick="openEventDetails('${escapeJsArg(ev.id)}')">
             <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Activité")}</span>
-            <span class="irl-popup-ligne-meta">${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
+            <span class="irl-popup-ligne-meta">${_exG[i] ? "Exemple · " : ""}${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
           </button>`;
         }).join("")}</div>
       `);
@@ -2329,7 +2411,17 @@ function updateIrlMapMarkers() {
   // cadre donc sur les marqueurs PROCHES du point de référence, et on ne
   // s'élargit que s'il n'y en a aucun.
   const IRL_MAP_LOCAL_KM = 150;
+  // Construction finie : la signature peut être posée (voir plus haut).
+  window._irlMapSig = _sig;
   setTimeout(() => {
+    // Sans référence RÉELLE, pas de cadrage « autour de Paris » (2026-11-27) :
+    // la vue générale de la France, que la personne recentre en choisissant sa
+    // ville.
+    if (!_irlAReferenceReelle()) {
+      irlMap.setView([46.6, 2.5], 5.7);
+      if (irlMap) irlMap.invalidateSize();
+      return;
+    }
     const ref = _irlReferenceLoc();
     const near = points.filter(p => calculateDistance(ref.lat, ref.lng, p[0], p[1]) <= IRL_MAP_LOCAL_KM);
     if (near.length > 1) {
@@ -2375,8 +2467,10 @@ function toggleIrlMapFullscreen() {
 
 // LOT-19 (audit UX/UI du 2026-11-10, IRL-C10) : en plein écran, la seule sortie
 // était l'icône d'entrée, sans libellé. Le bouton dit maintenant « Fermer la
-// carte » (texte visible, nom accessible) ; appelé par les TROIS chemins qui
-// entrent ou sortent du plein écran (bouton, retour, changement d'écran).
+// carte » (texte visible, nom accessible) ; appelé par les chemins qui entrent
+// ou sortent du plein écran (bouton, retour, Échap — ces deux derniers passent
+// par `toggleIrlMapFullscreen`). Aucun changement d'écran ne sort du plein
+// écran (constat du 2026-11-27) : la carte y recouvre la navigation.
 function majBoutonPleinEcranCarte() {
   try {
     var wrap = document.getElementById("irlMapWrap");
@@ -2419,14 +2513,17 @@ function _syncIrlMapPeek() {
   }
 }
 
-// Échap pour sortir du plein écran de la carte
+// Échap pour sortir du plein écran de la carte — par `toggleIrlMapFullscreen`,
+// qui reprend l'entrée d'historique « #carte » (2026-11-27) : retirer la classe
+// à la main la laissait au sommet de la pile, et le retour suivant était mort.
+// Une modale ouverte par-dessus se ferme d'abord : un Échap, une couche.
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     const wrap = document.getElementById("irlMapWrap");
     if (wrap && wrap.classList.contains("fullscreen")) {
-      wrap.classList.remove("fullscreen");
-      majBoutonPleinEcranCarte();
-      setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
+      const modale = document.getElementById("modalBackdrop");
+      if (modale && modale.classList.contains("active")) return;
+      toggleIrlMapFullscreen();
     }
   }
 });
@@ -2607,10 +2704,14 @@ function irlCalNavMonth(delta) {
 // Jours (timestamp minuit) portant au moins un événement à venir.
 function _irlEventDaySet() {
   var set = {};
+  var now = Date.now();
   try {
     allEvents().forEach(function (e) {
       var ts = e && e.date;              // même champ que le filtre de date
       if (!ts) return;
+      // Seulement ce que la liste montrerait (2026-11-27) : un jour dont la
+      // seule activité est annulée, ou déjà finie, portait une pastille.
+      if (_eventIsCancelled(e) || !_irlDansPeriode(e, now)) return;
       var d = new Date(ts);
       set[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()] = 1;
     });
@@ -2769,6 +2870,17 @@ function irlDistanceValue() { return irlDistanceFilter || ""; }
 
 function setIrlDistanceKm(km) {
   var v = String(km == null ? "" : km);
+  // ⚠️ PAS DE DISTANCE SANS CENTRE (2026-11-27). Sans ville choisie ni position
+  // obtenue, « 10 km » filtrait en silence autour de PARIS (le repli de
+  // `_irlReferenceLoc`) : une personne à Lyon lisait « Afficher 10 résultats »
+  // — Boulogne, Neuilly, Montreuil — et croyait qu'il n'y avait rien près
+  // d'elle. On demande d'abord le centre ; le palier n'est pas posé.
+  if (v && irlDistanceFilter !== v && !_irlAReferenceReelle()) {
+    try { toast("Choisis d'abord une ville ou ta position dans « Où ? ».", "warning"); } catch (e) {}
+    if (typeof openIrlCitySelector === "function") openIrlCitySelector();
+    _syncIrlDistanceUI();
+    return;
+  }
   irlDistanceFilter = (irlDistanceFilter === v) ? "" : v;
   _syncIrlDistanceUI();
   renderIRL();
@@ -2812,9 +2924,16 @@ function setIrlPassionsToutes() {
 
 function setIrlPassionsMiennes() {
   var set = irlPassionFilterSet();
+  var miennes = _irlMyPassions();
+  // Sans passion choisie, le tap vidait le filtre en cours et cochait
+  // « Toutes », sans un mot (2026-11-27). On ne touche à rien et on le dit.
+  if (!miennes.length) {
+    try { toast("Tu n'as pas encore de passion. Choisis-en d'abord pour filtrer dessus.", "info"); } catch (e) {}
+    return;
+  }
   var deja = irlPassionsMode() === "miennes";
   set.clear();
-  if (!deja) _irlMyPassions().forEach(function (p) { set.add(p); });
+  if (!deja) miennes.forEach(function (p) { set.add(p); });
   renderIRL();
 }
 
@@ -2925,33 +3044,9 @@ function _irlReferenceLabel() {
   return (el && el.textContent && el.textContent !== "…") ? el.textContent : "ta position";
 }
 
-function openIrlCalendar() {
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Choisir une date</div>\
-    <label class="field"><span>Date de début</span>\
-      <input type="date" class="input" id="irlCalStart" value="' + new Date().toISOString().split("T")[0] + '"/>\
-    </label>\
-    <label class="field"><span>Date de fin (optionnel)</span>\
-      <input type="date" class="input" id="irlCalEnd"/>\
-    </label>\
-    <button class="btn primary block" onclick="applyIrlCalendar()" style="margin-top:14px;">Appliquer</button>\
-  ');
-}
-
-function applyIrlCalendar() {
-  var start = document.getElementById("irlCalStart")?.value;
-  var end = document.getElementById("irlCalEnd")?.value;
-  if (!start) { toast("Choisis une date", "error"); return; }
-
-  // Ajouter "custom" aux filtres de date
-  if (!irlDateFilters) irlDateFilters = new Set();
-  irlDateFilters.add("custom");
-  irlCustomDate = { start: new Date(start).getTime(), end: end ? new Date(end + "T23:59:59").getTime() : new Date(start + "T23:59:59").getTime() };
-
-  closeModal();
-  renderIRL();
-}
+// `openIrlCalendar` / `applyIrlCalendar` retirées (2026-11-27) : l'ancienne
+// modale de dates n'avait plus aucun appelant ; le filtre « custom » est posé
+// par le calendrier en ligne (`_renderIrlInlineCal`).
 
 // Retire complètement le filtre de date (le ✕ à côté du bouton calendrier).
 function clearIrlDateFilter() {
@@ -3105,8 +3200,12 @@ function _filterIrlEvents(events) {
         if (e.date >= ms.getTime() && e.date <= me.getTime()) return true;
       }
       if (_we && e.date >= _we.start && e.date <= _we.end) return true;
-      if (irlDateFilters.has("week") && e.date >= now && e.date <= now + 7 * 86400000) return true;
-      if (irlDateFilters.has("month") && e.date >= now && e.date <= now + 30 * 86400000) return true;
+      // Pas de borne basse « commence après maintenant » (2026-11-27) : une
+      // activité EN COURS sortait de « Cette semaine » alors que « Aujourd'hui »
+      // et la liste sans filtre la gardent. La période (`_irlDansPeriode`) a
+      // déjà retiré ce qui est fini.
+      if (irlDateFilters.has("week") && e.date <= now + 7 * 86400000) return true;
+      if (irlDateFilters.has("month") && e.date <= now + 30 * 86400000) return true;
       if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
       return false;
     });
@@ -3116,8 +3215,10 @@ function _filterIrlEvents(events) {
   if (irlCityIntent) {
     filtered = filtered.filter(_eventMatchesCityIntent);
   }
-  // 4. Distance
-  if (irlDistanceFilter && irlDistanceFilter !== "") {
+  // 4. Distance — seulement autour d'un point RÉEL (ville choisie ou position
+  // obtenue). Sans lui, le repli Paris filtrait en silence (2026-11-27) : le
+  // palier reste mémorisé, inerte, et reprend dès qu'un centre existe.
+  if (irlDistanceFilter && irlDistanceFilter !== "" && _irlAReferenceReelle()) {
     var maxKm = parseInt(irlDistanceFilter);
     var ref = _irlReferenceLoc();
     filtered = filtered.filter(function(e) {
@@ -3130,22 +3231,32 @@ function _filterIrlEvents(events) {
   // la carte est celle qui filtre (cf. le commentaire de la fonction).
   if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
     var parts = irlTimeFilter.split(" - ");
+    // Fin EXCLUSIVE (2026-11-27) : « Matin » 6-12 et « Après-midi » 12-18 se
+    // recouvraient d'une heure (12:30 dans les deux). Une fin à 23 h vaut fin
+    // de journée, pour que « Soir » garde 23:00-23:59.
     var sMin = parseInt(parts[0].split(":")[0]) * 60;
-    var eMin = parseInt(parts[1].split(":")[0]) * 60 + 59;
+    var hFin = parseInt(parts[1].split(":")[0]);
+    var eMin = hFin >= 23 ? 24 * 60 : hFin * 60;
+    if (eMin <= sMin) eMin = sMin + 60;   // « 18:00 - 18:00 » : l'heure entière, comme avant
     filtered = filtered.filter(function(e) {
       var m = _eventTimeMinutes(e);
-      return m >= sMin && m <= eMin;
+      return m >= sMin && m < eMin;
     });
   }
   // 6. Recherche texte (titre / ville / lieu / description / passion) — avant, la
   // recherche masquait juste des cartes en CSS : le compteur, la carte et l'état
   // vide continuaient de compter les événements invisibles.
+  // Accents pliés des DEUX côtés (2026-11-27) : « nimes » ne trouvait pas
+  // « Nîmes », ni « peche » la « Pêche » — sur clavier mobile, la majorité des
+  // saisies. Seuls les diacritiques sont retirés : la ponctuation reste
+  // cherchable, contrairement à `_normIrlCityName`.
   if (irlSearchQuery) {
-    var q = irlSearchQuery;
+    var plier = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); };
+    var q = plier(irlSearchQuery);
     filtered = filtered.filter(function(e) {
       var p = passionById(e.passion) || {};
       return [e.title, e.city, e.venue, e.address, e.desc, e.eventType, p.label]
-        .some(function(v) { return String(v || "").toLowerCase().indexOf(q) > -1; });
+        .some(function(v) { return plier(v).indexOf(q) > -1; });
     });
   }
   return _reelsAvantExemples(_sortIrlEvents(filtered));
@@ -3220,13 +3331,16 @@ function _irlActiveFilterCount() {
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
   if (irlCityIntent) n += 1;
-  if (irlDistanceFilter) n += 1;
+  if (irlDistanceFilter && _irlAReferenceReelle()) n += 1; // inerte sans centre : ne compte pas
   if (irlTimeFilter) n += 1;
   return n;
 }
 
 // Réinitialise tous les filtres IRL et l'état UI associé.
 function clearAllIrlFilters() {
+  // Une frappe encore en attente (220 ms, `filterIrlByCity`) ne doit pas
+  // reposer l'ancienne recherche APRÈS l'effacement (2026-11-27).
+  clearTimeout(window._irlSearchT);
   if (irlPassionFilters) irlPassionFilters.clear();
   if (irlFilters) irlFilters.clear();
   if (irlDateFilters) irlDateFilters.clear();
@@ -3434,6 +3548,18 @@ function _scheduleIrlMapUpdate() {
       // l'ouverture. Verrou : tests/e2e/audit-2026-11-perf-dist.spec.js (① bis).
       var ecranIrl = document.getElementById("screen-irl");
       if (ecranIrl && !ecranIrl.classList.contains("active")) return;
+      // ⚠️ … et seulement si la carte est VUE (2026-11-27). Sous UI-4A3, la vue
+      // Liste (par défaut) range la carte hors écran : MapLibre était quand même
+      // téléchargé, compilé, construit et animé pour quelqu'un qui ne regardait
+      // que la liste. Le passage en vue Carte (`recadrerCarte`, ui-v4a3-vue.js)
+      // la demande ; le plein écran n'existe que depuis une carte déjà là.
+      try {
+        var v4a3 = window.PassioUIV4A3;
+        var wrapCarte = document.getElementById("irlMapWrap");
+        if (v4a3 && typeof v4a3.isActive === "function" && v4a3.isActive()
+            && typeof v4a3.vue === "function" && v4a3.vue() !== "carte"
+            && !(wrapCarte && wrapCarte.classList.contains("fullscreen"))) return;
+      } catch (e) {}
       try { initIrlMap(); } catch (e) {}
       try { updateIrlMapMarkers(); } catch (e) {}
     };
@@ -3511,11 +3637,15 @@ function renderIRL() {
   // arrive : il ne peut jamais désactiver durablement la géolocalisation, et le
   // premier geste fait ensuite SUR l'écran IRL (filtre, carte) la redemande
   // normalement.
-  var _sansGeoUneFois = window._passioIrlSkipGeoOnce === true;
+  //
+  // ⚠️ PLUS AUCUNE DEMANDE IMPLICITE, MÊME LOT COUPÉ (2026-11-27). La garantie
+  // « la position n'est jamais demandée sans geste » ne tenait que par
+  // l'enveloppe UI-4A0, qui arme ce marqueur avant chaque rendu : la couper
+  // (réglage distant `passio_ui_4a0`) faisait surgir l'invite du navigateur à
+  // l'ouverture de « Rencontrer », chez tout compte existant. Seuls les gestes
+  // explicites demandent désormais (`useMyPositionForIrl`, « Ma position »).
+  // Le marqueur est encore consommé, pour les modules qui l'arment.
   window._passioIrlSkipGeoOnce = false;
-  if (!irlUserLocation && !_sansGeoUneFois && _irlEcranVisible()) {
-    requestUserLocation();
-  }
 
   const catalogue = allEvents();
   var filtered = _filterIrlEvents(catalogue);
@@ -3544,6 +3674,7 @@ function renderIRL() {
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
+    if (typeof avisLectureSortiesEchec === "function") avisLectureSortiesEchec();
     return;
   }
 
@@ -3646,10 +3777,35 @@ function renderIRL() {
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
   // écraseraient les données de démo des événements seed.
+  // Dernière lecture du catalogue en échec : l'avis reste en tête (app-08).
+  if (typeof avisLectureSortiesEchec === "function") avisLectureSortiesEchec();
+
   var _supaEvIds = filtered.filter(function(e){ return e.fromSupabase; }).map(function(e){ return e.id; });
-  _loadEventCommentCounts(_supaEvIds);
-  _loadEventReactions(_supaEvIds);
-  _loadEventCommentsPreviews(_supaEvIds);
+  _irlChargerInteractions(_supaEvIds);
+}
+
+// ⚠️ TROIS LECTURES PAR RENDU, C'ÉTAIT 3N REQUÊTES (2026-11-27). Chaque
+// `renderIRL` (une case de filtre, « Afficher plus », un like, un rendu de fond
+// depuis le Fil) relançait commentaires, réactions et aperçus des cartes
+// visibles. Les caches (`_eventLikes`, compteurs) gardent ce qui a été lu, et
+// les cartes repeintes s'en servent : on ne relit que si l'écran est VU, une
+// fois les rendus rapprochés retombés, et si le jeu d'activités a changé ou si
+// la dernière lecture a plus de 30 s.
+let _irlLecturesSig = "";
+let _irlLecturesA = 0;
+function _irlChargerInteractions(ids) {
+  clearTimeout(window._irlLecturesT);
+  if (!ids || !ids.length || !_irlEcranVisible()) return;
+  window._irlLecturesT = setTimeout(function () {
+    if (!_irlEcranVisible()) return;
+    var sig = ids.slice().sort().join(",");
+    if (sig === _irlLecturesSig && Date.now() - _irlLecturesA < 30000) return;
+    _irlLecturesSig = sig;
+    _irlLecturesA = Date.now();
+    _loadEventCommentCounts(ids);
+    _loadEventReactions(ids);
+    _loadEventCommentsPreviews(ids);
+  }, 250);
 }
 
 // Charge en une requête les likes/réactions des événements visibles puis met à
@@ -10162,36 +10318,9 @@ function eventLatLng(ev) {
 }
 
 
-// Fonction de test pour vérifier le filtre distance
-function testIrlDistance() {
-  // Créer des événements de test avec des villes exactes de FRANCE_CITIES
-  // Calibré pour un point de référence à Annecy
-  const testEvents = [
-    { id: "test_nearby_10km", title: "🍽️ Déjeuner local", passion: "cuisine", city: "annecy", date: Date.now() + 86400000, time: "12:00", organizerId: "test", emoji: "🍽️", attendees: [] },
-    { id: "test_nearby_25km", title: "🏔️ Rando montagne", passion: "sport", city: "chamonix", date: Date.now() + 2*86400000, time: "09:00", organizerId: "test", emoji: "⛰️", attendees: [] },
-    { id: "test_nearby_80km", title: "🎵 Festival musique", passion: "musique", city: "lyon", date: Date.now() + 3*86400000, time: "20:00", organizerId: "test", emoji: "🎵", attendees: [] },
-    { id: "test_far_350km", title: "🎨 Expo moderne", passion: "art", city: "marseille", date: Date.now() + 4*86400000, time: "14:00", organizerId: "test", emoji: "🎨", attendees: [] },
-    { id: "test_far_650km", title: "💻 Tech conference", passion: "tech", city: "paris", date: Date.now() + 5*86400000, time: "19:00", organizerId: "test", emoji: "💻", attendees: [] },
-  ];
-
-  state.userEvents = (state.userEvents || []).concat(testEvents);
-  saveState();
-
-  _diag("🧪 === TEST DISTANCE ===");
-  _diag("🧪 " + testEvents.length + " événements de test créés");
-  testEvents.forEach(ev => {
-    const loc = cityToLatLng(ev.city);
-    if (loc) {
-      const dist = calculateDistance(45.8992, 6.1294, loc[0], loc[1]); // Annecy as reference
-      _diag("🧪 [" + dist.toFixed(0) + "km] " + ev.title + " → " + ev.city);
-    } else {
-      _diag("🧪 ❌ " + ev.title + " → " + ev.city + " NON RECONNUE");
-    }
-  });
-
-  renderIRL();
-  toast("🧪 5 événements de test créés! Ouvre le diagnostic (F12)");
-}
+// `testIrlDistance` retirée (2026-11-27) : une globale de PRODUCTION qui
+// écrivait 5 fausses activités « à moi » dans l'état du compte, persistées et
+// synchronisées. Aucune porte d'interface, aucun appelant.
 
 // ======== WALLET — SUPPRIMÉ (ADR-009) ========
 // `renderWallet`, le Score Passion, le prochain rang, le guide de gains, le

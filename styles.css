@@ -14797,3 +14797,10 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* Inviter directement depuis « Créer une activité » (2026-11-27, app-07 `poserInvitationDirecte`) */
 .ev-invite-directe { margin:12px 0 4px; }
 .ev-invite-directe-ico { width:36px; height:36px; flex-shrink:0; border-radius:999px; background:rgba(124,58,237,0.14); display:flex; align-items:center; justify-content:center; font-size:17px; }
+/* ── Rencontrer · attribution de la carte en vue Carte (2026-11-27) ──
+   L'attribution OpenFreeMap / OpenStreetMap (ODbL, OBLIGATION LÉGALE, cf.
+   js/map-loader.js) n'était visible qu'en plein écran : depuis UI-4A3, la carte
+   dépliée de la vue Carte est la carte principale de l'écran, et elle n'en
+   portait aucune. Seule la vignette repliée (.peek) reste épurée. */
+.irl-map-wrap:not(.peek):not(.fullscreen) .maplibregl-ctrl-bottom-right,
+.irl-map-wrap:not(.peek):not(.fullscreen) .maplibregl-ctrl-attrib { display: block !important; }

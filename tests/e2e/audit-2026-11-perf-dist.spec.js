@@ -107,10 +107,13 @@ test.describe("AUDIT F — budget de l'artefact servi (dist)", () => {
   // ① bis pourrait passer un jour pour une mauvaise raison (MapLibre cassé, ou
   // `ensureLeaflet` jamais appelée), et un vert qui prouve l'inverse de son sujet
   // est le pire des verts.
-  test("témoin : ouvrir Rencontrer (goTo('irl')) charge MapLibre et la carte s'initialise", async ({ page }) => {
+  // ⚠️ 2026-11-27 (dossier ECR, sujet 115) : la carte n'est plus construite en
+  // vue Liste, seulement à l'ouverture de la vue « Carte » — le témoin l'ouvre.
+  test("témoin : ouvrir Rencontrer puis la vue Carte charge MapLibre et la carte s'initialise", async ({ page }) => {
     const r = await demarrer(page, "onboarde");
     const deja = [...r.avant, ...r.apres].some((x) => /maplibre-gl-4\.7\.1\.js/.test(x.url));
     await page.evaluate(() => { goTo("irl"); });
+    await page.evaluate(() => { if (window.PassioUIV4A3 && PassioUIV4A3.isActive()) PassioUIV4A3.setVue("carte"); });
     await page.waitForFunction(() => !!(window.maplibregl && window.L), null, { timeout: 30000 });
     const carte = await page.evaluate(() => ({ ecran: document.getElementById("screen-irl").classList.contains("active"), carte: !!document.querySelector("#irlMap canvas, #irlMap .maplibregl-map") }));
     expect(carte.ecran).toBe(true);

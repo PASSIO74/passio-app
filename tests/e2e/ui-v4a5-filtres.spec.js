@@ -216,6 +216,9 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     await boot(page);
     await ouvrirIrl(page);
     await ouvrirFiltres(page);
+    // 2026-11-27 (dossier ECR, sujet 103) : une distance ne se pose qu'autour
+    // d'un centre RÉEL (sans lui, le palier ouvre le sélecteur de ville).
+    await page.evaluate(() => { irlSelectedCity = { id: "lyon", name: "Lyon", coords: FRANCE_CITIES.lyon }; renderIRL(); });
 
     expect(await page.evaluate(() => irlDistanceValue())).toBe("");
     await page.locator('[data-v4a5-dist="25"]').click();
@@ -335,6 +338,9 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     await boot(page);
     await ouvrirIrl(page);
     await ouvrirFiltres(page);
+    // 2026-11-27 (dossier ECR, sujet 103) : une distance ne se pose qu'autour
+    // d'un centre RÉEL (sans lui, le palier ouvre le sélecteur de ville).
+    await page.evaluate(() => { irlSelectedCity = { id: "lyon", name: "Lyon", coords: FRANCE_CITIES.lyon }; renderIRL(); });
 
     const reel = () => page.evaluate(() => _filterIrlEvents(allEvents()).length);
     const depart = await nombreAffiche(page);
@@ -545,6 +551,9 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     await boot(page);
     await ouvrirIrl(page);
     await ouvrirFiltres(page);
+    // 2026-11-27 (dossier ECR, sujet 103) : une distance ne se pose qu'autour
+    // d'un centre RÉEL (sans lui, le palier ouvre le sélecteur de ville).
+    await page.evaluate(() => { irlSelectedCity = { id: "lyon", name: "Lyon", coords: FRANCE_CITIES.lyon }; renderIRL(); });
 
     await page.locator('[data-v4a5-quand="today"]').click();
     await page.waitForTimeout(350);

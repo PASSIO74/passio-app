@@ -4936,6 +4936,16 @@ function closeCurrentOverlay() {
     return true;
   }
 
+  // La vue Filtre d'UI-4A5 (2026-11-27) : elle pose « #filtres » à l'ouverture ;
+  // le retour la referme et rend la vue d'où l'on venait, sans changer d'écran.
+  // APRÈS la modale : le sélecteur de ville s'ouvre par-dessus et part d'abord.
+  try {
+    if (window.PassioUIV4A5 && typeof PassioUIV4A5.isOpen === "function" && PassioUIV4A5.isOpen()) {
+      PassioUIV4A5.close("retour");
+      return true;
+    }
+  } catch (e) {}
+
   const editeurMedia = document.getElementById("mediaEditor");
   // Story (2026-11-26) : le retour pendant l'écriture ou le dessin ferme CET
   // outil (texte gardé, comme Instagram) et repose l'entrée de l'éditeur — il

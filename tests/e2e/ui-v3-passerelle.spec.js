@@ -740,9 +740,15 @@ test("UI-4A0 coupé : le marqueur d'UI-3A reste à USAGE UNIQUE", async ({ page 
   expect(await page.evaluate(() => window.__geoCalls),
     "UI-3A seul : la passerelle n'émet aucune demande de position").toBe(0);
   expect(await page.evaluate(() => window._passioIrlSkipGeoOnce)).toBe(false);
+  // 2026-11-27 (dossier ECR, sujet 127) : un RENDU ne demande plus jamais la
+  // position, lot coupé ou non — seul un geste explicite le fait. Le marqueur
+  // reste à usage unique : consommé, puis le geste « Utiliser ma position » demande.
   await page.evaluate(() => renderIRL());
   expect(await page.evaluate(() => window.__geoCalls),
-    "le geste suivant SUR l'écran IRL redemande la position, normalement").toBe(1);
+    "un simple rendu ne demande plus la position").toBe(0);
+  await page.evaluate(() => useMyPositionForIrl());
+  expect(await page.evaluate(() => window.__geoCalls),
+    "le geste explicite, lui, la demande").toBe(1);
 });
 
 test("« Voir la page de la passion » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {

@@ -101,7 +101,7 @@ async function banc(page, { compte, plan }) {
     };
     const requete = (table) => {
       const q = {};
-      ["select", "order", "limit", "in", "eq", "not", "maybeSingle", "single"]
+      ["select", "order", "limit", "in", "eq", "not", "maybeSingle", "single", "gte", "lt"]
         .forEach((m) => { q[m] = () => q; });
       q.then = (ok, ko) => Promise.resolve(reponse(table)).then(ok, ko);
       return q;
