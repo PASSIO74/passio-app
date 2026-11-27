@@ -5226,7 +5226,7 @@ function _lienContactEvenement(contact) {
   // par les deux expressions ci-dessous, qui excluent `:` et les blancs. Et
   // `escapeHtml` échappe les guillemets, donc on ne peut pas quitter l'attribut.
   // ⚠️ 2026-11-27 (sujet 214) : la forme e-mail acceptait `?`, `&` et `:` (la
-  // phrase ci-dessus était fausse pour elle) — « a@b.fr?subject=…&body=… »
+  // phrase ci-dessus était fausse pour elle) — « a@x.fr?subject=…&body=… »
   // ouvrait un courriel PRÉ-REMPLI par l'organisation. Ni requête, ni fragment,
   // ni schéma, ni encodage : sinon, texte nu (branche du bas).
   if (/^[^\s@?&#:\/%]+@[^\s@?&#:\/%]+\.[^\s@?&#:\/%]{2,}$/.test(brut)) {

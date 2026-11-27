@@ -25,7 +25,7 @@
 //   ⑩  201 — une activité tout juste créée recevait de faux j'aime et commentaires.
 //   ⑪  200 — ouvrir une activité d'exemple effaçait ses commentaires de démonstration.
 //   ⑫  210 — profil de l'organisation illisible : la fiche montrait MON nom.
-//   ⑬  214 — un contact « a@b.fr?subject=…&body=… » ouvrait un courriel pré-rempli.
+//   ⑬  214 — un contact « a@x.fr?subject=…&body=… » ouvrait un courriel pré-rempli.
 //   ⑭  205 — une annulation relue ne changeait pas la fiche ouverte.
 //   ⑮  203 — « Je suis sur place » offert à l'organisation et aux non-inscrits ;
 //       un visiteur « pointait » une vraie activité sans rien écrire.
@@ -127,7 +127,10 @@ test.describe("Rencontrer — carte et fiche d'activité", () => {
       expect(Math.abs(apres.scroll - avant), "la fiche reste où on la lisait").toBeLessThan(80);
       expect(apres.valeur, "le brouillon est toujours là").toBe("Mon brouillon, pas encore envoyé");
       expect(apres.focus, "le champ garde le focus (clavier ouvert)").toBe("eventCommentInput");
-      const relectures = srv.journal.slice(j0).filter((r) => r.table === "event_comments" && r.m === "GET").length;
+      // Les lectures de la FICHE (`event_id=eq.`) ; celles de la liste (aperçus et compteurs, `in.(…)`,
+      // différées par le lot « écran ») appartiennent à la liste, qui suit le geste.
+      const lus = srv.journal.slice(j0).filter((r) => r.table === "event_comments" && r.m === "GET" && /event_id=eq./.test(r.url));
+      const relectures = lus.length;
       expect(relectures, "un re-rendu ne relit pas les commentaires").toBe(0);
     } finally { await ctx.close(); }
   });
@@ -387,14 +390,14 @@ test.describe("Rencontrer — carte et fiche d'activité", () => {
   test("⑬ contact : pas de courriel pré-rempli ; l'adresse simple et le numéro restent des liens ; le lien de carte porte noopener", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(() => ({
-      requete: _lienContactEvenement("a@b.fr?subject=Urgent&body=Envoie%20ton%20code"),
-      copie: _lienContactEvenement("a@b.fr?cc=x%40y.zz"),
-      simple: _lienContactEvenement("a@b.fr"),
+      requete: _lienContactEvenement("a@x.fr?subject=Urgent&body=Envoie%20ton%20code"),
+      copie: _lienContactEvenement("a@x.fr?cc=x%40y.zz"),
+      simple: _lienContactEvenement("a@x.fr"),
       tel: _lienContactEvenement("06 12 34 56 78"),
     }));
     expect(r.requete).not.toContain("mailto:");
     expect(r.copie).not.toContain("mailto:");
-    expect(r.simple).toContain('href="mailto:a@b.fr"');
+    expect(r.simple).toContain('href="mailto:a@x.fr"');
     expect(r.tel).toContain('href="tel:0612345678"');
     await page.evaluate(() => {
       const ev = { id: "evt_fic_13", title: "Avec adresse", passion: "musique", city: "Annecy", address: "1 rue du Lac", date: Date.now() + 86400000,
