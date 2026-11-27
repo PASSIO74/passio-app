@@ -259,7 +259,7 @@ test("une seule action primaire, et aucune écriture avant le geste", async ({ p
   // Le moteur historique a fait tout le travail — rien n'a été redéveloppé.
   await expect(cta.locator('[data-v4b-rsvp-etat="going"]')).toBeVisible();
   // LOT-3 (audit UX/UI, PCS-C03) : l'état parle à la personne, et dit la suite.
-  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("✓ Tu participes");
+  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("Participation confirmée"); // 2026-11-27 : l'état réel (activité locale : pas de validation)
   await expect(cta.locator("[data-v4b-rsvp-chat]")).toHaveText("Écrire aux participants");
   expect(await page.evaluate(() => myRsvp("ev_jam"))).toBe("going");
   expect(await page.evaluate(() => (state.user.joinedEvents || []).includes("ev_jam"))).toBe(true);
@@ -300,7 +300,7 @@ test("complet : le libellé annonce la liste d'attente, le moteur l'applique", a
 
   await go.click();
   await expect(page.locator('#eventDetailCta [data-v4b-rsvp-etat="waitlist"]')).toBeVisible();
-  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("Tu es sur la liste d'attente"); // LOT-19 (IRL-C55)
+  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("En liste d'attente"); // LOT-19 (IRL-C55) ; mots communs carte/fiche du 2026-11-27
   expect(await page.evaluate(() => myRsvp("ev_full"))).toBe("waitlist");
   expect(await page.evaluate(() => (_findCanonicalEvent("ev_full").attendees || []).length)).toBe(2);
 });

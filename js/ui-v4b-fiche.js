@@ -329,15 +329,25 @@
 
   // Participants AGRÉGÉS : un compte, l'état des places, la file d'attente.
   // Les visages individuels restent dans la section Participants, plus bas.
+  // 2026-11-27 — trois cas où l'on ne compte pas :
+  //  · EXEMPLE (sujet 200) : les mêmes mots que la carte, pas de faux participants ;
+  //  · inscrits INCONNUS (sujet 197) : visiteur ou lecture en échec — « 0
+  //    participant · 3 places restantes » sur une activité complète ;
+  //  · ANNULÉE ou TERMINÉE (sujet 204) : plus de places à prendre.
   function texteParticipation(ev) {
+    if (estExemple(ev)) return "Activité d'exemple · pas d'inscription";
+    try {
+      if (typeof _inscritsInconnus === "function" && _inscritsInconnus(ev)) return _texteInscritsInconnus(ev);
+    } catch (e) { fail("inscrits_inconnus", e); }
     var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
-    var reste = placesRestantes(ev);
+    var fini = estAnnule(ev) || estTermine(ev);
+    var reste = fini ? null : placesRestantes(ev);
     if (reste !== null) {
       bouts.push(reste <= 0 ? "complet"
         : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
-    var att = nbInscrits(ev, "waitlist");
+    var att = fini ? 0 : nbInscrits(ev, "waitlist");
     if (att) bouts.push(att + " en liste d'attente");
     return bouts.join(" · ");
   }
@@ -458,7 +468,7 @@
     if (cl.contains("event-detail-info-card") || cl.contains("event-detail-recurrence")) return "infos";
     if (cl.contains("event-detail-participants")) return "participants";
     if (cl.contains("event-recap-cta")) return "souvenir";
-    if (cl.contains("event-feedback-prompt") || cl.contains("event-feedback-done")) return "avis";
+    if (cl.contains("event-feedback-prompt") || cl.contains("event-feedback-done") || cl.contains("event-feedback-retours")) return "avis";
     if (cl.contains("post-actions")) return "echanges";
     if (el.id === "eventAlbum") return "album";
     if (el.id === "eventCommentsList") return "echanges";
@@ -590,13 +600,17 @@
 
     var etat = etatRsvp(ev.id);
     var complet = estComplet(ev);
+    // 2026-11-27 : « je participe » est une DEMANDE tant que l'organisation ne l'a
+    // pas validée — le pied le dit (« Demande envoyée » / « Participation
+    // confirmée »), avec les mêmes mots que la carte (`_etatParticipationAffiche`).
+    var vu = etatAffiche(ev);
     // LOT-19 (audit UX/UI du 2026-11-10) : deux états que le pied confondait
     // avec celui d'une participante ordinaire — l'ORGANISATION (IRL-C53 : elle
     // voyait « ✓ Je participe / Retirer ma participation » sur sa propre
     // activité) et l'EXEMPLE (IRL-C66 : bouton actif, refus seulement après).
     var orga = estOrganisation(ev);
     var exemple = !orga && estExemple(ev);
-    var sig = (etat || "none") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "");
+    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "");
     // ⚠️ Le marqueur vit sur le nœud INJECTÉ, jamais sur `#eventDetailCta` : le
     // moteur historique repeint la barre par `innerHTML`, ce qui efface les
     // enfants mais conserve les attributs de l'hôte. Un marqueur posé sur l'hôte
@@ -605,7 +619,7 @@
     if (box && box.getAttribute("data-v4b-rsvp") === sig) return false;
 
     cta.innerHTML = "";
-    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet));
+    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet, vu));
     return true;
   }
 
@@ -667,7 +681,21 @@
     return box;
   }
 
-  function construireCta(sig, etat, complet) {
+  function etatAffiche(ev) {
+    if (estDemo(ev.id)) return demoRsvp === "going" ? "confirmee" : demoRsvp === "waitlist" ? "attente" : "";
+    try { if (typeof _etatParticipationAffiche === "function") return _etatParticipationAffiche(ev) || ""; }
+    catch (e) { fail("etat_affiche", e); }
+    return "";
+  }
+
+  function libelleEtat(vu, etat) {
+    try {
+      if (typeof LIBELLES_PARTICIPATION !== "undefined" && LIBELLES_PARTICIPATION[vu]) return LIBELLES_PARTICIPATION[vu];
+    } catch (e) { fail("libelle_etat", e); }
+    return etat === "going" ? LIBELLE_RSVP_FAIT : LIBELLE_RSVP_ATTENTE;
+  }
+
+  function construireCta(sig, etat, complet, vu) {
     var box = document.createElement("div");
     box.className = "v4b-rsvp";
     box.setAttribute("data-v4b-rsvp", sig);
@@ -687,15 +715,17 @@
       st.className = "v4b-rsvp-etat";
       st.setAttribute("data-v4b-rsvp-etat", etat);
       st.setAttribute("role", "status");
-      st.textContent = etat === "going" ? LIBELLE_RSVP_FAIT : LIBELLE_RSVP_ATTENTE;
+      if (vu) st.setAttribute("data-v4b-participation", vu);
+      st.textContent = libelleEtat(vu, etat);
       box.appendChild(st);
       var ev = evenementCourant();
       var detail = document.createElement("div");
       detail.className = "v4b-rsvp-detail";
       // IRL-C55 : annoncer la notification et la validation sans afficher de rang.
-      detail.textContent = etat === "going"
-        ? (ev ? texteDate(ev) + (texteHeure(ev) ? " · " + texteHeure(ev) : "") + " — l'organisation est prévenue." : "")
-        : RSVP_LABELS.waitlist.detail;
+      var quand = ev ? texteDate(ev) + (texteHeure(ev) ? " · " + texteHeure(ev) : "") : "";
+      detail.textContent = etat !== "going" ? RSVP_LABELS.waitlist.detail
+        : vu === "demande" ? (quand ? quand + " — " : "") + "en attente de validation par l'organisation."
+        : (quand ? quand + " — tu es attendu·e." : "");
       if (detail.textContent) box.appendChild(detail);
       // Le pied est fixé en BAS et grandit vers le haut : l'élément du bas prend
       // la place de l'ancien bouton. Le retrait passe donc AU-DESSUS de la suite —

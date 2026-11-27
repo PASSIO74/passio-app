@@ -70,8 +70,9 @@ test("② après « Je participe » : la date est dite, « Écrire aux participa
   await ouvrirFiche(page, [evenement("ev_lot3b")], "ev_lot3b");
   await page.locator("#eventDetailCta [data-v4b-rsvp-go]").click();
   const cta = page.locator("#eventDetailCta");
-  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("✓ Tu participes");
-  await expect(cta.locator(".v4b-rsvp-detail")).toContainText("l'organisation est prévenue");
+  // 2026-11-27 : le pied dit l'état RÉEL ; une activité locale n'a pas de validation.
+  await expect(cta.locator("[data-v4b-rsvp-etat]")).toHaveText("Participation confirmée");
+  await expect(cta.locator(".v4b-rsvp-detail")).toContainText("tu es attendu·e");
   await expect(cta.locator("[data-v4b-rsvp-inviter]")).toBeVisible();
   await page.evaluate(() => { window.__chat = null; window.openEventChat = (id) => { window.__chat = id; }; });
   await cta.locator("[data-v4b-rsvp-chat]").click();
