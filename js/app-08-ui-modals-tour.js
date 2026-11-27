@@ -10484,10 +10484,19 @@ const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers",
 // une première version de ce lot arrondissait toute coordonnée proche du fix
 // GPS et déplaçait donc les lieux légitimement choisis à moins d'un kilomètre
 // de chez soi. La proximité n'est pas la provenance (#134).
+// ⚠️ UN ZÉRO EST UNE COORDONNÉE (2026-11-27). `event.lng || null` envoyait NULL pour
+// une longitude 0 — or la base arrondit à deux décimales (`aa_events_coordonnees`) :
+// toute activité à moins de 400 m du méridien de Greenwich (Villers-sur-Mer…) est
+// stockée 0, et perdait donc son point à la première modification. Seul le couple
+// (0, 0), qui n'est le lieu d'aucune activité, reste « pas de point ».
+function _evPointValide(lat, lng) {
+  return typeof lat === "number" && isFinite(lat) && typeof lng === "number" && isFinite(lng) && !(lat === 0 && lng === 0);
+}
 function _eventRow(event) {
+  var _point = _evPointValide(event.lat, event.lng);
   var _row = {
     title: event.title, passion_id: event.passion || null,
-    lat: event.lat || null, lng: event.lng || null,
+    lat: _point ? event.lat : null, lng: _point ? event.lng : null,
     city: event.city || "", emoji: event.emoji || "📍",
     date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
     end_at: new Date(_eventEndAt(event)).toISOString(),
@@ -10547,27 +10556,58 @@ function _passionEvenementRefusee(event) {
   return true;
 }
 
+// ── LE MOTIF DU DERNIER REFUS, À CÔTÉ DU BOOLÉEN (2026-11-27) ────────────────
+// `supaPublishEvent` et `supaUpdateEvent` ne rendaient qu'un booléen : le code de
+// l'erreur partait dans la console, et `submitEvent` n'avait qu'UN message pour
+// tout (« réessaie quand tu auras du réseau »), même devant un refus de droit ou
+// un plafond, réseau présent. Le contrat booléen est GARDÉ (des appelants et des
+// bancs le lisent) ; le motif est posé à côté, par activité :
+// `window._evDernierRefus = { id, motif }`, remis à null à chaque appel.
+// Motifs : reseau · session · plafond · passion · coorganisation · droit ·
+// identifiant · contenu · introuvable (édition, 0 ligne) · compte · inconnu.
+// ⚠️ La barrière « compte en cours de suppression » lève le MÊME 42501 qu'un refus
+// de policy (migration_barriere_suppression) : les deux se lisent « droit ».
+function _motifRefusEvenement(error) {
+  if (!error) return "inconnu";
+  try { if (typeof estEchecReseau === "function" && estEchecReseau(error)) return "reseau"; } catch (e) {}
+  var code = String(error.code || "");
+  var msg = String(error.message || "") + " " + String(error.details || "");
+  if (code === "PGRST301" || /JWT/.test(msg)) return "session";
+  if (/coorganisation_suspendue/.test(msg)) return "coorganisation";
+  if (code === "PT429" || /rate limit|trop de données écrites|table pleine/i.test(msg)) return "plafond";
+  if (code === "23503" && /passion/i.test(msg)) return "passion";
+  if (code === "42501") return "droit";
+  if (code === "PT409") return "identifiant";
+  if (/^(22|23)/.test(code)) return "contenu";
+  return "inconnu";
+}
+function _evRefus(event, motif) {
+  window._evDernierRefus = { id: event && event.id, motif: motif };
+  return false;
+}
+
 async function supaPublishEvent(event, auteurAttendu) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     await supaEnsureProfileExists();
-    if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+    if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+      if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
       const { error } = await supa.from("events").insert(row);
       if (!error) return true;
       // Un insert qui a réussi malgré un timeout client repasse ici en doublon.
       if (String(error.code) === "23505") return true;
       if (!_stripUnknownEventCol(row, error)) {
         console.warn("Event Supabase error:", error);
-        return false;
+        return _evRefus(event, _motifRefusEvenement(error));
       }
     }
-    return false;
-  } catch(e) { console.warn("Event error:", e); return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { console.warn("Event error:", e); return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Invités d'une activité PRIVÉE (2026-11-26) : une ligne `event_invites` par
@@ -10635,16 +10675,18 @@ async function supaRejoindreParCode(eventId, code) {
 // un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
 // (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
       const res = await supa.from("events").update(row).eq("id", event.id).select("id");
-      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok;
-      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return false; }
+      // Zéro ligne : l'activité n'existe plus, ou la policy ne m'y autorise plus.
+      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok || _evRefus(event, "introuvable");
+      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return _evRefus(event, _motifRefusEvenement(res.error)); }
     }
-    return false;
-  } catch(e) { return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Annulation « douce » : l'événement reste visible (barré) pour les inscrits.
@@ -11160,6 +11202,14 @@ function fusionnerEvenementsServeur(evs) {
       }
     }
     if (i >= 0) arr[i] = ev; else arr.unshift(ev);
+    // La coorganisation est suspendue (16/11) et la base a vidé ses listes : la copie
+    // de création gardée sur cet appareil (`state.userEvents`, que cette fusion ne
+    // remplace jamais) portait encore l'ancien co-organisateur — montré sur la
+    // fiche, et renvoyé à chaque modification, que la base refusait (2026-11-27).
+    if (!(ev.coOrganizers || []).length) {
+      const locale = (state.userEvents || []).find(function (e) { return e && e.id === ev.id; });
+      if (locale && Array.isArray(locale.coOrganizers) && locale.coOrganizers.length) locale.coOrganizers = [];
+    }
   });
   const change = _evenementsSig(arr) !== avant;
   if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
