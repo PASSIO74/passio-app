@@ -6797,7 +6797,13 @@ function openNotifTarget(n) {
   // une cible absente le dit, et le panneau reste ouvert.
   const manque = _cibleNotifAbsente(n);
   if (manque) { toast(manque); return; }
-  if (n.kind === "event_update") {
+  // « Annulée » et « participation confirmée » disent, comme « modifiée », que
+  // l'activité N'EST PLUS celle qu'on a en mémoire (2026-11-27) : la fiche
+  // s'ouvrait sur l'ancienne copie — ni mention « annulée », ni adresse pourtant
+  // accordée. Sous le serveur, les trois se relisent avant de s'ouvrir ; hors
+  // serveur, « modifiée » garde son chemin et les deux autres le leur (plus bas).
+  if (n.kind === "event_update" || ((n.kind === "event_cancelled" || n.kind === "event_accepted")
+      && window._supaReal && n.refId && LIEN_COURT_ID_RE.test(n.refId))) {
     // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
     // Fermer plus tôt déclencherait un retour qui annule cette lecture.
     _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true });
@@ -6875,7 +6881,11 @@ function _cibleNotifAbsente(n) {
       case "event_update":
         if (window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
         // Hors connexion serveur, seule une sortie locale peut être ouverte.
-      case "event_join": case "event_comment": case "event_cancelled":
+      case "event_cancelled": case "event_accepted":
+        // Relues avant d'être ouvertes, comme « modifiée » (`openNotifTarget`) :
+        // la mémoire seule ne dit pas qu'elles n'existent plus.
+        if ((n.kind === "event_cancelled" || n.kind === "event_accepted") && window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
+      case "event_join": case "event_comment":
       case "event_reminder": case "event_invite": case "event_feedback": {
         if (!ref) return "";
         const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
@@ -10474,10 +10484,19 @@ const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers",
 // une première version de ce lot arrondissait toute coordonnée proche du fix
 // GPS et déplaçait donc les lieux légitimement choisis à moins d'un kilomètre
 // de chez soi. La proximité n'est pas la provenance (#134).
+// ⚠️ UN ZÉRO EST UNE COORDONNÉE (2026-11-27). `event.lng || null` envoyait NULL pour
+// une longitude 0 — or la base arrondit à deux décimales (`aa_events_coordonnees`) :
+// toute activité à moins de 400 m du méridien de Greenwich (Villers-sur-Mer…) est
+// stockée 0, et perdait donc son point à la première modification. Seul le couple
+// (0, 0), qui n'est le lieu d'aucune activité, reste « pas de point ».
+function _evPointValide(lat, lng) {
+  return typeof lat === "number" && isFinite(lat) && typeof lng === "number" && isFinite(lng) && !(lat === 0 && lng === 0);
+}
 function _eventRow(event) {
+  var _point = _evPointValide(event.lat, event.lng);
   var _row = {
     title: event.title, passion_id: event.passion || null,
-    lat: event.lat || null, lng: event.lng || null,
+    lat: _point ? event.lat : null, lng: _point ? event.lng : null,
     city: event.city || "", emoji: event.emoji || "📍",
     date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
     end_at: new Date(_eventEndAt(event)).toISOString(),
@@ -10537,27 +10556,58 @@ function _passionEvenementRefusee(event) {
   return true;
 }
 
+// ── LE MOTIF DU DERNIER REFUS, À CÔTÉ DU BOOLÉEN (2026-11-27) ────────────────
+// `supaPublishEvent` et `supaUpdateEvent` ne rendaient qu'un booléen : le code de
+// l'erreur partait dans la console, et `submitEvent` n'avait qu'UN message pour
+// tout (« réessaie quand tu auras du réseau »), même devant un refus de droit ou
+// un plafond, réseau présent. Le contrat booléen est GARDÉ (des appelants et des
+// bancs le lisent) ; le motif est posé à côté, par activité :
+// `window._evDernierRefus = { id, motif }`, remis à null à chaque appel.
+// Motifs : reseau · session · plafond · passion · coorganisation · droit ·
+// identifiant · contenu · introuvable (édition, 0 ligne) · compte · inconnu.
+// ⚠️ La barrière « compte en cours de suppression » lève le MÊME 42501 qu'un refus
+// de policy (migration_barriere_suppression) : les deux se lisent « droit ».
+function _motifRefusEvenement(error) {
+  if (!error) return "inconnu";
+  try { if (typeof estEchecReseau === "function" && estEchecReseau(error)) return "reseau"; } catch (e) {}
+  var code = String(error.code || "");
+  var msg = String(error.message || "") + " " + String(error.details || "");
+  if (code === "PGRST301" || /JWT/.test(msg)) return "session";
+  if (/coorganisation_suspendue/.test(msg)) return "coorganisation";
+  if (code === "PT429" || /rate limit|trop de données écrites|table pleine/i.test(msg)) return "plafond";
+  if (code === "23503" && /passion/i.test(msg)) return "passion";
+  if (code === "42501") return "droit";
+  if (code === "PT409") return "identifiant";
+  if (/^(22|23)/.test(code)) return "contenu";
+  return "inconnu";
+}
+function _evRefus(event, motif) {
+  window._evDernierRefus = { id: event && event.id, motif: motif };
+  return false;
+}
+
 async function supaPublishEvent(event, auteurAttendu) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     await supaEnsureProfileExists();
-    if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+    if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+      if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
       const { error } = await supa.from("events").insert(row);
       if (!error) return true;
       // Un insert qui a réussi malgré un timeout client repasse ici en doublon.
       if (String(error.code) === "23505") return true;
       if (!_stripUnknownEventCol(row, error)) {
         console.warn("Event Supabase error:", error);
-        return false;
+        return _evRefus(event, _motifRefusEvenement(error));
       }
     }
-    return false;
-  } catch(e) { console.warn("Event error:", e); return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { console.warn("Event error:", e); return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Invités d'une activité PRIVÉE (2026-11-26) : une ligne `event_invites` par
@@ -10625,16 +10675,18 @@ async function supaRejoindreParCode(eventId, code) {
 // un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
 // (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
       const res = await supa.from("events").update(row).eq("id", event.id).select("id");
-      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok;
-      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return false; }
+      // Zéro ligne : l'activité n'existe plus, ou la policy ne m'y autorise plus.
+      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok || _evRefus(event, "introuvable");
+      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return _evRefus(event, _motifRefusEvenement(res.error)); }
     }
-    return false;
-  } catch(e) { return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Annulation « douce » : l'événement reste visible (barré) pour les inscrits.
@@ -11150,6 +11202,14 @@ function fusionnerEvenementsServeur(evs) {
       }
     }
     if (i >= 0) arr[i] = ev; else arr.unshift(ev);
+    // La coorganisation est suspendue (16/11) et la base a vidé ses listes : la copie
+    // de création gardée sur cet appareil (`state.userEvents`, que cette fusion ne
+    // remplace jamais) portait encore l'ancien co-organisateur — montré sur la
+    // fiche, et renvoyé à chaque modification, que la base refusait (2026-11-27).
+    if (!(ev.coOrganizers || []).length) {
+      const locale = (state.userEvents || []).find(function (e) { return e && e.id === ev.id; });
+      if (locale && Array.isArray(locale.coOrganizers) && locale.coOrganizers.length) locale.coOrganizers = [];
+    }
   });
   const change = _evenementsSig(arr) !== avant;
   if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
@@ -11202,7 +11262,10 @@ async function rafraichirEvenements(force, apresLecture) {
   try {
     const evs = await supaLoadEvents(null, null, true);
     if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
-    const change = fusionnerEvenementsServeur(evs);
+    let change = fusionnerEvenementsServeur(evs);
+    try { if (await _rafraichirMesReponses(lecture)) change = true; }
+    catch (e) { if (typeof diagLog === "function") diagLog("mes réponses : relecture — " + (e && e.message)); }
+    if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     _lectureListeSorties = lecture;
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     const irl = document.getElementById("screen-irl");
@@ -13060,6 +13123,13 @@ function _rtNotificationRecue(r) {
       && window._openEventDetailId === notif.refId && typeof _relireRefusFiche === "function") {
     _relireRefusFiche(notif.refId);
   }
+  // L'activité elle-même, avec MA réponse, sont relues (2026-11-27) : sans cela la
+  // fiche ouverte et la liste gardaient l'état d'avant (app-07, `activiteNotifiee`).
+  // ⚠️ AVANT les sorties ci-dessous : une promotion porte un identifiant FIXE
+  // (`n_pa_<activité>_<compte>`) — la seconde promotion de la même personne est
+  // une notification « déjà connue », et pourtant une vraie nouvelle.
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
+      notif.refId && typeof activiteNotifiee === "function") activiteNotifiee(notif.refId);
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
@@ -14402,16 +14472,35 @@ async function supaLoadStoryViews() {
 // → on tente l'UPDATE d'abord, puis l'INSERT (l'inverse générerait une erreur de
 // doublon à chaque changement d'avis).
 // Motif du dernier refus d'inscription, posé par le SERVEUR (trigger
-// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee`,
-// ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt que
-// « non enregistrée ».
+// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee` /
+// `introuvable`, ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt
+// que « non enregistrée ».
+// ⚠️ TOUS LES MOTIFS QUE LA BASE SAIT DIRE (2026-11-27, relevé au catalogue de
+// production : les dix déclencheurs de `event_attendees`). Trois refus n'étaient
+// pas reconnus et tombaient sur « réessaie », qu'aucun nouvel essai ne lève :
+//  · l'activité SUPPRIMÉE pendant qu'on la regarde — `activite_introuvable` pour
+//    « je viens », mais la clé étrangère (23503, la SEULE de la table) pour
+//    « peut-être » et la liste d'attente, que la garde de capacité ne juge pas ;
+//  · `inscriptions_jour_limite` (`rencontres_prive.inscription_gardee` : 20
+//    réponses par jour) → « limite », le code commun de `rate_limit_insert` ;
+//  · `organisateur_bloque` (même garde, 42501) → « bloque ». Le MOT ne va jamais
+//    à l'écran : la personne lit « plus disponible », comme pour une activité
+//    retirée — on ne dit pas à quelqu'un qu'il est bloqué.
+// Les codes rendus sont ceux de la liste fermée de `contrats-actions.js`.
 function _motifRefusRsvp(error) {
   const m = String((error && error.message) || "");
   const x = /activite_(complete|annulee|passee|introuvable)/.exec(m);
-  return x ? x[1] : null;
+  if (x) return x[1];
+  if (/inscriptions_jour_limite/.test(m)) return "limite";
+  if (/organisateur_bloque/.test(m)) return "bloque";
+  if (String((error && error.code) || "") === "23503") return "introuvable";
+  return null;
 }
 async function supaSetEventRsvp(eventId, rsvp) {
   window._irlRefusMotif = null;
+  // Le SQLSTATE du dernier refus SANS motif nommé (42501 : policy, activité
+  // fermée pour ce compte). `setEventRsvp` s'en sert pour relire l'activité.
+  window._irlRefusCode = null;
   try {
     await supaEnsureProfileExists();
     // ⚠️ `.select("event_id")`, jamais `.select()` : un RETURNING * demande AUSSI
@@ -14436,11 +14525,17 @@ async function supaSetEventRsvp(eventId, rsvp) {
       return false;
     }
     // Colonne `rsvp` absente : repli sur l'ancien modèle (présence = je viens).
-    if (/rsvp/.test(ins.error.message || "")) {
+    // ⚠️ Sur une colonne INCONNUE seulement (42703 de PostgreSQL, PGRST204 du
+    // cache de PostgREST). Le motif `/rsvp/` seul prenait aussi tout message qui
+    // CITE la colonne — et le repli écrit une ligne SANS `rsvp`, que la base
+    // range en « je viens » : un « peut-être » refusé serait devenu une place prise.
+    const _codeIns = String(ins.error.code || "");
+    if ((_codeIns === "42703" || _codeIns === "PGRST204") && /rsvp/.test(ins.error.message || "")) {
       const f = await supa.from("event_attendees")
         .insert({ event_id: eventId, user_id: MY_UID, created_at: new Date().toISOString() });
       return !f.error || String(f.error.code) === "23505";
     }
+    window._irlRefusCode = _codeIns || null;
     return false;
   } catch(e) { return false; }
 }
@@ -14686,21 +14781,57 @@ function _fusionnerBlocagesServeur(bl, remplacer) {
 // Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
 // désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
 // activités d'exemple, qui n'existent qu'ici, gardent leur réponse locale.
+// ⚠️ SAUF LA RÉPONSE QUE LA LECTURE NE PEUT PAS CONNAÎTRE (2026-11-27) : une
+// activité dont ma réponse est en vol, ou s'est réglée APRÈS le départ de cette
+// lecture (`map._luA`, posée par `supaLoadMyRsvps`), garde son état LOCAL — dans
+// les deux sens (ne pas l'effacer, ne pas la réécrire). Sans cela, « Je participe »
+// touché dans les premières secondes repassait à « pas inscrit » alors que la base
+// venait de l'écrire. Règle et mesure : `_rsvpLocalFaitFoi` (app-07).
 function _fusionnerRsvpServeur(map, remplacer) {
   if (!map || typeof map !== "object" || !state || !state.user) return false;
   state.user.eventRsvp = state.user.eventRsvp || {};
   state.user.checkedInEvents = state.user.checkedInEvents || [];
+  var debut = Number(map._luA) || 0;
+  var local = function (evId) { try { return typeof _rsvpLocalFaitFoi === "function" && _rsvpLocalFaitFoi(evId, debut); } catch (e) { return false; } };
   if (remplacer === true) Object.keys(state.user.eventRsvp).forEach(function (evId) {
-    if (map[evId]) return;
+    if (map[evId] || local(evId)) return;
     var ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null;
     if (ev && ev.fromSupabase) delete state.user.eventRsvp[evId];
   });
   Object.keys(map).forEach(function (evId) {
+    if (local(evId)) return;
     state.user.eventRsvp[evId] = map[evId].rsvp;
     if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1) state.user.checkedInEvents.push(evId);
   });
   state.user.joinedEvents = Object.keys(state.user.eventRsvp)
     .filter(function (k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+  return true;
+}
+
+// ── Mes réponses suivent la relecture des activités (2026-11-27) ────────────
+// Elles n'étaient relues qu'AU DÉMARRAGE : promu de la liste d'attente, retiré
+// par l'organisation, ou inscrit depuis un autre appareil, on gardait l'état
+// d'avant jusqu'à la relance — et une application installée reste ouverte des
+// jours. Elles sont relues avec la liste des activités (à l'entrée sur
+// Rencontrer et au retour au premier plan, une fois par minute au plus), par la
+// même lecture et la même fusion que le démarrage (`_fusionnerRsvpServeur`, qui
+// respecte un geste en vol). Pas pendant le démarrage, qui les lit lui-même, ni
+// dans les 30 s qui suivent une lecture. Rend vrai si l'écran doit être repeint.
+let _mesReponsesLuesA = 0;
+async function _rafraichirMesReponses(lecture) {
+  if (window._supaInitTerminee !== true || !_compteAuthReel() || !_attendeesLisibles()) return false;
+  if (Date.now() - _mesReponsesLuesA < 30000) return false;
+  const signature = function () {
+    const r = (state && state.user && state.user.eventRsvp) || {};
+    return Object.keys(r).sort().map(function (k) { return k + "=" + r[k]; }).join("&");
+  };
+  const avant = signature();
+  const map = await supaLoadMyRsvps();
+  if (!map || lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  const sure = await _sessionEstMoi();   // remplacer n'est sûr que sous la session de ce compte (ETAT-08)
+  if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  if (!_fusionnerRsvpServeur(map, sure) || signature() === avant) return false;
+  saveState();
   return true;
 }
 
@@ -14712,6 +14843,12 @@ async function supaLoadMyRsvps() {
   // Un visiteur n'a aucune inscription (`{}`) ; un COMPTE dont la lecture est
   // refusée (mémo de refus) ne sait pas : `null` (ETAT-08, revue du 12/11).
   if (!_attendeesLisibles()) return _compteAuthReel() ? null : {};
+  // Heure de DÉPART de la lecture, portée par la réponse sans en être une clé
+  // (non énumérable : `Object.keys` ne la voit pas). Toute réponse posée APRÈS
+  // elle est plus fraîche en local que dans ce que la base rend ici
+  // (`_fusionnerRsvpServeur`).
+  const debut = Date.now();
+  const dater = function (o) { try { Object.defineProperty(o, "_luA", { value: debut, enumerable: false }); } catch (e) {} _mesReponsesLuesA = Date.now(); return o; };
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
@@ -14721,7 +14858,7 @@ async function supaLoadMyRsvps() {
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
-    return out;
+    return dater(out);
   } catch(e) {
     // Repli sans la colonne rsvp.
     try {
@@ -14729,7 +14866,7 @@ async function supaLoadMyRsvps() {
       if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return null; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
-      return out;
+      return dater(out);
     } catch(e2) { return null; }
   }
 }
