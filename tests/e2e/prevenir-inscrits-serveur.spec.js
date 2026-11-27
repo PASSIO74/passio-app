@@ -110,7 +110,7 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
     // RÉINJECTION : sur le code d'avant, « Activité annulée — inscrits prévenus » dans les trois cas.
     expect(r.partiel.toasts).toContain("⚠️ Activité annulée, mais seulement 60 personnes sur 99 prévenues [warning]");
     expect(r.nul.toasts).toContain("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus [warning]");
-    expect(r.refus.toasts).toContain("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus [warning]");
+    expect(r.refus.toasts).toContain("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus — touche ce message pour réessayer [warning]");   // 2026-11-27 : un refus propose de réessayer (_reprevenirAnnulation)
     expect(r.refus.notifs, "un refus serveur n'est PAS rejoué par l'ancien chemin").toBe(0);
     expect(r.personne.toasts).toContain("Activité annulée");
     for (const cas of [r.partiel, r.nul, r.refus, r.personne]) expect(cas.toasts.some((t) => /inscrits prévenus/.test(t))).toBe(false);

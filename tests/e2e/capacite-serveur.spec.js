@@ -58,6 +58,12 @@ test.describe("IRL-05 — le refus du serveur est rendu avec sa raison", () => {
     const a = await essai(page, "activite_annulee");
     expect(a.rsvp).toBeNull();
     expect(a.toasts.some((t) => /a été annulée/.test(t))).toBe(true);
+    // (2026-11-27) Après ce refus l'écran REJOINT la base : l'activité y est
+    // désormais annulée, et un nouvel appui ne part plus au serveur
+    // (tests/e2e/rencontrer-fiabilite.spec.js ④). Le second motif s'éprouve donc
+    // sur une activité redevenue active.
+    expect(await page.evaluate(() => state.seed.events.find((e) => e.id === "ev1").status), "l'écran a rejoint la base").toBe("cancelled");
+    await page.evaluate(() => { state.seed.events.find((e) => e.id === "ev1").status = "active"; });
     const p = await essai(page, "activite_passee");
     expect(p.toasts.some((t) => /déjà passée/.test(t))).toBe(true);
   });

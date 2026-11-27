@@ -3787,10 +3787,12 @@ function meOuvrirStickers() {
   // ❓ Question : story ET bobine (2026-11-26, « les mêmes fonctionnalités que la
   // story », Benjamin). Dans le lecteur de bobines, la réponse part à l'AUTEUR
   // DE LA BOBINE affichée, lu dans `reelsState.items` (la ligne serveur), jamais
-  // dans l'overlay. 📊 Sondage reste story seulement : ses votes sont rangés par
-  // `story_id` en base, une bobine n'y a pas de place sans migration.
+  // dans l'overlay. 📊 Sondage : story (votes rangés par `story_id`) ; en BOBINE
+  // il a sa propre table (`bobine_sondage_votes`, migration du 2026-11-27) et n'est
+  // proposé qu'une fois celle-ci appliquée (`bobineSondageActif`).
   choix.push(["❓", "Question", _meStickerQuestion]);
   if (meState.mode === "story") { if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
+  else if (meState.mode === "bobine" && bobineSondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]);
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -3877,12 +3879,13 @@ function storySondageActif() {
   if (STORY_SONDAGE_ACTIF) return true;
   try { return localStorage.getItem("passio_story_sondage") === "1"; } catch (e) { return false; }
 }
-// 📊 Sondage (story seulement) : une question, deux réponses. Les votes vivent
-// dans `story_sondage_votes` (migration du 2026-11-26) ; un vote par compte.
+// 📊 Sondage : une question, deux réponses. Les votes vivent dans
+// `story_sondage_votes` (story, migration du 2026-11-26) ou `bobine_sondage_votes`
+// (bobine, migration du 2026-11-27) ; un vote par compte.
 function _meStickerSondage(panneau) {
   panneau.remove();
-  // UN sondage par story : la base n'enregistre qu'un vote par compte et par story.
-  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par story"); return; }
+  // UN sondage par story ou par bobine : la base n'enregistre qu'un vote par compte et par publication.
+  if (meState.overlays.some(function (o) { return o.type === "sondage"; })) { toast("Un seul sondage par " + (meState.mode === "bobine" ? "bobine" : "story")); return; }
   openModal('<div class="modal-handle"></div><div class="modal-title">📊 Sondage</div>'
     + '<input class="input" id="meSdQ" maxlength="120" placeholder="Pose ta question" style="margin-top:8px;"/>'
     + '<input class="input" id="meSdA" maxlength="30" value="Oui" aria-label="Première réponse" style="margin-top:8px;"/>'
@@ -3967,6 +3970,98 @@ function storyVoterSondage(bouton) {
       return;
     }
     _storySondagePeindre(s);
+  }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
+}
+// ── 📊 SONDAGE EN BOBINE (2026-11-27) ────────────────────────────────────────
+// Le même sticker que la story, rangé par BOBINE : un vote s'écrit dans
+// `bobine_sondage_votes (post_id, choix)`, les résultats se lisent par
+// `bobine_sondage_resultats(_post_id)` (migration_bobine_sondage_2026-11-27.sql).
+// ALLUMÉ le 2026-11-27, APRÈS l'application de la migration en production (journal
+// n°96) et sa mesure en base (table, deux policies, trois fonctions, déclencheurs).
+// Le drapeau ne sait qu'ENLEVER (règle des lots d'interface) : il ferme la CRÉATION
+// du sticker, jamais le lecteur — un sondage déjà posé reste lisible et votable.
+// Coupures : `BOBINE_SONDAGE_ACTIF = false` (constante, pour tous),
+// `localStorage.passio_bobine_sondage = "0"` ou `window.PASSIO_BOBINE_SONDAGE = false`
+// (un appareil).
+var BOBINE_SONDAGE_ACTIF = true;
+function bobineSondageActif() {
+  if (!BOBINE_SONDAGE_ACTIF || window.PASSIO_BOBINE_SONDAGE === false) return false;
+  try { return localStorage.getItem("passio_bobine_sondage") !== "0"; } catch (e) { return true; }
+}
+// La bobine AFFICHÉE qui porte cet élément : lue dans `reelsState.items` (la ligne
+// du serveur) par l'identifiant de SA carte — jamais dans l'overlay, qu'un autre
+// compte a écrit.
+function _bobineDuSondage(el) {
+  var carteBobine = el && el.closest ? el.closest(".reel-item[data-post-id]") : null;
+  if (!carteBobine || typeof reelsState === "undefined" || !reelsState || !reelsState.open) return null;
+  var pid = carteBobine.getAttribute("data-post-id");
+  var post = (reelsState.items || []).find(function (p) { return p && String(p.id) === pid; });
+  return post ? { post: post, carteBobine: carteBobine } : null;
+}
+function _bobineSondageServeurPossible(post) {
+  return !!(post && post.fromSupabase && window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+}
+// La carte du sondage de CETTE bobine, telle qu'elle est à l'écran maintenant (la
+// liste a pu être repeinte entre la demande et la réponse).
+function _bobineSondageCarte(id) {
+  var trouvee = null;
+  document.querySelectorAll("#reelsList .reel-item[data-post-id]").forEach(function (it) {
+    if (!trouvee && it.getAttribute("data-post-id") === id) trouvee = it.querySelector(".st-sondage");
+  });
+  return trouvee;
+}
+// Résultats du sondage d'une bobine (après mon vote, ou si c'est ma bobine).
+// Appelée quand la bobine devient ACTIVE (`playReelAt`, app-05) et après un vote :
+// une requête par bobine à sondage REGARDÉE, jamais une par bobine de la liste.
+function bobineSondagePeindre(carteBobine) {
+  var carte = carteBobine && carteBobine.querySelector ? carteBobine.querySelector(".st-sondage") : null;
+  if (!carte) return;
+  var b = _bobineDuSondage(carte); if (!b) return;
+  var post = b.post, id = String(post.id);
+  if (!_bobineSondageServeurPossible(post)) {
+    // Bobine d'exemple ou locale : seul MON vote, gardé sur cet appareil.
+    var local = (state.user && state.user.sondagesLocaux) || {};
+    if (local[id] != null) _storySondageAppliquer(carte, { a_vote: true, mon_choix: local[id], a: local[id] === 0 ? 1 : 0, b: local[id] === 1 ? 1 : 0 });
+    return;
+  }
+  Promise.resolve(supa.rpc("bobine_sondage_resultats", { _post_id: id })).then(function (res) {
+    // `null` : pas une bobine à sondage que je vois ; `{a_vote:false}` : pas encore voté.
+    if (!res || res.error || !res.data) return;
+    _storySondageAppliquer(_bobineSondageCarte(id), res.data);
+  }).catch(function () {});
+}
+function bobineVoterSondage(bouton) {
+  var b = _bobineDuSondage(bouton);
+  var carte = bouton.closest(".st-sondage");
+  if (!b || !carte || carte.classList.contains("st-sd-vote") || carte._envoi) return;
+  var post = b.post, auteur = post.authorId || post.userId, id = String(post.id);
+  if (auteur === MY_UID || auteur === "me") { toast("Les votes de ton sondage s'affichent ici"); return; }
+  var choix = Number(bouton.getAttribute("data-choix")) === 1 ? 1 : 0;
+  if (!_bobineSondageServeurPossible(post)) {
+    // Bobine d'exemple ou locale : le vote reste sur cet appareil, rien ne part.
+    state.user.sondagesLocaux = state.user.sondagesLocaux || {};
+    state.user.sondagesLocaux[id] = choix;
+    var cles = Object.keys(state.user.sondagesLocaux);
+    if (cles.length > 50) cles.slice(0, cles.length - 50).forEach(function (k) { delete state.user.sondagesLocaux[k]; });
+    try { saveState(); } catch (e) {}
+    _storySondageAppliquer(carte, { a_vote: true, mon_choix: choix, a: choix === 0 ? 1 : 0, b: choix === 1 ? 1 : 0 });
+    return;
+  }
+  carte._envoi = true;
+  // L'INTENTION part (jamais une lecture préalable) ; le verdict de la base décide.
+  // Deux colonnes seulement : `user_id` et `created_at` sont posés par la base.
+  Promise.resolve(supa.from("bobine_sondage_votes").insert({ post_id: id, choix: choix })).then(function (res) {
+    carte._envoi = false;
+    var err = res && res.error;
+    // 23505 : j'ai déjà voté (autre appareil) — l'état voulu existe, on montre les résultats.
+    if (err && err.code !== "23505") {
+      var absente = err.code === "42P01" || err.code === "PGRST205";
+      toast(absente ? "Les sondages arrivent bientôt" : "Vote non enregistré — réessaie", "warning");
+      return;
+    }
+    var actuelle = _bobineSondageCarte(id);
+    if (actuelle) bobineSondagePeindre(actuelle.closest(".reel-item"));
   }).catch(function () { carte._envoi = false; toast("Vote non enregistré — vérifie ta connexion", "warning"); });
 }
 // Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
@@ -4107,7 +4202,7 @@ function storyRepondreQuestion(bouton) {
     } else if (u) {
       _storyQuitterLecteurs();
       openUserProfile(u);
-    } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    } else if (b.classList.contains("st-sd-opt")) { if (b.closest(".reel-item")) bobineVoterSondage(b); else storyVoterSondage(b); }
     else if (b.classList.contains("st-musique")) { if (b.closest("#storyOverlays")) ouvrirCreditMusique(b); }
     else storyRepondreQuestion(b);
   }, true);
@@ -4378,7 +4473,7 @@ function _meMakeInteractive(el, ov, handle) {
       var p = pointers[ids[0]], q = pointers[ids[1]];
       var dist = Math.hypot(p.x - q.x, p.y - q.y) || 1;
       var ang = Math.atan2(q.y - p.y, q.x - p.x);
-      ov.scale = Math.max(0.3, Math.min(5, pinch.scale * (dist / pinch.dist)));
+      ov.scale = Math.max(0.3, Math.min(meEchelleMax(ov), pinch.scale * (dist / pinch.dist)));
       ov.rot = pinch.rot + (ang - pinch.ang) * 180 / Math.PI;
       _meApplyTransform(el, ov);
     } else if (drag && rect) {
@@ -4429,7 +4524,7 @@ function _meMakeInteractive(el, ov, handle) {
       try { handle.setPointerCapture(e.pointerId); } catch(_) {}
       function mv(ev) {
         var d = Math.hypot(ev.clientX - cx, ev.clientY - cy) || 1;
-        ov.scale = Math.max(0.3, Math.min(5, sScale * (d / startD)));
+        ov.scale = Math.max(0.3, Math.min(meEchelleMax(ov), sScale * (d / startD)));
         _meApplyTransform(el, ov);
       }
       function end(ev) {
@@ -4869,14 +4964,21 @@ function _storyDessinHtml(o) {
   }).join("");
   return corps ? '<svg class="story-ov-dessin" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">' + corps + '</svg>' : "";
 }
+// Taille maximale d'un sticker, dans l'éditeur comme dans les lecteurs. ⚠️ Le SONDAGE est borné
+// plus bas (red team du 2026-11-27) : agrandi à toute la scène, chacune de ses deux réponses couvrait
+// la moitié de l'écran — un toucher pour mettre la vidéo en pause devenait un vote, que l'auteur lit
+// nominativement. À 1,6, la carte occupe au plus une bande de l'écran.
+var ME_ECHELLE_MAX = 5, ME_SONDAGE_ECHELLE_MAX = 1.6;
+function meEchelleMax(o) { return o && o.type === "sondage" ? ME_SONDAGE_ECHELLE_MAX : ME_ECHELLE_MAX; }
 // `opts.story` : appelé par le lecteur de STORY ; `opts.bobine` : par le lecteur
 // de BOBINES (`renderReelHTML`, app-05). Le sticker Question n'est rendu que par
 // ces deux lecteurs, qui savent à qui va la réponse (la story active, ou la
-// bobine dont la carte porte `data-post-id`). Le Sondage, lui, reste story seule.
+// bobine dont la carte porte `data-post-id`). Le Sondage de même (2026-11-27) :
+// le vote va à la story active, ou à la bobine de la carte.
 function _storyOverlaysHtml(overlays, opts) {
   var dansStory = !!(opts && opts.story);
   var dansBobine = !!(opts && opts.bobine);
-  var sondageRendu = false; // un seul sondage rendu : un seul vote par story en base
+  var sondageRendu = false; // un seul sondage rendu : un seul vote par story (ou par bobine) en base
   // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
   // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
   // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
@@ -4884,7 +4986,9 @@ function _storyOverlaysHtml(overlays, opts) {
   // couleur par _cssColor.
   var _nb = function(v, parDefaut) { var n = Number(v); return Number.isFinite(n) ? n : parDefaut; };
   return (overlays || []).map(function(o) {
-    var s = _nb(o.scale, 1), r = _nb(o.rot, 0);
+    // Échelle BORNÉE à ce que l'éditeur permet (`meEchelleMax`) : une valeur forgée ne fait pas
+    // d'un sticker un voile sur toute la story ou la bobine.
+    var s = Math.max(0.3, Math.min(meEchelleMax(o), _nb(o.scale, 1))), r = _nb(o.rot, 0);
     var tr = "transform:translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg);";
     var pos = "left:" + _nb(o.x, 50) + "%;top:" + _nb(o.y, 50) + "%;" + tr;
     if (o.type === "text") {
@@ -4917,11 +5021,14 @@ function _storyOverlaysHtml(overlays, opts) {
         ? '<button type="button" class="story-ov story-sticker st-compte" style="' + pos + '" data-evt="' + escapeHtml(o.eid) + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</button>'
         : '<div class="story-ov story-sticker st-compte" style="' + pos + '" data-fin="' + Math.round(fin) + '">' + corpsC + '</div>';
     }
-    if (o.type === "sondage" && dansStory && !sondageRendu) {
+    if (o.type === "sondage" && (dansStory || dansBobine) && !sondageRendu) {
       sondageRendu = true;
       var sq = String(o.q || "").slice(0, 120);
       var opt = function (c, lib) { return '<button type="button" class="st-sd-opt" data-choix="' + c + '" aria-pressed="false"><span class="st-sd-lib">' + escapeHtml(String(lib || (c ? "Non" : "Oui")).slice(0, 30)) + '</span><span class="st-sd-pct"></span></button>'; };
-      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + escapeHtml(sq) + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
+      // Espace INSÉCABLE devant « ? » et « ! » (après l'échappement : seul un espace est remplacé) —
+      // sans elle, le point d'interrogation d'une question partait seul à la ligne.
+      var sqHtml = escapeHtml(sq).replace(/ ([?!])/g, "\u00a0$1");
+      return '<div class="story-ov story-sticker st-sondage" style="' + pos + '"><b>' + sqHtml + '</b>' + opt(0, o.a) + opt(1, o.b) + '<span class="st-sd-total"></span></div>';
     }
     if (o.type === "question" && (dansStory || dansBobine)) {
       var qv = String(o.q || "").slice(0, 120);
@@ -6797,7 +6904,13 @@ function openNotifTarget(n) {
   // une cible absente le dit, et le panneau reste ouvert.
   const manque = _cibleNotifAbsente(n);
   if (manque) { toast(manque); return; }
-  if (n.kind === "event_update") {
+  // « Annulée » et « participation confirmée » disent, comme « modifiée », que
+  // l'activité N'EST PLUS celle qu'on a en mémoire (2026-11-27) : la fiche
+  // s'ouvrait sur l'ancienne copie — ni mention « annulée », ni adresse pourtant
+  // accordée. Sous le serveur, les trois se relisent avant de s'ouvrir ; hors
+  // serveur, « modifiée » garde son chemin et les deux autres le leur (plus bas).
+  if (n.kind === "event_update" || ((n.kind === "event_cancelled" || n.kind === "event_accepted")
+      && window._supaReal && n.refId && LIEN_COURT_ID_RE.test(n.refId))) {
     // La fiche remplace la cloche dans l'historique une fois sa lecture finie.
     // Fermer plus tôt déclencherait un retour qui annule cette lecture.
     _ouvrirLienActivite(n.refId, null, { relire: !!window._supaReal, fermerModale: true });
@@ -6875,7 +6988,11 @@ function _cibleNotifAbsente(n) {
       case "event_update":
         if (window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
         // Hors connexion serveur, seule une sortie locale peut être ouverte.
-      case "event_join": case "event_comment": case "event_cancelled":
+      case "event_cancelled": case "event_accepted":
+        // Relues avant d'être ouvertes, comme « modifiée » (`openNotifTarget`) :
+        // la mémoire seule ne dit pas qu'elles n'existent plus.
+        if ((n.kind === "event_cancelled" || n.kind === "event_accepted") && window._supaReal && LIEN_COURT_ID_RE.test(ref || "")) return "";
+      case "event_join": case "event_comment":
       case "event_reminder": case "event_invite": case "event_feedback": {
         if (!ref) return "";
         const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
@@ -10481,10 +10598,19 @@ const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers",
 // une première version de ce lot arrondissait toute coordonnée proche du fix
 // GPS et déplaçait donc les lieux légitimement choisis à moins d'un kilomètre
 // de chez soi. La proximité n'est pas la provenance (#134).
+// ⚠️ UN ZÉRO EST UNE COORDONNÉE (2026-11-27). `event.lng || null` envoyait NULL pour
+// une longitude 0 — or la base arrondit à deux décimales (`aa_events_coordonnees`) :
+// toute activité à moins de 400 m du méridien de Greenwich (Villers-sur-Mer…) est
+// stockée 0, et perdait donc son point à la première modification. Seul le couple
+// (0, 0), qui n'est le lieu d'aucune activité, reste « pas de point ».
+function _evPointValide(lat, lng) {
+  return typeof lat === "number" && isFinite(lat) && typeof lng === "number" && isFinite(lng) && !(lat === 0 && lng === 0);
+}
 function _eventRow(event) {
+  var _point = _evPointValide(event.lat, event.lng);
   var _row = {
     title: event.title, passion_id: event.passion || null,
-    lat: event.lat || null, lng: event.lng || null,
+    lat: _point ? event.lat : null, lng: _point ? event.lng : null,
     city: event.city || "", emoji: event.emoji || "📍",
     date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
     end_at: new Date(_eventEndAt(event)).toISOString(),
@@ -10544,27 +10670,58 @@ function _passionEvenementRefusee(event) {
   return true;
 }
 
+// ── LE MOTIF DU DERNIER REFUS, À CÔTÉ DU BOOLÉEN (2026-11-27) ────────────────
+// `supaPublishEvent` et `supaUpdateEvent` ne rendaient qu'un booléen : le code de
+// l'erreur partait dans la console, et `submitEvent` n'avait qu'UN message pour
+// tout (« réessaie quand tu auras du réseau »), même devant un refus de droit ou
+// un plafond, réseau présent. Le contrat booléen est GARDÉ (des appelants et des
+// bancs le lisent) ; le motif est posé à côté, par activité :
+// `window._evDernierRefus = { id, motif }`, remis à null à chaque appel.
+// Motifs : reseau · session · plafond · passion · coorganisation · droit ·
+// identifiant · contenu · introuvable (édition, 0 ligne) · compte · inconnu.
+// ⚠️ La barrière « compte en cours de suppression » lève le MÊME 42501 qu'un refus
+// de policy (migration_barriere_suppression) : les deux se lisent « droit ».
+function _motifRefusEvenement(error) {
+  if (!error) return "inconnu";
+  try { if (typeof estEchecReseau === "function" && estEchecReseau(error)) return "reseau"; } catch (e) {}
+  var code = String(error.code || "");
+  var msg = String(error.message || "") + " " + String(error.details || "");
+  if (code === "PGRST301" || /JWT/.test(msg)) return "session";
+  if (/coorganisation_suspendue/.test(msg)) return "coorganisation";
+  if (code === "PT429" || /rate limit|trop de données écrites|table pleine/i.test(msg)) return "plafond";
+  if (code === "23503" && /passion/i.test(msg)) return "passion";
+  if (code === "42501") return "droit";
+  if (code === "PT409") return "identifiant";
+  if (/^(22|23)/.test(code)) return "contenu";
+  return "inconnu";
+}
+function _evRefus(event, motif) {
+  window._evDernierRefus = { id: event && event.id, motif: motif };
+  return false;
+}
+
 async function supaPublishEvent(event, auteurAttendu) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     await supaEnsureProfileExists();
-    if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+    if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (auteurAttendu && auteurAttendu !== MY_UID) return false;
+      if (auteurAttendu && auteurAttendu !== MY_UID) return _evRefus(event, "compte");
       const { error } = await supa.from("events").insert(row);
       if (!error) return true;
       // Un insert qui a réussi malgré un timeout client repasse ici en doublon.
       if (String(error.code) === "23505") return true;
       if (!_stripUnknownEventCol(row, error)) {
         console.warn("Event Supabase error:", error);
-        return false;
+        return _evRefus(event, _motifRefusEvenement(error));
       }
     }
-    return false;
-  } catch(e) { console.warn("Event error:", e); return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { console.warn("Event error:", e); return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Invités d'une activité PRIVÉE (2026-11-26) : une ligne `event_invites` par
@@ -10632,16 +10789,18 @@ async function supaRejoindreParCode(eventId, code) {
 // un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
 // (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
-  if (_passionEvenementRefusee(event)) return false;
+  window._evDernierRefus = null;
+  if (_passionEvenementRefusee(event)) return _evRefus(event, "passion");
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
       const res = await supa.from("events").update(row).eq("id", event.id).select("id");
-      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok;
-      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return false; }
+      // Zéro ligne : l'activité n'existe plus, ou la policy ne m'y autorise plus.
+      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok || _evRefus(event, "introuvable");
+      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return _evRefus(event, _motifRefusEvenement(res.error)); }
     }
-    return false;
-  } catch(e) { return false; }
+    return _evRefus(event, "inconnu");
+  } catch(e) { return _evRefus(event, _motifRefusEvenement(e) === "reseau" ? "reseau" : "inconnu"); }
 }
 
 // Annulation « douce » : l'événement reste visible (barré) pour les inscrits.
@@ -11157,6 +11316,14 @@ function fusionnerEvenementsServeur(evs) {
       }
     }
     if (i >= 0) arr[i] = ev; else arr.unshift(ev);
+    // La coorganisation est suspendue (16/11) et la base a vidé ses listes : la copie
+    // de création gardée sur cet appareil (`state.userEvents`, que cette fusion ne
+    // remplace jamais) portait encore l'ancien co-organisateur — montré sur la
+    // fiche, et renvoyé à chaque modification, que la base refusait (2026-11-27).
+    if (!(ev.coOrganizers || []).length) {
+      const locale = (state.userEvents || []).find(function (e) { return e && e.id === ev.id; });
+      if (locale && Array.isArray(locale.coOrganizers) && locale.coOrganizers.length) locale.coOrganizers = [];
+    }
   });
   const change = _evenementsSig(arr) !== avant;
   if (change && window._openEventDetailId && evs.some(ev => ev.id === window._openEventDetailId)) {
@@ -11209,7 +11376,10 @@ async function rafraichirEvenements(force, apresLecture) {
   try {
     const evs = await supaLoadEvents(null, null, true);
     if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
-    const change = fusionnerEvenementsServeur(evs);
+    let change = fusionnerEvenementsServeur(evs);
+    try { if (await _rafraichirMesReponses(lecture)) change = true; }
+    catch (e) { if (typeof diagLog === "function") diagLog("mes réponses : relecture — " + (e && e.message)); }
+    if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
     _lectureListeSorties = lecture;
     if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     const irl = document.getElementById("screen-irl");
@@ -13067,6 +13237,13 @@ function _rtNotificationRecue(r) {
       && window._openEventDetailId === notif.refId && typeof _relireRefusFiche === "function") {
     _relireRefusFiche(notif.refId);
   }
+  // L'activité elle-même, avec MA réponse, sont relues (2026-11-27) : sans cela la
+  // fiche ouverte et la liste gardaient l'état d'avant (app-07, `activiteNotifiee`).
+  // ⚠️ AVANT les sorties ci-dessous : une promotion porte un identifiant FIXE
+  // (`n_pa_<activité>_<compte>`) — la seconde promotion de la même personne est
+  // une notification « déjà connue », et pourtant une vraie nouvelle.
+  if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
+      notif.refId && typeof activiteNotifiee === "function") activiteNotifiee(notif.refId);
   if ((state.notifications || []).some(n => n.id === notif.id)) return;
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
@@ -14409,16 +14586,35 @@ async function supaLoadStoryViews() {
 // → on tente l'UPDATE d'abord, puis l'INSERT (l'inverse générerait une erreur de
 // doublon à chaque changement d'avis).
 // Motif du dernier refus d'inscription, posé par le SERVEUR (trigger
-// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee`,
-// ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt que
-// « non enregistrée ».
+// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee` /
+// `introuvable`, ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt
+// que « non enregistrée ».
+// ⚠️ TOUS LES MOTIFS QUE LA BASE SAIT DIRE (2026-11-27, relevé au catalogue de
+// production : les dix déclencheurs de `event_attendees`). Trois refus n'étaient
+// pas reconnus et tombaient sur « réessaie », qu'aucun nouvel essai ne lève :
+//  · l'activité SUPPRIMÉE pendant qu'on la regarde — `activite_introuvable` pour
+//    « je viens », mais la clé étrangère (23503, la SEULE de la table) pour
+//    « peut-être » et la liste d'attente, que la garde de capacité ne juge pas ;
+//  · `inscriptions_jour_limite` (`rencontres_prive.inscription_gardee` : 20
+//    réponses par jour) → « limite », le code commun de `rate_limit_insert` ;
+//  · `organisateur_bloque` (même garde, 42501) → « bloque ». Le MOT ne va jamais
+//    à l'écran : la personne lit « plus disponible », comme pour une activité
+//    retirée — on ne dit pas à quelqu'un qu'il est bloqué.
+// Les codes rendus sont ceux de la liste fermée de `contrats-actions.js`.
 function _motifRefusRsvp(error) {
   const m = String((error && error.message) || "");
   const x = /activite_(complete|annulee|passee|introuvable)/.exec(m);
-  return x ? x[1] : null;
+  if (x) return x[1];
+  if (/inscriptions_jour_limite/.test(m)) return "limite";
+  if (/organisateur_bloque/.test(m)) return "bloque";
+  if (String((error && error.code) || "") === "23503") return "introuvable";
+  return null;
 }
 async function supaSetEventRsvp(eventId, rsvp) {
   window._irlRefusMotif = null;
+  // Le SQLSTATE du dernier refus SANS motif nommé (42501 : policy, activité
+  // fermée pour ce compte). `setEventRsvp` s'en sert pour relire l'activité.
+  window._irlRefusCode = null;
   try {
     await supaEnsureProfileExists();
     // ⚠️ `.select("event_id")`, jamais `.select()` : un RETURNING * demande AUSSI
@@ -14443,11 +14639,17 @@ async function supaSetEventRsvp(eventId, rsvp) {
       return false;
     }
     // Colonne `rsvp` absente : repli sur l'ancien modèle (présence = je viens).
-    if (/rsvp/.test(ins.error.message || "")) {
+    // ⚠️ Sur une colonne INCONNUE seulement (42703 de PostgreSQL, PGRST204 du
+    // cache de PostgREST). Le motif `/rsvp/` seul prenait aussi tout message qui
+    // CITE la colonne — et le repli écrit une ligne SANS `rsvp`, que la base
+    // range en « je viens » : un « peut-être » refusé serait devenu une place prise.
+    const _codeIns = String(ins.error.code || "");
+    if ((_codeIns === "42703" || _codeIns === "PGRST204") && /rsvp/.test(ins.error.message || "")) {
       const f = await supa.from("event_attendees")
         .insert({ event_id: eventId, user_id: MY_UID, created_at: new Date().toISOString() });
       return !f.error || String(f.error.code) === "23505";
     }
+    window._irlRefusCode = _codeIns || null;
     return false;
   } catch(e) { return false; }
 }
@@ -14693,21 +14895,57 @@ function _fusionnerBlocagesServeur(bl, remplacer) {
 // Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
 // désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
 // activités d'exemple, qui n'existent qu'ici, gardent leur réponse locale.
+// ⚠️ SAUF LA RÉPONSE QUE LA LECTURE NE PEUT PAS CONNAÎTRE (2026-11-27) : une
+// activité dont ma réponse est en vol, ou s'est réglée APRÈS le départ de cette
+// lecture (`map._luA`, posée par `supaLoadMyRsvps`), garde son état LOCAL — dans
+// les deux sens (ne pas l'effacer, ne pas la réécrire). Sans cela, « Je participe »
+// touché dans les premières secondes repassait à « pas inscrit » alors que la base
+// venait de l'écrire. Règle et mesure : `_rsvpLocalFaitFoi` (app-07).
 function _fusionnerRsvpServeur(map, remplacer) {
   if (!map || typeof map !== "object" || !state || !state.user) return false;
   state.user.eventRsvp = state.user.eventRsvp || {};
   state.user.checkedInEvents = state.user.checkedInEvents || [];
+  var debut = Number(map._luA) || 0;
+  var local = function (evId) { try { return typeof _rsvpLocalFaitFoi === "function" && _rsvpLocalFaitFoi(evId, debut); } catch (e) { return false; } };
   if (remplacer === true) Object.keys(state.user.eventRsvp).forEach(function (evId) {
-    if (map[evId]) return;
+    if (map[evId] || local(evId)) return;
     var ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null;
     if (ev && ev.fromSupabase) delete state.user.eventRsvp[evId];
   });
   Object.keys(map).forEach(function (evId) {
+    if (local(evId)) return;
     state.user.eventRsvp[evId] = map[evId].rsvp;
     if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1) state.user.checkedInEvents.push(evId);
   });
   state.user.joinedEvents = Object.keys(state.user.eventRsvp)
     .filter(function (k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+  return true;
+}
+
+// ── Mes réponses suivent la relecture des activités (2026-11-27) ────────────
+// Elles n'étaient relues qu'AU DÉMARRAGE : promu de la liste d'attente, retiré
+// par l'organisation, ou inscrit depuis un autre appareil, on gardait l'état
+// d'avant jusqu'à la relance — et une application installée reste ouverte des
+// jours. Elles sont relues avec la liste des activités (à l'entrée sur
+// Rencontrer et au retour au premier plan, une fois par minute au plus), par la
+// même lecture et la même fusion que le démarrage (`_fusionnerRsvpServeur`, qui
+// respecte un geste en vol). Pas pendant le démarrage, qui les lit lui-même, ni
+// dans les 30 s qui suivent une lecture. Rend vrai si l'écran doit être repeint.
+let _mesReponsesLuesA = 0;
+async function _rafraichirMesReponses(lecture) {
+  if (window._supaInitTerminee !== true || !_compteAuthReel() || !_attendeesLisibles()) return false;
+  if (Date.now() - _mesReponsesLuesA < 30000) return false;
+  const signature = function () {
+    const r = (state && state.user && state.user.eventRsvp) || {};
+    return Object.keys(r).sort().map(function (k) { return k + "=" + r[k]; }).join("&");
+  };
+  const avant = signature();
+  const map = await supaLoadMyRsvps();
+  if (!map || lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  const sure = await _sessionEstMoi();   // remplacer n'est sûr que sous la session de ce compte (ETAT-08)
+  if (lecture.etat !== state || lecture.compte !== MY_UID) return false;
+  if (!_fusionnerRsvpServeur(map, sure) || signature() === avant) return false;
+  saveState();
   return true;
 }
 
@@ -14719,6 +14957,12 @@ async function supaLoadMyRsvps() {
   // Un visiteur n'a aucune inscription (`{}`) ; un COMPTE dont la lecture est
   // refusée (mémo de refus) ne sait pas : `null` (ETAT-08, revue du 12/11).
   if (!_attendeesLisibles()) return _compteAuthReel() ? null : {};
+  // Heure de DÉPART de la lecture, portée par la réponse sans en être une clé
+  // (non énumérable : `Object.keys` ne la voit pas). Toute réponse posée APRÈS
+  // elle est plus fraîche en local que dans ce que la base rend ici
+  // (`_fusionnerRsvpServeur`).
+  const debut = Date.now();
+  const dater = function (o) { try { Object.defineProperty(o, "_luA", { value: debut, enumerable: false }); } catch (e) {} _mesReponsesLuesA = Date.now(); return o; };
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
@@ -14728,7 +14972,7 @@ async function supaLoadMyRsvps() {
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
-    return out;
+    return dater(out);
   } catch(e) {
     // Repli sans la colonne rsvp.
     try {
@@ -14736,7 +14980,7 @@ async function supaLoadMyRsvps() {
       if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return null; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
-      return out;
+      return dater(out);
     } catch(e2) { return null; }
   }
 }

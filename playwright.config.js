@@ -48,6 +48,7 @@ const SUITES_PROD = [
   "epingle-commentaire-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : l'épingle partagée (RV-38)
   "activite-privee-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : activité privée entre 3 comptes (2026-11-27)
   "village-10-comptes.spec.js",  // sous PASSIO_E2E_VILLAGE, staging seulement : 10 personnages (npm run village)
+  "village-rencontrer.spec.js",  // sous PASSIO_E2E_VILLAGE_RENCONTRER, staging seulement : les mêmes 10 personnages, côté Rencontrer (npm run village:rencontrer)
   "village-100-hybride.spec.js", // sous PASSIO_E2E_VILLAGE100, staging seulement : 4 navigateurs + 96 figurants (npm run village:100)
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);

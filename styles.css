@@ -14793,3 +14793,7 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 }
 .reel-suivre:active { transform: scale(0.95); }
 .reel-suivre[data-suivi-attente] { color: #fff !important; border-color: #fff !important; border-style: dashed; }
+
+/* Inviter directement depuis « Créer une activité » (2026-11-27, app-07 `poserInvitationDirecte`) */
+.ev-invite-directe { margin:12px 0 4px; }
+.ev-invite-directe-ico { width:36px; height:36px; flex-shrink:0; border-radius:999px; background:rgba(124,58,237,0.14); display:flex; align-items:center; justify-content:center; font-size:17px; }

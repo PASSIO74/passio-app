@@ -934,6 +934,137 @@ async function _rafraichirApresComplet(ev) {
   try { _refreshEventDetailIfOpen(ev.id); } catch (e) {}
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// APRÈS UN REFUS, L'ÉCRAN REJOINT LA BASE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Les activités ne sont relues qu'à l'entrée sur Rencontrer (une fois par
+// minute au plus) et la fusion n'ENLÈVE rien : une activité annulée, supprimée
+// ou déplacée pendant qu'on la regarde reste telle qu'on l'a lue. Le refus du
+// serveur est alors la SEULE nouvelle qu'on reçoive — autant qu'elle serve.
+//
+// L'activité se lit-elle encore pour ce compte ? `true` (la copie fraîche est
+// fusionnée), `false` (la base ne la rend plus : supprimée, ou fermée pour ce
+// compte), `null` (on ne sait pas : panne, compte changé — on ne touche à rien).
+async function _activiteEncoreLisible(ev) {
+  if (!ev || !ev.id || !window._supaReal || typeof supaLoadEvents !== "function") return null;
+  const etat = state, compte = MY_UID;
+  try {
+    const rendues = await supaLoadEvents(null, ev.id);
+    if (state !== etat || MY_UID !== compte || !Array.isArray(rendues)) return null;
+    // Seule CETTE activité compte : rien d'autre n'entre en mémoire par ici.
+    const lues = rendues.filter(function (e) { return e && e.id === ev.id; });
+    if (!lues.length) {
+      // `supaLoadEvents` rend aussi [] pour un identifiant qu'il refuse de lire :
+      // ce n'est pas une absence constatée.
+      return (typeof LIEN_COURT_ID_RE !== "undefined" && LIEN_COURT_ID_RE.test(ev.id)) ? false : null;
+    }
+    if (typeof fusionnerEvenementsServeur === "function") fusionnerEvenementsServeur(lues);
+    return true;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("rsvp refus : relecture — " + (e && e.message)); } catch (_) {}
+    return null;
+  }
+}
+
+// La base ne rend plus cette activité à ce compte : elle quitte l'écran et la
+// mémoire de la session, comme elle l'aurait fait au prochain démarrage.
+// ⚠️ Seule une copie VENUE DU SERVEUR part (`fromSupabase`). Une activité
+// d'exemple, ou une création restée locale (publication pas encore partie),
+// n'a jamais été en base : son absence n'y prouve rien, on la garde.
+function _retirerActiviteFermee(id) {
+  const venueDuServeur = (state.seed.events || []).some(e => e && e.id === id && e.fromSupabase);
+  if (!venueDuServeur) return false;
+  state.seed.events = (state.seed.events || []).filter(e => !(e && e.id === id));
+  state.userEvents = (state.userEvents || []).filter(e => !(e && e.id === id));
+  _setMyRsvpLocal(id, null);
+  saveState();
+  if (window._openEventDetailId === id) { try { closeEventDetail(); } catch (e) {} }
+  window._irlMapSig = null;   // la carte doit perdre son marqueur
+  // Hors de l'écran Rencontrer (fiche ouverte depuis le fil, une conversation…),
+  // rien à repeindre : `goTo("irl")` rend la liste à l'entrée.
+  try { if (_irlEcranVisible()) renderIRL(); } catch (e) {}
+  return true;
+}
+
+// `motif` : « fermee » (plus lisible), « annulee », « passee ». Tout autre refus
+// (limite du jour, panne) ne dit rien de l'activité : rien à rejoindre.
+async function _convergerApresRefus(ev, motif) {
+  if (!ev || !ev.id) return;
+  const id = ev.id;
+  try {
+    if (motif === "fermee") { _retirerActiviteFermee(id); return; }
+    if (motif === "annulee") {
+      // La base vient de le dire : pas besoin de la relire pour le savoir.
+      [(state.seed.events || []).find(e => e && e.id === id), (state.userEvents || []).find(e => e && e.id === id)]
+        .forEach(function (e) { if (e) e.status = "cancelled"; });
+      saveState();
+      window._irlMapSig = null;
+      if (_irlEcranVisible()) renderIRL();
+      _refreshEventDetailIfOpen(id);
+      return;
+    }
+    if (motif === "passee") {
+      // Sa date a changé : seule la base la connaît.
+      const lisible = await _activiteEncoreLisible(ev);
+      if (lisible === false) { _retirerActiviteFermee(id); return; }
+      if (lisible === true) {
+        window._irlMapSig = null;
+        if (_irlEcranVisible()) renderIRL();
+        _refreshEventDetailIfOpen(id);
+      }
+    }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("rsvp refus : convergence — " + (e && e.message)); } catch (_) {}
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// UNE NOTIFICATION D'ACTIVITÉ FAIT RELIRE CETTE ACTIVITÉ ET MA RÉPONSE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Mesuré sur le staging à dix comptes réels (village « Rencontrer ») : validée
+// par l'organisation, Inès gardait « L'adresse s'affiche après validation » sur
+// sa fiche ouverte ; promue de la liste d'attente, Chloé gardait « En attente » ;
+// une activité annulée restait « ouverte » chez ses inscrits. Aucune table
+// d'activité n'est diffusée en temps réel : la notification (sujet privé
+// `user:<moi>`) est la SEULE nouvelle qui arrive — elle ne faisait que
+// rafraîchir la carte « prochaine sortie ». Elle déclenche maintenant deux
+// lectures ciblées : cette activité (statut, date, lieu, adresse si j'y ai
+// droit) et mes réponses (`supaLoadMyRsvps`, que `_fusionnerRsvpServeur` applique
+// en respectant un geste en vol). Une rafale de notifications = une lecture.
+const _activitesNotifiees = new Map();
+function activiteNotifiee(id) {
+  if (!id || !window._supaReal || typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;
+  if (typeof LIEN_COURT_ID_RE !== "undefined" && !LIEN_COURT_ID_RE.test(id)) return;
+  if (_activitesNotifiees.has(id)) return;
+  _activitesNotifiees.set(id, setTimeout(function () {
+    _activitesNotifiees.delete(id);
+    _relireActiviteNotifiee(id);
+  }, 400));
+}
+async function _relireActiviteNotifiee(id) {
+  const etat = state, compte = MY_UID;
+  try {
+    const [lisible, reponses] = await Promise.all([
+      _activiteEncoreLisible({ id: id }),
+      (typeof supaLoadMyRsvps === "function") ? supaLoadMyRsvps() : null,
+    ]);
+    if (state !== etat || MY_UID !== compte) return;
+    // La base ne me la rend plus (retiré d'une activité privée, supprimée) : elle part.
+    if (lisible === false) { _retirerActiviteFermee(id); return; }
+    if (reponses && typeof _fusionnerRsvpServeur === "function") {
+      // Remplacer n'est sûr que sous la session de CE compte (ETAT-08).
+      const sure = (typeof _sessionEstMoi === "function") ? await _sessionEstMoi() : false;
+      if (state !== etat || MY_UID !== compte) return;
+      _fusionnerRsvpServeur(reponses, sure);
+    }
+    saveState();
+    if (_irlEcranVisible()) { window._irlMapSig = null; renderIRL(); }
+    _refreshEventDetailIfOpen(id);
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("activité notifiée : relecture — " + (e && e.message)); } catch (_) {}
+  }
+}
+
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
 function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
@@ -1506,15 +1637,40 @@ function requestUserLocation() {
   );
 }
 
+// ⚠️ UNE VILLE DU DICTIONNAIRE, OU RIEN — JAMAIS UNE SOUS-CHAÎNE (2026-11-27).
+// La « recherche partielle » prenait la première clé CONTENUE dans le nom tapé,
+// ou qui le contenait : « Riom » et « Brioude » partaient à Rio de Janeiro
+// (`rio`), « Limay » à Lima, « Venice » à Nice, « Mittelwihr » à Berlin
+// (`mitte`), « Parisot » et « Lyons-la-Forêt » à Paris et Lyon — et comme ce
+// dictionnaire passe AVANT le géocodage (`submitEvent`), le point faux partait
+// en base : activité à 9 000 km sur la carte, hors de tout filtre de distance,
+// pointage sur place impossible. Un point absent vaut mieux qu'un point faux :
+// sans correspondance, `submitEvent` géocode l'adresse (BAN / Photon).
+// Sont la même ville : la casse, les accents, tirets et apostrophes
+// (« saint etienne », « St Malo »), et une PRÉCISION après le nom — un
+// arrondissement, un code postal, « centre », ou ce qui suit une virgule
+// (« Paris 11e », « Lyon 3ème », « Bordeaux centre », « Nice, France »).
+// Pas un nom composé : « Tours-sur-Marne » n'est pas Tours.
+function _cleVille(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[-'’_.]+/g, " ").replace(/\s+/g, " ").trim()
+    .replace(/^ste? /, function (m) { return m === "st " ? "saint " : "sainte "; });
+}
+let _villesParCle = null;
 function cityToLatLng(city) {
   if (!city) return null;
-  const key = String(city).toLowerCase().trim();
-  if (FRANCE_CITIES[key]) return FRANCE_CITIES[key];
-  // Recherche partielle
-  for (const k in FRANCE_CITIES) {
-    if (key.includes(k) || k.includes(key)) return FRANCE_CITIES[k];
+  const brut = String(city).toLowerCase().trim();
+  if (FRANCE_CITIES[brut]) return FRANCE_CITIES[brut];
+  if (!_villesParCle) {
+    _villesParCle = new Map();
+    for (const k in FRANCE_CITIES) { const c = _cleVille(k); if (c && !_villesParCle.has(c)) _villesParCle.set(c, FRANCE_CITIES[k]); }
   }
-  return null;
+  // Ce qui suit une virgule précise la ville, sans la changer.
+  let cle = _cleVille(brut.split(",")[0]);
+  if (_villesParCle.has(cle)) return _villesParCle.get(cle);
+  // Arrondissement, code postal ou « centre » en fin de nom.
+  cle = cle.replace(/( (\d{1,2}(er|e|eme)?( arrondissement)?|\d{5}|centre( ville)?|cedex( \d+)?))+$/, "");
+  return (cle && _villesParCle.has(cle)) ? _villesParCle.get(cle) : null;
 }
 
 // « le havre » → « Le Havre » (l'ancienne capitalisation ne traitait que la
@@ -3869,9 +4025,61 @@ function toggleJoinEvent(id) {
   setEventRsvp(id, _eventIsFull(ev) ? "waitlist" : "going");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UNE FILE PAR ACTIVITÉ : DEUX RÉPONSES SUR LA MÊME ACTIVITÉ NE PARTENT JAMAIS
+// EN PARALLÈLE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// Reproduit sur le faux serveur multi-comptes (latence de 120 ms par trajet) :
+// « Je participe » puis « Retirer ma réponse » avant le verdict du premier
+// geste. S'inscrire, c'est un UPDATE (0 ligne) PUIS un INSERT ; le DELETE du
+// retrait arrivait ENTRE les deux — 0 ligne, donc « réussi » — et l'INSERT se
+// posait après lui. L'écran disait « Désinscrit », la base gardait « je viens » :
+// une place prise par quelqu'un qui croit l'avoir rendue (et, dans l'autre
+// ordre, quelqu'un qui se croit inscrit sans l'être). Même famille que la
+// réaction qui s'effaçait elle-même (`_syncReactionEmoji`, une file par cible).
+// Portes concernées : la fiche (participer puis retirer), la feuille de choix
+// (deux réponses de suite), la carte d'invitation d'une conversation.
+// ⚠️ Rien en vol → le chemin d'avant, À L'IDENTIQUE : le geste s'exécute tout de
+// suite (l'affichage optimiste n'attend rien). Un geste en vol → le suivant
+// attend son VERDICT, puis relit l'état réglé (« inchangé » se juge alors sur
+// ce que la base a répondu, pas sur un optimiste qui peut encore être annulé).
+// ⚠️ La file ne se rompt jamais : un geste qui lève laisse passer le suivant.
+const _fileRsvp = new Map();
+const _rsvpRegleA = {};   // id d'activité → heure du dernier verdict (voir `_rsvpLocalFaitFoi`)
+const _rsvpPosees = new Set();   // activités dont une réponse a passé les gardes pendant ce passage de la file
+function setEventRsvp(id, rsvp) {
+  const enVol = _fileRsvp.get(id);
+  const lancer = function () { return _setEventRsvpUn(id, rsvp); };
+  const geste = enVol ? enVol.then(lancer) : lancer();
+  const regle = Promise.resolve(geste).catch(function () {}).then(function () {
+    // Un geste arrêté par une garde (invité, exemple, « inchangé ») n'a rien écrit :
+    // il ne date rien, la prochaine lecture du serveur garde la main sur cette activité.
+    if (_rsvpPosees.delete(id)) _rsvpRegleA[id] = Date.now();
+    if (_fileRsvp.get(id) === regle) _fileRsvp.delete(id);
+  });
+  _fileRsvp.set(id, regle);
+  return geste;
+}
+
+// ⚠️ UNE LECTURE PARTIE AVANT MON GESTE NE L'EFFACE PAS (2026-11-27). Mesuré sur
+// le faux serveur multi-comptes : « Je participe » touché pendant que la lecture
+// de mes réponses du démarrage (`supaLoadMyRsvps`) était en vol — la réponse,
+// antérieure à l'écriture, REMPLAÇAIT l'état local (`_fusionnerRsvpServeur`,
+// app-08, « la base fait foi ») : l'écran repassait à « pas inscrit » alors que
+// la base venait d'écrire « je viens » ; et, dans l'autre sens, une
+// désinscription revenait « inscrite ». C'est le chemin d'un lien d'invitation :
+// l'app s'ouvre sur la fiche, on répond dans les premières secondes.
+// Face à une lecture partie à `debut`, l'état LOCAL d'une activité fait foi quand
+// une réponse y est en vol, ou s'y est réglée après ce départ (la lecture ne peut
+// pas la connaître). Sans heure de départ, seule la réponse en vol compte.
+// Même règle que `_suiviLocalFaitFoi` (app-08), posée le même jour pour « Suivre ».
+function _rsvpLocalFaitFoi(id, debut) {
+  return _fileRsvp.has(id) || (Number(debut) > 0 && Number(_rsvpRegleA[id]) >= Number(debut));
+}
+
 // Cœur du système de participation. `rsvp` : "going" | "maybe" | "declined" |
-// "waitlist" | null (= retrait complet).
-async function setEventRsvp(id, rsvp) {
+// "waitlist" | null (= retrait complet). Appelé par `setEventRsvp`, seule porte.
+async function _setEventRsvpUn(id, rsvp) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -3951,6 +4159,7 @@ async function setEventRsvp(id, rsvp) {
     _rsvpRegle(false, (rsvp && window._irlRefusMotif) || (rsvp && _mineur ? "majorite" : "refus"));
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
+  _rsvpPosees.add(id);   // à partir d'ici l'état local a changé : voir `_rsvpLocalFaitFoi`
   ev.attendees = strip(ev.attendees);
   ev.maybes = strip(ev.maybes);
   ev.waitlist = strip(ev.waitlist);
@@ -3977,7 +4186,17 @@ async function setEventRsvp(id, rsvp) {
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
-    if (prev === "going") _promoteNextWaitlisted(ev);
+    // ⚠️ SOUS LE SERVEUR, ON LE DEMANDE À CHAQUE RETRAIT D'UNE ACTIVITÉ À PLACES
+    // (2026-11-27). Mesuré sur le staging à dix comptes réels : Chloé, promue de
+    // la file par la base, garde « liste d'attente » à l'écran (sa réponse locale
+    // n'avait pas suivi) ; elle se retire — la base efface une ligne « je viens »,
+    // mais `prev` valait « waitlist » ici, donc personne n'était promu : une
+    // place libre, Tom toujours en file. La base seule sait si une place vient de
+    // se libérer (`promouvoir_attente` compte les venants sous verrou, et ne
+    // promeut que s'il en reste une) : la question lui est posée, la réponse est
+    // « rien à faire » dans tous les autres cas. Hors serveur (activité locale),
+    // la règle d'avant tient : seul un « je viens » rend une place.
+    if (prev === "going" || (prev === "waitlist" && _promotionADemander(ev))) _promoteNextWaitlisted(ev);
     _leaveEventConversation(ev);
     return;
   }
@@ -3995,9 +4214,23 @@ async function setEventRsvp(id, rsvp) {
     // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
     // quand il nomme sa raison, on la dit — et on nomme la sortie.
     const motif = window._irlRefusMotif || null;
+    // ⚠️ L'ACTIVITÉ SE LIT-ELLE ENCORE ? (2026-11-27) « Introuvable » : la base l'a
+    // dit. « Bloque », ou un refus de DROIT sans motif (42501) chez un compte qui
+    // ne s'est pas déclaré mineur : elle a pu se fermer pour ce compte (retiré
+    // d'une activité privée, blocage) — on la relit AVANT de parler, pour ne dire
+    // qu'une chose par geste. Un mineur déclaré, lui, lit la règle de majorité.
+    const _mineurDeclare = (() => { try { return typeof irlProposerEstMineur === "function" && irlProposerEstMineur() === true; } catch (e) { return false; } })();
+    let fermee = motif === "introuvable";
+    if (!fermee && (motif === "bloque" || (!motif && window._irlRefusCode === "42501" && !_mineurDeclare))) {
+      fermee = (await _activiteEncoreLisible(ev)) === false;
+      if (fermee && !motif) window._irlRefusMotif = "introuvable";   // le code fermé du contrat `event_join`
+    }
     annuler(motif === "complete" ? "Activité complète : la dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
+      : fermee ? "Cette activité n'est plus disponible"
+      : motif === "limite" ? "Tu as atteint la limite d'inscriptions pour aujourd'hui — réessaie demain"
+      : motif === "bloque" ? "Tu ne peux pas t'inscrire à cette activité"
       : "⚠️ Inscription non enregistrée — réessaie");
     // LOT-19 (IRL-C54) : sur « complète », l'écran gardait le compteur périmé
     // (« 1 place restante ») et le bouton « Je participe », qu'un nouvel appui
@@ -4005,6 +4238,11 @@ async function setEventRsvp(id, rsvp) {
     // On relit les compteurs, et au pire on pose le plein — le pied repasse à
     // « Rejoindre la liste d'attente ».
     if (motif === "complete") await _rafraichirApresComplet(ev);
+    // Les AUTRES refus laissaient le même défaut (mesuré sur le faux serveur
+    // multi-comptes : annulée, supprimée ou déplacée dans le passé PENDANT qu'on
+    // regarde la fiche) : le message juste, puis « Je participe » toujours là,
+    // et le même refus à chaque nouvel appui. L'écran rejoint la base.
+    else await _convergerApresRefus(ev, fermee ? "fermee" : motif);
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
@@ -4018,7 +4256,7 @@ async function setEventRsvp(id, rsvp) {
   // la base n'a pas écrit le changement, la place n'est pas libre (et
   // `promouvoir_attente` le vérifierait de toute façon : elle compte les
   // venants sous verrou avant de promouvoir quiconque).
-  if (rsvpOk === true && prev === "going" && rsvp !== "going") _promoteNextWaitlisted(ev);
+  if (rsvpOk === true && rsvp !== "going" && (prev === "going" || (prev === "waitlist" && _promotionADemander(ev)))) _promoteNextWaitlisted(ev);
   // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
   // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
   // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
@@ -4063,6 +4301,14 @@ async function _majAdresseActivite(ev) {
   ev._adresseInconnue = false;
   saveState();
   _refreshEventDetailIfOpen(ev.id);
+}
+
+// La base peut-elle répondre à « une place vient-elle de se libérer ? » — une
+// activité du serveur, à places comptées, sous un compte réel. Voir le retrait
+// dans `_setEventRsvpUn`.
+function _promotionADemander(ev) {
+  return !!(ev && ev.maxAttendees && ev.fromSupabase && window._supaReal && !window._promotionRpcAbsente
+    && typeof _compteAuthReel === "function" && _compteAuthReel());
 }
 
 async function _promoteNextWaitlisted(ev) {
@@ -5256,17 +5502,34 @@ const RECURRENCE_LABELS = {
 const RECURRENCE_STEP_DAYS = { weekly: 7, biweekly: 14, monthly: 0 /* mois calendaire */ };
 const RECURRENCE_MAX_OCCURRENCES = 12;
 
+// ⚠️ LES DATES D'UNE SÉRIE SE COMPTENT AU CALENDRIER, PAS EN MILLISECONDES
+// (2026-11-27). Deux défauts, mesurés :
+//  · mensuel par `setMonth` : une série partie du 29, 30 ou 31 DÉBORDAIT sur le
+//    mois suivant (31 janvier → 3 mars, 31 mars → 1er mai…) — un mois sauté,
+//    et un jour qui dérive. Le jour est désormais RAMENÉ à la fin du mois
+//    (31 janvier → 28 février → 31 mars) ;
+//  · hebdomadaire / toutes les deux semaines par multiples de 24 h : au
+//    changement d'heure (dernier dimanche de mars et d'octobre), toutes les
+//    dates suivantes glissaient d'UNE HEURE — « tous les mardis à 19 h »
+//    devenait 18 h ou 20 h. On avance de N JOURS de calendrier, l'heure
+//    affichée reste celle choisie.
 function _recurrenceDates(startTs, rule, count) {
   const out = [];
   if (!rule || rule === "none") return out;
+  const depart = new Date(startTs);
+  if (isNaN(depart.getTime())) return out;
   for (let i = 1; i < Math.min(count || RECURRENCE_MAX_OCCURRENCES, RECURRENCE_MAX_OCCURRENCES); i++) {
+    let d;
     if (rule === "monthly") {
-      const d = new Date(startTs);
-      d.setMonth(d.getMonth() + i);
-      out.push(d.getTime());
+      const mois = depart.getMonth() + i;
+      const dernierJour = new Date(depart.getFullYear(), mois + 1, 0).getDate();
+      d = new Date(depart.getFullYear(), mois, Math.min(depart.getDate(), dernierJour),
+        depart.getHours(), depart.getMinutes(), depart.getSeconds(), depart.getMilliseconds());
     } else {
-      out.push(startTs + i * (RECURRENCE_STEP_DAYS[rule] || 7) * 86400000);
+      d = new Date(depart.getTime());
+      d.setDate(d.getDate() + i * (RECURRENCE_STEP_DAYS[rule] || 7));
     }
+    out.push(d.getTime());
   }
   return out;
 }
@@ -6181,18 +6444,31 @@ async function rattraperActivitesAuFil(events) {
   if (!window._supaReal || typeof supa === "undefined" || !supa) return 0;
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return 0;
   const maintenant = Date.now();
-  const vus = new Set();
+  // ⚠️ UNE SÉRIE SE JUGE EN ENTIER, AVANT TOUT AUTRE FILTRE (2026-11-27). La liste
+  // arrive triée `created_at` décroissant : « la première rencontrée » d'une série
+  // était donc sa DERNIÈRE date, alors que la carte de création est portée par la
+  // PREMIÈRE (`post_ev_<première date>`). Ni la carte locale ni la question au
+  // serveur — posées sur l'identifiant de cette dernière date — ne la trouvaient :
+  // une SECONDE carte partait chez les abonnés à l'ouverture suivante, pour toute
+  // série publique. On désigne donc d'abord la date qui porte la carte (la plus
+  // tôt de la série, copies de création comprises), elle seule peut être
+  // candidate, et une série dont une date quelconque a déjà sa carte ne reçoit rien.
+  const porteuse = new Map();
+  const serieAuFil = new Set();
+  events.concat(state.userEvents || []).forEach(ev => {
+    if (!ev || !ev.id || !ev.seriesId) return;
+    if (_activiteDejaAuFil(ev.id)) serieAuFil.add(ev.seriesId);
+    const p = porteuse.get(ev.seriesId);
+    if (!p || Number(ev.date) < Number(p.date)) porteuse.set(ev.seriesId, ev);
+  });
   const candidates = events.filter(ev => {
     if (!ev || !ev.id || ev.fromSupabase !== true) return false;
+    if (ev.seriesId && (serieAuFil.has(ev.seriesId) || porteuse.get(ev.seriesId).id !== ev.id)) return false;
     if (_activiteHorsFil(ev.id)) return false;
     if ((ev.organizerId || ev.authorId) !== MY_UID || ev.authorId !== MY_UID) return false;
     if ((ev.status || "active") !== "active") return false;
     if (!(Number(ev.date) > maintenant)) return false;
     if (!(Number(ev.createdAt) > maintenant - ACTIVITE_AU_FIL_FENETRE_MS)) return false;
-    // Une série : sa première occurrence seulement.
-    const cle = ev.seriesId || ev.id;
-    if (vus.has(cle)) return false;
-    vus.add(cle);
     return !_activiteDejaAuFil(ev.id);
   });
   let publiees = 0;
@@ -7383,7 +7659,7 @@ function _inviteMax(ctx) {
 }
 
 // Total des destinataires : la personne de la conversation + les pastilles.
-function _inviteTotal(ctx) { return (ctx.groupe ? 0 : 1) + (ctx.extras || []).length; }
+function _inviteTotal(ctx) { return (ctx.groupe || ctx.direct ? 0 : 1) + (ctx.extras || []).length; }
 
 function _inviteAvatar(u) {
   var a = document.createElement("div");
@@ -7402,7 +7678,12 @@ function _inviteRepeindre(ctx) {
   var n = (ctx.extras || []).length;
   var strong = b.querySelector(".ev-invite-bandeau-txt strong");
   var span = b.querySelector(".ev-invite-bandeau-txt span");
-  if (ctx.groupe) {
+  if (ctx.direct) {
+    if (strong) strong.textContent = n ? "Tu invites " + n + " personne" + (n > 1 ? "s" : "") : "Inviter des personnes";
+    if (span) span.textContent = n
+      ? "Chacun la reçoit dès la publication, dans votre conversation s'il y en a une, sinon en notification. Personne ne voit la liste des invités."
+      : "Choisis parmi tes conversations et tes abonnements : l'invitation part dès la publication.";
+  } else if (ctx.groupe) {
     if (strong) strong.textContent = "Invitation pour " + ctx.nom;
     if (span) span.textContent = "Elle part dans la discussion du groupe"
       + (n ? ", et " + n + " personne" + (n > 1 ? "s" : "") + " reçoi" + (n > 1 ? "vent" : "t") + " une notification." : ".")
@@ -7460,7 +7741,14 @@ function _inviteRepeindre(ctx) {
     chips.appendChild(ajout);
   }
   var publier = document.querySelector('#modalContent button[onclick^="submitEvent"]');
-  if (publier) {
+  if (publier && ctx.direct) {
+    // Le libellé d'origine (« Publier l'activité », posé par UI-6A0) revient
+    // quand la dernière pastille part.
+    if (n) {
+      if (!ctx.libelleAvant) ctx.libelleAvant = publier.textContent;
+      publier.textContent = "Publier et inviter " + n + " personne" + (n > 1 ? "s" : "");
+    } else if (ctx.libelleAvant) { publier.textContent = ctx.libelleAvant; ctx.libelleAvant = null; }
+  } else if (publier) {
     var total = _inviteTotal(ctx);
     publier.textContent = ctx.groupe ? "Créer et inviter le groupe"
       : total > 1 ? "Créer et inviter " + total + " personnes" : "Créer et inviter " + ctx.nom;
@@ -7540,6 +7828,10 @@ function poserInvitationFormulaire(convId) {
   var c = _convInvitable(convId);
   var racine = document.getElementById("modalContent");
   if (!c || !racine || !document.getElementById("evTitle")) return false;
+  // La section « Inviter des personnes » du formulaire ordinaire cède la place
+  // au bandeau de la conversation (qui sait, lui aussi, ajouter des personnes).
+  var directe = document.getElementById("evInviteBandeau");
+  if (directe && directe.parentNode) directe.parentNode.removeChild(directe);
   var groupe = !!c.isGroup;
   var nom = _nomInterlocuteur(c);
   var ctx = { jeton: uid(), convId: c.id, userId: groupe ? null : c.userId, nom: nom, at: Date.now(),
@@ -7620,6 +7912,13 @@ function lireInvitationFormulaire() {
   window._evInviteCtx = null;
   if (!ctx || !_inviteConvActive()) return null;
   var b = document.getElementById("evInviteBandeau");
+  // Invitation directe : seulement depuis SON formulaire, et avec au moins un
+  // invité — un formulaire refermé ne prête jamais ses invités à une autre
+  // publication (Studio…).
+  if (ctx.direct) {
+    if (!b || b.getAttribute("data-jeton") !== ctx.jeton) return null;
+    return (ctx.extras || []).length ? ctx : null;
+  }
   if (b) return b.getAttribute("data-jeton") === ctx.jeton ? ctx : null;
   return (Date.now() - (ctx.at || 0) < INVITE_CONV_FRAICHEUR_MS) ? ctx : null;
 }
@@ -7638,6 +7937,7 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
     toast("Activité enregistrée, mais pas encore en ligne : l'invitation n'est pas partie", "warning");
     return false;
   }
+  if (ctx.direct) return _envoyerInvitationDirecte(ev, ctx);
   if (!_convInvitable(ctx.convId)) return false;
   var lien = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
@@ -7734,6 +8034,108 @@ function envoyerInvitationActivite(ev, ctx, enLigne) {
   trier().then(function (admis) { admis.forEach(function (id) { carteDansSon1a1(id); notifier(id); }); });
   retour(autres.length ? "Invitation envoyée à " + ctx.nom + " et " + autres.length + " autre" + (autres.length > 1 ? "s" : "")
     : "Invitation envoyée à " + ctx.nom);
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVITER DIRECTEMENT DEPUIS « CRÉER UNE ACTIVITÉ » (2026-11-27, demande de
+// Benjamin : « dans créer une activité rajoute la possibilité d'inviter
+// directement des gens »).
+// Le formulaire ordinaire porte une section « Inviter des personnes » : le MÊME
+// sélecteur que l'invitation depuis une conversation (conversations récentes,
+// abonnements, recherche, plafond `INVITE_CONV_MAX`), le MÊME verdict serveur
+// par personne (`irlProposalServerVerdict`), et à la publication confirmée :
+// droit de lecture d'abord si l'activité est privée (`event_invites`), puis la
+// carte dans notre conversation 1:1 quand elle existe, et toujours la
+// notification `event_invite`. Aucune conversation n'est créée d'office, aucun
+// invité ne voit la liste des autres. Rien ne part avant « Publier ».
+// Coupures : `localStorage.passio_invite_directe_v1 = "0"` ou
+// `window.PASSIO_INVITE_DIRECTE = false` (et celles de l'invitation de conversation).
+// ═══════════════════════════════════════════════════════════════════════════
+function _inviteDirecteActive() {
+  if (!_inviteConvActive()) return false;
+  try {
+    if (window.PASSIO_INVITE_DIRECTE === false) return false;
+    if (localStorage.getItem("passio_invite_directe_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+// Appelée par `openCreateEvent` (création seulement), juste après l'ouverture.
+function poserInvitationDirecte() {
+  if (!_inviteDirecteActive()) return false;
+  var racine = document.getElementById("modalContent");
+  if (!racine || !document.getElementById("evTitle") || document.getElementById("evInviteBandeau")) return false;
+  var ctx = { jeton: uid(), convId: null, userId: null, nom: "", at: Date.now(),
+    groupe: false, direct: true, extras: [], verdicts: {} };
+  window._evInviteCtx = ctx;
+  var bandeau = document.createElement("div");
+  bandeau.id = "evInviteBandeau";
+  bandeau.className = "ev-invite-bandeau ev-invite-directe";
+  bandeau.setAttribute("data-jeton", ctx.jeton);
+  bandeau.innerHTML = '<div class="ev-invite-directe-ico" aria-hidden="true">✉️</div>'
+    + '<div class="ev-invite-bandeau-txt"><strong></strong><span></span></div>'
+    + '<div class="ev-invite-chips"></div>'
+    + '<div class="ev-invite-picker" hidden>'
+    + '<input type="search" class="input ev-invite-recherche" aria-label="Chercher une personne à inviter" placeholder="Chercher parmi tes conversations et abonnements…" autocomplete="off"/>'
+    + '<div class="ev-invite-liste"></div></div>';
+  // Juste après « Qui peut voir cette activité ? » : inviter et rendre privée
+  // se décident ensemble.
+  var vis = racine.querySelector(".ev-visibilite");
+  var publier = racine.querySelector('button[onclick^="submitEvent"]');
+  if (vis && vis.parentNode) vis.parentNode.insertBefore(bandeau, vis.nextSibling);
+  else if (publier && publier.parentNode) publier.parentNode.insertBefore(bandeau, publier);
+  else racine.appendChild(bandeau);
+  var recherche = bandeau.querySelector(".ev-invite-recherche");
+  if (recherche) recherche.addEventListener("input", function () { _inviteRendreListe(ctx); });
+  _inviteRepeindre(ctx);
+  return true;
+}
+
+// À la publication confirmée (`envoyerInvitationActivite`, `enLigne` vérifié).
+function _envoyerInvitationDirecte(ev, ctx) {
+  var ids = (ctx.extras || []).map(function (p) { return p.id; }).filter(Boolean);
+  if (!ids.length) return false;
+  var lien = (typeof lienPartageDe === "function")
+    ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
+  var quand = _quandActivite(ev);
+  var texte = "📅 Je t'invite à une activité !\n"
+    + (ev.title || "Activité") + (quand ? " · " + quand : "") + (ev.city ? " · " + ev.city : "")
+    + "\n" + lien;
+  try { if (window.tel && tel.action) tel.action("invite_directe_envoyee", { v: 1, n: ids.length, privee: activiteEstPrivee(ev) }); } catch (e) {}
+  // Les verdicts un après l'autre (jamais 10 RPC d'un coup) ; une panne vaut refus.
+  var admis = [];
+  ids.reduce(function (file, id) {
+    return file.then(function () { return _verdictInvite(ctx, id); })
+      .then(function (v) { if (v && v.ok) admis.push(id); });
+  }, Promise.resolve()).then(function () {
+    if (!admis.length) {
+      toast("Activité publiée, mais personne n'a pu recevoir l'invitation", "warning");
+      return;
+    }
+    var prevenir = function () {
+      admis.forEach(function (id) {
+        var c1 = _conv1a1Avec(id);
+        if (c1 && typeof envoyerTexteConversation === "function") {
+          try { envoyerTexteConversation(c1.id, texte); } catch (e) { try { diagLog("invite directe carte " + (e && e.message)); } catch (_) {} }
+        }
+        // Le seul site d'envoi d'`event_invite` (banc notifications-apres-ecriture) ;
+        // en privée, son droit de lecture est un upsert idempotent, déjà posé.
+        try { _notifierInviteEvent(ev, id, { droitDejaPose: activiteEstPrivee(ev) }); } catch (e) { try { diagLog("invite directe notif " + (e && e.message)); } catch (_) {} }
+      });
+      var refuses = ids.length - admis.length;
+      toast("Invitation envoyée à " + admis.length + " personne" + (admis.length > 1 ? "s" : "")
+        + (refuses ? " (" + refuses + (refuses > 1 ? " n'ont" : " n'a") + " pas pu la recevoir)" : ""), refuses ? "warning" : "success");
+    };
+    if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+      inviterSerieActivite(ev, admis).then(function (ok) {
+        if (ok) prevenir();
+        else toast("Activité privée créée, mais l'invitation n'a pas pu partir — réessaie depuis sa fiche", "warning");
+      });
+      return;
+    }
+    prevenir();
+  });
   return true;
 }
 
@@ -8069,7 +8471,18 @@ function openCreateEvent(editId, passionSouhaitee) {
   window._evInviteCtx = null;
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Activité introuvable"); return; }
-  window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
+  // Seule la feuille « Gérer » mène ici, et elle est gardée — mais la garde vit
+  // désormais dans CHAQUE geste de gestion (2026-11-27) : appelé d'ailleurs, le
+  // formulaire d'édition s'ouvrait sur l'activité d'autrui.
+  if (editId && !_canManageEvent(ed)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
+  // Le point appartient au LIEU qu'il désigne (`_evSignatureLieu`) : retaper la
+  // ville, le code postal ou l'adresse le périme (voir `submitEvent`).
+  // `_evPointValide` et non `ed.lat` : une coordonnée 0 est une coordonnée.
+  const _pointEd = !!ed && _evPointValide(ed.lat, ed.lng);
+  window._evPickedCoords = _pointEd ? { lat: ed.lat, lng: ed.lng, lieu: _evSignatureLieu(ed.city, ed.postalCode, ed.address) } : null;
+  // Le nom de lieu que le formulaire a POSÉ lui-même (préremplissage, puis chaque
+  // choix dans la recherche) : `_evPlacePick` ne vide que celui-là, jamais un nom tapé.
+  window._evLieuNomPose = ed ? String(ed.venue || "") : "";
 
   // 🔁 REVIREMENT DU 2026-11-15 (demande de Benjamin) : SEULES les passions du
   // profil sont proposées. Organiser dans une autre passion = l'ajouter d'abord
@@ -8128,7 +8541,20 @@ function openCreateEvent(editId, passionSouhaitee) {
     .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
-  const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
+  // ⚠️ NE PAS RECLASSER EN SILENCE, ICI NON PLUS (2026-11-27). Un type ou une durée
+  // hors de ces listes (écrits par une autre porte, ou une liste qui a changé) ne
+  // marquait aucune `<option>` : le navigateur retenait la première — « Atelier »,
+  // « 1 h » — et corriger une faute dans le titre réécrivait le type et l'heure de
+  // fin. Même remède que pour la passion : la valeur d'origine reste dans la liste.
+  if (ed && ed.eventType && !eventTypes.includes(ed.eventType)) eventTypes.push(String(ed.eventType));
+  const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${escapeHtml(t)}</option>`).join("");
+  const dureesH = [1, 2, 3, 4, 6, 8, 12, 24];
+  const _dureeBrute = ed ? (_eventEndAt(ed) - ed.date) / 3600000 : null;
+  const dureeEd = ed ? (Math.abs(_dureeBrute - Math.round(_dureeBrute)) < 0.001 ? Math.round(_dureeBrute) : _dureeBrute) : null;
+  if (dureeEd !== null && dureeEd > 0 && !dureesH.includes(dureeEd)) { dureesH.push(dureeEd); dureesH.sort((a, b) => a - b); }
+  const _dureeLibelle = (h) => h === 24 ? "Journée"
+    : Number.isInteger(h) ? h + " h"
+    : (Math.floor(h) ? Math.floor(h) + " h " : "") + String(Math.round((h - Math.floor(h)) * 60)).padStart(Math.floor(h) ? 2 : 1, "0") + (Math.floor(h) ? "" : " min");
   // ⚠️ `v()` ÉCHAPPE DÉJÀ. Ne jamais l'envelopper dans un second
   // `escapeHtml()` : dix champs l'étaient, et le formulaire d'édition
   // affichait « Café d&#39;Or » au lieu de « Café d'Or ». Pire, la valeur
@@ -8180,7 +8606,7 @@ function openCreateEvent(editId, passionSouhaitee) {
       </label>
       <label class="field"><span>Durée</span>
         <select class="input" id="evDuration">
-          ${[1,2,3,4,6,8,12,24].map(h => `<option value="${escapeHtml(h)}"${(ed && Math.round((_eventEndAt(ed) - ed.date)/3600000) === h) || (!ed && h === 2) ? " selected" : ""}>${h < 24 ? h + " h" : "Journée"}</option>`).join("")}
+          ${dureesH.map(h => `<option value="${escapeHtml(h)}"${(ed && dureeEd === h) || (!ed && h === 2) ? " selected" : ""}>${escapeHtml(_dureeLibelle(h))}</option>`).join("")}
         </select>
       </label>
     </div>
@@ -8206,20 +8632,20 @@ function openCreateEvent(editId, passionSouhaitee) {
       <input type="text" class="input" id="evPlaceSearch" autocomplete="off" placeholder="Tape une adresse, un bar, une salle…" oninput="_evPlaceSuggest(this.value)"/>
     </label>
     <div id="evPlaceSuggestions" class="irl-suggest" style="display:none;"></div>
-    <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;"><span>Position précise enregistrée</span></div>
+    <div id="evPlacePicked" style="display:${_pointEd ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;"><span>Position précise enregistrée</span></div>
 
     <label class="field"><span>Nom du lieu</span>
       <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
     </label>
     <label class="field"><span>Adresse</span>
-      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}"/>
+      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}" oninput="_evLieuRetouche()"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
       <label class="field"><span>Code postal</span>
-        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}"/>
+        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}" oninput="_evLieuRetouche()"/>
       </label>
       <label class="field"><span>Ville *</span>
-        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}"/>
+        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}" oninput="_evLieuRetouche()"/>
       </label>
     </div>
 
@@ -8273,6 +8699,9 @@ function openCreateEvent(editId, passionSouhaitee) {
     }
   }, 20);
 
+  // Inviter directement des personnes (création seulement).
+  if (!editId) { try { poserInvitationDirecte(); } catch (e) { try { diagLog("invite directe " + (e && e.message)); } catch (_) {} } }
+
   _irlAssurerReferentielPassions(myPassionIds);
 }
 
@@ -8312,17 +8741,53 @@ function _evPlaceSuggest(query) {
   }, 300);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UN POINT APPARTIENT AU LIEU QU'IL DÉSIGNE (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// `_evPickedCoords` — le point d'une suggestion choisie, ou celui de l'activité
+// qu'on modifie — passait AVANT tout à la soumission, quoi qu'on ait retapé
+// ensuite : déplacer une activité de Paris à Lyon en changeant la ville à la
+// main laissait le marqueur, les distances et le pointage à Paris, tout en
+// prévenant les inscrits que « le lieu a changé ». Le point porte désormais la
+// signature du lieu saisi au moment où il a été posé ; s'il ne correspond plus à
+// ce que le formulaire envoie, il est abandonné et le lieu est recalculé.
+// Le NOM du lieu n'en fait pas partie : on le corrige sans changer d'endroit.
+function _evSignatureLieu(ville, codePostal, adresse) {
+  return [ville, codePostal, adresse].map(function (x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/\s+/g, " "); }).join("|");
+}
+function _evSignatureLieuSaisi() {
+  var v = function (id) { var el = document.getElementById(id); return el ? el.value : ""; };
+  return _evSignatureLieu(v("evCity"), v("evPostal"), v("evAddress"));
+}
+// La mention « Position précise enregistrée » ne reste que tant qu'elle est vraie.
+function _evLieuRetouche() {
+  var p = window._evPickedCoords, ok = document.getElementById("evPlacePicked");
+  if (ok) ok.style.display = (p && _evPointValide(p.lat, p.lng) && (p.lieu == null || p.lieu === _evSignatureLieuSaisi())) ? "flex" : "none";
+}
+
+// ⚠️ UN CHOIX DANS LA LISTE REMPLACE LE LIEU, IL NE S'Y AJOUTE PAS (2026-11-27).
+// Le petit `set` n'écrivait qu'une valeur NON VIDE : choisir « Place Bellecour »
+// après « 12 rue de la Paix » gardait l'adresse parisienne sous un point lyonnais,
+// un résultat sans code postal gardait celui du lieu d'avant — et à l'édition, où
+// tout est prérempli, le premier choix donnait d'emblée une adresse composite,
+// annoncée aux inscrits. Adresse et code postal suivent donc TOUJOURS le choix ;
+// la ville aussi quand le résultat en porte une (elle est obligatoire) ; le nom du
+// lieu n'est vidé que s'il venait du formulaire lui-même (`_evLieuNomPose`), pour
+// ne pas effacer un nom tapé à la main avant de chercher l'adresse.
 function _evPlacePick(i) {
   const res = (window._evSuggestCache || [])[i];
   if (!res) return;
-  const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ""; };
   const head = res.name || res.label || "";
   // Un POI (bar, salle) donne un nom ; une adresse pure commence par un numéro.
-  if (!/^\d/.test(head)) set("evVenue", head);
-  set("evAddress", /^\d/.test(head) ? head : "");
+  const adressePure = /^\d/.test(head);
+  const nom = document.getElementById("evVenue");
+  if (!adressePure) { set("evVenue", head); window._evLieuNomPose = head; }
+  else if (nom && nom.value.trim() === String(window._evLieuNomPose || "").trim()) { nom.value = ""; window._evLieuNomPose = ""; }
+  set("evAddress", adressePure ? head : "");
   set("evPostal", res.postcode);
-  set("evCity", res.city);
-  window._evPickedCoords = { lat: res.lat, lng: res.lng };
+  if (res.city) set("evCity", res.city);
+  window._evPickedCoords = { lat: res.lat, lng: res.lng, lieu: _evSignatureLieuSaisi() };
   const box = document.getElementById("evPlaceSuggestions");
   if (box) box.style.display = "none";
   const ok = document.getElementById("evPlacePicked");
@@ -8346,11 +8811,14 @@ function openEventManage(id) {
     <div class="modal-handle"></div>
     <div class="modal-title">Gérer l'activité</div>
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""} · <span data-presence-total="${escapeHtml(id)}">${checked} sur place</span></div>
+    ${ev._nonPubliee ? `<div role="status" style="margin-top:12px;font-size:13px;color:var(--muted);">Cette activité n'existe encore que sur cet appareil : personne d'autre ne la voit.</div>
+    <button class="btn primary block" style="margin-top:8px;" data-republier="1" onclick="republierActivite('${escapeJsArg(id)}')">Publier maintenant</button>` : ""}
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventParticipantValidation('${escapeJsArg(id)}')">Valider les participants</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Coorganisation</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
+    ${cancelled && ev._annulationNonPrevenue ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_reprevenirAnnulation('${escapeJsArg(id)}')">Prévenir les inscrits de l'annulation</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
@@ -8510,6 +8978,7 @@ async function promoteWaitlisted(id, userId, bouton) {
 async function cancelEventSeries(id) {
   const ref = _findCanonicalEvent(id);
   if (!ref || !ref.seriesId) return;
+  if (!_canManageEvent(ref)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   const all = allEvents().filter(e => e.seriesId === ref.seriesId && !_eventIsOver(e));
   if (!(await confirmerAction({ titre: "Annuler les " + all.length + " dates à venir ?", texte: "Toute la série est annulée. Les inscrits seront prévenus.", libelle: "Annuler la série", annuler: "Garder la série", danger: true }))) return;
   closeModal();
@@ -8517,7 +8986,7 @@ async function cancelEventSeries(id) {
   // annoncé même quand TOUS les appels serveur échouaient — chaque refus
   // faisait `continue` en silence et le toast final ne comptait rien. On
   // compte, et l'écran dit ce qui s'est passé : tout, une partie, ou rien.
-  let annulees = 0, refusees = 0, aPrevenir = 0, prevenues = 0;
+  let annulees = 0, refusees = 0, aPrevenir = 0, prevenues = 0, datesMuettes = 0;
   for (const e of all) {
     const canon = _findCanonicalEvent(e.id);
     if (!canon || _eventIsCancelled(canon)) continue;
@@ -8525,16 +8994,22 @@ async function cancelEventSeries(id) {
       const okOcc = await supaCancelEvent(canon.id, true);
       if (!okOcc) { refusees++; try { if (typeof diagLog === "function") diagLog("annulation série KO " + canon.id); } catch (e) {} continue; }
     }
-    canon.status = "cancelled";
+    // Toutes les copies, relues APRÈS l'attente (voir `toggleCancelEvent`).
+    const copies = _copiesSortieOrganisation(canon.id);
+    (copies.length ? copies : [canon]).forEach(c => { c.status = "cancelled"; });
     annulees++;
     // Village à 100 (A3) : chaque date dit combien de ses inscrits ont VRAIMENT été prévenus.
-    const v = await _prevenirInscrits(canon, "event_cancelled");
+    const v = await _prevenirInscrits(_findCanonicalEvent(canon.id) || canon, "event_cancelled");
     aPrevenir += v.total; prevenues += v.prevenues;
+    // Un refus sans compte (débit de la base atteint par une longue série, réseau)
+    // ne se voyait pas dans les sommes : la date est comptée à part (2026-11-27).
+    if (v.motif && !v.personne) datesMuettes++;
   }
   saveState();
   window._irlMapSig = null;
   renderIRL();
-  if (refusees === 0 && prevenues < aPrevenir) toast("⚠️ Série annulée, mais " + (aPrevenir - prevenues) + " notification(s) d'inscrit·e n'ont pas pu partir", "warning");
+  if (refusees === 0 && datesMuettes) toast("⚠️ Série annulée, mais les inscrits de " + datesMuettes + " date" + (datesMuettes > 1 ? "s" : "") + " sur " + annulees + " n'ont pas pu être prévenus", "warning");
+  else if (refusees === 0 && prevenues < aPrevenir) toast("⚠️ Série annulée, mais " + (aPrevenir - prevenues) + " notification(s) d'inscrit·e n'ont pas pu partir", "warning");
   else if (refusees === 0) toast(aPrevenir ? "Série annulée — inscrits prévenus" : "Série annulée");
   else if (annulees === 0) toast("⚠️ Annulation non enregistrée : aucune des " + refusees + " dates n'a pu être annulée. Réessaie.");
   else toast("⚠️ Série annulée en partie : " + annulees + " date(s) annulée(s), " + refusees + " refusée(s) — réessaie pour le reste.");
@@ -8546,6 +9021,7 @@ async function cancelEventSeries(id) {
 async function toggleCancelEvent(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   const cancel = !_eventIsCancelled(ev);
   // LOT-19 (IRL-C60) : la confirmation dit COMBIEN de personnes seront prévenues.
   const _nbPrevenus = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
@@ -8557,24 +9033,55 @@ async function toggleCancelEvent(id) {
     const ok = await supaCancelEvent(id, cancel);
     if (!ok) { toast("⚠️ Changement non enregistré — réessaie", "warning"); try { if (typeof diagLog === "function") diagLog("annulation KO " + id); } catch (e) {} return; }
   }
-  ev.status = cancel ? "cancelled" : "active";
+  // ⚠️ L'OBJET CAPTURÉ AVANT LES DEUX ATTENTES N'EST PLUS FORCÉMENT CELUI DE L'ÉTAT
+  // (2026-11-27). Une relecture du serveur (retour au premier plan, `online`)
+  // REMPLACE la copie de `state.seed.events` : le statut était posé sur un objet
+  // orphelin, et l'organisateur — sur un autre appareil que celui de la création —
+  // lisait « Activité annulée » devant une fiche non barrée qui reproposait
+  // « Annuler ». Le statut va donc sur TOUTES les copies, relues après l'attente.
+  const copies = _copiesSortieOrganisation(id);
+  (copies.length ? copies : [ev]).forEach(c => { c.status = cancel ? "cancelled" : "active"; });
+  const actuelle = _findCanonicalEvent(id) || ev;
+  if (!cancel) delete actuelle._annulationNonPrevenue;
   saveState();
   closeModal();
   renderIRL();
   if (!cancel) { toast("Activité réactivée"); return; }
   // Village à 100 (A3) : l'écran dit combien de personnes ont VRAIMENT été prévenues
   // (il disait « inscrits prévenus » à 60 sur 99).
-  const v = await _prevenirInscrits(ev, "event_cancelled");
-  if (!v.total) toast("Activité annulée");
+  _direAnnulationPrevenue(id, await _prevenirInscrits(actuelle, "event_cancelled"));
+}
+// ⚠️ LE MOTIF D'ABORD (2026-11-27). Un refus de la base sans compte de destinataires
+// (réseau, débit, 500) rendait `total` = la liste LOCALE — vide sur l'appareil de
+// création, dont la copie ne connaît que l'organisateur : « Activité annulée »,
+// sans réserve, alors que personne n'avait été prévenu. Un refus se dit toujours,
+// et l'annulation étant rejouable côté base (une ligne par personne et par
+// activité), l'organisateur garde un geste pour prévenir : ce message, et « Gérer ».
+function _direAnnulationPrevenue(id, v) {
+  const ev = _findCanonicalEvent(id);
+  const rate = !!(v && v.motif && !v.personne);
+  if (ev) {
+    if (rate && !_PREVENIR_SANS_REPRISE[v.motif]) ev._annulationNonPrevenue = true; else delete ev._annulationNonPrevenue;
+    saveState();
+  }
+  if (rate && _PREVENIR_SANS_REPRISE[v.motif]) { toast("Activité annulée"); toast(_pourquoiPrevenir(v.motif), "warning"); }
+  else if (rate) toast("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus — touche ce message pour réessayer", "warning", function () { _reprevenirAnnulation(id); });
+  else if (!v.total) toast("Activité annulée");
   else if (v.prevenues === v.total) toast("Activité annulée — " + _nbPersonnes(v.total) + (v.total > 1 ? " prévenues" : " prévenue"));
   else if (v.prevenues === 0) toast("⚠️ Activité annulée, mais les inscrits n'ont pas pu être prévenus", "warning");
   else toast("⚠️ Activité annulée, mais seulement " + v.prevenues + " personne" + (v.prevenues > 1 ? "s" : "") + " sur " + v.total + " prévenue" + (v.prevenues > 1 ? "s" : ""), "warning");
+}
+async function _reprevenirAnnulation(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev) || !_eventIsCancelled(ev)) return;
+  _direAnnulationPrevenue(id, await _prevenirInscrits(ev, "event_cancelled"));
 }
 function _nbPersonnes(n) { return n + " personne" + (n > 1 ? "s" : ""); }
 
 async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   // LOT-19 (IRL-C60) : le nombre de personnes touchées, et l'annulation
   // recommandée quand il y a des inscrits (elle se réactive, la suppression non).
   const _nbTouches = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
@@ -8602,6 +9109,15 @@ async function deleteEventConfirm(id) {
   state.userEvents = (state.userEvents || []).filter(e => e.id !== id);
   state.seed.events = (state.seed.events || []).filter(e => e.id !== id);
   state.user.joinedEvents = (state.user.joinedEvents || []).filter(x => x !== id);
+  // ⚠️ CE QUI RESTAIT DERRIÈRE UNE ACTIVITÉ SUPPRIMÉE (2026-11-27) : ma réponse
+  // (« je viens » à une activité qui n'existe plus) et sa carte du fil
+  // `post_ev_<id>`, que rien ne relie à l'activité en base (pas de clé étrangère) —
+  // elle restait dans le fil de mes abonnés, pointant sur rien. La carte part par
+  // le chemin d'une suppression de publication (pierre tombale, file serveur),
+  // celui qu'emprunte déjà le passage en privé.
+  _setMyRsvpLocal(id, null);
+  try { retirerCarteActiviteDuFil(id); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("suppression activité : carte du fil " + (e && e.message)); } catch (_) {} }
   saveState();
   closeModal();
   closeEventDetail();
@@ -8624,13 +9140,14 @@ function _prevenirSuppressionActivite(ev) {
 function _messageEventAttendees(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   // Le nombre annoncé est celui des personnes RÉELLEMENT prévenues
   // (`_destinatairesActivite`, la seule liste d'envoi) — pas la longueur de
   // `attendees`, qui comptait l'organisation et oubliait « peut-être » et file.
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Prévenir les inscrits</div>
-    <div class="modal-subtitle">${_destinatairesActivite(ev).length} personne(s) recevront une notification.</div>
+    <div class="modal-subtitle">${_destinatairesActivite(_sortiePourParticipation(ev) || ev).length} personne(s) recevront une notification.</div>
     <label class="field"><span>Message</span>
       <textarea class="textarea" id="evBroadcast" maxlength="200" placeholder="Ex : on se retrouve finalement devant l'entrée nord !"></textarea>
     </label>
@@ -8642,22 +9159,48 @@ function _messageEventAttendees(id) {
 // partait avant toute écriture, sans lire un seul verdict — un refus (réseau,
 // droits) laissait croire que tout le monde était prévenu. On attend chaque
 // écriture et on dit ce qui est vrai : combien sur combien.
+// ⚠️ LA FENÊTRE NE SE FERME QU'AU VERDICT (2026-11-27). Elle se fermait AVANT
+// l'envoi : sur un refus, « Message non envoyé — réessaie » invitait à retaper un
+// texte que la fenêtre rouverte n'avait plus. Et chaque appui tirait une clé
+// neuve — or la base dérive de la clé l'identifiant des lignes : renvoyer un
+// message dont l'échec n'était qu'apparent (écrit, réponse perdue) le notifiait
+// une SECONDE fois à tous. Le geste garde donc sa clé tant que l'activité et le
+// texte sont les mêmes ; un rejeu est absorbé par la base.
 async function _sendEventBroadcast(id) {
   const ev = _findCanonicalEvent(id);
-  const txt = (document.getElementById("evBroadcast")?.value || "").trim();
+  const champ = document.getElementById("evBroadcast");
+  const txt = ((champ && champ.value) || "").trim();
   if (!ev || !txt) { toast("Écris un message"); return; }
-  const cibles = _destinatairesActivite(ev);
-  closeModal();
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
+  const cibles = _destinatairesActivite(_sortiePourParticipation(ev) || ev);
   if (!window._supaReal) {
+    closeModal();
     toast(cibles.length ? "Message enregistré sur cet appareil" : "Personne à prévenir pour l'instant");
     return;
   }
+  const bouton = champ.parentNode && champ.parentNode.parentNode ? champ.parentNode.parentNode.querySelector("button.btn.primary") : null;
+  if (bouton && bouton.disabled) return;
+  const texte = txt.slice(0, 200);
+  let geste = window._evDiffusionGeste;
+  if (!geste || geste.id !== id || geste.texte !== texte || geste.compte !== MY_UID) {
+    geste = window._evDiffusionGeste = { id: id, texte: texte, compte: MY_UID, cle: _cleGeste() };
+  }
+  if (bouton) { bouton.disabled = true; bouton.setAttribute("aria-busy", "true"); }
   // Village à 100 (A3) : la base écrit le message à chacun (au-delà de 60) et rend le
   // compte. Le texte part BRUT : la base l'échappe et le borne à 200. Elle est appelée
   // même si la liste locale est vide (appareil pas encore synchronisé).
-  const v = await _prevenirInscrits(ev, "event_update", txt.slice(0, 200));
+  let v;
+  try { v = await _prevenirInscrits(ev, "event_update", texte, geste.cle); }
+  finally { if (bouton && bouton.isConnected) { bouton.disabled = false; bouton.removeAttribute("aria-busy"); } }
   const ok = v.prevenues, total = v.total;
-  if (v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
+  // Rien n'est parti (refus, ou zéro sur N) : la fenêtre reste, avec son texte.
+  const rate = !!v.motif || (total > 0 && ok === 0);
+  if (!rate) {
+    if (window._evDiffusionGeste === geste) window._evDiffusionGeste = null;
+    // La fenêtre de CE message seulement : la personne a pu passer à autre chose.
+    if (champ.isConnected && document.getElementById("evBroadcast") === champ) closeModal();
+  }
+  if (v.motif) toast(_pourquoiPrevenir(v.motif, "⚠️ Message non envoyé — réessaie"), "warning");
   else if (!total) toast("Personne à prévenir pour l'instant");
   else if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
   else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
@@ -8697,7 +9240,136 @@ async function reportEvent(id) {
 
 const sortiesStudioEnCreation = new Set();
 
+// ══════════════════════════════════════════════════════════════════════════
+// UN SEUL ENVOI DU FORMULAIRE À LA FOIS — DANS LE MOTEUR (2026-11-27)
+// ──────────────────────────────────────────────────────────────────────────
+// La garde contre le double appui ne vivait que dans l'habillage UI-6A0 : lot
+// coupé depuis le pilotage, deux appuis pendant le géocodage publiaient DEUX
+// activités. Et là où elle vivait, elle tenait jusqu'à la fin de TOUTE la
+// publication (couverture, écriture, dates d'une série) alors que la fenêtre est
+// fermée depuis longtemps : un second formulaire ouvert entre-temps voyait ses
+// appuis avalés sans un mot. Le verrou couvre donc la phase FORMULAIRE seule —
+// de l'appui à la fermeture de la fenêtre, attentes comprises (admission,
+// référentiel des passions, géocodage) — et se relâche dès qu'elle est fermée :
+// la publication qui suit porte ses propres identifiants et ne bloque personne.
+// Un jeton par appel : la fin d'une publication ne relâche jamais le verrou d'un
+// AUTRE formulaire.
+let _evEnvoiFormulaire = null;
 async function submitEvent(editId) {
+  if (_evEnvoiFormulaire) return;
+  const jeton = _evEnvoiFormulaire = {};
+  const relacher = function () { if (_evEnvoiFormulaire === jeton) _evEnvoiFormulaire = null; };
+  try { return await _submitEventCorps(editId, relacher); }
+  finally { relacher(); }
+}
+
+// La passion choisie est connue du référentiel d'affichage, mais la liste blanche
+// de publication (`chargerReferentielPassions`, asynchrone, lancée sans attente à
+// l'ouverture du formulaire) n'a pas encore répondu : on l'ATTEND, bornée, au lieu
+// de refuser avec « n'existe que chez toi » une passion du catalogue (2026-11-27).
+// `chargerReferentielPassions` rend la main aussitôt quand une lecture est déjà en
+// vol : on relit donc l'état jusqu'à ce qu'elle soit posée.
+async function _evAttendrePassionCanonique(passion) {
+  if (estPassionCanonique(passion)) return true;
+  if (!window._supaReal || typeof chargerReferentielPassions !== "function" || !_irlPassionPlateConnue(passion)) return false;
+  const fin = Date.now() + 6000;
+  const pause = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  while (Date.now() < fin) {
+    try { await Promise.race([chargerReferentielPassions(), pause(400)]); } catch (e) {}
+    if (estPassionCanonique(passion)) return true;
+    let etat = null;
+    try { etat = (typeof window._referentielEtat === "function") ? window._referentielEtat() : null; } catch (e) {}
+    if (etat && etat.complet && !etat.enVol) return false;   // la liste est là, et la passion n'y est pas
+    await pause(250);
+  }
+  return estPassionCanonique(passion);
+}
+
+// ── CE QUE L'ÉCRAN DIT D'UN REFUS (2026-11-27) ──────────────────────────────
+// Un message par cause (`window._evDernierRefus`, posé par app-08). « Réessaie
+// quand tu auras du réseau » ne reste que pour une panne de réseau.
+// Un refus DÉFINITIF (la même activité serait refusée à l'identique) ne laisse rien
+// derrière lui : l'activité créée est retirée de l'appareil, la modification est
+// défaite. Les autres (réseau, session, plafond, panne) gardent l'activité ici,
+// marquée `_nonPubliee`, avec un geste pour la renvoyer (`republierActivite`).
+const _EV_REFUS_DEFINITIFS = { passion: 1, droit: 1, identifiant: 1, contenu: 1, coorganisation: 1, introuvable: 1, compte: 1 };
+function _evMotifRefus(evId) {
+  const r = window._evDernierRefus;
+  return (r && r.id === evId && r.motif) || "inconnu";
+}
+function _evMessageRefus(motif, edition) {
+  switch (motif) {
+    case "reseau": return edition ? "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau"
+      : "Enregistré ici, mais pas encore envoyé — publie-la depuis « Gérer » quand tu auras du réseau";
+    case "session": return edition ? "Session expirée : reconnecte-toi, puis enregistre de nouveau"
+      : "Session expirée : l'activité est gardée ici. Reconnecte-toi, puis publie-la depuis « Gérer »";
+    case "plafond": return edition ? "Trop d'envois d'un coup : modification non enregistrée — réessaie dans une minute"
+      : "Trop d'envois d'un coup : l'activité est gardée ici. Publie-la depuis « Gérer » dans une minute";
+    case "passion": return edition ? "Modification refusée : cette passion n'est pas au catalogue des activités"
+      : "Activité non publiée : cette passion n'est pas au catalogue des activités. Choisis-en une autre";
+    case "coorganisation": return "Modification refusée : la coorganisation est suspendue";
+    case "droit": return edition ? "Modification refusée : tu n'as pas, ou plus, le droit de modifier cette activité"
+      : "Activité non publiée : ton compte n'est pas autorisé à en créer pour l'instant";
+    case "introuvable": return "Modification non enregistrée : cette activité n'existe plus, ou tu n'en es plus l'organisateur";
+    case "identifiant": return "Activité non publiée (identifiant déjà utilisé) — crée-la de nouveau";
+    case "contenu": return edition ? "Modification refusée : une des informations n'est pas acceptée (texte trop long ?)"
+      : "Activité non publiée : une des informations n'est pas acceptée (texte trop long ?)";
+    case "compte": return "Activité non publiée : tu as changé de compte entre-temps";
+    default: return edition ? "Modification non enregistrée : le serveur n'a pas répondu comme prévu — réessaie"
+      : "Activité non publiée pour l'instant : elle est gardée ici — publie-la depuis « Gérer »";
+  }
+}
+function _evRetirerLocale(evId) {
+  state.userEvents = (state.userEvents || []).filter(function (e) { return e.id !== evId; });
+  _setMyRsvpLocal(evId, null);
+}
+const _evRepublications = new Set();
+// Le geste de renvoi d'une activité restée sur l'appareil (« Gérer » → « Publier
+// maintenant », ou le message d'échec lui-même). Sans lui, « réessaie » n'avait
+// aucun geste qui aboutisse : `supaPublishEvent` n'était appelée qu'à la création,
+// et rouvrir l'activité passait par un UPDATE, qui ne crée rien.
+async function republierActivite(id) {
+  const ev = (state.userEvents || []).find(function (e) { return e.id === id; });
+  if (!ev || !ev._nonPubliee || _evRepublications.has(id)) return;
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
+  if (!window._supaReal || typeof supaPublishEvent !== "function") { toast("Toujours pas de connexion au serveur — réessaie plus tard", "warning"); return; }
+  const compte = MY_UID;
+  _evRepublications.add(id);
+  if (document.querySelector("#modalBackdrop.active [data-republier]")) closeModal();
+  toast("Publication en cours…");
+  let ok = false, photoPerdue = false;
+  try {
+    if (typeof ev.coverUrl === "string" && ev.coverUrl.indexOf("data:") === 0 && typeof supaUploadMedia === "function") {
+      let up = null;
+      try { up = await supaUploadMedia(ev.id, "events", ev.coverUrl, "photo", { legere: true, cache: "3600" }); } catch (e) {}
+      if (up && up.indexOf("http") === 0) ev.coverUrl = up; else photoPerdue = true;
+    }
+    window._evDernierRefus = null;
+    ok = await supaPublishEvent(ev, compte);
+  } finally { _evRepublications.delete(id); }
+  if (MY_UID !== compte) return;
+  if (!ok) {
+    const motif = _evMotifRefus(id);
+    if (_EV_REFUS_DEFINITIFS[motif]) { _evRetirerLocale(id); saveState(); renderIRL(); }
+    toast(_evMessageRefus(motif, false), "warning");
+    return;
+  }
+  delete ev._nonPubliee;
+  saveState();
+  if (typeof supaJoinEvent === "function") supaJoinEvent(id);
+  renderIRL();
+  try { if (typeof _refreshEventDetailIfOpen === "function") _refreshEventDetailIfOpen(id); } catch (e) {}
+  if (photoPerdue) toast("Activité publiée sans sa photo : l'envoi a échoué — ajoute-la depuis « Modifier »", "warning");
+  else toast("Activité publiée !", "success");
+  // UNE carte par série, même quand ses dates partent une à une par ce geste.
+  const serieAuFil = !!ev.seriesId && (state.userEvents || []).some(function (o) { return o.seriesId === ev.seriesId && _activiteDejaAuFil(o.id); });
+  if (!serieAuFil) publierActiviteAuFil(ev);
+  if (typeof _joinEventConversation === "function") {
+    _joinEventConversation(ev).then(null, function (e) { try { diagLog("discussion d'activité : " + (e && e.message)); } catch (_) {} });
+  }
+}
+
+async function _submitEventCorps(editId, relacher) {
   const formulaire = document.getElementById("evTitle");
   const sourceStudio = !editId && formulaire?.dataset.publicationStudio;
   const auteurStudio = sourceStudio && formulaire.dataset.auteurStudio;
@@ -8712,6 +9384,13 @@ async function submitEvent(editId) {
   // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
   if (!(await requireAdmission("activite", function () { return submitEvent(editId); }))) return;
   if (sourceStudio && !formulaireStudioActif()) return;
+  // Invitation DIRECTE tenue dès maintenant : les attentes qui suivent (passion,
+  // géocodage) laissent le temps de fermer la fenêtre, et le bouton avait promis
+  // « Publier et inviter N personnes » — les invités ne se perdent pas en route.
+  const inviteDirecteTenue = editId ? null : (function () {
+    const c = window._evInviteCtx, b = document.getElementById("evInviteBandeau");
+    return c && c.direct && (c.extras || []).length && b && b.getAttribute("data-jeton") === c.jeton ? c : null;
+  })();
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
@@ -8722,17 +9401,25 @@ async function submitEvent(editId) {
   const venue = (g("evVenue")?.value || "").trim();
   const address = (g("evAddress")?.value || "").trim();
   const postalCode = (g("evPostal")?.value || "").trim();
-  const price = parseFloat(g("evPrice")?.value || "0") || 0;
+  // ⚠️ UNE SAISIE ILLISIBLE N'EST PAS « GRATUIT » (2026-11-27). Un champ `number`
+  // rend `""` pour « 1e » ou « douze » : le prix partait à 0 sans un mot, et
+  // `parseInt("1e3")` lisait UNE place là où le champ en annonçait mille.
+  // `validity.badInput` dit qu'il y a une saisie que le navigateur n'a pas su lire.
+  if (g("evPrice")?.validity?.badInput) { toast("Prix illisible : écris un nombre (ou laisse vide pour gratuit)", "error"); g("evPrice").focus(); return; }
+  if (g("evMax")?.validity?.badInput) { toast("Nombre de places illisible : écris un nombre entier (ou laisse vide)", "error"); g("evMax").focus(); return; }
+  const prixBrut = String(g("evPrice")?.value || "").trim().replace(",", ".");
+  const price = prixBrut === "" ? 0 : Number(prixBrut);
   // ⚠️ IRL-11, second volet (contre-revue Astra, 2026-09-15) : `parseInt("0") || null`
   // faisait d'une capacité SAISIE à 0 une capacité ILLIMITÉE — l'inverse de ce
   // que la personne a écrit, et l'inverse de la borne annoncée (« au moins 1 »).
   // Vide = illimité ; 0 = refusé comme tout nombre sous 1.
   const maxBrut = String(g("evMax")?.value || "").trim();
-  const maxAttendees = maxBrut === "" ? null : parseInt(maxBrut, 10);
+  const maxAttendees = maxBrut === "" ? null : Number(maxBrut);
   // ⚠️ BORNES REVALIDÉES ICI, pas seulement dans le `min` du champ (IRL-11,
   // 2026-09-14) : un prix négatif s'affichait « Gratuit », une capacité
   // négative rendait l'activité « complète » dès sa création.
   if (!(price >= 0) || price > 99999) { toast("Le prix doit être un montant positif (ou 0)", "error"); return; }
+  if (maxAttendees !== null && !Number.isInteger(maxAttendees)) { toast("Le nombre de places doit être un nombre entier", "error"); return; }
   if (maxAttendees !== null && (!(maxAttendees >= 1) || maxAttendees > 9999)) { toast("Le nombre de places doit être au moins 1", "error"); return; }
   const contact = (g("evContact")?.value || "").trim();
   const externalLink = (g("evLink")?.value || "").trim();
@@ -8753,10 +9440,13 @@ async function submitEvent(editId) {
   // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
   // passions publiables, donc ce garde ne se déclenche que sur un état bâti
   // autrement (brouillon ancien, édition d'un événement d'avant le correctif).
-  if (!estPassionCanonique(passion)) {
-    toast("Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.", "error");
+  if (!(await _evAttendrePassionCanonique(passion))) {
+    toast(_irlPassionPlateConnue(passion)
+      ? "Cette passion n'a pas encore pu être vérifiée — réessaie dans un instant."
+      : "Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.", "error");
     return;
   }
+  if (sourceStudio && !formulaireStudioActif()) return;
 
   const ts = new Date(date + "T" + time).getTime();
   if (isNaN(ts)) { toast("Date invalide", "error"); return; }
@@ -8776,6 +9466,15 @@ async function submitEvent(editId) {
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const existing = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !existing) { toast("Activité introuvable"); return; }
+  // Avant toute mutation : la copie locale d'une activité d'autrui prenait le
+  // nouveau titre AVANT que la base ne refuse (2026-11-27).
+  if (existing && !_canManageEvent(existing)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
+  // L'activité telle qu'elle était : ce à quoi on revient si la base refuse
+  // DÉFINITIVEMENT la modification, et la couverture à garder si la nouvelle ne part pas.
+  const instantane = existing ? Object.assign({}, existing) : null;
+  const couvertureAvant = (existing && typeof existing.coverUrl === "string" && /^https:\/\//i.test(existing.coverUrl)) ? existing.coverUrl : null;
+  // Restée sur l'appareil (publication jamais aboutie) : « Enregistrer » la CRÉE en base.
+  const jamaisPubliee = !!(existing && existing._nonPubliee);
 
   let avisModification = null;
   if (existing) {
@@ -8800,7 +9499,11 @@ async function submitEvent(editId) {
     status: (existing && existing.status) || "active",
     recurrence: editId ? (existing.recurrence || "none") : (recurrence || "none"),
     seriesId: editId ? (existing.seriesId || null) : (recurrence && recurrence !== "none" ? "s_" + uid() : null),
-    coOrganizers: (existing && existing.coOrganizers) || [],
+    // ⚠️ COORGANISATION SUSPENDUE (16/11) : la base refuse (42501
+    // `coorganisation_suspendue`) toute liste non vide. Reconduire la copie locale
+    // d'avant la suspension rendait l'activité NON MODIFIABLE, pour toujours, sous
+    // un message de réseau (2026-11-27). À rétablir avec les invitations à coorganiser.
+    coOrganizers: [],
     // Choisie à la création, modifiable à l'édition depuis le 2026-11-27 ; sans le choix à l'écran
     // (ancien formulaire), l'édition garde celle de l'activité.
     visibilite: (editId && !document.querySelector('input[name="evVisibilite"]'))
@@ -8811,15 +9514,19 @@ async function submitEvent(editId) {
     maybes: (existing && existing.maybes) || [],
     waitlist: (existing && existing.waitlist) || [],
     checkedIn: (existing && existing.checkedIn) || [],
-    lat: (existing && existing.lat) || null,
-    lng: (existing && existing.lng) || null,
+    lat: (existing && _evPointValide(existing.lat, existing.lng)) ? existing.lat : null,
+    lng: (existing && _evPointValide(existing.lat, existing.lng)) ? existing.lng : null,
   });
 
   // Coordonnées : ① choisies via l'autocomplétion d'adresse (les plus précises),
   // ② dictionnaire de villes, ③ géocodage Nominatim de l'adresse complète.
   const picked = window._evPickedCoords;
-  if (picked && picked.lat) { ev.lat = picked.lat; ev.lng = picked.lng; }
+  const pointDuLieu = !!(picked && _evPointValide(picked.lat, picked.lng) && (picked.lieu == null || picked.lieu === _evSignatureLieu(city, postalCode, address)));
+  if (pointDuLieu) { ev.lat = picked.lat; ev.lng = picked.lng; }
   else {
+    // Le lieu a été retapé : l'ancien point n'est plus le sien. Mieux vaut une
+    // activité sans point (la carte retombe sur la ville) qu'un point ailleurs.
+    if (picked && _evPointValide(picked.lat, picked.lng)) { ev.lat = null; ev.lng = null; }
     const known = cityToLatLng(city);
     if (known) { ev.lat = known[0]; ev.lng = known[1]; }
     else {
@@ -8843,14 +9550,17 @@ async function submitEvent(editId) {
   const fromFeed = feedIrlBridgeConsumeOrigin();
   // Invitation d'une conversation : lue elle aussi AVANT closeModal (le bandeau
   // vit dans le formulaire), et jamais à l'édition.
-  const inviteConv = editId ? null : lireInvitationFormulaire();
+  const inviteConv = editId ? null : (lireInvitationFormulaire() || inviteDirecteTenue);
   // Le choix « Publier aussi dans le fil » (2026-11-23) : lu au même moment.
   const auFil = editId ? false : _lireChoixAuFil();
   const ecranStudio = sourceStudio && document.querySelector(".screen.active");
 
   closeModal();
-  toast(editId ? "Enregistrement…" : "Publication en cours…");
+  relacher();
+  // Sans client Supabase (SDK non chargé), rien ne sera « publié » (2026-11-27).
+  toast(editId || !window._supaReal ? "Enregistrement…" : "Publication en cours…");
 
+  let photoNonEnvoyee = false;
   // Photo de couverture : upload sur Storage AVANT l'insert. Avant, le data URL
   // base64 partait tel quel dans events.cover_url → des centaines de Ko de base64
   // en base, rechargés à chaque supaLoadEvents pour TOUS les comptes.
@@ -8861,6 +9571,11 @@ async function submitEvent(editId) {
       const up = await supaUploadMedia(ev.id, "events", coverUrl, "photo", { legere: true, cache: "3600" });
       ev.coverUrl = (up && up.indexOf("http") === 0) ? up : null;
     } catch (e) { ev.coverUrl = null; }
+    // ⚠️ UN ENVOI DE PHOTO RATÉ N'EFFACE PLUS L'ANCIENNE (2026-11-27). `ev` EST
+    // l'activité existante, déjà réécrite plus haut : l'échec posait `null`, que
+    // l'UPDATE envoyait — la couverture disparaissait en base et chez tout le
+    // monde, sous « Activité mise à jour ». L'ancienne est gardée, et c'est dit.
+    if (!ev.coverUrl) { photoNonEnvoyee = true; ev.coverUrl = couvertureAvant; }
   }
 
   // Occurrences suivantes d'un événement récurrent : de VRAIS événements qui
@@ -8897,6 +9612,8 @@ async function submitEvent(editId) {
   // Sync Supabase — on ne ment plus sur le résultat (même leçon que les bobines
   // fantômes du 2026-07-19 : « publié ! » alors que rien n'était en base).
   let ok = true;
+  let motifRefus = null;
+  let datesPubliees = 0, datesRefusees = 0, datesGardees = 0;
   let lienStudio = null;
   const backend = !!window._supaReal;
   if (backend) {
@@ -8908,9 +9625,30 @@ async function submitEvent(editId) {
       sortiesStudioEnCreation.add(ev.id);
     }
     try {
-      ok = editId ? await supaUpdateEvent(ev) : await supaPublishEvent(ev, auteurStudio);
+      window._evDernierRefus = null;
+      ok = (editId && !jamaisPubliee) ? await supaUpdateEvent(ev) : await supaPublishEvent(ev, auteurStudio);
     } finally {
       if (postStudio) sortiesStudioEnCreation.delete(ev.id);
+    }
+    // ⚠️ UN REFUS NE LAISSE PLUS UNE ACTIVITÉ FANTÔME (2026-11-27). L'activité était
+    // posée dans `state.userEvents` AVANT l'écriture, et y restait quel que soit le
+    // verdict : l'organisateur la voyait dans sa liste, personne d'autre, et aucun
+    // geste ne la renvoyait. (Le Studio garde son propre chemin de reprise.)
+    if (!ok) motifRefus = _evMotifRefus(ev.id);
+    if (ok && jamaisPubliee) delete ev._nonPubliee;
+    if (!ok && !sourceStudio) {
+      const definitif = !!_EV_REFUS_DEFINITIFS[motifRefus];
+      if (definitif && editId && !jamaisPubliee) {
+        // La modification refusée est DÉFAITE : l'écran ne montre pas un titre ou
+        // une heure que la base — donc tous les inscrits — n'a pas.
+        Object.keys(ev).forEach(function (k) { if (!(k in instantane)) delete ev[k]; });
+        Object.assign(ev, instantane);
+      } else if (definitif) {
+        [ev].concat(extraOccurrences).forEach(function (o) { _evRetirerLocale(o.id); });
+      } else if (!editId) {
+        [ev].concat(extraOccurrences).forEach(function (o) { o._nonPubliee = true; });
+      }
+      saveState();
     }
     if (sourceStudio) {
       if (meId !== MY_UID) return;
@@ -8927,7 +9665,7 @@ async function submitEvent(editId) {
     }
     // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
     // événement affichait « 0 inscrit » chez tous les autres comptes.
-    if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
+    if (ok && (!editId || jamaisPubliee) && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
     // Village à 100 (A3) : la base prévient chaque inscrit ; une notification qui n'a
     // pas pu partir est dite APRÈS la confirmation (le compte rendu, pas un espoir).
     // Devenue PRIVÉE : sa carte du fil part (la base la masque déjà aux non-admis,
@@ -8936,26 +9674,40 @@ async function submitEvent(editId) {
       retirerCarteActiviteDuFil(ev.id);
       try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: false, serie: false, edition: true }); } catch (e) {}
     }
-    if (ok && editId) {
+    if (ok && editId && !jamaisPubliee) {
       _prevenirInscrits(ev, "event_update", avisModification).then(function (v) {
         // Un refus dit son motif (activité ancienne, terminée, débit…) : sans lui, l'écran se taisait.
-        if (v && v.motif && _POURQUOI_PREVENIR[v.motif]) toast(_POURQUOI_PREVENIR[v.motif], "warning");
+        // …et un refus SANS libellé connu aussi (réseau, 500, `non_autorise`) : l'appareil de
+        // création, dont la copie ne connaît aucun inscrit, restait muet (2026-11-27).
+        if (v && v.motif && !v.personne) toast(_pourquoiPrevenir(v.motif, "⚠️ Activité mise à jour, mais les inscrits n'ont pas pu être prévenus du changement"), "warning");
         else if (v && v.total && v.prevenues < v.total) toast("⚠️ " + (v.total - v.prevenues) + " inscrit·e(s) sur " + v.total + " n'ont pas été prévenu·e(s) de la modification", "warning");
       });
     }
     // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
-    for (const o of extraOccurrences) {
+    // Seulement si la première est partie : sinon elles ont suivi son sort ci-dessus.
+    for (const o of (ok ? extraOccurrences : [])) {
       if (sourceStudio && MY_UID !== auteurStudio) return;
       const okOcc = await supaPublishEvent(o, auteurStudio);
-      if (okOcc && typeof supaJoinEvent === "function") supaJoinEvent(o.id);
+      if (okOcc) { datesPubliees++; if (typeof supaJoinEvent === "function") supaJoinEvent(o.id); }
+      else if (!sourceStudio) {
+        // « N dates publiées ! » comptait aussi celles que la base avait refusées.
+        datesRefusees++;
+        if (_EV_REFUS_DEFINITIFS[_evMotifRefus(o.id)]) _evRetirerLocale(o.id);
+        else { o._nonPubliee = true; datesGardees++; }
+      }
     }
+    if (datesRefusees) saveState();
+  } else if (!editId && !sourceStudio) {
+    // Sans client Supabase, rien n'est parti : l'activité attend son geste de renvoi.
+    [ev].concat(extraOccurrences).forEach(function (o) { o._nonPubliee = true; });
+    saveState();
   }
   // Funnel : une création = un résultat, celui de l'écriture réellement exécutée.
   // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   // Mesure d'usage de l'option privée (2026-11-26) : un compteur, aucune donnée.
   if (!editId && ok && backend && activiteEstPrivee(ev)) {
-    try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: !!inviteConv, serie: extraOccurrences.length > 0 }); } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("activite_privee_creee", { v: 1, conv: !!(inviteConv && !inviteConv.direct), directe: !!(inviteConv && inviteConv.direct), serie: extraOccurrences.length > 0 }); } catch (e) {}
   }
   renderIRL();
   if (sourceStudio && MY_UID !== auteurStudio) return;
@@ -8976,12 +9728,29 @@ async function submitEvent(editId) {
       toast(lienStudio === "attente"
         ? "Sortie publiée. Pour réessayer le lien, ouvre le menu de ton message."
         : "Sortie publiée. Le lien avec ton message a été refusé.", "warning");
-    } else toast(ok
-      ? (editId ? "Activité mise à jour"
+    } else if (!backend) {
+      // ⚠️ SANS SERVEUR, RIEN N'EST « PUBLIÉ » (2026-11-27). `ok` restait vrai faute
+      // d'écriture tentée : « Activité publiée ! », en vert, pour une activité que
+      // personne d'autre ne verra.
+      toast(editId ? "Modification enregistrée uniquement sur cet appareil."
+        : "Activité enregistrée uniquement sur cet appareil : personne d'autre ne la voit. Publie-la depuis « Gérer » une fois la connexion revenue.", "warning");
+    } else if (!ok) {
+      // Un message par cause ; toucher celui d'une activité gardée ici la renvoie.
+      const creation = !editId || jamaisPubliee;
+      toast(_evMessageRefus(motifRefus, !creation), "warning",
+        creation && !_EV_REFUS_DEFINITIFS[motifRefus] ? function () { republierActivite(ev.id); } : null);
+    } else if (photoNonEnvoyee) {
+      toast(editId
+        ? (couvertureAvant ? "Activité mise à jour, mais la nouvelle photo n'a pas pu être envoyée — l'ancienne est gardée"
+          : "Activité mise à jour, mais la photo n'a pas pu être envoyée — réessaie depuis « Modifier »")
+        : "Activité publiée sans sa photo : l'envoi a échoué — réessaie depuis « Modifier »", "warning");
+    } else if (datesRefusees) {
+      toast((datesPubliees + 1) + " date" + (datesPubliees ? "s" : "") + " publiée" + (datesPubliees ? "s" : "") + " sur " + (extraOccurrences.length + 1)
+        + " : les autres n'ont pas pu partir" + (datesGardees ? " — publie-les depuis « Gérer »" : ""), "warning");
+    } else toast(editId ? "Activité mise à jour"
         : activiteEstPrivee(ev) && !inviteConv ? "Activité privée créée : invite les personnes qui pourront la voir"
-        : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
-      : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
-      ok ? "success" : "warning");
+        : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !",
+      "success");
   }
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
@@ -9196,6 +9965,14 @@ function _cleGeste() {
 // `motif` accompagne un refus de la base (`message_trop_long`, `debit_activite`,
 // `activite_terminee`…) pour que l'écran dise POURQUOI personne n'a été prévenu —
 // au message groupé COMME à la modification d'une activité.
+// Sans libellé connu, un refus se dit quand même (2026-11-27) : réseau, exception,
+// `refus_<code>`, `non_autorise`… ne figuraient pas ci-dessous, et l'écran se
+// taisait — « Activité mise à jour », personne de prévenu.
+function _pourquoiPrevenir(motif, defaut) {
+  return _POURQUOI_PREVENIR[motif] || defaut || "⚠️ Les inscrits n'ont pas pu être prévenus — réessaie";
+}
+// Motifs que réessayer ne changera pas : aucun geste de reprise n'est proposé.
+const _PREVENIR_SANS_REPRISE = { activite_terminee: 1, activite_trop_ancienne: 1, activite_sans_date: 1, message_trop_long: 1 };
 const _POURQUOI_PREVENIR = {
   message_trop_long: "⚠️ Message trop long une fois mis en forme (guillemets, chevrons…) — raccourcis-le",
   debit_activite: "⚠️ Déjà 3 envois aux inscrits de cette activité dans l'heure — ils n'ont pas été prévenus, réessaie plus tard",
@@ -9204,13 +9981,20 @@ const _POURQUOI_PREVENIR = {
   activite_sans_date: "⚠️ Donne une date à l'activité pour pouvoir prévenir les inscrits",
   debit: "⚠️ Trop d'envois aux inscrits pour l'instant — ils n'ont pas été prévenus, réessaie plus tard",
 };
-async function _prevenirInscrits(ev, genre, message) {
+// `cle` : la clé du geste, quand l'appelant la garde d'une tentative à l'autre
+// (message groupé) ; sinon une clé neuve par appel.
+async function _prevenirInscrits(ev, genre, message, cle) {
   if (!ev) return { total: 0, prevenues: 0 };
-  const cibles = _destinatairesActivite(ev);
+  // ⚠️ LA COPIE PARTAGÉE, PAS LA COPIE DE CRÉATION (2026-11-27) : sur l'appareil où
+  // l'activité a été créée, `state.userEvents` ne connaît que l'organisateur — la
+  // liste était vide, et tout ce qui se décide sur elle (repli, compte d'un refus,
+  // push) concluait « personne à prévenir ».
+  const partagee = _sortiePourParticipation(ev) || ev;
+  const cibles = _destinatairesActivite(partagee);
   if (window._supaReal && typeof supaPrevenirInscrits === "function") {
     // La base est appelée MÊME si la liste locale est vide : un appareil pas encore
     // synchronisé ne connaît pas les inscrits, la base si (relecture red team du 22/11).
-    const v = await supaPrevenirInscrits(ev.id, genre, _cleGeste(), message || null);
+    const v = await supaPrevenirInscrits(ev.id, genre, cle || _cleGeste(), message || null);
     if (v && v.ok) {
       // La push, pour les deux genres (`event_cancelled` a son gabarit depuis le
       // 22/11 : l'annulation réveille aussi les inscrits app fermée). `notify-call`
@@ -9223,8 +10007,14 @@ async function _prevenirInscrits(ev, genre, message) {
       return { total: v.destinataires, prevenues: v.prevenues };
     }
     if (!v || !v.absente) {
-      const total = (v && typeof v.destinataires === "number") ? v.destinataires : cibles.length;
-      return { total: total, prevenues: 0, motif: (v && v.motif) || "inconnu" };
+      const compte = !!v && typeof v.destinataires === "number";
+      const total = compte ? v.destinataires : cibles.length;
+      // `personne` : la base n'a pas compté, mais sa dernière lecture ne montre
+      // AUCUN autre inscrit — l'échec n'a alors privé personne d'un avis, et
+      // l'écran n'a pas à s'en alarmer. Sans lecture du serveur, on ne sait pas : on le dit.
+      const personne = !compte && !cibles.length && partagee.fromSupabase === true
+        && _nbInscrits(partagee, "going") <= 1 && !_nbInscrits(partagee, "maybe") && !_nbInscrits(partagee, "waitlist");
+      return { total: total, prevenues: 0, motif: (v && v.motif) || "inconnu", personne: personne };
     }
   }
   if (!cibles.length) return { total: 0, prevenues: 0 };
@@ -9616,7 +10406,7 @@ function _renderEventInviteList() {
 // L'invitation EST la notification (kind "event_invite" → openEventDetails),
 // mémorisée localement contre le double envoi. Sans toast : l'appelant parle.
 // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-function _notifierInviteEvent(ev, userId) {
+function _notifierInviteEvent(ev, userId, opts) {
   if (!ev || !ev.id || !userId) return;
   _rememberEventInvite(ev.id, userId);
   var notifier = function () {
@@ -9627,7 +10417,9 @@ function _notifierInviteEvent(ev, userId) {
   };
   // Activité privée : l'invité doit pouvoir la LIRE avant d'être prévenu
   // (`event_invites`, sinon la notification ouvre une activité introuvable).
-  if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function") {
+  // `droitDejaPose` : l'appelant vient de poser le droit de lecture de TOUS les
+  // invités en un lot (`_envoyerInvitationDirecte`) — ne pas le reposer un par un.
+  if (activiteEstPrivee(ev) && typeof supaInviterActivite === "function" && !(opts && opts.droitDejaPose)) {
     inviterSerieActivite(ev, [userId]).then(function (ok) {
       if (!ok) toast("L'invitation à ton activité privée n'a pas pu partir — réessaie", "warning");
       else notifier();
