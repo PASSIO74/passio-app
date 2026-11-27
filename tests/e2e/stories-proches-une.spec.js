@@ -6,7 +6,7 @@
 //      tables neuves (la migration n'est peut-être pas appliquée) ;
 //   ② la liste : l'INTENTION part (`insert {ami_id}`), `{ error }` est lu, un
 //      refus annule l'affichage ; liste vide → la feuille s'ouvre avant publier ;
-//   ③ publier « proches » : `audience: "proches"` dans l'INSERT, aucune mention
+//   ③ publier « proches » : `audience: "proches"` dans l'INSERT, mentions bornées à la liste
 //      envoyée ; une story « tous » n'envoie PAS la colonne (serveur sans migration) ;
 //   ④ lecteur : anneau vert et pastille sur une story « proches » seulement ;
 //   ⑤ à la une : rangée du profil visité (titre hostile échappé), lecture du
@@ -133,8 +133,8 @@ test("③ publier « proches » : audience dans l'INSERT, mentions bornées à l
   const [p1] = (await requetes(page, "stories")).filter((r) => r.op === "insert");
   expect(p1.row.audience).toBe("proches");
   await expect.poll(() => page.evaluate(() => window.__toasts.join("|"))).toContain("amis proches");
-  // Mentions : prévenues avec la liste relue au serveur comme SEULE audience
-  // (le filtrage lui-même est éprouvé dans story-stickers.spec.js ⑥).
+  // Mentions : seulement les membres de la liste relue au serveur (le
+  // filtrage complet est éprouvé dans story-stickers.spec.js ⑨).
   await expect.poll(() => page.evaluate(() => window.__mentions.length)).toBe(1);
   expect(await page.evaluate(() => window.__mentions[0]), "mentions bornées aux amis proches").toEqual([LEA]);
   // Story « tous » : la colonne ne part pas (un serveur sans migration l'accepte).

@@ -128,9 +128,9 @@ async function sharePostInFeed(id) {
 const _likePending = new Set();
 
 // Les compteurs publics ne s'abonnent plus aux likes de TOUT le réseau.
-// Au plus trois cartes par créneau, lues en UN appel groupé `fil_compteurs`
-// (D14-01, 2026-11-20) ; trois HEAD exacts séquentiels seulement quand la
-// fonction est absente du projet. Aucune liste d'identifiants n'est téléchargée.
+// Au plus trois cartes par créneau : `fil_likes_visibles` ne calcule que leurs
+// likes. Pendant le déploiement, `fil_compteurs` peut fournir les deux mêmes
+// colonnes ; les trois HEAD exacts restent le dernier repli des anciens projets.
 // Un échec recule (`reculSurErreur`) et le retour au premier plan ne remet PAS
 // ce recul à zéro : seule une lecture réussie le fait.
 // ⚠️ LE CRÉNEAU RECULE QUAND RIEN NE BOUGE (2026-09-21) : 15 s tant qu'un
@@ -254,13 +254,28 @@ function _postLikeReadToken(id) {
   const entry = _postLikeEntry(id);
   return { entry, version: entry.version };
 }
-function _postLikeReconcileLoaded(post, token) {
+function _postLikeReconcileLoaded(post, token, likesLusLe) {
   const entry = _postLikeRefreshEntries.get(post.id);
   if (entry && token && (entry !== token.entry || entry.pending || entry.version !== token.version)) {
     const current = _postLikeCopies(post.id)[0];
     if (current) { post.likes = current.likes; post.liked = current.liked; }
+  } else if (entry && token && likesLusLe > 0 && (!entry.filLuLe || likesLusLe >= entry.filLuLe)) {
+    entry.filLuLe = likesLusLe;
+    entry.likesFil = post.likes;
+    entry.versionFil = entry.version;
   }
   return post;
+}
+
+// Le compteur du fil ne vaut que pour ce compte et cette version de la carte.
+// Une autre copie (profil, détail…) qui affiche encore un ancien total doit
+// pouvoir être corrigée par la lecture dédiée, même dans les 15 secondes.
+function _postLikeFilFraisJusqua(id, entry, maintenant) {
+  const age = maintenant - entry.filLuLe;
+  if (entry.versionFil !== entry.version || !(age >= 0 && age < POST_LIKE_REFRESH_MS)) return 0;
+  const copies = _postLikeCopies(id);
+  return copies.length && copies.every(post => post.likes === entry.likesFil)
+    ? entry.filLuLe + POST_LIKE_REFRESH_MS : 0;
 }
 
 // La géométrie seule compterait aussi le fil CACHÉ sous une fiche/modale.
@@ -332,40 +347,49 @@ function _postLikeRefreshWake() {
   _postLikeRefreshDueAt = Date.now() + delay;
   _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
 }
-// La lecture groupée est-elle permise ? Oui, sauf fonction mémorisée absente
-// pour cette release (même autorité que le fil : `_filCompteursMemoAbsence`, app-08).
+const POST_LIKE_RPC_ABSENTE = "_filLikesVisiblesAbsente";
 function _postLikeGroupeDisponible() {
   return typeof supa !== "undefined" && !!supa && typeof supa.rpc === "function"
-    && !(typeof _filCompteursMemoAbsence === "function" && _filCompteursMemoAbsence());
+    && (!_memoRpcAbsenteActif(POST_LIKE_RPC_ABSENTE) || !_filCompteursMemoAbsence());
 }
-// UN appel `fil_compteurs` pour les cartes à l'écran. Rend :
-//   { counts: Map(id → nombre | null) } — null = valeur invalide (jamais un zéro) ;
-//   { absente: true } — PGRST202/42883, ou erreur DURABLE (4xx, 42501,
-//     PGRST203… : `_filCompteursErreurPassagere`, app-08), mémorisé comme pour le fil ;
-//   { error: true } — charge : délai (8 s), 5xx, 57014, réseau, réponse illisible.
-// Le recul est PARTAGÉ avec le fil (contre-revue du 2026-11-20) : un échec de
-// charge le pose (`_filCompteursNoterEchec`), un succès le lève pour les deux.
-// `aime` n'est pas lu : MON état reste local (intention, `supaSetPostLike`).
+// Un seul délai pour le tour, y compris la première détection d'un ancien
+// serveur. Le mémo d'absence du petit RPC est indépendant de celui du fil.
 async function _postLikeLireGroupe(ids) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
+  let utiliseRpcFil = false;
   try {
     // POST, jamais GET : un identifiant peut porter une virgule (même règle que le fil).
-    let query = supa.rpc("fil_compteurs", { _post_ids: ids });
-    if (query && typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
-    const { data, error, status } = await query;
-    if (error) {
-      const absente = typeof _erreurFonctionAbsente === "function" && _erreurFonctionAbsente(error);
-      const durable = !absente && typeof _filCompteursErreurPassagere === "function" && !_filCompteursErreurPassagere(error, status);
-      if (absente || durable) {
-        if (typeof _filCompteursNoterAbsence === "function") _filCompteursNoterAbsence();
+    let reponse;
+    if (!_memoRpcAbsenteActif(POST_LIKE_RPC_ABSENTE)) {
+      let query = supa.rpc("fil_likes_visibles", { _post_ids: ids });
+      if (typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
+      reponse = await query;
+      // Un refus, une panne ou un quota ne déclenchent pas de seconde lecture.
+      if (reponse.error && reponse.status !== 429 && !(reponse.status >= 500)
+          && _erreurFonctionAbsente(reponse.error)) {
+        _memoRpcAbsentePoser(POST_LIKE_RPC_ABSENTE);
+        reponse = null;
+      }
+    }
+    if (!reponse) {
+      if (_filCompteursMemoAbsence()) return { absente: true };
+      if (_filCompteursEnRecul()) return { reprendreA: _filCompteursProchainEssai };
+      utiliseRpcFil = true;
+      const query = supa.rpc("fil_compteurs", { _post_ids: ids }).select("post_id,likes");
+      reponse = await query.abortSignal(controller.signal);
+      if (reponse.error && reponse.status !== 429 && !(reponse.status >= 500)
+          && (_erreurFonctionAbsente(reponse.error) || !_filCompteursErreurPassagere(reponse.error, reponse.status))) {
+        _filCompteursNoterAbsence();
         return { absente: true };
       }
-      _postLikeNoterEchecPartage();
+    }
+    const { data, error } = reponse;
+    if (error || !Array.isArray(data)) {
+      if (utiliseRpcFil) _postLikeNoterEchecPartage();
       return { error: true };
     }
-    if (!Array.isArray(data)) { _postLikeNoterEchecPartage(); return { error: true }; }
-    if (typeof _filCompteursNoterSucces === "function") _filCompteursNoterSucces();
+    if (utiliseRpcFil) _filCompteursNoterSucces();
     const voulus = new Set(ids), counts = new Map();
     data.forEach(function (row) {
       if (!row || typeof row.post_id !== "string" || !voulus.has(row.post_id)) return;
@@ -373,7 +397,8 @@ async function _postLikeLireGroupe(ids) {
     });
     return { counts };
   } catch (e) {
-    _postLikeNoterEchecPartage();
+    if (utiliseRpcFil) _postLikeNoterEchecPartage();
+    try { if (typeof diagLog === "function") diagLog("compteurs cartes : " + (e && e.message)); } catch (_) {}
     return { error: true };
   } finally {
     clearTimeout(timeout);
@@ -418,20 +443,27 @@ async function _postLikeRefreshTour() {
   _postLikeRefreshBusy = true;
   _postLikeReveilDemande = false;
   let queried = false;
+  let attendreFraicheur = false;
   try {
     if (!window._supaReal || navigator.onLine === false || typeof supa === "undefined" || !supa) return;
     const ids = _postLikeVisibleIds();
+    const maintenant = Date.now();
+    let prochaineExpiration = Infinity;
     const candidates = ids.map(id => ({ id, entry: _postLikeEntry(id) }))
-      .filter(item => !item.entry.pending)
+      .filter(({ id, entry }) => {
+        if (entry.pending) return false;
+        const expiration = _postLikeFilFraisJusqua(id, entry, maintenant);
+        if (!expiration) return true;
+        prochaineExpiration = Math.min(prochaineExpiration, expiration);
+        return false;
+      })
       .sort((a, b) => a.entry.checkedAt - b.entry.checkedAt)
       .slice(0, POST_LIKE_REFRESH_MAX_POSTS);
-    if (!candidates.length) return;
-    // Recul PARTAGÉ avec le fil (contre-revue du 2026-11-20) : tant que la
-    // fonction recule, les cartes ne l'appellent pas non plus — rendez-vous à la
-    // fin du recul, sans compter d'échec (aucun appel n'est parti).
-    if (_postLikeGroupeDisponible() && typeof _filCompteursEnRecul === "function" && _filCompteursEnRecul()) {
-      _postLikeRefreshNextAt = Math.max(_postLikeRefreshNextAt, _filCompteursProchainEssai);
-      window._postLikeRefreshStats.reculPartage = (window._postLikeRefreshStats.reculPartage || 0) + 1;
+    if (!candidates.length) {
+      if (Number.isFinite(prochaineExpiration)) {
+        _postLikeRefreshNextAt = prochaineExpiration;
+        attendreFraicheur = true;
+      }
       return;
     }
     queried = true;
@@ -442,20 +474,23 @@ async function _postLikeRefreshTour() {
     // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
     let vivant = candidates.some(item => !item.entry.checkedAt);
     let lus = 0, echoues = 0;
-    // D14-01 (2026-11-20) : UN appel groupé `fil_compteurs` pour les cartes à
-    // l'écran, au lieu d'un `HEAD count=exact` par carte. Le HEAD passe la règle
-    // de lecture de `post_likes` LIGNE PAR LIGNE (`post_is_visible` par « j'aime ») :
-    // sur une publication populaire, son coût suivait le nombre de « j'aime ». La
-    // fonction ne contrôle la visibilité qu'une fois par publication. Le HEAD ne
-    // reste que quand la fonction n'existe pas sur le projet (`_filCompteursMemoAbsence`).
+    // Un appel groupé : visibilité contrôlée une fois par publication, même
+    // sur une carte populaire. Les HEAD servent aux anciens projets seulement.
     let groupe = _postLikeGroupeDisponible();
     if (groupe) {
       const lot = candidates.filter(item => !item.entry.pending);
       const versions = new Map(lot.map(item => [item.id, item.entry.version]));
+      const res = lot.length ? await _postLikeLireGroupe(lot.map(item => item.id)) : { counts: new Map() };
+      // Seul l'ancien RPC est aussi utilisé par le fil. Respecter son échéance
+      // sans déplacer la rotation des cartes ni compter une lecture ou un échec.
+      if (res.reprendreA) {
+        _postLikeRefreshNextAt = res.reprendreA;
+        window._postLikeRefreshStats.reculPartage = (window._postLikeRefreshStats.reculPartage || 0) + 1;
+        return;
+      }
       lot.forEach(item => { item.entry.checkedAt = Date.now(); }); // rotation, même sur erreur
       window._postLikeRefreshStats.reads += lot.length;
       window._postLikeRefreshStats.groupes = (window._postLikeRefreshStats.groupes || 0) + 1;
-      const res = lot.length ? await _postLikeLireGroupe(lot.map(item => item.id)) : { counts: new Map() };
       if (res.absente) {
         groupe = false; // fonction absente : le chemin HEAD ci-dessous, pour ce tour
         lot.forEach(item => { item.entry.checkedAt = 0; });
@@ -525,7 +560,7 @@ async function _postLikeRefreshTour() {
   } finally {
     _postLikeRefreshBusy = false;
     if (_postLikeRefreshRunning && !document.hidden) {
-      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried ? 0 : delaiDeleste(POST_LIKE_REFRESH_MS));
+      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried || attendreFraicheur ? 0 : delaiDeleste(POST_LIKE_REFRESH_MS));
       _postLikeRefreshDueAt = Date.now() + delay;
       _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
     }

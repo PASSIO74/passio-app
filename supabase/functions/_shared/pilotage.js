@@ -1986,14 +1986,79 @@ export const INSCRITS_PAR_PAGE = 100;
  * déjà filtrés ; une date illisible passe en dernier (le compte existe, il
  * n'est pas caché). La page demandée est bornée à [1, pages].
  */
-export function pageInscrits(tous, page = 1, parPage = INSCRITS_PAR_PAGE) {
-  const t = (c) => { const v = dateUtc(c && c.cree); return Number.isFinite(v) ? v : -Infinity; };
+export function pageInscrits(tous, page = 1, parPage = INSCRITS_PAR_PAGE, cle = "cree") {
+  const t = (c) => { const v = dateUtc(c && c[cle]); return Number.isFinite(v) ? v : -Infinity; };
   const liste = (tous || []).filter((c) => c && c.id != null).slice().sort((a, b) => t(b) - t(a));
   const taille = Math.max(1, Math.floor(Number(parPage)) || INSCRITS_PAR_PAGE);
   const pages = Math.max(1, Math.ceil(liste.length / taille));
   const p = Math.min(pages, Math.max(1, Math.floor(Number(page)) || 1));
   const comptes = liste.slice((p - 1) * taille, p * taille);
   return { total: liste.length, page: p, pages, parPage: taille, comptes, ids: comptes.map((c) => String(c.id)) };
+}
+
+// ─── LES CONNECTÉS DU JOUR (2026-11-26) ─────────────────────────────────────
+// Demande de Benjamin : à côté du nombre d'utilisateurs, combien de comptes sont
+// venus AUJOURD'HUI — de 00 h à 00 h, heure de Paris, remis à zéro chaque nuit —
+// et, en le touchant, lesquels, par leur nom (jamais l'e-mail, comme les inscrits).
+// « Venu » = le compte a ouvert l'app, l'a remise au premier plan ou l'avait à
+// l'écran (télémétrie `session/start`, `lifecycle/visible` ou
+// `lifecycle/heartbeat`), identité `auth_uid` posée par le
+// SERVEUR, jamais un `user_id` écrit par le client), OU s'est connecté
+// (`last_sign_in_at`). La connexion seule ne suffirait pas : une app installée
+// garde sa session des semaines sans jamais se reconnecter. Mêmes exclusions que
+// le total (`compteCree` : ni tests e2e, ni éditeur, ni anonymes, ni supprimés).
+export const FUSEAU_PILOTAGE = "Europe/Paris";
+export const CONNECTES_PAR_PAGE = INSCRITS_PAR_PAGE;
+const fmtParisComplet = new Intl.DateTimeFormat("en-US", { timeZone: FUSEAU_PILOTAGE, year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const partiesParis = (t) => Object.fromEntries(fmtParisComplet.formatToParts(new Date(t)).map((x) => [x.type, Number(x.value)]));
+/** L'avance de l'heure de Paris sur UTC à l'instant `t` (ms). */
+function decalageParis(t) {
+  const p = partiesParis(t);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
+}
+/**
+ * Minuit (heure de Paris) du jour de `maintenant`, en ms UTC. Le décalage est
+ * relu À MINUIT : le changement d'heure a lieu à 2-3 h, un jour d'été commence
+ * donc encore à l'heure d'hiver.
+ */
+export function debutJourParis(maintenant = Date.now()) {
+  const p = partiesParis(maintenant);
+  const minuitNaif = Date.UTC(p.year, p.month - 1, p.day);
+  return minuitNaif - decalageParis(minuitNaif - decalageParis(maintenant));
+}
+/**
+ * Les comptes venus depuis `depuis` (ms). `comptes` : utilisateurs d'auth
+ * (listUsers) ; `vus` : lignes `{ auth_uid, received_at }`. Rend
+ * `{ id, cree, confirme, voie, vu }` (`vu` = dernier passage connu), le plus
+ * récent d'abord. Un passage d'un compte exclu ou disparu ne compte pas.
+ */
+export function connectesDuJour(comptes, vus, depuis, extra = "") {
+  const dernier = new Map();
+  const noter = (id, t) => { if (id && Number.isFinite(t) && t >= depuis && !(dernier.get(id) >= t)) dernier.set(id, t); };
+  for (const v of vus || []) if (v && v.auth_uid) noter(String(v.auth_uid), dateUtc(v.received_at));
+  const out = [];
+  for (const u of comptes || []) {
+    if (!compteCree(u, extra)) continue;
+    const id = String(u.id);
+    noter(id, dateUtc(u.last_sign_in_at));
+    if (!dernier.has(id)) continue;
+    out.push({ id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at),
+      voie: String((u.app_metadata && u.app_metadata.provider) || ""), vu: new Date(dernier.get(id)).toISOString() });
+  }
+  return out.sort((a, b) => dateUtc(b.vu) - dateUtc(a.vu));
+}
+/** Les connectés par leur NOM (`profiles.username`), même règle que `comptesRecents`, plus l'heure du passage. */
+export function nommerConnectes(liste, profils, { nomsLus = true } = {}) {
+  const noms = new Map((profils || []).filter((p) => p && p.id != null).map((p) => [String(p.id), p.username]));
+  return (liste || []).filter((c) => c && c.id != null && Number.isFinite(dateUtc(c.vu))).map((c) => ({
+    nom: nomsLus ? (borne(noms.get(String(c.id)), 60) || null) : null,
+    nomLu: !!nomsLus,
+    vu: new Date(dateUtc(c.vu)).toISOString(),
+    cree: Number.isFinite(dateUtc(c.cree)) ? new Date(dateUtc(c.cree)).toISOString() : null,
+    confirme: !!c.confirme,
+    voie: Object.hasOwn(VOIES, c.voie) ? VOIES[c.voie] : (c.voie ? "autre" : null),
+  }));
 }
 
 /** Lignes de `sqlActivation()` → `activation()`. */

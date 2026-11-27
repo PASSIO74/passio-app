@@ -38,6 +38,8 @@ const TIERS = [
   // appelé ni nommé (③ bis).
   { hote: "api.klipy.com", source: "netlify.toml", nom: /GIF \(KLIPY/ },
   { hote: "api.giphy.com", source: "netlify.toml", nom: /Giphy/ },
+  // La musique des stories (2026-11-26) : recherche Openverse, morceaux lus chez leurs hébergeurs.
+  { hote: "api.openverse.org", source: "netlify.toml", nom: /musique des stories \(Openverse/ },
 ];
 
 test.describe("politique de confidentialité — les tiers appelés sont nommés", () => {
