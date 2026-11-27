@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // 📊 SONDAGE EN BOBINE (2026-11-27)
 // Le sticker Sondage des stories, ouvert aux bobines. La table des votes
-// (`bobine_sondage_votes`, migration_bobine_sondage_2026-11-27.sql) n'est PAS
-// encore appliquée : le client arrive drapeau ÉTEINT. Verrous :
-//   ① création : le sticker n'est PAS proposé en bobine tant que le drapeau est
-//      éteint ; allumé, il l'est — un seul sondage par bobine, et il voyage
-//      dans les overlays de la publication ;
+// (`bobine_sondage_votes`, migration_bobine_sondage_2026-11-27.sql) est appliquée
+// en production depuis le 2026-11-27 (journal n°96) : le drapeau est ALLUMÉ, et ne
+// sait qu'enlever. Verrous :
+//   ① création : le sticker est proposé en bobine (un seul par bobine, il voyage
+//      dans les overlays de la publication) ; chacune des trois coupures le retire,
+//      sans toucher au sticker des stories ;
 //   ② lecteur : le sondage d'une bobine s'affiche (question, deux réponses),
 //      échappé ; les réponses reçoivent le toucher sur 44 px, sans lancer ni
 //      la lecture ni un « j'aime » ;
@@ -97,7 +98,7 @@ async function regarder(page, id) {
   }, id)).toBe(true);
 }
 
-test("① création : pas de sticker Sondage en bobine drapeau éteint ; allumé, un seul par bobine, et il voyage dans les overlays", async ({ page }) => {
+test("① création : sticker Sondage proposé en bobine (un seul, il voyage dans les overlays) ; chaque coupure le retire", async ({ page }) => {
   await bootOnboarded(page);
   const ouvrirEditeur = () => page.evaluate(() => {
     window.requireAuthentication = () => true;
@@ -105,16 +106,22 @@ test("① création : pas de sticker Sondage en bobine drapeau éteint ; allumé
     meOpen("bobine");
     meEnterEditPhase();
   });
-  // Drapeau ÉTEINT (l'état livré) : la table des votes n'existe pas encore.
-  expect(await page.evaluate(() => ({ constante: BOBINE_SONDAGE_ACTIF, actif: bobineSondageActif() }))).toEqual({ constante: false, actif: false });
-  await ouvrirEditeur();
-  await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
-  await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
-  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
-  await page.evaluate(() => meClose());
+  // Les trois COUPURES retirent le sticker de la création (et seulement de la bobine).
+  const proposeAvec = async (couper) => {
+    await page.evaluate(couper);
+    await ouvrirEditeur();
+    await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
+    await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
+    const n = await page.locator('#meStickerPanel [data-sticker="Sondage"]').count();
+    await page.evaluate(() => { meClose(); localStorage.removeItem("passio_bobine_sondage"); delete window.PASSIO_BOBINE_SONDAGE; BOBINE_SONDAGE_ACTIF = true; });
+    return n;
+  };
+  expect(await proposeAvec(() => { localStorage.setItem("passio_bobine_sondage", "0"); }), "coupure par appareil (localStorage)").toBe(0);
+  expect(await proposeAvec(() => { window.PASSIO_BOBINE_SONDAGE = false; }), "coupure par appareil (window)").toBe(0);
+  expect(await proposeAvec(() => { BOBINE_SONDAGE_ACTIF = false; }), "coupure pour tous (constante)").toBe(0);
 
-  // Drapeau ALLUMÉ sur cet appareil : le sticker est proposé, comme en story.
-  await page.evaluate(() => localStorage.setItem("passio_bobine_sondage", "1"));
+  // Allumé (l'état livré : la table des votes existe en production) : le sticker est proposé.
+  expect(await page.evaluate(() => ({ constante: BOBINE_SONDAGE_ACTIF, actif: bobineSondageActif() }))).toEqual({ constante: true, actif: true });
   await ouvrirEditeur();
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await page.locator('#meStickerPanel [data-sticker="Sondage"]').click();
@@ -132,8 +139,8 @@ test("① création : pas de sticker Sondage en bobine drapeau éteint ; allumé
   const donnees = await page.evaluate(() => _meOverlaysData().filter((o) => o.type === "sondage"));
   expect(donnees).toHaveLength(1);
   expect({ q: donnees[0].q, a: donnees[0].a, b: donnees[0].b }).toEqual({ q: "Plutôt mer ou montagne ?", a: "Mer", b: "Montagne" });
-  // En story, rien ne change : le sticker y était déjà.
-  await page.evaluate(() => { meClose(); localStorage.removeItem("passio_bobine_sondage"); meOpen("story"); meEnterEditPhase(); });
+  // En story, rien ne change — même bobine coupée, le sticker des stories reste.
+  await page.evaluate(() => { meClose(); localStorage.setItem("passio_bobine_sondage", "0"); meOpen("story"); meEnterEditPhase(); });
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toBeVisible();
 });

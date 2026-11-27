@@ -4,13 +4,17 @@ Dernier point de la liste « c'est quoi la suite ? » (Benjamin : « Ok fait tou
 de la fiche 34 parce qu'il demande une table en base. Le sticker 📊 des stories (fiche 32, lot C)
 s'ouvre aux bobines.
 
-## État à la livraison : client en ligne, drapeau ÉTEINT, migration NON appliquée
+## État : ALLUMÉ le 2026-11-27 (migrations appliquées, mesurées en base)
 
-- La table des votes n'existe pas encore en production. Tant qu'elle manque, **personne ne peut
-  poser un sondage sur une bobine** : le sticker n'est proposé à la création que si
-  `bobineSondageActif()` (app-08) rend vrai, et `BOBINE_SONDAGE_ACTIF` est livré à `false`.
-- Le LECTEUR, lui, est branché (comme pour la story) : un sondage déjà posé s'affiche, et un vote
-  sur une base sans table dit « Les sondages arrivent bientôt ».
+- Le 2026-11-27, depuis la session (à la demande de Benjamin, « Fait toi même »), par
+  `appliquer-migration.mjs` : `migration_story_sondage_score_auteur_2026-11-27.sql` (journal n°95),
+  puis `migration_bobine_sondage_2026-11-27.sql` (journal n°96). Mesuré ensuite au canal ① : table,
+  RLS, deux policies, trois fonctions DEFINER à `search_path` vide, déclencheurs avec leurs arguments,
+  hors publication, score du point de vue de l'auteur — dans les deux fonctions de résultats.
+- Puis `BOBINE_SONDAGE_ACTIF = true` (PR à part). Le drapeau ne sait qu'ENLEVER la création :
+  coupures `BOBINE_SONDAGE_ACTIF = false` (pour tous), `localStorage.passio_bobine_sondage = "0"` ou
+  `window.PASSIO_BOBINE_SONDAGE = false` (un appareil). Le lecteur reste branché quoi qu'il arrive.
+- Ce qui suit — les étapes d'allumage — est gardé pour l'histoire.
 
 ### Allumer (dans cet ordre, jamais l'inverse)
 
@@ -21,9 +25,7 @@ s'ouvre aux bobines.
    (`npm run migration:appliquer -- migrations/migration_bobine_sondage_2026-11-27.sql`).
 2. MESURER en base (canal ①), pas le tableau imprimé :
    `select to_regclass('public.bobine_sondage_votes'), to_regprocedure('public.bobine_sondage_resultats(text)');`
-3. Passer `BOBINE_SONDAGE_ACTIF` à `true` (app-08) dans une PR à part.
-
-Essayer sur un seul appareil sans rien allumer : `localStorage.passio_bobine_sondage = "1"`.
+3. Passer `BOBINE_SONDAGE_ACTIF` à `true` (app-08) dans une PR à part. — **fait le 2026-11-27.**
 
 ## Ce qui change (client)
 

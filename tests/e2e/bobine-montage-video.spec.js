@@ -10,8 +10,8 @@
 //   ③ vidéo de galerie trop longue : la piste s'ouvre AVANT tout encodage, on
 //      choisit le passage (il était coupé d'office aux 60 premières secondes) ;
 //   ④ un montage qui échoue ne retombe JAMAIS sur la vidéo entière ;
-//   ⑤ ❓ Question en bobine : proposée à la création (le Sondage, lui, seulement
-//      sous son drapeau — voir bobine-sondage.spec.js), rendue par
+//   ⑤ ❓ Question en bobine : proposée à la création (le Sondage aussi depuis le
+//      2026-11-27 — voir bobine-sondage.spec.js), rendue par
 //      le lecteur de bobines, la réponse part à l'AUTEUR DE LA BOBINE affichée ;
 //   ⑥ annuler l'import d'une vidéo longue garde la photo et ses calques.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -197,7 +197,8 @@ test("⑤ ❓ Question en bobine : proposée, rendue, réponse à l'auteur de la
   });
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
-  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
+  // Le Sondage aussi, depuis que ses votes ont leur table (2026-11-27, bobine-sondage.spec.js).
+  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toBeVisible();
   await page.evaluate(() => meClose());
 
   const r = await page.evaluate(async () => {

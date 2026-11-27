@@ -3976,17 +3976,17 @@ function storyVoterSondage(bouton) {
 // Le même sticker que la story, rangé par BOBINE : un vote s'écrit dans
 // `bobine_sondage_votes (post_id, choix)`, les résultats se lisent par
 // `bobine_sondage_resultats(_post_id)` (migration_bobine_sondage_2026-11-27.sql).
-// ⚠️ LE STICKER N'EST PROPOSÉ À LA CRÉATION QU'UNE FOIS LA MIGRATION APPLIQUÉE :
-// tant que `BOBINE_SONDAGE_ACTIF` est faux, personne ne pose un sondage auquel
-// personne ne pourrait répondre. Le LECTEUR, lui, reste branché : un sondage déjà
-// posé s'affiche, et dit « bientôt » si la table manque.
-// Activer : passer la constante à vrai une fois la migration appliquée ET mesurée
-// en base (`to_regclass('public.bobine_sondage_votes')`), jamais avant ;
-// `localStorage.passio_bobine_sondage = "1"` pour l'éprouver sur un appareil.
-var BOBINE_SONDAGE_ACTIF = false;
+// ALLUMÉ le 2026-11-27, APRÈS l'application de la migration en production (journal
+// n°96) et sa mesure en base (table, deux policies, trois fonctions, déclencheurs).
+// Le drapeau ne sait qu'ENLEVER (règle des lots d'interface) : il ferme la CRÉATION
+// du sticker, jamais le lecteur — un sondage déjà posé reste lisible et votable.
+// Coupures : `BOBINE_SONDAGE_ACTIF = false` (constante, pour tous),
+// `localStorage.passio_bobine_sondage = "0"` ou `window.PASSIO_BOBINE_SONDAGE = false`
+// (un appareil).
+var BOBINE_SONDAGE_ACTIF = true;
 function bobineSondageActif() {
-  if (BOBINE_SONDAGE_ACTIF) return true;
-  try { return localStorage.getItem("passio_bobine_sondage") === "1"; } catch (e) { return false; }
+  if (!BOBINE_SONDAGE_ACTIF || window.PASSIO_BOBINE_SONDAGE === false) return false;
+  try { return localStorage.getItem("passio_bobine_sondage") !== "0"; } catch (e) { return true; }
 }
 // La bobine AFFICHÉE qui porte cet élément : lue dans `reelsState.items` (la ligne
 // du serveur) par l'identifiant de SA carte — jamais dans l'overlay, qu'un autre
